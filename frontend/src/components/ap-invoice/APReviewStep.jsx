@@ -52,7 +52,7 @@ export default function APReviewStep({ ctrl }) {
           {/* Tax Type Badge */}
           {headerData.taxType && (
             <div style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-3)' }}>ประเภทภาษีมูลค่าเพิ่ม:</span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-3)' }}>Tax calculation type :</span>
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
                 padding: '0.2rem 0.7rem', borderRadius: '99px', fontWeight: 700, fontSize: '0.8rem',
@@ -61,7 +61,7 @@ export default function APReviewStep({ ctrl }) {
                 border: `1px solid ${isInclude ? 'var(--amber-300, #fcd34d)' : 'var(--blue-300, #93c5fd)'}`,
               }}>
                 {isInclude ? <CircleDot size={13} /> : <PlusCircle size={13} />}
-                {isInclude ? 'Tax Include — ราคารวมภาษีแล้ว' : 'Tax Exclude — ราคายังไม่รวมภาษี'}
+                {isInclude ? 'Tax Include' : 'Tax Exclude'}
               </span>
             </div>
           )}
@@ -84,7 +84,7 @@ export default function APReviewStep({ ctrl }) {
       <Card
         icon={<LayoutList size={16} />}
         title={t.reviewTitle}
-        right={<span className="row-count">{lineItems.length} รายการ</span>}
+        right={<span className="row-count">{lineItems.length} {t.items}</span>}
       >
         <div className="table-wrapper">
           <table className="ap-review-table">

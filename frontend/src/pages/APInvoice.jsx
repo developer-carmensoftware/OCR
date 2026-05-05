@@ -43,11 +43,11 @@ export default function APInvoice() {
 
       <CustomModal
         show={acceptAllModal}
-        title="ยืนยัน Accept All"
-        message="AI อาจแนะนำรหัสบัญชีผิดพลาดได้ คุณได้ตรวจสอบรายการทั้งหมดแล้วใช่ไหม?"
+        title="Confirm Accept All"
+        message="AI may suggest incorrect account codes. Have you reviewed all items?"
         type="warning"
-        confirmText="ยืนยัน ยอมรับทั้งหมด"
-        cancelText="ยกเลิก"
+        confirmText="Confirm Accept All"
+        cancelText="Cancel"
         onConfirm={() => { setAcceptAllModal(false); handleAcceptAll() }}
         onCancel={() => setAcceptAllModal(false)}
       />
@@ -102,14 +102,14 @@ export default function APInvoice() {
               <div className="ap-preview-side">
                 <DocumentPreview previewUrl={previewUrl} previewType={previewType} fileName={file?.name} />
                 <button className="preview-toggle-btn hide" onClick={() => setShowPreview(false)}>
-                  <ChevronLeft size={14} /> ซ่อนเอกสาร
+                  <ChevronLeft size={14} /> Hide Document
                 </button>
               </div>
             )}
 
             {!showPreview && (
               <button className="preview-toggle-btn show" onClick={() => setShowPreview(true)}>
-                <FileText size={14} /> {t.showDoc || 'แสดงเอกสาร'}
+                <FileText size={14} /> {t.showDoc || 'View Document'}
               </button>
             )}
 

@@ -106,7 +106,7 @@ export default function JournalVoucher({ jvRows, headerData, filePrefix, fileSou
               </tbody>
               <tfoot>
                 <tr className="jv-total-row">
-                  <td colSpan={6} className="text-right">ยอดรวม (TOTAL):</td>
+                  <td colSpan={6} className="text-right">TOTAL:</td>
                   <td className="text-right">{fmt(totalDr)}</td>
                   <td className="text-right">{fmt(totalCr)}</td>
                   <td className="text-right">{fmt(totalDr)}</td>
@@ -120,28 +120,28 @@ export default function JournalVoucher({ jvRows, headerData, filePrefix, fileSou
         <div className="form-actions">
           {onBack && (
             <button className="btn-cancel" onClick={onBack} style={{ marginRight: 'auto' }}>
-              <ArrowLeft size={14} /> ย้อนกลับ
+              <ArrowLeft size={14} /> Back
             </button>
           )}
           <button
             className="btn-cancel"
             onClick={handleOpenJv}
             disabled={!carmenJvId}
-            title={carmenJvId ? `เปิดดู JV #${carmenJvId}` : 'รอการสร้าง JV ID'}
+            title={carmenJvId ? `View JV #${carmenJvId}` : 'Waiting for JV ID'}
           >
-            <ExternalLink size={14} /> เปิดดูหน้า JV
+            <ExternalLink size={14} /> View JV page
           </button>
           <div className="form-actions-sep" />
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.35rem' }}>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-4)', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
               <ArrowRight size={12} />
-              ขั้นตอนถัดไป: <strong>Input Tax Reconciliation</strong> — ตรวจสอบ VAT ภาษีซื้อ
+              Next Step: <strong>Input Tax Reconciliation</strong> — Verify Input Tax
             </span>
             <button className="btn-submit" onClick={() => {
-              toast.info('กำลังไปยัง Step 6: Input Tax Reconciliation')
+              toast.info('Proceeding to Step 6: Input Tax Reconciliation')
               onFinish()
             }}>
-              <ArrowRight size={14} /> ต่อไป (Next)
+              <ArrowRight size={14} /> Next
             </button>
           </div>
         </div>
@@ -150,9 +150,9 @@ export default function JournalVoucher({ jvRows, headerData, filePrefix, fileSou
       <CustomModal
         show={noJvModal}
         type="warning"
-        title="ไม่พบ Voucher ID"
-        message={`ยังไม่มี Voucher ID จาก Carmen\nอาจเกิดจาก Carmen GL JV ล้มเหลวในขั้นตอนก่อนหน้า`}
-        confirmText="ปิด"
+        title="Voucher ID Not Found"
+        message={`No Voucher ID received from Carmen\nThis may be due to a failed GL JV in the previous step`}
+        confirmText="Close"
         onConfirm={() => setNoJvModal(false)}
       />
     </>

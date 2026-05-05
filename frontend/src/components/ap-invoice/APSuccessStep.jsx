@@ -62,7 +62,7 @@ export default function APSuccessStep({ t, headerData, lineItems, invoiceSeq, on
               rel="noopener noreferrer"
               className="btn btn-outline"
             >
-              <ExternalLink size={14} /> เปิดดู AP Invoice
+              <ExternalLink size={14} /> View AP Invoice
             </a>
           )}
           <button className="btn btn-primary" onClick={onReset}>

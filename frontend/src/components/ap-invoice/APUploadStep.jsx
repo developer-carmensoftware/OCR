@@ -36,7 +36,7 @@ export default function APUploadStep({ t, fileInputRef, onFileChange }) {
       </div>
 
       <div className="panel-card" style={{ marginTop: '1rem' }}>
-        <div className="field-label"><Info size={16} /> วิธีใช้งาน AP Invoice OCR</div>
+        <div className="field-label"><Info size={16} /> How to use AP Invoice OCR</div>
         <div className="how-to-list">
           {INSTRUCTIONS.map(({ n, c, text }) => (
             <div key={n} className="how-to-item">
@@ -51,8 +51,8 @@ export default function APUploadStep({ t, fileInputRef, onFileChange }) {
 }
 
 const INSTRUCTIONS = [
-  { n: 1, c: 'gold', text: 'อัปโหลดไฟล์ใบแจ้งหนี้ (JPG, PNG, PDF)' },
-  { n: 2, c: 'gold', text: 'ตรวจสอบ Field Mapping ให้ตรงกับตารางในเอกสาร' },
-  { n: 3, c: 'teal', text: 'ตรวจสอบข้อมูล Header และยอดเงิน' },
-  { n: 4, c: 'teal', text: 'ผูกผังบัญชีแต่ละรายการ แล้วกด Generate Invoice' },
+  { n: 1, c: 'gold', text: 'Upload invoice file (JPG, PNG, PDF)' },
+  { n: 2, c: 'gold', text: 'Verify Field Mapping against the document table' },
+  { n: 3, c: 'teal', text: 'Review Header data and amounts' },
+  { n: 4, c: 'teal', text: 'Map GL accounts for each item, then click Generate Invoice' },
 ]

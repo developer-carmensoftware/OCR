@@ -58,7 +58,7 @@ export default function APAccountMappingStep({
           <div>
             <div style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--ap-vendor-text, #3b0764)' }}>{vendorDisplayName}</div>
             <div style={{ fontSize: '0.75rem', color: 'var(--ap-vendor-text-muted, #7c3aed)', marginTop: '0.05rem', fontWeight: 600 }}>
-              รหัส: {vendorCode}
+              Code: {vendorCode}
             </div>
           </div>
         </div>
@@ -66,8 +66,8 @@ export default function APAccountMappingStep({
         <div style={{ display: 'flex', alignItems: 'stretch', flexWrap: 'wrap', gap: '0', flex: 1 }}>
           <VendorInfoPill icon={<IdCard size={10} />}    label="Tax ID"       value={vendorTaxId} />
           <VendorInfoPill icon={<GitBranch size={10} />} label="Branch No"    value={branchNo} />
-          <VendorInfoPill icon={<FileText size={10} />}  label="เลขที่เอกสาร" value={docNo} />
-          <VendorInfoPill icon={<Calendar size={10} />}  label="วันที่เอกสาร" value={docDate} last />
+          <VendorInfoPill icon={<FileText size={10} />}  label="Document No." value={docNo} />
+          <VendorInfoPill icon={<Calendar size={10} />}  label="Document Date" value={docDate} last />
         </div>
       </div>
 
@@ -81,7 +81,7 @@ export default function APAccountMappingStep({
           type="text"
           value={headerData.invhDesc || ''}
           onChange={e => updateHeader('invhDesc', e.target.value)}
-          placeholder="คำอธิบายใบแจ้งหนี้..."
+          placeholder="Invoice description..."
           style={{
             width: '100%', boxSizing: 'border-box',
             padding: '0.55rem 0.85rem', fontSize: '0.88rem',
@@ -189,14 +189,14 @@ export default function APAccountMappingStep({
                           <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'center' }}>
                             <button
                               onClick={() => onConfirmSuggest(ri)}
-                              title="ยืนยัน"
+                              title="Confirm"
                               style={{ padding: '3px 8px', background: 'var(--btn-ok-bg, #f0fdf4)', color: 'var(--btn-ok-text, #15803d)', border: '1px solid var(--btn-ok-border, #86efac)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center' }}
                             >
                               <Check size={12} />
                             </button>
                             <button
                               onClick={() => onRejectSuggest(ri)}
-                              title="ปฏิเสธ"
+                              title="Reject"
                               style={{ padding: '3px 8px', background: 'var(--btn-err-bg, #fff1f2)', color: 'var(--btn-err-text, #dc2626)', border: '1px solid var(--btn-err-border, #fca5a5)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center' }}
                             >
                               <X size={12} />
@@ -221,7 +221,7 @@ export default function APAccountMappingStep({
           {!allMapped && (
             <span style={{ fontSize: '0.75rem', color: '#b45309', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
               <AlertTriangle size={13} />
-              กรุณาเลือก Dept Code และ Account Code ให้ครบทุกรายการก่อนบันทึก
+              Please provide both Department and Account codes before proceeding.
             </span>
           )}
           <button

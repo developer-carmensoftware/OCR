@@ -10,14 +10,14 @@ export default function CompanyInfoSection({
         COMPANY INFORMATION
         {missingCompanyFields.length > 0 && (
           <span style={{ fontSize: '0.75rem', background: 'var(--rose)', color: 'white', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
-            <AlertCircle size={11} /> ข้อมูลไม่ครบ {missingCompanyFields.length} รายการ
+            <AlertCircle size={11} /> {missingCompanyFields.length} missing fields
           </span>
         )}
       </div>
       <div className="form-grid">
         {companyRequiredFields.map(({ key, label }) => {
           const missing = !company[key]?.trim();
-          const placeholderMap = { name: 'ระบุชื่อบริษัท', taxId: 'ระบุเลขประจำตัวผู้เสียภาษี', branch: 'ระบุรหัสสาขา', address: 'ระบุที่อยู่' };
+          const placeholderMap = { name: 'Enter company name', taxId: 'Enter TAX ID', branch: 'Enter branch', address: 'Enter address' };
           return (
             <React.Fragment key={`frag-${key}`}>
               <label key={`lbl-${key}`} style={missing ? { color: '#dc2626', fontWeight: 600 } : {}}>

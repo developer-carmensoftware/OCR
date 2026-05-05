@@ -14,7 +14,7 @@ export default function TopLevelConfigSection({
           Bank {!bank && <span style={{ color: '#dc2626' }}>*</span>}
         </label>
         <select value={bank} onChange={(e) => handleBankChange(e.target.value)} className="search-select-trigger" style={{ width: '100%', ...(!bank ? { borderColor: 'var(--rose)', background: 'var(--btn-err-bg, #fff1f2)' } : {}) }}>
-          <option value="">เลือกธนาคาร...</option>
+          <option value="">Select bank...</option>
           <option value="Bangkok Bank (BBL)">Bangkok Bank (BBL)</option>
           <option value="Kasikornbank (KBANK)">Kasikornbank (KBANK)</option>
           <option value="Siam Commercial Bank (SCB)">Siam Commercial Bank (SCB)</option>
@@ -27,18 +27,18 @@ export default function TopLevelConfigSection({
           value={filePrefix}
           onChange={(code) => setFilePrefix(code)}
           options={masterGLPrefixes}
-          placeholder={loadingOpts ? 'กำลังโหลด...' : 'เลือกคำนำหน้าไฟล์...'}
+          placeholder={loadingOpts ? 'Loading...' : 'Select file prefix...'}
           hasError={!filePrefix}
         />
 
         <label style={!fileSource ? { color: '#dc2626', fontWeight: 600 } : {}}>
           File Source {!fileSource && <span style={{ color: '#dc2626' }}>*</span>}
         </label>
-        <input type="text" placeholder="ระบุแหล่งที่มาไฟล์ (เช่น Email, Drive)" value={fileSource} onChange={(e) => setFileSource(e.target.value)}
+        <input type="text" placeholder="Specify file source (e.g., Email, Drive)" value={fileSource} onChange={(e) => setFileSource(e.target.value)}
           style={!fileSource ? { borderColor: 'var(--rose)', background: 'var(--btn-err-bg, #fff1f2)' } : {}} />
 
         <label>Description</label>
-        <input type="text" placeholder="รายละเอียดเพิ่มเติม" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <input type="text" placeholder="Additional details" value={description} onChange={(e) => setDescription(e.target.value)} />
       </div>
     </div>
   );

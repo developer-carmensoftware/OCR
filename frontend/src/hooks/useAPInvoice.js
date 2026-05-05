@@ -175,9 +175,9 @@ export function useAPInvoice() {
       const db = {}
       list.forEach(v => { if (v.taxId) db[v.taxId] = v })
       setVendorDbByTax(db)
-      if (setRefreshing) showToast('รายชื่อผู้ขายอัปเดตแล้ว', 'success')
+      if (setRefreshing) showToast('Vendor list updated', 'success')
     } catch {
-      if (setRefreshing) showToast('ไม่สามารถโหลดรายชื่อผู้ขายได้', 'error')
+      if (setRefreshing) showToast('Failed to load vendor list', 'error')
     } finally {
       if (setRefreshing) setVendorRefreshing(false)
     }
@@ -288,7 +288,7 @@ export function useAPInvoice() {
 
   const runOCR = async (fileObj) => {
     setLoading(true)
-    setStatus('AI กำลังอ่านข้อมูลจากเอกสาร...')
+    setStatus('AI is extracting data from document...')
     setError(null)
     try {
       let retries = 3, delay = 800
@@ -301,13 +301,13 @@ export function useAPInvoice() {
           const data = await res.json()
 
           if (data.is_duplicate) {
-            setStatus('พบเอกสารซ้ำ')
+            setStatus('Duplicate document found')
             setModal({
               show: true,
               type: 'warning',
-              title: 'พบเอกสารซ้ำในระบบ',
-              message: `เอกสารเลขที่ ${data.documentNumber || '—'} ของผู้ขายรายนี้ถูกบันทึกไว้ในระบบแล้ว ไม่สามารถนำเข้าซ้ำได้`,
-              confirmText: 'ตกลง',
+              title: 'Duplicate document found',
+              message: `Document No. ${data.documentNumber || '—'} for this vendor is already in the system and cannot be imported again.`,
+              confirmText: 'OK',
               onConfirm: () => { setModal({ show: false }); setStep(1); setFile(null); setPreviewUrl(null) }
             })
             return
@@ -344,16 +344,16 @@ export function useAPInvoice() {
               if (saved) setFieldMappings(JSON.parse(saved))
             } catch { /* ignore corrupt localStorage data */ }
           }
-          setStatus('อ่านข้อมูลสำเร็จ ✓')
-          showToast('อ่านข้อมูลสำเร็จ — กรุณาตรวจสอบและแก้ไข', 'success')
+          setStatus('Data extracted successfully ✓')
+          showToast('Data extracted successfully — please review and adjust', 'success')
           setStep(2)
           loadVendors() // Load vendors after successful OCR extraction
           return
         } catch (err) {
           retries--
           if (retries === 0) throw err
-          setStatus('กำลังลองใหม่...')
-          showToast('กำลังลองใหม่...', 'info')
+          setStatus('Retrying...')
+          showToast('Retrying...', 'info')
           await new Promise(r => setTimeout(r, delay))
           delay *= 2
         }
@@ -362,7 +362,7 @@ export function useAPInvoice() {
       console.error(err)
       setStatus(err.message)
       setError(t.errProcess)
-      showToast('ไม่สามารถอ่านข้อมูลได้ กรุณาลองใหม่', 'error')
+      showToast('Failed to extract data. Please try again.', 'error')
     } finally {
       setLoading(false)
     }
@@ -381,7 +381,7 @@ export function useAPInvoice() {
     if (headerData.vendorTaxId) {
       localStorage.setItem(`ap_mapping_${headerData.vendorTaxId}`, JSON.stringify(fieldMappings))
     }
-    showToast('บันทึกการตั้งค่าคอลัมน์แล้ว', 'success')
+    showToast('Column settings saved', 'success')
     setStep(3)
   }
 
@@ -407,7 +407,7 @@ export function useAPInvoice() {
 
   const runSuggest = async (itemsToSuggest) => {
     setSuggestLoading(true)
-    showToast('AI กำลังแนะนำรหัสบัญชี...', 'info')
+    showToast('AI is suggesting account codes...', 'info')
     try {
       const res = await apiFetch('/api/v1/ap-invoice/suggest-gl', {
         method: 'POST',
@@ -438,16 +438,16 @@ export function useAPInvoice() {
       if (suggestedCount > 0) {
         setModal({
           show: true,
-          title: '✓ AI แนะนำรหัสบัญชี',
-          message: `AI แนะนำรหัสบัญชีสำหรับ ${suggestedCount} รายการ — กรุณาตรวจสอบ`,
+          title: '✓ AI Suggestion',
+          message: `AI suggested account codes for ${suggestedCount} items. Please review.`,
           type: 'success',
-          confirmText: 'ตกลง',
+          confirmText: 'OK',
           onConfirm: () => setModal({ show: false }),
         })
       }
     } catch (err) {
       console.error('AI suggest error:', err)
-      showToast('ไม่สามารถแนะนำรหัสบัญชีได้ กรุณาลองใหม่', 'error')
+      showToast('Failed to suggest account codes. Please try again.', 'error')
     } finally {
       setSuggestLoading(false)
     }
@@ -503,7 +503,7 @@ export function useAPInvoice() {
       _suggestDept: undefined,
       _suggestAcc: undefined,
     })))
-    showToast('ยืนยันรหัสบัญชีทั้งหมดแล้ว', 'success')
+    showToast('All account codes confirmed', 'success')
   }
 
   const handleConfirmSuggest = (idx) => {
@@ -527,38 +527,38 @@ export function useAPInvoice() {
   const handleGenerate = async () => {
     const missing = lineItems.filter(i => !i.deptCode || !i.accountCode)
     if (missing.length > 0) {
-      showToast(`กรุณาเลือก Dept Code และ Account Code ให้ครบทุกรายการ (ขาด ${missing.length} รายการ)`, 'warning')
+      showToast(`Department code and Account code is required`, 'warning')
       return
     }
     setLoading(true)
-    setStatus('กำลังส่ง AP Invoice ไปยัง Carmen Cloud...')
+    setStatus('Sending AP Invoice to Carmen Cloud...')
     setError(null)
-    showToast('กำลังส่ง AP Invoice ไปยัง Carmen Cloud...', 'info')
+    showToast('Sending AP Invoice to Carmen Cloud...', 'info')
     try {
       const payload = buildInvoicePayload(headerData, lineItems, systemVendor)
       const result = await submitAPInvoiceToCarmen(payload, apInvoiceId)
       if (result?.Code < 0) {
-        showToast('Carmen Cloud ไม่ยอมรับข้อมูล กรุณาตรวจสอบ', 'warning')
+        showToast('Carmen Cloud rejected the data, please verify', 'warning')
         setModal({
           show: true, type: 'warning',
-          title: 'ไม่สามารถสร้าง AP Invoice ได้',
-          message: result.UserMessage || 'เกิดข้อผิดพลาดจาก Carmen Cloud',
-          confirmText: 'ตกลง',
+          title: 'Failed to create AP Invoice',
+          message: result.UserMessage || 'Error from Carmen Cloud',
+          confirmText: 'OK',
           onConfirm: () => { setModal({ show: false }); handleReset() },
         })
         return
       }
       setInvoiceSeq(result?.InternalMessage ?? null)
-      showToast('สร้าง AP Invoice เข้า Carmen Cloud สำเร็จ', 'success')
+      showToast('AP Invoice created successfully', 'success')
       setStep(5)
     } catch (err) {
       console.error('AP Invoice submit error:', err)
-      showToast(`ส่ง AP Invoice ล้มเหลว: ${err.message || 'เกิดข้อผิดพลาด'}`, 'error')
+      showToast(`Failed to send AP Invoice: ${err.message || 'An error occurred'}`, 'error')
       setModal({
         show: true, type: 'warning',
-        title: 'ส่ง AP Invoice ล้มเหลว',
-        message: err.message || 'เกิดข้อผิดพลาดในการส่งข้อมูล กรุณาลองใหม่อีกครั้ง',
-        confirmText: 'ตกลง',
+        title: 'Failed to send AP Invoice',
+        message: err.message || 'An error occurred while sending data. Please try again.',
+        confirmText: 'OK',
         onConfirm: () => setModal({ show: false }),
       })
     } finally {

@@ -144,10 +144,10 @@ export function useOcrWizard() {
 
   function showDuplicateModal(docNo) {
     showModal({
-      title: 'พบเอกสารซ้ำในระบบ',
-      message: `เอกสารหมายเลข ${docNo} ถูกบันทึกไว้ในระบบแล้ว\nไม่สามารถนำเข้าเอกสารซ้ำได้`,
+      title: 'Duplicate Document Found',
+      message: `Document number ${docNo} is already saved in the system.\nCannot import duplicate document.`,
       type: 'error',
-      confirmText: 'ตกลง',
+      confirmText: 'OK',
       onConfirm: () => {
         closeModal()
         setStep(1)
@@ -161,28 +161,28 @@ export function useOcrWizard() {
     const filesToProcess = filesOverride ?? files
     if (!bank) {
       showModal({
-        title: 'ข้อมูลไม่ครบถ้วน',
-        message: 'กรุณาเลือกธนาคารที่ต้องการนำเข้าข้อมูลก่อนดำเนินการ',
-        type: 'warning', confirmText: 'รับทราบ', onConfirm: closeModal,
+        title: 'Incomplete Information',
+        message: 'Please select a bank before proceeding.',
+        type: 'warning', confirmText: 'Acknowledge', onConfirm: closeModal,
       })
       return
     }
     if (filesToProcess.length === 0) {
       showModal({
-        title: 'ไม่พบไฟล์เอกสาร',
-        message: 'กรุณาเลือกไฟล์รูปภาพหรือ PDF ที่ต้องการประมวลผล',
-        type: 'warning', confirmText: 'ตกลง', onConfirm: closeModal,
+        title: 'No Document File Found',
+        message: 'Please select an image or PDF file to process.',
+        type: 'warning', confirmText: 'OK', onConfirm: closeModal,
       })
       return
     }
     setLoading(true)
     setStep(2)
-    setStatus('AI กำลังอ่านข้อมูลจากเอกสาร...')
+    setStatus('AI is extracting data from document...')
     try {
       const ext = await extractFromFile(filesToProcess[0], bank)
 
       if (ext.is_duplicate) {
-        setStatus('พบเอกสารซ้ำ')
+        setStatus('Duplicate document found')
         showDuplicateModal(ext.doc_no)
         return
       }
@@ -191,37 +191,37 @@ export function useOcrWizard() {
 
       const detectedBank = detectBankFromExtracted(ext)
       if (detectedBank && detectedBank !== bank) {
-        setStatus('อ่านข้อมูลสำเร็จ ✓')
+        setStatus('Data extracted successfully ✓')
         setStep(3)
         showModal({
-          title: 'ตรวจพบธนาคารไม่ตรงกัน',
-          message: `เอกสารนี้น่าจะเป็นของ ${BANK_THAI_NAMES[detectedBank]}\nแต่เลือกธนาคาร: ${BANK_THAI_NAMES[bank]}\n\nต้องการประมวลผลใหม่ด้วย ${BANK_THAI_NAMES[detectedBank]} หรือไม่?`,
+          title: 'Bank Mismatch Detected',
+          message: `This document appears to belong to ${BANK_THAI_NAMES[detectedBank]},\nbut the selected bank is ${BANK_THAI_NAMES[bank]}.\n\nDo you want to reprocess with ${BANK_THAI_NAMES[detectedBank]}?`,
           type: 'warning',
-          confirmText: `ประมวลผลด้วย ${detectedBank}`,
-          cancelText: 'ใช้ผลลัพธ์ปัจจุบัน',
+          confirmText: `Process with ${detectedBank}`,
+          cancelText: 'Use current result',
           onConfirm: async () => {
             closeModal()
             setBank(detectedBank)
             setLoading(true)
             setStep(2)
-            setStatus('AI กำลังอ่านข้อมูลใหม่...')
+            setStatus('AI is re-extracting data...')
             try {
               const ext2 = await extractFromFile(filesToProcess[0], detectedBank)
               if (ext2.is_duplicate) {
-                setStatus('พบเอกสารซ้ำ')
+                setStatus('Duplicate document found')
                 showDuplicateModal(ext2.doc_no)
                 return
               }
               applyExtractedData(ext2)
-              setStatus('อ่านข้อมูลสำเร็จ ✓')
+              setStatus('Data extracted successfully ✓')
               setStep(3)
-              showToast(`ประมวลผลใหม่ด้วย ${BANK_THAI_NAMES[detectedBank]} สำเร็จ`, 'success')
+              showToast(`Successfully reprocessed with ${BANK_THAI_NAMES[detectedBank]}`, 'success')
             } catch (err) {
               setStatus(err.message)
               showModal({
-                title: 'เกิดข้อผิดพลาด',
-                message: `ไม่สามารถอ่านข้อมูลได้: ${err.message}`,
-                type: 'error', confirmText: 'ปิด', onConfirm: closeModal,
+                title: 'Error Occurred',
+                message: `Failed to extract data: ${err.message}`,
+                type: 'error', confirmText: 'Close', onConfirm: closeModal,
               })
               setStep(1)
             } finally {
@@ -231,16 +231,16 @@ export function useOcrWizard() {
           onCancel: closeModal,
         })
       } else {
-        setStatus('อ่านข้อมูลสำเร็จ ✓')
+        setStatus('Data extracted successfully ✓')
         setStep(3)
-        showToast(`อ่านข้อมูลสำเร็จ ${files.length} ไฟล์ — กรุณาตรวจสอบและแก้ไข`, 'success')
+        showToast(`Successfully extracted ${files.length} file(s) — please review and edit`, 'success')
       }
     } catch (err) {
       setStatus(err.message)
       showModal({
-        title: 'เกิดข้อผิดพลาด',
-        message: `ไม่สามารถอ่านข้อมูลได้: ${err.message}`,
-        type: 'error', confirmText: 'ปิด', onConfirm: closeModal,
+        title: 'Error Occurred',
+        message: `Failed to extract data: ${err.message}`,
+        type: 'error', confirmText: 'Close', onConfirm: closeModal,
       })
       setStep(1)
     } finally {
@@ -263,7 +263,7 @@ export function useOcrWizard() {
 
   async function handleSubmitFinal(rows) {
     if (submittedDocNos.current.has(headerData.DocNo)) {
-      showToast('เอกสารนี้ถูกบันทึกไปแล้ว ไม่สามารถส่งซ้ำได้', 'warning')
+      showToast('This document is already saved and cannot be submitted again.', 'warning')
       setStep(5)
       return
     }
@@ -296,7 +296,7 @@ export function useOcrWizard() {
       })),
     }
     try {
-      showToast('กำลังส่งข้อมูล...', 'info')
+      showToast('Submitting data...', 'info')
       await submitToLocal(payload)
       submittedDocNos.current.add(docNo)
 
@@ -346,20 +346,20 @@ export function useOcrWizard() {
           jvId = carmenRes.InternalMessage
           setCarmenJvId(jvId)
         }
-        showToast('ส่งข้อมูลเข้า Carmen GL JV สำเร็จ', 'success')
+        showToast('Successfully sent data to Carmen GL JV', 'success')
       } catch (err) {
         carmenError = err.message
         showToast(`Carmen GL JV: ${err.message}`, 'error')
       }
 
       showModal({
-        title:   carmenError ? 'บันทึกสำเร็จ (Carmen มีปัญหา)' : 'บันทึก JV สำเร็จ!',
+        title:   carmenError ? 'Saved Successfully (Carmen issue)' : 'JV Saved Successfully!',
         message: carmenError
-          ? `เอกสารหมายเลข ${docNo} บันทึกลงฐานข้อมูลแล้ว\n\nแต่การส่ง Carmen GL JV ล้มเหลว:\n${carmenError}`
-          : `เอกสารหมายเลข ${docNo} ได้ถูกบันทึกและส่ง Carmen GL JV เรียบร้อยแล้ว`,
+          ? `Document number ${docNo} has been saved to the database.\n\nHowever, sending to Carmen GL JV failed:\n${carmenError}`
+          : `Document number ${docNo} has been successfully saved and sent to Carmen GL JV.`,
         type:        carmenError ? 'warning' : 'success',
-        confirmText: 'ไปยัง Input Tax Reconciliation',
-        cancelText:  jvId ? 'เปิดดู JV' : undefined,
+        confirmText: 'Proceed to Input Tax Reconciliation',
+        cancelText:  jvId ? 'View JV' : undefined,
         cancelStyle: jvId ? { background: 'var(--teal)', color: 'white', border: '1px solid var(--teal)' } : undefined,
         onConfirm:   () => { closeModal(); setStep(5) },
         onCancel:    jvId ? () => window.open(getCarmenUrl(`/glJv/${jvId}/show`), '_blank') : undefined,
@@ -367,17 +367,17 @@ export function useOcrWizard() {
     } catch (err) {
       if (err.code === 'DUPLICATE_DOC_NO') {
         showModal({
-          title:   'พบเอกสารซ้ำในระบบ',
-          message: `เอกสารหมายเลข ${docNo} ถูกบันทึกไว้ในระบบแล้ว\nไม่สามารถนำเข้าเอกสารซ้ำได้`,
+          title:   'Duplicate Document Found',
+          message: `Document number ${docNo} is already saved in the system.\nCannot import duplicate document.`,
           type: 'error',
-          confirmText: 'ตกลง',
+          confirmText: 'OK',
           onConfirm: closeModal,
         })
       } else {
         showModal({
-          title: 'เกิดข้อผิดพลาดในการบันทึก',
+          title: 'Error saving data',
           message: err.message,
-          type: 'error', confirmText: 'ปิด', onConfirm: closeModal,
+          type: 'error', confirmText: 'Close', onConfirm: closeModal,
         })
       }
     } finally {
@@ -404,10 +404,10 @@ export function useOcrWizard() {
   function handleCancel() {
     if (step === 1) return
     showModal({
-      title: 'ยกเลิกการทำงาน',
-      message: 'ยืนยันการยกเลิกและล้างข้อมูลทั้งหมดหรือไม่?',
+      title: 'Cancel Process',
+      message: 'Are you sure you want to cancel and clear all data?',
       type: 'warning',
-      confirmText: 'ยืนยัน', cancelText: 'กลับตัว',
+      confirmText: 'Confirm', cancelText: 'Go Back',
       onConfirm: resetAll, onCancel: closeModal,
     })
   }

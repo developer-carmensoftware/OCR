@@ -1,13 +1,17 @@
-import { User, CheckCircle2, AlertTriangle, Plus, RotateCw, Search } from 'lucide-react'
+import { User, CheckCircle2, AlertTriangle, Plus, RotateCw, Search, Info } from 'lucide-react'
 import Badge from '../common/Badge'
+import Tooltip from '../common/Tooltip'
 import { getCarmenUrl } from '../../lib/url'
 
 export default function VendorSearch({ t, systemVendor, setSystemVendor, vendorSearch, setVendorSearch, showVendorDrop, setShowVendorDrop, filteredVendors, onRefresh, refreshing }) {
   return (
     <div className="vendor-search-wrap">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
-        <div className="field-label" style={{ marginBottom: 0 }}>
+        <div className="field-label" style={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: '0.3rem', position: 'relative' }}>
           <User size={15} /> {t.systemVendor}
+          <Tooltip text='Choose vendor or click "+ New Vendor" if not found.' position="top-right">
+            <Info size={14} style={{ color: 'var(--text-4)', cursor: 'help' }} />
+          </Tooltip>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <Badge variant={systemVendor.code ? 'success' : 'warning'}>
@@ -27,12 +31,12 @@ export default function VendorSearch({ t, systemVendor, setSystemVendor, vendorS
             }}
           >
             <Plus size={11} />
-            เพิ่ม Vendor
+            New Vendor
           </a>
           <button
             onClick={onRefresh}
             disabled={refreshing}
-            title="Refresh รายชื่อผู้ขาย"
+            title="Refresh vendor list"
             style={{
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               width: '1.75rem', height: '1.75rem',
@@ -98,7 +102,7 @@ export default function VendorSearch({ t, systemVendor, setSystemVendor, vendorS
               })
             : (
                 <div style={{ padding: '0.75rem 1rem', fontSize: '0.83rem', color: 'var(--text-4)', textAlign: 'center' }}>
-                  ไม่พบข้อมูลผู้ขาย
+                  No vendor found
                 </div>
               )
           }

@@ -6,7 +6,7 @@ export default function HeaderCard({ headerData, onUpdate, readOnly }) {
     <div className="data-card">
       <div className="card-title">
         <div className="card-title-left">
-          <IdCard size={16} /> ข้อมูล Header
+          <IdCard size={16} /> Header Information
         </div>
       </div>
       <div className="card-body">

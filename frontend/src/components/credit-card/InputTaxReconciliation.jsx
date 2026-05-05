@@ -90,12 +90,12 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
     try {
       await submitInputTax(payload)
       setShowConfirm(false)
-      toast.success('เพิ่ม Input Tax Reconciliation เข้าระบบสำเร็จ')
+      toast.success('Input Tax Reconciliation added successfully')
       onFinish()
     } catch (err) {
-      const msg = err.message || 'เกิดข้อผิดพลาด'
+      const msg = err.message || 'An error occurred'
       setSubmitError(msg)
-      toast.error(`เพิ่ม Input Tax ล้มเหลว: ${msg}`)
+      toast.error(`Failed to add Input Tax: ${msg}`)
     } finally {
       setSubmitting(false)
     }
@@ -155,7 +155,7 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
                 {!hasData ? (
                   <tr>
                     <td colSpan={12} style={{ textAlign: 'center', padding: '2rem', color: 'var(--gray-500)' }}>
-                      ไม่มีข้อมูล Credit card commission / Input Tax ในรายการ
+                      No Credit card commission / Input Tax data available
                     </td>
                   </tr>
                 ) : (
@@ -209,7 +209,7 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
               {hasData && (
                 <tfoot>
                   <tr className="jv-total-row">
-                    <td colSpan={9} style={{ textAlign: 'right', fontWeight: 700 }}>ยอดรวม (TOTAL):</td>
+                    <td colSpan={9} style={{ textAlign: 'right', fontWeight: 700 }}>TOTAL:</td>
                     <td className="text-right" style={{ fontWeight: 700, fontFamily: "'DM Mono', monospace" }}>{fmt(netAmount)}</td>
                     <td className="text-right" style={{ fontWeight: 700, fontFamily: "'DM Mono', monospace" }}>{fmt(taxAmount)}</td>
                     <td className="text-right" style={{ fontWeight: 700, fontFamily: "'DM Mono', monospace" }}>{fmt(total)}</td>
@@ -241,12 +241,12 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
               <FileText size={36} />
             </div>
             <div style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.65rem' }}>
-              เพิ่ม Input Tax Reconciliation
+              Add Input Tax Reconciliation
             </div>
             <p style={{ color: 'var(--text-2)', fontSize: '0.92rem', marginBottom: '1rem', lineHeight: 1.7 }}>
-              รายการนี้จะถูกเพิ่มเข้าสู่ระบบ<br />
-              <strong>Input Tax Reconciliation</strong> โดยอัตโนมัติ<br />
-              ต้องการดำเนินการต่อใช่ไหม?
+              This item will be automatically added to the system as an<br />
+              <strong>Input Tax Reconciliation</strong>.<br />
+              Do you want to proceed?
             </p>
             <div style={{
               background: 'var(--teal-light)', border: '1px solid var(--btn-ok-border, #99f6e4)', borderRadius: '6px',
@@ -254,7 +254,7 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
               color: 'var(--teal)', fontSize: '0.82rem', textAlign: 'left', display: 'flex', gap: '0.5rem', alignItems: 'flex-start',
             }}>
               <Flag size={14} style={{ marginTop: '0.15rem', flexShrink: 0 }} />
-              <span>หลังยืนยัน ระบบจะ<strong>จบกระบวนการทั้งหมด</strong>และกลับสู่หน้าเริ่มต้นโดยอัตโนมัติ</span>
+              <span>After confirmation, the system will <strong>complete the entire process</strong> and return to the start page automatically.</span>
             </div>
             {submitError && (
               <div style={{
@@ -272,7 +272,7 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
                 onClick={() => setShowConfirm(false)}
                 disabled={submitting}
               >
-                ยกเลิก
+                Cancel
               </button>
               <button
                 className="btn-submit"
@@ -280,8 +280,8 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
                 disabled={submitting}
               >
                 {submitting
-                  ? <><Loader2 size={14} className="animate-spin" /> กำลังส่ง...</>
-                  : <><Check size={14} /> ยืนยัน</>
+                  ? <><Loader2 size={14} className="animate-spin" /> Sending...</>
+                  : <><Check size={14} /> Confirm</>
                 }
               </button>
             </div>
@@ -300,10 +300,10 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
               <Flag size={36} />
             </div>
             <div style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem' }}>
-              ข้ามขั้นตอน Input Tax?
+              Skip Input Tax step?
             </div>
             <p style={{ color: 'var(--text-2)', fontSize: '0.92rem', marginBottom: '1rem', lineHeight: 1.7 }}>
-              คุณเลือกที่จะ<strong>ไม่เพิ่ม Input Tax</strong> เข้าระบบ
+              You chose <strong>not to add Input Tax</strong> to the system.
             </p>
             <div style={{
               background: 'var(--btn-err-bg, #fef2f2)', border: '1px solid var(--btn-err-border, #fca5a5)', borderRadius: '6px',
@@ -311,22 +311,22 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
               color: 'var(--btn-err-text, #b91c1c)', fontSize: '0.82rem', textAlign: 'left', display: 'flex', gap: '0.5rem', alignItems: 'flex-start',
             }}>
               <Flag size={14} style={{ marginTop: '0.15rem', flexShrink: 0 }} />
-              <span>การดำเนินการนี้จะ<strong>จบกระบวนการทั้งหมด</strong>และกลับสู่หน้าเริ่มต้น</span>
+              <span>This action will <strong>complete the entire process</strong> and return to the start page.</span>
             </div>
             <div className="modal-actions">
               <button className="btn-cancel" onClick={() => setShowDiscardConfirm(false)}>
-                <ArrowLeft size={14} /> กลับไปตรวจสอบ
+                <ArrowLeft size={14} /> Back to review
               </button>
               <button
                 className="btn-danger"
                 style={{ background: 'var(--rose)', color: 'white' }}
                 onClick={() => {
                   setShowDiscardConfirm(false)
-                  toast.info('จบกระบวนการโดยไม่เพิ่ม Input Tax')
+                  toast.info('Process completed without adding Input Tax')
                   onFinish()
                 }}
               >
-                <X size={14} /> ยืนยัน Discard
+                <X size={14} /> Confirm Discard
               </button>
             </div>
           </div>

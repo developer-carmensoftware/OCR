@@ -16,7 +16,7 @@ export default function AccountMappingTable({
     <div className="section">
       <div className="section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <span>ACCOUNT CODE MAPPING {loadingOpts && <span style={{ marginLeft: '10px', fontSize: '0.8rem', color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}><Loader2 size={13} className="animate-spin" /> กำลังโหลดรหัสบัญชี...</span>}</span>
+          <span>ACCOUNT CODE MAPPING {loadingOpts && <span style={{ marginLeft: '10px', fontSize: '0.8rem', color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}><Loader2 size={13} className="animate-spin" /> Loading account codes...</span>}</span>
         </div>
         <AISuggestBar
           onSuggest={() => autoSuggest()}
@@ -54,10 +54,10 @@ export default function AccountMappingTable({
             }}>
               <div>
                 {requiredMissingCount > 0
-                  ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}><AlertTriangle size={14} color="#dc2626" /> <strong>พบ {activeScan.paymentTypes.size} รายการในเอกสาร</strong> (ค้าง Mapping <strong>{requiredMissingCount}</strong> รายการ)</span>
+                  ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}><AlertTriangle size={14} color="#dc2626" /> <strong>Found {activeScan.paymentTypes.size} items in document</strong> (Pending Mapping <strong>{requiredMissingCount}</strong> items)</span>
                   : amountMappedCount > 0
-                    ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}><CheckCircle2 size={14} /> ตั้งค่าแล้ว {amountMappedCount}/{allPaymentTypes.length} รายการ (เรียบร้อย)</span>
-                    : <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}><Info size={14} /> กดที่ชื่อ Account Receivable เพื่อเปิด Modal / ปุ่ม Suggest เพื่อให้ AI แนะนำ</span>
+                    ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}><CheckCircle2 size={14} /> Mapped {amountMappedCount}/{allPaymentTypes.length} items (Completed)</span>
+                    : <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}><Info size={14} /> Click Account Receivable to open Modal / Click Suggest for AI recommendations</span>
                 }
               </div>
               {requiredMissingCount > 0 && <span style={{ fontSize: '0.75rem', background: 'var(--rose)', color: 'white', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>Required for this scan</span>}
@@ -78,7 +78,7 @@ export default function AccountMappingTable({
             const deptTopChoice = suggestion?.dept
               ? {
                 code: suggestion.dept,
-                name: detFromMaster?.name || '(รหัสจาก AI/ประวัติ)',
+                name: detFromMaster?.name || '(AI/History code)',
                 name2: detFromMaster?.name2,
                 source: suggestion.source
               }
@@ -88,7 +88,7 @@ export default function AccountMappingTable({
             const accTopChoice = suggestion?.acc
               ? {
                 code: suggestion.acc,
-                name: accFromMaster?.name || '(รหัสจาก AI/ประวัติ)',
+                name: accFromMaster?.name || '(AI/History code)',
                 name2: accFromMaster?.name2,
                 source: suggestion.source
               }
@@ -110,7 +110,7 @@ export default function AccountMappingTable({
                     value={mappings[key].dept}
                     onChange={(val) => handleMappingChange(key, 'dept', val)}
                     options={masterDepartments}
-                    placeholder="พิมพ์ Dept. Code..."
+                    placeholder="Type Dept. Code..."
                     topChoice={deptTopChoice?.code ? deptTopChoice : null}
                     suggestedValue={suggestion?.dept || null}
                   />
@@ -120,7 +120,7 @@ export default function AccountMappingTable({
                     value={mappings[key].acc}
                     onChange={(val) => handleMappingChange(key, 'acc', val)}
                     options={masterAccounts}
-                    placeholder="พิมพ์ Account Code..."
+                    placeholder="Type Account Code..."
                     topChoice={accTopChoice?.code ? accTopChoice : null}
                     suggestedValue={suggestion?.acc || null}
                   />
@@ -130,14 +130,14 @@ export default function AccountMappingTable({
                     <>
                       <button
                         onClick={() => confirmMainSuggestion(key)}
-                        title="ยอมรับค่าแนะนำ"
+                        title="Accept suggestion"
                         style={{ padding: '4px 10px', background: '#f0fdf4', color: '#15803d', border: '1px solid #86efac', borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}
                       >
                         <Check size={13} />
                       </button>
                       <button
                         onClick={() => rejectMainSuggestion(key)}
-                        title="ปฏิเสธค่าแนะนำและล้างข้อมูล"
+                        title="Reject and clear"
                         style={{ padding: '4px 10px', background: 'var(--btn-err-bg, #fff1f2)', color: 'var(--btn-err-text, #dc2626)', border: '1px solid var(--btn-err-border, #fecaca)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}
                       >
                         <X size={13} />

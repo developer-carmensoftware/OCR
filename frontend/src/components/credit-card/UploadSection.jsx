@@ -31,10 +31,10 @@ export default function UploadSection({ bank, onBankChange, onFileChange, fileIn
       {/* Bank Selector */}
       <div className={`panel-card ${!hasBank ? 'step-active' : ''}`}>
         <div className="field-label">
-          <Landmark size={16} /> เลือกธนาคาร
+          <Landmark size={16} /> Select Bank
           {!hasBank
-            ? <span className="step-badge badge-now"><MousePointer2 size={11} /> เริ่มที่นี่</span>
-            : <span className="step-badge badge-now" style={{ background: 'rgba(16,185,129,0.1)', color: 'var(--emerald)', border: '1px solid rgba(16,185,129,0.2)' }}><Check size={11} /> เลือกแล้ว</span>
+            ? <span className="step-badge badge-now"><MousePointer2 size={11} /> Start Here</span>
+            : <span className="step-badge badge-now" style={{ background: 'rgba(16,185,129,0.1)', color: 'var(--emerald)', border: '1px solid rgba(16,185,129,0.2)' }}><Check size={11} /> Selected</span>
           }
         </div>
         <div className="bank-select-grid">
@@ -71,7 +71,7 @@ export default function UploadSection({ bank, onBankChange, onFileChange, fileIn
         onDrop={handleDrop}
         role="button"
         tabIndex={hasBank ? 0 : -1}
-        aria-label="อัปโหลดไฟล์เอกสาร"
+        aria-label="Upload document file"
         onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') fileInputRef.current?.click() }}
       >
         <input
@@ -88,36 +88,36 @@ export default function UploadSection({ bank, onBankChange, onFileChange, fileIn
         </div>
         <div className="upload-label">
           {!hasBank
-            ? 'เลือกธนาคารก่อน'
+            ? 'Select a bank first'
             : fileName
               ? (fileName.length > 28 ? fileName.slice(0, 25) + '…' : fileName)
-              : 'คลิกหรือลากไฟล์มาวาง'
+              : 'Click or drag file here'
           }
         </div>
         <div className="upload-hint">
-          {hasBank ? 'รองรับ JPG · PNG · PDF' : 'ขั้นตอนที่ 2'}
+          {hasBank ? 'Supports JPG · PNG · PDF' : 'Step 2'}
         </div>
       </div>
 
       {/* How-to Card */}
       <div className="panel-card">
-        <div className="field-label"><Info size={16} /> วิธีใช้งาน</div>
+        <div className="field-label"><Info size={16} /> How to use</div>
         <div className="how-to-list">
           <div className="how-to-item">
             <div className="how-step-num gold">1</div>
-            <span>เลือกธนาคารที่ตรงกับเอกสาร</span>
+            <span>Select the bank that matches the document</span>
           </div>
           <div className="how-to-item">
             <div className="how-step-num gold">2</div>
-            <span>อัปโหลดไฟล์รายงาน (รูปภาพหรือ PDF)</span>
+            <span>Upload report file (Image or PDF)</span>
           </div>
           <div className="how-to-item">
             <div className="how-step-num gold">3</div>
-            <span>AI จะอ่านข้อมูลอัตโนมัติทันทีที่เลือกไฟล์</span>
+            <span>AI will extract data automatically upon file selection</span>
           </div>
           <div className="how-to-item">
             <div className="how-step-num teal">4</div>
-            <span>ตรวจสอบข้อมูล แล้วกด Submit</span>
+            <span>Review the data and click Submit</span>
           </div>
         </div>
       </div>

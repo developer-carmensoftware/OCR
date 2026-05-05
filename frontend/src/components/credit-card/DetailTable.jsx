@@ -29,9 +29,9 @@ export default function DetailTable({ details, onUpdate, onAddRow, onDeleteRow, 
       <div className="data-card">
         <div className="card-title">
           <div className="card-title-left">
-            <List size={16} /> ข้อมูลรายการ (Details)
+            <List size={16} /> Details
           </div>
-          <span className="row-count">{details.length} รายการ</span>
+          <span className="row-count">{details.length} items</span>
         </div>
         <div className="card-body-flush table-wrapper">
           <table className="data-table">

@@ -22,10 +22,10 @@ export default function PaymentTypeModal({
       <div className="mapping-modal-content" style={{ position: 'relative', zIndex: 1, background: 'var(--data-card-bg, #fff)', width: '90%', maxWidth: '800px', borderRadius: '8px', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }} onClick={(e) => e.stopPropagation()}>
         <div className="mapping-modal-header" style={{ padding: '1rem', borderBottom: '1px solid var(--border)', fontWeight: 'bold', display: 'flex', flexDirection: 'column', gap: '0.75rem', background: 'var(--gray-50)', borderTopLeftRadius: '8px', borderTopRightRadius: '8px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', justifyContent: 'space-between' }}>
-            <span>เลือก Payment Types สำหรับ Account Receivable</span>
+            <span>Select Payment Types for Account Receivable</span>
             {activeScan.paymentTypes.size > 0 && (
               <span style={{ fontSize: '0.8rem', color: 'var(--btn-err-text, #dc2626)', background: 'var(--btn-err-bg, #fff)', padding: '4px 12px', borderRadius: '20px', border: '1px solid var(--btn-err-border, #fca5a5)', fontWeight: 700 }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}><FileText size={13} /> เอกสารชุดนี้ต้องมี: {activeScan.paymentTypes.size} รายการ</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}><FileText size={13} /> Required for this scan: {activeScan.paymentTypes.size} items</span>
               </span>
             )}
           </div>
@@ -54,7 +54,7 @@ export default function PaymentTypeModal({
           {activeScan.paymentTypes.size > 0 && (
             <>
               <div style={{ padding: '0.5rem', background: 'var(--btn-err-bg, #fef2f2)', color: 'var(--btn-err-text, #991b1b)', fontSize: '0.75rem', fontWeight: 700, borderRadius: '4px', marginBottom: '0.75rem', border: '1px solid var(--btn-err-border, #fecaca)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <AlertCircle size={13} /> รายการที่พบในเอกสารปัจจุบัน (Required for this scan)
+                <AlertCircle size={13} /> Required for this scan
               </div>
               {[...activeScan.paymentTypes].map(type => {
                 const pAmt = paymentAmount[type] || { dept: '', acc: '' };
@@ -81,14 +81,14 @@ export default function PaymentTypeModal({
                       <div style={{ display: 'flex', gap: '0.3rem' }}>
                         <button
                           onClick={() => confirmPaymentSuggestion(type)}
-                          title="ยอมรับค่าแนะนำ"
+                          title="Accept suggestion"
                           style={{ padding: '4px 10px', background: 'var(--btn-ok-bg, #f0fdf4)', color: 'var(--btn-ok-text, #15803d)', border: '1px solid var(--btn-ok-border, #86efac)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}
                         >
                           <Check size={13} />
                         </button>
                         <button
                           onClick={() => rejectPaymentSuggestion(type)}
-                          title="ปฏิเสธค่าแนะนำและล้างข้อมูล"
+                          title="Reject and clear"
                           style={{ padding: '4px 10px', background: 'var(--btn-err-bg, #fff1f2)', color: 'var(--btn-err-text, #dc2626)', border: '1px solid var(--btn-err-border, #fecaca)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}
                         >
                           <X size={13} />
@@ -100,7 +100,7 @@ export default function PaymentTypeModal({
               })}
               {customPaymentTypes.filter(t => !activeScan.paymentTypes.has(t)).length > 0 && (
                 <div style={{ margin: '1.5rem 0 1rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--gray-400)' }}>
-                  Custom Types (เพิ่มเอง)
+                  Custom Types
                 </div>
               )}
             </>
@@ -117,7 +117,7 @@ export default function PaymentTypeModal({
               const deptTopChoice = suggestion?.dept
                 ? {
                   code: suggestion.dept,
-                  name: deptFromMaster?.name || '(รหัสจาก AI/ประวัติ)',
+                  name: deptFromMaster?.name || '(AI/History code)',
                   name2: deptFromMaster?.name2,
                   source: suggestion.source
                 }
@@ -127,7 +127,7 @@ export default function PaymentTypeModal({
               const accTopChoice = suggestion?.acc
                 ? {
                   code: suggestion.acc,
-                  name: accFromMaster?.name || '(รหัสจาก AI/ประวัติ)',
+                  name: accFromMaster?.name || '(AI/History code)',
                   name2: accFromMaster?.name2,
                   source: suggestion.source
                 }
@@ -165,7 +165,7 @@ export default function PaymentTypeModal({
                       {type}
                     </div>
                     {isCustom && (
-                      <button onClick={() => handleRemoveCustomType(type)} title="ลบ" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '0.9rem', padding: '0.2rem', lineHeight: 1, display: 'inline-flex', alignItems: 'center' }}>
+                      <button onClick={() => handleRemoveCustomType(type)} title="Remove" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '0.9rem', padding: '0.2rem', lineHeight: 1, display: 'inline-flex', alignItems: 'center' }}>
                         <XCircle size={16} />
                       </button>
                     )}
@@ -190,14 +190,14 @@ export default function PaymentTypeModal({
                     <div style={{ display: 'flex', gap: '0.3rem' }}>
                       <button
                         onClick={() => confirmPaymentSuggestion(type)}
-                        title="ยอมรับค่าแนะนำ"
+                        title="Accept suggestion"
                         style={{ padding: '4px 10px', background: 'var(--btn-ok-bg, #f0fdf4)', color: 'var(--btn-ok-text, #15803d)', border: '1px solid var(--btn-ok-border, #86efac)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}
                       >
                         <Check size={13} />
                       </button>
                       <button
                         onClick={() => rejectPaymentSuggestion(type)}
-                        title="ปฏิเสธค่าแนะนำและล้างข้อมูล"
+                        title="Reject and clear"
                         style={{ padding: '4px 10px', background: 'var(--btn-err-bg, #fff1f2)', color: 'var(--btn-err-text, #dc2626)', border: '1px solid var(--btn-err-border, #fecaca)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}
                       >
                         <X size={13} />
@@ -217,17 +217,17 @@ export default function PaymentTypeModal({
                 placeholder="Custom type..."
                 style={{ flex: 1, padding: '0.4rem 0.5rem', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.85rem', fontFamily: "'DM Mono', monospace", textTransform: 'uppercase', outline: 'none' }}
               />
-              <button onClick={handleAddCustomType} title="เพิ่ม" style={{ background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '4px', padding: '0.4rem 0.7rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+              <button onClick={handleAddCustomType} title="Add" style={{ background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '4px', padding: '0.4rem 0.7rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
                 <Plus size={13} /> Add
               </button>
             </div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-4)', gridColumn: 'span 2' }}>เพิ่ม Payment Type ที่กำหนดเอง</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-4)', gridColumn: 'span 2' }}>Add custom Payment Type</div>
           </div>
           </div>
         </div>
         <div className="mapping-modal-footer" style={{ padding: '1rem', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-          <button className="btn-cancel" onClick={() => { setPaymentSuggestions({}); setIsAmountModalOpen(false); }} style={{ padding: '0.5rem 1rem', background: 'var(--gray-200)', color: 'var(--text-2)', borderRadius: '4px', cursor: 'pointer', border: 'none' }}>ยกเลิก</button>
-          <button className="btn-confirm" onClick={saveAmountSelection} style={{ padding: '0.5rem 1rem', background: 'var(--primary)', color: '#fff', borderRadius: '4px', cursor: 'pointer', border: 'none' }}>ตกลง</button>
+          <button className="btn-cancel" onClick={() => { setPaymentSuggestions({}); setIsAmountModalOpen(false); }} style={{ padding: '0.5rem 1rem', background: 'var(--gray-200)', color: 'var(--text-2)', borderRadius: '4px', cursor: 'pointer', border: 'none' }}>Cancel</button>
+          <button className="btn-confirm" onClick={saveAmountSelection} style={{ padding: '0.5rem 1rem', background: 'var(--primary)', color: '#fff', borderRadius: '4px', cursor: 'pointer', border: 'none' }}>OK</button>
         </div>
       </div>
     </div>,

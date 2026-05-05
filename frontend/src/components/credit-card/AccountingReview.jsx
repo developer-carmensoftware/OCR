@@ -111,17 +111,17 @@ export default function AccountingReview({ details, headerData = {}, onBack, onS
   return (
     <div>
       <div className="section-header">
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}><CheckCheck size={16} /> Step 4: ตรวจสอบการบันทึกบัญชี (Journal Concept)</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}><CheckCheck size={16} /> Step 4: Accounting Review (Journal Concept)</span>
       </div>
 
       {hasMissing && (
         <div className="mapping-alert">
           <AlertTriangle size={16} />
           <span style={{ flex: 1 }}>
-            ยังไม่ได้ตั้งรหัสบัญชีสำหรับ: <strong>{unmappedFields.join(', ')}</strong>
+            Missing account mapping for: <strong>{unmappedFields.join(', ')}</strong>
           </span>
           <button className="btn btn-sm btn-danger" onClick={onGoMapping}>
-            แก้ไข Mapping
+            Edit Mapping
           </button>
         </div>
       )}
@@ -129,9 +129,9 @@ export default function AccountingReview({ details, headerData = {}, onBack, onS
       {!config && (
         <div className="mapping-alert">
           <Info size={16} />
-          <span style={{ flex: 1 }}>ยังไม่มีการตั้งค่า Account Mapping</span>
+          <span style={{ flex: 1 }}>No Account Mapping configured</span>
           <button className="btn btn-sm btn-primary" onClick={onGoMapping}>
-            ไปตั้งค่า Mapping
+            Go to Mapping Settings
           </button>
         </div>
       )}
@@ -140,10 +140,10 @@ export default function AccountingReview({ details, headerData = {}, onBack, onS
         icon={<FileText size={16} />}
         title={
           <>
-            รายละเอียดรายการรายวัน (Journal Details)
+            Journal Details
             {accLoading && (
               <span style={{ fontSize: '0.75rem', color: 'var(--text-4)', fontWeight: 400, marginLeft: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                <Loader2 size={12} className="animate-spin" /> โหลดชื่อบัญชี...
+                <Loader2 size={12} className="animate-spin" /> Loading account names...
               </span>
             )}
           </>
@@ -174,7 +174,7 @@ export default function AccountingReview({ details, headerData = {}, onBack, onS
               {rows.length === 0 && (
                 <tr>
                   <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: 'var(--gray-500)' }}>
-                    ไม่มีข้อมูล — กรุณาตั้งค่า Account Mapping ก่อน
+                    No data — Please configure Account Mapping first
                   </td>
                 </tr>
               )}
@@ -194,7 +194,7 @@ export default function AccountingReview({ details, headerData = {}, onBack, onS
             {rows.length > 0 && (
               <tfoot>
                 <tr className="jv-total-row">
-                  <td colSpan={6} className="text-right">ยอดรวม (TOTAL):</td>
+                  <td colSpan={6} className="text-right">TOTAL:</td>
                   <td className="text-right">{fmt(totalDr)}</td>
                   <td className="text-right">{fmt(totalCr)}</td>
                 </tr>
@@ -205,14 +205,14 @@ export default function AccountingReview({ details, headerData = {}, onBack, onS
 
         <div className="form-actions">
           <button className="btn-cancel" onClick={onBack}>
-            <ArrowLeft size={14} /> ย้อนกลับ
+            <ArrowLeft size={14} /> Back
           </button>
           <button className="btn-cancel" onClick={onGoMapping} style={{ marginRight: 'auto' }}>
-            <Settings size={14} /> ตั้งค่า Mapping
+            <Settings size={14} /> Mapping Settings
           </button>
           <button
             className="btn-icon"
-            title="รีเฟรชข้อมูล Mapping"
+            title="Refresh Mapping Data"
             onClick={() => { setRefreshing(true); loadConfig(); setTimeout(() => setRefreshing(false), 700) }}
           >
             <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
@@ -224,7 +224,7 @@ export default function AccountingReview({ details, headerData = {}, onBack, onS
             onClick={() => hasMissing ? setWarningModal(true) : onSubmit(rows)}
           >
             {submitting ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
-            {submitting ? 'กำลังส่งข้อมูล...' : 'ยืนยันและส่งข้อมูล'}
+            {submitting ? 'Submitting...' : 'Confirm and Submit'}
           </button>
         </div>
       </Card>
@@ -232,10 +232,10 @@ export default function AccountingReview({ details, headerData = {}, onBack, onS
       <CustomModal
         show={warningModal}
         type="warning"
-        title="ยังไม่ได้ตั้งรหัสบัญชีครบ"
-        message={`กรุณาตั้งรหัสบัญชีให้ครบก่อนยืนยัน:\n${unmappedFields.join(', ')}`}
-        confirmText="ไปตั้งค่า Mapping"
-        cancelText="ปิด"
+        title="Incomplete Account Mapping"
+        message={`Please complete the account mapping before confirming:\n${unmappedFields.join(', ')}`}
+        confirmText="Go to Mapping Settings"
+        cancelText="Close"
         onConfirm={() => { setWarningModal(false); onGoMapping() }}
         onCancel={() => setWarningModal(false)}
       />

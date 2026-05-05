@@ -44,7 +44,7 @@ export default function APFieldMappingStep({ t, lineItems, fieldMappings, availa
                     const numeric = isNumFld(fld)
                     return (
                       <td key={c} className={ignored ? 'is-ignored' : numeric ? 'is-numeric' : ''}>
-                        {ignored ? '(ละเว้น)' : (numeric && item[fld] !== undefined ? fmt(item[fld]) : (item[fld] || '—'))}
+                        {ignored ? '(Ignored)' : (numeric && item[fld] !== undefined ? fmt(item[fld]) : (item[fld] || '—'))}
                       </td>
                     )
                   })}
@@ -53,7 +53,7 @@ export default function APFieldMappingStep({ t, lineItems, fieldMappings, availa
               {lineItems.length > 3 && (
                 <tr>
                   <td colSpan={10} style={{ textAlign: 'center', color: 'var(--text-4)', fontStyle: 'italic', fontSize: '0.8rem', padding: '0.75rem' }}>
-                    … ดูเพิ่มอีก {lineItems.length - 3} รายการในขั้นตอนถัดไป
+                    … View {lineItems.length - 3} more items in the next step
                   </td>
                 </tr>
               )}
