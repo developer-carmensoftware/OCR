@@ -1,3 +1,4 @@
+import { User, CheckCircle2, AlertTriangle, Plus, RotateCw, Search } from 'lucide-react'
 import Badge from '../common/Badge'
 import { getCarmenUrl } from '../../lib/url'
 
@@ -6,11 +7,11 @@ export default function VendorSearch({ t, systemVendor, setSystemVendor, vendorS
     <div className="vendor-search-wrap">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
         <div className="field-label" style={{ marginBottom: 0 }}>
-          <i className="fas fa-user-tie" /> {t.systemVendor}
+          <User size={15} /> {t.systemVendor}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <Badge variant={systemVendor.code ? 'success' : 'warning'}>
-            <i className={`fas fa-${systemVendor.code ? 'circle-check' : 'triangle-exclamation'}`} />
+            {systemVendor.code ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}
             {systemVendor.code ? 'Mapped' : 'Unmapped'}
           </Badge>
           <a
@@ -25,7 +26,7 @@ export default function VendorSearch({ t, systemVendor, setSystemVendor, vendorS
               textDecoration: 'none', whiteSpace: 'nowrap',
             }}
           >
-            <i className="fas fa-plus" style={{ fontSize: '0.65rem' }} />
+            <Plus size={11} />
             เพิ่ม Vendor
           </a>
           <button
@@ -40,13 +41,13 @@ export default function VendorSearch({ t, systemVendor, setSystemVendor, vendorS
               color: 'var(--text-3)', opacity: refreshing ? 0.6 : 1,
             }}
           >
-            <i className={`fas fa-rotate-right${refreshing ? ' fa-spin' : ''}`} style={{ fontSize: '0.7rem' }} />
+            <RotateCw size={13} className={refreshing ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>
 
       <div className="vendor-search-input-wrap">
-        <i className="fas fa-magnifying-glass" />
+        <Search size={15} />
         <input
           type="text"
           className={`vendor-search-input ${systemVendor.code ? 'matched' : ''}`}

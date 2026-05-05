@@ -1,3 +1,4 @@
+import { CheckCircle2, ExternalLink, RotateCw } from 'lucide-react'
 import { fmt } from '../../constants/apInvoice'
 import { getCarmenUrl } from '../../lib/url'
 
@@ -12,7 +13,7 @@ export default function APSuccessStep({ t, headerData, lineItems, invoiceSeq, on
     <div style={{ padding: '2rem 0' }}>
       <div className="ap-success-wrap">
         <div className="ap-success-icon">
-          <i className="fas fa-circle-check" />
+          <CheckCircle2 size={48} />
         </div>
         <h2 style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text)', marginBottom: '0.75rem' }}>
           {t.successTitle}
@@ -61,11 +62,11 @@ export default function APSuccessStep({ t, headerData, lineItems, invoiceSeq, on
               rel="noopener noreferrer"
               className="btn btn-outline"
             >
-              <i className="fas fa-arrow-up-right-from-square" /> เปิดดู AP Invoice
+              <ExternalLink size={14} /> เปิดดู AP Invoice
             </a>
           )}
           <button className="btn btn-primary" onClick={onReset}>
-            <i className="fas fa-rotate-right" /> {t.uploadNew}
+            <RotateCw size={14} /> {t.uploadNew}
           </button>
         </div>
       </div>

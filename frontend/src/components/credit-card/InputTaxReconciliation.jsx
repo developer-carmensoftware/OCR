@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { FileText, Scale, Flag, AlertCircle, X, Check, Loader2, ArrowLeft, PlusCircle } from 'lucide-react'
 import { submitInputTax } from '../../lib/api/carmen'
 
 function toNum(v) {
@@ -102,13 +103,13 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
   return (
     <div>
       <div className="section-header">
-        <span><i className="fas fa-file-invoice" /> Step 6: Input Tax Reconciliation</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}><FileText size={16} /> Step 6: Input Tax Reconciliation</span>
       </div>
 
       <div className="data-card">
         <div className="card-title">
           <div className="card-title-left">
-            <i className="fas fa-balance-scale" /> Input Tax Reconciliation
+            <Scale size={16} /> Input Tax Reconciliation
           </div>
           <div className="card-title-badges">
             <span style={{
@@ -220,11 +221,11 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
 
         <div className="form-actions">
           <button className="btn-danger" onClick={() => setShowDiscardConfirm(true)}>
-            <i className="fas fa-times" /> Discard
+            <X size={14} /> Discard
           </button>
           <div className="form-actions-sep" />
           <button className="btn-submit" onClick={() => { setSubmitError(null); setShowConfirm(true) }} disabled={!hasData}>
-            <i className="fas fa-plus-circle" /> Add Input Tax
+            <PlusCircle size={14} /> Add Input Tax
           </button>
         </div>
       </div>
@@ -235,8 +236,8 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999,
         }}>
           <div className="modal-box" style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '2.2rem', marginBottom: '0.75rem', color: 'var(--teal)' }}>
-              <i className="fas fa-file-invoice" />
+            <div style={{ marginBottom: '0.75rem', color: 'var(--teal)', display: 'flex', justifyContent: 'center' }}>
+              <FileText size={36} />
             </div>
             <div style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.65rem' }}>
               เพิ่ม Input Tax Reconciliation
@@ -251,7 +252,7 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
               padding: '0.55rem 0.85rem', marginBottom: '1.25rem',
               color: 'var(--teal)', fontSize: '0.82rem', textAlign: 'left', display: 'flex', gap: '0.5rem', alignItems: 'flex-start',
             }}>
-              <i className="fas fa-flag-checkered" style={{ marginTop: '0.15rem', flexShrink: 0 }} />
+              <Flag size={14} style={{ marginTop: '0.15rem', flexShrink: 0 }} />
               <span>หลังยืนยัน ระบบจะ<strong>จบกระบวนการทั้งหมด</strong>และกลับสู่หน้าเริ่มต้นโดยอัตโนมัติ</span>
             </div>
             {submitError && (
@@ -260,7 +261,7 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
                 padding: '0.6rem 0.85rem', marginBottom: '1.25rem',
                 color: 'var(--btn-err-text, #b91c1c)', fontSize: '0.85rem', textAlign: 'left',
               }}>
-                <i className="fas fa-exclamation-circle" style={{ marginRight: '0.4rem' }} />
+                <AlertCircle size={14} style={{ marginRight: '0.4rem', flexShrink: 0 }} />
                 {submitError}
               </div>
             )}
@@ -278,8 +279,8 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
                 disabled={submitting}
               >
                 {submitting
-                  ? <><i className="fas fa-spinner fa-spin" /> กำลังส่ง...</>
-                  : <><i className="fas fa-check" /> ยืนยัน</>
+                  ? <><Loader2 size={14} className="animate-spin" /> กำลังส่ง...</>
+                  : <><Check size={14} /> ยืนยัน</>
                 }
               </button>
             </div>
@@ -294,8 +295,8 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999,
         }}>
           <div className="modal-box" style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '2.2rem', marginBottom: '0.75rem', color: 'var(--rose)' }}>
-              <i className="fas fa-flag-checkered" />
+            <div style={{ marginBottom: '0.75rem', color: 'var(--rose)', display: 'flex', justifyContent: 'center' }}>
+              <Flag size={36} />
             </div>
             <div style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem' }}>
               ข้ามขั้นตอน Input Tax?
@@ -308,12 +309,12 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
               padding: '0.55rem 0.85rem', marginBottom: '1.5rem',
               color: 'var(--btn-err-text, #b91c1c)', fontSize: '0.82rem', textAlign: 'left', display: 'flex', gap: '0.5rem', alignItems: 'flex-start',
             }}>
-              <i className="fas fa-flag-checkered" style={{ marginTop: '0.15rem', flexShrink: 0 }} />
+              <Flag size={14} style={{ marginTop: '0.15rem', flexShrink: 0 }} />
               <span>การดำเนินการนี้จะ<strong>จบกระบวนการทั้งหมด</strong>และกลับสู่หน้าเริ่มต้น</span>
             </div>
             <div className="modal-actions">
               <button className="btn-cancel" onClick={() => setShowDiscardConfirm(false)}>
-                <i className="fas fa-arrow-left" /> กลับไปตรวจสอบ
+                <ArrowLeft size={14} /> กลับไปตรวจสอบ
               </button>
               <button
                 className="btn-danger"
@@ -324,7 +325,7 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
                   onFinish()
                 }}
               >
-                <i className="fas fa-times" /> ยืนยัน Discard
+                <X size={14} /> ยืนยัน Discard
               </button>
             </div>
           </div>

@@ -1,3 +1,4 @@
+import { Building, CircleDot, PlusCircle, LayoutList, CheckCircle2, AlertCircle, ArrowLeft, AlertTriangle, ArrowRight } from 'lucide-react'
 import { isNumFld, fmt } from '../../constants/apInvoice'
 import Card from '../common/Card'
 import VendorSearch from './VendorSearch'
@@ -46,7 +47,7 @@ export default function APReviewStep({ ctrl }) {
       />
 
       {/* Header Info */}
-      <Card icon="fas fa-building" title={t.headerTitle} className="card-vendor">
+      <Card icon={<Building size={16} />} title={t.headerTitle} className="card-vendor">
         <div className="card-body">
           {/* Tax Type Badge */}
           {headerData.taxType && (
@@ -59,7 +60,7 @@ export default function APReviewStep({ ctrl }) {
                 color: isInclude ? 'var(--amber-700, #b45309)' : 'var(--blue-700, #1d4ed8)',
                 border: `1px solid ${isInclude ? 'var(--amber-300, #fcd34d)' : 'var(--blue-300, #93c5fd)'}`,
               }}>
-                <i className={`fas fa-${isInclude ? 'circle-dot' : 'circle-plus'}`} />
+                {isInclude ? <CircleDot size={13} /> : <PlusCircle size={13} />}
                 {isInclude ? 'Tax Include — ราคารวมภาษีแล้ว' : 'Tax Exclude — ราคายังไม่รวมภาษี'}
               </span>
             </div>
@@ -81,7 +82,7 @@ export default function APReviewStep({ ctrl }) {
 
       {/* Line Items Table */}
       <Card
-        icon="fas fa-table-list"
+        icon={<LayoutList size={16} />}
         title={t.reviewTitle}
         right={<span className="row-count">{lineItems.length} รายการ</span>}
       >
@@ -135,7 +136,7 @@ export default function APReviewStep({ ctrl }) {
       {/* Validation + Amount Summary */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '1rem' }}>
         <div className={isValid ? 'ap-valid-ok' : 'ap-valid-err'}>
-          <i className={`fas fa-${isValid ? 'circle-check' : 'circle-exclamation'}`} style={{ fontSize: '1.3rem', flexShrink: 0 }} />
+          {isValid ? <CheckCircle2 size={22} style={{ flexShrink: 0 }} /> : <AlertCircle size={22} style={{ flexShrink: 0 }} />}
           <div>
             <div style={{ fontWeight: 700 }}>{isValid ? t.validOk : t.validErr}</div>
             <div style={{ fontSize: '0.8rem', marginTop: '0.2rem', fontWeight: 400 }}>
@@ -158,12 +159,12 @@ export default function APReviewStep({ ctrl }) {
 
       <div className="ap-step-nav">
         <button className="btn btn-outline" onClick={() => setStep(2)}>
-          <i className="fas fa-arrow-left" /> {t.backMap}
+          <ArrowLeft size={14} /> {t.backMap}
         </button>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.35rem' }}>
           {!vendorMapped && (
             <span style={{ fontSize: '0.75rem', color: '#b45309', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-              <i className="fas fa-triangle-exclamation" />
+              <AlertTriangle size={13} />
               {t.warnSelectVendor}
             </span>
           )}
@@ -174,7 +175,7 @@ export default function APReviewStep({ ctrl }) {
             style={!vendorMapped ? { opacity: 0.55, cursor: 'not-allowed' } : undefined}
           >
             {isValid ? t.proceed : t.proceedAnyway}
-            <i className="fas fa-arrow-right" />
+            <ArrowRight size={14} />
           </button>
         </div>
       </div>

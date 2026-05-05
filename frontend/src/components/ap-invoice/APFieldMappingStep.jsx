@@ -1,3 +1,4 @@
+import { SlidersHorizontal, ArrowLeft, ArrowRight } from 'lucide-react'
 import { isNumFld, fmt } from '../../constants/apInvoice'
 
 export default function APFieldMappingStep({ t, lineItems, fieldMappings, availableFields, onMappingChange, onBack, onConfirm }) {
@@ -7,7 +8,7 @@ export default function APFieldMappingStep({ t, lineItems, fieldMappings, availa
     <div className="data-card">
       <div className="card-title">
         <div className="card-title-left">
-          <i className="fas fa-sliders" />
+          <SlidersHorizontal size={16} />
           {t.mapTitle}
         </div>
       </div>
@@ -63,10 +64,10 @@ export default function APFieldMappingStep({ t, lineItems, fieldMappings, availa
 
       <div className="ap-step-nav">
         <button className="btn btn-outline" onClick={onBack}>
-          <i className="fas fa-arrow-left" /> {t.backUpload}
+          <ArrowLeft size={14} /> {t.backUpload}
         </button>
         <button className="btn btn-primary" onClick={onConfirm}>
-          {t.confirmMap} <i className="fas fa-arrow-right" />
+          {t.confirmMap} <ArrowRight size={14} />
         </button>
       </div>
     </div>

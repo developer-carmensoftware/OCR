@@ -1,4 +1,5 @@
 import React from 'react';
+import { Loader2, AlertTriangle, CheckCircle2, Info, Check, X, History } from 'lucide-react';
 import CustomSearchSelect from '../common/CustomSearchSelect';
 import AISuggestBar from '../common/AISuggestBar';
 
@@ -15,7 +16,7 @@ export default function AccountMappingTable({
     <div className="section">
       <div className="section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <span>ACCOUNT CODE MAPPING {loadingOpts && <span style={{ marginLeft: '10px', fontSize: '0.8rem', color: 'var(--primary)' }}><i className="fas fa-spinner fa-spin"></i> กำลังโหลดรหัสบัญชี...</span>}</span>
+          <span>ACCOUNT CODE MAPPING {loadingOpts && <span style={{ marginLeft: '10px', fontSize: '0.8rem', color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}><Loader2 size={13} className="animate-spin" /> กำลังโหลดรหัสบัญชี...</span>}</span>
         </div>
         <AISuggestBar
           onSuggest={() => autoSuggest()}
@@ -53,10 +54,10 @@ export default function AccountMappingTable({
             }}>
               <div>
                 {requiredMissingCount > 0
-                  ? <><i className="fas fa-exclamation-triangle" style={{ color: '#dc2626' }}></i> <strong>พบ {activeScan.paymentTypes.size} รายการในเอกสาร</strong> (ค้าง Mapping <strong>{requiredMissingCount}</strong> รายการ)</>
+                  ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}><AlertTriangle size={14} color="#dc2626" /> <strong>พบ {activeScan.paymentTypes.size} รายการในเอกสาร</strong> (ค้าง Mapping <strong>{requiredMissingCount}</strong> รายการ)</span>
                   : amountMappedCount > 0
-                    ? <><i className="fas fa-check-circle"></i> ตั้งค่าแล้ว {amountMappedCount}/{allPaymentTypes.length} รายการ (เรียบร้อย)</>
-                    : <><i className="fas fa-info-circle"></i> กดที่ชื่อ Account Receivable เพื่อเปิด Modal / ปุ่ม Suggest เพื่อให้ AI แนะนำ</>
+                    ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}><CheckCircle2 size={14} /> ตั้งค่าแล้ว {amountMappedCount}/{allPaymentTypes.length} รายการ (เรียบร้อย)</span>
+                    : <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}><Info size={14} /> กดที่ชื่อ Account Receivable เพื่อเปิด Modal / ปุ่ม Suggest เพื่อให้ AI แนะนำ</span>
                 }
               </div>
               {requiredMissingCount > 0 && <span style={{ fontSize: '0.75rem', background: 'var(--rose)', color: 'white', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>Required for this scan</span>}
@@ -68,7 +69,7 @@ export default function AccountMappingTable({
             const natureStyle = { color: '#d97706', background: 'var(--ap-include-bg, #fef3c7)', padding: '0.2rem 0.5rem', borderRadius: '4px', textAlign: 'center', fontWeight: 'bold' };
             const meta = suggestionMeta[key];
             const badge = meta === 'history'
-              ? { label: 'History', bg: '#f0fdf4', color: '#16a34a', border: '#86efac', icon: 'fa-history' }
+              ? { label: 'History', bg: '#f0fdf4', color: '#16a34a', border: '#86efac' }
               : null;
             const hasSuggestionButtons = meta === 'ai' || meta === 'history';
 
@@ -100,7 +101,7 @@ export default function AccountMappingTable({
                   <span>{labelMap[key]}</span>
                   {badge && (
                     <span style={{ fontSize: '0.75rem', color: badge.color, background: badge.bg, padding: '3px 8px', borderRadius: '4px', border: `1px solid ${badge.border}`, fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <i className={`fas ${badge.icon}`}></i> {badge.label}
+                      <History size={11} /> {badge.label}
                     </span>
                   )}
                 </div>
@@ -132,14 +133,14 @@ export default function AccountMappingTable({
                         title="ยอมรับค่าแนะนำ"
                         style={{ padding: '4px 10px', background: '#f0fdf4', color: '#15803d', border: '1px solid #86efac', borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}
                       >
-                        <i className="fas fa-check"></i>
+                        <Check size={13} />
                       </button>
                       <button
                         onClick={() => rejectMainSuggestion(key)}
                         title="ปฏิเสธค่าแนะนำและล้างข้อมูล"
                         style={{ padding: '4px 10px', background: 'var(--btn-err-bg, #fff1f2)', color: 'var(--btn-err-text, #dc2626)', border: '1px solid var(--btn-err-border, #fecaca)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}
                       >
-                        <i className="fas fa-times"></i>
+                        <X size={13} />
                       </button>
                     </>
                   )}

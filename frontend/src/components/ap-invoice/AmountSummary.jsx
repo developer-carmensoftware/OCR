@@ -1,3 +1,4 @@
+import { Calculator, RotateCw } from 'lucide-react'
 import Badge from '../common/Badge'
 import Card from '../common/Card'
 import { fmt } from '../../constants/apInvoice'
@@ -11,7 +12,7 @@ export default function AmountSummary({ t, sums, targets, diffs, headerData, upd
 
   return (
     <Card
-      icon="fas fa-calculator"
+      icon={<Calculator size={16} />}
       title={t.summaryAccount}
       right={
         <div style={{ display: 'flex', gap: '0.4rem' }}>
@@ -53,7 +54,7 @@ function SummaryRow({ t, label, isDiff, tableVal, tableStyle, docVal, onAdjust, 
       <div className="ap-summary-values">
         {isDiff && (
           <button className="ap-adjust-btn" onClick={onAdjust}>
-            <i className="fas fa-arrows-rotate" /> {t.adjust}
+            <RotateCw size={14} /> {t.adjust}
           </button>
         )}
         <span className={`ap-sum-from-table ${isDiff ? 'diff' : ''}`} style={tableStyle}>{tableVal}</span>

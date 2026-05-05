@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Landmark, MousePointer2, Check, UploadCloud, Lock, Info } from 'lucide-react'
 import { BANKS } from '../../constants'
 
 export default function UploadSection({ bank, onBankChange, onFileChange, fileInputRef, fileName, multiple }) {
@@ -30,10 +31,10 @@ export default function UploadSection({ bank, onBankChange, onFileChange, fileIn
       {/* Bank Selector */}
       <div className={`panel-card ${!hasBank ? 'step-active' : ''}`}>
         <div className="field-label">
-          <i className="fas fa-university"></i> เลือกธนาคาร
+          <Landmark size={16} /> เลือกธนาคาร
           {!hasBank
-            ? <span className="step-badge badge-now"><i className="fas fa-arrow-pointer" style={{ fontSize: '0.6rem' }} /> เริ่มที่นี่</span>
-            : <span className="step-badge badge-now" style={{ background: 'rgba(16,185,129,0.1)', color: 'var(--emerald)', border: '1px solid rgba(16,185,129,0.2)' }}><i className="fas fa-check" style={{ fontSize: '0.6rem' }} /> เลือกแล้ว</span>
+            ? <span className="step-badge badge-now"><MousePointer2 size={11} /> เริ่มที่นี่</span>
+            : <span className="step-badge badge-now" style={{ background: 'rgba(16,185,129,0.1)', color: 'var(--emerald)', border: '1px solid rgba(16,185,129,0.2)' }}><Check size={11} /> เลือกแล้ว</span>
           }
         </div>
         <div className="bank-select-grid">
@@ -83,7 +84,7 @@ export default function UploadSection({ bank, onBankChange, onFileChange, fileIn
           aria-hidden="true"
         />
         <div className="upload-icon">
-          <i className={`fas ${hasBank ? 'fa-cloud-upload-alt' : 'fa-lock'}`}></i>
+          {hasBank ? <UploadCloud size={32} /> : <Lock size={32} />}
         </div>
         <div className="upload-label">
           {!hasBank
@@ -100,7 +101,7 @@ export default function UploadSection({ bank, onBankChange, onFileChange, fileIn
 
       {/* How-to Card */}
       <div className="panel-card">
-        <div className="field-label"><i className="fas fa-circle-info"></i> วิธีใช้งาน</div>
+        <div className="field-label"><Info size={16} /> วิธีใช้งาน</div>
         <div className="how-to-list">
           <div className="how-to-item">
             <div className="how-step-num gold">1</div>

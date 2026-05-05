@@ -1,3 +1,4 @@
+import { CheckCircle2, XCircle, Info, Pencil } from 'lucide-react'
 import { useOcrWizard } from '../hooks/useOcrWizard'
 import { StepWizard, FormActions, CustomModal, LoadingOverlay, DocumentPreview, DarkModeToggle } from '../components/common'
 import { UploadSection, HeaderCard, DetailTable, AccountingReview, InputTaxReconciliation } from '../components/credit-card'
@@ -36,7 +37,7 @@ export default function CreditCardOCR() {
         <div className="toast-container" id="toastContainer">
           {toasts.slice(-1).map(t => (
             <div key={t.id} className={`toast ${t.type}`} style={{ opacity: 1, transform: 'none' }}>
-              <i className={`fas ${t.type === 'success' ? 'fa-circle-check' : t.type === 'error' ? 'fa-circle-xmark' : 'fa-circle-info'}`} />
+              {t.type === 'success' ? <CheckCircle2 size={16} /> : t.type === 'error' ? <XCircle size={16} /> : <Info size={16} />}
               {t.msg}
             </div>
           ))}
@@ -84,7 +85,7 @@ export default function CreditCardOCR() {
             {step <= 3 && (
               <div id="step3">
                 <h2 className="section-title">
-                  <i className="fas fa-edit" /> Step 3: ตรวจสอบข้อมูล
+                  <Pencil size={14} /> Step 3: ตรวจสอบข้อมูล
                 </h2>
                 <HeaderCard headerData={headerData} onUpdate={updateHeader} />
                 <DetailTable

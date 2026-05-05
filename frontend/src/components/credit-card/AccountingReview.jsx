@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { CheckCheck, AlertTriangle, Info, FileText, Loader2, AlertCircle, ArrowLeft, Settings, RefreshCw, UploadCloud } from 'lucide-react'
 import CustomModal from '../common/CustomModal'
 import Card from '../common/Card'
 import Badge from '../common/Badge'
@@ -110,12 +111,12 @@ export default function AccountingReview({ details, headerData = {}, onBack, onS
   return (
     <div>
       <div className="section-header">
-        <span><i className="fas fa-check-double" /> Step 4: ตรวจสอบการบันทึกบัญชี (Journal Concept)</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}><CheckCheck size={16} /> Step 4: ตรวจสอบการบันทึกบัญชี (Journal Concept)</span>
       </div>
 
       {hasMissing && (
         <div className="mapping-alert">
-          <i className="fas fa-exclamation-triangle" />
+          <AlertTriangle size={16} />
           <span style={{ flex: 1 }}>
             ยังไม่ได้ตั้งรหัสบัญชีสำหรับ: <strong>{unmappedFields.join(', ')}</strong>
           </span>
@@ -127,7 +128,7 @@ export default function AccountingReview({ details, headerData = {}, onBack, onS
 
       {!config && (
         <div className="mapping-alert">
-          <i className="fas fa-info-circle" />
+          <Info size={16} />
           <span style={{ flex: 1 }}>ยังไม่มีการตั้งค่า Account Mapping</span>
           <button className="btn btn-sm btn-primary" onClick={onGoMapping}>
             ไปตั้งค่า Mapping
@@ -136,13 +137,13 @@ export default function AccountingReview({ details, headerData = {}, onBack, onS
       )}
 
       <Card
-        icon="fas fa-file-invoice"
+        icon={<FileText size={16} />}
         title={
           <>
             รายละเอียดรายการรายวัน (Journal Details)
             {accLoading && (
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-4)', fontWeight: 400, marginLeft: '0.5rem' }}>
-                <i className="fas fa-spinner fa-spin" /> โหลดชื่อบัญชี...
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-4)', fontWeight: 400, marginLeft: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                <Loader2 size={12} className="animate-spin" /> โหลดชื่อบัญชี...
               </span>
             )}
           </>
@@ -179,8 +180,8 @@ export default function AccountingReview({ details, headerData = {}, onBack, onS
               )}
               {rows.map((r, i) => (
                 <tr key={i}>
-                  <td className={!r.dept ? 'missing-cell animate-pulse' : ''}>{r.dept || <span><i className="fas fa-exclamation-circle" /> MISSING</span>}</td>
-                  <td className={!r.acc  ? 'missing-cell animate-pulse' : ''}>{r.acc  || <span><i className="fas fa-exclamation-circle" /> MISSING</span>}</td>
+                  <td className={!r.dept ? 'missing-cell animate-pulse' : ''}>{r.dept || <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}><AlertCircle size={12} /> MISSING</span>}</td>
+                  <td className={!r.acc  ? 'missing-cell animate-pulse' : ''}>{r.acc  || <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}><AlertCircle size={12} /> MISSING</span>}</td>
                   <td style={{ color: 'var(--text-3)', fontSize: '0.85rem' }}>{getAccName(r.acc)}</td>
                   <td>{r.desc}</td>
                   <td className="text-center">THB</td>
@@ -204,17 +205,17 @@ export default function AccountingReview({ details, headerData = {}, onBack, onS
 
         <div className="form-actions">
           <button className="btn-cancel" onClick={onBack}>
-            <i className="fas fa-arrow-left" /> ย้อนกลับ
+            <ArrowLeft size={14} /> ย้อนกลับ
           </button>
           <button className="btn-cancel" onClick={onGoMapping} style={{ marginRight: 'auto' }}>
-            <i className="fas fa-cog" /> ตั้งค่า Mapping
+            <Settings size={14} /> ตั้งค่า Mapping
           </button>
           <button
             className="btn-icon"
             title="รีเฟรชข้อมูล Mapping"
             onClick={() => { setRefreshing(true); loadConfig(); setTimeout(() => setRefreshing(false), 700) }}
           >
-            <i className={`fas fa-sync-alt${refreshing ? ' fa-spin' : ''}`} />
+            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
           </button>
           <div className="form-actions-sep" />
           <button
@@ -222,7 +223,7 @@ export default function AccountingReview({ details, headerData = {}, onBack, onS
             disabled={rows.length === 0 || submitting}
             onClick={() => hasMissing ? setWarningModal(true) : onSubmit(rows)}
           >
-            <i className={`fas ${submitting ? 'fa-spinner fa-spin' : 'fa-cloud-upload-alt'}`} />
+            {submitting ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
             {submitting ? 'กำลังส่งข้อมูล...' : 'ยืนยันและส่งข้อมูล'}
           </button>
         </div>

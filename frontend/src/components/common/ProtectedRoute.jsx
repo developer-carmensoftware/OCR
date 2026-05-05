@@ -1,3 +1,4 @@
+import { Loader2, AlertTriangle, Shield, Circle } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useCarmenSSO } from '../../hooks/useCarmenSSO'
 import { getCarmenUrl } from '../../lib/url'
@@ -21,21 +22,22 @@ export default function ProtectedRoute({ children }) {
 function AuthScreen({ state, message }) {
   const config = {
     loading: {
-      icon: 'fa-circle-notch fa-spin',
+      Icon: Loader2,
+      iconClass: 'animate-spin',
       iconBg: 'linear-gradient(135deg, var(--primary) 0%, #818cf8 50%, var(--teal) 100%)',
       title: 'กำลังยืนยันตัวตน',
       subtitle: 'กรุณารอสักครู่...',
       badge: null,
     },
     error: {
-      icon: 'fa-triangle-exclamation',
+      Icon: AlertTriangle,
       iconBg: 'linear-gradient(135deg, #e11d48 0%, #f43f5e 100%)',
       title: 'ไม่สามารถยืนยันตัวตนได้',
       subtitle: message || 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง',
       badge: { label: 'Authentication Error', color: 'var(--rose)', bg: 'var(--rose-light)', border: 'var(--rose-mid)' },
     },
     unauthenticated: {
-      icon: 'fa-shield-halved',
+      Icon: Shield,
       iconBg: 'linear-gradient(135deg, var(--primary) 0%, #818cf8 50%, var(--teal) 100%)',
       title: 'กรุณาเข้าใช้งานผ่านระบบ Carmen',
       subtitle: 'ระบบนี้ต้องเข้าใช้งานผ่านหน้าเว็บ Carmen เท่านั้น',
@@ -51,7 +53,7 @@ function AuthScreen({ state, message }) {
 
         {/* logo icon */}
         <div style={{ ...styles.iconWrap, background: config.iconBg }}>
-          <i className={`fas ${config.icon}`} style={styles.icon} />
+          <config.Icon size={26} color="#fff" className={config.iconClass} strokeWidth={2.25} />
         </div>
 
         {/* brand mark */}
@@ -70,7 +72,7 @@ function AuthScreen({ state, message }) {
             background: config.badge.bg,
             border: `1px solid ${config.badge.border}`,
           }}>
-            <i className="fas fa-circle" style={{ fontSize: '0.45rem' }} />
+            <Circle size={7} fill="currentColor" strokeWidth={0} />
             {config.badge.label}
           </div>
         )}

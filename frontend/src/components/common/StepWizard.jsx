@@ -1,3 +1,5 @@
+import { Check } from 'lucide-react'
+
 const DEFAULT_STEPS = [
   { n: 1, label: 'Select Bank', sub: '& File' },
   { n: 2, label: 'AI Extract', sub: '' },
@@ -28,7 +30,7 @@ export default function StepWizard({ step, steps, onStepClick }) {
                 } : undefined}
               >
                 <div className="step-num">
-                  {isDone ? <i className="fas fa-check" style={{ fontSize: '0.6rem' }} /> : String(s.n).padStart(2, '0')}
+                  {isDone ? <Check size={11} strokeWidth={3} /> : String(s.n).padStart(2, '0')}
                 </div>
                 <span className="step-label">
                   {s.label}

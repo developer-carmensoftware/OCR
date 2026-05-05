@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
+import { FileText, AlertCircle, AlertTriangle, Check, X, XCircle, Plus } from 'lucide-react';
 import CustomSearchSelect from '../common/CustomSearchSelect';
 import AISuggestBar from '../common/AISuggestBar';
 
@@ -24,7 +25,7 @@ export default function PaymentTypeModal({
             <span>เลือก Payment Types สำหรับ Account Receivable</span>
             {activeScan.paymentTypes.size > 0 && (
               <span style={{ fontSize: '0.8rem', color: 'var(--btn-err-text, #dc2626)', background: 'var(--btn-err-bg, #fff)', padding: '4px 12px', borderRadius: '20px', border: '1px solid var(--btn-err-border, #fca5a5)', fontWeight: 700 }}>
-                <i className="fas fa-file-invoice"></i> เอกสารชุดนี้ต้องมี: {activeScan.paymentTypes.size} รายการ
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}><FileText size={13} /> เอกสารชุดนี้ต้องมี: {activeScan.paymentTypes.size} รายการ</span>
               </span>
             )}
           </div>
@@ -53,7 +54,7 @@ export default function PaymentTypeModal({
           {activeScan.paymentTypes.size > 0 && (
             <>
               <div style={{ padding: '0.5rem', background: 'var(--btn-err-bg, #fef2f2)', color: 'var(--btn-err-text, #991b1b)', fontSize: '0.75rem', fontWeight: 700, borderRadius: '4px', marginBottom: '0.75rem', border: '1px solid var(--btn-err-border, #fecaca)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <i className="fas fa-exclamation-circle"></i> รายการที่พบในเอกสารปัจจุบัน (Required for this scan)
+                <AlertCircle size={13} /> รายการที่พบในเอกสารปัจจุบัน (Required for this scan)
               </div>
               {[...activeScan.paymentTypes].map(type => {
                 const pAmt = paymentAmount[type] || { dept: '', acc: '' };
@@ -72,7 +73,7 @@ export default function PaymentTypeModal({
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                       <div style={{ background: isPending ? 'var(--rose)' : 'var(--emerald)', color: '#fff', padding: '0.4rem 0.5rem', borderRadius: '4px', fontSize: '0.85rem', fontWeight: 600, textAlign: 'center', flex: 1 }}>{type}</div>
-                      {isPending && <i className="fas fa-exclamation-triangle" style={{ color: '#dc2626' }} title="MISSING MAPPING"></i>}
+                      {isPending && <AlertTriangle size={14} color="#dc2626" />}
                     </div>
                     <CustomSearchSelect value={pAmt.dept} onChange={(val) => handlePaymentMappingChange(type, 'dept', val)} options={masterDepartments} placeholder="Dept..." topChoice={deptTopChoice} suggestedValue={suggestion?.dept || null} />
                     <CustomSearchSelect value={pAmt.acc} onChange={(val) => handlePaymentMappingChange(type, 'acc', val)} options={masterAccounts} placeholder="Acc..." topChoice={accTopChoice} suggestedValue={suggestion?.acc || null} />
@@ -83,14 +84,14 @@ export default function PaymentTypeModal({
                           title="ยอมรับค่าแนะนำ"
                           style={{ padding: '4px 10px', background: 'var(--btn-ok-bg, #f0fdf4)', color: 'var(--btn-ok-text, #15803d)', border: '1px solid var(--btn-ok-border, #86efac)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}
                         >
-                          <i className="fas fa-check"></i>
+                          <Check size={13} />
                         </button>
                         <button
                           onClick={() => rejectPaymentSuggestion(type)}
                           title="ปฏิเสธค่าแนะนำและล้างข้อมูล"
                           style={{ padding: '4px 10px', background: 'var(--btn-err-bg, #fff1f2)', color: 'var(--btn-err-text, #dc2626)', border: '1px solid var(--btn-err-border, #fecaca)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}
                         >
-                          <i className="fas fa-times"></i>
+                          <X size={13} />
                         </button>
                       </div>
                     )}
@@ -164,8 +165,8 @@ export default function PaymentTypeModal({
                       {type}
                     </div>
                     {isCustom && (
-                      <button onClick={() => handleRemoveCustomType(type)} title="ลบ" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '0.9rem', padding: '0.2rem', lineHeight: 1 }}>
-                        <i className="fas fa-times-circle"></i>
+                      <button onClick={() => handleRemoveCustomType(type)} title="ลบ" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '0.9rem', padding: '0.2rem', lineHeight: 1, display: 'inline-flex', alignItems: 'center' }}>
+                        <XCircle size={16} />
                       </button>
                     )}
                   </div>
@@ -192,14 +193,14 @@ export default function PaymentTypeModal({
                         title="ยอมรับค่าแนะนำ"
                         style={{ padding: '4px 10px', background: 'var(--btn-ok-bg, #f0fdf4)', color: 'var(--btn-ok-text, #15803d)', border: '1px solid var(--btn-ok-border, #86efac)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}
                       >
-                        <i className="fas fa-check"></i>
+                        <Check size={13} />
                       </button>
                       <button
                         onClick={() => rejectPaymentSuggestion(type)}
                         title="ปฏิเสธค่าแนะนำและล้างข้อมูล"
                         style={{ padding: '4px 10px', background: 'var(--btn-err-bg, #fff1f2)', color: 'var(--btn-err-text, #dc2626)', border: '1px solid var(--btn-err-border, #fecaca)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}
                       >
-                        <i className="fas fa-times"></i>
+                        <X size={13} />
                       </button>
                     </div>
                   )}
@@ -216,8 +217,8 @@ export default function PaymentTypeModal({
                 placeholder="Custom type..."
                 style={{ flex: 1, padding: '0.4rem 0.5rem', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.85rem', fontFamily: "'DM Mono', monospace", textTransform: 'uppercase', outline: 'none' }}
               />
-              <button onClick={handleAddCustomType} title="เพิ่ม" style={{ background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '4px', padding: '0.4rem 0.7rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                <i className="fas fa-plus"></i> Add
+              <button onClick={handleAddCustomType} title="เพิ่ม" style={{ background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '4px', padding: '0.4rem 0.7rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                <Plus size={13} /> Add
               </button>
             </div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-4)', gridColumn: 'span 2' }}>เพิ่ม Payment Type ที่กำหนดเอง</div>

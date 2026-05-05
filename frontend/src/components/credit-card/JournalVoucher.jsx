@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { FileText, Receipt, ArrowLeft, ExternalLink, ArrowRight } from 'lucide-react'
 import { fetchAccountCodes } from '../../lib/api/carmen'
 import { getCarmenUrl } from '../../lib/url'
 import Card from '../common/Card'
@@ -43,11 +44,11 @@ export default function JournalVoucher({ jvRows, headerData, filePrefix, fileSou
   return (
     <>
       <div className="section-header">
-        <span><i className="fas fa-file-alt" /> Step 5: Journal Voucher</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}><FileText size={16} /> Step 5: Journal Voucher</span>
       </div>
 
       <Card
-        icon="fas fa-receipt"
+        icon={<Receipt size={16} />}
         title="Journal Voucher"
         right={
           <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -118,7 +119,7 @@ export default function JournalVoucher({ jvRows, headerData, filePrefix, fileSou
         <div className="form-actions">
           {onBack && (
             <button className="btn-cancel" onClick={onBack} style={{ marginRight: 'auto' }}>
-              <i className="fas fa-arrow-left" /> ย้อนกลับ
+              <ArrowLeft size={14} /> ย้อนกลับ
             </button>
           )}
           <button
@@ -127,19 +128,19 @@ export default function JournalVoucher({ jvRows, headerData, filePrefix, fileSou
             disabled={!carmenJvId}
             title={carmenJvId ? `เปิดดู JV #${carmenJvId}` : 'รอการสร้าง JV ID'}
           >
-            <i className="fas fa-external-link-alt" /> เปิดดูหน้า JV
+            <ExternalLink size={14} /> เปิดดูหน้า JV
           </button>
           <div className="form-actions-sep" />
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.35rem' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-4)' }}>
-              <i className="fas fa-arrow-right" style={{ marginRight: '0.3rem' }} />
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-4)', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+              <ArrowRight size={12} />
               ขั้นตอนถัดไป: <strong>Input Tax Reconciliation</strong> — ตรวจสอบ VAT ภาษีซื้อ
             </span>
             <button className="btn-submit" onClick={() => {
               showToast?.('กำลังไปยัง Step 6: Input Tax Reconciliation', 'info')
               onFinish()
             }}>
-              <i className="fas fa-arrow-right" /> ต่อไป (Next)
+              <ArrowRight size={14} /> ต่อไป (Next)
             </button>
           </div>
         </div>

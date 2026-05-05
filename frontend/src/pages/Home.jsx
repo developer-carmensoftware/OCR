@@ -1,3 +1,4 @@
+import { Receipt, FileText, Landmark, CheckCircle2, Clock, Lock, ArrowRight } from 'lucide-react'
 import '../styles/pages/home.css'
 import logo from '../assets/logo.png'
 import DarkModeToggle from '../components/common/DarkModeToggle'
@@ -8,7 +9,7 @@ const MODULES = [
     href: '#/CreditCardOCR',
     name: 'Credit Card Report OCR',
     description: 'ระบบ AI อ่านใบเสร็จ Credit Card Report จากธนาคาร แปลงเป็นข้อมูลอัตโนมัติ พร้อมส่งเข้า Carmen GL',
-    icon: 'fa-file-invoice-dollar',
+    Icon: FileText,
     useLogo: true,
     iconBg: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)',
     iconColor: '#fff',
@@ -21,7 +22,7 @@ const MODULES = [
     href: '#/APInvoice',
     name: 'AP Invoice Processing',
     description: 'ระบบจัดการใบแจ้งหนี้ผู้จัดจำหน่าย (AP Invoice) อ่านข้อมูลอัตโนมัติ และบันทึกเข้าระบบบัญชี',
-    icon: 'fa-receipt',
+    Icon: Receipt,
     useLogo: true,
     iconBg: 'linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%)',
     iconColor: '#fff',
@@ -34,7 +35,7 @@ const MODULES = [
     href: null,
     name: 'Bank Reconciliation',
     description: 'ระบบกระทบยอดธนาคาร เปรียบเทียบ Statement กับรายการบัญชีอัตโนมัติ',
-    icon: 'fa-building-columns',
+    Icon: Landmark,
     iconBg: 'linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)',
     iconColor: '#fff',
     accent: '#0d9488',
@@ -92,7 +93,7 @@ export default function Home() {
                     {mod.useLogo ? (
                       <img src={logo} alt="Module Logo" style={{ width: '28px', height: '28px', objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
                     ) : (
-                      <i className={`fas ${mod.icon}`} />
+                      <mod.Icon size={28} color="#fff" />
                     )}
                   </div>
                   <div className="module-card-info">
@@ -105,7 +106,7 @@ export default function Home() {
                         border: `1px solid ${mod.tag.border}`,
                       }}
                     >
-                      <i className={`fas ${isComingSoon ? 'fa-clock' : 'fa-circle-check'}`} style={{ fontSize: '0.6rem' }} />
+                      {isComingSoon ? <Clock size={10} /> : <CheckCircle2 size={10} />}
                       {mod.tag.label}
                     </span>
                   </div>
@@ -120,7 +121,7 @@ export default function Home() {
                     ))}
                   </div>
                   <div className="module-card-arrow">
-                    <i className={`fas ${isComingSoon ? 'fa-lock' : 'fa-arrow-right'}`} />
+                    {isComingSoon ? <Lock size={14} /> : <ArrowRight size={14} />}
                   </div>
                 </div>
               </Tag>

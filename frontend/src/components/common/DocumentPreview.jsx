@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { Eye, ZoomIn, ZoomOut, Minimize2, RotateCw, FileText, ExternalLink, FileImage, File } from 'lucide-react'
 
 export default function DocumentPreview({ previewUrl, previewType, fileName }) {
   const [zoom, setZoom] = useState(1)
@@ -112,7 +113,7 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }) {
   return (
     <div className="preview-column">
       <h2 className="section-title">
-        <i className="fas fa-eye" /> Document Preview
+        <Eye size={16} /> Document Preview
       </h2>
 
       {/* Toolbar */}
@@ -122,19 +123,19 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }) {
             <>
               <div className="prev-tool-group">
                 <button className="prev-tool-btn" onClick={zoomOut} disabled={zoom <= 0.25} title="ย่อ">
-                  <i className="fas fa-search-minus" />
+                  <ZoomOut size={14} />
                 </button>
                 <span className="prev-zoom-pct">{Math.round(zoom * 100)}%</span>
                 <button className="prev-tool-btn" onClick={zoomIn} disabled={zoom >= 5} title="ขยาย">
-                  <i className="fas fa-search-plus" />
+                  <ZoomIn size={14} />
                 </button>
               </div>
               <div className="prev-tool-sep" />
               <button className="prev-tool-btn" onClick={resetView} title="Reset">
-                <i className="fas fa-compress-arrows-alt" />
+                <Minimize2 size={14} />
               </button>
               <button className="prev-tool-btn" onClick={rotateCW} title="หมุน 90°">
-                <i className="fas fa-redo" />
+                <RotateCw size={14} />
               </button>
               <div className="prev-tool-sep" />
             </>
@@ -142,14 +143,14 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }) {
 
           {isPdf && (
             <>
-              <span className="prev-pdf-badge"><i className="fas fa-file-pdf" /> PDF</span>
+              <span className="prev-pdf-badge"><FileText size={14} /> PDF</span>
               <span className="prev-tool-hint">เลื่อนดูและซูมได้ในเอกสาร</span>
               <div className="prev-tool-sep" />
             </>
           )}
 
           <button className="prev-tool-btn" onClick={openNewTab} title="เปิดในแท็บใหม่">
-            <i className="fas fa-external-link-alt" />
+            <ExternalLink size={14} />
           </button>
         </div>
       )}
@@ -189,14 +190,14 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }) {
 
         {!previewType && (
           <div className="placeholder-text">
-            <div className="placeholder-icon-wrap"><i className="fas fa-file-image" /></div>
+            <div className="placeholder-icon-wrap"><FileImage size={32} /></div>
             <p>ยังไม่มีไฟล์ Preview<br /><span style={{ fontSize: '.75rem', opacity: .5 }}>Preview จะแสดงที่นี่</span></p>
           </div>
         )}
 
         {previewType && !isImage && !isPdf && (
           <div className="placeholder-text">
-            <div className="placeholder-icon-wrap"><i className="fas fa-file-alt" /></div>
+            <div className="placeholder-icon-wrap"><FileText size={32} /></div>
             <p>{previewType} File<br /><span style={{ fontSize: '.75rem', opacity: .5 }}>Preview ไม่รองรับประเภทนี้</span></p>
           </div>
         )}
@@ -205,11 +206,11 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }) {
       {/* File strip */}
       {fileName && (
         <div className="file-info-strip" style={{ display: 'flex' }}>
-          <i className={`fas fa-file${isPdf ? '-pdf' : ''}`} />
+          {isPdf ? <FileText size={14} /> : <File size={14} />}
           <span className="file-name">{fileName}</span>
           {hasToolbar && (
             <button className="btn-zoom-action" onClick={openNewTab} title="เปิดในแท็บใหม่">
-              <i className="fas fa-external-link-alt" /> เปิดในแท็บใหม่
+              <ExternalLink size={14} /> เปิดในแท็บใหม่
             </button>
           )}
         </div>

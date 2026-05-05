@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { List, Calculator } from 'lucide-react'
 import { DETAIL_COLUMNS, DETAIL_LABELS } from '../../constants'
 
 const formatAmount = (value) => {
@@ -28,7 +29,7 @@ export default function DetailTable({ details, onUpdate, onAddRow, onDeleteRow, 
       <div className="data-card">
         <div className="card-title">
           <div className="card-title-left">
-            <i className="fas fa-list" /> ข้อมูลรายการ (Details)
+            <List size={16} /> ข้อมูลรายการ (Details)
           </div>
           <span className="row-count">{details.length} รายการ</span>
         </div>
@@ -80,7 +81,7 @@ export default function DetailTable({ details, onUpdate, onAddRow, onDeleteRow, 
       <div className="data-card total-summary-card">
         <div className="card-title">
           <div className="card-title-left">
-            <i className="fas fa-calculator" /> Total Summary
+            <Calculator size={16} /> Total Summary
           </div>
         </div>
         <div className="card-body">

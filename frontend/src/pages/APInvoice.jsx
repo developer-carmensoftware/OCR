@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { AlertCircle, RotateCw, ChevronLeft, FileText } from 'lucide-react'
 import { DocumentPreview, CustomModal, StepWizard, LoadingOverlay, DarkModeToggle } from '../components/common'
 import APUploadStep from '../components/ap-invoice/APUploadStep'
 import APFieldMappingStep from '../components/ap-invoice/APFieldMappingStep'
@@ -92,12 +93,12 @@ export default function APInvoice() {
         {error && (
           <div style={{ maxWidth: 480, margin: '0 auto', padding: '2rem 0' }}>
             <div className="ap-error-box">
-              <i className="fas fa-circle-exclamation" />
+              <AlertCircle size={20} />
               <div>
                 <div className="ap-error-title">OCR Processing Error</div>
                 <div className="ap-error-msg">{error}</div>
                 <button className="btn btn-sm btn-outline" style={{ marginTop: '0.75rem' }} onClick={() => setError(null)}>
-                  <i className="fas fa-rotate-right" /> {t.retry}
+                  <RotateCw size={14} /> {t.retry}
                 </button>
               </div>
             </div>
@@ -111,14 +112,14 @@ export default function APInvoice() {
               <div className="ap-preview-side">
                 <DocumentPreview previewUrl={previewUrl} previewType={previewType} fileName={file?.name} />
                 <button className="preview-toggle-btn hide" onClick={() => setShowPreview(false)}>
-                  <i className="fas fa-chevron-left" /> ซ่อนเอกสาร
+                  <ChevronLeft size={14} /> ซ่อนเอกสาร
                 </button>
               </div>
             )}
 
             {!showPreview && (
               <button className="preview-toggle-btn show" onClick={() => setShowPreview(true)}>
-                <i className="fas fa-file-invoice" /> {t.showDoc || 'แสดงเอกสาร'}
+                <FileText size={14} /> {t.showDoc || 'แสดงเอกสาร'}
               </button>
             )}
 

@@ -1,3 +1,5 @@
+import { CheckCheck, Sparkles, RefreshCw } from 'lucide-react'
+
 export default function AISuggestBar({
   onSuggest,
   onAcceptAll,
@@ -28,7 +30,7 @@ export default function AISuggestBar({
             fontWeight: 500,
           }}
         >
-          <i className="fas fa-check-double" style={{ color: 'inherit', background: 'none', width: 'auto', height: 'auto', borderRadius: 0, display: 'inline', padding: 0 }} /> Accept All
+          <CheckCheck size={14} /> Accept All
         </button>
       )}
       <button
@@ -51,18 +53,7 @@ export default function AISuggestBar({
           boxShadow: isDisabled ? 'none' : '0 2px 10px rgba(79,70,229,0.25)',
         }}
       >
-        <i
-          className={`fas fa-wand-magic-sparkles${loading ? ' fa-spin' : ''}`}
-          style={{
-            color: 'inherit',
-            background: 'none',
-            width: 'auto',
-            height: 'auto',
-            borderRadius: 0,
-            display: 'inline',
-            padding: 0,
-          }}
-        />
+        <Sparkles size={14} className={loading ? 'animate-spin' : ''} />
         {' '}AI Suggest
       </button>
       {onRefresh && (
@@ -82,7 +73,7 @@ export default function AISuggestBar({
             color: 'var(--text-2)',
           }}
         >
-          <i className={`fas fa-sync-alt${refreshLoading ? ' fa-spin' : ''}`} style={{ color: 'inherit', background: 'none', width: 'auto', height: 'auto', borderRadius: 0, display: 'inline', padding: 0 }} />
+          <RefreshCw size={14} className={refreshLoading ? 'animate-spin' : ''} />
           {' '}Refresh
         </button>
       )}

@@ -1,3 +1,5 @@
+import { UploadCloud, FolderOpen, Info } from 'lucide-react'
+
 export default function APUploadStep({ t, fileInputRef, onFileChange }) {
   const handleDrop = (e) => {
     e.preventDefault()
@@ -21,7 +23,7 @@ export default function APUploadStep({ t, fileInputRef, onFileChange }) {
           onChange={onFileChange}
           style={{ display: 'none' }}
         />
-        <div className="upload-icon"><i className="fas fa-cloud-upload-alt" /></div>
+        <div className="upload-icon"><UploadCloud size={40} /></div>
         <div className="upload-label">{t.uploadTitle}</div>
         <div className="upload-hint">{t.uploadDesc}</div>
         <button
@@ -29,12 +31,12 @@ export default function APUploadStep({ t, fileInputRef, onFileChange }) {
           style={{ marginTop: '1.5rem' }}
           onClick={e => { e.stopPropagation(); fileInputRef.current?.click() }}
         >
-          <i className="fas fa-folder-open" /> {t.uploadBtn}
+          <FolderOpen size={14} /> {t.uploadBtn}
         </button>
       </div>
 
       <div className="panel-card" style={{ marginTop: '1rem' }}>
-        <div className="field-label"><i className="fas fa-circle-info" /> วิธีใช้งาน AP Invoice OCR</div>
+        <div className="field-label"><Info size={16} /> วิธีใช้งาน AP Invoice OCR</div>
         <div className="how-to-list">
           {INSTRUCTIONS.map(({ n, c, text }) => (
             <div key={n} className="how-to-item">

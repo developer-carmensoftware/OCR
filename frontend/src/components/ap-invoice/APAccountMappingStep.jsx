@@ -1,3 +1,4 @@
+import { Building, IdCard, GitBranch, FileText, Calendar, AlignLeft, Database, Check, X, ArrowLeft, AlertTriangle, Save } from 'lucide-react'
 import CustomSearchSelect from '../common/CustomSearchSelect'
 import AISuggestBar from '../common/AISuggestBar'
 
@@ -51,7 +52,7 @@ export default function APAccountMappingStep({
             width: 34, height: 34, borderRadius: '8px', background: 'var(--ap-vendor-icon-bg, #7c3aed)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
           }}>
-            <i className="fas fa-building" style={{ color: '#fff', fontSize: '0.85rem' }} />
+            <Building size={16} color="#fff" />
           </div>
           <div>
             <div style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--ap-vendor-text, #3b0764)' }}>{vendorDisplayName}</div>
@@ -62,17 +63,17 @@ export default function APAccountMappingStep({
         </div>
         {/* Pills */}
         <div style={{ display: 'flex', alignItems: 'stretch', flexWrap: 'wrap', gap: '0', flex: 1 }}>
-          <VendorInfoPill icon="fas fa-id-card"      label="Tax ID"       value={vendorTaxId} />
-          <VendorInfoPill icon="fas fa-code-branch"  label="Branch No"    value={branchNo} />
-          <VendorInfoPill icon="fas fa-file-invoice" label="เลขที่เอกสาร" value={docNo} />
-          <VendorInfoPill icon="fas fa-calendar-day" label="วันที่เอกสาร" value={docDate} last />
+          <VendorInfoPill icon={<IdCard size={10} />}    label="Tax ID"       value={vendorTaxId} />
+          <VendorInfoPill icon={<GitBranch size={10} />} label="Branch No"    value={branchNo} />
+          <VendorInfoPill icon={<FileText size={10} />}  label="เลขที่เอกสาร" value={docNo} />
+          <VendorInfoPill icon={<Calendar size={10} />}  label="วันที่เอกสาร" value={docDate} last />
         </div>
       </div>
 
       {/* Invoice description */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
         <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--ap-vendor-text-muted, #7c3aed)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          <i className="fas fa-align-left" style={{ marginRight: '0.35rem' }} />
+          <AlignLeft size={13} style={{ marginRight: '0.35rem' }} />
           Invoice Description 
         </label>
         <input
@@ -118,7 +119,7 @@ export default function APAccountMappingStep({
       <div className="data-card card-acct">
         <div className="card-title">
           <div className="card-title-left">
-            <i className="fas fa-database" style={{ color: '#7c3aed' }} />
+            <Database size={15} color="#7c3aed" />
             {t.debitExpense}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
@@ -187,14 +188,14 @@ export default function APAccountMappingStep({
                               title="ยืนยัน"
                               style={{ padding: '3px 8px', background: 'var(--btn-ok-bg, #f0fdf4)', color: 'var(--btn-ok-text, #15803d)', border: '1px solid var(--btn-ok-border, #86efac)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center' }}
                             >
-                              <i className="fas fa-check" style={{ background: 'none', width: 'auto', height: 'auto', display: 'inline', padding: 0, color: 'inherit' }} />
+                              <Check size={12} />
                             </button>
                             <button
                               onClick={() => onRejectSuggest(ri)}
                               title="ปฏิเสธ"
                               style={{ padding: '3px 8px', background: 'var(--btn-err-bg, #fff1f2)', color: 'var(--btn-err-text, #dc2626)', border: '1px solid var(--btn-err-border, #fca5a5)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center' }}
                             >
-                              <i className="fas fa-times" style={{ background: 'none', width: 'auto', height: 'auto', display: 'inline', padding: 0, color: 'inherit' }} />
+                              <X size={12} />
                             </button>
                           </div>
                         )}
@@ -210,12 +211,12 @@ export default function APAccountMappingStep({
 
       <div className="ap-step-nav">
         <button className="btn btn-outline" onClick={onBack}>
-          <i className="fas fa-arrow-left" /> {t.backReview}
+          <ArrowLeft size={14} /> {t.backReview}
         </button>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.35rem' }}>
           {!allMapped && (
             <span style={{ fontSize: '0.75rem', color: '#b45309', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-              <i className="fas fa-triangle-exclamation" />
+              <AlertTriangle size={13} />
               กรุณาเลือก Dept Code และ Account Code ให้ครบทุกรายการก่อนบันทึก
             </span>
           )}
@@ -225,7 +226,7 @@ export default function APAccountMappingStep({
             disabled={!allMapped}
             style={!allMapped ? { opacity: 0.55, cursor: 'not-allowed' } : undefined}
           >
-            <i className="fas fa-floppy-disk" /> {t.generateInv}
+            <Save size={14} /> {t.generateInv}
           </button>
         </div>
       </div>
@@ -245,7 +246,7 @@ function VendorInfoPill({ icon, label, value, last = false }) {
         fontSize: '0.68rem', color: 'var(--ap-vendor-text-muted, #7c3aed)', fontWeight: 700,
         textTransform: 'uppercase', letterSpacing: '0.05em',
       }}>
-        <i className={icon} style={{ fontSize: '0.6rem' }} />
+        {icon}
         {label}
       </div>
       <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--ap-vendor-text, #1e1b4b)' }}>{value}</div>
@@ -258,7 +259,7 @@ function GLAccountCard({ title, iconColor, rows }) {
   return (
     <div className="ap-account-card">
       <div className="ap-account-card-header">
-        <div className={`ap-account-icon ${iconColor}`}><i className="fas fa-database" /></div>
+        <div className={`ap-account-icon ${iconColor}`}><Database size={14} /></div>
         <div style={{ fontWeight: 700, fontSize: '0.87rem', color: 'var(--text)' }}>{title}</div>
       </div>
       <div className="ap-account-body">

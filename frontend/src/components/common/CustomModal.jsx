@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { CheckCircle2, AlertTriangle, XCircle, Info } from 'lucide-react'
 
 export default function CustomModal({
   show,
@@ -37,10 +38,10 @@ export default function CustomModal({
 
   const getIcon = () => {
     switch (type) {
-      case 'success': return <i className="fas fa-circle-check" />
-      case 'warning': return <i className="fas fa-triangle-exclamation" />
-      case 'error':   return <i className="fas fa-circle-xmark" />
-      default:        return <i className="fas fa-circle-info" />
+      case 'success': return <CheckCircle2 size={28} />
+      case 'warning': return <AlertTriangle size={28} />
+      case 'error':   return <XCircle size={28} />
+      default:        return <Info size={28} />
     }
   }
 

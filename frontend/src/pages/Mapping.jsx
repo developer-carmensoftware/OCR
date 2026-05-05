@@ -1,4 +1,5 @@
 import React from 'react';
+import { Network, ArrowLeft, Loader2, CheckCircle2 } from 'lucide-react';
 import CustomModal from '../components/common/CustomModal';
 import '../styles/pages/mapping.css';
 import { useMapping } from '../hooks/useMapping';
@@ -31,11 +32,11 @@ export default function Mapping() {
       />
 
       <div className="container" style={{ margin: '2rem auto', maxWidth: '800px' }}>
-        <h1><i className="fas fa-project-diagram"></i> Account Mapping Configuration</h1>
+        <h1><Network size={20} /> Account Mapping Configuration</h1>
 
         <div style={{ marginBottom: '1.5rem' }}>
           <button onClick={() => window.location.hash = '/CreditCardOCR'} className="btn-cancel" style={{ textDecoration: 'none', padding: '0.6rem 1.2rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', borderRadius: '8px', background: 'var(--gray-50)', color: 'var(--text-2)', border: '1px solid var(--border)', cursor: 'pointer' }}>
-            <i className="fas fa-arrow-left"></i> กลับสู่หน้าหลัก
+            <ArrowLeft size={14} /> กลับสู่หน้าหลัก
           </button>
         </div>
 
@@ -71,7 +72,7 @@ export default function Mapping() {
               gap: '0.75rem'
             }}
           >
-            <i className={`fas ${mappingCtrl.saving ? 'fa-spinner fa-spin' : 'fa-check-circle'}`} style={{ fontSize: '1.2rem' }}></i>
+            {mappingCtrl.saving ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />}
             {mappingCtrl.saving ? 'กำลังบันทึก...' : 'บันทึกและปิดหน้าต่าง'}
           </button>
         </div>

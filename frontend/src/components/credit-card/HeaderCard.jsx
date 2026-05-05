@@ -1,3 +1,4 @@
+import { IdCard } from 'lucide-react'
 import { HEADER_LABELS } from '../../constants'
 
 export default function HeaderCard({ headerData, onUpdate, readOnly }) {
@@ -5,7 +6,7 @@ export default function HeaderCard({ headerData, onUpdate, readOnly }) {
     <div className="data-card">
       <div className="card-title">
         <div className="card-title-left">
-          <i className="fas fa-id-card" /> ข้อมูล Header
+          <IdCard size={16} /> ข้อมูล Header
         </div>
       </div>
       <div className="card-body">
