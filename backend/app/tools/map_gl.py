@@ -109,7 +109,7 @@ async def suggest_fixed_fields(
         )
         tax_filtered = _filter_by_keywords(
             balance_acc,
-            ["output tax", "ภาษีขาย", "undue", "รอตัด"],
+            ["input tax", "ภาษีซื้อ", "undue", "รอตัด"],
             limit=20,
         )
         bank_filtered = _filter_by_keywords(

@@ -214,6 +214,23 @@ async def init_db() -> None:
 # Brand-new DBs provisioned via provision_tenant() skip all of these because
 # create_all() already produces the final schema and migrations are pre-marked.
 
+async def _m023_create_bu_usage(conn: AsyncConnection) -> None:
+    try:
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS bu_usage (
+                bu_name           VARCHAR(100) PRIMARY KEY,
+                monthly_calls     INT          DEFAULT 0,
+                total_calls       BIGINT       DEFAULT 0,
+                max_monthly_calls INT          DEFAULT 50,
+                last_reset_month  VARCHAR(7)   NULL,
+                updated_at        DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )
+        """))
+        logger.info("  + bu_usage table")
+    except Exception as e:
+        logger.error("Failed to create bu_usage table: %s", e)
+        # We don't raise here if it already exists, although CREATE TABLE IF NOT EXISTS handles it.
+
 async def _m022_add_ap_invoices_submitted_at(conn: AsyncConnection) -> None:
     try:
         await conn.execute(text(
@@ -317,6 +334,7 @@ _MIGRATIONS: list[tuple[str, object]] = [
     # These run on DBs migrated from the old shared schema.
     ("021_remove_tenant_columns",                       _m021_remove_tenant_columns),
     ("022_add_ap_invoices_submitted_at",                _m022_add_ap_invoices_submitted_at),
+    ("023_create_bu_usage",                             _m023_create_bu_usage),
 ]
 
 

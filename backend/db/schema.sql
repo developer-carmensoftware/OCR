@@ -286,3 +286,16 @@ CREATE TABLE IF NOT EXISTS model_pricing (
 
     PRIMARY KEY (model_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── bu_usage — per-BU usage tracking and rate limiting ───────────────────
+
+CREATE TABLE IF NOT EXISTS bu_usage (
+    bu_name           VARCHAR(100) NOT NULL,
+    monthly_calls     INT          DEFAULT 0,
+    total_calls       BIGINT       DEFAULT 0,
+    max_monthly_calls INT          DEFAULT 50,
+    last_reset_month  VARCHAR(7)   NULL,
+    updated_at        DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (bu_name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
