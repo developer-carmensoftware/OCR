@@ -25,22 +25,22 @@ function AuthScreen({ state, message }) {
       Icon: Loader2,
       iconClass: 'animate-spin',
       iconBg: 'linear-gradient(135deg, var(--primary) 0%, #818cf8 50%, var(--teal) 100%)',
-      title: 'กำลังยืนยันตัวตน',
-      subtitle: 'กรุณารอสักครู่...',
+      title: 'Authenticating',
+      subtitle: 'Please wait...',
       badge: null,
     },
     error: {
       Icon: AlertTriangle,
       iconBg: 'linear-gradient(135deg, #e11d48 0%, #f43f5e 100%)',
-      title: 'ไม่สามารถยืนยันตัวตนได้',
-      subtitle: message || 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง',
+      title: 'Authentication Failed',
+      subtitle: message || 'An error occurred. Please try again.',
       badge: { label: 'Authentication Error', color: 'var(--rose)', bg: 'var(--rose-light)', border: 'var(--rose-mid)' },
     },
     unauthenticated: {
       Icon: Shield,
       iconBg: 'linear-gradient(135deg, var(--primary) 0%, #818cf8 50%, var(--teal) 100%)',
-      title: 'กรุณาเข้าใช้งานผ่านระบบ Carmen',
-      subtitle: 'ระบบนี้ต้องเข้าใช้งานผ่านหน้าเว็บ Carmen เท่านั้น',
+      title: 'Please access via Carmen System',
+      subtitle: 'This system must be accessed through the Carmen web interface.',
       badge: { label: 'Authentication Required', color: 'var(--primary)', bg: 'var(--primary-light)', border: 'var(--primary-mid)' },
     },
   }[state]
@@ -83,7 +83,7 @@ function AuthScreen({ state, message }) {
           </div>
         )}
 
-        {state === 'unauthenticated' && (
+        {(state === 'unauthenticated' || state === 'error') && (
           <a
             href={getCarmenUrl('/')}
             style={{
@@ -104,7 +104,7 @@ function AuthScreen({ state, message }) {
               transition: 'all 0.2s',
             }}
           >
-            ไปที่หน้าเข้าสู่ระบบ Carmen
+            Go to Carmen Login Page
           </a>
         )}
       </div>

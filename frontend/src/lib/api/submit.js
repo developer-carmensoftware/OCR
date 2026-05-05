@@ -25,7 +25,7 @@ export async function submitToLocal(payload) {
       }
     } catch { /* ignore */ }
 
-    const error = new Error(`ไม่สามารถบันทึกข้อมูลได้ (${res.status})\n${detail}`)
+    const error = new Error(`Failed to save data (${res.status})\n${detail}`)
     error.status = res.status
     error.detail = detail
     throw error
@@ -34,7 +34,7 @@ export async function submitToLocal(payload) {
   const data = await res.json()
 
   if (data.ok === false) {
-    const error = new Error(data.detail || 'เกิดข้อผิดพลาดในการบันทึกข้อมูล')
+    const error = new Error(data.detail || 'An error occurred while saving data')
     error.status = 200
     error.detail = data.detail
     throw error

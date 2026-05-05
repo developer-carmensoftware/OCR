@@ -59,7 +59,7 @@ export default function CreditCardOCR() {
               onBankChange={setBank}
               onFileChange={handleFileChange}
               fileInputRef={fileInputRef}
-              fileName={files.length > 1 ? `${files.length} ไฟล์ที่เลือก` : files[0]?.name}
+              fileName={files.length > 1 ? `${files.length} files selected` : files[0]?.name}
               multiple={true}
             />
           </>
@@ -77,7 +77,7 @@ export default function CreditCardOCR() {
             {step <= 3 && (
               <div id="step3">
                 <h2 className="section-title">
-                  <Pencil size={14} /> Step 3: ตรวจสอบข้อมูล
+                  <Pencil size={14} /> Step 3: Review Data
                 </h2>
                 <HeaderCard headerData={headerData} onUpdate={updateHeader} />
                 <DetailTable
@@ -89,7 +89,7 @@ export default function CreditCardOCR() {
                 <FormActions
                   onCancel={handleCancel}
                   onSubmit={() => setStep(4)}
-                  submitLabel="ถัดไป (Review Accounting)"
+                  submitLabel="Next (Review Accounting)"
                   showBack={false}
                 />
               </div>
@@ -102,7 +102,7 @@ export default function CreditCardOCR() {
                   headerData={headerData}
                   onBack={() => setStep(3)}
                   onSubmit={handleSubmitFinal}
-                  onGoMapping={() => { toast.info('เปิด tab ใหม่สำหรับตั้งค่า Mapping แล้ว'); window.open('#/CreditCardOCR/mapping', '_blank') }}
+                  onGoMapping={() => { toast.info('Opened new tab for Mapping settings'); window.open('#/CreditCardOCR/mapping', '_blank') }}
                   submitting={submitting}
                 />
               </div>

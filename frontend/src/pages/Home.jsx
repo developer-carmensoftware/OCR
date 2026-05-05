@@ -8,7 +8,7 @@ const MODULES = [
     id: 'credit-card-ocr',
     href: '#/CreditCardOCR',
     name: 'Credit Card Report OCR',
-    description: 'ระบบ AI อ่านใบเสร็จ Credit Card Report จากธนาคาร แปลงเป็นข้อมูลอัตโนมัติ พร้อมส่งเข้า Carmen GL',
+    description: 'AI automatically extracts Credit Card Reports from banks and posts to Carmen GL',
     Icon: FileText,
     useLogo: true,
     iconBg: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)',
@@ -21,7 +21,7 @@ const MODULES = [
     id: 'ap-invoice',
     href: '#/APInvoice',
     name: 'AP Invoice Processing',
-    description: 'ระบบจัดการใบแจ้งหนี้ผู้จัดจำหน่าย (AP Invoice) อ่านข้อมูลอัตโนมัติ และบันทึกเข้าระบบบัญชี',
+    description: 'AP Invoice automation reads vendor data and syncs with the accounting system',
     Icon: Receipt,
     useLogo: true,
     iconBg: 'linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%)',
@@ -34,7 +34,7 @@ const MODULES = [
     id: 'bank-reconciliation',
     href: null,
     name: 'Bank Reconciliation',
-    description: 'ระบบกระทบยอดธนาคาร เปรียบเทียบ Statement กับรายการบัญชีอัตโนมัติ',
+    description: 'Bank reconciliation automatically compares statements with ledger entries',
     Icon: Landmark,
     iconBg: 'linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)',
     iconColor: '#fff',
@@ -60,7 +60,7 @@ export default function Home() {
           Carmen <span>AI Automation</span>
         </h1>
         <p className="home-subtitle">
-          ระบบ AI อัตโนมัติสำหรับงานบัญชี — เลือกโมดูลที่ต้องการใช้งาน
+          Automated AI for Accounting — Select a module to use
         </p>
         <div className="home-version">
           <span className="dot" />
@@ -70,7 +70,7 @@ export default function Home() {
 
       {/* ─── Module Cards ─── */}
       <div className="home-modules">
-        <div className="home-modules-title">เลือกโมดูล</div>
+        <div className="home-modules-title">Select Module</div>
 
         <div className="module-grid">
           {MODULES.map((mod) => {

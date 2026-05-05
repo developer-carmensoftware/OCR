@@ -122,11 +122,11 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }) {
           {isImage && (
             <>
               <div className="prev-tool-group">
-                <button className="prev-tool-btn" onClick={zoomOut} disabled={zoom <= 0.25} title="ย่อ">
+                <button className="prev-tool-btn" onClick={zoomOut} disabled={zoom <= 0.25} title="Zoom out">
                   <ZoomOut size={14} />
                 </button>
                 <span className="prev-zoom-pct">{Math.round(zoom * 100)}%</span>
-                <button className="prev-tool-btn" onClick={zoomIn} disabled={zoom >= 5} title="ขยาย">
+                <button className="prev-tool-btn" onClick={zoomIn} disabled={zoom >= 5} title="Zoom in">
                   <ZoomIn size={14} />
                 </button>
               </div>
@@ -134,7 +134,7 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }) {
               <button className="prev-tool-btn" onClick={resetView} title="Reset">
                 <Minimize2 size={14} />
               </button>
-              <button className="prev-tool-btn" onClick={rotateCW} title="หมุน 90°">
+              <button className="prev-tool-btn" onClick={rotateCW} title="Rotate 90°">
                 <RotateCw size={14} />
               </button>
               <div className="prev-tool-sep" />
@@ -144,12 +144,12 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }) {
           {isPdf && (
             <>
               <span className="prev-pdf-badge"><FileText size={14} /> PDF</span>
-              <span className="prev-tool-hint">เลื่อนดูและซูมได้ในเอกสาร</span>
+              <span className="prev-tool-hint">Scroll and zoom within the document</span>
               <div className="prev-tool-sep" />
             </>
           )}
 
-          <button className="prev-tool-btn" onClick={openNewTab} title="เปิดในแท็บใหม่">
+          <button className="prev-tool-btn" onClick={openNewTab} title="Open in new tab">
             <ExternalLink size={14} />
           </button>
         </div>
@@ -191,14 +191,14 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }) {
         {!previewType && (
           <div className="placeholder-text">
             <div className="placeholder-icon-wrap"><FileImage size={32} /></div>
-            <p>ยังไม่มีไฟล์ Preview<br /><span style={{ fontSize: '.75rem', opacity: .5 }}>Preview จะแสดงที่นี่</span></p>
+            <p>No Preview File<br /><span style={{ fontSize: '.75rem', opacity: .5 }}>Preview will appear here</span></p>
           </div>
         )}
 
         {previewType && !isImage && !isPdf && (
           <div className="placeholder-text">
             <div className="placeholder-icon-wrap"><FileText size={32} /></div>
-            <p>{previewType} File<br /><span style={{ fontSize: '.75rem', opacity: .5 }}>Preview ไม่รองรับประเภทนี้</span></p>
+            <p>{previewType} File<br /><span style={{ fontSize: '.75rem', opacity: .5 }}>Preview not supported for this type</span></p>
           </div>
         )}
       </div>
@@ -209,8 +209,8 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }) {
           {isPdf ? <FileText size={14} /> : <File size={14} />}
           <span className="file-name">{fileName}</span>
           {hasToolbar && (
-            <button className="btn-zoom-action" onClick={openNewTab} title="เปิดในแท็บใหม่">
-              <ExternalLink size={14} /> เปิดในแท็บใหม่
+            <button className="btn-zoom-action" onClick={openNewTab} title="Open in new tab">
+              <ExternalLink size={14} /> Open in new tab
             </button>
           )}
         </div>

@@ -6,20 +6,21 @@
 
 :root {
     /* ── Brand ── */
-    --primary:        #4f46e5;
-    --primary-light:  #eef2ff;
-    --primary-mid:    #c7d2fe;
-    --primary-hover:  #4338ca;
-    --primary-glow:   rgba(79, 70, 229, 0.18);
+    --primary:        #8058F1;
+    --primary-light:  #f3effe;
+    --primary-mid:    #d9ccfa;
+    --primary-hover:  #6842da;
+    --primary-glow:   rgba(128, 88, 241, 0.18);
+    --primary-dark:   #351B72;
 
-    --teal:           #0891b2;
-    --teal-light:     #ecfeff;
-    --teal-mid:       #a5f3fc;
-    --teal-hover:     #0e7490;
+    --teal:           #197CDD;
+    --teal-light:     #f0f7ff;
+    --teal-mid:       #60C3EE;
+    --teal-hover:     #0154BD;
 
-    --rose:           #e11d48;
-    --rose-light:     #fff1f2;
-    --rose-mid:       #fecdd3;
+    --rose:           #F75253;
+    --rose-light:     #FFBEDD;
+    --rose-mid:       #ff9ebc;
 
     --amber:          #d97706;
     --amber-light:    #fffbeb;
@@ -61,8 +62,8 @@
     --shadow-md:   0 4px 16px rgba(15,23,42,0.08), 0 2px 6px rgba(15,23,42,0.04);
     --shadow-lg:   0 12px 36px rgba(15,23,42,0.10), 0 4px 10px rgba(15,23,42,0.05);
     --shadow-xl:   0 24px 60px rgba(15,23,42,0.14), 0 8px 20px rgba(15,23,42,0.06);
-    --shadow-primary: 0 4px 18px rgba(79, 70, 229, 0.22);
-    --shadow-teal:    0 4px 16px rgba(8, 145, 178, 0.20);
+    --shadow-primary: 0 4px 18px rgba(128, 88, 241, 0.22);
+    --shadow-teal:    0 4px 16px rgba(25, 124, 221, 0.20);
 
     --ease: cubic-bezier(0.16, 1, 0.3, 1);
     --ease-in: cubic-bezier(0.4, 0, 1, 1);
@@ -109,7 +110,7 @@ body::before {
     left: -15%;
     width: 65vw;
     height: 65vw;
-    background: radial-gradient(circle, rgba(79, 70, 229, 0.18) 0%, transparent 65%);
+    background: radial-gradient(circle, rgba(128, 88, 241, 0.18) 0%, transparent 65%);
     filter: blur(70px);
     animation: aurora1 13s ease-in-out infinite alternate;
     will-change: transform;
@@ -124,7 +125,7 @@ body::after {
     right: -15%;
     width: 60vw;
     height: 60vw;
-    background: radial-gradient(circle, rgba(8, 145, 178, 0.16) 0%, transparent 65%);
+    background: radial-gradient(circle, rgba(25, 124, 221, 0.16) 0%, transparent 65%);
     filter: blur(80px);
     animation: aurora2 16s ease-in-out infinite alternate;
     will-change: transform;
@@ -208,18 +209,18 @@ textarea:focus-visible {
 
 /* ─── DARK MODE ─── */
 [data-theme="dark"] {
-    --primary:       #818cf8;
-    --primary-light: rgba(99, 102, 241, 0.15);
-    --primary-mid:   rgba(99, 102, 241, 0.35);
-    --primary-hover: #a5b4fc;
-    --primary-glow:  rgba(129, 140, 248, 0.25);
-    --teal:       #22d3ee;
-    --teal-light: rgba(6, 182, 212, 0.12);
-    --teal-mid:   rgba(6, 182, 212, 0.3);
-    --teal-hover: #67e8f9;
-    --rose:       #fb7185;
-    --rose-light: rgba(251, 113, 133, 0.12);
-    --rose-mid:   rgba(251, 113, 133, 0.3);
+    --primary:       #9a7df4;
+    --primary-light: rgba(128, 88, 241, 0.15);
+    --primary-mid:   rgba(128, 88, 241, 0.35);
+    --primary-hover: #baabf8;
+    --primary-glow:  rgba(128, 88, 241, 0.25);
+    --teal:       #60C3EE;
+    --teal-light: rgba(25, 124, 221, 0.12);
+    --teal-mid:   rgba(25, 124, 221, 0.3);
+    --teal-hover: #197CDD;
+    --rose:       #F75253;
+    --rose-light: rgba(247, 82, 83, 0.12);
+    --rose-mid:   rgba(247, 82, 83, 0.3);
     --amber:       #fbbf24;
     --amber-light: rgba(251, 191, 36, 0.12);
     --amber-mid:   rgba(251, 191, 36, 0.3);
@@ -236,8 +237,8 @@ textarea:focus-visible {
     --shadow-md: 0 4px 16px rgba(0,0,0,0.55), 0 2px 6px rgba(0,0,0,0.4);
     --shadow-lg: 0 12px 36px rgba(0,0,0,0.65), 0 4px 10px rgba(0,0,0,0.4);
     --shadow-xl: 0 24px 60px rgba(0,0,0,0.75), 0 8px 20px rgba(0,0,0,0.5);
-    --shadow-primary: 0 4px 18px rgba(129, 140, 248, 0.3);
-    --shadow-teal:    0 4px 16px rgba(34, 211, 238, 0.2);
+    --shadow-primary: 0 4px 18px rgba(128, 88, 241, 0.3);
+    --shadow-teal:    0 4px 16px rgba(25, 124, 221, 0.2);
 
     --gray-50:   #0f172a;
     --gray-100:  #1e293b;
@@ -274,10 +275,10 @@ textarea:focus-visible {
     color: var(--text);
 }
 [data-theme="dark"] body::before {
-    background: radial-gradient(circle, rgba(99, 102, 241, 0.1) 0%, transparent 65%);
+    background: radial-gradient(circle, rgba(128, 88, 241, 0.1) 0%, transparent 65%);
 }
 [data-theme="dark"] body::after {
-    background: radial-gradient(circle, rgba(6, 182, 212, 0.08) 0%, transparent 65%);
+    background: radial-gradient(circle, rgba(25, 124, 221, 0.08) 0%, transparent 65%);
 }
 
 /* Glass surfaces */

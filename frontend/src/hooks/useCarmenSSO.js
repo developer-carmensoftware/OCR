@@ -37,7 +37,7 @@ export function useCarmenSSO() {
         login(access_token, userInfo)
       })
       .catch((err) => {
-        setError(err.message || 'ไม่สามารถยืนยันตัวตนได้')
+        setError(err.message || 'Authentication failed')
       })
       .finally(() => {
         setExchanging(false)

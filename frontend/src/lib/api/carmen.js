@@ -33,7 +33,7 @@ export async function submitToCarmen(payload) {
   })
   if (!res.ok) {
     const errTxt = await res.text()
-    throw new Error(`Carmen GL JV ล้มเหลว (${res.status}): ${errTxt}`)
+    throw new Error(`Carmen GL JV Failed (${res.status}): ${errTxt}`)
   }
   return res.json()
 }
@@ -50,7 +50,7 @@ export async function submitAPInvoiceToCarmen(payload, ap_invoice_id = null) {
   })
   if (!res.ok) {
     const errTxt = await res.text()
-    throw new Error(`Carmen Invoice ล้มเหลว (${res.status}): ${errTxt}`)
+    throw new Error(`Carmen Invoice Failed (${res.status}): ${errTxt}`)
   }
   return res.json()
 }
@@ -63,7 +63,7 @@ export async function submitInputTax(payload) {
   })
   if (!res.ok) {
     const errTxt = await res.text()
-    throw new Error(`Carmen Input Tax ล้มเหลว (${res.status}): ${errTxt}`)
+    throw new Error(`Carmen Input Tax Failed (${res.status}): ${errTxt}`)
   }
   return res.json()
 }

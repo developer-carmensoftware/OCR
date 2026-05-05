@@ -22,11 +22,11 @@ export default function Mapping() {
       />
       <CustomModal
         show={mappingCtrl.acceptAllModal}
-        title="ยืนยัน Accept All"
-        message="AI อาจแนะนำรหัสบัญชีผิดพลาดได้ คุณได้ตรวจสอบรายการทั้งหมดแล้วใช่ไหม?"
+        title="Confirm Accept All"
+        message="AI might suggest incorrect account codes. Have you reviewed all items?"
         type="warning"
-        confirmText="ยืนยัน ยอมรับทั้งหมด"
-        cancelText="ยกเลิก"
+        confirmText="Confirm Accept All"
+        cancelText="Cancel"
         onConfirm={mappingCtrl.handleAcceptAll}
         onCancel={() => mappingCtrl.setAcceptAllModal(false)}
       />
@@ -36,7 +36,7 @@ export default function Mapping() {
 
         <div style={{ marginBottom: '1.5rem' }}>
           <button onClick={() => window.location.hash = '/CreditCardOCR'} className="btn-cancel" style={{ textDecoration: 'none', padding: '0.6rem 1.2rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', borderRadius: '8px', background: 'var(--gray-50)', color: 'var(--text-2)', border: '1px solid var(--border)', cursor: 'pointer' }}>
-            <ArrowLeft size={14} /> กลับสู่หน้าหลัก
+            <ArrowLeft size={14} /> Back to Main Page
           </button>
         </div>
 
@@ -73,7 +73,7 @@ export default function Mapping() {
             }}
           >
             {mappingCtrl.saving ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />}
-            {mappingCtrl.saving ? 'กำลังบันทึก...' : 'บันทึกและปิดหน้าต่าง'}
+            {mappingCtrl.saving ? 'Saving...' : 'Save & Close'}
           </button>
         </div>
 

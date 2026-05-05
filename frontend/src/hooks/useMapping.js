@@ -209,8 +209,8 @@ export function useMapping() {
     if (fieldsToFetch.length === 0) {
       setModalConfig({
         show: true,
-        title: '✓ ทำการ Mapping หมดแล้ว',
-        message: 'ทุกค่าได้รับการ Mapping เรียบร้อยแล้ว สามารถดำเนินการขั้นตอนถัดไปได้',
+        title: '✓ All Mappings Completed',
+        message: 'All values have been successfully mapped. You can proceed to the next step.',
         type: 'success'
       });
       return;
@@ -352,8 +352,8 @@ export function useMapping() {
       setPaymentSuggestLoading(false);
       setModalConfig({
         show: true,
-        title: '✓ ทำการ Mapping หมดแล้ว',
-        message: 'Payment Types ทั้งหมดได้รับการ Mapping เรียบร้อยแล้ว',
+        title: '✓ All Mappings Completed',
+        message: 'All Payment Types have been successfully mapped.',
         type: 'success'
       });
       return;
@@ -459,8 +459,8 @@ export function useMapping() {
     if (allMissing.length > 0) {
       setModalConfig({
         show: true,
-        title: 'กรุณากรอกข้อมูลให้ครบ',
-        message: `กรุณากรอก ${allMissing.map(f => f.label).join(', ')} ก่อนบันทึก`,
+        title: 'Please fill in all required fields',
+        message: `Please fill in ${allMissing.map(f => f.label).join(', ')} before saving`,
         type: 'error'
       });
       return;
@@ -488,8 +488,8 @@ export function useMapping() {
         if (!shouldClose) {
           setModalConfig({
             show: true,
-            title: 'บันทึกสำเร็จ',
-            message: 'บันทึกการตั้งค่า Account Mapping เรียบร้อยแล้ว',
+            title: 'Save Successful',
+            message: 'Account Mapping settings have been saved successfully.',
             type: 'success'
           });
         }

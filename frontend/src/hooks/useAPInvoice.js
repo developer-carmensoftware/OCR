@@ -340,8 +340,8 @@ export function useAPInvoice() {
 
           if (data.vendorTaxId) {
             try {
-              const saved = localStorage.getItem(`ap_mapping_${data.vendorTaxId}`)
-              if (saved) setFieldMappings(JSON.parse(saved))
+              const savedAll = JSON.parse(localStorage.getItem('ap_invoice_mapping') || '{}')
+              if (savedAll[data.vendorTaxId]) setFieldMappings(savedAll[data.vendorTaxId])
             } catch { /* ignore corrupt localStorage data */ }
           }
           setStatus('Data extracted successfully ✓')
@@ -379,7 +379,11 @@ export function useAPInvoice() {
 
   const confirmMapping = () => {
     if (headerData.vendorTaxId) {
-      localStorage.setItem(`ap_mapping_${headerData.vendorTaxId}`, JSON.stringify(fieldMappings))
+      try {
+        const savedAll = JSON.parse(localStorage.getItem('ap_invoice_mapping') || '{}')
+        savedAll[headerData.vendorTaxId] = fieldMappings
+        localStorage.setItem('ap_invoice_mapping', JSON.stringify(savedAll))
+      } catch { /* ignore corrupt localStorage data */ }
     }
     showToast('Column settings saved', 'success')
     setStep(3)
