@@ -343,6 +343,17 @@ export function useAPInvoice() {
           loadVendors() // Load vendors after successful OCR extraction
           return
         } catch (err) {
+          if (err.message.includes('429')) {
+            setModal({
+              show: true,
+              type: 'warning',
+              title: 'Monthly Quota Exceeded',
+              message: 'Your Business Unit has reached the monthly document processing limit. Please contact your administrator to upgrade your plan.',
+              confirmText: 'Acknowledge',
+              onConfirm: () => { setModal({ show: false }); setStep(1); setFile(null); setPreviewUrl(null) }
+            })
+            return
+          }
           retries--
           if (retries === 0) throw err
           setStatus('Retrying...')
@@ -355,7 +366,9 @@ export function useAPInvoice() {
       console.error(err)
       setStatus(err.message)
       setError(t.errProcess)
-      showToast('Failed to extract data. Please try again.', 'error')
+      if (!err.message.includes('429')) {
+        showToast('Failed to extract data. Please try again.', 'error')
+      }
     } finally {
       setLoading(false)
     }

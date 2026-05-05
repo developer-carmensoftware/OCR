@@ -101,6 +101,9 @@ async def extract_card(
         document_ref=filenames, ip_address=request.client.host if request.client else None,
     )
 
+    from app.services.usage_service import check_bu_rate_limit
+    await check_bu_rate_limit()
+
     results = []
     bank_type_str = bank_type.value if bank_type else None
     hints = await get_correction_hints(bank_type_str, db) if bank_type_str else {}

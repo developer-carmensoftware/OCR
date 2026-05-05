@@ -48,6 +48,9 @@ async def extract_ap_invoice(
         session, AuditAction.EXTRACT, DocumentType.AP_INVOICE,
         document_ref=file.filename, ip_address=request.client.host if request.client else None,
     )
+    from app.services.usage_service import check_bu_rate_limit
+    await check_bu_rate_limit()
+
     if not settings.openrouter_api_key:
         raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY is not configured")
 
@@ -66,56 +69,52 @@ async def extract_ap_invoice(
     db.add(task)
     await db.commit()
 
-    try:
-        data = await extract_ap_invoice_data(data_url, file.filename, task.id)
+    data = await extract_ap_invoice_data(data_url, file.filename, task.id)
 
-        from app.models.orm import APInvoice
-        from app.context import current_user_id
-        from sqlalchemy import select
+    from app.models.orm import APInvoice
+    from app.context import current_user_id
+    from sqlalchemy import select
 
-        ap_invoice_id = str(uuid.uuid4())
+    ap_invoice_id = str(uuid.uuid4())
 
-        # Check for duplicates (same doc_no + vendor_name) — tenant isolation by DB
-        # Match only documents that have been successfully submitted (submitted_at is not null)
-        is_duplicate = False
-        doc_no      = data.get("documentNumber")
-        vendor_name = data.get("vendorName")
+    # Check for duplicates (same doc_no + vendor_name) — tenant isolation by DB
+    # Match only documents that have been successfully submitted (submitted_at is not null)
+    is_duplicate = False
+    doc_no      = data.get("documentNumber")
+    vendor_name = data.get("vendorName")
 
-        if doc_no and vendor_name:
-            dup_check = await db.execute(
-                select(APInvoice).where(
-                    APInvoice.doc_no == doc_no,
-                    APInvoice.vendor_name == vendor_name,
-                    APInvoice.submitted_at.isnot(None),
-                )
+    if doc_no and vendor_name:
+        dup_check = await db.execute(
+            select(APInvoice).where(
+                APInvoice.doc_no == doc_no,
+                APInvoice.vendor_name == vendor_name,
+                APInvoice.submitted_at.isnot(None),
             )
-            if dup_check.scalars().first():
-                is_duplicate = True
-                logger.info(f"Duplicate AP Invoice detected: {doc_no} for {vendor_name}")
+        )
+        if dup_check.scalars().first():
+            is_duplicate = True
+            logger.info(f"Duplicate AP Invoice detected: {doc_no} for {vendor_name}")
 
-        # Only save to ap_invoices if NOT a duplicate
-        if not is_duplicate:
-            ap_inv = APInvoice(
-                id=ap_invoice_id,
-                task_id=task.id,
-                user_id=current_user_id.get() or session.user_id,
-                vendor_name=vendor_name,
-                doc_no=doc_no,
-                doc_date=data.get("documentDate"),
-                original_filename=file.filename,
-            )
-            db.add(ap_inv)
-            await db.commit()
-            data["id"] = ap_invoice_id
-        else:
-            # For duplicates, we don't save a new APInvoice record, 
-            # but we still return the extracted data for UI display.
-            data["id"] = None
-        data["is_duplicate"] = is_duplicate
-        return data
-
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    # Only save to ap_invoices if NOT a duplicate
+    if not is_duplicate:
+        ap_inv = APInvoice(
+            id=ap_invoice_id,
+            task_id=task.id,
+            user_id=current_user_id.get() or session.user_id,
+            vendor_name=vendor_name,
+            doc_no=doc_no,
+            doc_date=data.get("documentDate"),
+            original_filename=file.filename,
+        )
+        db.add(ap_inv)
+        await db.commit()
+        data["id"] = ap_invoice_id
+    else:
+        # For duplicates, we don't save a new APInvoice record, 
+        # but we still return the extracted data for UI display.
+        data["id"] = None
+    data["is_duplicate"] = is_duplicate
+    return data
 
 
 class SuggestGLItem(BaseModel):

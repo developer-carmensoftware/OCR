@@ -16,7 +16,9 @@ export async function extractFromFile(file, bankType) {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail || `Upload failed (${res.status})`)
+    const error = new Error(err.detail || `Upload failed (${res.status})`)
+    error.status = res.status
+    throw error
   }
 
   const results = await res.json()

@@ -238,12 +238,22 @@ export function useOcrWizard() {
         showToast(`Successfully extracted ${filesToProcess.length} ${filesToProcess.length === 1 ? 'file' : 'files'} — please review and edit`, 'success')
       }
     } catch (err) {
-      setStatus(err.message)
-      showModal({
-        title: 'Error Occurred',
-        message: `Failed to extract data: ${err.message}`,
-        type: 'error', confirmText: 'Close', onConfirm: closeModal,
-      })
+      if (err.status === 429) {
+        showModal({
+          title: 'Monthly Quota Exceeded',
+          message: 'Your Business Unit has reached the monthly document processing limit. Please contact your administrator to upgrade your plan.',
+          type: 'warning',
+          confirmText: 'Acknowledge',
+          onConfirm: () => { closeModal(); setStep(1); setFiles([]); if (fileInputRef.current) fileInputRef.current.value = '' }
+        })
+      } else {
+        setStatus(err.message)
+        showModal({
+          title: 'Error Occurred',
+          message: `Failed to extract data: ${err.message}`,
+          type: 'error', confirmText: 'Close', onConfirm: closeModal,
+        })
+      }
       setStep(1)
     } finally {
       setLoading(false)
