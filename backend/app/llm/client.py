@@ -53,8 +53,11 @@ async def call_vision_llm(
     Raises RuntimeError on API failure or empty response.
     Logs outbound call and token usage automatically.
     """
-    from app.services.usage_service import log_llm_usage
+    from app.services.usage_service import log_llm_usage, check_bu_rate_limit
     from app.services.outbound_log_service import log_outbound
+
+    # Rate Limit Check
+    await check_bu_rate_limit()
 
     client = get_client()
     start = time.perf_counter()
@@ -116,8 +119,11 @@ async def call_text_llm(
     Strips markdown code fences, parses JSON.
     Returns None on any failure (no exceptions raised to callers).
     """
-    from app.services.usage_service import log_llm_usage
+    from app.services.usage_service import log_llm_usage, check_bu_rate_limit
     from app.services.outbound_log_service import log_outbound
+
+    # Rate Limit Check
+    await check_bu_rate_limit()
 
     client = get_client()
     target_model = model or settings.openrouter_suggestion_model
