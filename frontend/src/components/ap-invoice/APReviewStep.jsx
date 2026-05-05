@@ -97,7 +97,7 @@ export default function APReviewStep({ ctrl }) {
             </thead>
             <tbody>
               {lineItems.map((item, ri) => (
-                <tr key={ri}>
+                <tr key={ri} style={{ animation: `fadeUp 0.25s var(--ease) ${Math.min(ri * 40, 400)}ms both` }}>
                   {activeCols.map(c => {
                     const fld = fieldMappings[`col${c}`]
                     const numeric = isNumFld(fld)

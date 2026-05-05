@@ -1,8 +1,8 @@
 import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Pencil } from 'lucide-react'
+import { Pencil, Eye } from 'lucide-react'
 import { useOcrWizard } from '../hooks/useOcrWizard'
-import { StepWizard, FormActions, CustomModal, LoadingOverlay, DocumentPreview, DarkModeToggle } from '../components/common'
+import { StepWizard, FormActions, CustomModal, LoadingOverlay, DocumentPreview, DarkModeToggle, Skeleton, SkeletonGrid } from '../components/common'
 import { UploadSection, HeaderCard, DetailTable, AccountingReview, InputTaxReconciliation } from '../components/credit-card'
 import logo from '../assets/logo.png'
 
@@ -53,7 +53,7 @@ export default function CreditCardOCR() {
 
         <StepWizard step={step} onStepClick={(n) => !loading && !submitting && setStep(n)} />
 
-        {step <= 2 && (
+        {step <= 2 && !loading && (
           <>
             <UploadSection
               bank={bank}
@@ -64,6 +64,36 @@ export default function CreditCardOCR() {
               multiple={true}
             />
           </>
+        )}
+
+        {step <= 2 && loading && (
+          <div className="main-content" style={{ animation: 'none', opacity: 1 }}>
+            <div className="preview-column">
+              <h2 className="section-title">
+                <Eye size={16} /> Document Preview
+              </h2>
+              <div className="preview-frame" style={{ height: '600px', borderStyle: 'dashed', background: 'var(--gray-50)' }}>
+                <Skeleton height="100%" width="100%" radius="var(--radius-lg)" />
+              </div>
+            </div>
+            <div className="data-column">
+              <h2 className="section-title">
+                <Pencil size={14} /> Step 3: Review Data
+              </h2>
+              <div className="data-card">
+                <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <Skeleton height="1.1rem" width="40%" />
+                  <SkeletonGrid rows={3} cols={2} height="2.2rem" gap="0.75rem" />
+                </div>
+              </div>
+              <div className="data-card">
+                <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                  <Skeleton height="1.1rem" width="30%" />
+                  <SkeletonGrid rows={4} cols={4} height="1.9rem" gap="0.5rem" colTemplate="2fr 1fr 1fr 1fr" />
+                </div>
+              </div>
+            </div>
+          </div>
         )}
 
         <div
@@ -78,9 +108,9 @@ export default function CreditCardOCR() {
             <AnimatePresence mode="wait">
               <motion.div
                 key={step}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
+                initial={{ opacity: 0, transform: 'translateY(10px)' }}
+                animate={{ opacity: 1, transform: 'translateY(0px)' }}
+                exit={{ opacity: 0, transform: 'translateY(-6px)' }}
                 transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
               >
                 {step <= 3 && (

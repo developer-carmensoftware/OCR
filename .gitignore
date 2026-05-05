@@ -51,3 +51,7 @@ docs/SECURITY_PDPA_CHECKLIST.md
 graphify-out/manifest.json    
 graphify-out/cost.json        
 graphify-out/cache/         
+
+
+.agents/
+skills-lock.json

@@ -47,7 +47,7 @@ export default function DetailTable({ details, onUpdate, onAddRow, onDeleteRow, 
             </thead>
             <tbody>
               {details.map((row, rowIdx) => (
-                <tr key={rowIdx}>
+                <tr key={rowIdx} style={{ animation: `fadeUp 0.25s var(--ease) ${Math.min(rowIdx * 40, 400)}ms both` }}>
                   {DETAIL_COLUMNS.map(col => {
                     const isAmountField = amountFields.includes(col)
                     const isEditing = focusedCell?.row === rowIdx && focusedCell?.col === col
