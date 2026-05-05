@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
 import { FileText, Scale, Flag, AlertCircle, X, Check, Loader2, ArrowLeft, PlusCircle } from 'lucide-react'
 import { submitInputTax } from '../../lib/api/carmen'
+import { normalizeYearToCE } from '../../lib/date'
+
 
 function toNum(v) {
   return parseFloat(String(v ?? '').replace(/,/g, '')) || 0
@@ -51,16 +53,18 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
 
     // taxPeriod: "MM/YYYY" → derive prefix, FrDate, ToDate
     const [mm, yyyy] = (taxPeriod || '/').split('/')
-    const prefix   = `vat${yyyy}${mm}`
-    const frDate   = `${yyyy}-${mm}-01`
-    const lastDay  = new Date(Number(yyyy), Number(mm), 0).getDate()
-    const toDate   = `${yyyy}-${mm}-${String(lastDay).padStart(2, '0')}`
+    const normalizedYYYY = normalizeYearToCE(yyyy)
+    const prefix   = `vat${normalizedYYYY}${mm}`
+    const frDate   = `${normalizedYYYY}-${mm}-01`
+    const lastDay  = new Date(Number(normalizedYYYY), Number(mm), 0).getDate()
+    const toDate   = `${normalizedYYYY}-${mm}-${String(lastDay).padStart(2, '0')}`
 
     // DocDate: "DD/MM/YYYY" → "YYYY-MM-DDT00:00:00.000Z"
     let invhTInvDt = ''
     if (headerData.DocDate) {
       const [dd, mo, yy] = headerData.DocDate.split('/')
-      invhTInvDt = `${yy}-${mo}-${dd}T00:00:00.000Z`
+      const normalizedYY = normalizeYearToCE(yy)
+      invhTInvDt = `${normalizedYY}-${mo}-${dd}T00:00:00.000Z`
     }
 
     const rateInt = Math.round(taxRate)

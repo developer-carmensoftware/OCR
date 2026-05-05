@@ -7,6 +7,8 @@ import { logCorrections, diffCorrections } from '../lib/api/feedback'
 import { getCarmenUrl } from '../lib/url'
 import { toast } from 'sonner'
 import { useModal } from './useModal'
+import { normalizeYearToCE } from '../lib/date'
+
 
 function loadSavedState() {
   try {
@@ -317,7 +319,8 @@ export function useOcrWizard() {
           JvhDate: (() => {
             if (headerData.DocDate) {
               const [d, m, y] = headerData.DocDate.split('/')
-              const parsed = new Date(`${y}-${m}-${d}`)
+              const normalizedY = normalizeYearToCE(y)
+              const parsed = new Date(`${normalizedY}-${m}-${d}`)
               if (!isNaN(parsed)) return parsed.toISOString()
             }
             return new Date().toISOString()

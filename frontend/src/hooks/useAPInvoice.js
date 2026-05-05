@@ -6,15 +6,8 @@ import {
 import { fetchAccountCodes, fetchDepartments, submitAPInvoiceToCarmen } from '../lib/api/carmen'
 import { apiFetch } from '../lib/api/client'
 import { toast } from 'sonner'
+import { parseDateToISO } from '../lib/date'
 
-function parseDateToISO(dateStr) {
-  if (!dateStr) return new Date().toISOString()
-  const parts = dateStr.split('/')
-  if (parts.length !== 3) return new Date().toISOString()
-  const [dd, mm, yyyy] = parts
-  const d = new Date(`${yyyy}-${mm}-${dd}T00:00:00.000Z`)
-  return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString()
-}
 
 function addDays(isoDate, days) {
   const d = new Date(isoDate)
