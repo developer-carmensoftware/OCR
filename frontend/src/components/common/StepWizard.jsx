@@ -1,3 +1,4 @@
+import { motion } from 'framer-motion'
 import { Check } from 'lucide-react'
 
 const DEFAULT_STEPS = [
@@ -21,6 +22,7 @@ export default function StepWizard({ step, steps, onStepClick }) {
             <div key={s.n} style={{ display: 'contents' }}>
               <div
                 className={`step ${isActive ? 'active' : isDone ? 'done' : ''} ${isClickable ? 'clickable' : ''}`}
+                style={{ position: 'relative' }}
                 onClick={isClickable ? () => onStepClick(s.n) : undefined}
                 role={isClickable ? 'button' : undefined}
                 tabIndex={isClickable ? 0 : undefined}
@@ -29,10 +31,24 @@ export default function StepWizard({ step, steps, onStepClick }) {
                   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onStepClick(s.n) }
                 } : undefined}
               >
-                <div className="step-num">
+                {isActive && (
+                  <motion.span
+                    layoutId="step-active-pill"
+                    style={{
+                      position: 'absolute', inset: 0,
+                      borderRadius: '100px',
+                      background: 'var(--primary-light)',
+                      border: '1px solid var(--primary-mid)',
+                      boxShadow: '0 0 0 3px rgba(79,70,229,0.06)',
+                      zIndex: 0,
+                    }}
+                    transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                  />
+                )}
+                <div className="step-num" style={{ position: 'relative', zIndex: 1 }}>
                   {isDone ? <Check size={11} strokeWidth={3} /> : String(s.n).padStart(2, '0')}
                 </div>
-                <span className="step-label">
+                <span className="step-label" style={{ position: 'relative', zIndex: 1 }}>
                   {s.label}
                   {s.sub && <span style={{ display: 'inline', opacity: 0.65 }}>{' '}{s.sub}</span>}
                 </span>

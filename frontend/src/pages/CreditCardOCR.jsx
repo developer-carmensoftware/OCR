@@ -1,4 +1,5 @@
 import { toast } from 'sonner'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Pencil } from 'lucide-react'
 import { useOcrWizard } from '../hooks/useOcrWizard'
 import { StepWizard, FormActions, CustomModal, LoadingOverlay, DocumentPreview, DarkModeToggle } from '../components/common'
@@ -74,49 +75,59 @@ export default function CreditCardOCR() {
           )}
 
           <div className="data-column">
-            {step <= 3 && (
-              <div id="step3">
-                <h2 className="section-title">
-                  <Pencil size={14} /> Step 3: Review Data
-                </h2>
-                <HeaderCard headerData={headerData} onUpdate={updateHeader} />
-                <DetailTable
-                  details={details}
-                  onUpdate={updateDetail}
-                  onAddRow={addRow}
-                  onDeleteRow={deleteRow}
-                />
-                <FormActions
-                  onCancel={handleCancel}
-                  onSubmit={() => setStep(4)}
-                  submitLabel="Next (Review Accounting)"
-                  showBack={false}
-                />
-              </div>
-            )}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={step}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+              >
+                {step <= 3 && (
+                  <div id="step3">
+                    <h2 className="section-title">
+                      <Pencil size={14} /> Step 3: Review Data
+                    </h2>
+                    <HeaderCard headerData={headerData} onUpdate={updateHeader} />
+                    <DetailTable
+                      details={details}
+                      onUpdate={updateDetail}
+                      onAddRow={addRow}
+                      onDeleteRow={deleteRow}
+                    />
+                    <FormActions
+                      onCancel={handleCancel}
+                      onSubmit={() => setStep(4)}
+                      submitLabel="Next (Review Accounting)"
+                      showBack={false}
+                    />
+                  </div>
+                )}
 
-            {step === 4 && (
-              <div id="step4">
-                <AccountingReview
-                  details={details}
-                  headerData={headerData}
-                  onBack={() => setStep(3)}
-                  onSubmit={handleSubmitFinal}
-                  onGoMapping={() => { toast.info('Opened new tab for Mapping settings'); window.open('#/CreditCardOCR/mapping', '_blank') }}
-                  submitting={submitting}
-                />
-              </div>
-            )}
+                {step === 4 && (
+                  <div id="step4">
+                    <AccountingReview
+                      details={details}
+                      headerData={headerData}
+                      onBack={() => setStep(3)}
+                      onSubmit={handleSubmitFinal}
+                      onGoMapping={() => { toast.info('Opened new tab for Mapping settings'); window.open('#/CreditCardOCR/mapping', '_blank') }}
+                      submitting={submitting}
+                    />
+                  </div>
+                )}
 
-            {step === 5 && (
-              <div id="step5">
-                <InputTaxReconciliation
-                  details={details}
-                  headerData={headerData}
-                  onFinish={resetAll}
-                />
-              </div>
-            )}
+                {step === 5 && (
+                  <div id="step5">
+                    <InputTaxReconciliation
+                      details={details}
+                      headerData={headerData}
+                      onFinish={resetAll}
+                    />
+                  </div>
+                )}
+              </motion.div>
+            </AnimatePresence>
           </div>
         </div>
       </div>

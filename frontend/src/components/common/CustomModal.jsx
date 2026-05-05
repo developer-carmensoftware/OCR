@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { motion } from 'framer-motion'
 import { CheckCircle2, AlertTriangle, XCircle, Info } from 'lucide-react'
 
 export default function CustomModal({
@@ -59,14 +60,22 @@ export default function CustomModal({
   }
 
   return createPortal(
-    <div
+    <motion.div
       className="modal-overlay"
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
       aria-describedby="modal-desc"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.18 }}
     >
-      <div className="modal-box">
+      <motion.div
+        className="modal-box"
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+      >
         <div className={`modal-icon ${type}`}>{getIcon()}</div>
         <h3 className="modal-title" id="modal-title">{title}</h3>
         <p className="modal-msg" id="modal-desc">{message}</p>
@@ -88,8 +97,8 @@ export default function CustomModal({
             {confirmText}
           </button>
         </div>
-      </div>
-    </div>,
+      </motion.div>
+    </motion.div>,
     document.body
   )
 }

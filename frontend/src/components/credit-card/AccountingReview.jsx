@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { CheckCheck, AlertTriangle, Info, FileText, Loader2, AlertCircle, ArrowLeft, Settings, RefreshCw, UploadCloud } from 'lucide-react'
+import { SkeletonRow } from '../common/Skeleton'
 import CustomModal from '../common/CustomModal'
 import Card from '../common/Card'
 import Badge from '../common/Badge'
@@ -171,7 +172,10 @@ export default function AccountingReview({ details, headerData = {}, onBack, onS
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && (
+              {rows.length === 0 && accLoading && Array.from({ length: 4 }).map((_, i) => (
+                <SkeletonRow key={i} cols={8} />
+              ))}
+              {rows.length === 0 && !accLoading && (
                 <tr>
                   <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: 'var(--gray-500)' }}>
                     No data — Please configure Account Mapping first
