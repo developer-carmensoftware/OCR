@@ -1,7 +1,7 @@
 import { Receipt, FileText, Landmark, CheckCircle2, Clock, Lock, ArrowRight } from 'lucide-react'
 import '../styles/pages/home.css'
 import logo from '../assets/logo.png'
-import DarkModeToggle from '../components/common/DarkModeToggle'
+import { DarkModeToggle, UsageIndicator } from '../components/common'
 
 const MODULES = [
   {
@@ -47,7 +47,8 @@ const MODULES = [
 export default function Home() {
   return (
     <div className="home-page">
-      <div className="home-dark-toggle">
+      <div className="home-dark-toggle" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <UsageIndicator />
         <DarkModeToggle />
       </div>
 

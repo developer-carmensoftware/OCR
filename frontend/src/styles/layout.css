@@ -15,7 +15,14 @@
     justify-content: space-between;
     margin-bottom: 2rem;
     padding: 1rem 1.5rem;
-    background: rgba(255, 255, 255, 0.82);
+    /* Use multiple backgrounds: first is the 3px gradient bar at the top, second is the glass background */
+    background-image: 
+        linear-gradient(90deg, var(--primary) 0%, #818cf8 50%, var(--teal) 100%),
+        linear-gradient(rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.82));
+    background-size: 100% 3px, 100% 100%;
+    background-position: top center, center;
+    background-repeat: no-repeat;
+    
     -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
     border: 1px solid rgba(255, 255, 255, 0.6);
@@ -23,15 +30,11 @@
     box-shadow: var(--shadow-md);
     animation: fadeDown 0.5s var(--ease) both;
     position: relative;
-    overflow: hidden;
 }
 
+/* Remove the old ::before approach */
 .app-header::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 3px;
-    background: linear-gradient(90deg, var(--primary) 0%, #818cf8 50%, var(--teal) 100%);
+    display: none;
 }
 
 .app-header h1 {

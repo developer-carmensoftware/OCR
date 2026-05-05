@@ -19,6 +19,8 @@ from pydantic import BaseModel
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import get_current_session, SessionInfo
+
 from app.config import settings
 from app.database import get_db, provision_tenant, async_session
 from app.models.orm import OcrSession
@@ -172,3 +174,16 @@ async def revoke_session(
         logger.info("Session revoked: %s", session.id)
 
     return {"ok": True}
+    
+
+@router.get("/usage")
+async def get_usage(
+    _session: SessionInfo = Depends(get_current_session),
+):
+    """Get current BU usage and limits."""
+    from app.services.usage_service import get_bu_usage
+    usage = await get_bu_usage(_session.bu)
+    return {
+        "bu": _session.bu,
+        "usage": usage
+    }

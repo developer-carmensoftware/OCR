@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { AlertCircle, RotateCw, ChevronLeft, FileText } from 'lucide-react'
-import { DocumentPreview, CustomModal, StepWizard, LoadingOverlay, DarkModeToggle, Skeleton, SkeletonGrid } from '../components/common'
+import { DocumentPreview, CustomModal, StepWizard, LoadingOverlay, DarkModeToggle, Skeleton, SkeletonGrid, UsageIndicator } from '../components/common'
 import APUploadStep from '../components/ap-invoice/APUploadStep'
 import APFieldMappingStep from '../components/ap-invoice/APFieldMappingStep'
 import APReviewStep from '../components/ap-invoice/APReviewStep'
@@ -70,7 +70,10 @@ export default function APInvoice() {
               </div>
             </div>
           </div>
-          <DarkModeToggle />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            {step === 1 && <UsageIndicator />}
+            <DarkModeToggle />
+          </div>
         </div>
 
         <StepWizard step={step} steps={AP_STEPS} onStepClick={(n) => !loading && setStep(n)} />

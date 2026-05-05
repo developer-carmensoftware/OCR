@@ -12,6 +12,10 @@ export default function Tooltip({ text, children, position = 'top' }) {
         return { bottom: show ? `calc(100% + ${hoverOffset}px)` : `calc(100% + ${baseOffset}px)`, left: '50%', transform: 'translateX(-50%)' }
       case 'bottom': 
         return { top: show ? `calc(100% + ${hoverOffset}px)` : `calc(100% + ${baseOffset}px)`, left: '50%', transform: 'translateX(-50%)' }
+      case 'bottom-left': 
+        return { top: show ? `calc(100% + ${hoverOffset}px)` : `calc(100% + ${baseOffset}px)`, right: 0, transform: 'none' }
+      case 'bottom-right': 
+        return { top: show ? `calc(100% + ${hoverOffset}px)` : `calc(100% + ${baseOffset}px)`, left: 0, transform: 'none' }
       case 'right': 
         return { left: show ? `calc(100% + ${hoverOffset}px)` : `calc(100% + ${baseOffset}px)`, top: '50%', transform: 'translateY(-50%)' }
       case 'left': 
@@ -42,7 +46,7 @@ export default function Tooltip({ text, children, position = 'top' }) {
         fontSize: '0.75rem',
         fontWeight: 500,
         whiteSpace: 'nowrap',
-        zIndex: 50,
+        zIndex: 9999,
         pointerEvents: 'none',
         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
         opacity: show ? 1 : 0,

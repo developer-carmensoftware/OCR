@@ -99,6 +99,51 @@ async def check_bu_rate_limit(bu_name: Optional[str] = None) -> None:
         logger.error("Failed to check rate limit for %s: %s", bu_name, e)
 
 
+async def get_bu_usage(bu_name: Optional[str] = None) -> Dict:
+    """
+    Get current usage and limit for a BU.
+    """
+    if not bu_name:
+        from app.context import current_bu
+        bu_name = current_bu.get()
+    
+    if not bu_name:
+        return {"monthly_calls": 0, "max_monthly_calls": 0, "remaining_calls": 0}
+
+    current_month = datetime.utcnow().strftime("%Y-%m")
+    
+    try:
+        async with async_session() as db:
+            result = await db.execute(
+                select(BUUsage).where(BUUsage.bu_name == bu_name)
+            )
+            usage = result.scalar_one_or_none()
+
+            if not usage:
+                return {
+                    "monthly_calls": 0,
+                    "max_monthly_calls": 50, # Default
+                    "remaining_calls": 50
+                }
+
+            # Monthly reset check (logical only, don't commit here to avoid side effects in GET)
+            monthly_calls = usage.monthly_calls
+            if usage.last_reset_month != current_month:
+                monthly_calls = 0
+
+            max_calls = usage.max_monthly_calls
+            remaining = max(0, max_calls - monthly_calls) if max_calls > 0 else 999999
+            
+            return {
+                "monthly_calls": monthly_calls,
+                "max_monthly_calls": max_calls,
+                "remaining_calls": remaining
+            }
+    except Exception as e:
+        logger.error("Failed to get BU usage for %s: %s", bu_name, e)
+        return {"monthly_calls": 0, "max_monthly_calls": 0, "remaining_calls": 0}
+
+
 async def increment_bu_usage(bu_name: Optional[str] = None) -> None:
     """Increment the call counters for a BU."""
     if not bu_name:

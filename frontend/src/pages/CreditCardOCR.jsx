@@ -2,7 +2,7 @@ import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Pencil, Eye } from 'lucide-react'
 import { useOcrWizard } from '../hooks/useOcrWizard'
-import { StepWizard, FormActions, CustomModal, LoadingOverlay, DocumentPreview, DarkModeToggle, Skeleton, SkeletonGrid } from '../components/common'
+import { StepWizard, FormActions, CustomModal, LoadingOverlay, DocumentPreview, DarkModeToggle, Skeleton, SkeletonGrid, UsageIndicator } from '../components/common'
 import { UploadSection, HeaderCard, DetailTable, AccountingReview, InputTaxReconciliation } from '../components/credit-card'
 import logo from '../assets/logo.png'
 
@@ -48,7 +48,10 @@ export default function CreditCardOCR() {
               </div>
             </div>
           </div>
-          <DarkModeToggle />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            {step === 1 && <UsageIndicator />}
+            <DarkModeToggle />
+          </div>
         </div>
 
         <StepWizard step={step} onStepClick={(n) => !loading && !submitting && setStep(n)} />

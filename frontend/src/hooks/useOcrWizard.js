@@ -235,7 +235,7 @@ export function useOcrWizard() {
       } else {
         setStatus('Data extracted successfully ✓')
         setStep(3)
-        showToast(`Successfully extracted ${files.length} file(s) — please review and edit`, 'success')
+        showToast(`Successfully extracted ${filesToProcess.length} ${filesToProcess.length === 1 ? 'file' : 'files'} — please review and edit`, 'success')
       }
     } catch (err) {
       setStatus(err.message)
