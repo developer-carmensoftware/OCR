@@ -1,4 +1,5 @@
 import { Building, IdCard, GitBranch, FileText, Calendar, AlignLeft, Database, Check, X, ArrowLeft, AlertTriangle, Save } from 'lucide-react'
+import { SkeletonRow } from '../common/Skeleton'
 import CustomSearchSelect from '../common/CustomSearchSelect'
 import AISuggestBar from '../common/AISuggestBar'
 
@@ -143,7 +144,10 @@ export default function APAccountMappingStep({
               </tr>
             </thead>
             <tbody>
-              {lineItems.map((item, ri) => {
+              {masterAccounts.length === 0 && Array.from({ length: 3 }).map((_, i) => (
+                <SkeletonRow key={i} cols={hasSuggestions ? 4 : 3} />
+              ))}
+              {masterAccounts.length > 0 && lineItems.map((item, ri) => {
                 const hasSuggest = !!(item._suggestDept || item._suggestAcc)
                 const missingDept = !item.deptCode
                 const missingAcc  = !item.accountCode

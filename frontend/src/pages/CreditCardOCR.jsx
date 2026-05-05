@@ -1,4 +1,5 @@
-import { CheckCircle2, XCircle, Info, Pencil } from 'lucide-react'
+import { toast } from 'sonner'
+import { Pencil } from 'lucide-react'
 import { useOcrWizard } from '../hooks/useOcrWizard'
 import { StepWizard, FormActions, CustomModal, LoadingOverlay, DocumentPreview, DarkModeToggle } from '../components/common'
 import { UploadSection, HeaderCard, DetailTable, AccountingReview, InputTaxReconciliation } from '../components/credit-card'
@@ -10,7 +11,7 @@ export default function CreditCardOCR() {
     loading, submitting, status,
     headerData, details,
     fileInputRef,
-    toasts, modal, showToast, showModal, closeModal,
+    modal,
     setBank, setStep,
     handleFileChange,
     updateHeader, updateDetail, addRow, deleteRow,
@@ -34,15 +35,6 @@ export default function CreditCardOCR() {
       <LoadingOverlay show={loading} status={status} />
 
       <div className="app-container">
-        <div className="toast-container" id="toastContainer">
-          {toasts.slice(-1).map(t => (
-            <div key={t.id} className={`toast ${t.type}`} style={{ opacity: 1, transform: 'none' }}>
-              {t.type === 'success' ? <CheckCircle2 size={16} /> : t.type === 'error' ? <XCircle size={16} /> : <Info size={16} />}
-              {t.msg}
-            </div>
-          ))}
-        </div>
-
         <div className="app-header">
           <div className="brand">
             <div className="logo-box" style={{ background: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)', color: 'white' }}>
@@ -110,7 +102,7 @@ export default function CreditCardOCR() {
                   headerData={headerData}
                   onBack={() => setStep(3)}
                   onSubmit={handleSubmitFinal}
-                  onGoMapping={() => { showToast('เปิด tab ใหม่สำหรับตั้งค่า Mapping แล้ว', 'info'); window.open('#/CreditCardOCR/mapping', '_blank') }}
+                  onGoMapping={() => { toast.info('เปิด tab ใหม่สำหรับตั้งค่า Mapping แล้ว'); window.open('#/CreditCardOCR/mapping', '_blank') }}
                   submitting={submitting}
                 />
               </div>
@@ -122,7 +114,6 @@ export default function CreditCardOCR() {
                   details={details}
                   headerData={headerData}
                   onFinish={resetAll}
-                  showToast={showToast}
                 />
               </div>
             )}

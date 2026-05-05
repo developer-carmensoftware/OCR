@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 // Force light theme for all pages
 document.documentElement.dataset.theme = 'light'
 import ReactDOM from 'react-dom/client'
+import { Toaster } from 'sonner'
 import Home from './pages/Home'
 import CreditCardOCR from './pages/CreditCardOCR'
 import Mapping from './pages/Mapping'
@@ -41,6 +42,7 @@ function Router() {
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <AuthProvider>
+    <Toaster richColors position="top-right" duration={3500} />
     <Router />
   </AuthProvider>,
 )

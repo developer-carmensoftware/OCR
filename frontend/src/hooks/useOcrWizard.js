@@ -5,7 +5,7 @@ import { submitToLocal } from '../lib/api/submit'
 import { submitToCarmen } from '../lib/api/carmen'
 import { logCorrections, diffCorrections } from '../lib/api/feedback'
 import { getCarmenUrl } from '../lib/url'
-import { useToast } from './useToast'
+import { toast } from 'sonner'
 import { useModal } from './useModal'
 
 function loadSavedState() {
@@ -37,7 +37,12 @@ export function useOcrWizard() {
   const [jvDescription, setJvDescription] = useState('')
   const [carmenJvId, setCarmenJvId] = useState(null)
 
-  const { toasts, showToast } = useToast()
+  const showToast = (msg, type = 'info') => {
+    if (type === 'success') toast.success(msg)
+    else if (type === 'error') toast.error(msg)
+    else if (type === 'warning') toast.warning(msg)
+    else toast.info(msg)
+  }
   const { modal, showModal, closeModal } = useModal()
 
   const fileInputRef = useRef(null)
@@ -420,7 +425,7 @@ export function useOcrWizard() {
     // Refs
     fileInputRef,
     // UI
-    toasts, modal, showToast, showModal, closeModal,
+    modal, showToast, showModal, closeModal,
     // Actions
     setBank, setStep,
     handleFileChange, processFile,

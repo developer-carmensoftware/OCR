@@ -28,18 +28,8 @@ export default function APInvoice() {
 
   const [showPreview, setShowPreview] = useState(false)
   const [acceptAllModal, setAcceptAllModal] = useState(false)
-  const { toasts } = ctrl
-
   return (
     <>
-      <div className="toast-container" id="toastContainer">
-        {toasts.slice(-1).map(t => (
-          <div key={t.id} className={`toast ${t.type}`} style={{ opacity: 1, transform: 'none' }}>
-            {t.msg}
-          </div>
-        ))}
-      </div>
-
       <CustomModal
         show={modal.show}
         title={modal.title}

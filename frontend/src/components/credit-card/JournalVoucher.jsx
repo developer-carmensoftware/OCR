@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import { FileText, Receipt, ArrowLeft, ExternalLink, ArrowRight } from 'lucide-react'
 import { fetchAccountCodes } from '../../lib/api/carmen'
 import { getCarmenUrl } from '../../lib/url'
@@ -12,7 +13,7 @@ const JV_HEADERS = ['Dept.', 'Account #', 'Account Name', 'Comment', 'Currency',
 
 let _accCache = null
 
-export default function JournalVoucher({ jvRows, headerData, filePrefix, fileSource, description, carmenJvId, onFinish, onBack, showToast }) {
+export default function JournalVoucher({ jvRows, headerData, filePrefix, fileSource, description, carmenJvId, onFinish, onBack }) {
   const totalDr = jvRows.reduce((s, r) => s + r.debit,  0)
   const totalCr = jvRows.reduce((s, r) => s + r.credit, 0)
 
@@ -137,7 +138,7 @@ export default function JournalVoucher({ jvRows, headerData, filePrefix, fileSou
               ขั้นตอนถัดไป: <strong>Input Tax Reconciliation</strong> — ตรวจสอบ VAT ภาษีซื้อ
             </span>
             <button className="btn-submit" onClick={() => {
-              showToast?.('กำลังไปยัง Step 6: Input Tax Reconciliation', 'info')
+              toast.info('กำลังไปยัง Step 6: Input Tax Reconciliation')
               onFinish()
             }}>
               <ArrowRight size={14} /> ต่อไป (Next)

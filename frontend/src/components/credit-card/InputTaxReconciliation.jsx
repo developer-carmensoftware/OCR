@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { toast } from 'sonner'
 import { FileText, Scale, Flag, AlertCircle, X, Check, Loader2, ArrowLeft, PlusCircle } from 'lucide-react'
 import { submitInputTax } from '../../lib/api/carmen'
 
@@ -9,7 +10,7 @@ function toNum(v) {
 
 const fmt = n => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-export default function InputTaxReconciliation({ details, headerData, onBack, onFinish, showToast }) {
+export default function InputTaxReconciliation({ details, headerData, onBack, onFinish }) {
   const [config, setConfig] = useState(null)
   const [showConfirm, setShowConfirm] = useState(false)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
@@ -89,12 +90,12 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
     try {
       await submitInputTax(payload)
       setShowConfirm(false)
-      showToast?.('เพิ่ม Input Tax Reconciliation เข้าระบบสำเร็จ', 'success')
+      toast.success('เพิ่ม Input Tax Reconciliation เข้าระบบสำเร็จ')
       onFinish()
     } catch (err) {
       const msg = err.message || 'เกิดข้อผิดพลาด'
       setSubmitError(msg)
-      showToast?.(`เพิ่ม Input Tax ล้มเหลว: ${msg}`, 'error')
+      toast.error(`เพิ่ม Input Tax ล้มเหลว: ${msg}`)
     } finally {
       setSubmitting(false)
     }
@@ -321,7 +322,7 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
                 style={{ background: 'var(--rose)', color: 'white' }}
                 onClick={() => {
                   setShowDiscardConfirm(false)
-                  showToast?.('จบกระบวนการโดยไม่เพิ่ม Input Tax', 'info')
+                  toast.info('จบกระบวนการโดยไม่เพิ่ม Input Tax')
                   onFinish()
                 }}
               >

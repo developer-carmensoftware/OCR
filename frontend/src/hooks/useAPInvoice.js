@@ -5,7 +5,7 @@ import {
 } from '../constants/apInvoice'
 import { fetchAccountCodes, fetchDepartments, submitAPInvoiceToCarmen } from '../lib/api/carmen'
 import { apiFetch } from '../lib/api/client'
-import { useToast } from './useToast'
+import { toast } from 'sonner'
 
 function parseDateToISO(dateStr) {
   if (!dateStr) return new Date().toISOString()
@@ -108,7 +108,12 @@ function buildInvoicePayload(headerData, lineItems, systemVendor) {
 export function useAPInvoice() {
   const [lang, setLang] = useState('en')
   const t = AP_I18N[lang]
-  const { toasts, showToast } = useToast()
+  const showToast = (msg, type = 'info') => {
+    if (type === 'success') toast.success(msg)
+    else if (type === 'error') toast.error(msg)
+    else if (type === 'warning') toast.warning(msg)
+    else toast.info(msg)
+  }
 
   const [step, setStep] = useState(1)
   const [file, setFile] = useState(null)
@@ -579,8 +584,6 @@ export function useAPInvoice() {
   return {
     // i18n
     lang, setLang, t,
-    // Toast
-    toasts,
     // Wizard
     step, setStep,
     // File & preview
