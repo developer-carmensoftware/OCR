@@ -14,7 +14,7 @@ def build_fixed_fields_prompt(
 
 Fields:
 - Credit card commission (ค่าธรรมเนียม): Income account — matches "commission", "credit card", "bank charge", "ค่าธรรมเนียม"
-- Input Tax (ภาษีบนค่าธรรมเนียม): BalanceSheet account — matches "output tax undue", "ภาษีขายรอตัด"
+- Input Tax (ภาษีบนค่าธรรมเนียม): BalanceSheet account — matches "input tax undue", "ภาษีขายรอตัด"
 - Bank Account (ยอดรับสุทธิ): BalanceSheet account — matches "C/A", "S/A", "bank", "ธนาคาร", "กระแสรายวัน"
 
 Departments:

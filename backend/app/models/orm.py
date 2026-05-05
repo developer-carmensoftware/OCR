@@ -205,3 +205,13 @@ class APInvoice(Base):
     original_filename = Column(String(255), nullable=True)
     submitted_at      = Column(DateTime,    nullable=True)
     created_at        = Column(DateTime,    server_default=func.now())
+
+class BUUsage(Base):
+    __tablename__ = "bu_usage"
+
+    bu_name           = Column(String(100), primary_key=True)
+    monthly_calls     = Column(Integer,      default=0)
+    total_calls       = Column(BigInteger,   default=0)
+    max_monthly_calls = Column(Integer,      default=50) # Default free tier limit
+    last_reset_month  = Column(String(7),    nullable=True) # e.g. "2026-05"
+    updated_at        = Column(DateTime,     server_default=func.now(), onupdate=func.now())

@@ -30,6 +30,7 @@ from app.exceptions import (
     LLMParseError,
     LLMServiceError,
     ValidationError,
+    RateLimitExceeded,
 )
 from app.routers.auth import router as auth_router
 from app.middleware.performance import PerformanceMiddleware
@@ -198,6 +199,7 @@ _EXCEPTION_STATUS: list[tuple] = [
     (ExtractionError,        422),
     (LLMServiceError,        503),
     (CarmenServiceError,     503),
+    (RateLimitExceeded,      429),
 ]
 
 @app.exception_handler(Exception)
