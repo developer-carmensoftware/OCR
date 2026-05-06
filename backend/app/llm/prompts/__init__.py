@@ -3,46 +3,61 @@ OCR prompt registry.
 
 Usage:
     from app.llm.prompts import get_ocr_prompt
-    prompt = get_ocr_prompt("SCB")   # or "BBL", "KBANK", None → generic
+    prompt = get_ocr_prompt()          # auto-detect bank (default)
+    prompt = get_ocr_prompt("SCB")     # explicit bank (backward compat)
 """
 
-from app.llm.prompts.scb import PROMPT as _SCB
-from app.llm.prompts.bbl import PROMPT as _BBL
-from app.llm.prompts.kbank import PROMPT as _KBANK
-from app.llm.prompts.generic import PROMPT as _GENERIC
+from app.llm.prompts._shared import build_bank_prompt, build_combined_prompt
+from app.llm.prompts.bbl import LAYOUT as _BBL
+from app.llm.prompts.kbank import LAYOUT as _KBANK
+from app.llm.prompts.scb import LAYOUT as _SCB
+from app.llm.prompts.generic import LAYOUT as _GENERIC
 
+# Registry: add a new bank = new layout file + one entry here
 _REGISTRY: dict[str, str] = {
-    "SCB":   _SCB,
     "BBL":   _BBL,
     "KBANK": _KBANK,
+    "SCB":   _SCB,
 }
 
-# Bump the version string whenever a prompt changes — used by GET /api/version
+# Bump whenever a layout changes — used by GET /api/version
 _PROMPT_VERSIONS: dict[str, str] = {
-    "SCB":    "1.0.0",
-    "BBL":    "1.0.0",
-    "KBANK":  "1.0.0",
-    "GENERIC":"1.0.0",
+    "BBL":     "2.0.0",
+    "KBANK":   "2.0.0",
+    "SCB":     "2.0.0",
+    "GENERIC": "2.0.0",
+    "COMBINED": "2.0.0",
 }
 
+# Pre-built at import time — no cost at request time
+_BANK_PROMPTS: dict[str, str] = {
+    code: build_bank_prompt(layout)
+    for code, layout in _REGISTRY.items()
+}
+_COMBINED: str = build_combined_prompt(list(_REGISTRY.values()) + [_GENERIC])
 
-def get_ocr_prompt(bank_type: str | None, hints: dict[str, str] | None = None) -> str:
-    """Return the bank-specific OCR prompt, falling back to generic.
 
-    hints: {field_name: error_rate_info} from correction_service.
-           When provided, a warning section is appended telling LLM
-           which fields are often extracted incorrectly (no specific values).
+def get_ocr_prompt(bank_type: str | None = None, hints: dict[str, str] | None = None) -> str:
+    """Return the OCR extraction prompt.
+
+    bank_type=None (default) → combined auto-detect prompt (recommended).
+    bank_type="BBL"|"KBANK"|"SCB" → bank-specific prompt (for explicit overrides).
+
+    hints: {field_name: error_rate_info} from correction_service — appends a
+           warning section for fields that are historically extracted incorrectly.
     """
-    base_prompt = _REGISTRY.get(bank_type or "", _GENERIC)
+    base = _BANK_PROMPTS.get(bank_type or "", _COMBINED)
+
     if not hints:
-        return base_prompt
+        return base
 
     hint_lines = "\n".join(
         f"- {field}: often extracted incorrectly — read the document carefully for this field"
         for field in hints.keys()
     )
+    bank_label = bank_type or "this document type"
     return (
-        base_prompt
-        + f"\n\n⚠️ CORRECTION NOTES (fields that are often wrong for {bank_type}):\n"
+        base
+        + f"\n\n⚠️ CORRECTION NOTES (fields often wrong for {bank_label}):\n"
         + hint_lines
     )

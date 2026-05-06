@@ -1,9 +1,6 @@
-import React from 'react';
-import CustomSearchSelect from '../common/CustomSearchSelect';
-
 export default function TopLevelConfigSection({
   bank, handleBankChange,
-  filePrefix, setFilePrefix, masterGLPrefixes, loadingOpts,
+  filePrefix, setFilePrefix,
   fileSource, setFileSource,
   description, setDescription
 }) {
@@ -23,19 +20,24 @@ export default function TopLevelConfigSection({
         <label style={!filePrefix ? { color: '#dc2626', fontWeight: 600 } : {}}>
           File Prefix {!filePrefix && <span style={{ color: '#dc2626' }}>*</span>}
         </label>
-        <CustomSearchSelect
+        <input
+          type="text"
+          placeholder="IC"
           value={filePrefix}
-          onChange={(code) => setFilePrefix(code)}
-          options={masterGLPrefixes}
-          placeholder={loadingOpts ? 'Loading...' : 'Select file prefix...'}
-          hasError={!filePrefix}
+          onChange={(e) => setFilePrefix(e.target.value.toUpperCase())}
+          style={!filePrefix ? { borderColor: 'var(--rose)', background: 'var(--btn-err-bg, #fff1f2)' } : {}}
         />
 
         <label style={!fileSource ? { color: '#dc2626', fontWeight: 600 } : {}}>
           File Source {!fileSource && <span style={{ color: '#dc2626' }}>*</span>}
         </label>
-        <input type="text" placeholder="Specify file source (e.g., Email, Drive)" value={fileSource} onChange={(e) => setFileSource(e.target.value)}
-          style={!fileSource ? { borderColor: 'var(--rose)', background: 'var(--btn-err-bg, #fff1f2)' } : {}} />
+        <input
+          type="text"
+          placeholder="e.g. ACBB, ACKB, ACSC"
+          value={fileSource}
+          onChange={(e) => setFileSource(e.target.value)}
+          style={!fileSource ? { borderColor: 'var(--rose)', background: 'var(--btn-err-bg, #fff1f2)' } : {}}
+        />
 
         <label>Description</label>
         <input type="text" placeholder="Additional details" value={description} onChange={(e) => setDescription(e.target.value)} />

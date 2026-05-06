@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { fetchAccountCodes, fetchDepartments, fetchGLPrefixes } from '../lib/api/carmen';
 import { suggestMapping, suggestPaymentTypes, saveMappingHistory } from '../lib/api/mapping';
 
@@ -20,6 +20,12 @@ const BANK_INFO = {
   },
 };
 
+const BANK_SOURCE_MAP = {
+  'Bangkok Bank (BBL)': 'ACBB',
+  'Kasikornbank (KBANK)': 'ACKB',
+  'Siam Commercial Bank (SCB)': 'ACSC',
+};
+
 const OCR_BANK_MAP = {
   BBL: 'Bangkok Bank (BBL)',
   KBANK: 'Kasikornbank (KBANK)',
@@ -33,7 +39,7 @@ export function useMapping() {
   const [loadingOpts, setLoadingOpts] = useState(true);
 
   const [bank, setBank] = useState('');
-  const [filePrefix, setFilePrefix] = useState('');
+  const [filePrefix, setFilePrefix] = useState('IC');
   const [fileSource, setFileSource] = useState('');
   const [description, setDescription] = useState('');
 
@@ -50,6 +56,8 @@ export function useMapping() {
   const [newCustomType, setNewCustomType] = useState('');
 
   const [isAmountModalOpen, setIsAmountModalOpen] = useState(false);
+  const paymentAmountSnapshot = useRef(null);
+  const customPaymentTypesSnapshot = useRef(null);
   const [activeScan, setActiveScan] = useState({ paymentTypes: new Set(), commission: false, tax: false, net: false });
   const [modalConfig, setModalConfig] = useState({ show: false, title: '', message: '', type: 'info' });
   const [saving, setSaving] = useState(false);
@@ -140,8 +148,8 @@ export function useMapping() {
         const detectedBank = detectBankFromCompanyName(parsed.company?.name || ocrCompany?.name);
         const finalBank = parsed.bank || ocrBank || detectedBank;
         setBank(finalBank);
-        setFilePrefix(parsed.filePrefix || '');
-        setFileSource(parsed.fileSource || '');
+        setFilePrefix(parsed.filePrefix || 'IC');
+        setFileSource(parsed.fileSource || BANK_SOURCE_MAP[finalBank] || '');
         setDescription(parsed.description || '');
 
         let companyData = { name: '', taxId: '', branch: '', address: '' };
@@ -165,6 +173,8 @@ export function useMapping() {
       } catch (e) { }
     } else if (ocrBank) {
       setBank(ocrBank);
+      setFilePrefix('IC');
+      setFileSource(BANK_SOURCE_MAP[ocrBank] || '');
       let companyData = { name: '', taxId: '', branch: '', address: '' };
       if (Object.keys(ocrCompany).length) {
         companyData = { ...companyData, ...ocrCompany };
@@ -176,6 +186,8 @@ export function useMapping() {
         companyData.address = info.address;
       }
       setCompany(companyData);
+    } else {
+      setFilePrefix('IC');
     }
 
     const amountState = localStorage.getItem('accountMappingAmount');
@@ -386,6 +398,9 @@ export function useMapping() {
       const info = BANK_INFO[selected];
       setCompany(prev => ({ ...prev, name: info.name, taxId: info.taxId, address: info.address }));
     }
+    if (BANK_SOURCE_MAP[selected]) {
+      setFileSource(BANK_SOURCE_MAP[selected]);
+    }
   };
 
   const handleCompanyChange = (e, field) => {
@@ -433,7 +448,24 @@ export function useMapping() {
     });
   };
 
+  const openAmountModal = () => {
+    paymentAmountSnapshot.current = JSON.parse(JSON.stringify(paymentAmount));
+    customPaymentTypesSnapshot.current = [...customPaymentTypes];
+    setIsAmountModalOpen(true);
+  };
+
+  const cancelAmountSelection = () => {
+    if (paymentAmountSnapshot.current !== null) setPaymentAmount(paymentAmountSnapshot.current);
+    if (customPaymentTypesSnapshot.current !== null) setCustomPaymentTypes(customPaymentTypesSnapshot.current);
+    paymentAmountSnapshot.current = null;
+    customPaymentTypesSnapshot.current = null;
+    setPaymentSuggestions({});
+    setIsAmountModalOpen(false);
+  };
+
   const saveAmountSelection = () => {
+    paymentAmountSnapshot.current = null;
+    customPaymentTypesSnapshot.current = null;
     localStorage.setItem('accountMappingAmount', JSON.stringify({ ...paymentAmount, __customTypes: customPaymentTypes }));
     setIsAmountModalOpen(false);
   };
@@ -509,7 +541,7 @@ export function useMapping() {
     mappings, setMappings, handleMappingChange,
     paymentAmount, handlePaymentMappingChange,
     customPaymentTypes, newCustomType, setNewCustomType, handleAddCustomType, handleRemoveCustomType,
-    isAmountModalOpen, setIsAmountModalOpen, saveAmountSelection,
+    isAmountModalOpen, setIsAmountModalOpen, openAmountModal, cancelAmountSelection, saveAmountSelection,
     activeScan,
     modalConfig, setModalConfig,
     saving, saveAllSettings,

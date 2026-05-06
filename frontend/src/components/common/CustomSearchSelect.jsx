@@ -100,6 +100,11 @@ export default function CustomSearchSelect({ value, onChange, options, placehold
   const isAISuggested = !isOpen && !!suggestedValue;
   const displayValue = isOpen ? searchTerm : (isAISuggested ? suggestedValue : value || '');
 
+  const suggestedOption = suggestedValue ? options.find(o => o.code === suggestedValue) : null;
+  const suggestedDesc = suggestedOption
+    ? [suggestedOption.name, suggestedOption.name2].filter(Boolean).join(' · ')
+    : null;
+
   return (
     <div ref={wrapperRef} style={{ position: 'relative', width: '100%' }}>
       <input
@@ -108,7 +113,7 @@ export default function CustomSearchSelect({ value, onChange, options, placehold
         value={displayValue}
         onFocus={() => { setIsOpen(true); setSearchTerm(''); }}
         onChange={(e) => setSearchTerm(e.target.value)}
-        title={isAISuggested ? `AI แนะนำ: ${suggestedValue}` : value && selectedDesc ? `${value} — ${selectedDesc}` : ''}
+        title={isAISuggested ? `AI แนะนำ: ${suggestedValue}${suggestedDesc ? ` — ${suggestedDesc}` : ''}` : value && selectedDesc ? `${value} — ${selectedDesc}` : ''}
         className="search-select-input"
         style={{ width: '100%', padding: '0.5rem 0.65rem', border: `1px solid ${isAISuggested ? 'var(--primary-mid)' : hasError ? 'var(--rose)' : 'var(--border)'}`, borderBottomColor: isOpen ? 'var(--primary)' : isAISuggested ? 'var(--primary-mid)' : hasError ? 'var(--rose)' : 'var(--border)', borderRadius: '6px', fontSize: '0.85rem', outline: 'none', transition: 'all 0.2s', fontFamily: "'DM Mono', monospace", background: isAISuggested ? 'var(--primary-light)' : hasError ? 'var(--rose-light)' : 'transparent', color: isAISuggested ? 'var(--primary)' : 'inherit' }}
       />

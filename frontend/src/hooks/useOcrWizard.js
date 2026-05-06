@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { EMPTY_DETAIL_ROW, BANK_THAI_NAMES, detectBankFromCompanyName, detectBankFromExtracted } from '../constants'
+import { EMPTY_DETAIL_ROW, detectBankFromCompanyName, detectBankFromExtracted } from '../constants'
 import { extractFromFile } from '../lib/api/ocr'
 import { submitToLocal } from '../lib/api/submit'
 import { submitToCarmen } from '../lib/api/carmen'
@@ -10,31 +10,22 @@ import { useModal } from './useModal'
 import { normalizeYearToCE } from '../lib/date'
 
 
-function loadSavedState() {
-  try {
-    const saved = localStorage.getItem('ocr_wizard_state')
-    return saved ? JSON.parse(saved) : null
-  } catch { return null }
-}
-
 export function useOcrWizard() {
-  const saved = loadSavedState()
-
-  const [step, setStep] = useState(saved?.step > 1 ? saved.step : 1)
-  const [bank, setBank] = useState(saved?.bank || '')
+  const [step, setStep] = useState(1)
+  const [bank, setBank] = useState('')
   const [files, setFiles] = useState([])
   const [previewUrl, setPreviewUrl] = useState(null)
   const [previewType, setPreviewType] = useState(null)
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [status, setStatus] = useState('')
-  const [cardId, setCardId] = useState(saved?.cardId || null)
-  const [headerData, setHeaderData] = useState(saved?.headerData || {})
-  const [details, setDetails] = useState(saved?.details || [])
-  const [originalDetails, setOriginalDetails] = useState(saved?.originalDetails || [])
-  const [originalHeader, setOriginalHeader] = useState(saved?.originalHeader || {})
+  const [cardId, setCardId] = useState(null)
+  const [headerData, setHeaderData] = useState({})
+  const [details, setDetails] = useState([])
+  const [originalDetails, setOriginalDetails] = useState([])
+  const [originalHeader, setOriginalHeader] = useState({})
   const [jvRows, setJvRows] = useState([])
-  const [filePrefix, setFilePrefix] = useState('')
+  const [filePrefix, setFilePrefix] = useState('IC')
   const [fileSource, setFileSource] = useState('')
   const [jvDescription, setJvDescription] = useState('')
   const [carmenJvId, setCarmenJvId] = useState(null)
@@ -51,6 +42,10 @@ export function useOcrWizard() {
   const submittedDocNos = useRef(new Set())
 
   useEffect(() => {
+    localStorage.removeItem('ocr_wizard_state')
+  }, [])
+
+  useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl.split('#')[0])
     }
@@ -59,7 +54,7 @@ export function useOcrWizard() {
   useEffect(() => {
     try {
       const config = JSON.parse(localStorage.getItem('accountingConfig') || '{}')
-      setFilePrefix(config.filePrefix || '')
+      setFilePrefix(config.filePrefix || 'IC')
       setFileSource(config.fileSource || '')
       const desc = config.description
         ? `${config.description}${headerData.DocDate ? ` - ${headerData.DocDate}` : ''}`
@@ -67,13 +62,6 @@ export function useOcrWizard() {
       setJvDescription(desc)
     } catch { /* ignore */ }
   }, [step])
-
-  useEffect(() => {
-    if (step > 1) {
-      const state = { step, bank, cardId, headerData, details, originalDetails, originalHeader }
-      localStorage.setItem('ocr_wizard_state', JSON.stringify(state))
-    }
-  }, [step, bank, cardId, headerData, details, originalDetails])
 
   function handleFileChange(e) {
     const selectedFiles = e.target.files
@@ -161,14 +149,6 @@ export function useOcrWizard() {
 
   async function processFile(filesOverride) {
     const filesToProcess = filesOverride ?? files
-    if (!bank) {
-      showModal({
-        title: 'Incomplete Information',
-        message: 'Please select a bank before proceeding.',
-        type: 'warning', confirmText: 'Acknowledge', onConfirm: closeModal,
-      })
-      return
-    }
     if (filesToProcess.length === 0) {
       showModal({
         title: 'No Document File Found',
@@ -178,10 +158,9 @@ export function useOcrWizard() {
       return
     }
     setLoading(true)
-    setStep(2)
     setStatus('AI is extracting data from document...')
     try {
-      const ext = await extractFromFile(filesToProcess[0], bank)
+      const ext = await extractFromFile(filesToProcess[0], null)
 
       if (ext.is_duplicate) {
         setStatus('Duplicate document found')
@@ -190,53 +169,10 @@ export function useOcrWizard() {
       }
 
       applyExtractedData(ext)
-
-      const detectedBank = detectBankFromExtracted(ext)
-      if (detectedBank && detectedBank !== bank) {
-        setStatus('Data extracted successfully ✓')
-        setStep(3)
-        showModal({
-          title: 'Bank Mismatch Detected',
-          message: `This document appears to belong to ${BANK_THAI_NAMES[detectedBank]},\nbut the selected bank is ${BANK_THAI_NAMES[bank]}.\n\nDo you want to reprocess with ${BANK_THAI_NAMES[detectedBank]}?`,
-          type: 'warning',
-          confirmText: `Process with ${detectedBank}`,
-          cancelText: 'Use current result',
-          onConfirm: async () => {
-            closeModal()
-            setBank(detectedBank)
-            setLoading(true)
-            setStep(2)
-            setStatus('AI is re-extracting data...')
-            try {
-              const ext2 = await extractFromFile(filesToProcess[0], detectedBank)
-              if (ext2.is_duplicate) {
-                setStatus('Duplicate document found')
-                showDuplicateModal(ext2.doc_no)
-                return
-              }
-              applyExtractedData(ext2)
-              setStatus('Data extracted successfully ✓')
-              setStep(3)
-              showToast(`Successfully reprocessed with ${BANK_THAI_NAMES[detectedBank]}`, 'success')
-            } catch (err) {
-              setStatus(err.message)
-              showModal({
-                title: 'Error Occurred',
-                message: `Failed to extract data: ${err.message}`,
-                type: 'error', confirmText: 'Close', onConfirm: closeModal,
-              })
-              setStep(1)
-            } finally {
-              setLoading(false)
-            }
-          },
-          onCancel: closeModal,
-        })
-      } else {
-        setStatus('Data extracted successfully ✓')
-        setStep(3)
-        showToast(`Successfully extracted ${filesToProcess.length} ${filesToProcess.length === 1 ? 'file' : 'files'} — please review and edit`, 'success')
-      }
+      setBank(detectBankFromExtracted(ext) || '')
+      setStatus('Data extracted successfully ✓')
+      setStep(2)
+      showToast(`Successfully extracted ${filesToProcess.length} ${filesToProcess.length === 1 ? 'file' : 'files'} — please review and edit`, 'success')
     } catch (err) {
       if (err.status === 429) {
         showModal({
@@ -260,6 +196,28 @@ export function useOcrWizard() {
     }
   }
 
+  async function reExtract(bankType) {
+    if (files.length === 0) return
+    setLoading(true)
+    setStatus(`Re-extracting with ${bankType || 'auto-detect'}...`)
+    try {
+      const ext = await extractFromFile(files[0], bankType || null)
+      applyExtractedData(ext)
+      // User-selected bank takes priority; fall back to auto-detect from result
+      setBank(bankType || detectBankFromExtracted(ext) || '')
+      showToast(`Re-extracted successfully${bankType ? ` with ${bankType}` : ''}`, 'success')
+    } catch (err) {
+      showModal({
+        title: 'Re-extract Failed',
+        message: `Failed to re-extract: ${err.message}`,
+        type: 'error', confirmText: 'Close', onConfirm: closeModal,
+      })
+    } finally {
+      setLoading(false)
+      setStatus('')
+    }
+  }
+
   function updateHeader(key, value) {
     setHeaderData(prev => ({ ...prev, [key]: value }))
   }
@@ -276,7 +234,7 @@ export function useOcrWizard() {
   async function handleSubmitFinal(rows) {
     if (submittedDocNos.current.has(headerData.DocNo)) {
       showToast('This document is already saved and cannot be submitted again.', 'warning')
-      setStep(5)
+      setStep(4)
       return
     }
 
@@ -374,7 +332,7 @@ export function useOcrWizard() {
         confirmText: 'Proceed to Input Tax Reconciliation',
         cancelText:  jvId ? 'View JV' : undefined,
         cancelStyle: jvId ? { background: 'var(--teal)', color: 'white', border: '1px solid var(--teal)' } : undefined,
-        onConfirm:   () => { closeModal(); setStep(5) },
+        onConfirm:   () => { closeModal(); setStep(4) },
         onCancel:    jvId ? () => window.open(getCarmenUrl(`/glJv/${jvId}/show`), '_blank') : undefined,
       })
     } catch (err) {
@@ -410,7 +368,6 @@ export function useOcrWizard() {
     setJvRows([])
     setCarmenJvId(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
-    localStorage.removeItem('ocr_wizard_state')
     closeModal()
   }
 
@@ -441,7 +398,7 @@ export function useOcrWizard() {
     modal, showToast, showModal, closeModal,
     // Actions
     setBank, setStep,
-    handleFileChange, processFile,
+    handleFileChange, processFile, reExtract,
     updateHeader, updateDetail, addRow, deleteRow,
     handleSubmitFinal, handleCancel, resetAll, goBack,
   }

@@ -2,11 +2,10 @@ import { motion } from 'framer-motion'
 import { Check } from 'lucide-react'
 
 const DEFAULT_STEPS = [
-  { n: 1, label: 'Select Bank', sub: '& File' },
-  { n: 2, label: 'AI Extract', sub: '' },
-  { n: 3, label: 'Review', sub: 'Data' },
-  { n: 4, label: 'Accounting', sub: 'Review' },
-  { n: 5, label: 'Input Tax', sub: 'Reconciliation' },
+  { n: 1, label: 'Upload', sub: 'File' },
+  { n: 2, label: 'Review', sub: 'Data' },
+  { n: 3, label: 'Accounting', sub: 'Review' },
+  { n: 4, label: 'Input Tax', sub: 'Reconciliation' },
 ]
 
 export default function StepWizard({ step, steps, onStepClick }) {

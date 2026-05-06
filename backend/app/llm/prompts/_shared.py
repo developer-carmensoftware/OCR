@@ -1,4 +1,4 @@
-"""Shared prompt fragments reused across all bank-specific OCR prompts."""
+"""Shared prompt fragments and builders reused across all bank OCR prompts."""
 
 ROW_RULES = """
 Rules for extracting details[] rows:
@@ -25,10 +25,10 @@ Header fields to extract:
 - doc_date         : document date → DD/MM/YYYY
 - doc_no           : document number
 - merchant_name    : MERCHANT NAME as shown in the merchant section
-- merchant_id      : MERCHANT NUMBER / MERCHANT ID / หมายเลขร้านค้า — numeric code only
+- merchant_id      : MERCHANT NUMBER / MERCHANT ID from the document HEADER section — numeric code only (NOT from a table column)
 
 Detail row fields (one object per card/payment type row):
-- transaction  : card type / payment type label (e.g. "Visa", "Master", "VSA-INT-P") — null if not labeled
+- transaction  : card type / payment type label per row (e.g. "Visa", "Master", "VSA-INT-P"), OR a terminal/merchant ID code if the bank uses numeric codes per row instead of card-type names — use whatever appears in the first data column of the table
 - pay_amt      : gross sale amount (S/D AMOUNT / ยอดเงิน / จำนวนเงิน)
 - commis_amt   : commission / discount fee (DISCOUNT AMOUNT / ค่าธรรมเนียม)
 - tax_amt      : VAT on commission (VALUE ADDED TAX / ภาษีมูลค่าเพิ่ม)
@@ -37,3 +37,29 @@ Detail row fields (one object per card/payment type row):
 Output structure:
 {"bank_companyname":…,"branch_no":…,"bank_name":…,"doc_name":…,"company_name":…,"doc_date":…,"doc_no":…,"merchant_name":…,"merchant_id":…,"details":[{"transaction":…,"pay_amt":…,"commis_amt":…,"tax_amt":…,"total":…}]}
 """
+
+_BASE_INTRO = (
+    "You are extracting structured data from a Thai bank credit card receipt "
+    "and tax invoice (ใบเสร็จรับเงิน/ใบกำกับภาษี).\n\n"
+    "Carefully read all text in the image."
+)
+
+
+def build_bank_prompt(layout: str) -> str:
+    """Build a standalone bank-specific prompt from a LAYOUT fragment."""
+    return _BASE_INTRO + "\n\n" + layout + "\n" + ROW_RULES + OUTPUT_RULES
+
+
+def build_combined_prompt(layouts: list[str]) -> str:
+    """Build a single auto-detect prompt from all bank LAYOUT fragments."""
+    sep = "\n" + "─" * 50 + "\n"
+    bank_ref = sep.join(layouts)
+    return (
+        _BASE_INTRO + "\n\n"
+        "Step 1 — Identify the bank: match the document header/footer/company name "
+        "against the BANK REFERENCE below.\n"
+        "Step 2 — Apply the matched bank's column mapping and quirks.\n"
+        "Step 3 — If no bank matches, use best judgment from visible column labels.\n\n"
+        f"BANK REFERENCE:\n{sep}{bank_ref}{sep}"
+        + ROW_RULES + OUTPUT_RULES
+    )

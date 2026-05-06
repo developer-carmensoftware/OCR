@@ -1,23 +1,22 @@
-import React from 'react';
 import ReactDOM from 'react-dom';
 import { FileText, AlertCircle, AlertTriangle, Check, X, XCircle, Plus } from 'lucide-react';
 import CustomSearchSelect from '../common/CustomSearchSelect';
 import AISuggestBar from '../common/AISuggestBar';
 
 export default function PaymentTypeModal({
-  isAmountModalOpen, setIsAmountModalOpen,
+  isAmountModalOpen,
   activeScan, amountMappedCount, allPaymentTypes,
   paymentSuggestions, paymentSuggestLoading, autoSuggestPaymentTypes,
   masterAccounts, masterDepartments, loadingOpts,
   paymentAmount, handlePaymentMappingChange,
   confirmPaymentSuggestion, rejectPaymentSuggestion,
   customPaymentTypes, newCustomType, setNewCustomType, handleAddCustomType, handleRemoveCustomType,
-  saveAmountSelection, setPaymentSuggestions, setAcceptAllModal
+  saveAmountSelection, cancelAmountSelection, setAcceptAllModal
 }) {
   if (!isAmountModalOpen) return null;
 
   return ReactDOM.createPortal(
-    <div className="mapping-modal" style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => { setPaymentSuggestions({}); setIsAmountModalOpen(false); }}>
+    <div className="mapping-modal" style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={cancelAmountSelection}>
       <div className="mapping-modal-overlay" style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)' }}></div>
       <div className="mapping-modal-content" style={{ position: 'relative', zIndex: 1, background: 'var(--data-card-bg, #fff)', width: '90%', maxWidth: '800px', borderRadius: '8px', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }} onClick={(e) => e.stopPropagation()}>
         <div className="mapping-modal-header" style={{ padding: '1rem', borderBottom: '1px solid var(--border)', fontWeight: 'bold', display: 'flex', flexDirection: 'column', gap: '0.75rem', background: 'var(--gray-50)', borderTopLeftRadius: '8px', borderTopRightRadius: '8px' }}>
@@ -226,7 +225,7 @@ export default function PaymentTypeModal({
           </div>
         </div>
         <div className="mapping-modal-footer" style={{ padding: '1rem', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-          <button className="btn-cancel" onClick={() => { setPaymentSuggestions({}); setIsAmountModalOpen(false); }} style={{ padding: '0.5rem 1rem', background: 'var(--gray-200)', color: 'var(--text-2)', borderRadius: '4px', cursor: 'pointer', border: 'none' }}>Cancel</button>
+          <button className="btn-cancel" onClick={cancelAmountSelection} style={{ padding: '0.5rem 1rem', background: 'var(--gray-200)', color: 'var(--text-2)', borderRadius: '4px', cursor: 'pointer', border: 'none' }}>Cancel</button>
           <button className="btn-confirm" onClick={saveAmountSelection} style={{ padding: '0.5rem 1rem', background: 'var(--primary)', color: '#fff', borderRadius: '4px', cursor: 'pointer', border: 'none' }}>OK</button>
         </div>
       </div>

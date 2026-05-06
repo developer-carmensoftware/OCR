@@ -34,11 +34,6 @@ export default function Mapping() {
       <div className="container" style={{ margin: '2rem auto', maxWidth: '800px' }}>
         <h1><Network size={20} /> Account Mapping Configuration</h1>
 
-        <div style={{ marginBottom: '1.5rem' }}>
-          <button onClick={() => window.location.hash = '/CreditCardOCR'} className="btn-cancel" style={{ textDecoration: 'none', padding: '0.6rem 1.2rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', borderRadius: '8px', background: 'var(--gray-50)', color: 'var(--text-2)', border: '1px solid var(--border)', cursor: 'pointer' }}>
-            <ArrowLeft size={14} /> Back to Main Page
-          </button>
-        </div>
 
         <TopLevelConfigSection {...mappingCtrl} />
         

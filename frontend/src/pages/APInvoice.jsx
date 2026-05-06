@@ -24,11 +24,28 @@ export default function APInvoice() {
     handleAISuggest, handleAcceptAll, hasSuggestions, allMapped,
     handleConfirmSuggest, handleRejectSuggest, handleReset,
     handleGenerate, invoiceSeq,
-    updateItem, updateHeader, modal, isDuplicate,
+    updateItem, updateHeader, modal, setModal, isDuplicate,
   } = ctrl
 
   const [showPreview, setShowPreview] = useState(false)
   const [acceptAllModal, setAcceptAllModal] = useState(false)
+
+  function handleStepClick(n) {
+    if (n === 1 && step > 1) {
+      setModal({
+        show: true,
+        title: 'Return to Upload?',
+        message: 'Going back will clear all extracted data.\nYou will need to re-upload and re-extract the document, which will use 1 additional quota.',
+        type: 'warning',
+        confirmText: 'Go Back',
+        cancelText: 'Stay Here',
+        onConfirm: () => { setModal({ show: false }); handleReset() },
+        onCancel: () => setModal({ show: false }),
+      })
+    } else {
+      setStep(n)
+    }
+  }
   return (
     <>
       <CustomModal
@@ -76,7 +93,7 @@ export default function APInvoice() {
           </div>
         </div>
 
-        <StepWizard step={step} steps={AP_STEPS} onStepClick={(n) => !loading && setStep(n)} />
+        <StepWizard step={step} steps={AP_STEPS} onStepClick={(n) => !loading && handleStepClick(n)} />
 
         <AnimatePresence mode="wait">
           <motion.div

@@ -9,7 +9,7 @@ export default function AccountMappingTable({
   suggestionMeta, mainSuggestions, suggestLoading,
   autoSuggest, confirmMainSuggestion, rejectMainSuggestion,
   setAcceptAllModal, loadInitialData,
-  activeScan, amountMappedCount, requiredMissingCount, setIsAmountModalOpen,
+  activeScan, amountMappedCount, requiredMissingCount, openAmountModal,
   allPaymentTypes
 }) {
   return (
@@ -38,7 +38,7 @@ export default function AccountMappingTable({
           <div></div>
 
           <div className="mapping-type type-credit" style={{ color: 'var(--primary)', background: 'var(--primary-light)', padding: '0.2rem 0.5rem', borderRadius: '4px', textAlign: 'center', fontWeight: 'bold' }}>Credit</div>
-          <div className="mapping-label clickable" style={{ cursor: 'pointer', color: 'var(--primary)', textDecoration: 'underline' }} onClick={() => setIsAmountModalOpen(true)}>Account Receivable (Click to Map)</div>
+          <div className="mapping-label clickable" style={{ cursor: 'pointer', color: 'var(--primary)', textDecoration: 'underline' }} onClick={openAmountModal}>Account Receivable (Click to Map)</div>
           <div style={{ gridColumn: 'span 3' }}>
             <div id="amountMappingStatus" style={{
               fontSize: '0.85rem',
