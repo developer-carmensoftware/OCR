@@ -21,7 +21,13 @@
     min-width: max-content;
     width: 100%;
     padding: 0.65rem 1.5rem;
-    background: rgba(248, 245, 255, 0.94);
+    /* Gradient bar baked into background-image — respects border-radius without overflow:hidden */
+    background-image:
+        linear-gradient(90deg, var(--primary) 0%, #818cf8 50%, var(--teal) 100%),
+        linear-gradient(rgba(248, 245, 255, 0.94), rgba(248, 245, 255, 0.94));
+    background-size: 100% 3px, 100% 100%;
+    background-position: top center, center;
+    background-repeat: no-repeat;
     -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
     border: 1px solid rgba(196, 181, 253, 0.30);
@@ -31,18 +37,9 @@
         0 4px 20px rgba(128, 88, 241, 0.10),
         0 1px 4px rgba(128, 88, 241, 0.06);
     position: relative;
-    overflow: hidden;
 }
 
-/* Full-opacity gradient track at top */
-.step-wizard::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 3px;
-    background: linear-gradient(90deg, var(--primary) 0%, #818cf8 50%, var(--teal) 100%);
-    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-}
+.step-wizard::before { display: none; }
 
 .step {
     display: flex;

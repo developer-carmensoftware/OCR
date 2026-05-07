@@ -25,5 +25,9 @@ BBL (Bangkok Bank / ธนาคารกรุงเทพ)
 
   DO NOT put the table's หมายเลขร้านค้า value into the header field merchant_id.
   merchant_id comes only from the document header (เลขที่บัญชี / เลขที่สัญญา).
+
+  SKIP any row where the first column (หมายเลขร้านค้า) contains Thai text such as
+  "จำนวนเงินรวม", "รวม", or any non-numeric label — those are summary rows, not
+  individual transactions. Only rows with a numeric terminal/merchant ID belong in details[].
   ─────────────────────────────────────────────────────────────────────────────\
 """
