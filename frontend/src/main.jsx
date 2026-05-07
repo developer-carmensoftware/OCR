@@ -10,6 +10,7 @@ import Mapping from './pages/Mapping'
 import APInvoice from './pages/APInvoice'
 import { AuthProvider } from './contexts/AuthContext'
 import ProtectedRoute from './components/common/ProtectedRoute'
+import ErrorBoundary from './components/common/ErrorBoundary'
 import './index.css'
 
 function getRoute() {
@@ -41,8 +42,10 @@ function Router() {
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(
-  <AuthProvider>
-    <Toaster richColors position="top-right" duration={3500} />
-    <Router />
-  </AuthProvider>,
+  <ErrorBoundary>
+    <AuthProvider>
+      <Toaster richColors position="top-right" duration={3500} />
+      <Router />
+    </AuthProvider>
+  </ErrorBoundary>,
 )

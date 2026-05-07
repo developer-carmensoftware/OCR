@@ -5,12 +5,10 @@ import CustomModal from '../common/CustomModal'
 import Card from '../common/Card'
 import Badge from '../common/Badge'
 import { fetchAccountCodes } from '../../lib/api/carmen'
+import { toNum, fmt } from '../../lib/format'
+import { useAccountingConfig } from '../../hooks/useAccountingConfig'
 
 let _accCache = null
-
-function toNum(v) {
-  return parseFloat(String(v ?? '').replace(/,/g, '')) || 0
-}
 
 function buildRows(details, config) {
   const { mappings = {}, paymentAmount = {} } = config
@@ -39,10 +37,9 @@ function buildRows(details, config) {
   return rows
 }
 
-const fmt = n => n ? n.toLocaleString(undefined, { minimumFractionDigits: 2 }) : ''
 
 export default function AccountingReview({ details, headerData = {}, onBack, onSubmit, onGoMapping, submitting = false }) {
-  const [config, setConfig] = useState(null)
+  const { config } = useAccountingConfig()
   const [warningModal, setWarningModal] = useState(false)
   const [accNameMap, setAccNameMap] = useState(_accCache || {})
   const [accLoading, setAccLoading] = useState(!_accCache)
@@ -64,26 +61,7 @@ export default function AccountingReview({ details, headerData = {}, onBack, onS
 
   const getAccName = acc => accNameMap[acc] || ''
 
-  const loadConfig = () => {
-    try {
-      const raw = localStorage.getItem('accountingConfig')
-      let cfg = raw ? JSON.parse(raw) : null
-      const rawAmt = localStorage.getItem('accountMappingAmount')
-      if (rawAmt) {
-        const amt = JSON.parse(rawAmt)
-        cfg = cfg ? { ...cfg, paymentAmount: { ...cfg.paymentAmount, ...amt } } : { paymentAmount: amt }
-      }
-      if (cfg) setConfig(cfg)
-    } catch {}
-  }
 
-  useEffect(() => {
-    loadConfig()
-    const sync = (e) => { if (e.key === 'accountingConfig' || e.key === 'accountMappingAmount') loadConfig() }
-    window.addEventListener('storage', sync)
-    window.addEventListener('focus', loadConfig)
-    return () => { window.removeEventListener('storage', sync); window.removeEventListener('focus', loadConfig) }
-  }, [])
 
   const rows    = config ? buildRows(details, config) : []
   const totalDr = rows.reduce((s, r) => s + r.debit,  0)

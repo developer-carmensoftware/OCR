@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { AlertCircle, RotateCw, ChevronLeft, FileText } from 'lucide-react'
-import { DocumentPreview, CustomModal, StepWizard, LoadingOverlay, DarkModeToggle, Skeleton, SkeletonGrid, UsageIndicator } from '../components/common'
+import { AlertCircle, RotateCw } from 'lucide-react'
+import { DocumentPreview, CustomModal, StepWizard, LoadingOverlay, DarkModeToggle, ExtractionSkeleton, SplitLayout, UsageIndicator } from '../components/common'
 import APUploadStep from '../components/ap-invoice/APUploadStep'
 import APFieldMappingStep from '../components/ap-invoice/APFieldMappingStep'
 import APReviewStep from '../components/ap-invoice/APReviewStep'
@@ -108,22 +108,7 @@ export default function APInvoice() {
               <APUploadStep t={t} fileInputRef={fileInputRef} onFileChange={handleFileChange} />
             )}
 
-            {step === 1 && loading && (
-              <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div className="data-card">
-                  <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    <Skeleton height="1.1rem" width="40%" />
-                    <SkeletonGrid rows={3} cols={2} height="2.2rem" gap="0.75rem" />
-                  </div>
-                </div>
-                <div className="data-card">
-                  <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                    <Skeleton height="1.1rem" width="30%" />
-                    <SkeletonGrid rows={4} cols={4} height="1.9rem" gap="0.5rem" colTemplate="2fr 1fr 1fr 1fr" />
-                  </div>
-                </div>
-              </div>
-            )}
+            {step === 1 && loading && <ExtractionSkeleton />}
 
             {/* Error */}
             {error && (
@@ -143,37 +128,26 @@ export default function APInvoice() {
 
             {/* Steps 2 & 3 — Split layout with toggleable document preview */}
             {(step === 2 || step === 3) && previewUrl && !loading && (
-              <div className={`ap-split-layout ${!showPreview ? 'full-width' : ''}`}>
-                {showPreview && (
-                  <div className="ap-preview-side">
-                    <DocumentPreview previewUrl={previewUrl} previewType={previewType} fileName={file?.name} />
-                    <button className="preview-toggle-btn hide" onClick={() => setShowPreview(false)}>
-                      <ChevronLeft size={14} /> Hide Document
-                    </button>
-                  </div>
+              <SplitLayout
+                showPreview={showPreview}
+                onToggle={setShowPreview}
+                previewUrl={previewUrl}
+                previewType={previewType}
+                fileName={file?.name}
+              >
+                {step === 2 && (
+                  <APFieldMappingStep
+                    t={t}
+                    lineItems={lineItems}
+                    fieldMappings={fieldMappings}
+                    availableFields={availableFields}
+                    onMappingChange={(col, val) => setFieldMappings(p => ({ ...p, [`col${col}`]: val }))}
+                    onBack={() => setStep(1)}
+                    onConfirm={confirmMapping}
+                  />
                 )}
-
-                {!showPreview && (
-                  <button className="preview-toggle-btn show" onClick={() => setShowPreview(true)}>
-                    <FileText size={14} /> {t.showDoc || 'View Document'}
-                  </button>
-                )}
-
-                <div className="ap-work-area">
-                  {step === 2 && (
-                    <APFieldMappingStep
-                      t={t}
-                      lineItems={lineItems}
-                      fieldMappings={fieldMappings}
-                      availableFields={availableFields}
-                      onMappingChange={(col, val) => setFieldMappings(p => ({ ...p, [`col${col}`]: val }))}
-                      onBack={() => setStep(1)}
-                      onConfirm={confirmMapping}
-                    />
-                  )}
-                  {step === 3 && <APReviewStep ctrl={ctrl} />}
-                </div>
-              </div>
+                {step === 3 && <APReviewStep ctrl={ctrl} />}
+              </SplitLayout>
             )}
 
             {/* Step 4 — Account Mapping */}

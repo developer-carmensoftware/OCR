@@ -25,16 +25,8 @@ export const NUMERIC_FIELDS = [
   'lineSubTotal', 'taxPct', 'taxAmt', 'lineTotal',
 ]
 
-export const parseNum = (v) => {
-  if (typeof v === 'number') return v
-  const n = Number(String(v || '').replace(/,/g, ''))
-  return isNaN(n) ? 0 : n
-}
-
-export const fmt = (v) =>
-  parseNum(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-
-export const round2 = (v) => Math.round(parseNum(v) * 100) / 100
+// Re-exported from lib/format.js for backward compatibility
+export { parseNum, fmt, round2 } from '../lib/format'
 
 export const isNumFld = (f) => NUMERIC_FIELDS.includes(f)
 

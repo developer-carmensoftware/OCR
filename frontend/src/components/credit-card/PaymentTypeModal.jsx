@@ -2,6 +2,7 @@ import ReactDOM from 'react-dom';
 import { FileText, AlertCircle, AlertTriangle, Check, X, XCircle, Plus } from 'lucide-react';
 import CustomSearchSelect from '../common/CustomSearchSelect';
 import AISuggestBar from '../common/AISuggestBar';
+import '../../styles/components/payment-modal.css';
 
 export default function PaymentTypeModal({
   isAmountModalOpen,
@@ -16,19 +17,21 @@ export default function PaymentTypeModal({
   if (!isAmountModalOpen) return null;
 
   return ReactDOM.createPortal(
-    <div className="mapping-modal" style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={cancelAmountSelection}>
-      <div className="mapping-modal-overlay" style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)' }}></div>
-      <div className="mapping-modal-content" style={{ position: 'relative', zIndex: 1, background: 'var(--data-card-bg, #fff)', width: '90%', maxWidth: '800px', borderRadius: '8px', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }} onClick={(e) => e.stopPropagation()}>
-        <div className="mapping-modal-header" style={{ padding: '1rem', borderBottom: '1px solid var(--border)', fontWeight: 'bold', display: 'flex', flexDirection: 'column', gap: '0.75rem', background: 'var(--gray-50)', borderTopLeftRadius: '8px', borderTopRightRadius: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', justifyContent: 'space-between' }}>
+    <div className="pm-overlay mapping-modal" onClick={cancelAmountSelection}>
+      <div className="pm-backdrop mapping-modal-overlay" />
+      <div className="pm-dialog mapping-modal-content" onClick={(e) => e.stopPropagation()}>
+
+        {/* ── Header ── */}
+        <div className="pm-header mapping-modal-header">
+          <div className="pm-header-top">
             <span>Select Payment Types for Account Receivable</span>
             {activeScan.paymentTypes.size > 0 && (
-              <span style={{ fontSize: '0.8rem', color: 'var(--btn-err-text, #dc2626)', background: 'var(--btn-err-bg, #fff)', padding: '4px 12px', borderRadius: '20px', border: '1px solid var(--btn-err-border, #fca5a5)', fontWeight: 700 }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}><FileText size={13} /> Required for this scan: {activeScan.paymentTypes.size} items</span>
+              <span className="pm-required-badge">
+                <FileText size={13} /> Required for this scan: {activeScan.paymentTypes.size} items
               </span>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'space-between' }}>
+          <div className="pm-header-bottom">
             <AISuggestBar
               onSuggest={() => autoSuggestPaymentTypes()}
               onAcceptAll={() => setAcceptAllModal(true)}
@@ -36,197 +39,126 @@ export default function PaymentTypeModal({
               loading={paymentSuggestLoading}
               disabled={loadingOpts}
             />
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-3)', fontWeight: 500 }}>
+            <span className="pm-map-count">
               ({amountMappedCount}/{allPaymentTypes.length} mapped)
             </span>
           </div>
         </div>
-        <div className="mapping-modal-body table-wrapper" style={{ padding: '1rem', overflowY: 'auto' }}>
-          <div style={{ minWidth: '700px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 1fr) 1fr 1fr auto', gap: '1rem', fontWeight: 'bold', marginBottom: '1rem', paddingRight: '0.5rem' }}>
-            <div>Payment Type</div>
-            <div>Department Code</div>
-            <div>Account Code</div>
-            <div></div>
-          </div>
-          {/* ── Required for Scan ── */}
-          {activeScan.paymentTypes.size > 0 && (
-            <>
-              <div style={{ padding: '0.5rem', background: 'var(--btn-err-bg, #fef2f2)', color: 'var(--btn-err-text, #991b1b)', fontSize: '0.75rem', fontWeight: 700, borderRadius: '4px', marginBottom: '0.75rem', border: '1px solid var(--btn-err-border, #fecaca)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <AlertCircle size={13} /> Required for this scan
-              </div>
-              {[...activeScan.paymentTypes].map(type => {
+
+        {/* ── Body ── */}
+        <div className="pm-body mapping-modal-body table-wrapper">
+          <div className="pm-inner">
+            <div className="pm-grid-header">
+              <div>Payment Type</div>
+              <div>Department Code</div>
+              <div>Account Code</div>
+              <div />
+            </div>
+
+            {/* Required for scan */}
+            {activeScan.paymentTypes.size > 0 && (
+              <>
+                <div className="pm-section-label">
+                  <AlertCircle size={13} /> Required for this scan
+                </div>
+                {[...activeScan.paymentTypes].map(type => {
+                  const pAmt = paymentAmount[type] || { dept: '', acc: '' };
+                  const suggestion = paymentSuggestions[type] || null;
+                  const isPending = !pAmt.dept || !pAmt.acc;
+
+                  const deptFromMaster = suggestion?.dept ? masterDepartments.find(d => d.code === suggestion.dept) : null;
+                  const deptTopChoice = suggestion?.dept ? { code: suggestion.dept, name: deptFromMaster?.name || '(AI)', name2: deptFromMaster?.name2, source: suggestion.source } : null;
+                  const accFromMaster = suggestion?.acc ? masterAccounts.find(a => a.code === suggestion.acc) : null;
+                  const accTopChoice = suggestion?.acc ? { code: suggestion.acc, name: accFromMaster?.name || '(AI)', name2: accFromMaster?.name2, source: suggestion.source } : null;
+
+                  return (
+                    <div key={`req-${type}`} className={`pm-row ${isPending ? 'pm-row--required-pending' : 'pm-row--required-ok'}`}>
+                      <div className="pm-type-cell">
+                        <div className={`pm-type-badge ${isPending ? 'pm-type-badge--pending' : 'pm-type-badge--ok'}`}>{type}</div>
+                        {isPending && <AlertTriangle size={14} color="#dc2626" />}
+                      </div>
+                      <CustomSearchSelect value={pAmt.dept} onChange={(val) => handlePaymentMappingChange(type, 'dept', val)} options={masterDepartments} placeholder="Dept..." topChoice={deptTopChoice} suggestedValue={suggestion?.dept || null} />
+                      <CustomSearchSelect value={pAmt.acc} onChange={(val) => handlePaymentMappingChange(type, 'acc', val)} options={masterAccounts} placeholder="Acc..." topChoice={accTopChoice} suggestedValue={suggestion?.acc || null} />
+                      {suggestion && (
+                        <div className="pm-suggest-actions">
+                          <button className="pm-accept-btn" onClick={() => confirmPaymentSuggestion(type)} title="Accept suggestion"><Check size={13} /></button>
+                          <button className="pm-reject-btn" onClick={() => rejectPaymentSuggestion(type)} title="Reject and clear"><X size={13} /></button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {customPaymentTypes.filter(t => !activeScan.paymentTypes.has(t)).length > 0 && (
+                  <div className="pm-divider">Custom Types</div>
+                )}
+              </>
+            )}
+
+            {/* Custom / extra types */}
+            {allPaymentTypes
+              .filter(t => !activeScan.paymentTypes.has(t))
+              .map(type => {
                 const pAmt = paymentAmount[type] || { dept: '', acc: '' };
+                const isCustom = !activeScan.paymentTypes.has(type);
                 const suggestion = paymentSuggestions[type] || null;
-                const isPending = !pAmt.dept || !pAmt.acc;
 
                 const deptFromMaster = suggestion?.dept ? masterDepartments.find(d => d.code === suggestion.dept) : null;
-                const deptTopChoice = suggestion?.dept ? { code: suggestion.dept, name: deptFromMaster?.name || '(AI)', name2: deptFromMaster?.name2, source: suggestion.source } : null;
+                const deptTopChoice = suggestion?.dept
+                  ? { code: suggestion.dept, name: deptFromMaster?.name || '(AI/History code)', name2: deptFromMaster?.name2, source: suggestion.source }
+                  : null;
                 const accFromMaster = suggestion?.acc ? masterAccounts.find(a => a.code === suggestion.acc) : null;
-                const accTopChoice = suggestion?.acc ? { code: suggestion.acc, name: accFromMaster?.name || '(AI)', name2: accFromMaster?.name2, source: suggestion.source } : null;
+                const accTopChoice = suggestion?.acc
+                  ? { code: suggestion.acc, name: accFromMaster?.name || '(AI/History code)', name2: accFromMaster?.name2, source: suggestion.source }
+                  : null;
 
                 return (
-                  <div key={`req-${type}`} style={{
-                    display: 'grid', gridTemplateColumns: 'minmax(120px, 1fr) 1fr 1fr auto', gap: '1rem', marginBottom: '0.5rem', alignItems: 'center', padding: '0.4rem', borderRadius: '8px',
-                    background: isPending ? 'var(--btn-err-bg, #fff1f2)' : 'var(--btn-ok-bg, #f0fdf4)', border: `1px solid ${isPending ? 'var(--btn-err-border, #fecaca)' : 'var(--btn-ok-border, #bbf7d0)'}`
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <div style={{ background: isPending ? 'var(--rose)' : 'var(--emerald)', color: '#fff', padding: '0.4rem 0.5rem', borderRadius: '4px', fontSize: '0.85rem', fontWeight: 600, textAlign: 'center', flex: 1 }}>{type}</div>
-                      {isPending && <AlertTriangle size={14} color="#dc2626" />}
+                  <div key={type} className="pm-row pm-row--custom">
+                    <div className="pm-type-cell">
+                      <div className={`pm-type-badge ${isCustom ? 'pm-type-badge--custom' : 'pm-type-badge--scan'}`}>
+                        {type}
+                      </div>
+                      {isCustom && (
+                        <button className="pm-remove-btn" onClick={() => handleRemoveCustomType(type)} title="Remove">
+                          <XCircle size={16} />
+                        </button>
+                      )}
                     </div>
-                    <CustomSearchSelect value={pAmt.dept} onChange={(val) => handlePaymentMappingChange(type, 'dept', val)} options={masterDepartments} placeholder="Dept..." topChoice={deptTopChoice} suggestedValue={suggestion?.dept || null} />
-                    <CustomSearchSelect value={pAmt.acc} onChange={(val) => handlePaymentMappingChange(type, 'acc', val)} options={masterAccounts} placeholder="Acc..." topChoice={accTopChoice} suggestedValue={suggestion?.acc || null} />
+                    <CustomSearchSelect value={pAmt.dept} onChange={(val) => handlePaymentMappingChange(type, 'dept', val)} options={masterDepartments} placeholder="Dept..." topChoice={deptTopChoice?.code ? deptTopChoice : null} suggestedValue={suggestion?.dept || null} />
+                    <CustomSearchSelect value={pAmt.acc} onChange={(val) => handlePaymentMappingChange(type, 'acc', val)} options={masterAccounts} placeholder="Acc..." topChoice={accTopChoice?.code ? accTopChoice : null} suggestedValue={suggestion?.acc || null} />
                     {suggestion && (
-                      <div style={{ display: 'flex', gap: '0.3rem' }}>
-                        <button
-                          onClick={() => confirmPaymentSuggestion(type)}
-                          title="Accept suggestion"
-                          style={{ padding: '4px 10px', background: 'var(--btn-ok-bg, #f0fdf4)', color: 'var(--btn-ok-text, #15803d)', border: '1px solid var(--btn-ok-border, #86efac)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}
-                        >
-                          <Check size={13} />
-                        </button>
-                        <button
-                          onClick={() => rejectPaymentSuggestion(type)}
-                          title="Reject and clear"
-                          style={{ padding: '4px 10px', background: 'var(--btn-err-bg, #fff1f2)', color: 'var(--btn-err-text, #dc2626)', border: '1px solid var(--btn-err-border, #fecaca)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}
-                        >
-                          <X size={13} />
-                        </button>
+                      <div className="pm-suggest-actions">
+                        <button className="pm-accept-btn" onClick={() => confirmPaymentSuggestion(type)} title="Accept suggestion"><Check size={13} /></button>
+                        <button className="pm-reject-btn" onClick={() => rejectPaymentSuggestion(type)} title="Reject and clear"><X size={13} /></button>
                       </div>
                     )}
                   </div>
                 );
               })}
-              {customPaymentTypes.filter(t => !activeScan.paymentTypes.has(t)).length > 0 && (
-                <div style={{ margin: '1.5rem 0 1rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--gray-400)' }}>
-                  Custom Types
-                </div>
-              )}
-            </>
-          )}
 
-          {allPaymentTypes
-            .filter(t => !activeScan.paymentTypes.has(t))
-            .map(type => {
-              const pAmt = paymentAmount[type] || { dept: '', acc: '' };
-              const isCustom = !activeScan.paymentTypes.has(type);
-              const suggestion = paymentSuggestions[type] || null;
-
-              const deptFromMaster = suggestion?.dept ? masterDepartments.find(d => d.code === suggestion.dept) : null;
-              const deptTopChoice = suggestion?.dept
-                ? {
-                  code: suggestion.dept,
-                  name: deptFromMaster?.name || '(AI/History code)',
-                  name2: deptFromMaster?.name2,
-                  source: suggestion.source
-                }
-                : null;
-
-              const accFromMaster = suggestion?.acc ? masterAccounts.find(a => a.code === suggestion.acc) : null;
-              const accTopChoice = suggestion?.acc
-                ? {
-                  code: suggestion.acc,
-                  name: accFromMaster?.name || '(AI/History code)',
-                  name2: accFromMaster?.name2,
-                  source: suggestion.source
-                }
-                : null;
-
-              return (
-                <div key={type} style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'minmax(120px, 1fr) 1fr 1fr auto',
-                  gap: '1rem',
-                  marginBottom: '0.5rem',
-                  alignItems: 'center',
-                  padding: '0.4rem',
-                  borderRadius: '8px',
-                  background: 'transparent',
-                  border: '1px solid transparent',
-                  transition: 'all 0.2s'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <div style={{
-                      background: isCustom ? 'var(--btn-ok-bg, #f0fdf4)' : 'var(--primary-light)',
-                      color: isCustom ? 'var(--btn-ok-text, #16a34a)' : 'var(--primary)',
-                      padding: '0.4rem 0.5rem',
-                      borderRadius: '4px',
-                      border: `1px solid ${isCustom ? 'var(--btn-ok-border, #86efac)' : 'var(--primary-mid)'}`,
-                      fontSize: '0.85rem',
-                      fontWeight: 600,
-                      textAlign: 'center',
-                      flex: 1,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px'
-                    }}>
-                      {type}
-                    </div>
-                    {isCustom && (
-                      <button onClick={() => handleRemoveCustomType(type)} title="Remove" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '0.9rem', padding: '0.2rem', lineHeight: 1, display: 'inline-flex', alignItems: 'center' }}>
-                        <XCircle size={16} />
-                      </button>
-                    )}
-                  </div>
-                  <CustomSearchSelect
-                    value={pAmt.dept}
-                    onChange={(val) => handlePaymentMappingChange(type, 'dept', val)}
-                    options={masterDepartments}
-                    placeholder="Dept..."
-                    topChoice={deptTopChoice?.code ? deptTopChoice : null}
-                    suggestedValue={suggestion?.dept || null}
-                  />
-                  <CustomSearchSelect
-                    value={pAmt.acc}
-                    onChange={(val) => handlePaymentMappingChange(type, 'acc', val)}
-                    options={masterAccounts}
-                    placeholder="Acc..."
-                    topChoice={accTopChoice?.code ? accTopChoice : null}
-                    suggestedValue={suggestion?.acc || null}
-                  />
-                  {suggestion && (
-                    <div style={{ display: 'flex', gap: '0.3rem' }}>
-                      <button
-                        onClick={() => confirmPaymentSuggestion(type)}
-                        title="Accept suggestion"
-                        style={{ padding: '4px 10px', background: 'var(--btn-ok-bg, #f0fdf4)', color: 'var(--btn-ok-text, #15803d)', border: '1px solid var(--btn-ok-border, #86efac)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}
-                      >
-                        <Check size={13} />
-                      </button>
-                      <button
-                        onClick={() => rejectPaymentSuggestion(type)}
-                        title="Reject and clear"
-                        style={{ padding: '4px 10px', background: 'var(--btn-err-bg, #fff1f2)', color: 'var(--btn-err-text, #dc2626)', border: '1px solid var(--btn-err-border, #fecaca)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}
-                      >
-                        <X size={13} />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 1fr) 1fr 1fr auto', gap: '1rem', marginTop: '1rem', paddingTop: '1rem', borderTop: '1px dashed var(--border)', alignItems: 'center' }}>
-            <div style={{ display: 'flex', gap: '0.4rem' }}>
-              <input
-                type="text"
-                value={newCustomType}
-                onChange={(e) => setNewCustomType(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAddCustomType()}
-                placeholder="Custom type..."
-                style={{ flex: 1, padding: '0.4rem 0.5rem', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.85rem', fontFamily: "'DM Mono', monospace", textTransform: 'uppercase', outline: 'none' }}
-              />
-              <button onClick={handleAddCustomType} title="Add" style={{ background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '4px', padding: '0.4rem 0.7rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                <Plus size={13} /> Add
-              </button>
+            {/* Add custom type row */}
+            <div className="pm-add-row">
+              <div className="pm-add-input-wrap">
+                <input
+                  type="text"
+                  className="pm-add-input"
+                  value={newCustomType}
+                  onChange={(e) => setNewCustomType(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddCustomType()}
+                  placeholder="Custom type..."
+                />
+                <button className="pm-add-btn" onClick={handleAddCustomType} title="Add">
+                  <Plus size={13} /> Add
+                </button>
+              </div>
+              <div className="pm-add-hint pm-add-row > :nth-child(2)">Add custom Payment Type</div>
             </div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-4)', gridColumn: 'span 2' }}>Add custom Payment Type</div>
-          </div>
           </div>
         </div>
-        <div className="mapping-modal-footer" style={{ padding: '1rem', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-          <button className="btn-cancel" onClick={cancelAmountSelection} style={{ padding: '0.5rem 1rem', background: 'var(--gray-200)', color: 'var(--text-2)', borderRadius: '4px', cursor: 'pointer', border: 'none' }}>Cancel</button>
-          <button className="btn-confirm" onClick={saveAmountSelection} style={{ padding: '0.5rem 1rem', background: 'var(--primary)', color: '#fff', borderRadius: '4px', cursor: 'pointer', border: 'none' }}>OK</button>
+
+        {/* ── Footer ── */}
+        <div className="pm-footer mapping-modal-footer">
+          <button className="btn-cancel" onClick={cancelAmountSelection}>Cancel</button>
+          <button className="btn-confirm" onClick={saveAmountSelection}>OK</button>
         </div>
       </div>
     </div>,

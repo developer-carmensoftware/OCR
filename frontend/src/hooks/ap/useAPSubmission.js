@@ -1,0 +1,271 @@
+import { useState } from 'react'
+import { fetchAccountCodes, fetchDepartments, submitAPInvoiceToCarmen } from '../../lib/api/carmen'
+import { apiFetch } from '../../lib/api/client'
+import { showToast } from '../../lib/toast'
+import { parseNum, fmt } from '../../lib/format'
+import { parseDateToISO } from '../../lib/date'
+
+function addDays(isoDate, days) {
+  const d = new Date(isoDate)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString()
+}
+
+function buildInvoicePayload(headerData, lineItems, systemVendor) {
+  const now = new Date().toISOString()
+  const invDate = parseDateToISO(headerData.documentDate)
+  const creditTerm = systemVendor.term ?? 0
+  const dueDate = creditTerm > 0 ? addDays(invDate, creditTerm) : invDate
+  const parts = (headerData.documentDate || '').split('/')
+  const taxPeriod = parts.length === 3 ? `${parts[1]}/${parts[2]}` : ''
+
+  const detail = lineItems.map(item => {
+    const netAmt = parseNum(item.lineSubTotal)
+    const taxAmt = parseNum(item.taxAmt)
+    const total  = parseNum(item.lineTotal)
+    const taxRate = parseNum(item.taxPct) || 7
+    const qty = parseNum(item.qty) || 1
+    const grossPrice = parseNum(item.unitPrice)
+    const discAmt = parseNum(item.discountAmt)
+    const grossLine = grossPrice * qty
+    const netPrice = grossLine > 0
+      ? parseFloat(((grossLine - discAmt) / qty).toFixed(2))
+      : grossPrice
+
+    return {
+      InvhSeq: -1, InvdSeq: -1,
+      InvdDesc: item.description || '',
+      InvdQty: qty,
+      UnitCode: 'UNIT',
+      InvdPrice: netPrice.toFixed(2),
+      InvdTaxA1: taxAmt.toFixed(2),
+      InvdTaxC1: taxAmt.toFixed(2),
+      InvdTaxA2: '0.00', InvdTaxC2: '0.00',
+      NetAmt: netAmt.toFixed(2),
+      NetBaseAmt: netAmt.toFixed(2),
+      UnPaid: total.toFixed(2),
+      TotalPrice: total.toFixed(2),
+      DeptCode: item.deptCode || '',
+      InvdBTaxCr1: systemVendor.vatCrAccCode || '',
+      InvdBTaxDr: systemVendor.vat1DrAccCode || '',
+      InvdT1Dr: item.accountCode || '',
+      InvdT2Dr: '',
+      InvdTaxT1: headerData.taxType === 'Include' ? 'Include' : 'Add',
+      InvdTaxR1: taxRate.toFixed(2),
+      InvdTaxT2: 'None', InvdTaxR2: '0.00',
+      DimList: {},
+      LastModified: now,
+      InvdBTaxCr1DeptCode: systemVendor.crDeptCode || '',
+      InvdT1DrDeptCode: item.deptCode || '',
+      InvdT2DrDeptCode: item.deptCode || '',
+      TaxProfileCode1: systemVendor.taxProfileCode1 || null,
+      TaxProfileCode2: null,
+      Tax1Overwrite: false, Tax2Overwrite: false,
+    }
+  })
+
+  return {
+    VnCode: systemVendor.code || '',
+    InvhDate: now,
+    InvhDesc: headerData.invhDesc || '',
+    InvhSource: 'OAPI',
+    InvhInvNo: headerData.documentNumber || '',
+    InvhInvDate: invDate,
+    InvhDueDate: dueDate,
+    InvhCredit: creditTerm,
+    CurCode: 'THB', CurRate: 1,
+    InvhTInvNo: headerData.documentNumber || '',
+    InvhTInvDt: invDate,
+    TaxPeriod: taxPeriod,
+    TaxStatus: 'Pending',
+    InvhTotalAmt: parseNum(headerData.grandTotal),
+    InvWht: {}, DimHList: {},
+    Detail: detail,
+    InvhStatus: '', VoidRemark: '',
+  }
+}
+
+/**
+ * Manages GL account loading, AI suggestion, and final Carmen submission.
+ */
+export function useAPSubmission({ t, step, setStep, setModal, headerData, lineItems, setLineItems, systemVendor, apInvoiceId }) {
+  const [suggestLoading, setSuggestLoading] = useState(false)
+  const [masterAccounts, setMasterAccounts] = useState([])
+  const [masterDepts, setMasterDepts] = useState([])
+  const [glLoaded, setGlLoaded] = useState(false)
+  const [invoiceSeq, setInvoiceSeq] = useState(null)
+
+  const loadGLData = async () => {
+    if (glLoaded) return
+    setGlLoaded(true)
+    try {
+      const [accs, depts] = await Promise.all([fetchAccountCodes(), fetchDepartments()])
+      setMasterAccounts(
+        accs.filter(a => a.AccCode && a.AccCode !== 'AccCode')
+          .map(a => ({ code: a.AccCode, name: a.Description || '', name2: a.Description2 || '' }))
+      )
+      setMasterDepts(
+        depts.filter(d => d.DeptCode && d.DeptCode !== 'CodeDep')
+          .map(d => ({ code: d.DeptCode, name: d.Description || '', name2: d.Description2 || '' }))
+      )
+    } catch { /* ignore */ }
+  }
+
+  const resetGLLoaded = () => setGlLoaded(false)
+
+  const runSuggest = async (itemsToSuggest) => {
+    setSuggestLoading(true)
+    showToast('AI is suggesting account codes...', 'info')
+    try {
+      const res = await apiFetch('/api/v1/ap-invoice/suggest-gl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: itemsToSuggest, invoice_desc: headerData.invhDesc || '' }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      const suggestions = data.suggestions || {}
+      let suggestedCount = 0
+      setLineItems(prev => prev.map((item, idx) => {
+        const s = suggestions[idx]
+        if (!s) return item
+        const newDept = (!item.deptCode || item._suggestDept) && s.deptCode ? s.deptCode : null
+        const newAcc  = (!item.accountCode || item._suggestAcc) && s.accountCode ? s.accountCode : null
+        if (newDept || newAcc) suggestedCount++
+        return {
+          ...item,
+          deptCode: newDept ?? item.deptCode,
+          accountCode: newAcc ?? item.accountCode,
+          _suggestDept: newDept || undefined,
+          _suggestAcc: newAcc || undefined,
+        }
+      }))
+      if (suggestedCount > 0) {
+        setModal({
+          show: true,
+          title: '✓ AI Suggestion',
+          message: `AI suggested account codes for ${suggestedCount} items. Please review.`,
+          type: 'success', confirmText: 'OK',
+          onConfirm: () => setModal({ show: false }),
+        })
+      }
+    } catch (err) {
+      console.error('AI suggest error:', err)
+      showToast('Failed to suggest account codes. Please try again.', 'error')
+    } finally {
+      setSuggestLoading(false)
+    }
+  }
+
+  const handleAISuggest = () => {
+    const itemsToSuggest = lineItems
+      .map((item, idx) => ({
+        index: idx,
+        category: item.category || '',
+        description: item.description || '',
+        unit_price: parseNum(item.unitPrice ?? item.lineTotal ?? 0),
+      }))
+      .filter((_, idx) => {
+        const item = lineItems[idx]
+        return !item.deptCode || !item.accountCode || item._suggestDept || item._suggestAcc
+      })
+
+    if (!itemsToSuggest.length) {
+      setModal({
+        show: true, title: '✓ Mapping Complete',
+        message: 'All items have been mapped. No further suggestions needed.',
+        type: 'success', confirmText: 'OK',
+        onConfirm: () => setModal({ show: false }),
+      })
+      return
+    }
+
+    if (!headerData.invhDesc) {
+      setModal({
+        show: true, type: 'info',
+        title: t?.invDescTitle || 'Add Invoice Description for Better Results',
+        message: t?.invDescMsg || 'Adding an Invoice Description helps AI suggest more accurate GL accounts.',
+        confirmText: t?.proceedAnyway || 'Proceed (Skip Warning)',
+        cancelText: t?.backFillDesc || 'Back to fill description',
+        onConfirm: () => { setModal({ show: false }); runSuggest(itemsToSuggest) },
+        onCancel: () => setModal({ show: false }),
+      })
+    } else {
+      runSuggest(itemsToSuggest)
+    }
+  }
+
+  const handleAcceptAll = () => {
+    setLineItems(prev => prev.map(item => ({
+      ...item, _suggestDept: undefined, _suggestAcc: undefined,
+    })))
+    showToast('All account codes confirmed', 'success')
+  }
+
+  const handleConfirmSuggest = (idx) => {
+    setLineItems(prev => prev.map((item, i) =>
+      i !== idx ? item : { ...item, _suggestDept: undefined, _suggestAcc: undefined }
+    ))
+  }
+
+  const handleRejectSuggest = (idx) => {
+    setLineItems(prev => prev.map((item, i) =>
+      i !== idx ? item : {
+        ...item,
+        deptCode: item._suggestDept ? '' : item.deptCode,
+        accountCode: item._suggestAcc ? '' : item.accountCode,
+        _suggestDept: undefined, _suggestAcc: undefined,
+      }
+    ))
+  }
+
+  const handleGenerate = async () => {
+    const missing = lineItems.filter(i => !i.deptCode || !i.accountCode)
+    if (missing.length > 0) {
+      showToast('Department code and Account code is required', 'warning')
+      return
+    }
+    showToast('Sending AP Invoice to Carmen Cloud...', 'info')
+    try {
+      const payload = buildInvoicePayload(headerData, lineItems, systemVendor)
+      const result = await submitAPInvoiceToCarmen(payload, apInvoiceId)
+      if (result?.Code < 0) {
+        showToast('Carmen Cloud rejected the data, please verify', 'warning')
+        setModal({
+          show: true, type: 'warning',
+          title: 'Failed to create AP Invoice',
+          message: result.UserMessage || 'Error from Carmen Cloud',
+          confirmText: 'OK',
+          onConfirm: () => { setModal({ show: false }) },
+        })
+        return
+      }
+      setInvoiceSeq(result?.InternalMessage ?? null)
+      showToast('AP Invoice created successfully', 'success')
+      setStep(5)
+    } catch (err) {
+      console.error('AP Invoice submit error:', err)
+      showToast(`Failed to send AP Invoice: ${err.message || 'An error occurred'}`, 'error')
+      setModal({
+        show: true, type: 'warning',
+        title: 'Failed to send AP Invoice',
+        message: err.message || 'An error occurred while sending data. Please try again.',
+        confirmText: 'OK',
+        onConfirm: () => setModal({ show: false }),
+      })
+    }
+  }
+
+  const hasSuggestions = lineItems.some(i => i._suggestDept || i._suggestAcc)
+  const allMapped = lineItems.length > 0 && lineItems.every(i => i.deptCode && i.accountCode && !i._suggestDept && !i._suggestAcc)
+
+  return {
+    suggestLoading, masterAccounts, masterDepts,
+    invoiceSeq,
+    loadGLData, resetGLLoaded,
+    handleAISuggest, handleAcceptAll,
+    handleConfirmSuggest, handleRejectSuggest,
+    handleGenerate,
+    hasSuggestions, allMapped,
+  }
+}

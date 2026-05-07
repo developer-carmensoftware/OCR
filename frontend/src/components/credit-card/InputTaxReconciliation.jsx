@@ -4,27 +4,16 @@ import { toast } from 'sonner'
 import { FileText, Scale, Flag, AlertCircle, X, Check, Loader2, ArrowLeft, PlusCircle } from 'lucide-react'
 import { submitInputTax } from '../../lib/api/carmen'
 import { normalizeYearToCE } from '../../lib/date'
-
-
-function toNum(v) {
-  return parseFloat(String(v ?? '').replace(/,/g, '')) || 0
-}
-
-const fmt = n => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+import { toNum, fmt } from '../../lib/format'
+import { useAccountingConfig } from '../../hooks/useAccountingConfig'
 
 export default function InputTaxReconciliation({ details, headerData, onBack, onFinish }) {
-  const [config, setConfig] = useState(null)
+  const { config } = useAccountingConfig()
   const [showConfirm, setShowConfirm] = useState(false)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState(null)
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem('accountingConfig')
-      if (raw) setConfig(JSON.parse(raw))
-    } catch (e) {}
-  }, [])
 
   const company = config?.company || {}
 

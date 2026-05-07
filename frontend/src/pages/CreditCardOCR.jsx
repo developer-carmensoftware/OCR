@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChevronLeft, FileText } from 'lucide-react'
 import { useOcrWizard } from '../hooks/useOcrWizard'
-import { StepWizard, FormActions, CustomModal, LoadingOverlay, DocumentPreview, DarkModeToggle, Skeleton, SkeletonGrid, UsageIndicator } from '../components/common'
+import { StepWizard, FormActions, CustomModal, LoadingOverlay, DocumentPreview, DarkModeToggle, ExtractionSkeleton, SplitLayout, UsageIndicator } from '../components/common'
 import { UploadSection, BankDetectionBanner, HeaderCard, DetailTable, AccountingReview, InputTaxReconciliation } from '../components/credit-card'
 import { BANK_THAI_NAMES } from '../constants'
 import logo from '../assets/logo.png'
@@ -113,107 +112,59 @@ export default function CreditCardOCR() {
             )}
 
             {/* Step 1 loading — AI extracting */}
-            {step === 1 && loading && (
-              <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div className="data-card">
-                  <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    <Skeleton height="1.1rem" width="40%" />
-                    <SkeletonGrid rows={3} cols={2} height="2.2rem" gap="0.75rem" />
-                  </div>
-                </div>
-                <div className="data-card">
-                  <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                    <Skeleton height="1.1rem" width="30%" />
-                    <SkeletonGrid rows={4} cols={4} height="1.9rem" gap="0.5rem" colTemplate="2fr 1fr 1fr 1fr" />
-                  </div>
-                </div>
-              </div>
-            )}
+            {step === 1 && loading && <ExtractionSkeleton />}
 
             {/* Step 2 loading — re-extracting */}
-            {step === 2 && loading && (
-              <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div className="data-card">
-                  <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    <Skeleton height="1.1rem" width="40%" />
-                    <SkeletonGrid rows={3} cols={2} height="2.2rem" gap="0.75rem" />
-                  </div>
-                </div>
-                <div className="data-card">
-                  <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                    <Skeleton height="1.1rem" width="30%" />
-                    <SkeletonGrid rows={4} cols={4} height="1.9rem" gap="0.5rem" colTemplate="2fr 1fr 1fr 1fr" />
-                  </div>
-                </div>
-              </div>
-            )}
+            {step === 2 && loading && <ExtractionSkeleton />}
 
             {/* Step 2 — Review */}
             {step === 2 && !loading && (
-              <div className={`ap-split-layout ${!showPreview ? 'full-width' : ''}`}>
-                {showPreview && (
-                  <div className="ap-preview-side">
-                    <DocumentPreview previewUrl={previewUrl} previewType={previewType} fileName={files[0]?.name} />
-                    <button className="preview-toggle-btn hide" onClick={() => setShowPreview(false)}>
-                      <ChevronLeft size={14} /> Hide Document
-                    </button>
-                  </div>
-                )}
-                {!showPreview && (
-                  <button className="preview-toggle-btn show" onClick={() => setShowPreview(true)}>
-                    <FileText size={14} /> View Document
-                  </button>
-                )}
-                <div className="ap-work-area">
-                  <BankDetectionBanner bank={bank} loading={loading} onReExtract={handleReExtract} />
-                  <HeaderCard headerData={headerData} onUpdate={updateHeader} />
-                  <DetailTable
-                    details={details}
-                    onUpdate={updateDetail}
-                    onAddRow={addRow}
-                    onDeleteRow={deleteRow}
-                  />
-                  <FormActions
-                    onCancel={handleCancel}
-                    onSubmit={() => setStep(3)}
-                    submitLabel="Next (Review Accounting)"
-                    showBack={false}
-                  />
-                </div>
-              </div>
+              <SplitLayout
+                showPreview={showPreview}
+                onToggle={setShowPreview}
+                previewUrl={previewUrl}
+                previewType={previewType}
+                fileName={files[0]?.name}
+              >
+                <BankDetectionBanner bank={bank} loading={loading} onReExtract={handleReExtract} />
+                <HeaderCard headerData={headerData} onUpdate={updateHeader} />
+                <DetailTable
+                  details={details}
+                  onUpdate={updateDetail}
+                  onAddRow={addRow}
+                  onDeleteRow={deleteRow}
+                />
+                <FormActions
+                  onCancel={handleCancel}
+                  onSubmit={() => setStep(3)}
+                  submitLabel="Next (Review Accounting)"
+                  showBack={false}
+                />
+              </SplitLayout>
             )}
 
             {/* Step 3 — Accounting Review */}
             {step === 3 && (
-              <div className={`ap-split-layout ${!showPreview ? 'full-width' : ''}`}>
-                {showPreview && (
-                  <div className="ap-preview-side">
-                    <DocumentPreview previewUrl={previewUrl} previewType={previewType} fileName={files[0]?.name} />
-                    <button className="preview-toggle-btn hide" onClick={() => setShowPreview(false)}>
-                      <ChevronLeft size={14} /> Hide Document
-                    </button>
-                  </div>
-                )}
-                {!showPreview && (
-                  <button className="preview-toggle-btn show" onClick={() => setShowPreview(true)}>
-                    <FileText size={14} /> View Document
-                  </button>
-                )}
-                <div className="ap-work-area">
-                  <AccountingReview
-                    details={details}
-                    headerData={headerData}
-                    onBack={() => setStep(2)}
-                    onSubmit={handleSubmitFinal}
-                    onGoMapping={() => {
+              <SplitLayout
+                showPreview={showPreview}
+                onToggle={setShowPreview}
+                previewUrl={previewUrl}
+                previewType={previewType}
+                fileName={files[0]?.name}
+              >
+                <AccountingReview
+                  details={details}
+                  headerData={headerData}
+                  onBack={() => setStep(2)}
+                  onSubmit={handleSubmitFinal}
+                  onGoMapping={() => {
                     try { localStorage.setItem('ocr_wizard_state', JSON.stringify({ bank, details })) } catch {}
                     toast.info('Opened new tab for Mapping settings')
                     window.open('#/CreditCardOCR/mapping', '_blank')
                   }}
-                    submitting={submitting}
-                  />
-                </div>
-              </div>
+                  submitting={submitting}
+                />
+              </SplitLayout>
             )}
 
             {/* Step 4 — Input Tax Reconciliation */}
