@@ -88,7 +88,7 @@ function buildInvoicePayload(headerData, lineItems, systemVendor) {
 /**
  * Manages GL account loading, AI suggestion, and final Carmen submission.
  */
-export function useAPSubmission({ t, step, setStep, setModal, headerData, lineItems, setLineItems, systemVendor, apInvoiceId }) {
+export function useAPSubmission({ setStep, setModal, headerData, lineItems, setLineItems, systemVendor, apInvoiceId }) {
   const [suggestLoading, setSuggestLoading] = useState(false)
   const [masterAccounts, setMasterAccounts] = useState([])
   const [masterDepts, setMasterDepts] = useState([])
@@ -141,13 +141,9 @@ export function useAPSubmission({ t, step, setStep, setModal, headerData, lineIt
         }
       }))
       if (suggestedCount > 0) {
-        setModal({
-          show: true,
-          title: '✓ AI Suggestion',
-          message: `AI suggested account codes for ${suggestedCount} items. Please review.`,
-          type: 'success', confirmText: 'OK',
-          onConfirm: () => setModal({ show: false }),
-        })
+        showToast(`AI suggested ${suggestedCount} account code${suggestedCount > 1 ? 's' : ''} — please review.`, 'success')
+      } else {
+        showToast('AI could not generate new suggestions. Please fill in manually.', 'info')
       }
     } catch (err) {
       console.error('AI suggest error:', err)
@@ -171,22 +167,17 @@ export function useAPSubmission({ t, step, setStep, setModal, headerData, lineIt
       })
 
     if (!itemsToSuggest.length) {
-      setModal({
-        show: true, title: '✓ Mapping Complete',
-        message: 'All items have been mapped. No further suggestions needed.',
-        type: 'success', confirmText: 'OK',
-        onConfirm: () => setModal({ show: false }),
-      })
+      showToast('All items already have account codes.', 'info')
       return
     }
 
     if (!headerData.invhDesc) {
       setModal({
-        show: true, type: 'info',
-        title: t?.invDescTitle || 'Add Invoice Description for Better Results',
-        message: t?.invDescMsg || 'Adding an Invoice Description helps AI suggest more accurate GL accounts.',
-        confirmText: t?.proceedAnyway || 'Proceed (Skip Warning)',
-        cancelText: t?.backFillDesc || 'Back to fill description',
+        show: true, type: 'warning',
+        title: 'No Invoice Description',
+        message: 'Adding an Invoice Description helps AI suggest more accurate GL accounts.',
+        confirmText: 'Suggest Anyway',
+        cancelText: 'Go Back',
         onConfirm: () => { setModal({ show: false }); runSuggest(itemsToSuggest) },
         onCancel: () => setModal({ show: false }),
       })

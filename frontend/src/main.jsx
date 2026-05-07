@@ -38,7 +38,12 @@ function Router() {
     Page = <Home />
   }
 
-  return <ProtectedRoute>{Page}</ProtectedRoute>
+  return (
+    <>
+      <div className="bg-blob-mid" aria-hidden="true" />
+      <ProtectedRoute>{Page}</ProtectedRoute>
+    </>
+  )
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(

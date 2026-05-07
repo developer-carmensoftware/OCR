@@ -8,11 +8,10 @@ const MODULES = [
     id: 'credit-card-ocr',
     href: '#/CreditCardOCR',
     name: 'Credit Card Report OCR',
-    description: 'AI automatically extracts Credit Card Reports from banks and posts to Carmen GL',
+    description: 'AI extracts credit card statements from BBL, KBANK, SCB and posts entries directly to Carmen GL',
     Icon: FileText,
     useLogo: true,
-    iconBg: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)',
-    iconColor: '#fff',
+    bannerBg: 'linear-gradient(135deg, #1d4ed8 0%, #3b82f6 60%, #60a5fa 100%)',
     accent: '#2563eb',
     tag: { label: 'ACTIVE', bg: '#f0fdf4', color: '#16a34a', border: '#86efac' },
     features: ['OCR AI', 'Carmen GL', 'Input Tax'],
@@ -21,23 +20,21 @@ const MODULES = [
     id: 'ap-invoice',
     href: '#/APInvoice',
     name: 'AP Invoice Processing',
-    description: 'AP Invoice automation reads vendor data and syncs with the accounting system',
+    description: 'Reads vendor invoices automatically, matches GL accounts, and syncs with the accounting system',
     Icon: Receipt,
     useLogo: true,
-    iconBg: 'linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%)',
-    iconColor: '#fff',
+    bannerBg: 'linear-gradient(135deg, #6d28d9 0%, #8058F1 60%, #a78bfa 100%)',
     accent: '#7c3aed',
     tag: { label: 'ACTIVE', bg: '#f0fdf4', color: '#16a34a', border: '#86efac' },
-    features: ['Invoice OCR', 'Auto Matching'],
+    features: ['Invoice OCR', 'Auto GL Match', 'ERP Sync'],
   },
   {
     id: 'bank-reconciliation',
     href: null,
     name: 'Bank Reconciliation',
-    description: 'Bank reconciliation automatically compares statements with ledger entries',
+    description: 'Automatically compares bank statements against ledger entries to flag discrepancies',
     Icon: Landmark,
-    iconBg: 'linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)',
-    iconColor: '#fff',
+    bannerBg: 'linear-gradient(135deg, #0f766e 0%, #0d9488 60%, #2dd4bf 100%)',
     accent: '#0d9488',
     tag: { label: 'COMING SOON', bg: '#f0fdfa', color: '#0d9488', border: '#99f6e4' },
     features: ['Statement Import', 'Auto Match'],
@@ -52,26 +49,35 @@ export default function Home() {
         <DarkModeToggle />
       </div>
 
-      {/* ─── Hero Header ─── */}
+      {/* ─── Hero ─── */}
       <div className="home-hero">
+        <div className="home-hero-badge">
+          <span className="home-hero-badge-dot" />
+          Powered by Vision LLM · Real-time OCR
+        </div>
+
         <div className="home-logo">
           <img src={logo} alt="Carmen AI Logo" className="home-logo-img" />
         </div>
+
         <h1 className="home-title">
-          Carmen <span>AI Automation</span>
+          Carmen<br /><span>AI Automation</span>
         </h1>
         <p className="home-subtitle">
-          Automated AI for Accounting — Select a module to use
+          AI-powered accounting automation — extract invoices and credit card statements,
+          then post directly to Carmen Cloud with no manual entry.
         </p>
+
         <div className="home-version">
           <span className="dot" />
           System Online — Beta v1.0.1
         </div>
       </div>
 
+
       {/* ─── Module Cards ─── */}
       <div className="home-modules">
-        <div className="home-modules-title">Select Module</div>
+        <div className="home-modules-title">เลือกโมดูล</div>
 
         <div className="module-grid">
           {MODULES.map((mod) => {
@@ -82,39 +88,42 @@ export default function Home() {
                 key={mod.id}
                 href={isComingSoon ? undefined : mod.href}
                 className={`module-card ${isComingSoon ? 'coming-soon' : ''}`}
-                style={{ '--card-accent': mod.accent, textDecoration: 'none' }}
+                style={{ '--card-accent': mod.accent }}
                 tabIndex={isComingSoon ? -1 : undefined}
                 aria-disabled={isComingSoon ? 'true' : undefined}
               >
-                <div className="module-card-header">
-                  <div
-                    className="module-card-icon"
-                    style={{ background: mod.iconBg, color: mod.iconColor }}
-                  >
+                {/* Gradient banner */}
+                <div className="module-card-banner" style={{ background: mod.bannerBg }}>
+                  <div className="module-card-banner-icon">
                     {mod.useLogo ? (
-                      <img src={logo} alt="Module Logo" style={{ width: '28px', height: '28px', objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
+                      <img src={logo} alt="" style={{ width: 34, height: 34, objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
                     ) : (
-                      <mod.Icon size={28} color="#fff" />
+                      <mod.Icon size={34} color="#fff" strokeWidth={1.75} />
                     )}
                   </div>
-                  <div className="module-card-info">
-                    <div className="module-card-name">{mod.name}</div>
+                  {isComingSoon && (
+                    <div className="module-card-banner-lock">
+                      <Lock size={12} color="rgba(255,255,255,0.7)" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Content */}
+                <div className="module-card-content">
+                  <div className="module-card-meta">
                     <span
                       className="module-card-tag"
-                      style={{
-                        background: mod.tag.bg,
-                        color: mod.tag.color,
-                        border: `1px solid ${mod.tag.border}`,
-                      }}
+                      style={{ background: mod.tag.bg, color: mod.tag.color, border: `1px solid ${mod.tag.border}` }}
                     >
-                      {isComingSoon ? <Clock size={10} /> : <CheckCircle2 size={10} />}
+                      {isComingSoon ? <Clock size={9} /> : <CheckCircle2 size={9} />}
                       {mod.tag.label}
                     </span>
                   </div>
+                  <h3 className="module-card-name">{mod.name}</h3>
+                  <p className="module-card-desc">{mod.description}</p>
                 </div>
 
-                <div className="module-card-desc">{mod.description}</div>
-
+                {/* Footer */}
                 <div className="module-card-footer">
                   <div className="module-card-features">
                     {mod.features.map((f) => (
@@ -122,7 +131,7 @@ export default function Home() {
                     ))}
                   </div>
                   <div className="module-card-arrow">
-                    {isComingSoon ? <Lock size={14} /> : <ArrowRight size={14} />}
+                    {isComingSoon ? <Lock size={13} /> : <ArrowRight size={13} />}
                   </div>
                 </div>
               </Tag>

@@ -210,7 +210,7 @@
 .vendor-badge.unmapped { background: var(--amber-light);   color: var(--amber);   border: 1px solid var(--amber-mid); }
 
 /* ─── MAPPING TABLE ─── */
-.mapping-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.mapping-table-wrap { overflow-x: auto; }
 .mapping-table { width: 100%; border-collapse: collapse; min-width: 900px; }
 
 .mapping-table th {
