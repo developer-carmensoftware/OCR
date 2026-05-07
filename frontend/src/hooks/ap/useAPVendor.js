@@ -51,21 +51,24 @@ export function useAPVendor({ t, headerData }) {
     }
   }
 
-  // Auto-match vendor by Tax ID when header changes
+  // Auto-match vendor by Tax ID when header changes.
+  // Skips if the user has already manually selected a vendor.
   const autoMatchVendor = (showDrop) => {
     if (showDrop) return
-    const raw = String(headerData?.vendorTaxId || '').replace(/\D/g, '')
-    const found = vendorDbByTax[raw]
-    if (found && found.active !== false) {
-      setSystemVendor(found)
-      setVendorSearch(`${found.code} — ${found.name} | TaxID : ${found.taxId || '—'} | Branch No. : ${String(found.branchNo ?? '—').padStart(5, '0')}`)
-    } else if (raw.length >= 10) {
-      setSystemVendor({ code: '', name: t?.vendorNotFound || 'Not found in system' })
+    setSystemVendor(prev => {
+      if (prev.code) return prev  // user already picked one — don't overwrite
+      const raw = String(headerData?.vendorTaxId || '').replace(/\D/g, '')
+      const found = vendorDbByTax[raw]
+      if (found && found.active !== false) {
+        setVendorSearch(`${found.code} — ${found.name} | TaxID : ${found.taxId || '—'} | Branch No. : ${String(found.branchNo ?? '—').padStart(5, '0')}`)
+        return found
+      } else if (raw.length >= 10) {
+        setVendorSearch('')
+        return { code: '', name: t?.vendorNotFound || 'Not found in system' }
+      }
       setVendorSearch('')
-    } else {
-      setSystemVendor({ code: '', name: '' })
-      setVendorSearch('')
-    }
+      return { code: '', name: '' }
+    })
   }
 
   const filteredVendors = useMemo(() => {

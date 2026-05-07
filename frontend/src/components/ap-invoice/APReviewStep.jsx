@@ -147,7 +147,7 @@ export default function APReviewStep({ ctrl }) {
 
         <AmountSummary
           t={t}
-          sums={{ lineSubTotal: sumLineSubTotal, discount: sumDiscount, tax: sumTax }}
+          sums={{ lineSubTotal: sumLineSubTotal, discount: sumDiscount, tax: sumTax, lineTotal: sumLineTotal }}
           targets={{ subTotal: tgtSubTotal, discount: tgtDiscount, tax: tgtTax }}
           diffs={{ isSubDiff, isDiscDiff, isTaxDiff, isGrandDiff }}
           headerData={headerData}

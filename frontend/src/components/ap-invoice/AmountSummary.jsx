@@ -4,11 +4,11 @@ import Card from '../common/Card'
 import { fmt } from '../../constants/apInvoice'
 
 export default function AmountSummary({ t, sums, targets, diffs, headerData, updateHeader, blurHeader, adjustField }) {
-  const { lineSubTotal, discount, tax } = sums
+  const { lineSubTotal, discount, tax, lineTotal } = sums
   const { subTotal: tgtSub, discount: tgtDisc, tax: tgtTax } = targets
   const { isSubDiff, isDiscDiff, isTaxDiff, isGrandDiff } = diffs
 
-  const calcGrand = (Math.round(lineSubTotal * 100) + Math.round(tax * 100)) / 100
+  const calcGrand = lineTotal
 
   return (
     <Card

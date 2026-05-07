@@ -42,10 +42,11 @@ export function useAPInvoice() {
     vendor.loadVendors()
   }, [])
 
-  // Auto-match vendor when vendorTaxId or showVendorDrop changes
+  // Auto-match vendor when vendorTaxId or vendor DB changes (not when dropdown toggles)
   useEffect(() => {
-    vendor.autoMatchVendor(vendor.showVendorDrop)
-  }, [extraction.headerData.vendorTaxId, lang, vendor.vendorDbByTax, vendor.showVendorDrop])
+    if (vendor.showVendorDrop) return
+    vendor.autoMatchVendor(false)
+  }, [extraction.headerData.vendorTaxId, lang, vendor.vendorDbByTax])
 
   // Load GL data when entering step 4
   useEffect(() => {
