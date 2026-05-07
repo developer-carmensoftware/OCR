@@ -32,6 +32,13 @@
   gap: 0.75rem;
 }
 
+/* preview-column is sticky elsewhere, but inside ap-preview-side the parent
+   is already sticky — a nested sticky creates double-sticking that pushes
+   the toggle button up over file-info-strip when scrolled to the bottom */
+.ap-preview-side .preview-column {
+  position: static;
+}
+
 .ap-work-area {
   display: flex;
   flex-direction: column;

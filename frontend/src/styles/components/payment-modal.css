@@ -1,5 +1,15 @@
 /* ─── Payment Type Modal ───────────────────────────────────── */
 
+@keyframes pm-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes pm-slide-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 .pm-overlay {
   position: fixed;
   inset: 0;
@@ -7,6 +17,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  animation: pm-fade-in 0.18s ease-out both;
 }
 
 .pm-backdrop {
@@ -25,6 +36,8 @@
   display: flex;
   flex-direction: column;
   max-height: 90vh;
+  will-change: transform, opacity;
+  animation: pm-slide-up 0.22s ease-out both;
 }
 
 .pm-header {
@@ -136,7 +149,7 @@
 .pm-row--custom {
   background: transparent;
   border: 1px solid transparent;
-  transition: all 0.2s;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
 .pm-type-cell {
