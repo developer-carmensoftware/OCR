@@ -8,7 +8,7 @@ from starlette.requests import Request
 
 from app.database import async_session
 from app.models.orm import PerformanceLog
-from app.context import current_tenant, current_user_id, current_document_ref
+from app.context import current_tenant, current_user_id, current_document_ref, current_carmen_uri, current_bu, current_host
 
 
 logger = logging.getLogger(__name__)
@@ -32,35 +32,26 @@ def _user_id_from_request(request: Request) -> str | None:
         return None
 
 
-def _tenant_from_request(request: Request) -> str:
+def _context_from_jwt(request: Request) -> tuple[str, str, str]:
     """
-    Derive tenant from Origin header.
-    Strictly validates the subdomain to prevent SQL injection or path traversal.
+    Extract (bu, host, carmen_uri) from the JWT Bearer token.
+    bu        = business unit (used as tenant identifier)
+    host      = hostname of the Carmen instance (e.g. 'ostin.carmenwork.com')
+    carmen_uri = full origin URI (e.g. 'https://ostin.carmenwork.com')
     """
     from app.config import settings
-    default = settings.carmen_tenant_default
+    from urllib.parse import urlparse
     try:
-        from urllib.parse import urlparse
-        origin = request.headers.get("origin", "")
-        if not origin:
-            return default
-            
-        host = urlparse(origin).hostname or ""
-        if not host or host == "localhost" or host == "127.0.0.1":
-            return default
-            
-        subdomain = host.split(".")[0].lower()
-        
-        # Security: Only allow alphanumeric and hyphens. Length 2-63.
-        # This prevents SQL Injection since the tenant name is used in DB queries.
-        if not re.match(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$", subdomain):
-            logger.warning("Invalid tenant/subdomain blocked: %s", subdomain)
-            return default
-            
-        return subdomain
-    except Exception as exc:
-        logger.error("Error extracting tenant: %s", exc)
-        return default
+        auth = request.headers.get("authorization", "")
+        if not auth.startswith("Bearer "):
+            return "", "", ""
+        payload = jwt.decode(auth[7:], settings.ocr_jwt_secret, algorithms=["HS256"])
+        bu = (payload.get("bu") or "").strip()
+        carmen_uri = payload.get("carmen_uri") or ""
+        host = urlparse(carmen_uri).hostname or "" if carmen_uri else ""
+        return bu, host, carmen_uri
+    except (JWTError, Exception):
+        return "", "", ""
 
 
 class PerformanceMiddleware(BaseHTTPMiddleware):
@@ -69,10 +60,13 @@ class PerformanceMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # 1. Initialize context early
-        tenant = _tenant_from_request(request)
+        bu, host, carmen_uri = _context_from_jwt(request)
         user_id = _user_id_from_request(request)
-        
-        current_tenant.set(tenant)
+
+        current_bu.set(bu)
+        current_host.set(host)
+        current_carmen_uri.set(carmen_uri)
+        current_tenant.set(bu)   # tenant = bu for backward compat with any remaining callers
         current_user_id.set(user_id or "")
 
         # 2. Try to guess document_ref from path

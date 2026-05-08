@@ -1,18 +1,32 @@
 /**
- * Utility to generate Carmen URLs dynamically based on the current tenant.
- * Derives tenant from subdomain (e.g., tenant.carmen4.com).
- * Defaults to 'dev' if on localhost or no subdomain.
+ * Build a Carmen deep-link URL using the `uri` stored at login time.
+ *
+ * uri comes from the URL param at entry and is saved in sessionStorage
+ * as part of the user object: { user_id, username, bu, uri }
+ *
+ * Example:
+ *   uri  = "https://ostin.carmenwork.com"
+ *   path = "/glJv/123/show"
+ *   →    "https://ostin.carmenwork.com/#/glJv/123/show"
  */
 export function getCarmenUrl(path = '') {
-  const host = window.location.hostname
-  const parts = host.split('.')
-  
-  let tenant = 'dev'
-  if (parts.length >= 3 && parts[0] !== 'localhost') {
-    tenant = parts[0]
+  let base = ''
+
+  try {
+    const stored = sessionStorage.getItem('ocr_user')
+    if (stored) {
+      const user = JSON.parse(stored)
+      base = user.uri || ''
+    }
+  } catch {
+    // sessionStorage unavailable or JSON parse failed
   }
 
-  // Ensure path starts with / if provided
+  // Fallback: derive from current hostname (dev / legacy)
+  if (!base) {
+    base = `${window.location.protocol}//${window.location.hostname}`
+  }
+
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
-  return `https://${tenant}.carmen4.com/#${normalizedPath}`
+  return `${base.replace(/\/$/, '')}/#${normalizedPath}`
 }

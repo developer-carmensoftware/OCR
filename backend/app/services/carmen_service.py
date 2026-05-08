@@ -19,11 +19,12 @@ _TIMEOUT = 30.0
 
 
 def _base_url() -> str:
-    """Derive Carmen API base URL from the current request's tenant context var."""
-    from app.context import current_tenant
-    from app.config import settings
-    tenant = current_tenant.get() or settings.carmen_tenant_default
-    return f"https://{tenant}.carmen4.com/Carmen.API/api/interface"
+    """Derive Carmen API base URL from the current session's carmen_uri context var."""
+    from app.context import current_carmen_uri
+    uri = current_carmen_uri.get() or ""
+    if not uri:
+        raise RuntimeError("carmen_uri not set in context — session may be missing uri")
+    return f"{uri.rstrip('/')}/Carmen.API/api/interface"
 
 
 def _headers(carmen_token: str) -> Dict[str, str]:

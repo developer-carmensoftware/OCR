@@ -18,6 +18,7 @@ class SessionInfo:
     username: str
     bu: str
     tenant: str = ""
+    carmen_uri: str = ""  # origin URI of the customer's Carmen instance
 
 
 # ── JWT ──────────────────────────────────────────────────────────────────────
@@ -33,6 +34,7 @@ def create_session_jwt(
     tenant: str,
     secret: str,
     ttl_hours: int = 8,
+    carmen_uri: str = "",
 ) -> str:
     now = datetime.utcnow()
     payload = {
@@ -41,6 +43,7 @@ def create_session_jwt(
         "user_id": user_id,
         "username": username,
         "tenant": tenant,
+        "carmen_uri": carmen_uri,
         "iat": now,
         "exp": now + timedelta(hours=ttl_hours),
     }

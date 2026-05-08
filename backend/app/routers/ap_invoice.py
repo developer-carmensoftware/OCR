@@ -17,7 +17,7 @@ from app.auth import get_current_session, SessionInfo
 from app.services import audit_service
 from app.services.audit_service import AuditAction
 from app.services.file_service import file_service
-from app.context import current_document_ref
+from app.context import current_document_ref, current_bu, current_host, current_user_id
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -65,6 +65,8 @@ async def extract_ap_invoice(
         original_filename=file.filename,
         status=TaskStatus.COMPLETED,
         ocr_engine=settings.ocr_engine,
+        bu=current_bu.get() or None,
+        host=current_host.get() or None,
     )
     db.add(task)
     await db.commit()
@@ -72,7 +74,6 @@ async def extract_ap_invoice(
     data = await extract_ap_invoice_data(data_url, file.filename, task.id)
 
     from app.models.orm import APInvoice
-    from app.context import current_user_id
     from sqlalchemy import select
 
     ap_invoice_id = str(uuid.uuid4())
@@ -101,6 +102,8 @@ async def extract_ap_invoice(
             id=ap_invoice_id,
             task_id=task.id,
             user_id=current_user_id.get() or session.user_id,
+            bu=current_bu.get() or None,
+            host=current_host.get() or None,
             vendor_name=vendor_name,
             doc_no=doc_no,
             doc_date=data.get("documentDate"),

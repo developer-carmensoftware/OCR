@@ -39,7 +39,7 @@ from app.auth import get_current_session, SessionInfo
 from app.services import audit_service
 from app.services.audit_service import AuditAction
 from app.services.file_service import file_service
-from app.context import current_document_ref
+from app.context import current_document_ref, current_bu, current_host
 
 
 # ── Pydantic schemas for submit endpoint ────────────
@@ -117,6 +117,8 @@ async def extract_card(
             original_filename=upload_file.filename,
             status=TaskStatus.COMPLETED,
             ocr_engine=settings.ocr_engine,
+            bu=current_bu.get() or None,
+            host=current_host.get() or None,
         )
         db.add(task)
         await db.commit()

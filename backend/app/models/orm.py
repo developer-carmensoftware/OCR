@@ -21,6 +21,8 @@ class OCRTask(Base):
                                default=TaskStatus.PENDING, nullable=False)
     ocr_engine        = Column(String(100), nullable=True)
     error_message     = Column(Text,        nullable=True)
+    bu                = Column(String(100), nullable=True, index=True)
+    host              = Column(String(255), nullable=True, index=True)
     created_at        = Column(DateTime,    server_default=func.now())
     completed_at      = Column(DateTime,    nullable=True)
 
@@ -43,6 +45,7 @@ class CreditCard(Base):
     branch_no        = Column(String(50),  nullable=True)
     transactions     = Column(JSON,        nullable=True)
     submitted_at     = Column(DateTime,    nullable=True)
+    bu               = Column(String(100), nullable=True, index=True)
     created_at       = Column(DateTime,    server_default=func.now())
 
     task = relationship("OCRTask", back_populates="credit_card")
@@ -52,6 +55,7 @@ class MappingHistory(Base):
     __tablename__ = "mapping_history"
 
     id             = Column(Integer,     primary_key=True, autoincrement=True)
+    bu             = Column(String(100), nullable=True, index=True)
     bank_name      = Column(String(100), nullable=False, index=True)
     field_type     = Column(String(100), nullable=False)
     dept_code      = Column(String(100), nullable=True)
@@ -60,8 +64,8 @@ class MappingHistory(Base):
     updated_at     = Column(DateTime,   server_default=func.now())
 
     __table_args__ = (
-        UniqueConstraint("bank_name", "field_type", "dept_code", "acc_code",
-                         name="uq_mapping_bank_field_choice"),
+        UniqueConstraint("bu", "bank_name", "field_type", "dept_code", "acc_code",
+                         name="uq_mapping_bu_bank_field_choice"),
     )
 
 
@@ -69,6 +73,7 @@ class CorrectionFeedback(Base):
     __tablename__ = "correction_feedback"
 
     id              = Column(Integer,     primary_key=True, autoincrement=True)
+    bu              = Column(String(100), nullable=True, index=True)
     doc_no          = Column(String(100), nullable=False, index=True)
     bank_type       = Column(String(50),  nullable=False, index=True)
     field_name      = Column(String(100), nullable=False, index=True)
@@ -78,7 +83,7 @@ class CorrectionFeedback(Base):
     created_at      = Column(DateTime,    server_default=func.now())
 
     __table_args__ = (
-        UniqueConstraint("doc_no", "field_name", name="uq_correction_doc_field"),
+        UniqueConstraint("bu", "doc_no", "field_name", name="uq_correction_bu_doc_field"),
     )
 
 
@@ -97,6 +102,7 @@ class LLMUsageLog(Base):
     session_id        = Column(String(36),   nullable=True, index=True)
     user_id           = Column(String(100),  nullable=True, index=True)
     bu_name           = Column(String(100),  nullable=True, index=True)
+    host              = Column(String(255),  nullable=True, index=True)
     created_at        = Column(DateTime,     server_default=func.now())
 
     task = relationship("OCRTask")
@@ -110,6 +116,7 @@ class OcrSession(Base):
     user_id                = Column(String(100), nullable=True, index=True)
     username               = Column(String(100), nullable=True)
     bu                     = Column(String(100), nullable=True, index=True)
+    carmen_uri             = Column(String(500), nullable=True)
     is_active              = Column(Boolean,     default=True, nullable=False)
     created_at             = Column(DateTime,    server_default=func.now())
     last_used_at           = Column(DateTime,    nullable=True)
@@ -123,6 +130,7 @@ class AuditLog(Base):
     user_id      = Column(String(100),  nullable=True, index=True)
     username     = Column(String(100),  nullable=True)
     bu           = Column(String(100),  nullable=True, index=True)
+    host         = Column(String(255),  nullable=True, index=True)
     action       = Column(String(50),   nullable=False, index=True)
     resource     = Column(String(50),   nullable=True)
     document_ref = Column(String(255),  nullable=True)
@@ -139,6 +147,7 @@ class PerformanceLog(Base):
     duration_ms  = Column(Float,        nullable=False)
     status_code  = Column(Integer,      nullable=True)
     user_id      = Column(String(100),  nullable=True, index=True)
+    bu           = Column(String(100),  nullable=True, index=True)
     document_ref = Column(String(255),  nullable=True)
     created_at   = Column(DateTime,     server_default=func.now(), index=True)
 
@@ -155,6 +164,7 @@ class OutboundCallLog(Base):
     request_size_bytes = Column(Integer,     nullable=True)
     session_id         = Column(String(36),  nullable=True, index=True)
     user_id            = Column(String(100), nullable=True)
+    bu                 = Column(String(100), nullable=True, index=True)
     created_at         = Column(DateTime,    server_default=func.now(), index=True)
 
 
@@ -162,6 +172,7 @@ class DailyUsageSummary(Base):
     __tablename__ = "daily_usage_summary"
 
     id                   = Column(Integer,      primary_key=True, autoincrement=True)
+    bu                   = Column(String(100),  nullable=True, index=True)
     summary_date         = Column(DateTime,     nullable=False, index=True)
     total_documents      = Column(Integer,      default=0)
     total_submissions    = Column(Integer,      default=0)
@@ -178,7 +189,7 @@ class DailyUsageSummary(Base):
     created_at           = Column(DateTime,     server_default=func.now())
 
     __table_args__ = (
-        UniqueConstraint("summary_date", name="uq_summary_date"),
+        UniqueConstraint("bu", "summary_date", name="uq_summary_bu_date"),
     )
 
 
@@ -199,6 +210,8 @@ class APInvoice(Base):
     id                = Column(String(36),  primary_key=True)
     task_id           = Column(String(36),  ForeignKey("ocr_tasks.id"), index=True)
     user_id           = Column(String(36),  index=True)
+    bu                = Column(String(100), nullable=True, index=True)
+    host              = Column(String(255), nullable=True, index=True)
     vendor_name       = Column(String(255), nullable=True)
     doc_no            = Column(String(100), nullable=True)
     doc_date          = Column(String(50),  nullable=True)
@@ -206,12 +219,19 @@ class APInvoice(Base):
     submitted_at      = Column(DateTime,    nullable=True)
     created_at        = Column(DateTime,    server_default=func.now())
 
+
 class BUUsage(Base):
     __tablename__ = "bu_usage"
 
-    bu_name           = Column(String(100), primary_key=True)
+    id                = Column(Integer,      primary_key=True, autoincrement=True)
+    bu_name           = Column(String(100),  nullable=False, index=True)
+    host              = Column(String(255),  nullable=True,  index=True)
     monthly_calls     = Column(Integer,      default=0)
     total_calls       = Column(BigInteger,   default=0)
-    max_monthly_calls = Column(Integer,      default=50) # Default free tier limit
-    last_reset_month  = Column(String(7),    nullable=True) # e.g. "2026-05"
+    max_monthly_calls = Column(Integer,      default=50)
+    last_reset_month  = Column(String(7),    nullable=True)
     updated_at        = Column(DateTime,     server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("host", "bu_name", name="uq_bu_host_bu_name"),
+    )

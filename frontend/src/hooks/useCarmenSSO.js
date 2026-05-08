@@ -22,6 +22,7 @@ export function useCarmenSSO() {
     const token = params.get('token')
     const bu    = params.get('bu')   || params.get('BU')   || ''
     const user  = params.get('user') || params.get('User') || ''
+    const uri   = params.get('uri')  || ''
 
     if (!token || !bu) return
 
@@ -32,7 +33,7 @@ export function useCarmenSSO() {
     setExchanging(true)
     setError(null)
 
-    exchangeSSOToken(token, bu, user)
+    exchangeSSOToken(token, bu, user, uri)
       .then(({ access_token, user: userInfo }) => {
         login(access_token, userInfo)
       })

@@ -1,11 +1,11 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { storeToken, clearToken, getStoredToken } from '../lib/api/client'
 import { revokeSession } from '../lib/api/auth'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)       // { user_id, username, bu }
+  const [user, setUser] = useState(null)       // { user_id, username, bu, uri }
   const [loading, setLoading] = useState(true) // true while restoring session on mount
 
   // Restore session from sessionStorage on page reload

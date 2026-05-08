@@ -13,7 +13,7 @@ from app.config import settings
 from app.database import get_db
 from app.models.orm import OcrSession
 from app.auth.session import SessionInfo, decode_session_jwt, decrypt_carmen_token
-from app.context import current_session_id, current_user_id, current_username, current_bu, current_carmen_token, current_tenant
+from app.context import current_session_id, current_user_id, current_username, current_bu, current_host, current_carmen_token, current_tenant, current_carmen_uri
 
 logger = logging.getLogger(__name__)
 
@@ -38,12 +38,6 @@ async def get_current_session(
 
     session_id = payload.get("sid")
     token_tenant = payload.get("tenant")
-    current_req_tenant = current_tenant.get()
-    
-    if token_tenant and current_req_tenant and token_tenant != current_req_tenant:
-        logger.warning("Cross-tenant access attempt blocked: JWT tenant=%s vs Request tenant=%s", 
-                       token_tenant, current_req_tenant)
-        raise HTTPException(status_code=403, detail="Cross-tenant access denied")
 
     result = await db.execute(
         select(OcrSession).where(
@@ -67,10 +61,13 @@ async def get_current_session(
         logger.error("Failed to decrypt carmen token for session %s", session_id)
         raise HTTPException(status_code=500, detail="Session data corrupted — please re-enter from Carmen")
 
-    # Use JWT tenant claim as authoritative — prevents SSRF where an attacker
-    # could supply a crafted Origin header to redirect Carmen proxy calls to an
-    # arbitrary host. The JWT tenant was validated against Carmen at login time.
-    authoritative_tenant = token_tenant or current_tenant.get("") or ""
+    from urllib.parse import urlparse
+
+    # JWT claims are authoritative — set at login time and signed; not derivable
+    # from headers which an attacker could spoof.
+    authoritative_tenant = token_tenant or ""
+    authoritative_uri    = payload.get("carmen_uri") or session.carmen_uri or ""
+    authoritative_host   = urlparse(authoritative_uri).hostname or "" if authoritative_uri else ""
 
     info = SessionInfo(
         session_id=session.id,
@@ -79,6 +76,7 @@ async def get_current_session(
         username=session.username or "",
         bu=session.bu or "",
         tenant=authoritative_tenant,
+        carmen_uri=authoritative_uri,
     )
 
     # Populate request-scoped context vars for middleware and services
@@ -86,8 +84,10 @@ async def get_current_session(
     current_user_id.set(info.user_id)
     current_username.set(info.username)
     current_bu.set(info.bu)
+    current_host.set(authoritative_host)
     current_carmen_token.set(info.carmen_token)
     current_tenant.set(info.tenant)
+    current_carmen_uri.set(info.carmen_uri)
 
     return info
 

@@ -1,165 +1,160 @@
 # Multi-Tenant Database Design
 
-ระบบใช้รูปแบบ **Separate Schema per Tenant** — แต่ละ tenant ได้ database ของตัวเองใน MariaDB instance เดียวกัน
+ระบบใช้รูปแบบ **Single Database, Multi-Tenant via Columns** — ทุก tenant ใช้ database เดียวกัน (`carmen_ai`) และแยกข้อมูลด้วย column `bu` และ `host`
 
 ---
 
 ## แนวคิดหลัก
 
 ```
-carmen_ai_abc/          ← ข้อมูลของ tenant "abc" ทั้งหมด
-  credit_cards
-  ocr_tasks
-  audit_logs
+carmen_ai/              ← database เดียวสำหรับทุกคน
+  ocr_tasks             ← มี bu + host column
+  credit_cards          ← มี bu column
+  ap_invoices           ← มี bu + host column
+  audit_logs            ← มี bu + host column
+  llm_usage_logs        ← มี bu_name + host column
+  mapping_history       ← มี bu column (isolated per tenant)
+  correction_feedback   ← มี bu column (isolated per tenant)
+  performance_logs      ← มี bu column
+  outbound_call_logs    ← มี bu column
+  ocr_sessions          ← มี bu + carmen_uri column
+  bu_usage              ← มี bu_name + host column
+  daily_usage_summary   ← มี bu column
   ...
-
-carmen_ai_xyz/          ← ข้อมูลของ tenant "xyz" ทั้งหมด
-  credit_cards
-  ocr_tasks
-  audit_logs
-  ...
 ```
 
-ไม่มี `tenant` column ในตารางใดเลย — isolation อยู่ที่ระดับ database
+ไม่มี database แยกต่อ tenant — isolation อยู่ที่ `bu` และ `host` column
 
 ---
 
-## Tenant คืออะไร
+## Hierarchy การกรองข้อมูล
 
-Tenant คือ subdomain ที่ผู้ใช้เข้ามา:
+```
+ostin.carmenwork.com  (host — ระดับลูกค้า)
+  └── ostionwest      (bu — ระดับ Business Unit / tenant)
+        └── jitra     (user_id — ระดับผู้ใช้)
+```
 
-| URL ที่เข้ามา | Tenant | Database |
-|---|---|---|
-| `https://abc.carmen4.com` | `abc` | `carmen_ai_abc` |
-| `https://xyz.carmen4.com` | `xyz` | `carmen_ai_xyz` |
-| `http://localhost:3010` | `dev` (fallback) | `carmen_ai_dev` |
+| Parameter | มาจาก | เก็บใน column | ใช้กรอง |
+| --- | --- | --- | --- |
+| `host` | `urlparse(uri).hostname` | `host` | ระดับลูกค้า |
+| `bu` | URL param `?bu=` | `bu` | ระดับ Business Unit |
+| `user_id` | extract จาก token | `user_id` | ระดับผู้ใช้ |
 
 ---
 
-## Tenant Flow ตั้งแต่ Request ถึง Query
+## URL ที่รองรับ
 
 ```
-1. Request เข้า (Origin: https://abc.carmen4.com)
+https://ostin.carmenwork.com/ocr/#/APinvoice?token=...&bu=ostionwest&user=jitra&uri=https://ostin.carmenwork.com
+https://dev.carmen4.com/ocr/#/CreditCardOCR?token=...&bu=carmenCloud&user=somchai&uri=https://dev.carmen4.com
+```
+
+ทุก domain ทำงานได้ — ไม่ต้องแก้ config ใดๆ เพราะ URI มาจาก query param โดยตรง
+
+---
+
+## Request Flow
+
+```
+1. User เข้ามาพร้อม URL params (token, bu, user, uri)
         ↓
-2. PerformanceMiddleware
-   _tenant_from_request() → "abc"
-   current_tenant.set("abc")           ← context var
+2. useCarmenSSO.js อ่าน params → POST /api/v1/auth/exchange
         ↓
-3. get_current_session() / get_db()
-   อ่าน current_tenant.get() → "abc"
-   _get_engine("abc") → engine สำหรับ carmen_ai_abc
+3. auth.py exchange_sso_token()
+   - validate uri (SSRF check)
+   - validate token กับ {uri}/Carmen.API/...
+   - ensure_db()  → CREATE DATABASE IF NOT EXISTS carmen_ai (idempotent)
+   - เก็บ OcrSession { bu, carmen_uri, carmen_token_encrypted }
+   - ออก JWT { bu, tenant=bu.lower(), carmen_uri }
         ↓
-4. Query ทำงานใน carmen_ai_abc โดยอัตโนมัติ
-   ไม่ต้อง WHERE tenant = ?
+4. PerformanceMiddleware (ทุก request)
+   decode JWT → current_bu, current_host, current_carmen_uri
+        ↓
+5. get_current_session() (authenticated routes)
+   อ่านจาก JWT+DB → set context vars ทั้งหมด
+        ↓
+6. Services เขียนข้อมูลพร้อม bu + host
+   async_session() → session สำหรับ carmen_ai
+        ↓
+7. Carmen API calls: _base_url() = "{carmen_uri}/Carmen.API/api/interface"
 ```
 
 ---
 
-## Engine Registry
+## Engine
 
 ```python
-# database.py
-_ENGINES: dict[str, AsyncEngine] = {}
-
-def _get_engine(tenant: str) -> AsyncEngine:
-    if tenant not in _ENGINES:
-        _ENGINES[tenant] = create_async_engine(
-            f"{db_root}/carmen_ai_{tenant}",
-            pool_size=5, max_overflow=10,
-        )
-    return _ENGINES[tenant]
+# database.py — single engine สำหรับ carmen_ai
+_ENGINE = create_async_engine(
+    "mysql+aiomysql://root:password@localhost:3306/carmen_ai",
+    pool_size=10,
+    max_overflow=20,
+)
 ```
 
-Engine สร้างครั้งแรกแล้ว cache ตลอด lifetime ของ process — connection pool ถูกนำกลับมาใช้ทุก request
+Connection pool เดียว ใช้ร่วมกันทุก tenant — ง่ายต่อการ monitor และ tune
 
 ---
 
-## Context-Aware Session Shim
+## โครงสร้าง Tables
+
+| Table | bu | host | หมายเหตุ |
+| --- | --- | --- | --- |
+| `ocr_tasks` | ✓ | ✓ | anchor record ของทุก workflow |
+| `credit_cards` | ✓ | — | join ผ่าน task_id |
+| `ap_invoices` | ✓ | ✓ | |
+| `ocr_sessions` | ✓ | — | มี `carmen_uri` แทน |
+| `audit_logs` | ✓ | ✓ | |
+| `llm_usage_logs` | ✓ (bu_name) | ✓ | |
+| `mapping_history` | ✓ | — | unique ต่อ (bu, bank, field) |
+| `correction_feedback` | ✓ | — | unique ต่อ (bu, doc_no, field) |
+| `performance_logs` | ✓ | — | |
+| `outbound_call_logs` | ✓ | — | |
+| `daily_usage_summary` | ✓ | — | unique ต่อ (bu, date) |
+| `bu_usage` | ✓ (PK) | ✓ | rate limit ต่อ BU |
+
+---
+
+## Provisioning
 
 ```python
-def async_session() -> AsyncSession:
-    """Services ทุกตัวใช้ async_session() โดยไม่ต้องส่ง tenant เข้าไป"""
-    from app.context import current_tenant
-    tenant = current_tenant.get("") or settings.carmen_tenant_default
-    return _get_session_factory(tenant)()
+# สร้าง DB (เรียกอัตโนมัติตอน startup และตอน login ครั้งแรก)
+await ensure_db()
+
+# backward-compat alias (tenant param ถูก ignore แล้ว)
+await provision_tenant("anything")  # → เรียก ensure_db()
 ```
 
-Service ทุกตัวใช้ `async with async_session() as db:` เหมือนเดิม — routing เกิดขึ้นอัตโนมัติจาก context var
+`ensure_db()` ทำ:
 
----
-
-## โครงสร้าง Tables (ต่อ 1 tenant DB)
-
-| Table | คำอธิบาย | Retention |
-|---|---|---|
-| `ocr_tasks` | metadata ของ file upload | — |
-| `credit_cards` | document header ของ credit card statement | — |
-| `ap_invoices` | audit trail ของ AP invoice | — |
-| `ocr_sessions` | Carmen SSO sessions | inactive > 30 วัน |
-| `mapping_history` | ประวัติ GL account mapping ที่ confirm แล้ว | — |
-| `correction_feedback` | การแก้ไข OCR ของ user | — |
-| `llm_usage_logs` | token usage + cost ต่อ LLM call | 365 วัน → CSV |
-| `audit_logs` | trail การกระทำของ user | 365 วัน → CSV |
-| `performance_logs` | API request latency (partitioned) | 90 วัน → CSV |
-| `outbound_call_logs` | HTTP calls ไป Carmen / OpenRouter (partitioned) | 90 วัน → CSV |
-| `daily_usage_summary` | metrics รายวัน pre-aggregated | — |
-| `model_pricing` | ราคา LLM model จาก OpenRouter | — |
-| `schema_migrations` | tracking migration ที่รันแล้ว | — |
-
----
-
-## Provisioning Tenant ใหม่
-
-```python
-# สร้าง tenant ใหม่ (เรียกครั้งเดียว)
-from app.database import provision_tenant
-await provision_tenant("abc")
-
-# หรือจาก command line:
-python -c "import asyncio; from app.database import provision_tenant; asyncio.run(provision_tenant('abc'))"
-```
-
-`provision_tenant()` ทำ:
-1. `CREATE DATABASE IF NOT EXISTS carmen_ai_abc`
-2. `Base.metadata.create_all()` — สร้างทุก table ในสถานะสุดท้าย
-3. Pre-mark migrations ทั้งหมดว่า applied แล้ว (ไม่ต้องรัน migration เก่า)
+1. `CREATE DATABASE IF NOT EXISTS carmen_ai`
+2. `Base.metadata.create_all()` — สร้างทุก table
+3. `migrate_db()` — apply pending migrations
 
 ---
 
 ## Migration System
 
 ```python
-# database.py
 _MIGRATIONS = [
-    ("001_receipt_columns",   None),   # legacy — None = stub ไม่มี logic
+    ("001_receipt_columns",       None),   # legacy stub
     ...
-    ("020_fix_correction_...", None),  # legacy
-    ("021_remove_tenant_columns", _m021_remove_tenant_columns),  # live migration
+    ("021_remove_tenant_columns", _m021),  # ลบ tenant column จาก shared-schema เดิม
+    ("022_...",                   _m022),
+    ("023_create_bu_usage",       _m023),
+    ("024_add_session_carmen_uri",_m024),
+    ("025_add_bu_host_columns",   _m025),  # เพิ่ม bu/host ทุก table (migration นี้)
 ]
 ```
 
-**กฎ:**
-- เพิ่ม migration ท้ายสุดเสมอ ห้าม reorder
-- Legacy migrations (001-020) มี `fn=None` — runner mark applied โดยไม่รัน code
-- DB ใหม่ที่ provision ผ่าน `provision_tenant()`: pre-mark ทั้งหมด ไม่รัน migration ใดเลย
-- DB เก่าที่ migrate มาจาก shared schema: รัน m021 เพื่อลบ tenant column
+**กฎ:** เพิ่ม migration ท้ายสุดเสมอ — runner mark applied ทีละ entry ใน `schema_migrations` table
 
 ---
 
 ## Data Retention
 
-ทำงานทุกคืนผ่าน scheduler → `_run_for_all_tenants()` → วนลูปทุก tenant
-
-```python
-async def _run_for_all_tenants(coro_factory, label):
-    tenants = await get_all_tenants()
-    for tenant in tenants:
-        token = current_tenant.set(tenant)   # set context → async_session() ใช้ DB ถูกตัว
-        try:
-            await coro_factory()
-        finally:
-            current_tenant.reset(token)
-```
+Scheduler รันทุกคืน — ตอนนี้ทำงานบน carmen_ai โดยตรง (ไม่มี loop ต่อ tenant แล้ว)
 
 | Table | เก็บไว้ | Archive |
 |---|---|---|
@@ -167,54 +162,34 @@ async def _run_for_all_tenants(coro_factory, label):
 | `outbound_call_logs` | 90 วัน | CSV → `archives/outbound_call_logs/YYYY-MM.csv` |
 | `llm_usage_logs` | 365 วัน | CSV → `archives/llm_usage_logs/YYYY-MM.csv` |
 | `audit_logs` | 365 วัน | CSV → `archives/audit_logs/YYYY-MM.csv` |
-| `ocr_sessions` (inactive) | 30 วัน | ลบทิ้ง (ไม่ archive) |
-
----
-
-## Migration จาก Schema เดิม (ocr_db)
-
-สำหรับ server ที่มีข้อมูลอยู่แล้ว ให้รัน script ก่อน deploy code ใหม่:
-
-```bash
-cd backend
-venv\Scripts\activate
-
-# ดูก่อนว่าจะย้ายอะไรบ้าง (ไม่เขียน DB)
-python scripts/migrate_to_separate_schema.py --dry-run
-
-# ย้ายจริง
-python scripts/migrate_to_separate_schema.py
-```
-
-Script จะ:
-1. อ่าน tenant ที่มีจาก `ocr_db.ocr_tasks`
-2. สร้าง `carmen_ai_{tenant}` ต่อ tenant
-3. Copy ข้อมูลแยก tenant
-4. Copy `model_pricing` เข้าทุก tenant DB
-
-หลังจาก verify row counts แล้ว ค่อย deploy code ใหม่ และ drop `ocr_db` เมื่อพร้อม
-
----
-
-## Connection Pool
-
-```python
-create_async_engine(
-    f".../{db_name}",
-    pool_pre_ping=True,   # ตรวจ connection ก่อนใช้
-    pool_size=5,          # ต่อ tenant (ลดจาก 10 เพราะมีหลาย pool)
-    max_overflow=10,      # รวม 15 ต่อ tenant
-)
-```
-
-ถ้ามี 10 tenants: max 150 connections รวม — ปรับ `pool_size` ใน `database.py` ตาม workload จริง
+| `ocr_sessions` (inactive) | 30 วัน | ลบทิ้ง |
 
 ---
 
 ## เพิ่ม Table ใหม่
 
-1. เพิ่ม ORM model ใน `models/orm.py` — **ไม่ต้องมี `tenant` column**
+1. เพิ่ม ORM model ใน `models/orm.py` — ใส่ `bu` และ `host` column ถ้าเป็น data table
 2. เพิ่ม migration function ใน `database.py` และ register ใน `_MIGRATIONS`
-3. ถ้าเป็น log table ให้เพิ่มเข้า `RETENTION_POLICY` ใน `retention_service.py`
-4. `provision_tenant()` จะสร้าง table ให้ tenant ใหม่อัตโนมัติ
-5. `migrate_all_tenants()` จะ apply migration ให้ tenant เดิมอัตโนมัติตอน startup
+3. ถ้าเป็น log table ให้เพิ่มเข้า `RETENTION_POLICY`
+4. `ensure_db()` จะสร้าง table ให้อัตโนมัติตอน startup
+
+---
+
+## Dashboard Queries (ตัวอย่าง)
+
+```sql
+-- ดู usage ของลูกค้า ostin.carmenwork.com
+SELECT bu, COUNT(*) FROM ocr_tasks
+WHERE host = 'ostin.carmenwork.com'
+GROUP BY bu;
+
+-- ดู LLM cost ต่อ bu วันนี้
+SELECT bu_name, host, SUM(cost_usd) FROM llm_usage_logs
+WHERE DATE(created_at) = CURDATE()
+GROUP BY bu_name, host;
+
+-- ดู activity ของ user จิตรา
+SELECT * FROM audit_logs
+WHERE user_id = 'jitra' AND host = 'ostin.carmenwork.com'
+ORDER BY created_at DESC;
+```

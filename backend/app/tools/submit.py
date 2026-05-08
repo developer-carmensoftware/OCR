@@ -21,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.context import current_bu, current_host
 from app.models import OCRTask, CreditCard, TaskStatus
 from app.tools.base import ToolResult
 
@@ -80,6 +81,8 @@ async def run(inp: SubmitInput, db: AsyncSession) -> ToolResult:
             status=TaskStatus.COMPLETED,
             ocr_engine=settings.ocr_engine,
             completed_at=datetime.utcnow(),
+            bu=current_bu.get() or None,
+            host=current_host.get() or None,
         )
         db.add(task)
         await db.flush()
@@ -103,6 +106,7 @@ async def run(inp: SubmitInput, db: AsyncSession) -> ToolResult:
             branch_no=inp.branch_no,
             transactions=transactions or None,
             submitted_at=datetime.utcnow(),
+            bu=current_bu.get() or None,
         )
         db.add(card)
         await db.flush()

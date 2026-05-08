@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,7 +24,6 @@ from app.auth import get_current_session, SessionInfo
 from app.config import settings
 from app.database import get_db, provision_tenant, async_session
 from app.models.orm import OcrSession
-from app.context import current_tenant
 from app.auth.session import (
     create_session_jwt,
     decode_session_jwt,
@@ -38,9 +37,48 @@ router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
 _VALIDATE_TIMEOUT = 10.0
 
 
-def _carmen_base(tenant: str) -> str:
-    """Build Carmen API base URL from tenant subdomain."""
-    return f"https://{tenant}.carmen4.com/Carmen.API/api/interface"
+def _carmen_base(uri: str) -> str:
+    """Build Carmen API base URL from the customer's Carmen origin URI."""
+    return f"{uri.rstrip('/')}/Carmen.API/api/interface"
+
+
+def _validate_uri(uri: str) -> str:
+    """
+    Validate and normalise the Carmen origin URI against SSRF.
+    - HTTPS only (no plaintext credential exposure)
+    - Blocks loopback, private, and link-local addresses
+    Returns the normalised origin (scheme + host only).
+    Raises HTTPException(400) if invalid.
+    """
+    import ipaddress as _ip
+
+    if not uri:
+        raise HTTPException(status_code=400, detail="uri is required")
+    parsed = urlparse(uri)
+
+    if parsed.scheme != "https":
+        raise HTTPException(status_code=400, detail="uri must use https")
+
+    hostname = (parsed.hostname or "").lower()
+    if not hostname:
+        raise HTTPException(status_code=400, detail="uri must include a hostname")
+
+    # Block hostnames that always resolve to internal addresses
+    _BLOCKED_HOSTS = {"localhost", "ip6-localhost", "ip6-loopback", "broadcasthost"}
+    if hostname in _BLOCKED_HOSTS:
+        raise HTTPException(status_code=400, detail="uri hostname not allowed")
+
+    # If the hostname is a literal IP, block private/internal ranges
+    try:
+        addr = _ip.ip_address(hostname)
+        if (addr.is_private or addr.is_loopback or
+                addr.is_link_local or addr.is_reserved or addr.is_multicast):
+            raise HTTPException(status_code=400, detail="uri hostname not allowed")
+    except ValueError:
+        pass  # Not a literal IP — domain names are allowed
+
+    port_part = f":{parsed.port}" if parsed.port else ""
+    return f"https://{parsed.hostname}{port_part}"
 
 
 
@@ -51,6 +89,7 @@ class ExchangeRequest(BaseModel):
     token: str
     bu: str
     user: str = ""   # username passed directly from Carmen via URL param
+    uri: str = ""    # window.location.origin of the Carmen instance
 
 
 class ExchangeResponse(BaseModel):
@@ -62,14 +101,14 @@ class ExchangeResponse(BaseModel):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-async def _validate_token(token: str, tenant: str) -> None:
+async def _validate_token(token: str, carmen_uri: str) -> None:
     """
     Confirms the Carmen token is live by probing a lightweight endpoint.
     Raises HTTPException(401) if Carmen rejects it.
     """
     headers = {"Authorization": token, "User-Agent": "OCR-SSO-Validator"}
     async with httpx.AsyncClient(timeout=_VALIDATE_TIMEOUT) as client:
-        resp = await client.get(f"{_carmen_base(tenant)}/department", headers=headers)
+        resp = await client.get(f"{_carmen_base(carmen_uri)}/department", headers=headers)
     if resp.status_code == 401:
         raise HTTPException(status_code=401, detail="Carmen token rejected — please re-login to Carmen")
     if resp.status_code not in (200, 204):
@@ -80,10 +119,7 @@ async def _validate_token(token: str, tenant: str) -> None:
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/exchange", response_model=ExchangeResponse)
-async def exchange_sso_token(
-    request: Request,
-    body: ExchangeRequest,
-):
+async def exchange_sso_token(body: ExchangeRequest):
     """Exchange a Carmen SSO token for an OCR session JWT."""
     token = body.token.strip()
     bu    = body.bu.strip()
@@ -91,13 +127,14 @@ async def exchange_sso_token(
     if not token or not bu:
         raise HTTPException(status_code=400, detail="token and bu are required")
 
-    tenant = current_tenant.get() or settings.carmen_tenant_default
+    carmen_uri = _validate_uri(body.uri)
+    tenant = bu.lower()   # kept only for JWT claim; no longer selects a DB
 
-    # Validate token is live against the tenant's Carmen instance
-    await _validate_token(token, tenant)
+    # Validate token is live against the customer's Carmen instance
+    await _validate_token(token, carmen_uri)
 
-    # Provision DB for this tenant if it's their first login (idempotent)
-    await provision_tenant(tenant)
+    # Ensure carmen_ai DB exists (idempotent, fast after first call)
+    await provision_tenant()
 
     user_id  = extract_user_id_from_token(token)
     username = body.user or user_id
@@ -128,6 +165,7 @@ async def exchange_sso_token(
             user_id=user_id,
             username=username,
             bu=bu,
+            carmen_uri=carmen_uri,
             is_active=True,
         ))
         await db.commit()
@@ -142,11 +180,12 @@ async def exchange_sso_token(
             user_id=user_id,
             username=username,
             tenant=tenant,
+            carmen_uri=carmen_uri,
             secret=settings.ocr_jwt_secret,
             ttl_hours=settings.session_ttl_hours,
         ),
         expires_in=settings.session_ttl_hours * 3600,
-        user={"user_id": user_id, "username": username, "bu": bu},
+        user={"user_id": user_id, "username": username, "bu": bu, "uri": carmen_uri},
     )
 
 

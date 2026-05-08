@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.database import init_db, migrate_all_tenants, get_all_tenants
+from app.database import ensure_db, get_all_tenants
 from app.exceptions import (
     CarmenServiceError,
     DuplicateDocumentError,
@@ -136,10 +136,9 @@ async def lifespan(_app: FastAPI):
     logger.info(f"   OpenRouter : {'✅ Configured' if settings.openrouter_api_key else '❌ Not set'}")
     logger.info(f"   Upload Dir : {settings.upload_dir}")
     from app.database import _db_root_url
-    logger.info(f"   Database   : {_db_root_url()} (Schema pattern: carmen_ai_*)")
+    logger.info(f"   Database   : {_db_root_url()}/carmen_ai")
 
-    await migrate_all_tenants()
-    await init_db()
+    await ensure_db()
     logger.info("✅ Database initialized")
 
     # Start background schedulers
