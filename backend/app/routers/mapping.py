@@ -16,6 +16,7 @@ from app.database import get_db
 from app.models import MappingHistory
 from app.tools import map_gl
 from app.auth import get_current_session, SessionInfo
+from app.context import current_bu
 
 logger = logging.getLogger(__name__)
 
@@ -87,9 +88,13 @@ async def get_mapping_history(
     _session: SessionInfo = Depends(get_current_session),
 ):
     """Return all saved mapping history rows for a given bank."""
+    bu = current_bu.get() or None
     result = await db.execute(
         select(MappingHistory)
-        .where(MappingHistory.bank_name == bank_name)
+        .where(
+            MappingHistory.bank_name == bank_name,
+            MappingHistory.bu == bu,
+        )
         .order_by(MappingHistory.confirmed_count.desc(), MappingHistory.updated_at.desc())
     )
     rows = result.scalars().all()
@@ -117,8 +122,10 @@ async def save_mapping_history(
         if not mapping.dept and not mapping.acc:
             continue
 
+        bu = current_bu.get() or None
         result = await db.execute(
             select(MappingHistory).where(
+                MappingHistory.bu == bu,
                 MappingHistory.bank_name == req.bank_name,
                 MappingHistory.field_type == field_type,
                 MappingHistory.dept_code == mapping.dept,
@@ -137,6 +144,7 @@ async def save_mapping_history(
             )
         else:
             db.add(MappingHistory(
+                bu=bu,
                 bank_name=req.bank_name,
                 field_type=field_type,
                 dept_code=mapping.dept,
