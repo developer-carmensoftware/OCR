@@ -126,6 +126,7 @@ export function useOcrExtraction({ showModal, closeModal, setStep, clearFiles, f
       setStep(1)
     } finally {
       setLoading(false)
+      window.dispatchEvent(new Event('ocr:quota-refresh'))
     }
   }
 
@@ -147,6 +148,7 @@ export function useOcrExtraction({ showModal, closeModal, setStep, clearFiles, f
     } finally {
       setLoading(false)
       setStatus('')
+      window.dispatchEvent(new Event('ocr:quota-refresh'))
     }
   }
 

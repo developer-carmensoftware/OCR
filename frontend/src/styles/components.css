@@ -201,18 +201,26 @@
 
 .panel-card {
     background: var(--card-bg);
-    border: 1px solid var(--border);
+    border: 1px solid rgba(255, 255, 255, 0.7);
     border-radius: var(--radius-lg);
     padding: 1.5rem;
-    box-shadow: var(--shadow-sm);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.9),
+        0 1px 3px rgba(15, 25, 60, 0.10),
+        0 4px 16px rgba(15, 25, 60, 0.10),
+        0 12px 32px rgba(15, 25, 60, 0.07);
     transition: box-shadow 0.25s var(--ease), border-color 0.25s var(--ease), transform 0.25s var(--ease);
 }
 
 @media (hover: hover) and (pointer: fine) {
     .panel-card:hover {
-        box-shadow: var(--shadow-md);
-        border-color: var(--border-hi);
-        transform: translateY(-1px);
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.95),
+            0 2px 6px rgba(15, 25, 60, 0.12),
+            0 8px 24px rgba(15, 25, 60, 0.12),
+            0 20px 48px rgba(15, 25, 60, 0.08);
+        border-color: rgba(255, 255, 255, 0.9);
+        transform: translateY(-2px);
     }
 }
 
@@ -754,16 +762,24 @@
 /* ─── DATA CARDS ─── */
 .data-card {
     background: var(--card-bg);
-    border: 1px solid var(--border);
+    border: 1px solid rgba(255, 255, 255, 0.7);
     border-radius: var(--radius-lg);
     overflow: hidden;
-    box-shadow: var(--shadow-sm);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.9),
+        0 1px 3px rgba(15, 25, 60, 0.10),
+        0 4px 16px rgba(15, 25, 60, 0.10),
+        0 12px 32px rgba(15, 25, 60, 0.07);
     transition: box-shadow 0.25s var(--ease), border-color 0.25s var(--ease);
 }
 
 .data-card:hover {
-    box-shadow: var(--shadow-md);
-    border-color: var(--border-hi);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.95),
+        0 2px 6px rgba(15, 25, 60, 0.12),
+        0 8px 24px rgba(15, 25, 60, 0.12),
+        0 20px 48px rgba(15, 25, 60, 0.08);
+    border-color: rgba(255, 255, 255, 0.9);
 }
 
 .card-title {

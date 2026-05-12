@@ -83,7 +83,7 @@ export default function APInvoice() {
           eyebrow={`${t.appTitle} · Account Payable`}
           backPath="/apInvoice"
         >
-          {step === 1 && <UsageIndicator />}
+          <UsageIndicator />
           <DarkModeToggle />
         </AppHeader>
 

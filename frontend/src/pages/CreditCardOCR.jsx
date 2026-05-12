@@ -77,7 +77,7 @@ export default function CreditCardOCR() {
           eyebrow="Carmen Cloud · Journal Voucher"
           backPath="/glJv"
         >
-          {step === 1 && <UsageIndicator />}
+          <UsageIndicator />
           <DarkModeToggle />
         </AppHeader>
 

@@ -127,6 +127,7 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors, vendorDbByT
       if (!err.message.includes('429')) showToast('Failed to extract data. Please try again.', 'error')
     } finally {
       setLoading(false)
+      window.dispatchEvent(new Event('ocr:quota-refresh'))
     }
   }
 
