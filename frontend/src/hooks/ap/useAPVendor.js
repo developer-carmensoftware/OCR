@@ -41,7 +41,14 @@ export function useAPVendor({ t, headerData }) {
       }))
       setVendors(list)
       const db = {}
-      list.forEach(v => { if (v.taxId) db[v.taxId] = v })
+      list.forEach(v => {
+        if (!v.taxId) return
+        // Compound key (taxId + branchNo) for exact branch matching
+        const branch = String(v.branchNo ?? '').padStart(5, '0')
+        db[`${v.taxId}-${branch}`] = v
+        // taxId-only key: keep first entry (usually HQ / branch 00000) as default fallback
+        if (!db[v.taxId]) db[v.taxId] = v
+      })
       setVendorDbByTax(db)
       if (setRefreshing) showToast('Vendor list updated', 'success')
     } catch {
@@ -58,7 +65,9 @@ export function useAPVendor({ t, headerData }) {
     setSystemVendor(prev => {
       if (prev.code) return prev  // user already picked one — don't overwrite
       const raw = String(headerData?.vendorTaxId || '').replace(/\D/g, '')
-      const found = vendorDbByTax[raw]
+      // Try exact branch match first, then fall back to taxId-only (HQ default)
+      const branch = String(headerData?.vendorBranch || '').replace(/\D/g, '').padStart(5, '0')
+      const found = vendorDbByTax[`${raw}-${branch}`] || vendorDbByTax[raw]
       if (found && found.active !== false) {
         setVendorSearch(`${found.code} — ${found.name} | TaxID : ${found.taxId || '—'} | Branch No. : ${String(found.branchNo ?? '—').padStart(5, '0')}`)
         return found

@@ -103,9 +103,13 @@ async def suggest_gl_for_items(items_payload: List[Dict[str, Any]], accounts_raw
 
     _EXPENSE_TYPES = {"e", "expense", "exp", "expenditure"}
     _EXPENSE_PREFIXES = ("5", "6", "7")
+    # Prefer accounts that match BOTH type AND prefix; fall back to prefix-only,
+    # then type-only, then all accounts — avoids including asset/prepaid (1xxxxx)
+    # accounts when Carmen returns type="e" for non-expense account categories.
     expense_accounts = (
-        [a for a in accounts if a["type"] in _EXPENSE_TYPES]
+        [a for a in accounts if a["type"] in _EXPENSE_TYPES and str(a["code"]).startswith(_EXPENSE_PREFIXES)]
         or [a for a in accounts if str(a["code"]).startswith(_EXPENSE_PREFIXES)]
+        or [a for a in accounts if a["type"] in _EXPENSE_TYPES]
         or accounts
     )
 

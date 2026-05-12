@@ -62,7 +62,10 @@ export default function VendorSearch({ t, systemVendor, setSystemVendor, vendorS
             setShowVendorDrop(true)
             if (!e.target.value) setSystemVendor({ code: '', name: '' })
           }}
-          onFocus={() => setShowVendorDrop(true)}
+          onFocus={() => {
+            if (systemVendor.code) setVendorSearch('')
+            setShowVendorDrop(true)
+          }}
           onBlur={() => setTimeout(() => setShowVendorDrop(false), 180)}
         />
       </div>
