@@ -112,6 +112,7 @@ export function useAPSubmission({ setStep, setModal, headerData, lineItems, setL
   const [glLoaded, setGlLoaded] = useState(false)
   const [invoiceSeq, setInvoiceSeq] = useState(null)
   const dupInvNoRef = useRef('')
+  const pendingSuggestRef = useRef([])
 
   const loadGLData = async () => {
     if (glLoaded) return
@@ -190,18 +191,19 @@ export function useAPSubmission({ setStep, setModal, headerData, lineItems, setL
     }
 
     if (!headerData.invhDesc) {
+      pendingSuggestRef.current = itemsToSuggest
       setModal({
         show: true, type: 'warning',
         title: 'No Invoice Description',
         message: 'Adding an Invoice Description helps AI suggest more accurate GL accounts.',
         confirmText: 'Suggest Anyway',
         cancelText: 'Go Back',
-        onConfirm: () => { setModal({ show: false }); runSuggest(itemsToSuggest) },
+        onConfirm: () => { setModal({ show: false }); runSuggest(pendingSuggestRef.current) },
         onCancel: () => setModal({ show: false }),
       })
-    } else {
-      runSuggest(itemsToSuggest)
+      return
     }
+    runSuggest(itemsToSuggest)
   }
 
   const handleAcceptAll = () => {

@@ -130,6 +130,18 @@ async def suggest_gl_for_items(items_payload: List[Dict[str, Any]], accounts_raw
     valid_acc_map = {str(a["code"]).strip(): a["code"] for a in accounts}
     valid_dept_map = {str(d["code"]).strip(): d["code"] for d in departments}
 
+    def _resolve(raw, valid_map: dict):
+        """Match LLM-returned code against valid_map.
+        Falls back to first whitespace-delimited token so codes like
+        '302 Transportation' or '6030004 — Oil Filter' still resolve."""
+        if raw is None:
+            return None
+        s = str(raw).strip()
+        if s in valid_map:
+            return valid_map[s]
+        first = s.split()[0].rstrip(":,;-—") if s else ""
+        return valid_map.get(first)
+
     # Unwrap if LLM nested it under "suggestions"
     if "suggestions" in data and isinstance(data["suggestions"], dict):
         data = data["suggestions"]
@@ -138,20 +150,12 @@ async def suggest_gl_for_items(items_payload: List[Dict[str, Any]], accounts_raw
     for item in items_payload:
         key = str(item["index"])
         mapping = data.get(key) or data.get(item["index"]) or {}
-        
-        raw_dept = mapping.get("dept")
-        if raw_dept is None:
-            raw_dept = mapping.get("deptCode")
-            
-        raw_acc = mapping.get("acc")
-        if raw_acc is None:
-            raw_acc = mapping.get("accountCode")
-        
-        dept_str = str(raw_dept).strip() if raw_dept is not None else None
-        acc_str = str(raw_acc).strip() if raw_acc is not None else None
 
-        dept = valid_dept_map.get(dept_str) if dept_str else None
-        acc = valid_acc_map.get(acc_str) if acc_str else None
+        raw_dept = mapping.get("dept") if mapping.get("dept") is not None else mapping.get("deptCode")
+        raw_acc  = mapping.get("acc")  if mapping.get("acc")  is not None else mapping.get("accountCode")
+
+        dept = _resolve(raw_dept, valid_dept_map)
+        acc  = _resolve(raw_acc,  valid_acc_map)
         suggestions[item["index"]] = {"deptCode": dept, "accountCode": acc}
 
     return suggestions
