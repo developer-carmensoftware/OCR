@@ -68,7 +68,7 @@ function buildInvoicePayload(headerData, lineItems, systemVendor) {
     VnCode: systemVendor.code || '',
     InvhDate: now,
     InvhDesc: headerData.invhDesc || '',
-    InvhSource: 'OAPI',
+    InvhSource: 'AAPI',
     InvhInvNo: headerData.documentNumber || '',
     InvhInvDate: invDate,
     InvhDueDate: dueDate,
