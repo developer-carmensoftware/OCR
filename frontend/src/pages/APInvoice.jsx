@@ -57,6 +57,10 @@ export default function APInvoice() {
         cancelText={modal.cancelText}
         onConfirm={modal.onConfirm}
         onCancel={modal.onCancel}
+        inputLabel={modal.inputLabel}
+        inputValue={modal.inputValue}
+        onInputChange={modal.onInputChange}
+        inputPlaceholder={modal.inputPlaceholder}
       />
 
       <CustomModal

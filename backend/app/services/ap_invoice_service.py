@@ -101,7 +101,13 @@ async def suggest_gl_for_items(items_payload: List[Dict[str, Any]], accounts_raw
         if d.get("DeptCode") and d.get("DeptCode") != "CodeDep"
     ]
 
-    expense_accounts = [a for a in accounts if a["type"] in ("e", "expense")] or accounts
+    _EXPENSE_TYPES = {"e", "expense", "exp", "expenditure"}
+    _EXPENSE_PREFIXES = ("5", "6", "7")
+    expense_accounts = (
+        [a for a in accounts if a["type"] in _EXPENSE_TYPES]
+        or [a for a in accounts if str(a["code"]).startswith(_EXPENSE_PREFIXES)]
+        or accounts
+    )
 
     # Pre-filter to the most relevant accounts (include invoice_desc as extra keywords)
     filtered_accounts = _filter_expense_accounts(expense_accounts, items_payload, invoice_desc=invoice_desc)

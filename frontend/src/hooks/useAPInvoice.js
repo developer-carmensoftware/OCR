@@ -35,6 +35,7 @@ export function useAPInvoice() {
     setLineItems: extraction.setLineItems,
     systemVendor: vendor.systemVendor,
     apInvoiceId: extraction.apInvoiceId,
+    updateHeader: extraction.updateHeader,
   })
 
   // Load vendors on mount

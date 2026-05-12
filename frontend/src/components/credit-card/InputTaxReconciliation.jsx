@@ -18,9 +18,9 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
   const company = config?.company || {}
 
   const netAmount = details.reduce((s, d) => s + toNum(d.CommisAmt ?? d.commis_amt), 0)
-  const taxAmount = details.reduce((s, d) => s + toNum(d.TaxAmt   ?? d.tax_amt), 0)
-  const total     = netAmount + taxAmount
-  const taxRate   = netAmount > 0 ? parseFloat(((taxAmount / netAmount) * 100).toFixed(2)) : 7.00
+  const taxAmount = details.reduce((s, d) => s + toNum(d.TaxAmt ?? d.tax_amt), 0)
+  const total = netAmount + taxAmount
+  const taxRate = netAmount > 0 ? parseFloat(((taxAmount / netAmount) * 100).toFixed(2)) : 7.00
   const taxProfile = `VAT0${Math.round(taxRate)} : VAT ${Math.round(taxRate)}%`
 
   // Tax period: DD/MM/YYYY → MM/YYYY
@@ -43,10 +43,10 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
     // taxPeriod: "MM/YYYY" → derive prefix, FrDate, ToDate
     const [mm, yyyy] = (taxPeriod || '/').split('/')
     const normalizedYYYY = normalizeYearToCE(yyyy)
-    const prefix   = `vat${normalizedYYYY}${mm}`
-    const frDate   = `${normalizedYYYY}-${mm}-01`
-    const lastDay  = new Date(Number(normalizedYYYY), Number(mm), 0).getDate()
-    const toDate   = `${normalizedYYYY}-${mm}-${String(lastDay).padStart(2, '0')}`
+    const prefix = `vat${normalizedYYYY}${mm}`
+    const frDate = `${normalizedYYYY}-${mm}-01`
+    const lastDay = new Date(Number(normalizedYYYY), Number(mm), 0).getDate()
+    const toDate = `${normalizedYYYY}-${mm}-${String(lastDay).padStart(2, '0')}`
 
     // DocDate: "DD/MM/YYYY" → "YYYY-MM-DDT00:00:00.000Z"
     let invhTInvDt = ''
@@ -59,25 +59,25 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
     const rateInt = Math.round(taxRate)
 
     const payload = {
-      Prefix:         prefix,
-      Source:         'OCC',
-      FrDate:         frDate,
-      ToDate:         toDate,
-      InvhTInvNo:     headerData.DocNo || '',
-      InvhTInvDt:     invhTInvDt,
-      InvhDesc:       description || '',
-      VnName:         company.name || '',
+      Prefix: prefix,
+      Source: 'ACTX',
+      FrDate: frDate,
+      ToDate: toDate,
+      InvhTInvNo: headerData.DocNo || '',
+      InvhTInvDt: invhTInvDt,
+      InvhDesc: description || '',
+      VnName: company.name || '',
       TaxProfileCode: `VAT0${rateInt}`,
-      BfTaxAmt:       String(netAmount),
-      TaxRate:        taxRate,
-      TaxAmt:         taxAmount,
-      TotalAmt:       String(total),
-      TaxId:          company.taxId || '',
-      BranchNo:       company.branch || '',
-      Address:        company.address || '',
-      UserModified:   'admin',
+      BfTaxAmt: String(netAmount),
+      TaxRate: taxRate,
+      TaxAmt: taxAmount,
+      TotalAmt: String(total),
+      TaxId: company.taxId || '',
+      BranchNo: company.branch || '',
+      Address: company.address || '',
+      UserModified: 'admin',
       TaxProfileDesc: `VAT ${rateInt}%`,
-      VnCode:         '',
+      VnCode: '',
     }
 
     try {
@@ -111,7 +111,7 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
               border: '1px solid var(--primary-mid)', borderRadius: '4px',
               padding: '0.2rem 0.65rem', fontSize: '0.8rem', fontWeight: 600,
             }}>
-              Source: OCC
+              Source: ACTX
             </span>
             {taxPeriod && (
               <span style={{
@@ -159,7 +159,7 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
                         border: '1px solid var(--btn-ok-border, #99f6e4)', borderRadius: '4px',
                         padding: '0.15rem 0.5rem', fontSize: '0.78rem', fontWeight: 700,
                       }}>
-                        OCC
+                        ACTX
                       </span>
                     </td>
                     <td style={{ fontFamily: "'DM Mono', monospace", fontSize: '0.83rem' }}>

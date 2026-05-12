@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { submitToLocal } from '../../lib/api/submit'
 import { submitToCarmen } from '../../lib/api/carmen'
 import { logCorrections, diffCorrections } from '../../lib/api/feedback'
@@ -9,17 +9,10 @@ import { showToast } from '../../lib/toast'
 /**
  * Manages the final submission flow: saving to local DB and sending to Carmen GL JV.
  */
-export function useOcrSubmission({ showModal, closeModal, setStep, headerData, details, bank, cardId, originalHeader, originalDetails, jvRows, setJvRows, setCarmenJvId, filePrefix }) {
+export function useOcrSubmission({ showModal, closeModal, setStep, headerData, details, bank, cardId, originalHeader, originalDetails, setJvRows, setCarmenJvId }) {
   const [submitting, setSubmitting] = useState(false)
-  const submittedDocNos = useRef(new Set())
 
   async function handleSubmitFinal(rows) {
-    if (submittedDocNos.current.has(headerData.DocNo)) {
-      showToast('This document is already saved and cannot be submitted again.', 'warning')
-      setStep(4)
-      return
-    }
-
     setSubmitting(true)
     setJvRows(rows)
     const docNo = headerData.DocNo
@@ -51,7 +44,6 @@ export function useOcrSubmission({ showModal, closeModal, setStep, headerData, d
     try {
       showToast('Submitting data...', 'info')
       await submitToLocal(payload)
-      submittedDocNos.current.add(docNo)
 
       const corrections = diffCorrections(headerData, originalHeader, details, originalDetails)
       if (corrections.length > 0) {
@@ -61,6 +53,7 @@ export function useOcrSubmission({ showModal, closeModal, setStep, headerData, d
 
       let carmenError = null
       let jvId = null
+      let alreadyPosted = false
       try {
         const carmenConfig = (() => {
           try { return JSON.parse(localStorage.getItem('accountingConfig') || '{}') } catch { return {} }
@@ -96,28 +89,44 @@ export function useOcrSubmission({ showModal, closeModal, setStep, headerData, d
         }
         console.log('[Carmen GL JV] payload:', JSON.stringify(carmenPayload, null, 2))
         const carmenRes = await submitToCarmen(carmenPayload)
-        if (carmenRes?.InternalMessage) {
-          jvId = carmenRes.InternalMessage
-          setCarmenJvId(jvId)
+        if (carmenRes?.Code !== 0) {
+          alreadyPosted = true
+          carmenError = carmenRes?.UserMessage || `Carmen error (Code: ${carmenRes?.Code})`
+          showToast(`Carmen GL JV: ${carmenError}`, 'warning')
+        } else {
+          if (carmenRes?.InternalMessage) {
+            jvId = carmenRes.InternalMessage
+            setCarmenJvId(jvId)
+          }
+          showToast('Successfully sent data to Carmen GL JV', 'success')
         }
-        showToast('Successfully sent data to Carmen GL JV', 'success')
       } catch (err) {
         carmenError = err.message
         showToast(`Carmen GL JV: ${err.message}`, 'error')
       }
 
-      showModal({
-        title: carmenError ? 'Saved Successfully (Carmen issue)' : 'JV Saved Successfully!',
-        message: carmenError
-          ? `Document number ${docNo} has been saved to the database.\n\nHowever, sending to Carmen GL JV failed:\n${carmenError}`
-          : `Document number ${docNo} has been successfully saved and sent to Carmen GL JV.`,
-        type: carmenError ? 'warning' : 'success',
-        confirmText: 'Proceed to Input Tax Reconciliation',
-        cancelText: jvId ? 'View JV' : undefined,
-        cancelStyle: jvId ? { background: 'var(--teal)', color: 'white', border: '1px solid var(--teal)' } : undefined,
-        onConfirm: () => { closeModal(); setStep(4) },
-        onCancel: jvId ? () => window.open(getCarmenUrl(`/glJv/${jvId}/show`), '_blank') : undefined,
-      })
+      if (alreadyPosted) {
+        showModal({
+          title: 'Warning: Data Already Posted',
+          message: `Document number ${docNo} saved to database.\n\nCarmen: "${carmenError}"`,
+          type: 'warning',
+          confirmText: 'Back to Step 1',
+          onConfirm: () => { closeModal(); setStep(1) },
+        })
+      } else {
+        showModal({
+          title: carmenError ? 'Saved Successfully (Carmen issue)' : 'JV Saved Successfully!',
+          message: carmenError
+            ? `Document number ${docNo} has been saved to the database.\n\nHowever, sending to Carmen GL JV failed:\n${carmenError}`
+            : `Document number ${docNo} has been successfully saved and sent to Carmen GL JV.`,
+          type: carmenError ? 'warning' : 'success',
+          confirmText: 'Proceed to Input Tax Reconciliation',
+          cancelText: jvId ? 'View JV' : undefined,
+          cancelStyle: jvId ? { background: 'var(--teal)', color: 'white', border: '1px solid var(--teal)' } : undefined,
+          onConfirm: () => { closeModal(); setStep(4) },
+          onCancel: jvId ? () => window.open(getCarmenUrl(`/glJv/${jvId}/show`), '_blank') : undefined,
+        })
+      }
     } catch (err) {
       if (err.code === 'DUPLICATE_DOC_NO') {
         showModal({
@@ -139,5 +148,5 @@ export function useOcrSubmission({ showModal, closeModal, setStep, headerData, d
     }
   }
 
-  return { submitting, handleSubmitFinal, submittedDocNos }
+  return { submitting, handleSubmitFinal }
 }

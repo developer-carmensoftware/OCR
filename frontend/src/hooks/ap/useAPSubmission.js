@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { fetchAccountCodes, fetchDepartments, submitAPInvoiceToCarmen } from '../../lib/api/carmen'
 import { apiFetch } from '../../lib/api/client'
 import { showToast } from '../../lib/toast'
-import { parseNum, fmt } from '../../lib/format'
+import { parseNum } from '../../lib/format'
 import { parseDateToISO } from '../../lib/date'
 
 function addDays(isoDate, days) {
@@ -47,8 +47,8 @@ function buildInvoicePayload(headerData, lineItems, systemVendor) {
       TotalPrice: total.toFixed(2),
       DeptCode: item.deptCode || '',
       InvdBTaxCr1: systemVendor.vatCrAccCode || '',
-      InvdBTaxDr: systemVendor.vat1DrAccCode || '',
-      InvdT1Dr: item.accountCode || '',
+      InvdBTaxDr: item.accountCode || '',
+      InvdT1Dr: systemVendor.vat1DrAccCode || '',
       InvdT2Dr: '',
       InvdTaxT1: headerData.taxType === 'Include' ? 'Include' : 'Add',
       InvdTaxR1: taxRate.toFixed(2),
@@ -56,7 +56,7 @@ function buildInvoicePayload(headerData, lineItems, systemVendor) {
       DimList: {},
       LastModified: now,
       InvdBTaxCr1DeptCode: systemVendor.crDeptCode || '',
-      InvdT1DrDeptCode: item.deptCode || '',
+      InvdT1DrDeptCode: systemVendor.vat1DrDeptCode || '',
       InvdT2DrDeptCode: item.deptCode || '',
       TaxProfileCode1: systemVendor.taxProfileCode1 || null,
       TaxProfileCode2: null,
@@ -88,12 +88,30 @@ function buildInvoicePayload(headerData, lineItems, systemVendor) {
 /**
  * Manages GL account loading, AI suggestion, and final Carmen submission.
  */
-export function useAPSubmission({ setStep, setModal, headerData, lineItems, setLineItems, systemVendor, apInvoiceId }) {
+const _CARMEN_FIELD_LABELS = {
+  InvhInvNo: 'Invoice Number',
+  VnCode: 'Vendor Code',
+  InvhDate: 'Invoice Date',
+  InvdSeq: 'Invoice Line',
+}
+
+function _formatCarmenError(msg) {
+  return (msg || '').replace(/\b(InvhInvNo|VnCode|InvhDate|InvdSeq)\b/g, m => _CARMEN_FIELD_LABELS[m] || m)
+}
+
+function _parseCarmenDupError(msg) {
+  const m = (msg || '').match(/InvhInvNo.*?\[([^\],]+),([^\]]+)\]/)
+  if (!m) return null
+  return { invNo: m[1].trim(), vnCode: m[2].trim() }
+}
+
+export function useAPSubmission({ setStep, setModal, headerData, lineItems, setLineItems, systemVendor, apInvoiceId, updateHeader }) {
   const [suggestLoading, setSuggestLoading] = useState(false)
   const [masterAccounts, setMasterAccounts] = useState([])
   const [masterDepts, setMasterDepts] = useState([])
   const [glLoaded, setGlLoaded] = useState(false)
   const [invoiceSeq, setInvoiceSeq] = useState(null)
+  const dupInvNoRef = useRef('')
 
   const loadGLData = async () => {
     if (glLoaded) return
@@ -210,6 +228,68 @@ export function useAPSubmission({ setStep, setModal, headerData, lineItems, setL
     ))
   }
 
+  const _showDupModal = (dup) => {
+    setModal({
+      show: true, type: 'warning',
+      title: 'Invoice Already Exists in Carmen',
+      message: `Invoice Number "${dup.invNo}" for Vendor Code "${dup.vnCode}" already exists in Carmen.`,
+      confirmText: 'Change Invoice Number',
+      cancelText: 'Cancel',
+      onConfirm: () => _showChangeInvNoModal(dup),
+      onCancel: () => { setModal({ show: false }); setStep(1) },
+    })
+  }
+
+  const _showChangeInvNoModal = (dup) => {
+    dupInvNoRef.current = ''
+    setModal({
+      show: true, type: 'warning',
+      title: 'Change Invoice Number',
+      message: 'Enter a new Invoice Number to re-submit to Carmen.',
+      inputLabel: 'New Invoice Number',
+      inputValue: '',
+      onInputChange: (v) => { dupInvNoRef.current = v },
+      inputPlaceholder: `e.g. ${dup.invNo}-A`,
+      confirmText: 'Re-submit',
+      cancelText: 'Back',
+      onConfirm: () => { setModal({ show: false }); _resubmitWithNewInvNo(dupInvNoRef.current) },
+      onCancel: () => _showDupModal(dup),
+    })
+  }
+
+  const _resubmitWithNewInvNo = async (newInvNo) => {
+    if (!newInvNo?.trim()) {
+      showToast('Please enter a new Invoice Number.', 'warning')
+      return
+    }
+    showToast('Re-sending AP Invoice to Carmen Cloud...', 'info')
+    try {
+      const modifiedHeader = { ...headerData, documentNumber: newInvNo.trim() }
+      const payload = buildInvoicePayload(modifiedHeader, lineItems, systemVendor)
+      const result = await submitAPInvoiceToCarmen(payload, apInvoiceId)
+      if (result?.Code < 0) {
+        const dup = _parseCarmenDupError(result.UserMessage || '')
+        if (dup) { _showDupModal(dup); return }
+        showToast('Carmen Cloud rejected the data, please verify', 'warning')
+        setModal({
+          show: true, type: 'warning',
+          title: 'Failed to create AP Invoice',
+          message: _formatCarmenError(result.UserMessage || 'Error from Carmen Cloud'),
+          confirmText: 'OK',
+          onConfirm: () => setModal({ show: false }),
+        })
+        return
+      }
+      updateHeader?.('documentNumber', newInvNo.trim())
+      setInvoiceSeq(result?.InternalMessage ?? null)
+      showToast('AP Invoice created successfully', 'success')
+      setStep(5)
+    } catch (err) {
+      console.error('AP Invoice re-submit error:', err)
+      showToast(`Failed to send AP Invoice: ${err.message || 'An error occurred'}`, 'error')
+    }
+  }
+
   const handleGenerate = async () => {
     const missing = lineItems.filter(i => !i.deptCode || !i.accountCode)
     if (missing.length > 0) {
@@ -221,13 +301,15 @@ export function useAPSubmission({ setStep, setModal, headerData, lineItems, setL
       const payload = buildInvoicePayload(headerData, lineItems, systemVendor)
       const result = await submitAPInvoiceToCarmen(payload, apInvoiceId)
       if (result?.Code < 0) {
+        const dup = _parseCarmenDupError(result.UserMessage || '')
+        if (dup) { _showDupModal(dup); return }
         showToast('Carmen Cloud rejected the data, please verify', 'warning')
         setModal({
           show: true, type: 'warning',
           title: 'Failed to create AP Invoice',
-          message: result.UserMessage || 'Error from Carmen Cloud',
+          message: _formatCarmenError(result.UserMessage || 'Error from Carmen Cloud'),
           confirmText: 'OK',
-          onConfirm: () => { setModal({ show: false }) },
+          onConfirm: () => setModal({ show: false }),
         })
         return
       }

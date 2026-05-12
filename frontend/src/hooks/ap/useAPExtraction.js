@@ -42,18 +42,6 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors, vendorDbByT
           if (!res.ok) throw new Error(`HTTP ${res.status}`)
           const data = await res.json()
 
-          if (data.is_duplicate) {
-            setStatus('Duplicate document found')
-            setModal({
-              show: true, type: 'warning',
-              title: 'Duplicate document found',
-              message: `Document No. ${data.documentNumber || '—'} for this vendor is already in the system and cannot be imported again.`,
-              confirmText: 'OK',
-              onConfirm: () => { setModal({ show: false }); setStep(1); setFile(null); setPreviewUrl(null) },
-            })
-            return
-          }
-
           setApInvoiceId(data.id)
           setHeaderData({
             vendorName: data.vendorName || '',
@@ -83,6 +71,29 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors, vendorDbByT
               const savedAll = JSON.parse(localStorage.getItem('ap_invoice_mapping') || '{}')
               if (savedAll[data.vendorTaxId]) setFieldMappings(savedAll[data.vendorTaxId])
             } catch { /* ignore */ }
+          }
+
+          if (data.is_duplicate) {
+            setIsDuplicate(true)
+            setStatus('Duplicate document found')
+            setModal({
+              show: true, type: 'warning',
+              title: 'Duplicate document found',
+              message: `Document No. ${data.documentNumber || '—'} for this vendor is already in the system.`,
+              confirmText: 'Proceed Anyway',
+              cancelText: 'Cancel',
+              onConfirm: () => {
+                setModal({ show: false })
+                setStep(2)
+                if (loadVendors) loadVendors()
+              },
+              onCancel: () => {
+                setModal({ show: false })
+                setFile(null); setPreviewUrl(null)
+                setStep(1)
+              },
+            })
+            return
           }
 
           setStatus('Data extracted successfully ✓')

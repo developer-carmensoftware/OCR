@@ -37,10 +37,8 @@ export function useOcrWizard() {
     cardId: extraction.cardId,
     originalHeader: extraction.originalHeader,
     originalDetails: extraction.originalDetails,
-    jvRows,
     setJvRows,
     setCarmenJvId,
-    filePrefix,
   })
 
   // ocr_wizard_state is written by useOcrExtraction after each extraction

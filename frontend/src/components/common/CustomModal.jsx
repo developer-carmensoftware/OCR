@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle2, AlertTriangle, XCircle, Info } from 'lucide-react'
@@ -44,17 +44,35 @@ export default function CustomModal({
   confirmText = 'ตกลง',
   cancelText = 'ยกเลิก',
   cancelStyle,
+  inputLabel,
+  inputValue,
+  onInputChange,
+  inputPlaceholder,
 }) {
   const confirmRef = useRef(null)
   const cancelRef  = useRef(null)
+  const inputRef   = useRef(null)
+  const [inputVal, setInputVal] = useState('')
+
+  useEffect(() => {
+    if (show) setInputVal(inputValue || '')
+  }, [show, inputLabel])
+
+  const handleInputChange = (v) => {
+    setInputVal(v)
+    onInputChange?.(v)
+  }
 
   useEffect(() => {
     if (!show) return
-    const timer = setTimeout(() => confirmRef.current?.focus(), 50)
+    const timer = setTimeout(() => {
+      if (inputLabel && inputRef.current) inputRef.current.focus()
+      else confirmRef.current?.focus()
+    }, 50)
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') { onCancel ? onCancel() : onConfirm?.(); return }
       if (e.key !== 'Tab') return
-      const focusable = [cancelRef.current, confirmRef.current].filter(Boolean)
+      const focusable = [cancelRef.current, inputRef.current, confirmRef.current].filter(Boolean)
       if (!focusable.length) return
       if (e.shiftKey) {
         if (document.activeElement === focusable[0]) { e.preventDefault(); focusable[focusable.length - 1].focus() }
@@ -64,7 +82,7 @@ export default function CustomModal({
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => { clearTimeout(timer); document.removeEventListener('keydown', handleKeyDown) }
-  }, [show, onCancel, onConfirm])
+  }, [show, onCancel, onConfirm, inputLabel])
 
   if (type === 'loading') {
     return show ? createPortal(
@@ -124,6 +142,34 @@ export default function CustomModal({
 
             <h3 className="modal-title" id="modal-title">{title}</h3>
             <p className="modal-msg" id="modal-desc">{message}</p>
+
+            {inputLabel && (
+              <div style={{ margin: '0.25rem 0 1rem', textAlign: 'left' }}>
+                <label style={{
+                  display: 'block', fontSize: '0.72rem', fontWeight: 700,
+                  color: 'var(--text-2)', marginBottom: '0.35rem',
+                  textTransform: 'uppercase', letterSpacing: '0.05em',
+                }}>
+                  {inputLabel}
+                </label>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={inputVal}
+                  onChange={e => handleInputChange(e.target.value)}
+                  placeholder={inputPlaceholder || ''}
+                  style={{
+                    width: '100%', boxSizing: 'border-box',
+                    padding: '0.55rem 0.85rem', fontSize: '0.9rem',
+                    border: '1.5px solid var(--border)', borderRadius: '8px',
+                    background: 'var(--bg-2, #f9fafb)', color: 'var(--text)',
+                    outline: 'none',
+                  }}
+                  onFocus={e => { e.target.style.borderColor = '#7c3aed'; e.target.style.boxShadow = '0 0 0 3px rgba(124,58,237,0.15)' }}
+                  onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none' }}
+                />
+              </div>
+            )}
 
             <div className="modal-actions">
               {onCancel && (
