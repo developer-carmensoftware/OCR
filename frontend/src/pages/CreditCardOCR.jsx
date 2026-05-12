@@ -2,10 +2,9 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useOcrWizard } from '../hooks/useOcrWizard'
-import { StepWizard, FormActions, CustomModal, LoadingOverlay, DocumentPreview, DarkModeToggle, ExtractionSkeleton, SplitLayout, UsageIndicator } from '../components/common'
+import { StepWizard, FormActions, CustomModal, LoadingOverlay, DocumentPreview, DarkModeToggle, ExtractionSkeleton, SplitLayout, UsageIndicator, AppHeader } from '../components/common'
 import { UploadSection, BankDetectionBanner, HeaderCard, DetailTable, AccountingReview, InputTaxReconciliation } from '../components/credit-card'
 import { BANK_THAI_NAMES } from '../constants'
-import logo from '../assets/logo.png'
 
 export default function CreditCardOCR() {
   const {
@@ -72,24 +71,15 @@ export default function CreditCardOCR() {
 
       <div className="app-container" style={{ padding: '1.5rem' }}>
 
-        {/* Page Header */}
-        <div className="app-header">
-          <div className="brand">
-            <div className="logo-box" style={{ background: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)', boxShadow: '0 4px 18px rgba(37,99,235,0.28)' }}>
-              <img src={logo} alt="Logo" style={{ width: '20px', height: '20px', objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
-            </div>
-            <div>
-              <h1 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: 'var(--text)' }}>Carmen Cloud</h1>
-              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#2563eb', letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: '-0.1rem' }}>
-                Credit Card Report OCR
-              </div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            {step === 1 && <UsageIndicator />}
-            <DarkModeToggle />
-          </div>
-        </div>
+        <AppHeader
+          module="credit-card"
+          moduleName="Credit Card Report OCR"
+          eyebrow="Carmen Cloud · Journal Voucher"
+          backPath="/glJv"
+        >
+          {step === 1 && <UsageIndicator />}
+          <DarkModeToggle />
+        </AppHeader>
 
         <StepWizard step={step} onStepClick={(n) => !loading && !submitting && handleStepClick(n)} />
 
@@ -158,7 +148,7 @@ export default function CreditCardOCR() {
                   onBack={() => setStep(2)}
                   onSubmit={handleSubmitFinal}
                   onGoMapping={() => {
-                    try { localStorage.setItem('ocr_wizard_state', JSON.stringify({ bank, details })) } catch {}
+                    try { localStorage.setItem('ocr_wizard_state', JSON.stringify({ bank, details })) } catch { }
                     toast.info('Opened new tab for Mapping settings')
                     window.open('#/CreditCardOCR/mapping', '_blank')
                   }}

@@ -1,58 +1,125 @@
-.usage-indicator {
+/* ─── USAGE / QUOTA WIDGET ─── */
+.ui-quota {
     display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    padding: 0.4rem 0.75rem;
-    background: var(--gray-50);
-    border-radius: 2rem;
-    border: 1px solid var(--gray-200);
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--text-3);
-    cursor: pointer;
-    transition: background-color 200ms var(--ease), border-color 200ms var(--ease), transform 150ms var(--ease);
+    align-items: stretch;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    cursor: default;
     -webkit-user-select: none;
     user-select: none;
     position: relative;
-    overflow: hidden;
+    transition: border-color 0.18s var(--ease), box-shadow 0.18s var(--ease);
 }
 
-.usage-indicator.minimal {
-    padding: 0.3rem 0.6rem;
-    gap: 0.4rem;
-    border-radius: 0.5rem;
-    background: transparent;
-    border-color: transparent;
+.ui-quota:hover {
+    border-color: var(--border-hi);
+    box-shadow: var(--shadow-sm);
 }
 
-.usage-indicator.minimal:hover {
-    background: var(--gray-100);
-    border-color: var(--gray-200);
+/* thin progress line at the bottom — shows used % */
+.ui-quota::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 2px;
+    width: var(--used-pct, 0%);
+    background: var(--quota-color, var(--teal));
+    transition: width 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+    border-radius: 0 99px 99px 0;
 }
 
-.usage-indicator:hover {
-    background: var(--gray-100);
-    border-color: var(--gray-300);
+/* ─── Column ─── */
+.ui-quota-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0.3rem 0.75rem;
+    gap: 0.14rem;
+    flex-shrink: 0;
 }
 
-.usage-indicator:active {
-    transform: scale(0.97);
+.ui-quota-col + .ui-quota-col {
+    border-left: 1px solid var(--border);
 }
 
-.usage-indicator.is-low {
-    color: var(--rose);
+/* highlight remain column */
+.ui-quota-col.col-remain {
+    background: var(--muted);
+}
+
+/* ─── Text ─── */
+.ui-quota-label {
+    font-size: 0.56rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-4);
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.ui-quota-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.8rem;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+/* ─── Low state ─── */
+.ui-quota.is-low {
     border-color: var(--rose-mid);
+}
+
+.ui-quota.is-low .col-remain {
     background: var(--rose-light);
 }
 
-.usage-indicator.is-low:hover {
-    background: var(--rose-mid);
+/* ─── Dark mode ─── */
+[data-theme="dark"] .ui-quota {
+    background: var(--card-bg);
+    border-color: var(--border);
 }
 
+[data-theme="dark"] .ui-quota.is-low {
+    border-color: var(--rose-mid);
+}
+
+[data-theme="dark"] .ui-quota.is-low .col-remain {
+    background: var(--rose-light);
+}
+
+/* ─── Responsive ─── */
+
+/* tablet: ซ่อน used column */
+@media (max-width: 768px) {
+    .ui-quota-col.col-used {
+        display: none;
+    }
+}
+
+/* mobile: ซ่อน total column ด้วย + padding แน่นขึ้น */
+@media (max-width: 480px) {
+    .ui-quota-col.col-total {
+        display: none;
+    }
+    .ui-quota-col {
+        padding: 0.25rem 0.6rem;
+    }
+    .ui-quota-value {
+        font-size: 0.75rem;
+    }
+}
+
+/* ─── Legacy classes (keep for backward compat) ─── */
 .usage-bar-bg {
     width: 60px;
     height: 3px;
-    background: var(--gray-200);
+    background: var(--border);
     border-radius: 99px;
     overflow: hidden;
 }
@@ -60,20 +127,4 @@
 .usage-bar-fill {
     height: 100%;
     border-radius: 99px;
-}
-
-/* Glass effect for dark mode */
-[data-theme="dark"] .usage-indicator {
-    background: rgba(255, 255, 255, 0.05);
-    border-color: rgba(255, 255, 255, 0.1);
-    color: var(--text-2);
-}
-
-[data-theme="dark"] .usage-indicator:hover {
-    background: rgba(255, 255, 255, 0.08);
-}
-
-[data-theme="dark"] .usage-indicator.is-low {
-    background: rgba(247, 82, 83, 0.15);
-    border-color: rgba(247, 82, 83, 0.3);
 }

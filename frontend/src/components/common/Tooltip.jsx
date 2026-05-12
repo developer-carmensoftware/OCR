@@ -1,80 +1,90 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 
-const ARROW_SIZE = 5
+const GAP = 10 // px gap between trigger edge and tooltip
 
-const POSITIONS = {
-  top:          { tooltip: { bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: ARROW_SIZE + 6 }, arrow: { top: '100%', left: '50%', transform: 'translateX(-50%)', borderColor: 'rgba(15,10,40,0.92) transparent transparent transparent' } },
-  bottom:       { tooltip: { top: '100%', left: '50%', transform: 'translateX(-50%)', marginTop: ARROW_SIZE + 6 },    arrow: { bottom: '100%', left: '50%', transform: 'translateX(-50%)', borderColor: 'transparent transparent rgba(15,10,40,0.92) transparent' } },
-  left:         { tooltip: { right: '100%', top: '50%', transform: 'translateY(-50%)', marginRight: ARROW_SIZE + 6 }, arrow: { left: '100%', top: '50%', transform: 'translateY(-50%)', borderColor: 'transparent transparent transparent rgba(15,10,40,0.92)' } },
-  right:        { tooltip: { left: '100%', top: '50%', transform: 'translateY(-50%)', marginLeft: ARROW_SIZE + 6 },  arrow: { right: '100%', top: '50%', transform: 'translateY(-50%)', borderColor: 'transparent rgba(15,10,40,0.92) transparent transparent' } },
-  'top-left':   { tooltip: { bottom: '100%', right: 0, marginBottom: ARROW_SIZE + 6 },                               arrow: { top: '100%', right: 10, borderColor: 'rgba(15,10,40,0.92) transparent transparent transparent' } },
-  'top-right':  { tooltip: { bottom: '100%', left: 0, marginBottom: ARROW_SIZE + 6 },                                arrow: { top: '100%', left: 10, borderColor: 'rgba(15,10,40,0.92) transparent transparent transparent' } },
-  'bottom-left':{ tooltip: { top: '100%', right: 0, marginTop: ARROW_SIZE + 6 },                                     arrow: { bottom: '100%', right: 10, borderColor: 'transparent transparent rgba(15,10,40,0.92) transparent' } },
-  'bottom-right':{ tooltip: { top: '100%', left: 0, marginTop: ARROW_SIZE + 6 },                                    arrow: { bottom: '100%', left: 10, borderColor: 'transparent transparent rgba(15,10,40,0.92) transparent' } },
+function getCoords(rect, position) {
+  switch (position) {
+    case 'bottom':
+      return { top: rect.bottom + GAP, left: rect.left + rect.width / 2, transform: 'translateX(-50%)' }
+    case 'bottom-left':
+      return { top: rect.bottom + GAP, left: rect.right, transform: 'translateX(-100%)' }
+    case 'bottom-right':
+      return { top: rect.bottom + GAP, left: rect.left, transform: 'none' }
+    case 'top':
+      return { top: rect.top - GAP, left: rect.left + rect.width / 2, transform: 'translateX(-50%) translateY(-100%)' }
+    case 'top-left':
+      return { top: rect.top - GAP, left: rect.right, transform: 'translateX(-100%) translateY(-100%)' }
+    case 'top-right':
+      return { top: rect.top - GAP, left: rect.left, transform: 'translateY(-100%)' }
+    case 'left':
+      return { top: rect.top + rect.height / 2, left: rect.left - GAP, transform: 'translateX(-100%) translateY(-50%)' }
+    case 'right':
+      return { top: rect.top + rect.height / 2, left: rect.right + GAP, transform: 'translateY(-50%)' }
+    default:
+      return { top: rect.top - GAP, left: rect.left + rect.width / 2, transform: 'translateX(-50%) translateY(-100%)' }
+  }
 }
 
 export default function Tooltip({ text, children, position = 'top' }) {
-  const [visible, setVisible] = useState(false)
-  const pos = POSITIONS[position] ?? POSITIONS.top
+  const [state, setState] = useState({ visible: false, top: 0, left: 0, transform: 'none' })
+  const triggerRef = useRef(null)
+
+  if (!text) return children
+
+  const show = () => {
+    if (!triggerRef.current) return
+    const rect = triggerRef.current.getBoundingClientRect()
+    const coords = getCoords(rect, position)
+    setState({ visible: true, ...coords })
+  }
+
+  const hide = () => setState(s => ({ ...s, visible: false }))
 
   return (
-    <div
-      onMouseEnter={() => setVisible(true)}
-      onMouseLeave={() => setVisible(false)}
-      onFocus={() => setVisible(true)}
-      onBlur={() => setVisible(false)}
-      style={{ display: 'inline-flex', alignItems: 'center', position: 'relative' }}
-    >
-      {children}
-
-      {/* Tooltip bubble */}
-      <div style={{
-        position: 'absolute',
-        ...pos.tooltip,
-        background: 'rgba(15, 10, 40, 0.92)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-        color: '#e2e8f0',
-        padding: '0.4rem 0.75rem',
-        borderRadius: '8px',
-        fontSize: '0.75rem',
-        fontWeight: 500,
-        lineHeight: 1.4,
-        whiteSpace: 'nowrap',
-        zIndex: 9999,
-        pointerEvents: 'none',
-        border: '1px solid rgba(255,255,255,0.10)',
-        boxShadow: '0 8px 24px rgba(0,0,0,0.25), 0 2px 8px rgba(0,0,0,0.15)',
-        opacity: visible ? 1 : 0,
-        transform: `${pos.tooltip.transform ?? ''} scale(${visible ? 1 : 0.94})`,
-        transformOrigin: ORIGIN[position] ?? 'bottom center',
-        transition: 'opacity 0.15s ease, transform 0.15s ease',
-        visibility: visible ? 'visible' : 'hidden',
-      }}>
-        {text}
-
-        {/* Arrow */}
-        <div style={{
-          position: 'absolute',
-          ...pos.arrow,
-          width: 0, height: 0,
-          borderStyle: 'solid',
-          borderWidth: ARROW_SIZE,
-          borderColor: pos.arrow.borderColor,
-          pointerEvents: 'none',
-        }} />
+    <>
+      <div
+        ref={triggerRef}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+        style={{ display: 'inline-flex', alignItems: 'center' }}
+      >
+        {children}
       </div>
-    </div>
-  )
-}
 
-const ORIGIN = {
-  top: 'bottom center',
-  bottom: 'top center',
-  left: 'center right',
-  right: 'center left',
-  'top-left': 'bottom right',
-  'top-right': 'bottom left',
-  'bottom-left': 'top right',
-  'bottom-right': 'top left',
+      {createPortal(
+        <div
+          role="tooltip"
+          style={{
+            position: 'fixed',
+            top: state.top,
+            left: state.left,
+            transform: state.transform,
+            background: 'rgba(15, 10, 40, 0.92)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            color: '#e2e8f0',
+            padding: '0.4rem 0.75rem',
+            borderRadius: '8px',
+            fontSize: '0.75rem',
+            fontWeight: 500,
+            lineHeight: 1.4,
+            whiteSpace: 'nowrap',
+            zIndex: 99999,
+            pointerEvents: 'none',
+            border: '1px solid rgba(255,255,255,0.10)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.25), 0 2px 8px rgba(0,0,0,0.15)',
+            opacity: state.visible ? 1 : 0,
+            visibility: state.visible ? 'visible' : 'hidden',
+            transition: 'opacity 0.15s ease',
+          }}
+        >
+          {text}
+        </div>,
+        document.body
+      )}
+    </>
+  )
 }

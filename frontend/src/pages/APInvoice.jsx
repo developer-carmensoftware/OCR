@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { AlertCircle, RotateCw } from 'lucide-react'
-import { DocumentPreview, CustomModal, StepWizard, LoadingOverlay, DarkModeToggle, ExtractionSkeleton, SplitLayout, UsageIndicator } from '../components/common'
+import { DocumentPreview, CustomModal, StepWizard, LoadingOverlay, DarkModeToggle, ExtractionSkeleton, SplitLayout, UsageIndicator, AppHeader } from '../components/common'
 import APUploadStep from '../components/ap-invoice/APUploadStep'
 import APFieldMappingStep from '../components/ap-invoice/APFieldMappingStep'
 import APReviewStep from '../components/ap-invoice/APReviewStep'
@@ -9,7 +9,6 @@ import APAccountMappingStep from '../components/ap-invoice/APAccountMappingStep'
 import APSuccessStep from '../components/ap-invoice/APSuccessStep'
 import { useAPInvoice } from '../hooks/useAPInvoice'
 import { AP_STEPS } from '../constants/apInvoice'
-import logo from '../assets/logo.png'
 
 export default function APInvoice() {
   const ctrl = useAPInvoice()
@@ -78,24 +77,15 @@ export default function APInvoice() {
 
       <div className="app-container" style={{ padding: '1.5rem' }}>
 
-        {/* Page Header */}
-        <div className="app-header ap-header">
-          <div className="brand">
-            <div className="logo-box">
-              <img src={logo} alt="Logo" style={{ width: '20px', height: '20px', objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
-            </div>
-            <div>
-              <h1 style={{ margin: 0 }}>{t.appTitle}</h1>
-              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#7c3aed', letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: '-0.1rem' }}>
-                {t.appSub}
-              </div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            {step === 1 && <UsageIndicator />}
-            <DarkModeToggle />
-          </div>
-        </div>
+        <AppHeader
+          module="ap-invoice"
+          moduleName={t.appSub}
+          eyebrow={`${t.appTitle} · Account Payable`}
+          backPath="/apInvoice"
+        >
+          {step === 1 && <UsageIndicator />}
+          <DarkModeToggle />
+        </AppHeader>
 
         <StepWizard step={step} steps={AP_STEPS} onStepClick={(n) => !loading && handleStepClick(n)} />
 

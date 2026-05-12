@@ -2,11 +2,6 @@
    AP INVOICE — Page-specific styles
    ═══════════════════════════════════════════ */
 
-/* ─── AP HEADER accent ─── */
-.ap-header .logo-box {
-  background: var(--primary) !important;
-  box-shadow: var(--shadow-sm) !important;
-}
 
 /* ─── LAYOUT ─── */
 .ap-split-layout {

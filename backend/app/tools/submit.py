@@ -70,7 +70,7 @@ async def run(inp: SubmitInput, db: AsyncSession) -> ToolResult:
                     success=False,
                     tool=TOOL_NAME,
                     input=tool_input,
-                    errors=[f"หมายเลขเอกสาร {inp.doc_no} ถูกบันทึกไว้ในระบบแล้ว"],
+                    errors=[f"Document number {inp.doc_no} is already recorded in the system"],
                 )
 
         # 2. Create OCRTask (record-keeping stub)

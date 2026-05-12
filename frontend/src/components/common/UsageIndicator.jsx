@@ -1,8 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { getUsage } from '../../lib/api/auth'
-import { Activity } from 'lucide-react'
-import Tooltip from './Tooltip'
 import { getStoredToken } from '../../lib/api/client'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -56,6 +54,16 @@ export default function UsageIndicator() {
 
   if (loading || !stats) return null
 
+  const usedColor = stats.usedPercentage >= 90 ? 'var(--rose)'
+                  : stats.usedPercentage >= 70 ? 'var(--amber)'
+                  : 'var(--text-3)'
+
+  const COLS = [
+    { key: 'col-used',   label: 'Used',   value: stats.monthly_calls,     color: usedColor },
+    { key: 'col-remain', label: 'Remain', value: stats.remaining_calls,   color: stats.isLow ? 'var(--rose)' : 'var(--primary)' },
+    { key: 'col-total',  label: 'Total',  value: stats.max_monthly_calls, color: 'var(--text-4)' },
+  ]
+
   return (
     <AnimatePresence>
       <motion.div
@@ -63,39 +71,23 @@ export default function UsageIndicator() {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
       >
-        <Tooltip position="bottom-left" text={`You have used ${stats.monthly_calls} out of ${stats.max_monthly_calls} documents this month.`}>
-          <div 
-            className={`usage-indicator minimal ${stats.isLow ? 'is-low' : ''}`}
-            role="status"
-            aria-label={`${stats.remaining_calls} documents remaining this month`}
-            onClick={fetchUsage}
-            style={{ padding: '0.2rem 0.5rem' }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span className="text-mono" style={{ 
-                fontSize: '0.65rem', 
-                opacity: 0.9, 
-                fontWeight: 700, 
-                whiteSpace: 'nowrap',
-                color: stats.usedPercentage >= 70 ? stats.color : 'inherit'
-              }}>
-                {stats.remaining_calls} LEFT
-              </span>
-              
-              <div className="usage-bar-bg" style={{ width: '30px', height: '2px' }}>
-                <motion.div 
-                  className="usage-bar-fill"
-                  initial={{ width: 0 }}
-                  animate={{ 
-                    width: `${Math.min(100, stats.usedPercentage)}%`,
-                    backgroundColor: stats.color
-                  }}
-                  transition={{ type: 'spring', stiffness: 100, damping: 15 }}
-                />
-              </div>
+        <div
+          role="status"
+          aria-label={`OCR quota: used ${stats.monthly_calls}, remaining ${stats.remaining_calls}, total ${stats.max_monthly_calls}`}
+          onClick={fetchUsage}
+          className={`ui-quota${stats.isLow ? ' is-low' : ''}`}
+          style={{
+            '--used-pct': `${Math.min(100, stats.usedPercentage)}%`,
+            '--quota-color': stats.color,
+          }}
+        >
+          {COLS.map(({ key, label, value, color }) => (
+            <div key={key} className={`ui-quota-col ${key}`}>
+              <span className="ui-quota-label">{label}</span>
+              <span className="ui-quota-value" style={{ color }}>{value}</span>
             </div>
-          </div>
-        </Tooltip>
+          ))}
+        </div>
       </motion.div>
     </AnimatePresence>
   )
