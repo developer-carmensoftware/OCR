@@ -39,7 +39,7 @@ function buildRows(details, config) {
 
 
 export default function AccountingReview({ details, headerData = {}, onBack, onSubmit, onGoMapping, submitting = false }) {
-  const { config } = useAccountingConfig()
+  const { config, refresh: loadConfig } = useAccountingConfig()
   const [warningModal, setWarningModal] = useState(false)
   const [accNameMap, setAccNameMap] = useState(_accCache || {})
   const [accLoading, setAccLoading] = useState(!_accCache)

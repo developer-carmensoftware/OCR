@@ -2,13 +2,10 @@
    AP INVOICE — Page-specific styles
    ═══════════════════════════════════════════ */
 
-/* ─── AP HEADER accent (violet for AP vs indigo for OCR) ─── */
-.ap-header::before {
-  background: linear-gradient(90deg, #7c3aed 0%, #a78bfa 50%, var(--teal) 100%) !important;
-}
+/* ─── AP HEADER accent ─── */
 .ap-header .logo-box {
-  background: linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%) !important;
-  box-shadow: 0 4px 18px rgba(124, 58, 237, 0.28) !important;
+  background: var(--primary) !important;
+  box-shadow: var(--shadow-sm) !important;
 }
 
 /* ─── LAYOUT ─── */
@@ -434,7 +431,7 @@
 
 .ap-account-icon.blue   { background: var(--primary-light); color: var(--primary); }
 .ap-account-icon.green  { background: var(--emerald-light); color: var(--emerald); }
-.ap-account-icon.violet { background: #f5f3ff; color: #7c3aed; }
+.ap-account-icon.violet { background: var(--primary-light); color: var(--primary); }
 
 .ap-account-body { padding: 1rem 1.25rem; }
 
@@ -619,16 +616,16 @@
    AP INVOICE — DARK MODE VARIABLES
    ═══════════════════════════════════════════ */
 [data-theme="dark"] {
-  --ap-vendor-bg: rgba(124, 58, 237, 0.15);
-  --ap-vendor-border: rgba(124, 58, 237, 0.4);
-  --ap-vendor-icon-bg: rgba(124, 58, 237, 0.3);
+  --ap-vendor-bg: var(--primary-light);
+  --ap-vendor-border: var(--primary-mid);
+  --ap-vendor-icon-bg: var(--primary-mid);
   --ap-vendor-text: var(--text);
-  --ap-vendor-text-muted: #a78bfa;
-  --ap-vendor-pill-border: rgba(124, 58, 237, 0.3);
-  
-  --ap-inv-desc-bg: #1e293b;
+  --ap-vendor-text-muted: var(--muted-foreground);
+  --ap-vendor-pill-border: var(--primary-mid);
+
+  --ap-inv-desc-bg: var(--card-bg);
   --ap-inv-desc-border: var(--border);
-  --ap-inv-desc-shadow: 0 0 0 3px rgba(124, 58, 237, 0.25);
+  --ap-inv-desc-shadow: 0 0 0 3px var(--primary-light);
 }
 
 /* ═══════════════════════════════════════════

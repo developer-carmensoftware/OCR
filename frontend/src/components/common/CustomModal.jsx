@@ -6,31 +6,31 @@ import { CheckCircle2, AlertTriangle, XCircle, Info } from 'lucide-react'
 const TYPE_CONFIG = {
   success: {
     Icon: CheckCircle2,
-    gradient: 'linear-gradient(135deg, #059669 0%, #34d399 100%)',
-    glow: 'rgba(5, 150, 105, 0.25)',
-    bar: 'linear-gradient(90deg, #059669, #34d399)',
-    btn: { background: 'linear-gradient(135deg, #059669 0%, #0d9488 100%)', boxShadow: '0 4px 14px rgba(5,150,105,0.35)' },
+    iconBg: 'var(--emerald-light)',
+    iconBorder: 'var(--emerald)',
+    iconColor: 'var(--emerald)',
+    btn: { background: 'var(--emerald)', color: 'white' },
   },
   warning: {
     Icon: AlertTriangle,
-    gradient: 'linear-gradient(135deg, #d97706 0%, #fbbf24 100%)',
-    glow: 'rgba(217, 119, 6, 0.22)',
-    bar: 'linear-gradient(90deg, #d97706, #fbbf24)',
-    btn: { background: 'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)', boxShadow: '0 4px 14px rgba(217,119,6,0.35)' },
+    iconBg: 'var(--amber-light)',
+    iconBorder: 'var(--amber)',
+    iconColor: 'var(--amber)',
+    btn: { background: 'var(--amber)', color: 'white' },
   },
   error: {
     Icon: XCircle,
-    gradient: 'linear-gradient(135deg, #dc2626 0%, #f87171 100%)',
-    glow: 'rgba(220, 38, 38, 0.22)',
-    bar: 'linear-gradient(90deg, #dc2626, #f87171)',
-    btn: { background: 'linear-gradient(135deg, #dc2626 0%, #e11d48 100%)', boxShadow: '0 4px 14px rgba(220,38,38,0.35)' },
+    iconBg: 'var(--rose-light)',
+    iconBorder: 'var(--rose)',
+    iconColor: 'var(--rose)',
+    btn: { background: 'var(--rose)', color: 'white' },
   },
   info: {
     Icon: Info,
-    gradient: 'linear-gradient(135deg, #8058F1 0%, #6366f1 100%)',
-    glow: 'rgba(128, 88, 241, 0.22)',
-    bar: 'linear-gradient(90deg, #8058F1, #818cf8, #197CDD)',
-    btn: { background: 'linear-gradient(135deg, #8058F1 0%, #6366f1 100%)', boxShadow: '0 4px 14px rgba(128,88,241,0.35)' },
+    iconBg: 'var(--primary-light)',
+    iconBorder: 'var(--primary)',
+    iconColor: 'var(--primary)',
+    btn: { background: 'var(--primary)', color: 'white' },
   },
 }
 
@@ -120,24 +120,17 @@ export default function CustomModal({
             exit={{ opacity: 0, scale: 0.95, y: 8 }}
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
           >
-            {/* Gradient accent bar */}
-            <div style={{
-              position: 'absolute', top: 0, left: 0, right: 0, height: '4px',
-              background: cfg.bar,
-              borderRadius: 'var(--radius-xl) var(--radius-xl) 0 0',
-            }} />
-
             {/* Icon */}
             <div style={{
-              width: 64, height: 64,
-              borderRadius: '18px',
-              background: cfg.gradient,
-              boxShadow: `0 8px 28px ${cfg.glow}, 0 0 0 6px ${cfg.glow.replace('0.22', '0.10')}`,
+              width: 56, height: 56,
+              borderRadius: 'var(--radius-md)',
+              background: cfg.iconBg,
+              border: `1.5px solid ${cfg.iconBorder}`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               margin: '0 auto 1.25rem',
-              color: 'white',
+              color: cfg.iconColor,
             }}>
-              <cfg.Icon size={30} strokeWidth={2} />
+              <cfg.Icon size={26} strokeWidth={1.75} />
             </div>
 
             <h3 className="modal-title" id="modal-title">{title}</h3>
@@ -165,7 +158,7 @@ export default function CustomModal({
                     background: 'var(--bg-2, #f9fafb)', color: 'var(--text)',
                     outline: 'none',
                   }}
-                  onFocus={e => { e.target.style.borderColor = '#7c3aed'; e.target.style.boxShadow = '0 0 0 3px rgba(124,58,237,0.15)' }}
+                  onFocus={e => { e.target.style.borderColor = 'var(--primary)'; e.target.style.boxShadow = '0 0 0 3px var(--primary-light)' }}
                   onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none' }}
                 />
               </div>
@@ -180,7 +173,7 @@ export default function CustomModal({
               <button
                 ref={confirmRef}
                 className="btn"
-                style={{ color: 'white', ...cfg.btn }}
+                style={{ ...cfg.btn }}
                 onClick={onConfirm}
               >
                 {confirmText}

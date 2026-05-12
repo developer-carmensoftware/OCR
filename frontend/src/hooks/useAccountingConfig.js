@@ -36,6 +36,8 @@ export function useAccountingConfig() {
     /** Raw accounting config (without merged paymentAmount) */
     rawConfig: config,
     setConfig,
+    /** Force re-read from localStorage (useful for manual refresh) */
+    refresh: () => forceRefresh(n => n + 1),
     // Convenient typed accessors
     filePrefix: config?.filePrefix || '',
     fileSource: config?.fileSource || '',

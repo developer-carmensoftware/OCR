@@ -11,9 +11,8 @@ const MODULES = [
     description: 'AI extracts credit card statements from BBL, KBANK, SCB and posts entries directly to Carmen GL',
     Icon: FileText,
     useLogo: true,
-    bannerBg: 'linear-gradient(135deg, #1d4ed8 0%, #3b82f6 60%, #60a5fa 100%)',
-    accent: '#2563eb',
-    tag: { label: 'ACTIVE', bg: '#f0fdf4', color: '#16a34a', border: '#86efac' },
+    accent: 'oklch(0.4714 0.1794 258.7)',
+    tag: { label: 'ACTIVE', bg: 'var(--emerald-light)', color: 'oklch(0.30 0.08 188.43)', border: 'oklch(0.88 0.06 188.43)' },
     features: ['OCR AI', 'Carmen GL', 'Input Tax'],
   },
   {
@@ -23,9 +22,8 @@ const MODULES = [
     description: 'Reads vendor invoices automatically, matches GL accounts, and syncs with the accounting system',
     Icon: Receipt,
     useLogo: true,
-    bannerBg: 'linear-gradient(135deg, #6d28d9 0%, #8058F1 60%, #a78bfa 100%)',
-    accent: '#7c3aed',
-    tag: { label: 'ACTIVE', bg: '#f0fdf4', color: '#16a34a', border: '#86efac' },
+    accent: 'oklch(0.5852 0.1706 253.27)',
+    tag: { label: 'ACTIVE', bg: 'var(--emerald-light)', color: 'oklch(0.30 0.08 188.43)', border: 'oklch(0.88 0.06 188.43)' },
     features: ['Invoice OCR', 'Auto GL Match', 'ERP Sync'],
   },
   {
@@ -34,9 +32,8 @@ const MODULES = [
     name: 'Bank Reconciliation',
     description: 'Automatically compares bank statements against ledger entries to flag discrepancies',
     Icon: Landmark,
-    bannerBg: 'linear-gradient(135deg, #0f766e 0%, #0d9488 60%, #2dd4bf 100%)',
-    accent: '#0d9488',
-    tag: { label: 'COMING SOON', bg: '#f0fdfa', color: '#0d9488', border: '#99f6e4' },
+    accent: 'oklch(0.56 0.10 188.43)',
+    tag: { label: 'COMING SOON', bg: 'var(--muted)', color: 'var(--text-3)', border: 'var(--border)' },
     features: ['Statement Import', 'Auto Match'],
   },
 ]
@@ -53,7 +50,7 @@ export default function Home() {
       <div className="home-hero">
         <div className="home-hero-badge">
           <span className="home-hero-badge-dot" />
-          Powered by Vision LLM · Real-time OCR
+          Powered by Carmen Cloud 
         </div>
 
         <div className="home-logo">
@@ -77,7 +74,7 @@ export default function Home() {
 
       {/* ─── Module Cards ─── */}
       <div className="home-modules">
-        <div className="home-modules-title">เลือกโมดูล</div>
+        <div className="home-modules-title">Select Module</div>
 
         <div className="module-grid">
           {MODULES.map((mod) => {
@@ -92,18 +89,18 @@ export default function Home() {
                 tabIndex={isComingSoon ? -1 : undefined}
                 aria-disabled={isComingSoon ? 'true' : undefined}
               >
-                {/* Gradient banner */}
-                <div className="module-card-banner" style={{ background: mod.bannerBg }}>
+                {/* Banner */}
+                <div className="module-card-banner">
                   <div className="module-card-banner-icon">
                     {mod.useLogo ? (
-                      <img src={logo} alt="" style={{ width: 34, height: 34, objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
+                      <img src={logo} alt="" style={{ width: 30, height: 30, objectFit: 'contain' }} />
                     ) : (
-                      <mod.Icon size={34} color="#fff" strokeWidth={1.75} />
+                      <mod.Icon size={28} strokeWidth={1.5} />
                     )}
                   </div>
                   {isComingSoon && (
                     <div className="module-card-banner-lock">
-                      <Lock size={12} color="rgba(255,255,255,0.7)" />
+                      <Lock size={11} />
                     </div>
                   )}
                 </div>
