@@ -1,17 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 
 // Force light theme for all pages
 document.documentElement.dataset.theme = 'light'
 import ReactDOM from 'react-dom/client'
 import { Toaster } from 'sonner'
-import Home from './pages/Home'
-import CreditCardOCR from './pages/CreditCardOCR'
-import Mapping from './pages/Mapping'
-import APInvoice from './pages/APInvoice'
 import { AuthProvider } from './contexts/AuthContext'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import ErrorBoundary from './components/common/ErrorBoundary'
 import './index.css'
+
+const Home = lazy(() => import('./pages/Home'))
+const CreditCardOCR = lazy(() => import('./pages/CreditCardOCR'))
+const Mapping = lazy(() => import('./pages/Mapping'))
+const APInvoice = lazy(() => import('./pages/APInvoice'))
 
 function getRoute() {
   // Normalize: "#/CreditCardOCR" → "creditcardocr"  (strip query string from hash first)
@@ -39,10 +40,10 @@ function Router() {
   }
 
   return (
-    <>
+    <Suspense fallback={<div className="flex h-screen items-center justify-center text-gray-400">Loading…</div>}>
       <div className="bg-blob-mid" aria-hidden="true" />
       <ProtectedRoute>{Page}</ProtectedRoute>
-    </>
+    </Suspense>
   )
 }
 

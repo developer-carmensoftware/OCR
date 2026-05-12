@@ -7,8 +7,18 @@ export default defineConfig({
   server: {
     port: 3010,
     proxy: {
-      // Forward /api/* to the FastAPI backend
       '/api': 'http://localhost:8010',
+    },
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom'],
+          'framer': ['framer-motion'],
+          'ui': ['lucide-react', 'sonner'],
+        },
+      },
     },
   },
 })
