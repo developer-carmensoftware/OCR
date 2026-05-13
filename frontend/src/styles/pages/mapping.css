@@ -1,6 +1,6 @@
 
 body {
-    font-family: 'IBM Plex Sans', 'Sarabun', sans-serif;
+    font-family: 'Inter', 'Sarabun', sans-serif;
     background: var(--background);
     color: var(--text);
     padding: 3rem 2rem;

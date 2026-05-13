@@ -87,7 +87,6 @@ export function useOcrSubmission({ showModal, closeModal, setStep, headerData, d
           DimHList: { Dim: [] },
           UserModified: '',
         }
-        console.log('[Carmen GL JV] payload:', JSON.stringify(carmenPayload, null, 2))
         const carmenRes = await submitToCarmen(carmenPayload)
         if (carmenRes?.Code !== 0) {
           alreadyPosted = true

@@ -83,7 +83,7 @@ export default function CreditCardOCR() {
 
         <StepWizard step={step} onStepClick={(n) => !loading && !submitting && handleStepClick(n)} />
 
-        <AnimatePresence mode="wait">
+        <AnimatePresence>
           <motion.div
             key={loading ? 'loading' : step}
             initial={{ opacity: 0, transform: 'translateY(10px)' }}

@@ -89,7 +89,7 @@ export default function APInvoice() {
 
         <StepWizard step={step} steps={AP_STEPS} onStepClick={(n) => !loading && handleStepClick(n)} />
 
-        <AnimatePresence mode="wait">
+        <AnimatePresence>
           <motion.div
             key={loading ? `${step}-loading` : error ? `${step}-error` : step}
             initial={{ opacity: 0, transform: 'translateY(10px)' }}

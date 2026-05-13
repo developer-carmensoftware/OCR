@@ -36,7 +36,7 @@ export default function StepWizard({ step, steps, onStepClick }) {
                     style={{
                       position: 'absolute', inset: 0,
                       borderRadius: '100px',
-                      background: 'linear-gradient(135deg, #8058F1 0%, #6366f1 100%)',
+                      background: 'var(--primary)',
                       zIndex: 0,
                     }}
                     transition={{ type: 'spring', stiffness: 380, damping: 32 }}
@@ -54,7 +54,7 @@ export default function StepWizard({ step, steps, onStepClick }) {
                 <div
                   className="step-sep"
                   style={step > s.n
-                    ? { background: 'linear-gradient(90deg, #059669, #34d399)', opacity: 0.7 }
+                    ? { background: 'var(--emerald)', opacity: 0.6 }
                     : {}}
                 />
               )}

@@ -25,6 +25,15 @@ export async function fetchGLPrefixes() {
   return json.Data || []
 }
 
+async function _parseCarmenHttpError(res) {
+  try {
+    const json = await res.json()
+    return json.detail || JSON.stringify(json)
+  } catch {
+    return await res.text()
+  }
+}
+
 export async function submitToCarmen(payload) {
   const res = await apiFetch('/api/v1/ocr/carmen/gljv', {
     method: 'POST',
@@ -32,25 +41,25 @@ export async function submitToCarmen(payload) {
     body: JSON.stringify(payload),
   })
   if (!res.ok) {
-    const errTxt = await res.text()
-    throw new Error(`Carmen GL JV Failed (${res.status}): ${errTxt}`)
+    const detail = await _parseCarmenHttpError(res)
+    throw new Error(detail)
   }
   return res.json()
 }
 
 export async function submitAPInvoiceToCarmen(payload, ap_invoice_id = null) {
-  const url = ap_invoice_id 
+  const url = ap_invoice_id
     ? `/api/v1/ocr/carmen/invoice?ap_invoice_id=${ap_invoice_id}`
     : '/api/v1/ocr/carmen/invoice'
-    
+
   const res = await apiFetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
   if (!res.ok) {
-    const errTxt = await res.text()
-    throw new Error(`Carmen Invoice Failed (${res.status}): ${errTxt}`)
+    const detail = await _parseCarmenHttpError(res)
+    throw new Error(detail)
   }
   return res.json()
 }
@@ -62,8 +71,8 @@ export async function submitInputTax(payload) {
     body: JSON.stringify(payload),
   })
   if (!res.ok) {
-    const errTxt = await res.text()
-    throw new Error(`Carmen Input Tax Failed (${res.status}): ${errTxt}`)
+    const detail = await _parseCarmenHttpError(res)
+    throw new Error(detail)
   }
   return res.json()
 }

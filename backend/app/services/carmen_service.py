@@ -12,6 +12,7 @@ import time
 from typing import Any, Dict
 
 import httpx
+from httpx import ConnectError, TimeoutException, RequestError
 
 logger = logging.getLogger(__name__)
 
@@ -98,46 +99,74 @@ def _client(carmen_token: str) -> httpx.AsyncClient:
 
 # ── Service functions ─────────────────────────────────────────────────────────
 
+def _wrap_network_error(exc: RequestError) -> CarmenAPIError:
+    if isinstance(exc, ConnectError):
+        return CarmenAPIError(503, "ไม่สามารถเชื่อมต่อ Carmen Server ได้ กรุณาตรวจสอบการเชื่อมต่อและลองใหม่อีกครั้ง")
+    if isinstance(exc, TimeoutException):
+        return CarmenAPIError(504, "Carmen Server ใช้เวลานานเกินไป กรุณาลองใหม่อีกครั้ง")
+    return CarmenAPIError(503, f"เกิดข้อผิดพลาดในการเชื่อมต่อ Carmen: {exc}")
+
+
 async def get_account_codes(carmen_token: str) -> Any:
-    async with _client(carmen_token) as client:
-        resp = await client.get(f"{_base_url()}/accountCode")
-        if resp.status_code != 200:
-            raise CarmenAPIError(resp.status_code, resp.text)
-        return resp.json()
+    try:
+        async with _client(carmen_token) as client:
+            resp = await client.get(f"{_base_url()}/accountCode")
+            if resp.status_code != 200:
+                raise CarmenAPIError(resp.status_code, resp.text)
+            return resp.json()
+    except RequestError as e:
+        raise _wrap_network_error(e) from e
 
 
 async def get_departments(carmen_token: str) -> Any:
-    async with _client(carmen_token) as client:
-        resp = await client.get(f"{_base_url()}/department")
-        if resp.status_code != 200:
-            raise CarmenAPIError(resp.status_code, resp.text)
-        return resp.json()
+    try:
+        async with _client(carmen_token) as client:
+            resp = await client.get(f"{_base_url()}/department")
+            if resp.status_code != 200:
+                raise CarmenAPIError(resp.status_code, resp.text)
+            return resp.json()
+    except RequestError as e:
+        raise _wrap_network_error(e) from e
 
 
 async def get_gl_prefix(carmen_token: str) -> Any:
-    async with _client(carmen_token) as client:
-        resp = await client.get(f"{_base_url()}/glPrefix")
-        if resp.status_code != 200:
-            return {"Data": [], "Status": f"upstream_{resp.status_code}"}
-        return resp.json()
+    try:
+        async with _client(carmen_token) as client:
+            resp = await client.get(f"{_base_url()}/glPrefix")
+            if resp.status_code != 200:
+                return {"Data": [], "Status": f"upstream_{resp.status_code}"}
+            return resp.json()
+    except RequestError as e:
+        logger.warning("Carmen glPrefix unreachable: %s", e)
+        return {"Data": [], "Status": "upstream_unreachable"}
 
 
 async def post_gljv(body: dict, carmen_token: str) -> Any:
-    async with _client(carmen_token) as client:
-        resp = await client.post(f"{_base_url()}/gljv", json=body)
-        try:
-            return resp.json()
-        except Exception:
-            raise CarmenAPIError(resp.status_code, resp.text)
+    try:
+        async with _client(carmen_token) as client:
+            resp = await client.post(f"{_base_url()}/gljv", json=body)
+            try:
+                return resp.json()
+            except Exception:
+                raise CarmenAPIError(resp.status_code, resp.text)
+    except CarmenAPIError:
+        raise
+    except RequestError as e:
+        raise _wrap_network_error(e) from e
 
 
 async def put_gljv(jvh_seq: int, body: dict, carmen_token: str) -> Any:
-    async with _client(carmen_token) as client:
-        resp = await client.put(f"{_base_url()}/gljv/{jvh_seq}", json=body)
-        try:
-            return resp.json()
-        except Exception:
-            raise CarmenAPIError(resp.status_code, resp.text)
+    try:
+        async with _client(carmen_token) as client:
+            resp = await client.put(f"{_base_url()}/gljv/{jvh_seq}", json=body)
+            try:
+                return resp.json()
+            except Exception:
+                raise CarmenAPIError(resp.status_code, resp.text)
+    except CarmenAPIError:
+        raise
+    except RequestError as e:
+        raise _wrap_network_error(e) from e
 
 
 _VENDOR_FIELDS = frozenset({
@@ -149,57 +178,81 @@ _VENDOR_FIELDS = frozenset({
 
 
 async def get_vendors(carmen_token: str) -> Any:
-    async with _client(carmen_token) as client:
-        resp = await client.get(f"{_base_url()}/vendor")
-        if resp.status_code != 200:
-            raise CarmenAPIError(resp.status_code, resp.text)
-        data = resp.json()
-        if isinstance(data, dict) and isinstance(data.get('Data'), list):
-            data['Data'] = [
-                {k: v for k, v in item.items() if k in _VENDOR_FIELDS}
-                for item in data['Data']
-            ]
-        return data
+    try:
+        async with _client(carmen_token) as client:
+            resp = await client.get(f"{_base_url()}/vendor")
+            if resp.status_code != 200:
+                raise CarmenAPIError(resp.status_code, resp.text)
+            data = resp.json()
+            if isinstance(data, dict) and isinstance(data.get('Data'), list):
+                data['Data'] = [
+                    {k: v for k, v in item.items() if k in _VENDOR_FIELDS}
+                    for item in data['Data']
+                ]
+            return data
+    except RequestError as e:
+        raise _wrap_network_error(e) from e
 
 
 async def get_tax_profiles(carmen_token: str) -> Any:
-    async with _client(carmen_token) as client:
-        resp = await client.get(f"{_base_url()}/taxProfile")
-        if resp.status_code != 200:
-            raise CarmenAPIError(resp.status_code, resp.text)
-        return resp.json()
+    try:
+        async with _client(carmen_token) as client:
+            resp = await client.get(f"{_base_url()}/taxProfile")
+            if resp.status_code != 200:
+                raise CarmenAPIError(resp.status_code, resp.text)
+            return resp.json()
+    except RequestError as e:
+        raise _wrap_network_error(e) from e
 
 
 async def get_period_list(carmen_token: str) -> Any:
-    async with _client(carmen_token) as client:
-        resp = await client.get(f"{_base_url()}/getPeriodList")
-        if resp.status_code != 200:
-            raise CarmenAPIError(resp.status_code, resp.text)
-        return resp.json()
+    try:
+        async with _client(carmen_token) as client:
+            resp = await client.get(f"{_base_url()}/getPeriodList")
+            if resp.status_code != 200:
+                raise CarmenAPIError(resp.status_code, resp.text)
+            return resp.json()
+    except RequestError as e:
+        raise _wrap_network_error(e) from e
 
 
 async def post_input_tax(body: dict, carmen_token: str) -> Any:
-    async with _client(carmen_token) as client:
-        resp = await client.post(f"{_base_url()}/inputTaxRec", json=body)
-        try:
-            return resp.json()
-        except Exception:
-            raise CarmenAPIError(resp.status_code, resp.text)
+    try:
+        async with _client(carmen_token) as client:
+            resp = await client.post(f"{_base_url()}/inputTaxRec", json=body)
+            try:
+                return resp.json()
+            except Exception:
+                raise CarmenAPIError(resp.status_code, resp.text)
+    except CarmenAPIError:
+        raise
+    except RequestError as e:
+        raise _wrap_network_error(e) from e
 
 
 async def put_input_tax(rec_seq: int, body: dict, carmen_token: str) -> Any:
-    async with _client(carmen_token) as client:
-        resp = await client.put(f"{_base_url()}/inputTaxRec/{rec_seq}", json=body)
-        try:
-            return resp.json()
-        except Exception:
-            raise CarmenAPIError(resp.status_code, resp.text)
+    try:
+        async with _client(carmen_token) as client:
+            resp = await client.put(f"{_base_url()}/inputTaxRec/{rec_seq}", json=body)
+            try:
+                return resp.json()
+            except Exception:
+                raise CarmenAPIError(resp.status_code, resp.text)
+    except CarmenAPIError:
+        raise
+    except RequestError as e:
+        raise _wrap_network_error(e) from e
 
 
 async def post_invoice(body: dict, carmen_token: str) -> Any:
-    async with _client(carmen_token) as client:
-        resp = await client.post(f"{_base_url()}/invoice", json=body)
-        try:
-            return resp.json()
-        except Exception:
-            raise CarmenAPIError(resp.status_code, resp.text)
+    try:
+        async with _client(carmen_token) as client:
+            resp = await client.post(f"{_base_url()}/invoice", json=body)
+            try:
+                return resp.json()
+            except Exception:
+                raise CarmenAPIError(resp.status_code, resp.text)
+    except CarmenAPIError:
+        raise
+    except RequestError as e:
+        raise _wrap_network_error(e) from e

@@ -54,7 +54,7 @@ export default function Home() {
         </div>
 
         <div className="home-logo">
-          <img src={logo} alt="Carmen AI Logo" className="home-logo-img" />
+          <img src={logo} alt="Carmen Cloud AI Logo" className="home-logo-img" />
         </div>
 
         <h1 className="home-title">
@@ -139,7 +139,7 @@ export default function Home() {
 
       {/* ─── Footer ─── */}
       <div className="home-footer">
-        Carmen AI Automation Platform
+        Carmen Cloud AI Automation Platform
       </div>
     </div>
   )

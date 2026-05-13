@@ -24,22 +24,28 @@ function AuthScreen({ state, message }) {
     loading: {
       Icon: Loader2,
       iconClass: 'animate-spin',
-      iconBg: 'linear-gradient(135deg, var(--primary) 0%, #818cf8 50%, var(--teal) 100%)',
+      iconColor: 'var(--primary)',
+      iconBg: 'var(--primary-light)',
+      iconBorder: 'var(--primary-mid)',
       title: 'Authenticating',
-      subtitle: 'Please wait...',
+      subtitle: 'Verifying your session with Carmen...',
       badge: null,
     },
     error: {
       Icon: AlertTriangle,
-      iconBg: 'linear-gradient(135deg, #e11d48 0%, #f43f5e 100%)',
+      iconColor: 'var(--rose)',
+      iconBg: 'var(--rose-light)',
+      iconBorder: 'var(--rose-mid)',
       title: 'Authentication Failed',
       subtitle: message || 'An error occurred. Please try again.',
-      badge: { label: 'Authentication Error', color: 'var(--rose)', bg: 'var(--rose-light)', border: 'var(--rose-mid)' },
+      badge: { label: 'Auth Error', color: 'var(--rose)', bg: 'var(--rose-light)', border: 'var(--rose-mid)' },
     },
     unauthenticated: {
       Icon: Shield,
-      iconBg: 'linear-gradient(135deg, var(--primary) 0%, #818cf8 50%, var(--teal) 100%)',
-      title: 'Please access via Carmen System',
+      iconColor: 'var(--primary)',
+      iconBg: 'var(--primary-light)',
+      iconBorder: 'var(--primary-mid)',
+      title: 'Access via Carmen',
       subtitle: 'This system must be accessed through the Carmen web interface.',
       badge: { label: 'Authentication Required', color: 'var(--primary)', bg: 'var(--primary-light)', border: 'var(--primary-mid)' },
     },
@@ -48,18 +54,25 @@ function AuthScreen({ state, message }) {
   return (
     <div style={styles.page}>
       <div style={styles.card}>
-        {/* top accent bar */}
-        <div style={styles.accentBar} />
-
-        {/* logo icon */}
-        <div style={{ ...styles.iconWrap, background: config.iconBg }}>
-          <config.Icon size={26} color="#fff" className={config.iconClass} strokeWidth={2.25} />
+        {/* logo + brand */}
+        <div style={styles.brand}>
+          <img src={logo} alt="Carmen Cloud AI" style={{ width: 18, height: 18, objectFit: 'contain' }} />
+          <span style={styles.brandText}>Carmen  <strong style={{ color: 'var(--primary)', fontWeight: 700 }}>AI</strong></span>
         </div>
 
-        {/* brand mark */}
-        <div style={styles.brand}>
-          <img src={logo} alt="Carmen AI Logo" style={{ width: '20px', height: '20px', objectFit: 'contain' }} />
-          <span style={styles.brandText}>Carmen <span style={styles.brandAccent}>AI</span></span>
+        <div style={{ width: '100%', height: 1, background: 'var(--border)', margin: '0.25rem 0' }} />
+
+        {/* icon */}
+        <div style={{
+          width: 56, height: 56,
+          borderRadius: 'var(--radius-md)',
+          background: config.iconBg,
+          border: `1.5px solid ${config.iconBorder}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          marginTop: '0.5rem',
+          color: config.iconColor,
+        }}>
+          <config.Icon size={24} strokeWidth={1.75} className={config.iconClass} />
         </div>
 
         <h2 style={styles.title}>{config.title}</h2>
@@ -72,7 +85,7 @@ function AuthScreen({ state, message }) {
             background: config.badge.bg,
             border: `1px solid ${config.badge.border}`,
           }}>
-            <Circle size={7} fill="currentColor" strokeWidth={0} />
+            <Circle size={6} fill="currentColor" strokeWidth={0} />
             {config.badge.label}
           </div>
         )}
@@ -84,34 +97,15 @@ function AuthScreen({ state, message }) {
         )}
 
         {(state === 'unauthenticated' || state === 'error') && (
-          <a
-            href={getCarmenUrl('/')}
-            style={{
-              marginTop: '1rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.5rem',
-              width: '100%',
-              padding: '0.75rem',
-              background: 'linear-gradient(135deg, var(--primary) 0%, #818cf8 50%, var(--teal) 100%)',
-              color: 'white',
-              borderRadius: '8px',
-              textDecoration: 'none',
-              fontWeight: 600,
-              fontSize: '0.95rem',
-              boxShadow: '0 4px 14px rgba(79,70,229,0.3)',
-              transition: 'all 0.2s',
-            }}
-          >
-            Go to Carmen Login Page
+          <a href={getCarmenUrl('/')} style={styles.btn}>
+            Go to Carmen 
           </a>
         )}
       </div>
 
-      <div style={styles.footer}>
-        Carmen Cloud AI Automation Platform • Powered by AI OCR &amp; LLM
-      </div>
+      <p style={styles.footer}>
+        Carmen Cloud AI Automation Platform
+      </p>
 
       <style>{`
         @keyframes progressSlide {
@@ -120,7 +114,7 @@ function AuthScreen({ state, message }) {
           100% { transform: translateX(100%); }
         }
         @keyframes authFadeIn {
-          from { opacity: 0; transform: translateY(18px); }
+          from { opacity: 0; transform: translateY(16px); }
           to   { opacity: 1; transform: translateY(0); }
         }
       `}</style>
@@ -136,120 +130,107 @@ const styles = {
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    background: 'transparent',
-    overflow: 'hidden',
+    background: 'oklch(0.90 0.014 258.7)',
+    backgroundImage: 'radial-gradient(ellipse 70% 30% at 50% 0%, oklch(0.4714 0.1794 258.7 / 0.10) 0%, transparent 100%)',
     padding: '2rem 1rem',
-    fontFamily: "'IBM Plex Sans', 'Sarabun', sans-serif",
+    fontFamily: "'Inter', 'Sarabun', sans-serif",
   },
   card: {
     position: 'relative',
     width: '100%',
-    maxWidth: '380px',
-    background: 'var(--glass-bg, rgba(255,255,255,0.88))',
-    backdropFilter: 'blur(16px)',
-    WebkitBackdropFilter: 'blur(16px)',
-    border: '1px solid var(--glass-border, rgba(255,255,255,0.7))',
+    maxWidth: '360px',
+    background: 'var(--card-bg, #fff)',
+    border: '1px solid rgba(255,255,255,0.7)',
     borderRadius: '20px',
-    padding: '2.5rem 2rem 2rem',
-    boxShadow: 'var(--shadow-xl)',
+    padding: '2rem 1.75rem',
+    boxShadow: `
+      inset 0 1px 0 rgba(255,255,255,0.9),
+      0 1px 3px rgba(15,25,60,0.10),
+      0 4px 16px rgba(15,25,60,0.10),
+      0 12px 32px rgba(15,25,60,0.07)
+    `,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: '0.85rem',
-    animation: 'authFadeIn 0.4s ease both',
-    overflow: 'hidden',
-  },
-  accentBar: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0,
-    height: '3px',
-    background: 'linear-gradient(90deg, var(--primary) 0%, #818cf8 50%, var(--teal) 100%)',
-  },
-  iconWrap: {
-    width: '64px',
-    height: '64px',
-    borderRadius: '18px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: '0.25rem',
-    boxShadow: '0 10px 32px rgba(79,70,229,0.25), 0 4px 10px rgba(79,70,229,0.12)',
-  },
-  icon: {
-    fontSize: '1.6rem',
-    color: '#fff',
+    gap: '0.75rem',
+    animation: 'authFadeIn 0.35s ease both',
   },
   brand: {
     display: 'flex',
     alignItems: 'center',
-    gap: '0.4rem',
-    fontSize: '0.78rem',
-    fontWeight: 600,
+    gap: '0.45rem',
+    alignSelf: 'flex-start',
+  },
+  brandText: {
+    fontSize: '0.82rem',
+    fontWeight: 500,
     color: 'var(--text-3)',
     letterSpacing: '0.01em',
   },
-  brandIcon: {
-    fontSize: '0.85rem',
-    color: 'var(--primary)',
-  },
-  brandText: {
-    color: 'var(--text-2)',
-  },
-  brandAccent: {
-    background: 'linear-gradient(135deg, var(--primary) 0%, var(--teal) 100%)',
-    WebkitBackgroundClip: 'text',
-    WebkitTextFillColor: 'transparent',
-    backgroundClip: 'text',
-    fontWeight: 700,
-  },
   title: {
-    fontSize: '1.05rem',
+    fontSize: '1rem',
     fontWeight: 700,
     color: 'var(--text)',
     textAlign: 'center',
     letterSpacing: '-0.01em',
     margin: 0,
-    lineHeight: 1.35,
+    lineHeight: 1.3,
   },
   subtitle: {
-    fontSize: '0.82rem',
+    fontSize: '0.8rem',
     color: 'var(--text-3)',
     textAlign: 'center',
-    lineHeight: 1.6,
+    lineHeight: 1.65,
     margin: 0,
-    maxWidth: '280px',
+    maxWidth: '260px',
   },
   badge: {
     display: 'inline-flex',
     alignItems: 'center',
     gap: '0.35rem',
-    fontSize: '0.68rem',
+    fontSize: '0.65rem',
     fontWeight: 600,
-    padding: '0.25rem 0.75rem',
+    padding: '0.22rem 0.65rem',
     borderRadius: '100px',
-    letterSpacing: '0.03em',
-    marginTop: '0.25rem',
+    letterSpacing: '0.04em',
+    textTransform: 'uppercase',
   },
   progressTrack: {
     width: '100%',
-    height: '3px',
-    background: 'var(--gray-100)',
+    height: '2px',
+    background: 'var(--border)',
     borderRadius: '100px',
     overflow: 'hidden',
-    marginTop: '0.5rem',
+    marginTop: '0.25rem',
   },
   progressBar: {
     height: '100%',
-    width: '50%',
+    width: '45%',
     borderRadius: '100px',
-    background: 'linear-gradient(90deg, var(--primary), var(--teal))',
+    background: 'var(--primary)',
     animation: 'progressSlide 1.4s ease-in-out infinite',
   },
+  btn: {
+    marginTop: '0.5rem',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    padding: '0.7rem',
+    background: 'var(--primary)',
+    color: 'white',
+    borderRadius: 'var(--radius-md)',
+    textDecoration: 'none',
+    fontWeight: 600,
+    fontSize: '0.875rem',
+    boxShadow: '0 2px 8px rgba(15,25,60,0.15)',
+    transition: 'background 0.18s, transform 0.15s',
+  },
   footer: {
-    marginTop: '1.75rem',
-    fontSize: '0.7rem',
+    marginTop: '1.5rem',
+    fontSize: '0.68rem',
     color: 'var(--text-4)',
     textAlign: 'center',
-    letterSpacing: '0.01em',
+    letterSpacing: '0.02em',
   },
 }

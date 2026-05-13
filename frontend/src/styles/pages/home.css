@@ -175,10 +175,12 @@
     box-shadow: var(--shadow-sm);
 }
 
-.module-card:hover {
-    transform: translateY(-3px);
-    border-color: var(--card-accent, var(--primary));
-    box-shadow: var(--shadow-lg);
+@media (hover: hover) and (pointer: fine) {
+    .module-card:hover {
+        transform: translateY(-3px);
+        border-color: var(--card-accent, var(--primary));
+        box-shadow: var(--shadow-lg);
+    }
 }
 
 .module-card:active {
@@ -217,9 +219,11 @@
     color: var(--card-accent, var(--primary));
 }
 
-.module-card:hover .module-card-banner-icon {
-    transform: scale(1.06) translateY(-2px);
-    box-shadow: var(--shadow-md);
+@media (hover: hover) and (pointer: fine) {
+    .module-card:hover .module-card-banner-icon {
+        transform: scale(1.06) translateY(-2px);
+        box-shadow: var(--shadow-md);
+    }
 }
 
 .module-card-banner-lock {
@@ -317,14 +321,16 @@
     justify-content: center;
     color: var(--text-4);
     flex-shrink: 0;
-    transition: all 0.25s var(--ease);
+    transition: background-color 0.2s var(--ease), color 0.2s var(--ease), border-color 0.2s var(--ease), transform 0.2s var(--ease);
 }
 
-.module-card:hover .module-card-arrow {
-    background: var(--card-accent, var(--primary));
-    border-color: var(--card-accent, var(--primary));
-    color: white;
-    transform: translateX(2px);
+@media (hover: hover) and (pointer: fine) {
+    .module-card:hover .module-card-arrow {
+        background: var(--card-accent, var(--primary));
+        border-color: var(--card-accent, var(--primary));
+        color: white;
+        transform: translateX(2px);
+    }
 }
 
 /* ─── COMING SOON ─── */
