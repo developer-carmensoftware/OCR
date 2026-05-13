@@ -101,10 +101,11 @@ export function useMapping() {
       try {
         const parsed = JSON.parse(config)
         const detectedBank = detectBankFromCompanyName(parsed.company?.name || ocrCompany?.name)
-        const finalBank = parsed.bank || ocrBank || detectedBank
+        const finalBank = ocrBank || parsed.bank || detectedBank
         setBank(finalBank)
         setFilePrefix(parsed.filePrefix || 'IC')
-        setFileSource(parsed.fileSource || BANK_SOURCE_MAP[finalBank] || '')
+        const bankChanged = finalBank !== parsed.bank
+        setFileSource(bankChanged ? (BANK_SOURCE_MAP[finalBank] || '') : (parsed.fileSource || BANK_SOURCE_MAP[finalBank] || ''))
         setDescription(parsed.description || '')
 
         let companyData = { name: '', taxId: '', branch: '', address: '' }

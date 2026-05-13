@@ -5,23 +5,21 @@ import { revokeSession } from '../lib/api/auth'
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)       // { user_id, username, bu, uri }
-  const [loading, setLoading] = useState(true) // true while restoring session on mount
-
-  // Restore session from sessionStorage on page reload
-  useEffect(() => {
+  // Restore session synchronously on first render — avoids the auth-screen flash
+  const [user, setUser] = useState(() => {
     const token = getStoredToken()
     const stored = sessionStorage.getItem('ocr_user')
     if (token && stored) {
       try {
-        setUser(JSON.parse(stored))
+        return JSON.parse(stored)
       } catch {
         clearToken()
         sessionStorage.removeItem('ocr_user')
       }
     }
-    setLoading(false)
-  }, [])
+    return null
+  })
+  const [loading] = useState(false)
 
   // Listen for 401 events fired by apiFetch
   useEffect(() => {

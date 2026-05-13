@@ -25,7 +25,11 @@ class Settings(BaseSettings):
     openrouter_ap_invoice_model: str = "google/gemini-2.0-flash-001"
     openrouter_suggestion_model: str = "google/gemini-2.0-flash-001"
     openrouter_bidding_model: str = ""
+    openrouter_vendorsuggest_model: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
+
+    # Tavily search API
+    tavily_api_key: str = ""
 
     # Master API key for service-to-service auth
     master_api_key: str = ""
