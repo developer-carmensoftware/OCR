@@ -1,8 +1,8 @@
 import { Building, CircleDot, PlusCircle, LayoutList, CheckCircle2, AlertCircle, ArrowLeft, AlertTriangle, ArrowRight } from 'lucide-react'
 import { isNumFld, fmt } from '../../constants/apInvoice'
 import Card from '../common/Card'
-import VendorSearch from './VendorSearch'
-import AmountSummary from './AmountSummary'
+import VendorSearch from './APVendorSearch'
+import AmountSummary from './APAmountSummary'
 
 const HEADER_FIELDS = (t) => [
   { key: 'vendorName',     label: t.vendorName },

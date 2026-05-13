@@ -6,7 +6,7 @@ from app.config import settings
 from app.llm.client import call_vision_llm, call_text_llm, _strip_code_fences
 from app.llm.prompts.ap_invoice import PROMPT as AP_INVOICE_PROMPT
 from app.llm.prompts.mapping import build_ap_expense_prompt
-from app.services.ap_invoice_postprocess import postprocess as postprocess_ap_invoice
+from app.services.ap_invoice_postprocess_service import postprocess as postprocess_ap_invoice
 
 logger = logging.getLogger(__name__)
 

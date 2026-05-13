@@ -37,7 +37,7 @@ from app.middleware.performance import PerformanceMiddleware
 from app.routers.ocr import router as ocr_router
 from app.routers.mapping import router as mapping_router
 from app.routers.carmen import router as carmen_router
-from app.routers.tools import router as tools_router
+from app.routers.tool_registry import router as tools_router
 from app.routers.feedback import router as feedback_router
 from app.routers.ap_invoice import router as ap_invoice_router
 from app.routers.admin import router as admin_router

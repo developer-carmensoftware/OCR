@@ -16,6 +16,7 @@ __pycache__/
 backend/uploads/
 backend/exports/
 backend/json_test/
+backend/scratch/
 backend/example_field/
 backend/logs/
 
