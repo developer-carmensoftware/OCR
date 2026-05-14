@@ -4,6 +4,7 @@ import logging
 import asyncio
 import traceback
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 
 # ── Force UTF-8 on Windows (prevents 'charmap' codec errors with Thai text) ──
@@ -56,17 +57,62 @@ logger = logging.getLogger(__name__)
 # ── Background Scheduler ─────────────────────────────────────────────────────
 
 async def _run_for_all_tenants(coro_factory, label: str) -> None:
-    """Run an async coroutine factory once per provisioned tenant, setting current_tenant context."""
-    from app.context import current_tenant as _ct
+    """
+    Run coro_factory() once per active tenant, setting current_tenant_id context.
+    Jobs that aggregate across all tenants (summary, anomaly) don't need this —
+    they query the full table with GROUP BY tenant_id internally.
+    """
+    from app.context import current_scheduler_tenant as _ct
     tenants = await get_all_tenants()
-    for tenant in tenants:
-        token = _ct.set(tenant)
+    for tenant_id in tenants:
+        token = _ct.set(tenant_id)
         try:
             await coro_factory()
         except Exception as exc:
-            logger.error("[scheduler] %s failed for tenant %s: %s", label, tenant, exc)
+            logger.error("[scheduler] %s failed for tenant %s: %s", label, tenant_id, exc)
         finally:
             _ct.reset(token)
+
+
+async def _run_job(job_name: str, coro_factory) -> None:
+    """Run a scheduler job and record its execution in job_runs for drift detection."""
+    from app.database import async_session
+    from app.models.orm import JobRun
+    from app.models.enums import JobStatus
+    from sqlalchemy import insert, text
+
+    started      = datetime.utcnow()
+    rows_affected = None
+    error_msg    = None
+    status       = JobStatus.SUCCESS
+
+    async with async_session() as db:
+        result = await db.execute(
+            insert(JobRun).values(job_name=job_name, status=JobStatus.RUNNING, started_at=started)
+        )
+        run_id = result.lastrowid
+        await db.commit()
+
+        try:
+            ret = await coro_factory()
+            if isinstance(ret, dict):
+                rows_affected = sum(v if isinstance(v, int) else 0 for v in ret.values())
+            elif isinstance(ret, int):
+                rows_affected = ret
+        except Exception as exc:
+            status    = JobStatus.FAILED
+            error_msg = str(exc)
+            logger.error("[scheduler] job %s failed: %s", job_name, exc)
+
+        await db.execute(
+            text(
+                "UPDATE job_runs SET status=:status, completed_at=:done, "
+                "rows_affected=:rows, error_message=:err WHERE id=:id"
+            ),
+            {"status": status.value, "done": datetime.utcnow(),
+             "rows": rows_affected, "err": error_msg, "id": run_id},
+        )
+        await db.commit()
 
 
 async def _scheduler_loop():
@@ -74,8 +120,9 @@ async def _scheduler_loop():
     Lightweight background scheduler — runs inside the FastAPI event loop.
 
     Schedule:
-      - Every 24h: archive + cleanup old logs, build daily summary  (per tenant)
-      - Every 30d: check / create future partitions                  (per tenant)
+      - Every 24h: retention cleanup, daily summary, anomaly detection
+      - Every 30d: partition check
+    All jobs are recorded in job_runs for drift detection and incident review.
     """
     logger.info("📅 Background scheduler started")
     await asyncio.sleep(60)  # wait for app to fully start
@@ -83,24 +130,29 @@ async def _scheduler_loop():
     day_counter = 0
     while True:
         try:
-            # ── Daily: retention cleanup (per tenant) ──
+            # ── Daily: retention cleanup ──
             if settings.retention_enabled:
                 from app.services.retention_service import archive_and_cleanup, purge_inactive_sessions
                 logger.info("[scheduler] Running retention archive + cleanup...")
-                await _run_for_all_tenants(archive_and_cleanup, "retention")
-                await _run_for_all_tenants(purge_inactive_sessions, "session-purge")
+                await _run_job("retention", lambda: _run_for_all_tenants(archive_and_cleanup, "retention"))
+                await _run_job("session-purge", lambda: _run_for_all_tenants(purge_inactive_sessions, "session-purge"))
 
-            # ── Daily: build yesterday's summary (per tenant) ──
+            # ── Daily: build yesterday's summary (aggregates all tenants in one pass) ──
             from app.services.summary_service import build_daily_summary
             logger.info("[scheduler] Building daily summary...")
-            await _run_for_all_tenants(build_daily_summary, "summary")
+            await _run_job("summary", build_daily_summary)
 
-            # ── Monthly: check partitions (per tenant) ──
+            # ── Daily: anomaly detection (runs after summary so data is ready) ──
+            from app.services.anomaly_service import detect_anomalies
+            logger.info("[scheduler] Running anomaly detection...")
+            await _run_job("anomaly-detection", detect_anomalies)
+
+            # ── Monthly: check partitions ──
             day_counter += 1
             if day_counter % 30 == 1:
                 from app.services.partition_manager import ensure_partitions
                 logger.info("[scheduler] Checking partitions...")
-                await _run_for_all_tenants(ensure_partitions, "partitions")
+                await _run_job("partitions", ensure_partitions)
 
         except Exception as exc:
             logger.error("[scheduler] Error: %s", exc)
@@ -109,15 +161,11 @@ async def _scheduler_loop():
 
 
 async def _pricing_sync_loop():
-    """Sync OpenRouter model pricing into every tenant DB every 8 hours."""
+    """Sync OpenRouter model pricing every 8 hours (cluster-wide, no tenant scope)."""
     while True:
         try:
             from app.services.usage_service import fetch_openrouter_pricing
-            tenants = await get_all_tenants()
-            if tenants:
-                await _run_for_all_tenants(fetch_openrouter_pricing, "pricing-sync")
-            else:
-                logger.info("[pricing_scheduler] No tenant DBs yet — skipping pricing sync")
+            await fetch_openrouter_pricing()
         except asyncio.CancelledError:
             break
         except Exception as exc:

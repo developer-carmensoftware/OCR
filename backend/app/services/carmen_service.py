@@ -71,7 +71,7 @@ async def _deactivate_current_session() -> None:
     Carmen is the source of truth for token validity — once it rejects the token,
     further calls in this session are pointless. Failure to update is swallowed
     so the calling request continues to surface the 401 to the user."""
-    from app.context import current_session_id
+    from app.context import current_ocr_session_id as current_session_id
     from app.database import async_session
     from app.models.orm import OcrSession
     from sqlalchemy import update

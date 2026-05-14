@@ -2,14 +2,11 @@
 OCR API Routes — thin HTTP layer.
 
 Business logic lives in:
-  app/tools/extract.py  — OCR extraction
-  app/tools/submit.py   — receipt persistence
+  app/tools/submit.py        — receipt persistence
   app/services/ocr_service.py — task/export helpers
-Carmen proxy endpoints live in app/routers/carmen.py.
 """
 
 import logging
-import uuid
 from datetime import datetime
 from typing import Optional, List
 
@@ -22,53 +19,52 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.config import settings
-from app.models import (
-    TaskStatus,
-    BankType,
-    OCRTask,
-    CreditCard,
-    ExtractedCreditCardData,
-    DocumentType,
-)
+from app.models import OCRTask, CreditCard, TaskStatus, ExtractedCreditCardData
 from app.services import ocr_service
+from app.services.ocr_service import create_task
 from app.services.correction_service import get_correction_hints
 from app.tools import submit as submit_tool
 from app.tools.submit import SubmitInput
-from app.utils.image_processing import is_valid_image
 from app.auth import get_current_session, SessionInfo
 from app.services import audit_service
 from app.services.audit_service import AuditAction
 from app.services.file_service import file_service
-from app.context import current_document_ref, current_bu, current_host
+from app.context import current_document_ref
+from app.constants import Module
 
 
-# ── Pydantic schemas for submit endpoint ────────────
-# Frontend sends amount fields too (PayAmt/CommisAmt/TaxAmt/WHTAmount/Total)
-# but only Transaction is persisted; the rest are silently ignored.
+# ── Submit payload schemas ────────────────────────────────────────────────────
+
 class SubmitDetailItem(BaseModel):
-    model_config = ConfigDict(extra='ignore', populate_by_name=True)
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
     Transaction: Optional[str] = Field(None, alias="transaction")
+    Date:        Optional[str] = Field(None, alias="date")
+    Amount:      Optional[str] = Field(None, alias="amount")
+    Type:        Optional[str] = Field(None, alias="type")
+
 
 class SubmitHeader(BaseModel):
-    # Accepts MerchantId from frontend for display continuity but it is NOT persisted.
-    model_config = ConfigDict(extra='ignore', populate_by_name=True)
-    DateProcessed:    Optional[str] = Field(None, alias="date_processed")
-    BankName:         Optional[str] = Field(None, alias="bank_name")
-    DocName:          Optional[str] = Field(None, alias="doc_name")
-    CompanyName:      Optional[str] = Field(None, alias="company_name")
-    DocDate:          Optional[str] = Field(None, alias="doc_date")
-    DocNo:            Optional[str] = Field(None, alias="doc_no")
-    MerchantName:     Optional[str] = Field(None, alias="merchant_name")
-    MerchantId:       Optional[str] = Field(None, alias="merchant_id")
-    BankCompanyname:  Optional[str] = Field(None, alias="bank_companyname")
-    BranchNo:         Optional[str] = Field(None, alias="branch_no")
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+    BankCode:        Optional[str] = Field(None, alias="bank_code")
+    CompanyName:     Optional[str] = Field(None, alias="company_name")
+    BankCompanyName: Optional[str] = Field(None, alias="bank_company_name")
+    DocDate:         Optional[str] = Field(None, alias="doc_date")
+    DocNo:           Optional[str] = Field(None, alias="doc_no")
+    BranchNo:        Optional[str] = Field(None, alias="branch_no")
+    # Legacy frontend fields — still accepted, not persisted
+    BankName:        Optional[str] = Field(None, alias="bank_name")
+    DocName:         Optional[str] = Field(None, alias="doc_name")
+    MerchantName:    Optional[str] = Field(None, alias="merchant_name")
+
 
 class SubmitPayload(BaseModel):
-    model_config = ConfigDict(extra='ignore', populate_by_name=True)
-    BankType:         Optional[str] = Field(None, alias="bank_type")
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+    BankCode:         Optional[str] = Field(None, alias="bank_code")
+    BankType:         Optional[str] = Field(None, alias="bank_type")   # legacy alias
     OriginalFilename: Optional[str] = Field(None, alias="original_filename")
     Header:           SubmitHeader
     Details:          List[SubmitDetailItem] = []
+
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/ocr", tags=["OCR"])
@@ -80,53 +76,46 @@ router = APIRouter(prefix="/api/v1/ocr", tags=["OCR"])
 
 @router.post("/extract", response_model=List[ExtractedCreditCardData])
 async def extract_card(
-    request: Request,
-    files: List[UploadFile] = File(..., description="รูปใบเสร็จ (JPG, PNG, PDF)"),
-    bank_type: Optional[BankType] = Query(None, description="ประเภทธนาคาร BBL/KBANK/SCB"),
+    request:   Request,
+    files:     List[UploadFile] = File(...),
+    bank_code: Optional[str]    = Query(None, description="Bank code: BBL / KBANK / SCB"),
     db: AsyncSession = Depends(get_db),
-    _session: SessionInfo = Depends(get_current_session),
+    session: SessionInfo = Depends(get_current_session),
 ):
-    """
-    Stateless extraction: read files, call LLM, return JSON data.
-    Does NOT save to DB or Disk.
-    Sets is_duplicate=True if doc_no already exists in submitted receipts.
-    """
+    """Stateless extraction — reads files, calls LLM, returns JSON. Does NOT write to DB."""
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded")
 
     filenames = file_service.get_filenames_string(files)
     current_document_ref.set(filenames)
     await audit_service.log_action(
-        _session, AuditAction.EXTRACT, DocumentType.CREDIT_CARD,
-        document_ref=filenames, ip_address=request.client.host if request.client else None,
+        session, AuditAction.EXTRACT,
+        resource="credit_card", resource_id=filenames,
+        ip_address=request.client.host if request.client else None,
     )
 
-    from app.services.usage_service import check_bu_rate_limit
-    await check_bu_rate_limit()
+    from app.services.usage_service import check_quota
+    await check_quota()
 
+    hints   = await get_correction_hints(bank_code, db) if bank_code else {}
     results = []
-    bank_type_str = bank_type.value if bank_type else None
-    hints = await get_correction_hints(bank_type_str, db) if bank_type_str else {}
 
     for upload_file in files:
-        # Use centralized file validation and reading
         file_bytes = await file_service.validate_and_read(upload_file)
 
-        task = OCRTask(
-            id=str(uuid.uuid4()),
+        task = await create_task(
+            db,
+            tenant_id=session.tenant_id,
+            business_unit_id=session.business_unit_id,
+            module_id=Module.CREDIT_CARD_OCR,
             original_filename=upload_file.filename,
-            status=TaskStatus.COMPLETED,
-            ocr_engine=settings.ocr_engine,
-            bu=current_bu.get() or None,
-            host=current_host.get() or None,
+            carmen_user_id=session.carmen_user_id,
         )
-        db.add(task)
-        await db.commit()
 
         extracted = await ocr_service.extract_stateless(
             file_bytes=file_bytes,
             original_filename=upload_file.filename,
-            bank_type=bank_type_str,
+            bank_code=bank_code,
             hints=hints or None,
             task_id=task.id,
         )
@@ -134,8 +123,11 @@ async def extract_card(
         if extracted.doc_no:
             dup = await db.execute(
                 select(CreditCard).where(
+                    CreditCard.tenant_id == session.tenant_id,
+                    CreditCard.business_unit_id == session.business_unit_id,
                     CreditCard.doc_no == extracted.doc_no,
                     CreditCard.submitted_at.isnot(None),
+                    CreditCard.deleted_at.is_(None),
                 )
             )
             if dup.scalars().first():
@@ -153,7 +145,7 @@ async def extract_card(
 @router.get("/tasks")
 async def list_tasks(
     status: Optional[TaskStatus] = Query(None),
-    limit: int = Query(50, ge=1, le=500),
+    limit:  int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     _session: SessionInfo = Depends(get_current_session),
@@ -163,13 +155,14 @@ async def list_tasks(
         "total": total,
         "tasks": [
             {
-                "id": t.id,
+                "id":                t.id,
                 "original_filename": t.original_filename,
-                "status": t.status.value if hasattr(t.status, "value") else t.status,
-                "ocr_engine": t.ocr_engine,
-                "error_message": t.error_message,
-                "created_at": t.created_at.isoformat() if t.created_at else None,
-                "completed_at": t.completed_at.isoformat() if t.completed_at else None,
+                "module_id":         t.module_id,
+                "status":            t.status.value if hasattr(t.status, "value") else t.status,
+                "ocr_engine":        t.ocr_engine,
+                "error_message":     t.error_message,
+                "created_at":        t.created_at.isoformat() if t.created_at else None,
+                "completed_at":      t.completed_at.isoformat() if t.completed_at else None,
             }
             for t in tasks
         ],
@@ -184,67 +177,57 @@ async def list_tasks(
 async def get_task(
     task_id: str,
     db: AsyncSession = Depends(get_db),
-    _session: SessionInfo = Depends(get_current_session),
+    session: SessionInfo = Depends(get_current_session),
 ):
-    try:
-        result = await db.execute(
-            select(OCRTask)
-            .options(selectinload(OCRTask.credit_card))
-            .where(OCRTask.id == task_id)
+    result = await db.execute(
+        select(OCRTask)
+        .options(selectinload(OCRTask.credit_card))
+        .where(OCRTask.id == task_id, OCRTask.tenant_id == session.tenant_id,
+               OCRTask.deleted_at.is_(None))
+    )
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+
+    card      = task.credit_card
+    card_data = None
+    if card:
+        from app.models.orm import CreditCardTransaction
+        tx_result = await db.execute(
+            select(CreditCardTransaction)
+            .where(CreditCardTransaction.credit_card_id == card.id,
+                   CreditCardTransaction.deleted_at.is_(None))
+            .order_by(CreditCardTransaction.sort_order)
         )
-        task = result.scalar_one_or_none()
-        if not task:
-            raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+        card_data = {
+            "id":                card.id,
+            "task_id":           card.task_id,
+            "bank_code":         card.bank_code,
+            "company_name":      card.company_name,
+            "bank_company_name": card.bank_company_name,
+            "doc_date":          card.doc_date,
+            "doc_no":            card.doc_no,
+            "branch_no":         card.branch_no,
+            "submitted_at":      card.submitted_at.isoformat() if card.submitted_at else None,
+            "created_at":        card.created_at.isoformat() if card.created_at else None,
+            "transactions": [
+                {"tx_date": t.tx_date, "description": t.description,
+                 "amount": float(t.amount) if t.amount else None, "tx_type": t.tx_type}
+                for t in tx_result.scalars().all()
+            ],
+        }
 
-        credit_card = task.credit_card
-
-        return JSONResponse(content={
-            "id": task.id,
-            "original_filename": task.original_filename,
-            "status": task.status.value if hasattr(task.status, "value") else task.status,
-            "ocr_engine": task.ocr_engine,
-            "error_message": task.error_message,
-            "created_at": task.created_at.isoformat() if task.created_at else None,
-            "completed_at": task.completed_at.isoformat() if task.completed_at else None,
-            "credit_card": {
-                "id": credit_card.id,
-                "task_id": credit_card.task_id,
-                "bank_name": credit_card.bank_name,
-                "bank_type": credit_card.bank_type.value if credit_card.bank_type and hasattr(credit_card.bank_type, "value") else credit_card.bank_type,
-                "doc_name": credit_card.doc_name,
-                "company_name": credit_card.company_name,
-                "doc_date": credit_card.doc_date,
-                "doc_no": credit_card.doc_no,
-                "merchant_name": credit_card.merchant_name,
-                "submitted_at": credit_card.submitted_at.isoformat() if credit_card.submitted_at else None,
-                "created_at": credit_card.created_at.isoformat() if credit_card.created_at else None,
-                "transactions": credit_card.transactions or [],
-            } if credit_card else None,
-        })
-    except HTTPException:
-        raise
-    except Exception:
-        logger.error(f"get_task({task_id}) failed", exc_info=True)
-        raise
-
-
-# ═══════════════════════════════════════════════════
-# PATCH /api/v1/ocr/credit-cards/{card_id}/submit
-# ═══════════════════════════════════════════════════
-
-@router.patch("/credit-cards/{card_id}/submit")
-async def mark_card_submitted(
-    card_id: str,
-    db: AsyncSession = Depends(get_db),
-    _session: SessionInfo = Depends(get_current_session),
-):
-    result = await db.execute(select(CreditCard).where(CreditCard.id == card_id))
-    card = result.scalar_one_or_none()
-    if not card:
-        raise HTTPException(status_code=404, detail=f"CreditCard {card_id} not found")
-    card.submitted_at = datetime.utcnow()
-    await db.commit()
-    return {"ok": True, "submitted_at": card.submitted_at.isoformat()}
+    return JSONResponse(content={
+        "id":                task.id,
+        "original_filename": task.original_filename,
+        "module_id":         task.module_id,
+        "status":            task.status.value if hasattr(task.status, "value") else task.status,
+        "ocr_engine":        task.ocr_engine,
+        "error_message":     task.error_message,
+        "created_at":        task.created_at.isoformat() if task.created_at else None,
+        "completed_at":      task.completed_at.isoformat() if task.completed_at else None,
+        "credit_card":       card_data,
+    })
 
 
 # ═══════════════════════════════════════════════════
@@ -258,26 +241,30 @@ async def submit_receipt_stateless(
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
 ):
-    """Save user-confirmed data to DB. Delegates all logic to submit_tool."""
+    """Save user-confirmed receipt data to DB via submit_tool."""
     doc_ref = payload.Header.DocNo or payload.OriginalFilename or ""
     current_document_ref.set(doc_ref)
     await audit_service.log_action(
-        session, AuditAction.SUBMIT, DocumentType.CREDIT_CARD,
-        document_ref=doc_ref, ip_address=request.client.host if request.client else None,
+        session, AuditAction.SUBMIT,
+        resource="credit_card", resource_id=doc_ref,
+        ip_address=request.client.host if request.client else None,
     )
+
+    bank_code = payload.BankCode or payload.Header.BankCode or payload.BankType or None
+
     inp = SubmitInput(
-        bank_type=payload.BankType,
+        bank_code=bank_code,
         original_filename=payload.OriginalFilename or "uploaded_file",
         doc_no=payload.Header.DocNo,
         doc_date=payload.Header.DocDate,
         bank_name=payload.Header.BankName,
-        doc_name=payload.Header.DocName,
         company_name=payload.Header.CompanyName,
         merchant_name=payload.Header.MerchantName,
-        bank_companyname=payload.Header.BankCompanyname,
+        bank_company_name=payload.Header.BankCompanyName,
         branch_no=payload.Header.BranchNo,
         details=[
-            {"transaction": d.Transaction}
+            {"transaction": d.Transaction, "date": d.Date,
+             "amount": d.Amount, "type": d.Type}
             for d in payload.Details
         ],
     )
@@ -285,7 +272,9 @@ async def submit_receipt_stateless(
     result = await submit_tool.run(inp, db)
 
     if not result.success:
-        raise HTTPException(status_code=500, detail=result.errors[0] if result.errors else "Submit failed")
+        err         = result.errors[0] if result.errors else "Submit failed"
+        status_code = 409 if (result.output or {}).get("error") == "DUPLICATE_DOC_NO" else 500
+        raise HTTPException(status_code=status_code, detail=err)
 
     return {"ok": True, **result.output}
 
@@ -301,32 +290,15 @@ async def export_csv(
     session: SessionInfo = Depends(get_current_session),
 ):
     await audit_service.log_action(
-        session, AuditAction.EXPORT, DocumentType.CREDIT_CARD,
+        session, AuditAction.EXPORT, resource="credit_card",
         ip_address=request.client.host if request.client else None,
     )
     csv_path = await ocr_service.export_tasks_to_csv(db)
     filename = csv_path.replace("\\", "/").split("/")[-1]
     return FileResponse(
-        path=csv_path,
-        media_type="text/csv",
-        filename=filename,
+        path=csv_path, media_type="text/csv", filename=filename,
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
-
-
-# ═══════════════════════════════════════════════════
-# GET /api/v1/ocr/debug-llm  (debug only)
-# ═══════════════════════════════════════════════════
-
-@router.get("/debug-llm")
-async def debug_last_llm_response():
-    if not settings.app_debug:
-        raise HTTPException(status_code=403, detail="Debug mode is disabled")
-    import pathlib, tempfile
-    p = pathlib.Path(tempfile.gettempdir()) / "last_llm_response.txt"
-    if not p.exists():
-        return {"raw": "(no response saved yet — process a file first)", "path": str(p)}
-    return {"raw": p.read_text(encoding="utf-8"), "path": str(p)}
 
 
 # ═══════════════════════════════════════════════════
@@ -338,7 +310,7 @@ async def health_check():
     import httpx
 
     llm_status = "not_configured"
-    llm_error = None
+    llm_error  = None
 
     if settings.openrouter_api_key:
         try:
@@ -347,25 +319,33 @@ async def health_check():
                     f"{settings.openrouter_base_url}/models",
                     headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
                 )
-            if r.status_code == 200:
-                llm_status = "ok"
-            else:
-                llm_status = "error"
+            llm_status = "ok" if r.status_code == 200 else "error"
+            if r.status_code != 200:
                 llm_error = f"HTTP {r.status_code}"
         except Exception as exc:
             llm_status = "error"
-            llm_error = str(exc)
+            llm_error  = str(exc)
 
     healthy = llm_status == "ok"
     body = {
-        "status": "healthy" if healthy else "degraded",
-        "openrouter": llm_status,
-        "ocr_engine": settings.ocr_engine,
-        "openrouter_ocr_model": settings.openrouter_ocr_model,
+        "status":                      "healthy" if healthy else "degraded",
+        "openrouter":                  llm_status,
+        "ocr_engine":                  settings.ocr_engine,
+        "openrouter_ocr_model":        settings.openrouter_ocr_model,
         "openrouter_suggestion_model": settings.openrouter_suggestion_model,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp":                   datetime.utcnow().isoformat(),
     }
     if llm_error:
         body["openrouter_error"] = llm_error
-
     return JSONResponse(status_code=200 if healthy else 503, content=body)
+
+
+@router.get("/debug-llm")
+async def debug_last_llm_response():
+    if not settings.app_debug:
+        raise HTTPException(status_code=403, detail="Debug mode is disabled")
+    import pathlib, tempfile
+    p = pathlib.Path(tempfile.gettempdir()) / "last_llm_response.txt"
+    if not p.exists():
+        return {"raw": "(no response saved yet)", "path": str(p)}
+    return {"raw": p.read_text(encoding="utf-8"), "path": str(p)}

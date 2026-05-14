@@ -3,6 +3,7 @@ import json
 from typing import List, Dict, Any
 
 from app.config import settings
+from app.constants import Module
 from app.llm.client import call_vision_llm, call_text_llm, _strip_code_fences
 from app.llm.prompts.ap_invoice import PROMPT as AP_INVOICE_PROMPT
 from app.llm.prompts.mapping import build_ap_expense_prompt
@@ -72,7 +73,7 @@ async def extract_ap_invoice_data(data_url: str, filename: str, task_id: str) ->
         ],
         model=ap_model,
         task_id=task_id,
-        usage_type="AP_INVOICE",
+        module_id=Module.AP_INVOICE,
         image_size_bytes=len(data_url.encode()),
     )
 
@@ -127,7 +128,7 @@ async def suggest_gl_for_items(items_payload: List[Dict[str, Any]], accounts_raw
         invoice_desc=invoice_desc,
     )
 
-    data = await call_text_llm(prompt, usage_type="AP_GL_SUGGESTION")
+    data = await call_text_llm(prompt, module_id=Module.AP_INVOICE)
     if data is None:
         return {}
 

@@ -1,16 +1,24 @@
 """
 Database setup — single shared MariaDB database: carmen_ai
 
-Architecture: Single Database, Multi-Tenant via Columns
-  All tenants share one database. Filtering is done by:
-    host (ostin.carmenwork.com) → bu (business unit) → user_id
+Architecture: Single Database, Multi-Tenant via Foreign Keys
+  All tenants share one database.
+  Data plane tables reference tenants.id + business_units.id (FK).
+  Control plane tables are global.
+
+Fresh start requirement:
+  Migrations 001-033 have been squashed into 001_squashed_initial_schema (None marker).
+  On a fresh install: DROP the carmen_ai database, then start the app.
+  create_all() will recreate all tables; migrations 100+ handle post-schema setup.
+    mysql -e "DROP DATABASE IF EXISTS carmen_ai"
+    uvicorn app.main:app --reload
 
 Engine:
   Single AsyncEngine with connection pool, created lazily on first use.
 
 Session:
-  async_session()  — returns a session for carmen_ai; used by all services.
-  get_db()         — FastAPI dependency yielding a session for carmen_ai.
+  async_session()  — returns a session; use as `async with async_session() as db:`
+  get_db()         — FastAPI dependency yielding a committed session.
 """
 
 import logging
@@ -33,7 +41,6 @@ logger = logging.getLogger(__name__)
 # ── URL helpers ───────────────────────────────────────────────────────────────
 
 def _db_root_url() -> str:
-    """Returns the database root URL without the database name."""
     url = settings.database_url.rstrip("/")
     if url.count("/") > 2:
         return url.rsplit("/", 1)[0]
@@ -72,13 +79,11 @@ def _get_engine():
 # ── Public Session Factories ──────────────────────────────────────────────────
 
 def async_session() -> AsyncSession:
-    """Return a new session for carmen_ai. Use as `async with async_session() as db:`"""
     _get_engine()
     return _SESSION_FACTORY()
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI dependency — yields a committed session for carmen_ai."""
     _get_engine()
     async with _SESSION_FACTORY() as session:
         try:
@@ -99,9 +104,14 @@ class Base(DeclarativeBase):
 
 async def ensure_db() -> None:
     """
-    Create carmen_ai database if it does not exist, then create/verify all
-    tables and run pending migrations. Safe to call multiple times.
+    Create carmen_ai database if missing, create/verify all tables, run migrations.
+    Safe to call multiple times (idempotent).
     """
+    # Force all ORM models to register with Base before create_all().
+    # Without this import, standalone scripts that only import ensure_db() would
+    # call create_all() against an empty Base.metadata and create zero tables.
+    import app.models.orm  # noqa: F401
+
     root_url = _db_root_url()
     admin_engine = create_async_engine(root_url, echo=False)
     try:
@@ -127,308 +137,226 @@ async def ensure_db() -> None:
         logger.warning("Initial pricing sync failed: %s", exc)
 
 
+async def init_db() -> None:
+    await ensure_db()
+
+
+# ── Backward-compat aliases ───────────────────────────────────────────────────
+
 async def provision_tenant(_tenant: str = "") -> None:
-    """Backward-compatible alias — tenant param is ignored; ensures carmen_ai exists."""
     await ensure_db()
 
 
 async def get_all_tenants() -> list[str]:
-    """Returns a single sentinel so retention/scheduler loops run once on carmen_ai."""
-    return ["__carmen_ai__"]
-
-
-async def init_db() -> None:
-    """Startup check — ensure carmen_ai exists and tables are up to date."""
-    await ensure_db()
-
-
-# ── Migration functions ───────────────────────────────────────────────────────
-# Append-only. Never reorder. Each entry runs exactly once.
-
-async def _m026_fix_bu_usage_pk(conn: AsyncConnection) -> None:
-    """
-    Rebuild bu_usage with a proper (host, bu_name) composite unique key so that
-    two different Carmen instances with the same BU name don't share rate-limit
-    rows (cross-tenant data leakage). Existing rows are preserved.
-    """
+    """Return all active tenant IDs from the tenants table."""
     try:
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS bu_usage_new (
-                id                INT          NOT NULL AUTO_INCREMENT,
-                bu_name           VARCHAR(100) NOT NULL,
-                host              VARCHAR(255) NULL,
-                monthly_calls     INT          DEFAULT 0,
-                total_calls       BIGINT       DEFAULT 0,
-                max_monthly_calls INT          DEFAULT 50,
-                last_reset_month  VARCHAR(7)   NULL,
-                updated_at        DATETIME     DEFAULT CURRENT_TIMESTAMP
-                                              ON UPDATE CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
-                UNIQUE KEY uq_bu_host_bu_name (host, bu_name),
-                INDEX idx_bu_usage_bu   (bu_name),
-                INDEX idx_bu_usage_host (host)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        """))
-        await conn.execute(text("""
-            INSERT INTO bu_usage_new
-                (bu_name, host, monthly_calls, total_calls, max_monthly_calls, last_reset_month, updated_at)
-            SELECT bu_name, host, monthly_calls, total_calls, max_monthly_calls, last_reset_month, updated_at
-            FROM bu_usage
-        """))
-        await conn.execute(text("DROP TABLE bu_usage"))
-        await conn.execute(text("RENAME TABLE bu_usage_new TO bu_usage"))
-        logger.info("  ~ bu_usage: PK changed to auto-increment, unique(host, bu_name) added")
-    except Exception as exc:
-        logger.error("Migration 026 failed: %s", exc)
-        raise
-
-
-async def _m024_add_session_carmen_uri(conn: AsyncConnection) -> None:
-    try:
-        await conn.execute(text(
-            "ALTER TABLE ocr_sessions ADD COLUMN carmen_uri VARCHAR(500) NULL"
-        ))
-        logger.info("  + ocr_sessions.carmen_uri")
-    except Exception:
-        pass
-
-
-async def _m023_create_bu_usage(conn: AsyncConnection) -> None:
-    try:
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS bu_usage (
-                bu_name           VARCHAR(100) PRIMARY KEY,
-                monthly_calls     INT          DEFAULT 0,
-                total_calls       BIGINT       DEFAULT 0,
-                max_monthly_calls INT          DEFAULT 50,
-                last_reset_month  VARCHAR(7)   NULL,
-                updated_at        DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        engine = _get_engine()
+        async with engine.begin() as conn:
+            rows = await conn.execute(
+                text("SELECT id FROM tenants WHERE is_active = 1 AND deleted_at IS NULL")
             )
-        """))
-        logger.info("  + bu_usage table")
-    except Exception as exc:
-        logger.error("Failed to create bu_usage table: %s", exc)
-
-
-async def _m022_add_ap_invoices_submitted_at(conn: AsyncConnection) -> None:
-    try:
-        await conn.execute(text(
-            "ALTER TABLE ap_invoices ADD COLUMN submitted_at DATETIME NULL"
-        ))
-        logger.info("  + ap_invoices.submitted_at")
+            ids = [row[0] for row in rows.fetchall()]
+            return ids if ids else []
     except Exception:
-        pass
+        return []
 
 
-async def _m021_remove_tenant_columns(conn: AsyncConnection) -> None:
-    tables_cols = [
-        ("ocr_tasks",           "tenant"),
-        ("credit_cards",        "tenant"),
-        ("mapping_history",     "tenant"),
-        ("correction_feedback", "tenant"),
-        ("llm_usage_logs",      "tenant"),
-        ("ocr_sessions",        "tenant"),
-        ("audit_logs",          "tenant"),
-        ("performance_logs",    "tenant"),
-        ("outbound_call_logs",  "tenant"),
-        ("daily_usage_summary", "tenant"),
-        ("ap_invoices",         "tenant"),
-    ]
-    for table, col in tables_cols:
-        for idx in (f"idx_{table.replace('_logs','').replace('_',''[:8])}_tenant",
-                    f"idx_{table}_tenant"):
-            try:
-                await conn.execute(text(f"ALTER TABLE {table} DROP INDEX {idx}"))
-            except Exception:
-                pass
-        try:
-            await conn.execute(text(f"ALTER TABLE {table} DROP COLUMN {col}"))
-            logger.info("  - %s.tenant", table)
-        except Exception:
-            pass
-
-    _fixes = [
-        ("mapping_history",
-         "uq_mapping_tenant_bank_field_choice",
-         "uq_mapping_bank_field_choice",
-         "UNIQUE (bank_name, field_type, dept_code, acc_code)"),
-        ("correction_feedback",
-         "uq_correction_tenant_doc_field",
-         "uq_correction_doc_field",
-         "UNIQUE (doc_no, field_name)"),
-        ("daily_usage_summary",
-         "uq_tenant_date",
-         "uq_summary_date",
-         "UNIQUE (summary_date)"),
-    ]
-    for table, old_key, new_key, definition in _fixes:
-        try:
-            await conn.execute(text(f"ALTER TABLE {table} DROP INDEX {old_key}"))
-        except Exception:
-            pass
-        try:
-            await conn.execute(text(
-                f"ALTER TABLE {table} ADD CONSTRAINT {new_key} {definition}"
-            ))
-            logger.info("  ~ %s: %s → %s", table, old_key, new_key)
-        except Exception:
-            pass
+async def migrate_all_tenants() -> None:
+    await migrate_db()
 
 
-async def _m025_add_bu_host_columns(conn: AsyncConnection) -> None:
+# ══════════════════════════════════════════════════════════════════════════════
+# MIGRATION FUNCTIONS
+# Naming convention: _m<number>_<description>
+# Numbers 001-099 are reserved for legacy/squashed history.
+# New migrations start at 100.
+# ══════════════════════════════════════════════════════════════════════════════
+
+async def _m100_partition_log_tables(conn: AsyncConnection) -> None:
     """
-    Add bu + host columns to all data tables for cross-tenant filtering.
-    host = hostname portion of carmen_uri (e.g. 'ostin.carmenwork.com').
-    bu   = business unit identifier (tenant within a customer).
+    Convert the four high-volume log tables to quarterly RANGE partitions.
+
+    MariaDB rule: the partition column (created_at) MUST be part of the PRIMARY KEY.
+    We combine PK change + partitioning into ONE ALTER TABLE to avoid the implicit
+    commit problem that occurs when DDL is split across two statements inside a
+    shared transaction.
+
+    partition_manager.py auto-creates future quarters via REORGANIZE PARTITION p_future.
     """
-    ops = [
-        # table, column, definition
-        ("ocr_tasks",           "bu",   "VARCHAR(100) NULL"),
-        ("ocr_tasks",           "host", "VARCHAR(255) NULL"),
-        ("credit_cards",        "bu",   "VARCHAR(100) NULL"),
-        ("ap_invoices",         "bu",   "VARCHAR(100) NULL"),
-        ("ap_invoices",         "host", "VARCHAR(255) NULL"),
-        ("llm_usage_logs",      "host", "VARCHAR(255) NULL"),
-        ("audit_logs",          "host", "VARCHAR(255) NULL"),
-        ("performance_logs",    "bu",   "VARCHAR(100) NULL"),
-        ("outbound_call_logs",  "bu",   "VARCHAR(100) NULL"),
-        ("bu_usage",            "host", "VARCHAR(255) NULL"),
-    ]
-    for table, col, defn in ops:
-        try:
-            await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {defn}"))
-            logger.info("  + %s.%s", table, col)
-        except Exception:
-            pass  # column already exists
+    from datetime import datetime
+    now  = datetime.utcnow()
+    year = now.year
 
-    # Add indexes for common filter columns
-    indexes = [
-        ("ocr_tasks",          "idx_ocr_tasks_bu",          "bu"),
-        ("ocr_tasks",          "idx_ocr_tasks_host",        "host"),
-        ("credit_cards",       "idx_credit_cards_bu",       "bu"),
-        ("ap_invoices",        "idx_ap_invoices_bu",        "bu"),
-        ("ap_invoices",        "idx_ap_invoices_host",      "host"),
-        ("llm_usage_logs",     "idx_llm_usage_host",        "host"),
-        ("audit_logs",         "idx_audit_logs_host",       "host"),
-        ("performance_logs",   "idx_perf_logs_bu",          "bu"),
-        ("outbound_call_logs", "idx_outbound_logs_bu",      "bu"),
-    ]
-    for table, idx_name, col in indexes:
+    partitions_sql = (
+        f"PARTITION p_before_{year}  VALUES LESS THAN (TO_DAYS('{year}-01-01')), "
+        f"PARTITION p{year}q1        VALUES LESS THAN (TO_DAYS('{year}-04-01')), "
+        f"PARTITION p{year}q2        VALUES LESS THAN (TO_DAYS('{year}-07-01')), "
+        f"PARTITION p{year}q3        VALUES LESS THAN (TO_DAYS('{year}-10-01')), "
+        f"PARTITION p{year}q4        VALUES LESS THAN (TO_DAYS('{year + 1}-01-01')), "
+        f"PARTITION p{year + 1}q1    VALUES LESS THAN (TO_DAYS('{year + 1}-04-01')), "
+        f"PARTITION p_future         VALUES LESS THAN MAXVALUE"
+    )
+
+    tables = ["llm_usage_logs", "audit_logs", "performance_logs", "outbound_call_logs"]
+    for table in tables:
         try:
+            # MariaDB requires the partition column in the PK; DDL auto-commits.
             await conn.execute(text(
-                f"ALTER TABLE {table} ADD INDEX {idx_name} ({col})"
+                f"ALTER TABLE {table} DROP PRIMARY KEY, "
+                f"ADD PRIMARY KEY (id, created_at)"
             ))
-        except Exception:
-            pass  # index already exists
+            await conn.execute(text(
+                f"ALTER TABLE {table} "
+                f"PARTITION BY RANGE (TO_DAYS(created_at)) ({partitions_sql})"
+            ))
+            logger.info("  ~ %s: quarterly partitions applied", table)
+        except Exception as exc:
+            logger.warning("Partition skipped for %s: %s", table, str(exc)[:200])
 
-    # Fix MappingHistory unique: add bu so mappings are isolated per tenant
-    try:
-        await conn.execute(text(
-            "ALTER TABLE mapping_history ADD COLUMN bu VARCHAR(100) NULL"
-        ))
-        logger.info("  + mapping_history.bu")
-    except Exception:
-        pass
-    try:
-        await conn.execute(text("ALTER TABLE mapping_history DROP INDEX uq_mapping_bank_field_choice"))
-    except Exception:
-        pass
-    try:
-        await conn.execute(text(
-            "ALTER TABLE mapping_history ADD CONSTRAINT uq_mapping_bu_bank_field_choice "
-            "UNIQUE (bu, bank_name, field_type, dept_code, acc_code)"
-        ))
-        logger.info("  ~ mapping_history: unique now includes bu")
-    except Exception:
-        pass
 
-    # Fix CorrectionFeedback unique: add bu so corrections are isolated per tenant
-    try:
-        await conn.execute(text(
-            "ALTER TABLE correction_feedback ADD COLUMN bu VARCHAR(100) NULL"
-        ))
-        logger.info("  + correction_feedback.bu")
-    except Exception:
-        pass
-    try:
-        await conn.execute(text("ALTER TABLE correction_feedback DROP INDEX uq_correction_doc_field"))
-    except Exception:
-        pass
-    try:
-        await conn.execute(text(
-            "ALTER TABLE correction_feedback ADD CONSTRAINT uq_correction_bu_doc_field "
-            "UNIQUE (bu, doc_no, field_name)"
-        ))
-        logger.info("  ~ correction_feedback: unique now includes bu")
-    except Exception:
-        pass
+async def _m101_seed_control_plane(conn: AsyncConnection) -> None:
+    """
+    Seed minimal control-plane data required for the Hub to function:
+      - 3 system roles + permission matrix + role_permission assignments
+      - 2 modules (credit_card_ocr, ap_invoice)
+      - 3 banks (BBL, KBANK, SCB)
 
-    # Fix DailyUsageSummary unique: one row per (bu, date)
-    try:
-        await conn.execute(text(
-            "ALTER TABLE daily_usage_summary ADD COLUMN bu VARCHAR(100) NULL"
-        ))
-        logger.info("  + daily_usage_summary.bu")
-    except Exception:
-        pass
-    try:
-        await conn.execute(text("ALTER TABLE daily_usage_summary DROP INDEX uq_summary_date"))
-    except Exception:
-        pass
-    try:
-        await conn.execute(text(
-            "ALTER TABLE daily_usage_summary ADD CONSTRAINT uq_summary_bu_date "
-            "UNIQUE (bu, summary_date)"
-        ))
-        logger.info("  ~ daily_usage_summary: unique now (bu, summary_date)")
-    except Exception:
-        pass
+    All INSERTs use INSERT IGNORE — idempotent, never overwrites manual edits.
+    No admin user is seeded; use the bootstrap CLI for first super_admin.
+    """
+    # ── Roles ──────────────────────────────────────────────────────────────
+    roles = [
+        ("super_admin", "Super Admin",
+         "Full access including IAM. Cannot be deleted.", True),
+        ("admin",       "Admin",
+         "Day-to-day operations. No role/permission management.", True),
+        ("viewer",      "Viewer",
+         "Read-only access to dashboards and config.", True),
+    ]
+    for rid, name, desc, is_sys in roles:
+        await conn.execute(text("""
+            INSERT IGNORE INTO roles (id, name, description, is_system, created_at)
+            VALUES (:id, :name, :desc, :sys, NOW())
+        """), {"id": rid, "name": name, "desc": desc, "sys": is_sys})
+
+    # ── Permissions ─────────────────────────────────────────────────────────
+    resources_actions = [
+        ("tenants",     ["read", "write", "delete"]),
+        ("banks",       ["read", "write", "delete"]),
+        ("prompts",     ["read", "write", "publish", "delete"]),
+        ("api_keys",    ["read", "write", "revoke"]),
+        ("admin_users", ["read", "write", "delete"]),
+        ("roles",       ["read", "write", "delete"]),
+        ("configs",     ["read", "write"]),
+        ("flags",       ["read", "write"]),
+        ("quotas",      ["read", "write"]),
+        ("modules",     ["read", "write"]),
+        ("alerts",      ["read", "acknowledge"]),
+        ("audit",       ["read"]),
+    ]
+    all_perms: list[str] = []
+    for resource, actions in resources_actions:
+        for action in actions:
+            pid = f"{resource}:{action}"
+            all_perms.append(pid)
+            await conn.execute(text("""
+                INSERT IGNORE INTO permissions (id, name, resource, action, created_at)
+                VALUES (:id, :name, :res, :act, NOW())
+            """), {"id": pid, "name": f"{action.title()} {resource}",
+                   "res": resource, "act": action})
+
+    # ── Role → Permission assignments ───────────────────────────────────────
+    iam_resources = {"roles", "admin_users"}
+    for pid in all_perms:
+        resource = pid.split(":")[0]
+        # super_admin: all
+        await conn.execute(text("""
+            INSERT IGNORE INTO role_permissions (role_id, permission_id)
+            VALUES ('super_admin', :pid)
+        """), {"pid": pid})
+        # admin: all except IAM
+        if resource not in iam_resources:
+            await conn.execute(text("""
+                INSERT IGNORE INTO role_permissions (role_id, permission_id)
+                VALUES ('admin', :pid)
+            """), {"pid": pid})
+        # viewer: read-only
+        if pid.endswith(":read"):
+            await conn.execute(text("""
+                INSERT IGNORE INTO role_permissions (role_id, permission_id)
+                VALUES ('viewer', :pid)
+            """), {"pid": pid})
+
+    # ── Modules ─────────────────────────────────────────────────────────────
+    modules = [
+        ("credit_card_ocr", "Credit Card OCR",
+         "Bank receipt OCR + GL mapping wizard", True, 1),
+        ("ap_invoice",      "AP Invoice",
+         "Vendor invoice OCR + line-item review", True, 2),
+    ]
+    for mid, name, desc, active, order in modules:
+        await conn.execute(text("""
+            INSERT IGNORE INTO modules
+                (id, display_name, description, is_active, sort_order, created_at)
+            VALUES (:id, :name, :desc, :active, :order, NOW())
+        """), {"id": mid, "name": name, "desc": desc, "active": active, "order": order})
+
+    # ── Banks ────────────────────────────────────────────────────────────────
+    banks = [
+        ("BBL",   "Bangkok Bank",         "ธนาคารกรุงเทพ",      True, 1),
+        ("KBANK", "Kasikorn Bank",        "ธนาคารกสิกรไทย",    True, 2),
+        ("SCB",   "Siam Commercial Bank", "ธนาคารไทยพาณิชย์",  True, 3),
+    ]
+    for code, name, name_th, active, order in banks:
+        await conn.execute(text("""
+            INSERT IGNORE INTO banks
+                (code, name, display_name_th, is_active, sort_order, created_at)
+            VALUES (:code, :name, :name_th, :active, :order, NOW())
+        """), {"code": code, "name": name, "name_th": name_th,
+               "active": active, "order": order})
+
+    logger.info("  ~ control-plane seed data applied")
 
 
 # ── Migration Registry ────────────────────────────────────────────────────────
-# Append-only. Never reorder. Each entry runs exactly once.
+# Append-only. Never reorder. Each entry runs exactly once per database.
+#
+# 001_squashed_initial_schema: covers all legacy migrations 001-033.
+#   Requires a fresh carmen_ai database (drop + recreate before first run).
+#   create_all() in ensure_db() builds the full schema from ORM models.
+
+async def _m102_quota_drop_module(conn) -> None:
+    """Quota is a tenant-level shared pool — drop the per-module column if it exists."""
+    # All three statements are no-ops when the schema is already clean (fresh DB).
+    await conn.execute(text("ALTER TABLE quotas DROP INDEX IF EXISTS ix_quotas_module"))
+    await conn.execute(text("ALTER TABLE quotas DROP INDEX IF EXISTS uq_quota_tenant_module_period_metric"))
+    await conn.execute(text("ALTER TABLE quotas DROP COLUMN IF EXISTS module"))
+    await conn.execute(text(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_quota_tenant_period_metric"
+        " ON quotas (tenant_id, period, metric)"
+    ))
+    logger.info("  ~ quotas.module column removed; unique constraint updated")
+
 
 _MIGRATIONS: list[tuple[str, object]] = [
-    # ── Legacy (001-020): pre-mark only, no logic ────────────────────────────
-    ("001_receipt_columns",                             None),
-    ("002_ocr_tasks_nullable",                          None),
-    ("003_llm_usage_columns",                           None),
-    ("004_mapping_history_constraint",                  None),
-    ("005_create_audit_logs",                           None),
-    ("006_create_performance_logs",                     None),
-    ("007_create_outbound_call_logs",                   None),
-    ("008_create_ocr_sessions",                         None),
-    ("009_drop_llm_usage_token_hash",                   None),
-    ("010_drop_sensitive_receipt_columns",              None),
-    ("011_merge_receipt_details_into_transactions",     None),
-    ("012_drop_session_expires_at",                     None),
-    ("013_add_tenant",                                  None),
-    ("014_schema_cleanup_and_analytics",                None),
-    ("015_create_daily_usage_summary",                  None),
-    ("016_partition_log_tables",                        None),
-    ("017_create_model_pricing",                        None),
-    ("018_create_ap_invoice_tables",                    None),
-    ("019_rename_receipts_to_credit_cards",             None),
-    ("020_fix_correction_feedback_unique_key",          None),
-    # ── Live migrations (021+) ────────────────────────────────────────────────
-    ("021_remove_tenant_columns",                       _m021_remove_tenant_columns),
-    ("022_add_ap_invoices_submitted_at",                _m022_add_ap_invoices_submitted_at),
-    ("023_create_bu_usage",                             _m023_create_bu_usage),
-    ("024_add_session_carmen_uri",                      _m024_add_session_carmen_uri),
-    ("025_add_bu_host_columns",                         _m025_add_bu_host_columns),
-    ("026_fix_bu_usage_pk",                             _m026_fix_bu_usage_pk),
+    # ── Squashed history (001–033) ────────────────────────────────────────────
+    ("001_squashed_initial_schema", None),
+    # ── Live migrations (100+) ────────────────────────────────────────────────
+    ("100_partition_log_tables",    _m100_partition_log_tables),
+    ("101_seed_control_plane",      _m101_seed_control_plane),
+    ("102_quota_drop_module",       _m102_quota_drop_module),
 ]
 
 
 async def migrate_db(_tenant: str = "") -> None:
-    """Run pending migrations on carmen_ai. tenant param kept for backward compat."""
+    """Run pending migrations on carmen_ai. _tenant param kept for backward compat."""
     engine = _get_engine()
     async with engine.begin() as conn:
         await conn.execute(text("""
             CREATE TABLE IF NOT EXISTS schema_migrations (
                 name       VARCHAR(100) PRIMARY KEY,
                 applied_at DATETIME     DEFAULT CURRENT_TIMESTAMP
-            )
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """))
         rows = await conn.execute(text("SELECT name FROM schema_migrations"))
         applied = {row[0] for row in rows.fetchall()}
@@ -453,8 +381,3 @@ async def migrate_db(_tenant: str = "") -> None:
             except Exception as exc:
                 logger.error("Migration %s FAILED: %s", name, exc)
                 raise
-
-
-async def migrate_all_tenants() -> None:
-    """Backward-compatible alias — runs migrate_db() once on carmen_ai."""
-    await migrate_db()

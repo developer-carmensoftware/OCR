@@ -1,12 +1,9 @@
 """
-Correction Service — load correction hints for prompt tuning.
-
-Queries correction_feedback + receipts to find fields with high
-error rates for a given bank, then returns hint text for the OCR prompt.
+Correction Service — compute per-field error rates to tune OCR prompts.
 
 Logic:
     error_rate = corrections(field, 90d) / submitted_receipts(bank, 90d)
-    hint if error_rate > ERROR_RATE_THRESHOLD
+    inject hint into prompt if error_rate > ERROR_RATE_THRESHOLD
 """
 
 import logging
@@ -15,80 +12,72 @@ from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
-from app.models import CorrectionFeedback, CreditCard
+from app.models.orm import CorrectionFeedback, CreditCard
+from app.context import current_tenant_id, current_business_unit_id
 
 logger = logging.getLogger(__name__)
 
-# Only hint if error rate exceeds this threshold (10%)
-ERROR_RATE_THRESHOLD = 0.10
-
-# Only consider data from the last N days
-TTL_DAYS = 90
-
-# Minimum submitted documents required before ratio is meaningful
-MIN_CARDS = 10
+ERROR_RATE_THRESHOLD = 0.10   # 10% — only hint if error rate exceeds this
+TTL_DAYS             = 90
+MIN_CARDS            = 10     # need at least this many submitted docs for meaningful ratio
 
 
 async def get_correction_hints(
-    bank_type: str,
+    bank_code: str,
     db: AsyncSession,
 ) -> dict[str, str]:
     """
-    Return {field_name: hint_text} for fields where:
-      corrections(field, 90d) / submitted_receipts(bank, 90d) > 10%
-
-    Uses credit_cards table as denominator — corrections are logged at submit time,
-    so submitted document count is the correct base for the ratio.
-
-    Only returns field names — no specific corrected values to avoid biasing LLM.
-    Tenant isolation is guaranteed by the separate-schema architecture.
+    Return {field_name: hint_text} for fields where error rate > 10%.
+    Scoped to the current tenant + business_unit from context vars.
     """
-    cutoff = datetime.utcnow() - timedelta(days=TTL_DAYS)
+    tenant_id        = current_tenant_id.get()
+    business_unit_id = current_business_unit_id.get()
+    cutoff           = datetime.utcnow() - timedelta(days=TTL_DAYS)
 
-    # 1. Count submitted documents for this bank in the last 90 days
+    # Base filters for tenant scope
+    card_filters = [
+        CreditCard.bank_code == bank_code,
+        CreditCard.submitted_at.isnot(None),
+        CreditCard.submitted_at >= cutoff,
+        CreditCard.deleted_at.is_(None),
+    ]
+    corr_filters = [
+        CorrectionFeedback.bank_code == bank_code,
+        CorrectionFeedback.created_at >= cutoff,
+        CorrectionFeedback.deleted_at.is_(None),
+    ]
+
+    if tenant_id:
+        card_filters.append(CreditCard.tenant_id == tenant_id)
+        corr_filters.append(CorrectionFeedback.tenant_id == tenant_id)
+    if business_unit_id:
+        card_filters.append(CreditCard.business_unit_id == business_unit_id)
+        corr_filters.append(CorrectionFeedback.business_unit_id == business_unit_id)
+
+    # Count submitted documents for this bank (denominator)
     total_result = await db.execute(
-        select(func.count())
-        .select_from(CreditCard)
-        .where(CreditCard.bank_type == bank_type)
-        .where(CreditCard.submitted_at.isnot(None))
-        .where(CreditCard.submitted_at >= cutoff)
+        select(func.count()).select_from(CreditCard).where(*card_filters)
     )
     total_cards = total_result.scalar() or 0
 
     if total_cards < MIN_CARDS:
-        logger.debug(
-            f"[hints] {bank_type}: only {total_cards} submitted documents "
-            f"(need {MIN_CARDS}) — skipping hints"
-        )
+        logger.debug("[hints] %s: only %d docs (need %d) — skipping", bank_code, total_cards, MIN_CARDS)
         return {}
 
-    # 2. Count corrections per field in the last 90 days
+    # Count corrections per field (numerator)
     result = await db.execute(
-        select(
-            CorrectionFeedback.field_name,
-            func.count().label("cnt"),
-        )
-        .where(CorrectionFeedback.bank_type == bank_type)
-        .where(CorrectionFeedback.created_at >= cutoff)
+        select(CorrectionFeedback.field_name, func.count().label("cnt"))
+        .where(*corr_filters)
         .group_by(CorrectionFeedback.field_name)
     )
-    rows = result.all()
 
-    # 3. Filter by error rate
     hints: dict[str, str] = {}
-    for field_name, correction_count in rows:
+    for field_name, correction_count in result.all():
         error_rate = correction_count / total_cards
         if error_rate >= ERROR_RATE_THRESHOLD:
             hints[field_name] = f"{correction_count}/{total_cards} ({error_rate:.0%})"
-            logger.debug(
-                f"[hints] {bank_type}.{field_name}: "
-                f"{correction_count}/{total_cards} = {error_rate:.0%} → HINT"
-            )
 
     if hints:
-        logger.info(
-            f"[hints] {bank_type}: {len(hints)} fields above "
-            f"{ERROR_RATE_THRESHOLD:.0%} threshold: {list(hints.keys())}"
-        )
-
+        logger.info("[hints] %s: %d field(s) above %d%% threshold: %s",
+                    bank_code, len(hints), int(ERROR_RATE_THRESHOLD * 100), list(hints.keys()))
     return hints

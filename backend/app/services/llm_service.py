@@ -15,6 +15,7 @@ import tempfile
 from typing import Optional, Tuple
 
 from app.config import settings
+from app.constants import Module
 from app.llm.client import call_vision_llm, _strip_code_fences
 from app.llm.prompts import get_ocr_prompt
 from app.models import ExtractedCreditCardData
@@ -40,28 +41,28 @@ def _get_mime_type(filename: str) -> str:
 
 async def extract_from_image(
     image_bytes: bytes,
-    filename: str = "receipt.png",
-    bank_type: Optional[str] = None,
-    hints: Optional[dict] = None,
-    task_id: Optional[str] = None,
+    filename:    str = "receipt.png",
+    bank_code:   Optional[str] = None,
+    hints:       Optional[dict] = None,
+    task_id:     Optional[str] = None,
+    # Legacy alias
+    bank_type:   Optional[str] = None,
 ) -> Tuple[str, ExtractedCreditCardData]:
     """
     Send an image to OpenRouter vision LLM and return (raw_text, ExtractedCreditCardData).
-
-    bank_type: "SCB" | "BBL" | "KBANK" — selects bank-specific prompt.
+    bank_code: 'BBL' | 'KBANK' | 'SCB' — selects bank-specific prompt.
     hints: correction hints from correction_feedback (appended to prompt).
-    task_id: optional ID to link token usage to an OCR task.
-    Raises on API or JSON parse failure.
     """
     if not settings.openrouter_api_key:
         raise ValueError("OPENROUTER_API_KEY is not configured")
 
-    prompt = get_ocr_prompt(bank_type, hints=hints)
+    effective_bank = bank_code or bank_type
+    prompt = get_ocr_prompt(effective_bank, hints=hints)
     mime_type = _get_mime_type(filename)
     b64_image = base64.b64encode(image_bytes).decode("utf-8")
     data_url = f"data:{mime_type};base64,{b64_image}"
 
-    logger.info(f"Calling OpenRouter model={settings.openrouter_ocr_model} bank={bank_type or 'generic'}")
+    logger.info("Calling OpenRouter model=%s bank=%s", settings.openrouter_ocr_model, effective_bank or "generic")
 
     result_text = await call_vision_llm(
         system_prompt=prompt,
@@ -78,7 +79,7 @@ async def extract_from_image(
         ],
         model=settings.openrouter_ocr_model,
         task_id=task_id,
-        usage_type="BANK_OCR",
+        module_id=Module.CREDIT_CARD_OCR,
         image_size_bytes=len(image_bytes),
     )
 

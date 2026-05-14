@@ -16,6 +16,7 @@ from typing import Any, Dict, List
 
 from app.config import settings
 from app.llm.client import call_text_llm
+from app.constants import Module
 from app.llm.prompts.mapping import build_fixed_fields_prompt, build_payment_types_prompt
 from app.tools.base import ToolResult
 
@@ -138,7 +139,7 @@ async def suggest_fixed_fields(
             balance_acc_count=len(balance_filtered),
         )
 
-        data = await call_text_llm(prompt, usage_type="MAPPING_SUGGESTION")
+        data = await call_text_llm(prompt, module_id=Module.CREDIT_CARD_OCR)
         if data is None:
             data = {}
 
@@ -221,7 +222,7 @@ async def suggest_payment_types(
             payment_types=payment_types,
         )
 
-        data = await call_text_llm(prompt, usage_type="MAPPING_SUGGESTION")
+        data = await call_text_llm(prompt, module_id=Module.CREDIT_CARD_OCR)
         if data is None:
             data = {}
 

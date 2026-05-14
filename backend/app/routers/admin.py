@@ -1,9 +1,4 @@
-"""
-Admin Router — usage summary queries + manual trigger endpoints.
-
-All endpoints are authenticated and operate on the caller's tenant DB
-(isolation is guaranteed by the separate-schema architecture — no WHERE tenant= needed).
-"""
+"""Admin Router — usage summary queries + manual trigger endpoints."""
 
 import logging
 from datetime import date, datetime
@@ -23,34 +18,43 @@ router = APIRouter(prefix="/api/v1/admin", tags=["Admin"])
 
 @router.get("/usage-summary")
 async def get_usage_summary(
-    from_date: Optional[date] = Query(None, alias="from", description="Start date (YYYY-MM-DD)"),
-    to_date:   Optional[date] = Query(None, alias="to",   description="End date (YYYY-MM-DD)"),
+    from_date: Optional[date] = Query(None, alias="from"),
+    to_date:   Optional[date] = Query(None, alias="to"),
+    module_id: Optional[str]  = Query(None, description="Filter by module id"),
     db: AsyncSession = Depends(get_db),
-    _session: SessionInfo = Depends(get_current_session),
+    session: SessionInfo = Depends(get_current_session),
 ):
     if not from_date:
         from_date = date.today().replace(day=1)
     if not to_date:
         to_date = date.today()
 
-    result = await db.execute(
+    query = (
         select(DailyUsageSummary)
         .where(
+            DailyUsageSummary.tenant_id == session.tenant_id,
+            DailyUsageSummary.business_unit_id == session.business_unit_id,
             DailyUsageSummary.summary_date >= from_date,
             DailyUsageSummary.summary_date <= to_date,
         )
         .order_by(DailyUsageSummary.summary_date.desc())
     )
-    rows = result.scalars().all()
+    if module_id:
+        query = query.where(DailyUsageSummary.module_id == module_id)
+
+    result = await db.execute(query)
+    rows   = result.scalars().all()
 
     return {
-        "tenant": _session.tenant,
-        "from":   str(from_date),
-        "to":     str(to_date),
-        "days":   len(rows),
+        "tenant_id":        session.tenant_id,
+        "business_unit_id": session.business_unit_id,
+        "from":  str(from_date),
+        "to":    str(to_date),
+        "days":  len(rows),
         "data": [
             {
                 "date":               str(r.summary_date.date() if isinstance(r.summary_date, datetime) else r.summary_date),
+                "module_id":          r.module_id,
                 "documents":          r.total_documents,
                 "submissions":        r.total_submissions,
                 "llm_calls":          r.total_llm_calls,
@@ -74,7 +78,7 @@ async def get_usage_totals(
     from_date: Optional[date] = Query(None, alias="from"),
     to_date:   Optional[date] = Query(None, alias="to"),
     db: AsyncSession = Depends(get_db),
-    _session: SessionInfo = Depends(get_current_session),
+    session: SessionInfo = Depends(get_current_session),
 ):
     if not from_date:
         from_date = date.today().replace(day=1)
@@ -96,6 +100,8 @@ async def get_usage_totals(
             func.sum(DailyUsageSummary.total_outbound_calls).label("total_outbound_calls"),
         )
         .where(
+            DailyUsageSummary.tenant_id == session.tenant_id,
+            DailyUsageSummary.business_unit_id == session.business_unit_id,
             DailyUsageSummary.summary_date >= from_date,
             DailyUsageSummary.summary_date <= to_date,
         )
@@ -103,7 +109,8 @@ async def get_usage_totals(
     row = result.mappings().fetchone()
 
     return {
-        "tenant": _session.tenant,
+        "tenant_id":        session.tenant_id,
+        "business_unit_id": session.business_unit_id,
         "from":   str(from_date),
         "to":     str(to_date),
         "totals": {
@@ -126,7 +133,6 @@ async def get_usage_totals(
 async def trigger_retention(
     _session: SessionInfo = Depends(get_current_session),
 ):
-    """Manually trigger archive + cleanup for the current tenant."""
     from app.services.retention_service import archive_and_cleanup, purge_inactive_sessions
     result = await archive_and_cleanup()
     await purge_inactive_sessions()
@@ -135,10 +141,9 @@ async def trigger_retention(
 
 @router.post("/summary/rebuild")
 async def trigger_summary_rebuild(
-    target_date: Optional[date] = Query(None, alias="date", description="Date to rebuild (YYYY-MM-DD)"),
+    target_date: Optional[date] = Query(None, alias="date"),
     _session: SessionInfo = Depends(get_current_session),
 ):
-    """Manually rebuild daily summary for the current tenant."""
     from app.services.summary_service import build_daily_summary
     result = await build_daily_summary(target_date)
     return {"status": "completed", "date": str(target_date), "metrics": result}
@@ -148,7 +153,6 @@ async def trigger_summary_rebuild(
 async def trigger_pricing_sync(
     _session: SessionInfo = Depends(get_current_session),
 ):
-    """Manually sync LLM pricing from OpenRouter API."""
     from app.services.usage_service import fetch_openrouter_pricing
     await fetch_openrouter_pricing()
     return {"status": "sync_started"}
@@ -161,17 +165,17 @@ async def get_pricing_list(
 ):
     from app.models.orm import LLMModelPricing
     result = await db.execute(select(LLMModelPricing).order_by(LLMModelPricing.model_name))
-    rows = result.scalars().all()
+    rows   = result.scalars().all()
     return {
         "count": len(rows),
         "data": [
             {
-                "model_name":         r.model_name,
-                "input_price_per_1m": float(r.input_price_per_1m),
-                "output_price_per_1m":float(r.output_price_per_1m),
-                "source":             r.source,
-                "price_verified_at":  r.price_verified_at.isoformat() if r.price_verified_at else None,
-                "updated_at":         r.updated_at.isoformat() if r.updated_at else None,
+                "model_name":          r.model_name,
+                "input_price_per_1m":  float(r.input_price_per_1m),
+                "output_price_per_1m": float(r.output_price_per_1m),
+                "source":              r.source,
+                "price_verified_at":   r.price_verified_at.isoformat() if r.price_verified_at else None,
+                "updated_at":          r.updated_at.isoformat() if r.updated_at else None,
             }
             for r in rows
         ],

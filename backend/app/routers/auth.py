@@ -2,10 +2,13 @@
 Auth Router — Carmen SSO token exchange.
 
 Flow:
-  1. Frontend sends Carmen token + BU (extracted from URL hash params).
-  2. This endpoint validates the token against Carmen API.
-  3. On success: creates an OcrSession, issues a short-lived OCR JWT.
-  4. Frontend stores the OCR JWT in sessionStorage and uses it for all subsequent calls.
+  1. Frontend sends Carmen token + bu + carmen_uri.
+  2. We validate the token against the Carmen API.
+  3. Upsert Tenant (by host) + BusinessUnit (by tenant + bu code) — auto-registers
+     first-time tenants without any admin intervention.
+  4. Create OcrSession with proper FK references.
+  5. Issue a short-lived OCR JWT that embeds tenant_id + business_unit_id so
+     subsequent requests need no DB lookup for tenant resolution.
 """
 
 import logging
@@ -20,10 +23,11 @@ from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_session, SessionInfo
-
 from app.config import settings
 from app.database import get_db, provision_tenant, async_session
-from app.models.orm import OcrSession
+from app.models.orm import OcrSession, Tenant, BusinessUnit
+from app.models.enums import TenantPlan
+from app.services.usage_service import upsert_tenant_quota
 from app.auth.session import (
     create_session_jwt,
     decode_session_jwt,
@@ -38,17 +42,14 @@ _VALIDATE_TIMEOUT = 10.0
 
 
 def _carmen_base(uri: str) -> str:
-    """Build Carmen API base URL from the customer's Carmen origin URI."""
     return f"{uri.rstrip('/')}/Carmen.API/api/interface"
 
 
 def _validate_uri(uri: str) -> str:
     """
     Validate and normalise the Carmen origin URI against SSRF.
-    - HTTPS only (no plaintext credential exposure)
-    - Blocks loopback, private, and link-local addresses
-    Returns the normalised origin (scheme + host only).
-    Raises HTTPException(400) if invalid.
+    HTTPS only; blocks loopback/private/link-local addresses.
+    Returns normalised origin (scheme + host only).
     """
     import ipaddress as _ip
 
@@ -63,49 +64,66 @@ def _validate_uri(uri: str) -> str:
     if not hostname:
         raise HTTPException(status_code=400, detail="uri must include a hostname")
 
-    # Block hostnames that always resolve to internal addresses
-    _BLOCKED_HOSTS = {"localhost", "ip6-localhost", "ip6-loopback", "broadcasthost"}
-    if hostname in _BLOCKED_HOSTS:
+    _BLOCKED = {"localhost", "ip6-localhost", "ip6-loopback", "broadcasthost"}
+    if hostname in _BLOCKED:
         raise HTTPException(status_code=400, detail="uri hostname not allowed")
 
-    # If the hostname is a literal IP, block private/internal ranges
     try:
         addr = _ip.ip_address(hostname)
-        if (addr.is_private or addr.is_loopback or
-                addr.is_link_local or addr.is_reserved or addr.is_multicast):
+        if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved or addr.is_multicast:
             raise HTTPException(status_code=400, detail="uri hostname not allowed")
     except ValueError:
-        pass  # Not a literal IP — domain names are allowed
+        pass  # domain name — allowed
 
     port_part = f":{parsed.port}" if parsed.port else ""
     return f"https://{parsed.hostname}{port_part}"
 
 
+async def _upsert_tenant(db: AsyncSession, host: str) -> Tenant:
+    """Return existing Tenant for this host, or create one on first encounter."""
+    result = await db.execute(
+        select(Tenant).where(Tenant.host == host, Tenant.deleted_at.is_(None))
+    )
+    tenant = result.scalar_one_or_none()
+    if not tenant:
+        tenant = Tenant(
+            id=str(uuid.uuid4()),
+            host=host,
+            name=host,
+            plan=TenantPlan.FREE,
+            is_active=True,
+        )
+        db.add(tenant)
+        await db.flush()
+        logger.info("Auto-registered new tenant: host=%s id=%s", host, tenant.id)
+    return tenant
 
 
-# ── Schemas ───────────────────────────────────────────────────────────────────
+async def _upsert_business_unit(db: AsyncSession, tenant_id: str, bu_code: str) -> BusinessUnit:
+    """Return existing BU for this tenant+code, or create one on first encounter."""
+    result = await db.execute(
+        select(BusinessUnit).where(
+            BusinessUnit.tenant_id == tenant_id,
+            BusinessUnit.code == bu_code,
+            BusinessUnit.deleted_at.is_(None),
+        )
+    )
+    bu = result.scalar_one_or_none()
+    if not bu:
+        bu = BusinessUnit(
+            id=str(uuid.uuid4()),
+            tenant_id=tenant_id,
+            code=bu_code,
+            name=bu_code,
+            is_active=True,
+        )
+        db.add(bu)
+        await db.flush()
+        logger.info("Auto-registered new BU: tenant=%s code=%s id=%s", tenant_id, bu_code, bu.id)
+    return bu
 
-class ExchangeRequest(BaseModel):
-    token: str
-    bu: str
-    user: str = ""   # username passed directly from Carmen via URL param
-    uri: str = ""    # window.location.origin of the Carmen instance
-
-
-class ExchangeResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    expires_in: int
-    user: dict
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
 
 async def _validate_token(token: str, carmen_uri: str) -> None:
-    """
-    Confirms the Carmen token is live by probing a lightweight endpoint.
-    Raises HTTPException(401) if Carmen rejects it.
-    """
     headers = {"Authorization": token, "User-Agent": "OCR-SSO-Validator"}
     async with httpx.AsyncClient(timeout=_VALIDATE_TIMEOUT) as client:
         resp = await client.get(f"{_carmen_base(carmen_uri)}/department", headers=headers)
@@ -114,6 +132,22 @@ async def _validate_token(token: str, carmen_uri: str) -> None:
     if resp.status_code not in (200, 204):
         logger.warning("Carmen validation probe returned %s", resp.status_code)
         raise HTTPException(status_code=502, detail="Cannot reach Carmen to validate token")
+
+
+# ── Schemas ───────────────────────────────────────────────────────────────────
+
+class ExchangeRequest(BaseModel):
+    token: str
+    bu:    str
+    user:  str = ""
+    uri:   str = ""
+
+
+class ExchangeResponse(BaseModel):
+    access_token: str
+    token_type:   str = "bearer"
+    expires_in:   int
+    user:         dict
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -128,16 +162,13 @@ async def exchange_sso_token(body: ExchangeRequest):
         raise HTTPException(status_code=400, detail="token and bu are required")
 
     carmen_uri = _validate_uri(body.uri)
-    tenant = bu.lower()   # kept only for JWT claim; no longer selects a DB
+    host       = urlparse(carmen_uri).hostname or ""
 
-    # Validate token is live against the customer's Carmen instance
     await _validate_token(token, carmen_uri)
-
-    # Ensure carmen_ai DB exists (idempotent, fast after first call)
     await provision_tenant()
 
-    user_id  = extract_user_id_from_token(token)
-    username = body.user or user_id
+    carmen_user_id = extract_user_id_from_token(token)
+    username       = body.user or carmen_user_id
 
     try:
         encrypted = encrypt_carmen_token(token, settings.session_encryption_key)
@@ -145,47 +176,59 @@ async def exchange_sso_token(body: ExchangeRequest):
         logger.exception("Token encryption failed")
         raise HTTPException(status_code=500, detail="Session creation failed")
 
-    session_id = str(uuid.uuid4())
-
-    # Use async_session() after provision_tenant() so the DB is guaranteed to exist
     async with async_session() as db:
-        # Auto cleanup: ลบ session เก่าที่ expired หรือถูก deactivate แล้ว
+        tenant        = await _upsert_tenant(db, host)
+        await upsert_tenant_quota(db, tenant.id, tenant.plan)
+        business_unit = await _upsert_business_unit(db, tenant.id, bu)
+
         cutoff = datetime.utcnow() - timedelta(hours=settings.session_ttl_hours)
         deleted = await db.execute(
             delete(OcrSession).where(
-                (OcrSession.created_at < cutoff) | (OcrSession.is_active == False)  # noqa: E712
+                (OcrSession.tenant_id == tenant.id) &
+                ((OcrSession.created_at < cutoff) | (OcrSession.is_active == False))  # noqa: E712
             )
         )
         if deleted.rowcount:
-            logger.info("Auto cleanup: removed %d stale session(s)", deleted.rowcount)
+            logger.info("Cleaned %d stale session(s) for tenant %s", deleted.rowcount, tenant.id)
 
+        session_id = str(uuid.uuid4())
         db.add(OcrSession(
             id=session_id,
-            carmen_token_encrypted=encrypted,
-            user_id=user_id,
+            tenant_id=tenant.id,
+            business_unit_id=business_unit.id,
+            carmen_user_id=carmen_user_id,
             username=username,
-            bu=bu,
+            carmen_token_encrypted=encrypted,
             carmen_uri=carmen_uri,
             is_active=True,
         ))
         await db.commit()
 
-    logger.info("SSO exchange OK — tenant=%s user=%s bu=%s session=%s",
-                tenant, username, bu, session_id)
+    logger.info("SSO exchange OK — host=%s bu=%s user=%s session=%s",
+                host, bu, username, session_id)
 
+    access_token = create_session_jwt(
+        session_id=session_id,
+        tenant_id=tenant.id,
+        business_unit_id=business_unit.id,
+        carmen_user_id=carmen_user_id,
+        username=username,
+        bu=bu,
+        carmen_uri=carmen_uri,
+        secret=settings.ocr_jwt_secret,
+        ttl_hours=settings.session_ttl_hours,
+    )
     return ExchangeResponse(
-        access_token=create_session_jwt(
-            session_id=session_id,
-            bu=bu,
-            user_id=user_id,
-            username=username,
-            tenant=tenant,
-            carmen_uri=carmen_uri,
-            secret=settings.ocr_jwt_secret,
-            ttl_hours=settings.session_ttl_hours,
-        ),
+        access_token=access_token,
         expires_in=settings.session_ttl_hours * 3600,
-        user={"user_id": user_id, "username": username, "bu": bu, "uri": carmen_uri},
+        user={
+            "carmen_user_id":  carmen_user_id,
+            "username":        username,
+            "bu":              bu,
+            "uri":             carmen_uri,
+            "tenant_id":       tenant.id,
+            "business_unit_id": business_unit.id,
+        },
     )
 
 
@@ -194,35 +237,25 @@ async def revoke_session(
     authorization: str = Header(...),
     db: AsyncSession = Depends(get_db),
 ):
-    """Logout — revokes the current OCR session so the JWT is rejected on next use."""
+    """Logout — revokes the current OCR session."""
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid authorization header")
-
     try:
         payload = decode_session_jwt(authorization[7:], settings.ocr_jwt_secret)
     except ValueError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    result = await db.execute(
-        select(OcrSession).where(OcrSession.id == payload.get("sid"))
-    )
+    result = await db.execute(select(OcrSession).where(OcrSession.id == payload.get("sid")))
     session = result.scalar_one_or_none()
     if session:
         session.is_active = False
         await db.commit()
         logger.info("Session revoked: %s", session.id)
-
     return {"ok": True}
-    
+
 
 @router.get("/usage")
-async def get_usage(
-    _session: SessionInfo = Depends(get_current_session),
-):
-    """Get current BU usage and limits."""
-    from app.services.usage_service import get_bu_usage
-    usage = await get_bu_usage(_session.bu)
-    return {
-        "bu": _session.bu,
-        "usage": usage
-    }
+async def get_usage(_session: SessionInfo = Depends(get_current_session)):
+    """Get quota usage for the current tenant/BU."""
+    from app.services.usage_service import get_quota_summary
+    return await get_quota_summary(_session.tenant_id)

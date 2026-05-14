@@ -33,41 +33,38 @@ def _strip_code_fences(text: str) -> str:
     lines = text.split("\n")
     if len(lines) <= 1:
         return text
-    last = lines[-1].strip()
+    last  = lines[-1].strip()
     inner = lines[1:-1] if last == "```" else lines[1:]
     return "\n".join(inner).strip()
 
 
 async def call_vision_llm(
     system_prompt: str,
-    user_content: List[Any],
-    model: str,
-    task_id: Optional[str] = None,
-    usage_type: Optional[str] = None,
+    user_content:  List[Any],
+    model:         str,
+    task_id:       Optional[str] = None,
+    module_id:     Optional[str] = None,
     image_size_bytes: int = 0,
+    # Legacy alias — callers that still pass usage_type will be ignored
+    usage_type:    Optional[str] = None,
 ) -> str:
     """
     Send a multimodal (vision) request to OpenRouter.
-
     Returns the raw text content from the LLM response.
-    Raises RuntimeError on API failure or empty response.
-    Logs outbound call and token usage automatically.
+    Quota check is the caller's responsibility (done in routers via check_quota()).
     """
-    from app.services.usage_service import log_llm_usage, check_bu_rate_limit
+    from app.services.usage_service import log_llm_usage
     from app.services.outbound_log_service import log_outbound
 
-    # Rate Limit Check
-    await check_bu_rate_limit()
-
-    client = get_client()
-    start = time.perf_counter()
+    client      = get_client()
+    start       = time.perf_counter()
     status_code = 200
     try:
         response = await client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content},
+                {"role": "user",   "content": user_content},
             ],
             temperature=0.0,
             max_tokens=8192,
@@ -92,7 +89,7 @@ async def call_vision_llm(
             completion_tokens=response.usage.completion_tokens,
             total_tokens=response.usage.total_tokens,
             task_id=task_id,
-            usage_type=usage_type,
+            module_id=module_id or usage_type,   # fallback for legacy callers
             duration_ms=(time.perf_counter() - start) * 1000,
         )
 
@@ -108,27 +105,25 @@ async def call_vision_llm(
 
 
 async def call_text_llm(
-    prompt: str,
-    model: Optional[str] = None,
-    task_id: Optional[str] = None,
+    prompt:    str,
+    model:     Optional[str] = None,
+    task_id:   Optional[str] = None,
+    module_id: Optional[str] = None,
+    # Legacy alias
     usage_type: Optional[str] = None,
 ) -> Optional[dict]:
     """
     Call the text/suggestion LLM with a single user prompt.
-
     Strips markdown code fences, parses JSON.
-    Returns None on any failure (no exceptions raised to callers).
+    Returns None on any failure (never raises to callers).
     """
-    from app.services.usage_service import log_llm_usage, check_bu_rate_limit
+    from app.services.usage_service import log_llm_usage
     from app.services.outbound_log_service import log_outbound
 
-    # Rate Limit Check
-    await check_bu_rate_limit()
-
-    client = get_client()
+    client       = get_client()
     target_model = model or settings.openrouter_suggestion_model
 
-    start = time.perf_counter()
+    start       = time.perf_counter()
     status_code = 200
     try:
         response = await client.chat.completions.create(
@@ -158,7 +153,7 @@ async def call_text_llm(
             completion_tokens=response.usage.completion_tokens,
             total_tokens=response.usage.total_tokens,
             task_id=task_id,
-            usage_type=usage_type,
+            module_id=module_id or usage_type,
             duration_ms=duration_ms,
         )
 
