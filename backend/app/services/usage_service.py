@@ -205,15 +205,18 @@ async def log_llm_usage(
     task_id: Optional[str] = None,
     module_id: Optional[str] = None,
     duration_ms: Optional[float] = None,
+    count_quota: bool = False,
 ) -> None:
     """
-    Insert one LLMUsageLog row and increment the calls quota counter.
+    Insert one LLMUsageLog row for cost tracking.
+    count_quota=True → also increment the quota counter (extract calls only).
     Silent on failure — never disrupts the main OCR flow.
     """
     from app.context import current_ocr_session_id, current_carmen_user_id
     tenant_id, business_unit_id = _ctx()
 
-    await increment_quota()
+    if count_quota:
+        await increment_quota()
 
     try:
         rates    = await _get_pricing(model)

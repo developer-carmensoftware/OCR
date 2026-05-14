@@ -45,6 +45,7 @@ async def call_vision_llm(
     task_id:       Optional[str] = None,
     module_id:     Optional[str] = None,
     image_size_bytes: int = 0,
+    count_quota:   bool = False,
     # Legacy alias — callers that still pass usage_type will be ignored
     usage_type:    Optional[str] = None,
 ) -> str:
@@ -89,8 +90,9 @@ async def call_vision_llm(
             completion_tokens=response.usage.completion_tokens,
             total_tokens=response.usage.total_tokens,
             task_id=task_id,
-            module_id=module_id or usage_type,   # fallback for legacy callers
+            module_id=module_id or usage_type,
             duration_ms=(time.perf_counter() - start) * 1000,
+            count_quota=count_quota,
         )
 
     content = (

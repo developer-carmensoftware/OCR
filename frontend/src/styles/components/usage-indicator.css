@@ -70,6 +70,16 @@
     white-space: nowrap;
 }
 
+/* ─── Skeleton / loading state ─── */
+.ui-quota--skeleton {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+.ui-quota-placeholder {
+    color: var(--text-4) !important;
+}
+
 /* ─── Low state ─── */
 .ui-quota.is-low {
     border-color: var(--rose-mid);

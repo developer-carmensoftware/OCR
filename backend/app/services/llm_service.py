@@ -81,6 +81,7 @@ async def extract_from_image(
         task_id=task_id,
         module_id=Module.CREDIT_CARD_OCR,
         image_size_bytes=len(image_bytes),
+        count_quota=True,
     )
 
     if not result_text:

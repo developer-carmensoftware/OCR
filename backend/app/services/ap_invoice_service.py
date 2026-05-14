@@ -75,6 +75,7 @@ async def extract_ap_invoice_data(data_url: str, filename: str, task_id: str) ->
         task_id=task_id,
         module_id=Module.AP_INVOICE,
         image_size_bytes=len(data_url.encode()),
+        count_quota=True,
     )
 
     result_text = _strip_code_fences(result_text)
