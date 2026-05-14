@@ -127,7 +127,7 @@ export const AP_I18N = {
     expenseDesc: 'Map expense accounts based on extracted items',
     generateInv: 'Generate AP Invoice',
     successTitle: 'Saved Successfully!',
-    successDesc: 'AP Invoice No.', successDesc2: 'has been created and mapped to ERP.',
+    successDesc: 'AP Invoice No.', successDesc2: 'has been created and mapped to Carmen Cloud.',
     uploadNew: 'Upload New Document',
     ignore: 'Ignore',
     category: 'Category (Account)', description: 'Description',
