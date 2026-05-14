@@ -26,7 +26,6 @@ from app.auth import get_current_session, SessionInfo
 from app.config import settings
 from app.database import get_db, provision_tenant, async_session
 from app.models.orm import OcrSession, Tenant, BusinessUnit
-from app.models.enums import TenantPlan
 from app.services.usage_service import upsert_tenant_quota
 from app.auth.session import (
     create_session_jwt,
@@ -90,7 +89,7 @@ async def _upsert_tenant(db: AsyncSession, host: str) -> Tenant:
             id=str(uuid.uuid4()),
             host=host,
             name=host,
-            plan=TenantPlan.FREE,
+            plan="free",
             is_active=True,
         )
         db.add(tenant)
@@ -256,6 +255,20 @@ async def revoke_session(
 
 @router.get("/usage")
 async def get_usage(_session: SessionInfo = Depends(get_current_session)):
-    """Get quota usage for the current tenant/BU."""
+    """Get quota usage for the current tenant."""
     from app.services.usage_service import get_quota_summary
-    return await get_quota_summary(_session.tenant_id)
+    summary = await get_quota_summary(_session.tenant_id)
+
+    monthly = next(
+        (q for q in summary.get("quotas", []) if q["period"] == "monthly" and q["metric"] == "calls"),
+        None,
+    )
+    used  = int(monthly["used"])  if monthly else 0
+    limit = int(monthly["limit"]) if monthly else 0
+    return {
+        "usage": {
+            "monthly_calls":     used,
+            "max_monthly_calls": limit,
+            "remaining_calls":   max(0, limit - used),
+        }
+    }

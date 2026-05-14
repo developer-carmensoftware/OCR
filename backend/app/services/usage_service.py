@@ -21,16 +21,9 @@ from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session
-from app.models.orm import LLMUsageLog, LLMModelPricing, Quota, QuotaUsage
-from app.models.enums import QuotaMetric, QuotaPeriod, TenantPlan
+from app.models.orm import LLMUsageLog, LLMModelPricing, Plan, Quota, QuotaUsage
+from app.models.enums import QuotaMetric, QuotaPeriod
 from app.exceptions import RateLimitExceeded
-
-# Calls/month limit per plan tier
-PLAN_QUOTA_LIMITS: dict[TenantPlan, int] = {
-    TenantPlan.FREE:       100,
-    TenantPlan.PRO:        2_000,
-    TenantPlan.ENTERPRISE: 50_000,
-}
 
 logger = logging.getLogger(__name__)
 
@@ -95,24 +88,30 @@ async def _get_active_quotas(db: AsyncSession, tenant_id: str, metric: QuotaMetr
     return list(result.scalars().all())
 
 
-async def upsert_tenant_quota(db: AsyncSession, tenant_id: str, plan: TenantPlan) -> None:
+async def upsert_tenant_quota(db: AsyncSession, tenant_id: str, plan_code: str) -> None:
     """
     Ensure the tenant has a monthly calls quota matching their plan.
+    Reads limit from the plans table — no hardcoded values.
     Called on every login so plan changes take effect automatically.
     """
     import uuid as _uuid
-    limit = PLAN_QUOTA_LIMITS.get(plan, PLAN_QUOTA_LIMITS[TenantPlan.FREE])
-    result = await db.execute(
+    plan_row = (await db.execute(select(Plan).where(Plan.code == plan_code))).scalar_one_or_none()
+    if plan_row is None:
+        logger.warning("Plan '%s' not found in plans table — quota not set", plan_code)
+        return
+    limit = plan_row.monthly_call_limit
+
+    quota = (await db.execute(
         select(Quota).where(
             Quota.tenant_id == tenant_id,
             Quota.period == QuotaPeriod.MONTHLY,
             Quota.metric == QuotaMetric.CALLS,
             Quota.deleted_at.is_(None),
         )
-    )
-    quota = result.scalar_one_or_none()
+    )).scalar_one_or_none()
+
     if quota is None:
-        quota = Quota(
+        db.add(Quota(
             id=str(_uuid.uuid4()),
             tenant_id=tenant_id,
             period=QuotaPeriod.MONTHLY,
@@ -120,12 +119,14 @@ async def upsert_tenant_quota(db: AsyncSession, tenant_id: str, plan: TenantPlan
             limit_value=limit,
             soft_warn_pct=0.80,
             is_hard=True,
-        )
-        db.add(quota)
-        logger.info("Created quota: tenant=%s plan=%s limit=%d/month", tenant_id, plan, limit)
-    elif float(quota.limit_value) != limit:
+            is_custom=False,
+        ))
+        logger.info("Created quota: tenant=%s plan=%s limit=%d/month", tenant_id, plan_code, limit)
+    elif not quota.is_custom and float(quota.limit_value) != limit:
         quota.limit_value = limit
-        logger.info("Updated quota: tenant=%s plan=%s → limit=%d/month", tenant_id, plan, limit)
+        logger.info("Updated quota: tenant=%s plan=%s → limit=%d/month", tenant_id, plan_code, limit)
+    elif quota.is_custom:
+        logger.debug("Skipped quota sync: tenant=%s has custom limit=%s", tenant_id, quota.limit_value)
 
 
 async def check_quota() -> None:

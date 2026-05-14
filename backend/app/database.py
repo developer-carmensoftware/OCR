@@ -338,6 +338,53 @@ async def _m102_quota_drop_module(conn) -> None:
     logger.info("  ~ quotas.module column removed; unique constraint updated")
 
 
+async def _m103_plans_table(conn) -> None:
+    """Add plans table as source of truth for quota limits; migrate tenants.plan to FK."""
+    await conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS plans (
+            code               VARCHAR(20)  NOT NULL,
+            display_name       VARCHAR(100) NOT NULL,
+            monthly_call_limit INT          NOT NULL,
+            is_active          TINYINT(1)   NOT NULL DEFAULT 1,
+            created_at         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            created_by         VARCHAR(100) NULL,
+            updated_by         VARCHAR(100) NULL,
+            PRIMARY KEY (code)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """))
+    await conn.execute(text("""
+        INSERT IGNORE INTO plans (code, display_name, monthly_call_limit) VALUES
+            ('free',       'Free',       100),
+            ('pro',        'Pro',        2000),
+            ('enterprise', 'Enterprise', 50000)
+    """))
+    # Migrate tenants.plan from ENUM → VARCHAR FK
+    await conn.execute(text(
+        "ALTER TABLE tenants MODIFY COLUMN plan VARCHAR(20) NOT NULL DEFAULT 'free'"
+    ))
+    fk_exists = (await conn.execute(text("""
+        SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenants'
+        AND CONSTRAINT_NAME = 'fk_tenants_plan'
+    """))).scalar()
+    if not fk_exists:
+        await conn.execute(text(
+            "ALTER TABLE tenants ADD CONSTRAINT fk_tenants_plan"
+            " FOREIGN KEY (plan) REFERENCES plans(code)"
+        ))
+    logger.info("  ~ plans table created and seeded; tenants.plan migrated to FK")
+
+
+async def _m104_quota_is_custom(conn) -> None:
+    """Add is_custom flag to quotas — prevents plan-sync from overwriting manual overrides."""
+    await conn.execute(text(
+        "ALTER TABLE quotas ADD COLUMN IF NOT EXISTS"
+        " is_custom TINYINT(1) NOT NULL DEFAULT 0"
+    ))
+    logger.info("  ~ quotas.is_custom column added")
+
+
 _MIGRATIONS: list[tuple[str, object]] = [
     # ── Squashed history (001–033) ────────────────────────────────────────────
     ("001_squashed_initial_schema", None),
@@ -345,6 +392,8 @@ _MIGRATIONS: list[tuple[str, object]] = [
     ("100_partition_log_tables",    _m100_partition_log_tables),
     ("101_seed_control_plane",      _m101_seed_control_plane),
     ("102_quota_drop_module",       _m102_quota_drop_module),
+    ("103_plans_table",             _m103_plans_table),
+    ("104_quota_is_custom",         _m104_quota_is_custom),
 ]
 
 

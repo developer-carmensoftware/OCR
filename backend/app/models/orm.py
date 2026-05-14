@@ -33,7 +33,7 @@ from sqlalchemy.sql import func
 from app.database import Base
 from .enums import (
     AlertSeverity, JobStatus, PromptStatus, PromptType,
-    QuotaMetric, QuotaPeriod, TaskStatus, TenantPlan,
+    QuotaMetric, QuotaPeriod, TaskStatus,
 )
 
 
@@ -72,6 +72,21 @@ class TenantFKMixin:
 # CONTROL PLANE — Identity & Multi-tenancy
 # ══════════════════════════════════════════════════════════════════════════════
 
+class Plan(Base, TimestampMixin, WriterMixin):
+    """
+    Subscription plan definitions — source of truth for quota limits per tier.
+    Admin Dashboard can edit monthly_call_limit without redeploy.
+    """
+    __tablename__ = "plans"
+
+    code                = Column(String(20),  primary_key=True)
+    display_name        = Column(String(100), nullable=False)
+    monthly_call_limit  = Column(Integer,     nullable=False)
+    is_active           = Column(Boolean,     default=True, nullable=False)
+
+    tenants = relationship("Tenant", back_populates="plan_ref")
+
+
 class Tenant(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     """
     One row per Carmen ERP customer (company).
@@ -83,13 +98,13 @@ class Tenant(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     id            = Column(String(36),  primary_key=True, default=lambda: str(uuid.uuid4()))
     host          = Column(String(255), nullable=False, unique=True, index=True)
     name          = Column(String(255), nullable=False)
-    plan          = Column(SAEnum(TenantPlan, values_callable=lambda o: [e.value for e in o]),
-                           default=TenantPlan.FREE, nullable=False)
+    plan          = Column(String(20),  ForeignKey("plans.code"), nullable=False, default="free")
     is_active     = Column(Boolean,     default=True, nullable=False)
     contact_email = Column(String(255), nullable=True)
     notes         = Column(Text,        nullable=True)
 
     business_units = relationship("BusinessUnit", back_populates="tenant")
+    plan_ref       = relationship("Plan", back_populates="tenants")
 
 
 class BusinessUnit(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
@@ -343,7 +358,8 @@ class Quota(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     metric        = Column(SAEnum(QuotaMetric, values_callable=lambda o: [e.value for e in o]), nullable=False)
     limit_value   = Column(Numeric(18, 4), nullable=False)
     soft_warn_pct = Column(Numeric(3,  2), default=0.80, nullable=False)
-    is_hard       = Column(Boolean,        default=True, nullable=False)
+    is_hard       = Column(Boolean,        default=True,  nullable=False)
+    is_custom     = Column(Boolean,        default=False, nullable=False)
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "period", "metric",
