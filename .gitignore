@@ -49,9 +49,11 @@ CLAUDE.md
 docs/SECURITY_PDPA_CHECKLIST.md
 
 # Graphify
-graphify-out/manifest.json    
-graphify-out/cost.json        
-graphify-out/cache/         
+graphify-out/manifest.json
+graphify-out/cost.json
+graphify-out/cache/
+graphify-out/graph.json
+graphify-out/graph.html
 
 
 .agents/

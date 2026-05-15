@@ -7,7 +7,7 @@ Usage:
     prompt = get_ocr_prompt("SCB")     # explicit bank (backward compat)
 """
 
-from app.llm.prompts._shared import build_bank_prompt, build_combined_prompt
+from app.llm.prompts.shared import build_bank_prompt, build_combined_prompt
 from app.llm.prompts.bbl import LAYOUT as _BBL
 from app.llm.prompts.kbank import LAYOUT as _KBANK
 from app.llm.prompts.scb import LAYOUT as _SCB

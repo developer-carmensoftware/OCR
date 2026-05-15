@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useModal } from './useModal'
-import { useFileUpload } from './ocr/useFileUpload'
-import { useOcrExtraction } from './ocr/useOcrExtraction'
-import { useOcrSubmission } from './ocr/useOcrSubmission'
+import { useFileUpload } from './credit-card/useFileUpload'
+import { useOcrExtraction } from './credit-card/useOcrExtraction'
+import { useOcrSubmission } from './credit-card/useOcrSubmission'
 import { showToast } from '../lib/toast'
 import { BANK_THAI_NAMES } from '../constants'
 
