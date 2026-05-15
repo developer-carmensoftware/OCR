@@ -42,25 +42,47 @@ export default function AccountMappingTable({
           <div style={{ gridColumn: 'span 3' }}>
             <div id="amountMappingStatus" style={{
               fontSize: '0.85rem',
-              padding: '0.7rem 1rem',
+              padding: '0.6rem 1rem',
               borderRadius: '8px',
               border: '1px solid',
               display: 'flex',
+              flexWrap: 'wrap',
               alignItems: 'center',
-              justifyContent: 'space-between',
+              gap: '0.5rem',
               color: requiredMissingCount > 0 ? '#dc2626' : 'var(--teal)',
               background: requiredMissingCount > 0 ? 'var(--btn-err-bg, #fff1f2)' : 'var(--teal-light)',
               borderColor: requiredMissingCount > 0 ? '#fca5a5' : 'var(--teal)'
             }}>
-              <div>
-                {requiredMissingCount > 0
-                  ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}><AlertTriangle size={14} color="#dc2626" /> <strong>Found {activeScan.paymentTypes.size} items in document</strong> (Pending Mapping <strong>{requiredMissingCount}</strong> items)</span>
-                  : amountMappedCount > 0
-                    ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}><CheckCircle2 size={14} /> Mapped {amountMappedCount}/{allPaymentTypes.length} items (Completed)</span>
-                    : <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}><Info size={14} /> Click Account Receivable to open Modal / Click Suggest for AI recommendations</span>
-                }
-              </div>
-              {requiredMissingCount > 0 && <span style={{ fontSize: '0.75rem', background: 'var(--rose)', color: 'white', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>Required for this scan</span>}
+              {activeScan.paymentTypes.size === 0 ? (
+                <>
+                  <Info size={14} style={{ flexShrink: 0 }} />
+                  <span>Click <strong>Account Receivable</strong> to open mapping modal</span>
+                </>
+              ) : requiredMissingCount > 0 ? (
+                <>
+                  <AlertTriangle size={14} color="#dc2626" style={{ flexShrink: 0 }} />
+                  <span>Found <strong>{activeScan.paymentTypes.size}</strong> items in document</span>
+                  <span style={{ color: '#fca5a5' }}>·</span>
+                  <span><strong>{requiredMissingCount}</strong> pending mapping</span>
+                  <span style={{
+                    marginLeft: 'auto',
+                    fontSize: '0.72rem',
+                    background: 'var(--rose)',
+                    color: 'white',
+                    padding: '2px 10px',
+                    borderRadius: '10px',
+                    fontWeight: 600,
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                  }}>Required for this scan</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 size={14} style={{ flexShrink: 0 }} />
+                  <span>All <strong>{activeScan.paymentTypes.size}</strong> items mapped</span>
+                  <span style={{ fontSize: '0.78rem', opacity: 0.75 }}>Ready for JV</span>
+                </>
+              )}
             </div>
           </div>
 

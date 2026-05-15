@@ -525,6 +525,16 @@ async def _m106_normalize_bu_mapping_entries(conn: AsyncConnection) -> None:
     logger.info("  ~ bu_accounting_mapping_entries created; JSON columns dropped")
 
 
+async def _m107_bu_config_add_branch(conn: AsyncConnection) -> None:
+    """Add branch column to bu_accounting_configs — branch is user-editable unlike
+    name/taxId/address which are derived from the bank master data."""
+    await conn.execute(text(
+        "ALTER TABLE bu_accounting_configs ADD COLUMN IF NOT EXISTS"
+        " branch VARCHAR(50) NULL AFTER description"
+    ))
+    logger.info("  ~ bu_accounting_configs.branch column added")
+
+
 _MIGRATIONS: list[tuple[str, object]] = [
     # ── Squashed history (001–033) ────────────────────────────────────────────
     ("001_squashed_initial_schema", None),
@@ -536,6 +546,7 @@ _MIGRATIONS: list[tuple[str, object]] = [
     ("104_quota_is_custom",         _m104_quota_is_custom),
     ("105_bu_config_tables",        _m105_bu_config_tables),
     ("106_normalize_bu_mapping_entries", _m106_normalize_bu_mapping_entries),
+    ("107_bu_config_add_branch",         _m107_bu_config_add_branch),
 ]
 
 

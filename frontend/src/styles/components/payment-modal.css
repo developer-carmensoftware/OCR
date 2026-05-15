@@ -126,6 +126,38 @@
   color: var(--gray-400);
 }
 
+.pm-additional-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  margin: 1rem 0 0.25rem;
+  padding: 0.45rem 0.75rem;
+  background: var(--muted);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.pm-additional-toggle:hover {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.pm-additional-count {
+  margin-left: auto;
+  background: var(--border);
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 10px;
+}
+
 .pm-row {
   display: grid;
   grid-template-columns: minmax(120px, 1fr) 1fr 1fr auto;

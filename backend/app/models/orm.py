@@ -558,6 +558,7 @@ class BUAccountingConfig(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, W
     file_prefix = Column(String(20),  nullable=True)
     file_source = Column(String(20),  nullable=True)
     description = Column(String(255), nullable=True)
+    branch      = Column(String(50),  nullable=True)
 
     entries = relationship("BUAccountingMappingEntry", back_populates="config",
                            primaryjoin="and_(BUAccountingConfig.id == foreign(BUAccountingMappingEntry.config_id), "

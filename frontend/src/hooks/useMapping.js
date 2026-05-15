@@ -42,6 +42,7 @@ const OCR_BANK_MAP = {
 }
 
 export function useMapping() {
+  const [configLoading, setConfigLoading] = useState(true)
   const [bank, setBank] = useState('')
   const [filePrefix, setFilePrefix] = useState('IC')
   const [fileSource, setFileSource] = useState('')
@@ -121,9 +122,14 @@ export function useMapping() {
       setFileSource(finalSource)
       setDescription(source.description || '')
 
-      // Company: always derive from bank info (name/taxId/address hardcoded); only branch is user-editable
+      // name/taxId/address come from BANK_INFO (hardcoded per bank)
+      // branch is user-editable — load from API shape or legacy localStorage company object
       let companyData = { name: '', taxId: '', branch: '', address: '' }
-      if (!isApiShape && source.company) companyData = { ...companyData, ...source.company }
+      if (isApiShape) {
+        companyData.branch = source.branch || ''
+      } else if (source.company) {
+        companyData = { ...companyData, ...source.company }
+      }
       if (finalBank && BANK_INFO[finalBank]) {
         const info = BANK_INFO[finalBank]
         companyData.name    = info.name
@@ -171,6 +177,7 @@ export function useMapping() {
           paymentTypes.loadPaymentAmountFromStorage()
         }
       })
+      .finally(() => setConfigLoading(false))
   }, [])
 
   // --- Handlers ---
@@ -265,6 +272,7 @@ export function useMapping() {
           file_prefix:  filePrefix,
           file_source:  fileSource,
           description:  description,
+          branch:       company.branch || null,
           mappings:     allMappings,
           custom_types: paymentTypes.customPaymentTypes,
         })
@@ -339,6 +347,8 @@ export function useMapping() {
     allPaymentTypes,
     // Modal
     modalConfig, setModalConfig,
+    // Loading
+    configLoading,
     // Save
     saving, saveAllSettings,
     acceptAllModal, setAcceptAllModal, handleAcceptAll,

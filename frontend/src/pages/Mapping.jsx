@@ -8,8 +8,66 @@ import CompanyInfoSection from '../components/credit-card/CompanyInfoSection';
 import AccountMappingTable from '../components/credit-card/AccountMappingTable';
 import PaymentTypeModal from '../components/credit-card/PaymentTypeModal';
 
+function MappingSkeleton() {
+  return (
+    <div style={{ margin: '2rem auto', maxWidth: '800px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
+        <div className="skeleton" style={{ width: 20, height: 20, borderRadius: '50%' }} />
+        <div className="skeleton" style={{ width: 260, height: 24, borderRadius: 6 }} />
+      </div>
+
+      {/* Top-level config skeleton */}
+      <div className="skeleton-card">
+        <div className="skeleton" style={{ width: 140, height: 14, borderRadius: 4, marginBottom: '1rem' }} />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+          {[1, 2, 3].map(i => (
+            <div key={i}>
+              <div className="skeleton" style={{ width: 80, height: 12, borderRadius: 4, marginBottom: 8 }} />
+              <div className="skeleton" style={{ width: '100%', height: 38, borderRadius: 8 }} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Company info skeleton */}
+      <div className="skeleton-card" style={{ marginTop: '1.25rem' }}>
+        <div className="skeleton" style={{ width: 120, height: 14, borderRadius: 4, marginBottom: '1rem' }} />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          {[1, 2, 3, 4].map(i => (
+            <div key={i}>
+              <div className="skeleton" style={{ width: 90, height: 12, borderRadius: 4, marginBottom: 8 }} />
+              <div className="skeleton" style={{ width: '100%', height: 38, borderRadius: 8 }} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Mapping table skeleton */}
+      <div className="skeleton-card" style={{ marginTop: '1.25rem' }}>
+        <div className="skeleton" style={{ width: 160, height: 14, borderRadius: 4, marginBottom: '1rem' }} />
+        {[1, 2, 3].map(i => (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '0.75rem' }}>
+            <div className="skeleton" style={{ height: 38, borderRadius: 8 }} />
+            <div className="skeleton" style={{ height: 38, borderRadius: 8 }} />
+            <div className="skeleton" style={{ height: 38, borderRadius: 8 }} />
+          </div>
+        ))}
+      </div>
+
+      {/* Button skeleton */}
+      <div style={{ marginTop: '2.5rem' }}>
+        <div className="skeleton" style={{ width: '100%', height: 58, borderRadius: 12 }} />
+      </div>
+    </div>
+  )
+}
+
 export default function Mapping() {
   const mappingCtrl = useMapping();
+
+  if (mappingCtrl.configLoading) {
+    return <MappingSkeleton />
+  }
 
   return (
     <>
@@ -34,9 +92,8 @@ export default function Mapping() {
       <div className="container" style={{ margin: '2rem auto', maxWidth: '800px' }}>
         <h1><Network size={20} /> Account Mapping Configuration</h1>
 
-
         <TopLevelConfigSection {...mappingCtrl} />
-        
+
         <CompanyInfoSection {...mappingCtrl} />
 
         <AccountMappingTable

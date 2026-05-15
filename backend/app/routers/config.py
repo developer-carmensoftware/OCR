@@ -40,6 +40,7 @@ class AccountingConfigRequest(BaseModel):
     file_prefix:  Optional[str]                     = None
     file_source:  Optional[str]                     = None
     description:  Optional[str]                     = None
+    branch:       Optional[str]                     = None
     mappings:     Optional[Dict[str, FieldMapping]] = None
     custom_types: Optional[List[str]]               = None
 
@@ -49,6 +50,7 @@ class AccountingConfigResponse(BaseModel):
     file_prefix:  Optional[str]  = None
     file_source:  Optional[str]  = None
     description:  Optional[str]  = None
+    branch:       Optional[str]  = None
     mappings:     Dict[str, Any] = {}
     custom_types: List[str]      = []
 
@@ -109,6 +111,7 @@ async def get_accounting_config(
         file_prefix=row.file_prefix,
         file_source=row.file_source,
         description=row.description,
+        branch=row.branch,
         mappings=mappings,
         custom_types=custom_types,
     )
@@ -127,6 +130,7 @@ async def save_accounting_config(
         row.file_prefix = req.file_prefix
         row.file_source = req.file_source
         row.description = req.description
+        row.branch      = req.branch
         await db.flush()
     else:
         row = BUAccountingConfig(
@@ -136,6 +140,7 @@ async def save_accounting_config(
             file_prefix=req.file_prefix,
             file_source=req.file_source,
             description=req.description,
+            branch=req.branch,
         )
         db.add(row)
         await db.flush()  # populate row.id

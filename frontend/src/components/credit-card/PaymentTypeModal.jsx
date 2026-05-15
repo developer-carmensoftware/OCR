@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import ReactDOM from 'react-dom';
-import { FileText, AlertCircle, AlertTriangle, Check, X, XCircle, Plus } from 'lucide-react';
+import { FileText, AlertCircle, AlertTriangle, Check, X, XCircle, Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import CustomSearchSelect from '../common/CustomSearchSelect';
 import AISuggestBar from '../common/AISuggestBar';
 import '../../styles/components/payment-modal.css';
@@ -14,7 +15,12 @@ export default function PaymentTypeModal({
   customPaymentTypes, newCustomType, setNewCustomType, handleAddCustomType, handleRemoveCustomType,
   saveAmountSelection, cancelAmountSelection, setAcceptAllModal
 }) {
+  const [showAdditional, setShowAdditional] = useState(false)
+
   if (!isAmountModalOpen) return null;
+
+  // Types not in the current scan (loaded from DB or manually added in a previous session)
+  const additionalTypes = allPaymentTypes.filter(t => !activeScan.paymentTypes.has(t))
 
   return ReactDOM.createPortal(
     <div className="pm-overlay mapping-modal" onClick={cancelAmountSelection}>
@@ -88,52 +94,58 @@ export default function PaymentTypeModal({
                     </div>
                   );
                 })}
-                {customPaymentTypes.filter(t => !activeScan.paymentTypes.has(t)).length > 0 && (
-                  <div className="pm-divider">Custom Types</div>
-                )}
               </>
             )}
 
-            {/* Custom / extra types */}
-            {allPaymentTypes
-              .filter(t => !activeScan.paymentTypes.has(t))
-              .map(type => {
-                const pAmt = paymentAmount[type] || { dept: '', acc: '' };
-                const isCustom = !activeScan.paymentTypes.has(type);
-                const suggestion = paymentSuggestions[type] || null;
+            {/* Additional mappings (previously saved / user-added) — collapsible */}
+            {additionalTypes.length > 0 && (
+              <>
+                <button
+                  className="pm-additional-toggle"
+                  onClick={() => setShowAdditional(p => !p)}
+                >
+                  {showAdditional ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                  {showAdditional ? 'Hide' : 'Show'} additional mappings
+                  <span className="pm-additional-count">{additionalTypes.length}</span>
+                </button>
 
-                const deptFromMaster = suggestion?.dept ? masterDepartments.find(d => d.code === suggestion.dept) : null;
-                const deptTopChoice = suggestion?.dept
-                  ? { code: suggestion.dept, name: deptFromMaster?.name || '(AI/History code)', name2: deptFromMaster?.name2, source: suggestion.source }
-                  : null;
-                const accFromMaster = suggestion?.acc ? masterAccounts.find(a => a.code === suggestion.acc) : null;
-                const accTopChoice = suggestion?.acc
-                  ? { code: suggestion.acc, name: accFromMaster?.name || '(AI/History code)', name2: accFromMaster?.name2, source: suggestion.source }
-                  : null;
+                {showAdditional && additionalTypes.map(type => {
+                  const pAmt = paymentAmount[type] || { dept: '', acc: '' };
+                  const isCustom = customPaymentTypes.includes(type);
+                  const suggestion = paymentSuggestions[type] || null;
 
-                return (
-                  <div key={type} className="pm-row pm-row--custom">
-                    <div className="pm-type-cell">
-                      <div className={`pm-type-badge ${isCustom ? 'pm-type-badge--custom' : 'pm-type-badge--scan'}`}>
-                        {type}
+                  const deptFromMaster = suggestion?.dept ? masterDepartments.find(d => d.code === suggestion.dept) : null;
+                  const deptTopChoice = suggestion?.dept
+                    ? { code: suggestion.dept, name: deptFromMaster?.name || '(AI/History code)', name2: deptFromMaster?.name2, source: suggestion.source }
+                    : null;
+                  const accFromMaster = suggestion?.acc ? masterAccounts.find(a => a.code === suggestion.acc) : null;
+                  const accTopChoice = suggestion?.acc
+                    ? { code: suggestion.acc, name: accFromMaster?.name || '(AI/History code)', name2: accFromMaster?.name2, source: suggestion.source }
+                    : null;
+
+                  return (
+                    <div key={type} className="pm-row pm-row--custom">
+                      <div className="pm-type-cell">
+                        <div className="pm-type-badge pm-type-badge--custom">{type}</div>
+                        {isCustom && (
+                          <button className="pm-remove-btn" onClick={() => handleRemoveCustomType(type)} title="Remove">
+                            <XCircle size={16} />
+                          </button>
+                        )}
                       </div>
-                      {isCustom && (
-                        <button className="pm-remove-btn" onClick={() => handleRemoveCustomType(type)} title="Remove">
-                          <XCircle size={16} />
-                        </button>
+                      <CustomSearchSelect value={pAmt.dept} onChange={(val) => handlePaymentMappingChange(type, 'dept', val)} options={masterDepartments} placeholder="Dept..." topChoice={deptTopChoice?.code ? deptTopChoice : null} suggestedValue={suggestion?.dept || null} />
+                      <CustomSearchSelect value={pAmt.acc} onChange={(val) => handlePaymentMappingChange(type, 'acc', val)} options={masterAccounts} placeholder="Acc..." topChoice={accTopChoice?.code ? accTopChoice : null} suggestedValue={suggestion?.acc || null} />
+                      {suggestion && (
+                        <div className="pm-suggest-actions">
+                          <button className="pm-accept-btn" onClick={() => confirmPaymentSuggestion(type)} title="Accept suggestion"><Check size={13} /></button>
+                          <button className="pm-reject-btn" onClick={() => rejectPaymentSuggestion(type)} title="Reject and clear"><X size={13} /></button>
+                        </div>
                       )}
                     </div>
-                    <CustomSearchSelect value={pAmt.dept} onChange={(val) => handlePaymentMappingChange(type, 'dept', val)} options={masterDepartments} placeholder="Dept..." topChoice={deptTopChoice?.code ? deptTopChoice : null} suggestedValue={suggestion?.dept || null} />
-                    <CustomSearchSelect value={pAmt.acc} onChange={(val) => handlePaymentMappingChange(type, 'acc', val)} options={masterAccounts} placeholder="Acc..." topChoice={accTopChoice?.code ? accTopChoice : null} suggestedValue={suggestion?.acc || null} />
-                    {suggestion && (
-                      <div className="pm-suggest-actions">
-                        <button className="pm-accept-btn" onClick={() => confirmPaymentSuggestion(type)} title="Accept suggestion"><Check size={13} /></button>
-                        <button className="pm-reject-btn" onClick={() => rejectPaymentSuggestion(type)} title="Reject and clear"><X size={13} /></button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </>
+            )}
 
             {/* Add custom type row */}
             <div className="pm-add-row">
@@ -150,7 +162,7 @@ export default function PaymentTypeModal({
                   <Plus size={13} /> Add
                 </button>
               </div>
-              <div className="pm-add-hint pm-add-row > :nth-child(2)">Add custom Payment Type</div>
+              <div className="pm-add-hint">Add custom Payment Type</div>
             </div>
           </div>
         </div>
