@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { apiFetch } from '../../lib/api/client'
+import { getAPVendorMapping } from '../../lib/api/config'
 import { showToast } from '../../lib/toast'
 import { fmt, parseNum } from '../../lib/format'
 import { EMPTY_HEADER, DEFAULT_MAPPINGS } from '../../constants/apInvoice'
@@ -67,10 +68,21 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors, vendorDbByT
           setLineItems(formattedItems)
 
           if (data.vendorTaxId) {
-            try {
-              const savedAll = JSON.parse(localStorage.getItem('ap_invoice_mapping') || '{}')
-              if (savedAll[data.vendorTaxId]) setFieldMappings(savedAll[data.vendorTaxId])
-            } catch { /* ignore */ }
+            // Load from DB first, fall back to localStorage cache
+            getAPVendorMapping(data.vendorTaxId)
+              .then(res => {
+                if (res.mapping) {
+                  setFieldMappings(res.mapping)
+                } else {
+                  throw new Error('no mapping')
+                }
+              })
+              .catch(() => {
+                try {
+                  const savedAll = JSON.parse(localStorage.getItem('ap_invoice_mapping') || '{}')
+                  if (savedAll[data.vendorTaxId]) setFieldMappings(savedAll[data.vendorTaxId])
+                } catch { /* ignore */ }
+              })
           }
 
           if (data.is_duplicate) {

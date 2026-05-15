@@ -40,9 +40,14 @@ class Settings(BaseSettings):
     # Application
     app_host: str = "0.0.0.0"
     app_port: int = 8010
-    app_debug: bool = True
+    app_debug: bool = False
     allowed_origin_regex: str = r"https://[a-zA-Z0-9\-]+\.carmen4\.com"
     allowed_origins: str = "http://localhost:3010"
+
+    # SSRF protection — comma-separated regex patterns for allowed Carmen hostnames.
+    # Example: "erp\.company\.com,erp2\.company\.com"
+    # Leave empty to allow any valid HTTPS hostname (development only).
+    carmen_allowed_host_regex: str = ""
 
     # Upload / Export
     max_file_size_mb: int = 20
@@ -78,19 +83,27 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Reject known-bad secrets at startup so misconfigured production deployments
-# fail loudly instead of silently accepting forged tokens.
-if not settings.app_debug:
-    if settings.ocr_jwt_secret in _WEAK_JWT_SECRETS:
-        raise RuntimeError(
-            "OCR_JWT_SECRET is set to a known-weak default. "
-            "Set a strong random secret in your .env before starting in production."
-        )
-    if settings.session_encryption_key == _WEAK_FERNET_KEY:
-        raise RuntimeError(
-            "SESSION_ENCRYPTION_KEY is set to the placeholder value. "
-            "Generate a real key: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
-        )
+# Always reject known-weak secrets — both debug and production.
+# In debug mode, log a warning instead of raising so local dev still starts.
+if settings.ocr_jwt_secret in _WEAK_JWT_SECRETS:
+    _msg = (
+        "OCR_JWT_SECRET is set to a known-weak default. "
+        "Set a strong random secret in your .env before starting in production."
+    )
+    if settings.app_debug:
+        import warnings; warnings.warn(_msg, stacklevel=2)
+    else:
+        raise RuntimeError(_msg)
+
+if settings.session_encryption_key == _WEAK_FERNET_KEY:
+    _msg = (
+        "SESSION_ENCRYPTION_KEY is set to the placeholder value. "
+        "Generate a real key: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+    )
+    if settings.app_debug:
+        import warnings; warnings.warn(_msg, stacklevel=2)
+    else:
+        raise RuntimeError(_msg)
 
 # Resolve relative paths to absolute, anchored to the backend directory.
 # This ensures the correct location regardless of the process working directory.

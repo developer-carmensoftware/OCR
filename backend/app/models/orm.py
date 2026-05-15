@@ -545,6 +545,73 @@ class CorrectionFeedback(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, W
     )
 
 
+class BUAccountingConfig(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixin):
+    """
+    Per-BU accounting configuration for the credit card OCR workflow.
+    One active row per (tenant_id, business_unit_id).
+    GL field mappings live in bu_accounting_mapping_entries (normalized for analytics).
+    """
+    __tablename__ = "bu_accounting_configs"
+
+    id          = Column(Integer,     primary_key=True, autoincrement=True)
+    bank_code   = Column(String(20),  ForeignKey("banks.code"), nullable=True, index=True)
+    file_prefix = Column(String(20),  nullable=True)
+    file_source = Column(String(20),  nullable=True)
+    description = Column(String(255), nullable=True)
+
+    entries = relationship("BUAccountingMappingEntry", back_populates="config",
+                           primaryjoin="and_(BUAccountingConfig.id == foreign(BUAccountingMappingEntry.config_id), "
+                                       "BUAccountingMappingEntry.deleted_at == None)")
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "business_unit_id",
+                         name="uq_bu_accounting_config_scope"),
+    )
+
+
+class BUAccountingMappingEntry(Base, TimestampMixin, SoftDeleteMixin):
+    """
+    Individual GL mapping entry for a BU accounting config.
+    Normalized so queries like 'which BUs use acc_code=5100-00' are indexed.
+
+    field_type examples: 'commission', 'tax', 'net', 'SALES', 'CASH'
+    is_custom=True  → user manually added this payment type
+    is_custom=False → fixed type (commission / tax / net)
+    """
+    __tablename__ = "bu_accounting_mapping_entries"
+
+    id          = Column(Integer,      primary_key=True, autoincrement=True)
+    config_id   = Column(Integer,      ForeignKey("bu_accounting_configs.id"), nullable=False, index=True)
+    field_type  = Column(String(100),  nullable=False)
+    dept_code   = Column(String(100),  nullable=True,  index=True)
+    acc_code    = Column(String(100),  nullable=True,  index=True)
+    is_custom   = Column(Boolean,      nullable=False, default=False)
+
+    config = relationship("BUAccountingConfig", back_populates="entries")
+
+    __table_args__ = (
+        UniqueConstraint("config_id", "field_type", name="uq_bu_mapping_entry_config_field"),
+    )
+
+
+class APVendorColumnMapping(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixin):
+    """
+    Per-vendor column-to-field mappings for the AP invoice workflow.
+    Replaces ap_invoice_mapping[vendorTaxId] in localStorage.
+    One active row per (tenant_id, business_unit_id, vendor_tax_id).
+    """
+    __tablename__ = "ap_vendor_column_mappings"
+
+    id              = Column(Integer,     primary_key=True, autoincrement=True)
+    vendor_tax_id   = Column(String(30),  nullable=False, index=True)
+    field_mappings_json = Column(Text,    nullable=False)  # full mapping object
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "business_unit_id", "vendor_tax_id",
+                         name="uq_ap_vendor_mapping_scope"),
+    )
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # OBSERVABILITY — Partitioned log tables (quarterly, by created_at)
 #

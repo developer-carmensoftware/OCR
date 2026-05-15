@@ -35,6 +35,7 @@ from app.exceptions import (
 )
 from app.routers.auth import router as auth_router
 from app.middleware.performance import PerformanceMiddleware
+from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.routers.ocr import router as ocr_router
 from app.routers.mapping import router as mapping_router
 from app.routers.carmen import router as carmen_router
@@ -42,6 +43,7 @@ from app.routers.tool_registry import router as tools_router
 from app.routers.feedback import router as feedback_router
 from app.routers.ap_invoice import router as ap_invoice_router
 from app.routers.admin import router as admin_router
+from app.routers.config import router as config_router
 
 
 # ── Logging Setup (uses the reconfigured UTF-8 stderr) ──
@@ -222,6 +224,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# ── Security Headers Middleware ──
+app.add_middleware(SecurityHeadersMiddleware)
+
 # ── Performance Middleware ──
 app.add_middleware(PerformanceMiddleware)
 
@@ -280,6 +285,7 @@ app.include_router(tools_router)
 app.include_router(feedback_router)
 app.include_router(ap_invoice_router)
 app.include_router(admin_router)
+app.include_router(config_router)
 
 
 # ── Root ──

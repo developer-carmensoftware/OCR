@@ -45,6 +45,9 @@ from .orm import (
     APInvoice,
     MappingHistory,
     CorrectionFeedback,
+    BUAccountingConfig,
+    BUAccountingMappingEntry,
+    APVendorColumnMapping,
     # ── Observability (partitioned) ──────────────────────────────────────────
     LLMUsageLog,
     AuditLog,
@@ -82,6 +85,7 @@ __all__ = [
     # Data plane
     "OcrSession", "OCRTask", "CreditCard", "CreditCardTransaction",
     "APInvoice", "MappingHistory", "CorrectionFeedback",
+    "BUAccountingConfig", "BUAccountingMappingEntry", "APVendorColumnMapping",
     # Observability
     "LLMUsageLog", "AuditLog", "PerformanceLog", "OutboundCallLog",
     # Analytics

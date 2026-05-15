@@ -13,23 +13,25 @@ export function usePaymentTypes() {
   const paymentAmountSnapshot = useRef(null)
   const customPaymentTypesSnapshot = useRef(null)
 
+  const initFromData = (mappings = {}, customTypes = []) => {
+    setCustomPaymentTypes(customTypes)
+    setPaymentAmount(prev => {
+      const next = { ...prev }
+      Object.keys(mappings).forEach(k => { next[k] = mappings[k] })
+      customTypes.forEach(type => { if (!next[type]) next[type] = { dept: '', acc: '' } })
+      return next
+    })
+  }
+
   const loadPaymentAmountFromStorage = () => {
     const amountState = localStorage.getItem('accountMappingAmount')
     if (!amountState) return
     try {
       const parsed = JSON.parse(amountState)
-      const savedCustomTypes = parsed.__customTypes || []
-      setCustomPaymentTypes(savedCustomTypes)
-      setPaymentAmount(prev => {
-        const next = { ...prev }
-        Object.keys(parsed).forEach(k => {
-          if (k !== '__customTypes') next[k] = parsed[k]
-        })
-        savedCustomTypes.forEach(type => {
-          if (!next[type]) next[type] = { dept: '', acc: '' }
-        })
-        return next
-      })
+      initFromData(
+        Object.fromEntries(Object.entries(parsed).filter(([k]) => k !== '__customTypes')),
+        parsed.__customTypes || [],
+      )
     } catch { /* ignore */ }
   }
 
@@ -88,6 +90,7 @@ export function usePaymentTypes() {
     setNewCustomType,
     isAmountModalOpen,
     setIsAmountModalOpen,
+    initFromData,
     loadPaymentAmountFromStorage,
     handlePaymentMappingChange,
     handleAddCustomType,

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { AP_I18N } from '../constants/apInvoice'
 import { showToast } from '../lib/toast'
+import { saveAPVendorMapping } from '../lib/api/config'
 import { useAPExtraction } from './ap/useAPExtraction'
 import { useAPVendor } from './ap/useAPVendor'
 import { useAPValidation } from './ap/useAPValidation'
@@ -55,10 +56,13 @@ export function useAPInvoice() {
   }, [step])
 
   const confirmMapping = () => {
-    if (extraction.headerData.vendorTaxId) {
+    const taxId = extraction.headerData.vendorTaxId
+    if (taxId) {
+      // Dual-write: DB primary, localStorage cache
+      saveAPVendorMapping(taxId, extraction.fieldMappings).catch(() => {/* ignore */})
       try {
         const savedAll = JSON.parse(localStorage.getItem('ap_invoice_mapping') || '{}')
-        savedAll[extraction.headerData.vendorTaxId] = extraction.fieldMappings
+        savedAll[taxId] = extraction.fieldMappings
         localStorage.setItem('ap_invoice_mapping', JSON.stringify(savedAll))
       } catch { /* ignore */ }
     }

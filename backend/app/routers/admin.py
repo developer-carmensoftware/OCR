@@ -4,16 +4,25 @@ import logging
 from datetime import date, datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_session, SessionInfo
+from app.config import settings
 from app.database import get_db
 from app.models.orm import DailyUsageSummary
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/admin", tags=["Admin"])
+
+
+def require_admin(x_admin_key: str = Header(..., alias="X-Admin-Key")) -> None:
+    """Require a valid master API key for all admin endpoints."""
+    if not settings.master_api_key:
+        raise HTTPException(status_code=503, detail="Admin access not configured")
+    if x_admin_key != settings.master_api_key:
+        raise HTTPException(status_code=403, detail="Invalid admin key")
 
 
 @router.get("/usage-summary")
@@ -23,6 +32,7 @@ async def get_usage_summary(
     module_id: Optional[str]  = Query(None, description="Filter by module id"),
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
+    _admin: None = Depends(require_admin),
 ):
     if not from_date:
         from_date = date.today().replace(day=1)
@@ -79,6 +89,7 @@ async def get_usage_totals(
     to_date:   Optional[date] = Query(None, alias="to"),
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
+    _admin: None = Depends(require_admin),
 ):
     if not from_date:
         from_date = date.today().replace(day=1)
@@ -132,6 +143,7 @@ async def get_usage_totals(
 @router.post("/retention/run")
 async def trigger_retention(
     _session: SessionInfo = Depends(get_current_session),
+    _admin: None = Depends(require_admin),
 ):
     from app.services.retention_service import archive_and_cleanup, purge_inactive_sessions
     result = await archive_and_cleanup()
@@ -143,6 +155,7 @@ async def trigger_retention(
 async def trigger_summary_rebuild(
     target_date: Optional[date] = Query(None, alias="date"),
     _session: SessionInfo = Depends(get_current_session),
+    _admin: None = Depends(require_admin),
 ):
     from app.services.summary_service import build_daily_summary
     result = await build_daily_summary(target_date)
@@ -152,6 +165,7 @@ async def trigger_summary_rebuild(
 @router.post("/pricing/sync")
 async def trigger_pricing_sync(
     _session: SessionInfo = Depends(get_current_session),
+    _admin: None = Depends(require_admin),
 ):
     from app.services.usage_service import fetch_openrouter_pricing
     await fetch_openrouter_pricing()
@@ -162,6 +176,7 @@ async def trigger_pricing_sync(
 async def get_pricing_list(
     db: AsyncSession = Depends(get_db),
     _session: SessionInfo = Depends(get_current_session),
+    _admin: None = Depends(require_admin),
 ):
     from app.models.orm import LLMModelPricing
     result = await db.execute(select(LLMModelPricing).order_by(LLMModelPricing.model_name))

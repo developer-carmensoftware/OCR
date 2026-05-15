@@ -12,12 +12,14 @@ Flow:
 """
 
 import logging
+import time
 import uuid
+from collections import defaultdict
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,6 +41,26 @@ router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
 
 _VALIDATE_TIMEOUT = 10.0
 
+# Simple in-memory rate limiter: max 10 /exchange calls per IP per 60 seconds.
+_exchange_calls: dict[str, list[float]] = defaultdict(list)
+_EXCHANGE_WINDOW = 60.0
+_EXCHANGE_MAX = 10
+
+
+def _check_exchange_rate_limit(request: Request) -> None:
+    ip = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    calls = _exchange_calls[ip]
+    # evict entries outside the window
+    _exchange_calls[ip] = [t for t in calls if now - t < _EXCHANGE_WINDOW]
+    if len(_exchange_calls[ip]) >= _EXCHANGE_MAX:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many login attempts. Please try again later.",
+            headers={"Retry-After": "60"},
+        )
+    _exchange_calls[ip].append(now)
+
 
 def _carmen_base(uri: str) -> str:
     return f"{uri.rstrip('/')}/Carmen.API/api/interface"
@@ -47,10 +69,13 @@ def _carmen_base(uri: str) -> str:
 def _validate_uri(uri: str) -> str:
     """
     Validate and normalise the Carmen origin URI against SSRF.
-    HTTPS only; blocks loopback/private/link-local addresses.
+    - HTTPS only
+    - Blocks loopback/private/link-local IP ranges
+    - When CARMEN_ALLOWED_HOST_REGEX is set, hostname must match (whitelist)
     Returns normalised origin (scheme + host only).
     """
     import ipaddress as _ip
+    import re as _re
 
     if not uri:
         raise HTTPException(status_code=400, detail="uri is required")
@@ -72,7 +97,19 @@ def _validate_uri(uri: str) -> str:
         if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved or addr.is_multicast:
             raise HTTPException(status_code=400, detail="uri hostname not allowed")
     except ValueError:
-        pass  # domain name — allowed
+        pass  # domain name — proceed to whitelist check below
+
+    # Whitelist check — enforced when CARMEN_ALLOWED_HOST_REGEX is configured.
+    # In debug mode without a whitelist, log a warning; in production it is required.
+    allowed_regex = settings.carmen_allowed_host_regex.strip()
+    if allowed_regex:
+        if not _re.fullmatch(allowed_regex, hostname):
+            raise HTTPException(status_code=400, detail="uri hostname not allowed")
+    elif not settings.app_debug:
+        logger.warning(
+            "CARMEN_ALLOWED_HOST_REGEX is not set — all HTTPS hostnames accepted. "
+            "Set this in .env to restrict Carmen URI to known hosts."
+        )
 
     port_part = f":{parsed.port}" if parsed.port else ""
     return f"https://{parsed.hostname}{port_part}"
@@ -152,8 +189,10 @@ class ExchangeResponse(BaseModel):
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/exchange", response_model=ExchangeResponse)
-async def exchange_sso_token(body: ExchangeRequest):
+async def exchange_sso_token(request: Request, body: ExchangeRequest):
     """Exchange a Carmen SSO token for an OCR session JWT."""
+    _check_exchange_rate_limit(request)
+
     token = body.token.strip()
     bu    = body.bu.strip()
 

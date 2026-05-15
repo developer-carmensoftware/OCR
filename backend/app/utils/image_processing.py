@@ -64,3 +64,40 @@ def is_valid_image(filename: str) -> bool:
     valid_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp", ".pdf"}
     ext = os.path.splitext(filename)[1].lower()
     return ext in valid_extensions
+
+
+# (offset, bytes_to_match) — first match wins
+_MAGIC_SIGNATURES: list[tuple[int, bytes]] = [
+    (0,  b"\xff\xd8\xff"),              # JPEG
+    (0,  b"\x89PNG\r\n\x1a\n"),        # PNG
+    (0,  b"%PDF"),                      # PDF
+    (0,  b"BM"),                        # BMP
+    (0,  b"II\x2a\x00"),               # TIFF little-endian
+    (0,  b"MM\x00\x2a"),               # TIFF big-endian
+    (0,  b"GIF8"),                      # GIF
+]
+# WebP needs two separate checks (RIFF header + WEBP marker at offset 8)
+_WEBP_RIFF = b"RIFF"
+_WEBP_MARK = b"WEBP"
+
+
+def validate_magic_bytes(content: bytes, filename: str) -> None:
+    """
+    Raise ValueError if file content doesn't match any known safe signature.
+    Call this after reading the file to prevent disguised-file attacks.
+    """
+    if len(content) < 12:
+        raise ValueError(f"File too small to determine type: {filename}")
+
+    # WebP: bytes 0-3 == RIFF and bytes 8-11 == WEBP
+    if content[:4] == _WEBP_RIFF and content[8:12] == _WEBP_MARK:
+        return
+
+    for offset, sig in _MAGIC_SIGNATURES:
+        if content[offset:offset + len(sig)] == sig:
+            return
+
+    raise ValueError(
+        f"File content does not match a supported format: {filename}. "
+        "Uploading disguised files is not allowed."
+    )

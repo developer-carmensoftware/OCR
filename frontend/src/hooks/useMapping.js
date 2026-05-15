@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { saveMappingHistory } from '../lib/api/mapping'
+import { getAccountingConfig, saveAccountingConfig } from '../lib/api/config'
 import { useMappingData } from './mapping/useMappingData'
 import { useMappingSuggestions } from './mapping/useMappingSuggestions'
 import { usePaymentTypes } from './mapping/usePaymentTypes'
@@ -26,6 +27,12 @@ const BANK_SOURCE_MAP = {
   'Bangkok Bank (BBL)': 'ACBB',
   'Kasikornbank (KBANK)': 'ACKB',
   'Siam Commercial Bank (SCB)': 'ACSC',
+}
+
+const BANK_CODE_MAP = {
+  'Bangkok Bank (BBL)': 'BBL',
+  'Kasikornbank (KBANK)': 'KBANK',
+  'Siam Commercial Bank (SCB)': 'SCB',
 }
 
 const OCR_BANK_MAP = {
@@ -73,12 +80,11 @@ export function useMapping() {
       return ''
     }
 
+    // Parse OCR wizard state (transient, always from localStorage)
     let ocrBank = ''
-    let ocrCompany = {}
     try {
       const ocrState = JSON.parse(localStorage.getItem('ocr_wizard_state') || '{}')
       ocrBank = OCR_BANK_MAP[ocrState.bank] || ''
-
       if (ocrState.details && Array.isArray(ocrState.details)) {
         const types = new Set()
         let comm = false, tx = false, n = false
@@ -91,56 +97,80 @@ export function useMapping() {
         })
         setActiveScan({ paymentTypes: types, commission: comm, tax: tx, net: n })
       }
-
-      const ocrConfig = JSON.parse(localStorage.getItem('accountingConfig') || '{}')
-      ocrCompany = ocrConfig.company || {}
     } catch { /* ignore */ }
 
-    const config = localStorage.getItem('accountingConfig')
-    if (config) {
-      try {
-        const parsed = JSON.parse(config)
-        const detectedBank = detectBankFromCompanyName(parsed.company?.name || ocrCompany?.name)
-        const finalBank = ocrBank || parsed.bank || detectedBank
-        setBank(finalBank)
-        setFilePrefix(parsed.filePrefix || 'IC')
-        const bankChanged = finalBank !== parsed.bank
-        setFileSource(bankChanged ? (BANK_SOURCE_MAP[finalBank] || '') : (parsed.fileSource || BANK_SOURCE_MAP[finalBank] || ''))
-        setDescription(parsed.description || '')
+    const applyConfig = (source, ocrBankOverride) => {
+      // source: { bank_code?, file_prefix?, file_source?, description?, mappings?, custom_types? }
+      // or the old localStorage shape: { bank?, filePrefix?, fileSource?, description?, mappings?, company? }
+      const isApiShape = 'bank_code' in source || 'file_prefix' in source
 
-        let companyData = { name: '', taxId: '', branch: '', address: '' }
-        if (parsed.company) {
-          companyData = { ...companyData, ...parsed.company }
-        } else if (Object.keys(ocrCompany).length) {
-          companyData = { ...companyData, ...ocrCompany }
-        }
-        if (finalBank && BANK_INFO[finalBank]) {
-          const info = BANK_INFO[finalBank]
-          companyData.name = info.name
-          companyData.taxId = info.taxId
-          companyData.address = info.address
-        }
-        setCompany(companyData)
-        if (parsed.mappings) setMappings(prev => ({ ...prev, ...parsed.mappings }))
-      } catch { /* ignore */ }
-    } else if (ocrBank) {
-      setBank(ocrBank)
-      setFilePrefix('IC')
-      setFileSource(BANK_SOURCE_MAP[ocrBank] || '')
+      const rawBank = isApiShape
+        ? (OCR_BANK_MAP[source.bank_code] || '')
+        : source.bank || ''
+      const finalBank = ocrBankOverride || rawBank || detectBankFromCompanyName(source.company?.name || '')
+
+      const finalPrefix = (isApiShape ? source.file_prefix : source.filePrefix) || 'IC'
+      const rawSource  = isApiShape ? source.file_source : source.fileSource
+      const bankChanged = finalBank !== rawBank
+      const finalSource = bankChanged
+        ? (BANK_SOURCE_MAP[finalBank] || '')
+        : (rawSource || BANK_SOURCE_MAP[finalBank] || '')
+
+      setBank(finalBank)
+      setFilePrefix(finalPrefix)
+      setFileSource(finalSource)
+      setDescription(source.description || '')
+
+      // Company: always derive from bank info (name/taxId/address hardcoded); only branch is user-editable
       let companyData = { name: '', taxId: '', branch: '', address: '' }
-      if (Object.keys(ocrCompany).length) companyData = { ...companyData, ...ocrCompany }
-      if (BANK_INFO[ocrBank]) {
-        const info = BANK_INFO[ocrBank]
-        companyData.name = info.name
-        companyData.taxId = info.taxId
+      if (!isApiShape && source.company) companyData = { ...companyData, ...source.company }
+      if (finalBank && BANK_INFO[finalBank]) {
+        const info = BANK_INFO[finalBank]
+        companyData.name    = info.name
+        companyData.taxId   = info.taxId
         companyData.address = info.address
       }
       setCompany(companyData)
-    } else {
-      setFilePrefix('IC')
+
+      if (source.mappings) setMappings(prev => ({ ...prev, ...source.mappings }))
+
+      const customTypes = isApiShape
+        ? (source.custom_types || [])
+        : ((source.paymentAmount?.__customTypes) || [])
+      const paymentMappings = isApiShape
+        ? source.mappings || {}
+        : source.paymentAmount || {}
+      paymentTypes.initFromData(paymentMappings, customTypes)
     }
 
-    paymentTypes.loadPaymentAmountFromStorage()
+    // Load order: API (DB) → localStorage fallback
+    getAccountingConfig()
+      .then(apiData => {
+        const hasData = apiData && (apiData.bank_code || apiData.file_prefix || Object.keys(apiData.mappings || {}).length)
+        if (hasData) {
+          applyConfig(apiData, ocrBank)
+        } else {
+          throw new Error('empty')
+        }
+      })
+      .catch(() => {
+        // Fallback: localStorage
+        const raw = localStorage.getItem('accountingConfig')
+        if (raw) {
+          try { applyConfig(JSON.parse(raw), ocrBank) } catch { /* ignore */ }
+        } else if (ocrBank) {
+          setBank(ocrBank)
+          setFilePrefix('IC')
+          setFileSource(BANK_SOURCE_MAP[ocrBank] || '')
+          if (BANK_INFO[ocrBank]) {
+            const info = BANK_INFO[ocrBank]
+            setCompany(prev => ({ ...prev, name: info.name, taxId: info.taxId, address: info.address }))
+          }
+        } else {
+          setFilePrefix('IC')
+          paymentTypes.loadPaymentAmountFromStorage()
+        }
+      })
   }, [])
 
   // --- Handlers ---
@@ -223,13 +253,26 @@ export function useMapping() {
       const config = { bank, filePrefix, fileSource, description, company, mappings, paymentAmount: paymentTypes.paymentAmount }
       localStorage.setItem('accountingConfig', JSON.stringify(config))
 
-      if (bank) {
-        const allMappings = { ...mappings }
-        Object.entries(paymentTypes.paymentAmount).forEach(([type, val]) => {
-          if (val.dept || val.acc) allMappings[type] = val
+      const allMappings = { ...mappings }
+      Object.entries(paymentTypes.paymentAmount).forEach(([type, val]) => {
+        if (val.dept || val.acc) allMappings[type] = val
+      })
+
+      // Persist to DB (dual-write — DB is primary, localStorage is cache)
+      try {
+        await saveAccountingConfig({
+          bank_code:    BANK_CODE_MAP[bank] || null,
+          file_prefix:  filePrefix,
+          file_source:  fileSource,
+          description:  description,
+          mappings:     allMappings,
+          custom_types: paymentTypes.customPaymentTypes,
         })
+      } catch { /* ignore — localStorage already saved above */ }
+
+      if (bank) {
         try {
-          await saveMappingHistory({ bank_name: bank, mappings: allMappings })
+          await saveMappingHistory({ bank_code: BANK_CODE_MAP[bank] || bank, mappings: allMappings })
         } catch { /* ignore */ }
       }
 

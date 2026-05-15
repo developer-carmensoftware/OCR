@@ -2,7 +2,7 @@ import logging
 from typing import List, Set
 from fastapi import UploadFile, HTTPException
 from app.config import settings
-from app.utils.image_processing import is_valid_image
+from app.utils.image_processing import is_valid_image, validate_magic_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,13 @@ class FileService:
         # We need to read it to check size if the content-length header is missing/unreliable
         content = await file.read()
         file_size = len(content)
-        
+
+        # Magic bytes check — reject disguised files (e.g. .exe renamed to .jpg)
+        try:
+            validate_magic_bytes(content, file.filename)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
         if file_size > max_bytes:
             logger.warning(f"File size limit exceeded: {file.filename} ({file_size} bytes)")
             raise HTTPException(

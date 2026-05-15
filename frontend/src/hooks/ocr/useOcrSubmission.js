@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { submitToLocal } from '../../lib/api/submit'
 import { submitToCarmen } from '../../lib/api/carmen'
 import { logCorrections, diffCorrections } from '../../lib/api/feedback'
+import { getAccountingConfig } from '../../lib/api/config'
 import { getCarmenUrl } from '../../lib/url'
 import { normalizeYearToCE } from '../../lib/date'
 import { showToast } from '../../lib/toast'
@@ -55,9 +56,9 @@ export function useOcrSubmission({ showModal, closeModal, setStep, headerData, d
       let jvId = null
       let alreadyPosted = false
       try {
-        const carmenConfig = (() => {
+        const carmenConfig = await getAccountingConfig().catch(() => {
           try { return JSON.parse(localStorage.getItem('accountingConfig') || '{}') } catch { return {} }
-        })()
+        })
         const carmenPayload = {
           JvhSeq: -1,
           JvhDate: (() => {
@@ -69,9 +70,9 @@ export function useOcrSubmission({ showModal, closeModal, setStep, headerData, d
             }
             return new Date().toISOString()
           })(),
-          Prefix: carmenConfig.filePrefix || '',
+          Prefix: carmenConfig.file_prefix || carmenConfig.filePrefix || '',
           JvhNo: 'Auto',
-          JvhSource: carmenConfig.fileSource || '',
+          JvhSource: carmenConfig.file_source || carmenConfig.fileSource || '',
           Status: 'Draft',
           Description: carmenConfig.description
             ? `${carmenConfig.description}${headerData.DocDate ? ` - ${headerData.DocDate}` : ''}`

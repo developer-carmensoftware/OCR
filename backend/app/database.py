@@ -385,6 +385,146 @@ async def _m104_quota_is_custom(conn) -> None:
     logger.info("  ~ quotas.is_custom column added")
 
 
+async def _m105_bu_config_tables(conn: AsyncConnection) -> None:
+    """
+    Create bu_accounting_configs and ap_vendor_column_mappings tables.
+    These replace localStorage for user-facing config so settings survive cache clears.
+    """
+    await conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS bu_accounting_configs (
+            id                INT          NOT NULL AUTO_INCREMENT,
+            tenant_id         VARCHAR(36)  NOT NULL,
+            business_unit_id  VARCHAR(36)  NOT NULL,
+            bank_code         VARCHAR(20)  NULL,
+            file_prefix       VARCHAR(20)  NULL,
+            file_source       VARCHAR(20)  NULL,
+            description       VARCHAR(255) NULL,
+            mappings_json     TEXT         NULL,
+            custom_types_json TEXT         NULL,
+            created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at        DATETIME     NULL     ON UPDATE CURRENT_TIMESTAMP,
+            deleted_at        DATETIME     NULL,
+            deleted_by        VARCHAR(100) NULL,
+            created_by        VARCHAR(100) NULL,
+            updated_by        VARCHAR(100) NULL,
+            PRIMARY KEY (id),
+            CONSTRAINT fk_bu_acc_cfg_tenant
+                FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+            CONSTRAINT fk_bu_acc_cfg_bu
+                FOREIGN KEY (business_unit_id) REFERENCES business_units(id),
+            CONSTRAINT fk_bu_acc_cfg_bank
+                FOREIGN KEY (bank_code) REFERENCES banks(code),
+            CONSTRAINT uq_bu_accounting_config_scope
+                UNIQUE (tenant_id, business_unit_id),
+            INDEX ix_bu_acc_cfg_tenant (tenant_id),
+            INDEX ix_bu_acc_cfg_created_at (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """))
+
+    await conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS ap_vendor_column_mappings (
+            id                  INT         NOT NULL AUTO_INCREMENT,
+            tenant_id           VARCHAR(36) NOT NULL,
+            business_unit_id    VARCHAR(36) NOT NULL,
+            vendor_tax_id       VARCHAR(30) NOT NULL,
+            field_mappings_json TEXT        NOT NULL,
+            created_at          DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at          DATETIME    NULL     ON UPDATE CURRENT_TIMESTAMP,
+            deleted_at          DATETIME    NULL,
+            deleted_by          VARCHAR(100) NULL,
+            created_by          VARCHAR(100) NULL,
+            updated_by          VARCHAR(100) NULL,
+            PRIMARY KEY (id),
+            CONSTRAINT fk_ap_vendor_map_tenant
+                FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+            CONSTRAINT fk_ap_vendor_map_bu
+                FOREIGN KEY (business_unit_id) REFERENCES business_units(id),
+            CONSTRAINT uq_ap_vendor_mapping_scope
+                UNIQUE (tenant_id, business_unit_id, vendor_tax_id),
+            INDEX ix_ap_vendor_map_tenant (tenant_id),
+            INDEX ix_ap_vendor_map_vendor (vendor_tax_id),
+            INDEX ix_ap_vendor_map_created_at (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """))
+    logger.info("  ~ bu_accounting_configs and ap_vendor_column_mappings tables created")
+
+
+async def _m106_normalize_bu_mapping_entries(conn: AsyncConnection) -> None:
+    """
+    Replace mappings_json + custom_types_json TEXT blobs in bu_accounting_configs
+    with a normalized bu_accounting_mapping_entries table.
+
+    Each row = one field_type → (dept_code, acc_code) mapping for a BU config.
+    is_custom=1 means the user manually added this payment type.
+    Indexed on acc_code + dept_code so analytics queries are fast:
+      SELECT business_unit_id WHERE acc_code = '5100-00'
+    """
+    import json as _json
+
+    await conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS bu_accounting_mapping_entries (
+            id          INT          NOT NULL AUTO_INCREMENT,
+            config_id   INT          NOT NULL,
+            field_type  VARCHAR(100) NOT NULL,
+            dept_code   VARCHAR(100) NULL,
+            acc_code    VARCHAR(100) NULL,
+            is_custom   TINYINT(1)   NOT NULL DEFAULT 0,
+            created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at  DATETIME     NULL     ON UPDATE CURRENT_TIMESTAMP,
+            deleted_at  DATETIME     NULL,
+            deleted_by  VARCHAR(100) NULL,
+            PRIMARY KEY (id),
+            CONSTRAINT fk_bu_map_entry_config
+                FOREIGN KEY (config_id) REFERENCES bu_accounting_configs(id),
+            CONSTRAINT uq_bu_mapping_entry_config_field
+                UNIQUE (config_id, field_type),
+            INDEX ix_bu_map_entry_acc  (acc_code),
+            INDEX ix_bu_map_entry_dept (dept_code),
+            INDEX ix_bu_map_entry_created_at (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """))
+
+    # Migrate existing JSON data (if any rows were written between m105 and m106)
+    existing = await conn.execute(
+        text("SELECT id, mappings_json, custom_types_json FROM bu_accounting_configs WHERE deleted_at IS NULL")
+    )
+    rows = existing.fetchall()
+    for cfg_id, mappings_json, custom_types_json in rows:
+        if not mappings_json:
+            continue
+        try:
+            mappings     = _json.loads(mappings_json)
+            custom_types = set(_json.loads(custom_types_json or "[]"))
+            for field_type, m in mappings.items():
+                dept = (m.get("dept") or "") or None
+                acc  = (m.get("acc")  or "") or None
+                is_c = 1 if field_type in custom_types else 0
+                await conn.execute(text("""
+                    INSERT IGNORE INTO bu_accounting_mapping_entries
+                        (config_id, field_type, dept_code, acc_code, is_custom)
+                    VALUES (:cfg, :ft, :dept, :acc, :is_c)
+                """), {"cfg": cfg_id, "ft": field_type, "dept": dept, "acc": acc, "is_c": is_c})
+            # Custom types that have no mapping entry yet
+            for ct in custom_types:
+                if ct not in mappings:
+                    await conn.execute(text("""
+                        INSERT IGNORE INTO bu_accounting_mapping_entries
+                            (config_id, field_type, dept_code, acc_code, is_custom)
+                        VALUES (:cfg, :ft, NULL, NULL, 1)
+                    """), {"cfg": cfg_id, "ft": ct})
+        except Exception as exc:
+            logger.warning("m106: could not migrate config_id=%s: %s", cfg_id, exc)
+
+    # Drop the now-redundant JSON columns
+    await conn.execute(text(
+        "ALTER TABLE bu_accounting_configs DROP COLUMN IF EXISTS mappings_json"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE bu_accounting_configs DROP COLUMN IF EXISTS custom_types_json"
+    ))
+    logger.info("  ~ bu_accounting_mapping_entries created; JSON columns dropped")
+
+
 _MIGRATIONS: list[tuple[str, object]] = [
     # ── Squashed history (001–033) ────────────────────────────────────────────
     ("001_squashed_initial_schema", None),
@@ -394,6 +534,8 @@ _MIGRATIONS: list[tuple[str, object]] = [
     ("102_quota_drop_module",       _m102_quota_drop_module),
     ("103_plans_table",             _m103_plans_table),
     ("104_quota_is_custom",         _m104_quota_is_custom),
+    ("105_bu_config_tables",        _m105_bu_config_tables),
+    ("106_normalize_bu_mapping_entries", _m106_normalize_bu_mapping_entries),
 ]
 
 

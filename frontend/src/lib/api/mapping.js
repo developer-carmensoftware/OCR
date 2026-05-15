@@ -28,8 +28,8 @@ export async function suggestPaymentTypes(payload) {
   return res.json()
 }
 
-export async function fetchMappingHistory(bankName) {
-  const res = await apiFetch(`/api/v1/mapping/history?bank_name=${encodeURIComponent(bankName)}`)
+export async function fetchMappingHistory(bankCode) {
+  const res = await apiFetch(`/api/v1/mapping/history?bank_code=${encodeURIComponent(bankCode)}`)
   if (!res.ok) throw new Error(`History fetch failed (${res.status})`)
   return res.json()
 }
