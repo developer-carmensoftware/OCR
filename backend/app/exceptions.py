@@ -36,8 +36,10 @@ class CarmenServiceError(RuntimeError):
 class ValidationError(RuntimeError):
     """Request data failed business-level validation. → 400"""
 
+
 class RateLimitExceeded(RuntimeError):
     """Business unit has exceeded its allocated LLM call quota. → 429"""
+
     def __init__(self, bu_name: str, limit: int):
         self.bu_name = bu_name
         self.limit = limit

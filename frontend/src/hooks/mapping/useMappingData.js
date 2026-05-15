@@ -14,14 +14,17 @@ export function useMappingData() {
   const loadInitialData = async () => {
     setLoadingOpts(true)
     try {
-      const [accResult, deptResult] = await Promise.all([
-        fetchAccountCodes(),
-        fetchDepartments(),
-      ])
+      const [accResult, deptResult] = await Promise.all([fetchAccountCodes(), fetchDepartments()])
 
       const mappedAcc = accResult
         .filter(a => a.AccCode && a.AccCode !== 'AccCode')
-        .map(a => ({ code: a.AccCode, name: a.Description, name2: a.Description2, nature: a.Nature, type: a.Type }))
+        .map(a => ({
+          code: a.AccCode,
+          name: a.Description,
+          name2: a.Description2,
+          nature: a.Nature,
+          type: a.Type,
+        }))
 
       const mappedDept = deptResult
         .filter(d => d.DeptCode && d.DeptCode !== 'CodeDep')

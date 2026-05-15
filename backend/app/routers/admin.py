@@ -2,13 +2,12 @@
 
 import logging
 from datetime import date, datetime
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import get_current_session, SessionInfo
+from app.auth import SessionInfo, get_current_session
 from app.config import settings
 from app.database import get_db
 from app.models.orm import DailyUsageSummary
@@ -27,9 +26,9 @@ def require_admin(x_admin_key: str = Header(..., alias="X-Admin-Key")) -> None:
 
 @router.get("/usage-summary")
 async def get_usage_summary(
-    from_date: Optional[date] = Query(None, alias="from"),
-    to_date:   Optional[date] = Query(None, alias="to"),
-    module_id: Optional[str]  = Query(None, description="Filter by module id"),
+    from_date: date | None = Query(None, alias="from"),
+    to_date: date | None = Query(None, alias="to"),
+    module_id: str | None = Query(None, description="Filter by module id"),
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
     _admin: None = Depends(require_admin),
@@ -53,30 +52,34 @@ async def get_usage_summary(
         query = query.where(DailyUsageSummary.module_id == module_id)
 
     result = await db.execute(query)
-    rows   = result.scalars().all()
+    rows = result.scalars().all()
 
     return {
-        "tenant_id":        session.tenant_id,
+        "tenant_id": session.tenant_id,
         "business_unit_id": session.business_unit_id,
-        "from":  str(from_date),
-        "to":    str(to_date),
-        "days":  len(rows),
+        "from": str(from_date),
+        "to": str(to_date),
+        "days": len(rows),
         "data": [
             {
-                "date":               str(r.summary_date.date() if isinstance(r.summary_date, datetime) else r.summary_date),
-                "module_id":          r.module_id,
-                "documents":          r.total_documents,
-                "submissions":        r.total_submissions,
-                "llm_calls":          r.total_llm_calls,
-                "tokens":             r.total_tokens,
-                "cost_usd":           float(r.total_cost_usd or 0),
+                "date": str(
+                    r.summary_date.date()
+                    if isinstance(r.summary_date, datetime)
+                    else r.summary_date
+                ),
+                "module_id": r.module_id,
+                "documents": r.total_documents,
+                "submissions": r.total_submissions,
+                "llm_calls": r.total_llm_calls,
+                "tokens": r.total_tokens,
+                "cost_usd": float(r.total_cost_usd or 0),
                 "avg_llm_latency_ms": r.avg_llm_latency_ms,
-                "api_calls":          r.total_api_calls,
+                "api_calls": r.total_api_calls,
                 "avg_api_latency_ms": r.avg_api_latency_ms,
                 "p95_api_latency_ms": r.p95_api_latency_ms,
-                "errors":             r.total_errors,
-                "corrections":        r.total_corrections,
-                "outbound_calls":     r.total_outbound_calls,
+                "errors": r.total_errors,
+                "corrections": r.total_corrections,
+                "outbound_calls": r.total_outbound_calls,
             }
             for r in rows
         ],
@@ -85,8 +88,8 @@ async def get_usage_summary(
 
 @router.get("/usage-summary/totals")
 async def get_usage_totals(
-    from_date: Optional[date] = Query(None, alias="from"),
-    to_date:   Optional[date] = Query(None, alias="to"),
+    from_date: date | None = Query(None, alias="from"),
+    to_date: date | None = Query(None, alias="to"),
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
     _admin: None = Depends(require_admin),
@@ -109,8 +112,7 @@ async def get_usage_totals(
             func.sum(DailyUsageSummary.total_errors).label("total_errors"),
             func.sum(DailyUsageSummary.total_corrections).label("total_corrections"),
             func.sum(DailyUsageSummary.total_outbound_calls).label("total_outbound_calls"),
-        )
-        .where(
+        ).where(
             DailyUsageSummary.tenant_id == session.tenant_id,
             DailyUsageSummary.business_unit_id == session.business_unit_id,
             DailyUsageSummary.summary_date >= from_date,
@@ -120,22 +122,22 @@ async def get_usage_totals(
     row = result.mappings().fetchone()
 
     return {
-        "tenant_id":        session.tenant_id,
+        "tenant_id": session.tenant_id,
         "business_unit_id": session.business_unit_id,
-        "from":   str(from_date),
-        "to":     str(to_date),
+        "from": str(from_date),
+        "to": str(to_date),
         "totals": {
-            "documents":          int(row["total_documents"] or 0),
-            "submissions":        int(row["total_submissions"] or 0),
-            "llm_calls":          int(row["total_llm_calls"] or 0),
-            "tokens":             int(row["total_tokens"] or 0),
-            "cost_usd":           float(row["total_cost_usd"] or 0),
+            "documents": int(row["total_documents"] or 0),
+            "submissions": int(row["total_submissions"] or 0),
+            "llm_calls": int(row["total_llm_calls"] or 0),
+            "tokens": int(row["total_tokens"] or 0),
+            "cost_usd": float(row["total_cost_usd"] or 0),
             "avg_llm_latency_ms": round(float(row["avg_llm_latency_ms"] or 0), 2),
-            "api_calls":          int(row["total_api_calls"] or 0),
+            "api_calls": int(row["total_api_calls"] or 0),
             "avg_api_latency_ms": round(float(row["avg_api_latency_ms"] or 0), 2),
-            "errors":             int(row["total_errors"] or 0),
-            "corrections":        int(row["total_corrections"] or 0),
-            "outbound_calls":     int(row["total_outbound_calls"] or 0),
+            "errors": int(row["total_errors"] or 0),
+            "corrections": int(row["total_corrections"] or 0),
+            "outbound_calls": int(row["total_outbound_calls"] or 0),
         },
     }
 
@@ -146,6 +148,7 @@ async def trigger_retention(
     _admin: None = Depends(require_admin),
 ):
     from app.services.retention_service import archive_and_cleanup, purge_inactive_sessions
+
     result = await archive_and_cleanup()
     await purge_inactive_sessions()
     return {"status": "completed", "summary": result}
@@ -153,11 +156,12 @@ async def trigger_retention(
 
 @router.post("/summary/rebuild")
 async def trigger_summary_rebuild(
-    target_date: Optional[date] = Query(None, alias="date"),
+    target_date: date | None = Query(None, alias="date"),
     _session: SessionInfo = Depends(get_current_session),
     _admin: None = Depends(require_admin),
 ):
     from app.services.summary_service import build_daily_summary
+
     result = await build_daily_summary(target_date)
     return {"status": "completed", "date": str(target_date), "metrics": result}
 
@@ -168,6 +172,7 @@ async def trigger_pricing_sync(
     _admin: None = Depends(require_admin),
 ):
     from app.services.usage_service import fetch_openrouter_pricing
+
     await fetch_openrouter_pricing()
     return {"status": "sync_started"}
 
@@ -179,18 +184,21 @@ async def get_pricing_list(
     _admin: None = Depends(require_admin),
 ):
     from app.models.orm import LLMModelPricing
+
     result = await db.execute(select(LLMModelPricing).order_by(LLMModelPricing.model_name))
-    rows   = result.scalars().all()
+    rows = result.scalars().all()
     return {
         "count": len(rows),
         "data": [
             {
-                "model_name":          r.model_name,
-                "input_price_per_1m":  float(r.input_price_per_1m),
+                "model_name": r.model_name,
+                "input_price_per_1m": float(r.input_price_per_1m),
                 "output_price_per_1m": float(r.output_price_per_1m),
-                "source":              r.source,
-                "price_verified_at":   r.price_verified_at.isoformat() if r.price_verified_at else None,
-                "updated_at":          r.updated_at.isoformat() if r.updated_at else None,
+                "source": r.source,
+                "price_verified_at": r.price_verified_at.isoformat()
+                if r.price_verified_at
+                else None,
+                "updated_at": r.updated_at.isoformat() if r.updated_at else None,
             }
             for r in rows
         ],

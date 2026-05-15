@@ -1,0 +1,38 @@
+repos:
+  # ── Python: Ruff (lint + format) ─────────────────────────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.13
+    hooks:
+      - id: ruff                  # lint — auto-fix safe issues
+        args: [--fix]
+        files: ^backend/
+      - id: ruff-format           # format — black-compatible
+        files: ^backend/
+
+  # ── JavaScript / CSS / JSON / YAML / Markdown: Prettier (local) ─────────────
+  # Uses the prettier installed in frontend/node_modules — no separate download.
+  # npx --prefix resolves prettier from frontend/node_modules/.bin/.
+  - repo: local
+    hooks:
+      - id: prettier
+        name: prettier
+        entry: npx --prefix frontend prettier --write
+        language: system
+        files: ^frontend/src/
+        types_or: [javascript, jsx, json, css]
+
+  # ── General file hygiene ──────────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^(graphify-out|frontend/dist)/
+      - id: end-of-file-fixer
+        exclude: ^(graphify-out|frontend/dist)/
+      - id: check-yaml
+      - id: check-json
+        exclude: package-lock\.json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: detect-private-key

@@ -58,12 +58,14 @@ export function useOcrWizard() {
         ? `${config.description}${extraction.headerData.DocDate ? ` - ${extraction.headerData.DocDate}` : ''}`
         : ''
       setJvDescription(desc)
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [step])
 
   // Wire file selection → processFile
   function handleFileChange(e) {
-    fileUpload.handleFileChange(e, (fileArray) => {
+    fileUpload.handleFileChange(e, fileArray => {
       extraction.resetExtractionState()
       setStep(1)
       extraction.processFile(fileArray)
@@ -80,8 +82,10 @@ export function useOcrWizard() {
       title: 'Cancel Process',
       message: 'Are you sure you want to cancel and clear all data?',
       type: 'warning',
-      confirmText: 'Confirm', cancelText: 'Go Back',
-      onConfirm: resetAll, onCancel: closeModal,
+      confirmText: 'Confirm',
+      cancelText: 'Go Back',
+      onConfirm: resetAll,
+      onCancel: closeModal,
     })
   }
 
@@ -100,7 +104,8 @@ export function useOcrWizard() {
 
   return {
     // Step
-    step, setStep,
+    step,
+    setStep,
     // File & preview (from useFileUpload)
     files: fileUpload.files,
     previewUrl: fileUpload.previewUrl,
@@ -109,18 +114,25 @@ export function useOcrWizard() {
     // Extraction state (from useOcrExtraction)
     loading: extraction.loading,
     status: extraction.status,
-    bank: extraction.bank, setBank: extraction.setBank,
+    bank: extraction.bank,
+    setBank: extraction.setBank,
     headerData: extraction.headerData,
     details: extraction.details,
     // Submission state (from useOcrSubmission)
     submitting: submission.submitting,
     // Config
-    jvRows, filePrefix, fileSource, jvDescription, carmenJvId,
+    jvRows,
+    filePrefix,
+    fileSource,
+    jvDescription,
+    carmenJvId,
     // Modal (from useModal)
-    modal, showModal, closeModal,
+    modal,
+    showModal,
+    closeModal,
     // Actions
     handleFileChange,
-    processFile: (files) => extraction.processFile(files),
+    processFile: files => extraction.processFile(files),
     reExtract,
     updateHeader: extraction.updateHeader,
     updateDetail: extraction.updateDetail,

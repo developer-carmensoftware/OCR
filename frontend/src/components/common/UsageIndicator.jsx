@@ -5,7 +5,7 @@ import { getStoredToken } from '../../lib/api/client'
 import { useAuth } from '../../contexts/AuthContext'
 
 export default function UsageIndicator() {
-  const [usage, setUsage]   = useState(null)
+  const [usage, setUsage] = useState(null)
   const [loading, setLoading] = useState(true)
   const { isAuthenticated } = useAuth()
 
@@ -68,14 +68,22 @@ export default function UsageIndicator() {
 
   if (!stats) return null
 
-  const usedColor = stats.usedPercentage >= 90 ? 'var(--rose)'
-                  : stats.usedPercentage >= 70 ? 'var(--amber)'
-                  : 'var(--text-3)'
+  const usedColor =
+    stats.usedPercentage >= 90
+      ? 'var(--rose)'
+      : stats.usedPercentage >= 70
+        ? 'var(--amber)'
+        : 'var(--text-3)'
 
   const COLS = [
-    { key: 'col-used',   label: 'Used',   value: stats.monthly_calls,     color: usedColor },
-    { key: 'col-remain', label: 'Remain', value: stats.remaining_calls,   color: stats.isLow ? 'var(--rose)' : 'var(--primary)' },
-    { key: 'col-total',  label: 'Total',  value: stats.max_monthly_calls, color: 'var(--text-4)' },
+    { key: 'col-used', label: 'Used', value: stats.monthly_calls, color: usedColor },
+    {
+      key: 'col-remain',
+      label: 'Remain',
+      value: stats.remaining_calls,
+      color: stats.isLow ? 'var(--rose)' : 'var(--primary)',
+    },
+    { key: 'col-total', label: 'Total', value: stats.max_monthly_calls, color: 'var(--text-4)' },
   ]
 
   return (
@@ -98,7 +106,9 @@ export default function UsageIndicator() {
           {COLS.map(({ key, label, value, color }) => (
             <div key={key} className={`ui-quota-col ${key}`}>
               <span className="ui-quota-label">{label}</span>
-              <span className="ui-quota-value" style={{ color }}>{value}</span>
+              <span className="ui-quota-value" style={{ color }}>
+                {value}
+              </span>
             </div>
           ))}
         </div>

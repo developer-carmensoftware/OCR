@@ -60,16 +60,20 @@ export function useAPVendor({ t, headerData }) {
 
   // Auto-match vendor by Tax ID when header changes.
   // Skips if the user has already manually selected a vendor.
-  const autoMatchVendor = (showDrop) => {
+  const autoMatchVendor = showDrop => {
     if (showDrop) return
     setSystemVendor(prev => {
-      if (prev.code) return prev  // user already picked one — don't overwrite
+      if (prev.code) return prev // user already picked one — don't overwrite
       const raw = String(headerData?.vendorTaxId || '').replace(/\D/g, '')
       // Try exact branch match first, then fall back to taxId-only (HQ default)
-      const branch = String(headerData?.vendorBranch || '').replace(/\D/g, '').padStart(5, '0')
+      const branch = String(headerData?.vendorBranch || '')
+        .replace(/\D/g, '')
+        .padStart(5, '0')
       const found = vendorDbByTax[`${raw}-${branch}`] || vendorDbByTax[raw]
       if (found && found.active !== false) {
-        setVendorSearch(`${found.code} — ${found.name} | TaxID : ${found.taxId || '—'} | Branch No. : ${String(found.branchNo ?? '—').padStart(5, '0')}`)
+        setVendorSearch(
+          `${found.code} — ${found.name} | TaxID : ${found.taxId || '—'} | Branch No. : ${String(found.branchNo ?? '—').padStart(5, '0')}`
+        )
         return found
       } else if (raw.length >= 10) {
         setVendorSearch('')
@@ -82,11 +86,12 @@ export function useAPVendor({ t, headerData }) {
 
   const filteredVendors = useMemo(() => {
     const q = vendorSearch.toLowerCase()
-    return vendors.filter(v =>
-      v.name.toLowerCase().includes(q) ||
-      v.code.toLowerCase().includes(q) ||
-      v.taxId.includes(vendorSearch) ||
-      String(v.branchNo || '').includes(vendorSearch)
+    return vendors.filter(
+      v =>
+        v.name.toLowerCase().includes(q) ||
+        v.code.toLowerCase().includes(q) ||
+        v.taxId.includes(vendorSearch) ||
+        String(v.branchNo || '').includes(vendorSearch)
     )
   }, [vendors, vendorSearch])
 
@@ -96,10 +101,14 @@ export function useAPVendor({ t, headerData }) {
   }
 
   return {
-    vendors, vendorDbByTax,
-    systemVendor, setSystemVendor,
-    vendorSearch, setVendorSearch,
-    showVendorDrop, setShowVendorDrop,
+    vendors,
+    vendorDbByTax,
+    systemVendor,
+    setSystemVendor,
+    vendorSearch,
+    setVendorSearch,
+    showVendorDrop,
+    setShowVendorDrop,
     vendorRefreshing,
     filteredVendors,
     loadVendors,

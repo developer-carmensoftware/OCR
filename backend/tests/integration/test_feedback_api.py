@@ -2,10 +2,11 @@
 Integration tests for POST /api/v1/feedback/correction(s)
 Sync test functions using starlette TestClient as a context manager.
 """
+
 from unittest.mock import MagicMock
+
 from tests.conftest import make_mock_db
 from tests.integration.conftest import make_test_client
-
 
 BASE = "/api/v1/feedback"
 AUTH = {"Authorization": "Bearer dummy"}
@@ -33,6 +34,7 @@ def _fake_record():
 
 
 # ── I2: POST /correction (single) ────────────────────────────────────────────
+
 
 def test_I2_1_single_correction_returns_200():
     mock_db = make_mock_db()
@@ -70,11 +72,11 @@ def test_single_correction_missing_field_returns_422():
 
 # ── I2: POST /corrections (batch) ─────────────────────────────────────────────
 
+
 def test_I2_1_batch_one_changed_saved_1_skipped_0():
     mock_db = make_mock_db()
     with make_test_client(mock_db) as client:
-        resp = client.post(f"{BASE}/corrections",
-                           json={"corrections": [CORRECTION]}, headers=AUTH)
+        resp = client.post(f"{BASE}/corrections", json={"corrections": [CORRECTION]}, headers=AUTH)
         assert resp.status_code == 200
         body = resp.json()
         assert body["saved"] == 1
@@ -85,8 +87,7 @@ def test_I2_2_batch_unchanged_skipped():
     mock_db = make_mock_db()
     unchanged = {**CORRECTION, "corrected_value": CORRECTION["original_value"]}
     with make_test_client(mock_db) as client:
-        resp = client.post(f"{BASE}/corrections",
-                           json={"corrections": [unchanged]}, headers=AUTH)
+        resp = client.post(f"{BASE}/corrections", json={"corrections": [unchanged]}, headers=AUTH)
         body = resp.json()
         assert body["saved"] == 0
         assert body["skipped"] == 1
@@ -94,11 +95,16 @@ def test_I2_2_batch_unchanged_skipped():
 
 def test_I2_3_batch_mixed_counts_correct():
     mock_db = make_mock_db()
-    unchanged = {**CORRECTION, "field_name": "doc_no",
-                 "original_value": "A", "corrected_value": "A"}
+    unchanged = {
+        **CORRECTION,
+        "field_name": "doc_no",
+        "original_value": "A",
+        "corrected_value": "A",
+    }
     with make_test_client(mock_db) as client:
-        resp = client.post(f"{BASE}/corrections",
-                           json={"corrections": [CORRECTION, unchanged]}, headers=AUTH)
+        resp = client.post(
+            f"{BASE}/corrections", json={"corrections": [CORRECTION, unchanged]}, headers=AUTH
+        )
         body = resp.json()
         assert body["saved"] == 1
         assert body["skipped"] == 1
@@ -107,8 +113,7 @@ def test_I2_3_batch_mixed_counts_correct():
 def test_batch_empty_returns_zero_counts():
     mock_db = make_mock_db()
     with make_test_client(mock_db) as client:
-        resp = client.post(f"{BASE}/corrections",
-                           json={"corrections": []}, headers=AUTH)
+        resp = client.post(f"{BASE}/corrections", json={"corrections": []}, headers=AUTH)
         body = resp.json()
         assert body["saved"] == 0
         assert body["skipped"] == 0
@@ -118,14 +123,12 @@ def test_batch_commit_not_called_when_all_skipped():
     mock_db = make_mock_db()
     unchanged = {**CORRECTION, "corrected_value": CORRECTION["original_value"]}
     with make_test_client(mock_db) as client:
-        client.post(f"{BASE}/corrections",
-                    json={"corrections": [unchanged]}, headers=AUTH)
+        client.post(f"{BASE}/corrections", json={"corrections": [unchanged]}, headers=AUTH)
     mock_db.commit.assert_not_called()
 
 
 def test_I2_4_upsert_execute_called_for_changed_rows():
     mock_db = make_mock_db()
     with make_test_client(mock_db) as client:
-        client.post(f"{BASE}/corrections",
-                    json={"corrections": [CORRECTION]}, headers=AUTH)
+        client.post(f"{BASE}/corrections", json={"corrections": [CORRECTION]}, headers=AUTH)
     mock_db.execute.assert_called()

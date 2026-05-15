@@ -1,7 +1,7 @@
 import { UploadCloud, FolderOpen, Info } from 'lucide-react'
 
 export default function APUploadStep({ t, fileInputRef, onFileChange }) {
-  const handleDrop = (e) => {
+  const handleDrop = e => {
     e.preventDefault()
     const f = e.dataTransfer.files[0]
     if (f) onFileChange({ target: { files: [f] } })
@@ -23,20 +23,27 @@ export default function APUploadStep({ t, fileInputRef, onFileChange }) {
           onChange={onFileChange}
           style={{ display: 'none' }}
         />
-        <div className="upload-icon"><UploadCloud size={40} /></div>
+        <div className="upload-icon">
+          <UploadCloud size={40} />
+        </div>
         <div className="upload-label">{t.uploadTitle}</div>
         <div className="upload-hint">{t.uploadDesc}</div>
         <button
           className="btn btn-primary"
           style={{ marginTop: '1.5rem' }}
-          onClick={e => { e.stopPropagation(); fileInputRef.current?.click() }}
+          onClick={e => {
+            e.stopPropagation()
+            fileInputRef.current?.click()
+          }}
         >
           <FolderOpen size={14} /> {t.uploadBtn}
         </button>
       </div>
 
       <div className="panel-card" style={{ marginTop: '1rem' }}>
-        <div className="field-label"><Info size={16} /> How to use AP Invoice OCR</div>
+        <div className="field-label">
+          <Info size={16} /> How to use AP Invoice OCR
+        </div>
         <div className="how-to-list">
           {INSTRUCTIONS.map(({ n, c, text }) => (
             <div key={n} className="how-to-item">

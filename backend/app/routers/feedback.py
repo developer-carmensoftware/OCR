@@ -1,20 +1,21 @@
 """Feedback router — log user corrections for OCR learning."""
 
 import logging
+
 from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func
 from sqlalchemy.dialects.mysql import insert as mysql_insert
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.dependencies import SessionInfo, get_current_session
 from app.database import get_db
 from app.models import (
     CorrectionFeedback,
-    CorrectionFeedbackRequest,
-    CorrectionFeedbackResponse,
     CorrectionFeedbackBatchRequest,
     CorrectionFeedbackBatchResponse,
+    CorrectionFeedbackRequest,
+    CorrectionFeedbackResponse,
 )
-from app.auth.dependencies import get_current_session, SessionInfo
 
 router = APIRouter(prefix="/api/v1/feedback", tags=["feedback"])
 logger = logging.getLogger(__name__)

@@ -1,7 +1,17 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { AlertCircle, RotateCw } from 'lucide-react'
-import { DocumentPreview, CustomModal, StepWizard, LoadingOverlay, DarkModeToggle, ExtractionSkeleton, SplitLayout, UsageIndicator, AppHeader } from '../components/common'
+import {
+  DocumentPreview,
+  CustomModal,
+  StepWizard,
+  LoadingOverlay,
+  DarkModeToggle,
+  ExtractionSkeleton,
+  SplitLayout,
+  UsageIndicator,
+  AppHeader,
+} from '../components/common'
 import APUploadStep from '../components/ap-invoice/APUploadStep'
 import APFieldMappingStep from '../components/ap-invoice/APFieldMappingStep'
 import APReviewStep from '../components/ap-invoice/APReviewStep'
@@ -14,16 +24,41 @@ export default function APInvoice() {
   const ctrl = useAPInvoice()
   const {
     t,
-    step, setStep,
-    file, previewUrl, previewType, fileInputRef,
-    loading, status, error, setError, suggestLoading,
-    lineItems, fieldMappings, setFieldMappings, headerData,
-    availableFields, systemVendor, masterAccounts, masterDepts,
-    handleFileChange, confirmMapping,
-    handleAISuggest, handleAcceptAll, hasSuggestions, allMapped,
-    handleConfirmSuggest, handleRejectSuggest, handleReset,
-    handleGenerate, invoiceSeq,
-    updateItem, updateHeader, modal, setModal, isDuplicate,
+    step,
+    setStep,
+    file,
+    previewUrl,
+    previewType,
+    fileInputRef,
+    loading,
+    status,
+    error,
+    setError,
+    suggestLoading,
+    lineItems,
+    fieldMappings,
+    setFieldMappings,
+    headerData,
+    availableFields,
+    systemVendor,
+    masterAccounts,
+    masterDepts,
+    handleFileChange,
+    confirmMapping,
+    handleAISuggest,
+    handleAcceptAll,
+    hasSuggestions,
+    allMapped,
+    handleConfirmSuggest,
+    handleRejectSuggest,
+    handleReset,
+    handleGenerate,
+    invoiceSeq,
+    updateItem,
+    updateHeader,
+    modal,
+    setModal,
+    isDuplicate,
   } = ctrl
 
   const [showPreview, setShowPreview] = useState(false)
@@ -34,11 +69,15 @@ export default function APInvoice() {
       setModal({
         show: true,
         title: 'Return to Upload?',
-        message: 'Going back will clear all extracted data.\nYou will need to re-upload and re-extract the document, which will use 1 additional quota.',
+        message:
+          'Going back will clear all extracted data.\nYou will need to re-upload and re-extract the document, which will use 1 additional quota.',
         type: 'warning',
         confirmText: 'Go Back',
         cancelText: 'Stay Here',
-        onConfirm: () => { setModal({ show: false }); handleReset() },
+        onConfirm: () => {
+          setModal({ show: false })
+          handleReset()
+        },
         onCancel: () => setModal({ show: false }),
       })
     } else {
@@ -69,14 +108,16 @@ export default function APInvoice() {
         type="warning"
         confirmText="Confirm Accept All"
         cancelText="Cancel"
-        onConfirm={() => { setAcceptAllModal(false); handleAcceptAll() }}
+        onConfirm={() => {
+          setAcceptAllModal(false)
+          handleAcceptAll()
+        }}
         onCancel={() => setAcceptAllModal(false)}
       />
 
       <LoadingOverlay show={loading} status={status} />
 
       <div className="app-container" style={{ padding: '1.5rem' }}>
-
         <AppHeader
           module="ap-invoice"
           moduleName={t.appSub}
@@ -87,7 +128,11 @@ export default function APInvoice() {
           <DarkModeToggle />
         </AppHeader>
 
-        <StepWizard step={step} steps={AP_STEPS} onStepClick={(n) => !loading && handleStepClick(n)} />
+        <StepWizard
+          step={step}
+          steps={AP_STEPS}
+          onStepClick={n => !loading && handleStepClick(n)}
+        />
 
         <AnimatePresence>
           <motion.div
@@ -112,7 +157,11 @@ export default function APInvoice() {
                   <div>
                     <div className="ap-error-title">OCR Processing Error</div>
                     <div className="ap-error-msg">{error}</div>
-                    <button className="btn btn-sm btn-outline" style={{ marginTop: '0.75rem' }} onClick={() => setError(null)}>
+                    <button
+                      className="btn btn-sm btn-outline"
+                      style={{ marginTop: '0.75rem' }}
+                      onClick={() => setError(null)}
+                    >
                       <RotateCw size={14} /> {t.retry}
                     </button>
                   </div>
@@ -135,7 +184,9 @@ export default function APInvoice() {
                     lineItems={lineItems}
                     fieldMappings={fieldMappings}
                     availableFields={availableFields}
-                    onMappingChange={(col, val) => setFieldMappings(p => ({ ...p, [`col${col}`]: val }))}
+                    onMappingChange={(col, val) =>
+                      setFieldMappings(p => ({ ...p, [`col${col}`]: val }))
+                    }
                     onBack={() => setStep(1)}
                     onConfirm={confirmMapping}
                   />
@@ -180,7 +231,6 @@ export default function APInvoice() {
             )}
           </motion.div>
         </AnimatePresence>
-
       </div>
     </>
   )

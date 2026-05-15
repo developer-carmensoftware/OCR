@@ -22,8 +22,9 @@ Session:
 """
 
 import logging
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncConnection,
     AsyncSession,
@@ -31,7 +32,6 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy import text
 
 from app.config import settings
 
@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 # ── URL helpers ───────────────────────────────────────────────────────────────
+
 
 def _db_root_url() -> str:
     url = settings.database_url.rstrip("/")
@@ -78,6 +79,7 @@ def _get_engine():
 
 # ── Public Session Factories ──────────────────────────────────────────────────
 
+
 def async_session() -> AsyncSession:
     _get_engine()
     return _SESSION_FACTORY()
@@ -96,11 +98,13 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 # ── ORM Base ─────────────────────────────────────────────────────────────────
 
+
 class Base(DeclarativeBase):
     pass
 
 
 # ── DB Provisioning ───────────────────────────────────────────────────────────
+
 
 async def ensure_db() -> None:
     """
@@ -116,10 +120,12 @@ async def ensure_db() -> None:
     admin_engine = create_async_engine(root_url, echo=False)
     try:
         async with admin_engine.begin() as conn:
-            await conn.execute(text(
-                "CREATE DATABASE IF NOT EXISTS carmen_ai "
-                "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
-            ))
+            await conn.execute(
+                text(
+                    "CREATE DATABASE IF NOT EXISTS carmen_ai "
+                    "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+                )
+            )
         logger.info("Ensured database: carmen_ai")
     finally:
         await admin_engine.dispose()
@@ -131,6 +137,7 @@ async def ensure_db() -> None:
     await migrate_db()
 
     from app.services.usage_service import fetch_openrouter_pricing
+
     try:
         await fetch_openrouter_pricing()
     except Exception as exc:
@@ -142,6 +149,7 @@ async def init_db() -> None:
 
 
 # ── Backward-compat aliases ───────────────────────────────────────────────────
+
 
 async def provision_tenant(_tenant: str = "") -> None:
     await ensure_db()
@@ -172,6 +180,7 @@ async def migrate_all_tenants() -> None:
 # New migrations start at 100.
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 async def _m100_partition_log_tables(conn: AsyncConnection) -> None:
     """
     Convert the four high-volume log tables to quarterly RANGE partitions.
@@ -184,7 +193,8 @@ async def _m100_partition_log_tables(conn: AsyncConnection) -> None:
     partition_manager.py auto-creates future quarters via REORGANIZE PARTITION p_future.
     """
     from datetime import datetime
-    now  = datetime.utcnow()
+
+    now = datetime.utcnow()
     year = now.year
 
     partitions_sql = (
@@ -201,14 +211,15 @@ async def _m100_partition_log_tables(conn: AsyncConnection) -> None:
     for table in tables:
         try:
             # MariaDB requires the partition column in the PK; DDL auto-commits.
-            await conn.execute(text(
-                f"ALTER TABLE {table} DROP PRIMARY KEY, "
-                f"ADD PRIMARY KEY (id, created_at)"
-            ))
-            await conn.execute(text(
-                f"ALTER TABLE {table} "
-                f"PARTITION BY RANGE (TO_DAYS(created_at)) ({partitions_sql})"
-            ))
+            await conn.execute(
+                text(f"ALTER TABLE {table} DROP PRIMARY KEY, ADD PRIMARY KEY (id, created_at)")
+            )
+            await conn.execute(
+                text(
+                    f"ALTER TABLE {table} "
+                    f"PARTITION BY RANGE (TO_DAYS(created_at)) ({partitions_sql})"
+                )
+            )
             logger.info("  ~ %s: quarterly partitions applied", table)
         except Exception as exc:
             logger.warning("Partition skipped for %s: %s", table, str(exc)[:200])
@@ -226,94 +237,108 @@ async def _m101_seed_control_plane(conn: AsyncConnection) -> None:
     """
     # ── Roles ──────────────────────────────────────────────────────────────
     roles = [
-        ("super_admin", "Super Admin",
-         "Full access including IAM. Cannot be deleted.", True),
-        ("admin",       "Admin",
-         "Day-to-day operations. No role/permission management.", True),
-        ("viewer",      "Viewer",
-         "Read-only access to dashboards and config.", True),
+        ("super_admin", "Super Admin", "Full access including IAM. Cannot be deleted.", True),
+        ("admin", "Admin", "Day-to-day operations. No role/permission management.", True),
+        ("viewer", "Viewer", "Read-only access to dashboards and config.", True),
     ]
     for rid, name, desc, is_sys in roles:
-        await conn.execute(text("""
+        await conn.execute(
+            text("""
             INSERT IGNORE INTO roles (id, name, description, is_system, created_at)
             VALUES (:id, :name, :desc, :sys, NOW())
-        """), {"id": rid, "name": name, "desc": desc, "sys": is_sys})
+        """),
+            {"id": rid, "name": name, "desc": desc, "sys": is_sys},
+        )
 
     # ── Permissions ─────────────────────────────────────────────────────────
     resources_actions = [
-        ("tenants",     ["read", "write", "delete"]),
-        ("banks",       ["read", "write", "delete"]),
-        ("prompts",     ["read", "write", "publish", "delete"]),
-        ("api_keys",    ["read", "write", "revoke"]),
+        ("tenants", ["read", "write", "delete"]),
+        ("banks", ["read", "write", "delete"]),
+        ("prompts", ["read", "write", "publish", "delete"]),
+        ("api_keys", ["read", "write", "revoke"]),
         ("admin_users", ["read", "write", "delete"]),
-        ("roles",       ["read", "write", "delete"]),
-        ("configs",     ["read", "write"]),
-        ("flags",       ["read", "write"]),
-        ("quotas",      ["read", "write"]),
-        ("modules",     ["read", "write"]),
-        ("alerts",      ["read", "acknowledge"]),
-        ("audit",       ["read"]),
+        ("roles", ["read", "write", "delete"]),
+        ("configs", ["read", "write"]),
+        ("flags", ["read", "write"]),
+        ("quotas", ["read", "write"]),
+        ("modules", ["read", "write"]),
+        ("alerts", ["read", "acknowledge"]),
+        ("audit", ["read"]),
     ]
     all_perms: list[str] = []
     for resource, actions in resources_actions:
         for action in actions:
             pid = f"{resource}:{action}"
             all_perms.append(pid)
-            await conn.execute(text("""
+            await conn.execute(
+                text("""
                 INSERT IGNORE INTO permissions (id, name, resource, action, created_at)
                 VALUES (:id, :name, :res, :act, NOW())
-            """), {"id": pid, "name": f"{action.title()} {resource}",
-                   "res": resource, "act": action})
+            """),
+                {"id": pid, "name": f"{action.title()} {resource}", "res": resource, "act": action},
+            )
 
     # ── Role → Permission assignments ───────────────────────────────────────
     iam_resources = {"roles", "admin_users"}
     for pid in all_perms:
         resource = pid.split(":")[0]
         # super_admin: all
-        await conn.execute(text("""
+        await conn.execute(
+            text("""
             INSERT IGNORE INTO role_permissions (role_id, permission_id)
             VALUES ('super_admin', :pid)
-        """), {"pid": pid})
+        """),
+            {"pid": pid},
+        )
         # admin: all except IAM
         if resource not in iam_resources:
-            await conn.execute(text("""
+            await conn.execute(
+                text("""
                 INSERT IGNORE INTO role_permissions (role_id, permission_id)
                 VALUES ('admin', :pid)
-            """), {"pid": pid})
+            """),
+                {"pid": pid},
+            )
         # viewer: read-only
         if pid.endswith(":read"):
-            await conn.execute(text("""
+            await conn.execute(
+                text("""
                 INSERT IGNORE INTO role_permissions (role_id, permission_id)
                 VALUES ('viewer', :pid)
-            """), {"pid": pid})
+            """),
+                {"pid": pid},
+            )
 
     # ── Modules ─────────────────────────────────────────────────────────────
     modules = [
-        ("credit_card_ocr", "Credit Card OCR",
-         "Bank receipt OCR + GL mapping wizard", True, 1),
-        ("ap_invoice",      "AP Invoice",
-         "Vendor invoice OCR + line-item review", True, 2),
+        ("credit_card_ocr", "Credit Card OCR", "Bank receipt OCR + GL mapping wizard", True, 1),
+        ("ap_invoice", "AP Invoice", "Vendor invoice OCR + line-item review", True, 2),
     ]
     for mid, name, desc, active, order in modules:
-        await conn.execute(text("""
+        await conn.execute(
+            text("""
             INSERT IGNORE INTO modules
                 (id, display_name, description, is_active, sort_order, created_at)
             VALUES (:id, :name, :desc, :active, :order, NOW())
-        """), {"id": mid, "name": name, "desc": desc, "active": active, "order": order})
+        """),
+            {"id": mid, "name": name, "desc": desc, "active": active, "order": order},
+        )
 
     # ── Banks ────────────────────────────────────────────────────────────────
     banks = [
-        ("BBL",   "Bangkok Bank",         "ธนาคารกรุงเทพ",      True, 1),
-        ("KBANK", "Kasikorn Bank",        "ธนาคารกสิกรไทย",    True, 2),
-        ("SCB",   "Siam Commercial Bank", "ธนาคารไทยพาณิชย์",  True, 3),
+        ("BBL", "Bangkok Bank", "ธนาคารกรุงเทพ", True, 1),
+        ("KBANK", "Kasikorn Bank", "ธนาคารกสิกรไทย", True, 2),
+        ("SCB", "Siam Commercial Bank", "ธนาคารไทยพาณิชย์", True, 3),
     ]
     for code, name, name_th, active, order in banks:
-        await conn.execute(text("""
+        await conn.execute(
+            text("""
             INSERT IGNORE INTO banks
                 (code, name, display_name_th, is_active, sort_order, created_at)
             VALUES (:code, :name, :name_th, :active, :order, NOW())
-        """), {"code": code, "name": name, "name_th": name_th,
-               "active": active, "order": order})
+        """),
+            {"code": code, "name": name, "name_th": name_th, "active": active, "order": order},
+        )
 
     logger.info("  ~ control-plane seed data applied")
 
@@ -325,22 +350,28 @@ async def _m101_seed_control_plane(conn: AsyncConnection) -> None:
 #   Requires a fresh carmen_ai database (drop + recreate before first run).
 #   create_all() in ensure_db() builds the full schema from ORM models.
 
+
 async def _m102_quota_drop_module(conn) -> None:
     """Quota is a tenant-level shared pool — drop the per-module column if it exists."""
     # All three statements are no-ops when the schema is already clean (fresh DB).
     await conn.execute(text("ALTER TABLE quotas DROP INDEX IF EXISTS ix_quotas_module"))
-    await conn.execute(text("ALTER TABLE quotas DROP INDEX IF EXISTS uq_quota_tenant_module_period_metric"))
+    await conn.execute(
+        text("ALTER TABLE quotas DROP INDEX IF EXISTS uq_quota_tenant_module_period_metric")
+    )
     await conn.execute(text("ALTER TABLE quotas DROP COLUMN IF EXISTS module"))
-    await conn.execute(text(
-        "CREATE UNIQUE INDEX IF NOT EXISTS uq_quota_tenant_period_metric"
-        " ON quotas (tenant_id, period, metric)"
-    ))
+    await conn.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_quota_tenant_period_metric"
+            " ON quotas (tenant_id, period, metric)"
+        )
+    )
     logger.info("  ~ quotas.module column removed; unique constraint updated")
 
 
 async def _m103_plans_table(conn) -> None:
     """Add plans table as source of truth for quota limits; migrate tenants.plan to FK."""
-    await conn.execute(text("""
+    await conn.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS plans (
             code               VARCHAR(20)  NOT NULL,
             display_name       VARCHAR(100) NOT NULL,
@@ -352,36 +383,44 @@ async def _m103_plans_table(conn) -> None:
             updated_by         VARCHAR(100) NULL,
             PRIMARY KEY (code)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    """))
-    await conn.execute(text("""
+    """)
+    )
+    await conn.execute(
+        text("""
         INSERT IGNORE INTO plans (code, display_name, monthly_call_limit) VALUES
             ('free',       'Free',       100),
             ('pro',        'Pro',        2000),
             ('enterprise', 'Enterprise', 50000)
-    """))
+    """)
+    )
     # Migrate tenants.plan from ENUM → VARCHAR FK
-    await conn.execute(text(
-        "ALTER TABLE tenants MODIFY COLUMN plan VARCHAR(20) NOT NULL DEFAULT 'free'"
-    ))
-    fk_exists = (await conn.execute(text("""
+    await conn.execute(
+        text("ALTER TABLE tenants MODIFY COLUMN plan VARCHAR(20) NOT NULL DEFAULT 'free'")
+    )
+    fk_exists = (
+        await conn.execute(
+            text("""
         SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenants'
         AND CONSTRAINT_NAME = 'fk_tenants_plan'
-    """))).scalar()
+    """)
+        )
+    ).scalar()
     if not fk_exists:
-        await conn.execute(text(
-            "ALTER TABLE tenants ADD CONSTRAINT fk_tenants_plan"
-            " FOREIGN KEY (plan) REFERENCES plans(code)"
-        ))
+        await conn.execute(
+            text(
+                "ALTER TABLE tenants ADD CONSTRAINT fk_tenants_plan"
+                " FOREIGN KEY (plan) REFERENCES plans(code)"
+            )
+        )
     logger.info("  ~ plans table created and seeded; tenants.plan migrated to FK")
 
 
 async def _m104_quota_is_custom(conn) -> None:
     """Add is_custom flag to quotas — prevents plan-sync from overwriting manual overrides."""
-    await conn.execute(text(
-        "ALTER TABLE quotas ADD COLUMN IF NOT EXISTS"
-        " is_custom TINYINT(1) NOT NULL DEFAULT 0"
-    ))
+    await conn.execute(
+        text("ALTER TABLE quotas ADD COLUMN IF NOT EXISTS is_custom TINYINT(1) NOT NULL DEFAULT 0")
+    )
     logger.info("  ~ quotas.is_custom column added")
 
 
@@ -390,7 +429,8 @@ async def _m105_bu_config_tables(conn: AsyncConnection) -> None:
     Create bu_accounting_configs and ap_vendor_column_mappings tables.
     These replace localStorage for user-facing config so settings survive cache clears.
     """
-    await conn.execute(text("""
+    await conn.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS bu_accounting_configs (
             id                INT          NOT NULL AUTO_INCREMENT,
             tenant_id         VARCHAR(36)  NOT NULL,
@@ -419,9 +459,11 @@ async def _m105_bu_config_tables(conn: AsyncConnection) -> None:
             INDEX ix_bu_acc_cfg_tenant (tenant_id),
             INDEX ix_bu_acc_cfg_created_at (created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    """))
+    """)
+    )
 
-    await conn.execute(text("""
+    await conn.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS ap_vendor_column_mappings (
             id                  INT         NOT NULL AUTO_INCREMENT,
             tenant_id           VARCHAR(36) NOT NULL,
@@ -445,7 +487,8 @@ async def _m105_bu_config_tables(conn: AsyncConnection) -> None:
             INDEX ix_ap_vendor_map_vendor (vendor_tax_id),
             INDEX ix_ap_vendor_map_created_at (created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    """))
+    """)
+    )
     logger.info("  ~ bu_accounting_configs and ap_vendor_column_mappings tables created")
 
 
@@ -461,7 +504,8 @@ async def _m106_normalize_bu_mapping_entries(conn: AsyncConnection) -> None:
     """
     import json as _json
 
-    await conn.execute(text("""
+    await conn.execute(
+        text("""
         CREATE TABLE IF NOT EXISTS bu_accounting_mapping_entries (
             id          INT          NOT NULL AUTO_INCREMENT,
             config_id   INT          NOT NULL,
@@ -482,56 +526,67 @@ async def _m106_normalize_bu_mapping_entries(conn: AsyncConnection) -> None:
             INDEX ix_bu_map_entry_dept (dept_code),
             INDEX ix_bu_map_entry_created_at (created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    """))
+    """)
+    )
 
     # Migrate existing JSON data (if any rows were written between m105 and m106)
     existing = await conn.execute(
-        text("SELECT id, mappings_json, custom_types_json FROM bu_accounting_configs WHERE deleted_at IS NULL")
+        text(
+            "SELECT id, mappings_json, custom_types_json FROM bu_accounting_configs WHERE deleted_at IS NULL"
+        )
     )
     rows = existing.fetchall()
     for cfg_id, mappings_json, custom_types_json in rows:
         if not mappings_json:
             continue
         try:
-            mappings     = _json.loads(mappings_json)
+            mappings = _json.loads(mappings_json)
             custom_types = set(_json.loads(custom_types_json or "[]"))
             for field_type, m in mappings.items():
                 dept = (m.get("dept") or "") or None
-                acc  = (m.get("acc")  or "") or None
+                acc = (m.get("acc") or "") or None
                 is_c = 1 if field_type in custom_types else 0
-                await conn.execute(text("""
+                await conn.execute(
+                    text("""
                     INSERT IGNORE INTO bu_accounting_mapping_entries
                         (config_id, field_type, dept_code, acc_code, is_custom)
                     VALUES (:cfg, :ft, :dept, :acc, :is_c)
-                """), {"cfg": cfg_id, "ft": field_type, "dept": dept, "acc": acc, "is_c": is_c})
+                """),
+                    {"cfg": cfg_id, "ft": field_type, "dept": dept, "acc": acc, "is_c": is_c},
+                )
             # Custom types that have no mapping entry yet
             for ct in custom_types:
                 if ct not in mappings:
-                    await conn.execute(text("""
+                    await conn.execute(
+                        text("""
                         INSERT IGNORE INTO bu_accounting_mapping_entries
                             (config_id, field_type, dept_code, acc_code, is_custom)
                         VALUES (:cfg, :ft, NULL, NULL, 1)
-                    """), {"cfg": cfg_id, "ft": ct})
+                    """),
+                        {"cfg": cfg_id, "ft": ct},
+                    )
         except Exception as exc:
             logger.warning("m106: could not migrate config_id=%s: %s", cfg_id, exc)
 
     # Drop the now-redundant JSON columns
-    await conn.execute(text(
-        "ALTER TABLE bu_accounting_configs DROP COLUMN IF EXISTS mappings_json"
-    ))
-    await conn.execute(text(
-        "ALTER TABLE bu_accounting_configs DROP COLUMN IF EXISTS custom_types_json"
-    ))
+    await conn.execute(
+        text("ALTER TABLE bu_accounting_configs DROP COLUMN IF EXISTS mappings_json")
+    )
+    await conn.execute(
+        text("ALTER TABLE bu_accounting_configs DROP COLUMN IF EXISTS custom_types_json")
+    )
     logger.info("  ~ bu_accounting_mapping_entries created; JSON columns dropped")
 
 
 async def _m107_bu_config_add_branch(conn: AsyncConnection) -> None:
     """Add branch column to bu_accounting_configs — branch is user-editable unlike
     name/taxId/address which are derived from the bank master data."""
-    await conn.execute(text(
-        "ALTER TABLE bu_accounting_configs ADD COLUMN IF NOT EXISTS"
-        " branch VARCHAR(50) NULL AFTER description"
-    ))
+    await conn.execute(
+        text(
+            "ALTER TABLE bu_accounting_configs ADD COLUMN IF NOT EXISTS"
+            " branch VARCHAR(50) NULL AFTER description"
+        )
+    )
     logger.info("  ~ bu_accounting_configs.branch column added")
 
 
@@ -539,14 +594,14 @@ _MIGRATIONS: list[tuple[str, object]] = [
     # ── Squashed history (001–033) ────────────────────────────────────────────
     ("001_squashed_initial_schema", None),
     # ── Live migrations (100+) ────────────────────────────────────────────────
-    ("100_partition_log_tables",    _m100_partition_log_tables),
-    ("101_seed_control_plane",      _m101_seed_control_plane),
-    ("102_quota_drop_module",       _m102_quota_drop_module),
-    ("103_plans_table",             _m103_plans_table),
-    ("104_quota_is_custom",         _m104_quota_is_custom),
-    ("105_bu_config_tables",        _m105_bu_config_tables),
+    ("100_partition_log_tables", _m100_partition_log_tables),
+    ("101_seed_control_plane", _m101_seed_control_plane),
+    ("102_quota_drop_module", _m102_quota_drop_module),
+    ("103_plans_table", _m103_plans_table),
+    ("104_quota_is_custom", _m104_quota_is_custom),
+    ("105_bu_config_tables", _m105_bu_config_tables),
     ("106_normalize_bu_mapping_entries", _m106_normalize_bu_mapping_entries),
-    ("107_bu_config_add_branch",         _m107_bu_config_add_branch),
+    ("107_bu_config_add_branch", _m107_bu_config_add_branch),
 ]
 
 
@@ -554,12 +609,14 @@ async def migrate_db(_tenant: str = "") -> None:
     """Run pending migrations on carmen_ai. _tenant param kept for backward compat."""
     engine = _get_engine()
     async with engine.begin() as conn:
-        await conn.execute(text("""
+        await conn.execute(
+            text("""
             CREATE TABLE IF NOT EXISTS schema_migrations (
                 name       VARCHAR(100) PRIMARY KEY,
                 applied_at DATETIME     DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        """))
+        """)
+        )
         rows = await conn.execute(text("SELECT name FROM schema_migrations"))
         applied = {row[0] for row in rows.fetchall()}
 

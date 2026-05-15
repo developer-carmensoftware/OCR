@@ -38,7 +38,12 @@ function AuthScreen({ state, message }) {
       iconBorder: 'var(--rose-mid)',
       title: 'Authentication Failed',
       subtitle: message || 'An error occurred. Please try again.',
-      badge: { label: 'Auth Error', color: 'var(--rose)', bg: 'var(--rose-light)', border: 'var(--rose-mid)' },
+      badge: {
+        label: 'Auth Error',
+        color: 'var(--rose)',
+        bg: 'var(--rose-light)',
+        border: 'var(--rose-mid)',
+      },
     },
     unauthenticated: {
       Icon: Shield,
@@ -47,7 +52,12 @@ function AuthScreen({ state, message }) {
       iconBorder: 'var(--primary-mid)',
       title: 'Access via Carmen',
       subtitle: 'This system must be accessed through the Carmen web interface.',
-      badge: { label: 'Authentication Required', color: 'var(--primary)', bg: 'var(--primary-light)', border: 'var(--primary-mid)' },
+      badge: {
+        label: 'Authentication Required',
+        color: 'var(--primary)',
+        bg: 'var(--primary-light)',
+        border: 'var(--primary-mid)',
+      },
     },
   }[state]
 
@@ -56,22 +66,35 @@ function AuthScreen({ state, message }) {
       <div style={styles.card}>
         {/* logo + brand */}
         <div style={styles.brand}>
-          <img src={logo} alt="Carmen Cloud AI" style={{ width: 18, height: 18, objectFit: 'contain' }} />
-          <span style={styles.brandText}>Carmen  <strong style={{ color: 'var(--primary)', fontWeight: 700 }}>AI</strong></span>
+          <img
+            src={logo}
+            alt="Carmen Cloud AI"
+            style={{ width: 18, height: 18, objectFit: 'contain' }}
+          />
+          <span style={styles.brandText}>
+            Carmen <strong style={{ color: 'var(--primary)', fontWeight: 700 }}>AI</strong>
+          </span>
         </div>
 
-        <div style={{ width: '100%', height: 1, background: 'var(--border)', margin: '0.25rem 0' }} />
+        <div
+          style={{ width: '100%', height: 1, background: 'var(--border)', margin: '0.25rem 0' }}
+        />
 
         {/* icon */}
-        <div style={{
-          width: 56, height: 56,
-          borderRadius: 'var(--radius-md)',
-          background: config.iconBg,
-          border: `1.5px solid ${config.iconBorder}`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          marginTop: '0.5rem',
-          color: config.iconColor,
-        }}>
+        <div
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 'var(--radius-md)',
+            background: config.iconBg,
+            border: `1.5px solid ${config.iconBorder}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginTop: '0.5rem',
+            color: config.iconColor,
+          }}
+        >
           <config.Icon size={24} strokeWidth={1.75} className={config.iconClass} />
         </div>
 
@@ -79,12 +102,14 @@ function AuthScreen({ state, message }) {
         <p style={styles.subtitle}>{config.subtitle}</p>
 
         {config.badge && (
-          <div style={{
-            ...styles.badge,
-            color: config.badge.color,
-            background: config.badge.bg,
-            border: `1px solid ${config.badge.border}`,
-          }}>
+          <div
+            style={{
+              ...styles.badge,
+              color: config.badge.color,
+              background: config.badge.bg,
+              border: `1px solid ${config.badge.border}`,
+            }}
+          >
             <Circle size={6} fill="currentColor" strokeWidth={0} />
             {config.badge.label}
           </div>
@@ -98,14 +123,12 @@ function AuthScreen({ state, message }) {
 
         {(state === 'unauthenticated' || state === 'error') && (
           <a href={getCarmenUrl('/')} style={styles.btn}>
-            Go to Carmen 
+            Go to Carmen
           </a>
         )}
       </div>
 
-      <p style={styles.footer}>
-        Carmen Cloud AI Automation Platform
-      </p>
+      <p style={styles.footer}>Carmen Cloud AI Automation Platform</p>
 
       <style>{`
         @keyframes progressSlide {
@@ -131,7 +154,8 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     background: 'oklch(0.90 0.014 258.7)',
-    backgroundImage: 'radial-gradient(ellipse 70% 30% at 50% 0%, oklch(0.4714 0.1794 258.7 / 0.10) 0%, transparent 100%)',
+    backgroundImage:
+      'radial-gradient(ellipse 70% 30% at 50% 0%, oklch(0.4714 0.1794 258.7 / 0.10) 0%, transparent 100%)',
     padding: '2rem 1rem',
     fontFamily: "'Inter', 'Sarabun', sans-serif",
   },

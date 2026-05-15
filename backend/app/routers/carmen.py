@@ -6,10 +6,15 @@ Session injection (get_current_session) supplies the per-user Carmen token.
 """
 
 import logging
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import get_current_session, SessionInfo
+from app.auth import SessionInfo, get_current_session
+from app.database import get_db
+from app.models.orm import APInvoice
 from app.services.carmen_service import (
     CarmenAPIError,
     get_account_codes,
@@ -24,11 +29,6 @@ from app.services.carmen_service import (
     put_gljv,
     put_input_tax,
 )
-from app.database import get_db
-from app.models.orm import APInvoice
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -69,12 +69,16 @@ async def proxy_gljv(request: Request, session: SessionInfo = Depends(get_curren
 
 
 @router.put("/gljv/{jvh_seq}")
-async def proxy_update_gljv(jvh_seq: int, request: Request, session: SessionInfo = Depends(get_current_session)):
+async def proxy_update_gljv(
+    jvh_seq: int, request: Request, session: SessionInfo = Depends(get_current_session)
+):
     body = await request.json()
     try:
         return await put_gljv(jvh_seq, body, session.carmen_token)
     except CarmenAPIError as e:
-        raise HTTPException(status_code=e.status_code, detail=f"Carmen GL JV update ล้มเหลว: {e.detail}")
+        raise HTTPException(
+            status_code=e.status_code, detail=f"Carmen GL JV update ล้มเหลว: {e.detail}"
+        )
 
 
 @router.get("/vendors")
@@ -102,21 +106,29 @@ async def proxy_period_list(session: SessionInfo = Depends(get_current_session))
 
 
 @router.post("/input-tax")
-async def proxy_create_input_tax(request: Request, session: SessionInfo = Depends(get_current_session)):
+async def proxy_create_input_tax(
+    request: Request, session: SessionInfo = Depends(get_current_session)
+):
     body = await request.json()
     try:
         return await post_input_tax(body, session.carmen_token)
     except CarmenAPIError as e:
-        raise HTTPException(status_code=e.status_code, detail=f"Carmen Input Tax ล้มเหลว: {e.detail}")
+        raise HTTPException(
+            status_code=e.status_code, detail=f"Carmen Input Tax ล้มเหลว: {e.detail}"
+        )
 
 
 @router.put("/input-tax/{rec_seq}")
-async def proxy_update_input_tax(rec_seq: int, request: Request, session: SessionInfo = Depends(get_current_session)):
+async def proxy_update_input_tax(
+    rec_seq: int, request: Request, session: SessionInfo = Depends(get_current_session)
+):
     body = await request.json()
     try:
         return await put_input_tax(rec_seq, body, session.carmen_token)
     except CarmenAPIError as e:
-        raise HTTPException(status_code=e.status_code, detail=f"Carmen Input Tax update ล้มเหลว: {e.detail}")
+        raise HTTPException(
+            status_code=e.status_code, detail=f"Carmen Input Tax update ล้มเหลว: {e.detail}"
+        )
 
 
 @router.post("/invoice")
@@ -124,7 +136,7 @@ async def proxy_create_invoice(
     request: Request,
     ap_invoice_id: str = None,
     db: AsyncSession = Depends(get_db),
-    session: SessionInfo = Depends(get_current_session)
+    session: SessionInfo = Depends(get_current_session),
 ):
     body = await request.json()
     try:

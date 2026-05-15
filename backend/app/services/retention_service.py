@@ -11,7 +11,6 @@ import csv
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Tuple
 
 from sqlalchemy import text
 
@@ -21,30 +20,78 @@ from app.database import async_session
 logger = logging.getLogger(__name__)
 
 # (table_name, retention_days, columns_to_archive)
-RETENTION_POLICY: List[Tuple[str, int, List[str]]] = [
+RETENTION_POLICY: list[tuple[str, int, list[str]]] = [
     (
-        "performance_logs", 90,
-        ["id", "tenant_id", "business_unit_id", "endpoint", "method",
-         "duration_ms", "status_code", "carmen_user_id", "resource_id", "created_at"],
+        "performance_logs",
+        90,
+        [
+            "id",
+            "tenant_id",
+            "business_unit_id",
+            "endpoint",
+            "method",
+            "duration_ms",
+            "status_code",
+            "carmen_user_id",
+            "resource_id",
+            "created_at",
+        ],
     ),
     (
-        "outbound_call_logs", 90,
-        ["id", "tenant_id", "business_unit_id", "service", "url", "method",
-         "status_code", "duration_ms", "request_size_bytes",
-         "session_id", "carmen_user_id", "created_at"],
+        "outbound_call_logs",
+        90,
+        [
+            "id",
+            "tenant_id",
+            "business_unit_id",
+            "service",
+            "url",
+            "method",
+            "status_code",
+            "duration_ms",
+            "request_size_bytes",
+            "session_id",
+            "carmen_user_id",
+            "created_at",
+        ],
     ),
     (
-        "llm_usage_logs", 365,
-        ["id", "tenant_id", "business_unit_id", "task_id", "module_id",
-         "carmen_session_id", "carmen_user_id", "model",
-         "prompt_tokens", "completion_tokens", "total_tokens",
-         "duration_ms", "cost_usd", "created_at"],
+        "llm_usage_logs",
+        365,
+        [
+            "id",
+            "tenant_id",
+            "business_unit_id",
+            "task_id",
+            "module_id",
+            "carmen_session_id",
+            "carmen_user_id",
+            "model",
+            "prompt_tokens",
+            "completion_tokens",
+            "total_tokens",
+            "duration_ms",
+            "cost_usd",
+            "created_at",
+        ],
     ),
     (
-        "audit_logs", 365,
-        ["id", "tenant_id", "business_unit_id", "admin_user_id", "carmen_user_id",
-         "username", "session_id", "ip_address",
-         "action", "resource", "resource_id", "created_at"],
+        "audit_logs",
+        365,
+        [
+            "id",
+            "tenant_id",
+            "business_unit_id",
+            "admin_user_id",
+            "carmen_user_id",
+            "username",
+            "session_id",
+            "ip_address",
+            "action",
+            "resource",
+            "resource_id",
+            "created_at",
+        ],
     ),
 ]
 
@@ -67,8 +114,13 @@ async def archive_and_cleanup() -> dict:
             result = await _process_table(table, cutoff, columns, archive_base)
             summary[table] = result
             if result["archived"] > 0:
-                logger.info("[retention] %s: archived=%d deleted=%d (cutoff=%s)",
-                            table, result["archived"], result["deleted"], cutoff.date())
+                logger.info(
+                    "[retention] %s: archived=%d deleted=%d (cutoff=%s)",
+                    table,
+                    result["archived"],
+                    result["deleted"],
+                    cutoff.date(),
+                )
         except Exception as exc:
             logger.error("[retention] %s FAILED: %s", table, exc)
             summary[table] = {"archived": 0, "deleted": 0, "error": str(exc)}
@@ -79,12 +131,12 @@ async def archive_and_cleanup() -> dict:
 async def _process_table(
     table: str,
     cutoff: datetime,
-    columns: List[str],
+    columns: list[str],
     archive_base: Path,
 ) -> dict:
     col_list = ", ".join(columns)
     archived = 0
-    deleted  = 0
+    deleted = 0
 
     async with async_session() as db:
         count_result = await db.execute(
@@ -109,7 +161,7 @@ async def _process_table(
         month_groups: dict[str, list] = {}
         for row in rows:
             row_dict = dict(zip(columns, row))
-            created  = row_dict.get("created_at")
+            created = row_dict.get("created_at")
             month_key = created.strftime("%Y-%m") if isinstance(created, datetime) else "unknown"
             month_groups.setdefault(month_key, []).append(row_dict)
 
@@ -117,7 +169,7 @@ async def _process_table(
         table_dir.mkdir(parents=True, exist_ok=True)
 
         for month_key, month_rows in month_groups.items():
-            csv_path   = table_dir / f"{month_key}.csv"
+            csv_path = table_dir / f"{month_key}.csv"
             file_exists = csv_path.exists()
             with open(csv_path, "a", newline="", encoding="utf-8") as f:
                 writer = csv.DictWriter(f, fieldnames=columns)
@@ -135,9 +187,11 @@ async def _process_table(
         max_id = rows[-1][0]
         while True:
             del_result = await db.execute(
-                text(f"DELETE FROM {table} "
-                     f"WHERE id >= :min_id AND id <= :max_id AND created_at < :cutoff "
-                     f"LIMIT :batch"),
+                text(
+                    f"DELETE FROM {table} "
+                    f"WHERE id >= :min_id AND id <= :max_id AND created_at < :cutoff "
+                    f"LIMIT :batch"
+                ),
                 {"min_id": min_id, "max_id": max_id, "cutoff": cutoff, "batch": _BATCH_SIZE},
             )
             await db.commit()
@@ -150,14 +204,16 @@ async def _process_table(
 
 async def purge_inactive_sessions() -> int:
     """Delete inactive ocr_sessions older than SESSION_INACTIVE_PURGE_DAYS days."""
-    cutoff  = datetime.utcnow() - timedelta(days=SESSION_INACTIVE_PURGE_DAYS)
+    cutoff = datetime.utcnow() - timedelta(days=SESSION_INACTIVE_PURGE_DAYS)
     deleted = 0
     async with async_session() as db:
         while True:
             result = await db.execute(
-                text("DELETE FROM ocr_sessions "
-                     "WHERE is_active = 0 AND last_used_at < :cutoff "
-                     "LIMIT :batch"),
+                text(
+                    "DELETE FROM ocr_sessions "
+                    "WHERE is_active = 0 AND last_used_at < :cutoff "
+                    "LIMIT :batch"
+                ),
                 {"cutoff": cutoff, "batch": _BATCH_SIZE},
             )
             await db.commit()

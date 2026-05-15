@@ -9,17 +9,17 @@ Logic:
 import logging
 from datetime import datetime, timedelta
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
 
+from app.context import current_business_unit_id, current_tenant_id
 from app.models.orm import CorrectionFeedback, CreditCard
-from app.context import current_tenant_id, current_business_unit_id
 
 logger = logging.getLogger(__name__)
 
-ERROR_RATE_THRESHOLD = 0.10   # 10% — only hint if error rate exceeds this
-TTL_DAYS             = 90
-MIN_CARDS            = 10     # need at least this many submitted docs for meaningful ratio
+ERROR_RATE_THRESHOLD = 0.10  # 10% — only hint if error rate exceeds this
+TTL_DAYS = 90
+MIN_CARDS = 10  # need at least this many submitted docs for meaningful ratio
 
 
 async def get_correction_hints(
@@ -30,9 +30,9 @@ async def get_correction_hints(
     Return {field_name: hint_text} for fields where error rate > 10%.
     Scoped to the current tenant + business_unit from context vars.
     """
-    tenant_id        = current_tenant_id.get()
+    tenant_id = current_tenant_id.get()
     business_unit_id = current_business_unit_id.get()
-    cutoff           = datetime.utcnow() - timedelta(days=TTL_DAYS)
+    cutoff = datetime.utcnow() - timedelta(days=TTL_DAYS)
 
     # Base filters for tenant scope
     card_filters = [
@@ -61,7 +61,9 @@ async def get_correction_hints(
     total_cards = total_result.scalar() or 0
 
     if total_cards < MIN_CARDS:
-        logger.debug("[hints] %s: only %d docs (need %d) — skipping", bank_code, total_cards, MIN_CARDS)
+        logger.debug(
+            "[hints] %s: only %d docs (need %d) — skipping", bank_code, total_cards, MIN_CARDS
+        )
         return {}
 
     # Count corrections per field (numerator)
@@ -78,6 +80,11 @@ async def get_correction_hints(
             hints[field_name] = f"{correction_count}/{total_cards} ({error_rate:.0%})"
 
     if hints:
-        logger.info("[hints] %s: %d field(s) above %d%% threshold: %s",
-                    bank_code, len(hints), int(ERROR_RATE_THRESHOLD * 100), list(hints.keys()))
+        logger.info(
+            "[hints] %s: %d field(s) above %d%% threshold: %s",
+            bank_code,
+            len(hints),
+            int(ERROR_RATE_THRESHOLD * 100),
+            list(hints.keys()),
+        )
     return hints

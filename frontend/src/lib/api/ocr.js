@@ -8,9 +8,7 @@ export async function extractFromFile(file, bankType) {
   const formData = new FormData()
   formData.append('files', file)
 
-  const url = bankType
-    ? `/api/v1/ocr/extract?bank_type=${bankType}`
-    : '/api/v1/ocr/extract'
+  const url = bankType ? `/api/v1/ocr/extract?bank_type=${bankType}` : '/api/v1/ocr/extract'
 
   const res = await apiFetch(url, { method: 'POST', body: formData })
 
@@ -26,25 +24,25 @@ export async function extractFromFile(file, bankType) {
 
   const details = (card.details || []).map(d => ({
     Transaction: d.transaction || '',
-    PayAmt:      d.pay_amt    || '',
-    CommisAmt:   d.commis_amt || '',
-    TaxAmt:      d.tax_amt    || '',
-    WHTAmount:   '',
-    Total:       d.total      || '',
+    PayAmt: d.pay_amt || '',
+    CommisAmt: d.commis_amt || '',
+    TaxAmt: d.tax_amt || '',
+    WHTAmount: '',
+    Total: d.total || '',
   }))
 
   return {
-    bank_name:        card.bank_name        || '',
-    bank_type:        bankType              || '',
-    doc_name:         card.doc_name         || '',
-    company_name:     card.company_name     || '',
-    doc_date:         card.doc_date         || '',
-    doc_no:           card.doc_no           || '',
-    merchant_name:    card.merchant_name    || '',
-    merchant_id:      card.merchant_id      || '',
+    bank_name: card.bank_name || '',
+    bank_type: bankType || '',
+    doc_name: card.doc_name || '',
+    company_name: card.company_name || '',
+    doc_date: card.doc_date || '',
+    doc_no: card.doc_no || '',
+    merchant_name: card.merchant_name || '',
+    merchant_id: card.merchant_id || '',
     bank_companyname: card.bank_companyname || '',
-    branch_no:        card.branch_no        || '',
-    is_duplicate:     card.is_duplicate     || false,
+    branch_no: card.branch_no || '',
+    is_duplicate: card.is_duplicate || false,
     details,
   }
 }

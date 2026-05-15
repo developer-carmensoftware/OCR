@@ -13,17 +13,17 @@ Identity hierarchy:
 from contextvars import ContextVar
 
 # ── Tenant identity (FK-based, resolved from JWT) ─────────────────────────────
-current_tenant_id:        ContextVar[str] = ContextVar("current_tenant_id",        default="")
+current_tenant_id: ContextVar[str] = ContextVar("current_tenant_id", default="")
 current_business_unit_id: ContextVar[str] = ContextVar("current_business_unit_id", default="")
 
 # ── Carmen ERP user (external, no FK) ────────────────────────────────────────
 current_carmen_user_id: ContextVar[str] = ContextVar("current_carmen_user_id", default="")
-current_username:       ContextVar[str] = ContextVar("current_username",       default="")
+current_username: ContextVar[str] = ContextVar("current_username", default="")
 
 # ── Session ───────────────────────────────────────────────────────────────────
 current_ocr_session_id: ContextVar[str] = ContextVar("current_ocr_session_id", default="")
-current_carmen_token:   ContextVar[str] = ContextVar("current_carmen_token",   default="")
-current_carmen_uri:     ContextVar[str] = ContextVar("current_carmen_uri",     default="")
+current_carmen_token: ContextVar[str] = ContextVar("current_carmen_token", default="")
+current_carmen_uri: ContextVar[str] = ContextVar("current_carmen_uri", default="")
 
 # ── Routing helpers ───────────────────────────────────────────────────────────
 # Set by route handlers after the target document is known.

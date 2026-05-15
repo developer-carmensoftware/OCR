@@ -6,6 +6,7 @@ performs all arithmetic — taxType detection, per-item line totals, footer
 discount distribution, deposit/installment negative row, header sums, and
 reconciliation against the document's stated grand total.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -26,7 +27,9 @@ def _r2(x: float) -> float:
     return round(x + 1e-9, 2)
 
 
-def _detect_tax_type(items: list[dict], deposit_pct: float, doc_sub: float, doc_grand: float) -> str:
+def _detect_tax_type(
+    items: list[dict], deposit_pct: float, doc_sub: float, doc_grand: float
+) -> str:
     """Decide Include vs Exclude by checking which interpretation of the items'
     sum reconciles to the document footer. For deposit/installment docs the
     items show the full order while the footer shows the collected amount, so
@@ -91,7 +94,7 @@ def _compute_line_totals(item: dict, tax_type: str, has_footer_disc: bool = Fals
     if line_amt_doc and disc > 0 and not has_footer_disc:
         # Amount column = NET (per-row discount in document) — don't deduct again
         after_disc = _r2(line_amt_doc)
-        invoice_amt = _r2(after_disc + disc)   # reconstruct gross for discountPct calc
+        invoice_amt = _r2(after_disc + disc)  # reconstruct gross for discountPct calc
     elif line_amt_doc:
         # Amount column = GROSS (footer discount or no discount)
         invoice_amt = _r2(line_amt_doc)
@@ -114,9 +117,9 @@ def _compute_line_totals(item: dict, tax_type: str, has_footer_disc: bool = Fals
         line_total = _r2(line_sub + tax_amt)
 
     item["qty"] = qty
-    item["unitPrice"] = price            # original price from document (display as-is)
-    item["discountPct"] = disc_pct       # % shown in column (for display)
-    item["discountAmt"] = disc           # original discount amount (for display)
+    item["unitPrice"] = price  # original price from document (display as-is)
+    item["discountPct"] = disc_pct  # % shown in column (for display)
+    item["discountAmt"] = disc  # original discount amount (for display)
     item["taxPct"] = tax_pct
     item["taxType"] = tax_type
     item["lineSubTotal"] = line_sub
@@ -124,7 +127,9 @@ def _compute_line_totals(item: dict, tax_type: str, has_footer_disc: bool = Fals
     item["lineTotal"] = line_total
 
 
-def _build_deposit_row(items: list[dict], deposit_pct: float, deposit_label: str, tax_type: str) -> dict | None:
+def _build_deposit_row(
+    items: list[dict], deposit_pct: float, deposit_label: str, tax_type: str
+) -> dict | None:
     """Construct the negative deposit/installment row that brings the items
     total down to the actual amount being collected this period."""
     if deposit_pct <= 0 or deposit_pct >= 100 or not items:

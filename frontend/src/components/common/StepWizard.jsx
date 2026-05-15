@@ -14,8 +14,8 @@ export default function StepWizard({ step, steps, onStepClick }) {
     <div className="step-wizard-wrap">
       <div className="step-wizard">
         {STEPS.map((s, i) => {
-          const isDone      = step > s.n
-          const isActive    = step === s.n
+          const isDone = step > s.n
+          const isActive = step === s.n
           const isClickable = isDone && !!onStepClick
           return (
             <div key={s.n} style={{ display: 'contents' }}>
@@ -26,15 +26,23 @@ export default function StepWizard({ step, steps, onStepClick }) {
                 role={isClickable ? 'button' : undefined}
                 tabIndex={isClickable ? 0 : undefined}
                 title={isClickable ? `Back to Step ${s.n}: ${s.label}` : undefined}
-                onKeyDown={isClickable ? (e) => {
-                  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onStepClick(s.n) }
-                } : undefined}
+                onKeyDown={
+                  isClickable
+                    ? e => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          onStepClick(s.n)
+                        }
+                      }
+                    : undefined
+                }
               >
                 {isActive && (
                   <motion.span
                     layoutId="step-active-pill"
                     style={{
-                      position: 'absolute', inset: 0,
+                      position: 'absolute',
+                      inset: 0,
                       borderRadius: '100px',
                       background: 'var(--primary)',
                       zIndex: 0,
@@ -47,15 +55,13 @@ export default function StepWizard({ step, steps, onStepClick }) {
                 </div>
                 <span className="step-label" style={{ position: 'relative', zIndex: 1 }}>
                   {s.label}
-                  {s.sub && <span style={{ display: 'inline', opacity: 0.65 }}>{' '}{s.sub}</span>}
+                  {s.sub && <span style={{ display: 'inline', opacity: 0.65 }}> {s.sub}</span>}
                 </span>
               </div>
               {i < STEPS.length - 1 && (
                 <div
                   className="step-sep"
-                  style={step > s.n
-                    ? { background: 'var(--emerald)', opacity: 0.6 }
-                    : {}}
+                  style={step > s.n ? { background: 'var(--emerald)', opacity: 0.6 } : {}}
                 />
               )}
             </div>

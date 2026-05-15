@@ -1,11 +1,10 @@
-import sys
+import asyncio
 import io
 import logging
-import asyncio
+import sys
 import traceback
 from contextlib import asynccontextmanager
 from datetime import datetime
-
 
 # ── Force UTF-8 on Windows (prevents 'charmap' codec errors with Thai text) ──
 if sys.platform == "win32":
@@ -14,8 +13,11 @@ if sys.platform == "win32":
         _stream = getattr(sys, _stream_name)
         if hasattr(_stream, "buffer"):
             setattr(
-                sys, _stream_name,
-                io.TextIOWrapper(_stream.buffer, encoding="utf-8", errors="replace", line_buffering=True),
+                sys,
+                _stream_name,
+                io.TextIOWrapper(
+                    _stream.buffer, encoding="utf-8", errors="replace", line_buffering=True
+                ),
             )
 
 from fastapi import FastAPI, HTTPException, Request
@@ -30,21 +32,20 @@ from app.exceptions import (
     ExtractionError,
     LLMParseError,
     LLMServiceError,
-    ValidationError,
     RateLimitExceeded,
+    ValidationError,
 )
-from app.routers.auth import router as auth_router
 from app.middleware.performance import PerformanceMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
-from app.routers.ocr import router as ocr_router
-from app.routers.mapping import router as mapping_router
-from app.routers.carmen import router as carmen_router
-from app.routers.tool_registry import router as tools_router
-from app.routers.feedback import router as feedback_router
-from app.routers.ap_invoice import router as ap_invoice_router
 from app.routers.admin import router as admin_router
+from app.routers.ap_invoice import router as ap_invoice_router
+from app.routers.auth import router as auth_router
+from app.routers.carmen import router as carmen_router
 from app.routers.config import router as config_router
-
+from app.routers.feedback import router as feedback_router
+from app.routers.mapping import router as mapping_router
+from app.routers.ocr import router as ocr_router
+from app.routers.tool_registry import router as tools_router
 
 # ── Logging Setup (uses the reconfigured UTF-8 stderr) ──
 logging.basicConfig(
@@ -58,6 +59,7 @@ logger = logging.getLogger(__name__)
 
 # ── Background Scheduler ─────────────────────────────────────────────────────
 
+
 async def _run_for_all_tenants(coro_factory, label: str) -> None:
     """
     Run coro_factory() once per active tenant, setting current_tenant_id context.
@@ -65,6 +67,7 @@ async def _run_for_all_tenants(coro_factory, label: str) -> None:
     they query the full table with GROUP BY tenant_id internally.
     """
     from app.context import current_scheduler_tenant as _ct
+
     tenants = await get_all_tenants()
     for tenant_id in tenants:
         token = _ct.set(tenant_id)
@@ -78,15 +81,16 @@ async def _run_for_all_tenants(coro_factory, label: str) -> None:
 
 async def _run_job(job_name: str, coro_factory) -> None:
     """Run a scheduler job and record its execution in job_runs for drift detection."""
-    from app.database import async_session
-    from app.models.orm import JobRun
-    from app.models.enums import JobStatus
     from sqlalchemy import insert, text
 
-    started      = datetime.utcnow()
+    from app.database import async_session
+    from app.models.enums import JobStatus
+    from app.models.orm import JobRun
+
+    started = datetime.utcnow()
     rows_affected = None
-    error_msg    = None
-    status       = JobStatus.SUCCESS
+    error_msg = None
+    status = JobStatus.SUCCESS
 
     async with async_session() as db:
         result = await db.execute(
@@ -102,7 +106,7 @@ async def _run_job(job_name: str, coro_factory) -> None:
             elif isinstance(ret, int):
                 rows_affected = ret
         except Exception as exc:
-            status    = JobStatus.FAILED
+            status = JobStatus.FAILED
             error_msg = str(exc)
             logger.error("[scheduler] job %s failed: %s", job_name, exc)
 
@@ -111,8 +115,13 @@ async def _run_job(job_name: str, coro_factory) -> None:
                 "UPDATE job_runs SET status=:status, completed_at=:done, "
                 "rows_affected=:rows, error_message=:err WHERE id=:id"
             ),
-            {"status": status.value, "done": datetime.utcnow(),
-             "rows": rows_affected, "err": error_msg, "id": run_id},
+            {
+                "status": status.value,
+                "done": datetime.utcnow(),
+                "rows": rows_affected,
+                "err": error_msg,
+                "id": run_id,
+            },
         )
         await db.commit()
 
@@ -134,18 +143,29 @@ async def _scheduler_loop():
         try:
             # ── Daily: retention cleanup ──
             if settings.retention_enabled:
-                from app.services.retention_service import archive_and_cleanup, purge_inactive_sessions
+                from app.services.retention_service import (
+                    archive_and_cleanup,
+                    purge_inactive_sessions,
+                )
+
                 logger.info("[scheduler] Running retention archive + cleanup...")
-                await _run_job("retention", lambda: _run_for_all_tenants(archive_and_cleanup, "retention"))
-                await _run_job("session-purge", lambda: _run_for_all_tenants(purge_inactive_sessions, "session-purge"))
+                await _run_job(
+                    "retention", lambda: _run_for_all_tenants(archive_and_cleanup, "retention")
+                )
+                await _run_job(
+                    "session-purge",
+                    lambda: _run_for_all_tenants(purge_inactive_sessions, "session-purge"),
+                )
 
             # ── Daily: build yesterday's summary (aggregates all tenants in one pass) ──
             from app.services.summary_service import build_daily_summary
+
             logger.info("[scheduler] Building daily summary...")
             await _run_job("summary", build_daily_summary)
 
             # ── Daily: anomaly detection (runs after summary so data is ready) ──
             from app.services.anomaly_service import detect_anomalies
+
             logger.info("[scheduler] Running anomaly detection...")
             await _run_job("anomaly-detection", detect_anomalies)
 
@@ -153,6 +173,7 @@ async def _scheduler_loop():
             day_counter += 1
             if day_counter % 30 == 1:
                 from app.services.partition_manager import ensure_partitions
+
                 logger.info("[scheduler] Checking partitions...")
                 await _run_job("partitions", ensure_partitions)
 
@@ -167,6 +188,7 @@ async def _pricing_sync_loop():
     while True:
         try:
             from app.services.usage_service import fetch_openrouter_pricing
+
             await fetch_openrouter_pricing()
         except asyncio.CancelledError:
             break
@@ -183,9 +205,12 @@ async def lifespan(_app: FastAPI):
     logger.info("🚀 Starting AI OCR Bank Receipt Backend...")
     logger.info(f"   OCR Model  : {settings.openrouter_ocr_model}")
     logger.info(f"   Sugg Model : {settings.openrouter_suggestion_model}")
-    logger.info(f"   OpenRouter : {'✅ Configured' if settings.openrouter_api_key else '❌ Not set'}")
+    logger.info(
+        f"   OpenRouter : {'✅ Configured' if settings.openrouter_api_key else '❌ Not set'}"
+    )
     logger.info(f"   Upload Dir : {settings.upload_dir}")
     from app.database import _db_root_url
+
     logger.info(f"   Database   : {_db_root_url()}/carmen_ai")
 
     await ensure_db()
@@ -244,15 +269,16 @@ app.add_middleware(
 
 # ── Global error handler ──
 _EXCEPTION_STATUS: list[tuple] = [
-    (HTTPException,          None),              # passthrough — use exc.status_code
+    (HTTPException, None),  # passthrough — use exc.status_code
     (DuplicateDocumentError, 409),
-    (ValidationError,        400),
-    (LLMParseError,          422),
-    (ExtractionError,        422),
-    (LLMServiceError,        503),
-    (CarmenServiceError,     503),
-    (RateLimitExceeded,      429),
+    (ValidationError, 400),
+    (LLMParseError, 422),
+    (ExtractionError, 422),
+    (LLMServiceError, 503),
+    (CarmenServiceError, 503),
+    (RateLimitExceeded, 429),
 ]
+
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
@@ -304,6 +330,7 @@ async def root():
 async def version():
     """Returns app version and registered prompt versions for audit/traceability."""
     from app.llm.prompts import _PROMPT_VERSIONS
+
     return {
         "app_version": settings.app_version,
         "prompt_versions": _PROMPT_VERSIONS,

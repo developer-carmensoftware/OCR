@@ -9,10 +9,10 @@ Outbound calls are logged via httpx event hooks to prove data only reaches Carme
 
 import logging
 import time
-from typing import Any, Dict
+from typing import Any
 
 import httpx
-from httpx import ConnectError, TimeoutException, RequestError
+from httpx import ConnectError, RequestError, TimeoutException
 
 logger = logging.getLogger(__name__)
 
@@ -22,13 +22,14 @@ _TIMEOUT = 30.0
 def _base_url() -> str:
     """Derive Carmen API base URL from the current session's carmen_uri context var."""
     from app.context import current_carmen_uri
+
     uri = current_carmen_uri.get() or ""
     if not uri:
         raise RuntimeError("carmen_uri not set in context — session may be missing uri")
     return f"{uri.rstrip('/')}/Carmen.API/api/interface"
 
 
-def _headers(carmen_token: str) -> Dict[str, str]:
+def _headers(carmen_token: str) -> dict[str, str]:
     return {
         "Authorization": carmen_token,
         "User-Agent": "FastAPI-Proxy",
@@ -44,6 +45,7 @@ class CarmenAPIError(Exception):
 
 # ── httpx event hooks for outbound logging ────────────────────────────────────
 
+
 async def _on_request(request: httpx.Request) -> None:
     """Record request start time on the request's extensions dict."""
     request.extensions["_start"] = time.perf_counter()
@@ -52,6 +54,7 @@ async def _on_request(request: httpx.Request) -> None:
 async def _on_response(response: httpx.Response) -> None:
     """Fire-and-forget log entry after Carmen responds, plus session deactivation on 401."""
     from app.services.outbound_log_service import log_outbound
+
     start = response.request.extensions.get("_start", time.perf_counter())
     duration_ms = (time.perf_counter() - start) * 1000
     await log_outbound(
@@ -71,10 +74,11 @@ async def _deactivate_current_session() -> None:
     Carmen is the source of truth for token validity — once it rejects the token,
     further calls in this session are pointless. Failure to update is swallowed
     so the calling request continues to surface the 401 to the user."""
+    from sqlalchemy import update
+
     from app.context import current_ocr_session_id as current_session_id
     from app.database import async_session
     from app.models.orm import OcrSession
-    from sqlalchemy import update
 
     sid = current_session_id.get() or ""
     if not sid:
@@ -99,9 +103,12 @@ def _client(carmen_token: str) -> httpx.AsyncClient:
 
 # ── Service functions ─────────────────────────────────────────────────────────
 
+
 def _wrap_network_error(exc: RequestError) -> CarmenAPIError:
     if isinstance(exc, ConnectError):
-        return CarmenAPIError(503, "ไม่สามารถเชื่อมต่อ Carmen Server ได้ กรุณาตรวจสอบการเชื่อมต่อและลองใหม่อีกครั้ง")
+        return CarmenAPIError(
+            503, "ไม่สามารถเชื่อมต่อ Carmen Server ได้ กรุณาตรวจสอบการเชื่อมต่อและลองใหม่อีกครั้ง"
+        )
     if isinstance(exc, TimeoutException):
         return CarmenAPIError(504, "Carmen Server ใช้เวลานานเกินไป กรุณาลองใหม่อีกครั้ง")
     return CarmenAPIError(503, f"เกิดข้อผิดพลาดในการเชื่อมต่อ Carmen: {exc}")
@@ -169,12 +176,28 @@ async def put_gljv(jvh_seq: int, body: dict, carmen_token: str) -> Any:
         raise _wrap_network_error(e) from e
 
 
-_VENDOR_FIELDS = frozenset({
-    'VnCode', 'VnName', 'Active', 'VnTaxNo', 'VnCateCode', 'VnCateDesc',
-    'VnVat1DrAccCode', 'VnVat1DrAccDesc', 'VnVat1DrDeptCode', 'VnVat1DrDeptDesc',
-    'VnVatCrAccCode', 'VnVatCrAccDesc', 'VnCrDeptCode', 'VnCrDeptDesc',
-    'TaxProfileCode1', 'TaxProfileDesc1', 'BranchNo', 'VnTerm',
-})
+_VENDOR_FIELDS = frozenset(
+    {
+        "VnCode",
+        "VnName",
+        "Active",
+        "VnTaxNo",
+        "VnCateCode",
+        "VnCateDesc",
+        "VnVat1DrAccCode",
+        "VnVat1DrAccDesc",
+        "VnVat1DrDeptCode",
+        "VnVat1DrDeptDesc",
+        "VnVatCrAccCode",
+        "VnVatCrAccDesc",
+        "VnCrDeptCode",
+        "VnCrDeptDesc",
+        "TaxProfileCode1",
+        "TaxProfileDesc1",
+        "BranchNo",
+        "VnTerm",
+    }
+)
 
 
 async def get_vendors(carmen_token: str) -> Any:
@@ -184,10 +207,9 @@ async def get_vendors(carmen_token: str) -> Any:
             if resp.status_code != 200:
                 raise CarmenAPIError(resp.status_code, resp.text)
             data = resp.json()
-            if isinstance(data, dict) and isinstance(data.get('Data'), list):
-                data['Data'] = [
-                    {k: v for k, v in item.items() if k in _VENDOR_FIELDS}
-                    for item in data['Data']
+            if isinstance(data, dict) and isinstance(data.get("Data"), list):
+                data["Data"] = [
+                    {k: v for k, v in item.items() if k in _VENDOR_FIELDS} for item in data["Data"]
                 ]
             return data
     except RequestError as e:

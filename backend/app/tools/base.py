@@ -6,18 +6,19 @@ regardless of which tool was called.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any
 
 
 @dataclass
 class ToolResult:
     """Standardized output from any tool invocation."""
+
     success: bool
     tool: str
-    input: Dict[str, Any]
+    input: dict[str, Any]
     output: Any = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    errors: List[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    errors: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {

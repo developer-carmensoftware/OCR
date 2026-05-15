@@ -2,11 +2,12 @@
 Integration tests for /api/v1/config/* endpoints.
 Sync test functions using starlette TestClient as a context manager.
 """
+
 import json
 from unittest.mock import MagicMock
+
 from tests.conftest import make_mock_db
 from tests.integration.conftest import make_test_client
-
 
 BASE = "/api/v1/config"
 AUTH = {"Authorization": "Bearer dummy"}
@@ -26,8 +27,14 @@ def _scalars(rows):
     return r
 
 
-def _config_row(id=1, file_prefix="PRE", file_source="SRC", bank_code="KBANK",
-                description="Monthly", branch=None):
+def _config_row(
+    id=1,
+    file_prefix="PRE",
+    file_source="SRC",
+    bank_code="KBANK",
+    description="Monthly",
+    branch=None,
+):
     row = MagicMock()
     row.id = id
     row.bank_code = bank_code
@@ -53,6 +60,7 @@ def _accounting_payload(**kwargs):
 
 # ── I3: GET /accounting ───────────────────────────────────────────────────────
 
+
 def test_I3_1_no_config_returns_empty_mappings():
     mock_db = make_mock_db()
     mock_db.execute.return_value.scalar_one_or_none.return_value = None
@@ -73,8 +81,8 @@ def test_get_accounting_with_config_returns_file_prefix():
         assert resp.json()["file_prefix"] == "PRE"
 
 
-
 # ── I3: PUT /accounting ───────────────────────────────────────────────────────
+
 
 def test_I3_2_put_new_config_returns_ok():
     mock_db = make_mock_db()
@@ -123,6 +131,7 @@ def test_I3_4_custom_types_entries_inserted():
 
 # ── I4: GET /ap-mapping/{vendor_tax_id} ──────────────────────────────────────
 
+
 def test_I4_1_no_mapping_returns_null():
     mock_db = make_mock_db()
     mock_db.execute.return_value.scalar_one_or_none.return_value = None
@@ -156,12 +165,12 @@ def test_I4_3_vendor_tax_id_url_encoded():
 
 # ── I4: PUT /ap-mapping/{vendor_tax_id} ──────────────────────────────────────
 
+
 def test_I4_2_put_new_mapping_returns_ok():
     mock_db = make_mock_db()
     mock_db.execute.return_value.scalar_one_or_none.return_value = None
     with make_test_client(mock_db) as client:
-        resp = client.put(f"{BASE}/ap-mapping/TAX-001",
-                          json={"col_A": "description"}, headers=AUTH)
+        resp = client.put(f"{BASE}/ap-mapping/TAX-001", json={"col_A": "description"}, headers=AUTH)
         assert resp.status_code == 200
         assert resp.json()["ok"] is True
 
@@ -170,8 +179,7 @@ def test_put_new_mapping_calls_add():
     mock_db = make_mock_db()
     mock_db.execute.return_value.scalar_one_or_none.return_value = None
     with make_test_client(mock_db) as client:
-        client.put(f"{BASE}/ap-mapping/TAX-001",
-                   json={"col_A": "description"}, headers=AUTH)
+        client.put(f"{BASE}/ap-mapping/TAX-001", json={"col_A": "description"}, headers=AUTH)
     mock_db.add.assert_called_once()
 
 
@@ -181,8 +189,7 @@ def test_put_existing_mapping_updates_field():
     existing.field_mappings_json = json.dumps({"old": "data"})
     mock_db.execute.return_value.scalar_one_or_none.return_value = existing
     with make_test_client(mock_db) as client:
-        client.put(f"{BASE}/ap-mapping/TAX-001",
-                   json={"new_col": "updated"}, headers=AUTH)
+        client.put(f"{BASE}/ap-mapping/TAX-001", json={"new_col": "updated"}, headers=AUTH)
     assert existing.field_mappings_json == json.dumps({"new_col": "updated"})
     mock_db.commit.assert_called_once()
 
@@ -196,6 +203,7 @@ def test_put_mapping_commits():
 
 
 # ── Analytics endpoint ────────────────────────────────────────────────────────
+
 
 def test_analytics_no_filter_returns_error_message():
     mock_db = make_mock_db()

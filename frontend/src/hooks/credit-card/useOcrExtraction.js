@@ -1,5 +1,9 @@
 import { useState } from 'react'
-import { EMPTY_DETAIL_ROW, detectBankFromCompanyName, detectBankFromExtracted } from '../../constants'
+import {
+  EMPTY_DETAIL_ROW,
+  detectBankFromCompanyName,
+  detectBankFromExtracted,
+} from '../../constants'
 import { extractFromFile } from '../../lib/api/ocr'
 import { showToast } from '../../lib/toast'
 
@@ -38,17 +42,24 @@ export function useOcrExtraction({ showModal, closeModal, setStep, clearFiles, f
       BranchNo: ext.branch_no || '',
     }
     setHeaderData(header)
-    const detailsList = (ext.details?.length ? ext.details : [{ ...EMPTY_DETAIL_ROW }])
-      .map(row => ({ ...row, _uid: crypto.randomUUID() }))
+    const detailsList = (ext.details?.length ? ext.details : [{ ...EMPTY_DETAIL_ROW }]).map(
+      row => ({ ...row, _uid: crypto.randomUUID() })
+    )
     setDetails(detailsList)
     setOriginalDetails(JSON.parse(JSON.stringify(detailsList)))
     setOriginalHeader(JSON.parse(JSON.stringify(header)))
 
     // Write for Mapping page to read activeScan (payment types, commission/tax/net flags)
     try {
-      const bankCode = detectBankFromExtracted(ext) || detectBankFromCompanyName(ext.bank_companyname) || ''
-      localStorage.setItem('ocr_wizard_state', JSON.stringify({ bank: bankCode, details: detailsList }))
-    } catch { /* ignore */ }
+      const bankCode =
+        detectBankFromExtracted(ext) || detectBankFromCompanyName(ext.bank_companyname) || ''
+      localStorage.setItem(
+        'ocr_wizard_state',
+        JSON.stringify({ bank: bankCode, details: detailsList })
+      )
+    } catch {
+      /* ignore */
+    }
 
     if (ext.bank_companyname || ext.branch_no) {
       try {
@@ -63,7 +74,9 @@ export function useOcrExtraction({ showModal, closeModal, setStep, clearFiles, f
           existing.bank = BANK_CODE_TO_NAME[detectedBankCode]
         }
         localStorage.setItem('accountingConfig', JSON.stringify(existing))
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -86,7 +99,9 @@ export function useOcrExtraction({ showModal, closeModal, setStep, clearFiles, f
       showModal({
         title: 'No Document File Found',
         message: 'Please select an image or PDF file to process.',
-        type: 'warning', confirmText: 'OK', onConfirm: closeModal,
+        type: 'warning',
+        confirmText: 'OK',
+        onConfirm: closeModal,
       })
       return
     }
@@ -111,17 +126,24 @@ export function useOcrExtraction({ showModal, closeModal, setStep, clearFiles, f
       if (err.status === 429) {
         showModal({
           title: 'Monthly Quota Exceeded',
-          message: 'Your Business Unit has reached the monthly document processing limit. Please contact your administrator to upgrade your plan.',
+          message:
+            'Your Business Unit has reached the monthly document processing limit. Please contact your administrator to upgrade your plan.',
           type: 'warning',
           confirmText: 'Acknowledge',
-          onConfirm: () => { closeModal(); setStep(1); clearFiles() },
+          onConfirm: () => {
+            closeModal()
+            setStep(1)
+            clearFiles()
+          },
         })
       } else {
         setStatus(err.message)
         showModal({
           title: 'Error Occurred',
           message: `Failed to extract data: ${err.message}`,
-          type: 'error', confirmText: 'Close', onConfirm: closeModal,
+          type: 'error',
+          confirmText: 'Close',
+          onConfirm: closeModal,
         })
       }
       setStep(1)
@@ -144,7 +166,9 @@ export function useOcrExtraction({ showModal, closeModal, setStep, clearFiles, f
       showModal({
         title: 'Re-extract Failed',
         message: `Failed to re-extract: ${err.message}`,
-        type: 'error', confirmText: 'Close', onConfirm: closeModal,
+        type: 'error',
+        confirmText: 'Close',
+        onConfirm: closeModal,
       })
     } finally {
       setLoading(false)
@@ -158,13 +182,15 @@ export function useOcrExtraction({ showModal, closeModal, setStep, clearFiles, f
   }
 
   function updateDetail(rowIndex, col, value) {
-    setDetails(prev =>
-      prev.map((row, i) => (i === rowIndex ? { ...row, [col]: value } : row))
-    )
+    setDetails(prev => prev.map((row, i) => (i === rowIndex ? { ...row, [col]: value } : row)))
   }
 
-  function addRow() { setDetails(prev => [...prev, { ...EMPTY_DETAIL_ROW, _uid: crypto.randomUUID() }]) }
-  function deleteRow(index) { setDetails(prev => prev.filter((_, i) => i !== index)) }
+  function addRow() {
+    setDetails(prev => [...prev, { ...EMPTY_DETAIL_ROW, _uid: crypto.randomUUID() }])
+  }
+  function deleteRow(index) {
+    setDetails(prev => prev.filter((_, i) => i !== index))
+  }
 
   function resetExtractionState() {
     setStatus('')
@@ -175,12 +201,21 @@ export function useOcrExtraction({ showModal, closeModal, setStep, clearFiles, f
   }
 
   return {
-    loading, status, bank, setBank,
+    loading,
+    status,
+    bank,
+    setBank,
     cardId,
-    headerData, details,
-    originalDetails, originalHeader,
-    processFile, reExtract,
-    updateHeader, updateDetail, addRow, deleteRow,
+    headerData,
+    details,
+    originalDetails,
+    originalHeader,
+    processFile,
+    reExtract,
+    updateHeader,
+    updateDetail,
+    addRow,
+    deleteRow,
     resetExtractionState,
     applyExtractedData,
   }

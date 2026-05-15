@@ -21,8 +21,8 @@ export const toNum = parseNum
  * Format a number to a localized string with 2 decimal places.
  * e.g. 1234.5 → "1,234.50"
  */
-export const fmt = (v) =>
+export const fmt = v =>
   parseNum(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 /** Round a value to 2 decimal places using proper floating-point arithmetic. */
-export const round2 = (v) => Math.round(parseNum(v) * 100) / 100
+export const round2 = v => Math.round(parseNum(v) * 100) / 100

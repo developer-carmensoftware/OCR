@@ -1,7 +1,5 @@
 """Prompt builders for GL account mapping suggestions."""
 
-from typing import List
-
 
 def build_fixed_fields_prompt(
     dept_lines: str,
@@ -35,7 +33,7 @@ def build_payment_types_prompt(
     dept_lines: str,
     acc_lines: str,
     b_account_count: int,
-    payment_types: List[str],
+    payment_types: list[str],
 ) -> str:
     keys = ", ".join(f'"{t}"' for t in payment_types)
     return f"""Map card/payment settlement types to Thai accounting codes. Return JSON only — no markdown.
@@ -53,23 +51,25 @@ BalanceSheet accounts ({b_account_count}):
 
 Rules: use codes exactly as listed; null if no match; all types typically share the same account.
 Keys must be: {keys}
-{{"{payment_types[0] if payment_types else ''}":{{"dept":null,"acc":null}},...}}"""
+{{"{payment_types[0] if payment_types else ""}":{{"dept":null,"acc":null}},...}}"""
 
 
 def build_ap_expense_prompt(
-    items: List[dict],
+    items: list[dict],
     dept_lines: str,
     expense_acc_lines: str,
     expense_acc_count: int,
     invoice_desc: str = "",
 ) -> str:
     items_block = "\n".join(
-        f'  {i["index"]}: {i["category"]} — {i["description"]} (unit price: {i.get("unit_price", 0):.2f})'
+        f"  {i['index']}: {i['category']} — {i['description']} (unit price: {i.get('unit_price', 0):.2f})"
         for i in items
     )
     keys = ", ".join(f'"{i["index"]}"' for i in items)
     template = ", ".join(f'"{i["index"]}":{{"dept":"","acc":""}}' for i in items)
-    invoice_context = f"Invoice Description: {invoice_desc.strip()}\n\n" if invoice_desc.strip() else ""
+    invoice_context = (
+        f"Invoice Description: {invoice_desc.strip()}\n\n" if invoice_desc.strip() else ""
+    )
     return f"""Map AP invoice expense lines to Thai accounting codes. Return JSON only — no markdown.
 
 {invoice_context}Items (index: category — description | unit price):

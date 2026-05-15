@@ -10,16 +10,16 @@ User config router — persists per-BU settings that previously lived in localSt
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import SessionInfo, get_current_session
 from app.database import get_db
-from app.models import BUAccountingConfig, BUAccountingMappingEntry, APVendorColumnMapping
-from app.auth import get_current_session, SessionInfo
+from app.models import APVendorColumnMapping, BUAccountingConfig, BUAccountingMappingEntry
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/config", tags=["Config"])
@@ -30,32 +30,34 @@ _FIXED_TYPES = {"commission", "tax", "net"}
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
+
 class FieldMapping(BaseModel):
-    dept: Optional[str] = None
-    acc:  Optional[str] = None
+    dept: str | None = None
+    acc: str | None = None
 
 
 class AccountingConfigRequest(BaseModel):
-    bank_code:    Optional[str]                     = None
-    file_prefix:  Optional[str]                     = None
-    file_source:  Optional[str]                     = None
-    description:  Optional[str]                     = None
-    branch:       Optional[str]                     = None
-    mappings:     Optional[Dict[str, FieldMapping]] = None
-    custom_types: Optional[List[str]]               = None
+    bank_code: str | None = None
+    file_prefix: str | None = None
+    file_source: str | None = None
+    description: str | None = None
+    branch: str | None = None
+    mappings: dict[str, FieldMapping] | None = None
+    custom_types: list[str] | None = None
 
 
 class AccountingConfigResponse(BaseModel):
-    bank_code:    Optional[str]  = None
-    file_prefix:  Optional[str]  = None
-    file_source:  Optional[str]  = None
-    description:  Optional[str]  = None
-    branch:       Optional[str]  = None
-    mappings:     Dict[str, Any] = {}
-    custom_types: List[str]      = []
+    bank_code: str | None = None
+    file_prefix: str | None = None
+    file_source: str | None = None
+    description: str | None = None
+    branch: str | None = None
+    mappings: dict[str, Any] = {}
+    custom_types: list[str] = []
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 async def _get_config(db: AsyncSession, tenant_id: str, business_unit_id: str):
     result = await db.execute(
@@ -68,7 +70,7 @@ async def _get_config(db: AsyncSession, tenant_id: str, business_unit_id: str):
     return result.scalar_one_or_none()
 
 
-async def _get_entries(db: AsyncSession, config_id: int) -> List[BUAccountingMappingEntry]:
+async def _get_entries(db: AsyncSession, config_id: int) -> list[BUAccountingMappingEntry]:
     result = await db.execute(
         select(BUAccountingMappingEntry).where(
             BUAccountingMappingEntry.config_id == config_id,
@@ -78,14 +80,14 @@ async def _get_entries(db: AsyncSession, config_id: int) -> List[BUAccountingMap
     return result.scalars().all()
 
 
-def _entries_to_response(entries: List[BUAccountingMappingEntry]) -> tuple[dict, list]:
+def _entries_to_response(entries: list[BUAccountingMappingEntry]) -> tuple[dict, list]:
     """Return (mappings_dict, custom_types_list) from entry rows."""
     mappings = {}
     custom_types = []
     for e in entries:
         mappings[e.field_type] = {
             "dept": e.dept_code or "",
-            "acc":  e.acc_code  or "",
+            "acc": e.acc_code or "",
         }
         if e.is_custom:
             custom_types.append(e.field_type)
@@ -93,6 +95,7 @@ def _entries_to_response(entries: List[BUAccountingMappingEntry]) -> tuple[dict,
 
 
 # ── Accounting config endpoints ───────────────────────────────────────────────
+
 
 @router.get("/accounting", response_model=AccountingConfigResponse)
 async def get_accounting_config(
@@ -126,11 +129,11 @@ async def save_accounting_config(
     row = await _get_config(db, session.tenant_id, session.business_unit_id)
 
     if row:
-        row.bank_code   = req.bank_code
+        row.bank_code = req.bank_code
         row.file_prefix = req.file_prefix
         row.file_source = req.file_source
         row.description = req.description
-        row.branch      = req.branch
+        row.branch = req.branch
         await db.flush()
     else:
         row = BUAccountingConfig(
@@ -147,38 +150,43 @@ async def save_accounting_config(
 
     # Replace all mapping entries (delete + re-insert)
     await db.execute(
-        delete(BUAccountingMappingEntry).where(
-            BUAccountingMappingEntry.config_id == row.id
-        )
+        delete(BUAccountingMappingEntry).where(BUAccountingMappingEntry.config_id == row.id)
     )
 
     custom_set = set(req.custom_types or [])
     for field_type, mapping in (req.mappings or {}).items():
-        db.add(BUAccountingMappingEntry(
-            config_id=row.id,
-            field_type=field_type,
-            dept_code=mapping.dept or None,
-            acc_code=mapping.acc or None,
-            is_custom=(field_type not in _FIXED_TYPES),
-        ))
+        db.add(
+            BUAccountingMappingEntry(
+                config_id=row.id,
+                field_type=field_type,
+                dept_code=mapping.dept or None,
+                acc_code=mapping.acc or None,
+                is_custom=(field_type not in _FIXED_TYPES),
+            )
+        )
 
     # Custom types with no mapping (empty dept/acc) — ensure they exist
     for ct in custom_set:
         if ct not in (req.mappings or {}):
-            db.add(BUAccountingMappingEntry(
-                config_id=row.id,
-                field_type=ct,
-                dept_code=None,
-                acc_code=None,
-                is_custom=True,
-            ))
+            db.add(
+                BUAccountingMappingEntry(
+                    config_id=row.id,
+                    field_type=ct,
+                    dept_code=None,
+                    acc_code=None,
+                    is_custom=True,
+                )
+            )
 
     await db.commit()
-    logger.info("Saved accounting config for tenant=%s bu=%s", session.tenant_id, session.business_unit_id)
+    logger.info(
+        "Saved accounting config for tenant=%s bu=%s", session.tenant_id, session.business_unit_id
+    )
     return {"ok": True}
 
 
 # ── AP vendor column mapping endpoints ───────────────────────────────────────
+
 
 @router.get("/ap-mapping/{vendor_tax_id}")
 async def get_ap_vendor_mapping(
@@ -207,7 +215,7 @@ async def get_ap_vendor_mapping(
 @router.put("/ap-mapping/{vendor_tax_id}")
 async def save_ap_vendor_mapping(
     vendor_tax_id: str,
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
 ):
@@ -225,24 +233,29 @@ async def save_ap_vendor_mapping(
     if row:
         row.field_mappings_json = field_mappings_json
     else:
-        db.add(APVendorColumnMapping(
-            tenant_id=session.tenant_id,
-            business_unit_id=session.business_unit_id,
-            vendor_tax_id=vendor_tax_id,
-            field_mappings_json=field_mappings_json,
-        ))
+        db.add(
+            APVendorColumnMapping(
+                tenant_id=session.tenant_id,
+                business_unit_id=session.business_unit_id,
+                vendor_tax_id=vendor_tax_id,
+                field_mappings_json=field_mappings_json,
+            )
+        )
 
     await db.commit()
-    logger.info("Saved AP vendor mapping for vendor=%s bu=%s", vendor_tax_id, session.business_unit_id)
+    logger.info(
+        "Saved AP vendor mapping for vendor=%s bu=%s", vendor_tax_id, session.business_unit_id
+    )
     return {"ok": True}
 
 
 # ── Analytics endpoints ───────────────────────────────────────────────────────
 
+
 @router.get("/analytics/account-usage")
 async def get_account_usage(
-    acc_code:  Optional[str] = Query(None, description="Filter by GL account code"),
-    dept_code: Optional[str] = Query(None, description="Filter by department code"),
+    acc_code: str | None = Query(None, description="Filter by GL account code"),
+    dept_code: str | None = Query(None, description="Filter by department code"),
     db: AsyncSession = Depends(get_db),
     _session: SessionInfo = Depends(get_current_session),
 ):
@@ -280,17 +293,17 @@ async def get_account_usage(
     rows = result.all()
 
     return {
-        "acc_code":  acc_code,
+        "acc_code": acc_code,
         "dept_code": dept_code,
-        "count":     len(rows),
+        "count": len(rows),
         "results": [
             {
-                "tenant_id":        r.tenant_id,
+                "tenant_id": r.tenant_id,
                 "business_unit_id": r.business_unit_id,
-                "bank_code":        r.bank_code,
-                "field_type":       r.field_type,
-                "dept_code":        r.dept_code,
-                "acc_code":         r.acc_code,
+                "bank_code": r.bank_code,
+                "field_type": r.field_type,
+                "dept_code": r.dept_code,
+                "acc_code": r.acc_code,
             }
             for r in rows
         ],

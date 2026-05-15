@@ -7,32 +7,31 @@ Usage:
     prompt = get_ocr_prompt("SCB")     # explicit bank (backward compat)
 """
 
-from app.llm.prompts.shared import build_bank_prompt, build_combined_prompt
 from app.llm.prompts.bbl import LAYOUT as _BBL
+from app.llm.prompts.generic import LAYOUT as _GENERIC
 from app.llm.prompts.kbank import LAYOUT as _KBANK
 from app.llm.prompts.scb import LAYOUT as _SCB
-from app.llm.prompts.generic import LAYOUT as _GENERIC
+from app.llm.prompts.shared import build_bank_prompt, build_combined_prompt
 
 # Registry: add a new bank = new layout file + one entry here
 _REGISTRY: dict[str, str] = {
-    "BBL":   _BBL,
+    "BBL": _BBL,
     "KBANK": _KBANK,
-    "SCB":   _SCB,
+    "SCB": _SCB,
 }
 
 # Bump whenever a layout changes — used by GET /api/version
 _PROMPT_VERSIONS: dict[str, str] = {
-    "BBL":     "2.0.0",
-    "KBANK":   "2.0.0",
-    "SCB":     "2.0.0",
+    "BBL": "2.0.0",
+    "KBANK": "2.0.0",
+    "SCB": "2.0.0",
     "GENERIC": "2.0.0",
     "COMBINED": "2.0.0",
 }
 
 # Pre-built at import time — no cost at request time
 _BANK_PROMPTS: dict[str, str] = {
-    code: build_bank_prompt(layout)
-    for code, layout in _REGISTRY.items()
+    code: build_bank_prompt(layout) for code, layout in _REGISTRY.items()
 }
 _COMBINED: str = build_combined_prompt(list(_REGISTRY.values()) + [_GENERIC])
 
@@ -56,8 +55,4 @@ def get_ocr_prompt(bank_type: str | None = None, hints: dict[str, str] | None = 
         for field in hints.keys()
     )
     bank_label = bank_type or "this document type"
-    return (
-        base
-        + f"\n\n⚠️ CORRECTION NOTES (fields often wrong for {bank_label}):\n"
-        + hint_lines
-    )
+    return base + f"\n\n⚠️ CORRECTION NOTES (fields often wrong for {bank_label}):\n" + hint_lines

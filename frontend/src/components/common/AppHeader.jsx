@@ -41,9 +41,7 @@ export default function AppHeader({
         </div>
       </div>
 
-      <div className="app-header-actions">
-        {children}
-      </div>
+      <div className="app-header-actions">{children}</div>
     </header>
   )
 }

@@ -13,7 +13,14 @@ import DocumentPreview from './DocumentPreview'
  * @param {string}    fileName    - Original file name (shown in preview)
  * @param {ReactNode} children    - The work area content
  */
-export default function SplitLayout({ showPreview, onToggle, previewUrl, previewType, fileName, children }) {
+export default function SplitLayout({
+  showPreview,
+  onToggle,
+  previewUrl,
+  previewType,
+  fileName,
+  children,
+}) {
   return (
     <div className={`ap-split-layout ${!showPreview ? 'full-width' : ''}`}>
       {showPreview && (
@@ -29,9 +36,7 @@ export default function SplitLayout({ showPreview, onToggle, previewUrl, preview
           <FileText size={14} /> View Document
         </button>
       )}
-      <div className="ap-work-area">
-        {children}
-      </div>
+      <div className="ap-work-area">{children}</div>
     </div>
   )
 }

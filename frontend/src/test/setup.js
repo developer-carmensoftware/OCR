@@ -4,10 +4,16 @@ import '@testing-library/jest-dom'
 const makeStorage = () => {
   let store = {}
   return {
-    getItem: (k) => store[k] ?? null,
-    setItem: (k, v) => { store[k] = String(v) },
-    removeItem: (k) => { delete store[k] },
-    clear: () => { store = {} },
+    getItem: k => store[k] ?? null,
+    setItem: (k, v) => {
+      store[k] = String(v)
+    },
+    removeItem: k => {
+      delete store[k]
+    },
+    clear: () => {
+      store = {}
+    },
   }
 }
 

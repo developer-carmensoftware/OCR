@@ -1,7 +1,17 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
-import { FileText, Scale, Flag, AlertCircle, X, Check, Loader2, ArrowLeft, PlusCircle } from 'lucide-react'
+import {
+  FileText,
+  Scale,
+  Flag,
+  AlertCircle,
+  X,
+  Check,
+  Loader2,
+  ArrowLeft,
+  PlusCircle,
+} from 'lucide-react'
 import { submitInputTax } from '../../lib/api/carmen'
 import { normalizeYearToCE } from '../../lib/date'
 import { toNum, fmt } from '../../lib/format'
@@ -14,13 +24,12 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState(null)
 
-
   const company = config?.company || {}
 
   const netAmount = details.reduce((s, d) => s + toNum(d.CommisAmt ?? d.commis_amt), 0)
   const taxAmount = details.reduce((s, d) => s + toNum(d.TaxAmt ?? d.tax_amt), 0)
   const total = netAmount + taxAmount
-  const taxRate = netAmount > 0 ? parseFloat(((taxAmount / netAmount) * 100).toFixed(2)) : 7.00
+  const taxRate = netAmount > 0 ? parseFloat(((taxAmount / netAmount) * 100).toFixed(2)) : 7.0
   const taxProfile = `VAT0${Math.round(taxRate)} : VAT ${Math.round(taxRate)}%`
 
   // Tax period: DD/MM/YYYY → MM/YYYY
@@ -97,7 +106,9 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
   return (
     <div>
       <div className="section-header">
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}><FileText size={16} /> Step 6: Input Tax Reconciliation</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+          <FileText size={16} /> Step 6: Input Tax Reconciliation
+        </span>
       </div>
 
       <div className="data-card">
@@ -106,19 +117,31 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
             <Scale size={16} /> Input Tax Reconciliation
           </div>
           <div className="card-title-badges">
-            <span style={{
-              background: 'var(--primary-light)', color: 'var(--primary)',
-              border: '1px solid var(--primary-mid)', borderRadius: '4px',
-              padding: '0.2rem 0.65rem', fontSize: '0.8rem', fontWeight: 600,
-            }}>
+            <span
+              style={{
+                background: 'var(--primary-light)',
+                color: 'var(--primary)',
+                border: '1px solid var(--primary-mid)',
+                borderRadius: '4px',
+                padding: '0.2rem 0.65rem',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+              }}
+            >
               Source: ACTX
             </span>
             {taxPeriod && (
-              <span style={{
-                background: 'var(--gray-100)', color: 'var(--text-2)',
-                border: '1px solid var(--border)', borderRadius: '4px',
-                padding: '0.2rem 0.65rem', fontSize: '0.8rem', fontWeight: 500,
-              }}>
+              <span
+                style={{
+                  background: 'var(--gray-100)',
+                  color: 'var(--text-2)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '4px',
+                  padding: '0.2rem 0.65rem',
+                  fontSize: '0.8rem',
+                  fontWeight: 500,
+                }}
+              >
                 Tax Period: {taxPeriod}
               </span>
             )}
@@ -129,7 +152,12 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
           <div className="table-wrapper">
             <table className="data-table">
               <thead>
-                <tr style={{ backgroundColor: 'var(--bg-table-header, #2b4d81)', color: 'var(--text-table-header, #fff)' }}>
+                <tr
+                  style={{
+                    backgroundColor: 'var(--bg-table-header, #2b4d81)',
+                    color: 'var(--text-table-header, #fff)',
+                  }}
+                >
                   <th style={{ color: 'inherit', background: 'inherit' }}>Source</th>
                   <th style={{ color: 'inherit', background: 'inherit' }}>Tax Invoice No.</th>
                   <th style={{ color: 'inherit', background: 'inherit' }}>Tax Invoice Date</th>
@@ -138,27 +166,44 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
                   <th style={{ color: 'inherit', background: 'inherit' }}>Branch No.</th>
                   <th style={{ color: 'inherit', background: 'inherit' }}>Description</th>
                   <th style={{ color: 'inherit', background: 'inherit' }}>Tax Profile</th>
-                  <th className="text-right" style={{ color: 'inherit', background: 'inherit' }}>Tax Rate %</th>
-                  <th className="text-right" style={{ color: 'inherit', background: 'inherit' }}>Net Amount</th>
-                  <th className="text-right" style={{ color: 'inherit', background: 'inherit' }}>Tax</th>
-                  <th className="text-right" style={{ color: 'inherit', background: 'inherit' }}>Total</th>
+                  <th className="text-right" style={{ color: 'inherit', background: 'inherit' }}>
+                    Tax Rate %
+                  </th>
+                  <th className="text-right" style={{ color: 'inherit', background: 'inherit' }}>
+                    Net Amount
+                  </th>
+                  <th className="text-right" style={{ color: 'inherit', background: 'inherit' }}>
+                    Tax
+                  </th>
+                  <th className="text-right" style={{ color: 'inherit', background: 'inherit' }}>
+                    Total
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {!hasData ? (
                   <tr>
-                    <td colSpan={12} style={{ textAlign: 'center', padding: '2rem', color: 'var(--gray-500)' }}>
+                    <td
+                      colSpan={12}
+                      style={{ textAlign: 'center', padding: '2rem', color: 'var(--gray-500)' }}
+                    >
                       No Credit card commission / Input Tax data available
                     </td>
                   </tr>
                 ) : (
                   <tr>
                     <td>
-                      <span style={{
-                        background: 'var(--teal-light)', color: 'var(--teal)',
-                        border: '1px solid var(--btn-ok-border, #99f6e4)', borderRadius: '4px',
-                        padding: '0.15rem 0.5rem', fontSize: '0.78rem', fontWeight: 700,
-                      }}>
+                      <span
+                        style={{
+                          background: 'var(--teal-light)',
+                          color: 'var(--teal)',
+                          border: '1px solid var(--btn-ok-border, #99f6e4)',
+                          borderRadius: '4px',
+                          padding: '0.15rem 0.5rem',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                        }}
+                      >
                         ACTX
                       </span>
                     </td>
@@ -166,34 +211,62 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
                       {headerData.DocNo || '—'}
                     </td>
                     <td>{headerData.DocDate || '—'}</td>
-                    <td style={{ maxWidth: '160px', whiteSpace: 'normal' }}>{company.name || '—'}</td>
+                    <td style={{ maxWidth: '160px', whiteSpace: 'normal' }}>
+                      {company.name || '—'}
+                    </td>
                     <td style={{ fontFamily: "'DM Mono', monospace", fontSize: '0.83rem' }}>
                       {company.taxId || '—'}
                     </td>
                     <td>{company.branch || '—'}</td>
-                    <td style={{ maxWidth: '180px', whiteSpace: 'normal', color: 'var(--text-2)', fontSize: '0.83rem' }}>
+                    <td
+                      style={{
+                        maxWidth: '180px',
+                        whiteSpace: 'normal',
+                        color: 'var(--text-2)',
+                        fontSize: '0.83rem',
+                      }}
+                    >
                       {description || '—'}
                     </td>
                     <td>
-                      <span style={{
-                        background: 'var(--primary-light)', color: 'var(--primary)',
-                        border: '1px solid var(--primary-mid)', borderRadius: '4px',
-                        padding: '0.15rem 0.5rem', fontSize: '0.78rem', fontWeight: 600,
-                        whiteSpace: 'nowrap',
-                      }}>
+                      <span
+                        style={{
+                          background: 'var(--primary-light)',
+                          color: 'var(--primary)',
+                          border: '1px solid var(--primary-mid)',
+                          borderRadius: '4px',
+                          padding: '0.15rem 0.5rem',
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
                         {taxProfile}
                       </span>
                     </td>
                     <td className="text-right" style={{ fontFamily: "'DM Mono', monospace" }}>
                       {fmt(taxRate)}
                     </td>
-                    <td className="text-right" style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>
+                    <td
+                      className="text-right"
+                      style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600 }}
+                    >
                       {fmt(netAmount)}
                     </td>
-                    <td className="text-right" style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>
+                    <td
+                      className="text-right"
+                      style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600 }}
+                    >
                       {fmt(taxAmount)}
                     </td>
-                    <td className="text-right" style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, color: 'var(--teal)' }}>
+                    <td
+                      className="text-right"
+                      style={{
+                        fontFamily: "'DM Mono', monospace",
+                        fontWeight: 700,
+                        color: 'var(--teal)',
+                      }}
+                    >
                       {fmt(total)}
                     </td>
                   </tr>
@@ -202,10 +275,27 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
               {hasData && (
                 <tfoot>
                   <tr className="jv-total-row">
-                    <td colSpan={9} style={{ textAlign: 'right', fontWeight: 700 }}>TOTAL:</td>
-                    <td className="text-right" style={{ fontWeight: 700, fontFamily: "'DM Mono', monospace" }}>{fmt(netAmount)}</td>
-                    <td className="text-right" style={{ fontWeight: 700, fontFamily: "'DM Mono', monospace" }}>{fmt(taxAmount)}</td>
-                    <td className="text-right" style={{ fontWeight: 700, fontFamily: "'DM Mono', monospace" }}>{fmt(total)}</td>
+                    <td colSpan={9} style={{ textAlign: 'right', fontWeight: 700 }}>
+                      TOTAL:
+                    </td>
+                    <td
+                      className="text-right"
+                      style={{ fontWeight: 700, fontFamily: "'DM Mono', monospace" }}
+                    >
+                      {fmt(netAmount)}
+                    </td>
+                    <td
+                      className="text-right"
+                      style={{ fontWeight: 700, fontFamily: "'DM Mono', monospace" }}
+                    >
+                      {fmt(taxAmount)}
+                    </td>
+                    <td
+                      className="text-right"
+                      style={{ fontWeight: 700, fontFamily: "'DM Mono', monospace" }}
+                    >
+                      {fmt(total)}
+                    </td>
                   </tr>
                 </tfoot>
               )}
@@ -218,114 +308,200 @@ export default function InputTaxReconciliation({ details, headerData, onBack, on
             <X size={14} /> Discard
           </button>
           <div className="form-actions-sep" />
-          <button className="btn-submit" onClick={() => { setSubmitError(null); setShowConfirm(true) }} disabled={!hasData}>
+          <button
+            className="btn-submit"
+            onClick={() => {
+              setSubmitError(null)
+              setShowConfirm(true)
+            }}
+            disabled={!hasData}
+          >
             <PlusCircle size={14} /> Add Input Tax
           </button>
         </div>
       </div>
 
-      {showConfirm && createPortal(
-        <div style={{
-          position: 'fixed', inset: 0, background: 'var(--modal-overlay-bg, rgba(0,0,0,0.45))',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999,
-        }}>
-          <div className="modal-box" style={{ textAlign: 'center' }}>
-            <div style={{ marginBottom: '0.75rem', color: 'var(--teal)', display: 'flex', justifyContent: 'center' }}>
-              <FileText size={36} />
-            </div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.65rem' }}>
-              Add Input Tax Reconciliation
-            </div>
-            <p style={{ color: 'var(--text-2)', fontSize: '0.92rem', marginBottom: '1rem', lineHeight: 1.7 }}>
-              This item will be automatically added to the system as an<br />
-              <strong>Input Tax Reconciliation</strong>.<br />
-              Do you want to proceed?
-            </p>
-            <div style={{
-              background: 'var(--teal-light)', border: '1px solid var(--btn-ok-border, #99f6e4)', borderRadius: '6px',
-              padding: '0.55rem 0.85rem', marginBottom: '1.25rem',
-              color: 'var(--teal)', fontSize: '0.82rem', textAlign: 'left', display: 'flex', gap: '0.5rem', alignItems: 'flex-start',
-            }}>
-              <Flag size={14} style={{ marginTop: '0.15rem', flexShrink: 0 }} />
-              <span>After confirmation, the system will <strong>complete the entire process</strong> and return to the start page automatically.</span>
-            </div>
-            {submitError && (
-              <div style={{
-                background: 'var(--btn-err-bg, #fef2f2)', border: '1px solid var(--btn-err-border, #fca5a5)', borderRadius: '6px',
-                padding: '0.6rem 0.85rem', marginBottom: '1.25rem',
-                color: 'var(--btn-err-text, #b91c1c)', fontSize: '0.85rem', textAlign: 'left',
-              }}>
-                <AlertCircle size={14} style={{ marginRight: '0.4rem', flexShrink: 0 }} />
-                {submitError}
-              </div>
-            )}
-            <div className="modal-actions">
-              <button
-                className="btn-cancel"
-                onClick={() => setShowConfirm(false)}
-                disabled={submitting}
-              >
-                Cancel
-              </button>
-              <button
-                className="btn-submit"
-                onClick={handleAddInputTax}
-                disabled={submitting}
-              >
-                {submitting
-                  ? <><Loader2 size={14} className="animate-spin" /> Sending...</>
-                  : <><Check size={14} /> Confirm</>
-                }
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {showDiscardConfirm && createPortal(
-        <div style={{
-          position: 'fixed', inset: 0, background: 'var(--modal-overlay-bg, rgba(0,0,0,0.45))',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999,
-        }}>
-          <div className="modal-box" style={{ textAlign: 'center' }}>
-            <div style={{ marginBottom: '0.75rem', color: 'var(--rose)', display: 'flex', justifyContent: 'center' }}>
-              <Flag size={36} />
-            </div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem' }}>
-              Skip Input Tax step?
-            </div>
-            <p style={{ color: 'var(--text-2)', fontSize: '0.92rem', marginBottom: '1rem', lineHeight: 1.7 }}>
-              You chose <strong>not to add Input Tax</strong> to the system.
-            </p>
-            <div style={{
-              background: 'var(--btn-err-bg, #fef2f2)', border: '1px solid var(--btn-err-border, #fca5a5)', borderRadius: '6px',
-              padding: '0.55rem 0.85rem', marginBottom: '1.5rem',
-              color: 'var(--btn-err-text, #b91c1c)', fontSize: '0.82rem', textAlign: 'left', display: 'flex', gap: '0.5rem', alignItems: 'flex-start',
-            }}>
-              <Flag size={14} style={{ marginTop: '0.15rem', flexShrink: 0 }} />
-              <span>This action will <strong>complete the entire process</strong> and return to the start page.</span>
-            </div>
-            <div className="modal-actions">
-              <button className="btn-cancel" onClick={() => setShowDiscardConfirm(false)}>
-                <ArrowLeft size={14} /> Back to review
-              </button>
-              <button
-                className="btn-danger"
-                style={{ background: 'var(--rose)', color: 'white' }}
-                onClick={() => {
-                  setShowDiscardConfirm(false)
-                  toast.info('Process completed without adding Input Tax')
-                  onFinish()
+      {showConfirm &&
+        createPortal(
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'var(--modal-overlay-bg, rgba(0,0,0,0.45))',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 9999,
+            }}
+          >
+            <div className="modal-box" style={{ textAlign: 'center' }}>
+              <div
+                style={{
+                  marginBottom: '0.75rem',
+                  color: 'var(--teal)',
+                  display: 'flex',
+                  justifyContent: 'center',
                 }}
               >
-                <X size={14} /> Confirm Discard
-              </button>
+                <FileText size={36} />
+              </div>
+              <div style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.65rem' }}>
+                Add Input Tax Reconciliation
+              </div>
+              <p
+                style={{
+                  color: 'var(--text-2)',
+                  fontSize: '0.92rem',
+                  marginBottom: '1rem',
+                  lineHeight: 1.7,
+                }}
+              >
+                This item will be automatically added to the system as an
+                <br />
+                <strong>Input Tax Reconciliation</strong>.<br />
+                Do you want to proceed?
+              </p>
+              <div
+                style={{
+                  background: 'var(--teal-light)',
+                  border: '1px solid var(--btn-ok-border, #99f6e4)',
+                  borderRadius: '6px',
+                  padding: '0.55rem 0.85rem',
+                  marginBottom: '1.25rem',
+                  color: 'var(--teal)',
+                  fontSize: '0.82rem',
+                  textAlign: 'left',
+                  display: 'flex',
+                  gap: '0.5rem',
+                  alignItems: 'flex-start',
+                }}
+              >
+                <Flag size={14} style={{ marginTop: '0.15rem', flexShrink: 0 }} />
+                <span>
+                  After confirmation, the system will <strong>complete the entire process</strong>{' '}
+                  and return to the start page automatically.
+                </span>
+              </div>
+              {submitError && (
+                <div
+                  style={{
+                    background: 'var(--btn-err-bg, #fef2f2)',
+                    border: '1px solid var(--btn-err-border, #fca5a5)',
+                    borderRadius: '6px',
+                    padding: '0.6rem 0.85rem',
+                    marginBottom: '1.25rem',
+                    color: 'var(--btn-err-text, #b91c1c)',
+                    fontSize: '0.85rem',
+                    textAlign: 'left',
+                  }}
+                >
+                  <AlertCircle size={14} style={{ marginRight: '0.4rem', flexShrink: 0 }} />
+                  {submitError}
+                </div>
+              )}
+              <div className="modal-actions">
+                <button
+                  className="btn-cancel"
+                  onClick={() => setShowConfirm(false)}
+                  disabled={submitting}
+                >
+                  Cancel
+                </button>
+                <button className="btn-submit" onClick={handleAddInputTax} disabled={submitting}>
+                  {submitting ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" /> Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Check size={14} /> Confirm
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
-          </div>
-        </div>,
-        document.body
-      )}
+          </div>,
+          document.body
+        )}
+
+      {showDiscardConfirm &&
+        createPortal(
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'var(--modal-overlay-bg, rgba(0,0,0,0.45))',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 9999,
+            }}
+          >
+            <div className="modal-box" style={{ textAlign: 'center' }}>
+              <div
+                style={{
+                  marginBottom: '0.75rem',
+                  color: 'var(--rose)',
+                  display: 'flex',
+                  justifyContent: 'center',
+                }}
+              >
+                <Flag size={36} />
+              </div>
+              <div style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem' }}>
+                Skip Input Tax step?
+              </div>
+              <p
+                style={{
+                  color: 'var(--text-2)',
+                  fontSize: '0.92rem',
+                  marginBottom: '1rem',
+                  lineHeight: 1.7,
+                }}
+              >
+                You chose <strong>not to add Input Tax</strong> to the system.
+              </p>
+              <div
+                style={{
+                  background: 'var(--btn-err-bg, #fef2f2)',
+                  border: '1px solid var(--btn-err-border, #fca5a5)',
+                  borderRadius: '6px',
+                  padding: '0.55rem 0.85rem',
+                  marginBottom: '1.5rem',
+                  color: 'var(--btn-err-text, #b91c1c)',
+                  fontSize: '0.82rem',
+                  textAlign: 'left',
+                  display: 'flex',
+                  gap: '0.5rem',
+                  alignItems: 'flex-start',
+                }}
+              >
+                <Flag size={14} style={{ marginTop: '0.15rem', flexShrink: 0 }} />
+                <span>
+                  This action will <strong>complete the entire process</strong> and return to the
+                  start page.
+                </span>
+              </div>
+              <div className="modal-actions">
+                <button className="btn-cancel" onClick={() => setShowDiscardConfirm(false)}>
+                  <ArrowLeft size={14} /> Back to review
+                </button>
+                <button
+                  className="btn-danger"
+                  style={{ background: 'var(--rose)', color: 'white' }}
+                  onClick={() => {
+                    setShowDiscardConfirm(false)
+                    toast.info('Process completed without adding Input Tax')
+                    onFinish()
+                  }}
+                >
+                  <X size={14} /> Confirm Discard
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   )
 }

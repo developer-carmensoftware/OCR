@@ -1,7 +1,7 @@
 # Requirement Specification: Bank Receipt OCR & Import System Integration
 
-**Project:** Bank Receipt OCR & Import System (API Integration)  
-**Date:** 9 April 2026  
+**Project:** Bank Receipt OCR & Import System (API Integration)
+**Date:** 9 April 2026
 **Author:** Intern Team
 
 ---
@@ -52,14 +52,14 @@
 ```mermaid
 flowchart LR
     User(["👤 พนักงานผู้ใช้งาน"])
-    
+
     subgraph Frontend["🖥️ Frontend<br/>(React 5-step)"]
         direction TB
         UI["📋 OCR Wizard<br/>(Upload → Review → Accounting → JV)"]
         Mapping["⚙️ Mapping Page<br/>(AI Suggest Config)"]
         LS["💾 localStorage<br/>(accountingConfig)"]
     end
-    
+
     subgraph Backend["🔧 Backend<br/>(FastAPI)"]
         direction TB
         OCR_R["📤 OCR Router<br/>(extract, submit)"]
@@ -72,7 +72,7 @@ flowchart LR
         CorrSvc["🔄 Correction Service<br/>(hints + ratio)"]
         DB["🗄️ MySQL/MariaDB<br/>(ocr_db)"]
     end
-    
+
     subgraph External["☁️ External APIs"]
         direction TB
         OpenRouter["🧠 OpenRouter<br/>(Vision LLM)"]

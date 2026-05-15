@@ -30,7 +30,10 @@ export function useAPInvoice() {
   })
 
   const submission = useAPSubmission({
-    t, step, setStep, setModal,
+    t,
+    step,
+    setStep,
+    setModal,
     headerData: extraction.headerData,
     lineItems: extraction.lineItems,
     setLineItems: extraction.setLineItems,
@@ -59,12 +62,16 @@ export function useAPInvoice() {
     const taxId = extraction.headerData.vendorTaxId
     if (taxId) {
       // Dual-write: DB primary, localStorage cache
-      saveAPVendorMapping(taxId, extraction.fieldMappings).catch(() => {/* ignore */})
+      saveAPVendorMapping(taxId, extraction.fieldMappings).catch(() => {
+        /* ignore */
+      })
       try {
         const savedAll = JSON.parse(localStorage.getItem('ap_invoice_mapping') || '{}')
         savedAll[taxId] = extraction.fieldMappings
         localStorage.setItem('ap_invoice_mapping', JSON.stringify(savedAll))
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
     showToast('Column settings saved', 'success')
     setStep(3)
@@ -77,12 +84,16 @@ export function useAPInvoice() {
     }
     if (!validation.isValid) {
       setModal({
-        show: true, type: 'warning',
+        show: true,
+        type: 'warning',
         title: t.mismatchTitle,
         message: t.warnMismatch,
         confirmText: t.proceed,
         cancelText: t.backEdit,
-        onConfirm: () => { setModal({ show: false }); setStep(4) },
+        onConfirm: () => {
+          setModal({ show: false })
+          setStep(4)
+        },
         onCancel: () => setModal({ show: false }),
       })
     } else {
@@ -92,7 +103,14 @@ export function useAPInvoice() {
 
   // Wrap adjustField to mutate lineItems state
   const adjustField = (tgt, sumCur, itemKey, adjustTotal = false, isDiscount = false) => {
-    const updated = validation.adjustField(tgt, sumCur, itemKey, extraction.lineItems, adjustTotal, isDiscount)
+    const updated = validation.adjustField(
+      tgt,
+      sumCur,
+      itemKey,
+      extraction.lineItems,
+      adjustTotal,
+      isDiscount
+    )
     extraction.setLineItems(updated)
   }
 
@@ -106,9 +124,12 @@ export function useAPInvoice() {
 
   return {
     // i18n
-    lang, setLang, t,
+    lang,
+    setLang,
+    t,
     // Wizard
-    step, setStep,
+    step,
+    setStep,
     // File & preview (from useAPExtraction)
     file: extraction.file,
     previewUrl: extraction.previewUrl,
@@ -137,7 +158,8 @@ export function useAPInvoice() {
     vendorRefreshing: vendor.vendorRefreshing,
     refreshVendors: vendor.refreshVendors,
     // Modal
-    modal, setModal,
+    modal,
+    setModal,
     // Computed totals & diffs (from useAPValidation)
     sumLineSubTotal: validation.sumLineSubTotal,
     sumLineTotal: validation.sumLineTotal,

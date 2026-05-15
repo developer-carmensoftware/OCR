@@ -17,7 +17,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
-from app.auth import get_current_session, SessionInfo
+from app.auth import SessionInfo, get_current_session
 from app.tools import registry
 
 logger = logging.getLogger(__name__)
@@ -34,10 +34,12 @@ async def list_tools(_session: SessionInfo = Depends(get_current_session)):
     tools = []
     for name in registry.list_tools():
         schema = registry.get_schema(name)
-        tools.append({
-            **schema,
-            "invocable": name not in _REQUIRES_INJECTION,
-        })
+        tools.append(
+            {
+                **schema,
+                "invocable": name not in _REQUIRES_INJECTION,
+            }
+        )
     return {"tools": tools, "count": len(tools)}
 
 
@@ -54,7 +56,9 @@ async def get_tool_schema(name: str, _session: SessionInfo = Depends(get_current
 
 
 @router.post("/{name}")
-async def invoke_tool(name: str, body: dict = {}, _session: SessionInfo = Depends(get_current_session)):
+async def invoke_tool(
+    name: str, body: dict | None = None, _session: SessionInfo = Depends(get_current_session)
+):
     """
     Invoke a registered tool by name.
 
@@ -64,6 +68,7 @@ async def invoke_tool(name: str, body: dict = {}, _session: SessionInfo = Depend
     Tools that require database sessions or raw file bytes are blocked here —
     use their dedicated endpoints instead.
     """
+    body = body or {}
     if name in _REQUIRES_INJECTION:
         raise HTTPException(
             status_code=400,

@@ -10,15 +10,15 @@ import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.context import current_tenant_id, current_business_unit_id, current_carmen_user_id
 from app.constants import Module
-from app.models.orm import OCRTask, CreditCard, CreditCardTransaction, TaskStatus
+from app.context import current_business_unit_id, current_carmen_user_id, current_tenant_id
+from app.models.orm import CreditCard, CreditCardTransaction, OCRTask, TaskStatus
 from app.tools.base import ToolResult
 
 logger = logging.getLogger(__name__)
@@ -28,16 +28,16 @@ TOOL_NAME = "submit_card"
 
 @dataclass
 class SubmitInput:
-    bank_code:        Optional[str]
+    bank_code: str | None
     original_filename: str
-    doc_no:           Optional[str]
-    doc_date:         Optional[str]
-    bank_name:        Optional[str]
-    company_name:     Optional[str]
-    merchant_name:    Optional[str]
-    bank_company_name: Optional[str] = None
-    branch_no:        Optional[str]  = None
-    details:          List[Dict[str, Any]] = field(default_factory=list)
+    doc_no: str | None
+    doc_date: str | None
+    bank_name: str | None
+    company_name: str | None
+    merchant_name: str | None
+    bank_company_name: str | None = None
+    branch_no: str | None = None
+    details: list[dict[str, Any]] = field(default_factory=list)
 
 
 async def run(inp: SubmitInput, db: AsyncSession) -> ToolResult:
@@ -47,9 +47,9 @@ async def run(inp: SubmitInput, db: AsyncSession) -> ToolResult:
         success=True  → output = {card_id, doc_no, submitted_at}
         success=False + output = {"error": "DUPLICATE_DOC_NO"} → duplicate
     """
-    tenant_id        = current_tenant_id.get() or ""
+    tenant_id = current_tenant_id.get() or ""
     business_unit_id = current_business_unit_id.get() or ""
-    carmen_user_id   = current_carmen_user_id.get() or None
+    carmen_user_id = current_carmen_user_id.get() or None
 
     tool_input = {"doc_no": inp.doc_no, "bank_code": inp.bank_code}
     try:
@@ -66,7 +66,9 @@ async def run(inp: SubmitInput, db: AsyncSession) -> ToolResult:
             )
             if dup.scalars().first():
                 return ToolResult(
-                    success=False, tool=TOOL_NAME, input=tool_input,
+                    success=False,
+                    tool=TOOL_NAME,
+                    input=tool_input,
                     errors=[f"Document {inp.doc_no} already submitted in this BU"],
                 )
 
@@ -109,25 +111,31 @@ async def run(inp: SubmitInput, db: AsyncSession) -> ToolResult:
             tx_label = str(item.get("transaction") or "").strip()
             if not tx_label:
                 continue
-            db.add(CreditCardTransaction(
-                id=str(uuid.uuid4()),
-                credit_card_id=card.id,
-                tx_date=item.get("date"),
-                description=tx_label,
-                amount=item.get("amount"),
-                tx_type=item.get("type"),
-                sort_order=idx,
-            ))
+            db.add(
+                CreditCardTransaction(
+                    id=str(uuid.uuid4()),
+                    credit_card_id=card.id,
+                    tx_date=item.get("date"),
+                    description=tx_label,
+                    amount=item.get("amount"),
+                    tx_type=item.get("type"),
+                    sort_order=idx,
+                )
+            )
             tx_count += 1
 
         await db.commit()
-        logger.info("[%s] saved doc_no=%s card_id=%s tx=%d", TOOL_NAME, inp.doc_no, card.id, tx_count)
+        logger.info(
+            "[%s] saved doc_no=%s card_id=%s tx=%d", TOOL_NAME, inp.doc_no, card.id, tx_count
+        )
 
         return ToolResult(
-            success=True, tool=TOOL_NAME, input=tool_input,
+            success=True,
+            tool=TOOL_NAME,
+            input=tool_input,
             output={
-                "card_id":      card.id,
-                "doc_no":       inp.doc_no,
+                "card_id": card.id,
+                "doc_no": inp.doc_no,
                 "submitted_at": card.submitted_at.isoformat() if card.submitted_at else None,
             },
             metadata={"task_id": task.id, "transaction_count": tx_count},

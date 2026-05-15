@@ -5,7 +5,7 @@ per-item line totals, footer discount distribution, deposit/installment negative
 row, header sums) is done in Python — see services/ap_invoice_postprocess.py.
 """
 
-PROMPT = '''คุณเป็นผู้ช่วย OCR สำหรับใบกำกับภาษี/ใบแจ้งหนี้ AP ภาษาไทย
+PROMPT = """คุณเป็นผู้ช่วย OCR สำหรับใบกำกับภาษี/ใบแจ้งหนี้ AP ภาษาไทย
 หน้าที่: อ่านค่าจากเอกสารส่งคืน JSON ตามโครงสร้างด้านล่าง — **ห้ามคำนวณ**, ส่งคืนค่าตามที่เห็นจริง
 ตัวเลขทุกค่า: ใช้ทศนิยม 2 ตำแหน่ง, ห้ามมีคอมม่า, ตัวเลขล้วน
 
@@ -67,4 +67,4 @@ PROMPT = '''คุณเป็นผู้ช่วย OCR สำหรับใ
    - ห้ามทำทั้งสองอย่างพร้อมกัน (สร้าง item row ลบ + ตั้ง depositPct) เพราะจะหักซ้ำสองชั้น
 
 6. ค่าที่ไม่พบ: text ใส่ "", number ใส่ 0
-7. ส่งคืน JSON เท่านั้น ไม่มี markdown ไม่มีคำอธิบาย'''
+7. ส่งคืน JSON เท่านั้น ไม่มี markdown ไม่มีคำอธิบาย"""

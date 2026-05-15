@@ -7,19 +7,19 @@ import { apiFetch } from './client'
 const FIELD_NAME_MAP = {
   // Header fields (UI PascalCase → backend snake_case)
   DateProcessed: 'date_processed',
-  BankName:      'bank_name',
-  DocName:       'doc_name',
-  CompanyName:   'company_name',
-  DocDate:       'doc_date',
-  DocNo:         'doc_no',
-  MerchantName:  'merchant_name',
-  MerchantId:    'merchant_id',
+  BankName: 'bank_name',
+  DocName: 'doc_name',
+  CompanyName: 'company_name',
+  DocDate: 'doc_date',
+  DocNo: 'doc_no',
+  MerchantName: 'merchant_name',
+  MerchantId: 'merchant_id',
   // Detail fields (UI PascalCase → backend snake_case)
-  Transaction:   'transaction',
-  PayAmt:        'pay_amt',
-  CommisAmt:     'commis_amt',
-  TaxAmt:        'tax_amt',
-  Total:         'total',
+  Transaction: 'transaction',
+  PayAmt: 'pay_amt',
+  CommisAmt: 'commis_amt',
+  TaxAmt: 'tax_amt',
+  Total: 'total',
 }
 
 function mapFieldName(key) {
@@ -34,10 +34,10 @@ export async function logCorrections(cardId, bankCode, corrections) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       corrections: corrections.map(({ fieldName, originalValue, correctedValue }) => ({
-        doc_no:          cardId,
-        bank_code:       bankCode,
-        field_name:      mapFieldName(fieldName),
-        original_value:  String(originalValue ?? ''),
+        doc_no: cardId,
+        bank_code: bankCode,
+        field_name: mapFieldName(fieldName),
+        original_value: String(originalValue ?? ''),
         corrected_value: String(correctedValue ?? ''),
       })),
     }),

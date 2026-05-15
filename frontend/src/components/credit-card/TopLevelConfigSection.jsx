@@ -1,8 +1,12 @@
 export default function TopLevelConfigSection({
-  bank, handleBankChange,
-  filePrefix, setFilePrefix,
-  fileSource, setFileSource,
-  description, setDescription
+  bank,
+  handleBankChange,
+  filePrefix,
+  setFilePrefix,
+  fileSource,
+  setFileSource,
+  description,
+  setDescription,
 }) {
   return (
     <div className="section">
@@ -10,7 +14,17 @@ export default function TopLevelConfigSection({
         <label style={!bank ? { color: '#dc2626', fontWeight: 600 } : {}}>
           Bank {!bank && <span style={{ color: '#dc2626' }}>*</span>}
         </label>
-        <select value={bank} onChange={(e) => handleBankChange(e.target.value)} className="search-select-trigger" style={{ width: '100%', ...(!bank ? { borderColor: 'var(--rose)', background: 'var(--btn-err-bg, #fff1f2)' } : {}) }}>
+        <select
+          value={bank}
+          onChange={e => handleBankChange(e.target.value)}
+          className="search-select-trigger"
+          style={{
+            width: '100%',
+            ...(!bank
+              ? { borderColor: 'var(--rose)', background: 'var(--btn-err-bg, #fff1f2)' }
+              : {}),
+          }}
+        >
           <option value="">Select bank...</option>
           <option value="Bangkok Bank (BBL)">Bangkok Bank (BBL)</option>
           <option value="Kasikornbank (KBANK)">Kasikornbank (KBANK)</option>
@@ -24,8 +38,12 @@ export default function TopLevelConfigSection({
           type="text"
           placeholder="IC"
           value={filePrefix}
-          onChange={(e) => setFilePrefix(e.target.value.toUpperCase())}
-          style={!filePrefix ? { borderColor: 'var(--rose)', background: 'var(--btn-err-bg, #fff1f2)' } : {}}
+          onChange={e => setFilePrefix(e.target.value.toUpperCase())}
+          style={
+            !filePrefix
+              ? { borderColor: 'var(--rose)', background: 'var(--btn-err-bg, #fff1f2)' }
+              : {}
+          }
         />
 
         <label style={!fileSource ? { color: '#dc2626', fontWeight: 600 } : {}}>
@@ -35,13 +53,22 @@ export default function TopLevelConfigSection({
           type="text"
           placeholder="e.g. ACBB, ACKB, ACSC"
           value={fileSource}
-          onChange={(e) => setFileSource(e.target.value)}
-          style={!fileSource ? { borderColor: 'var(--rose)', background: 'var(--btn-err-bg, #fff1f2)' } : {}}
+          onChange={e => setFileSource(e.target.value)}
+          style={
+            !fileSource
+              ? { borderColor: 'var(--rose)', background: 'var(--btn-err-bg, #fff1f2)' }
+              : {}
+          }
         />
 
         <label>Description</label>
-        <input type="text" placeholder="Additional details" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <input
+          type="text"
+          placeholder="Additional details"
+          value={description}
+          onChange={e => setDescription(e.target.value)}
+        />
       </div>
     </div>
-  );
+  )
 }

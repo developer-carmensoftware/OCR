@@ -5,19 +5,23 @@ FastAPI dependency — resolves the current authenticated session from JWT + DB.
 import logging
 from datetime import datetime
 
-from fastapi import Depends, HTTPException, Header
+from fastapi import Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.session import SessionInfo, decode_session_jwt, decrypt_carmen_token
 from app.config import settings
+from app.context import (
+    current_business_unit_id,
+    current_carmen_token,
+    current_carmen_uri,
+    current_carmen_user_id,
+    current_ocr_session_id,
+    current_tenant_id,
+    current_username,
+)
 from app.database import get_db
 from app.models.orm import OcrSession
-from app.auth.session import SessionInfo, decode_session_jwt, decrypt_carmen_token
-from app.context import (
-    current_ocr_session_id, current_carmen_user_id, current_username,
-    current_tenant_id, current_business_unit_id,
-    current_carmen_token, current_carmen_uri,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -41,13 +45,13 @@ async def get_current_session(
         raise HTTPException(status_code=401, detail="Invalid or expired OCR token")
 
     # All identity claims are read from the signed JWT — authoritative at login time.
-    session_id       = payload.get("sid", "")
-    tenant_id        = payload.get("tid", "")
+    session_id = payload.get("sid", "")
+    tenant_id = payload.get("tid", "")
     business_unit_id = payload.get("bid", "")
-    carmen_user_id   = payload.get("cuid", "")
-    username         = payload.get("username", "")
-    bu               = payload.get("bu", "")
-    carmen_uri       = payload.get("carmen_uri", "")
+    carmen_user_id = payload.get("cuid", "")
+    username = payload.get("username", "")
+    bu = payload.get("bu", "")
+    carmen_uri = payload.get("carmen_uri", "")
 
     result = await db.execute(
         select(OcrSession).where(
@@ -63,10 +67,14 @@ async def get_current_session(
     session.last_used_at = datetime.utcnow()
 
     try:
-        carmen_token = decrypt_carmen_token(session.carmen_token_encrypted, settings.session_encryption_key)
+        carmen_token = decrypt_carmen_token(
+            session.carmen_token_encrypted, settings.session_encryption_key
+        )
     except ValueError:
         logger.error("Failed to decrypt carmen token for session %s", session_id)
-        raise HTTPException(status_code=500, detail="Session data corrupted — please re-login from Carmen")
+        raise HTTPException(
+            status_code=500, detail="Session data corrupted — please re-login from Carmen"
+        )
 
     info = SessionInfo(
         session_id=session_id,

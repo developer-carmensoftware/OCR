@@ -53,8 +53,7 @@ export default function AISuggestBar({
           boxShadow: isDisabled ? 'none' : '0 2px 10px rgba(79,70,229,0.25)',
         }}
       >
-        <Sparkles size={14} className={loading ? 'animate-spin' : ''} />
-        {' '}AI Suggest
+        <Sparkles size={14} className={loading ? 'animate-spin' : ''} /> AI Suggest
       </button>
       {onRefresh && (
         <button
@@ -73,8 +72,7 @@ export default function AISuggestBar({
             color: 'var(--text-2)',
           }}
         >
-          <RefreshCw size={14} className={refreshLoading ? 'animate-spin' : ''} />
-          {' '}Refresh
+          <RefreshCw size={14} className={refreshLoading ? 'animate-spin' : ''} /> Refresh
         </button>
       )}
     </div>

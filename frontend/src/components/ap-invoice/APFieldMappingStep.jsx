@@ -1,8 +1,16 @@
 import { SlidersHorizontal, ArrowLeft, ArrowRight } from 'lucide-react'
 import { isNumFld, fmt } from '../../constants/apInvoice'
 
-export default function APFieldMappingStep({ t, lineItems, fieldMappings, availableFields, onMappingChange, onBack, onConfirm }) {
-  const COLS = [2,3,4,5,6,7,8,9,10,11]
+export default function APFieldMappingStep({
+  t,
+  lineItems,
+  fieldMappings,
+  availableFields,
+  onMappingChange,
+  onBack,
+  onConfirm,
+}) {
+  const COLS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 
   return (
     <div className="data-card">
@@ -28,7 +36,11 @@ export default function APFieldMappingStep({ t, lineItems, fieldMappings, availa
                         onChange={e => onMappingChange(c, e.target.value)}
                         className={val === 'ignore' ? 'ignored' : 'mapped'}
                       >
-                        {availableFields.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        {availableFields.map(o => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
                       </select>
                     </th>
                   )
@@ -44,7 +56,11 @@ export default function APFieldMappingStep({ t, lineItems, fieldMappings, availa
                     const numeric = isNumFld(fld)
                     return (
                       <td key={c} className={ignored ? 'is-ignored' : numeric ? 'is-numeric' : ''}>
-                        {ignored ? '(Ignored)' : (numeric && item[fld] !== undefined ? fmt(item[fld]) : (item[fld] || '—'))}
+                        {ignored
+                          ? '(Ignored)'
+                          : numeric && item[fld] !== undefined
+                            ? fmt(item[fld])
+                            : item[fld] || '—'}
                       </td>
                     )
                   })}
@@ -52,7 +68,16 @@ export default function APFieldMappingStep({ t, lineItems, fieldMappings, availa
               ))}
               {lineItems.length > 3 && (
                 <tr>
-                  <td colSpan={10} style={{ textAlign: 'center', color: 'var(--text-4)', fontStyle: 'italic', fontSize: '0.8rem', padding: '0.75rem' }}>
+                  <td
+                    colSpan={10}
+                    style={{
+                      textAlign: 'center',
+                      color: 'var(--text-4)',
+                      fontStyle: 'italic',
+                      fontSize: '0.8rem',
+                      padding: '0.75rem',
+                    }}
+                  >
                     … View {lineItems.length - 3} more items in the next step
                   </td>
                 </tr>

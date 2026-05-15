@@ -11,10 +11,9 @@ Usage:
 """
 
 import logging
-from typing import Optional
 
-from app.tools.base import ToolResult
 from app.services import ocr_service
+from app.tools.base import ToolResult
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +23,7 @@ TOOL_NAME = "extract_card"
 async def run(
     file_bytes: bytes,
     filename: str,
-    bank_type: Optional[str] = None,
+    bank_type: str | None = None,
 ) -> ToolResult:
     """
     Extract structured data from an image/PDF using Vision LLM.

@@ -1,10 +1,10 @@
-import logging
 import json
-from typing import List, Dict, Any
+import logging
+from typing import Any
 
 from app.config import settings
 from app.constants import Module
-from app.llm.client import call_vision_llm, call_text_llm, _strip_code_fences
+from app.llm.client import _strip_code_fences, call_text_llm, call_vision_llm
 from app.llm.prompts.ap_invoice import PROMPT as AP_INVOICE_PROMPT
 from app.llm.prompts.mapping import build_ap_expense_prompt
 from app.services.ap_invoice_postprocess_service import postprocess as postprocess_ap_invoice
@@ -13,20 +13,23 @@ logger = logging.getLogger(__name__)
 
 # Category → search keywords for pre-filtering expense accounts
 _CATEGORY_KW: dict[str, list[str]] = {
-    "ค่าบริการ":      ["บริการ", "service", "fee", "ค่าจ้าง"],
-    "ซอฟต์แวร์":     ["software", "ซอฟต์แวร์", "it", "ไอที", "license", "program"],
-    "อุปกรณ์ไอที":   ["it", "computer", "อุปกรณ์", "equipment", "ไอที"],
+    "ค่าบริการ": ["บริการ", "service", "fee", "ค่าจ้าง"],
+    "ซอฟต์แวร์": ["software", "ซอฟต์แวร์", "it", "ไอที", "license", "program"],
+    "อุปกรณ์ไอที": ["it", "computer", "อุปกรณ์", "equipment", "ไอที"],
     "วัสดุสำนักงาน": ["วัสดุ", "สำนักงาน", "office", "stationery"],
-    "ค่าโฆษณา":      ["โฆษณา", "advertis", "marketing", "promotion"],
-    "ค่าขนส่ง":      ["ขนส่ง", "transport", "delivery", "freight", "logistic"],
-    "ค่าเช่า":       ["เช่า", "rent", "lease"],
-    "วัตถุดิบ":      ["วัตถุดิบ", "raw material", "material"],
-    "บรรจุภัณฑ์":   ["บรรจุ", "packaging", "package"],
-    "ยา-เวชภัณฑ์":  ["ยา", "เวชภัณฑ์", "medical", "pharma"],
-    "เงินมัดจำ":     ["มัดจำ", "deposit", "advance"],
+    "ค่าโฆษณา": ["โฆษณา", "advertis", "marketing", "promotion"],
+    "ค่าขนส่ง": ["ขนส่ง", "transport", "delivery", "freight", "logistic"],
+    "ค่าเช่า": ["เช่า", "rent", "lease"],
+    "วัตถุดิบ": ["วัตถุดิบ", "raw material", "material"],
+    "บรรจุภัณฑ์": ["บรรจุ", "packaging", "package"],
+    "ยา-เวชภัณฑ์": ["ยา", "เวชภัณฑ์", "medical", "pharma"],
+    "เงินมัดจำ": ["มัดจำ", "deposit", "advance"],
 }
 
-def _filter_expense_accounts(accounts: list[dict], items: list[dict], max_acc: int = 60, invoice_desc: str = "") -> list[dict]:
+
+def _filter_expense_accounts(
+    accounts: list[dict], items: list[dict], max_acc: int = 60, invoice_desc: str = ""
+) -> list[dict]:
     """Return the most relevant expense accounts for the given items by
     keyword-scoring against category + description + invoice_desc. Falls back to the first
     `max_acc` accounts when nothing matches."""
@@ -56,11 +59,11 @@ def _filter_expense_accounts(accounts: list[dict], items: list[dict], max_acc: i
     scored.sort(key=lambda x: -x[0])
     result = [acc for _, acc in scored[:max_acc]]
     if len(result) < max_acc:
-        result.extend(acc for _, acc in unmatched[:max_acc - len(result)])
+        result.extend(acc for _, acc in unmatched[: max_acc - len(result)])
     return result
 
 
-async def extract_ap_invoice_data(data_url: str, filename: str, task_id: str) -> Dict[str, Any]:
+async def extract_ap_invoice_data(data_url: str, filename: str, task_id: str) -> dict[str, Any]:
     """Extract AP Invoice details using Vision LLM."""
     ap_model = settings.openrouter_ap_invoice_model or settings.openrouter_ocr_model
     logger.info(f"Extracting AP Invoice: {filename} (model: {ap_model})")
@@ -89,11 +92,20 @@ async def extract_ap_invoice_data(data_url: str, filename: str, task_id: str) ->
     return postprocess_ap_invoice(data)
 
 
-async def suggest_gl_for_items(items_payload: List[Dict[str, Any]], accounts_raw: Dict[str, Any], depts_raw: Dict[str, Any], invoice_desc: str = "") -> Dict[str, Any]:
+async def suggest_gl_for_items(
+    items_payload: list[dict[str, Any]],
+    accounts_raw: dict[str, Any],
+    depts_raw: dict[str, Any],
+    invoice_desc: str = "",
+) -> dict[str, Any]:
     """AI-suggest dept/acc for AP invoice expense items using category + description."""
-    
+
     accounts = [
-        {"code": a["AccCode"], "name": a.get("Description") or "", "type": (a.get("Type") or "").lower()}
+        {
+            "code": a["AccCode"],
+            "name": a.get("Description") or "",
+            "type": (a.get("Type") or "").lower(),
+        }
         for a in (accounts_raw.get("Data") or [])
         if a.get("AccCode") and a.get("AccCode") != "AccCode"
     ]
@@ -109,14 +121,20 @@ async def suggest_gl_for_items(items_payload: List[Dict[str, Any]], accounts_raw
     # then type-only, then all accounts — avoids including asset/prepaid (1xxxxx)
     # accounts when Carmen returns type="e" for non-expense account categories.
     expense_accounts = (
-        [a for a in accounts if a["type"] in _EXPENSE_TYPES and str(a["code"]).startswith(_EXPENSE_PREFIXES)]
+        [
+            a
+            for a in accounts
+            if a["type"] in _EXPENSE_TYPES and str(a["code"]).startswith(_EXPENSE_PREFIXES)
+        ]
         or [a for a in accounts if str(a["code"]).startswith(_EXPENSE_PREFIXES)]
         or [a for a in accounts if a["type"] in _EXPENSE_TYPES]
         or accounts
     )
 
     # Pre-filter to the most relevant accounts (include invoice_desc as extra keywords)
-    filtered_accounts = _filter_expense_accounts(expense_accounts, items_payload, invoice_desc=invoice_desc)
+    filtered_accounts = _filter_expense_accounts(
+        expense_accounts, items_payload, invoice_desc=invoice_desc
+    )
 
     dept_lines = "\n".join(f"  {d['code']} {d['name']}" for d in departments[:50])
     expense_acc_lines = "\n".join(f"  {a['code']} {a['name']}" for a in filtered_accounts)
@@ -157,11 +175,15 @@ async def suggest_gl_for_items(items_payload: List[Dict[str, Any]], accounts_raw
         key = str(item["index"])
         mapping = data.get(key) or data.get(item["index"]) or {}
 
-        raw_dept = mapping.get("dept") if mapping.get("dept") is not None else mapping.get("deptCode")
-        raw_acc  = mapping.get("acc")  if mapping.get("acc")  is not None else mapping.get("accountCode")
+        raw_dept = (
+            mapping.get("dept") if mapping.get("dept") is not None else mapping.get("deptCode")
+        )
+        raw_acc = (
+            mapping.get("acc") if mapping.get("acc") is not None else mapping.get("accountCode")
+        )
 
         dept = _resolve(raw_dept, valid_dept_map)
-        acc  = _resolve(raw_acc,  valid_acc_map)
+        acc = _resolve(raw_acc, valid_acc_map)
         suggestions[item["index"]] = {"deptCode": dept, "accountCode": acc}
 
     return suggestions

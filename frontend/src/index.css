@@ -5,7 +5,7 @@
      - base.css       → Variables, resets, typography, animations
      - layout.css     → App container, grid, header, main content
      - components.css → Shared UI component styles
-   
+
    Page-specific styles live in styles/pages/
 */
 

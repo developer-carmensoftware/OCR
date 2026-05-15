@@ -1,8 +1,8 @@
 # Database Design — Carmen AI Hub
 
-**Database:** `carmen_ai` (MariaDB / MySQL, utf8mb4_unicode_ci)  
-**ORM:** SQLAlchemy 2.x async (`backend/app/models/orm.py`)  
-**Migrations:** append-only registry in `backend/app/database.py` → `migrate_db()`  
+**Database:** `carmen_ai` (MariaDB / MySQL, utf8mb4_unicode_ci)
+**ORM:** SQLAlchemy 2.x async (`backend/app/models/orm.py`)
+**Migrations:** append-only registry in `backend/app/database.py` → `migrate_db()`
 **Reset script:** `backend/reset_db.py` — drop + recreate + create_all + migrations + seed
 
 ---
@@ -224,8 +224,8 @@ User corrections of LLM-extracted fields → drives `correction_service.py` whic
 
 Unique: `(tenant_id, business_unit_id, doc_no, field_name)` — latest correction wins via UPSERT
 
-**Error rate formula** (`correction_service.py`):  
-`error_rate = corrections(field, 90d) / submitted_receipts(bank, 90d)`  
+**Error rate formula** (`correction_service.py`):
+`error_rate = corrections(field, 90d) / submitted_receipts(bank, 90d)`
 Inject hint into prompt if `error_rate > 10%`
 
 ---
@@ -242,7 +242,7 @@ Active Carmen ERP user session.
 | `is_active` | False = revoked (set on Carmen 401 response) |
 | `last_used_at` | Updated each request |
 
-**Session lifecycle:** JWT exp OR Carmen 401 → `is_active = False`  
+**Session lifecycle:** JWT exp OR Carmen 401 → `is_active = False`
 **Cleanup:** inactive sessions older than 30 days → purged by retention service
 
 ---
@@ -362,7 +362,7 @@ Unique: `(tenant_id, code)`
 #### `admin_users`
 Hub staff — separate from Carmen ERP users.
 
-**Security:** `password_hash` (bcrypt/argon2), `mfa_secret` (TOTP), `locked_until` (brute-force lockout).  
+**Security:** `password_hash` (bcrypt/argon2), `mfa_secret` (TOTP), `locked_until` (brute-force lockout).
 **First admin:** Created via `bootstrap CLI` — never seeded in migrations.
 
 #### `roles`
@@ -410,8 +410,8 @@ Replaces old hardcoded `BankType` enum. Adding a bank = INSERT row + create prom
 #### `prompt_templates`
 Versioned prompts for OCR / mapping / correction.
 
-Lifecycle: `draft → published → archived`  
-Only ONE `published` version per `(bank_code, prompt_type)` at a time.  
+Lifecycle: `draft → published → archived`
+Only ONE `published` version per `(bank_code, prompt_type)` at a time.
 `bank_code = NULL` = generic/combined prompt.
 
 **Publish workflow:**
@@ -505,7 +505,7 @@ uvicorn app.main:app --reload   # create_all() + migrations auto-run on startup
 
 ## 10. Retention & Archival
 
-Service: `backend/app/services/retention_service.py`  
+Service: `backend/app/services/retention_service.py`
 Triggered by scheduler every 24h.
 
 | Table | Retention | Action |
@@ -516,7 +516,7 @@ Triggered by scheduler every 24h.
 | `audit_logs` | 365 days | Archive CSV → batch DELETE |
 | `ocr_sessions` (inactive) | 30 days | DELETE (no archive) |
 
-Batch size: 5,000 rows per DELETE to prevent long table locks.  
+Batch size: 5,000 rows per DELETE to prevent long table locks.
 Archive path: `./archives/{table}/YYYY-MM.csv`
 
 ---

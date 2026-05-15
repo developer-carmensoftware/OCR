@@ -12,11 +12,10 @@ import os
 import pathlib
 import stat
 import tempfile
-from typing import Optional, Tuple
 
 from app.config import settings
 from app.constants import Module
-from app.llm.client import call_vision_llm, _strip_code_fences
+from app.llm.client import _strip_code_fences, call_vision_llm
 from app.llm.prompts import get_ocr_prompt
 from app.models import ExtractedCreditCardData
 
@@ -41,13 +40,13 @@ def _get_mime_type(filename: str) -> str:
 
 async def extract_from_image(
     image_bytes: bytes,
-    filename:    str = "receipt.png",
-    bank_code:   Optional[str] = None,
-    hints:       Optional[dict] = None,
-    task_id:     Optional[str] = None,
+    filename: str = "receipt.png",
+    bank_code: str | None = None,
+    hints: dict | None = None,
+    task_id: str | None = None,
     # Legacy alias
-    bank_type:   Optional[str] = None,
-) -> Tuple[str, ExtractedCreditCardData]:
+    bank_type: str | None = None,
+) -> tuple[str, ExtractedCreditCardData]:
     """
     Send an image to OpenRouter vision LLM and return (raw_text, ExtractedCreditCardData).
     bank_code: 'BBL' | 'KBANK' | 'SCB' — selects bank-specific prompt.
@@ -62,7 +61,11 @@ async def extract_from_image(
     b64_image = base64.b64encode(image_bytes).decode("utf-8")
     data_url = f"data:{mime_type};base64,{b64_image}"
 
-    logger.info("Calling OpenRouter model=%s bank=%s", settings.openrouter_ocr_model, effective_bank or "generic")
+    logger.info(
+        "Calling OpenRouter model=%s bank=%s",
+        settings.openrouter_ocr_model,
+        effective_bank or "generic",
+    )
 
     result_text = await call_vision_llm(
         system_prompt=prompt,
@@ -87,7 +90,6 @@ async def extract_from_image(
     if not result_text:
         raise ValueError("LLM returned empty string from vision model")
 
-
     if settings.app_debug:
         tmp = pathlib.Path(tempfile.gettempdir()) / "last_llm_response.txt"
         tmp.write_text(result_text, encoding="utf-8")
@@ -104,7 +106,7 @@ async def extract_from_image(
     extracted = ExtractedCreditCardData(**{k: v for k, v in data.items() if k in _CARD_FIELDS})
     extracted.raw_text = raw_text
 
-    def _is_zero(v: Optional[str]) -> bool:
+    def _is_zero(v: str | None) -> bool:
         if v is None:
             return True
         try:
@@ -113,8 +115,5 @@ async def extract_from_image(
             return False
 
     extracted.details = [r for r in extracted.details if not _is_zero(r.pay_amt)]
-
-    n_details = len(extracted.details)
-    total_sample = extracted.details[0].total if n_details else "—"
 
     return raw_text, extracted

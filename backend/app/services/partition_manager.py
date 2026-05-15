@@ -18,7 +18,7 @@ _PARTITIONED_TABLES = ["performance_logs", "outbound_call_logs"]
 
 
 def _quarter_boundaries(dt: datetime) -> list[tuple[str, str]]:
-    year    = dt.year
+    year = dt.year
     quarter = (dt.month - 1) // 3 + 1
     partitions = []
     for i in range(3):
@@ -39,7 +39,7 @@ async def ensure_partitions() -> dict:
     Check each partitioned table and create missing quarterly partitions.
     Operates on the current tenant's DB via context-aware async_session().
     """
-    now    = datetime.utcnow()
+    now = datetime.utcnow()
     needed = _quarter_boundaries(now)
     results: dict[str, list] = {}
 
@@ -47,13 +47,16 @@ async def ensure_partitions() -> dict:
         for table in _PARTITIONED_TABLES:
             created: list[str] = []
             try:
-                part_result = await db.execute(text("""
+                part_result = await db.execute(
+                    text("""
                     SELECT PARTITION_NAME
                     FROM INFORMATION_SCHEMA.PARTITIONS
                     WHERE TABLE_SCHEMA = DATABASE()
                       AND TABLE_NAME   = :table
                       AND PARTITION_NAME IS NOT NULL
-                """), {"table": table})
+                """),
+                    {"table": table},
+                )
                 existing = {row[0] for row in part_result.fetchall()}
 
                 if not existing:
@@ -65,18 +68,24 @@ async def ensure_partitions() -> dict:
                     if part_name in existing:
                         continue
                     if "p_future" not in existing:
-                        logger.warning("[partition] %s: p_future missing — cannot reorganize", table)
+                        logger.warning(
+                            "[partition] %s: p_future missing — cannot reorganize", table
+                        )
                         break
-                    await db.execute(text(f"""
+                    await db.execute(
+                        text(f"""
                         ALTER TABLE {table}
                         REORGANIZE PARTITION p_future INTO (
                             PARTITION {part_name} VALUES LESS THAN (TO_DAYS('{boundary}')),
                             PARTITION p_future VALUES LESS THAN MAXVALUE
                         )
-                    """))
+                    """)
+                    )
                     created.append(part_name)
                     existing.add(part_name)
-                    logger.info("[partition] %s: created %s (boundary=%s)", table, part_name, boundary)
+                    logger.info(
+                        "[partition] %s: created %s (boundary=%s)", table, part_name, boundary
+                    )
 
             except Exception as exc:
                 logger.error("[partition] %s failed: %s", table, exc)

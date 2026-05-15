@@ -7,14 +7,34 @@ import Card from '../common/Card'
 import Badge from '../common/Badge'
 import CustomModal from '../common/CustomModal'
 
-const fmt = n => n ? n.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00'
+const fmt = n => (n ? n.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00')
 
-const JV_HEADERS = ['Dept.', 'Account #', 'Account Name', 'Comment', 'Currency', 'Rate', 'Dr. Amount', 'Cr. Amount', 'Dr. Base', 'Cr. Base']
+const JV_HEADERS = [
+  'Dept.',
+  'Account #',
+  'Account Name',
+  'Comment',
+  'Currency',
+  'Rate',
+  'Dr. Amount',
+  'Cr. Amount',
+  'Dr. Base',
+  'Cr. Base',
+]
 
 let _accCache = null
 
-export default function JournalVoucher({ jvRows, headerData, filePrefix, fileSource, description, carmenJvId, onFinish, onBack }) {
-  const totalDr = jvRows.reduce((s, r) => s + r.debit,  0)
+export default function JournalVoucher({
+  jvRows,
+  headerData,
+  filePrefix,
+  fileSource,
+  description,
+  carmenJvId,
+  onFinish,
+  onBack,
+}) {
+  const totalDr = jvRows.reduce((s, r) => s + r.debit, 0)
   const totalCr = jvRows.reduce((s, r) => s + r.credit, 0)
 
   const [accNameMap, setAccNameMap] = useState(_accCache || {})
@@ -25,14 +45,16 @@ export default function JournalVoucher({ jvRows, headerData, filePrefix, fileSou
     fetchAccountCodes()
       .then(list => {
         const map = {}
-        list.forEach(a => { if (a.AccCode) map[a.AccCode] = a.Description || '' })
+        list.forEach(a => {
+          if (a.AccCode) map[a.AccCode] = a.Description || ''
+        })
         _accCache = map
         setAccNameMap(map)
       })
       .catch(() => {})
   }, [])
 
-  const getAccName = (acc) => accNameMap[acc] || ''
+  const getAccName = acc => accNameMap[acc] || ''
 
   const handleOpenJv = () => {
     if (carmenJvId) {
@@ -45,7 +67,9 @@ export default function JournalVoucher({ jvRows, headerData, filePrefix, fileSou
   return (
     <>
       <div className="section-header">
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}><FileText size={16} /> Step 5: Journal Voucher</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+          <FileText size={16} /> Step 5: Journal Voucher
+        </span>
       </div>
 
       <Card
@@ -62,10 +86,20 @@ export default function JournalVoucher({ jvRows, headerData, filePrefix, fileSou
         <div className="card-body" style={{ borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
             {[
-              { label: 'Prefix',      value: filePrefix || 'IC',       flex: '1 1 80px',  minWidth: '60px'  },
-              { label: 'Voucher No.', value: carmenJvId || '—',         flex: '2 1 140px', minWidth: '100px' },
-              { label: 'Date',        value: headerData.DocDate || '—', flex: '1 1 110px', minWidth: '90px'  },
-              { label: 'Description', value: description || '—',        flex: '3 1 180px', minWidth: '0'     },
+              { label: 'Prefix', value: filePrefix || 'IC', flex: '1 1 80px', minWidth: '60px' },
+              {
+                label: 'Voucher No.',
+                value: carmenJvId || '—',
+                flex: '2 1 140px',
+                minWidth: '100px',
+              },
+              {
+                label: 'Date',
+                value: headerData.DocDate || '—',
+                flex: '1 1 110px',
+                minWidth: '90px',
+              },
+              { label: 'Description', value: description || '—', flex: '3 1 180px', minWidth: '0' },
             ].map(({ label, value, flex, minWidth }) => (
               <div key={label} className="jv-meta-field" style={{ flex, minWidth }}>
                 <span className="jv-meta-label">{label}</span>
@@ -82,7 +116,13 @@ export default function JournalVoucher({ jvRows, headerData, filePrefix, fileSou
               <thead>
                 <tr>
                   {JV_HEADERS.map((h, i) => (
-                    <th key={h} className={i >= 6 ? 'text-right' : i === 2 || i === 3 ? 'text-left' : 'text-center'} style={{ whiteSpace: 'nowrap' }}>
+                    <th
+                      key={h}
+                      className={
+                        i >= 6 ? 'text-right' : i === 2 || i === 3 ? 'text-left' : 'text-center'
+                      }
+                      style={{ whiteSpace: 'nowrap' }}
+                    >
                       {h}
                     </th>
                   ))}
@@ -106,7 +146,9 @@ export default function JournalVoucher({ jvRows, headerData, filePrefix, fileSou
               </tbody>
               <tfoot>
                 <tr className="jv-total-row">
-                  <td colSpan={6} className="text-right">TOTAL:</td>
+                  <td colSpan={6} className="text-right">
+                    TOTAL:
+                  </td>
                   <td className="text-right">{fmt(totalDr)}</td>
                   <td className="text-right">{fmt(totalCr)}</td>
                   <td className="text-right">{fmt(totalDr)}</td>
@@ -132,15 +174,33 @@ export default function JournalVoucher({ jvRows, headerData, filePrefix, fileSou
             <ExternalLink size={14} /> View JV page
           </button>
           <div className="form-actions-sep" />
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.35rem' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-4)', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-end',
+              gap: '0.35rem',
+            }}
+          >
+            <span
+              style={{
+                fontSize: '0.75rem',
+                color: 'var(--text-4)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+              }}
+            >
               <ArrowRight size={12} />
               Next Step: <strong>Input Tax Reconciliation</strong> — Verify Input Tax
             </span>
-            <button className="btn-submit" onClick={() => {
-              toast.info('Proceeding to Step 6: Input Tax Reconciliation')
-              onFinish()
-            }}>
+            <button
+              className="btn-submit"
+              onClick={() => {
+                toast.info('Proceeding to Step 6: Input Tax Reconciliation')
+                onFinish()
+              }}
+            >
               <ArrowRight size={14} /> Next
             </button>
           </div>

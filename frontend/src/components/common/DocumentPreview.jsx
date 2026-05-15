@@ -1,5 +1,15 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Eye, ZoomIn, ZoomOut, Minimize2, RotateCw, FileText, ExternalLink, FileImage, File } from 'lucide-react'
+import {
+  Eye,
+  ZoomIn,
+  ZoomOut,
+  Minimize2,
+  RotateCw,
+  FileText,
+  ExternalLink,
+  FileImage,
+  File,
+} from 'lucide-react'
 
 export default function DocumentPreview({ previewUrl, previewType, fileName }) {
   const [zoom, setZoom] = useState(1)
@@ -18,49 +28,55 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }) {
   }, [previewUrl])
 
   // Scroll-to-zoom (image only, non-passive so preventDefault works)
-  const handleWheel = useCallback((e) => {
+  const handleWheel = useCallback(e => {
     e.preventDefault()
     const delta = e.deltaY > 0 ? -0.15 : 0.15
     setZoom(prev => Math.min(Math.max(prev + delta, 0.25), 5))
   }, [])
 
   // Touch handlers (non-passive, attached via useEffect)
-  const handleTouchStart = useCallback((e) => {
-    if (e.touches.length === 2) {
-      const dx = e.touches[0].clientX - e.touches[1].clientX
-      const dy = e.touches[0].clientY - e.touches[1].clientY
-      pinchRef.current = Math.sqrt(dx * dx + dy * dy)
-      return
-    }
-    if (e.touches.length === 1) {
-      const touch = e.touches[0]
-      setIsDragging(true)
-      setDragStart(prev => ({ x: touch.clientX - prev.x, y: touch.clientY - prev.y }))
-      // store actual start relative to current pan
-      setDragStart({ x: touch.clientX - pan.x, y: touch.clientY - pan.y })
-    }
-  }, [pan])
+  const handleTouchStart = useCallback(
+    e => {
+      if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX
+        const dy = e.touches[0].clientY - e.touches[1].clientY
+        pinchRef.current = Math.sqrt(dx * dx + dy * dy)
+        return
+      }
+      if (e.touches.length === 1) {
+        const touch = e.touches[0]
+        setIsDragging(true)
+        setDragStart(prev => ({ x: touch.clientX - prev.x, y: touch.clientY - prev.y }))
+        // store actual start relative to current pan
+        setDragStart({ x: touch.clientX - pan.x, y: touch.clientY - pan.y })
+      }
+    },
+    [pan]
+  )
 
-  const handleTouchMove = useCallback((e) => {
-    if (e.touches.length === 2 && pinchRef.current !== null) {
-      e.preventDefault()
-      const dx = e.touches[0].clientX - e.touches[1].clientX
-      const dy = e.touches[0].clientY - e.touches[1].clientY
-      const newDist = Math.sqrt(dx * dx + dy * dy)
-      const ratio = newDist / pinchRef.current
-      setZoom(prev => Math.min(Math.max(prev * ratio, 0.25), 5))
-      pinchRef.current = newDist
-      return
-    }
-    if (e.touches.length === 1 && isDragging) {
-      e.preventDefault()
-      const touch = e.touches[0]
-      setPan(prev => {
-        // dragStart is captured in closure — use ref instead
-        return { x: touch.clientX - dragStart.x, y: touch.clientY - dragStart.y }
-      })
-    }
-  }, [isDragging, dragStart])
+  const handleTouchMove = useCallback(
+    e => {
+      if (e.touches.length === 2 && pinchRef.current !== null) {
+        e.preventDefault()
+        const dx = e.touches[0].clientX - e.touches[1].clientX
+        const dy = e.touches[0].clientY - e.touches[1].clientY
+        const newDist = Math.sqrt(dx * dx + dy * dy)
+        const ratio = newDist / pinchRef.current
+        setZoom(prev => Math.min(Math.max(prev * ratio, 0.25), 5))
+        pinchRef.current = newDist
+        return
+      }
+      if (e.touches.length === 1 && isDragging) {
+        e.preventDefault()
+        const touch = e.touches[0]
+        setPan(prev => {
+          // dragStart is captured in closure — use ref instead
+          return { x: touch.clientX - dragStart.x, y: touch.clientY - dragStart.y }
+        })
+      }
+    },
+    [isDragging, dragStart]
+  )
 
   const handleTouchEnd = useCallback(() => {
     setIsDragging(false)
@@ -83,22 +99,25 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }) {
   }, [handleWheel, handleTouchStart, handleTouchMove, handleTouchEnd, previewType])
 
   // Mouse drag-to-pan
-  const onMouseDown = (e) => {
+  const onMouseDown = e => {
     if (zoom <= 1) return
     e.preventDefault()
     setIsDragging(true)
     setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
   }
-  const onMouseMove = (e) => {
+  const onMouseMove = e => {
     if (!isDragging) return
     setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y })
   }
   const onMouseUp = () => setIsDragging(false)
 
-  const zoomIn    = () => setZoom(p => Math.min(p + 0.25, 5))
-  const zoomOut   = () => setZoom(p => Math.max(p - 0.25, 0.25))
-  const resetView = () => { setZoom(1); setPan({ x: 0, y: 0 }) }
-  const rotateCW  = () => setRotate(r => (r + 90) % 360)
+  const zoomIn = () => setZoom(p => Math.min(p + 0.25, 5))
+  const zoomOut = () => setZoom(p => Math.max(p - 0.25, 0.25))
+  const resetView = () => {
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+  }
+  const rotateCW = () => setRotate(r => (r + 90) % 360)
 
   const openNewTab = () => {
     if (!previewUrl) return
@@ -106,9 +125,9 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }) {
   }
 
   const isImage = previewType === 'image'
-  const isPdf   = previewType === 'pdf'
+  const isPdf = previewType === 'pdf'
   const hasToolbar = isImage || isPdf
-  const cursor  = isImage ? (isDragging ? 'grabbing' : zoom > 1 ? 'grab' : 'zoom-in') : 'default'
+  const cursor = isImage ? (isDragging ? 'grabbing' : zoom > 1 ? 'grab' : 'zoom-in') : 'default'
 
   return (
     <div className="preview-column">
@@ -122,11 +141,21 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }) {
           {isImage && (
             <>
               <div className="prev-tool-group">
-                <button className="prev-tool-btn" onClick={zoomOut} disabled={zoom <= 0.25} title="Zoom out">
+                <button
+                  className="prev-tool-btn"
+                  onClick={zoomOut}
+                  disabled={zoom <= 0.25}
+                  title="Zoom out"
+                >
                   <ZoomOut size={14} />
                 </button>
                 <span className="prev-zoom-pct">{Math.round(zoom * 100)}%</span>
-                <button className="prev-tool-btn" onClick={zoomIn} disabled={zoom >= 5} title="Zoom in">
+                <button
+                  className="prev-tool-btn"
+                  onClick={zoomIn}
+                  disabled={zoom >= 5}
+                  title="Zoom in"
+                >
                   <ZoomIn size={14} />
                 </button>
               </div>
@@ -143,7 +172,9 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }) {
 
           {isPdf && (
             <>
-              <span className="prev-pdf-badge"><FileText size={14} /> PDF</span>
+              <span className="prev-pdf-badge">
+                <FileText size={14} /> PDF
+              </span>
               <span className="prev-tool-hint">Scroll and zoom within the document</span>
               <div className="prev-tool-sep" />
             </>
@@ -180,25 +211,33 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }) {
           </div>
         )}
 
-        {isPdf && (
-          <iframe
-            src={previewUrl}
-            title="PDF Preview"
-            className="preview-pdf-iframe"
-          />
-        )}
+        {isPdf && <iframe src={previewUrl} title="PDF Preview" className="preview-pdf-iframe" />}
 
         {!previewType && (
           <div className="placeholder-text">
-            <div className="placeholder-icon-wrap"><FileImage size={32} /></div>
-            <p>No Preview File<br /><span style={{ fontSize: '.75rem', opacity: .5 }}>Preview will appear here</span></p>
+            <div className="placeholder-icon-wrap">
+              <FileImage size={32} />
+            </div>
+            <p>
+              No Preview File
+              <br />
+              <span style={{ fontSize: '.75rem', opacity: 0.5 }}>Preview will appear here</span>
+            </p>
           </div>
         )}
 
         {previewType && !isImage && !isPdf && (
           <div className="placeholder-text">
-            <div className="placeholder-icon-wrap"><FileText size={32} /></div>
-            <p>{previewType} File<br /><span style={{ fontSize: '.75rem', opacity: .5 }}>Preview not supported for this type</span></p>
+            <div className="placeholder-icon-wrap">
+              <FileText size={32} />
+            </div>
+            <p>
+              {previewType} File
+              <br />
+              <span style={{ fontSize: '.75rem', opacity: 0.5 }}>
+                Preview not supported for this type
+              </span>
+            </p>
           </div>
         )}
       </div>

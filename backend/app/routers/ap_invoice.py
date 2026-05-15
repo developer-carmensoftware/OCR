@@ -1,26 +1,25 @@
-import logging
 import base64
+import logging
 import os
 import uuid
-from typing import List
 
-from fastapi import APIRouter, Request, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import SessionInfo, get_current_session
 from app.config import settings
-from app.services.ap_invoice_service import extract_ap_invoice_data, suggest_gl_for_items
-from app.services.carmen_service import get_account_codes, get_departments, CarmenAPIError
+from app.constants import Module
+from app.context import current_document_ref
 from app.database import get_db
 from app.models.orm import APInvoice
-from app.auth import get_current_session, SessionInfo
 from app.services import audit_service
+from app.services.ap_invoice_service import extract_ap_invoice_data, suggest_gl_for_items
 from app.services.audit_service import AuditAction
+from app.services.carmen_service import CarmenAPIError, get_account_codes, get_departments
 from app.services.file_service import file_service
 from app.services.ocr_service import create_task
-from app.context import current_document_ref
-from app.constants import Module
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/ap-invoice", tags=["AP Invoice"])
@@ -29,11 +28,11 @@ router = APIRouter(prefix="/api/v1/ap-invoice", tags=["AP Invoice"])
 def _get_mime_type(filename: str) -> str:
     ext = os.path.splitext(filename)[1].lower()
     return {
-        ".jpg":  "image/jpeg",
+        ".jpg": "image/jpeg",
         ".jpeg": "image/jpeg",
-        ".png":  "image/png",
+        ".png": "image/png",
         ".webp": "image/webp",
-        ".pdf":  "application/pdf",
+        ".pdf": "application/pdf",
     }.get(ext, "image/jpeg")
 
 
@@ -47,20 +46,23 @@ async def extract_ap_invoice(
     """Stateless AP Invoice OCR extraction using Vision LLM."""
     current_document_ref.set(file.filename or "")
     await audit_service.log_action(
-        session, AuditAction.EXTRACT,
-        resource=Module.AP_INVOICE, resource_id=file.filename,
+        session,
+        AuditAction.EXTRACT,
+        resource=Module.AP_INVOICE,
+        resource_id=file.filename,
         ip_address=request.client.host if request.client else None,
     )
 
     from app.services.usage_service import check_quota
+
     await check_quota()
 
     if not settings.openrouter_api_key:
         raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY is not configured")
 
     file_bytes = await file_service.validate_and_read(file)
-    mime_type  = _get_mime_type(file.filename)
-    data_url   = f"data:{mime_type};base64,{base64.b64encode(file_bytes).decode()}"
+    mime_type = _get_mime_type(file.filename)
+    data_url = f"data:{mime_type};base64,{base64.b64encode(file_bytes).decode()}"
 
     task = await create_task(
         db,
@@ -73,7 +75,7 @@ async def extract_ap_invoice(
 
     data = await extract_ap_invoice_data(data_url, file.filename, task.id)
 
-    doc_no      = data.get("documentNumber")
+    doc_no = data.get("documentNumber")
     vendor_name = data.get("vendorName")
     is_duplicate = False
 
@@ -115,14 +117,14 @@ async def extract_ap_invoice(
 
 
 class SuggestGLItem(BaseModel):
-    index:       int
-    category:    str   = ""
-    description: str   = ""
-    unit_price:  float = 0.0
+    index: int
+    category: str = ""
+    description: str = ""
+    unit_price: float = 0.0
 
 
 class SuggestGLRequest(BaseModel):
-    items:        List[SuggestGLItem]
+    items: list[SuggestGLItem]
     invoice_desc: str = ""
 
 
@@ -134,7 +136,9 @@ async def suggest_gl(
 ):
     """AI-suggest dept/acc for AP invoice line items."""
     await audit_service.log_action(
-        session, AuditAction.SUGGEST_GL, resource=Module.AP_INVOICE,
+        session,
+        AuditAction.SUGGEST_GL,
+        resource=Module.AP_INVOICE,
         ip_address=request.client.host if request.client else None,
     )
     if not settings.openrouter_api_key:
@@ -144,13 +148,17 @@ async def suggest_gl(
 
     try:
         accounts_raw = await get_account_codes(session.carmen_token)
-        depts_raw    = await get_departments(session.carmen_token)
+        depts_raw = await get_departments(session.carmen_token)
     except CarmenAPIError as exc:
         raise HTTPException(status_code=exc.status_code, detail=f"Carmen API error: {exc.detail}")
 
     items_payload = [
-        {"index": i.index, "category": i.category,
-         "description": i.description, "unit_price": i.unit_price}
+        {
+            "index": i.index,
+            "category": i.category,
+            "description": i.description,
+            "unit_price": i.unit_price,
+        }
         for i in body.items
     ]
     suggestions = await suggest_gl_for_items(

@@ -5,7 +5,15 @@ import { suggestMapping, suggestPaymentTypes } from '../../lib/api/mapping'
  * Manages all AI suggestion state and handlers for both
  * main account mappings and payment type mappings.
  */
-export function useMappingSuggestions({ masterAccounts, masterDepartments, mappings, paymentAmount, activeScan, customPaymentTypes, setModalConfig }) {
+export function useMappingSuggestions({
+  masterAccounts,
+  masterDepartments,
+  mappings,
+  paymentAmount,
+  activeScan,
+  customPaymentTypes,
+  setModalConfig,
+}) {
   const [suggestionMeta, setSuggestionMeta] = useState({ commission: null, tax: null, net: null })
   const [mainSuggestions, setMainSuggestions] = useState({ commission: null, tax: null, net: null })
   const [suggestLoading, setSuggestLoading] = useState(false)
@@ -15,9 +23,10 @@ export function useMappingSuggestions({ masterAccounts, masterDepartments, mappi
   const autoSuggest = async () => {
     if (!masterAccounts.length) return
 
-    const fieldsToFetch = ['commission', 'tax', 'net'].filter(f =>
-      (!mappings[f] || !mappings[f].dept || !mappings[f].acc) &&
-      !(mainSuggestions[f] && mainSuggestions[f].source === 'history')
+    const fieldsToFetch = ['commission', 'tax', 'net'].filter(
+      f =>
+        (!mappings[f] || !mappings[f].dept || !mappings[f].acc) &&
+        !(mainSuggestions[f] && mainSuggestions[f].source === 'history')
     )
 
     if (fieldsToFetch.length === 0) {
@@ -37,7 +46,11 @@ export function useMappingSuggestions({ masterAccounts, masterDepartments, mappi
         departments: masterDepartments.map(d => ({ code: d.code, name: d.name })),
       })
 
-      const suggestKeyMap = { commission: 'Credit card commission', tax: 'Input Tax', net: 'Bank Account' }
+      const suggestKeyMap = {
+        commission: 'Credit card commission',
+        tax: 'Input Tax',
+        net: 'Bank Account',
+      }
       const fromAI = {}
       fieldsToFetch.forEach(f => {
         const s = (aiResult.suggestions || {})[suggestKeyMap[f]] || {}
@@ -48,13 +61,19 @@ export function useMappingSuggestions({ masterAccounts, masterDepartments, mappi
         setMainSuggestions(prev => {
           const next = { ...prev }
           Object.entries(fromAI).forEach(([k, v]) => {
-            next[k] = { dept: v.dept || prev[k]?.dept || '', acc: v.acc || prev[k]?.acc || '', source: 'ai' }
+            next[k] = {
+              dept: v.dept || prev[k]?.dept || '',
+              acc: v.acc || prev[k]?.acc || '',
+              source: 'ai',
+            }
           })
           return next
         })
         setSuggestionMeta(prev => {
           const next = { ...prev }
-          Object.keys(fromAI).forEach(k => { next[k] = 'ai' })
+          Object.keys(fromAI).forEach(k => {
+            next[k] = 'ai'
+          })
           return next
         })
       }
@@ -65,7 +84,7 @@ export function useMappingSuggestions({ masterAccounts, masterDepartments, mappi
     }
   }
 
-  const confirmMainSuggestion = (key) => {
+  const confirmMainSuggestion = key => {
     const suggestion = mainSuggestions[key]
     if (suggestion) {
       // Returned so orchestrator can merge into mappings state
@@ -81,14 +100,17 @@ export function useMappingSuggestions({ masterAccounts, masterDepartments, mappi
     if (suggestion) {
       setMappings(prev => {
         const cur = prev[key] || { dept: '', acc: '' }
-        return { ...prev, [key]: { dept: cur.dept || suggestion.dept || '', acc: cur.acc || suggestion.acc || '' } }
+        return {
+          ...prev,
+          [key]: { dept: cur.dept || suggestion.dept || '', acc: cur.acc || suggestion.acc || '' },
+        }
       })
     }
     setMainSuggestions(prev => ({ ...prev, [key]: null }))
     setSuggestionMeta(prev => ({ ...prev, [key]: null }))
   }
 
-  const rejectMainSuggestion = (key) => {
+  const rejectMainSuggestion = key => {
     setMainSuggestions(prev => ({ ...prev, [key]: null }))
     setSuggestionMeta(prev => ({ ...prev, [key]: null }))
   }
@@ -98,9 +120,10 @@ export function useMappingSuggestions({ masterAccounts, masterDepartments, mappi
     setPaymentSuggestLoading(true)
 
     const allTypes = specificTypes || [...activeScan.paymentTypes, ...customPaymentTypes]
-    const needsAI = allTypes.filter(t =>
-      (!paymentAmount[t] || !paymentAmount[t].dept || !paymentAmount[t].acc) &&
-      !(paymentSuggestions[t] && paymentSuggestions[t].source === 'history')
+    const needsAI = allTypes.filter(
+      t =>
+        (!paymentAmount[t] || !paymentAmount[t].dept || !paymentAmount[t].acc) &&
+        !(paymentSuggestions[t] && paymentSuggestions[t].source === 'history')
     )
 
     if (needsAI.length === 0) {
@@ -122,7 +145,8 @@ export function useMappingSuggestions({ masterAccounts, masterDepartments, mappi
       })
       const newSuggestions = {}
       Object.entries(result.suggestions || {}).forEach(([t, val]) => {
-        if (val.dept || val.acc) newSuggestions[t] = { dept: val.dept || null, acc: val.acc || null, source: 'ai' }
+        if (val.dept || val.acc)
+          newSuggestions[t] = { dept: val.dept || null, acc: val.acc || null, source: 'ai' }
       })
       setPaymentSuggestions(prev => ({ ...prev, ...newSuggestions }))
     } catch (err) {
@@ -137,13 +161,16 @@ export function useMappingSuggestions({ masterAccounts, masterDepartments, mappi
     if (suggestion) {
       setPaymentAmount(prev => {
         const cur = prev[type] || { dept: '', acc: '' }
-        return { ...prev, [type]: { dept: cur.dept || suggestion.dept || '', acc: cur.acc || suggestion.acc || '' } }
+        return {
+          ...prev,
+          [type]: { dept: cur.dept || suggestion.dept || '', acc: cur.acc || suggestion.acc || '' },
+        }
       })
     }
     setPaymentSuggestions(prev => ({ ...prev, [type]: null }))
   }
 
-  const rejectPaymentSuggestion = (type) => {
+  const rejectPaymentSuggestion = type => {
     setPaymentSuggestions(prev => ({ ...prev, [type]: null }))
   }
 

@@ -2,17 +2,19 @@
 Unit tests for services/usage_service.py
 Mocks DB session and context vars.
 """
-import pytest
-from datetime import datetime
+
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
-from tests.conftest import set_context
-from app.models.enums import QuotaPeriod, QuotaMetric
-from app.exceptions import RateLimitExceeded
-from app.services.usage_service import _period_key, _estimate_cost
 
+import pytest
+
+from app.exceptions import RateLimitExceeded
+from app.models.enums import QuotaPeriod
+from app.services.usage_service import _estimate_cost, _period_key
+from tests.conftest import set_context
 
 # ── _period_key ───────────────────────────────────────────────────────────────
+
 
 class TestPeriodKey:
     def test_B4_9_monthly_format(self):
@@ -34,6 +36,7 @@ class TestPeriodKey:
 
 # ── _estimate_cost ────────────────────────────────────────────────────────────
 
+
 class TestEstimateCost:
     def test_calculates_cost_per_million_tokens(self):
         # $1 per 1M prompt, $2 per 1M completion
@@ -48,6 +51,7 @@ class TestEstimateCost:
 
 
 # ── check_quota ───────────────────────────────────────────────────────────────
+
 
 def _make_quota(limit=100, soft_pct=0.8, is_hard=True, period=QuotaPeriod.MONTHLY):
     q = MagicMock()
@@ -85,31 +89,41 @@ class TestCheckQuota:
 
     async def test_B4_1_under_limit_does_not_raise(self):
         from app.services import usage_service
+
         set_context("t-001")
         quota = _make_quota(limit=100, soft_pct=0.8, is_hard=True)
         usage = _make_usage(50)
 
-        with patch.object(usage_service, "async_session", return_value=self._mock_db_session(quota, usage)):
+        with patch.object(
+            usage_service, "async_session", return_value=self._mock_db_session(quota, usage)
+        ):
             await usage_service.check_quota()  # should not raise
 
     async def test_B4_2_hard_limit_raises_rate_limit_exceeded(self):
         from app.services import usage_service
+
         set_context("t-001")
         quota = _make_quota(limit=100, is_hard=True)
         usage = _make_usage(100)  # exactly at limit
 
-        with patch.object(usage_service, "async_session", return_value=self._mock_db_session(quota, usage)):
+        with patch.object(
+            usage_service, "async_session", return_value=self._mock_db_session(quota, usage)
+        ):
             with pytest.raises(RateLimitExceeded):
                 await usage_service.check_quota()
 
     async def test_B4_3_soft_warn_logs_but_does_not_raise(self, caplog):
-        from app.services import usage_service
         import logging
+
+        from app.services import usage_service
+
         set_context("t-001")
         quota = _make_quota(limit=100, soft_pct=0.8, is_hard=True)
         usage = _make_usage(85)  # 85% — above soft_pct
 
-        with patch.object(usage_service, "async_session", return_value=self._mock_db_session(quota, usage)):
+        with patch.object(
+            usage_service, "async_session", return_value=self._mock_db_session(quota, usage)
+        ):
             with caplog.at_level(logging.WARNING, logger="app.services.usage_service"):
                 await usage_service.check_quota()  # must not raise
 
@@ -117,13 +131,17 @@ class TestCheckQuota:
 
     async def test_B4_4_no_quota_for_tenant_does_not_raise(self):
         from app.services import usage_service
+
         set_context("t-001")
 
-        with patch.object(usage_service, "async_session", return_value=self._mock_db_session(None, None)):
+        with patch.object(
+            usage_service, "async_session", return_value=self._mock_db_session(None, None)
+        ):
             await usage_service.check_quota()  # no quota rows → passes through
 
     async def test_empty_tenant_returns_immediately(self):
         from app.services import usage_service
+
         set_context("")  # empty tenant_id
 
         # async_session should NOT be called at all
@@ -134,9 +152,11 @@ class TestCheckQuota:
 
 # ── log_llm_usage ─────────────────────────────────────────────────────────────
 
+
 class TestLogLlmUsage:
     async def test_B4_5_inserts_usage_log_row(self):
         from app.services import usage_service
+
         set_context("t-001", "bu-001")
 
         mock_db = AsyncMock()
@@ -147,22 +167,29 @@ class TestLogLlmUsage:
         ctx.__aenter__.return_value = mock_db
         ctx.__aexit__.return_value = None
 
-        with patch.object(usage_service, "async_session", return_value=ctx), \
-             patch.object(usage_service, "_get_pricing", AsyncMock(return_value=None)), \
-             patch.object(usage_service, "increment_quota", AsyncMock()):
+        with (
+            patch.object(usage_service, "async_session", return_value=ctx),
+            patch.object(usage_service, "_get_pricing", AsyncMock(return_value=None)),
+            patch.object(usage_service, "increment_quota", AsyncMock()),
+        ):
             await usage_service.log_llm_usage(
-                model="test-model", prompt_tokens=100, completion_tokens=50,
-                total_tokens=150, count_quota=False,
+                model="test-model",
+                prompt_tokens=100,
+                completion_tokens=50,
+                total_tokens=150,
+                count_quota=False,
             )
 
         mock_db.add.assert_called_once()
         from app.models.orm import LLMUsageLog
+
         added = mock_db.add.call_args[0][0]
         assert isinstance(added, LLMUsageLog)
         assert added.model == "test-model"
 
     async def test_B4_6_count_quota_true_calls_increment_quota(self):
         from app.services import usage_service
+
         set_context("t-001", "bu-001")
 
         mock_db = AsyncMock()
@@ -173,12 +200,17 @@ class TestLogLlmUsage:
         ctx.__aexit__.return_value = None
 
         mock_increment = AsyncMock()
-        with patch.object(usage_service, "async_session", return_value=ctx), \
-             patch.object(usage_service, "_get_pricing", AsyncMock(return_value=None)), \
-             patch.object(usage_service, "increment_quota", mock_increment):
+        with (
+            patch.object(usage_service, "async_session", return_value=ctx),
+            patch.object(usage_service, "_get_pricing", AsyncMock(return_value=None)),
+            patch.object(usage_service, "increment_quota", mock_increment),
+        ):
             await usage_service.log_llm_usage(
-                model="m", prompt_tokens=10, completion_tokens=5,
-                total_tokens=15, count_quota=True,
+                model="m",
+                prompt_tokens=10,
+                completion_tokens=5,
+                total_tokens=15,
+                count_quota=True,
             )
 
         mock_increment.assert_called_once()
@@ -186,9 +218,11 @@ class TestLogLlmUsage:
 
 # ── increment_quota ───────────────────────────────────────────────────────────
 
+
 class TestIncrementQuota:
     async def test_B4_7_increments_usage_for_all_quotas(self):
         from app.services import usage_service
+
         set_context("t-001")
         quota = _make_quota(limit=100)
 
@@ -209,6 +243,7 @@ class TestIncrementQuota:
 
     async def test_B4_8_db_error_silent_no_raise(self):
         from app.services import usage_service
+
         set_context("t-001")
 
         ctx = AsyncMock()

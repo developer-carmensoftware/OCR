@@ -6,23 +6,47 @@ const GAP = 10 // px gap between trigger edge and tooltip
 function getCoords(rect, position) {
   switch (position) {
     case 'bottom':
-      return { top: rect.bottom + GAP, left: rect.left + rect.width / 2, transform: 'translateX(-50%)' }
+      return {
+        top: rect.bottom + GAP,
+        left: rect.left + rect.width / 2,
+        transform: 'translateX(-50%)',
+      }
     case 'bottom-left':
       return { top: rect.bottom + GAP, left: rect.right, transform: 'translateX(-100%)' }
     case 'bottom-right':
       return { top: rect.bottom + GAP, left: rect.left, transform: 'none' }
     case 'top':
-      return { top: rect.top - GAP, left: rect.left + rect.width / 2, transform: 'translateX(-50%) translateY(-100%)' }
+      return {
+        top: rect.top - GAP,
+        left: rect.left + rect.width / 2,
+        transform: 'translateX(-50%) translateY(-100%)',
+      }
     case 'top-left':
-      return { top: rect.top - GAP, left: rect.right, transform: 'translateX(-100%) translateY(-100%)' }
+      return {
+        top: rect.top - GAP,
+        left: rect.right,
+        transform: 'translateX(-100%) translateY(-100%)',
+      }
     case 'top-right':
       return { top: rect.top - GAP, left: rect.left, transform: 'translateY(-100%)' }
     case 'left':
-      return { top: rect.top + rect.height / 2, left: rect.left - GAP, transform: 'translateX(-100%) translateY(-50%)' }
+      return {
+        top: rect.top + rect.height / 2,
+        left: rect.left - GAP,
+        transform: 'translateX(-100%) translateY(-50%)',
+      }
     case 'right':
-      return { top: rect.top + rect.height / 2, left: rect.right + GAP, transform: 'translateY(-50%)' }
+      return {
+        top: rect.top + rect.height / 2,
+        left: rect.right + GAP,
+        transform: 'translateY(-50%)',
+      }
     default:
-      return { top: rect.top - GAP, left: rect.left + rect.width / 2, transform: 'translateX(-50%) translateY(-100%)' }
+      return {
+        top: rect.top - GAP,
+        left: rect.left + rect.width / 2,
+        transform: 'translateX(-50%) translateY(-100%)',
+      }
   }
 }
 

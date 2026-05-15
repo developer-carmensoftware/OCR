@@ -2,19 +2,21 @@
 Unit tests for ap_invoice_postprocess_service.py
 Pure Python — no DB, no LLM, no mocking needed.
 """
+
 import pytest
+
 from app.services.ap_invoice_postprocess_service import (
-    postprocess,
+    _build_deposit_row,
+    _compute_line_totals,
     _detect_tax_type,
     _distribute_footer_discount,
-    _compute_line_totals,
-    _build_deposit_row,
     _num,
     _r2,
+    postprocess,
 )
 
-
 # ── _num helper ───────────────────────────────────────────────────────────────
+
 
 class TestNum:
     def test_none_returns_zero(self):
@@ -38,6 +40,7 @@ class TestNum:
 
 # ── _r2 helper ────────────────────────────────────────────────────────────────
 
+
 class TestR2:
     def test_rounds_to_2_decimals(self):
         assert _r2(1.005) == 1.01
@@ -47,6 +50,7 @@ class TestR2:
 
 
 # ── B2: _detect_tax_type ─────────────────────────────────────────────────────
+
 
 class TestDetectTaxType:
     def _item(self, qty=1, unit_price=100.0, disc=0.0, tax_pct=7.0):
@@ -88,6 +92,7 @@ class TestDetectTaxType:
 
 # ── B2: _distribute_footer_discount ──────────────────────────────────────────
 
+
 class TestDistributeFooterDiscount:
     def test_B2_5_discount_distributed_proportionally(self):
         items = [
@@ -121,10 +126,16 @@ class TestDistributeFooterDiscount:
 
 # ── B2: _compute_line_totals ──────────────────────────────────────────────────
 
+
 class TestComputeLineTotals:
     def _item(self, qty=1, unit_price=100.0, disc=0.0, disc_pct=0.0, tax_pct=7.0, line_amt=None):
-        d = {"qty": qty, "unitPrice": unit_price, "discountAmt": disc,
-             "discountPct": disc_pct, "taxPct": tax_pct}
+        d = {
+            "qty": qty,
+            "unitPrice": unit_price,
+            "discountAmt": disc,
+            "discountPct": disc_pct,
+            "taxPct": tax_pct,
+        }
         if line_amt is not None:
             d["lineAmt"] = line_amt
         return d
@@ -177,6 +188,7 @@ class TestComputeLineTotals:
 
 # ── B2: _build_deposit_row ────────────────────────────────────────────────────
 
+
 class TestBuildDepositRow:
     def _items_with_totals(self, sub=100.0, total=107.0, tax_pct=7.0):
         return [{"lineSubTotal": sub, "lineTotal": total, "taxPct": tax_pct, "taxAmt": total - sub}]
@@ -190,15 +202,21 @@ class TestBuildDepositRow:
 
     def test_B2_12_zero_deposit_returns_none(self):
         items = self._items_with_totals()
-        assert _build_deposit_row(items, deposit_pct=0, deposit_label="", tax_type="Exclude") is None
+        assert (
+            _build_deposit_row(items, deposit_pct=0, deposit_label="", tax_type="Exclude") is None
+        )
 
     def test_hundred_percent_deposit_returns_none(self):
         items = self._items_with_totals()
-        assert _build_deposit_row(items, deposit_pct=100, deposit_label="", tax_type="Exclude") is None
+        assert (
+            _build_deposit_row(items, deposit_pct=100, deposit_label="", tax_type="Exclude") is None
+        )
 
     def test_deposit_label_used_in_description(self):
         items = self._items_with_totals()
-        row = _build_deposit_row(items, deposit_pct=30, deposit_label="มัดจำงวดแรก", tax_type="Exclude")
+        row = _build_deposit_row(
+            items, deposit_pct=30, deposit_label="มัดจำงวดแรก", tax_type="Exclude"
+        )
         assert row["description"] == "มัดจำงวดแรก"
 
     def test_default_label_when_empty(self):
@@ -214,15 +232,23 @@ class TestBuildDepositRow:
 
 # ── B2: postprocess() top-level ───────────────────────────────────────────────
 
+
 class TestPostprocess:
     def _raw(self, **kwargs):
         base = {
-            "vendorName": "Test Co", "vendorTaxId": "1234567890123",
-            "vendorBranch": "HQ", "documentName": "Invoice",
-            "documentDate": "2024-01-15", "documentNumber": "INV-001",
-            "items": [], "docSubTotal": 0, "docDiscount": 0,
-            "docTaxAmount": 0, "docGrandTotal": 0,
-            "depositPct": 0, "depositLabel": "",
+            "vendorName": "Test Co",
+            "vendorTaxId": "1234567890123",
+            "vendorBranch": "HQ",
+            "documentName": "Invoice",
+            "documentDate": "2024-01-15",
+            "documentNumber": "INV-001",
+            "items": [],
+            "docSubTotal": 0,
+            "docDiscount": 0,
+            "docTaxAmount": 0,
+            "docGrandTotal": 0,
+            "depositPct": 0,
+            "depositLabel": "",
         }
         base.update(kwargs)
         return base

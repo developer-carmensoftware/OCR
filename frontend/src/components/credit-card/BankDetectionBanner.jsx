@@ -10,7 +10,7 @@ const BANK_LOGOS = Object.fromEntries(
 )
 
 const OPTIONS = [
-  { value: null,    label: 'Auto-detect',         sub: 'Let AI identify the bank' },
+  { value: null, label: 'Auto-detect', sub: 'Let AI identify the bank' },
   ...BANKS.map(b => ({ value: b.value, label: b.label, sub: b.full })),
 ]
 
@@ -40,9 +40,11 @@ export default function BankDetectionBanner({ bank, loading, onReExtract }) {
     <div className={`bank-detection-banner ${!bank ? 'unknown' : ''}`}>
       <div className="bank-detection-info">
         <div className="bank-detection-icon">
-          {bank
-            ? <CircleCheck size={15} strokeWidth={2.5} />
-            : <CircleHelp size={15} strokeWidth={2.5} />}
+          {bank ? (
+            <CircleCheck size={15} strokeWidth={2.5} />
+          ) : (
+            <CircleHelp size={15} strokeWidth={2.5} />
+          )}
         </div>
         <span className="bank-detection-label">AI detected</span>
         <span className="bank-detection-value">{detected}</span>
@@ -70,14 +72,18 @@ export default function BankDetectionBanner({ bank, loading, onReExtract }) {
               onClick={() => handleSelect(opt.value)}
               tabIndex={open ? 0 : -1}
             >
-              {BANK_LOGOS[opt.value]
-                ? <img src={BANK_LOGOS[opt.value]} alt={opt.value} style={{ width: 13, height: 13, objectFit: 'contain' }} />
-                : <Landmark size={13} />}
+              {BANK_LOGOS[opt.value] ? (
+                <img
+                  src={BANK_LOGOS[opt.value]}
+                  alt={opt.value}
+                  style={{ width: 13, height: 13, objectFit: 'contain' }}
+                />
+              ) : (
+                <Landmark size={13} />
+              )}
               <span className="bank-reextract-option-label">
                 {opt.label}
-                {bank === opt.value && (
-                  <span className="bank-reextract-option-tag">current</span>
-                )}
+                {bank === opt.value && <span className="bank-reextract-option-tag">current</span>}
               </span>
             </button>
           ))}

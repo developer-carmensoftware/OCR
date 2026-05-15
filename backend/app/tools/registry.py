@@ -13,7 +13,8 @@ Each registered tool declares a JSON Schema for its inputs.
 returning a failed ToolResult with clear errors instead of a raw exception.
 """
 
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 from app.tools import extract, map_gl, submit
 from app.tools.base import ToolResult
@@ -25,8 +26,16 @@ _SCHEMA_EXTRACT = {
     "required": ["file_bytes", "filename"],
     "properties": {
         "file_bytes": {"type": "string", "description": "Raw file content (bytes)"},
-        "filename":   {"type": "string", "minLength": 1, "description": "Original filename — determines MIME type"},
-        "bank_type":  {"type": "string", "enum": ["SCB", "BBL", "KBANK"], "description": "Bank-specific prompt selector"},
+        "filename": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Original filename — determines MIME type",
+        },
+        "bank_type": {
+            "type": "string",
+            "enum": ["SCB", "BBL", "KBANK"],
+            "description": "Bank-specific prompt selector",
+        },
     },
     "additionalProperties": True,
 }
@@ -36,7 +45,7 @@ _SCHEMA_SUBMIT = {
     "required": ["inp", "db"],
     "properties": {
         "inp": {"description": "SubmitInput dataclass"},
-        "db":  {"description": "AsyncSession — injected by router"},
+        "db": {"description": "AsyncSession — injected by router"},
     },
     "additionalProperties": True,
 }
@@ -45,7 +54,7 @@ _SCHEMA_GL_FIXED = {
     "type": "object",
     "required": ["accounts", "departments"],
     "properties": {
-        "accounts":    {
+        "accounts": {
             "type": "array",
             "items": {"type": "object"},
             "description": "list[{code, name, type?}]",
@@ -69,7 +78,7 @@ _SCHEMA_GL_PAYMENT = {
             "minItems": 1,
             "description": "list[str] — e.g. ['Visa', 'MCA', 'QR']",
         },
-        "accounts":    {"type": "array", "items": {"type": "object"}},
+        "accounts": {"type": "array", "items": {"type": "object"}},
         "departments": {"type": "array", "items": {"type": "object"}},
     },
     "additionalProperties": True,
@@ -78,24 +87,24 @@ _SCHEMA_GL_PAYMENT = {
 
 # ── Registry entries ──────────────────────────────────────────────────────────
 
-_REGISTRY: Dict[str, Dict] = {
+_REGISTRY: dict[str, dict] = {
     extract.TOOL_NAME: {
-        "fn":          extract.run,
+        "fn": extract.run,
         "description": "Extract structured data from a bank receipt/credit card document using Vision LLM",
         "input_schema": _SCHEMA_EXTRACT,
     },
     submit.TOOL_NAME: {
-        "fn":          submit.run,
+        "fn": submit.run,
         "description": "Persist confirmed credit card document data to the local database",
         "input_schema": _SCHEMA_SUBMIT,
     },
     map_gl.TOOL_FIXED: {
-        "fn":          map_gl.suggest_fixed_fields,
+        "fn": map_gl.suggest_fixed_fields,
         "description": "LLM-suggest GL account/dept codes for Credit card commission, Input Tax, Bank Account",
         "input_schema": _SCHEMA_GL_FIXED,
     },
     map_gl.TOOL_PAYMENT: {
-        "fn":          map_gl.suggest_payment_types,
+        "fn": map_gl.suggest_payment_types,
         "description": "LLM-suggest GL account/dept codes for dynamic payment types (Visa, MCA, QR, …)",
         "input_schema": _SCHEMA_GL_PAYMENT,
     },
@@ -104,13 +113,14 @@ _REGISTRY: Dict[str, Dict] = {
 
 # ── Validation ────────────────────────────────────────────────────────────────
 
-def _validate_inputs(schema: dict, kwargs: dict) -> List[str]:
+
+def _validate_inputs(schema: dict, kwargs: dict) -> list[str]:
     """
     Minimal JSON Schema validation (required fields + enum checks).
     Returns a list of error strings; empty list means valid.
     Avoids adding jsonschema as a hard dependency.
     """
-    errors: List[str] = []
+    errors: list[str] = []
     props = schema.get("properties", {})
 
     for field in schema.get("required", []):
@@ -136,22 +146,23 @@ def _validate_inputs(schema: dict, kwargs: dict) -> List[str]:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def list_tools() -> List[str]:
+
+def list_tools() -> list[str]:
     return list(_REGISTRY.keys())
 
 
-def get_schema(name: str) -> Optional[Dict]:
+def get_schema(name: str) -> dict | None:
     entry = _REGISTRY.get(name)
     if not entry:
         return None
     return {
-        "name":         name,
-        "description":  entry["description"],
+        "name": name,
+        "description": entry["description"],
         "input_schema": entry["input_schema"],
     }
 
 
-def get_fn(name: str) -> Optional[Callable]:
+def get_fn(name: str) -> Callable | None:
     entry = _REGISTRY.get(name)
     return entry["fn"] if entry else None
 

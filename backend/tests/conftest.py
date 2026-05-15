@@ -7,16 +7,19 @@ its internal handles with the Windows I/O completion port; when it closes,
 it can close file handles that pytest's capture mechanism still holds open,
 causing "I/O operation on closed file" between tests.
 """
+
 import asyncio
 import sys
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 # ── Mock DB session ───────────────────────────────────────────────────────────
+
 
 def make_mock_db(execute_rows=None, execute_lastrowid=None):
     """Return an AsyncMock AsyncSession backed by a MagicMock execute result.
@@ -44,8 +47,10 @@ def make_mock_db(execute_rows=None, execute_lastrowid=None):
 
 # ── Session / context helpers ─────────────────────────────────────────────────
 
+
 def set_context(tenant_id="t-001", business_unit_id="bu-001", carmen_user_id="u-001"):
-    from app.context import current_tenant_id, current_business_unit_id, current_carmen_user_id
+    from app.context import current_business_unit_id, current_carmen_user_id, current_tenant_id
+
     current_tenant_id.set(tenant_id)
     current_business_unit_id.set(business_unit_id)
     current_carmen_user_id.set(carmen_user_id)

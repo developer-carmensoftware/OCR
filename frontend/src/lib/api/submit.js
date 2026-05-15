@@ -23,7 +23,9 @@ export async function submitToLocal(payload) {
       } else {
         detail = parsed.detail || errTxt
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     const error = new Error(`Failed to save data (${res.status})\n${detail}`)
     error.status = res.status

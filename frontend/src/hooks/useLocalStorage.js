@@ -20,17 +20,24 @@ export function useLocalStorage(key, defaultValue) {
   })
 
   // Keep localStorage in sync when setValue is called
-  const set = useCallback((valOrFn) => {
-    setValue(prev => {
-      const next = typeof valOrFn === 'function' ? valOrFn(prev) : valOrFn
-      try { localStorage.setItem(key, JSON.stringify(next)) } catch { /* quota exceeded etc */ }
-      return next
-    })
-  }, [key])
+  const set = useCallback(
+    valOrFn => {
+      setValue(prev => {
+        const next = typeof valOrFn === 'function' ? valOrFn(prev) : valOrFn
+        try {
+          localStorage.setItem(key, JSON.stringify(next))
+        } catch {
+          /* quota exceeded etc */
+        }
+        return next
+      })
+    },
+    [key]
+  )
 
   // Sync across browser tabs
   useEffect(() => {
-    const handleStorage = (e) => {
+    const handleStorage = e => {
       if (e.key !== key) return
       try {
         setValue(e.newValue !== null ? JSON.parse(e.newValue) : defaultValue)

@@ -8,7 +8,7 @@ Never construct AsyncOpenAI elsewhere.
 import json
 import logging
 import time
-from typing import Any, List, Optional
+from typing import Any
 
 from openai import AsyncOpenAI
 
@@ -33,39 +33,39 @@ def _strip_code_fences(text: str) -> str:
     lines = text.split("\n")
     if len(lines) <= 1:
         return text
-    last  = lines[-1].strip()
+    last = lines[-1].strip()
     inner = lines[1:-1] if last == "```" else lines[1:]
     return "\n".join(inner).strip()
 
 
 async def call_vision_llm(
     system_prompt: str,
-    user_content:  List[Any],
-    model:         str,
-    task_id:       Optional[str] = None,
-    module_id:     Optional[str] = None,
+    user_content: list[Any],
+    model: str,
+    task_id: str | None = None,
+    module_id: str | None = None,
     image_size_bytes: int = 0,
-    count_quota:   bool = False,
+    count_quota: bool = False,
     # Legacy alias — callers that still pass usage_type will be ignored
-    usage_type:    Optional[str] = None,
+    usage_type: str | None = None,
 ) -> str:
     """
     Send a multimodal (vision) request to OpenRouter.
     Returns the raw text content from the LLM response.
     Quota check is the caller's responsibility (done in routers via check_quota()).
     """
-    from app.services.usage_service import log_llm_usage
     from app.services.outbound_log_service import log_outbound
+    from app.services.usage_service import log_llm_usage
 
-    client      = get_client()
-    start       = time.perf_counter()
+    client = get_client()
+    start = time.perf_counter()
     status_code = 200
     try:
         response = await client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user",   "content": user_content},
+                {"role": "user", "content": user_content},
             ],
             temperature=0.0,
             max_tokens=8192,
@@ -101,31 +101,33 @@ async def call_vision_llm(
         else None
     )
     if not content:
-        raise RuntimeError("LLM returned empty content — model may have hit token limit or safety filter")
+        raise RuntimeError(
+            "LLM returned empty content — model may have hit token limit or safety filter"
+        )
 
     return content.strip()
 
 
 async def call_text_llm(
-    prompt:    str,
-    model:     Optional[str] = None,
-    task_id:   Optional[str] = None,
-    module_id: Optional[str] = None,
+    prompt: str,
+    model: str | None = None,
+    task_id: str | None = None,
+    module_id: str | None = None,
     # Legacy alias
-    usage_type: Optional[str] = None,
-) -> Optional[dict]:
+    usage_type: str | None = None,
+) -> dict | None:
     """
     Call the text/suggestion LLM with a single user prompt.
     Strips markdown code fences, parses JSON.
     Returns None on any failure (never raises to callers).
     """
-    from app.services.usage_service import log_llm_usage
     from app.services.outbound_log_service import log_outbound
+    from app.services.usage_service import log_llm_usage
 
-    client       = get_client()
+    client = get_client()
     target_model = model or settings.openrouter_suggestion_model
 
-    start       = time.perf_counter()
+    start = time.perf_counter()
     status_code = 200
     try:
         response = await client.chat.completions.create(

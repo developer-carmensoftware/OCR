@@ -10,7 +10,19 @@ import { showToast } from '../../lib/toast'
 /**
  * Manages the final submission flow: saving to local DB and sending to Carmen GL JV.
  */
-export function useOcrSubmission({ showModal, closeModal, setStep, headerData, details, bank, cardId, originalHeader, originalDetails, setJvRows, setCarmenJvId }) {
+export function useOcrSubmission({
+  showModal,
+  closeModal,
+  setStep,
+  headerData,
+  details,
+  bank,
+  cardId,
+  originalHeader,
+  originalDetails,
+  setJvRows,
+  setCarmenJvId,
+}) {
   const [submitting, setSubmitting] = useState(false)
 
   async function handleSubmitFinal(rows) {
@@ -48,8 +60,9 @@ export function useOcrSubmission({ showModal, closeModal, setStep, headerData, d
 
       const corrections = diffCorrections(headerData, originalHeader, details, originalDetails)
       if (corrections.length > 0) {
-        logCorrections(cardId, bank, corrections)
-          .catch(err => console.error('[feedback] Error logging corrections:', err))
+        logCorrections(cardId, bank, corrections).catch(err =>
+          console.error('[feedback] Error logging corrections:', err)
+        )
       }
 
       let carmenError = null
@@ -57,7 +70,11 @@ export function useOcrSubmission({ showModal, closeModal, setStep, headerData, d
       let alreadyPosted = false
       try {
         const carmenConfig = await getAccountingConfig().catch(() => {
-          try { return JSON.parse(localStorage.getItem('accountingConfig') || '{}') } catch { return {} }
+          try {
+            return JSON.parse(localStorage.getItem('accountingConfig') || '{}')
+          } catch {
+            return {}
+          }
         })
         const carmenPayload = {
           JvhSeq: -1,
@@ -78,11 +95,17 @@ export function useOcrSubmission({ showModal, closeModal, setStep, headerData, d
             ? `${carmenConfig.description}${headerData.DocDate ? ` - ${headerData.DocDate}` : ''}`
             : '',
           Detail: rows.map(r => ({
-            JvhSeq: -1, JvdSeq: -1,
-            DeptCode: r.dept, AccCode: r.acc, Description: r.desc,
-            CurCode: 'THB', CurRate: 1,
-            CrAmount: r.credit, CrBase: r.credit,
-            DrAmount: r.debit, DrBase: r.debit,
+            JvhSeq: -1,
+            JvdSeq: -1,
+            DeptCode: r.dept,
+            AccCode: r.acc,
+            Description: r.desc,
+            CurCode: 'THB',
+            CurRate: 1,
+            CrAmount: r.credit,
+            CrBase: r.credit,
+            DrAmount: r.debit,
+            DrBase: r.debit,
             DimList: {},
           })),
           DimHList: { Dim: [] },
@@ -111,7 +134,10 @@ export function useOcrSubmission({ showModal, closeModal, setStep, headerData, d
           message: `Document number ${docNo} saved to database.\n\nCarmen: "${carmenError}"`,
           type: 'warning',
           confirmText: 'Back to Step 1',
-          onConfirm: () => { closeModal(); setStep(1) },
+          onConfirm: () => {
+            closeModal()
+            setStep(1)
+          },
         })
       } else {
         showModal({
@@ -122,9 +148,16 @@ export function useOcrSubmission({ showModal, closeModal, setStep, headerData, d
           type: carmenError ? 'warning' : 'success',
           confirmText: 'Proceed to Input Tax Reconciliation',
           cancelText: jvId ? 'View JV' : undefined,
-          cancelStyle: jvId ? { background: 'var(--teal)', color: 'white', border: '1px solid var(--teal)' } : undefined,
-          onConfirm: () => { closeModal(); setStep(4) },
-          onCancel: jvId ? () => window.open(getCarmenUrl(`/glJv/${jvId}/show`), '_blank') : undefined,
+          cancelStyle: jvId
+            ? { background: 'var(--teal)', color: 'white', border: '1px solid var(--teal)' }
+            : undefined,
+          onConfirm: () => {
+            closeModal()
+            setStep(4)
+          },
+          onCancel: jvId
+            ? () => window.open(getCarmenUrl(`/glJv/${jvId}/show`), '_blank')
+            : undefined,
         })
       }
     } catch (err) {
@@ -140,7 +173,9 @@ export function useOcrSubmission({ showModal, closeModal, setStep, headerData, d
         showModal({
           title: 'Error saving data',
           message: err.message,
-          type: 'error', confirmText: 'Close', onConfirm: closeModal,
+          type: 'error',
+          confirmText: 'Close',
+          onConfirm: closeModal,
         })
       }
     } finally {

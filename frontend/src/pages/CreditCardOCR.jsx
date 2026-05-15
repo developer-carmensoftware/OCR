@@ -2,22 +2,54 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useOcrWizard } from '../hooks/useOcrWizard'
-import { StepWizard, FormActions, CustomModal, LoadingOverlay, DocumentPreview, DarkModeToggle, ExtractionSkeleton, SplitLayout, UsageIndicator, AppHeader } from '../components/common'
-import { UploadSection, BankDetectionBanner, HeaderCard, DetailTable, AccountingReview, InputTaxReconciliation } from '../components/credit-card'
+import {
+  StepWizard,
+  FormActions,
+  CustomModal,
+  LoadingOverlay,
+  DocumentPreview,
+  DarkModeToggle,
+  ExtractionSkeleton,
+  SplitLayout,
+  UsageIndicator,
+  AppHeader,
+} from '../components/common'
+import {
+  UploadSection,
+  BankDetectionBanner,
+  HeaderCard,
+  DetailTable,
+  AccountingReview,
+  InputTaxReconciliation,
+} from '../components/credit-card'
 import { BANK_THAI_NAMES } from '../constants'
 
 export default function CreditCardOCR() {
   const {
-    step, files, previewUrl, previewType,
-    loading, submitting, status,
-    headerData, details,
+    step,
+    files,
+    previewUrl,
+    previewType,
+    loading,
+    submitting,
+    status,
+    headerData,
+    details,
     fileInputRef,
-    modal, showModal, closeModal,
+    modal,
+    showModal,
+    closeModal,
     setStep,
     bank,
-    handleFileChange, reExtract,
-    updateHeader, updateDetail, addRow, deleteRow,
-    handleSubmitFinal, handleCancel, resetAll,
+    handleFileChange,
+    reExtract,
+    updateHeader,
+    updateDetail,
+    addRow,
+    deleteRow,
+    handleSubmitFinal,
+    handleCancel,
+    resetAll,
   } = useOcrWizard()
 
   const [showPreview, setShowPreview] = useState(false)
@@ -32,7 +64,10 @@ export default function CreditCardOCR() {
       type: 'warning',
       confirmText: 'Re-extract',
       cancelText: 'Cancel',
-      onConfirm: () => { closeModal(); reExtract(bankType) },
+      onConfirm: () => {
+        closeModal()
+        reExtract(bankType)
+      },
       onCancel: closeModal,
     })
   }
@@ -41,11 +76,15 @@ export default function CreditCardOCR() {
     if (n === 1 && step > 1) {
       showModal({
         title: 'Return to Upload?',
-        message: 'Going back will clear all extracted data.\nYou will need to re-upload and re-extract the document, which will use 1 additional quota.',
+        message:
+          'Going back will clear all extracted data.\nYou will need to re-upload and re-extract the document, which will use 1 additional quota.',
         type: 'warning',
         confirmText: 'Go Back',
         cancelText: 'Stay Here',
-        onConfirm: () => { closeModal(); resetAll() },
+        onConfirm: () => {
+          closeModal()
+          resetAll()
+        },
         onCancel: closeModal,
       })
     } else {
@@ -70,7 +109,6 @@ export default function CreditCardOCR() {
       <LoadingOverlay show={loading} status={status} />
 
       <div className="app-container" style={{ padding: '1.5rem' }}>
-
         <AppHeader
           module="credit-card"
           moduleName="Credit Card Report OCR"
@@ -81,7 +119,7 @@ export default function CreditCardOCR() {
           <DarkModeToggle />
         </AppHeader>
 
-        <StepWizard step={step} onStepClick={(n) => !loading && !submitting && handleStepClick(n)} />
+        <StepWizard step={step} onStepClick={n => !loading && !submitting && handleStepClick(n)} />
 
         <AnimatePresence>
           <motion.div
@@ -148,7 +186,9 @@ export default function CreditCardOCR() {
                   onBack={() => setStep(2)}
                   onSubmit={handleSubmitFinal}
                   onGoMapping={() => {
-                    try { localStorage.setItem('ocr_wizard_state', JSON.stringify({ bank, details })) } catch { }
+                    try {
+                      localStorage.setItem('ocr_wizard_state', JSON.stringify({ bank, details }))
+                    } catch {}
                     toast.info('Opened new tab for Mapping settings')
                     window.open('#/CreditCardOCR/mapping', '_blank')
                   }}
@@ -167,7 +207,6 @@ export default function CreditCardOCR() {
             )}
           </motion.div>
         </AnimatePresence>
-
       </div>
     </>
   )

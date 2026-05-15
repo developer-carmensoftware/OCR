@@ -4,17 +4,16 @@ Business logic lives in app/tools/map_gl.py.
 """
 
 import logging
-from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import SessionInfo, get_current_session
 from app.database import get_db
 from app.models import MappingHistory
 from app.tools import map_gl
-from app.auth import get_current_session, SessionInfo
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/mapping", tags=["Mapping"])
@@ -22,34 +21,36 @@ router = APIRouter(prefix="/api/v1/mapping", tags=["Mapping"])
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
+
 class CodeOption(BaseModel):
     code: str
     name: str
-    type: Optional[str] = None
+    type: str | None = None
 
 
 class SuggestRequest(BaseModel):
-    accounts:    List[CodeOption]
-    departments: List[CodeOption]
+    accounts: list[CodeOption]
+    departments: list[CodeOption]
 
 
 class FieldMapping(BaseModel):
-    dept: Optional[str] = None
-    acc:  Optional[str] = None
+    dept: str | None = None
+    acc: str | None = None
 
 
 class SuggestPaymentTypesRequest(BaseModel):
-    payment_types: List[str]
-    accounts:      List[CodeOption]
-    departments:   List[CodeOption]
+    payment_types: list[str]
+    accounts: list[CodeOption]
+    departments: list[CodeOption]
 
 
 class SaveHistoryRequest(BaseModel):
     bank_code: str
-    mappings:  Dict[str, FieldMapping]
+    mappings: dict[str, FieldMapping]
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+
 
 @router.post("/suggest")
 async def suggest_mapping(
@@ -95,12 +96,12 @@ async def get_mapping_history(
     )
     rows = result.scalars().all()
 
-    history: Dict[str, dict] = {}
+    history: dict[str, dict] = {}
     for row in rows:
         if row.field_type not in history:
             history[row.field_type] = {
-                "dept":            row.dept_code,
-                "acc":             row.acc_code,
+                "dept": row.dept_code,
+                "acc": row.acc_code,
                 "confirmed_count": row.confirmed_count,
             }
     return {"bank_code": bank_code, "history": history}
@@ -134,15 +135,17 @@ async def save_mapping_history(
         if existing:
             existing.confirmed_count = (existing.confirmed_count or 0) + 1
         else:
-            db.add(MappingHistory(
-                tenant_id=session.tenant_id,
-                business_unit_id=session.business_unit_id,
-                bank_code=req.bank_code,
-                field_type=field_type,
-                dept_code=mapping.dept,
-                acc_code=mapping.acc,
-                confirmed_count=1,
-            ))
+            db.add(
+                MappingHistory(
+                    tenant_id=session.tenant_id,
+                    business_unit_id=session.business_unit_id,
+                    bank_code=req.bank_code,
+                    field_type=field_type,
+                    dept_code=mapping.dept,
+                    acc_code=mapping.acc,
+                    confirmed_count=1,
+                )
+            )
         saved += 1
 
     await db.commit()

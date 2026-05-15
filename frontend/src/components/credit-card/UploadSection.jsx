@@ -1,7 +1,7 @@
 import { UploadCloud, FolderOpen, Info } from 'lucide-react'
 
 export default function UploadSection({ onFileChange, fileInputRef, fileName, multiple }) {
-  const handleDrop = (e) => {
+  const handleDrop = e => {
     e.preventDefault()
     if (e.dataTransfer.files?.[0]) {
       const fakeEvent = { target: { files: e.dataTransfer.files } }
@@ -28,24 +28,33 @@ export default function UploadSection({ onFileChange, fileInputRef, fileName, mu
           onChange={onFileChange}
           style={{ display: 'none' }}
         />
-        <div className="upload-icon"><UploadCloud size={40} /></div>
+        <div className="upload-icon">
+          <UploadCloud size={40} />
+        </div>
         <div className="upload-label">
           {fileName
-            ? (fileName.length > 32 ? fileName.slice(0, 29) + '…' : fileName)
+            ? fileName.length > 32
+              ? fileName.slice(0, 29) + '…'
+              : fileName
             : 'Click or drag file here'}
         </div>
         <div className="upload-hint">Supports JPG · PNG · PDF · up to 20 MB</div>
         <button
           className="btn btn-primary"
           style={{ marginTop: '1.5rem' }}
-          onClick={e => { e.stopPropagation(); fileInputRef.current?.click() }}
+          onClick={e => {
+            e.stopPropagation()
+            fileInputRef.current?.click()
+          }}
         >
           <FolderOpen size={14} /> Browse File
         </button>
       </div>
 
       <div className="panel-card" style={{ marginTop: '1rem' }}>
-        <div className="field-label"><Info size={16} /> How to use</div>
+        <div className="field-label">
+          <Info size={16} /> How to use
+        </div>
         <div className="how-to-list">
           {INSTRUCTIONS.map(({ n, c, text }) => (
             <div key={n} className="how-to-item">

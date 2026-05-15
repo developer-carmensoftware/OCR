@@ -45,9 +45,12 @@ export function useFileUpload() {
   }
 
   return {
-    files, setFiles,
-    previewUrl, setPreviewUrl,
-    previewType, setPreviewType,
+    files,
+    setFiles,
+    previewUrl,
+    setPreviewUrl,
+    previewType,
+    setPreviewType,
     fileInputRef,
     handleFileChange,
     clearFiles,

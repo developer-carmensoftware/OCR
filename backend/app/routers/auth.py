@@ -21,20 +21,20 @@ from urllib.parse import urlparse
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
-from sqlalchemy import select, delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import get_current_session, SessionInfo
-from app.config import settings
-from app.database import get_db, provision_tenant, async_session
-from app.models.orm import OcrSession, Tenant, BusinessUnit
-from app.services.usage_service import upsert_tenant_quota
+from app.auth import SessionInfo, get_current_session
 from app.auth.session import (
     create_session_jwt,
     decode_session_jwt,
     encrypt_carmen_token,
     extract_user_id_from_token,
 )
+from app.config import settings
+from app.database import async_session, get_db, provision_tenant
+from app.models.orm import BusinessUnit, OcrSession, Tenant
+from app.services.usage_service import upsert_tenant_quota
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
@@ -94,7 +94,13 @@ def _validate_uri(uri: str) -> str:
 
     try:
         addr = _ip.ip_address(hostname)
-        if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved or addr.is_multicast:
+        if (
+            addr.is_private
+            or addr.is_loopback
+            or addr.is_link_local
+            or addr.is_reserved
+            or addr.is_multicast
+        ):
             raise HTTPException(status_code=400, detail="uri hostname not allowed")
     except ValueError:
         pass  # domain name — proceed to whitelist check below
@@ -164,7 +170,9 @@ async def _validate_token(token: str, carmen_uri: str) -> None:
     async with httpx.AsyncClient(timeout=_VALIDATE_TIMEOUT) as client:
         resp = await client.get(f"{_carmen_base(carmen_uri)}/department", headers=headers)
     if resp.status_code == 401:
-        raise HTTPException(status_code=401, detail="Carmen token rejected — please re-login to Carmen")
+        raise HTTPException(
+            status_code=401, detail="Carmen token rejected — please re-login to Carmen"
+        )
     if resp.status_code not in (200, 204):
         logger.warning("Carmen validation probe returned %s", resp.status_code)
         raise HTTPException(status_code=502, detail="Cannot reach Carmen to validate token")
@@ -172,21 +180,23 @@ async def _validate_token(token: str, carmen_uri: str) -> None:
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
+
 class ExchangeRequest(BaseModel):
     token: str
-    bu:    str
-    user:  str = ""
-    uri:   str = ""
+    bu: str
+    user: str = ""
+    uri: str = ""
 
 
 class ExchangeResponse(BaseModel):
     access_token: str
-    token_type:   str = "bearer"
-    expires_in:   int
-    user:         dict
+    token_type: str = "bearer"
+    expires_in: int
+    user: dict
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+
 
 @router.post("/exchange", response_model=ExchangeResponse)
 async def exchange_sso_token(request: Request, body: ExchangeRequest):
@@ -194,19 +204,19 @@ async def exchange_sso_token(request: Request, body: ExchangeRequest):
     _check_exchange_rate_limit(request)
 
     token = body.token.strip()
-    bu    = body.bu.strip()
+    bu = body.bu.strip()
 
     if not token or not bu:
         raise HTTPException(status_code=400, detail="token and bu are required")
 
     carmen_uri = _validate_uri(body.uri)
-    host       = urlparse(carmen_uri).hostname or ""
+    host = urlparse(carmen_uri).hostname or ""
 
     await _validate_token(token, carmen_uri)
     await provision_tenant()
 
     carmen_user_id = extract_user_id_from_token(token)
-    username       = body.user or carmen_user_id
+    username = body.user or carmen_user_id
 
     try:
         encrypted = encrypt_carmen_token(token, settings.session_encryption_key)
@@ -215,35 +225,38 @@ async def exchange_sso_token(request: Request, body: ExchangeRequest):
         raise HTTPException(status_code=500, detail="Session creation failed")
 
     async with async_session() as db:
-        tenant        = await _upsert_tenant(db, host)
+        tenant = await _upsert_tenant(db, host)
         await upsert_tenant_quota(db, tenant.id, tenant.plan)
         business_unit = await _upsert_business_unit(db, tenant.id, bu)
 
         cutoff = datetime.utcnow() - timedelta(hours=settings.session_ttl_hours)
         deleted = await db.execute(
             delete(OcrSession).where(
-                (OcrSession.tenant_id == tenant.id) &
-                ((OcrSession.created_at < cutoff) | (OcrSession.is_active == False))  # noqa: E712
+                (OcrSession.tenant_id == tenant.id)
+                & ((OcrSession.created_at < cutoff) | (OcrSession.is_active == False))  # noqa: E712
             )
         )
         if deleted.rowcount:
             logger.info("Cleaned %d stale session(s) for tenant %s", deleted.rowcount, tenant.id)
 
         session_id = str(uuid.uuid4())
-        db.add(OcrSession(
-            id=session_id,
-            tenant_id=tenant.id,
-            business_unit_id=business_unit.id,
-            carmen_user_id=carmen_user_id,
-            username=username,
-            carmen_token_encrypted=encrypted,
-            carmen_uri=carmen_uri,
-            is_active=True,
-        ))
+        db.add(
+            OcrSession(
+                id=session_id,
+                tenant_id=tenant.id,
+                business_unit_id=business_unit.id,
+                carmen_user_id=carmen_user_id,
+                username=username,
+                carmen_token_encrypted=encrypted,
+                carmen_uri=carmen_uri,
+                is_active=True,
+            )
+        )
         await db.commit()
 
-    logger.info("SSO exchange OK — host=%s bu=%s user=%s session=%s",
-                host, bu, username, session_id)
+    logger.info(
+        "SSO exchange OK — host=%s bu=%s user=%s session=%s", host, bu, username, session_id
+    )
 
     access_token = create_session_jwt(
         session_id=session_id,
@@ -260,11 +273,11 @@ async def exchange_sso_token(request: Request, body: ExchangeRequest):
         access_token=access_token,
         expires_in=settings.session_ttl_hours * 3600,
         user={
-            "carmen_user_id":  carmen_user_id,
-            "username":        username,
-            "bu":              bu,
-            "uri":             carmen_uri,
-            "tenant_id":       tenant.id,
+            "carmen_user_id": carmen_user_id,
+            "username": username,
+            "bu": bu,
+            "uri": carmen_uri,
+            "tenant_id": tenant.id,
             "business_unit_id": business_unit.id,
         },
     )
@@ -296,18 +309,23 @@ async def revoke_session(
 async def get_usage(_session: SessionInfo = Depends(get_current_session)):
     """Get quota usage for the current tenant."""
     from app.services.usage_service import get_quota_summary
+
     summary = await get_quota_summary(_session.tenant_id)
 
     monthly = next(
-        (q for q in summary.get("quotas", []) if q["period"] == "monthly" and q["metric"] == "calls"),
+        (
+            q
+            for q in summary.get("quotas", [])
+            if q["period"] == "monthly" and q["metric"] == "calls"
+        ),
         None,
     )
-    used  = int(monthly["used"])  if monthly else 0
+    used = int(monthly["used"]) if monthly else 0
     limit = int(monthly["limit"]) if monthly else 0
     return {
         "usage": {
-            "monthly_calls":     used,
+            "monthly_calls": used,
             "max_monthly_calls": limit,
-            "remaining_calls":   max(0, limit - used),
+            "remaining_calls": max(0, limit - used),
         }
     }

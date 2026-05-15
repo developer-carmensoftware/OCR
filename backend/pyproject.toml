@@ -1,0 +1,43 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+exclude = [
+    "venv",
+    "migrations",
+    "scratch",
+    ".git",
+]
+
+[tool.ruff.lint]
+# E/W = pycodestyle, F = pyflakes, I = isort, UP = pyupgrade, B = bugbear
+select = ["E", "W", "F", "I", "UP", "B"]
+ignore = [
+    "E501",   # line too long — formatter handles this
+    "B008",   # do not perform function calls in default arguments (FastAPI Depends)
+    "B904",   # raise from — too noisy for existing code
+    "UP007",  # use X | Y for union types — keep Optional for readability
+    "UP042",  # StrEnum — keep (str, Enum) for explicit readability
+    "B905",   # zip strict= — not needed for internal data processing loops
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ── mypy ─────────────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_unused_configs = true
+warn_unused_ignores = true
+# Start lenient — tighten per module as coverage grows
+check_untyped_defs = false
+
+# Strict only on business logic layers (expand list over time)
+[[tool.mypy.overrides]]
+module = ["app.tools.*", "app.services.ap_invoice_postprocess_service"]
+check_untyped_defs = true
+warn_return_any = true

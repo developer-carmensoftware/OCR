@@ -24,22 +24,33 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors, vendorDbByT
   const fileInputRef = useRef(null)
   const previewUrlRef = useRef(null)
 
-  const isNumFld = (f) => [
-    'qty', 'unitPrice', 'discountPct', 'discountAmt',
-    'lineSubTotal', 'taxPct', 'taxAmt', 'lineTotal',
-  ].includes(f)
+  const isNumFld = f =>
+    [
+      'qty',
+      'unitPrice',
+      'discountPct',
+      'discountAmt',
+      'lineSubTotal',
+      'taxPct',
+      'taxAmt',
+      'lineTotal',
+    ].includes(f)
 
-  const runOCR = async (fileObj) => {
+  const runOCR = async fileObj => {
     setLoading(true)
     setStatus('AI is extracting data from document...')
     setError(null)
     try {
-      let retries = 3, delay = 800
+      let retries = 3,
+        delay = 800
       while (retries > 0) {
         try {
           const formData = new FormData()
           formData.append('file', fileObj)
-          const res = await apiFetch('/api/v1/ap-invoice/extract', { method: 'POST', body: formData })
+          const res = await apiFetch('/api/v1/ap-invoice/extract', {
+            method: 'POST',
+            body: formData,
+          })
           if (!res.ok) throw new Error(`HTTP ${res.status}`)
           const data = await res.json()
 
@@ -81,7 +92,9 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors, vendorDbByT
                 try {
                   const savedAll = JSON.parse(localStorage.getItem('ap_invoice_mapping') || '{}')
                   if (savedAll[data.vendorTaxId]) setFieldMappings(savedAll[data.vendorTaxId])
-                } catch { /* ignore */ }
+                } catch {
+                  /* ignore */
+                }
               })
           }
 
@@ -89,7 +102,8 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors, vendorDbByT
             setIsDuplicate(true)
             setStatus('Duplicate document found')
             setModal({
-              show: true, type: 'warning',
+              show: true,
+              type: 'warning',
               title: 'Duplicate document found',
               message: `Document No. ${data.documentNumber || '—'} for this vendor is already in the system.`,
               confirmText: 'Proceed Anyway',
@@ -101,7 +115,8 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors, vendorDbByT
               },
               onCancel: () => {
                 setModal({ show: false })
-                setFile(null); setPreviewUrl(null)
+                setFile(null)
+                setPreviewUrl(null)
                 setStep(1)
               },
             })
@@ -116,11 +131,18 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors, vendorDbByT
         } catch (err) {
           if (err.message.includes('429')) {
             setModal({
-              show: true, type: 'warning',
+              show: true,
+              type: 'warning',
               title: 'Monthly Quota Exceeded',
-              message: 'Your Business Unit has reached the monthly document processing limit. Please contact your administrator to upgrade your plan.',
+              message:
+                'Your Business Unit has reached the monthly document processing limit. Please contact your administrator to upgrade your plan.',
               confirmText: 'Acknowledge',
-              onConfirm: () => { setModal({ show: false }); setStep(1); setFile(null); setPreviewUrl(null) },
+              onConfirm: () => {
+                setModal({ show: false })
+                setStep(1)
+                setFile(null)
+                setPreviewUrl(null)
+              },
             })
             return
           }
@@ -136,14 +158,15 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors, vendorDbByT
       console.error(err)
       setStatus(err.message)
       setError(t.errProcess)
-      if (!err.message.includes('429')) showToast('Failed to extract data. Please try again.', 'error')
+      if (!err.message.includes('429'))
+        showToast('Failed to extract data. Please try again.', 'error')
     } finally {
       setLoading(false)
       window.dispatchEvent(new Event('ocr:quota-refresh'))
     }
   }
 
-  const handleFileChange = (e) => {
+  const handleFileChange = e => {
     const f = e.target.files?.[0]
     if (!f) return
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
@@ -160,31 +183,62 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors, vendorDbByT
       URL.revokeObjectURL(previewUrlRef.current)
       previewUrlRef.current = null
     }
-    setFile(null); setPreviewUrl(null); setPreviewType(null)
+    setFile(null)
+    setPreviewUrl(null)
+    setPreviewType(null)
     setHeaderData(EMPTY_HEADER)
-    setLineItems([]); setFieldMappings(DEFAULT_MAPPINGS)
-    setIsDuplicate(false); setApInvoiceId(null)
-    setStatus(''); setError(null)
+    setLineItems([])
+    setFieldMappings(DEFAULT_MAPPINGS)
+    setIsDuplicate(false)
+    setApInvoiceId(null)
+    setStatus('')
+    setError(null)
   }
 
   const updateHeader = (key, val) => setHeaderData(p => ({ ...p, [key]: val }))
-  const blurHeader = (key, val) => { if (val) setHeaderData(p => ({ ...p, [key]: fmt(val) })) }
+  const blurHeader = (key, val) => {
+    if (val) setHeaderData(p => ({ ...p, [key]: fmt(val) }))
+  }
 
-  const updateItem = (idx, key, val) => setLineItems(items => items.map((r, i) => {
-    if (i !== idx) return r
-    const clearSuggest = key === 'deptCode' ? { _suggestDept: undefined } : key === 'accountCode' ? { _suggestAcc: undefined } : {}
-    return { ...r, [key]: val, ...clearSuggest }
-  }))
+  const updateItem = (idx, key, val) =>
+    setLineItems(items =>
+      items.map((r, i) => {
+        if (i !== idx) return r
+        const clearSuggest =
+          key === 'deptCode'
+            ? { _suggestDept: undefined }
+            : key === 'accountCode'
+              ? { _suggestAcc: undefined }
+              : {}
+        return { ...r, [key]: val, ...clearSuggest }
+      })
+    )
   const blurItem = (idx, key, val) => {
-    if (val) setLineItems(items => items.map((r, i) => i === idx ? { ...r, [key]: fmt(val) } : r))
+    if (val) setLineItems(items => items.map((r, i) => (i === idx ? { ...r, [key]: fmt(val) } : r)))
   }
 
   return {
-    file, previewUrl, previewType, fileInputRef,
-    loading, status, error, setError,
-    headerData, lineItems, setLineItems, fieldMappings, setFieldMappings,
-    apInvoiceId, isDuplicate,
-    handleFileChange, runOCR, resetExtraction,
-    updateHeader, blurHeader, updateItem, blurItem,
+    file,
+    previewUrl,
+    previewType,
+    fileInputRef,
+    loading,
+    status,
+    error,
+    setError,
+    headerData,
+    lineItems,
+    setLineItems,
+    fieldMappings,
+    setFieldMappings,
+    apInvoiceId,
+    isDuplicate,
+    handleFileChange,
+    runOCR,
+    resetExtraction,
+    updateHeader,
+    blurHeader,
+    updateItem,
+    blurItem,
   }
 }

@@ -17,8 +17,12 @@ export function usePaymentTypes() {
     setCustomPaymentTypes(customTypes)
     setPaymentAmount(prev => {
       const next = { ...prev }
-      Object.keys(mappings).forEach(k => { next[k] = mappings[k] })
-      customTypes.forEach(type => { if (!next[type]) next[type] = { dept: '', acc: '' } })
+      Object.keys(mappings).forEach(k => {
+        next[k] = mappings[k]
+      })
+      customTypes.forEach(type => {
+        if (!next[type]) next[type] = { dept: '', acc: '' }
+      })
       return next
     })
   }
@@ -30,9 +34,11 @@ export function usePaymentTypes() {
       const parsed = JSON.parse(amountState)
       initFromData(
         Object.fromEntries(Object.entries(parsed).filter(([k]) => k !== '__customTypes')),
-        parsed.__customTypes || [],
+        parsed.__customTypes || []
       )
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   const handlePaymentMappingChange = (type, field, value) => {
@@ -44,14 +50,15 @@ export function usePaymentTypes() {
 
   const handleAddCustomType = (activeScanPaymentTypes, onSuggest) => {
     const trimmed = newCustomType.trim().toUpperCase()
-    if (!trimmed || activeScanPaymentTypes.has(trimmed) || customPaymentTypes.includes(trimmed)) return
+    if (!trimmed || activeScanPaymentTypes.has(trimmed) || customPaymentTypes.includes(trimmed))
+      return
     setCustomPaymentTypes(prev => [...prev, trimmed])
     setPaymentAmount(prev => ({ ...prev, [trimmed]: { dept: '', acc: '' } }))
     setNewCustomType('')
     if (onSuggest) onSuggest([trimmed])
   }
 
-  const handleRemoveCustomType = (type) => {
+  const handleRemoveCustomType = type => {
     setCustomPaymentTypes(prev => prev.filter(t => t !== type))
     setPaymentAmount(prev => {
       const next = { ...prev }
@@ -66,9 +73,10 @@ export function usePaymentTypes() {
     setIsAmountModalOpen(true)
   }
 
-  const cancelAmountSelection = (clearSuggestions) => {
+  const cancelAmountSelection = clearSuggestions => {
     if (paymentAmountSnapshot.current !== null) setPaymentAmount(paymentAmountSnapshot.current)
-    if (customPaymentTypesSnapshot.current !== null) setCustomPaymentTypes(customPaymentTypesSnapshot.current)
+    if (customPaymentTypesSnapshot.current !== null)
+      setCustomPaymentTypes(customPaymentTypesSnapshot.current)
     paymentAmountSnapshot.current = null
     customPaymentTypesSnapshot.current = null
     if (clearSuggestions) clearSuggestions()
@@ -78,7 +86,10 @@ export function usePaymentTypes() {
   const saveAmountSelection = () => {
     paymentAmountSnapshot.current = null
     customPaymentTypesSnapshot.current = null
-    localStorage.setItem('accountMappingAmount', JSON.stringify({ ...paymentAmount, __customTypes: customPaymentTypes }))
+    localStorage.setItem(
+      'accountMappingAmount',
+      JSON.stringify({ ...paymentAmount, __customTypes: customPaymentTypes })
+    )
     setIsAmountModalOpen(false)
   }
 

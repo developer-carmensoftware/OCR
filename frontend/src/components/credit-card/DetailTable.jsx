@@ -2,8 +2,10 @@ import { useState } from 'react'
 import { List, Calculator } from 'lucide-react'
 import { DETAIL_COLUMNS, DETAIL_LABELS } from '../../constants'
 
-const formatAmount = (value) => {
-  const str = String(value ?? '').replace(/,/g, '').trim()
+const formatAmount = value => {
+  const str = String(value ?? '')
+    .replace(/,/g, '')
+    .trim()
   if (str === '') return ''
   const num = parseFloat(str)
   if (isNaN(num)) return str
@@ -39,23 +41,27 @@ export default function DetailTable({ details, onUpdate, onAddRow, onDeleteRow, 
               <tr>
                 {DETAIL_COLUMNS.map(col => {
                   const labelHtml = DETAIL_LABELS[col] || col
-                  return (
-                    <th key={col} dangerouslySetInnerHTML={{ __html: labelHtml }} />
-                  )
+                  return <th key={col} dangerouslySetInnerHTML={{ __html: labelHtml }} />
                 })}
               </tr>
             </thead>
             <tbody>
               {details.map((row, rowIdx) => (
-                <tr key={rowIdx} style={{ animation: `fadeUp 0.25s var(--ease) ${Math.min(rowIdx * 40, 400)}ms both` }}>
+                <tr
+                  key={rowIdx}
+                  style={{
+                    animation: `fadeUp 0.25s var(--ease) ${Math.min(rowIdx * 40, 400)}ms both`,
+                  }}
+                >
                   {DETAIL_COLUMNS.map(col => {
                     const isAmountField = amountFields.includes(col)
                     const isEditing = focusedCell?.row === rowIdx && focusedCell?.col === col
                     // While focused: show raw number (no commas) so user can type freely
                     // While blurred: show formatted value with commas
-                    const displayValue = isAmountField && !isEditing
-                      ? formatAmount(row[col])
-                      : (String(row[col] ?? '').replace(/,/g, ''))
+                    const displayValue =
+                      isAmountField && !isEditing
+                        ? formatAmount(row[col])
+                        : String(row[col] ?? '').replace(/,/g, '')
                     return (
                       <td key={col}>
                         <input
@@ -63,7 +69,9 @@ export default function DetailTable({ details, onUpdate, onAddRow, onDeleteRow, 
                           className="detail-input"
                           value={displayValue}
                           readOnly={readOnly}
-                          onFocus={() => !readOnly && isAmountField && setFocusedCell({ row: rowIdx, col })}
+                          onFocus={() =>
+                            !readOnly && isAmountField && setFocusedCell({ row: rowIdx, col })
+                          }
                           onBlur={() => setFocusedCell(null)}
                           onChange={e => !readOnly && onUpdate?.(rowIdx, col, e.target.value)}
                         />
@@ -87,15 +95,16 @@ export default function DetailTable({ details, onUpdate, onAddRow, onDeleteRow, 
         <div className="card-body">
           <div className="total-summary-grid">
             {amountFields.map(col => {
-              const label = DETAIL_LABELS[col]
-                ? DETAIL_LABELS[col].split('<br>')[0]
-                : col
+              const label = DETAIL_LABELS[col] ? DETAIL_LABELS[col].split('<br>')[0] : col
               const total = sumColumn(details, col)
               return (
                 <div key={col} className="total-summary-item">
                   <div className="total-summary-label">{label}</div>
                   <div className="total-summary-value">
-                    {total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {total.toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
                   </div>
                 </div>
               )

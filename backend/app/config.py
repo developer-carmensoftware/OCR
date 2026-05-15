@@ -2,10 +2,10 @@
 Application configuration — loads settings from .env file.
 """
 
+import os
 from pathlib import Path
 
 from pydantic_settings import BaseSettings
-import os
 
 _WEAK_JWT_SECRETS = {
     "dev-ocr-jwt-secret-change-in-production",
@@ -91,17 +91,21 @@ if settings.ocr_jwt_secret in _WEAK_JWT_SECRETS:
         "Set a strong random secret in your .env before starting in production."
     )
     if settings.app_debug:
-        import warnings; warnings.warn(_msg, stacklevel=2)
+        import warnings
+
+        warnings.warn(_msg, stacklevel=2)
     else:
         raise RuntimeError(_msg)
 
 if settings.session_encryption_key == _WEAK_FERNET_KEY:
     _msg = (
         "SESSION_ENCRYPTION_KEY is set to the placeholder value. "
-        "Generate a real key: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+        'Generate a real key: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
     )
     if settings.app_debug:
-        import warnings; warnings.warn(_msg, stacklevel=2)
+        import warnings
+
+        warnings.warn(_msg, stacklevel=2)
     else:
         raise RuntimeError(_msg)
 
@@ -109,9 +113,11 @@ if settings.session_encryption_key == _WEAK_FERNET_KEY:
 # This ensures the correct location regardless of the process working directory.
 _BACKEND_DIR = Path(__file__).parent.parent
 
+
 def _abs(path: str) -> str:
     p = Path(path)
     return str(p if p.is_absolute() else _BACKEND_DIR / p)
+
 
 settings.upload_dir = _abs(settings.upload_dir)
 settings.export_dir = _abs(settings.export_dir)

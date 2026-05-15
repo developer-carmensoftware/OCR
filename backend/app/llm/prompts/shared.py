@@ -60,6 +60,5 @@ def build_combined_prompt(layouts: list[str]) -> str:
         "against the BANK REFERENCE below.\n"
         "Step 2 — Apply the matched bank's column mapping and quirks.\n"
         "Step 3 — If no bank matches, use best judgment from visible column labels.\n\n"
-        f"BANK REFERENCE:\n{sep}{bank_ref}{sep}"
-        + ROW_RULES + OUTPUT_RULES
+        f"BANK REFERENCE:\n{sep}{bank_ref}{sep}" + ROW_RULES + OUTPUT_RULES
     )

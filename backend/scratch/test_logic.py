@@ -21,7 +21,7 @@ def run_security_tests():
         ("-start-with-hyphen", False),
         ("end-with-hyphen-", False),
     ]
-    
+
     for sub, expected in test_cases:
         result = test_tenant_regex(sub)
         status = "PASS" if result == expected else "FAIL"
@@ -30,7 +30,7 @@ def run_security_tests():
 def test_duplicate_query_logic():
     print("\n--- Duplicate Query Logic Audit ---")
     print("Requirement: Match only documents where submitted_at IS NOT NULL")
-    
+
     # Simulating the check in ap_invoice.py
     # select(APInvoice).where(
     #     APInvoice.doc_no == doc_no,

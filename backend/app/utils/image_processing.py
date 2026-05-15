@@ -3,9 +3,10 @@ Image pre-processing utilities.
 Enhance receipt images before sending to OCR for better accuracy.
 """
 
-from PIL import Image, ImageFilter, ImageEnhance
 import io
 import os
+
+from PIL import Image, ImageEnhance, ImageFilter
 
 
 def preprocess_image(
@@ -68,13 +69,13 @@ def is_valid_image(filename: str) -> bool:
 
 # (offset, bytes_to_match) — first match wins
 _MAGIC_SIGNATURES: list[tuple[int, bytes]] = [
-    (0,  b"\xff\xd8\xff"),              # JPEG
-    (0,  b"\x89PNG\r\n\x1a\n"),        # PNG
-    (0,  b"%PDF"),                      # PDF
-    (0,  b"BM"),                        # BMP
-    (0,  b"II\x2a\x00"),               # TIFF little-endian
-    (0,  b"MM\x00\x2a"),               # TIFF big-endian
-    (0,  b"GIF8"),                      # GIF
+    (0, b"\xff\xd8\xff"),  # JPEG
+    (0, b"\x89PNG\r\n\x1a\n"),  # PNG
+    (0, b"%PDF"),  # PDF
+    (0, b"BM"),  # BMP
+    (0, b"II\x2a\x00"),  # TIFF little-endian
+    (0, b"MM\x00\x2a"),  # TIFF big-endian
+    (0, b"GIF8"),  # GIF
 ]
 # WebP needs two separate checks (RIFF header + WEBP marker at offset 8)
 _WEBP_RIFF = b"RIFF"
@@ -94,7 +95,7 @@ def validate_magic_bytes(content: bytes, filename: str) -> None:
         return
 
     for offset, sig in _MAGIC_SIGNATURES:
-        if content[offset:offset + len(sig)] == sig:
+        if content[offset : offset + len(sig)] == sig:
             return
 
     raise ValueError(

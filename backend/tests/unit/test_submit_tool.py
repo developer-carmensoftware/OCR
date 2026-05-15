@@ -2,10 +2,11 @@
 Unit tests for tools/submit.py
 Mocks AsyncSession — no real DB required.
 """
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+
+from unittest.mock import MagicMock
+
+from app.tools.submit import SubmitInput, run
 from tests.conftest import make_mock_db, set_context
-from app.tools.submit import run, SubmitInput
 
 
 def make_input(**kwargs):
@@ -26,6 +27,7 @@ def make_input(**kwargs):
 
 
 # ── B1.1: Happy path ─────────────────────────────────────────────────────────
+
 
 async def test_B1_1_happy_path_returns_success_with_ids():
     set_context("t-001", "bu-001", "u-001")
@@ -54,6 +56,7 @@ async def test_B1_1_creates_task_card_and_commits():
 
 # ── B1.2: Duplicate doc_no ───────────────────────────────────────────────────
 
+
 async def test_B1_2_duplicate_doc_no_returns_failure():
     set_context("t-001", "bu-001")
     fake_card = MagicMock()  # simulate existing CreditCard row
@@ -62,9 +65,11 @@ async def test_B1_2_duplicate_doc_no_returns_failure():
     result = await run(make_input(doc_no="EXISTING-DOC"), db)
 
     assert result.success is False
-    assert result.output == {"error": "DUPLICATE_DOC_NO"} or \
-           any("DUPLICATE_DOC_NO" in str(e) for e in result.errors) or \
-           result.output is None  # different duplicate path returns without output key
+    assert (
+        result.output == {"error": "DUPLICATE_DOC_NO"}
+        or any("DUPLICATE_DOC_NO" in str(e) for e in result.errors)
+        or result.output is None
+    )  # different duplicate path returns without output key
 
 
 async def test_B1_2_duplicate_does_not_commit():
@@ -77,6 +82,7 @@ async def test_B1_2_duplicate_does_not_commit():
 
 
 # ── B1.3: DB exception ───────────────────────────────────────────────────────
+
 
 async def test_B1_3_db_exception_returns_failure():
     set_context("t-001", "bu-001")
@@ -92,6 +98,7 @@ async def test_B1_3_db_exception_returns_failure():
 
 # ── B1.4: Empty details ───────────────────────────────────────────────────────
 
+
 async def test_B1_4_empty_details_creates_card_with_zero_transactions():
     set_context("t-001", "bu-001")
     db = make_mock_db(execute_rows=[])
@@ -104,6 +111,7 @@ async def test_B1_4_empty_details_creates_card_with_zero_transactions():
 
 # ── B1.5: sort_order preserved ───────────────────────────────────────────────
 
+
 async def test_B1_5_sort_order_matches_detail_index():
     set_context("t-001", "bu-001")
     db = make_mock_db(execute_rows=[])
@@ -114,10 +122,10 @@ async def test_B1_5_sort_order_matches_detail_index():
     ]
 
     added_txs = []
-    original_add = db.add.side_effect
 
     def capture_add(obj):
         from app.models.orm import CreditCardTransaction
+
         if isinstance(obj, CreditCardTransaction):
             added_txs.append(obj)
 
@@ -132,6 +140,7 @@ async def test_B1_5_sort_order_matches_detail_index():
 
 # ── B1.6: Context vars ────────────────────────────────────────────────────────
 
+
 async def test_B1_6_tenant_id_set_on_created_objects():
     set_context("tenant-xyz", "bu-abc", "user-111")
     db = make_mock_db(execute_rows=[])
@@ -141,7 +150,8 @@ async def test_B1_6_tenant_id_set_on_created_objects():
 
     await run(make_input(), db)
 
-    from app.models.orm import OCRTask, CreditCard
+    from app.models.orm import CreditCard, OCRTask
+
     tasks = [o for o in added_objects if isinstance(o, OCRTask)]
     cards = [o for o in added_objects if isinstance(o, CreditCard)]
 
@@ -166,7 +176,7 @@ async def test_detail_rows_without_transaction_label_skipped():
     set_context("t-001", "bu-001")
     db = make_mock_db(execute_rows=[])
     details = [
-        {"transaction": "", "amount": 100},   # empty label → skipped
+        {"transaction": "", "amount": 100},  # empty label → skipped
         {"transaction": "Valid", "amount": 200},
     ]
 

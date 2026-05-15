@@ -6,7 +6,7 @@ export function useCarmenSSO() {
   const { login } = useAuth()
   const [exchanging, setExchanging] = useState(false)
   const [error, setError] = useState(null)
-  const didRun = useRef(false)  // guard against React StrictMode double-invocation
+  const didRun = useRef(false) // guard against React StrictMode double-invocation
 
   useEffect(() => {
     // StrictMode runs effects twice in dev — run only once
@@ -20,9 +20,9 @@ export function useCarmenSSO() {
 
     const params = new URLSearchParams(hash.slice(qIndex + 1))
     const token = params.get('token')
-    const bu    = params.get('bu')   || params.get('BU')   || ''
-    const user  = params.get('user') || params.get('User') || ''
-    const uri   = params.get('uri')  || ''
+    const bu = params.get('bu') || params.get('BU') || ''
+    const user = params.get('user') || params.get('User') || ''
+    const uri = params.get('uri') || ''
 
     if (!token || !bu) return
 
@@ -37,7 +37,7 @@ export function useCarmenSSO() {
       .then(({ access_token, user: userInfo }) => {
         login(access_token, userInfo)
       })
-      .catch((err) => {
+      .catch(err => {
         setError(err.message || 'Authentication failed')
       })
       .finally(() => {
