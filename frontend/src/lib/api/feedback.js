@@ -5,46 +5,46 @@
 import { apiFetch } from './client'
 
 const FIELD_NAME_MAP = {
+  // Header fields (UI PascalCase → backend snake_case)
   DateProcessed: 'date_processed',
-  BankName: 'bank_name',
-  DocName: 'doc_name',
-  CompanyName: 'company_name',
-  DocDate: 'doc_date',
-  DocNo: 'doc_no',
-  MerchantName: 'merchant_name',
-  MerchantId: 'merchant_id',
-  transaction: 'transaction',
-  pay_amt: 'pay_amt',
-  commis_amt: 'commis_amt',
-  tax_amt: 'tax_amt',
-  total: 'total',
+  BankName:      'bank_name',
+  DocName:       'doc_name',
+  CompanyName:   'company_name',
+  DocDate:       'doc_date',
+  DocNo:         'doc_no',
+  MerchantName:  'merchant_name',
+  MerchantId:    'merchant_id',
+  // Detail fields (UI PascalCase → backend snake_case)
+  Transaction:   'transaction',
+  PayAmt:        'pay_amt',
+  CommisAmt:     'commis_amt',
+  TaxAmt:        'tax_amt',
+  Total:         'total',
 }
 
 function mapFieldName(key) {
   return FIELD_NAME_MAP[key] || key
 }
 
-export async function logCorrections(cardId, bankType, corrections) {
-  if (!cardId || !bankType || !corrections.length) return
+export async function logCorrections(cardId, bankCode, corrections) {
+  if (!cardId || !bankCode || !corrections.length) return
 
-  const results = await Promise.allSettled(
-    corrections.map(({ fieldName, originalValue, correctedValue }) =>
-      apiFetch('/api/v1/feedback/correction', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          doc_no: cardId,
-          bank_type: bankType,
-          field_name: mapFieldName(fieldName),
-          original_value: String(originalValue ?? ''),
-          corrected_value: String(correctedValue ?? ''),
-        }),
-      })
-    )
-  )
+  const res = await apiFetch('/api/v1/feedback/corrections', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      corrections: corrections.map(({ fieldName, originalValue, correctedValue }) => ({
+        doc_no:          cardId,
+        bank_code:       bankCode,
+        field_name:      mapFieldName(fieldName),
+        original_value:  String(originalValue ?? ''),
+        corrected_value: String(correctedValue ?? ''),
+      })),
+    }),
+  })
 
-  const logged = results.filter(r => r.status === 'fulfilled').length
-  console.log(`[feedback] ✓ Logged ${logged}/${corrections.length} corrections`)
+  const data = await res.json().catch(() => ({}))
+  console.log(`[feedback] ✓ Logged ${data.saved ?? '?'}/${corrections.length} corrections`)
 }
 
 export function diffCorrections(headerData, originalHeader, details, originalDetails) {
@@ -57,16 +57,18 @@ export function diffCorrections(headerData, originalHeader, details, originalDet
     }
   }
 
-  details.forEach((row, rowIdx) => {
-    const origRow = originalDetails[rowIdx]
-    if (!origRow) return
+  const origByUid = new Map(originalDetails.map(r => [r._uid, r]))
+  for (const row of details) {
+    const origRow = origByUid.get(row._uid)
+    if (!origRow) continue
     for (const [col, value] of Object.entries(row)) {
+      if (col === '_uid') continue
       const orig = origRow[col]
       if (orig !== undefined && String(orig ?? '') !== String(value ?? '')) {
         corrections.push({ fieldName: col, originalValue: orig, correctedValue: value })
       }
     }
-  })
+  }
 
   return corrections
 }

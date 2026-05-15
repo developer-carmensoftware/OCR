@@ -37,7 +37,7 @@ export async function apiFetch(url, options = {}) {
   const response = await fetch(url, { ...options, headers })
 
   if (response.status === 401) {
-    clearToken()
+    if (token) clearToken()
     window.dispatchEvent(new CustomEvent('ocr:unauthorized'))
   }
 

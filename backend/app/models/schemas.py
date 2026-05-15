@@ -4,7 +4,7 @@ from typing import Optional, List
 
 from pydantic import BaseModel, Field
 
-from .enums import TaskStatus
+from .enums import TaskStatus, FieldName
 
 
 # ── Credit Card ───────────────────────────────────────────────────────────────
@@ -96,13 +96,14 @@ class ExtractedCreditCardData(BaseModel):
 class CorrectionFeedbackRequest(BaseModel):
     doc_no:          str
     bank_code:       str
-    field_name:      str
-    original_value:  Optional[str] = None
-    corrected_value: Optional[str] = None
+    field_name:      FieldName
+    original_value:  Optional[str] = Field(None, max_length=2000)
+    corrected_value: Optional[str] = Field(None, max_length=2000)
 
 
 class CorrectionFeedbackResponse(BaseModel):
     id:              int
+    skipped:         bool               = False
     doc_no:          str
     bank_code:       str
     field_name:      str
@@ -112,3 +113,12 @@ class CorrectionFeedbackResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class CorrectionFeedbackBatchRequest(BaseModel):
+    corrections: List[CorrectionFeedbackRequest]
+
+
+class CorrectionFeedbackBatchResponse(BaseModel):
+    saved:   int
+    skipped: int

@@ -58,6 +58,22 @@ class QuotaMetric(str, Enum):
     DOCUMENTS = "documents"
 
 
+class FieldName(str, Enum):
+    date_processed = "date_processed"
+    bank_name      = "bank_name"
+    doc_name       = "doc_name"
+    company_name   = "company_name"
+    doc_date       = "doc_date"
+    doc_no         = "doc_no"
+    merchant_name  = "merchant_name"
+    merchant_id    = "merchant_id"
+    transaction    = "transaction"
+    pay_amt        = "pay_amt"
+    commis_amt     = "commis_amt"
+    tax_amt        = "tax_amt"
+    total          = "total"
+
+
 class TenantPlan(str, Enum):
     FREE       = "free"
     PRO        = "pro"

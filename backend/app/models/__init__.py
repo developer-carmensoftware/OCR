@@ -2,6 +2,7 @@ from .enums import (
     AlertSeverity,
     BankType,
     DocumentType,
+    FieldName,
     JobStatus,
     PromptStatus,
     PromptType,
@@ -67,11 +68,13 @@ from .schemas import (
     ExtractedCreditCardData,
     CorrectionFeedbackRequest,
     CorrectionFeedbackResponse,
+    CorrectionFeedbackBatchRequest,
+    CorrectionFeedbackBatchResponse,
 )
 
 __all__ = [
     # Enums
-    "TaskStatus", "DocumentType", "AlertSeverity", "BankType", "JobStatus",
+    "TaskStatus", "DocumentType", "AlertSeverity", "BankType", "FieldName", "JobStatus",
     "PromptType", "PromptStatus", "QuotaPeriod", "QuotaMetric", "TenantPlan",
     # Control plane
     "Tenant", "BusinessUnit", "AdminUser",
@@ -94,4 +97,5 @@ __all__ = [
     "CreditCardSchema", "OCRTaskResponse", "OCRTaskListResponse",
     "OCRUploadResponse", "ExtractedDetailRow", "ExtractedCreditCardData",
     "CorrectionFeedbackRequest", "CorrectionFeedbackResponse",
+    "CorrectionFeedbackBatchRequest", "CorrectionFeedbackBatchResponse",
 ]

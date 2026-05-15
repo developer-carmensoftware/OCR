@@ -38,7 +38,8 @@ export function useOcrExtraction({ showModal, closeModal, setStep, clearFiles, f
       BranchNo: ext.branch_no || '',
     }
     setHeaderData(header)
-    const detailsList = ext.details?.length ? ext.details : [{ ...EMPTY_DETAIL_ROW }]
+    const detailsList = (ext.details?.length ? ext.details : [{ ...EMPTY_DETAIL_ROW }])
+      .map(row => ({ ...row, _uid: crypto.randomUUID() }))
     setDetails(detailsList)
     setOriginalDetails(JSON.parse(JSON.stringify(detailsList)))
     setOriginalHeader(JSON.parse(JSON.stringify(header)))
@@ -162,7 +163,7 @@ export function useOcrExtraction({ showModal, closeModal, setStep, clearFiles, f
     )
   }
 
-  function addRow() { setDetails(prev => [...prev, { ...EMPTY_DETAIL_ROW }]) }
+  function addRow() { setDetails(prev => [...prev, { ...EMPTY_DETAIL_ROW, _uid: crypto.randomUUID() }]) }
   function deleteRow(index) { setDetails(prev => prev.filter((_, i) => i !== index)) }
 
   function resetExtractionState() {
