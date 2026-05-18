@@ -1,52 +1,6 @@
-# Bank Receipt OCR & Import System
+# Carmen AI — OCR & Import System
 
-ระบบนำเข้าข้อมูล Credit Card Report จากธนาคาร โดยใช้ Vision LLM (OpenRouter) อ่านใบเสร็จ/ใบกำกับภาษีแล้วดึงข้อมูลออกมาเป็น Structured Data พร้อม UI สำหรับตรวจสอบและส่งเข้าระบบ Carmen
-
----
-
-## Project Structure
-
-```text
-OCR/
-├── backend/                  # FastAPI backend
-│   ├── app/
-│   │   ├── main.py
-│   │   ├── config.py
-│   │   ├── database.py
-│   │   ├── models.py
-│   │   ├── routers/
-│   │   │   └── ocr.py        # API endpoints
-│   │   ├── services/
-│   │   │   ├── ocr_service.py      # orchestration
-│   │   │   ├── openrouter_ocr.py   # Vision LLM call
-│   │   │   └── extractor.py        # field extraction helpers
-│   │   └── utils/
-│   │       └── image_processing.py # resize / preprocess
-│   ├── .env                  # API keys (ไม่ commit)
-│   ├── .env.example
-│   └── requirements.txt
-│
-└── frontend/                 # React + Vite frontend
-    ├── src/
-    │   ├── App.jsx           # state & orchestration
-    │   ├── main.jsx
-    │   ├── index.css
-    │   ├── constants/
-    │   │   └── index.js      # BANKS, DETAIL_COLUMNS, EMPTY_DETAIL_ROW
-    │   ├── lib/
-    │   │   ├── ocrApi.js     # calls OCR backend
-    │   │   └── carmenApi.js  # calls Carmen API
-    │   └── components/
-    │       ├── UploadSection.jsx
-    │       ├── ActionBar.jsx
-    │       ├── HeaderCard.jsx
-    │       ├── DetailTable.jsx
-    │       ├── FormActions.jsx
-    │       └── DocumentPreview.jsx
-    ├── index.html
-    ├── vite.config.js
-    └── package.json
-```
+ระบบนำเข้าข้อมูล Credit Card Statement และ AP Invoice จากธนาคาร โดยใช้ Vision LLM (OpenRouter / Gemini) อ่านเอกสารแล้วดึงข้อมูลออกมาเป็น Structured Data พร้อม UI สำหรับตรวจสอบและส่งเข้าระบบ Carmen ERP อัตโนมัติ
 
 ---
 
@@ -54,120 +8,94 @@ OCR/
 
 | Layer | Technology |
 | --- | --- |
-| Frontend | React 18 + Vite |
-| Backend | FastAPI (Python) |
+| Frontend | React 18 + Vite (port 3010) |
+| Backend | FastAPI + Python 3.12 (port 8010) |
+| Database | MariaDB 11 (`carmen_ai`) |
 | OCR / Extraction | OpenRouter Vision LLM (Gemini 2.5 Flash) |
-| Database | SQLite async (aiosqlite + SQLAlchemy) |
-| Image Processing | Pillow |
+| Auth | Carmen SSO → JWT + Fernet-encrypted session |
+| ERP Integration | Carmen Cloud API (proxied via backend) |
 
 ---
 
-## Getting Started
-
-### Prerequisites
-
-- Python 3.10+
-- Node.js 18+
-- OpenRouter API Key — [openrouter.ai/keys](https://openrouter.ai/keys)
-
----
-
-### 1. Backend Setup
+## Quick Start
 
 ```bash
+# Backend
 cd backend
-
-# สร้าง virtual environment
-python -m venv venv
-source venv/bin/activate
-# Windows:
-# venv\Scripts\activate
-
-# ติดตั้ง dependencies
+python -m venv venv && venv\Scripts\activate
 pip install -r requirements.txt
+cp .env.example .env   # fill in required keys
+uvicorn app.main:app --reload --port 8010
 
-# ตั้งค่า environment
-cp .env.example .env
-# แก้ไข .env แล้วใส่ OPENROUTER_API_KEY
-
-# รัน server
-uvicorn app.main:app --reload --port 8000
-```
-
-### 2. Frontend Setup
-
-```bash
+# Frontend  (http://localhost:3010)
 cd frontend
-
-npm install
+npm install --legacy-peer-deps
 npm run dev
-# เปิดที่ http://localhost:3000
 ```
 
-> Vite จะ proxy `/api/*` ไปยัง `http://localhost:8000` โดยอัตโนมัติ
+See [CLAUDE.md](CLAUDE.md) for full architecture and design decisions.
 
 ---
 
-## Environment Variables
-
-ไฟล์ `backend/.env`:
+## Environment Variables (`backend/.env`)
 
 ```env
-OPENROUTER_API_KEY=sk-or-v1-your-key-here
-OPENROUTER_MODEL=google/gemini-2.5-flash-preview
+OPENROUTER_API_KEY=sk-or-v1-...
+OPENROUTER_OCR_MODEL=google/gemini-2.5-flash-lite
+OPENROUTER_SUGGESTION_MODEL=google/gemini-2.0-flash-lite
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 
-APP_HOST=0.0.0.0
-APP_PORT=8000
+DATABASE_URL=mysql+aiomysql://root:password@localhost:3306/carmen_ai
+OCR_JWT_SECRET=<strong-random-secret>
+SESSION_ENCRYPTION_KEY=<fernet-key>
 
+APP_PORT=8010
 MAX_FILE_SIZE_MB=20
-UPLOAD_DIR=./uploads
-DATABASE_URL=sqlite+aiosqlite:///./ocr_database.db
 ```
 
 ---
 
-## API Endpoints
+## Key Endpoints
 
-Base URL: `http://localhost:8000/api/v1`
+Base URL: `http://localhost:8010`
 
-| Method | Endpoint | Description |
+| Method | Path | Description |
 | --- | --- | --- |
-| `POST` | `/ocr/extract` | อัปโหลดไฟล์ ให้ AI อ่านและดึงข้อมูล |
-| `GET` | `/ocr/tasks` | ดูรายการ task ทั้งหมด |
-| `GET` | `/ocr/tasks/{id}` | ดูผลลัพธ์ task ตาม ID |
-| `GET` | `/ocr/export` | Export ข้อมูลทั้งหมดเป็น CSV |
-| `GET` | `/ocr/health` | Health check |
-
-Swagger UI: `http://localhost:8000/docs`
-
----
-
-## Extracted Fields
-
-| Field | คำอธิบาย |
-| --- | --- |
-| `bank_name` | ชื่อธนาคาร |
-| `doc_name` | ประเภทเอกสาร |
-| `company_name` | ชื่อบริษัท |
-| `doc_date` | วันที่เอกสาร |
-| `doc_no` | เลขที่เอกสาร |
-| `terminal_id` | Terminal ID |
-| `pay_amt` | ยอดชำระ |
-| `commis_amt` | ค่าธรรมเนียม |
-| `tax_amt` | ภาษีมูลค่าเพิ่ม |
-| `wht_amount` | ภาษีหัก ณ ที่จ่าย |
-| `total` | ยอดรวมสุทธิ |
+| `POST` | `/api/v1/auth/exchange` | Carmen SSO → OCR session JWT |
+| `POST` | `/api/v1/ocr/extract` | Upload image → structured data |
+| `POST` | `/api/v1/ocr/submit` | Save confirmed data to DB |
+| `POST` | `/api/v1/ap-invoice/extract` | AP invoice extraction |
+| `POST` | `/api/v1/mapping/suggest` | AI GL account suggestion |
+| `GET` | `/api/v1/config/accounting` | Load per-BU accounting config |
+| `GET` | `/livez` | Liveness probe |
+| `GET` | `/readyz` | Readiness probe (checks DB) |
+| `GET` | `/docs` | Swagger UI |
 
 ---
 
 ## Supported Banks
 
-- Bangkok Bank (BBL)
-- Kasikornbank (KBANK)
-- Siam Commercial Bank (SCB)
+BBL · KBANK · SCB
 
 ## Supported File Types
 
-- Images: JPG, PNG, BMP, WebP, GIF
-- Documents: PDF
+JPG · PNG · BMP · WebP · GIF · PDF (max 20 MB)
+
+---
+
+## Development
+
+```bash
+# Run tests
+cd backend && pytest tests/ -q
+cd frontend && npm run test
+
+# Lint
+cd backend && ruff check app/
+cd frontend && npm run lint
+
+# Deploy to IIS (run as Administrator)
+.\deploy.ps1 -DeployPath "C:\inetpub\carmen_ai"
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for branch strategy, commit conventions, and PR checklist.

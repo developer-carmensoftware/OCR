@@ -1,5 +1,21 @@
 # Changelog
 
+## [Unreleased] — 2026-05-18
+
+### Infrastructure
+
+- **Testing** — 153 backend unit + integration tests (pytest); 46 frontend hook tests (vitest)
+  - New: `auth/session.py` JWT/Fernet unit tests, `_validate_uri` SSRF boundary tests
+  - New: Carmen proxy integration tests (account-codes, departments, gl-prefix, gljv)
+  - Integration test conftest: async session override propagates context vars correctly
+- **CI/CD** — GitHub Actions workflow (`ci.yml`): lint + type-check + pytest (coverage gate ≥50%) + vitest; Dependabot for pip/npm/actions
+- **Observability** — `/livez` + `/readyz` health probes; Sentry SDK integrated (opt-in via `SENTRY_DSN`)
+- **Deployment** — `Dockerfile` for backend + frontend (nginx); `docker-compose.yml`; `deploy.ps1` IIS deploy script; DB backup scripts (PS1 + bash)
+- **Quality gates** — pre-commit hooks (ruff + prettier + file hygiene); mypy strict on `tools/`, `auth/session.py`, `exceptions.py`, `constants.py`
+- **Documentation** — `CONTRIBUTING.md`; `README.md` updated (MariaDB, port 8010, current structure)
+
+---
+
 ## [Unreleased] — 2026-05-02
 
 ### UI / UX
