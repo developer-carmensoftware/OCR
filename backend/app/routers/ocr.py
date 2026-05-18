@@ -27,8 +27,10 @@ from app.services.audit_service import AuditAction
 from app.services.correction_service import get_correction_hints
 from app.services.file_service import file_service
 from app.services.ocr_service import create_task
+from app.services.usage_service import check_quota
 from app.tools import submit as submit_tool
 from app.tools.submit import SubmitInput
+from app.utils.db_helpers import has_submitted_doc
 
 # ── Submit payload schemas ────────────────────────────────────────────────────
 
@@ -68,6 +70,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/ocr", tags=["OCR"])
 
 
+def _task_to_dict(task: OCRTask) -> dict:
+    return {
+        "id": task.id,
+        "original_filename": task.original_filename,
+        "module_id": task.module_id,
+        "status": task.status.value if hasattr(task.status, "value") else task.status,
+        "ocr_engine": task.ocr_engine,
+        "error_message": task.error_message,
+        "created_at": task.created_at.isoformat() if task.created_at else None,
+        "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+    }
+
+
 # ═══════════════════════════════════════════════════
 # POST /api/v1/ocr/extract
 # ═══════════════════════════════════════════════════
@@ -95,14 +110,13 @@ async def extract_card(
         ip_address=request.client.host if request.client else None,
     )
 
-    from app.services.usage_service import check_quota
-
     await check_quota()
 
     hints = await get_correction_hints(bank_code, db) if bank_code else {}
     results = []
 
     for upload_file in files:
+        filename = upload_file.filename or "upload"
         file_bytes = await file_service.validate_and_read(upload_file)
 
         task = await create_task(
@@ -110,30 +124,26 @@ async def extract_card(
             tenant_id=session.tenant_id,
             business_unit_id=session.business_unit_id,
             module_id=Module.CREDIT_CARD_OCR,
-            original_filename=upload_file.filename,
+            original_filename=filename,
             carmen_user_id=session.carmen_user_id,
         )
 
         extracted = await ocr_service.extract_stateless(
             file_bytes=file_bytes,
-            original_filename=upload_file.filename,
+            original_filename=filename,
             bank_code=bank_code,
             hints=hints or None,
-            task_id=task.id,
+            task_id=str(task.id),
         )
 
         if extracted.doc_no:
-            dup = await db.execute(
-                select(CreditCard).where(
-                    CreditCard.tenant_id == session.tenant_id,
-                    CreditCard.business_unit_id == session.business_unit_id,
-                    CreditCard.doc_no == extracted.doc_no,
-                    CreditCard.submitted_at.isnot(None),
-                    CreditCard.deleted_at.is_(None),
-                )
+            extracted.is_duplicate = await has_submitted_doc(
+                db,
+                CreditCard,
+                tenant_id=session.tenant_id,
+                business_unit_id=session.business_unit_id,
+                doc_no=extracted.doc_no,
             )
-            if dup.scalars().first():
-                extracted.is_duplicate = True
 
         results.append(extracted)
 
@@ -154,24 +164,7 @@ async def list_tasks(
     _session: SessionInfo = Depends(get_current_session),
 ):
     tasks, total = await ocr_service.get_all_tasks(db, status=status, limit=limit, offset=offset)
-    return JSONResponse(
-        content={
-            "total": total,
-            "tasks": [
-                {
-                    "id": t.id,
-                    "original_filename": t.original_filename,
-                    "module_id": t.module_id,
-                    "status": t.status.value if hasattr(t.status, "value") else t.status,
-                    "ocr_engine": t.ocr_engine,
-                    "error_message": t.error_message,
-                    "created_at": t.created_at.isoformat() if t.created_at else None,
-                    "completed_at": t.completed_at.isoformat() if t.completed_at else None,
-                }
-                for t in tasks
-            ],
-        }
-    )
+    return JSONResponse(content={"total": total, "tasks": [_task_to_dict(t) for t in tasks]})
 
 
 # ═══════════════════════════════════════════════════
@@ -233,19 +226,7 @@ async def get_task(
             ],
         }
 
-    return JSONResponse(
-        content={
-            "id": task.id,
-            "original_filename": task.original_filename,
-            "module_id": task.module_id,
-            "status": task.status.value if hasattr(task.status, "value") else task.status,
-            "ocr_engine": task.ocr_engine,
-            "error_message": task.error_message,
-            "created_at": task.created_at.isoformat() if task.created_at else None,
-            "completed_at": task.completed_at.isoformat() if task.completed_at else None,
-            "credit_card": card_data,
-        }
-    )
+    return JSONResponse(content={**_task_to_dict(task), "credit_card": card_data})
 
 
 # ═══════════════════════════════════════════════════

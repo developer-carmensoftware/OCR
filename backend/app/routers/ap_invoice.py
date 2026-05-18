@@ -1,11 +1,9 @@
 import base64
 import logging
-import os
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import SessionInfo, get_current_session
@@ -20,20 +18,12 @@ from app.services.audit_service import AuditAction
 from app.services.carmen_service import CarmenAPIError, get_account_codes, get_departments
 from app.services.file_service import file_service
 from app.services.ocr_service import create_task
+from app.services.usage_service import check_quota
+from app.utils.db_helpers import has_submitted_doc
+from app.utils.mime import get_mime_type
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/ap-invoice", tags=["AP Invoice"])
-
-
-def _get_mime_type(filename: str) -> str:
-    ext = os.path.splitext(filename)[1].lower()
-    return {
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".png": "image/png",
-        ".webp": "image/webp",
-        ".pdf": "application/pdf",
-    }.get(ext, "image/jpeg")
 
 
 @router.post("/extract")
@@ -53,15 +43,14 @@ async def extract_ap_invoice(
         ip_address=request.client.host if request.client else None,
     )
 
-    from app.services.usage_service import check_quota
-
     await check_quota()
 
     if not settings.openrouter_api_key:
         raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY is not configured")
 
+    filename = file.filename or "invoice"
     file_bytes = await file_service.validate_and_read(file)
-    mime_type = _get_mime_type(file.filename)
+    mime_type = get_mime_type(filename)
     data_url = f"data:{mime_type};base64,{base64.b64encode(file_bytes).decode()}"
 
     task = await create_task(
@@ -69,29 +58,26 @@ async def extract_ap_invoice(
         tenant_id=session.tenant_id,
         business_unit_id=session.business_unit_id,
         module_id=Module.AP_INVOICE,
-        original_filename=file.filename,
+        original_filename=filename,
         carmen_user_id=session.carmen_user_id,
     )
 
-    data = await extract_ap_invoice_data(data_url, file.filename, task.id)
+    data = await extract_ap_invoice_data(data_url, filename, str(task.id))
 
     doc_no = data.get("documentNumber")
     vendor_name = data.get("vendorName")
     is_duplicate = False
 
     if doc_no and vendor_name:
-        dup = await db.execute(
-            select(APInvoice).where(
-                APInvoice.tenant_id == session.tenant_id,
-                APInvoice.business_unit_id == session.business_unit_id,
-                APInvoice.doc_no == doc_no,
-                APInvoice.vendor_name == vendor_name,
-                APInvoice.submitted_at.isnot(None),
-                APInvoice.deleted_at.is_(None),
-            )
+        is_duplicate = await has_submitted_doc(
+            db,
+            APInvoice,
+            tenant_id=session.tenant_id,
+            business_unit_id=session.business_unit_id,
+            doc_no=doc_no,
+            vendor_name=vendor_name,
         )
-        if dup.scalars().first():
-            is_duplicate = True
+        if is_duplicate:
             logger.info("Duplicate AP Invoice: %s / %s", doc_no, vendor_name)
 
     if not is_duplicate:

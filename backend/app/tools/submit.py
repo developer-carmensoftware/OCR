@@ -12,7 +12,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -20,6 +19,7 @@ from app.constants import Module
 from app.context import current_business_unit_id, current_carmen_user_id, current_tenant_id
 from app.models.orm import CreditCard, CreditCardTransaction, OCRTask, TaskStatus
 from app.tools.base import ToolResult
+from app.utils.db_helpers import has_submitted_doc
 
 logger = logging.getLogger(__name__)
 
@@ -55,16 +55,13 @@ async def run(inp: SubmitInput, db: AsyncSession) -> ToolResult:
     try:
         # 1. Duplicate safeguard
         if inp.doc_no and tenant_id:
-            dup = await db.execute(
-                select(CreditCard).where(
-                    CreditCard.tenant_id == tenant_id,
-                    CreditCard.business_unit_id == business_unit_id,
-                    CreditCard.doc_no == inp.doc_no,
-                    CreditCard.submitted_at.isnot(None),
-                    CreditCard.deleted_at.is_(None),
-                )
-            )
-            if dup.scalars().first():
+            if await has_submitted_doc(
+                db,
+                CreditCard,
+                tenant_id=tenant_id,
+                business_unit_id=business_unit_id,
+                doc_no=inp.doc_no,
+            ):
                 return ToolResult(
                     success=False,
                     tool=TOOL_NAME,

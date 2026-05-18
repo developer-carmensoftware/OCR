@@ -12,10 +12,8 @@ Flow:
 """
 
 import logging
-import time
 import uuid
-from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse
 
 import httpx
@@ -32,8 +30,10 @@ from app.auth.session import (
     extract_user_id_from_token,
 )
 from app.config import settings
+from app.constants import BlockedHosts
 from app.database import async_session, get_db, provision_tenant
 from app.models.orm import BusinessUnit, OcrSession, Tenant
+from app.services.rate_limit_service import InMemoryRateLimiter
 from app.services.usage_service import upsert_tenant_quota
 
 logger = logging.getLogger(__name__)
@@ -41,41 +41,7 @@ router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
 
 _VALIDATE_TIMEOUT = 10.0
 
-# Simple in-memory rate limiter: max 10 /exchange calls per IP per 60 seconds.
-# NOTE: per-process only — does not coordinate across multiple replicas.
-# Replace with Redis ZADD/ZCOUNT when deploying more than one app instance.
-_exchange_calls: dict[str, list[float]] = defaultdict(list)
-_EXCHANGE_WINDOW = 60.0
-_EXCHANGE_MAX = 10
-_exchange_last_prune = 0.0
-_EXCHANGE_PRUNE_INTERVAL = 300.0  # sweep stale IPs every 5 minutes
-
-
-def _check_exchange_rate_limit(request: Request) -> None:
-    global _exchange_last_prune
-    ip = request.client.host if request.client else "unknown"
-    now = time.monotonic()
-
-    # Periodic sweep: remove IPs whose call window has fully expired to prevent
-    # the dict from growing indefinitely as unique IPs accumulate over time.
-    if now - _exchange_last_prune > _EXCHANGE_PRUNE_INTERVAL:
-        stale = [
-            k for k, v in _exchange_calls.items() if not any(now - t < _EXCHANGE_WINDOW for t in v)
-        ]
-        for k in stale:
-            del _exchange_calls[k]
-        _exchange_last_prune = now
-
-    recent = [t for t in _exchange_calls[ip] if now - t < _EXCHANGE_WINDOW]
-    if len(recent) >= _EXCHANGE_MAX:
-        _exchange_calls[ip] = recent
-        raise HTTPException(
-            status_code=429,
-            detail="Too many login attempts. Please try again later.",
-            headers={"Retry-After": "60"},
-        )
-    recent.append(now)
-    _exchange_calls[ip] = recent
+_exchange_limiter = InMemoryRateLimiter(max_calls=10, window_seconds=60.0)
 
 
 def _carmen_base(uri: str) -> str:
@@ -104,8 +70,7 @@ def _validate_uri(uri: str) -> str:
     if not hostname:
         raise HTTPException(status_code=400, detail="uri must include a hostname")
 
-    _BLOCKED = {"localhost", "ip6-localhost", "ip6-loopback", "broadcasthost"}
-    if hostname in _BLOCKED:
+    if hostname in BlockedHosts.LOOPBACK:
         raise HTTPException(status_code=400, detail="uri hostname not allowed")
 
     try:
@@ -217,7 +182,7 @@ class ExchangeResponse(BaseModel):
 @router.post("/exchange", response_model=ExchangeResponse)
 async def exchange_sso_token(request: Request, body: ExchangeRequest):
     """Exchange a Carmen SSO token for an OCR session JWT."""
-    _check_exchange_rate_limit(request)
+    _exchange_limiter.check(request)
 
     token = body.token.strip()
     bu = body.bu.strip()
@@ -242,10 +207,10 @@ async def exchange_sso_token(request: Request, body: ExchangeRequest):
 
     async with async_session() as db:
         tenant = await _upsert_tenant(db, host)
-        await upsert_tenant_quota(db, tenant.id, tenant.plan)
-        business_unit = await _upsert_business_unit(db, tenant.id, bu)
+        await upsert_tenant_quota(db, str(tenant.id), str(tenant.plan))
+        business_unit = await _upsert_business_unit(db, str(tenant.id), bu)
 
-        cutoff = datetime.utcnow() - timedelta(hours=settings.session_ttl_hours)
+        cutoff = datetime.now(UTC) - timedelta(hours=settings.session_ttl_hours)
         deleted = await db.execute(
             delete(OcrSession).where(
                 (OcrSession.tenant_id == tenant.id)
@@ -276,8 +241,8 @@ async def exchange_sso_token(request: Request, body: ExchangeRequest):
 
     access_token = create_session_jwt(
         session_id=session_id,
-        tenant_id=tenant.id,
-        business_unit_id=business_unit.id,
+        tenant_id=str(tenant.id),
+        business_unit_id=str(business_unit.id),
         carmen_user_id=carmen_user_id,
         username=username,
         bu=bu,
@@ -315,7 +280,7 @@ async def revoke_session(
     result = await db.execute(select(OcrSession).where(OcrSession.id == payload.get("sid")))
     session = result.scalar_one_or_none()
     if session:
-        session.is_active = False
+        session.is_active = False  # type: ignore[assignment]
         await db.commit()
         logger.info("Session revoked: %s", session.id)
     return {"ok": True}

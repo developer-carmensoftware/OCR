@@ -15,17 +15,18 @@ import traceback
 from typing import Any
 
 from app.config import settings
-from app.constants import Module
+from app.constants import GLFields, Module
 from app.llm.client import call_text_llm
 from app.llm.prompts.mapping import build_fixed_fields_prompt, build_payment_types_prompt
 from app.tools.base import ToolResult
+from app.utils.gl_filter import score_and_pad
 
 logger = logging.getLogger(__name__)
 
 TOOL_FIXED = "suggest_gl_fixed_fields"
 TOOL_PAYMENT = "suggest_gl_payment_types"
 
-FIXED_TYPES = ["Credit card commission", "Input Tax", "Bank Account"]
+FIXED_TYPES = GLFields.FIXED_TYPES
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -41,20 +42,7 @@ def _filter_by_type(accounts: list[dict], target_type: str) -> list[dict]:
 def _filter_by_keywords(
     accounts: list[dict], keywords: list[str], limit: int, fallback_limit: int = 30
 ) -> list[dict]:
-    """Score accounts by keyword hits in name, return top `limit` matches.
-    If fewer than fallback_limit match, pad with unmatched accounts up to limit."""
-    if not accounts:
-        return []
-    scored, unmatched = [], []
-    for acc in accounts:
-        name = (acc.get("name") or "").lower()
-        score = sum(1 for kw in keywords if kw in name)
-        (scored if score else unmatched).append((score, acc))
-    scored.sort(key=lambda x: -x[0])
-    result = [acc for _, acc in scored[:limit]]
-    if len(result) < fallback_limit:
-        result.extend(acc for _, acc in unmatched[: limit - len(result)])
-    return result
+    return score_and_pad(accounts, keywords, limit, pad_threshold=fallback_limit)
 
 
 def _validate_codes(

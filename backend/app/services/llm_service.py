@@ -8,7 +8,6 @@ structured data extraction in a single API call.
 import base64
 import json
 import logging
-import os
 import pathlib
 import stat
 import tempfile
@@ -18,24 +17,11 @@ from app.constants import Module
 from app.llm.client import _strip_code_fences, call_vision_llm
 from app.llm.prompts import get_ocr_prompt
 from app.models import ExtractedCreditCardData
+from app.utils.mime import get_mime_type
 
 logger = logging.getLogger(__name__)
 
 _CARD_FIELDS = set(ExtractedCreditCardData.model_fields.keys())
-
-
-def _get_mime_type(filename: str) -> str:
-    ext = os.path.splitext(filename)[1].lower()
-    return {
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".png": "image/png",
-        ".bmp": "image/bmp",
-        ".tiff": "image/tiff",
-        ".tif": "image/tiff",
-        ".webp": "image/webp",
-        ".pdf": "application/pdf",
-    }.get(ext, "image/png")
 
 
 async def extract_from_image(
@@ -57,7 +43,7 @@ async def extract_from_image(
 
     effective_bank = bank_code or bank_type
     prompt = get_ocr_prompt(effective_bank, hints=hints)
-    mime_type = _get_mime_type(filename)
+    mime_type = get_mime_type(filename)
     b64_image = base64.b64encode(image_bytes).decode("utf-8")
     data_url = f"data:{mime_type};base64,{b64_image}"
 

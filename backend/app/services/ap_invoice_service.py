@@ -3,11 +3,12 @@ import logging
 from typing import Any
 
 from app.config import settings
-from app.constants import Module
+from app.constants import ExpenseAccounts, Module
 from app.llm.client import _strip_code_fences, call_text_llm, call_vision_llm
 from app.llm.prompts.ap_invoice import PROMPT as AP_INVOICE_PROMPT
 from app.llm.prompts.mapping import build_ap_expense_prompt
 from app.services.ap_invoice_postprocess_service import postprocess as postprocess_ap_invoice
+from app.utils.gl_filter import score_and_pad
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +31,8 @@ _CATEGORY_KW: dict[str, list[str]] = {
 def _filter_expense_accounts(
     accounts: list[dict], items: list[dict], max_acc: int = 60, invoice_desc: str = ""
 ) -> list[dict]:
-    """Return the most relevant expense accounts for the given items by
-    keyword-scoring against category + description + invoice_desc. Falls back to the first
-    `max_acc` accounts when nothing matches."""
+    """Return the most relevant expense accounts by keyword-scoring against
+    category + description + invoice_desc. Falls back to the first `max_acc` when nothing matches."""
     if not accounts:
         return []
     keywords: set[str] = set()
@@ -43,24 +43,13 @@ def _filter_expense_accounts(
             if cat_key in cat or any(kw in cat for kw in kws):
                 keywords.update(kws)
         keywords.update(w for w in desc.split() if len(w) >= 3)
-    # Also score using invoice description words
     if invoice_desc:
         keywords.update(w.lower() for w in invoice_desc.split() if len(w) >= 3)
 
     if not keywords:
         return accounts[:max_acc]
 
-    scored, unmatched = [], []
-    for acc in accounts:
-        name_lower = (acc.get("name") or "").lower()
-        score = sum(1 for kw in keywords if kw in name_lower)
-        (scored if score else unmatched).append((score, acc))
-
-    scored.sort(key=lambda x: -x[0])
-    result = [acc for _, acc in scored[:max_acc]]
-    if len(result) < max_acc:
-        result.extend(acc for _, acc in unmatched[: max_acc - len(result)])
-    return result
+    return score_and_pad(accounts, keywords, max_acc)
 
 
 async def extract_ap_invoice_data(data_url: str, filename: str, task_id: str) -> dict[str, Any]:
@@ -115,8 +104,6 @@ async def suggest_gl_for_items(
         if d.get("DeptCode") and d.get("DeptCode") != "CodeDep"
     ]
 
-    _EXPENSE_TYPES = {"e", "expense", "exp", "expenditure"}
-    _EXPENSE_PREFIXES = ("5", "6", "7")
     # Prefer accounts that match BOTH type AND prefix; fall back to prefix-only,
     # then type-only, then all accounts — avoids including asset/prepaid (1xxxxx)
     # accounts when Carmen returns type="e" for non-expense account categories.
@@ -124,10 +111,11 @@ async def suggest_gl_for_items(
         [
             a
             for a in accounts
-            if a["type"] in _EXPENSE_TYPES and str(a["code"]).startswith(_EXPENSE_PREFIXES)
+            if a["type"] in ExpenseAccounts.VALID_TYPES
+            and str(a["code"]).startswith(ExpenseAccounts.CODE_PREFIXES)
         ]
-        or [a for a in accounts if str(a["code"]).startswith(_EXPENSE_PREFIXES)]
-        or [a for a in accounts if a["type"] in _EXPENSE_TYPES]
+        or [a for a in accounts if str(a["code"]).startswith(ExpenseAccounts.CODE_PREFIXES)]
+        or [a for a in accounts if a["type"] in ExpenseAccounts.VALID_TYPES]
         or accounts
     )
 
