@@ -1,7 +1,19 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
+import * as Sentry from '@sentry/react'
 
 // Force light theme for all pages
 document.documentElement.dataset.theme = 'light'
+
+// Sentry — only initialises when VITE_SENTRY_DSN is set (production only)
+if (import.meta.env.VITE_SENTRY_DSN) {
+  Sentry.init({
+    dsn: import.meta.env.VITE_SENTRY_DSN,
+    environment: import.meta.env.VITE_SENTRY_ENV ?? 'production',
+    tracesSampleRate: 0.1,
+    integrations: [Sentry.browserTracingIntegration()],
+  })
+}
+
 import ReactDOM from 'react-dom/client'
 import { Toaster } from 'sonner'
 import { AuthProvider } from './contexts/AuthContext'

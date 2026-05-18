@@ -76,6 +76,11 @@ class Settings(BaseSettings):
     # Multi-tenancy
     carmen_tenant_default: str = "dev"  # Fallback for localhost or missing Origin header
 
+    # Sentry — leave empty to disable (set in production .env only)
+    sentry_dsn: str = ""
+    sentry_environment: str = "development"
+    sentry_traces_sample_rate: float = 0.1  # 10% of requests traced (cost control)
+
     class Config:
         env_file = Path(__file__).parent.parent / ".env"
         env_file_encoding = "utf-8"

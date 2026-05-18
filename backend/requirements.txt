@@ -24,3 +24,6 @@ httpx==0.28.1
 # Authentication
 python-jose[cryptography]==3.3.0
 cryptography==42.0.8
+
+# Observability
+sentry-sdk[fastapi]==2.22.0

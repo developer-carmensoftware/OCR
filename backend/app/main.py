@@ -56,6 +56,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ── Sentry (initialise before app creation so all errors are captured) ──────
+if settings.sentry_dsn:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.sentry_environment,
+        traces_sample_rate=settings.sentry_traces_sample_rate,
+        integrations=[FastApiIntegration(), SqlalchemyIntegration()],
+        send_default_pii=False,  # no personal data in error reports
+    )
+    logger.info("Sentry initialised (env=%s)", settings.sentry_environment)
+
 
 # ── Background Scheduler ─────────────────────────────────────────────────────
 
@@ -312,6 +327,31 @@ app.include_router(feedback_router)
 app.include_router(ap_invoice_router)
 app.include_router(admin_router)
 app.include_router(config_router)
+
+
+# ── Health (k8s-style) ───────────────────────────────────────────────────────
+
+
+@app.get("/livez", tags=["Health"], include_in_schema=False)
+async def liveness():
+    """Liveness probe — app process is alive. No dependency checks."""
+    return {"status": "ok"}
+
+
+@app.get("/readyz", tags=["Health"], include_in_schema=False)
+async def readiness():
+    """Readiness probe — app can serve requests (DB reachable)."""
+    from sqlalchemy import text
+
+    from app.database import async_session
+
+    try:
+        async with async_session() as db:
+            await db.execute(text("SELECT 1"))
+        return {"status": "ok"}
+    except Exception as exc:
+        logger.warning("Readiness check failed: %s", exc)
+        return JSONResponse(status_code=503, content={"status": "unavailable", "detail": str(exc)})
 
 
 # ── Root ──
