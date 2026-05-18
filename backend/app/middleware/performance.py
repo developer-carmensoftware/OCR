@@ -23,6 +23,26 @@ _REF_PATTERN = re.compile(
     r"/(?:task|credit-card|correction|feedback|ap-invoice|tasks|credit-cards)/([a-zA-Z0-9_\-]+)"
 )
 
+# ── Performance log buffer ────────────────────────────────────────────────────
+# Requests append here; a background task (main.py) flushes every 10 seconds.
+# Reduces per-request DB writes from O(n requests) → O(1 batch per 10s).
+_PERF_BUFFER: list[dict] = []
+_FLUSH_SIZE = 500  # also flush immediately when buffer reaches this size
+
+
+async def flush_perf_buffer() -> None:
+    """Batch-insert buffered performance log rows. Called by the background flush task."""
+    if not _PERF_BUFFER:
+        return
+    # Snapshot and clear atomically (safe in single-threaded asyncio — no await between the two)
+    batch, _PERF_BUFFER[:] = _PERF_BUFFER[:], []
+    try:
+        async with async_session() as db:
+            db.add_all([PerformanceLog(**row) for row in batch])
+            await db.commit()
+    except Exception as exc:
+        logger.error("flush_perf_buffer failed (dropped %d rows): %s", len(batch), exc)
+
 
 def _decode_jwt_claims(request: Request) -> dict:
     """Decode JWT payload without DB — never raises. Returns {} on failure."""
@@ -65,49 +85,22 @@ class PerformanceMiddleware(BaseHTTPMiddleware):
 
         final_doc_ref = getattr(request.state, "document_ref", doc_ref)
 
-        import asyncio
-
-        asyncio.ensure_future(
-            _persist(
-                tenant_id=tenant_id,
-                business_unit_id=business_unit_id,
-                endpoint=request.url.path,
-                method=request.method,
-                duration_ms=duration_ms,
-                status_code=response.status_code,
-                carmen_user_id=carmen_user_id or None,
-                resource_id=final_doc_ref,
-            )
+        _PERF_BUFFER.append(
+            {
+                "tenant_id": tenant_id or None,
+                "business_unit_id": business_unit_id or None,
+                "endpoint": request.url.path,
+                "method": request.method,
+                "duration_ms": duration_ms,
+                "status_code": response.status_code,
+                "carmen_user_id": carmen_user_id or None,
+                "resource_id": final_doc_ref,
+            }
         )
+        if len(_PERF_BUFFER) >= _FLUSH_SIZE:
+            import asyncio
+
+            asyncio.ensure_future(flush_perf_buffer())
 
         response.headers["X-Response-Time-Ms"] = f"{duration_ms:.1f}"
         return response
-
-
-async def _persist(
-    tenant_id: str,
-    business_unit_id: str,
-    endpoint: str,
-    method: str,
-    duration_ms: float,
-    status_code: int,
-    carmen_user_id: str | None,
-    resource_id: str | None,
-) -> None:
-    try:
-        async with async_session() as db:
-            db.add(
-                PerformanceLog(
-                    tenant_id=tenant_id or None,
-                    business_unit_id=business_unit_id or None,
-                    endpoint=endpoint,
-                    method=method,
-                    duration_ms=duration_ms,
-                    status_code=status_code,
-                    carmen_user_id=carmen_user_id,
-                    resource_id=resource_id,
-                )
-            )
-            await db.commit()
-    except Exception as exc:
-        logger.error("PerformanceMiddleware._persist failed: %s", exc)

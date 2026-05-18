@@ -11,6 +11,8 @@ requests pass through without limit.
 """
 
 import logging
+import time
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
@@ -27,6 +29,25 @@ from app.models.orm import LLMModelPricing, LLMUsageLog, Plan, Quota, QuotaUsage
 logger = logging.getLogger(__name__)
 
 _PRICING_CACHE: dict[str, tuple[Decimal, Decimal]] = {}
+
+# ── Quota rules cache ─────────────────────────────────────────────────────────
+# Quota rules (limit, period, thresholds) change only when an admin edits them
+# or a tenant changes plan — cache for 5 minutes to avoid 2 DB hits per extract.
+# QuotaUsage (the counter) is never cached — it must always be read from DB.
+
+_QUOTA_TTL = 300.0  # seconds
+
+
+@dataclass(frozen=True)
+class _CachedQuota:
+    id: str
+    period: QuotaPeriod
+    limit_value: float
+    soft_warn_pct: float
+    is_hard: bool
+
+
+_QUOTA_RULES_CACHE: dict[str, tuple[list[_CachedQuota], float]] = {}
 
 
 # ── Context helpers ───────────────────────────────────────────────────────────
@@ -91,6 +112,35 @@ async def _get_active_quotas(db: AsyncSession, tenant_id: str, metric: QuotaMetr
     return list(result.scalars().all())
 
 
+async def _get_cached_quota_rules(tenant_id: str) -> list[_CachedQuota]:
+    """
+    Return quota rules for a tenant from cache (TTL=5 min).
+    Falls back to DB on cache miss or expiry. On DB error, returns stale cache if available.
+    """
+    now = time.monotonic()
+    cached = _QUOTA_RULES_CACHE.get(tenant_id)
+    if cached and now - cached[1] < _QUOTA_TTL:
+        return cached[0]
+    try:
+        async with async_session() as db:
+            quotas = await _get_active_quotas(db, tenant_id, QuotaMetric.CALLS)
+            rules = [
+                _CachedQuota(
+                    id=q.id,
+                    period=q.period,
+                    limit_value=float(q.limit_value),
+                    soft_warn_pct=float(q.soft_warn_pct),
+                    is_hard=bool(q.is_hard),
+                )
+                for q in quotas
+            ]
+        _QUOTA_RULES_CACHE[tenant_id] = (rules, now)
+        return rules
+    except Exception as exc:
+        logger.error("_get_cached_quota_rules failed: %s", exc)
+        return cached[0] if cached else []
+
+
 async def upsert_tenant_quota(db: AsyncSession, tenant_id: str, plan_code: str) -> None:
     """
     Ensure the tenant has a monthly calls quota matching their plan.
@@ -129,9 +179,11 @@ async def upsert_tenant_quota(db: AsyncSession, tenant_id: str, plan_code: str) 
                 is_custom=False,
             )
         )
+        _QUOTA_RULES_CACHE.pop(tenant_id, None)
         logger.info("Created quota: tenant=%s plan=%s limit=%d/month", tenant_id, plan_code, limit)
     elif not quota.is_custom and float(quota.limit_value) != limit:
         quota.limit_value = limit
+        _QUOTA_RULES_CACHE.pop(tenant_id, None)
         logger.info(
             "Updated quota: tenant=%s plan=%s → limit=%d/month", tenant_id, plan_code, limit
         )
@@ -147,14 +199,18 @@ async def check_quota() -> None:
     Raises RateLimitExceeded if a hard limit is reached.
     Logs a warning if soft_warn_pct threshold is crossed.
     No-ops silently if no quota rule exists for this tenant.
+    Quota rules are served from a 5-minute TTL cache; only QuotaUsage hits DB.
     """
     tenant_id, _ = _ctx()
     if not tenant_id:
         return
 
     try:
+        quotas = await _get_cached_quota_rules(tenant_id)
+        if not quotas:
+            return
+
         async with async_session() as db:
-            quotas = await _get_active_quotas(db, tenant_id, QuotaMetric.CALLS)
             for quota in quotas:
                 key = _period_key(quota.period)
                 result = await db.execute(
@@ -165,8 +221,8 @@ async def check_quota() -> None:
                 )
                 usage = result.scalar_one_or_none()
                 used = float(usage.used) if usage else 0.0
-                limit = float(quota.limit_value)
-                warn_at = limit * float(quota.soft_warn_pct)
+                limit = quota.limit_value
+                warn_at = limit * quota.soft_warn_pct
 
                 if quota.is_hard and used >= limit:
                     logger.warning(
@@ -194,8 +250,10 @@ async def increment_quota(increment: float = 1.0) -> None:
     if not tenant_id:
         return
     try:
+        quotas = await _get_cached_quota_rules(tenant_id)
+        if not quotas:
+            return
         async with async_session() as db:
-            quotas = await _get_active_quotas(db, tenant_id, QuotaMetric.CALLS)
             for quota in quotas:
                 key = _period_key(quota.period)
                 stmt = (

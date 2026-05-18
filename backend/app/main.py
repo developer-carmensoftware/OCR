@@ -213,6 +213,21 @@ async def _pricing_sync_loop():
         await asyncio.sleep(8 * 3600)
 
 
+async def _perf_flush_loop():
+    """Flush buffered performance log rows to DB every 10 seconds."""
+    from app.middleware.performance import flush_perf_buffer
+
+    while True:
+        try:
+            await asyncio.sleep(10)
+            await flush_perf_buffer()
+        except asyncio.CancelledError:
+            await flush_perf_buffer()  # drain on shutdown
+            break
+        except Exception as exc:
+            logger.error("[perf_flush] Error: %s", exc)
+
+
 # ── Lifespan (startup / shutdown) ──
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -234,14 +249,16 @@ async def lifespan(_app: FastAPI):
     # Start background schedulers
     scheduler_task = asyncio.create_task(_scheduler_loop())
     pricing_task = asyncio.create_task(_pricing_sync_loop())
+    perf_flush_task = asyncio.create_task(_perf_flush_loop())
 
     yield
 
     # Cancel schedulers on shutdown
     scheduler_task.cancel()
     pricing_task.cancel()
+    perf_flush_task.cancel()
     try:
-        await asyncio.gather(scheduler_task, pricing_task)
+        await asyncio.gather(scheduler_task, pricing_task, perf_flush_task)
     except asyncio.CancelledError:
         pass
     logger.info("👋 Shutting down AI OCR Backend")

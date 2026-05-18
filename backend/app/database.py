@@ -65,8 +65,8 @@ def _get_engine():
             _carmen_ai_url(),
             echo=False,
             pool_pre_ping=True,
-            pool_size=10,
-            max_overflow=20,
+            pool_size=20,
+            max_overflow=40,
         )
         _SESSION_FACTORY = async_sessionmaker(
             _ENGINE,
@@ -590,6 +590,27 @@ async def _m107_bu_config_add_branch(conn: AsyncConnection) -> None:
     logger.info("  ~ bu_accounting_configs.branch column added")
 
 
+async def _m108_ocr_session_indexes(conn: AsyncConnection) -> None:
+    """
+    Add composite indexes to speed up two hot queries:
+      1. Stale session cleanup in auth.py: WHERE tenant_id=? AND (is_active=0 OR created_at<?)
+      2. quota_usage lookup: WHERE quota_id=? AND period_key=?
+    """
+    await conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_ocr_session_tenant_active"
+            " ON ocr_sessions(tenant_id, is_active)"
+        )
+    )
+    await conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_quota_usage_quota_period"
+            " ON quota_usage(quota_id, period_key)"
+        )
+    )
+    logger.info("  ~ ocr_sessions and quota_usage indexes added")
+
+
 _MIGRATIONS: list[tuple[str, object]] = [
     # ── Squashed history (001–033) ────────────────────────────────────────────
     ("001_squashed_initial_schema", None),
@@ -602,6 +623,7 @@ _MIGRATIONS: list[tuple[str, object]] = [
     ("105_bu_config_tables", _m105_bu_config_tables),
     ("106_normalize_bu_mapping_entries", _m106_normalize_bu_mapping_entries),
     ("107_bu_config_add_branch", _m107_bu_config_add_branch),
+    ("108_ocr_session_indexes", _m108_ocr_session_indexes),
 ]
 
 

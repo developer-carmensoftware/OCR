@@ -42,24 +42,40 @@ router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
 _VALIDATE_TIMEOUT = 10.0
 
 # Simple in-memory rate limiter: max 10 /exchange calls per IP per 60 seconds.
+# NOTE: per-process only — does not coordinate across multiple replicas.
+# Replace with Redis ZADD/ZCOUNT when deploying more than one app instance.
 _exchange_calls: dict[str, list[float]] = defaultdict(list)
 _EXCHANGE_WINDOW = 60.0
 _EXCHANGE_MAX = 10
+_exchange_last_prune = 0.0
+_EXCHANGE_PRUNE_INTERVAL = 300.0  # sweep stale IPs every 5 minutes
 
 
 def _check_exchange_rate_limit(request: Request) -> None:
+    global _exchange_last_prune
     ip = request.client.host if request.client else "unknown"
     now = time.monotonic()
-    calls = _exchange_calls[ip]
-    # evict entries outside the window
-    _exchange_calls[ip] = [t for t in calls if now - t < _EXCHANGE_WINDOW]
-    if len(_exchange_calls[ip]) >= _EXCHANGE_MAX:
+
+    # Periodic sweep: remove IPs whose call window has fully expired to prevent
+    # the dict from growing indefinitely as unique IPs accumulate over time.
+    if now - _exchange_last_prune > _EXCHANGE_PRUNE_INTERVAL:
+        stale = [
+            k for k, v in _exchange_calls.items() if not any(now - t < _EXCHANGE_WINDOW for t in v)
+        ]
+        for k in stale:
+            del _exchange_calls[k]
+        _exchange_last_prune = now
+
+    recent = [t for t in _exchange_calls[ip] if now - t < _EXCHANGE_WINDOW]
+    if len(recent) >= _EXCHANGE_MAX:
+        _exchange_calls[ip] = recent
         raise HTTPException(
             status_code=429,
             detail="Too many login attempts. Please try again later.",
             headers={"Retry-After": "60"},
         )
-    _exchange_calls[ip].append(now)
+    recent.append(now)
+    _exchange_calls[ip] = recent
 
 
 def _carmen_base(uri: str) -> str:
