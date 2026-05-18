@@ -121,7 +121,7 @@ class TestValidateUri:
             )
 
 
-# ── _check_exchange_rate_limit ────────────────────────────────────────────────
+# ── _exchange_limiter (InMemoryRateLimiter) ───────────────────────────────────
 
 
 class TestExchangeRateLimit:
@@ -130,42 +130,42 @@ class TestExchangeRateLimit:
         req.client.host = ip
         return req
 
+    def _limiter(self):
+        from app.routers.auth import _exchange_limiter
+
+        return _exchange_limiter
+
+    def _reset(self):
+        self._limiter()._calls.clear()
+
     def test_first_call_passes(self):
-        from app.routers import auth as auth_module
-
-        auth_module._exchange_calls.clear()
-        from app.routers.auth import _check_exchange_rate_limit
-
-        _check_exchange_rate_limit(self._make_request("10.99.99.1"))  # should not raise
+        self._reset()
+        self._limiter().check(self._make_request("10.99.99.1"))  # should not raise
 
     def test_exceeding_limit_raises_429(self):
-        from app.routers import auth as auth_module
-        from app.routers.auth import _EXCHANGE_MAX, _check_exchange_rate_limit
-
-        auth_module._exchange_calls.clear()
+        self._reset()
+        limiter = self._limiter()
         ip = "10.99.99.2"
         req = self._make_request(ip)
 
-        for _ in range(_EXCHANGE_MAX):
-            _check_exchange_rate_limit(req)
+        for _ in range(limiter._max):
+            limiter.check(req)
 
         with pytest.raises(HTTPException) as exc:
-            _check_exchange_rate_limit(req)
+            limiter.check(req)
         assert exc.value.status_code == 429
 
     def test_different_ips_do_not_share_limit(self):
-        from app.routers import auth as auth_module
-        from app.routers.auth import _EXCHANGE_MAX, _check_exchange_rate_limit
-
-        auth_module._exchange_calls.clear()
+        self._reset()
+        limiter = self._limiter()
         req_a = self._make_request("10.99.99.3")
         req_b = self._make_request("10.99.99.4")
 
-        for _ in range(_EXCHANGE_MAX):
-            _check_exchange_rate_limit(req_a)  # exhaust IP A
+        for _ in range(limiter._max):
+            limiter.check(req_a)  # exhaust IP A
 
         # IP B should still be allowed
-        _check_exchange_rate_limit(req_b)  # must not raise
+        limiter.check(req_b)  # must not raise
 
 
 # ── exchange endpoint (input validation) ──────────────────────────────────────
