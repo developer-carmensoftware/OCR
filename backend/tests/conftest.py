@@ -62,3 +62,13 @@ def ctx():
     set_context()
     yield
     set_context("", "", "")
+
+
+@pytest.fixture(autouse=True)
+def clear_service_caches():
+    """Wipe in-process caches before every test to prevent state leak between tests."""
+    from app.services import usage_service
+
+    usage_service._QUOTA_RULES_CACHE.clear()
+    usage_service._PRICING_CACHE.clear()
+    yield
