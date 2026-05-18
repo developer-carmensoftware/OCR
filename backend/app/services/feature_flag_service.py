@@ -56,7 +56,7 @@ async def _get_flag(flag_key: str) -> FeatureFlag | None:
 
 def _rollout_bucket(flag_key: str, tenant_id: str) -> int:
     """Deterministic 0-99 bucket for gradual rollout — stable per (flag, tenant) pair."""
-    digest = hashlib.md5(f"{flag_key}:{tenant_id}".encode()).hexdigest()
+    digest = hashlib.md5(f"{flag_key}:{tenant_id}".encode(), usedforsecurity=False).hexdigest()
     return int(digest[:4], 16) % 100
 
 
