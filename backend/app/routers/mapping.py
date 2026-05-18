@@ -99,7 +99,7 @@ async def get_mapping_history(
     history: dict[str, dict] = {}
     for row in rows:
         if row.field_type not in history:
-            history[row.field_type] = {
+            history[str(row.field_type)] = {
                 "dept": row.dept_code,
                 "acc": row.acc_code,
                 "confirmed_count": row.confirmed_count,
@@ -133,7 +133,7 @@ async def save_mapping_history(
         existing = existing_result.scalar_one_or_none()
 
         if existing:
-            existing.confirmed_count = (existing.confirmed_count or 0) + 1
+            existing.confirmed_count = (existing.confirmed_count or 0) + 1  # type: ignore[assignment]
         else:
             db.add(
                 MappingHistory(

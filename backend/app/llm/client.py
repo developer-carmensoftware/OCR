@@ -5,14 +5,40 @@ All LLM calls (vision and text) must go through this module.
 Never construct AsyncOpenAI elsewhere.
 """
 
+import asyncio
 import json
 import logging
 import time
 from typing import Any
 
-from openai import AsyncOpenAI
+from openai import APIConnectionError, APITimeoutError, AsyncOpenAI, RateLimitError
 
 from app.config import settings
+
+_RETRYABLE = (APITimeoutError, APIConnectionError, RateLimitError)
+_MAX_ATTEMPTS = 3
+
+
+async def _with_retry(coro_factory, label: str):
+    """Call coro_factory() up to _MAX_ATTEMPTS times with exponential backoff."""
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        try:
+            return await coro_factory()
+        except _RETRYABLE as exc:
+            if attempt == _MAX_ATTEMPTS:
+                raise RuntimeError(
+                    f"LLM call '{label}' failed after {_MAX_ATTEMPTS} attempts: {exc}"
+                ) from exc
+            wait = 2 ** (attempt - 1)  # 1s, 2s
+            logger.warning(
+                "LLM transient error (attempt %d/%d), retrying in %ds: %s",
+                attempt,
+                _MAX_ATTEMPTS,
+                wait,
+                exc,
+            )
+            await asyncio.sleep(wait)
+
 
 logger = logging.getLogger(__name__)
 
@@ -61,14 +87,17 @@ async def call_vision_llm(
     start = time.perf_counter()
     status_code = 200
     try:
-        response = await client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content},
-            ],
-            temperature=0.0,
-            max_tokens=8192,
+        response = await _with_retry(
+            lambda: client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content},
+                ],
+                temperature=0.0,
+                max_tokens=8192,
+            ),
+            label="vision",
         )
     except Exception as exc:
         status_code = 500
@@ -130,11 +159,14 @@ async def call_text_llm(
     start = time.perf_counter()
     status_code = 200
     try:
-        response = await client.chat.completions.create(
-            model=target_model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.0,
-            max_tokens=2048,
+        response = await _with_retry(
+            lambda: client.chat.completions.create(
+                model=target_model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,
+                max_tokens=2048,
+            ),
+            label="text",
         )
     except Exception:
         status_code = 500

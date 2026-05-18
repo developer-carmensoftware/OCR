@@ -10,6 +10,7 @@ Identity hierarchy:
   carmen_user_id   — Carmen ERP user UUID (from JWT, external — no FK in our DB)
 """
 
+import logging
 from contextvars import ContextVar
 
 # ── Tenant identity (FK-based, resolved from JWT) ─────────────────────────────
@@ -31,3 +32,15 @@ current_document_ref: ContextVar[str] = ContextVar("current_document_ref", defau
 
 # ── Scheduler context (set by _run_for_all_tenants in main.py) ───────────────
 current_scheduler_tenant: ContextVar[str] = ContextVar("current_scheduler_tenant", default="")
+
+# ── Request correlation ID (set by PerformanceMiddleware per request) ─────────
+current_request_id: ContextVar[str] = ContextVar("current_request_id", default="")
+
+
+class RequestIdFilter(logging.Filter):
+    """Injects current_request_id into every log record — attach once to root logger."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        rid = current_request_id.get("")
+        record.request_id = f"{rid} " if rid else ""
+        return True

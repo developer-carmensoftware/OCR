@@ -1,6 +1,7 @@
 import logging
 import re
 import time
+import uuid
 
 from jose import JWTError, jwt
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -11,6 +12,7 @@ from app.context import (
     current_carmen_uri,
     current_carmen_user_id,
     current_document_ref,
+    current_request_id,
     current_tenant_id,
 )
 from app.database import async_session
@@ -59,8 +61,13 @@ def _decode_jwt_claims(request: Request) -> dict:
 
 class PerformanceMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        current_request_id.set(request_id)
+
         if request.url.path in _SKIP_PATHS:
-            return await call_next(request)
+            response = await call_next(request)
+            response.headers["X-Request-ID"] = request_id
+            return response
 
         claims = _decode_jwt_claims(request)
         tenant_id = claims.get("tid", "")
@@ -103,4 +110,5 @@ class PerformanceMiddleware(BaseHTTPMiddleware):
             asyncio.ensure_future(flush_perf_buffer())
 
         response.headers["X-Response-Time-Ms"] = f"{duration_ms:.1f}"
+        response.headers["X-Request-ID"] = request_id
         return response

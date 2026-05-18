@@ -39,8 +39,25 @@ jobs:
         run: ruff format --check app/ tests/
 
       - name: Type check (mypy)
-        run: mypy app/tools/ app/services/ap_invoice_postprocess_service.py app/auth/session.py
+        run: |
+          mypy app/tools/ \
+               app/services/ap_invoice_postprocess_service.py \
+               app/services/usage_service.py \
+               app/services/audit_service.py \
+               app/services/llm_service.py \
+               app/auth/session.py \
+               app/exceptions.py \
+               app/constants.py \
+               app/context.py \
+               app/config.py \
+               app/llm/client.py \
+               app/middleware/rate_limit.py \
+               app/middleware/performance.py
         continue-on-error: true   # informational until strict coverage grows
+
+      - name: Security scan (bandit)
+        run: bandit -c pyproject.toml -r app/ -ll
+        # -ll = medium + high severity only; low-severity findings are noise at this stage
 
       - name: Test + coverage
         run: |

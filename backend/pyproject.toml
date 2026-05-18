@@ -1,3 +1,10 @@
+[tool.bandit]
+exclude_dirs = ["tests", "venv"]
+skips = [
+    "B104",  # binding to 0.0.0.0 — intentional for containerised deployment
+    "B608",  # SQL injection false-positive on SQLAlchemy text() with bound params
+]
+
 [tool.ruff]
 target-version = "py312"
 line-length = 100
@@ -58,9 +65,17 @@ check_untyped_defs = false
 module = [
     "app.tools.*",
     "app.services.ap_invoice_postprocess_service",
+    "app.services.usage_service",
+    "app.services.audit_service",
+    "app.services.llm_service",
     "app.auth.session",
     "app.exceptions",
     "app.constants",
+    "app.context",
+    "app.config",
+    "app.llm.client",
+    "app.middleware.rate_limit",
+    "app.middleware.performance",
 ]
 check_untyped_defs = true
 warn_return_any = true

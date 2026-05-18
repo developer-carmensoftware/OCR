@@ -3,7 +3,7 @@ FastAPI dependency — resolves the current authenticated session from JWT + DB.
 """
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy import select
@@ -64,11 +64,11 @@ async def get_current_session(
     if not session:
         raise HTTPException(status_code=401, detail="Session not found or revoked")
 
-    session.last_used_at = datetime.utcnow()
+    session.last_used_at = datetime.now(UTC).replace(tzinfo=None)  # type: ignore[assignment]
 
     try:
         carmen_token = decrypt_carmen_token(
-            session.carmen_token_encrypted, settings.session_encryption_key
+            str(session.carmen_token_encrypted), settings.session_encryption_key
         )
     except ValueError:
         logger.error("Failed to decrypt carmen token for session %s", session_id)

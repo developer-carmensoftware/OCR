@@ -36,6 +36,7 @@ from app.exceptions import (
     ValidationError,
 )
 from app.middleware.performance import PerformanceMiddleware
+from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.routers.admin import router as admin_router
 from app.routers.ap_invoice import router as ap_invoice_router
@@ -50,10 +51,19 @@ from app.routers.tool_registry import router as tools_router
 # ── Logging Setup (uses the reconfigured UTF-8 stderr) ──
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+    format="%(asctime)s | %(levelname)-7s | %(name)s | %(request_id)s| %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
     force=True,  # override any handlers uvicorn may have set up
 )
+
+# Install request_id filter on handlers (not logger) so propagated child-logger
+# records also get request_id injected before the formatter runs.
+from app.context import RequestIdFilter as _RIF  # noqa: E402
+
+_rif = _RIF()
+for _h in logging.getLogger().handlers:
+    _h.addFilter(_rif)
+
 logger = logging.getLogger(__name__)
 
 # ── Sentry (initialise before app creation so all errors are captured) ──────
@@ -283,6 +293,9 @@ app = FastAPI(
 
 # ── Security Headers Middleware ──
 app.add_middleware(SecurityHeadersMiddleware)
+
+# ── Rate Limiting Middleware ──
+app.add_middleware(RateLimitMiddleware)
 
 # ── Performance Middleware ──
 app.add_middleware(PerformanceMiddleware)
