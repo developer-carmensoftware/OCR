@@ -7,7 +7,7 @@ on:
     branches: ["main"]
 
 jobs:
-  # ── Backend: lint + type-check + tests ──────────────────────────────────────
+  # ── Backend: lint + type-check + tests + coverage ───────────────────────────
   backend:
     name: Backend (Python)
     runs-on: ubuntu-latest
@@ -39,11 +39,14 @@ jobs:
         run: ruff format --check app/ tests/
 
       - name: Type check (mypy)
-        run: mypy app/tools/ app/services/ap_invoice_postprocess_service.py
+        run: mypy app/tools/ app/services/ap_invoice_postprocess_service.py app/auth/session.py
         continue-on-error: true   # informational until strict coverage grows
 
-      - name: Test (pytest)
-        run: pytest tests/ -q --tb=short
+      - name: Test + coverage
+        run: |
+          pytest tests/ -q --tb=short \
+            --cov=app --cov-report=term-missing \
+            --cov-fail-under=50
         env:
           # Dummy values — tests mock all external calls, no real DB/LLM needed.
           # APP_DEBUG=true prevents weak-secret RuntimeError (acceptable in CI).
@@ -82,3 +85,22 @@ jobs:
 
       - name: Test (vitest)
         run: npm run test
+
+  # ── Docker build check ───────────────────────────────────────────────────────
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    # Only runs when Dockerfile or deps change — skip on docs-only PRs
+    if: |
+      contains(github.event.head_commit.modified, 'backend/') ||
+      contains(github.event.head_commit.modified, 'frontend/') ||
+      github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build ./backend --tag carmen-backend:ci
+
+      - name: Build frontend image
+        run: docker build ./frontend --tag carmen-frontend:ci

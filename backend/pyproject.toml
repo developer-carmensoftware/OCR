@@ -27,6 +27,22 @@ known-first-party = ["app"]
 quote-style = "double"
 indent-style = "space"
 
+# ── pytest / coverage ────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/migrations/*", "*/scratch/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
 # ── mypy ─────────────────────────────────────────────────────────────────────
 [tool.mypy]
 python_version = "3.12"
@@ -36,8 +52,15 @@ warn_unused_ignores = true
 # Start lenient — tighten per module as coverage grows
 check_untyped_defs = false
 
-# Strict only on business logic layers (expand list over time)
+# Strict only on business logic layers — expand this list one module at a time.
+# Target: full app/ coverage by end of v1.x.
 [[tool.mypy.overrides]]
-module = ["app.tools.*", "app.services.ap_invoice_postprocess_service"]
+module = [
+    "app.tools.*",
+    "app.services.ap_invoice_postprocess_service",
+    "app.auth.session",
+    "app.exceptions",
+    "app.constants",
+]
 check_untyped_defs = true
 warn_return_any = true
