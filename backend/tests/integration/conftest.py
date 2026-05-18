@@ -42,8 +42,31 @@ def make_test_client(mock_db):
     async def _db():
         yield mock_db
 
+    async def _session():
+        # async so FastAPI runs this in the event loop — context vars set here
+        # propagate to route handler coroutines (sync deps run in threadpool and
+        # their ContextVar writes are NOT visible to the main coroutine).
+        from app.context import (
+            current_business_unit_id,
+            current_carmen_token,
+            current_carmen_uri,
+            current_carmen_user_id,
+            current_ocr_session_id,
+            current_tenant_id,
+            current_username,
+        )
+
+        current_tenant_id.set(FAKE_SESSION.tenant_id)
+        current_business_unit_id.set(FAKE_SESSION.business_unit_id)
+        current_carmen_user_id.set(FAKE_SESSION.carmen_user_id)
+        current_username.set(FAKE_SESSION.username)
+        current_ocr_session_id.set(FAKE_SESSION.session_id)
+        current_carmen_token.set(FAKE_SESSION.carmen_token)
+        current_carmen_uri.set(FAKE_SESSION.carmen_uri)
+        return FAKE_SESSION
+
     app.dependency_overrides[get_db] = _db
-    app.dependency_overrides[get_current_session] = lambda: FAKE_SESSION
+    app.dependency_overrides[get_current_session] = _session
 
     with (
         patch("app.main.ensure_db", new_callable=AsyncMock),
