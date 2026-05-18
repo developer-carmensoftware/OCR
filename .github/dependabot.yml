@@ -1,0 +1,40 @@
+version: 2
+
+updates:
+  # ── GitHub Actions ───────────────────────────────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"
+
+  # ── Python (backend) ─────────────────────────────────────────────────────────
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps(backend)"
+    groups:
+      fastapi-stack:
+        patterns: ["fastapi", "uvicorn", "starlette", "pydantic*"]
+      sqlalchemy-stack:
+        patterns: ["sqlalchemy", "aiomysql", "alembic"]
+      test-tools:
+        patterns: ["pytest*", "httpx", "anyio"]
+
+  # ── JavaScript (frontend) ────────────────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps(frontend)"
+    groups:
+      react:
+        patterns: ["react", "react-dom"]
+      vite-stack:
+        patterns: ["vite", "@vitejs/*"]
+      test-tools:
+        patterns: ["vitest", "@vitest/*", "@testing-library/*"]

@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "dev"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  # ── Backend: lint + type-check + tests ──────────────────────────────────────
+  backend:
+    name: Backend (Python)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: ruff check app/ tests/
+
+      - name: Format check (ruff)
+        run: ruff format --check app/ tests/
+
+      - name: Type check (mypy)
+        run: mypy app/tools/ app/services/ap_invoice_postprocess_service.py
+        continue-on-error: true   # informational until strict coverage grows
+
+      - name: Test (pytest)
+        run: pytest tests/ -q --tb=short
+        env:
+          # Dummy values — tests mock all external calls, no real DB/LLM needed.
+          # APP_DEBUG=true prevents weak-secret RuntimeError (acceptable in CI).
+          APP_DEBUG: "true"
+          DATABASE_URL: mysql+aiomysql://root:password@localhost:3306/carmen_ai
+          OCR_JWT_SECRET: ci-test-secret-not-used-in-tests
+          SESSION_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          OPENROUTER_API_KEY: sk-or-test-not-real
+
+  # ── Frontend: lint + tests ───────────────────────────────────────────────────
+  frontend:
+    name: Frontend (Node)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (eslint)
+        run: npm run lint
+
+      - name: Format check (prettier)
+        run: npm run format:check
+
+      - name: Test (vitest)
+        run: npm run test
