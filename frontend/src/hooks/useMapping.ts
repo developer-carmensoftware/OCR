@@ -1,0 +1,289 @@
+import { useState, useEffect } from 'react'
+import { saveMappingHistory } from '../lib/api/mapping'
+import { saveAccountingConfig } from '../lib/api/config'
+import { BANK_INFO, BANK_CODE_MAP, BANK_SOURCE_MAP } from '../constants/banks'
+import { useBankConfig } from './mapping/useBankConfig'
+import { useMappingData } from './mapping/useMappingData'
+import { useMappingSuggestions } from './mapping/useMappingSuggestions'
+import { usePaymentTypes } from './mapping/usePaymentTypes'
+import type { FieldMapping, BankDisplayName } from '../types/api'
+import type { ModalConfig } from './useModal'
+import type { CompanyData } from '../lib/bankTransforms'
+import type { MainMappingKey } from './mapping/useMappingSuggestions'
+
+export type MainMappings = Record<MainMappingKey, FieldMapping>
+
+export interface ActiveScan {
+  paymentTypes: Set<string>
+  commission: boolean
+  tax: boolean
+  net: boolean
+}
+
+export function useMapping() {
+  const bankConfig = useBankConfig()
+
+  const [mappings, setMappings] = useState<MainMappings>({
+    commission: { dept: '', acc: '' },
+    tax: { dept: '', acc: '' },
+    net: { dept: '', acc: '' },
+  })
+  const [activeScan, setActiveScan] = useState<ActiveScan>({
+    paymentTypes: new Set(),
+    commission: false,
+    tax: false,
+    net: false,
+  })
+  const [modalConfig, setModalConfig] = useState<ModalConfig>({
+    show: false,
+    title: '',
+    message: '',
+    type: 'info',
+  })
+  const [saving, setSaving] = useState(false)
+  const [acceptAllModal, setAcceptAllModal] = useState(false)
+
+  const masterData = useMappingData()
+  const paymentTypes = usePaymentTypes()
+
+  const suggestions = useMappingSuggestions({
+    masterAccounts: masterData.masterAccounts,
+    masterDepartments: masterData.masterDepartments,
+    mappings,
+    paymentAmount: paymentTypes.paymentAmount,
+    activeScan,
+    customPaymentTypes: paymentTypes.customPaymentTypes,
+    setModalConfig,
+  })
+
+  useEffect(() => {
+    try {
+      const ocrState = JSON.parse(localStorage.getItem('ocr_wizard_state') || '{}') as {
+        details?: Array<Record<string, string>>
+      }
+      if (ocrState.details && Array.isArray(ocrState.details)) {
+        const types = new Set<string>()
+        let comm = false, tx = false, n = false
+        const toNum = (v: unknown) => parseFloat(String(v ?? '').replace(/,/g, '')) || 0
+        ocrState.details.forEach(d => {
+          if (d.Transaction) types.add(d.Transaction)
+          if (toNum(d.CommisAmt) > 0) comm = true
+          if (toNum(d.TaxAmt) > 0) tx = true
+          if (toNum(d.Total) > 0) n = true
+        })
+        setActiveScan({ paymentTypes: types, commission: comm, tax: tx, net: n })
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  const handleBankChange = (selected: BankDisplayName | '') => {
+    bankConfig.setBank(selected)
+    if (selected && BANK_INFO[selected as BankDisplayName]) {
+      const info = BANK_INFO[selected as BankDisplayName]
+      bankConfig.setCompany(prev => ({ ...prev, name: info.name, taxId: info.taxId, address: info.address }))
+    }
+    if (selected && BANK_SOURCE_MAP[selected as BankDisplayName])
+      bankConfig.setFileSource(BANK_SOURCE_MAP[selected as BankDisplayName])
+  }
+
+  const handleCompanyChange = (e: React.ChangeEvent<HTMLInputElement>, field: string) => {
+    bankConfig.setCompany(prev => ({ ...prev, [field]: e.target.value }))
+  }
+
+  const handleMappingChange = (type: string, field: keyof FieldMapping, value: string) => {
+    setMappings(prev => ({ ...prev, [type]: { ...prev[type as MainMappingKey], [field]: value } }))
+    suggestions.rejectMainSuggestion(type)
+  }
+
+  const handleAcceptAll = () => {
+    setMappings(prev => {
+      const next = { ...prev }
+      ;(['commission', 'tax', 'net'] as MainMappingKey[]).forEach(key => {
+        const s = suggestions.mainSuggestions[key]
+        if (s) {
+          const cur = next[key] || { dept: '', acc: '' }
+          next[key] = { dept: cur.dept || s.dept || '', acc: cur.acc || s.acc || '' }
+        }
+      })
+      return next
+    })
+    paymentTypes.setPaymentAmount(prev => {
+      const next = { ...prev }
+      Object.entries(suggestions.paymentSuggestions).forEach(([type, s]) => {
+        if (s) {
+          const cur = next[type] || { dept: '', acc: '' }
+          next[type] = { dept: cur.dept || s.dept || '', acc: cur.acc || s.acc || '' }
+        }
+      })
+      return next
+    })
+    suggestions.clearAllSuggestions()
+    setAcceptAllModal(false)
+  }
+
+  const companyRequiredFields: Array<{ key: keyof CompanyData; label: string }> = [
+    { key: 'name', label: 'Company Name' },
+    { key: 'taxId', label: 'Tax ID' },
+    { key: 'branch', label: 'Branch No' },
+    { key: 'address', label: 'Address' },
+  ]
+  const missingCompanyFields = companyRequiredFields.filter(
+    f => !bankConfig.company[f.key as keyof typeof bankConfig.company]?.trim()
+  )
+  const topLevelRequired = [
+    { key: 'bank', label: 'Bank', value: bankConfig.bank },
+    { key: 'filePrefix', label: 'File Prefix', value: bankConfig.filePrefix },
+    { key: 'fileSource', label: 'File Source', value: bankConfig.fileSource },
+  ]
+  const missingTopFields = topLevelRequired.filter(f => !f.value?.trim())
+
+  const saveAllSettings = async (shouldClose = false) => {
+    if (saving) return
+    const allMissing = [...missingTopFields, ...missingCompanyFields]
+    if (allMissing.length > 0) {
+      setModalConfig({
+        show: true,
+        title: 'Please fill in all required fields',
+        message: `Please fill in ${allMissing.map(f => f.label).join(', ')} before saving`,
+        type: 'error',
+      })
+      return
+    }
+
+    setSaving(true)
+    try {
+      const config = {
+        bank: bankConfig.bank,
+        filePrefix: bankConfig.filePrefix,
+        fileSource: bankConfig.fileSource,
+        description: bankConfig.description,
+        company: bankConfig.company,
+        mappings,
+        paymentAmount: paymentTypes.paymentAmount,
+      }
+      localStorage.setItem('accountingConfig', JSON.stringify(config))
+
+      const allMappings: Record<string, FieldMapping> = { ...mappings }
+      Object.entries(paymentTypes.paymentAmount).forEach(([type, val]) => {
+        if (val.dept || val.acc) allMappings[type] = val
+      })
+
+      try {
+        await saveAccountingConfig({
+          bank_code: bankConfig.bank ? (BANK_CODE_MAP[bankConfig.bank as BankDisplayName] || null) : null,
+          file_prefix: bankConfig.filePrefix,
+          file_source: bankConfig.fileSource,
+          description: bankConfig.description,
+          branch: bankConfig.company.branch || null,
+          mappings: allMappings,
+          custom_types: paymentTypes.customPaymentTypes,
+        })
+      } catch {
+        /* ignore — localStorage already saved */
+      }
+
+      if (bankConfig.bank) {
+        try {
+          await saveMappingHistory({
+            bank_code: BANK_CODE_MAP[bankConfig.bank as BankDisplayName] || bankConfig.bank,
+            mappings: allMappings,
+          })
+        } catch {
+          /* ignore */
+        }
+      }
+
+      if (shouldClose && window.opener) {
+        window.close()
+      } else {
+        window.location.hash = '/CreditCardOCR'
+        if (!shouldClose) {
+          setModalConfig({
+            show: true,
+            title: 'Save Successful',
+            message: 'Account Mapping settings have been saved successfully.',
+            type: 'success',
+          })
+        }
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const allPaymentTypes = [
+    ...activeScan.paymentTypes,
+    ...paymentTypes.customPaymentTypes.filter(t => !activeScan.paymentTypes.has(t)),
+  ]
+
+  return {
+    bank: bankConfig.bank,
+    setBank: bankConfig.setBank,
+    handleBankChange,
+    filePrefix: bankConfig.filePrefix,
+    setFilePrefix: bankConfig.setFilePrefix,
+    fileSource: bankConfig.fileSource,
+    setFileSource: bankConfig.setFileSource,
+    description: bankConfig.description,
+    setDescription: bankConfig.setDescription,
+    configLoading: bankConfig.configLoading,
+    company: bankConfig.company,
+    setCompany: bankConfig.setCompany,
+    handleCompanyChange,
+    companyRequiredFields,
+    missingCompanyFields,
+    mappings,
+    setMappings,
+    handleMappingChange,
+    masterAccounts: masterData.masterAccounts,
+    masterDepartments: masterData.masterDepartments,
+    masterGLPrefixes: masterData.masterGLPrefixes,
+    loadingOpts: masterData.loadingOpts,
+    loadInitialData: masterData.loadInitialData,
+    paymentAmount: paymentTypes.paymentAmount,
+    customPaymentTypes: paymentTypes.customPaymentTypes,
+    newCustomType: paymentTypes.newCustomType,
+    setNewCustomType: paymentTypes.setNewCustomType,
+    handlePaymentMappingChange: paymentTypes.handlePaymentMappingChange,
+    handleAddCustomType: (activeScanPT?: Set<string>) =>
+      paymentTypes.handleAddCustomType(activeScanPT || activeScan.paymentTypes, types =>
+        masterData.masterAccounts.length && masterData.masterDepartments.length
+          ? suggestions.autoSuggestPaymentTypes(types)
+          : null
+      ),
+    handleRemoveCustomType: paymentTypes.handleRemoveCustomType,
+    isAmountModalOpen: paymentTypes.isAmountModalOpen,
+    setIsAmountModalOpen: paymentTypes.setIsAmountModalOpen,
+    openAmountModal: paymentTypes.openAmountModal,
+    cancelAmountSelection: () =>
+      paymentTypes.cancelAmountSelection(suggestions.clearAllSuggestions),
+    saveAmountSelection: paymentTypes.saveAmountSelection,
+    activeScan,
+    allPaymentTypes,
+    suggestionMeta: suggestions.suggestionMeta,
+    mainSuggestions: suggestions.mainSuggestions,
+    suggestLoading: suggestions.suggestLoading,
+    autoSuggest: suggestions.autoSuggest,
+    confirmMainSuggestion: (key: MainMappingKey) => suggestions.applyMainSuggestion(key, setMappings),
+    rejectMainSuggestion: suggestions.rejectMainSuggestion,
+    paymentSuggestions: suggestions.paymentSuggestions,
+    setPaymentSuggestions: suggestions.setPaymentSuggestions,
+    paymentSuggestLoading: suggestions.paymentSuggestLoading,
+    autoSuggestPaymentTypes: suggestions.autoSuggestPaymentTypes,
+    confirmPaymentSuggestion: (type: string) =>
+      suggestions.confirmPaymentSuggestion(type, paymentTypes.setPaymentAmount),
+    rejectPaymentSuggestion: suggestions.rejectPaymentSuggestion,
+    modalConfig,
+    setModalConfig,
+    acceptAllModal,
+    setAcceptAllModal,
+    handleAcceptAll,
+    saving,
+    saveAllSettings,
+    missingTopFields,
+  }
+}
+
+import type React from 'react'
