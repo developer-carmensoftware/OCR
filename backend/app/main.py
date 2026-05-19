@@ -1,10 +1,11 @@
 import asyncio
 import io
+import json as _json
 import logging
 import sys
 import traceback
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import UTC, datetime
 
 # ── Force UTF-8 on Windows (prevents 'charmap' codec errors with Thai text) ──
 if sys.platform == "win32":
@@ -25,6 +26,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
+from app.config import settings as _cfg_early  # noqa: E402
+
+# ── Logging Setup (uses the reconfigured UTF-8 stderr) ──
+from app.context import RequestIdFilter as _RIF  # noqa: E402
 from app.database import ensure_db, get_all_tenants
 from app.exceptions import (
     CarmenServiceError,
@@ -48,18 +53,42 @@ from app.routers.mapping import router as mapping_router
 from app.routers.ocr import router as ocr_router
 from app.routers.tool_registry import router as tools_router
 
-# ── Logging Setup (uses the reconfigured UTF-8 stderr) ──
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-7s | %(name)s | %(request_id)s| %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    force=True,  # override any handlers uvicorn may have set up
-)
 
-# Install request_id filter on handlers (not logger) so propagated child-logger
-# records also get request_id injected before the formatter runs.
-from app.context import RequestIdFilter as _RIF  # noqa: E402
+class _JsonLogFormatter(logging.Formatter):
+    """Structured JSON formatter for cloud log aggregation (ELK / Datadog / GCP)."""
 
+    def format(self, record: logging.LogRecord) -> str:
+        entry: dict = {
+            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level": record.levelname,
+            "logger": record.name,
+            "msg": record.getMessage(),
+        }
+        rid = getattr(record, "request_id", "").strip()
+        if rid:
+            entry["request_id"] = rid
+        if record.exc_info:
+            entry["exc"] = self.formatException(record.exc_info)
+        return _json.dumps(entry, ensure_ascii=False)
+
+
+def _build_handler() -> logging.Handler:
+    handler = logging.StreamHandler()
+    if _cfg_early.log_json:
+        handler.setFormatter(_JsonLogFormatter())
+    else:
+        handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s | %(levelname)-7s | %(name)s | %(request_id)s| %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
+    return handler
+
+
+logging.basicConfig(level=logging.INFO, handlers=[_build_handler()], force=True)
+
+# Install request_id filter so every propagated child-logger record gets it injected.
 _rif = _RIF()
 for _h in logging.getLogger().handlers:
     _h.addFilter(_rif)
@@ -112,7 +141,7 @@ async def _run_job(job_name: str, coro_factory) -> None:
     from app.models.enums import JobStatus
     from app.models.orm import JobRun
 
-    started = datetime.utcnow()
+    started = datetime.now(UTC)
     rows_affected = None
     error_msg = None
     status = JobStatus.SUCCESS
@@ -142,7 +171,7 @@ async def _run_job(job_name: str, coro_factory) -> None:
             ),
             {
                 "status": status.value,
-                "done": datetime.utcnow(),
+                "done": datetime.now(UTC),
                 "rows": rows_affected,
                 "err": error_msg,
                 "id": run_id,
@@ -263,7 +292,13 @@ async def lifespan(_app: FastAPI):
 
     yield
 
-    # Cancel schedulers on shutdown
+    # Grace period: give in-flight LLM / Carmen calls time to finish
+    # before background tasks are cancelled.
+    grace = settings.shutdown_grace_seconds
+    if grace > 0:
+        logger.info("⏳ Graceful shutdown — waiting %ds for in-flight requests...", grace)
+        await asyncio.sleep(grace)
+
     scheduler_task.cancel()
     pricing_task.cancel()
     perf_flush_task.cancel()

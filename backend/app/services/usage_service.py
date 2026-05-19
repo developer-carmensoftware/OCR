@@ -13,8 +13,9 @@ requests pass through without limit.
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
+from typing import cast
 
 import httpx
 from sqlalchemy import select
@@ -60,8 +61,13 @@ def _ctx() -> tuple[str, str]:
     return current_tenant_id.get() or "", current_business_unit_id.get() or ""
 
 
+def _utcnow() -> datetime:
+    """Naive UTC datetime — matches the DB's naive DateTime columns."""
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
 def _period_key(period: QuotaPeriod) -> str:
-    now = datetime.utcnow()
+    now = _utcnow()
     if period == QuotaPeriod.DAILY:
         return now.strftime("%Y-%m-%d")
     if period == QuotaPeriod.MONTHLY:
@@ -82,7 +88,10 @@ async def _get_pricing(model_name: str) -> tuple[Decimal, Decimal] | None:
             )
             pricing = result.scalar_one_or_none()
             if pricing:
-                rates = (pricing.input_price_per_1m, pricing.output_price_per_1m)
+                rates: tuple[Decimal, Decimal] = (
+                    cast(Decimal, pricing.input_price_per_1m),
+                    cast(Decimal, pricing.output_price_per_1m),
+                )
                 _PRICING_CACHE[model_name] = rates
                 return rates
     except Exception as exc:
@@ -126,10 +135,10 @@ async def _get_cached_quota_rules(tenant_id: str) -> list[_CachedQuota]:
             quotas = await _get_active_quotas(db, tenant_id, QuotaMetric.CALLS)
             rules = [
                 _CachedQuota(
-                    id=q.id,
-                    period=q.period,
-                    limit_value=float(q.limit_value),
-                    soft_warn_pct=float(q.soft_warn_pct),
+                    id=cast(str, q.id),
+                    period=cast(QuotaPeriod, q.period),
+                    limit_value=float(cast(Decimal, q.limit_value)),
+                    soft_warn_pct=float(cast(Decimal, q.soft_warn_pct)),
                     is_hard=bool(q.is_hard),
                 )
                 for q in quotas
@@ -181,8 +190,8 @@ async def upsert_tenant_quota(db: AsyncSession, tenant_id: str, plan_code: str) 
         )
         _QUOTA_RULES_CACHE.pop(tenant_id, None)
         logger.info("Created quota: tenant=%s plan=%s limit=%d/month", tenant_id, plan_code, limit)
-    elif not quota.is_custom and float(quota.limit_value) != limit:
-        quota.limit_value = limit
+    elif not quota.is_custom and float(cast(Decimal, quota.limit_value)) != limit:
+        quota.limit_value = Decimal(cast(int, limit))  # type: ignore[assignment]
         _QUOTA_RULES_CACHE.pop(tenant_id, None)
         logger.info(
             "Updated quota: tenant=%s plan=%s → limit=%d/month", tenant_id, plan_code, limit
@@ -220,7 +229,7 @@ async def check_quota() -> None:
                     )
                 )
                 usage = result.scalar_one_or_none()
-                used = float(usage.used) if usage else 0.0
+                used = float(cast(Decimal, usage.used)) if usage else 0.0
                 limit = quota.limit_value
                 warn_at = limit * quota.soft_warn_pct
 
@@ -265,7 +274,7 @@ async def increment_quota(increment: float = 1.0) -> None:
                     )
                     .on_duplicate_key_update(
                         used=QuotaUsage.used + increment,
-                        last_updated_at=datetime.utcnow(),
+                        last_updated_at=_utcnow(),
                     )
                 )
                 await db.execute(stmt)
@@ -344,7 +353,7 @@ async def get_quota_summary(tenant_id: str) -> dict:
 
             rows = []
             for quota in quotas:
-                key = _period_key(quota.period)
+                key = _period_key(cast(QuotaPeriod, quota.period))
                 usage_result = await db.execute(
                     select(QuotaUsage).where(
                         QuotaUsage.quota_id == quota.id,
@@ -352,8 +361,8 @@ async def get_quota_summary(tenant_id: str) -> dict:
                     )
                 )
                 usage = usage_result.scalar_one_or_none()
-                used = float(usage.used) if usage else 0.0
-                limit = float(quota.limit_value)
+                used = float(cast(Decimal, usage.used)) if usage else 0.0
+                limit = float(cast(Decimal, quota.limit_value))
                 rows.append(
                     {
                         "period": quota.period,
@@ -397,13 +406,13 @@ async def fetch_openrouter_pricing() -> None:
                         input_price_per_1m=input_p,
                         output_price_per_1m=output_p,
                         source="openrouter_api",
-                        price_verified_at=datetime.utcnow(),
+                        price_verified_at=_utcnow(),
                     )
                     .on_duplicate_key_update(
                         input_price_per_1m=input_p,
                         output_price_per_1m=output_p,
                         source="openrouter_api",
-                        price_verified_at=datetime.utcnow(),
+                        price_verified_at=_utcnow(),
                     )
                 )
                 await db.execute(stmt)

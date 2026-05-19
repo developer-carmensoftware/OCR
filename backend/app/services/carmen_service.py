@@ -30,10 +30,16 @@ def _base_url() -> str:
 
 
 def _headers(carmen_token: str) -> dict[str, str]:
-    return {
+    from app.context import current_request_id
+
+    headers = {
         "Authorization": carmen_token,
         "User-Agent": "FastAPI-Proxy",
     }
+    rid = current_request_id.get("")
+    if rid:
+        headers["X-Request-ID"] = rid
+    return headers
 
 
 class CarmenAPIError(Exception):

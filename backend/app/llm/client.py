@@ -80,12 +80,15 @@ async def call_vision_llm(
     Returns the raw text content from the LLM response.
     Quota check is the caller's responsibility (done in routers via check_quota()).
     """
+    from app.context import current_request_id
     from app.services.outbound_log_service import log_outbound
     from app.services.usage_service import log_llm_usage
 
     client = get_client()
     start = time.perf_counter()
     status_code = 200
+    rid = current_request_id.get("")
+    extra_headers = {"X-Request-ID": rid} if rid else {}
     try:
         response = await _with_retry(
             lambda: client.chat.completions.create(
@@ -96,6 +99,7 @@ async def call_vision_llm(
                 ],
                 temperature=0.0,
                 max_tokens=8192,
+                extra_headers=extra_headers,
             ),
             label="vision",
         )
@@ -150,6 +154,7 @@ async def call_text_llm(
     Strips markdown code fences, parses JSON.
     Returns None on any failure (never raises to callers).
     """
+    from app.context import current_request_id
     from app.services.outbound_log_service import log_outbound
     from app.services.usage_service import log_llm_usage
 
@@ -158,6 +163,8 @@ async def call_text_llm(
 
     start = time.perf_counter()
     status_code = 200
+    rid = current_request_id.get("")
+    extra_headers = {"X-Request-ID": rid} if rid else {}
     try:
         response = await _with_retry(
             lambda: client.chat.completions.create(
@@ -165,6 +172,7 @@ async def call_text_llm(
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.0,
                 max_tokens=2048,
+                extra_headers=extra_headers,
             ),
             label="text",
         )

@@ -81,6 +81,12 @@ class Settings(BaseSettings):
     sentry_environment: str = "development"
     sentry_traces_sample_rate: float = 0.1  # 10% of requests traced (cost control)
 
+    # Logging — set to true in production for ELK/Datadog/cloud log aggregation
+    log_json: bool = False
+
+    # Graceful shutdown — seconds to wait before cancelling background tasks
+    shutdown_grace_seconds: int = 5
+
     class Config:
         env_file = Path(__file__).parent.parent / ".env"
         env_file_encoding = "utf-8"
