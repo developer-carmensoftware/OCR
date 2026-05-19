@@ -6,18 +6,6 @@ import { getAvailableFields } from '../../constants/apInvoice'
  * Derives totals, diffs, and validation errors from lineItems and headerData.
  */
 export function useAPValidation({ headerData, lineItems, fieldMappings, t }) {
-  const isNumFld = f =>
-    [
-      'qty',
-      'unitPrice',
-      'discountPct',
-      'discountAmt',
-      'lineSubTotal',
-      'taxPct',
-      'taxAmt',
-      'lineTotal',
-    ].includes(f)
-
   const sumLineSubTotal =
     lineItems.reduce((s, i) => s + Math.round(parseNum(i.lineSubTotal) * 100), 0) / 100
   const sumLineTotal =

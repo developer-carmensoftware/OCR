@@ -11,7 +11,13 @@ import { showToast } from '../../lib/toast'
  * Manages the OCR extraction flow: calling the API, parsing results,
  * applying extracted data to state, and handling re-extraction.
  */
-export function useOcrExtraction({ showModal, closeModal, setStep, clearFiles, fileInputRef }) {
+export function useOcrExtraction({
+  showModal,
+  closeModal,
+  setStep,
+  clearFiles,
+  fileInputRef: _fileInputRef,
+}) {
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
   const [bank, setBank] = useState('')

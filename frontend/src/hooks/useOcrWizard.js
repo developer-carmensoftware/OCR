@@ -4,7 +4,6 @@ import { useFileUpload } from './credit-card/useFileUpload'
 import { useOcrExtraction } from './credit-card/useOcrExtraction'
 import { useOcrSubmission } from './credit-card/useOcrSubmission'
 import { showToast } from '../lib/toast'
-import { BANK_THAI_NAMES } from '../constants'
 
 export function useOcrWizard() {
   const [step, setStep] = useState(1)

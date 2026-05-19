@@ -84,17 +84,6 @@ export function useMappingSuggestions({
     }
   }
 
-  const confirmMainSuggestion = key => {
-    const suggestion = mainSuggestions[key]
-    if (suggestion) {
-      // Returned so orchestrator can merge into mappings state
-      return suggestion
-    }
-    setMainSuggestions(prev => ({ ...prev, [key]: null }))
-    setSuggestionMeta(prev => ({ ...prev, [key]: null }))
-    return null
-  }
-
   const applyMainSuggestion = (key, setMappings) => {
     const suggestion = mainSuggestions[key]
     if (suggestion) {

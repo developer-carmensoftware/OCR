@@ -43,17 +43,20 @@ export function useAPInvoice() {
   })
 
   // Load vendors on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     vendor.loadVendors()
   }, [])
 
   // Auto-match vendor when vendorTaxId or vendor DB changes (not when dropdown toggles)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (vendor.showVendorDrop) return
     vendor.autoMatchVendor(false)
   }, [extraction.headerData.vendorTaxId, lang, vendor.vendorDbByTax])
 
   // Load GL data when entering step 4
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (step === 4) submission.loadGLData()
   }, [step])

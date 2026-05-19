@@ -2,14 +2,19 @@ import { useState, useRef } from 'react'
 import { apiFetch } from '../../lib/api/client'
 import { getAPVendorMapping } from '../../lib/api/config'
 import { showToast } from '../../lib/toast'
-import { fmt, parseNum } from '../../lib/format'
 import { EMPTY_HEADER, DEFAULT_MAPPINGS } from '../../constants/apInvoice'
 
 /**
  * Manages AP Invoice OCR extraction: file upload, API call,
  * response normalization, and retry logic.
  */
-export function useAPExtraction({ t, setStep, setModal, loadVendors, vendorDbByTax }) {
+export function useAPExtraction({
+  t,
+  setStep,
+  setModal,
+  loadVendors,
+  vendorDbByTax: _vendorDbByTax,
+}) {
   const [file, setFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(null)
   const [previewType, setPreviewType] = useState(null)
