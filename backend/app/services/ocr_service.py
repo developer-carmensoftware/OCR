@@ -5,7 +5,7 @@ OCR Service — stateless extraction + task listing/export helpers.
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -104,7 +104,7 @@ async def get_all_tasks(
         query = query.where(OCRTask.status == status)
         count_q = count_q.where(OCRTask.status == status)
 
-    total = int((await db.execute(count_q)).scalar() or 0)
+    total = (await db.execute(count_q)).scalar() or 0
     tasks = (
         (await db.execute(query.order_by(desc(OCRTask.created_at)).limit(limit).offset(offset)))
         .scalars()
@@ -137,7 +137,7 @@ async def export_tasks_to_csv(db: AsyncSession) -> str:
 
     rows = (await db.execute(query)).all()
 
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     csv_path = os.path.join(settings.export_dir, f"ocr_export_{timestamp}.csv")
 
     headers = [
@@ -200,7 +200,7 @@ async def export_tasks_to_csv(db: AsyncSession) -> str:
                             card.doc_no or "",
                             tx.tx_date or "",
                             tx.description or "",
-                            float(tx.amount) if tx.amount else "",
+                            float(str(tx.amount)) if tx.amount else "",
                             tx.tx_type or "",
                         ]
                     )
