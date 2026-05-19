@@ -37,19 +37,20 @@ export function useAPInvoice() {
     updateHeader: extraction.updateHeader,
   })
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     vendor.loadVendors()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
     if (vendor.showVendorDrop) return
     vendor.autoMatchVendor(false)
-  }, [extraction.headerData.vendorTaxId, lang, vendor.vendorDbByTax, vendor])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [extraction.headerData.vendorTaxId, lang, vendor.vendorDbByTax])
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (step === 4) submission.loadGLData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step])
 
   const confirmMapping = () => {
