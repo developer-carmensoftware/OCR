@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { fetchAccountCodes, fetchDepartments, fetchGLPrefixes } from '../../lib/api/carmen'
 
 export interface MasterAccount {
@@ -75,6 +75,10 @@ export function useMappingData(): MappingDataHook {
       console.warn('GL prefix load failed (non-critical):', err)
     }
   }
+
+  useEffect(() => {
+    void loadInitialData()
+  }, [])
 
   return { masterAccounts, masterDepartments, masterGLPrefixes, loadingOpts, loadInitialData }
 }

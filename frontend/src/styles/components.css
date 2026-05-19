@@ -2409,3 +2409,91 @@ input[type='text'].detail-input:focus {
   background: var(--gray-100);
   border-color: var(--border);
 }
+
+/* ─── CUSTOM MODAL ─── */
+.modal-icon-wrapper {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1.25rem;
+  border-width: 1.5px;
+  border-style: solid;
+}
+
+.modal-input-group {
+  margin: 0.25rem 0 1rem;
+  text-align: left;
+}
+
+.modal-input-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-2);
+  margin-bottom: 0.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.modal-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.9rem;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-2, #f9fafb);
+  color: var(--text);
+  outline: none;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.modal-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+.modal-info .modal-icon-wrapper {
+  background: var(--primary-light);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.modal-info .btn-confirm {
+  background: var(--primary);
+  color: white;
+}
+
+.modal-success .modal-icon-wrapper {
+  background: var(--emerald-light);
+  border-color: var(--emerald);
+  color: var(--emerald);
+}
+.modal-success .btn-confirm {
+  background: var(--emerald);
+  color: white;
+}
+
+.modal-warning .modal-icon-wrapper {
+  background: var(--amber-light);
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.modal-warning .btn-confirm {
+  background: var(--amber);
+  color: white;
+}
+
+.modal-error .modal-icon-wrapper {
+  background: var(--rose-light);
+  border-color: var(--rose);
+  color: var(--rose);
+}
+.modal-error .btn-confirm {
+  background: var(--rose);
+  color: white;
+}

@@ -6,10 +6,10 @@ import { CheckCircle2, AlertTriangle, XCircle, Info } from 'lucide-react'
 type ModalType = 'info' | 'success' | 'warning' | 'error' | 'loading'
 
 const TYPE_CONFIG = {
-  success: { Icon: CheckCircle2, iconBg: 'var(--emerald-light)', iconBorder: 'var(--emerald)', iconColor: 'var(--emerald)', btn: { background: 'var(--emerald)', color: 'white' } },
-  warning: { Icon: AlertTriangle, iconBg: 'var(--amber-light)', iconBorder: 'var(--amber)', iconColor: 'var(--amber)', btn: { background: 'var(--amber)', color: 'white' } },
-  error:   { Icon: XCircle,       iconBg: 'var(--rose-light)',   iconBorder: 'var(--rose)',   iconColor: 'var(--rose)',   btn: { background: 'var(--rose)', color: 'white' } },
-  info:    { Icon: Info,           iconBg: 'var(--primary-light)',iconBorder: 'var(--primary)',iconColor: 'var(--primary)',btn: { background: 'var(--primary)', color: 'white' } },
+  success: { Icon: CheckCircle2 },
+  warning: { Icon: AlertTriangle },
+  error:   { Icon: XCircle },
+  info:    { Icon: Info },
 } as const
 
 interface Props {
@@ -95,16 +95,16 @@ export default function CustomModal({
     <AnimatePresence>
       {show && (
         <motion.div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-desc" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
-          <motion.div className="modal-box" initial={{ opacity: 0, scale: 0.92, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 8 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}>
-            <div style={{ width: 56, height: 56, borderRadius: 'var(--radius-md)', background: cfg.iconBg, border: `1.5px solid ${cfg.iconBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem', color: cfg.iconColor }}>
+          <motion.div className={`modal-box modal-${type}`} initial={{ opacity: 0, scale: 0.92, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 8 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}>
+            <div className="modal-icon-wrapper">
               <cfg.Icon size={26} strokeWidth={1.75} />
             </div>
             <h3 className="modal-title" id="modal-title">{title}</h3>
             <p className="modal-msg" id="modal-desc">{message}</p>
 
             {inputLabel && (
-              <div style={{ margin: '0.25rem 0 1rem', textAlign: 'left' }}>
-                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-2)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <div className="modal-input-group">
+                <label className="modal-input-label">
                   {inputLabel}
                 </label>
                 <input
@@ -114,9 +114,7 @@ export default function CustomModal({
                   onChange={e => handleInputChange(e.target.value)}
                   placeholder={inputPlaceholder || ''}
                   aria-label={inputLabel}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '0.55rem 0.85rem', fontSize: '0.9rem', border: '1.5px solid var(--border)', borderRadius: '8px', background: 'var(--bg-2, #f9fafb)', color: 'var(--text)', outline: 'none' }}
-                  onFocus={e => { e.target.style.borderColor = 'var(--primary)'; e.target.style.boxShadow = '0 0 0 3px var(--primary-light)' }}
-                  onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none' }}
+                  className="modal-input"
                 />
               </div>
             )}
@@ -127,7 +125,7 @@ export default function CustomModal({
                   {cancelText}
                 </button>
               )}
-              <button ref={confirmRef} type="button" className="btn" style={{ ...cfg.btn }} onClick={onConfirm}>
+              <button ref={confirmRef} type="button" className="btn btn-confirm" onClick={onConfirm}>
                 {confirmText}
               </button>
             </div>
