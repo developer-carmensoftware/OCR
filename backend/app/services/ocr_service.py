@@ -104,7 +104,7 @@ async def get_all_tasks(
         query = query.where(OCRTask.status == status)
         count_q = count_q.where(OCRTask.status == status)
 
-    total = (await db.execute(count_q)).scalar()
+    total = int((await db.execute(count_q)).scalar() or 0)
     tasks = (
         (await db.execute(query.order_by(desc(OCRTask.created_at)).limit(limit).offset(offset)))
         .scalars()

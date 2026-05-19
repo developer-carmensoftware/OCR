@@ -328,11 +328,11 @@ class PromptTemplate(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     bank_code = Column(String(20), ForeignKey("banks.code"), nullable=True, index=True)
-    prompt_type = Column(
+    prompt_type: Column = Column(
         SAEnum(PromptType, values_callable=lambda o: [e.value for e in o]), nullable=False
     )
     version = Column(Integer, nullable=False)
-    status = Column(
+    status: Column = Column(
         SAEnum(PromptStatus, values_callable=lambda o: [e.value for e in o]),
         default=PromptStatus.DRAFT,
         nullable=False,
@@ -409,10 +409,10 @@ class Quota(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id = Column(String(36), ForeignKey("tenants.id"), nullable=False, index=True)
-    period = Column(
+    period: Column = Column(
         SAEnum(QuotaPeriod, values_callable=lambda o: [e.value for e in o]), nullable=False
     )
-    metric = Column(
+    metric: Column = Column(
         SAEnum(QuotaMetric, values_callable=lambda o: [e.value for e in o]), nullable=False
     )
     limit_value = Column(Numeric(18, 4), nullable=False)
@@ -491,7 +491,7 @@ class OCRTask(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     module_id = Column(String(50), ForeignKey("modules.id"), nullable=False, index=True)
     original_filename = Column(String(255), nullable=False)
-    status = Column(
+    status: Column = Column(
         SAEnum(TaskStatus, values_callable=lambda o: [e.value for e in o]),
         default=TaskStatus.PENDING,
         nullable=False,
@@ -904,7 +904,7 @@ class AnomalyAlert(Base, TimestampMixin):
     business_unit_id = Column(String(36), nullable=True, index=True)
     module_id = Column(String(50), nullable=True, index=True)
     metric = Column(String(50), nullable=False, index=True)
-    severity = Column(
+    severity: Column = Column(
         SAEnum(AlertSeverity, values_callable=lambda o: [e.value for e in o]),
         default=AlertSeverity.WARN,
         nullable=False,
@@ -927,7 +927,7 @@ class JobRun(Base, TimestampMixin):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     job_name = Column(String(50), nullable=False, index=True)
     tenant_id = Column(String(36), nullable=True, index=True)
-    status = Column(
+    status: Column = Column(
         SAEnum(JobStatus, values_callable=lambda o: [e.value for e in o]),
         default=JobStatus.RUNNING,
         nullable=False,

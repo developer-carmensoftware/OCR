@@ -28,13 +28,13 @@ def preprocess_image(
     4. Sharpen (makes text edges crisper)
     5. Light denoise
     """
-    img = Image.open(io.BytesIO(image_bytes))
+    img: Image.Image = Image.open(io.BytesIO(image_bytes))
 
     # ── 1. Resize if too large ──
     if max(img.size) > max_dimension:
         ratio = max_dimension / max(img.size)
         new_size = (int(img.width * ratio), int(img.height * ratio))
-        img = img.resize(new_size, Image.LANCZOS)
+        img = img.resize(new_size, Image.Resampling.LANCZOS)
 
     # ── 2. Convert to grayscale ──
     if grayscale and img.mode != "L":
@@ -42,13 +42,13 @@ def preprocess_image(
 
     # ── 3. Enhance contrast ──
     if contrast_factor != 1.0:
-        enhancer = ImageEnhance.Contrast(img)
-        img = enhancer.enhance(contrast_factor)
+        contrast_enhancer = ImageEnhance.Contrast(img)
+        img = contrast_enhancer.enhance(contrast_factor)
 
     # ── 4. Sharpen ──
     if sharpness_factor != 1.0:
-        enhancer = ImageEnhance.Sharpness(img)
-        img = enhancer.enhance(sharpness_factor)
+        sharpness_enhancer = ImageEnhance.Sharpness(img)
+        img = sharpness_enhancer.enhance(sharpness_factor)
 
     # ── 5. Denoise ──
     if denoise:

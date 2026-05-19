@@ -54,7 +54,8 @@ def _decode_jwt_claims(request: Request) -> dict:
             return {}
         from app.config import settings
 
-        return jwt.decode(auth[7:], settings.ocr_jwt_secret, algorithms=["HS256"])
+        claims = jwt.decode(auth[7:], settings.ocr_jwt_secret, algorithms=["HS256"])
+        return claims if isinstance(claims, dict) else {}
     except (JWTError, Exception):
         return {}
 

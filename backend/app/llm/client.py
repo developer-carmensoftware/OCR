@@ -133,7 +133,7 @@ async def call_vision_llm(
         if response.choices and response.choices[0].message
         else None
     )
-    if not content:
+    if not content or not isinstance(content, str):
         raise RuntimeError(
             "LLM returned empty content — model may have hit token limit or safety filter"
         )
@@ -206,12 +206,13 @@ async def call_text_llm(
         if response.choices and response.choices[0].message
         else None
     )
-    if not content:
+    if not content or not isinstance(content, str):
         return None
 
     raw = _strip_code_fences(content.strip())
     try:
-        return json.loads(raw)
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else None
     except Exception:
         logger.error("Failed to parse LLM JSON: %s", raw[:200])
         return None

@@ -61,13 +61,15 @@ def create_session_jwt(
         "iat": now,
         "exp": now + timedelta(hours=ttl_hours),
     }
-    return jwt.encode(payload, secret, algorithm=_ALGORITHM)
+    encoded = jwt.encode(payload, secret, algorithm=_ALGORITHM)
+    return str(encoded)
 
 
 def decode_session_jwt(token: str, secret: str) -> dict:
     """Raises ValueError on invalid/expired token."""
     try:
-        return jwt.decode(token, secret, algorithms=[_ALGORITHM])
+        decoded = jwt.decode(token, secret, algorithms=[_ALGORITHM])
+        return decoded if isinstance(decoded, dict) else {}
     except JWTError as exc:
         raise ValueError(str(exc)) from exc
 

@@ -22,7 +22,7 @@ Session:
 """
 
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
@@ -55,7 +55,7 @@ def _carmen_ai_url() -> str:
 # ── Single Engine ─────────────────────────────────────────────────────────────
 
 _ENGINE = None
-_SESSION_FACTORY = None
+_SESSION_FACTORY: async_sessionmaker[AsyncSession] | None = None
 
 
 def _get_engine():
@@ -82,11 +82,13 @@ def _get_engine():
 
 def async_session() -> AsyncSession:
     _get_engine()
+    assert _SESSION_FACTORY is not None
     return _SESSION_FACTORY()
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     _get_engine()
+    assert _SESSION_FACTORY is not None
     async with _SESSION_FACTORY() as session:
         try:
             yield session
@@ -771,7 +773,7 @@ async def _m111_convert_doc_dates(conn: AsyncConnection) -> None:
     )
 
 
-_MIGRATIONS: list[tuple[str, object]] = [
+_MIGRATIONS: list[tuple[str, Callable[[AsyncConnection], Awaitable[None]] | None]] = [
     # ── Squashed history (001–033) ────────────────────────────────────────────
     ("001_squashed_initial_schema", None),
     # ── Live migrations (100+) ────────────────────────────────────────────────

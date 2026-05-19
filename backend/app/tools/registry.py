@@ -14,7 +14,7 @@ returning a failed ToolResult with clear errors instead of a raw exception.
 """
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from app.tools import extract, map_gl, submit
 from app.tools.base import ToolResult
@@ -193,7 +193,7 @@ async def invoke(name: str, **kwargs: Any) -> ToolResult:
         )
 
     try:
-        return await entry["fn"](**kwargs)
+        return cast(ToolResult, await entry["fn"](**kwargs))
     except Exception as exc:
         return ToolResult(
             success=False,
