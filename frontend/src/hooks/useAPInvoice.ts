@@ -40,6 +40,7 @@ export function useAPInvoice() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { vendor.loadVendors() }, [])
 
+
   useEffect(() => {
     if (vendor.showVendorDrop) return
     vendor.autoMatchVendor(false)
