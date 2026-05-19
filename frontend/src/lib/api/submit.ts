@@ -55,7 +55,7 @@ export async function submitToLocal(payload: SubmitPayload): Promise<SubmitResul
     throw error
   }
 
-  const data = await res.json() as SubmitResult
+  const data = (await res.json()) as SubmitResult
 
   if (data.ok === false) {
     const error: SubmitApiError = new Error(data.detail || 'An error occurred while saving data')

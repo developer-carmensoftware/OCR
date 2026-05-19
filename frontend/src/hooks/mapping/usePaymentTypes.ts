@@ -32,7 +32,10 @@ export function usePaymentTypes(): PaymentTypesHook {
   const paymentAmountSnapshot = useRef<Record<string, FieldMapping> | null>(null)
   const customPaymentTypesSnapshot = useRef<string[] | null>(null)
 
-  const initFromData = (mappings: Record<string, FieldMapping> = {}, customTypes: string[] = []) => {
+  const initFromData = (
+    mappings: Record<string, FieldMapping> = {},
+    customTypes: string[] = []
+  ) => {
     setCustomPaymentTypes(customTypes)
     setPaymentAmount(prev => {
       const next = { ...prev }
@@ -52,9 +55,10 @@ export function usePaymentTypes(): PaymentTypesHook {
     try {
       const parsed = JSON.parse(amountState) as Record<string, unknown>
       initFromData(
-        Object.fromEntries(
-          Object.entries(parsed).filter(([k]) => k !== '__customTypes')
-        ) as Record<string, FieldMapping>,
+        Object.fromEntries(Object.entries(parsed).filter(([k]) => k !== '__customTypes')) as Record<
+          string,
+          FieldMapping
+        >,
         (parsed.__customTypes as string[]) || []
       )
     } catch {
@@ -92,7 +96,10 @@ export function usePaymentTypes(): PaymentTypesHook {
   }
 
   const openAmountModal = () => {
-    paymentAmountSnapshot.current = JSON.parse(JSON.stringify(paymentAmount)) as Record<string, FieldMapping>
+    paymentAmountSnapshot.current = JSON.parse(JSON.stringify(paymentAmount)) as Record<
+      string,
+      FieldMapping
+    >
     customPaymentTypesSnapshot.current = [...customPaymentTypes]
     setIsAmountModalOpen(true)
   }

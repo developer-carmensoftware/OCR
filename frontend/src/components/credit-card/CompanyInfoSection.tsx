@@ -54,7 +54,10 @@ export default function CompanyInfoSection({
           const missing = !company[key]?.trim()
           return (
             <React.Fragment key={`frag-${key}`}>
-              <label key={`lbl-${key}`} style={missing ? { color: '#dc2626', fontWeight: 600 } : {}}>
+              <label
+                key={`lbl-${key}`}
+                style={missing ? { color: '#dc2626', fontWeight: 600 } : {}}
+              >
                 {label} {missing && <span style={{ color: '#dc2626' }}>*</span>}
               </label>
               <input

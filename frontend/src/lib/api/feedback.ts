@@ -47,7 +47,7 @@ export async function logCorrections(
     }),
   })
 
-  const data = await res.json().catch(() => ({})) as { saved?: number }
+  const data = (await res.json().catch(() => ({}))) as { saved?: number }
   console.warn(`[feedback] ✓ Logged ${data.saved ?? '?'}/${corrections.length} corrections`)
 }
 

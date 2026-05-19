@@ -8,7 +8,7 @@ export interface CarmenCodeItem {
 
 async function _parseCarmenHttpError(res: Response): Promise<string> {
   try {
-    const json = await res.json() as { detail?: string }
+    const json = (await res.json()) as { detail?: string }
     return json.detail || JSON.stringify(json)
   } catch {
     return await res.text()
@@ -18,21 +18,21 @@ async function _parseCarmenHttpError(res: Response): Promise<string> {
 export async function fetchAccountCodes(): Promise<CarmenCodeItem[]> {
   const res = await apiFetch('/api/v1/ocr/carmen/account-codes')
   if (!res.ok) throw new Error(`Failed to fetch account codes (${res.status})`)
-  const json = await res.json() as { Data?: CarmenCodeItem[] }
+  const json = (await res.json()) as { Data?: CarmenCodeItem[] }
   return json.Data || []
 }
 
 export async function fetchDepartments(): Promise<CarmenCodeItem[]> {
   const res = await apiFetch('/api/v1/ocr/carmen/departments')
   if (!res.ok) throw new Error(`Failed to fetch departments (${res.status})`)
-  const json = await res.json() as { Data?: CarmenCodeItem[] }
+  const json = (await res.json()) as { Data?: CarmenCodeItem[] }
   return json.Data || []
 }
 
 export async function fetchGLPrefixes(): Promise<CarmenCodeItem[]> {
   const res = await apiFetch('/api/v1/ocr/carmen/gl-prefix')
   if (!res.ok) throw new Error(`Failed to fetch GL prefixes (${res.status})`)
-  const json = await res.json() as { Data?: CarmenCodeItem[] }
+  const json = (await res.json()) as { Data?: CarmenCodeItem[] }
   return json.Data || []
 }
 

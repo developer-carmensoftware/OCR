@@ -37,13 +37,13 @@ export async function extractFromFile(file: File, bankType?: string): Promise<Ex
   const res = await apiFetch(url, { method: 'POST', body: formData })
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { detail?: string }
+    const err = (await res.json().catch(() => ({}))) as { detail?: string }
     const error: ApiError = new Error(err.detail || `Upload failed (${res.status})`)
     error.status = res.status
     throw error
   }
 
-  const results = await res.json() as Array<Record<string, unknown>>
+  const results = (await res.json()) as Array<Record<string, unknown>>
   const card = results[0] || {}
   const rawDetails = (card.details as Array<Record<string, string>> | undefined) || []
 

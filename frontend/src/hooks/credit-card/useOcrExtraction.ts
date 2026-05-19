@@ -101,9 +101,9 @@ export function useOcrExtraction({
     }
     setHeaderData(header)
     const rawDetails = (ext.details as Array<Record<string, string>> | undefined) || []
-    const detailsList: DetailRow[] = (rawDetails.length ? rawDetails : [{ ...EMPTY_DETAIL_ROW }]).map(
-      row => ({ ...EMPTY_DETAIL_ROW, ...row, _uid: crypto.randomUUID() })
-    )
+    const detailsList: DetailRow[] = (
+      rawDetails.length ? rawDetails : [{ ...EMPTY_DETAIL_ROW }]
+    ).map(row => ({ ...EMPTY_DETAIL_ROW, ...row, _uid: crypto.randomUUID() }))
     setDetails(detailsList)
     setOriginalDetails(JSON.parse(JSON.stringify(detailsList)) as DetailRow[])
     setOriginalHeader(JSON.parse(JSON.stringify(header)) as Record<string, string>)
@@ -123,9 +123,14 @@ export function useOcrExtraction({
 
     if (ext.bank_companyname || ext.branch_no) {
       try {
-        const existing = JSON.parse(localStorage.getItem('accountingConfig') || '{}') as Record<string, unknown>
+        const existing = JSON.parse(localStorage.getItem('accountingConfig') || '{}') as Record<
+          string,
+          unknown
+        >
         const existingCompany = (existing.company as Record<string, string> | undefined) || {}
-        const updatedCompany: Record<string, unknown> = { ...(existingCompany as Record<string, unknown>) }
+        const updatedCompany: Record<string, unknown> = {
+          ...(existingCompany as Record<string, unknown>),
+        }
         if (ext.bank_companyname) updatedCompany.name = ext.bank_companyname as string
         if (ext.branch_no) updatedCompany.branch = ext.branch_no as string
         existing.company = updatedCompany
@@ -175,7 +180,9 @@ export function useOcrExtraction({
         return
       }
       applyExtractedData(ext as unknown as Record<string, unknown>)
-      setBank((detectBankFromExtracted(ext as unknown as Record<string, string>) || '') as BankCode | '')
+      setBank(
+        (detectBankFromExtracted(ext as unknown as Record<string, string>) || '') as BankCode | ''
+      )
       setStatus('Data extracted successfully ✓')
       setStep(2)
       showToast(
@@ -221,7 +228,11 @@ export function useOcrExtraction({
     try {
       const ext = await extractFromFile(files[0], bankType || undefined)
       applyExtractedData(ext as unknown as Record<string, unknown>)
-      setBank((bankType || detectBankFromExtracted(ext as unknown as Record<string, string>) || '') as BankCode | '')
+      setBank(
+        (bankType || detectBankFromExtracted(ext as unknown as Record<string, string>) || '') as
+          | BankCode
+          | ''
+      )
       showToast(`Re-extracted successfully${bankType ? ` with ${bankType}` : ''}`, 'success')
     } catch (err) {
       const e = err as { message: string }
@@ -264,8 +275,22 @@ export function useOcrExtraction({
   }
 
   return {
-    loading, status, bank, setBank, cardId, headerData, details, originalDetails, originalHeader,
-    processFile, reExtract, updateHeader, updateDetail, addRow, deleteRow,
-    resetExtractionState, applyExtractedData,
+    loading,
+    status,
+    bank,
+    setBank,
+    cardId,
+    headerData,
+    details,
+    originalDetails,
+    originalHeader,
+    processFile,
+    reExtract,
+    updateHeader,
+    updateDetail,
+    addRow,
+    deleteRow,
+    resetExtractionState,
+    applyExtractedData,
   }
 }

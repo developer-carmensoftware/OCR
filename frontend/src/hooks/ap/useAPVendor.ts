@@ -40,7 +40,7 @@ export function useAPVendor({ t, headerData }: APVendorProps) {
     if (setRefreshing) setVendorRefreshing(true)
     try {
       const r = await apiFetch('/api/v1/ocr/carmen/vendors')
-      const data = await r.json() as { Data?: Array<Record<string, unknown>> }
+      const data = (await r.json()) as { Data?: Array<Record<string, unknown>> }
       const list: Vendor[] = (data.Data || []).map(v => ({
         code: (v.VnCode as string) || '',
         name: (v.VnName as string) || '',
@@ -83,7 +83,9 @@ export function useAPVendor({ t, headerData }: APVendorProps) {
     setSystemVendor(prev => {
       if (prev.code) return prev
       const raw = String(headerData?.vendorTaxId || '').replace(/\D/g, '')
-      const branch = String(headerData?.vendorBranch || '').replace(/\D/g, '').padStart(5, '0')
+      const branch = String(headerData?.vendorBranch || '')
+        .replace(/\D/g, '')
+        .padStart(5, '0')
       const found = vendorDbByTax[`${raw}-${branch}`] || vendorDbByTax[raw]
       if (found && found.active !== false) {
         setVendorSearch(
@@ -116,10 +118,19 @@ export function useAPVendor({ t, headerData }: APVendorProps) {
   }
 
   return {
-    vendors, vendorDbByTax, systemVendor, setSystemVendor,
-    vendorSearch, setVendorSearch, showVendorDrop, setShowVendorDrop,
-    vendorRefreshing, filteredVendors,
-    loadVendors, refreshVendors: () => loadVendors(true),
-    autoMatchVendor, resetVendor,
+    vendors,
+    vendorDbByTax,
+    systemVendor,
+    setSystemVendor,
+    vendorSearch,
+    setVendorSearch,
+    showVendorDrop,
+    setShowVendorDrop,
+    vendorRefreshing,
+    filteredVendors,
+    loadVendors,
+    refreshVendors: () => loadVendors(true),
+    autoMatchVendor,
+    resetVendor,
   }
 }

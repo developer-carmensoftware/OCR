@@ -1,6 +1,12 @@
 export type DetailColumn = 'Transaction' | 'PayAmt' | 'CommisAmt' | 'TaxAmt' | 'Total'
 
-export const DETAIL_COLUMNS: DetailColumn[] = ['Transaction', 'PayAmt', 'CommisAmt', 'TaxAmt', 'Total']
+export const DETAIL_COLUMNS: DetailColumn[] = [
+  'Transaction',
+  'PayAmt',
+  'CommisAmt',
+  'TaxAmt',
+  'Total',
+]
 
 export const HEADER_LABELS: Record<string, string> = {
   DateProcessed:

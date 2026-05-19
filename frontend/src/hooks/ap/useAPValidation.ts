@@ -77,11 +77,24 @@ export function useAPValidation({ headerData, lineItems, fieldMappings, t }: APV
   }
 
   return {
-    sumLineSubTotal, sumLineTotal, sumDiscount, sumTax,
-    tgtSubTotal, tgtDiscount, tgtTax, tgtGrand,
-    isInclude, isSubDiff, isDiscDiff, isTaxDiff,
-    calcGrandFromLines, isGrandDiff,
-    validationErrors, isValid,
-    availableFields, activeCols, adjustField,
+    sumLineSubTotal,
+    sumLineTotal,
+    sumDiscount,
+    sumTax,
+    tgtSubTotal,
+    tgtDiscount,
+    tgtTax,
+    tgtGrand,
+    isInclude,
+    isSubDiff,
+    isDiscDiff,
+    isTaxDiff,
+    calcGrandFromLines,
+    isGrandDiff,
+    validationErrors,
+    isValid,
+    availableFields,
+    activeCols,
+    adjustField,
   }
 }

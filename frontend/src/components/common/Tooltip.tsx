@@ -1,7 +1,15 @@
 import { useState, useRef, type ReactNode, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 
-type TooltipPosition = 'top' | 'bottom' | 'left' | 'right' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+type TooltipPosition =
+  | 'top'
+  | 'bottom'
+  | 'left'
+  | 'right'
+  | 'top-left'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-right'
 
 interface Props {
   text?: string
@@ -9,21 +17,58 @@ interface Props {
   position?: TooltipPosition
 }
 
-interface Coords { top: number; left: number; transform: string }
+interface Coords {
+  top: number
+  left: number
+  transform: string
+}
 
 const GAP = 10
 
 function getCoords(rect: DOMRect, position: TooltipPosition): Coords {
   switch (position) {
-    case 'bottom':      return { top: rect.bottom + GAP, left: rect.left + rect.width / 2, transform: 'translateX(-50%)' }
-    case 'bottom-left': return { top: rect.bottom + GAP, left: rect.right, transform: 'translateX(-100%)' }
-    case 'bottom-right':return { top: rect.bottom + GAP, left: rect.left, transform: 'none' }
-    case 'top':         return { top: rect.top - GAP, left: rect.left + rect.width / 2, transform: 'translateX(-50%) translateY(-100%)' }
-    case 'top-left':    return { top: rect.top - GAP, left: rect.right, transform: 'translateX(-100%) translateY(-100%)' }
-    case 'top-right':   return { top: rect.top - GAP, left: rect.left, transform: 'translateY(-100%)' }
-    case 'left':        return { top: rect.top + rect.height / 2, left: rect.left - GAP, transform: 'translateX(-100%) translateY(-50%)' }
-    case 'right':       return { top: rect.top + rect.height / 2, left: rect.right + GAP, transform: 'translateY(-50%)' }
-    default:            return { top: rect.top - GAP, left: rect.left + rect.width / 2, transform: 'translateX(-50%) translateY(-100%)' }
+    case 'bottom':
+      return {
+        top: rect.bottom + GAP,
+        left: rect.left + rect.width / 2,
+        transform: 'translateX(-50%)',
+      }
+    case 'bottom-left':
+      return { top: rect.bottom + GAP, left: rect.right, transform: 'translateX(-100%)' }
+    case 'bottom-right':
+      return { top: rect.bottom + GAP, left: rect.left, transform: 'none' }
+    case 'top':
+      return {
+        top: rect.top - GAP,
+        left: rect.left + rect.width / 2,
+        transform: 'translateX(-50%) translateY(-100%)',
+      }
+    case 'top-left':
+      return {
+        top: rect.top - GAP,
+        left: rect.right,
+        transform: 'translateX(-100%) translateY(-100%)',
+      }
+    case 'top-right':
+      return { top: rect.top - GAP, left: rect.left, transform: 'translateY(-100%)' }
+    case 'left':
+      return {
+        top: rect.top + rect.height / 2,
+        left: rect.left - GAP,
+        transform: 'translateX(-100%) translateY(-50%)',
+      }
+    case 'right':
+      return {
+        top: rect.top + rect.height / 2,
+        left: rect.right + GAP,
+        transform: 'translateY(-50%)',
+      }
+    default:
+      return {
+        top: rect.top - GAP,
+        left: rect.left + rect.width / 2,
+        transform: 'translateX(-50%) translateY(-100%)',
+      }
   }
 }
 
@@ -66,10 +111,22 @@ export default function Tooltip({ text, children, position = 'top' }: Props) {
 
   return (
     <>
-      <div ref={triggerRef} onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide} style={{ display: 'inline-flex', alignItems: 'center' }}>
+      <div
+        ref={triggerRef}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+        style={{ display: 'inline-flex', alignItems: 'center' }}
+      >
         {children}
       </div>
-      {createPortal(<div role="tooltip" style={tooltipStyle}>{text}</div>, document.body)}
+      {createPortal(
+        <div role="tooltip" style={tooltipStyle}>
+          {text}
+        </div>,
+        document.body
+      )}
     </>
   )
 }

@@ -11,7 +11,13 @@ interface Props {
   children?: ReactNode
 }
 
-export default function AppHeader({ module, moduleName, eyebrow = 'Carmen Cloud · OCR Module', backPath, children }: Props) {
+export default function AppHeader({
+  module,
+  moduleName,
+  eyebrow = 'Carmen Cloud · OCR Module',
+  backPath,
+  children,
+}: Props) {
   const handleBack = () => {
     if (backPath) window.location.href = getCarmenUrl(backPath)
     else window.location.hash = '#/'
@@ -19,7 +25,12 @@ export default function AppHeader({ module, moduleName, eyebrow = 'Carmen Cloud 
 
   return (
     <header className="app-header" data-module={module}>
-      <button type="button" className="app-header-back" onClick={handleBack} aria-label="Back to Carmen">
+      <button
+        type="button"
+        className="app-header-back"
+        onClick={handleBack}
+        aria-label="Back to Carmen"
+      >
         <ArrowLeft size={14} strokeWidth={2.25} />
         <span>Carmen</span>
       </button>

@@ -8,7 +8,11 @@ import type { APLineItem } from './useAPExtraction'
 import type { APInvoiceHeader } from '../../constants/apInvoice'
 import type { Vendor } from './useAPVendor'
 
-interface GLAccount { code: string; name: string; name2?: string }
+interface GLAccount {
+  code: string
+  name: string
+  name2?: string
+}
 
 function addDays(isoDate: string, days: number): string {
   const d = new Date(isoDate)
@@ -37,49 +41,74 @@ function buildInvoicePayload(
     const grossPrice = parseNum(item.unitPrice)
     const discAmt = parseNum(item.discountAmt)
     const grossLine = grossPrice * qty
-    const netPrice = grossLine > 0 ? parseFloat(((grossLine - discAmt) / qty).toFixed(2)) : grossPrice
+    const netPrice =
+      grossLine > 0 ? parseFloat(((grossLine - discAmt) / qty).toFixed(2)) : grossPrice
 
     return {
-      InvhSeq: -1, InvdSeq: -1,
+      InvhSeq: -1,
+      InvdSeq: -1,
       InvdDesc: item.description || '',
-      InvdQty: qty, UnitCode: 'UNIT',
+      InvdQty: qty,
+      UnitCode: 'UNIT',
       InvdPrice: netPrice.toFixed(2),
-      InvdTaxA1: taxAmt.toFixed(2), InvdTaxC1: taxAmt.toFixed(2),
-      InvdTaxA2: '0.00', InvdTaxC2: '0.00',
-      NetAmt: netAmt.toFixed(2), NetBaseAmt: netAmt.toFixed(2),
-      UnPaid: total.toFixed(2), TotalPrice: total.toFixed(2),
+      InvdTaxA1: taxAmt.toFixed(2),
+      InvdTaxC1: taxAmt.toFixed(2),
+      InvdTaxA2: '0.00',
+      InvdTaxC2: '0.00',
+      NetAmt: netAmt.toFixed(2),
+      NetBaseAmt: netAmt.toFixed(2),
+      UnPaid: total.toFixed(2),
+      TotalPrice: total.toFixed(2),
       DeptCode: item.deptCode || '',
       InvdBTaxCr1: systemVendor.vatCrAccCode || '',
       InvdBTaxDr: item.accountCode || '',
       InvdT1Dr: systemVendor.vat1DrAccCode || '',
       InvdT2Dr: '',
       InvdTaxT1: headerData.taxType === 'Include' ? 'Include' : 'Add',
-      InvdTaxR1: taxRate.toFixed(2), InvdTaxT2: 'None', InvdTaxR2: '0.00',
-      DimList: {}, LastModified: now,
+      InvdTaxR1: taxRate.toFixed(2),
+      InvdTaxT2: 'None',
+      InvdTaxR2: '0.00',
+      DimList: {},
+      LastModified: now,
       InvdBTaxCr1DeptCode: systemVendor.crDeptCode || '',
       InvdT1DrDeptCode: systemVendor.vat1DrDeptCode || '',
       InvdT2DrDeptCode: item.deptCode || '',
       TaxProfileCode1: systemVendor.taxProfileCode1 || null,
-      TaxProfileCode2: null, Tax1Overwrite: false, Tax2Overwrite: false,
+      TaxProfileCode2: null,
+      Tax1Overwrite: false,
+      Tax2Overwrite: false,
     }
   })
 
   return {
     VnCode: systemVendor.code || '',
-    InvhDate: now, InvhDesc: headerData.invhDesc || '', InvhSource: 'AAPI',
+    InvhDate: now,
+    InvhDesc: headerData.invhDesc || '',
+    InvhSource: 'AAPI',
     InvhInvNo: headerData.documentNumber || '',
-    InvhInvDate: invDate, InvhDueDate: dueDate, InvhCredit: creditTerm,
-    CurCode: 'THB', CurRate: 1,
-    InvhTInvNo: headerData.documentNumber || '', InvhTInvDt: invDate,
-    TaxPeriod: taxPeriod, TaxStatus: 'Pending',
+    InvhInvDate: invDate,
+    InvhDueDate: dueDate,
+    InvhCredit: creditTerm,
+    CurCode: 'THB',
+    CurRate: 1,
+    InvhTInvNo: headerData.documentNumber || '',
+    InvhTInvDt: invDate,
+    TaxPeriod: taxPeriod,
+    TaxStatus: 'Pending',
     InvhTotalAmt: parseNum(headerData.grandTotal),
-    InvWht: {}, DimHList: {}, Detail: detail, InvhStatus: '', VoidRemark: '',
+    InvWht: {},
+    DimHList: {},
+    Detail: detail,
+    InvhStatus: '',
+    VoidRemark: '',
   }
 }
 
 const _CARMEN_FIELD_LABELS: Record<string, string> = {
-  InvhInvNo: 'Invoice Number', VnCode: 'Vendor Code',
-  InvhDate: 'Invoice Date', InvdSeq: 'Invoice Line',
+  InvhInvNo: 'Invoice Number',
+  VnCode: 'Vendor Code',
+  InvhDate: 'Invoice Date',
+  InvdSeq: 'Invoice Line',
 }
 
 function _formatCarmenError(msg: string): string {
@@ -109,8 +138,14 @@ interface APSubmissionProps {
 import type React from 'react'
 
 export function useAPSubmission({
-  setStep, setModal, headerData, lineItems, setLineItems,
-  systemVendor, apInvoiceId, updateHeader,
+  setStep,
+  setModal,
+  headerData,
+  lineItems,
+  setLineItems,
+  systemVendor,
+  apInvoiceId,
+  updateHeader,
 }: APSubmissionProps) {
   const [suggestLoading, setSuggestLoading] = useState(false)
   const [masterAccounts, setMasterAccounts] = useState<GLAccount[]>([])
@@ -126,14 +161,26 @@ export function useAPSubmission({
     try {
       const [accs, depts] = await Promise.all([fetchAccountCodes(), fetchDepartments()])
       setMasterAccounts(
-        accs.filter(a => a.AccCode && a.AccCode !== 'AccCode')
-          .map(a => ({ code: a.AccCode as string, name: (a.Description as string) || '', name2: (a.Description2 as string) || '' }))
+        accs
+          .filter(a => a.AccCode && a.AccCode !== 'AccCode')
+          .map(a => ({
+            code: a.AccCode as string,
+            name: (a.Description as string) || '',
+            name2: (a.Description2 as string) || '',
+          }))
       )
       setMasterDepts(
-        depts.filter(d => d.DeptCode && d.DeptCode !== 'CodeDep')
-          .map(d => ({ code: d.DeptCode as string, name: (d.Description as string) || '', name2: (d.Description2 as string) || '' }))
+        depts
+          .filter(d => d.DeptCode && d.DeptCode !== 'CodeDep')
+          .map(d => ({
+            code: d.DeptCode as string,
+            name: (d.Description as string) || '',
+            name2: (d.Description2 as string) || '',
+          }))
       )
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   const resetGLLoaded = () => setGlLoaded(false)
@@ -148,7 +195,9 @@ export function useAPSubmission({
         body: JSON.stringify({ items: itemsToSuggest, invoice_desc: headerData.invhDesc || '' }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json() as { suggestions?: Record<number, { deptCode?: string; accountCode?: string }> }
+      const data = (await res.json()) as {
+        suggestions?: Record<number, { deptCode?: string; accountCode?: string }>
+      }
       const suggestions = data.suggestions || {}
       let suggestedCount = 0
       setLineItems(prev =>
@@ -156,7 +205,8 @@ export function useAPSubmission({
           const s = suggestions[idx]
           if (!s) return item
           const newDept = (!item.deptCode || item._suggestDept) && s.deptCode ? s.deptCode : null
-          const newAcc = (!item.accountCode || item._suggestAcc) && s.accountCode ? s.accountCode : null
+          const newAcc =
+            (!item.accountCode || item._suggestAcc) && s.accountCode ? s.accountCode : null
           if (newDept || newAcc) suggestedCount++
           return {
             ...item,
@@ -168,7 +218,10 @@ export function useAPSubmission({
         })
       )
       if (suggestedCount > 0) {
-        showToast(`AI suggested ${suggestedCount} account code${suggestedCount > 1 ? 's' : ''} — please review.`, 'success')
+        showToast(
+          `AI suggested ${suggestedCount} account code${suggestedCount > 1 ? 's' : ''} — please review.`,
+          'success'
+        )
       } else {
         showToast('AI could not generate new suggestions. Please fill in manually.', 'info')
       }
@@ -193,15 +246,24 @@ export function useAPSubmission({
         return !item.deptCode || !item.accountCode || item._suggestDept || item._suggestAcc
       })
 
-    if (!itemsToSuggest.length) { showToast('All items already have account codes.', 'info'); return }
+    if (!itemsToSuggest.length) {
+      showToast('All items already have account codes.', 'info')
+      return
+    }
 
     if (!headerData.invhDesc) {
       pendingSuggestRef.current = itemsToSuggest
       setModal({
-        show: true, type: 'warning', title: 'No Invoice Description',
+        show: true,
+        type: 'warning',
+        title: 'No Invoice Description',
         message: 'Adding an Invoice Description helps AI suggest more accurate GL accounts.',
-        confirmText: 'Suggest Anyway', cancelText: 'Go Back',
-        onConfirm: () => { setModal({ show: false }); runSuggest(pendingSuggestRef.current) },
+        confirmText: 'Suggest Anyway',
+        cancelText: 'Go Back',
+        onConfirm: () => {
+          setModal({ show: false })
+          runSuggest(pendingSuggestRef.current)
+        },
         onCancel: () => setModal({ show: false }),
       })
       return
@@ -210,66 +272,102 @@ export function useAPSubmission({
   }
 
   const handleAcceptAll = () => {
-    setLineItems(prev => prev.map(item => ({ ...item, _suggestDept: undefined, _suggestAcc: undefined })))
+    setLineItems(prev =>
+      prev.map(item => ({ ...item, _suggestDept: undefined, _suggestAcc: undefined }))
+    )
     showToast('All account codes confirmed', 'success')
   }
 
   const handleConfirmSuggest = (idx: number) => {
-    setLineItems(prev => prev.map((item, i) =>
-      i !== idx ? item : { ...item, _suggestDept: undefined, _suggestAcc: undefined }
-    ))
+    setLineItems(prev =>
+      prev.map((item, i) =>
+        i !== idx ? item : { ...item, _suggestDept: undefined, _suggestAcc: undefined }
+      )
+    )
   }
 
   const handleRejectSuggest = (idx: number) => {
-    setLineItems(prev => prev.map((item, i) =>
-      i !== idx ? item : {
-        ...item,
-        deptCode: item._suggestDept ? '' : item.deptCode,
-        accountCode: item._suggestAcc ? '' : item.accountCode,
-        _suggestDept: undefined, _suggestAcc: undefined,
-      }
-    ))
+    setLineItems(prev =>
+      prev.map((item, i) =>
+        i !== idx
+          ? item
+          : {
+              ...item,
+              deptCode: item._suggestDept ? '' : item.deptCode,
+              accountCode: item._suggestAcc ? '' : item.accountCode,
+              _suggestDept: undefined,
+              _suggestAcc: undefined,
+            }
+      )
+    )
   }
 
   const _showDupModal = (dup: { invNo: string; vnCode: string }) => {
     setModal({
-      show: true, type: 'warning', title: 'Invoice Already Exists in Carmen',
+      show: true,
+      type: 'warning',
+      title: 'Invoice Already Exists in Carmen',
       message: `Invoice Number "${dup.invNo}" for Vendor Code "${dup.vnCode}" already exists in Carmen.`,
-      confirmText: 'Change Invoice Number', cancelText: 'Cancel',
+      confirmText: 'Change Invoice Number',
+      cancelText: 'Cancel',
       onConfirm: () => _showChangeInvNoModal(dup),
-      onCancel: () => { setModal({ show: false }); setStep(1) },
+      onCancel: () => {
+        setModal({ show: false })
+        setStep(1)
+      },
     })
   }
 
   const _showChangeInvNoModal = (dup: { invNo: string; vnCode: string }) => {
     dupInvNoRef.current = ''
     setModal({
-      show: true, type: 'warning', title: 'Change Invoice Number',
+      show: true,
+      type: 'warning',
+      title: 'Change Invoice Number',
       message: 'Enter a new Invoice Number to re-submit to Carmen.',
-      inputLabel: 'New Invoice Number', inputValue: '',
-      onInputChange: (v: string) => { dupInvNoRef.current = v },
+      inputLabel: 'New Invoice Number',
+      inputValue: '',
+      onInputChange: (v: string) => {
+        dupInvNoRef.current = v
+      },
       inputPlaceholder: `e.g. ${dup.invNo}-A`,
-      confirmText: 'Re-submit', cancelText: 'Back',
-      onConfirm: () => { setModal({ show: false }); _resubmitWithNewInvNo(dupInvNoRef.current) },
+      confirmText: 'Re-submit',
+      cancelText: 'Back',
+      onConfirm: () => {
+        setModal({ show: false })
+        _resubmitWithNewInvNo(dupInvNoRef.current)
+      },
       onCancel: () => _showDupModal(dup),
     })
   }
 
   const _resubmitWithNewInvNo = async (newInvNo: string) => {
-    if (!newInvNo?.trim()) { showToast('Please enter a new Invoice Number.', 'warning'); return }
+    if (!newInvNo?.trim()) {
+      showToast('Please enter a new Invoice Number.', 'warning')
+      return
+    }
     showToast('Re-sending AP Invoice to Carmen Cloud...', 'info')
     try {
       const modifiedHeader = { ...headerData, documentNumber: newInvNo.trim() }
       const payload = buildInvoicePayload(modifiedHeader, lineItems, systemVendor)
-      const result = await submitAPInvoiceToCarmen(payload, apInvoiceId) as Record<string, unknown>
+      const result = (await submitAPInvoiceToCarmen(payload, apInvoiceId)) as Record<
+        string,
+        unknown
+      >
       if ((result?.Code as number) < 0) {
         const dup = _parseCarmenDupError((result.UserMessage as string) || '')
-        if (dup) { _showDupModal(dup); return }
+        if (dup) {
+          _showDupModal(dup)
+          return
+        }
         showToast('Carmen Cloud rejected the data, please verify', 'warning')
         setModal({
-          show: true, type: 'warning', title: 'Failed to create AP Invoice',
+          show: true,
+          type: 'warning',
+          title: 'Failed to create AP Invoice',
           message: _formatCarmenError((result.UserMessage as string) || 'Error from Carmen Cloud'),
-          confirmText: 'OK', onConfirm: () => setModal({ show: false }),
+          confirmText: 'OK',
+          onConfirm: () => setModal({ show: false }),
         })
         return
       }
@@ -279,25 +377,40 @@ export function useAPSubmission({
       setStep(5)
     } catch (err) {
       console.error('AP Invoice re-submit error:', err)
-      showToast(`Failed to send AP Invoice: ${(err as Error).message || 'An error occurred'}`, 'error')
+      showToast(
+        `Failed to send AP Invoice: ${(err as Error).message || 'An error occurred'}`,
+        'error'
+      )
     }
   }
 
   const handleGenerate = async () => {
     const missing = lineItems.filter(i => !i.deptCode || !i.accountCode)
-    if (missing.length > 0) { showToast('Department code and Account code is required', 'warning'); return }
+    if (missing.length > 0) {
+      showToast('Department code and Account code is required', 'warning')
+      return
+    }
     showToast('Sending AP Invoice to Carmen Cloud...', 'info')
     try {
       const payload = buildInvoicePayload(headerData, lineItems, systemVendor)
-      const result = await submitAPInvoiceToCarmen(payload, apInvoiceId) as Record<string, unknown>
+      const result = (await submitAPInvoiceToCarmen(payload, apInvoiceId)) as Record<
+        string,
+        unknown
+      >
       if ((result?.Code as number) < 0) {
         const dup = _parseCarmenDupError((result.UserMessage as string) || '')
-        if (dup) { _showDupModal(dup); return }
+        if (dup) {
+          _showDupModal(dup)
+          return
+        }
         showToast('Carmen Cloud rejected the data, please verify', 'warning')
         setModal({
-          show: true, type: 'warning', title: 'Failed to create AP Invoice',
+          show: true,
+          type: 'warning',
+          title: 'Failed to create AP Invoice',
           message: _formatCarmenError((result.UserMessage as string) || 'Error from Carmen Cloud'),
-          confirmText: 'OK', onConfirm: () => setModal({ show: false }),
+          confirmText: 'OK',
+          onConfirm: () => setModal({ show: false }),
         })
         return
       }
@@ -306,22 +419,40 @@ export function useAPSubmission({
       setStep(5)
     } catch (err) {
       console.error('AP Invoice submit error:', err)
-      showToast(`Failed to send AP Invoice: ${(err as Error).message || 'An error occurred'}`, 'error')
+      showToast(
+        `Failed to send AP Invoice: ${(err as Error).message || 'An error occurred'}`,
+        'error'
+      )
       setModal({
-        show: true, type: 'warning', title: 'Failed to send AP Invoice',
-        message: (err as Error).message || 'An error occurred while sending data. Please try again.',
-        confirmText: 'OK', onConfirm: () => setModal({ show: false }),
+        show: true,
+        type: 'warning',
+        title: 'Failed to send AP Invoice',
+        message:
+          (err as Error).message || 'An error occurred while sending data. Please try again.',
+        confirmText: 'OK',
+        onConfirm: () => setModal({ show: false }),
       })
     }
   }
 
   const hasSuggestions = lineItems.some(i => i._suggestDept || i._suggestAcc)
-  const allMapped = lineItems.length > 0 && lineItems.every(i => i.deptCode && i.accountCode && !i._suggestDept && !i._suggestAcc)
+  const allMapped =
+    lineItems.length > 0 &&
+    lineItems.every(i => i.deptCode && i.accountCode && !i._suggestDept && !i._suggestAcc)
 
   return {
-    suggestLoading, masterAccounts, masterDepts, invoiceSeq,
-    loadGLData, resetGLLoaded,
-    handleAISuggest, handleAcceptAll, handleConfirmSuggest, handleRejectSuggest, handleGenerate,
-    hasSuggestions, allMapped,
+    suggestLoading,
+    masterAccounts,
+    masterDepts,
+    invoiceSeq,
+    loadGLData,
+    resetGLLoaded,
+    handleAISuggest,
+    handleAcceptAll,
+    handleConfirmSuggest,
+    handleRejectSuggest,
+    handleGenerate,
+    hasSuggestions,
+    allMapped,
   }
 }

@@ -38,8 +38,9 @@ export function useAPInvoice() {
   })
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { vendor.loadVendors() }, [])
-
+  useEffect(() => {
+    vendor.loadVendors()
+  }, [])
 
   useEffect(() => {
     if (vendor.showVendorDrop) return
@@ -47,29 +48,49 @@ export function useAPInvoice() {
   }, [extraction.headerData.vendorTaxId, lang, vendor.vendorDbByTax, vendor])
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (step === 4) submission.loadGLData() }, [step])
+  useEffect(() => {
+    if (step === 4) submission.loadGLData()
+  }, [step])
 
   const confirmMapping = () => {
     const taxId = extraction.headerData.vendorTaxId
     if (taxId) {
-      saveAPVendorMapping(taxId, extraction.fieldMappings as unknown as Parameters<typeof saveAPVendorMapping>[1]).catch(() => {})
+      saveAPVendorMapping(
+        taxId,
+        extraction.fieldMappings as unknown as Parameters<typeof saveAPVendorMapping>[1]
+      ).catch(() => {})
       try {
-        const savedAll = JSON.parse(localStorage.getItem('ap_invoice_mapping') || '{}') as Record<string, unknown>
+        const savedAll = JSON.parse(localStorage.getItem('ap_invoice_mapping') || '{}') as Record<
+          string,
+          unknown
+        >
         savedAll[taxId] = extraction.fieldMappings
         localStorage.setItem('ap_invoice_mapping', JSON.stringify(savedAll))
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
     showToast('Column settings saved', 'success')
     setStep(3)
   }
 
   const goToAccount = () => {
-    if (!vendor.systemVendor.code) { showToast(t.warnSelectVendor, 'warning'); return }
+    if (!vendor.systemVendor.code) {
+      showToast(t.warnSelectVendor, 'warning')
+      return
+    }
     if (!validation.isValid) {
       setModal({
-        show: true, type: 'warning', title: t.mismatchTitle, message: t.warnMismatch,
-        confirmText: t.proceed, cancelText: t.backEdit,
-        onConfirm: () => { setModal({ show: false }); setStep(4) },
+        show: true,
+        type: 'warning',
+        title: t.mismatchTitle,
+        message: t.warnMismatch,
+        confirmText: t.proceed,
+        cancelText: t.backEdit,
+        onConfirm: () => {
+          setModal({ show: false })
+          setStep(4)
+        },
         onCancel: () => setModal({ show: false }),
       })
     } else {
@@ -78,10 +99,20 @@ export function useAPInvoice() {
   }
 
   const adjustField = (
-    tgt: unknown, sumCur: unknown, itemKey: string,
-    adjustTotal = false, isDiscount = false
+    tgt: unknown,
+    sumCur: unknown,
+    itemKey: string,
+    adjustTotal = false,
+    isDiscount = false
   ) => {
-    const updated = validation.adjustField(tgt, sumCur, itemKey, extraction.lineItems, adjustTotal, isDiscount)
+    const updated = validation.adjustField(
+      tgt,
+      sumCur,
+      itemKey,
+      extraction.lineItems,
+      adjustTotal,
+      isDiscount
+    )
     extraction.setLineItems(updated)
   }
 
@@ -94,8 +125,11 @@ export function useAPInvoice() {
   }
 
   return {
-    lang, setLang, t,
-    step, setStep,
+    lang,
+    setLang,
+    t,
+    step,
+    setStep,
     file: extraction.file,
     previewUrl: extraction.previewUrl,
     previewType: extraction.previewType,
@@ -120,7 +154,8 @@ export function useAPInvoice() {
     filteredVendors: vendor.filteredVendors,
     vendorRefreshing: vendor.vendorRefreshing,
     refreshVendors: vendor.refreshVendors,
-    modal, setModal,
+    modal,
+    setModal,
     sumLineSubTotal: validation.sumLineSubTotal,
     sumLineTotal: validation.sumLineTotal,
     sumDiscount: validation.sumDiscount,
@@ -144,7 +179,8 @@ export function useAPInvoice() {
     blurHeader: extraction.blurHeader,
     updateItem: extraction.updateItem,
     blurItem: extraction.blurItem,
-    confirmMapping, goToAccount,
+    confirmMapping,
+    goToAccount,
     handleAISuggest: submission.handleAISuggest,
     handleAcceptAll: submission.handleAcceptAll,
     hasSuggestions: submission.hasSuggestions,
@@ -152,7 +188,8 @@ export function useAPInvoice() {
     handleConfirmSuggest: submission.handleConfirmSuggest,
     handleRejectSuggest: submission.handleRejectSuggest,
     handleGenerate: submission.handleGenerate,
-    handleReset, adjustField,
+    handleReset,
+    adjustField,
     invoiceSeq: submission.invoiceSeq,
     isDuplicate: extraction.isDuplicate,
   }

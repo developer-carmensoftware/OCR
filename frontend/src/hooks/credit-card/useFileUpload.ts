@@ -9,7 +9,10 @@ export interface FileUploadHook {
   previewType: string | null
   setPreviewType: React.Dispatch<React.SetStateAction<string | null>>
   fileInputRef: React.RefObject<HTMLInputElement | null>
-  handleFileChange: (e: React.ChangeEvent<HTMLInputElement>, onFilesReady?: (files: File[]) => void) => void
+  handleFileChange: (
+    e: React.ChangeEvent<HTMLInputElement>,
+    onFilesReady?: (files: File[]) => void
+  ) => void
   clearFiles: () => void
 }
 
@@ -56,5 +59,15 @@ export function useFileUpload(): FileUploadHook {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  return { files, setFiles, previewUrl, setPreviewUrl, previewType, setPreviewType, fileInputRef, handleFileChange, clearFiles }
+  return {
+    files,
+    setFiles,
+    previewUrl,
+    setPreviewUrl,
+    previewType,
+    setPreviewType,
+    fileInputRef,
+    handleFileChange,
+    clearFiles,
+  }
 }

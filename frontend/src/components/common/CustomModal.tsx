@@ -8,8 +8,8 @@ type ModalType = 'info' | 'success' | 'warning' | 'error' | 'loading'
 const TYPE_CONFIG = {
   success: { Icon: CheckCircle2 },
   warning: { Icon: AlertTriangle },
-  error:   { Icon: XCircle },
-  info:    { Icon: Info },
+  error: { Icon: XCircle },
+  info: { Icon: Info },
 } as const
 
 interface Props {
@@ -29,11 +29,19 @@ interface Props {
 }
 
 export default function CustomModal({
-  show, title, message, type = 'info',
-  onConfirm, onCancel,
-  confirmText = 'OK', cancelText = 'Cancel',
+  show,
+  title,
+  message,
+  type = 'info',
+  onConfirm,
+  onCancel,
+  confirmText = 'OK',
+  cancelText = 'Cancel',
   cancelStyle,
-  inputLabel, inputValue, onInputChange, inputPlaceholder,
+  inputLabel,
+  inputValue,
+  onInputChange,
+  inputPlaceholder,
 }: Props) {
   const confirmRef = useRef<HTMLButtonElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
@@ -62,31 +70,44 @@ export default function CustomModal({
         return
       }
       if (e.key !== 'Tab') return
-      const focusable = [cancelRef.current, inputRef.current, confirmRef.current].filter(Boolean) as HTMLElement[]
+      const focusable = [cancelRef.current, inputRef.current, confirmRef.current].filter(
+        Boolean
+      ) as HTMLElement[]
       if (!focusable.length) return
       const first = focusable[0]
       const last = focusable[focusable.length - 1]
       if (e.shiftKey) {
-        if (document.activeElement === first) { e.preventDefault(); last.focus() }
+        if (document.activeElement === first) {
+          e.preventDefault()
+          last.focus()
+        }
       } else {
-        if (document.activeElement === last) { e.preventDefault(); first.focus() }
+        if (document.activeElement === last) {
+          e.preventDefault()
+          first.focus()
+        }
       }
     }
     document.addEventListener('keydown', handleKeyDown)
-    return () => { clearTimeout(timer); document.removeEventListener('keydown', handleKeyDown) }
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
   }, [show, onCancel, onConfirm, inputLabel])
 
   if (type === 'loading') {
-    return show ? createPortal(
-      <div className="ocr-loading-overlay">
-        <div className="ocr-loading-box">
-          <div className="ocr-loading-spinner" />
-          <div className="ocr-loading-title">{title}</div>
-          {message && <div className="ocr-loading-status">{message}</div>}
-        </div>
-      </div>,
-      document.body
-    ) : null
+    return show
+      ? createPortal(
+          <div className="ocr-loading-overlay">
+            <div className="ocr-loading-box">
+              <div className="ocr-loading-spinner" />
+              <div className="ocr-loading-title">{title}</div>
+              {message && <div className="ocr-loading-status">{message}</div>}
+            </div>
+          </div>,
+          document.body
+        )
+      : null
   }
 
   const cfg = TYPE_CONFIG[type as keyof typeof TYPE_CONFIG] ?? TYPE_CONFIG.info
@@ -94,19 +115,37 @@ export default function CustomModal({
   return createPortal(
     <AnimatePresence>
       {show && (
-        <motion.div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-desc" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
-          <motion.div className={`modal-box modal-${type}`} initial={{ opacity: 0, scale: 0.92, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 8 }} transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}>
+        <motion.div
+          className="modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-title"
+          aria-describedby="modal-desc"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18 }}
+        >
+          <motion.div
+            className={`modal-box modal-${type}`}
+            initial={{ opacity: 0, scale: 0.92, y: 16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 8 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+          >
             <div className="modal-icon-wrapper">
               <cfg.Icon size={26} strokeWidth={1.75} />
             </div>
-            <h3 className="modal-title" id="modal-title">{title}</h3>
-            <p className="modal-msg" id="modal-desc">{message}</p>
+            <h3 className="modal-title" id="modal-title">
+              {title}
+            </h3>
+            <p className="modal-msg" id="modal-desc">
+              {message}
+            </p>
 
             {inputLabel && (
               <div className="modal-input-group">
-                <label className="modal-input-label">
-                  {inputLabel}
-                </label>
+                <label className="modal-input-label">{inputLabel}</label>
                 <input
                   ref={inputRef}
                   type="text"
@@ -121,11 +160,22 @@ export default function CustomModal({
 
             <div className="modal-actions">
               {onCancel && (
-                <button ref={cancelRef} type="button" className="btn btn-outline" style={cancelStyle} onClick={onCancel}>
+                <button
+                  ref={cancelRef}
+                  type="button"
+                  className="btn btn-outline"
+                  style={cancelStyle}
+                  onClick={onCancel}
+                >
                   {cancelText}
                 </button>
               )}
-              <button ref={confirmRef} type="button" className="btn btn-confirm" onClick={onConfirm}>
+              <button
+                ref={confirmRef}
+                type="button"
+                className="btn btn-confirm"
+                onClick={onConfirm}
+              >
                 {confirmText}
               </button>
             </div>

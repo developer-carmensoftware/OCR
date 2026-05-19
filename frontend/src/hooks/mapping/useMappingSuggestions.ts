@@ -60,13 +60,17 @@ export function useMappingSuggestions({
     tax: null,
     net: null,
   })
-  const [mainSuggestions, setMainSuggestions] = useState<Record<MainMappingKey, Suggestion | null>>({
-    commission: null,
-    tax: null,
-    net: null,
-  })
+  const [mainSuggestions, setMainSuggestions] = useState<Record<MainMappingKey, Suggestion | null>>(
+    {
+      commission: null,
+      tax: null,
+      net: null,
+    }
+  )
   const [suggestLoading, setSuggestLoading] = useState(false)
-  const [paymentSuggestions, setPaymentSuggestions] = useState<Record<string, Suggestion | null>>({})
+  const [paymentSuggestions, setPaymentSuggestions] = useState<Record<string, Suggestion | null>>(
+    {}
+  )
   const [paymentSuggestLoading, setPaymentSuggestLoading] = useState(false)
 
   const autoSuggest = async () => {
@@ -102,7 +106,9 @@ export function useMappingSuggestions({
       }
       const fromAI: Partial<Record<MainMappingKey, Suggestion>> = {}
       fieldsToFetch.forEach(f => {
-        const s = ((aiResult.suggestions || {}) as Record<string, FieldMapping | null>)[suggestKeyMap[f]] || {}
+        const s =
+          ((aiResult.suggestions || {}) as Record<string, FieldMapping | null>)[suggestKeyMap[f]] ||
+          {}
         const sm = s as FieldMapping
         if (sm.dept || sm.acc) fromAI[f] = { dept: sm.dept || '', acc: sm.acc || '' }
       })

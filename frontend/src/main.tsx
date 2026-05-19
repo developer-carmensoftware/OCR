@@ -49,7 +49,11 @@ function Router() {
   }
 
   return (
-    <Suspense fallback={<div className="flex h-screen items-center justify-center text-gray-400">Loading…</div>}>
+    <Suspense
+      fallback={
+        <div className="flex h-screen items-center justify-center text-gray-400">Loading…</div>
+      }
+    >
       <div className="bg-blob-mid" aria-hidden="true" />
       <ProtectedRoute>{Page}</ProtectedRoute>
     </Suspense>

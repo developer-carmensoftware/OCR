@@ -27,12 +27,20 @@ export function useBankConfig(): BankConfigHook {
   const [filePrefix, setFilePrefix] = useState('IC')
   const [fileSource, setFileSource] = useState('')
   const [description, setDescription] = useState('')
-  const [company, setCompany] = useState<CompanyData>({ name: '', taxId: '', branch: '', address: '' })
+  const [company, setCompany] = useState<CompanyData>({
+    name: '',
+    taxId: '',
+    branch: '',
+    address: '',
+  })
 
   useEffect(() => {
     let ocrBank: BankDisplayName | '' = ''
     try {
-      const ocrState = JSON.parse(localStorage.getItem('ocr_wizard_state') || '{}') as Record<string, unknown>
+      const ocrState = JSON.parse(localStorage.getItem('ocr_wizard_state') || '{}') as Record<
+        string,
+        unknown
+      >
       ocrBank = codeToDisplayName(ocrState.bank as string) || ''
     } catch {
       /* ignore */
@@ -72,7 +80,12 @@ export function useBankConfig(): BankConfigHook {
           setFileSource(BANK_SOURCE_MAP[ocrBank] || '')
           if (BANK_INFO[ocrBank]) {
             const info = BANK_INFO[ocrBank]
-            setCompany(prev => ({ ...prev, name: info.name, taxId: info.taxId, address: info.address }))
+            setCompany(prev => ({
+              ...prev,
+              name: info.name,
+              taxId: info.taxId,
+              address: info.address,
+            }))
           }
         } else {
           setFilePrefix('IC')
@@ -81,5 +94,17 @@ export function useBankConfig(): BankConfigHook {
       .finally(() => setConfigLoading(false))
   }, [])
 
-  return { bank, setBank, filePrefix, setFilePrefix, fileSource, setFileSource, description, setDescription, company, setCompany, configLoading }
+  return {
+    bank,
+    setBank,
+    filePrefix,
+    setFilePrefix,
+    fileSource,
+    setFileSource,
+    description,
+    setDescription,
+    company,
+    setCompany,
+    configLoading,
+  }
 }

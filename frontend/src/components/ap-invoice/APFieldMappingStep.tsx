@@ -15,11 +15,22 @@ interface Props {
 
 const COLS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 
-export default function APFieldMappingStep({ t, lineItems, fieldMappings, availableFields, onMappingChange, onBack, onConfirm }: Props) {
+export default function APFieldMappingStep({
+  t,
+  lineItems,
+  fieldMappings,
+  availableFields,
+  onMappingChange,
+  onBack,
+  onConfirm,
+}: Props) {
   return (
     <div className="data-card">
       <div className="card-title">
-        <div className="card-title-left"><SlidersHorizontal size={16} />{t.mapTitle}</div>
+        <div className="card-title-left">
+          <SlidersHorizontal size={16} />
+          {t.mapTitle}
+        </div>
       </div>
       <div className="card-body-flush">
         <div className="mapping-table-wrap" style={{ padding: '0.5rem' }}>
@@ -31,8 +42,17 @@ export default function APFieldMappingStep({ t, lineItems, fieldMappings, availa
                   return (
                     <th key={c}>
                       <div className="col-label">Column {index + 1}</div>
-                      <select value={val} onChange={e => onMappingChange(c, e.target.value)} className={val === 'ignore' ? 'ignored' : 'mapped'} aria-label={`Column ${index + 1} mapping`}>
-                        {availableFields.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      <select
+                        value={val}
+                        onChange={e => onMappingChange(c, e.target.value)}
+                        className={val === 'ignore' ? 'ignored' : 'mapped'}
+                        aria-label={`Column ${index + 1} mapping`}
+                      >
+                        {availableFields.map(o => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
                       </select>
                     </th>
                   )
@@ -48,7 +68,11 @@ export default function APFieldMappingStep({ t, lineItems, fieldMappings, availa
                     const numeric = isNumFld(fld)
                     return (
                       <td key={c} className={ignored ? 'is-ignored' : numeric ? 'is-numeric' : ''}>
-                        {ignored ? '(Ignored)' : numeric && item[fld] !== undefined ? fmt(item[fld]) : item[fld] || '—'}
+                        {ignored
+                          ? '(Ignored)'
+                          : numeric && item[fld] !== undefined
+                            ? fmt(item[fld])
+                            : item[fld] || '—'}
                       </td>
                     )
                   })}
@@ -56,7 +80,16 @@ export default function APFieldMappingStep({ t, lineItems, fieldMappings, availa
               ))}
               {lineItems.length > 3 && (
                 <tr>
-                  <td colSpan={10} style={{ textAlign: 'center', color: 'var(--text-4)', fontStyle: 'italic', fontSize: '0.8rem', padding: '0.75rem' }}>
+                  <td
+                    colSpan={10}
+                    style={{
+                      textAlign: 'center',
+                      color: 'var(--text-4)',
+                      fontStyle: 'italic',
+                      fontSize: '0.8rem',
+                      padding: '0.75rem',
+                    }}
+                  >
                     … View {lineItems.length - 3} more items in the next step
                   </td>
                 </tr>
@@ -66,8 +99,12 @@ export default function APFieldMappingStep({ t, lineItems, fieldMappings, availa
         </div>
       </div>
       <div className="ap-step-nav">
-        <button type="button" className="btn btn-outline" onClick={onBack}><ArrowLeft size={14} /> {t.backUpload}</button>
-        <button type="button" className="btn btn-primary" onClick={onConfirm}>{t.confirmMap} <ArrowRight size={14} /></button>
+        <button type="button" className="btn btn-outline" onClick={onBack}>
+          <ArrowLeft size={14} /> {t.backUpload}
+        </button>
+        <button type="button" className="btn btn-primary" onClick={onConfirm}>
+          {t.confirmMap} <ArrowRight size={14} />
+        </button>
       </div>
     </div>
   )

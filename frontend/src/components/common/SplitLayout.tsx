@@ -11,7 +11,14 @@ interface Props {
   children: ReactNode
 }
 
-export default function SplitLayout({ showPreview, onToggle, previewUrl, previewType, fileName, children }: Props) {
+export default function SplitLayout({
+  showPreview,
+  onToggle,
+  previewUrl,
+  previewType,
+  fileName,
+  children,
+}: Props) {
   return (
     <div className={`ap-split-layout ${!showPreview ? 'full-width' : ''}`}>
       {showPreview && (

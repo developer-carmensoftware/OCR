@@ -36,7 +36,10 @@ const EMPTY_AMOUNT: Record<string, FieldMapping> = {}
 
 export function useAccountingConfig(): AccountingConfigHook {
   const [config, setConfig] = useLocalStorage<AccountingConfig>('accountingConfig', EMPTY_CONFIG)
-  const [amountConfig] = useLocalStorage<Record<string, FieldMapping>>('accountMappingAmount', EMPTY_AMOUNT)
+  const [amountConfig] = useLocalStorage<Record<string, FieldMapping>>(
+    'accountMappingAmount',
+    EMPTY_AMOUNT
+  )
 
   const mergedConfig: AccountingConfig | null = config
     ? { ...config, paymentAmount: { ...config.paymentAmount, ...amountConfig } }

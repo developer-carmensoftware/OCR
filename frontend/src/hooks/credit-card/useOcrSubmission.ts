@@ -36,10 +36,17 @@ export interface OcrSubmissionHook {
 }
 
 export function useOcrSubmission({
-  showModal, closeModal, setStep,
-  headerData, details, bank, cardId,
-  originalHeader, originalDetails,
-  setJvRows, setCarmenJvId,
+  showModal,
+  closeModal,
+  setStep,
+  headerData,
+  details,
+  bank,
+  cardId,
+  originalHeader,
+  originalDetails,
+  setJvRows,
+  setCarmenJvId,
 }: OcrSubmissionProps): OcrSubmissionHook {
   const [submitting, setSubmitting] = useState(false)
 
@@ -95,7 +102,10 @@ export function useOcrSubmission({
       try {
         const carmenConfig = await getAccountingConfig().catch(() => {
           try {
-            return JSON.parse(localStorage.getItem('accountingConfig') || '{}') as Record<string, string>
+            return JSON.parse(localStorage.getItem('accountingConfig') || '{}') as Record<
+              string,
+              string
+            >
           } catch {
             return {} as Record<string, string>
           }
@@ -111,26 +121,41 @@ export function useOcrSubmission({
             }
             return new Date().toISOString()
           })(),
-          Prefix: (carmenConfig as Record<string, string>).file_prefix || (carmenConfig as Record<string, string>).filePrefix || '',
+          Prefix:
+            (carmenConfig as Record<string, string>).file_prefix ||
+            (carmenConfig as Record<string, string>).filePrefix ||
+            '',
           JvhNo: 'Auto',
-          JvhSource: (carmenConfig as Record<string, string>).file_source || (carmenConfig as Record<string, string>).fileSource || '',
+          JvhSource:
+            (carmenConfig as Record<string, string>).file_source ||
+            (carmenConfig as Record<string, string>).fileSource ||
+            '',
           Status: 'Draft',
           Description: (carmenConfig as Record<string, string>).description
             ? `${(carmenConfig as Record<string, string>).description}${headerData.DocDate ? ` - ${headerData.DocDate}` : ''}`
             : '',
           Detail: rows.map(r => ({
-            JvhSeq: -1, JvdSeq: -1, DeptCode: r.dept, AccCode: r.acc,
-            Description: r.desc, CurCode: 'THB', CurRate: 1,
-            CrAmount: r.credit, CrBase: r.credit, DrAmount: r.debit, DrBase: r.debit,
+            JvhSeq: -1,
+            JvdSeq: -1,
+            DeptCode: r.dept,
+            AccCode: r.acc,
+            Description: r.desc,
+            CurCode: 'THB',
+            CurRate: 1,
+            CrAmount: r.credit,
+            CrBase: r.credit,
+            DrAmount: r.debit,
+            DrBase: r.debit,
             DimList: {},
           })),
           DimHList: { Dim: [] },
           UserModified: '',
         }
-        const carmenRes = await submitToCarmen(carmenPayload) as Record<string, unknown>
+        const carmenRes = (await submitToCarmen(carmenPayload)) as Record<string, unknown>
         if (carmenRes?.Code !== 0) {
           alreadyPosted = true
-          carmenError = (carmenRes?.UserMessage as string) || `Carmen error (Code: ${carmenRes?.Code})`
+          carmenError =
+            (carmenRes?.UserMessage as string) || `Carmen error (Code: ${carmenRes?.Code})`
           showToast(`Carmen GL JV: ${carmenError}`, 'warning')
         } else {
           if (carmenRes?.InternalMessage) {
@@ -150,7 +175,10 @@ export function useOcrSubmission({
           message: `Document number ${docNo} saved to database.\n\nCarmen: "${carmenError}"`,
           type: 'warning',
           confirmText: 'Back to Step 1',
-          onConfirm: () => { closeModal(); setStep(1) },
+          onConfirm: () => {
+            closeModal()
+            setStep(1)
+          },
         })
       } else {
         showModal({
@@ -161,9 +189,16 @@ export function useOcrSubmission({
           type: carmenError ? 'warning' : 'success',
           confirmText: 'Proceed to Input Tax Reconciliation',
           cancelText: jvId ? 'View JV' : undefined,
-          cancelStyle: jvId ? { background: 'var(--teal)', color: 'white', border: '1px solid var(--teal)' } : undefined,
-          onConfirm: () => { closeModal(); setStep(4) },
-          onCancel: jvId ? () => window.open(getCarmenUrl(`/glJv/${jvId}/show`), '_blank') : undefined,
+          cancelStyle: jvId
+            ? { background: 'var(--teal)', color: 'white', border: '1px solid var(--teal)' }
+            : undefined,
+          onConfirm: () => {
+            closeModal()
+            setStep(4)
+          },
+          onCancel: jvId
+            ? () => window.open(getCarmenUrl(`/glJv/${jvId}/show`), '_blank')
+            : undefined,
         })
       }
     } catch (err) {

@@ -24,7 +24,9 @@ interface Props {
 const AMOUNT_FIELDS: DetailColumn[] = ['PayAmt', 'CommisAmt', 'TaxAmt', 'Total']
 
 function formatAmount(value: unknown): string {
-  const str = String(value ?? '').replace(/,/g, '').trim()
+  const str = String(value ?? '')
+    .replace(/,/g, '')
+    .trim()
   if (str === '') return ''
   const num = parseFloat(str)
   if (isNaN(num)) return str
@@ -38,7 +40,13 @@ function sumColumn(details: DetailRow[], col: string): number {
   }, 0)
 }
 
-export default function DetailTable({ details, onUpdate, onAddRow: _onAddRow, onDeleteRow: _onDeleteRow, readOnly }: Props) {
+export default function DetailTable({
+  details,
+  onUpdate,
+  onAddRow: _onAddRow,
+  onDeleteRow: _onDeleteRow,
+  readOnly,
+}: Props) {
   const [focusedCell, setFocusedCell] = useState<{ row: number; col: string } | null>(null)
 
   return (
@@ -56,7 +64,9 @@ export default function DetailTable({ details, onUpdate, onAddRow: _onAddRow, on
               <tr>
                 {DETAIL_COLUMNS.map(col => {
                   const labelHtml = DETAIL_LABELS[col] || col
-                  return <th key={col} scope="col" dangerouslySetInnerHTML={{ __html: labelHtml }} />
+                  return (
+                    <th key={col} scope="col" dangerouslySetInnerHTML={{ __html: labelHtml }} />
+                  )
                 })}
               </tr>
             </thead>
@@ -64,7 +74,9 @@ export default function DetailTable({ details, onUpdate, onAddRow: _onAddRow, on
               {details.map((row, rowIdx) => (
                 <tr
                   key={row._uid ?? rowIdx}
-                  style={{ animation: `fadeUp 0.25s var(--ease) ${Math.min(rowIdx * 40, 400)}ms both` }}
+                  style={{
+                    animation: `fadeUp 0.25s var(--ease) ${Math.min(rowIdx * 40, 400)}ms both`,
+                  }}
                 >
                   {DETAIL_COLUMNS.map(col => {
                     const isAmountField = AMOUNT_FIELDS.includes(col)
@@ -81,7 +93,9 @@ export default function DetailTable({ details, onUpdate, onAddRow: _onAddRow, on
                           className="detail-input"
                           value={displayValue}
                           readOnly={readOnly}
-                          onFocus={() => !readOnly && isAmountField && setFocusedCell({ row: rowIdx, col })}
+                          onFocus={() =>
+                            !readOnly && isAmountField && setFocusedCell({ row: rowIdx, col })
+                          }
                           onBlur={() => setFocusedCell(null)}
                           onChange={e => !readOnly && onUpdate?.(rowIdx, col, e.target.value)}
                         />
@@ -110,7 +124,10 @@ export default function DetailTable({ details, onUpdate, onAddRow: _onAddRow, on
                 <div key={col} className="total-summary-item">
                   <div className="total-summary-label">{label}</div>
                   <div className="total-summary-value">
-                    {total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {total.toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
                   </div>
                 </div>
               )

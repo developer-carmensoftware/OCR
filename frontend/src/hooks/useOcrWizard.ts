@@ -65,7 +65,9 @@ export function useOcrWizard() {
     }
   }, [step, extraction.headerData.DocDate])
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement> | { target: { files: FileList } }) {
+  function handleFileChange(
+    e: React.ChangeEvent<HTMLInputElement> | { target: { files: FileList } }
+  ) {
     fileUpload.handleFileChange(e as React.ChangeEvent<HTMLInputElement>, fileArray => {
       extraction.resetExtractionState()
       setStep(1)
@@ -104,7 +106,8 @@ export function useOcrWizard() {
   }
 
   return {
-    step, setStep,
+    step,
+    setStep,
     files: fileUpload.files,
     previewUrl: fileUpload.previewUrl,
     previewType: fileUpload.previewType,
@@ -116,8 +119,14 @@ export function useOcrWizard() {
     headerData: extraction.headerData,
     details: extraction.details,
     submitting: submission.submitting,
-    jvRows, filePrefix, fileSource, jvDescription, carmenJvId,
-    modal, showModal, closeModal,
+    jvRows,
+    filePrefix,
+    fileSource,
+    jvDescription,
+    carmenJvId,
+    modal,
+    showModal,
+    closeModal,
     handleFileChange,
     processFile: (files: File[]) => extraction.processFile(files),
     reExtract,
@@ -126,7 +135,9 @@ export function useOcrWizard() {
     addRow: extraction.addRow,
     deleteRow: extraction.deleteRow,
     handleSubmitFinal: submission.handleSubmitFinal,
-    handleCancel, resetAll, goBack,
+    handleCancel,
+    resetAll,
+    goBack,
     showToast,
   }
 }

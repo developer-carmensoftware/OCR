@@ -12,7 +12,9 @@ export async function getAccountingConfig(): Promise<AccountingConfigResponse> {
   return res.json() as Promise<AccountingConfigResponse>
 }
 
-export async function saveAccountingConfig(payload: AccountingConfigRequest): Promise<AccountingConfigResponse> {
+export async function saveAccountingConfig(
+  payload: AccountingConfigRequest
+): Promise<AccountingConfigResponse> {
   const res = await apiFetch('/api/v1/config/accounting', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -28,7 +30,10 @@ export async function getAPVendorMapping(vendorTaxId: string): Promise<APVendorM
   return res.json() as Promise<APVendorMapping>
 }
 
-export async function saveAPVendorMapping(vendorTaxId: string, mapping: APVendorMapping): Promise<APVendorMapping> {
+export async function saveAPVendorMapping(
+  vendorTaxId: string,
+  mapping: APVendorMapping
+): Promise<APVendorMapping> {
   const res = await apiFetch(`/api/v1/config/ap-mapping/${encodeURIComponent(vendorTaxId)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

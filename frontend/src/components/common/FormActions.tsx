@@ -12,7 +12,12 @@ export default function FormActions({ onCancel, onBack, onSubmit, submitLabel, s
   return (
     <div className="form-actions" style={{ marginTop: '1.5rem', justifyContent: 'flex-end' }}>
       {showBack && (
-        <button type="button" className="btn btn-outline" onClick={onBack} style={{ marginRight: 'auto' }}>
+        <button
+          type="button"
+          className="btn btn-outline"
+          onClick={onBack}
+          style={{ marginRight: 'auto' }}
+        >
           <ArrowLeft size={14} /> Back
         </button>
       )}

@@ -63,7 +63,9 @@ export function useMapping() {
       }
       if (ocrState.details && Array.isArray(ocrState.details)) {
         const types = new Set<string>()
-        let comm = false, tx = false, n = false
+        let comm = false,
+          tx = false,
+          n = false
         const toNum = (v: unknown) => parseFloat(String(v ?? '').replace(/,/g, '')) || 0
         ocrState.details.forEach(d => {
           if (d.Transaction) types.add(d.Transaction)
@@ -82,7 +84,12 @@ export function useMapping() {
     bankConfig.setBank(selected)
     if (selected && BANK_INFO[selected as BankDisplayName]) {
       const info = BANK_INFO[selected as BankDisplayName]
-      bankConfig.setCompany(prev => ({ ...prev, name: info.name, taxId: info.taxId, address: info.address }))
+      bankConfig.setCompany(prev => ({
+        ...prev,
+        name: info.name,
+        taxId: info.taxId,
+        address: info.address,
+      }))
     }
     if (selected && BANK_SOURCE_MAP[selected as BankDisplayName])
       bankConfig.setFileSource(BANK_SOURCE_MAP[selected as BankDisplayName])
@@ -172,7 +179,9 @@ export function useMapping() {
 
       try {
         await saveAccountingConfig({
-          bank_code: bankConfig.bank ? (BANK_CODE_MAP[bankConfig.bank as BankDisplayName] || null) : null,
+          bank_code: bankConfig.bank
+            ? BANK_CODE_MAP[bankConfig.bank as BankDisplayName] || null
+            : null,
           file_prefix: bankConfig.filePrefix,
           file_source: bankConfig.fileSource,
           description: bankConfig.description,
@@ -266,7 +275,8 @@ export function useMapping() {
     mainSuggestions: suggestions.mainSuggestions,
     suggestLoading: suggestions.suggestLoading,
     autoSuggest: suggestions.autoSuggest,
-    confirmMainSuggestion: (key: MainMappingKey) => suggestions.applyMainSuggestion(key, setMappings),
+    confirmMainSuggestion: (key: MainMappingKey) =>
+      suggestions.applyMainSuggestion(key, setMappings),
     rejectMainSuggestion: suggestions.rejectMainSuggestion,
     paymentSuggestions: suggestions.paymentSuggestions,
     setPaymentSuggestions: suggestions.setPaymentSuggestions,

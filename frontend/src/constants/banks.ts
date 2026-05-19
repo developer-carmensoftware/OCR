@@ -60,7 +60,9 @@ export const BANK_THAI_NAMES: Record<BankCode, string> = {
 }
 
 /** Infer bank display name from the bank's company name extracted by the LLM. */
-export function detectBankFromCompanyName(bankCompanyname: string | null | undefined): BankDisplayName | null {
+export function detectBankFromCompanyName(
+  bankCompanyname: string | null | undefined
+): BankDisplayName | null {
   if (!bankCompanyname) return null
   if (bankCompanyname.includes('กรุงเทพ')) return 'Bangkok Bank (BBL)'
   if (bankCompanyname.includes('กสิกร')) return 'Kasikornbank (KBANK)'
@@ -71,7 +73,9 @@ export function detectBankFromCompanyName(bankCompanyname: string | null | undef
 /**
  * Detect actual bank from extracted data using bank/company name + document keywords.
  */
-export function detectBankFromExtracted(ext: Record<string, string | null | undefined> | null): BankCode | null {
+export function detectBankFromExtracted(
+  ext: Record<string, string | null | undefined> | null
+): BankCode | null {
   if (!ext) return null
 
   const nameSignals = [ext.bank_companyname, ext.bank_name, ext.company_name]

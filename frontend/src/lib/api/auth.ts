@@ -22,7 +22,7 @@ export async function exchangeSSOToken(
   })
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { detail?: string }
+    const err = (await res.json().catch(() => ({}))) as { detail?: string }
     throw new Error(err.detail || `SSO exchange failed (${res.status})`)
   }
 
@@ -42,7 +42,7 @@ export async function getUsage(accessToken: string): Promise<UsageData> {
   })
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { detail?: string }
+    const err = (await res.json().catch(() => ({}))) as { detail?: string }
     throw new Error(err.detail || `Failed to fetch usage (${res.status})`)
   }
 

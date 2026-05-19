@@ -48,7 +48,14 @@ export default function UsageIndicator() {
     let color = 'var(--teal)'
     if (usedPercentage >= 90) color = 'var(--rose)'
     else if (usedPercentage >= 70) color = 'var(--amber)'
-    return { monthly_calls, max_monthly_calls, remaining_calls, usedPercentage, color, isLow: remaining_calls <= 5 || usedPercentage >= 90 }
+    return {
+      monthly_calls,
+      max_monthly_calls,
+      remaining_calls,
+      usedPercentage,
+      color,
+      isLow: remaining_calls <= 5 || usedPercentage >= 90,
+    }
   }, [usage])
 
   if (loading) {
@@ -66,28 +73,51 @@ export default function UsageIndicator() {
 
   if (!stats) return null
 
-  const usedColor = stats.usedPercentage >= 90 ? 'var(--rose)' : stats.usedPercentage >= 70 ? 'var(--amber)' : 'var(--text-3)'
+  const usedColor =
+    stats.usedPercentage >= 90
+      ? 'var(--rose)'
+      : stats.usedPercentage >= 70
+        ? 'var(--amber)'
+        : 'var(--text-3)'
 
   const COLS = [
     { key: 'col-used', label: 'Used', value: stats.monthly_calls, color: usedColor },
-    { key: 'col-remain', label: 'Remain', value: stats.remaining_calls, color: stats.isLow ? 'var(--rose)' : 'var(--primary)' },
+    {
+      key: 'col-remain',
+      label: 'Remain',
+      value: stats.remaining_calls,
+      color: stats.isLow ? 'var(--rose)' : 'var(--primary)',
+    },
     { key: 'col-total', label: 'Total', value: stats.max_monthly_calls, color: 'var(--text-4)' },
   ]
 
   return (
     <AnimatePresence>
-      <motion.div initial={{ opacity: 0, scale: 0.95, y: 4 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 4 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
+      >
         <div
           role="status"
           aria-label={`OCR quota: used ${stats.monthly_calls}, remaining ${stats.remaining_calls}, total ${stats.max_monthly_calls}`}
-          onClick={() => { void fetchUsage() }}
+          onClick={() => {
+            void fetchUsage()
+          }}
           className={`ui-quota${stats.isLow ? ' is-low' : ''}`}
-          style={{ '--used-pct': `${Math.min(100, stats.usedPercentage)}%`, '--quota-color': stats.color } as React.CSSProperties}
+          style={
+            {
+              '--used-pct': `${Math.min(100, stats.usedPercentage)}%`,
+              '--quota-color': stats.color,
+            } as React.CSSProperties
+          }
         >
           {COLS.map(({ key, label, value, color }) => (
             <div key={key} className={`ui-quota-col ${key}`}>
               <span className="ui-quota-label">{label}</span>
-              <span className="ui-quota-value" style={{ color }}>{value}</span>
+              <span className="ui-quota-value" style={{ color }}>
+                {value}
+              </span>
             </div>
           ))}
         </div>

@@ -39,12 +39,27 @@ export default function StepWizard({ step, steps, onStepClick }: Props) {
                 role={isClickable ? ('button' as React.AriaRole) : undefined}
                 tabIndex={isClickable ? 0 : undefined}
                 title={isClickable ? `Back to Step ${s.n}: ${s.label}` : undefined}
-                onKeyDown={isClickable ? e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onStepClick!(s.n) } } : undefined}
+                onKeyDown={
+                  isClickable
+                    ? e => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          onStepClick!(s.n)
+                        }
+                      }
+                    : undefined
+                }
               >
                 {isActive && (
                   <motion.span
                     layoutId="step-active-pill"
-                    style={{ position: 'absolute', inset: 0, borderRadius: '100px', background: 'var(--primary)', zIndex: 0 }}
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      borderRadius: '100px',
+                      background: 'var(--primary)',
+                      zIndex: 0,
+                    }}
                     transition={{ type: 'spring', stiffness: 380, damping: 32 }}
                   />
                 )}
@@ -57,7 +72,10 @@ export default function StepWizard({ step, steps, onStepClick }: Props) {
                 </span>
               </div>
               {i < STEPS.length - 1 && (
-                <div className="step-sep" style={step > s.n ? { background: 'var(--emerald)', opacity: 0.6 } : {}} />
+                <div
+                  className="step-sep"
+                  style={step > s.n ? { background: 'var(--emerald)', opacity: 0.6 } : {}}
+                />
               )}
             </div>
           )

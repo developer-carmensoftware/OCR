@@ -23,17 +23,42 @@ export default function APUploadStep({ t, fileInputRef, onFileChange }: Props) {
 
   return (
     <div style={{ maxWidth: 560, margin: '0 auto' }}>
-      <div className="panel-card upload-drop" style={{ minHeight: 260, cursor: 'pointer' }} onClick={() => fileInputRef.current?.click()} onDragOver={e => e.preventDefault()} onDrop={handleDrop}>
-        <input type="file" aria-label="Upload invoice file" ref={fileInputRef} accept="image/*,application/pdf" onChange={e => onFileChange(e)} style={{ display: 'none' }} />
-        <div className="upload-icon"><UploadCloud size={40} /></div>
+      <div
+        className="panel-card upload-drop"
+        style={{ minHeight: 260, cursor: 'pointer' }}
+        onClick={() => fileInputRef.current?.click()}
+        onDragOver={e => e.preventDefault()}
+        onDrop={handleDrop}
+      >
+        <input
+          type="file"
+          aria-label="Upload invoice file"
+          ref={fileInputRef}
+          accept="image/*,application/pdf"
+          onChange={e => onFileChange(e)}
+          style={{ display: 'none' }}
+        />
+        <div className="upload-icon">
+          <UploadCloud size={40} />
+        </div>
         <div className="upload-label">{t.uploadTitle}</div>
         <div className="upload-hint">{t.uploadDesc}</div>
-        <button type="button" className="btn btn-primary" style={{ marginTop: '1.5rem' }} onClick={e => { e.stopPropagation(); fileInputRef.current?.click() }}>
+        <button
+          type="button"
+          className="btn btn-primary"
+          style={{ marginTop: '1.5rem' }}
+          onClick={e => {
+            e.stopPropagation()
+            fileInputRef.current?.click()
+          }}
+        >
           <FolderOpen size={14} /> {t.uploadBtn}
         </button>
       </div>
       <div className="panel-card" style={{ marginTop: '1rem' }}>
-        <div className="field-label"><Info size={16} /> How to use AP Invoice OCR</div>
+        <div className="field-label">
+          <Info size={16} /> How to use AP Invoice OCR
+        </div>
         <div className="how-to-list">
           {INSTRUCTIONS.map(({ n, c, text }) => (
             <div key={n} className="how-to-item">

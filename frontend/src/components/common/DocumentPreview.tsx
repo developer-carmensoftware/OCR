@@ -1,5 +1,15 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Eye, ZoomIn, ZoomOut, Minimize2, RotateCw, FileText, ExternalLink, FileImage, File } from 'lucide-react'
+import {
+  Eye,
+  ZoomIn,
+  ZoomOut,
+  Minimize2,
+  RotateCw,
+  FileText,
+  ExternalLink,
+  FileImage,
+  File,
+} from 'lucide-react'
 
 interface Props {
   previewUrl?: string | null
@@ -16,7 +26,11 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }: P
   const frameRef = useRef<HTMLDivElement>(null)
   const pinchRef = useRef<number | null>(null)
 
-  useEffect(() => { setZoom(1); setRotate(0); setPan({ x: 0, y: 0 }) }, [previewUrl])
+  useEffect(() => {
+    setZoom(1)
+    setRotate(0)
+    setPan({ x: 0, y: 0 })
+  }, [previewUrl])
 
   const handleWheel = useCallback((e: Event) => {
     e.preventDefault()
@@ -24,40 +38,49 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }: P
     setZoom(prev => Math.min(Math.max(prev + (we.deltaY > 0 ? -0.15 : 0.15), 0.25), 5))
   }, [])
 
-  const handleTouchStart = useCallback((e: Event) => {
-    const te = e as TouchEvent
-    if (te.touches.length === 2) {
-      const dx = te.touches[0].clientX - te.touches[1].clientX
-      const dy = te.touches[0].clientY - te.touches[1].clientY
-      pinchRef.current = Math.sqrt(dx * dx + dy * dy)
-      return
-    }
-    if (te.touches.length === 1) {
-      const touch = te.touches[0]
-      setIsDragging(true)
-      setDragStart({ x: touch.clientX - pan.x, y: touch.clientY - pan.y })
-    }
-  }, [pan])
+  const handleTouchStart = useCallback(
+    (e: Event) => {
+      const te = e as TouchEvent
+      if (te.touches.length === 2) {
+        const dx = te.touches[0].clientX - te.touches[1].clientX
+        const dy = te.touches[0].clientY - te.touches[1].clientY
+        pinchRef.current = Math.sqrt(dx * dx + dy * dy)
+        return
+      }
+      if (te.touches.length === 1) {
+        const touch = te.touches[0]
+        setIsDragging(true)
+        setDragStart({ x: touch.clientX - pan.x, y: touch.clientY - pan.y })
+      }
+    },
+    [pan]
+  )
 
-  const handleTouchMove = useCallback((e: Event) => {
-    const te = e as TouchEvent
-    if (te.touches.length === 2 && pinchRef.current !== null) {
-      e.preventDefault()
-      const dx = te.touches[0].clientX - te.touches[1].clientX
-      const dy = te.touches[0].clientY - te.touches[1].clientY
-      const newDist = Math.sqrt(dx * dx + dy * dy)
-      setZoom(prev => Math.min(Math.max(prev * (newDist / pinchRef.current!), 0.25), 5))
-      pinchRef.current = newDist
-      return
-    }
-    if (te.touches.length === 1 && isDragging) {
-      e.preventDefault()
-      const touch = te.touches[0]
-      setPan({ x: touch.clientX - dragStart.x, y: touch.clientY - dragStart.y })
-    }
-  }, [isDragging, dragStart])
+  const handleTouchMove = useCallback(
+    (e: Event) => {
+      const te = e as TouchEvent
+      if (te.touches.length === 2 && pinchRef.current !== null) {
+        e.preventDefault()
+        const dx = te.touches[0].clientX - te.touches[1].clientX
+        const dy = te.touches[0].clientY - te.touches[1].clientY
+        const newDist = Math.sqrt(dx * dx + dy * dy)
+        setZoom(prev => Math.min(Math.max(prev * (newDist / pinchRef.current!), 0.25), 5))
+        pinchRef.current = newDist
+        return
+      }
+      if (te.touches.length === 1 && isDragging) {
+        e.preventDefault()
+        const touch = te.touches[0]
+        setPan({ x: touch.clientX - dragStart.x, y: touch.clientY - dragStart.y })
+      }
+    },
+    [isDragging, dragStart]
+  )
 
-  const handleTouchEnd = useCallback(() => { setIsDragging(false); pinchRef.current = null }, [])
+  const handleTouchEnd = useCallback(() => {
+    setIsDragging(false)
+    pinchRef.current = null
+  }, [])
 
   useEffect(() => {
     const el = frameRef.current
@@ -88,7 +111,10 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }: P
 
   const zoomIn = () => setZoom(p => Math.min(p + 0.25, 5))
   const zoomOut = () => setZoom(p => Math.max(p - 0.25, 0.25))
-  const resetView = () => { setZoom(1); setPan({ x: 0, y: 0 }) }
+  const resetView = () => {
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+  }
   const rotateCW = () => setRotate(r => (r + 90) % 360)
   const openNewTab = () => {
     if (!previewUrl) return
@@ -102,31 +128,62 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }: P
 
   return (
     <div className="preview-column">
-      <h2 className="section-title"><Eye size={16} /> Document Preview</h2>
+      <h2 className="section-title">
+        <Eye size={16} /> Document Preview
+      </h2>
 
       {hasToolbar && (
         <div className="preview-toolbar">
           {isImage && (
             <>
               <div className="prev-tool-group">
-                <button type="button" className="prev-tool-btn" onClick={zoomOut} disabled={zoom <= 0.25} title="Zoom out"><ZoomOut size={14} /></button>
+                <button
+                  type="button"
+                  className="prev-tool-btn"
+                  onClick={zoomOut}
+                  disabled={zoom <= 0.25}
+                  title="Zoom out"
+                >
+                  <ZoomOut size={14} />
+                </button>
                 <span className="prev-zoom-pct">{Math.round(zoom * 100)}%</span>
-                <button type="button" className="prev-tool-btn" onClick={zoomIn} disabled={zoom >= 5} title="Zoom in"><ZoomIn size={14} /></button>
+                <button
+                  type="button"
+                  className="prev-tool-btn"
+                  onClick={zoomIn}
+                  disabled={zoom >= 5}
+                  title="Zoom in"
+                >
+                  <ZoomIn size={14} />
+                </button>
               </div>
               <div className="prev-tool-sep" />
-              <button type="button" className="prev-tool-btn" onClick={resetView} title="Reset"><Minimize2 size={14} /></button>
-              <button type="button" className="prev-tool-btn" onClick={rotateCW} title="Rotate 90°"><RotateCw size={14} /></button>
+              <button type="button" className="prev-tool-btn" onClick={resetView} title="Reset">
+                <Minimize2 size={14} />
+              </button>
+              <button type="button" className="prev-tool-btn" onClick={rotateCW} title="Rotate 90°">
+                <RotateCw size={14} />
+              </button>
               <div className="prev-tool-sep" />
             </>
           )}
           {isPdf && (
             <>
-              <span className="prev-pdf-badge"><FileText size={14} /> PDF</span>
+              <span className="prev-pdf-badge">
+                <FileText size={14} /> PDF
+              </span>
               <span className="prev-tool-hint">Scroll and zoom within the document</span>
               <div className="prev-tool-sep" />
             </>
           )}
-          <button type="button" className="prev-tool-btn" onClick={openNewTab} title="Open in new tab"><ExternalLink size={14} /></button>
+          <button
+            type="button"
+            className="prev-tool-btn"
+            onClick={openNewTab}
+            title="Open in new tab"
+          >
+            <ExternalLink size={14} />
+          </button>
         </div>
       )}
 
@@ -146,21 +203,40 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }: P
               alt="Document Preview"
               className="prev-img"
               draggable={false}
-              style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${rotate}deg)`, transition: isDragging ? 'none' : 'transform 0.15s ease' }}
+              style={{
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${rotate}deg)`,
+                transition: isDragging ? 'none' : 'transform 0.15s ease',
+              }}
             />
           </div>
         )}
-        {isPdf && previewUrl && <iframe src={previewUrl} title="PDF Preview" className="preview-pdf-iframe" />}
+        {isPdf && previewUrl && (
+          <iframe src={previewUrl} title="PDF Preview" className="preview-pdf-iframe" />
+        )}
         {!previewType && (
           <div className="placeholder-text">
-            <div className="placeholder-icon-wrap"><FileImage size={32} /></div>
-            <p>No Preview File<br /><span style={{ fontSize: '.75rem', opacity: 0.5 }}>Preview will appear here</span></p>
+            <div className="placeholder-icon-wrap">
+              <FileImage size={32} />
+            </div>
+            <p>
+              No Preview File
+              <br />
+              <span style={{ fontSize: '.75rem', opacity: 0.5 }}>Preview will appear here</span>
+            </p>
           </div>
         )}
         {previewType && !isImage && !isPdf && (
           <div className="placeholder-text">
-            <div className="placeholder-icon-wrap"><FileText size={32} /></div>
-            <p>{previewType} File<br /><span style={{ fontSize: '.75rem', opacity: 0.5 }}>Preview not supported for this type</span></p>
+            <div className="placeholder-icon-wrap">
+              <FileText size={32} />
+            </div>
+            <p>
+              {previewType} File
+              <br />
+              <span style={{ fontSize: '.75rem', opacity: 0.5 }}>
+                Preview not supported for this type
+              </span>
+            </p>
           </div>
         )}
       </div>
@@ -170,7 +246,12 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }: P
           {isPdf ? <FileText size={14} /> : <File size={14} />}
           <span className="file-name">{fileName}</span>
           {hasToolbar && (
-            <button type="button" className="btn-zoom-action" onClick={openNewTab} title="Open in new tab">
+            <button
+              type="button"
+              className="btn-zoom-action"
+              onClick={openNewTab}
+              title="Open in new tab"
+            >
               <ExternalLink size={14} /> Open in new tab
             </button>
           )}
