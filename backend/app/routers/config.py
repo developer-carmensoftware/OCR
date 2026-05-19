@@ -8,7 +8,6 @@ User config router — persists per-BU settings that previously lived in localSt
   GET  /api/v1/config/analytics/account-usage       → which BUs use a given acc/dept code
 """
 
-import json
 import logging
 from typing import Any
 
@@ -19,7 +18,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import SessionInfo, get_current_session
 from app.database import get_db
-from app.models import APVendorColumnMapping, BUAccountingConfig, BUAccountingMappingEntry
+from app.models import (
+    APVendorColumnMapping,
+    APVendorFieldMappingEntry,
+    BUAccountingConfig,
+    BUAccountingMappingEntry,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/config", tags=["Config"])
@@ -206,9 +210,17 @@ async def get_ap_vendor_mapping(
     if not row:
         return {"vendor_tax_id": vendor_tax_id, "mapping": None}
 
+    entries_result = await db.execute(
+        select(APVendorFieldMappingEntry).where(
+            APVendorFieldMappingEntry.mapping_id == row.id,
+            APVendorFieldMappingEntry.deleted_at.is_(None),
+        )
+    )
+    mapping = {e.column_name: e.field_name for e in entries_result.scalars().all()}
+
     return {
         "vendor_tax_id": vendor_tax_id,
-        "mapping": json.loads(row.field_mappings_json),
+        "mapping": mapping,
     }
 
 
@@ -228,17 +240,28 @@ async def save_ap_vendor_mapping(
         )
     )
     row = result.scalar_one_or_none()
-    field_mappings_json = json.dumps(payload)
 
-    if row:
-        row.field_mappings_json = field_mappings_json
-    else:
+    if not row:
+        row = APVendorColumnMapping(
+            tenant_id=session.tenant_id,
+            business_unit_id=session.business_unit_id,
+            vendor_tax_id=vendor_tax_id,
+        )
+        db.add(row)
+        await db.flush()  # populate row.id
+
+    # Replace all entries (delete + re-insert)
+    await db.execute(
+        delete(APVendorFieldMappingEntry).where(APVendorFieldMappingEntry.mapping_id == row.id)
+    )
+    for column_name, field_name in payload.items():
+        if not column_name or not field_name:
+            continue
         db.add(
-            APVendorColumnMapping(
-                tenant_id=session.tenant_id,
-                business_unit_id=session.business_unit_id,
-                vendor_tax_id=vendor_tax_id,
-                field_mappings_json=field_mappings_json,
+            APVendorFieldMappingEntry(
+                mapping_id=row.id,
+                column_name=column_name,
+                field_name=str(field_name) if not isinstance(field_name, str) else field_name,
             )
         )
 

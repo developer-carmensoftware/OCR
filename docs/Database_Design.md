@@ -161,7 +161,8 @@ Extracted header data from a credit card bank statement.
 | `task_id` FK → ocr_tasks | |
 | `bank_code` FK → banks | Replaces old hardcoded `BankType` enum |
 | `company_name`, `bank_company_name` | |
-| `doc_date`, `doc_no`, `branch_no` | |
+| `doc_date` | `DATE` — parsed from LLM string via `utils.date_parsing.parse_doc_date` (handles DD/MM/YYYY, ISO, Buddhist years) |
+| `doc_no`, `branch_no` | |
 | `submitted_at` | NULL = draft; NOT NULL = submitted to Carmen ERP |
 | `carmen_user_id` | |
 
@@ -178,7 +179,8 @@ One row per line item from a bank statement. Replaces the old `credit_cards.tran
 | Key columns | Notes |
 |---|---|
 | `credit_card_id` FK → credit_cards | |
-| `tx_date`, `description`, `amount`, `tx_type` | |
+| `tx_date` | `DATE` — parsed via `utils.date_parsing.parse_doc_date` |
+| `description`, `amount`, `tx_type` | |
 | `sort_order` | Preserves LLM output order |
 
 ---
@@ -190,7 +192,8 @@ Metadata of an AP Invoice OCR job. **Line items are NOT stored** — Carmen ERP 
 | Key columns | Notes |
 |---|---|
 | `task_id` FK → ocr_tasks | |
-| `vendor_name`, `doc_no`, `doc_date` | |
+| `vendor_name`, `doc_no` | |
+| `doc_date` | `DATE` — parsed via `utils.date_parsing.parse_doc_date` |
 | `submitted_at` | NULL = draft |
 | `carmen_user_id` | |
 
@@ -377,6 +380,8 @@ Actions: `read`, `write`, `delete`, `publish`, `revoke`, `acknowledge`
 
 #### `admin_user_roles`
 Optional tenant scope: `tenant_id = ''` (empty) = global; `tenant_id = uuid` = scoped to one tenant.
+
+**No FK on `tenant_id`** — `''` is a sentinel that has no matching `tenants` row, so a FK would be unenforceable. App layer validates the UUID case before insert.
 
 ---
 

@@ -611,6 +611,166 @@ async def _m108_ocr_session_indexes(conn: AsyncConnection) -> None:
     logger.info("  ~ ocr_sessions and quota_usage indexes added")
 
 
+async def _m109_admin_user_role_drop_tenant_fk(conn: AsyncConnection) -> None:
+    """
+    Drop the FK on admin_user_roles.tenant_id.
+
+    The column carries '' as a sentinel for "global scope" — that empty string
+    has no corresponding tenants row, so the FK was unenforceable for global
+    assignments. App layer must validate the UUID case.
+    """
+    row = (
+        await conn.execute(
+            text("""
+        SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'admin_user_roles'
+          AND COLUMN_NAME = 'tenant_id'
+          AND REFERENCED_TABLE_NAME = 'tenants'
+        LIMIT 1
+    """)
+        )
+    ).fetchone()
+    if row:
+        fk_name = row[0]
+        await conn.execute(text(f"ALTER TABLE admin_user_roles DROP FOREIGN KEY {fk_name}"))
+        logger.info("  ~ admin_user_roles: dropped FK %s on tenant_id", fk_name)
+    else:
+        logger.info("  ~ admin_user_roles: no FK on tenant_id found, skipping")
+
+
+async def _m110_normalize_ap_vendor_mapping(conn: AsyncConnection) -> None:
+    """
+    Normalize ap_vendor_column_mappings.field_mappings_json into rows.
+
+    Mirrors m106 which did the same for bu_accounting_configs. Each row of the
+    new ap_vendor_field_mapping_entries represents one (column_name → field_name)
+    pair, indexed on field_name for analytics queries like 'which vendors map
+    column X to field Y'.
+    """
+    import json as _json
+
+    await conn.execute(
+        text("""
+        CREATE TABLE IF NOT EXISTS ap_vendor_field_mapping_entries (
+            id          INT          NOT NULL AUTO_INCREMENT,
+            mapping_id  INT          NOT NULL,
+            column_name VARCHAR(255) NOT NULL,
+            field_name  VARCHAR(100) NOT NULL,
+            created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at  DATETIME     NULL     ON UPDATE CURRENT_TIMESTAMP,
+            deleted_at  DATETIME     NULL,
+            deleted_by  VARCHAR(100) NULL,
+            PRIMARY KEY (id),
+            CONSTRAINT fk_ap_vendor_entry_mapping
+                FOREIGN KEY (mapping_id) REFERENCES ap_vendor_column_mappings(id),
+            CONSTRAINT uq_ap_vendor_entry_mapping_col
+                UNIQUE (mapping_id, column_name),
+            INDEX ix_ap_vendor_entry_field_name (field_name),
+            INDEX ix_ap_vendor_entry_created_at (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """)
+    )
+
+    # Best-effort migrate existing JSON rows (column may already be gone on fresh installs)
+    try:
+        existing = await conn.execute(
+            text(
+                "SELECT id, field_mappings_json FROM ap_vendor_column_mappings"
+                " WHERE deleted_at IS NULL"
+            )
+        )
+        for mapping_id, json_str in existing.fetchall():
+            if not json_str:
+                continue
+            try:
+                mapping = _json.loads(json_str)
+            except Exception as exc:
+                logger.warning("m110: bad JSON for mapping_id=%s: %s", mapping_id, exc)
+                continue
+            for column_name, field_name in mapping.items():
+                if not column_name or not field_name:
+                    continue
+                await conn.execute(
+                    text("""
+                    INSERT IGNORE INTO ap_vendor_field_mapping_entries
+                        (mapping_id, column_name, field_name)
+                    VALUES (:m, :c, :f)
+                """),
+                    {"m": mapping_id, "c": column_name, "f": str(field_name)},
+                )
+    except Exception as exc:
+        logger.info("m110: skip JSON migration (%s)", str(exc)[:100])
+
+    await conn.execute(
+        text("ALTER TABLE ap_vendor_column_mappings DROP COLUMN IF EXISTS field_mappings_json")
+    )
+    logger.info("  ~ ap_vendor_field_mapping_entries created; JSON column dropped")
+
+
+async def _m111_convert_doc_dates(conn: AsyncConnection) -> None:
+    """
+    Convert doc_date / tx_date from VARCHAR to DATE.
+
+    Strategy:
+      1. Add temp column doc_date_new DATE.
+      2. Populate via STR_TO_DATE for DD/MM/YYYY strings; everything else → NULL.
+      3. Drop old VARCHAR column, rename new column.
+
+    On fresh installs the column is already DATE (from create_all) so we skip.
+    """
+    targets = [
+        ("credit_cards", "doc_date"),
+        ("credit_card_transactions", "tx_date"),
+        ("ap_invoices", "doc_date"),
+    ]
+    for table, col in targets:
+        col_type = (
+            await conn.execute(
+                text("""
+            SELECT DATA_TYPE FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME   = :t
+              AND COLUMN_NAME  = :c
+        """),
+                {"t": table, "c": col},
+            )
+        ).scalar()
+
+        if col_type is None:
+            logger.info("  ~ %s.%s: column missing, skipping", table, col)
+            continue
+        if col_type.lower() == "date":
+            logger.info("  ~ %s.%s: already DATE, skipping", table, col)
+            continue
+
+        await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col}_new DATE NULL"))
+        # Try multiple input formats; first match wins, the rest stay NULL.
+        await conn.execute(
+            text(f"""
+            UPDATE {table} SET {col}_new = CASE
+                WHEN {col} REGEXP '^[0-9]{{1,2}}/[0-9]{{1,2}}/[0-9]{{4}}$'
+                    THEN STR_TO_DATE({col}, '%d/%m/%Y')
+                WHEN {col} REGEXP '^[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}$'
+                    THEN STR_TO_DATE({col}, '%Y-%m-%d')
+                ELSE NULL
+            END
+            WHERE {col} IS NOT NULL
+        """)
+        )
+        await conn.execute(text(f"ALTER TABLE {table} DROP COLUMN {col}"))
+        await conn.execute(text(f"ALTER TABLE {table} CHANGE {col}_new {col} DATE NULL"))
+        logger.info("  ~ %s.%s: VARCHAR → DATE conversion complete", table, col)
+
+    # Indexes referenced by ORM (Column(Date, index=True))
+    await conn.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_credit_cards_doc_date ON credit_cards(doc_date)")
+    )
+    await conn.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_ap_invoices_doc_date ON ap_invoices(doc_date)")
+    )
+
+
 _MIGRATIONS: list[tuple[str, object]] = [
     # ── Squashed history (001–033) ────────────────────────────────────────────
     ("001_squashed_initial_schema", None),
@@ -624,6 +784,9 @@ _MIGRATIONS: list[tuple[str, object]] = [
     ("106_normalize_bu_mapping_entries", _m106_normalize_bu_mapping_entries),
     ("107_bu_config_add_branch", _m107_bu_config_add_branch),
     ("108_ocr_session_indexes", _m108_ocr_session_indexes),
+    ("109_admin_user_role_drop_tenant_fk", _m109_admin_user_role_drop_tenant_fk),
+    ("110_normalize_ap_vendor_mapping", _m110_normalize_ap_vendor_mapping),
+    ("111_convert_doc_dates", _m111_convert_doc_dates),
 ]
 
 

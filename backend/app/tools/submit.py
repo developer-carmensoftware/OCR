@@ -19,6 +19,7 @@ from app.constants import Module
 from app.context import current_business_unit_id, current_carmen_user_id, current_tenant_id
 from app.models.orm import CreditCard, CreditCardTransaction, OCRTask, TaskStatus
 from app.tools.base import ToolResult
+from app.utils.date_parsing import parse_doc_date
 from app.utils.db_helpers import has_submitted_doc
 
 logger = logging.getLogger(__name__)
@@ -93,7 +94,7 @@ async def run(inp: SubmitInput, db: AsyncSession) -> ToolResult:
             bank_code=inp.bank_code or None,
             company_name=inp.company_name,
             bank_company_name=inp.bank_company_name,
-            doc_date=inp.doc_date,
+            doc_date=parse_doc_date(inp.doc_date),
             doc_no=inp.doc_no,
             branch_no=inp.branch_no,
             submitted_at=datetime.utcnow(),
@@ -112,7 +113,7 @@ async def run(inp: SubmitInput, db: AsyncSession) -> ToolResult:
                 CreditCardTransaction(
                     id=str(uuid.uuid4()),
                     credit_card_id=card.id,
-                    tx_date=item.get("date"),
+                    tx_date=parse_doc_date(item.get("date")),
                     description=tx_label,
                     amount=item.get("amount"),
                     tx_type=item.get("type"),

@@ -26,6 +26,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Column,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -206,14 +207,20 @@ class RolePermission(Base):
 class AdminUserRole(Base, TimestampMixin):
     """
     Assigns a role to an admin user, optionally scoped to one tenant.
-    tenant_id = '' (empty string, default) means the role is global (all tenants).
+
+    tenant_id semantics:
+      '' (empty string) → role is global (all tenants)
+      <uuid>            → role is scoped to the matching tenants.id
+
+    No FK on tenant_id because '' is a sentinel that has no corresponding
+    tenants row. Validate the UUID case at the application layer.
     """
 
     __tablename__ = "admin_user_roles"
 
     user_id = Column(String(36), ForeignKey("admin_users.id"), primary_key=True)
     role_id = Column(String(50), ForeignKey("roles.id"), primary_key=True)
-    tenant_id = Column(String(36), ForeignKey("tenants.id"), primary_key=True, default="")
+    tenant_id = Column(String(36), primary_key=True, default="", nullable=False)
     granted_by = Column(String(36), nullable=True)
     expires_at = Column(DateTime, nullable=True)
 
@@ -514,7 +521,7 @@ class CreditCard(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMix
     bank_code = Column(String(20), ForeignKey("banks.code"), nullable=True, index=True)
     company_name = Column(String(255), nullable=True)
     bank_company_name = Column(String(255), nullable=True)
-    doc_date = Column(String(50), nullable=True)
+    doc_date = Column(Date, nullable=True, index=True)
     doc_no = Column(String(100), nullable=True, index=True)
     branch_no = Column(String(50), nullable=True)
     submitted_at = Column(DateTime, nullable=True)
@@ -540,7 +547,7 @@ class CreditCardTransaction(Base, TimestampMixin, SoftDeleteMixin):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     credit_card_id = Column(String(36), ForeignKey("credit_cards.id"), nullable=False, index=True)
-    tx_date = Column(String(50), nullable=True)
+    tx_date = Column(Date, nullable=True)
     description = Column(Text, nullable=True)
     amount = Column(Numeric(18, 4), nullable=True)
     tx_type = Column(String(50), nullable=True)
@@ -561,7 +568,7 @@ class APInvoice(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixi
     task_id = Column(String(36), ForeignKey("ocr_tasks.id"), nullable=False, index=True)
     vendor_name = Column(String(255), nullable=True)
     doc_no = Column(String(100), nullable=True)
-    doc_date = Column(String(50), nullable=True)
+    doc_date = Column(Date, nullable=True, index=True)
     original_filename = Column(String(255), nullable=True)
     submitted_at = Column(DateTime, nullable=True)
     carmen_user_id = Column(String(36), nullable=True, index=True)
@@ -681,21 +688,59 @@ class BUAccountingMappingEntry(Base, TimestampMixin, SoftDeleteMixin):
 
 class APVendorColumnMapping(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixin):
     """
-    Per-vendor column-to-field mappings for the AP invoice workflow.
+    Per-vendor column-to-field mapping config for the AP invoice workflow.
     Replaces ap_invoice_mapping[vendorTaxId] in localStorage.
     One active row per (tenant_id, business_unit_id, vendor_tax_id).
+    Field-level mappings live in ap_vendor_field_mapping_entries (normalized).
     """
 
     __tablename__ = "ap_vendor_column_mappings"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     vendor_tax_id = Column(String(30), nullable=False, index=True)
-    field_mappings_json = Column(Text, nullable=False)  # full mapping object
+
+    entries = relationship(
+        "APVendorFieldMappingEntry",
+        back_populates="mapping",
+        primaryjoin=(
+            "and_(APVendorColumnMapping.id == "
+            "foreign(APVendorFieldMappingEntry.mapping_id), "
+            "APVendorFieldMappingEntry.deleted_at == None)"
+        ),
+    )
 
     __table_args__ = (
         UniqueConstraint(
             "tenant_id", "business_unit_id", "vendor_tax_id", name="uq_ap_vendor_mapping_scope"
         ),
+    )
+
+
+class APVendorFieldMappingEntry(Base, TimestampMixin, SoftDeleteMixin):
+    """
+    Individual column-to-field mapping for an AP vendor.
+
+    column_name → source column header from the invoice (e.g. "Item Code")
+    field_name  → target field in the AP invoice schema (e.g. "description")
+
+    Normalized from the old field_mappings_json blob to mirror the pattern
+    used by bu_accounting_mapping_entries (m106). Enables analytics like
+    'which vendors map column X to field Y'.
+    """
+
+    __tablename__ = "ap_vendor_field_mapping_entries"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    mapping_id = Column(
+        Integer, ForeignKey("ap_vendor_column_mappings.id"), nullable=False, index=True
+    )
+    column_name = Column(String(255), nullable=False)
+    field_name = Column(String(100), nullable=False, index=True)
+
+    mapping = relationship("APVendorColumnMapping", back_populates="entries")
+
+    __table_args__ = (
+        UniqueConstraint("mapping_id", "column_name", name="uq_ap_vendor_entry_mapping_col"),
     )
 
 

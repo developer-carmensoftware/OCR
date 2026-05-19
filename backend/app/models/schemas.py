@@ -1,6 +1,8 @@
-from datetime import datetime
+from datetime import date, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
+
+from app.utils.date_parsing import format_doc_date
 
 from .enums import FieldName, TaskStatus
 
@@ -9,7 +11,7 @@ from .enums import FieldName, TaskStatus
 
 class CreditCardTransactionSchema(BaseModel):
     id: str
-    tx_date: str | None = None
+    tx_date: date | None = None
     description: str | None = None
     amount: float | None = None
     tx_type: str | None = None
@@ -18,6 +20,10 @@ class CreditCardTransactionSchema(BaseModel):
     class Config:
         from_attributes = True
 
+    @field_serializer("tx_date")
+    def _serialize_tx_date(self, v: date | None) -> str | None:
+        return format_doc_date(v)
+
 
 class CreditCardSchema(BaseModel):
     id: str
@@ -25,7 +31,7 @@ class CreditCardSchema(BaseModel):
     bank_code: str | None = None
     company_name: str | None = None
     bank_company_name: str | None = None
-    doc_date: str | None = None
+    doc_date: date | None = None
     doc_no: str | None = None
     branch_no: str | None = None
     submitted_at: datetime | None = None
@@ -34,6 +40,10 @@ class CreditCardSchema(BaseModel):
 
     class Config:
         from_attributes = True
+
+    @field_serializer("doc_date")
+    def _serialize_doc_date(self, v: date | None) -> str | None:
+        return format_doc_date(v)
 
 
 # ── OCR Task ──────────────────────────────────────────────────────────────────

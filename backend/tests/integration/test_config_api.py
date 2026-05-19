@@ -3,7 +3,6 @@ Integration tests for /api/v1/config/* endpoints.
 Sync test functions using starlette TestClient as a context manager.
 """
 
-import json
 from unittest.mock import MagicMock
 
 from tests.conftest import make_mock_db
@@ -146,8 +145,11 @@ def test_I4_1_no_mapping_returns_null():
 def test_ap_mapping_returns_parsed_json():
     mock_db = make_mock_db()
     row = MagicMock()
-    row.field_mappings_json = json.dumps({"col_A": "description"})
-    mock_db.execute.return_value.scalar_one_or_none.return_value = row
+    row.id = 42
+    entry = MagicMock()
+    entry.column_name = "col_A"
+    entry.field_name = "description"
+    mock_db.execute.side_effect = [_scalar(row), _scalars([entry])]
     with make_test_client(mock_db) as client:
         resp = client.get(f"{BASE}/ap-mapping/TAX123", headers=AUTH)
         assert resp.status_code == 200
@@ -180,17 +182,19 @@ def test_put_new_mapping_calls_add():
     mock_db.execute.return_value.scalar_one_or_none.return_value = None
     with make_test_client(mock_db) as client:
         client.put(f"{BASE}/ap-mapping/TAX-001", json={"col_A": "description"}, headers=AUTH)
-    mock_db.add.assert_called_once()
+    # 2 adds: the parent APVendorColumnMapping row + 1 entry for col_A → description
+    assert mock_db.add.call_count == 2
 
 
-def test_put_existing_mapping_updates_field():
+def test_put_existing_mapping_replaces_entries():
     mock_db = make_mock_db()
     existing = MagicMock()
-    existing.field_mappings_json = json.dumps({"old": "data"})
+    existing.id = 7
     mock_db.execute.return_value.scalar_one_or_none.return_value = existing
     with make_test_client(mock_db) as client:
         client.put(f"{BASE}/ap-mapping/TAX-001", json={"new_col": "updated"}, headers=AUTH)
-    assert existing.field_mappings_json == json.dumps({"new_col": "updated"})
+    # 1 row added for the {new_col: updated} pair; old rows wiped via delete()
+    assert mock_db.add.call_count >= 1
     mock_db.commit.assert_called_once()
 
 

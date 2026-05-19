@@ -20,6 +20,7 @@ from .orm import (
     APIKeyUsage,
     APInvoice,
     APVendorColumnMapping,
+    APVendorFieldMappingEntry,
     AuditLog,
     # ── Control Plane: Bank CMS ──────────────────────────────────────────────
     Bank,
@@ -116,6 +117,7 @@ __all__ = [
     "BUAccountingConfig",
     "BUAccountingMappingEntry",
     "APVendorColumnMapping",
+    "APVendorFieldMappingEntry",
     # Observability
     "LLMUsageLog",
     "AuditLog",

@@ -19,6 +19,7 @@ from app.services.carmen_service import CarmenAPIError, get_account_codes, get_d
 from app.services.file_service import file_service
 from app.services.ocr_service import create_task
 from app.services.usage_service import check_quota
+from app.utils.date_parsing import parse_doc_date
 from app.utils.db_helpers import has_submitted_doc
 from app.utils.mime import get_mime_type
 
@@ -88,7 +89,7 @@ async def extract_ap_invoice(
             business_unit_id=session.business_unit_id,
             vendor_name=vendor_name,
             doc_no=doc_no,
-            doc_date=data.get("documentDate"),
+            doc_date=parse_doc_date(data.get("documentDate")),
             original_filename=file.filename,
             carmen_user_id=session.carmen_user_id or None,
         )

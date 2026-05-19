@@ -30,6 +30,7 @@ from app.services.ocr_service import create_task
 from app.services.usage_service import check_quota
 from app.tools import submit as submit_tool
 from app.tools.submit import SubmitInput
+from app.utils.date_parsing import format_doc_date
 from app.utils.db_helpers import has_submitted_doc
 
 # ── Submit payload schemas ────────────────────────────────────────────────────
@@ -210,14 +211,14 @@ async def get_task(
             "bank_code": card.bank_code,
             "company_name": card.company_name,
             "bank_company_name": card.bank_company_name,
-            "doc_date": card.doc_date,
+            "doc_date": format_doc_date(card.doc_date),
             "doc_no": card.doc_no,
             "branch_no": card.branch_no,
             "submitted_at": card.submitted_at.isoformat() if card.submitted_at else None,
             "created_at": card.created_at.isoformat() if card.created_at else None,
             "transactions": [
                 {
-                    "tx_date": t.tx_date,
+                    "tx_date": format_doc_date(t.tx_date),
                     "description": t.description,
                     "amount": float(t.amount) if t.amount else None,
                     "tx_type": t.tx_type,
