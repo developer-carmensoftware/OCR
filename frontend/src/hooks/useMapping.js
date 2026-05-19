@@ -1,53 +1,17 @@
 import { useState, useEffect } from 'react'
 import { saveMappingHistory } from '../lib/api/mapping'
-import { getAccountingConfig, saveAccountingConfig } from '../lib/api/config'
+import { saveAccountingConfig } from '../lib/api/config'
+import { BANK_INFO, BANK_CODE_MAP, BANK_SOURCE_MAP } from '../constants/banks'
+import { useBankConfig } from './mapping/useBankConfig'
 import { useMappingData } from './mapping/useMappingData'
 import { useMappingSuggestions } from './mapping/useMappingSuggestions'
 import { usePaymentTypes } from './mapping/usePaymentTypes'
 
-const BANK_INFO = {
-  'Bangkok Bank (BBL)': {
-    name: 'ธนาคารกรุงเทพ จำกัด (มหาชน)',
-    taxId: '0107536000374',
-    address: '333 ถนนสีลม เขตบางรัก กรุงเทพฯ 10500',
-  },
-  'Kasikornbank (KBANK)': {
-    name: 'บมจ. ธนาคารกสิกรไทย',
-    taxId: '0107536000315',
-    address: '400/22 ถนนพหลโยธิน แขวงสามเสนใน เขตพญาไท กรุงเทพมหานคร 10400',
-  },
-  'Siam Commercial Bank (SCB)': {
-    name: 'ธนาคารไทยพาณิชย์ จํากัด (มหาชน)',
-    taxId: '0107536000102',
-    address: '9 ถนนรัชดาภิเษก เขตจตุจักร กรุงเทพฯ 10900',
-  },
-}
-
-const BANK_SOURCE_MAP = {
-  'Bangkok Bank (BBL)': 'ACBB',
-  'Kasikornbank (KBANK)': 'ACKB',
-  'Siam Commercial Bank (SCB)': 'ACSC',
-}
-
-const BANK_CODE_MAP = {
-  'Bangkok Bank (BBL)': 'BBL',
-  'Kasikornbank (KBANK)': 'KBANK',
-  'Siam Commercial Bank (SCB)': 'SCB',
-}
-
-const OCR_BANK_MAP = {
-  BBL: 'Bangkok Bank (BBL)',
-  KBANK: 'Kasikornbank (KBANK)',
-  SCB: 'Siam Commercial Bank (SCB)',
-}
-
 export function useMapping() {
-  const [configLoading, setConfigLoading] = useState(true)
-  const [bank, setBank] = useState('')
-  const [filePrefix, setFilePrefix] = useState('IC')
-  const [fileSource, setFileSource] = useState('')
-  const [description, setDescription] = useState('')
-  const [company, setCompany] = useState({ name: '', taxId: '', branch: '', address: '' })
+  // Bank config (handles API/localStorage loading, OCR wizard state, bank detection)
+  const bankConfig = useBankConfig()
+
+  // Local state for mappings and UI
   const [mappings, setMappings] = useState({
     commission: { dept: '', acc: '' },
     tax: { dept: '', acc: '' },
@@ -70,7 +34,6 @@ export function useMapping() {
 
   // --- Sub-hooks ---
   const masterData = useMappingData()
-
   const paymentTypes = usePaymentTypes()
 
   const suggestions = useMappingSuggestions({
@@ -83,23 +46,10 @@ export function useMapping() {
     setModalConfig,
   })
 
-  // --- Init effect ---
+  // Parse OCR wizard state on mount (for activeScan)
   useEffect(() => {
-    masterData.loadInitialData()
-
-    const detectBankFromCompanyName = name => {
-      if (!name) return ''
-      if (name.includes('กรุงเทพ')) return 'Bangkok Bank (BBL)'
-      if (name.includes('กสิกร')) return 'Kasikornbank (KBANK)'
-      if (name.includes('ไทยพาณิชย์')) return 'Siam Commercial Bank (SCB)'
-      return ''
-    }
-
-    // Parse OCR wizard state (transient, always from localStorage)
-    let ocrBank = ''
     try {
       const ocrState = JSON.parse(localStorage.getItem('ocr_wizard_state') || '{}')
-      ocrBank = OCR_BANK_MAP[ocrState.bank] || ''
       if (ocrState.details && Array.isArray(ocrState.details)) {
         const types = new Set()
         let comm = false,
@@ -117,108 +67,25 @@ export function useMapping() {
     } catch {
       /* ignore */
     }
-
-    const applyConfig = (source, ocrBankOverride) => {
-      // source: { bank_code?, file_prefix?, file_source?, description?, mappings?, custom_types? }
-      // or the old localStorage shape: { bank?, filePrefix?, fileSource?, description?, mappings?, company? }
-      const isApiShape = 'bank_code' in source || 'file_prefix' in source
-
-      const rawBank = isApiShape ? OCR_BANK_MAP[source.bank_code] || '' : source.bank || ''
-      const finalBank =
-        ocrBankOverride || rawBank || detectBankFromCompanyName(source.company?.name || '')
-
-      const finalPrefix = (isApiShape ? source.file_prefix : source.filePrefix) || 'IC'
-      const rawSource = isApiShape ? source.file_source : source.fileSource
-      const bankChanged = finalBank !== rawBank
-      const finalSource = bankChanged
-        ? BANK_SOURCE_MAP[finalBank] || ''
-        : rawSource || BANK_SOURCE_MAP[finalBank] || ''
-
-      setBank(finalBank)
-      setFilePrefix(finalPrefix)
-      setFileSource(finalSource)
-      setDescription(source.description || '')
-
-      // name/taxId/address come from BANK_INFO (hardcoded per bank)
-      // branch is user-editable — load from API shape or legacy localStorage company object
-      let companyData = { name: '', taxId: '', branch: '', address: '' }
-      if (isApiShape) {
-        companyData.branch = source.branch || ''
-      } else if (source.company) {
-        companyData = { ...companyData, ...source.company }
-      }
-      if (finalBank && BANK_INFO[finalBank]) {
-        const info = BANK_INFO[finalBank]
-        companyData.name = info.name
-        companyData.taxId = info.taxId
-        companyData.address = info.address
-      }
-      setCompany(companyData)
-
-      if (source.mappings) setMappings(prev => ({ ...prev, ...source.mappings }))
-
-      const customTypes = isApiShape
-        ? source.custom_types || []
-        : source.paymentAmount?.__customTypes || []
-      const paymentMappings = isApiShape ? source.mappings || {} : source.paymentAmount || {}
-      paymentTypes.initFromData(paymentMappings, customTypes)
-    }
-
-    // Load order: API (DB) → localStorage fallback
-    getAccountingConfig()
-      .then(apiData => {
-        const hasData =
-          apiData &&
-          (apiData.bank_code || apiData.file_prefix || Object.keys(apiData.mappings || {}).length)
-        if (hasData) {
-          applyConfig(apiData, ocrBank)
-        } else {
-          throw new Error('empty')
-        }
-      })
-      .catch(() => {
-        // Fallback: localStorage
-        const raw = localStorage.getItem('accountingConfig')
-        if (raw) {
-          try {
-            applyConfig(JSON.parse(raw), ocrBank)
-          } catch {
-            /* ignore */
-          }
-        } else if (ocrBank) {
-          setBank(ocrBank)
-          setFilePrefix('IC')
-          setFileSource(BANK_SOURCE_MAP[ocrBank] || '')
-          if (BANK_INFO[ocrBank]) {
-            const info = BANK_INFO[ocrBank]
-            setCompany(prev => ({
-              ...prev,
-              name: info.name,
-              taxId: info.taxId,
-              address: info.address,
-            }))
-          }
-        } else {
-          setFilePrefix('IC')
-          paymentTypes.loadPaymentAmountFromStorage()
-        }
-      })
-      .finally(() => setConfigLoading(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // --- Handlers ---
   const handleBankChange = selected => {
-    setBank(selected)
+    bankConfig.setBank(selected)
     if (BANK_INFO[selected]) {
       const info = BANK_INFO[selected]
-      setCompany(prev => ({ ...prev, name: info.name, taxId: info.taxId, address: info.address }))
+      bankConfig.setCompany(prev => ({
+        ...prev,
+        name: info.name,
+        taxId: info.taxId,
+        address: info.address,
+      }))
     }
-    if (BANK_SOURCE_MAP[selected]) setFileSource(BANK_SOURCE_MAP[selected])
+    if (BANK_SOURCE_MAP[selected]) bankConfig.setFileSource(BANK_SOURCE_MAP[selected])
   }
 
   const handleCompanyChange = (e, field) => {
-    setCompany(prev => ({ ...prev, [field]: e.target.value }))
+    bankConfig.setCompany(prev => ({ ...prev, [field]: e.target.value }))
   }
 
   const handleMappingChange = (type, field, value) => {
@@ -261,11 +128,11 @@ export function useMapping() {
     { key: 'branch', label: 'Branch No' },
     { key: 'address', label: 'Address' },
   ]
-  const missingCompanyFields = companyRequiredFields.filter(f => !company[f.key]?.trim())
+  const missingCompanyFields = companyRequiredFields.filter(f => !bankConfig.company[f.key]?.trim())
   const topLevelRequired = [
-    { key: 'bank', label: 'Bank', value: bank },
-    { key: 'filePrefix', label: 'File Prefix', value: filePrefix },
-    { key: 'fileSource', label: 'File Source', value: fileSource },
+    { key: 'bank', label: 'Bank', value: bankConfig.bank },
+    { key: 'filePrefix', label: 'File Prefix', value: bankConfig.filePrefix },
+    { key: 'fileSource', label: 'File Source', value: bankConfig.fileSource },
   ]
   const missingTopFields = topLevelRequired.filter(f => !f.value?.trim())
 
@@ -285,11 +152,11 @@ export function useMapping() {
     setSaving(true)
     try {
       const config = {
-        bank,
-        filePrefix,
-        fileSource,
-        description,
-        company,
+        bank: bankConfig.bank,
+        filePrefix: bankConfig.filePrefix,
+        fileSource: bankConfig.fileSource,
+        description: bankConfig.description,
+        company: bankConfig.company,
         mappings,
         paymentAmount: paymentTypes.paymentAmount,
       }
@@ -303,11 +170,11 @@ export function useMapping() {
       // Persist to DB (dual-write — DB is primary, localStorage is cache)
       try {
         await saveAccountingConfig({
-          bank_code: BANK_CODE_MAP[bank] || null,
-          file_prefix: filePrefix,
-          file_source: fileSource,
-          description: description,
-          branch: company.branch || null,
+          bank_code: BANK_CODE_MAP[bankConfig.bank] || null,
+          file_prefix: bankConfig.filePrefix,
+          file_source: bankConfig.fileSource,
+          description: bankConfig.description,
+          branch: bankConfig.company.branch || null,
           mappings: allMappings,
           custom_types: paymentTypes.customPaymentTypes,
         })
@@ -315,10 +182,10 @@ export function useMapping() {
         /* ignore — localStorage already saved above */
       }
 
-      if (bank) {
+      if (bankConfig.bank) {
         try {
           await saveMappingHistory({
-            bank_code: BANK_CODE_MAP[bank] || bank,
+            bank_code: BANK_CODE_MAP[bankConfig.bank] || bankConfig.bank,
             mappings: allMappings,
           })
         } catch {
@@ -349,37 +216,45 @@ export function useMapping() {
     ...paymentTypes.customPaymentTypes.filter(t => !activeScan.paymentTypes.has(t)),
   ]
 
+  // --- Backward-compatible flat return for existing components ---
   return {
+    // Bank config (flat for backward compat)
+    bank: bankConfig.bank,
+    setBank: bankConfig.setBank,
+    handleBankChange,
+    filePrefix: bankConfig.filePrefix,
+    setFilePrefix: bankConfig.setFilePrefix,
+    fileSource: bankConfig.fileSource,
+    setFileSource: bankConfig.setFileSource,
+    description: bankConfig.description,
+    setDescription: bankConfig.setDescription,
+    configLoading: bankConfig.configLoading,
+
+    // Company
+    company: bankConfig.company,
+    setCompany: bankConfig.setCompany,
+    handleCompanyChange,
+    companyRequiredFields,
+    missingCompanyFields,
+
+    // Mappings
+    mappings,
+    setMappings,
+    handleMappingChange,
+
     // Master data
     masterAccounts: masterData.masterAccounts,
     masterDepartments: masterData.masterDepartments,
     masterGLPrefixes: masterData.masterGLPrefixes,
     loadingOpts: masterData.loadingOpts,
     loadInitialData: masterData.loadInitialData,
-    // Top-level config
-    bank,
-    setBank,
-    handleBankChange,
-    filePrefix,
-    setFilePrefix,
-    fileSource,
-    setFileSource,
-    description,
-    setDescription,
-    // Company
-    company,
-    setCompany,
-    handleCompanyChange,
-    // Mappings
-    mappings,
-    setMappings,
-    handleMappingChange,
-    // Payment types (from usePaymentTypes)
+
+    // Payment types
     paymentAmount: paymentTypes.paymentAmount,
-    handlePaymentMappingChange: paymentTypes.handlePaymentMappingChange,
     customPaymentTypes: paymentTypes.customPaymentTypes,
     newCustomType: paymentTypes.newCustomType,
     setNewCustomType: paymentTypes.setNewCustomType,
+    handlePaymentMappingChange: paymentTypes.handlePaymentMappingChange,
     handleAddCustomType: activeScanPT =>
       paymentTypes.handleAddCustomType(activeScanPT || activeScan.paymentTypes, types =>
         masterData.masterAccounts.length && masterData.masterDepartments.length
@@ -393,21 +268,12 @@ export function useMapping() {
     cancelAmountSelection: () =>
       paymentTypes.cancelAmountSelection(suggestions.clearAllSuggestions),
     saveAmountSelection: paymentTypes.saveAmountSelection,
+
     // Scan state
     activeScan,
     allPaymentTypes,
-    // Modal
-    modalConfig,
-    setModalConfig,
-    // Loading
-    configLoading,
-    // Save
-    saving,
-    saveAllSettings,
-    acceptAllModal,
-    setAcceptAllModal,
-    handleAcceptAll,
-    // AI suggestions (from useMappingSuggestions)
+
+    // AI suggestions
     suggestionMeta: suggestions.suggestionMeta,
     mainSuggestions: suggestions.mainSuggestions,
     suggestLoading: suggestions.suggestLoading,
@@ -421,9 +287,82 @@ export function useMapping() {
     confirmPaymentSuggestion: type =>
       suggestions.confirmPaymentSuggestion(type, paymentTypes.setPaymentAmount),
     rejectPaymentSuggestion: suggestions.rejectPaymentSuggestion,
+
+    // Modal
+    modalConfig,
+    setModalConfig,
+
+    // Acceptance flow
+    acceptAllModal,
+    setAcceptAllModal,
+    handleAcceptAll,
+
+    // Save
+    saving,
+    saveAllSettings,
+
     // Validation
-    companyRequiredFields,
-    missingCompanyFields,
     missingTopFields,
+
+    // --- NEW: Grouped structure for future refactoring (optional) ---
+    __grouped: {
+      bank: {
+        value: bankConfig.bank,
+        set: bankConfig.setBank,
+        handler: handleBankChange,
+      },
+      filePrefix: {
+        value: bankConfig.filePrefix,
+        set: bankConfig.setFilePrefix,
+      },
+      fileSource: {
+        value: bankConfig.fileSource,
+        set: bankConfig.setFileSource,
+      },
+      description: {
+        value: bankConfig.description,
+        set: bankConfig.setDescription,
+      },
+      company: {
+        value: bankConfig.company,
+        set: bankConfig.setCompany,
+        handler: handleCompanyChange,
+        requiredFields: companyRequiredFields,
+        missingFields: missingCompanyFields,
+      },
+      mappings: {
+        value: mappings,
+        set: setMappings,
+        handler: handleMappingChange,
+      },
+      masterData: {
+        accounts: masterData.masterAccounts,
+        departments: masterData.masterDepartments,
+        glPrefixes: masterData.masterGLPrefixes,
+        loading: masterData.loadingOpts,
+        loadInitial: masterData.loadInitialData,
+      },
+      paymentTypes: {
+        amount: paymentTypes.paymentAmount,
+        custom: paymentTypes.customPaymentTypes,
+        newCustom: paymentTypes.newCustomType,
+        setNewCustom: paymentTypes.setNewCustomType,
+        handler: paymentTypes.handlePaymentMappingChange,
+      },
+      scan: {
+        state: activeScan,
+        allTypes: allPaymentTypes,
+      },
+      suggestions: {
+        meta: suggestions.suggestionMeta,
+        main: suggestions.mainSuggestions,
+        mainLoading: suggestions.suggestLoading,
+        autoSuggest: suggestions.autoSuggest,
+      },
+      modal: {
+        config: modalConfig,
+        setConfig: setModalConfig,
+      },
+    },
   }
 }

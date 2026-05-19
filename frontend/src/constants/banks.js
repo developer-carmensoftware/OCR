@@ -1,3 +1,43 @@
+/** Bank metadata: company info, GL mappings */
+export const BANK_INFO = {
+  'Bangkok Bank (BBL)': {
+    name: 'ธนาคารกรุงเทพ จำกัด (มหาชน)',
+    taxId: '0107536000374',
+    address: '333 ถนนสีลม เขตบางรัก กรุงเทพฯ 10500',
+  },
+  'Kasikornbank (KBANK)': {
+    name: 'บมจ. ธนาคารกสิกรไทย',
+    taxId: '0107536000315',
+    address: '400/22 ถนนพหลโยธิน แขวงสามเสนใน เขตพญาไท กรุงเทพมหานคร 10400',
+  },
+  'Siam Commercial Bank (SCB)': {
+    name: 'ธนาคารไทยพาณิชย์ จํากัด (มหาชน)',
+    taxId: '0107536000102',
+    address: '9 ถนนรัชดาภิเษก เขตจตุจักร กรุงฯ 10900',
+  },
+}
+
+/** Display name → GL source code mapping */
+export const BANK_SOURCE_MAP = {
+  'Bangkok Bank (BBL)': 'ACBB',
+  'Kasikornbank (KBANK)': 'ACKB',
+  'Siam Commercial Bank (SCB)': 'ACSC',
+}
+
+/** Display name → API bank code mapping */
+export const BANK_CODE_MAP = {
+  'Bangkok Bank (BBL)': 'BBL',
+  'Kasikornbank (KBANK)': 'KBANK',
+  'Siam Commercial Bank (SCB)': 'SCB',
+}
+
+/** API bank code → display name mapping */
+export const OCR_BANK_MAP = {
+  BBL: 'Bangkok Bank (BBL)',
+  KBANK: 'Kasikornbank (KBANK)',
+  SCB: 'Siam Commercial Bank (SCB)',
+}
+
 /** Thai display names for each bank code. */
 export const BANK_THAI_NAMES = {
   BBL: 'ธนาคารกรุงเทพ',
