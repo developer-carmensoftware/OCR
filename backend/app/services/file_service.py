@@ -22,11 +22,15 @@ class FileService:
         Validates file type and size, then reads into memory.
         Raises HTTPException on failure.
         """
+        filename = file.filename
+        if not filename:
+            raise HTTPException(status_code=400, detail="ชื่อไฟล์ไม่ถูกต้อง")
+
         # 1. Type Validation (Extension)
-        if not is_valid_image(file.filename):
+        if not is_valid_image(filename):
             raise HTTPException(
                 status_code=400,
-                detail=f"ประเภทไฟล์ไม่รองรับ: {file.filename} (รองรับ JPG, PNG, PDF, WebP)",
+                detail=f"ประเภทไฟล์ไม่รองรับ: {filename} (รองรับ JPG, PNG, PDF, WebP)",
             )
 
         # 2. Size Validation
@@ -39,26 +43,26 @@ class FileService:
 
         # Magic bytes check — reject disguised files (e.g. .exe renamed to .jpg)
         try:
-            validate_magic_bytes(content, file.filename)
+            validate_magic_bytes(content, filename)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
         if file_size > max_bytes:
-            logger.warning(f"File size limit exceeded: {file.filename} ({file_size} bytes)")
+            logger.warning("File size limit exceeded: %s (%d bytes)", filename, file_size)
             raise HTTPException(
                 status_code=400,
-                detail=f"ไฟล์ {file.filename} มีขนาดใหญ่เกินไป (จำกัด {settings.max_file_size_mb}MB)",
+                detail=f"ไฟล์ {filename} มีขนาดใหญ่เกินไป (จำกัด {settings.max_file_size_mb}MB)",
             )
 
         if file_size == 0:
-            raise HTTPException(status_code=400, detail=f"ไฟล์ {file.filename} ไม่มีข้อมูล (Empty file)")
+            raise HTTPException(status_code=400, detail=f"ไฟล์ {filename} ไม่มีข้อมูล (Empty file)")
 
         return content
 
     @staticmethod
     def get_filenames_string(files: list[UploadFile]) -> str:
         """Helper to get a comma-separated string of filenames."""
-        return ", ".join(f.filename for f in files)
+        return ", ".join(f.filename for f in files if f.filename is not None)
 
 
 file_service = FileService()

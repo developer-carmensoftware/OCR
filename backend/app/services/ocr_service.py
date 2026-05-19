@@ -116,6 +116,9 @@ async def get_all_tasks(
 async def export_tasks_to_csv(db: AsyncSession) -> str:
     """Export submitted credit card documents to CSV."""
     import csv
+    import io
+
+    import aiofiles
 
     tenant_id = current_tenant_id.get()
     business_unit_id = current_business_unit_id.get()
@@ -137,8 +140,18 @@ async def export_tasks_to_csv(db: AsyncSession) -> str:
 
     rows = (await db.execute(query)).all()
 
-    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-    csv_path = os.path.join(settings.export_dir, f"ocr_export_{timestamp}.csv")
+    # Fetch all transactions up front so no blocking I/O is mixed with async DB calls
+    card_transactions: dict[str, list[CreditCardTransaction]] = {}
+    for _, card in rows:
+        tx_result = await db.execute(
+            select(CreditCardTransaction)
+            .where(
+                CreditCardTransaction.credit_card_id == card.id,
+                CreditCardTransaction.deleted_at.is_(None),
+            )
+            .order_by(CreditCardTransaction.sort_order)
+        )
+        card_transactions[card.id] = list(tx_result.scalars().all())
 
     headers = [
         "Date Processed",
@@ -153,58 +166,52 @@ async def export_tasks_to_csv(db: AsyncSession) -> str:
         "Type",
     ]
 
+    # Build CSV in memory, then write async
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(headers)
     written = 0
-    with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.writer(f)
-        writer.writerow(headers)
-        for task, card in rows:
-            # Fetch transactions via separate query (relationship not loaded here)
-            tx_result = await db.execute(
-                select(CreditCardTransaction)
-                .where(
-                    CreditCardTransaction.credit_card_id == card.id,
-                    CreditCardTransaction.deleted_at.is_(None),
-                )
-                .order_by(CreditCardTransaction.sort_order)
+    for task, card in rows:
+        transactions = card_transactions.get(card.id, [])
+        completed = task.completed_at.strftime("%Y-%m-%d %H:%M:%S") if task.completed_at else ""
+        if not transactions:
+            writer.writerow(
+                [
+                    completed,
+                    card.bank_code or "",
+                    card.company_name or "",
+                    "",
+                    card.doc_date or "",
+                    card.doc_no or "",
+                    "",
+                    "",
+                    "",
+                    "",
+                ]
             )
-            transactions = tx_result.scalars().all()
-            if not transactions:
+            written += 1
+        else:
+            for tx in transactions:
                 writer.writerow(
                     [
-                        task.completed_at.strftime("%Y-%m-%d %H:%M:%S")
-                        if task.completed_at
-                        else "",
+                        completed,
                         card.bank_code or "",
                         card.company_name or "",
-                        "",
+                        tx.description or "",
                         card.doc_date or "",
                         card.doc_no or "",
-                        "",
-                        "",
-                        "",
-                        "",
+                        tx.tx_date or "",
+                        tx.description or "",
+                        float(str(tx.amount)) if tx.amount else "",
+                        tx.tx_type or "",
                     ]
                 )
                 written += 1
-            else:
-                for tx in transactions:
-                    writer.writerow(
-                        [
-                            task.completed_at.strftime("%Y-%m-%d %H:%M:%S")
-                            if task.completed_at
-                            else "",
-                            card.bank_code or "",
-                            card.company_name or "",
-                            tx.description or "",
-                            card.doc_date or "",
-                            card.doc_no or "",
-                            tx.tx_date or "",
-                            tx.description or "",
-                            float(str(tx.amount)) if tx.amount else "",
-                            tx.tx_type or "",
-                        ]
-                    )
-                    written += 1
+
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    csv_path = os.path.join(settings.export_dir, f"ocr_export_{timestamp}.csv")
+    async with aiofiles.open(csv_path, "w", encoding="utf-8-sig") as f:
+        await f.write(buf.getvalue())
 
     logger.info("Exported %d rows to %s", written, csv_path)
     return csv_path

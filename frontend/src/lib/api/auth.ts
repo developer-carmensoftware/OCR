@@ -33,7 +33,9 @@ export async function revokeSession(accessToken: string): Promise<void> {
   await fetch('/api/v1/auth/session', {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${accessToken}` },
-  }).catch(() => {})
+  }).catch((err: unknown) => {
+    console.error('Session revoke failed:', err)
+  })
 }
 
 export async function getUsage(accessToken: string): Promise<UsageData> {

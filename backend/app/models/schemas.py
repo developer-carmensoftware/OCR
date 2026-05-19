@@ -36,7 +36,7 @@ class CreditCardSchema(BaseModel):
     branch_no: str | None = None
     submitted_at: datetime | None = None
     created_at: datetime | None = None
-    transactions: list[CreditCardTransactionSchema] = []
+    transactions: list[CreditCardTransactionSchema] = Field(default_factory=list)
 
     class Config:
         from_attributes = True

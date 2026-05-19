@@ -9,7 +9,7 @@ Duplicate check: (tenant_id, business_unit_id, bank_code, doc_no, submitted_at I
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -79,7 +79,7 @@ async def run(inp: SubmitInput, db: AsyncSession) -> ToolResult:
             original_filename=inp.original_filename or "uploaded_file",
             status=TaskStatus.COMPLETED,
             ocr_engine=settings.ocr_engine,
-            completed_at=datetime.utcnow(),
+            completed_at=datetime.now(UTC).replace(tzinfo=None),
             carmen_user_id=carmen_user_id,
         )
         db.add(task)
@@ -97,7 +97,7 @@ async def run(inp: SubmitInput, db: AsyncSession) -> ToolResult:
             doc_date=parse_doc_date(inp.doc_date),
             doc_no=inp.doc_no,
             branch_no=inp.branch_no,
-            submitted_at=datetime.utcnow(),
+            submitted_at=datetime.now(UTC).replace(tzinfo=None),
             carmen_user_id=carmen_user_id,
         )
         db.add(card)

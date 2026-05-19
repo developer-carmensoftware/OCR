@@ -213,6 +213,6 @@ async def call_text_llm(
     try:
         parsed = json.loads(raw)
         return parsed if isinstance(parsed, dict) else None
-    except Exception:
+    except (json.JSONDecodeError, ValueError):
         logger.error("Failed to parse LLM JSON: %s", raw[:200])
         return None

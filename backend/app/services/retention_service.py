@@ -8,10 +8,12 @@ Each table has a configured retention period; rows older than that are:
 """
 
 import csv
+import io
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import aiofiles
 from sqlalchemy import text
 
 from app.config import settings
@@ -109,7 +111,7 @@ async def archive_and_cleanup() -> dict:
     archive_base = Path(settings.archive_dir)
 
     for table, retention_days, columns in RETENTION_POLICY:
-        cutoff = datetime.utcnow() - timedelta(days=retention_days)
+        cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=retention_days)
         try:
             result = await _process_table(table, cutoff, columns, archive_base)
             summary[table] = result
@@ -171,15 +173,18 @@ async def _process_table(
         for month_key, month_rows in month_groups.items():
             csv_path = table_dir / f"{month_key}.csv"
             file_exists = csv_path.exists()
-            with open(csv_path, "a", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=columns)
-                if not file_exists:
-                    writer.writeheader()
-                for row_dict in month_rows:
-                    for k, v in row_dict.items():
-                        if isinstance(v, datetime):
-                            row_dict[k] = v.isoformat()
-                    writer.writerow(row_dict)
+            # Build CSV content in memory, then write async to avoid blocking the event loop
+            buf = io.StringIO()
+            writer = csv.DictWriter(buf, fieldnames=columns)
+            if not file_exists:
+                writer.writeheader()
+            for row_dict in month_rows:
+                for k, v in row_dict.items():
+                    if isinstance(v, datetime):
+                        row_dict[k] = v.isoformat()
+                writer.writerow(row_dict)
+            async with aiofiles.open(csv_path, "a", encoding="utf-8") as f:
+                await f.write(buf.getvalue())
             archived += len(month_rows)
 
         # Delete in batches
@@ -204,7 +209,7 @@ async def _process_table(
 
 async def purge_inactive_sessions() -> int:
     """Delete inactive ocr_sessions older than SESSION_INACTIVE_PURGE_DAYS days."""
-    cutoff = datetime.utcnow() - timedelta(days=SESSION_INACTIVE_PURGE_DAYS)
+    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=SESSION_INACTIVE_PURGE_DAYS)
     deleted = 0
     async with async_session() as db:
         while True:

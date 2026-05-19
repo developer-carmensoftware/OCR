@@ -160,7 +160,7 @@ async def post_gljv(body: dict, carmen_token: str) -> Any:
             resp = await client.post(f"{_base_url()}/gljv", json=body)
             try:
                 return resp.json()
-            except Exception:
+            except ValueError:
                 raise CarmenAPIError(resp.status_code, resp.text)
     except CarmenAPIError:
         raise
@@ -174,7 +174,7 @@ async def put_gljv(jvh_seq: int, body: dict, carmen_token: str) -> Any:
             resp = await client.put(f"{_base_url()}/gljv/{jvh_seq}", json=body)
             try:
                 return resp.json()
-            except Exception:
+            except ValueError:
                 raise CarmenAPIError(resp.status_code, resp.text)
     except CarmenAPIError:
         raise
@@ -250,7 +250,7 @@ async def post_input_tax(body: dict, carmen_token: str) -> Any:
             resp = await client.post(f"{_base_url()}/inputTaxRec", json=body)
             try:
                 return resp.json()
-            except Exception:
+            except ValueError:
                 raise CarmenAPIError(resp.status_code, resp.text)
     except CarmenAPIError:
         raise
@@ -264,7 +264,7 @@ async def put_input_tax(rec_seq: int, body: dict, carmen_token: str) -> Any:
             resp = await client.put(f"{_base_url()}/inputTaxRec/{rec_seq}", json=body)
             try:
                 return resp.json()
-            except Exception:
+            except ValueError:
                 raise CarmenAPIError(resp.status_code, resp.text)
     except CarmenAPIError:
         raise
@@ -278,7 +278,7 @@ async def post_invoice(body: dict, carmen_token: str) -> Any:
             resp = await client.post(f"{_base_url()}/invoice", json=body)
             try:
                 return resp.json()
-            except Exception:
+            except ValueError:
                 raise CarmenAPIError(resp.status_code, resp.text)
     except CarmenAPIError:
         raise

@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     export_dir: str = "./exports"
 
     # Database
-    database_url: str = "mysql+aiomysql://root:123456@localhost:3306/ocr_db"
+    database_url: str = "mysql+aiomysql://root:@localhost:3306/carmen_ai"
 
     # Carmen API
     carmen_authorization: str = ""  # deprecated — kept for fallback only; prefer session token
@@ -94,31 +94,18 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Always reject known-weak secrets — both debug and production.
-# In debug mode, log a warning instead of raising so local dev still starts.
+# Reject known-weak secrets unconditionally — a deployed dev secret is a critical risk.
 if settings.ocr_jwt_secret in _WEAK_JWT_SECRETS:
-    _msg = (
+    raise RuntimeError(
         "OCR_JWT_SECRET is set to a known-weak default. "
-        "Set a strong random secret in your .env before starting in production."
+        "Set a strong random secret in your .env before starting."
     )
-    if settings.app_debug:
-        import warnings
-
-        warnings.warn(_msg, stacklevel=2)
-    else:
-        raise RuntimeError(_msg)
 
 if settings.session_encryption_key == _WEAK_FERNET_KEY:
-    _msg = (
+    raise RuntimeError(
         "SESSION_ENCRYPTION_KEY is set to the placeholder value. "
         'Generate a real key: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
     )
-    if settings.app_debug:
-        import warnings
-
-        warnings.warn(_msg, stacklevel=2)
-    else:
-        raise RuntimeError(_msg)
 
 # Resolve relative paths to absolute, anchored to the backend directory.
 # This ensures the correct location regardless of the process working directory.

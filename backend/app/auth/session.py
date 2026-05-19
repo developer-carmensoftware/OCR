@@ -13,7 +13,7 @@ JWT payload (v2 schema):
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from cryptography.fernet import Fernet, InvalidToken
 from jose import JWTError, jwt
@@ -49,7 +49,7 @@ def create_session_jwt(
     carmen_uri: str = "",
     bu: str = "",
 ) -> str:
-    now = datetime.utcnow()
+    now = datetime.now(UTC).replace(tzinfo=None)
     payload = {
         "sid": session_id,
         "tid": tenant_id,
@@ -62,7 +62,7 @@ def create_session_jwt(
         "exp": now + timedelta(hours=ttl_hours),
     }
     encoded = jwt.encode(payload, secret, algorithm=_ALGORITHM)
-    return str(encoded)
+    return encoded
 
 
 def decode_session_jwt(token: str, secret: str) -> dict:
