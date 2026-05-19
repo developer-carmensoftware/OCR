@@ -19,7 +19,7 @@ repos:
         entry: npx --prefix frontend prettier --write
         language: system
         files: ^frontend/src/
-        types_or: [javascript, jsx, json, css]
+        types_or: [javascript, jsx, ts, tsx, json, css]
 
   # ── General file hygiene ──────────────────────────────────────────────────────
   - repo: https://github.com/pre-commit/pre-commit-hooks
