@@ -1,0 +1,33 @@
+export type DetailColumn = 'Transaction' | 'PayAmt' | 'CommisAmt' | 'TaxAmt' | 'Total'
+
+export const DETAIL_COLUMNS: DetailColumn[] = ['Transaction', 'PayAmt', 'CommisAmt', 'TaxAmt', 'Total']
+
+export const HEADER_LABELS: Record<string, string> = {
+  DateProcessed:
+    'Input Date<br><span style="font-size: 0.8em; color: #666;">Date Processed (วันที่ระบบอ่าน)</span>',
+  BankName: 'Bank Name<br><span style="font-size: 0.8em; color: #666;">Bank Name</span>',
+  DocName: 'Doc. Name<br><span style="font-size: 0.8em; color: #666;">Doc Name</span>',
+  CompanyName: 'Company Name<br><span style="font-size: 0.8em; color: #666;">Company Name</span>',
+  DocDate: 'Doc. Date<br><span style="font-size: 0.8em; color: #666;">Doc Date</span>',
+  DocNo: 'Doc. No<br><span style="font-size: 0.8em; color: #666;">Doc No</span>',
+  MerchantName:
+    'Merchant Name<br><span style="font-size: 0.8em; color: #666;">Merchant name</span>',
+  MerchantId: 'Merchant ID<br><span style="font-size: 0.8em; color: #666;">Merchant ID</span>',
+}
+
+export const DETAIL_LABELS: Record<DetailColumn, string> = {
+  Transaction:
+    'Payment Type / Terminal<br><span style="font-size: 0.8em; color: #666;">Transaction</span>',
+  PayAmt: 'Amount<br><span style="font-size: 0.8em; color: #666;">Pay Amt</span>',
+  CommisAmt: 'Commision Amt.<br><span style="font-size: 0.8em; color: #666;">Commis Amt</span>',
+  TaxAmt: 'Tax Amt.<br><span style="font-size: 0.8em; color: #666;">Tax Amt</span>',
+  Total: 'Net Amt.<br><span style="font-size: 0.8em; color: #666;">Total</span>',
+}
+
+export const EMPTY_DETAIL_ROW: Record<DetailColumn, string> = {
+  Transaction: '',
+  PayAmt: '',
+  CommisAmt: '',
+  TaxAmt: '',
+  Total: '',
+}

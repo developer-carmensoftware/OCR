@@ -1,0 +1,86 @@
+import { useState, useEffect } from 'react'
+import { getAccountingConfig } from '../../lib/api/config'
+import { detectBankFromCompanyName, BANK_INFO, BANK_SOURCE_MAP } from '../../constants/banks'
+import { normalizeConfigShape, codeToDisplayName } from '../../lib/bankTransforms'
+import type { BankDisplayName } from '../../types/api'
+import type { CompanyData } from '../../lib/bankTransforms'
+
+export interface BankConfigHook {
+  bank: BankDisplayName | ''
+  setBank: React.Dispatch<React.SetStateAction<BankDisplayName | ''>>
+  filePrefix: string
+  setFilePrefix: React.Dispatch<React.SetStateAction<string>>
+  fileSource: string
+  setFileSource: React.Dispatch<React.SetStateAction<string>>
+  description: string
+  setDescription: React.Dispatch<React.SetStateAction<string>>
+  company: CompanyData
+  setCompany: React.Dispatch<React.SetStateAction<CompanyData>>
+  configLoading: boolean
+}
+
+import type React from 'react'
+
+export function useBankConfig(): BankConfigHook {
+  const [configLoading, setConfigLoading] = useState(true)
+  const [bank, setBank] = useState<BankDisplayName | ''>('')
+  const [filePrefix, setFilePrefix] = useState('IC')
+  const [fileSource, setFileSource] = useState('')
+  const [description, setDescription] = useState('')
+  const [company, setCompany] = useState<CompanyData>({ name: '', taxId: '', branch: '', address: '' })
+
+  useEffect(() => {
+    let ocrBank: BankDisplayName | '' = ''
+    try {
+      const ocrState = JSON.parse(localStorage.getItem('ocr_wizard_state') || '{}') as Record<string, unknown>
+      ocrBank = codeToDisplayName(ocrState.bank as string) || ''
+    } catch {
+      /* ignore */
+    }
+
+    const applyConfig = (source: Record<string, unknown>) => {
+      const normalized = normalizeConfigShape(source, ocrBank, detectBankFromCompanyName)
+      setBank(normalized.finalBank)
+      setFilePrefix(normalized.finalPrefix)
+      setFileSource(normalized.finalSource)
+      setDescription((source.description as string) || '')
+      setCompany(normalized.companyData)
+    }
+
+    getAccountingConfig()
+      .then(apiData => {
+        const hasData =
+          apiData &&
+          (apiData.bank_code || apiData.file_prefix || Object.keys(apiData.mappings || {}).length)
+        if (hasData) {
+          applyConfig(apiData as unknown as Record<string, unknown>)
+        } else {
+          throw new Error('empty')
+        }
+      })
+      .catch(() => {
+        const raw = localStorage.getItem('accountingConfig')
+        if (raw) {
+          try {
+            applyConfig(JSON.parse(raw) as Record<string, unknown>)
+          } catch {
+            /* ignore */
+          }
+        } else if (ocrBank) {
+          setBank(ocrBank)
+          setFilePrefix('IC')
+          setFileSource(BANK_SOURCE_MAP[ocrBank] || '')
+          if (BANK_INFO[ocrBank]) {
+            const info = BANK_INFO[ocrBank]
+            setCompany(prev => ({ ...prev, name: info.name, taxId: info.taxId, address: info.address }))
+          }
+        } else {
+          setFilePrefix('IC')
+        }
+      })
+      .finally(() => setConfigLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return { bank, setBank, filePrefix, setFilePrefix, fileSource, setFileSource, description, setDescription, company, setCompany, configLoading }
+}
