@@ -44,7 +44,7 @@ export async function logCorrections(cardId, bankCode, corrections) {
   })
 
   const data = await res.json().catch(() => ({}))
-  console.log(`[feedback] ✓ Logged ${data.saved ?? '?'}/${corrections.length} corrections`)
+  console.warn(`[feedback] ✓ Logged ${data.saved ?? '?'}/${corrections.length} corrections`)
 }
 
 export function diffCorrections(headerData, originalHeader, details, originalDetails) {

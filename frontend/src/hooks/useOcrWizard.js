@@ -48,6 +48,7 @@ export function useOcrWizard() {
     }
   }, [fileUpload.previewUrl])
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     try {
       const config = JSON.parse(localStorage.getItem('accountingConfig') || '{}')

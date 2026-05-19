@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { apiFetch } from '../../lib/api/client'
 import { getAPVendorMapping } from '../../lib/api/config'
 import { showToast } from '../../lib/toast'
+import { fmt } from '../../lib/format'
 import { EMPTY_HEADER, DEFAULT_MAPPINGS } from '../../constants/apInvoice'
 
 /**
