@@ -6,8 +6,9 @@ Business logic lives in:
   app/services/ocr_service.py — task/export helpers
 """
 
+import asyncio
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
@@ -114,12 +115,17 @@ async def extract_card(
     await check_quota()
 
     hints = await get_correction_hints(bank_code, db) if bank_code else {}
-    results = []
 
+    # Phase 1: validate + read all files into memory (sequential — each read is fast)
+    file_data: list[tuple[str, bytes]] = []
     for upload_file in files:
         filename = upload_file.filename or "upload"
         file_bytes = await file_service.validate_and_read(upload_file)
+        file_data.append((filename, file_bytes))
 
+    # Phase 2: create DB task records (sequential — shared session is not concurrency-safe)
+    task_records: list[tuple[str, bytes, str]] = []
+    for filename, file_bytes in file_data:
         task = await create_task(
             db,
             tenant_id=session.tenant_id,
@@ -128,15 +134,27 @@ async def extract_card(
             original_filename=filename,
             carmen_user_id=session.carmen_user_id,
         )
+        task_records.append((filename, file_bytes, str(task.id)))
 
-        extracted = await ocr_service.extract_stateless(
-            file_bytes=file_bytes,
-            original_filename=filename,
-            bank_code=bank_code,
-            hints=hints or None,
-            task_id=str(task.id),
+    # Phase 3: parallel LLM extraction — the bottleneck (2-10s per file)
+    extractions: list[ExtractedCreditCardData] = list(
+        await asyncio.gather(
+            *[
+                ocr_service.extract_stateless(
+                    file_bytes=file_bytes,
+                    original_filename=filename,
+                    bank_code=bank_code,
+                    hints=hints or None,
+                    task_id=task_id,
+                )
+                for filename, file_bytes, task_id in task_records
+            ]
         )
+    )
 
+    # Phase 4: duplicate checks (sequential — shared DB session)
+    results: list[ExtractedCreditCardData] = []
+    for extracted in extractions:
         if extracted.doc_no:
             extracted.is_duplicate = await has_submitted_doc(
                 db,
@@ -145,7 +163,6 @@ async def extract_card(
                 business_unit_id=session.business_unit_id,
                 doc_no=extracted.doc_no,
             )
-
         results.append(extracted)
 
     return results
@@ -218,9 +235,9 @@ async def get_task(
             "created_at": card.created_at.isoformat() if card.created_at else None,
             "transactions": [
                 {
-                    "tx_date": format_doc_date(t.tx_date),
+                    "tx_date": format_doc_date(t.tx_date),  # type: ignore
                     "description": t.description,
-                    "amount": float(t.amount) if t.amount else None,
+                    "amount": float(t.amount) if t.amount else None,  # type: ignore
                     "tx_type": t.tx_type,
                 }
                 for t in tx_result.scalars().all()
@@ -341,7 +358,7 @@ async def health_check():
         "ocr_engine": settings.ocr_engine,
         "openrouter_ocr_model": settings.openrouter_ocr_model,
         "openrouter_suggestion_model": settings.openrouter_suggestion_model,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
     if llm_error:
         body["openrouter_error"] = llm_error
