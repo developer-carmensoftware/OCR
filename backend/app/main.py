@@ -111,6 +111,14 @@ if settings.sentry_dsn:
     logger.info("Sentry initialised (env=%s)", settings.sentry_environment)
 
 
+def _capture(exc: Exception) -> None:
+    """Send exception to Sentry if configured, otherwise no-op."""
+    if settings.sentry_dsn:
+        import sentry_sdk
+
+        sentry_sdk.capture_exception(exc)
+
+
 # ── Background Scheduler ─────────────────────────────────────────────────────
 
 
@@ -163,6 +171,7 @@ async def _run_job(job_name: str, coro_factory) -> None:
             status = JobStatus.FAILED
             error_msg = str(exc)
             logger.error("[scheduler] job %s failed: %s", job_name, exc)
+            _capture(exc)
 
         await db.execute(
             text(
@@ -233,6 +242,7 @@ async def _scheduler_loop():
 
         except Exception as exc:
             logger.error("[scheduler] Error: %s", exc)
+            _capture(exc)
 
         await asyncio.sleep(86400)
 
@@ -248,6 +258,7 @@ async def _pricing_sync_loop():
             break
         except Exception as exc:
             logger.error("[pricing_scheduler] Error: %s", exc)
+            _capture(exc)
 
         await asyncio.sleep(8 * 3600)
 
@@ -265,6 +276,7 @@ async def _perf_flush_loop():
             break
         except Exception as exc:
             logger.error("[perf_flush] Error: %s", exc)
+            _capture(exc)
 
 
 # ── Lifespan (startup / shutdown) ──
@@ -277,7 +289,6 @@ async def lifespan(_app: FastAPI):
     logger.info(
         f"   OpenRouter : {'✅ Configured' if settings.openrouter_api_key else '❌ Not set'}"
     )
-    logger.info(f"   Upload Dir : {settings.upload_dir}")
     from app.database import _db_root_url
 
     logger.info(f"   Database   : {_db_root_url()}/carmen_ai")
