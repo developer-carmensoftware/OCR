@@ -199,7 +199,7 @@ describe('useAPSubmission', () => {
       )
     })
 
-    it('calls suggest-gl API for unmapped items when invhDesc is set', async () => {
+    it('calls suggest API for unmapped items when invhDesc is set', async () => {
       apiFetch.mockResolvedValue({
         ok: true,
         json: async () => ({ suggestions: { 0: { deptCode: 'ACC', accountCode: '5100' } } }),
@@ -210,7 +210,7 @@ describe('useAPSubmission', () => {
         await result.current.handleAISuggest()
       })
       expect(apiFetch).toHaveBeenCalledWith(
-        '/api/v1/ap-invoice/suggest-gl',
+        '/api/v1/ap-invoice/suggest',
         expect.objectContaining({ method: 'POST' })
       )
     })
@@ -241,7 +241,7 @@ describe('useAPSubmission', () => {
       expect(showToast).toHaveBeenCalledWith(expect.stringContaining('could not generate'), 'info')
     })
 
-    it('shows error toast when suggest-gl API call fails', async () => {
+    it('shows error toast when suggest API call fails', async () => {
       apiFetch.mockResolvedValue({ ok: false, status: 500 })
       const props = makeProps({ lineItems: UNMAPPED_ITEMS })
       const { result } = renderHook(() => useAPSubmission(props))

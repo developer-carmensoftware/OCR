@@ -115,7 +115,7 @@ class SuggestGLRequest(BaseModel):
     invoice_desc: str = ""
 
 
-@router.post("/suggest-gl")
+@router.post("/suggest")
 async def suggest_gl(
     request: Request,
     body: SuggestGLRequest,

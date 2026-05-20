@@ -189,7 +189,7 @@ export function useAPSubmission({
     setSuggestLoading(true)
     showToast('AI is suggesting account codes...', 'info')
     try {
-      const res = await apiFetch('/api/v1/ap-invoice/suggest-gl', {
+      const res = await apiFetch('/api/v1/ap-invoice/suggest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items: itemsToSuggest, invoice_desc: headerData.invhDesc || '' }),

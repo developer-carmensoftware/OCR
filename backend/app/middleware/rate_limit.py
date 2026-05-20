@@ -36,7 +36,7 @@ _SKIP_PREFIXES = ("/docs", "/redoc", "/openapi.json", "/livez", "/readyz")
 def _endpoint_group(path: str) -> str:
     if "/auth/" in path:
         return "auth"
-    if path.endswith("/extract") or path.endswith("/suggest") or path.endswith("/suggest-gl"):
+    if path.endswith("/extract") or path.endswith("/suggest"):
         return "extract"
     return "default"
 
