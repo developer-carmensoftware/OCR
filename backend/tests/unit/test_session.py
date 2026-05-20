@@ -95,7 +95,7 @@ class TestDecodeSessionJwt:
 
         past = datetime.now(UTC) - timedelta(hours=2)
         with patch("app.auth.session.datetime") as mock_dt:
-            mock_dt.utcnow.return_value = past
+            mock_dt.now.return_value = past
             token = _make_jwt(ttl_hours=1)  # expired 1h ago
 
         with pytest.raises(ValueError, match=".*"):
