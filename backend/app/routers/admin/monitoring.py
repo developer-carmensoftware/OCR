@@ -1,0 +1,205 @@
+"""Admin monitoring endpoints — alerts, jobs, performance logs, DB pool."""
+
+import logging
+from datetime import UTC, datetime
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth import SessionInfo, get_current_session
+from app.database import get_db
+from app.models.observability import AnomalyAlert, JobRun, PerformanceLog
+
+from .deps import require_admin
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+
+@router.get("/alerts")
+async def list_alerts(
+    status: Literal["open", "resolved", "all"] = Query("open"),
+    severity: str | None = Query(None, description="warn|critical"),
+    from_date: datetime | None = Query(None, alias="from"),
+    to_date: datetime | None = Query(None, alias="to"),
+    limit: int = Query(50, le=500),
+    db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(get_current_session),
+    _admin: None = Depends(require_admin),
+):
+    q = select(AnomalyAlert).where(AnomalyAlert.tenant_id == session.tenant_id)
+    if status == "open":
+        q = q.where(AnomalyAlert.resolved_at.is_(None))
+    elif status == "resolved":
+        q = q.where(AnomalyAlert.resolved_at.isnot(None))
+    if severity:
+        q = q.where(AnomalyAlert.severity == severity)
+    if from_date:
+        q = q.where(AnomalyAlert.created_at >= from_date)
+    if to_date:
+        q = q.where(AnomalyAlert.created_at <= to_date)
+    q = q.order_by(AnomalyAlert.created_at.desc()).limit(limit)
+
+    result = await db.execute(q)
+    rows = result.scalars().all()
+    return {
+        "total": len(rows),
+        "data": [
+            {
+                "id": r.id,
+                "business_unit_id": r.business_unit_id,
+                "module_id": r.module_id,
+                "metric": r.metric,
+                "severity": r.severity.value if r.severity else None,
+                "threshold": float(str(r.threshold)) if r.threshold is not None else None,
+                "actual": float(str(r.actual)) if r.actual is not None else None,
+                "description": r.description,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "resolved_at": r.resolved_at.isoformat() if r.resolved_at else None,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.post("/alerts/{alert_id}/resolve")
+async def resolve_alert(
+    alert_id: int,
+    db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(get_current_session),
+    _admin: None = Depends(require_admin),
+):
+    result = await db.execute(
+        select(AnomalyAlert).where(
+            AnomalyAlert.id == alert_id,
+            AnomalyAlert.tenant_id == session.tenant_id,
+        )
+    )
+    alert = result.scalar_one_or_none()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    if alert.resolved_at:
+        return {
+            "id": alert_id,
+            "already_resolved": True,
+            "resolved_at": alert.resolved_at.isoformat(),
+        }
+
+    now = datetime.now(UTC)
+    await db.execute(
+        text("UPDATE anomaly_alerts SET resolved_at=:now WHERE id=:id"),
+        {"now": now, "id": alert_id},
+    )
+    await db.commit()
+    return {"id": alert_id, "resolved": True, "resolved_at": now.isoformat()}
+
+
+@router.get("/jobs")
+async def list_jobs(
+    status: str | None = Query(None, description="running|success|failed"),
+    job_name: str | None = Query(None),
+    from_date: datetime | None = Query(None, alias="from"),
+    to_date: datetime | None = Query(None, alias="to"),
+    limit: int = Query(50, le=200),
+    db: AsyncSession = Depends(get_db),
+    _session: SessionInfo = Depends(get_current_session),
+    _admin: None = Depends(require_admin),
+):
+    q = select(JobRun)
+    if status:
+        q = q.where(JobRun.status == status)
+    if job_name:
+        q = q.where(JobRun.job_name == job_name)
+    if from_date:
+        q = q.where(JobRun.started_at >= from_date)
+    if to_date:
+        q = q.where(JobRun.started_at <= to_date)
+    q = q.order_by(JobRun.started_at.desc()).limit(limit)
+
+    result = await db.execute(q)
+    rows = result.scalars().all()
+    return {
+        "total": len(rows),
+        "data": [
+            {
+                "id": r.id,
+                "job_name": r.job_name,
+                "status": r.status.value if r.status else None,
+                "started_at": r.started_at.isoformat() if r.started_at else None,
+                "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+                "duration_s": round((r.completed_at - r.started_at).total_seconds(), 2)
+                if r.completed_at and r.started_at
+                else None,
+                "rows_affected": r.rows_affected,
+                "error_message": r.error_message,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.get("/performance-logs")
+async def get_performance_logs(
+    from_date: datetime | None = Query(None, alias="from"),
+    to_date: datetime | None = Query(None, alias="to"),
+    endpoint: str | None = Query(None, description="Partial match on endpoint path"),
+    status_code: int | None = Query(None),
+    min_duration_ms: float | None = Query(None, description="Filter slow requests"),
+    limit: int = Query(100, le=1000),
+    db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(get_current_session),
+    _admin: None = Depends(require_admin),
+):
+    q = select(PerformanceLog).where(PerformanceLog.tenant_id == session.tenant_id)
+    if from_date:
+        q = q.where(PerformanceLog.created_at >= from_date)
+    if to_date:
+        q = q.where(PerformanceLog.created_at <= to_date)
+    if endpoint:
+        q = q.where(PerformanceLog.endpoint.contains(endpoint))
+    if status_code:
+        q = q.where(PerformanceLog.status_code == status_code)
+    if min_duration_ms is not None:
+        q = q.where(PerformanceLog.duration_ms >= min_duration_ms)
+    q = q.order_by(PerformanceLog.created_at.desc()).limit(limit)
+
+    result = await db.execute(q)
+    rows = result.scalars().all()
+    return {
+        "total": len(rows),
+        "data": [
+            {
+                "id": r.id,
+                "endpoint": r.endpoint,
+                "method": r.method,
+                "duration_ms": round(float(r.duration_ms or 0), 1),  # type: ignore[arg-type]
+                "status_code": r.status_code,
+                "business_unit_id": r.business_unit_id,
+                "carmen_user_id": r.carmen_user_id,
+                "resource_id": r.resource_id,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.get("/db-pool-status")
+async def get_db_pool_status(
+    _session: SessionInfo = Depends(get_current_session),
+    _admin: None = Depends(require_admin),
+):
+    from app.database import _get_engine
+
+    engine = _get_engine()
+    pool = engine.sync_engine.pool
+    return {
+        "pool_size": pool.size(),
+        "checked_in": pool.checkedin(),
+        "checked_out": pool.checkedout(),
+        "overflow": pool.overflow(),
+        "invalid": pool.invalid(),
+        "max_connections": pool.size() + pool._max_overflow,
+    }

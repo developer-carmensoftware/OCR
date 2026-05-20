@@ -1,3 +1,26 @@
+from .admin import AdminUser, AdminUserRole, APIKey, APIKeyUsage, Permission, Role, RolePermission
+from .billing import (
+    FeatureFlag,
+    LLMModelPricing,
+    Quota,
+    QuotaUsage,
+    SystemConfig,
+    TenantConfigOverride,
+)
+from .business import (
+    APInvoice,
+    APVendorColumnMapping,
+    APVendorFieldMappingEntry,
+    BUAccountingConfig,
+    BUAccountingMappingEntry,
+    CorrectionFeedback,
+    CreditCard,
+    CreditCardTransaction,
+    MappingHistory,
+    OcrSession,
+    OCRTask,
+)
+from .catalog import Bank, Module, PromptTemplate, TenantModule
 from .enums import (
     AlertSeverity,
     BankType,
@@ -11,54 +34,15 @@ from .enums import (
     TaskStatus,
     TenantPlan,
 )
-from .orm import (
-    AdminUser,
-    AdminUserRole,
+from .identity import BusinessUnit, Plan, Tenant
+from .observability import (
     AnomalyAlert,
-    # ── Control Plane: API Keys ──────────────────────────────────────────────
-    APIKey,
-    APIKeyUsage,
-    APInvoice,
-    APVendorColumnMapping,
-    APVendorFieldMappingEntry,
     AuditLog,
-    # ── Control Plane: Bank CMS ──────────────────────────────────────────────
-    Bank,
-    BUAccountingConfig,
-    BUAccountingMappingEntry,
-    BusinessUnit,
-    CorrectionFeedback,
-    CreditCard,
-    CreditCardTransaction,
-    # ── Analytics ────────────────────────────────────────────────────────────
     DailyUsageSummary,
-    FeatureFlag,
     JobRun,
-    # ── Control Plane: Pricing ───────────────────────────────────────────────
-    LLMModelPricing,
-    # ── Observability (partitioned) ──────────────────────────────────────────
     LLMUsageLog,
-    MappingHistory,
-    # ── Control Plane: Modules ───────────────────────────────────────────────
-    Module,
-    # ── Data Plane: Business ─────────────────────────────────────────────────
-    OcrSession,
-    OCRTask,
     OutboundCallLog,
     PerformanceLog,
-    Permission,
-    PromptTemplate,
-    # ── Control Plane: Quotas ────────────────────────────────────────────────
-    Quota,
-    QuotaUsage,
-    Role,
-    RolePermission,
-    # ── Control Plane: Config ────────────────────────────────────────────────
-    SystemConfig,
-    # ── Control Plane: Identity ──────────────────────────────────────────────
-    Tenant,
-    TenantConfigOverride,
-    TenantModule,
 )
 from .schemas import (
     CorrectionFeedbackBatchRequest,
@@ -86,9 +70,11 @@ __all__ = [
     "QuotaPeriod",
     "QuotaMetric",
     "TenantPlan",
-    # Control plane
+    # Identity
+    "Plan",
     "Tenant",
     "BusinessUnit",
+    # Admin RBAC
     "AdminUser",
     "Role",
     "Permission",
@@ -96,17 +82,19 @@ __all__ = [
     "AdminUserRole",
     "APIKey",
     "APIKeyUsage",
+    # Catalog
     "Module",
     "TenantModule",
     "Bank",
     "PromptTemplate",
+    # Billing / Config
     "SystemConfig",
     "TenantConfigOverride",
     "FeatureFlag",
     "Quota",
     "QuotaUsage",
     "LLMModelPricing",
-    # Data plane
+    # Business
     "OcrSession",
     "OCRTask",
     "CreditCard",
@@ -123,7 +111,6 @@ __all__ = [
     "AuditLog",
     "PerformanceLog",
     "OutboundCallLog",
-    # Analytics
     "DailyUsageSummary",
     "AnomalyAlert",
     "JobRun",
