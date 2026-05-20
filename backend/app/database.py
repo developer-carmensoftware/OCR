@@ -61,7 +61,7 @@ def _get_engine():
     if _ENGINE is None:
         _ENGINE = create_async_engine(
             _carmen_ai_url(),
-            echo=False,
+            echo=settings.app_debug,
             pool_pre_ping=True,
             pool_size=20,
             max_overflow=40,

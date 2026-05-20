@@ -89,6 +89,18 @@ async def call_vision_llm(
     status_code = 200
     rid = current_request_id.get("")
     extra_headers = {"X-Request-ID": rid} if rid else {}
+    if settings.app_debug:
+        user_summary = [
+            (c if isinstance(c, str) else f"[{c.get('type', '?')}]")
+            for c in (user_content if isinstance(user_content, list) else [user_content])
+        ]
+        logger.debug(
+            "[LLM vision] model=%s prompt_chars=%d user_parts=%s",
+            model,
+            len(system_prompt),
+            user_summary,
+        )
+
     try:
         response = await _with_retry(
             lambda: client.chat.completions.create(
@@ -138,6 +150,17 @@ async def call_vision_llm(
             "LLM returned empty content — model may have hit token limit or safety filter"
         )
 
+    if settings.app_debug:
+        duration_ms = (time.perf_counter() - start) * 1000
+        logger.debug(
+            "[LLM vision] done model=%s duration=%.0fms tokens=%s response_chars=%d preview=%.120s",
+            model,
+            duration_ms,
+            f"{response.usage.total_tokens}" if response.usage else "?",
+            len(content),
+            content.strip(),
+        )
+
     return content.strip()
 
 
@@ -165,6 +188,12 @@ async def call_text_llm(
     status_code = 200
     rid = current_request_id.get("")
     extra_headers = {"X-Request-ID": rid} if rid else {}
+
+    if settings.app_debug:
+        logger.debug(
+            "[LLM text] model=%s prompt_chars=%d preview=%.120s", target_model, len(prompt), prompt
+        )
+
     try:
         response = await _with_retry(
             lambda: client.chat.completions.create(
@@ -212,6 +241,14 @@ async def call_text_llm(
     raw = _strip_code_fences(content.strip())
     try:
         parsed = json.loads(raw)
+        if settings.app_debug:
+            logger.debug(
+                "[LLM text] done model=%s duration=%.0fms tokens=%s parsed_keys=%s",
+                target_model,
+                duration_ms,
+                f"{response.usage.total_tokens}" if response.usage else "?",
+                list(parsed.keys()) if isinstance(parsed, dict) else type(parsed).__name__,
+            )
         return parsed if isinstance(parsed, dict) else None
     except (json.JSONDecodeError, ValueError):
         logger.error("Failed to parse LLM JSON: %s", raw[:200])
