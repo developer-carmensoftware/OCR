@@ -2,6 +2,8 @@
 OCR Service — stateless extraction + task listing/export helpers.
 """
 
+import asyncio
+import functools
 import logging
 import os
 import uuid
@@ -15,7 +17,7 @@ from app.context import current_business_unit_id, current_tenant_id
 from app.models.orm import CreditCard, CreditCardTransaction, OCRTask, TaskStatus
 from app.models.schemas import ExtractedCreditCardData
 from app.services.llm_service import extract_from_image
-from app.utils.image_processing import preprocess_image
+from app.utils.image_processing import resize_if_needed
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +64,8 @@ async def extract_stateless(
     if ext == ".pdf":
         processed_bytes = file_bytes
     else:
-        processed_bytes = preprocess_image(
-            file_bytes,
-            grayscale=False,
-            contrast_factor=1.0,
-            sharpness_factor=1.0,
-            denoise=False,
+        processed_bytes = await asyncio.get_running_loop().run_in_executor(
+            None, functools.partial(resize_if_needed, file_bytes)
         )
 
     logger.info(

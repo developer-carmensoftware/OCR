@@ -2,7 +2,7 @@ import type React from 'react'
 import { Calculator, RotateCw } from 'lucide-react'
 import Badge from '../common/Badge'
 import Card from '../common/Card'
-import { fmt } from '../../constants/apInvoice'
+import { fmt, round2 } from '../../constants/apInvoice'
 import type { APInvoiceHeader } from '../../constants/apInvoice'
 
 interface Sums {
@@ -123,7 +123,7 @@ export default function AmountSummary({
           isDiff={isSubDiff}
           tableVal={fmt(lineSubTotal)}
           docVal={headerData.subTotal}
-          onAdjust={() => adjustField(tgtSub, lineSubTotal, 'lineSubTotal', true)}
+          onAdjust={() => adjustField(tgtSub, lineSubTotal, 'lineSubTotal')}
           onChange={v => updateHeader('subTotal', v)}
           onBlur={v => blurHeader('subTotal', v)}
         />
@@ -133,7 +133,7 @@ export default function AmountSummary({
           isDiff={isDiscDiff}
           tableVal={fmt(discount)}
           docVal={headerData.totalDiscount}
-          onAdjust={() => adjustField(tgtDisc, discount, 'discountAmt', true, true)}
+          onAdjust={() => adjustField(tgtDisc, discount, 'discountAmt')}
           onChange={v => updateHeader('totalDiscount', v)}
           onBlur={v => blurHeader('totalDiscount', v)}
           tableStyle={{ color: isDiscDiff ? undefined : 'var(--rose)' }}
@@ -144,13 +144,22 @@ export default function AmountSummary({
           isDiff={isTaxDiff}
           tableVal={fmt(tax)}
           docVal={headerData.taxAmount}
-          onAdjust={() => adjustField(tgtTax, tax, 'taxAmt', true)}
+          onAdjust={() => adjustField(tgtTax, tax, 'taxAmt')}
           onChange={v => updateHeader('taxAmount', v)}
           onBlur={v => blurHeader('taxAmount', v)}
         />
         <div className="ap-grand-total-row">
           <span style={{ fontWeight: 800, fontSize: '1rem' }}>{t.grandTotal}</span>
           <div className="ap-summary-values">
+            {isGrandDiff && (
+              <button
+                type="button"
+                className="ap-adjust-btn"
+                onClick={() => adjustField(round2(headerData.grandTotal), lineTotal, 'lineTotal')}
+              >
+                <RotateCw size={14} /> {t.adjust}
+              </button>
+            )}
             <span
               style={{
                 fontFamily: 'IBM Plex Mono',

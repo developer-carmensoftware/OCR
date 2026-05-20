@@ -60,6 +60,23 @@ def preprocess_image(
     return output.getvalue()
 
 
+def resize_if_needed(image_bytes: bytes, max_dimension: int = 4096) -> bytes:
+    """
+    Returns original bytes unchanged if the image already fits within max_dimension.
+    Only decodes and re-encodes when a resize is actually required, avoiding the
+    JPEG→PNG size inflation that preprocess_image caused on every non-PDF file.
+    """
+    img = Image.open(io.BytesIO(image_bytes))
+    if max(img.size) <= max_dimension:
+        return image_bytes
+    ratio = max_dimension / max(img.size)
+    new_size = (int(img.width * ratio), int(img.height * ratio))
+    img = img.resize(new_size, Image.Resampling.LANCZOS)
+    output = io.BytesIO()
+    img.save(output, format="PNG")
+    return output.getvalue()
+
+
 def is_valid_image(filename: str) -> bool:
     """Check if the filename has a supported image extension."""
     valid_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp", ".pdf"}
