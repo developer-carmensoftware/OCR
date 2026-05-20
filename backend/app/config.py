@@ -94,14 +94,14 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Reject known-weak secrets unconditionally — a deployed dev secret is a critical risk.
-if settings.ocr_jwt_secret in _WEAK_JWT_SECRETS:
+# Reject known-weak secrets in production — skipped when app_debug=True (CI / local dev).
+if not settings.app_debug and settings.ocr_jwt_secret in _WEAK_JWT_SECRETS:
     raise RuntimeError(
         "OCR_JWT_SECRET is set to a known-weak default. "
         "Set a strong random secret in your .env before starting."
     )
 
-if settings.session_encryption_key == _WEAK_FERNET_KEY:
+if not settings.app_debug and settings.session_encryption_key == _WEAK_FERNET_KEY:
     raise RuntimeError(
         "SESSION_ENCRYPTION_KEY is set to the placeholder value. "
         'Generate a real key: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
