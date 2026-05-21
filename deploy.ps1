@@ -175,7 +175,7 @@ Write-OK "web.config generated"
 
 # ── 6. Create runtime folders ─────────────────────────────────────────────────
 Write-Step "Creating runtime folders..."
-foreach ($dir in @("uploads", "exports", "archives", "logs")) {
+foreach ($dir in @("archives", "logs")) {
     New-Item -ItemType Directory -Force -Path (Join-Path $BackendDest $dir) | Out-Null
 }
 Write-OK "uploads / exports / archives / logs"

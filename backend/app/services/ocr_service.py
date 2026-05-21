@@ -7,14 +7,13 @@ import functools
 import logging
 import os
 import uuid
-from datetime import UTC, datetime
 
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.context import current_business_unit_id, current_tenant_id
-from app.models.orm import CreditCard, CreditCardTransaction, OCRTask, TaskStatus
+from app.models.orm import OCRTask, TaskStatus
 from app.models.schemas import ExtractedCreditCardData
 from app.services.llm_service import extract_from_image
 from app.utils.image_processing import resize_if_needed
@@ -109,107 +108,3 @@ async def get_all_tasks(
         .all()
     )
     return list(tasks), total
-
-
-async def export_tasks_to_csv(db: AsyncSession) -> str:
-    """Export submitted credit card documents to CSV."""
-    import csv
-    import io
-
-    import aiofiles
-
-    tenant_id = current_tenant_id.get()
-    business_unit_id = current_business_unit_id.get()
-
-    query = (
-        select(OCRTask, CreditCard)
-        .join(CreditCard, CreditCard.task_id == OCRTask.id)
-        .where(
-            OCRTask.status == TaskStatus.COMPLETED,
-            OCRTask.deleted_at.is_(None),
-            CreditCard.deleted_at.is_(None),
-        )
-        .order_by(desc(OCRTask.completed_at))
-    )
-    if tenant_id:
-        query = query.where(OCRTask.tenant_id == tenant_id)
-    if business_unit_id:
-        query = query.where(OCRTask.business_unit_id == business_unit_id)
-
-    rows = (await db.execute(query)).all()
-
-    # Fetch all transactions up front so no blocking I/O is mixed with async DB calls
-    card_transactions: dict[str, list[CreditCardTransaction]] = {}
-    for _, card in rows:
-        tx_result = await db.execute(
-            select(CreditCardTransaction)
-            .where(
-                CreditCardTransaction.credit_card_id == card.id,
-                CreditCardTransaction.deleted_at.is_(None),
-            )
-            .order_by(CreditCardTransaction.sort_order)
-        )
-        card_transactions[card.id] = list(tx_result.scalars().all())
-
-    headers = [
-        "Date Processed",
-        "Bank Code",
-        "Company Name",
-        "Merchant Name",
-        "Doc Date",
-        "Doc No",
-        "Tx Date",
-        "Description",
-        "Amount",
-        "Type",
-    ]
-
-    # Build CSV in memory, then write async
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow(headers)
-    written = 0
-    for task, card in rows:
-        transactions = card_transactions.get(card.id, [])
-        completed = task.completed_at.strftime("%Y-%m-%d %H:%M:%S") if task.completed_at else ""
-        if not transactions:
-            writer.writerow(
-                [
-                    completed,
-                    card.bank_code or "",
-                    card.company_name or "",
-                    "",
-                    card.doc_date or "",
-                    card.doc_no or "",
-                    "",
-                    "",
-                    "",
-                    "",
-                ]
-            )
-            written += 1
-        else:
-            for tx in transactions:
-                writer.writerow(
-                    [
-                        completed,
-                        card.bank_code or "",
-                        card.company_name or "",
-                        tx.description or "",
-                        card.doc_date or "",
-                        card.doc_no or "",
-                        tx.tx_date or "",
-                        tx.description or "",
-                        float(str(tx.amount)) if tx.amount else "",
-                        tx.tx_type or "",
-                    ]
-                )
-                written += 1
-
-    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-    csv_path = os.path.join(settings.export_dir, f"ocr_export_{timestamp}.csv")
-    async with aiofiles.open(csv_path, "w", encoding="utf-8-sig") as f:
-        await f.write(buf.getvalue())
-
-    logger.info("Exported %d rows to %s", written, csv_path)
-    return csv_path

@@ -11,7 +11,7 @@ import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -296,33 +296,6 @@ async def submit_receipt_stateless(
         raise HTTPException(status_code=status_code, detail=err)
 
     return {"ok": True, **result.output}
-
-
-# ═══════════════════════════════════════════════════
-# GET /api/v1/ocr/export
-# ═══════════════════════════════════════════════════
-
-
-@router.get("/export")
-async def export_csv(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    session: SessionInfo = Depends(get_current_session),
-):
-    await audit_service.log_action(
-        session,
-        AuditAction.EXPORT,
-        resource="credit_card",
-        ip_address=request.client.host if request.client else None,
-    )
-    csv_path = await ocr_service.export_tasks_to_csv(db)
-    filename = csv_path.replace("\\", "/").split("/")[-1]
-    return FileResponse(
-        path=csv_path,
-        media_type="text/csv",
-        filename=filename,
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
-    )
 
 
 # ═══════════════════════════════════════════════════

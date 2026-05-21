@@ -49,10 +49,8 @@ class Settings(BaseSettings):
     # Leave empty to allow any valid HTTPS hostname (development only).
     carmen_allowed_host_regex: str = ""
 
-    # Upload / Export
+    # Upload
     max_file_size_mb: int = 20
-    upload_dir: str = "./uploads"
-    export_dir: str = "./exports"
 
     # Database
     database_url: str = "mysql+aiomysql://root:@localhost:3306/carmen_ai"
@@ -117,11 +115,7 @@ def _abs(path: str) -> str:
     return str(p if p.is_absolute() else _BACKEND_DIR / p)
 
 
-settings.upload_dir = _abs(settings.upload_dir)
-settings.export_dir = _abs(settings.export_dir)
 settings.archive_dir = _abs(settings.archive_dir)
 
 # Ensure upload/export/archive directories exist
-os.makedirs(settings.upload_dir, exist_ok=True)
-os.makedirs(settings.export_dir, exist_ok=True)
 os.makedirs(settings.archive_dir, exist_ok=True)

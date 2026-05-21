@@ -41,34 +41,26 @@
 
 ### Day 1-2: Backup ฉุกเฉิน
 
-- [ ] เขียน `scripts/backup_db.ps1` — mysqldump รายวัน เก็บ 14 รุ่น
-- [ ] ตั้ง Windows Task Scheduler ทำงานตี 2 ทุกคืน
-- [ ] ทดสอบ restore จาก backup ลง DB ทดสอบ (สำคัญที่สุด — ไม่ทดสอบ = ไม่นับว่ามี backup)
-- [ ] เขียน `docs/RESTORE.md` ขั้นตอนกู้คืนแบบทีละขั้น
-- [ ] บันทึก credentials ทั้งหมดใน password manager รวมถึง `.env` (API keys, DB credentials, JWT secret, Fernet key)
+- [x] เขียน `scripts/backup_db.ps1` — mysqldump รายวัน เก็บ 14 รุ่น
+- [x] ตั้ง Windows Task Scheduler ทำงานตี 2 ทุกคืน
+- [x] ทดสอบ restore จาก backup ลง DB ทดสอบ (42 tables ตรงกัน ✓)
+- [x] เขียน `docs/RESTORE.md` ขั้นตอนกู้คืนแบบทีละขั้น
+- [x] บันทึก credentials ทั้งหมดใน password manager รวมถึง `.env` (API keys, DB credentials, JWT secret, Fernet key)
 
 ### Day 3-4: Monitoring + Alerting
 
-- [ ] สมัคร UptimeRobot (ฟรี) → จิ้ม `/livez` ทุก 5 นาที
-- [ ] ตั้ง alert ไป LINE Notify + email
-- [ ] เพิ่ม `sentry_sdk.capture_exception(exc)` ใน scheduler ที่ [main.py:165](../backend/app/main.py#L165)
+- [x] สมัคร UptimeRobot (ฟรี) → จิ้ม `https://dev.carmen4.com/api/v1/ocr/health` ทุก 5 นาที + alert email
+- [x] เพิ่ม `sentry_sdk.capture_exception(exc)` ใน scheduler ทั้ง 4 จุด ([main.py](../backend/app/main.py))
 - [ ] เพิ่ม Sentry alert rules — notify เมื่อ error spike
-- [ ] เขียน `scripts/disk_alert.ps1` → alert ถ้า disk เหลือ <20%
-- [ ] เปิด MariaDB slow query log
+- [x] เขียน `scripts/disk_alert.ps1` → alert ถ้า disk เหลือ <20%
+- [x] เปิด MariaDB slow query log (เพิ่มใน `my.ini` + restart service แล้ว — log ที่ `C:\tmp\mariadb-slow.log`)
 
 ### Day 5-7: Baseline + เตรียมข้อมูลสำหรับ senior
 
-- [ ] รัน query วัด peak traffic 30 วันที่ผ่านมา:
-  ```sql
-  SELECT DATE(created_at) AS day, HOUR(created_at) AS hour, COUNT(*) AS calls
-  FROM llm_usage_logs
-  WHERE created_at > NOW() - INTERVAL 30 DAY
-  GROUP BY day, hour
-  ORDER BY calls DESC LIMIT 100;
-  ```
-- [ ] วัด DB size + disk usage ปัจจุบัน → บันทึกเป็น baseline
-- [ ] นับจำนวน tenants + business_units ที่ active 30 วันล่าสุด
-- [ ] เขียน `docs/INCIDENT_PLAYBOOK.md` — 1 หน้า "ถ้าระบบล่มทำยังไง"
+- [x] รัน query วัด peak traffic 30 วันที่ผ่านมา (peak: 19 calls/hr วันที่ 2026-05-15)
+- [x] วัด DB size + disk usage ปัจจุบัน (DB: 6.91 MB, 42 tables)
+- [x] นับจำนวน tenants + business_units ที่ active 30 วันล่าสุด (1 tenant, 1 BU)
+- [x] เขียน `docs/INCIDENT_PLAYBOOK.md`
 - [ ] เตรียมคำถามไปถาม senior (ดู section "คำถามที่ต้องไปถาม senior" ด้านล่าง)
 
 ### ตัวชี้วัดความสำเร็จ Phase 0
@@ -345,3 +337,6 @@
 |---|---|
 | 2026-05-20 | สร้างเอกสาร roadmap ฉบับแรก |
 | 2026-05-20 | ตัด backup_files.ps1 ออก — ระบบไม่มี file storage (no uploads/exports), .env เก็บใน password manager แทน; ตัด rclone/cloud sync ออก (defer) |
+| 2026-05-20 | Day 1-2 เสร็จครบ: backup_db.ps1, Task Scheduler, restore test (42 tables ✓), RESTORE.md |
+| 2026-05-20 | Day 3-4 บางส่วน: Sentry capture scheduler 4 จุด, disk_alert.ps1, slow query log config — รอ UptimeRobot + Sentry alert rules + MariaDB restart |
+| 2026-05-20 | Day 5-7 เสร็จครบ: baseline queries, INCIDENT_PLAYBOOK.md — รอเตรียมคำถาม senior |

@@ -671,17 +671,7 @@ sequenceDiagram
 
 ---
 
-### 5.11 API 9: Export to CSV
-
-**วัตถุประสงค์**: ส่งออกข้อมูล receipts ทั้งหมด (submitted only) เป็นไฟล์ CSV
-
-**Method**: GET | **Endpoint**: `/api/v1/ocr/export`
-
-**Response**: Binary CSV file (content-type: `text/csv`)
-
----
-
-### 5.12 API 10: Debug LLM Response
+### 5.11 API 9: Debug LLM Response
 
 **วัตถุประสงค์**: ดู raw JSON response จากครั้งสุดท้ายที่เรียก Vision LLM (สำหรับ troubleshooting)
 
@@ -974,8 +964,6 @@ DATABASE_URL=mysql+aiomysql://root:password@localhost:3306/ocr_db
 
 # File Upload Configuration
 MAX_FILE_SIZE_MB=20
-UPLOAD_DIR=./uploads
-EXPORT_DIR=./exports
 
 # API Configuration
 APP_PORT=8010
@@ -993,8 +981,6 @@ CARMEN_BASE_URL=https://carmen.example.com
 | `OPENROUTER_BASE_URL` | No | [https://openrouter.ai/api/v1](https://openrouter.ai/api/v1) | Base URL ของ OpenRouter |
 | `DATABASE_URL` | Yes | - | Connection string ไปยัง MySQL/MariaDB |
 | `MAX_FILE_SIZE_MB` | No | 20 | ขนาดไฟล์สูงสุด (MB) |
-| `UPLOAD_DIR` | No | ./uploads | โฟลเดอร์เก็บไฟล์อัปโหลด |
-| `EXPORT_DIR` | No | ./exports | โฟลเดอร์เก็บไฟล์ส่งออก (CSV) |
 | `APP_PORT` | No | 8010 | Port ของ FastAPI server |
 | `CARMEN_AUTHORIZATION` | Yes | - | Bearer token สำหรับ Carmen API |
 | `CARMEN_BASE_URL` | Yes | - | Base URL ของ Carmen Cloud |
@@ -1044,7 +1030,7 @@ CARMEN_BASE_URL=https://carmen.example.com
 **ข้อจำกัด**:
 
 - ขนาดไฟล์สูงสุด: **20 MB** ต่อไฟล์
-- การประมวลผล: เก็บภาพไว้ใน `UPLOAD_DIR` ชั่วคราว (delete หลังจากประมวลผล)
+- การประมวลผล: อ่านไฟล์เข้า memory → ส่ง LLM → ทิ้ง (ไม่เขียนลง disk เลย)
 
 ### 9.3 Image Processing Requirements
 
