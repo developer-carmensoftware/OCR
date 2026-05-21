@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { useLocalStorage } from './useLocalStorage'
+import { useEffect, useState, useCallback } from 'react'
+import { getAccountingConfig } from '../lib/api/config'
 import type { FieldMapping } from '../types/api'
 
 export interface AccountingConfig {
@@ -20,6 +20,7 @@ export interface AccountingConfig {
 export interface AccountingConfigHook {
   config: AccountingConfig | null
   rawConfig: AccountingConfig | null
+  loading: boolean
   setConfig: (valOrFn: AccountingConfig | ((prev: AccountingConfig) => AccountingConfig)) => void
   refresh: () => void
   filePrefix: string
@@ -31,40 +32,120 @@ export interface AccountingConfigHook {
   paymentAmount: Record<string, FieldMapping>
 }
 
-const EMPTY_CONFIG: AccountingConfig = {}
-const EMPTY_AMOUNT: Record<string, FieldMapping> = {}
+const MAIN_KEYS = new Set(['commission', 'tax', 'net'])
+
+function splitMappings(raw: Record<string, FieldMapping>): {
+  mappings: Record<string, FieldMapping>
+  paymentAmount: Record<string, FieldMapping>
+} {
+  const mappings: Record<string, FieldMapping> = {}
+  const paymentAmount: Record<string, FieldMapping> = {}
+  Object.entries(raw).forEach(([k, v]) => {
+    if (MAIN_KEYS.has(k)) mappings[k] = v
+    else paymentAmount[k] = v
+  })
+  return { mappings, paymentAmount }
+}
+
+function readFromLocalStorage(): AccountingConfig | null {
+  try {
+    const raw = localStorage.getItem('accountingConfig')
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as AccountingConfig
+    const amountRaw = localStorage.getItem('accountMappingAmount')
+    if (amountRaw) {
+      const { __customTypes: _ignored, ...paymentAmount } = JSON.parse(amountRaw) as Record<
+        string,
+        FieldMapping | string[]
+      >
+      parsed.paymentAmount = {
+        ...(parsed.paymentAmount || {}),
+        ...(paymentAmount as Record<string, FieldMapping>),
+      }
+    }
+    return parsed
+  } catch {
+    return null
+  }
+}
 
 export function useAccountingConfig(): AccountingConfigHook {
-  const [config, setConfig] = useLocalStorage<AccountingConfig>('accountingConfig', EMPTY_CONFIG)
-  const [amountConfig] = useLocalStorage<Record<string, FieldMapping>>(
-    'accountMappingAmount',
-    EMPTY_AMOUNT
+  const [config, setConfigState] = useState<AccountingConfig | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  const refresh = useCallback(() => setRefreshKey(k => k + 1), [])
+
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'accounting_config_updated') refresh()
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [refresh])
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+
+    getAccountingConfig()
+      .then(apiData => {
+        if (cancelled) return
+        const hasData =
+          apiData.bank_code || apiData.file_prefix || Object.keys(apiData.mappings || {}).length > 0
+        if (!hasData) throw new Error('empty')
+
+        const { mappings, paymentAmount } = splitMappings(apiData.mappings || {})
+        const lsCompany = (() => {
+          try {
+            const raw = localStorage.getItem('accountingConfig')
+            return raw ? ((JSON.parse(raw) as AccountingConfig).company ?? {}) : {}
+          } catch {
+            return {}
+          }
+        })()
+        setConfigState({
+          bank: apiData.bank_code || '',
+          filePrefix: apiData.file_prefix || '',
+          fileSource: apiData.file_source || '',
+          description: apiData.description || '',
+          company: { ...lsCompany, ...(apiData.branch ? { branch: apiData.branch } : {}) },
+          mappings,
+          paymentAmount,
+        })
+      })
+      .catch(() => {
+        if (cancelled) return
+        setConfigState(readFromLocalStorage())
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [refreshKey])
+
+  const setConfig = useCallback(
+    (valOrFn: AccountingConfig | ((prev: AccountingConfig) => AccountingConfig)) => {
+      setConfigState(prev => (typeof valOrFn === 'function' ? valOrFn(prev || {}) : valOrFn))
+    },
+    []
   )
 
-  const mergedConfig: AccountingConfig | null = config
-    ? { ...config, paymentAmount: { ...config.paymentAmount, ...amountConfig } }
-    : Object.keys(amountConfig).length
-      ? { paymentAmount: amountConfig }
-      : null
-
-  const [, forceRefresh] = useState(0)
-  useEffect(() => {
-    const onFocus = () => forceRefresh(n => n + 1)
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
-  }, [])
-
   return {
-    config: mergedConfig,
+    config,
     rawConfig: config,
+    loading,
     setConfig,
-    refresh: () => forceRefresh(n => n + 1),
+    refresh,
     filePrefix: config?.filePrefix || '',
     fileSource: config?.fileSource || '',
     description: config?.description || '',
     company: config?.company || {},
     mappings: config?.mappings || {},
     bank: config?.bank || '',
-    paymentAmount: mergedConfig?.paymentAmount || {},
+    paymentAmount: config?.paymentAmount || {},
   }
 }

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { getAccountingConfig } from '../../lib/api/config'
 import { detectBankFromCompanyName, BANK_INFO, BANK_SOURCE_MAP } from '../../constants/banks'
 import { normalizeConfigShape, codeToDisplayName } from '../../lib/bankTransforms'
-import type { BankDisplayName } from '../../types/api'
+import type { BankDisplayName, FieldMapping } from '../../types/api'
 import type { CompanyData } from '../../lib/bankTransforms'
 
 export interface BankConfigHook {
@@ -17,6 +17,8 @@ export interface BankConfigHook {
   company: CompanyData
   setCompany: React.Dispatch<React.SetStateAction<CompanyData>>
   configLoading: boolean
+  savedMappings: Record<string, FieldMapping>
+  savedCustomTypes: string[]
 }
 
 import type React from 'react'
@@ -33,6 +35,8 @@ export function useBankConfig(): BankConfigHook {
     branch: '',
     address: '',
   })
+  const [savedMappings, setSavedMappings] = useState<Record<string, FieldMapping>>({})
+  const [savedCustomTypes, setSavedCustomTypes] = useState<string[]>([])
 
   useEffect(() => {
     let ocrBank: BankDisplayName | '' = ''
@@ -62,6 +66,8 @@ export function useBankConfig(): BankConfigHook {
           (apiData.bank_code || apiData.file_prefix || Object.keys(apiData.mappings || {}).length)
         if (hasData) {
           applyConfig(apiData as unknown as Record<string, unknown>)
+          setSavedMappings(apiData.mappings || {})
+          setSavedCustomTypes(apiData.custom_types || [])
         } else {
           throw new Error('empty')
         }
@@ -106,5 +112,7 @@ export function useBankConfig(): BankConfigHook {
     company,
     setCompany,
     configLoading,
+    savedMappings,
+    savedCustomTypes,
   }
 }

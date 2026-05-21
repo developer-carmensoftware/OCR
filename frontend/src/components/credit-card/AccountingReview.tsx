@@ -84,11 +84,10 @@ export default function AccountingReview({
   onGoMapping,
   submitting = false,
 }: Props) {
-  const { config, refresh: loadConfig } = useAccountingConfig()
+  const { config, loading: configLoading, refresh: loadConfig } = useAccountingConfig()
   const [warningModal, setWarningModal] = useState(false)
   const [accNameMap, setAccNameMap] = useState<Record<string, string>>(_accCache || {})
   const [accLoading, setAccLoading] = useState(!_accCache)
-  const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
     if (_accCache) return
@@ -296,13 +295,10 @@ export default function AccountingReview({
             type="button"
             className="btn-icon"
             title="Refresh Mapping Data"
-            onClick={() => {
-              setRefreshing(true)
-              loadConfig()
-              setTimeout(() => setRefreshing(false), 700)
-            }}
+            onClick={loadConfig}
+            disabled={configLoading}
           >
-            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+            <RefreshCw size={14} className={configLoading ? 'animate-spin' : ''} />
           </button>
           <div className="form-actions-sep" />
           <button

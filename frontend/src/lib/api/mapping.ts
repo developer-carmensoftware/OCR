@@ -17,10 +17,15 @@ export interface SuggestPaymentTypesResponse {
   [paymentType: string]: FieldMapping | null
 }
 
+export interface HistoryFieldEntry {
+  dept: string
+  acc: string
+  confirmed_count: number
+}
+
 export interface MappingHistoryEntry {
   bank_code: string
-  mappings: Record<string, FieldMapping>
-  updated_at: string
+  history: Record<string, HistoryFieldEntry>
 }
 
 export async function suggestMapping(payload: SuggestRequest): Promise<SuggestResponse> {

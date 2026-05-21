@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { saveMappingHistory } from '../lib/api/mapping'
 import { saveAccountingConfig } from '../lib/api/config'
 import { BANK_INFO, BANK_CODE_MAP, BANK_SOURCE_MAP } from '../constants/banks'
@@ -55,6 +55,38 @@ export function useMapping() {
     customPaymentTypes: paymentTypes.customPaymentTypes,
     setModalConfig,
   })
+
+  const configAppliedRef = useRef(false)
+
+  useEffect(() => {
+    if (bankConfig.configLoading || !bankConfig.bank) return
+    if (configAppliedRef.current) return
+    configAppliedRef.current = true
+
+    if (
+      Object.keys(bankConfig.savedMappings).length === 0 &&
+      bankConfig.savedCustomTypes.length === 0
+    )
+      return
+
+    const MAIN_KEYS = new Set<MainMappingKey>(['commission', 'tax', 'net'])
+    const mainMappings: Partial<MainMappings> = {}
+    const paymentMappings: Record<string, FieldMapping> = {}
+
+    Object.entries(bankConfig.savedMappings).forEach(([field, val]) => {
+      const mapping: FieldMapping = { dept: val.dept || '', acc: val.acc || '' }
+      if (MAIN_KEYS.has(field as MainMappingKey)) {
+        mainMappings[field as MainMappingKey] = mapping
+      } else {
+        paymentMappings[field] = mapping
+      }
+    })
+
+    if (Object.keys(mainMappings).length > 0) {
+      setMappings(prev => ({ ...prev, ...mainMappings }))
+    }
+    paymentTypes.initFromData(paymentMappings, bankConfig.savedCustomTypes)
+  }, [bankConfig.configLoading, bankConfig.bank]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     try {
@@ -189,6 +221,7 @@ export function useMapping() {
           mappings: allMappings,
           custom_types: paymentTypes.customPaymentTypes,
         })
+        localStorage.setItem('accounting_config_updated', Date.now().toString())
       } catch {
         /* ignore — localStorage already saved */
       }
