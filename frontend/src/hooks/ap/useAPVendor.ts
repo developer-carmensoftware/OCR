@@ -30,11 +30,25 @@ interface APVendorProps {
 
 export function useAPVendor({ t, headerData }: APVendorProps) {
   const [vendors, setVendors] = useState<Vendor[]>([])
-  const [vendorDbByTax, setVendorDbByTax] = useState<Record<string, Vendor>>({})
   const [systemVendor, setSystemVendor] = useState<Vendor>({ code: '', name: '' })
   const [vendorSearch, setVendorSearch] = useState('')
   const [showVendorDrop, setShowVendorDrop] = useState(false)
   const [vendorRefreshing, setVendorRefreshing] = useState(false)
+
+  // Derived index — recomputed only when `vendors` identity changes. Used to
+  // avoid a second setState (and re-render) on every loadVendors() call, and
+  // to keep the lookup table referentially stable so dependent effects don't
+  // re-fire spuriously.
+  const vendorDbByTax = useMemo<Record<string, Vendor>>(() => {
+    const db: Record<string, Vendor> = {}
+    for (const v of vendors) {
+      if (!v.taxId) continue
+      const branch = String(v.branchNo ?? '').padStart(5, '0')
+      db[`${v.taxId}-${branch}`] = v
+      if (!db[v.taxId]) db[v.taxId] = v
+    }
+    return db
+  }, [vendors])
 
   const loadVendors = async (setRefreshing = false) => {
     if (setRefreshing) setVendorRefreshing(true)
@@ -62,14 +76,6 @@ export function useAPVendor({ t, headerData }: APVendorProps) {
         term: (v.VnTerm as number) ?? 0,
       }))
       setVendors(list)
-      const db: Record<string, Vendor> = {}
-      list.forEach(v => {
-        if (!v.taxId) return
-        const branch = String(v.branchNo ?? '').padStart(5, '0')
-        db[`${v.taxId}-${branch}`] = v
-        if (!db[v.taxId]) db[v.taxId] = v
-      })
-      setVendorDbByTax(db)
       if (setRefreshing) showToast('Vendor list updated', 'success')
     } catch {
       if (setRefreshing) showToast('Failed to load vendor list', 'error')

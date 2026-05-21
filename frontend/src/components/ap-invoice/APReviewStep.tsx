@@ -206,12 +206,9 @@ export default function APReviewStep({ ctrl }: Props) {
                 ))}
               </tr>
             </thead>
-            <tbody>
+            <tbody className="stagger-rows">
               {lineItems.map((item, ri) => (
-                <tr
-                  key={ri}
-                  style={{ animation: `fadeUp 0.25s var(--ease) ${Math.min(ri * 40, 400)}ms both` }}
-                >
+                <tr key={ri}>
                   {activeCols.map(c => {
                     const fld = fieldMappings[`col${c}` as APColumnKey]
                     const numeric = isNumFld(fld)

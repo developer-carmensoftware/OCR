@@ -16,6 +16,7 @@ from app.models import (
     CorrectionFeedbackRequest,
     CorrectionFeedbackResponse,
 )
+from app.services.correction_service import invalidate_hints_cache
 
 router = APIRouter(prefix="/api/v1/feedback", tags=["feedback"])
 logger = logging.getLogger(__name__)
@@ -67,6 +68,10 @@ async def log_correction(
     result = await db.execute(_build_upsert(feedback, session))
     await db.commit()
 
+    # Hints are cached per (tenant, bu, bank) for 10min — drop the entry so
+    # the next /extract reflects this new correction.
+    invalidate_hints_cache(session.tenant_id, session.business_unit_id)
+
     record = await db.get(CorrectionFeedback, result.lastrowid)
     logger.info("Upserted correction: %s (%s)", feedback.field_name, feedback.bank_code)
     return CorrectionFeedbackResponse.model_validate(record)
@@ -89,6 +94,7 @@ async def log_corrections_batch(
 
     if saved:
         await db.commit()
+        invalidate_hints_cache(session.tenant_id, session.business_unit_id)
 
     logger.info("Batch corrections: saved=%d skipped=%d", saved, skipped)
     return CorrectionFeedbackBatchResponse(saved=saved, skipped=skipped)

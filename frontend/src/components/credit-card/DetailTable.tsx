@@ -70,14 +70,9 @@ export default function DetailTable({
                 })}
               </tr>
             </thead>
-            <tbody>
+            <tbody className="stagger-rows">
               {details.map((row, rowIdx) => (
-                <tr
-                  key={row._uid ?? rowIdx}
-                  style={{
-                    animation: `fadeUp 0.25s var(--ease) ${Math.min(rowIdx * 40, 400)}ms both`,
-                  }}
-                >
+                <tr key={row._uid ?? rowIdx}>
                   {DETAIL_COLUMNS.map(col => {
                     const isAmountField = AMOUNT_FIELDS.includes(col)
                     const isEditing = focusedCell?.row === rowIdx && focusedCell?.col === col

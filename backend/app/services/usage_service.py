@@ -29,7 +29,9 @@ from app.models.orm import LLMModelPricing, LLMUsageLog, Plan, Quota, QuotaUsage
 
 logger = logging.getLogger(__name__)
 
-_PRICING_CACHE: dict[str, tuple[Decimal, Decimal]] = {}
+# model_name → rates  OR  None for "known missing — don't requery"
+# Invalidated when fetch_openrouter_pricing() runs (every 8h).
+_PRICING_CACHE: dict[str, tuple[Decimal, Decimal] | None] = {}
 
 # ── Quota rules cache ─────────────────────────────────────────────────────────
 # Quota rules (limit, period, thresholds) change only when an admin edits them
@@ -94,6 +96,9 @@ async def _get_pricing(model_name: str) -> tuple[Decimal, Decimal] | None:
                 )
                 _PRICING_CACHE[model_name] = rates
                 return rates
+            # Cache the negative result so we don't re-query DB on every call
+            # for an unknown model. Cleared on the next 8h pricing sync.
+            _PRICING_CACHE[model_name] = None
     except Exception as exc:
         logger.error("Failed to fetch pricing for %s: %s", model_name, exc)
     return None

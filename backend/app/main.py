@@ -268,15 +268,26 @@ async def _pricing_sync_loop():
 
 
 async def _perf_flush_loop():
-    """Flush buffered performance log rows to DB every 10 seconds."""
+    """Flush buffered performance / outbound / audit log rows every 10 seconds.
+
+    Combined into one loop because they all share the same cadence — keeps the
+    background task count down and ensures all three drain together on shutdown.
+    """
     from app.middleware.performance import flush_perf_buffer
+    from app.services.audit_service import flush_audit_buffer
+    from app.services.outbound_log_service import flush_outbound_buffer
+
+    async def _drain_all() -> None:
+        await flush_perf_buffer()
+        await flush_outbound_buffer()
+        await flush_audit_buffer()
 
     while True:
         try:
             await asyncio.sleep(10)
-            await flush_perf_buffer()
+            await _drain_all()
         except asyncio.CancelledError:
-            await flush_perf_buffer()  # drain on shutdown
+            await _drain_all()  # drain on shutdown
             break
         except Exception as exc:
             logger.error("[perf_flush] Error: %s", exc)
@@ -321,6 +332,15 @@ async def lifespan(_app: FastAPI):
         await asyncio.gather(scheduler_task, pricing_task, perf_flush_task)
     except asyncio.CancelledError:
         pass
+
+    # Close the shared Carmen httpx client (releases pooled keep-alive sockets).
+    from app.services.carmen_service import close_client as _close_carmen
+
+    try:
+        await _close_carmen()
+    except Exception as exc:
+        logger.warning("Carmen client close failed: %s", exc)
+
     logger.info("👋 Shutting down AI OCR Backend")
 
 

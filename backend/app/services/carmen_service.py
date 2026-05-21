@@ -101,13 +101,39 @@ async def _deactivate_current_session() -> None:
         logger.exception("Failed to deactivate session %s after Carmen 401", sid)
 
 
-def _client(carmen_token: str) -> httpx.AsyncClient:
-    """Return an AsyncClient with auth headers + outbound logging hooks."""
-    return httpx.AsyncClient(
-        timeout=_TIMEOUT,
-        headers=_headers(carmen_token),
-        event_hooks={"request": [_on_request], "response": [_on_response]},
-    )
+# Module-level AsyncClient — reused across all Carmen calls.
+# Without this, a fresh TCP+TLS handshake fires on every call (4-6 per AP-invoice
+# flow), adding 50-200ms latency each. The shared pool keeps connections alive
+# (HTTP keep-alive) so subsequent calls reuse the same socket.
+#
+# Auth header is injected per-request (token differs per session); the client
+# itself is token-agnostic.
+_SHARED_CLIENT: httpx.AsyncClient | None = None
+_HTTP_LIMITS = httpx.Limits(
+    max_connections=100,
+    max_keepalive_connections=20,
+    keepalive_expiry=30.0,
+)
+
+
+def _get_client() -> httpx.AsyncClient:
+    """Lazy-init the shared AsyncClient. Lifespan should call close_client() on shutdown."""
+    global _SHARED_CLIENT
+    if _SHARED_CLIENT is None or _SHARED_CLIENT.is_closed:
+        _SHARED_CLIENT = httpx.AsyncClient(
+            timeout=_TIMEOUT,
+            limits=_HTTP_LIMITS,
+            event_hooks={"request": [_on_request], "response": [_on_response]},
+        )
+    return _SHARED_CLIENT
+
+
+async def close_client() -> None:
+    """Close the shared Carmen client on app shutdown. Called from lifespan."""
+    global _SHARED_CLIENT
+    if _SHARED_CLIENT is not None and not _SHARED_CLIENT.is_closed:
+        await _SHARED_CLIENT.aclose()
+        _SHARED_CLIENT = None
 
 
 # ── Service functions ─────────────────────────────────────────────────────────
@@ -125,33 +151,30 @@ def _wrap_network_error(exc: RequestError) -> CarmenAPIError:
 
 async def get_account_codes(carmen_token: str) -> Any:
     try:
-        async with _client(carmen_token) as client:
-            resp = await client.get(f"{_base_url()}/accountCode")
-            if resp.status_code != 200:
-                raise CarmenAPIError(resp.status_code, resp.text)
-            return resp.json()
+        resp = await _get_client().get(f"{_base_url()}/accountCode", headers=_headers(carmen_token))
+        if resp.status_code != 200:
+            raise CarmenAPIError(resp.status_code, resp.text)
+        return resp.json()
     except RequestError as e:
         raise _wrap_network_error(e) from e
 
 
 async def get_departments(carmen_token: str) -> Any:
     try:
-        async with _client(carmen_token) as client:
-            resp = await client.get(f"{_base_url()}/department")
-            if resp.status_code != 200:
-                raise CarmenAPIError(resp.status_code, resp.text)
-            return resp.json()
+        resp = await _get_client().get(f"{_base_url()}/department", headers=_headers(carmen_token))
+        if resp.status_code != 200:
+            raise CarmenAPIError(resp.status_code, resp.text)
+        return resp.json()
     except RequestError as e:
         raise _wrap_network_error(e) from e
 
 
 async def get_gl_prefix(carmen_token: str) -> Any:
     try:
-        async with _client(carmen_token) as client:
-            resp = await client.get(f"{_base_url()}/glPrefix")
-            if resp.status_code != 200:
-                return {"Data": [], "Status": f"upstream_{resp.status_code}"}
-            return resp.json()
+        resp = await _get_client().get(f"{_base_url()}/glPrefix", headers=_headers(carmen_token))
+        if resp.status_code != 200:
+            return {"Data": [], "Status": f"upstream_{resp.status_code}"}
+        return resp.json()
     except RequestError as e:
         logger.warning("Carmen glPrefix unreachable: %s", e)
         return {"Data": [], "Status": "upstream_unreachable"}
@@ -159,12 +182,13 @@ async def get_gl_prefix(carmen_token: str) -> Any:
 
 async def post_gljv(body: dict, carmen_token: str) -> Any:
     try:
-        async with _client(carmen_token) as client:
-            resp = await client.post(f"{_base_url()}/gljv", json=body)
-            try:
-                return resp.json()
-            except ValueError:
-                raise CarmenAPIError(resp.status_code, resp.text)
+        resp = await _get_client().post(
+            f"{_base_url()}/gljv", json=body, headers=_headers(carmen_token)
+        )
+        try:
+            return resp.json()
+        except ValueError:
+            raise CarmenAPIError(resp.status_code, resp.text)
     except CarmenAPIError:
         raise
     except RequestError as e:
@@ -173,12 +197,13 @@ async def post_gljv(body: dict, carmen_token: str) -> Any:
 
 async def put_gljv(jvh_seq: int, body: dict, carmen_token: str) -> Any:
     try:
-        async with _client(carmen_token) as client:
-            resp = await client.put(f"{_base_url()}/gljv/{jvh_seq}", json=body)
-            try:
-                return resp.json()
-            except ValueError:
-                raise CarmenAPIError(resp.status_code, resp.text)
+        resp = await _get_client().put(
+            f"{_base_url()}/gljv/{jvh_seq}", json=body, headers=_headers(carmen_token)
+        )
+        try:
+            return resp.json()
+        except ValueError:
+            raise CarmenAPIError(resp.status_code, resp.text)
     except CarmenAPIError:
         raise
     except RequestError as e:
@@ -211,50 +236,50 @@ _VENDOR_FIELDS = frozenset(
 
 async def get_vendors(carmen_token: str) -> Any:
     try:
-        async with _client(carmen_token) as client:
-            resp = await client.get(f"{_base_url()}/vendor")
-            if resp.status_code != 200:
-                raise CarmenAPIError(resp.status_code, resp.text)
-            data = resp.json()
-            if isinstance(data, dict) and isinstance(data.get("Data"), list):
-                data["Data"] = [
-                    {k: v for k, v in item.items() if k in _VENDOR_FIELDS} for item in data["Data"]
-                ]
-            return data
+        resp = await _get_client().get(f"{_base_url()}/vendor", headers=_headers(carmen_token))
+        if resp.status_code != 200:
+            raise CarmenAPIError(resp.status_code, resp.text)
+        data = resp.json()
+        if isinstance(data, dict) and isinstance(data.get("Data"), list):
+            data["Data"] = [
+                {k: v for k, v in item.items() if k in _VENDOR_FIELDS} for item in data["Data"]
+            ]
+        return data
     except RequestError as e:
         raise _wrap_network_error(e) from e
 
 
 async def get_tax_profiles(carmen_token: str) -> Any:
     try:
-        async with _client(carmen_token) as client:
-            resp = await client.get(f"{_base_url()}/taxProfile")
-            if resp.status_code != 200:
-                raise CarmenAPIError(resp.status_code, resp.text)
-            return resp.json()
+        resp = await _get_client().get(f"{_base_url()}/taxProfile", headers=_headers(carmen_token))
+        if resp.status_code != 200:
+            raise CarmenAPIError(resp.status_code, resp.text)
+        return resp.json()
     except RequestError as e:
         raise _wrap_network_error(e) from e
 
 
 async def get_period_list(carmen_token: str) -> Any:
     try:
-        async with _client(carmen_token) as client:
-            resp = await client.get(f"{_base_url()}/getPeriodList")
-            if resp.status_code != 200:
-                raise CarmenAPIError(resp.status_code, resp.text)
-            return resp.json()
+        resp = await _get_client().get(
+            f"{_base_url()}/getPeriodList", headers=_headers(carmen_token)
+        )
+        if resp.status_code != 200:
+            raise CarmenAPIError(resp.status_code, resp.text)
+        return resp.json()
     except RequestError as e:
         raise _wrap_network_error(e) from e
 
 
 async def post_input_tax(body: dict, carmen_token: str) -> Any:
     try:
-        async with _client(carmen_token) as client:
-            resp = await client.post(f"{_base_url()}/inputTaxRec", json=body)
-            try:
-                return resp.json()
-            except ValueError:
-                raise CarmenAPIError(resp.status_code, resp.text)
+        resp = await _get_client().post(
+            f"{_base_url()}/inputTaxRec", json=body, headers=_headers(carmen_token)
+        )
+        try:
+            return resp.json()
+        except ValueError:
+            raise CarmenAPIError(resp.status_code, resp.text)
     except CarmenAPIError:
         raise
     except RequestError as e:
@@ -263,12 +288,13 @@ async def post_input_tax(body: dict, carmen_token: str) -> Any:
 
 async def put_input_tax(rec_seq: int, body: dict, carmen_token: str) -> Any:
     try:
-        async with _client(carmen_token) as client:
-            resp = await client.put(f"{_base_url()}/inputTaxRec/{rec_seq}", json=body)
-            try:
-                return resp.json()
-            except ValueError:
-                raise CarmenAPIError(resp.status_code, resp.text)
+        resp = await _get_client().put(
+            f"{_base_url()}/inputTaxRec/{rec_seq}", json=body, headers=_headers(carmen_token)
+        )
+        try:
+            return resp.json()
+        except ValueError:
+            raise CarmenAPIError(resp.status_code, resp.text)
     except CarmenAPIError:
         raise
     except RequestError as e:
@@ -277,12 +303,13 @@ async def put_input_tax(rec_seq: int, body: dict, carmen_token: str) -> Any:
 
 async def post_invoice(body: dict, carmen_token: str) -> Any:
     try:
-        async with _client(carmen_token) as client:
-            resp = await client.post(f"{_base_url()}/invoice", json=body)
-            try:
-                return resp.json()
-            except ValueError:
-                raise CarmenAPIError(resp.status_code, resp.text)
+        resp = await _get_client().post(
+            f"{_base_url()}/invoice", json=body, headers=_headers(carmen_token)
+        )
+        try:
+            return resp.json()
+        except ValueError:
+            raise CarmenAPIError(resp.status_code, resp.text)
     except CarmenAPIError:
         raise
     except RequestError as e:

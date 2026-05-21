@@ -175,6 +175,47 @@ button {
 }
 
 /* ─── KEYFRAME ANIMATIONS ─── */
+
+/* Staggered row entry — applied via the `stagger-rows` class on <tbody>.
+   Pure CSS so re-renders (e.g. inline editing) don't recompute per-row delays.
+   nth-child cap at 10 keeps the cascade bounded — beyond that, rows just fade in. */
+.stagger-rows > tr {
+  animation: fadeUp 0.25s var(--ease) both;
+}
+.stagger-rows > tr:nth-child(1) {
+  animation-delay: 0ms;
+}
+.stagger-rows > tr:nth-child(2) {
+  animation-delay: 40ms;
+}
+.stagger-rows > tr:nth-child(3) {
+  animation-delay: 80ms;
+}
+.stagger-rows > tr:nth-child(4) {
+  animation-delay: 120ms;
+}
+.stagger-rows > tr:nth-child(5) {
+  animation-delay: 160ms;
+}
+.stagger-rows > tr:nth-child(6) {
+  animation-delay: 200ms;
+}
+.stagger-rows > tr:nth-child(7) {
+  animation-delay: 240ms;
+}
+.stagger-rows > tr:nth-child(8) {
+  animation-delay: 280ms;
+}
+.stagger-rows > tr:nth-child(9) {
+  animation-delay: 320ms;
+}
+.stagger-rows > tr:nth-child(10) {
+  animation-delay: 360ms;
+}
+.stagger-rows > tr:nth-child(n + 11) {
+  animation-delay: 400ms;
+}
+
 @keyframes fadeUp {
   from {
     opacity: 0;
