@@ -249,6 +249,25 @@ async def get_vendors(carmen_token: str) -> Any:
         raise _wrap_network_error(e) from e
 
 
+async def get_vendor_invoices(vn_code: str, carmen_token: str) -> Any:
+    """Fetch a vendor's prior invoice line items from Carmen.
+
+    Returns the raw list (or {"Data": [...]} wrapper) — caller normalizes.
+    Empty list on 404 (vendor has no history) to keep callers branch-free.
+    """
+    try:
+        resp = await _get_client().get(
+            f"{_base_url()}/invoice/{vn_code}", headers=_headers(carmen_token)
+        )
+        if resp.status_code == 404:
+            return []
+        if resp.status_code != 200:
+            raise CarmenAPIError(resp.status_code, resp.text)
+        return resp.json()
+    except RequestError as e:
+        raise _wrap_network_error(e) from e
+
+
 async def get_tax_profiles(carmen_token: str) -> Any:
     try:
         resp = await _get_client().get(f"{_base_url()}/taxProfile", headers=_headers(carmen_token))

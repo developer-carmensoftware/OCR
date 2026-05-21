@@ -12,7 +12,7 @@ from app.context import current_document_ref
 from app.database import async_session
 from app.models.orm import APInvoice
 from app.services import audit_service
-from app.services.ap_invoice_service import extract_ap_invoice_data, suggest_gl_for_items
+from app.services.ap_invoice_service import extract_ap_invoice_data, suggest_for_items
 from app.services.audit_service import AuditAction
 from app.services.carmen_service import CarmenAPIError, get_account_codes, get_departments
 from app.services.file_service import file_service
@@ -121,6 +121,7 @@ class SuggestGLItem(BaseModel):
 class SuggestGLRequest(BaseModel):
     items: list[SuggestGLItem]
     invoice_desc: str = ""
+    vn_code: str = ""
 
 
 @router.post("/suggest")
@@ -156,7 +157,12 @@ async def suggest_gl(
         }
         for i in body.items
     ]
-    suggestions = await suggest_gl_for_items(
-        items_payload, accounts_raw, depts_raw, invoice_desc=body.invoice_desc
+    suggestions = await suggest_for_items(
+        items_payload,
+        accounts_raw,
+        depts_raw,
+        invoice_desc=body.invoice_desc,
+        vn_code=body.vn_code,
+        carmen_token=session.carmen_token,
     )
     return {"suggestions": suggestions}

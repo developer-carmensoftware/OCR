@@ -8,6 +8,13 @@ from app.llm.client import _strip_code_fences, call_text_llm, call_vision_llm
 from app.llm.prompts.ap_invoice import PROMPT as AP_INVOICE_PROMPT
 from app.llm.prompts.mapping import build_ap_expense_prompt
 from app.services.ap_invoice_postprocess_service import postprocess as postprocess_ap_invoice
+from app.services.ap_vendor_history_service import (
+    aggregate_history,
+    fetch_vendor_history,
+    format_history_for_prompt,
+    match_bypass,
+    select_examples,
+)
 from app.utils.gl_filter import score_and_pad
 
 logger = logging.getLogger(__name__)
@@ -81,13 +88,21 @@ async def extract_ap_invoice_data(data_url: str, filename: str, task_id: str) ->
     return postprocess_ap_invoice(data)
 
 
-async def suggest_gl_for_items(
+async def suggest_for_items(
     items_payload: list[dict[str, Any]],
     accounts_raw: dict[str, Any],
     depts_raw: dict[str, Any],
     invoice_desc: str = "",
-) -> dict[str, Any]:
-    """AI-suggest dept/acc for AP invoice expense items using category + description."""
+    vn_code: str = "",
+    carmen_token: str = "",
+) -> dict[int, dict[str, Any]]:
+    """AI-suggest dept/acc for AP invoice expense items.
+
+    When `vn_code` + `carmen_token` are supplied, the vendor's Carmen invoice
+    history is used to: (1) bypass the LLM for items whose normalized
+    description matches a prior line, and (2) inject few-shot examples for the
+    LLM call on remaining items.
+    """
 
     accounts = [
         {
@@ -119,28 +134,61 @@ async def suggest_gl_for_items(
         or accounts
     )
 
-    # Pre-filter to the most relevant accounts (include invoice_desc as extra keywords)
+    valid_acc_map = {str(a["code"]).strip(): a["code"] for a in accounts}
+    valid_dept_map = {str(d["code"]).strip(): d["code"] for d in departments}
+    expense_acc_codes = {str(a["code"]).strip() for a in expense_accounts}
+
+    # ─── Vendor history: bypass exact matches, gather few-shot examples ───
+    # expense_acc_codes (not valid_acc_codes) gates both bypass and examples
+    # to prevent input-tax / balance-sheet accounts from history leaking in.
+    aggregate: dict[str, dict] = {}
+    bypassed: dict[int, dict] = {}
+    remaining_items = items_payload
+    if vn_code and carmen_token:
+        history_rows = await fetch_vendor_history(vn_code, carmen_token)
+        if history_rows:
+            aggregate = aggregate_history(history_rows)
+            bypassed, remaining_items = match_bypass(
+                items_payload,
+                aggregate,
+                valid_dept_codes=set(valid_dept_map.keys()),
+                expense_acc_codes=expense_acc_codes,
+            )
+            logger.info(
+                "Vendor history (%s): %d/%d items bypassed LLM",
+                vn_code,
+                len(bypassed),
+                len(items_payload),
+            )
+
+    if not remaining_items:
+        return bypassed
+
+    # Pre-filter expense accounts using remaining items' keywords
     filtered_accounts = _filter_expense_accounts(
-        expense_accounts, items_payload, invoice_desc=invoice_desc
+        expense_accounts, remaining_items, invoice_desc=invoice_desc
     )
 
     dept_lines = "\n".join(f"  {d['code']} {d['name']}" for d in departments[:50])
     expense_acc_lines = "\n".join(f"  {a['code']} {a['name']}" for a in filtered_accounts)
 
+    vendor_history_lines = ""
+    if aggregate:
+        examples = select_examples(remaining_items, aggregate, expense_acc_codes=expense_acc_codes)
+        vendor_history_lines = format_history_for_prompt(examples)
+
     prompt = build_ap_expense_prompt(
-        items=items_payload,
+        items=remaining_items,
         dept_lines=dept_lines,
         expense_acc_lines=expense_acc_lines,
         expense_acc_count=len(filtered_accounts),
         invoice_desc=invoice_desc,
+        vendor_history_lines=vendor_history_lines,
     )
 
     data = await call_text_llm(prompt, module_id=Module.AP_INVOICE)
     if data is None:
-        return {}
-
-    valid_acc_map = {str(a["code"]).strip(): a["code"] for a in accounts}
-    valid_dept_map = {str(d["code"]).strip(): d["code"] for d in departments}
+        return bypassed
 
     def _resolve(raw, valid_map: dict):
         """Match LLM-returned code against valid_map.
@@ -158,8 +206,8 @@ async def suggest_gl_for_items(
     if "suggestions" in data and isinstance(data["suggestions"], dict):
         data = data["suggestions"]
 
-    suggestions = {}
-    for item in items_payload:
+    suggestions: dict[int, dict] = dict(bypassed)
+    for item in remaining_items:
         key = str(item["index"])
         mapping = data.get(key) or data.get(item["index"]) or {}
 

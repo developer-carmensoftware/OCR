@@ -60,6 +60,7 @@ def build_ap_expense_prompt(
     expense_acc_lines: str,
     expense_acc_count: int,
     invoice_desc: str = "",
+    vendor_history_lines: str = "",
 ) -> str:
     items_block = "\n".join(
         f"  {i['index']}: {i['category']} — {i['description']} (unit price: {i.get('unit_price', 0):.2f})"
@@ -70,12 +71,17 @@ def build_ap_expense_prompt(
     invoice_context = (
         f"Invoice Description: {invoice_desc.strip()}\n\n" if invoice_desc.strip() else ""
     )
+    history_section = (
+        f"Vendor history (this vendor's prior mappings — strongly prefer these when description is similar):\n{vendor_history_lines}\n\n"
+        if vendor_history_lines.strip()
+        else ""
+    )
     return f"""Map AP invoice expense lines to Thai accounting codes. Return JSON only — no markdown.
 
 {invoice_context}Items (index: category — description | unit price):
 {items_block}
 
-Departments:
+{history_section}Departments:
 {dept_lines or "  (none)"}
 
 Expense accounts ({expense_acc_count}):
@@ -83,6 +89,7 @@ Expense accounts ({expense_acc_count}):
 
 Instructions:
 - Match each item's category and description to the most suitable expense account and department.
+- When vendor history has a similar description, strongly prefer that mapping.
 - Always provide your best guess — never leave dept or acc empty.
 - Use codes exactly as listed above.
 - If truly uncertain, pick the closest match by name similarity.

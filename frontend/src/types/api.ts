@@ -125,6 +125,7 @@ export interface SuggestGLItem {
 export interface SuggestGLRequest {
   items: SuggestGLItem[]
   invoice_desc?: string
+  vn_code?: string
 }
 
 // ── Accounting Config ─────────────────────────────────────────────

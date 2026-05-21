@@ -192,7 +192,11 @@ export function useAPSubmission({
       const res = await apiFetch('/api/v1/ap-invoice/suggest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: itemsToSuggest, invoice_desc: headerData.invhDesc || '' }),
+        body: JSON.stringify({
+          items: itemsToSuggest,
+          invoice_desc: headerData.invhDesc || '',
+          vn_code: systemVendor?.code || '',
+        }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = (await res.json()) as {
