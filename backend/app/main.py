@@ -88,6 +88,10 @@ def _build_handler() -> logging.Handler:
 
 logging.basicConfig(level=logging.INFO, handlers=[_build_handler()], force=True)
 
+# Suppress SQLAlchemy SQL statement logs (too verbose at INFO level)
+logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
+
 # Install request_id filter so every propagated child-logger record gets it injected.
 _rif = _RIF()
 for _h in logging.getLogger().handlers:
