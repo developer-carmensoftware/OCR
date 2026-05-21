@@ -23,6 +23,7 @@ export default [
     },
     rules: {
       ...tsPlugin.configs.recommended.rules,
+      'no-undef': 'off', // TypeScript handles undefined-variable checks; no-undef doesn't know TS types
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
       'no-unused-vars': 'off',
