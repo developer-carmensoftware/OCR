@@ -357,42 +357,62 @@ async def _m106_normalize_bu_mapping_entries(conn: AsyncConnection) -> None:
     """)
     )
 
-    existing = await conn.execute(
-        text(
-            "SELECT id, mappings_json, custom_types_json FROM bu_accounting_configs WHERE deleted_at IS NULL"
-        )
+    # Idempotency guard: a prior partial run may have already dropped the JSON
+    # columns (MySQL DDL implicit-commits even when the surrounding transaction
+    # rolls back, so schema_migrations can lag behind real schema state).
+    col_check = await conn.execute(
+        text("""
+            SELECT COLUMN_NAME FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'bu_accounting_configs'
+              AND COLUMN_NAME IN ('mappings_json', 'custom_types_json')
+        """)
     )
-    rows = existing.fetchall()
-    for cfg_id, mappings_json, custom_types_json in rows:
-        if not mappings_json:
-            continue
-        try:
-            mappings = _json.loads(mappings_json)
-            custom_types = set(_json.loads(custom_types_json or "[]"))
-            for field_type, m in mappings.items():
-                dept = (m.get("dept") or "") or None
-                acc = (m.get("acc") or "") or None
-                is_c = 1 if field_type in custom_types else 0
-                await conn.execute(
-                    text("""
-                    INSERT IGNORE INTO bu_accounting_mapping_entries
-                        (config_id, field_type, dept_code, acc_code, is_custom)
-                    VALUES (:cfg, :ft, :dept, :acc, :is_c)
-                """),
-                    {"cfg": cfg_id, "ft": field_type, "dept": dept, "acc": acc, "is_c": is_c},
-                )
-            for ct in custom_types:
-                if ct not in mappings:
+    present_cols = {row[0] for row in col_check.fetchall()}
+    has_mappings = "mappings_json" in present_cols
+    has_custom_types = "custom_types_json" in present_cols
+
+    if has_mappings:
+        select_sql = (
+            "SELECT id, mappings_json, custom_types_json FROM bu_accounting_configs"
+            " WHERE deleted_at IS NULL"
+            if has_custom_types
+            else "SELECT id, mappings_json, NULL FROM bu_accounting_configs WHERE deleted_at IS NULL"
+        )
+        existing = await conn.execute(text(select_sql))
+        rows = existing.fetchall()
+        for cfg_id, mappings_json, custom_types_json in rows:
+            if not mappings_json:
+                continue
+            try:
+                mappings = _json.loads(mappings_json)
+                custom_types = set(_json.loads(custom_types_json or "[]"))
+                for field_type, m in mappings.items():
+                    dept = (m.get("dept") or "") or None
+                    acc = (m.get("acc") or "") or None
+                    is_c = 1 if field_type in custom_types else 0
                     await conn.execute(
                         text("""
                         INSERT IGNORE INTO bu_accounting_mapping_entries
                             (config_id, field_type, dept_code, acc_code, is_custom)
-                        VALUES (:cfg, :ft, NULL, NULL, 1)
+                        VALUES (:cfg, :ft, :dept, :acc, :is_c)
                     """),
-                        {"cfg": cfg_id, "ft": ct},
+                        {"cfg": cfg_id, "ft": field_type, "dept": dept, "acc": acc, "is_c": is_c},
                     )
-        except Exception as exc:
-            logger.warning("m106: could not migrate config_id=%s: %s", cfg_id, exc)
+                for ct in custom_types:
+                    if ct not in mappings:
+                        await conn.execute(
+                            text("""
+                            INSERT IGNORE INTO bu_accounting_mapping_entries
+                                (config_id, field_type, dept_code, acc_code, is_custom)
+                            VALUES (:cfg, :ft, NULL, NULL, 1)
+                        """),
+                            {"cfg": cfg_id, "ft": ct},
+                        )
+            except Exception as exc:
+                logger.warning("m106: could not migrate config_id=%s: %s", cfg_id, exc)
+    else:
+        logger.info("  ~ m106: JSON columns already absent — skipping data migration")
 
     await conn.execute(
         text("ALTER TABLE bu_accounting_configs DROP COLUMN IF EXISTS mappings_json")
