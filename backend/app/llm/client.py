@@ -8,19 +8,33 @@ Never construct AsyncOpenAI elsewhere.
 import asyncio
 import json
 import logging
+import random
 import time
 from typing import Any
 
+import httpx
 from openai import APIConnectionError, APITimeoutError, AsyncOpenAI, RateLimitError
 
 from app.config import settings
 
+logger = logging.getLogger(__name__)
+
 _RETRYABLE = (APITimeoutError, APIConnectionError, RateLimitError)
 _MAX_ATTEMPTS = 3
 
+# Hard timeout per LLM call. Vision extractions typically finish in 2-10s;
+# 60s leaves headroom for slow models while preventing indefinite worker stall.
+_LLM_TIMEOUT_SECONDS = 60.0
+
+# Global cap on in-flight LLM calls per process. Without this, a burst of
+# requests floods OpenRouter (triggering 429s + retry storms) and balloons
+# memory (each call holds base64-encoded image bytes for its lifetime).
+_LLM_CONCURRENCY_LIMIT = 16
+_LLM_SEM = asyncio.Semaphore(_LLM_CONCURRENCY_LIMIT)
+
 
 async def _with_retry(coro_factory, label: str):
-    """Call coro_factory() up to _MAX_ATTEMPTS times with exponential backoff."""
+    """Call coro_factory() up to _MAX_ATTEMPTS times with exponential backoff + jitter."""
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         try:
             return await coro_factory()
@@ -29,9 +43,15 @@ async def _with_retry(coro_factory, label: str):
                 raise RuntimeError(
                     f"LLM call '{label}' failed after {_MAX_ATTEMPTS} attempts: {exc}"
                 ) from exc
-            wait = 2 ** (attempt - 1)  # 1s, 2s
+            # Longer base + jitter on RateLimitError to avoid synchronized retry storms
+            # when many concurrent callers hit OpenRouter's per-minute quota at once.
+            if isinstance(exc, RateLimitError):
+                base = 3 * (2 ** (attempt - 1))  # 3s, 6s
+            else:
+                base = 2 ** (attempt - 1)  # 1s, 2s
+            wait = base + random.uniform(0, base * 0.5)
             logger.warning(
-                "LLM transient error (attempt %d/%d), retrying in %ds: %s",
+                "LLM transient error (attempt %d/%d), retrying in %.1fs: %s",
                 attempt,
                 _MAX_ATTEMPTS,
                 wait,
@@ -40,15 +60,17 @@ async def _with_retry(coro_factory, label: str):
             await asyncio.sleep(wait)
 
 
-logger = logging.getLogger(__name__)
-
 _OPENROUTER_OUTBOUND_URL = f"{settings.openrouter_base_url}/chat/completions"
 
 
 def get_client() -> AsyncOpenAI:
+    # Explicit per-call timeout — the OpenAI SDK default is 600s, which means a
+    # hung OpenRouter request would tie up an ASGI task + DB connection for 10 minutes.
     return AsyncOpenAI(
         api_key=settings.openrouter_api_key,
         base_url=settings.openrouter_base_url,
+        timeout=httpx.Timeout(_LLM_TIMEOUT_SECONDS, connect=10.0),
+        max_retries=0,  # we handle retries via _with_retry
     )
 
 
@@ -102,19 +124,20 @@ async def call_vision_llm(
         )
 
     try:
-        response = await _with_retry(
-            lambda: client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_content},
-                ],
-                temperature=0.0,
-                max_tokens=8192,
-                extra_headers=extra_headers,
-            ),
-            label="vision",
-        )
+        async with _LLM_SEM:
+            response = await _with_retry(
+                lambda: client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_content},
+                    ],
+                    temperature=0.0,
+                    max_tokens=8192,
+                    extra_headers=extra_headers,
+                ),
+                label="vision",
+            )
     except Exception as exc:
         status_code = 500
         raise RuntimeError(f"LLM API call failed: {exc}") from exc
@@ -195,16 +218,17 @@ async def call_text_llm(
         )
 
     try:
-        response = await _with_retry(
-            lambda: client.chat.completions.create(
-                model=target_model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.0,
-                max_tokens=2048,
-                extra_headers=extra_headers,
-            ),
-            label="text",
-        )
+        async with _LLM_SEM:
+            response = await _with_retry(
+                lambda: client.chat.completions.create(
+                    model=target_model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0,
+                    max_tokens=2048,
+                    extra_headers=extra_headers,
+                ),
+                label="text",
+            )
     except Exception:
         status_code = 500
         raise

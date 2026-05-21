@@ -4,13 +4,12 @@ import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import SessionInfo, get_current_session
 from app.config import settings
 from app.constants import Module
 from app.context import current_document_ref
-from app.database import get_db
+from app.database import async_session
 from app.models.orm import APInvoice
 from app.services import audit_service
 from app.services.ap_invoice_service import extract_ap_invoice_data, suggest_gl_for_items
@@ -31,10 +30,13 @@ router = APIRouter(prefix="/api/v1/ap-invoice", tags=["AP Invoice"])
 async def extract_ap_invoice(
     request: Request,
     file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
 ):
-    """Stateless AP Invoice OCR extraction using Vision LLM."""
+    """Stateless AP Invoice OCR extraction using Vision LLM.
+
+    DB sessions are scoped tightly — the long-running LLM call (2-10s) runs
+    with no connection held, so the pool can't be exhausted under burst load.
+    """
     current_document_ref.set(file.filename or "")
     await audit_service.log_action(
         session,
@@ -54,50 +56,56 @@ async def extract_ap_invoice(
     mime_type = get_mime_type(filename)
     data_url = f"data:{mime_type};base64,{base64.b64encode(file_bytes).decode()}"
 
-    task = await create_task(
-        db,
-        tenant_id=session.tenant_id,
-        business_unit_id=session.business_unit_id,
-        module_id=Module.AP_INVOICE,
-        original_filename=filename,
-        carmen_user_id=session.carmen_user_id,
-    )
+    # Short DB session: create the task row, then release the connection.
+    async with async_session() as db:
+        task = await create_task(
+            db,
+            tenant_id=session.tenant_id,
+            business_unit_id=session.business_unit_id,
+            module_id=Module.AP_INVOICE,
+            original_filename=filename,
+            carmen_user_id=session.carmen_user_id,
+        )
+        task_id = str(task.id)
 
-    data = await extract_ap_invoice_data(data_url, filename, str(task.id))
+    # LLM extraction — no DB connection held during this call.
+    data = await extract_ap_invoice_data(data_url, filename, task_id)
 
     doc_no = data.get("documentNumber")
     vendor_name = data.get("vendorName")
     is_duplicate = False
 
-    if doc_no and vendor_name:
-        is_duplicate = await has_submitted_doc(
-            db,
-            APInvoice,
-            tenant_id=session.tenant_id,
-            business_unit_id=session.business_unit_id,
-            doc_no=doc_no,
-            vendor_name=vendor_name,
-        )
-        if is_duplicate:
-            logger.info("Duplicate AP Invoice: %s / %s", doc_no, vendor_name)
+    # Short DB session: duplicate check + insert AP invoice row.
+    async with async_session() as db:
+        if doc_no and vendor_name:
+            is_duplicate = await has_submitted_doc(
+                db,
+                APInvoice,
+                tenant_id=session.tenant_id,
+                business_unit_id=session.business_unit_id,
+                doc_no=doc_no,
+                vendor_name=vendor_name,
+            )
+            if is_duplicate:
+                logger.info("Duplicate AP Invoice: %s / %s", doc_no, vendor_name)
 
-    if not is_duplicate:
-        ap_inv = APInvoice(
-            id=str(uuid.uuid4()),
-            task_id=task.id,
-            tenant_id=session.tenant_id,
-            business_unit_id=session.business_unit_id,
-            vendor_name=vendor_name,
-            doc_no=doc_no,
-            doc_date=parse_doc_date(data.get("documentDate")),
-            original_filename=file.filename,
-            carmen_user_id=session.carmen_user_id or None,
-        )
-        db.add(ap_inv)
-        await db.commit()
-        data["id"] = ap_inv.id
-    else:
-        data["id"] = None
+        if not is_duplicate:
+            ap_inv = APInvoice(
+                id=str(uuid.uuid4()),
+                task_id=task_id,
+                tenant_id=session.tenant_id,
+                business_unit_id=session.business_unit_id,
+                vendor_name=vendor_name,
+                doc_no=doc_no,
+                doc_date=parse_doc_date(data.get("documentDate")),
+                original_filename=file.filename,
+                carmen_user_id=session.carmen_user_id or None,
+            )
+            db.add(ap_inv)
+            await db.commit()
+            data["id"] = ap_inv.id
+        else:
+            data["id"] = None
 
     data["is_duplicate"] = is_duplicate
     return data

@@ -48,11 +48,28 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+# Periodically sweep dead keys (IPs that haven't been seen in a while) so the
+# dict doesn't grow unbounded across months of operation.
+_SWEEP_INTERVAL_SECONDS = 300.0  # every 5 minutes
+_KEY_TTL_SECONDS = 3600.0  # drop keys whose last request was >1h ago
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app) -> None:
         super().__init__(app)
         # key: "{ip}:{group}" → deque of request timestamps
         self._windows: dict[str, deque[float]] = defaultdict(deque)
+        self._last_sweep: float = time.monotonic()
+
+    def _maybe_sweep(self, now: float) -> None:
+        """Drop keys with empty or stale windows. O(n) over the dict — runs rarely."""
+        if now - self._last_sweep < _SWEEP_INTERVAL_SECONDS:
+            return
+        self._last_sweep = now
+        cutoff = now - _KEY_TTL_SECONDS
+        dead = [k for k, w in self._windows.items() if not w or w[-1] < cutoff]
+        for k in dead:
+            del self._windows[k]
 
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
@@ -64,6 +81,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         key = f"{_client_ip(request)}:{group}"
 
         now = time.monotonic()
+        self._maybe_sweep(now)
+
         window = self._windows[key]
 
         cutoff = now - window_sec

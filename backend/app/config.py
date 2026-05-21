@@ -88,6 +88,9 @@ class Settings(BaseSettings):
     class Config:
         env_file = Path(__file__).parent.parent / ".env"
         env_file_encoding = "utf-8"
+        # Ignore stale .env entries from removed features (e.g. upload_dir / export_dir
+        # from the pre-"no file storage" era) instead of crashing the app at startup.
+        extra = "ignore"
 
 
 settings = Settings()

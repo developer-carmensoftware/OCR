@@ -93,6 +93,9 @@ async def _deactivate_current_session() -> None:
         async with async_session() as db:
             await db.execute(update(OcrSession).where(OcrSession.id == sid).values(is_active=False))
             await db.commit()
+        from app.auth.dependencies import invalidate_session_cache
+
+        invalidate_session_cache(sid)
         logger.info("Carmen returned 401 — session %s deactivated", sid)
     except Exception:
         logger.exception("Failed to deactivate session %s after Carmen 401", sid)

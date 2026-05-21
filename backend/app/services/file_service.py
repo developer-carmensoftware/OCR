@@ -7,6 +7,9 @@ from app.utils.image_processing import is_valid_image, validate_magic_bytes
 
 logger = logging.getLogger(__name__)
 
+# Read in 1MB chunks so we can abort before loading a 200MB upload bomb into memory.
+_READ_CHUNK_SIZE = 1024 * 1024
+
 
 class FileService:
     """
@@ -21,6 +24,11 @@ class FileService:
         """
         Validates file type and size, then reads into memory.
         Raises HTTPException on failure.
+
+        Reads the upload in chunks so we abort early on oversize files instead
+        of loading the whole body into RAM before checking size. This prevents
+        a malicious or buggy client from OOM-ing the worker by sending a 1GB
+        body while declaring max-allowed size in the headers.
         """
         filename = file.filename
         if not filename:
@@ -33,29 +41,35 @@ class FileService:
                 detail=f"ประเภทไฟล์ไม่รองรับ: {filename} (รองรับ JPG, PNG, PDF, WebP)",
             )
 
-        # 2. Size Validation
-        # Max size from settings (default 10MB)
         max_bytes = settings.max_file_size_mb * 1024 * 1024
 
-        # We need to read it to check size if the content-length header is missing/unreliable
-        content = await file.read()
-        file_size = len(content)
+        # 2. Streamed size enforcement — abort as soon as we cross the limit.
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            chunk = await file.read(_READ_CHUNK_SIZE)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > max_bytes:
+                logger.warning("File size limit exceeded: %s (%d+ bytes)", filename, total)
+                # Stop draining — release the connection and reject.
+                raise HTTPException(
+                    status_code=413,
+                    detail=(f"ไฟล์ {filename} มีขนาดใหญ่เกินไป (จำกัด {settings.max_file_size_mb}MB)"),
+                )
+            chunks.append(chunk)
 
-        # Magic bytes check — reject disguised files (e.g. .exe renamed to .jpg)
+        if total == 0:
+            raise HTTPException(status_code=400, detail=f"ไฟล์ {filename} ไม่มีข้อมูล (Empty file)")
+
+        content = b"".join(chunks)
+
+        # 3. Magic bytes check — reject disguised files (e.g. .exe renamed to .jpg).
         try:
             validate_magic_bytes(content, filename)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
-
-        if file_size > max_bytes:
-            logger.warning("File size limit exceeded: %s (%d bytes)", filename, file_size)
-            raise HTTPException(
-                status_code=400,
-                detail=f"ไฟล์ {filename} มีขนาดใหญ่เกินไป (จำกัด {settings.max_file_size_mb}MB)",
-            )
-
-        if file_size == 0:
-            raise HTTPException(status_code=400, detail=f"ไฟล์ {filename} ไม่มีข้อมูล (Empty file)")
 
         return content
 

@@ -5,7 +5,7 @@
 
 **สถานะ ณ วันที่เริ่มต้น:** 2026-05-20
 **ผู้ดูแล:** Solo dev + senior consultation
-**ลูกค้าปัจจุบัน:** 100++ และโตขึ้นเรื่อยๆ
+**เป้าหมาย:** รองรับ 100++ users และขยายต่อเนื่อง (ปัจจุบันอยู่ระหว่าง dev/test — 1 tenant, 1 BU)
 
 ---
 
@@ -55,19 +55,27 @@
 - [x] เขียน `scripts/disk_alert.ps1` → alert ถ้า disk เหลือ <20%
 - [x] เปิด MariaDB slow query log (เพิ่มใน `my.ini` + restart service แล้ว — log ที่ `C:\tmp\mariadb-slow.log`)
 
-### Day 5-7: Baseline + เตรียมข้อมูลสำหรับ senior
+### Day 5-7: Baseline + Load Test + DPA + เตรียมข้อมูลสำหรับ senior
 
-- [x] รัน query วัด peak traffic 30 วันที่ผ่านมา (peak: 19 calls/hr วันที่ 2026-05-15)
+- [x] รัน query วัด peak traffic (dev/test environment — peak: 19 calls/hr วันที่ 2026-05-15)
 - [x] วัด DB size + disk usage ปัจจุบัน (DB: 6.91 MB, 42 tables)
-- [x] นับจำนวน tenants + business_units ที่ active 30 วันล่าสุด (1 tenant, 1 BU)
+- [x] นับจำนวน tenants + business_units ปัจจุบัน (1 tenant, 1 BU — dev/test)
 - [x] เขียน `docs/INCIDENT_PLAYBOOK.md`
-- [ ] เตรียมคำถามไปถาม senior (ดู section "คำถามที่ต้องไปถาม senior" ด้านล่าง)
+- [ ] **รัน load test เบื้องต้น** — ใช้ [locust](https://locust.io/) หรือ k6 simulate concurrent extractions:
+  - วัด breaking point ของ single replica
+  - บันทึก p95 latency ที่ 10 / 20 / 50 / 100 concurrent users
+  - ผลใช้ตัดสินใจว่า Phase 3 (horizontal scale) ต้องเริ่มเมื่อไหร่
+- [ ] **ตรวจสอบสถานะ DPA กับ senior — blocker ก่อน go-live:**
+  - มี Data Processing Agreement กับบริษัทลูกค้าหรือยัง?
+  - ถ้าไม่มี → ต้องร่างและเซ็นก่อนเปิดใช้งานจริง (100+ users กระทบ PDPA)
+- [ ] เตรียมคำถามอื่นๆ ไปถาม senior (ดู section "คำถามที่ต้องไปถาม senior" ด้านล่าง)
 
 ### ตัวชี้วัดความสำเร็จ Phase 0
 - มี backup ที่ restore ได้จริง อย่างน้อย 1 ครั้งต่อวัน
 - รู้ทันที (ภายใน 5 นาที) เมื่อระบบล่ม
-- รู้ peak capacity ปัจจุบันของระบบ
+- รู้ breaking point ของ single replica จาก load test
 - มีเอกสาร incident response
+- DPA status ชัดเจน (มีแล้ว หรือมี plan ร่างภายในกี่วัน)
 
 ---
 
@@ -88,13 +96,16 @@
 - [ ] ทดสอบ failover scenario
 - [ ] ปิด port 3306 ของ DB เดิมหลัง migrate เสร็จ
 
-### Week 4: Object Storage + CDN
+### Week 4: CI/CD Pipeline พื้นฐาน + Cloudflare
 
-- [ ] สมัคร S3 หรือ DigitalOcean Spaces ($5/mo)
-- [ ] เขียน migration script: ย้าย `archives/` ขึ้น storage
-- [ ] แก้ `file_service.py` ให้อ่าน/เขียนจาก S3 แทน local filesystem
-- [ ] ตั้ง Cloudflare (ฟรี) — DDoS protection + SSL + CDN
-- [ ] ทดสอบ upload/download speed
+> ขยับมาจาก Phase 2 เพราะ manual deploy ทุกครั้งเสี่ยง production โดยตรง สำหรับ solo dev นี่คือ safety net ที่จำเป็นตั้งแต่ต้น
+
+- [ ] ตั้ง GitHub Actions workflow พื้นฐาน:
+  - [ ] รัน `pytest` ทุก push — ถ้า fail ห้าม deploy
+  - [ ] รัน `npm run build` สำหรับ frontend
+  - [ ] Manual trigger deploy to production (ไม่ auto — ต้องกด approve)
+- [ ] เขียน smoke test script — รันหลัง deploy ทุกครั้ง (`/livez`, `/readyz`, `/api/v1/ocr/health`)
+- [ ] ตั้ง Cloudflare (ฟรี) — DDoS protection + SSL + CDN ไม่ต้องเพิ่มงบ
 
 ### Week 5: Retention Policy ของ Business Data
 
@@ -103,9 +114,9 @@
   - [ ] `ocr_tasks` — สมมติ 5 ปี + archive
   - [ ] `credit_cards` + `credit_card_transactions` — สมมติ 5 ปี + archive
   - [ ] `ap_invoices` — สมมติ 5 ปี + archive
-  - [ ] `uploads/` (รูปภาพ) — ขึ้นกับว่าลูกค้าถือต้นฉบับเองหรือไม่
+  - ~~`uploads/` (รูปภาพ)~~ — ระบบไม่เก็บไฟล์ภาพ (stateless extraction) ไม่มีอะไรต้อง retain
 - [ ] เขียน `docs/DATA_RETENTION.md` policy ฉบับทางการ
-- [ ] เพิ่ม cold storage tier (Glacier $0.004/GB) สำหรับข้อมูลเก่า > 1 ปี
+- [ ] เพิ่ม cold storage tier (Glacier $0.004/GB) สำหรับ archive CSV ข้อมูลเก่า > 1 ปี
 
 ### Week 6: Backup Verification + DR Test
 
@@ -116,7 +127,7 @@
 
 ### ตัวชี้วัดความสำเร็จ Phase 1
 - DB ไม่อยู่บนเครื่องเดียวกับ backend แล้ว
-- `archives/` อยู่บน cloud storage
+- มี CI/CD ที่บังคับ tests ผ่านก่อน deploy ได้ — ไม่มี manual deploy โดยไม่ผ่าน pipeline
 - มี retention policy ครอบคลุมทุก table
 - DR drill ทำสำเร็จ — กู้ระบบได้ใน <2 ชม.
 
@@ -124,18 +135,20 @@
 
 ## Phase 2: Operational Excellence (เดือนที่ 2)
 
-> เป้าหมาย: deploy ปลอดภัย, มองเห็น performance, สื่อสารกับลูกค้าได้
+> เป้าหมาย: มองเห็น performance จริง, staging environment, สื่อสารกับลูกค้าได้
 > งบประมาณ: ~$150-200/เดือน
 
-### Week 7-8: Staging Environment + CI/CD
+### Week 7-8: Staging Environment + CI/CD เต็มรูปแบบ
 
-- [ ] Setup staging environment (clone ของ production)
-- [ ] เขียน GitHub Actions workflow:
-  - [ ] รัน pytest ทุก push
-  - [ ] รัน frontend tests + build
-  - [ ] Auto-deploy to staging on merge to develop
-  - [ ] Manual approval for production deploy
-- [ ] เขียน smoke test script — รันหลัง deploy ทุกครั้ง
+> CI/CD พื้นฐาน (tests + manual deploy) ทำไปแล้วใน Phase 1 Week 4
+> Phase นี้ขยายเป็น full pipeline พร้อม staging
+
+- [ ] Setup staging environment (clone ของ production — DB แยก, URL แยก)
+- [ ] ขยาย GitHub Actions workflow:
+  - [ ] Auto-deploy to staging on merge to `develop`
+  - [ ] Integration tests รันบน staging หลัง deploy
+  - [ ] Manual approval gate ก่อน promote to production
+- [ ] เพิ่ม database migration test ใน CI — รัน migrations บน fresh DB ก่อน deploy
 
 ### Week 9: Performance Monitoring
 
@@ -185,18 +198,20 @@
 
 - [ ] เพิ่ม backend replica ที่ 2 + Load Balancer (HAProxy / Nginx / Cloud LB)
 - [ ] เพิ่ม Redis (managed, ~$15-30/mo) สำหรับ:
-  - [ ] Rate limiter (distributed)
-  - [ ] Session cache
+  - [ ] Rate limiter (distributed — แทน in-memory ที่ไม่ sync ข้าม workers)
+  - [ ] Session cache (ขยายจาก in-process cache ปัจจุบัน ให้ shared ข้าม replicas)
   - [ ] Quota counters
 - [ ] DB read replica สำหรับ admin queries + analytics
-- [ ] แยก scheduler ออกจาก web process — เป็น standalone service (1 instance only)
+- [ ] **แยก scheduler ออกจาก web process ก่อนเพิ่ม replica** — ถ้าเพิ่ม workers โดยไม่แยก scheduler จะ run ซ้ำกันหลายครั้ง (retention, summary, anomaly ทำงานซ้ำ)
 
 ### Code Changes Required
 
 - [ ] Refactor [rate_limit.py](../backend/app/middleware/rate_limit.py) ใช้ Redis แทน in-memory
 - [ ] Refactor [rate_limit_service.py](../backend/app/services/rate_limit_service.py) เหมือนกัน
 - [ ] Implement Redis-based distributed lock สำหรับ scheduler jobs
-- [ ] เพิ่ม session caching layer ก่อน DB query
+- [x] ~~เพิ่ม session caching layer ก่อน DB query~~ — **Done (2026-05-21)**: in-process cache 60s TTL + throttled `last_used_at` write ลด DB hot-spot ลงแล้ว; upgrade เป็น Redis เมื่อ deploy multi-replica
+- [x] ~~LLM call ไม่มี timeout~~ — **Done (2026-05-21)**: timeout 60s + global semaphore 16 concurrent + jitter retry
+- [x] ~~DB connection ถูกถือตลอด LLM call~~ — **Done (2026-05-21)**: แยก DB session ออกจาก LLM phase แล้ว
 - [ ] Implement graceful drain ก่อน shutdown (ขยาย shutdown_grace_seconds)
 
 ### Testing
@@ -280,14 +295,14 @@
 | Phase | งบประมาณ/เดือน | งบประมาณ/ปี | ROI |
 |---|---|---|---|
 | Phase 0 | $0 | $0 | ป้องกัน "ปิดบริษัท" |
-| Phase 1 | $80-120 | $1,000-1,500 | ลด SPOF, มี DR |
-| Phase 2 | $150-200 | $1,800-2,400 | Deploy ปลอดภัย, monitoring |
+| Phase 1 | $80-100 | $960-1,200 | ลด SPOF, มี DR, CI/CD (ตัด S3 $5 ออก) |
+| Phase 2 | $150-200 | $1,800-2,400 | Staging env, APM, SLA |
 | Phase 3 | $300-500 | $3,600-6,000 | Scale 5-10x |
 
-**สมมติ revenue ~$5,000/เดือน (100 ลูกค้า × $50):**
-- Phase 1 = 2% revenue
-- Phase 2 = 4% revenue
-- Phase 3 = 8% revenue
+**สมมติ revenue ~$5,000/เดือน (100 users × $50):**
+- Phase 1 = ~2% revenue
+- Phase 2 = ~4% revenue
+- Phase 3 = ~8% revenue
 
 ---
 
@@ -340,3 +355,5 @@
 | 2026-05-20 | Day 1-2 เสร็จครบ: backup_db.ps1, Task Scheduler, restore test (42 tables ✓), RESTORE.md |
 | 2026-05-20 | Day 3-4 บางส่วน: Sentry capture scheduler 4 จุด, disk_alert.ps1, slow query log config — รอ UptimeRobot + Sentry alert rules + MariaDB restart |
 | 2026-05-20 | Day 5-7 เสร็จครบ: baseline queries, INCIDENT_PLAYBOOK.md — รอเตรียมคำถาม senior |
+| 2026-05-21 | แก้ไข roadmap: (1) ตัด Phase 1 Week 4 Object Storage ออก — ระบบไม่มี file storage จริง; (2) ย้าย CI/CD pipeline พื้นฐานมา Phase 1 Week 4; (3) เพิ่ม load test + DPA เป็น Phase 0 blocker; (4) ปรับ header เป็น "เป้าหมาย" แทน "ลูกค้าปัจจุบัน" |
+| 2026-05-21 | Stability fixes (code): LLM timeout 60s, global semaphore 16 concurrent, session cache 60s TTL, DB session released ก่อน LLM call, streaming file size check, rate limiter TTL eviction, perf buffer hard cap — mark ใน Phase 3 Code Changes |

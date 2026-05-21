@@ -282,6 +282,9 @@ async def revoke_session(
     if session:
         session.is_active = False  # type: ignore[assignment]
         await db.commit()
+        from app.auth.dependencies import invalidate_session_cache
+
+        invalidate_session_cache(str(session.id))
         logger.info("Session revoked: %s", session.id)
     return {"ok": True}
 

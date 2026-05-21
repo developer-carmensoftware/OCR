@@ -30,6 +30,9 @@ _REF_PATTERN = re.compile(
 # Reduces per-request DB writes from O(n requests) → O(1 batch per 10s).
 _PERF_BUFFER: list[dict] = []
 _FLUSH_SIZE = 500  # also flush immediately when buffer reaches this size
+# Hard cap — if flushes keep failing (e.g. DB down), drop the oldest rows
+# rather than letting the buffer grow until the worker OOMs.
+_BUFFER_HARD_CAP = 5000
 
 
 async def flush_perf_buffer() -> None:
@@ -105,6 +108,13 @@ class PerformanceMiddleware(BaseHTTPMiddleware):
                 "resource_id": final_doc_ref,
             }
         )
+        # If flushes have been failing (DB outage etc.), trim oldest rows so we
+        # never grow past _BUFFER_HARD_CAP. Losing the oldest perf data beats
+        # OOM-ing the worker.
+        overflow = len(_PERF_BUFFER) - _BUFFER_HARD_CAP
+        if overflow > 0:
+            del _PERF_BUFFER[:overflow]
+            logger.warning("perf buffer over cap — dropped %d oldest rows", overflow)
         if len(_PERF_BUFFER) >= _FLUSH_SIZE:
             import asyncio
 
