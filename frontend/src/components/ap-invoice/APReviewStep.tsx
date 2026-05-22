@@ -12,7 +12,6 @@ import { isNumFld, fmt } from '../../constants/apInvoice'
 import Card from '../common/Card'
 import VendorSearch from './APVendorSearch'
 import AmountSummary from './APAmountSummary'
-import TaxTypeDropdown from './TaxTypeDropdown'
 import type { TaxTypeValue } from './TaxTypeDropdown'
 import type { APColumnKey } from '../../constants/apInvoice'
 import type { Vendor } from '../../hooks/ap/useAPVendor'
@@ -48,7 +47,6 @@ interface Ctrl {
   isTaxDiff: boolean
   isGrandDiff: boolean
   isInclude: boolean
-  changeTaxType: (v: TaxTypeValue) => void
   changeLineTaxType: (rowIndex: number, v: TaxTypeValue) => void
   updateHeader: (key: string, val: string) => void
   blurHeader: (key: string, val: string) => void
@@ -109,7 +107,6 @@ export default function APReviewStep({ ctrl }: Props) {
     isDiscDiff,
     isTaxDiff,
     isGrandDiff,
-    changeTaxType,
     changeLineTaxType,
     updateHeader,
     blurHeader,
@@ -139,10 +136,6 @@ export default function APReviewStep({ ctrl }: Props) {
 
       <Card icon={<Building size={16} />} title={t.headerTitle} className="card-vendor">
         <div className="card-body">
-          <TaxTypeDropdown
-            value={(headerData.taxType as TaxTypeValue) || 'Exclude'}
-            onChange={changeTaxType}
-          />
           <div className="header-form">
             {HEADER_FIELDS(t).map(({ key, label }) => (
               <div key={key} className="form-field">

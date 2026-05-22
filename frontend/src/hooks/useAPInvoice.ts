@@ -163,10 +163,7 @@ export function useAPInvoice() {
     const qty = parseNum(snap.qty) || 1
     const unitPrice = parseNum(snap.unitPrice)
     const taxPct = parseNum(snap.taxPct) || 7
-    const taxType = (snap.taxType || extraction.headerData.taxType || 'Exclude') as
-      | 'Include'
-      | 'Exclude'
-      | 'None'
+    const taxType = (snap.taxType || 'Exclude') as 'Include' | 'Exclude' | 'None'
 
     // discountPct → derive discountAmt; otherwise read discountAmt directly
     const discountAmt =
@@ -219,22 +216,15 @@ export function useAPInvoice() {
     )
   }
 
-  // Changing any row's tax type forces all rows + header to the same type (lock consistency).
-  const changeLineTaxType = (_rowIndex: number, newTaxType: 'Include' | 'Exclude' | 'None') => {
-    changeTaxType(newTaxType)
-  }
+  // Recalculates only the changed row; leaves all other rows untouched.
+  const changeLineTaxType = (rowIndex: number, newTaxType: 'Include' | 'Exclude' | 'None') => {
+    const updatedItems = extraction.lineItems.map((item, i) => {
+      if (i !== rowIndex) return item
 
-  // Recalculates all line items when user changes the tax type.
-  // Anchor: qty * unitPrice - discountAmt (mirrors backend postprocess).
-  // Falls back to lineTotal (Include) or lineSubTotal (Exclude/None) when unitPrice is absent.
-  const changeTaxType = (newTaxType: 'Include' | 'Exclude' | 'None') => {
-    const currentTaxType = extraction.headerData.taxType
-    if (newTaxType === currentTaxType) return
-
-    const updatedItems = extraction.lineItems.map(item => {
       const qty = parseNum(item.qty) || 1
       const unitPrice = parseNum(item.unitPrice)
       const discountAmt = parseNum(item.discountAmt)
+      const currentTaxType = (item.taxType || 'Exclude') as 'Include' | 'Exclude' | 'None'
       const taxPct = parseNum(item.taxPct) || 7
 
       const afterDisc =
@@ -274,13 +264,18 @@ export function useAPInvoice() {
     })
 
     extraction.setLineItems(updatedItems)
-    extraction.updateHeader('taxType', newTaxType)
-    const newTaxAmount = updatedItems.reduce((s, i) => s + parseNum(i.taxAmt), 0)
-    const newGrandTotal = updatedItems.reduce((s, i) => s + parseNum(i.lineTotal), 0)
-    const newSubTotal = updatedItems.reduce((s, i) => s + parseNum(i.lineSubTotal), 0)
-    extraction.updateHeader('taxAmount', fmt(newTaxAmount))
-    extraction.updateHeader('grandTotal', fmt(newGrandTotal))
-    extraction.updateHeader('subTotal', fmt(newSubTotal))
+    extraction.updateHeader(
+      'taxAmount',
+      fmt(updatedItems.reduce((s, i) => s + parseNum(i.taxAmt), 0))
+    )
+    extraction.updateHeader(
+      'grandTotal',
+      fmt(updatedItems.reduce((s, i) => s + parseNum(i.lineTotal), 0))
+    )
+    extraction.updateHeader(
+      'subTotal',
+      fmt(updatedItems.reduce((s, i) => s + parseNum(i.lineSubTotal), 0))
+    )
   }
 
   const handleReset = () => {
@@ -358,7 +353,6 @@ export function useAPInvoice() {
     handleReset,
     adjustField,
     blurLineItem,
-    changeTaxType,
     changeLineTaxType,
     invoiceSeq: submission.invoiceSeq,
     isDuplicate: extraction.isDuplicate,

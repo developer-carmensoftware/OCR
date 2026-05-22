@@ -95,14 +95,20 @@ def _compute_line_totals(item: dict, tax_type: str, has_footer_disc: bool = Fals
     - has_footer_disc=False → discount is per-row in document (e.g. "Discount Per Unit");
       lineAmt is NET (Amount column already shows post-discount value). Don't double-deduct.
     - No lineAmt → fall back to qty × unitPrice.
+
+    Per-item VAT exemption: if LLM explicitly set taxPct=0 for a row (e.g. เบี้ยปรับผิดนัด),
+    treat that item as "None" regardless of the document-level tax_type.
     """
     qty = _num(item.get("qty")) or 1.0
     price = _num(item.get("unitPrice"))
     disc = _num(item.get("discountAmt"))
     disc_pct = _num(item.get("discountPct"))
-    # For None VAT, taxPct stays 0. For Include/Exclude default to 7 only when missing.
     tax_pct = _num(item.get("taxPct"))
-    if tax_type != "None" and tax_pct == 0.0:
+    # If LLM explicitly set taxPct=0 for this row, honour it as VAT-exempt (None).
+    # Only fall back to 7 when the field was missing/zero AND the doc is taxable.
+    item_exempt = "taxPct" in item and tax_pct == 0.0
+    effective_tax_type = "None" if item_exempt else tax_type
+    if effective_tax_type != "None" and tax_pct == 0.0:
         tax_pct = 7.0
     line_amt_doc = _num(item.get("lineAmt"))
 
@@ -122,11 +128,11 @@ def _compute_line_totals(item: dict, tax_type: str, has_footer_disc: bool = Fals
     if disc_pct == 0 and disc > 0 and invoice_amt > 0:
         disc_pct = _r2(disc / invoice_amt * 100)
 
-    if tax_type == "None":
+    if effective_tax_type == "None":
         line_sub = after_disc
         tax_amt = 0.0
         line_total = after_disc
-    elif tax_type == "Include":
+    elif effective_tax_type == "Include":
         line_sub = _r2(after_disc * 100 / (100 + tax_pct))
         tax_amt = _r2(after_disc - line_sub)
         line_total = _r2(after_disc)
@@ -140,7 +146,7 @@ def _compute_line_totals(item: dict, tax_type: str, has_footer_disc: bool = Fals
     item["discountPct"] = disc_pct  # % shown in column (for display)
     item["discountAmt"] = disc  # original discount amount (for display)
     item["taxPct"] = tax_pct
-    item["taxType"] = tax_type
+    item["taxType"] = effective_tax_type
     item["lineSubTotal"] = line_sub
     item["taxAmt"] = tax_amt
     item["lineTotal"] = line_total
