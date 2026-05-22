@@ -36,7 +36,9 @@ function buildInvoicePayload(
     const netAmt = parseNum(item.lineSubTotal)
     const taxAmt = parseNum(item.taxAmt)
     const total = parseNum(item.lineTotal)
-    const taxRate = parseNum(item.taxPct) || 7
+    // When the line has no VAT (taxAmt === 0), keep rate at 0 so Carmen does not
+    // recompute tax from the rate. The || 7 default only applies to non-zero-tax lines.
+    const taxRate = taxAmt === 0 ? 0 : parseNum(item.taxPct) || 7
     const qty = parseNum(item.qty) || 1
     const grossPrice = parseNum(item.unitPrice)
     const discAmt = parseNum(item.discountAmt)
@@ -64,7 +66,7 @@ function buildInvoicePayload(
       InvdBTaxDr: item.accountCode || '',
       InvdT1Dr: systemVendor.vat1DrAccCode || '',
       InvdT2Dr: '',
-      InvdTaxT1: headerData.taxType === 'Include' ? 'Include' : 'Add',
+      InvdTaxT1: taxAmt === 0 ? 'None' : headerData.taxType === 'Include' ? 'Include' : 'Add',
       InvdTaxR1: taxRate.toFixed(2),
       InvdTaxT2: 'None',
       InvdTaxR2: '0.00',

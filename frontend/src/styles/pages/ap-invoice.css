@@ -887,3 +887,267 @@
     padding: 0.55rem 0.6rem;
   }
 }
+
+/* ═══════════════════════════════════════════
+   TAX TYPE SELECT — in line-items table
+   ═══════════════════════════════════════════ */
+
+/* Native select styled to match ap-edit-input but with color coding */
+.ap-taxtype-select {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 0.83rem;
+  font-weight: 400;
+  color: var(--text);
+  cursor: pointer;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.ap-taxtype-select:hover {
+  border-color: var(--border);
+  background-color: white;
+}
+
+.ap-taxtype-select:focus {
+  border-color: var(--primary);
+  background-color: var(--primary-light);
+}
+
+/* ═══════════════════════════════════════════
+   TAX TYPE DROPDOWN — Emil-style animations
+   ═══════════════════════════════════════════ */
+
+/* Strong ease-out — instant feel, then settles */
+:root {
+  --ttd-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ttd-ease-in: cubic-bezier(0.55, 0, 1, 0.45);
+}
+
+.ttd-root {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.ttd-label {
+  font-size: 0.8rem;
+  color: var(--text-3);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ─── Trigger button ─── */
+.ttd-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.22rem 0.55rem 0.22rem 0.6rem;
+  border-radius: 99px;
+  font-weight: 700;
+  font-size: 0.8rem;
+  cursor: pointer;
+  border: 1px solid var(--ttd-border);
+  background: var(--ttd-bg);
+  color: var(--ttd-color);
+  /* Button press feedback — 100ms as per Emil spec */
+  transition:
+    transform 100ms var(--ttd-ease-out),
+    box-shadow 120ms var(--ttd-ease-out),
+    background 120ms ease,
+    border-color 120ms ease;
+  outline: none;
+  user-select: none;
+}
+
+.ttd-trigger:hover {
+  filter: brightness(0.96);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+/* scale(0.97) on press — immediate feedback */
+.ttd-trigger:active {
+  transform: scale(0.97);
+  box-shadow: none;
+}
+
+.ttd-trigger-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.ttd-trigger-text {
+  line-height: 1;
+}
+
+/* Chevron rotates smoothly on open/close */
+.ttd-chevron {
+  margin-left: 0.1rem;
+  color: currentColor;
+  opacity: 0.7;
+  transition: transform 200ms var(--ttd-ease-out);
+  flex-shrink: 0;
+}
+
+/* ─── Dropdown panel ─── */
+.ttd-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 100;
+  min-width: 230px;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-hi, #e5e7eb);
+  border-radius: var(--radius-lg, 10px);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.1),
+    0 2px 6px rgba(0, 0, 0, 0.06);
+  padding: 0.3rem;
+  /* Transform-origin from the trigger (top of panel) */
+  transform-origin: top left;
+
+  /* CLOSED state — instant disappearance */
+  opacity: 0;
+  transform: scale(0.95) translateY(-4px);
+  pointer-events: none;
+  transition:
+    opacity 130ms var(--ttd-ease-in),
+    transform 130ms var(--ttd-ease-in);
+}
+
+/* OPEN state — ease-out feels snappy and responsive */
+.ttd-panel[data-open='true'] {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+  pointer-events: auto;
+  transition:
+    opacity 180ms var(--ttd-ease-out),
+    transform 180ms var(--ttd-ease-out);
+}
+
+/* ─── Individual options — stagger in on open ─── */
+.ttd-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: var(--radius-md, 7px);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 100ms ease;
+
+  /* Stagger delay set via --ttd-delay CSS var in JSX */
+  opacity: 0;
+  transform: translateY(3px);
+}
+
+/* Options animate in when panel opens */
+.ttd-panel[data-open='true'] .ttd-option {
+  animation: ttdOptionIn 200ms var(--ttd-ease-out) both;
+  animation-delay: var(--ttd-delay, 0ms);
+}
+
+@keyframes ttdOptionIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ttd-option:hover {
+  background: var(--surface-hover, rgba(0, 0, 0, 0.04));
+}
+
+/* Active (press) feedback */
+.ttd-option:active {
+  background: var(--surface-2, rgba(0, 0, 0, 0.07));
+  transform: scale(0.99);
+}
+
+/* Selected option — subtle highlight */
+.ttd-option[data-active='true'] {
+  background: var(--primary-light, rgba(79, 70, 229, 0.06));
+}
+
+.ttd-option-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition:
+    background 150ms ease,
+    transform 150ms var(--ttd-ease-out);
+}
+
+.ttd-option[data-active='true'] .ttd-option-dot {
+  transform: scale(1.25);
+}
+
+.ttd-option-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 99px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ttd-option-sub {
+  font-size: 0.73rem;
+  color: var(--text-3, #9ca3af);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+/* ─── Dark mode ─── */
+[data-theme='dark'] .ttd-panel {
+  background: var(--card-bg);
+  border-color: var(--border-hi);
+  box-shadow:
+    0 8px 28px rgba(0, 0, 0, 0.35),
+    0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme='dark'] .ttd-trigger:hover {
+  filter: brightness(1.08);
+}
+
+/* ─── prefers-reduced-motion — keep opacity, remove movement ─── */
+@media (prefers-reduced-motion: reduce) {
+  .ttd-panel {
+    transition: opacity 100ms ease;
+    transform: none !important;
+  }
+  .ttd-panel[data-open='true'] {
+    transition: opacity 100ms ease;
+  }
+  .ttd-option {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+  .ttd-chevron {
+    transition: none;
+  }
+}

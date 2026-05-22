@@ -28,13 +28,15 @@ def _r2(x: float) -> float:
 
 
 def _detect_tax_type(
-    items: list[dict], deposit_pct: float, doc_sub: float, doc_grand: float
+    items: list[dict], deposit_pct: float, doc_sub: float, doc_grand: float, doc_tax: float = 0.0
 ) -> str:
-    """Decide Include vs Exclude by checking which interpretation of the items'
-    sum reconciles to the document footer. For deposit/installment docs the
-    items show the full order while the footer shows the collected amount, so
-    we scale by deposit_pct/100 before comparing. Tie-break to Exclude (more
-    common in Thai documents)."""
+    """Decide Include / Exclude / None by checking which interpretation of the
+    items' sum reconciles to the document footer.
+
+    None VAT: triggered when the document's stated tax amount is 0 AND the
+    item sum already matches the grand total (within 0.05 rounding), meaning
+    no VAT was applied at all.
+    """
     if not items:
         return "Exclude"
     item_sum = sum(
@@ -44,14 +46,24 @@ def _detect_tax_type(
     factor = (deposit_pct / 100.0) if 0 < deposit_pct < 100 else 1.0
     effective = item_sum * factor
     tax_pct = _num(items[0].get("taxPct")) or 7.0
+
     if doc_grand > 0:
+        none_diff = abs(effective - doc_grand)
         inc_diff = abs(effective - doc_grand)
         exc_diff = abs(effective * (1 + tax_pct / 100) - doc_grand)
+        ref = doc_grand
     elif doc_sub > 0:
+        none_diff = abs(effective - doc_sub)
         inc_diff = abs(effective * 100 / (100 + tax_pct) - doc_sub)
         exc_diff = abs(effective - doc_sub)
+        ref = doc_sub
     else:
         return "Exclude"
+
+    # None VAT: document explicitly shows tax = 0 and item sum ≈ grand total
+    if doc_tax == 0.0 and none_diff <= max(0.05, ref * 0.001):
+        return "None"
+
     return "Include" if inc_diff < exc_diff else "Exclude"
 
 
@@ -88,7 +100,10 @@ def _compute_line_totals(item: dict, tax_type: str, has_footer_disc: bool = Fals
     price = _num(item.get("unitPrice"))
     disc = _num(item.get("discountAmt"))
     disc_pct = _num(item.get("discountPct"))
-    tax_pct = _num(item.get("taxPct")) or 7.0
+    # For None VAT, taxPct stays 0. For Include/Exclude default to 7 only when missing.
+    tax_pct = _num(item.get("taxPct"))
+    if tax_type != "None" and tax_pct == 0.0:
+        tax_pct = 7.0
     line_amt_doc = _num(item.get("lineAmt"))
 
     if line_amt_doc and disc > 0 and not has_footer_disc:
@@ -107,7 +122,11 @@ def _compute_line_totals(item: dict, tax_type: str, has_footer_disc: bool = Fals
     if disc_pct == 0 and disc > 0 and invoice_amt > 0:
         disc_pct = _r2(disc / invoice_amt * 100)
 
-    if tax_type == "Include":
+    if tax_type == "None":
+        line_sub = after_disc
+        tax_amt = 0.0
+        line_total = after_disc
+    elif tax_type == "Include":
         line_sub = _r2(after_disc * 100 / (100 + tax_pct))
         tax_amt = _r2(after_disc - line_sub)
         line_total = _r2(after_disc)
@@ -137,9 +156,16 @@ def _build_deposit_row(
     not_collected = (100.0 - deposit_pct) / 100.0
     full_sub = _r2(sum(_num(i["lineSubTotal"]) for i in items))
     full_grand = _r2(sum(_num(i["lineTotal"]) for i in items))
-    tax_pct = _num(items[0].get("taxPct")) or 7.0
+    tax_pct = _num(items[0].get("taxPct"))
+    if tax_type != "None" and tax_pct == 0.0:
+        tax_pct = 7.0
 
-    if tax_type == "Include":
+    if tax_type == "None":
+        adj_sub = _r2(-full_sub * not_collected)
+        adj_tax = 0.0
+        adj_lt = adj_sub
+        unit_price = adj_sub
+    elif tax_type == "Include":
         adj_grand = _r2(-full_grand * not_collected)
         adj_sub = _r2(adj_grand * 100 / (100 + tax_pct))
         adj_tax = _r2(adj_grand - adj_sub)
@@ -188,7 +214,7 @@ def postprocess(raw: dict) -> dict:
 
     has_footer_disc = doc_disc > 0
     _distribute_footer_discount(items, doc_disc)
-    tax_type = _detect_tax_type(items, deposit_pct, doc_sub, doc_grand)
+    tax_type = _detect_tax_type(items, deposit_pct, doc_sub, doc_grand, doc_tax)
     for item in items:
         _compute_line_totals(item, tax_type, has_footer_disc=has_footer_disc)
 

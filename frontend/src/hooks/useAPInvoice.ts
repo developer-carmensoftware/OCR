@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { AP_I18N } from '../constants/apInvoice'
 import type { APLocale } from '../constants/apInvoice'
 import { showToast } from '../lib/toast'
+import { parseNum, fmt, round2 } from '../lib/format'
 import { saveAPVendorMapping } from '../lib/api/config'
 import { useAPExtraction } from './ap/useAPExtraction'
 import { useAPVendor } from './ap/useAPVendor'
@@ -117,6 +118,171 @@ export function useAPInvoice() {
     extraction.setLineItems(updated)
   }
 
+  // Wraps extraction.blurHeader so that editing header taxAmount also propagates
+  // to line items. When the user sets tax to 0, all lines are zeroed. When non-zero,
+  // the standard diff-adjust (last item) is used — same as clicking the Adjust button.
+  const blurHeader = (key: string, val: string) => {
+    extraction.blurHeader(key, val)
+    if (key !== 'taxAmount') return
+    const tgt = parseNum(val)
+    const sum = validation.sumTax
+    if (tgt === sum) return
+    if (tgt === 0) {
+      extraction.setLineItems(prev =>
+        prev.map(item => ({ ...item, taxAmt: '0.00', taxPct: '0.00' }))
+      )
+    } else {
+      extraction.setLineItems(validation.adjustField(tgt, sum, 'taxAmt', extraction.lineItems))
+    }
+  }
+
+  // Fields whose blur triggers a full line recalculation.
+  const RECALC_TRIGGERS = new Set(['qty', 'unitPrice', 'discountPct', 'discountAmt', 'taxPct'])
+
+  // Drop-in replacement for extraction.blurItem for table cells.
+  // Formats the edited value and, for driver fields, recalculates all dependent amounts
+  // in a single setLineItems call so there is no stale-state race.
+  const blurLineItem = (rowIndex: number, field: string, rawValue: string) => {
+    const item = extraction.lineItems[rowIndex]
+    if (!item) return
+
+    // Always format the edited field first
+    const formattedValue = fmt(rawValue)
+
+    if (!RECALC_TRIGGERS.has(field)) {
+      // Non-driver field: just format in place
+      extraction.setLineItems(prev =>
+        prev.map((it, i) => (i === rowIndex ? { ...it, [field]: formattedValue } : it))
+      )
+      return
+    }
+
+    // Build a snapshot of the row with the newly formatted value applied
+    const snap = { ...item, [field]: formattedValue }
+
+    const qty = parseNum(snap.qty) || 1
+    const unitPrice = parseNum(snap.unitPrice)
+    const taxPct = parseNum(snap.taxPct) || 7
+    const taxType = (snap.taxType || extraction.headerData.taxType || 'Exclude') as
+      | 'Include'
+      | 'Exclude'
+      | 'None'
+
+    // discountPct → derive discountAmt; otherwise read discountAmt directly
+    const discountAmt =
+      field === 'discountPct'
+        ? round2((qty * unitPrice * parseNum(snap.discountPct)) / 100)
+        : parseNum(snap.discountAmt)
+
+    const afterDisc = round2(qty * unitPrice - discountAmt)
+
+    let lineSubTotal: number, taxAmt: number, lineTotal: number
+
+    if (taxType === 'None') {
+      lineSubTotal = afterDisc
+      taxAmt = 0
+      lineTotal = afterDisc
+    } else if (taxType === 'Include') {
+      lineSubTotal = round2((afterDisc * 100) / (100 + taxPct))
+      taxAmt = round2(afterDisc - lineSubTotal)
+      lineTotal = afterDisc
+    } else {
+      lineSubTotal = afterDisc
+      taxAmt = round2((lineSubTotal * taxPct) / 100)
+      lineTotal = round2(lineSubTotal + taxAmt)
+    }
+
+    const updatedItem = {
+      ...snap,
+      [field]: formattedValue,
+      discountAmt: fmt(discountAmt),
+      lineSubTotal: fmt(lineSubTotal),
+      taxAmt: fmt(taxAmt),
+      lineTotal: fmt(lineTotal),
+    }
+
+    const updatedItems = extraction.lineItems.map((it, i) => (i === rowIndex ? updatedItem : it))
+    extraction.setLineItems(updatedItems)
+
+    // Sync header summary totals
+    extraction.updateHeader(
+      'taxAmount',
+      fmt(updatedItems.reduce((s, it) => s + parseNum(it.taxAmt), 0))
+    )
+    extraction.updateHeader(
+      'grandTotal',
+      fmt(updatedItems.reduce((s, it) => s + parseNum(it.lineTotal), 0))
+    )
+    extraction.updateHeader(
+      'subTotal',
+      fmt(updatedItems.reduce((s, it) => s + parseNum(it.lineSubTotal), 0))
+    )
+  }
+
+  // Changing any row's tax type forces all rows + header to the same type (lock consistency).
+  const changeLineTaxType = (_rowIndex: number, newTaxType: 'Include' | 'Exclude' | 'None') => {
+    changeTaxType(newTaxType)
+  }
+
+  // Recalculates all line items when user changes the tax type.
+  // Anchor: qty * unitPrice - discountAmt (mirrors backend postprocess).
+  // Falls back to lineTotal (Include) or lineSubTotal (Exclude/None) when unitPrice is absent.
+  const changeTaxType = (newTaxType: 'Include' | 'Exclude' | 'None') => {
+    const currentTaxType = extraction.headerData.taxType
+    if (newTaxType === currentTaxType) return
+
+    const updatedItems = extraction.lineItems.map(item => {
+      const qty = parseNum(item.qty) || 1
+      const unitPrice = parseNum(item.unitPrice)
+      const discountAmt = parseNum(item.discountAmt)
+      const taxPct = parseNum(item.taxPct) || 7
+
+      const afterDisc =
+        unitPrice > 0
+          ? round2(qty * unitPrice - discountAmt)
+          : currentTaxType === 'Include'
+            ? parseNum(item.lineTotal)
+            : parseNum(item.lineSubTotal)
+
+      let lineSubTotal: number, taxAmt: number, lineTotal: number, newTaxPct: number
+
+      if (newTaxType === 'None') {
+        lineSubTotal = afterDisc
+        taxAmt = 0
+        lineTotal = afterDisc
+        newTaxPct = 0
+      } else if (newTaxType === 'Include') {
+        newTaxPct = taxPct
+        lineSubTotal = round2((afterDisc * 100) / (100 + taxPct))
+        taxAmt = round2(afterDisc - lineSubTotal)
+        lineTotal = afterDisc
+      } else {
+        newTaxPct = taxPct
+        lineSubTotal = afterDisc
+        taxAmt = round2((lineSubTotal * taxPct) / 100)
+        lineTotal = round2(lineSubTotal + taxAmt)
+      }
+
+      return {
+        ...item,
+        lineSubTotal: fmt(lineSubTotal),
+        taxAmt: fmt(taxAmt),
+        lineTotal: fmt(lineTotal),
+        taxPct: fmt(newTaxPct),
+        taxType: newTaxType,
+      }
+    })
+
+    extraction.setLineItems(updatedItems)
+    extraction.updateHeader('taxType', newTaxType)
+    const newTaxAmount = updatedItems.reduce((s, i) => s + parseNum(i.taxAmt), 0)
+    const newGrandTotal = updatedItems.reduce((s, i) => s + parseNum(i.lineTotal), 0)
+    const newSubTotal = updatedItems.reduce((s, i) => s + parseNum(i.lineSubTotal), 0)
+    extraction.updateHeader('taxAmount', fmt(newTaxAmount))
+    extraction.updateHeader('grandTotal', fmt(newGrandTotal))
+    extraction.updateHeader('subTotal', fmt(newSubTotal))
+  }
+
   const handleReset = () => {
     extraction.resetExtraction()
     vendor.resetVendor()
@@ -177,7 +343,7 @@ export function useAPInvoice() {
     activeCols: validation.activeCols,
     handleFileChange: extraction.handleFileChange,
     updateHeader: extraction.updateHeader,
-    blurHeader: extraction.blurHeader,
+    blurHeader,
     updateItem: extraction.updateItem,
     blurItem: extraction.blurItem,
     confirmMapping,
@@ -191,6 +357,9 @@ export function useAPInvoice() {
     handleGenerate: submission.handleGenerate,
     handleReset,
     adjustField,
+    blurLineItem,
+    changeTaxType,
+    changeLineTaxType,
     invoiceSeq: submission.invoiceSeq,
     isDuplicate: extraction.isDuplicate,
   }

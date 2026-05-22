@@ -229,7 +229,7 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
 
   const updateHeader = (key: string, val: string) => setHeaderData(p => ({ ...p, [key]: val }))
   const blurHeader = (key: string, val: string) => {
-    if (val) setHeaderData(p => ({ ...p, [key]: fmt(val) }))
+    setHeaderData(p => ({ ...p, [key]: fmt(val) }))
   }
   const updateItem = (idx: number, key: string, val: string) =>
     setLineItems(items =>
@@ -245,7 +245,7 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
       })
     )
   const blurItem = (idx: number, key: string, val: string) => {
-    if (val) setLineItems(items => items.map((r, i) => (i === idx ? { ...r, [key]: fmt(val) } : r)))
+    setLineItems(items => items.map((r, i) => (i === idx ? { ...r, [key]: fmt(val) } : r)))
   }
 
   return {

@@ -1,8 +1,6 @@
 import type React from 'react'
 import {
   Building,
-  CircleDot,
-  PlusCircle,
   LayoutList,
   CheckCircle2,
   AlertCircle,
@@ -14,6 +12,8 @@ import { isNumFld, fmt } from '../../constants/apInvoice'
 import Card from '../common/Card'
 import VendorSearch from './APVendorSearch'
 import AmountSummary from './APAmountSummary'
+import TaxTypeDropdown from './TaxTypeDropdown'
+import type { TaxTypeValue } from './TaxTypeDropdown'
 import type { APColumnKey } from '../../constants/apInvoice'
 import type { Vendor } from '../../hooks/ap/useAPVendor'
 import type { APInvoiceHeader } from '../../constants/apInvoice'
@@ -48,10 +48,13 @@ interface Ctrl {
   isTaxDiff: boolean
   isGrandDiff: boolean
   isInclude: boolean
+  changeTaxType: (v: TaxTypeValue) => void
+  changeLineTaxType: (rowIndex: number, v: TaxTypeValue) => void
   updateHeader: (key: string, val: string) => void
   blurHeader: (key: string, val: string) => void
   updateItem: (idx: number, key: string, val: string) => void
   blurItem: (idx: number, key: string, val: string) => void
+  blurLineItem: (idx: number, key: string, val: string) => void
   adjustField: (
     tgt: unknown,
     sumCur: unknown,
@@ -106,11 +109,12 @@ export default function APReviewStep({ ctrl }: Props) {
     isDiscDiff,
     isTaxDiff,
     isGrandDiff,
-    isInclude,
+    changeTaxType,
+    changeLineTaxType,
     updateHeader,
     blurHeader,
     updateItem,
-    blurItem,
+    blurLineItem,
     adjustField,
     setStep,
     goToAccount,
@@ -135,39 +139,10 @@ export default function APReviewStep({ ctrl }: Props) {
 
       <Card icon={<Building size={16} />} title={t.headerTitle} className="card-vendor">
         <div className="card-body">
-          {headerData.taxType && (
-            <div
-              style={{
-                marginBottom: '0.75rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-              }}
-            >
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-3)' }}>
-                Tax calculation type :
-              </span>
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.35rem',
-                  padding: '0.2rem 0.7rem',
-                  borderRadius: '99px',
-                  fontWeight: 700,
-                  fontSize: '0.8rem',
-                  background: isInclude
-                    ? 'var(--ap-include-bg, #fffbeb)'
-                    : 'var(--ap-exclude-bg, #eff6ff)',
-                  color: isInclude ? 'var(--amber-700, #b45309)' : 'var(--blue-700, #1d4ed8)',
-                  border: `1px solid ${isInclude ? 'var(--amber-300, #fcd34d)' : 'var(--blue-300, #93c5fd)'}`,
-                }}
-              >
-                {isInclude ? <CircleDot size={13} /> : <PlusCircle size={13} />}
-                {isInclude ? 'Tax Include' : 'Tax Exclude'}
-              </span>
-            </div>
-          )}
+          <TaxTypeDropdown
+            value={(headerData.taxType as TaxTypeValue) || 'Exclude'}
+            onChange={changeTaxType}
+          />
           <div className="header-form">
             {HEADER_FIELDS(t).map(({ key, label }) => (
               <div key={key} className="form-field">
@@ -212,6 +187,25 @@ export default function APReviewStep({ ctrl }: Props) {
                   {activeCols.map(c => {
                     const fld = fieldMappings[`col${c}` as APColumnKey]
                     const numeric = isNumFld(fld)
+
+                    if (fld === 'taxType') {
+                      const tv = (item.taxType as TaxTypeValue | undefined) || 'Exclude'
+                      return (
+                        <td key={c}>
+                          <select
+                            aria-label="Tax type"
+                            className="ap-taxtype-select"
+                            value={tv}
+                            onChange={e => changeLineTaxType(ri, e.target.value as TaxTypeValue)}
+                          >
+                            <option value="Include">Include</option>
+                            <option value="Exclude">Exclude</option>
+                            <option value="None">None</option>
+                          </select>
+                        </td>
+                      )
+                    }
+
                     return (
                       <td key={c}>
                         <input
@@ -220,7 +214,7 @@ export default function APReviewStep({ ctrl }: Props) {
                           className={`ap-edit-input ${numeric ? 'numeric' : ''} ${fld === 'category' ? 'category' : ''}`}
                           value={item[fld] || ''}
                           onChange={e => updateItem(ri, fld, e.target.value)}
-                          onBlur={e => numeric && blurItem(ri, fld, e.target.value)}
+                          onBlur={e => numeric && blurLineItem(ri, fld, e.target.value)}
                         />
                       </td>
                     )
