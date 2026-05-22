@@ -184,7 +184,7 @@ async def _run_job(job_name: str, coro_factory) -> None:
             ),
             {
                 "status": status.value,
-                "done": datetime.now(UTC),
+                "done": datetime.now(UTC).replace(tzinfo=None),
                 "rows": rows_affected,
                 "err": error_msg,
                 "id": run_id,

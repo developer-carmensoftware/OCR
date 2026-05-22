@@ -210,7 +210,9 @@ async def exchange_sso_token(request: Request, body: ExchangeRequest):
         await upsert_tenant_quota(db, str(tenant.id), str(tenant.plan))
         business_unit = await _upsert_business_unit(db, str(tenant.id), bu)
 
-        cutoff = datetime.now(UTC) - timedelta(hours=settings.session_ttl_hours)
+        cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(
+            hours=settings.session_ttl_hours
+        )
         deleted = await db.execute(
             delete(OcrSession).where(
                 (OcrSession.tenant_id == tenant.id)
