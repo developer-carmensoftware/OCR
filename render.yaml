@@ -99,8 +99,8 @@ services:
     runtime: static
     name: carmen-ocr-frontend
     rootDir: frontend
-    buildCommand: npm ci && npm run build
-    staticPublishPath: ./dist
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
     autoDeploy: true
     pullRequestPreviewsEnabled: true
     # SPA fallback — any unknown path serves index.html so the client-side
