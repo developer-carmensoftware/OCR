@@ -162,7 +162,7 @@ async def _run_job(job_name: str, coro_factory) -> None:
         result = await db.execute(
             insert(JobRun).values(job_name=job_name, status=JobStatus.RUNNING, started_at=started)
         )
-        run_id = result.lastrowid
+        run_id = result.inserted_primary_key[0] if result.inserted_primary_key else None
         await db.commit()
 
         try:

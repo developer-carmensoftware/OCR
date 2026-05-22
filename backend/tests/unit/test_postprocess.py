@@ -63,9 +63,10 @@ class TestDetectTaxType:
         assert result == "Exclude"
 
     def test_B2_2_include_detected_when_items_sum_equals_grand_directly(self):
-        # item = 107, taxed-included → grand=107 exactly → Include
+        # item = 107 tax-included @ 7% → grand=107, stated tax=7 → Include
+        # doc_tax must be passed so the None-VAT shortcut is skipped
         items = [self._item(qty=1, unit_price=107.0, tax_pct=7.0)]
-        result = _detect_tax_type(items, deposit_pct=0, doc_sub=0, doc_grand=107.0)
+        result = _detect_tax_type(items, deposit_pct=0, doc_sub=0, doc_grand=107.0, doc_tax=7.0)
         assert result == "Include"
 
     def test_B2_3_deposit_doc_scales_before_compare(self):
@@ -84,9 +85,10 @@ class TestDetectTaxType:
         assert _detect_tax_type([], 0, 0, 0) == "Exclude"
 
     def test_uses_doc_sub_when_doc_grand_is_zero(self):
-        # item=100 net, sub=100 → Exclude fits sub directly
+        # item=100 net, sub=100, stated tax=7 → grand unknown → Exclude fits sub directly
+        # doc_tax must be passed so the None-VAT shortcut is skipped
         items = [self._item(qty=1, unit_price=100.0, tax_pct=7.0)]
-        result = _detect_tax_type(items, deposit_pct=0, doc_sub=100.0, doc_grand=0)
+        result = _detect_tax_type(items, deposit_pct=0, doc_sub=100.0, doc_grand=0, doc_tax=7.0)
         assert result == "Exclude"
 
 
@@ -184,6 +186,31 @@ class TestComputeLineTotals:
         item = self._item(qty=1, unit_price=100.0, disc=20.0, disc_pct=0.0)
         _compute_line_totals(item, "Exclude")
         assert item["discountPct"] == pytest.approx(20.0, abs=0.01)
+
+    # ── Per-item VAT exemption (เบี้ยปรับผิดนัด) ──
+
+    def test_explicit_taxPct_zero_treated_as_none_even_in_exclude_doc(self):
+        # LLM sets taxPct=0 explicitly → item is VAT-exempt regardless of doc tax_type
+        item = {"qty": 1, "unitPrice": 22.82, "discountAmt": 0, "discountPct": 0, "taxPct": 0}
+        _compute_line_totals(item, "Exclude")
+        assert item["taxType"] == "None"
+        assert item["taxAmt"] == 0.0
+        assert item["lineTotal"] == pytest.approx(22.82, abs=0.01)
+
+    def test_missing_taxPct_key_defaults_to_7_in_exclude_doc(self):
+        # taxPct key absent entirely → not an explicit exemption → default to 7%
+        item = {"qty": 1, "unitPrice": 100.0, "discountAmt": 0, "discountPct": 0}
+        _compute_line_totals(item, "Exclude")
+        assert item["taxType"] == "Exclude"
+        assert item["taxAmt"] == pytest.approx(7.0, abs=0.01)
+
+    def test_explicit_taxPct_zero_in_include_doc_also_exempt(self):
+        # Same exemption rule applies when doc is Include
+        item = {"qty": 1, "unitPrice": 50.0, "discountAmt": 0, "discountPct": 0, "taxPct": 0}
+        _compute_line_totals(item, "Include")
+        assert item["taxType"] == "None"
+        assert item["taxAmt"] == 0.0
+        assert item["lineTotal"] == pytest.approx(50.0, abs=0.01)
 
 
 # ── B2: _build_deposit_row ────────────────────────────────────────────────────
@@ -315,6 +342,29 @@ class TestPostprocess:
         )
         result = postprocess(raw)
         assert all(i.get("category") != "เงินมัดจำ" for i in result["items"])
+
+    def test_electricity_bill_penalty_row_is_vat_exempt(self):
+        # ค่าไฟฟ้า (Exclude 7%) + เบี้ยปรับผิดนัด (VAT-exempt, taxPct=0)
+        # Numbers from real PEA bill screenshot
+        raw = self._raw(
+            items=[
+                {"qty": 1, "unitPrice": 15307.77, "discountAmt": 0, "taxPct": 7},
+                {"qty": 1, "unitPrice": 22.82, "discountAmt": 0, "taxPct": 0},  # penalty
+            ],
+            docGrandTotal=16402.13,  # 15307.77×1.07 + 22.82
+        )
+        result = postprocess(raw)
+        electricity, penalty = result["items"][0], result["items"][1]
+
+        # electricity row: 7% VAT applied
+        assert electricity["taxType"] == "Exclude"
+        assert electricity["taxAmt"] == pytest.approx(1071.54, abs=0.02)
+        assert electricity["lineTotal"] == pytest.approx(16379.31, abs=0.02)
+
+        # penalty row: no VAT
+        assert penalty["taxType"] == "None"
+        assert penalty["taxAmt"] == 0.0
+        assert penalty["lineTotal"] == pytest.approx(22.82, abs=0.01)
 
     def test_footer_discount_distributed_before_tax(self):
         # doc_disc=20 across 2 items of equal value → each gets 10
