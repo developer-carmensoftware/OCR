@@ -198,7 +198,7 @@ def _build_deposit_row(
     }
 
 
-def postprocess(raw: dict) -> dict:
+def postprocess(raw: dict | None) -> dict:
     """Convert the LLM's raw extraction into the final shape consumed by the
     frontend (`useAPInvoice.js`).
 

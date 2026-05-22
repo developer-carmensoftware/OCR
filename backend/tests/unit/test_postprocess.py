@@ -244,16 +244,19 @@ class TestBuildDepositRow:
         row = _build_deposit_row(
             items, deposit_pct=30, deposit_label="มัดจำงวดแรก", tax_type="Exclude"
         )
+        assert row is not None
         assert row["description"] == "มัดจำงวดแรก"
 
     def test_default_label_when_empty(self):
         items = self._items_with_totals()
         row = _build_deposit_row(items, deposit_pct=50, deposit_label="", tax_type="Exclude")
+        assert row is not None
         assert "50%" in row["description"]
 
     def test_deposit_row_category_is_money_deposit(self):
         items = self._items_with_totals()
         row = _build_deposit_row(items, deposit_pct=30, deposit_label="", tax_type="Exclude")
+        assert row is not None
         assert row["category"] == "เงินมัดจำ"
 
 
