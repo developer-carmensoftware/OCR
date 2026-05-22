@@ -133,20 +133,40 @@ if settings.retention_enabled and not settings.ephemeral_filesystem:
 # ── Database URL normalization ────────────────────────────────────────────────
 # Neon (and most managed Postgres providers) hand out URLs as `postgres://...`
 # or `postgresql://...` — the libpq form. SQLAlchemy needs an explicit driver,
-# and `?sslmode=require` is a libpq option that asyncpg rejects (it uses `ssl=`).
+# and several libpq-only query params (sslmode, channel_binding) must be
+# rewritten or stripped because asyncpg's connect() rejects unknown kwargs.
 
 
 def _normalize_pg_url(url: str) -> str:
+    from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
     if not url:
         return url
     if url.startswith("postgres://"):
         url = "postgresql://" + url[len("postgres://") :]
     if url.startswith("postgresql://"):
         url = "postgresql+asyncpg://" + url[len("postgresql://") :]
-    # asyncpg uses `ssl=require`, not `sslmode=require`
-    url = url.replace("sslmode=require", "ssl=require")
-    url = url.replace("sslmode=verify-full", "ssl=require")
-    return url
+
+    parts = urlsplit(url)
+    qs = parse_qsl(parts.query, keep_blank_values=True)
+    cleaned: list[tuple[str, str]] = []
+    for k, v in qs:
+        kl = k.lower()
+        if kl == "sslmode":
+            # libpq: disable/allow/prefer/require/verify-ca/verify-full
+            # asyncpg accepts: prefer/require/verify-ca/verify-full
+            cleaned.append(("ssl", "require" if v in ("verify-ca", "verify-full") else v))
+        elif kl == "channel_binding":
+            # libpq-only auth tweak — asyncpg negotiates SCRAM channel binding
+            # automatically when ssl=require, so we drop the param entirely.
+            continue
+        elif kl in {"ssl", "options", "application_name", "connect_timeout"}:
+            cleaned.append((k, v))
+        else:
+            # Drop any other libpq-only param so asyncpg.connect() doesn't choke.
+            continue
+
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(cleaned), parts.fragment))
 
 
 settings.database_url = _normalize_pg_url(settings.database_url)
