@@ -153,7 +153,7 @@ async def _run_job(job_name: str, coro_factory) -> None:
     from app.models.enums import JobStatus
     from app.models.orm import JobRun
 
-    started = datetime.now(UTC)
+    started = datetime.now(UTC).replace(tzinfo=None)
     rows_affected = None
     error_msg = None
     status = JobStatus.SUCCESS
