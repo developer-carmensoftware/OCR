@@ -98,7 +98,6 @@ services:
   - type: web
     runtime: static
     name: carmen-ocr-frontend
-    plan: free
     rootDir: frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: ./dist
