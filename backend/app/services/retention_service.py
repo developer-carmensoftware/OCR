@@ -193,9 +193,11 @@ async def _process_table(
         while True:
             del_result = await db.execute(
                 text(
-                    f"DELETE FROM {table} "
-                    f"WHERE id >= :min_id AND id <= :max_id AND created_at < :cutoff "
-                    f"LIMIT :batch"
+                    f"DELETE FROM {table} WHERE id IN ("
+                    f"  SELECT id FROM {table}"
+                    f"  WHERE id >= :min_id AND id <= :max_id AND created_at < :cutoff"
+                    f"  LIMIT :batch"
+                    f")"
                 ),
                 {"min_id": min_id, "max_id": max_id, "cutoff": cutoff, "batch": _BATCH_SIZE},
             )
@@ -215,9 +217,11 @@ async def purge_inactive_sessions() -> int:
         while True:
             result = await db.execute(
                 text(
-                    "DELETE FROM ocr_sessions "
-                    "WHERE is_active = 0 AND last_used_at < :cutoff "
-                    "LIMIT :batch"
+                    "DELETE FROM ocr_sessions WHERE id IN ("
+                    "  SELECT id FROM ocr_sessions"
+                    "  WHERE is_active = false AND last_used_at < :cutoff"
+                    "  LIMIT :batch"
+                    ")"
                 ),
                 {"cutoff": cutoff, "batch": _BATCH_SIZE},
             )

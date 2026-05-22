@@ -1,29 +1,38 @@
-"""One-shot script: drop + recreate carmen_ai, then run ensure_db() to create schema."""
+"""One-shot script: wipe carmen_ai's public schema, then run ensure_db() to recreate.
+
+PostgreSQL note:
+  Managed providers (Neon, Render Postgres, Supabase) do not let you DROP/CREATE
+  the database itself from a connection — that's a console/API operation. This
+  script instead drops and recreates the `public` schema, which has the same
+  effect on the data + schema-migrations bookkeeping.
+
+  Reads DATABASE_URL from app.config (i.e. your .env). Run with caution.
+"""
 
 import asyncio
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-ROOT_URL = "mysql+aiomysql://root:123456@localhost:3306"
-DB_NAME = "carmen_ai"
+from app.config import settings
 
 
-async def reset():
-    engine = create_async_engine(ROOT_URL, echo=False)
+async def reset() -> None:
+    engine = create_async_engine(settings.database_url, echo=False)
     async with engine.begin() as conn:
-        await conn.execute(text(f"DROP DATABASE IF EXISTS {DB_NAME}"))
-        print(f"Dropped {DB_NAME}")
-        await conn.execute(
-            text(f"CREATE DATABASE {DB_NAME} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
-        )
-        print(f"Created {DB_NAME}")
+        await conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+        print("Dropped schema public")
+        await conn.execute(text("CREATE SCHEMA public"))
+        print("Created schema public")
     await engine.dispose()
 
-    # Now run the full startup to create tables + run migrations
-    from app.database import ensure_db
+    # Force a fresh engine + run full startup to create tables + run migrations.
+    import app.database as _db
 
-    await ensure_db()
+    _db._ENGINE = None
+    _db._SESSION_FACTORY = None
+
+    await _db.ensure_db()
     print("Schema created + migrations applied + seed data inserted.")
 
 

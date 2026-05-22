@@ -10,7 +10,7 @@ import logging
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import text
-from sqlalchemy.dialects.mysql import insert as mysql_insert
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.database import async_session
 from app.models.orm import DailyUsageSummary
@@ -42,16 +42,17 @@ async def build_daily_summary(target_date: date | None = None) -> dict:
 
             for row in rows:
                 row["summary_date"] = target_date
+                update_cols = {
+                    k: v
+                    for k, v in row.items()
+                    if k not in ("tenant_id", "business_unit_id", "module_id", "summary_date")
+                }
                 stmt = (
-                    mysql_insert(DailyUsageSummary)
+                    pg_insert(DailyUsageSummary)
                     .values(**row)
-                    .on_duplicate_key_update(
-                        **{
-                            k: v
-                            for k, v in row.items()
-                            if k
-                            not in ("tenant_id", "business_unit_id", "module_id", "summary_date")
-                        }
+                    .on_conflict_do_update(
+                        constraint="uq_summary_scope_module_date",
+                        set_=update_cols,
                     )
                 )
                 await db.execute(stmt)

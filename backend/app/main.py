@@ -306,7 +306,7 @@ async def lifespan(_app: FastAPI):
     )
     from app.database import _db_root_url
 
-    logger.info(f"   Database   : {_db_root_url()}/carmen_ai")
+    logger.info(f"   Database   : {_db_root_url()}")
 
     await ensure_db()
     logger.info("✅ Database initialized")
@@ -315,6 +315,16 @@ async def lifespan(_app: FastAPI):
     scheduler_task = asyncio.create_task(_scheduler_loop())
     pricing_task = asyncio.create_task(_pricing_sync_loop())
     perf_flush_task = asyncio.create_task(_perf_flush_loop())
+
+    # On ephemeral free-tier hosts (Render), the app sleeps after ~15min of no
+    # traffic — schedulers stop with it. Recommend a keep-alive ping every
+    # ~5min (UptimeRobot / cron-job.org → /api/v1/health) to keep loops live.
+    if settings.ephemeral_filesystem:
+        logger.warning(
+            "⚠️  EPHEMERAL_FILESYSTEM=true — background schedulers will pause "
+            "when the dyno sleeps. Configure an external keep-alive ping "
+            "(e.g. UptimeRobot → /api/v1/health every 5min) for production."
+        )
 
     yield
 
@@ -433,8 +443,14 @@ app.include_router(config_router)
 
 
 @app.get("/livez", tags=["Health"], include_in_schema=False)
+@app.get("/api/v1/health", tags=["Health"], include_in_schema=False)
 async def liveness():
-    """Liveness probe — app process is alive. No dependency checks."""
+    """Liveness probe — app process is alive. No dependency checks.
+
+    Exposed both at `/livez` (k8s convention) and `/api/v1/health` so that
+    UptimeRobot pings + reverse-proxy keep-alive checks (Render/Vercel) hit
+    a path the proxy normally forwards to the backend.
+    """
     return {"status": "ok"}
 
 

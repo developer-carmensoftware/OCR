@@ -1,0 +1,81 @@
+# Render Infrastructure-as-Code
+# Docs: https://render.com/docs/blueprint-spec
+#
+# Deploy:
+#   1. Push this repo to GitHub.
+#   2. In Render dashboard → New → Blueprint → connect this repo.
+#   3. Render auto-detects render.yaml and prompts for secret env vars.
+#   4. Set DATABASE_URL (Neon), OPENROUTER_API_KEY, SESSION_ENCRYPTION_KEY.
+#   5. After first deploy, copy the Vercel frontend URL into ALLOWED_ORIGINS
+#      and redeploy.
+#
+# Keep-alive: Render free tier sleeps after ~15 minutes of no traffic.
+#   Configure UptimeRobot to ping https://<service>.onrender.com/api/v1/health
+#   every 5 minutes to keep background schedulers running.
+
+services:
+  - type: web
+    name: carmen-ocr-backend
+    runtime: python
+    plan: free
+    region: singapore
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12"
+
+      # ── Database (Neon Postgres) ────────────────────────────────────────────
+      # Get this from Neon dashboard → Connection Details → Pooled connection.
+      # The app auto-normalizes `postgres://` → `postgresql+asyncpg://`.
+      - key: DATABASE_URL
+        sync: false
+
+      # ── LLM (OpenRouter) ────────────────────────────────────────────────────
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_BASE_URL
+        value: https://openrouter.ai/api/v1
+      - key: OPENROUTER_OCR_MODEL
+        value: google/gemini-2.5-flash-lite
+      - key: OPENROUTER_SUGGESTION_MODEL
+        value: google/gemini-2.0-flash-lite
+      - key: OPENROUTER_AP_INVOICE_MODEL
+        value: google/gemini-2.5-flash-lite
+
+      # ── Auth ────────────────────────────────────────────────────────────────
+      - key: OCR_JWT_SECRET
+        generateValue: true
+      # Generate locally: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      - key: SESSION_ENCRYPTION_KEY
+        sync: false
+
+      # ── CORS (set after deploying the Vercel frontend) ──────────────────────
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: ALLOWED_ORIGIN_REGEX
+        value: ^https://[a-z0-9-]+\.vercel\.app$
+
+      # ── Render free-tier flags ──────────────────────────────────────────────
+      # Ephemeral filesystem: skip on-disk archive directory creation, log a
+      # warning that background schedulers need an external keep-alive ping.
+      - key: EPHEMERAL_FILESYSTEM
+        value: "true"
+      # Disable nightly retention archive (no persistent disk for CSVs).
+      - key: RETENTION_ENABLED
+        value: "false"
+
+      # ── App ─────────────────────────────────────────────────────────────────
+      - key: MAX_FILE_SIZE_MB
+        value: "20"
+      - key: LOG_JSON
+        value: "true"
+
+      # ── Observability (optional) ────────────────────────────────────────────
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production

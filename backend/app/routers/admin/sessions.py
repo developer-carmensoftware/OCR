@@ -73,7 +73,7 @@ async def revoke_session(
         raise HTTPException(status_code=404, detail="Session not found")
 
     await db.execute(
-        text("UPDATE ocr_sessions SET is_active=0 WHERE id=:id"),
+        text("UPDATE ocr_sessions SET is_active=false WHERE id=:id"),
         {"id": session_id},
     )
     await db.commit()

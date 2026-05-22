@@ -1,5 +1,5 @@
 """
-Database setup — single shared MariaDB database: carmen_ai
+Database setup — single shared PostgreSQL database: carmen_ai (Neon-compatible).
 
 Architecture: Single Database, Multi-Tenant via Foreign Keys
   All tenants share one database.
@@ -7,14 +7,17 @@ Architecture: Single Database, Multi-Tenant via Foreign Keys
   Control plane tables are global.
 
 Fresh start requirement:
-  Migrations 001-033 have been squashed into 001_squashed_initial_schema (None marker).
-  On a fresh install: DROP the carmen_ai database, then start the app.
-  create_all() will recreate all tables; migrations 100+ handle post-schema setup.
-    mysql -e "DROP DATABASE IF EXISTS carmen_ai"
+  The carmen_ai database must be created in Neon's console (or any other
+  Postgres provider) before the app starts. The app does NOT create databases
+  automatically — managed Postgres providers reserve that operation.
+
+  Local reset:
+    psql "$DATABASE_URL" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
     uvicorn app.main:app --reload
 
 Engine:
   Single AsyncEngine with connection pool, created lazily on first use.
+  Pool sized conservatively for Neon free tier (shared compute, ~100 conn cap).
 
 Session:
   async_session()  — returns a session; use as `async with async_session() as db:`
@@ -36,18 +39,20 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 
-# ── URL helpers ───────────────────────────────────────────────────────────────
+# ── URL helpers (kept for backward-compat logging only) ──────────────────────
 
 
 def _db_root_url() -> str:
-    url = settings.database_url.rstrip("/")
-    if url.count("/") > 2:
-        return url.rsplit("/", 1)[0]
+    """Return the connection URL with the password masked, for logging."""
+    url = settings.database_url
+    if "@" in url and "://" in url:
+        scheme, rest = url.split("://", 1)
+        if "@" in rest:
+            creds, host = rest.split("@", 1)
+            if ":" in creds:
+                user = creds.split(":", 1)[0]
+                return f"{scheme}://{user}:***@{host}"
     return url
-
-
-def _carmen_ai_url() -> str:
-    return f"{_db_root_url()}/carmen_ai"
 
 
 # ── Single Engine ─────────────────────────────────────────────────────────────
@@ -60,11 +65,13 @@ def _get_engine():
     global _ENGINE, _SESSION_FACTORY
     if _ENGINE is None:
         _ENGINE = create_async_engine(
-            _carmen_ai_url(),
+            settings.database_url,
             echo=settings.app_debug,
             pool_pre_ping=True,
-            pool_size=20,
-            max_overflow=40,
+            # Conservative pool for Neon free tier (shared compute).
+            pool_size=5,
+            max_overflow=10,
+            pool_recycle=1800,  # Neon idle-suspends after ~5min; recycle stale conns.
         )
         _SESSION_FACTORY = async_sessionmaker(
             _ENGINE,
@@ -108,27 +115,22 @@ class Base(DeclarativeBase):
 
 async def ensure_db() -> None:
     """
-    Create carmen_ai database if missing, create/verify all tables, run migrations.
+    Verify connectivity, create/verify all tables, run migrations.
     Safe to call multiple times (idempotent).
+
+    NOTE: Unlike the previous MariaDB implementation, this does NOT create the
+    database itself — Neon (and most managed Postgres providers) require the
+    database to be provisioned via their console/API.
     """
     # Force all ORM models to register with Base before create_all().
     import app.models.orm  # noqa: F401
 
-    root_url = _db_root_url()
-    admin_engine = create_async_engine(root_url, echo=False)
-    try:
-        async with admin_engine.begin() as conn:
-            await conn.execute(
-                text(
-                    "CREATE DATABASE IF NOT EXISTS carmen_ai "
-                    "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
-                )
-            )
-        logger.info("Ensured database: carmen_ai")
-    finally:
-        await admin_engine.dispose()
-
     engine = _get_engine()
+
+    # Sanity ping — fail fast with a clear error if Neon URL is wrong.
+    async with engine.connect() as conn:
+        await conn.execute(text("SELECT 1"))
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -159,7 +161,7 @@ async def get_all_tenants() -> list[str]:
         engine = _get_engine()
         async with engine.begin() as conn:
             rows = await conn.execute(
-                text("SELECT id FROM tenants WHERE is_active = 1 AND deleted_at IS NULL")
+                text("SELECT id FROM tenants WHERE is_active = true AND deleted_at IS NULL")
             )
             ids = [row[0] for row in rows.fetchall()]
             return ids if ids else []
@@ -184,8 +186,8 @@ async def migrate_db(_tenant: str = "") -> None:
             text("""
             CREATE TABLE IF NOT EXISTS schema_migrations (
                 name       VARCHAR(100) PRIMARY KEY,
-                applied_at DATETIME     DEFAULT CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                applied_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+            )
         """)
         )
         rows = await conn.execute(text("SELECT name FROM schema_migrations"))
@@ -196,7 +198,10 @@ async def migrate_db(_tenant: str = "") -> None:
                 continue
             if fn is None:
                 await conn.execute(
-                    text("INSERT IGNORE INTO schema_migrations (name) VALUES (:name)"),
+                    text(
+                        "INSERT INTO schema_migrations (name) VALUES (:name)"
+                        " ON CONFLICT (name) DO NOTHING"
+                    ),
                     {"name": name},
                 )
                 continue
@@ -204,7 +209,10 @@ async def migrate_db(_tenant: str = "") -> None:
             try:
                 await fn(conn)
                 await conn.execute(
-                    text("INSERT INTO schema_migrations (name) VALUES (:name)"),
+                    text(
+                        "INSERT INTO schema_migrations (name) VALUES (:name)"
+                        " ON CONFLICT (name) DO NOTHING"
+                    ),
                     {"name": name},
                 )
                 logger.info("Migration %s applied.", name)

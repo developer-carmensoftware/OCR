@@ -53,7 +53,9 @@ class Settings(BaseSettings):
     max_file_size_mb: int = 20
 
     # Database
-    database_url: str = "mysql+aiomysql://root:@localhost:3306/carmen_ai"
+    # Neon Postgres example:
+    #   postgresql+asyncpg://user:pass@ep-xxx.aws.neon.tech/carmen_ai?ssl=require
+    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/carmen_ai"
 
     # Carmen API
     carmen_authorization: str = ""  # deprecated — kept for fallback only; prefer session token
@@ -70,6 +72,8 @@ class Settings(BaseSettings):
     # Data retention & archival
     archive_dir: str = "./archives"
     retention_enabled: bool = True
+    # Set true on ephemeral hosts (Render free / Heroku) to skip on-disk archive writes.
+    ephemeral_filesystem: bool = False
 
     # Multi-tenancy
     carmen_tenant_default: str = "dev"  # Fallback for localhost or missing Origin header
@@ -120,5 +124,29 @@ def _abs(path: str) -> str:
 
 settings.archive_dir = _abs(settings.archive_dir)
 
-# Ensure upload/export/archive directories exist
-os.makedirs(settings.archive_dir, exist_ok=True)
+# Ephemeral hosts (Render free tier, etc.) cannot persist on-disk archives.
+# Skip directory creation when ephemeral_filesystem=true OR retention is disabled.
+if settings.retention_enabled and not settings.ephemeral_filesystem:
+    os.makedirs(settings.archive_dir, exist_ok=True)
+
+
+# ── Database URL normalization ────────────────────────────────────────────────
+# Neon (and most managed Postgres providers) hand out URLs as `postgres://...`
+# or `postgresql://...` — the libpq form. SQLAlchemy needs an explicit driver,
+# and `?sslmode=require` is a libpq option that asyncpg rejects (it uses `ssl=`).
+
+
+def _normalize_pg_url(url: str) -> str:
+    if not url:
+        return url
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://") :]
+    if url.startswith("postgresql://"):
+        url = "postgresql+asyncpg://" + url[len("postgresql://") :]
+    # asyncpg uses `ssl=require`, not `sslmode=require`
+    url = url.replace("sslmode=require", "ssl=require")
+    url = url.replace("sslmode=verify-full", "ssl=require")
+    return url
+
+
+settings.database_url = _normalize_pg_url(settings.database_url)

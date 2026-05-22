@@ -170,7 +170,7 @@ async def _check_quota_burn() -> int:
             FROM quotas q
             LEFT JOIN quota_usage qu
               ON qu.quota_id = q.id
-              AND qu.period_key = DATE_FORMAT(NOW(), '%Y-%m')
+              AND qu.period_key = TO_CHAR(NOW(), 'YYYY-MM')
             WHERE q.period = 'monthly' AND q.metric = 'calls'
               AND q.deleted_at IS NULL
         """)

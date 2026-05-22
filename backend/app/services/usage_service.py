@@ -19,7 +19,7 @@ from typing import cast
 
 import httpx
 from sqlalchemy import select
-from sqlalchemy.dialects.mysql import insert as mysql_insert
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session
@@ -270,17 +270,17 @@ async def increment_quota(increment: float = 1.0) -> None:
         async with async_session() as db:
             for quota in quotas:
                 key = _period_key(quota.period)
-                stmt = (
-                    mysql_insert(QuotaUsage)
-                    .values(
-                        quota_id=quota.id,
-                        period_key=key,
-                        used=increment,
-                    )
-                    .on_duplicate_key_update(
-                        used=QuotaUsage.used + increment,
-                        last_updated_at=_utcnow(),
-                    )
+                ins = pg_insert(QuotaUsage).values(
+                    quota_id=quota.id,
+                    period_key=key,
+                    used=increment,
+                )
+                stmt = ins.on_conflict_do_update(
+                    index_elements=["quota_id", "period_key"],
+                    set_={
+                        "used": QuotaUsage.used + increment,
+                        "last_updated_at": _utcnow(),
+                    },
                 )
                 await db.execute(stmt)
             await db.commit()
@@ -404,21 +404,21 @@ async def fetch_openrouter_pricing() -> None:
                 input_p = Decimal(str(pricing.get("prompt", 0))) * 1_000_000
                 output_p = Decimal(str(pricing.get("completion", 0))) * 1_000_000
 
-                stmt = (
-                    mysql_insert(LLMModelPricing)
-                    .values(
-                        model_name=model_id,
-                        input_price_per_1m=input_p,
-                        output_price_per_1m=output_p,
-                        source="openrouter_api",
-                        price_verified_at=_utcnow(),
-                    )
-                    .on_duplicate_key_update(
-                        input_price_per_1m=input_p,
-                        output_price_per_1m=output_p,
-                        source="openrouter_api",
-                        price_verified_at=_utcnow(),
-                    )
+                ins = pg_insert(LLMModelPricing).values(
+                    model_name=model_id,
+                    input_price_per_1m=input_p,
+                    output_price_per_1m=output_p,
+                    source="openrouter_api",
+                    price_verified_at=_utcnow(),
+                )
+                stmt = ins.on_conflict_do_update(
+                    index_elements=["model_name"],
+                    set_={
+                        "input_price_per_1m": input_p,
+                        "output_price_per_1m": output_p,
+                        "source": "openrouter_api",
+                        "price_verified_at": _utcnow(),
+                    },
                 )
                 await db.execute(stmt)
             await db.commit()
