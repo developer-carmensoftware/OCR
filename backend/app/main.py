@@ -160,9 +160,11 @@ async def _run_job(job_name: str, coro_factory) -> None:
 
     async with async_session() as db:
         result = await db.execute(
-            insert(JobRun).values(job_name=job_name, status=JobStatus.RUNNING, started_at=started)
+            insert(JobRun)
+            .values(job_name=job_name, status=JobStatus.RUNNING, started_at=started)
+            .returning(JobRun.id)
         )
-        run_id = result.inserted_primary_key[0] if result.inserted_primary_key else None
+        run_id = result.scalar_one_or_none()
         await db.commit()
 
         try:

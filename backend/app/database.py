@@ -68,9 +68,8 @@ def _get_engine():
             settings.database_url,
             echo=settings.app_debug,
             pool_pre_ping=True,
-            # Conservative pool for Neon free tier (shared compute).
-            pool_size=5,
-            max_overflow=10,
+            pool_size=10,
+            max_overflow=40,
             pool_recycle=1800,  # Neon idle-suspends after ~5min; recycle stale conns.
         )
         _SESSION_FACTORY = async_sessionmaker(
