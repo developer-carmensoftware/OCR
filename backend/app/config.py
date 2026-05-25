@@ -2,9 +2,13 @@
 Application configuration — loads settings from .env file.
 """
 
+import logging
+import re
 from pathlib import Path
 
 from pydantic_settings import BaseSettings
+
+_config_logger = logging.getLogger(__name__)
 
 _WEAK_JWT_SECRETS = {
     "dev-ocr-jwt-secret-change-in-production",
@@ -103,6 +107,18 @@ if settings.allowed_origin_regex:
             len("ALLOWED_ORIGIN_REGEX=") :
         ]
     settings.allowed_origin_regex = settings.allowed_origin_regex.strip("'\"")
+
+# Validate regex compiles — a bad pattern crashes the entire app on first request.
+if settings.allowed_origin_regex:
+    try:
+        re.compile(settings.allowed_origin_regex)
+    except re.error as exc:
+        _config_logger.error(
+            "ALLOWED_ORIGIN_REGEX %r is invalid (%s); falling back to None (no regex matching).",
+            settings.allowed_origin_regex,
+            exc,
+        )
+        settings.allowed_origin_regex = None  # type: ignore[assignment]
 
 # Reject known-weak secrets in production — skipped when app_debug=True (CI / local dev).
 if not settings.app_debug and settings.ocr_jwt_secret in _WEAK_JWT_SECRETS:
