@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -38,34 +38,34 @@ from app.utils.db_helpers import has_submitted_doc
 
 
 class SubmitDetailItem(BaseModel):
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
-    Transaction: str | None = Field(None, alias="transaction")
-    Date: str | None = Field(None, alias="date")
-    Amount: str | None = Field(None, alias="amount")
-    Type: str | None = Field(None, alias="type")
+    model_config = ConfigDict(extra="ignore")
+    transaction: str | None = None
+    date: str | None = None
+    amount: str | None = None
+    type: str | None = None
 
 
 class SubmitHeader(BaseModel):
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
-    BankCode: str | None = Field(None, alias="bank_code")
-    CompanyName: str | None = Field(None, alias="company_name")
-    BankCompanyName: str | None = Field(None, alias="bank_company_name")
-    DocDate: str | None = Field(None, alias="doc_date")
-    DocNo: str | None = Field(None, alias="doc_no")
-    BranchNo: str | None = Field(None, alias="branch_no")
+    model_config = ConfigDict(extra="ignore")
+    bank_code: str | None = None
+    company_name: str | None = None
+    bank_company_name: str | None = None
+    doc_date: str | None = None
+    doc_no: str | None = None
+    branch_no: str | None = None
     # Legacy frontend fields — still accepted, not persisted
-    BankName: str | None = Field(None, alias="bank_name")
-    DocName: str | None = Field(None, alias="doc_name")
-    MerchantName: str | None = Field(None, alias="merchant_name")
+    bank_name: str | None = None
+    doc_name: str | None = None
+    merchant_name: str | None = None
 
 
 class SubmitPayload(BaseModel):
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
-    BankCode: str | None = Field(None, alias="bank_code")
-    BankType: str | None = Field(None, alias="bank_type")  # legacy alias
-    OriginalFilename: str | None = Field(None, alias="original_filename")
-    Header: SubmitHeader
-    Details: list[SubmitDetailItem] = []
+    model_config = ConfigDict(extra="ignore")
+    bank_code: str | None = None
+    bank_type: str | None = None  # legacy alias
+    original_filename: str | None = None
+    header: SubmitHeader
+    details: list[SubmitDetailItem] = []
 
 
 logger = logging.getLogger(__name__)
@@ -265,7 +265,7 @@ async def submit_receipt_stateless(
     session: SessionInfo = Depends(get_current_session),
 ):
     """Save user-confirmed receipt data to DB via submit_tool."""
-    doc_ref = payload.Header.DocNo or payload.OriginalFilename or ""
+    doc_ref = payload.header.doc_no or payload.original_filename or ""
     current_document_ref.set(doc_ref)
     await audit_service.log_action(
         session,
@@ -275,21 +275,21 @@ async def submit_receipt_stateless(
         ip_address=request.client.host if request.client else None,
     )
 
-    bank_code = payload.BankCode or payload.Header.BankCode or payload.BankType or None
+    bank_code = payload.bank_code or payload.header.bank_code or payload.bank_type or None
 
     inp = SubmitInput(
         bank_code=bank_code,
-        original_filename=payload.OriginalFilename or "uploaded_file",
-        doc_no=payload.Header.DocNo,
-        doc_date=payload.Header.DocDate,
-        bank_name=payload.Header.BankName,
-        company_name=payload.Header.CompanyName,
-        merchant_name=payload.Header.MerchantName,
-        bank_company_name=payload.Header.BankCompanyName,
-        branch_no=payload.Header.BranchNo,
+        original_filename=payload.original_filename or "uploaded_file",
+        doc_no=payload.header.doc_no,
+        doc_date=payload.header.doc_date,
+        bank_name=payload.header.bank_name,
+        company_name=payload.header.company_name,
+        merchant_name=payload.header.merchant_name,
+        bank_company_name=payload.header.bank_company_name,
+        branch_no=payload.header.branch_no,
         details=[
-            {"transaction": d.Transaction, "date": d.Date, "amount": d.Amount, "type": d.Type}
-            for d in payload.Details
+            {"transaction": d.transaction, "date": d.date, "amount": d.amount, "type": d.type}
+            for d in payload.details
         ],
     )
 

@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.utils.date_parsing import format_doc_date
 
@@ -10,6 +10,8 @@ from .enums import FieldName, TaskStatus
 
 
 class CreditCardTransactionSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     tx_date: date | None = None
     description: str | None = None
@@ -17,15 +19,14 @@ class CreditCardTransactionSchema(BaseModel):
     tx_type: str | None = None
     sort_order: int = 0
 
-    class Config:
-        from_attributes = True
-
     @field_serializer("tx_date")
     def _serialize_tx_date(self, v: date | None) -> str | None:
         return format_doc_date(v)
 
 
 class CreditCardSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     task_id: str
     bank_code: str | None = None
@@ -38,9 +39,6 @@ class CreditCardSchema(BaseModel):
     created_at: datetime | None = None
     transactions: list[CreditCardTransactionSchema] = Field(default_factory=list)
 
-    class Config:
-        from_attributes = True
-
     @field_serializer("doc_date")
     def _serialize_doc_date(self, v: date | None) -> str | None:
         return format_doc_date(v)
@@ -50,6 +48,8 @@ class CreditCardSchema(BaseModel):
 
 
 class OCRTaskResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     original_filename: str
     status: TaskStatus
@@ -59,9 +59,6 @@ class OCRTaskResponse(BaseModel):
     created_at: datetime | None = None
     completed_at: datetime | None = None
     credit_card: CreditCardSchema | None = None
-
-    class Config:
-        from_attributes = True
 
 
 class OCRTaskListResponse(BaseModel):
@@ -113,6 +110,8 @@ class CorrectionFeedbackRequest(BaseModel):
 
 
 class CorrectionFeedbackResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     skipped: bool = False
     doc_no: str
@@ -121,9 +120,6 @@ class CorrectionFeedbackResponse(BaseModel):
     original_value: str | None = None
     corrected_value: str | None = None
     created_at: datetime | None = None
-
-    class Config:
-        from_attributes = True
 
 
 class CorrectionFeedbackBatchRequest(BaseModel):
