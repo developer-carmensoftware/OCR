@@ -333,4 +333,6 @@ async def version():
     return {
         "app_version": settings.app_version,
         "prompt_versions": _PROMPT_VERSIONS,
+        "allowed_origins": settings.allowed_origins,
+        "allowed_origin_regex": settings.allowed_origin_regex,
     }
