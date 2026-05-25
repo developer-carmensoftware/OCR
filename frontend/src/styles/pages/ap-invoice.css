@@ -718,6 +718,12 @@
   animation: spin 0.75s linear infinite;
 }
 
+.ap-error-wrapper {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 2rem 0;
+}
+
 .ap-error-box {
   display: flex;
   align-items: flex-start;
@@ -728,6 +734,10 @@
   padding: 1.25rem 1.5rem;
   max-width: 500px;
   margin: 0 auto;
+}
+
+.ap-error-retry {
+  margin-top: 0.75rem;
 }
 .ap-error-box i {
   color: var(--rose);

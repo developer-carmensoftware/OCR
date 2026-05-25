@@ -138,6 +138,7 @@ body {
     'Sarabun',
     -apple-system,
     sans-serif;
+  background-color: hsl(220, 14%, 90%);
   background-color: oklch(0.9 0.014 258.7);
   background-image: radial-gradient(
     ellipse 70% 30% at 50% 0%,
@@ -462,6 +463,7 @@ textarea:focus-visible {
 }
 
 [data-theme='dark'] body {
+  background-color: hsl(220, 18%, 16%);
   background-color: oklch(0.16 0.018 258.7);
   background-image: radial-gradient(
     ellipse 70% 30% at 50% 0%,

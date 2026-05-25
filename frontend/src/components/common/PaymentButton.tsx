@@ -72,7 +72,7 @@ export default function PaymentButton() {
 
               <div className="hm-body">
                 {loading ? (
-                  <div className="hm-plan-card" style={{ opacity: 0.5 }}>
+                  <div className="hm-plan-card hm-plan-card--loading">
                     <div className="hm-plan-row">
                       <span className="hm-plan-row-label">Loading…</span>
                     </div>
@@ -98,15 +98,18 @@ export default function PaymentButton() {
                     <div className="hm-progress-bar">
                       <div
                         className="hm-progress-fill"
-                        style={{ width: `${usedPct}%`, background: barColor }}
+                        ref={el => {
+                          if (el) {
+                            el.style.width = `${usedPct}%`
+                            el.style.background = barColor
+                          }
+                        }}
                       />
                     </div>
                   </div>
                 ) : (
                   <div className="hm-plan-card">
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-3)', margin: 0 }}>
-                      Unable to load usage data.
-                    </p>
+                    <p className="hm-plan-card-error">Unable to load usage data.</p>
                   </div>
                 )}
 
@@ -118,12 +121,7 @@ export default function PaymentButton() {
                   Contact our team and we'll get you set up.
                 </p>
 
-                <a
-                  href={mailtoHref}
-                  className="hm-btn-submit"
-                  style={{ textDecoration: 'none' }}
-                  onClick={handleClose}
-                >
+                <a href={mailtoHref} className="hm-btn-submit" onClick={handleClose}>
                   <ExternalLink size={13} />
                   Contact to Upgrade
                 </a>

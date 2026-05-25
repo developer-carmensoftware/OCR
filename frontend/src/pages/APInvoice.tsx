@@ -124,7 +124,7 @@ export default function APInvoice() {
 
       <LoadingOverlay show={loading} status={status} />
 
-      <div className="app-container" style={{ padding: '1.5rem' }}>
+      <div className="app-container">
         <AppHeader
           module="ap-invoice"
           moduleName={t.appSub}
@@ -157,7 +157,7 @@ export default function APInvoice() {
             {step === 1 && loading && <ExtractionSkeleton />}
 
             {error && (
-              <div style={{ maxWidth: 480, margin: '0 auto', padding: '2rem 0' }}>
+              <div className="ap-error-wrapper">
                 <div className="ap-error-box">
                   <AlertCircle size={20} />
                   <div>
@@ -165,8 +165,7 @@ export default function APInvoice() {
                     <div className="ap-error-msg">{error}</div>
                     <button
                       type="button"
-                      className="btn btn-sm btn-outline"
-                      style={{ marginTop: '0.75rem' }}
+                      className="btn btn-sm btn-outline ap-error-retry"
                       onClick={() => setError(null)}
                     >
                       <RotateCw size={14} /> {t.retry}

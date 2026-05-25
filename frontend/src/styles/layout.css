@@ -12,7 +12,20 @@
 .app-container {
   max-width: 1480px;
   margin: 0 auto;
+  padding: 1.5rem;
   animation: fadeUp 0.35s var(--ease) both;
+}
+
+@media (max-width: 768px) {
+  .app-container {
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-container {
+    padding: 0.75rem;
+  }
 }
 
 /* ─── HEADER ─── */
@@ -38,6 +51,7 @@
   z-index: 50;
   -webkit-backdrop-filter: blur(14px) saturate(1.4);
   backdrop-filter: blur(14px) saturate(1.4);
+  background-color: rgba(255, 255, 255, 0.88);
   background-color: oklch(1 0 0 / 0.88);
   overflow: hidden;
 }
@@ -213,6 +227,7 @@
 }
 
 [data-theme='dark'] .app-header {
+  background-color: hsla(220, 22%, 20%, 0.85);
   background-color: oklch(0.2 0.022 258.7 / 0.85);
   box-shadow:
     inset 0 1px 0 oklch(1 0 0 / 0.04),

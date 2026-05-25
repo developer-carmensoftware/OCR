@@ -110,7 +110,7 @@ export default function CreditCardOCR() {
 
       <LoadingOverlay show={loading} status={status} />
 
-      <div className="app-container" style={{ padding: '1.5rem' }}>
+      <div className="app-container">
         <AppHeader
           module="credit-card"
           moduleName="Credit Card Report OCR"
