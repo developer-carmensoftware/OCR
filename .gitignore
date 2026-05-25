@@ -58,3 +58,7 @@ graphify-out/graph.html
 
 .agents/
 skills-lock.json
+
+# Go binaries
+cron_service/cron
+cron_service/cron.exe

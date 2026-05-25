@@ -1,26 +1,27 @@
 # Render Infrastructure-as-Code
 # Docs: https://render.com/docs/blueprint-spec
 #
-# Two services in one Blueprint:
-#   1. carmen-ocr-backend  — FastAPI (Python web service, free plan)
-#   2. carmen-ocr-frontend — Vite SPA (static site, free plan, global CDN)
+# Services in this Blueprint:
+#   1. carmen-ocr-backend  — FastAPI (Python web service)
+#   2. carmen-ocr-frontend — Vite SPA (static site, global CDN)
+#   3. carmen-cron         — Cron job: all daily jobs (01:00 UTC)
 #
 # Deploy:
 #   1. Push this repo to GitHub.
 #   2. In Render dashboard → New → Blueprint → connect this repo.
 #   3. Render auto-detects render.yaml and prompts for secret env vars.
-#   4. Set DATABASE_URL (Neon), OPENROUTER_API_KEY, SESSION_ENCRYPTION_KEY.
+#   4. Set DATABASE_URL (Neon), OPENROUTER_API_KEY, SESSION_ENCRYPTION_KEY,
+#      MASTER_API_KEY.
 #   5. After first deploy:
 #        - Copy the static site URL into the backend's ALLOWED_ORIGINS.
 #        - Copy the backend URL into VITE_API_BASE_URL for the static site.
+#        - Copy the backend URL into BACKEND_URL for the cron services.
 #      Both services then redeploy automatically.
-#
-# Keep-alive: Render free web services sleep after ~15 minutes of no traffic.
-#   Configure UptimeRobot to ping https://<backend>.onrender.com/api/v1/health
-#   every 5 minutes to keep background schedulers running.
-#   Static sites do NOT sleep — no keep-alive needed for the frontend.
 
 services:
+  # ════════════════════════════════════════════════════════════════════════════
+  # Backend — FastAPI
+  # ════════════════════════════════════════════════════════════════════════════
   - type: web
     name: carmen-ocr-backend
     runtime: python
@@ -36,8 +37,6 @@ services:
         value: "3.12"
 
       # ── Database (Neon Postgres) ────────────────────────────────────────────
-      # Get this from Neon dashboard → Connection Details → Pooled connection.
-      # The app auto-normalizes `postgres://` → `postgresql+asyncpg://`.
       - key: DATABASE_URL
         sync: false
 
@@ -56,21 +55,14 @@ services:
       # ── Auth ────────────────────────────────────────────────────────────────
       - key: OCR_JWT_SECRET
         generateValue: true
-      # Generate locally: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       - key: SESSION_ENCRYPTION_KEY
+        sync: false
+      - key: MASTER_API_KEY
         sync: false
 
       # ── CORS ────────────────────────────────────────────────────────────────
-      # All origins allowed — security enforced via JWT auth, not CORS.
-      # Tenant URLs are unpredictable (Carmen multi-tenant), so regex = .* is intentional.
       - key: ALLOWED_ORIGIN_REGEX
         value: ".*"
-
-      # ── Render free-tier flags ──────────────────────────────────────────────
-      # Ephemeral filesystem: log a warning that background schedulers need an
-      # external keep-alive ping (e.g. UptimeRobot every 5 min).
-      - key: EPHEMERAL_FILESYSTEM
-        value: "true"
 
       # ── App ─────────────────────────────────────────────────────────────────
       - key: MAX_FILE_SIZE_MB
@@ -85,8 +77,7 @@ services:
         value: production
 
   # ════════════════════════════════════════════════════════════════════════════
-  # Frontend — Vite SPA served as a static site on Render's global CDN.
-  # Free plan: unlimited requests, 100 GB bandwidth/month, never sleeps.
+  # Frontend — Vite SPA
   # ════════════════════════════════════════════════════════════════════════════
   - type: web
     runtime: static
@@ -96,14 +87,11 @@ services:
     staticPublishPath: dist
     autoDeploy: true
     pullRequestPreviewsEnabled: true
-    # SPA fallback — any unknown path serves index.html so the client-side
-    # router can pick it up. Required because Vite produces a single HTML.
     routes:
       - type: rewrite
         source: /*
         destination: /index.html
     headers:
-      # Hash-based asset filenames mean we can cache aggressively.
       - path: /assets/*
         name: Cache-Control
         value: public, max-age=31536000, immutable
@@ -114,13 +102,28 @@ services:
         name: Referrer-Policy
         value: strict-origin-when-cross-origin
     envVars:
-      # Set this to the backend URL after first deploy, e.g.
-      #   https://carmen-ocr-backend.onrender.com
-      # Vite bakes the value into the bundle at build time, so any change
-      # requires a frontend rebuild (Render's auto-deploy handles that).
       - key: VITE_API_BASE_URL
         sync: false
       - key: VITE_SENTRY_ENV
         value: production
       - key: VITE_SENTRY_DSN
+        sync: false
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Cron — All daily jobs (01:00 UTC)
+  #   session purge → daily summary → model cost → monthly summary → anomaly → pricing sync
+  # ════════════════════════════════════════════════════════════════════════════
+  - type: cron
+    name: carmen-cron
+    runtime: go
+    plan: free
+    region: singapore
+    rootDir: cron_service
+    schedule: "0 1 * * *"
+    buildCommand: go build -o cron .
+    startCommand: ./cron
+    envVars:
+      - key: BACKEND_URL
+        sync: false
+      - key: MASTER_API_KEY
         sync: false

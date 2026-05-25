@@ -5,7 +5,6 @@ import logging
 import sys
 import traceback
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
 
 # ── Force UTF-8 on Windows (prevents 'charmap' codec errors with Thai text) ──
 if sys.platform == "win32":
@@ -30,7 +29,7 @@ from app.config import settings as _cfg_early  # noqa: E402
 
 # ── Logging Setup (uses the reconfigured UTF-8 stderr) ──
 from app.context import RequestIdFilter as _RIF  # noqa: E402
-from app.database import ensure_db, get_all_tenants
+from app.database import ensure_db
 from app.exceptions import (
     CarmenServiceError,
     DuplicateDocumentError,
@@ -123,142 +122,7 @@ def _capture(exc: Exception) -> None:
         sentry_sdk.capture_exception(exc)
 
 
-# ── Background Scheduler ─────────────────────────────────────────────────────
-
-
-async def _run_for_all_tenants(coro_factory, label: str) -> None:
-    """
-    Run coro_factory() once per active tenant, setting current_tenant_id context.
-    Jobs that aggregate across all tenants (summary, anomaly) don't need this —
-    they query the full table with GROUP BY tenant_id internally.
-    """
-    from app.context import current_scheduler_tenant as _ct
-
-    tenants = await get_all_tenants()
-    for tenant_id in tenants:
-        token = _ct.set(tenant_id)
-        try:
-            await coro_factory()
-        except Exception as exc:
-            logger.error("[scheduler] %s failed for tenant %s: %s", label, tenant_id, exc)
-        finally:
-            _ct.reset(token)
-
-
-async def _run_job(job_name: str, coro_factory) -> None:
-    """Run a scheduler job and record its execution in job_runs for drift detection."""
-    from sqlalchemy import insert, text
-
-    from app.database import async_session
-    from app.models.enums import JobStatus
-    from app.models.orm import JobRun
-
-    started = datetime.now(UTC).replace(tzinfo=None)
-    rows_affected = None
-    error_msg = None
-    status = JobStatus.SUCCESS
-
-    async with async_session() as db:
-        result = await db.execute(
-            insert(JobRun)
-            .values(job_name=job_name, status=JobStatus.RUNNING, started_at=started)
-            .returning(JobRun.id)
-        )
-        run_id = result.scalar_one_or_none()
-        await db.commit()
-
-        try:
-            ret = await coro_factory()
-            if isinstance(ret, dict):
-                rows_affected = sum(v if isinstance(v, int) else 0 for v in ret.values())
-            elif isinstance(ret, int):
-                rows_affected = ret
-        except Exception as exc:
-            status = JobStatus.FAILED
-            error_msg = str(exc)
-            logger.error("[scheduler] job %s failed: %s", job_name, exc)
-            _capture(exc)
-
-        await db.execute(
-            text(
-                "UPDATE job_runs SET status=:status, completed_at=:done, "
-                "rows_affected=:rows, error_message=:err WHERE id=:id"
-            ),
-            {
-                "status": status.value,
-                "done": datetime.now(UTC).replace(tzinfo=None),
-                "rows": rows_affected,
-                "err": error_msg,
-                "id": run_id,
-            },
-        )
-        await db.commit()
-
-
-async def _scheduler_loop():
-    """
-    Lightweight background scheduler — runs inside the FastAPI event loop.
-
-    Schedule:
-      - Every 24h: retention cleanup, daily summary, anomaly detection
-      - Every 30d: partition check
-    All jobs are recorded in job_runs for drift detection and incident review.
-    """
-    logger.info("📅 Background scheduler started")
-    await asyncio.sleep(60)  # wait for app to fully start
-
-    while True:
-        try:
-            from app.services.retention_service import purge_inactive_sessions
-
-            await _run_job(
-                "session-purge",
-                lambda: _run_for_all_tenants(purge_inactive_sessions, "session-purge"),
-            )
-
-            # ── Daily: build yesterday's summary (aggregates all tenants in one pass) ──
-            from app.services.summary_service import (
-                build_daily_model_cost,
-                build_daily_summary,
-                build_monthly_summary,
-            )
-
-            logger.info("[scheduler] Building daily summary...")
-            await _run_job("summary", build_daily_summary)
-
-            logger.info("[scheduler] Building per-model cost breakdown...")
-            await _run_job("daily_model_cost", build_daily_model_cost)
-
-            logger.info("[scheduler] Rolling up monthly summary...")
-            await _run_job("monthly_summary", build_monthly_summary)
-
-            # ── Daily: anomaly detection (runs after summary so data is ready) ──
-            from app.services.anomaly_service import detect_anomalies
-
-            logger.info("[scheduler] Running anomaly detection...")
-            await _run_job("anomaly-detection", detect_anomalies)
-
-        except Exception as exc:
-            logger.error("[scheduler] Error: %s", exc)
-            _capture(exc)
-
-        await asyncio.sleep(86400)
-
-
-async def _pricing_sync_loop():
-    """Sync OpenRouter model pricing every 8 hours (cluster-wide, no tenant scope)."""
-    while True:
-        try:
-            from app.services.usage_service import fetch_openrouter_pricing
-
-            await fetch_openrouter_pricing()
-        except asyncio.CancelledError:
-            break
-        except Exception as exc:
-            logger.error("[pricing_scheduler] Error: %s", exc)
-            _capture(exc)
-
-        await asyncio.sleep(8 * 3600)
+# ── Background Tasks ─────────────────────────────────────────────────────────
 
 
 async def _perf_flush_loop():
@@ -305,20 +169,7 @@ async def lifespan(_app: FastAPI):
     await ensure_db()
     logger.info("✅ Database initialized")
 
-    # Start background schedulers
-    scheduler_task = asyncio.create_task(_scheduler_loop())
-    pricing_task = asyncio.create_task(_pricing_sync_loop())
     perf_flush_task = asyncio.create_task(_perf_flush_loop())
-
-    # On ephemeral free-tier hosts (Render), the app sleeps after ~15min of no
-    # traffic — schedulers stop with it. Recommend a keep-alive ping every
-    # ~5min (UptimeRobot / cron-job.org → /api/v1/health) to keep loops live.
-    if settings.ephemeral_filesystem:
-        logger.warning(
-            "⚠️  EPHEMERAL_FILESYSTEM=true — background schedulers will pause "
-            "when the dyno sleeps. Configure an external keep-alive ping "
-            "(e.g. UptimeRobot → /api/v1/health every 5min) for production."
-        )
 
     yield
 
@@ -329,11 +180,9 @@ async def lifespan(_app: FastAPI):
         logger.info("⏳ Graceful shutdown — waiting %ds for in-flight requests...", grace)
         await asyncio.sleep(grace)
 
-    scheduler_task.cancel()
-    pricing_task.cancel()
     perf_flush_task.cancel()
     try:
-        await asyncio.gather(scheduler_task, pricing_task, perf_flush_task)
+        await asyncio.gather(perf_flush_task)
     except asyncio.CancelledError:
         pass
 
