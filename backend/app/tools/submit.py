@@ -72,7 +72,7 @@ async def run(inp: SubmitInput, db: AsyncSession) -> ToolResult:
 
         # 2. OCRTask (record-keeping stub)
         task = OCRTask(
-            id=str(uuid.uuid4()),
+            id=uuid.uuid4(),
             tenant_id=tenant_id,
             business_unit_id=business_unit_id,
             module_id=Module.CREDIT_CARD_OCR,
@@ -87,7 +87,7 @@ async def run(inp: SubmitInput, db: AsyncSession) -> ToolResult:
 
         # 3. CreditCard header
         card = CreditCard(
-            id=str(uuid.uuid4()),
+            id=uuid.uuid4(),
             task_id=task.id,
             tenant_id=tenant_id,
             business_unit_id=business_unit_id,
@@ -111,7 +111,7 @@ async def run(inp: SubmitInput, db: AsyncSession) -> ToolResult:
                 continue
             db.add(
                 CreditCardTransaction(
-                    id=str(uuid.uuid4()),
+                    id=uuid.uuid4(),
                     credit_card_id=card.id,
                     tx_date=parse_doc_date(item.get("date")),
                     description=tx_label,
@@ -132,11 +132,11 @@ async def run(inp: SubmitInput, db: AsyncSession) -> ToolResult:
             tool=TOOL_NAME,
             input=tool_input,
             output={
-                "card_id": card.id,
+                "card_id": str(card.id),
                 "doc_no": inp.doc_no,
                 "submitted_at": card.submitted_at.isoformat() if card.submitted_at else None,
             },
-            metadata={"task_id": task.id, "transaction_count": tx_count},
+            metadata={"task_id": str(task.id), "transaction_count": tx_count},
         )
 
     except Exception as exc:

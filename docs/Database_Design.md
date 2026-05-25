@@ -1,9 +1,10 @@
 # Database Design — Carmen AI Hub
 
-**Database:** `carmen_ai` (MariaDB / MySQL, utf8mb4_unicode_ci)
+**Database:** PostgreSQL 16 via Neon (`neondb`)
+**Driver:** `asyncpg` (via SQLAlchemy 2.x async)
 **ORM:** SQLAlchemy 2.x async (`backend/app/models/orm.py`)
 **Migrations:** append-only registry in `backend/app/database.py` → `migrate_db()`
-**Reset script:** `backend/reset_db.py` — drop + recreate + create_all + migrations + seed
+**Reset script:** `backend/reset_db.py` — `DROP/CREATE SCHEMA public` + `create_all()` + migrations + seed
 
 ---
 
@@ -69,8 +70,8 @@ class WriterMixin:
     updated_by = Column(String(100), nullable=True)
 
 class TenantFKMixin:
-    tenant_id        = Column(String(36), FK → tenants.id, NOT NULL, index=True)
-    business_unit_id = Column(String(36), FK → business_units.id, NOT NULL, index=True)
+    tenant_id        = Column(PGUUID(as_uuid=True), FK → tenants.id, NOT NULL, index=True)
+    business_unit_id = Column(PGUUID(as_uuid=True), FK → business_units.id, NOT NULL, index=True)
 ```
 
 ### Mixin composition per table type
@@ -79,7 +80,7 @@ class TenantFKMixin:
 |---|---|
 | Business data (credit_cards, ap_invoices, …) | `TenantFKMixin + TimestampMixin + SoftDeleteMixin + WriterMixin` |
 | Auth / session | `TenantFKMixin + TimestampMixin + SoftDeleteMixin` |
-| Partitioned log (llm_usage, audit, perf, outbound) | `TimestampMixin` only — no FK on partitioned tables |
+| Observability log (llm_usage, audit, perf, outbound) | `TimestampMixin` only — no FK (high-volume append-only) |
 | Control plane entities (banks, tenants, …) | `TimestampMixin + SoftDeleteMixin + WriterMixin` |
 | Config / reference (model_pricing, system_configs) | `TimestampMixin + WriterMixin` |
 | Junction / counters (quota_usage, api_key_usage) | `TimestampMixin` only |
@@ -90,6 +91,8 @@ class TenantFKMixin:
 ```sql
 WHERE deleted_at IS NULL   -- always filter
 ```
+
+Soft-deletable tables with a unique constraint use **partial unique indexes** (`WHERE deleted_at IS NULL`) instead of plain `UniqueConstraint` to allow re-creation after soft-deletion.
 
 Log tables (`llm_usage_logs`, `audit_logs`, `performance_logs`, `outbound_call_logs`) are append-only — deleted via **retention policy** only, never soft-deleted.
 
@@ -126,11 +129,13 @@ Tenant (host = 'ostin.carmenwork.com')       ← one Carmen ERP customer
 
 | PK type | Used on |
 |---|---|
-| `String(36)` UUID | Business entities: `ocr_tasks`, `credit_cards`, `ap_invoices`, `tenants`, `business_units`, `admin_users`, `api_keys`, etc. |
-| `BIGINT` auto_increment | High-volume log tables: `llm_usage_logs`, `audit_logs`, `performance_logs`, `outbound_call_logs`, `anomaly_alerts`, `job_runs` |
-| `Integer` auto_increment | Smaller tables: `mapping_history`, `correction_feedback`, `daily_usage_summary` |
+| `PGUUID(as_uuid=True)` | Business entities: `ocr_tasks`, `credit_cards`, `ap_invoices`, `tenants`, `business_units`, `admin_users`, `api_keys`, `ocr_sessions`, etc. Default `uuid.uuid4` (not str) |
+| `BigInteger` autoincrement | High-volume log tables: `llm_usage_logs`, `audit_logs`, `performance_logs`, `outbound_call_logs`, `anomaly_alerts`, `job_runs` |
+| `Integer` autoincrement | Smaller tables: `mapping_history`, `correction_feedback`, `daily_usage_summary`, `daily_model_cost`, `monthly_usage_summary` |
 | Natural string key | Reference: `banks.code` (`BBL`), `modules.id` (`credit_card_ocr`), `roles.id`, `permissions.id` |
 | Composite | Junctions: `role_permissions(role_id, permission_id)`, `tenant_modules(tenant_id, module_id)`, `quota_usage(quota_id, period_key)` |
+
+**Important:** Always pass `uuid.uuid4()` (not `str(uuid.uuid4())`) when creating ORM objects with UUID PKs. SQLAlchemy uses the PK as a sentinel in `INSERT ... RETURNING` — a `str` won't match the `uuid.UUID` returned by asyncpg, causing a `InvalidRequestError`.
 
 ---
 
@@ -210,7 +215,7 @@ GL mapping learning — which dept/account was confirmed for a field type and ba
 | `dept_code`, `acc_code` | GL codes confirmed by user |
 | `confirmed_count` | incremented on each confirmation |
 
-Unique: `(tenant_id, business_unit_id, bank_code, field_type, dept_code, acc_code)`
+Partial unique index (active only): `(tenant_id, business_unit_id, bank_code, field_type, dept_code, acc_code) WHERE deleted_at IS NULL`
 
 ---
 
@@ -225,7 +230,7 @@ User corrections of LLM-extracted fields → drives `correction_service.py` whic
 | `original_value`, `corrected_value` | |
 | `carmen_user_id` | who corrected |
 
-Unique: `(tenant_id, business_unit_id, doc_no, field_name)` — latest correction wins via UPSERT
+Partial unique index (active only): `(tenant_id, business_unit_id, doc_no, field_name) WHERE deleted_at IS NULL`
 
 **Error rate formula** (`correction_service.py`):
 `error_rate = corrections(field, 90d) / submitted_receipts(bank, 90d)`
@@ -250,13 +255,11 @@ Active Carmen ERP user session.
 
 ---
 
-## 6. Observability Tables (Partitioned)
+## 6. Observability Tables
 
-**MariaDB constraint:** partitioned tables cannot have FK constraints. `tenant_id` / `business_unit_id` on these tables are `VARCHAR(36)` + index, with integrity enforced at application layer.
+Flat tables (no partitioning). `tenant_id` / `business_unit_id` are `VARCHAR(36)` + index — no FK to avoid coupling high-volume append-only tables to the tenants table. Integrity enforced at application layer.
 
-**Partition strategy:** All 4 tables use `RANGE (TO_DAYS(created_at))` quarterly. PK extended to `(id, created_at)` to satisfy MariaDB partition requirement.
-
-**Automatic management:** `partition_manager.py` runs monthly, creates future quarters by `REORGANIZE PARTITION p_future`.
+**Export strategy:** When log tables grow large, export old rows via a separate script (not automatic). Business analytics are preserved indefinitely in `daily_model_cost` and `monthly_usage_summary`.
 
 ### `llm_usage_logs`
 
@@ -271,7 +274,7 @@ One row per LLM API call. PK is `BIGINT` to prevent auto-increment overflow.
 | `duration_ms` | |
 | `carmen_session_id`, `carmen_user_id` | |
 
-**Retention:** 365 days → archive CSV → delete
+**Retention:** No automatic deletion. Export via script when approaching storage limits.
 
 ### `audit_logs`
 
@@ -289,13 +292,9 @@ Immutable event log. Append-only.
 
 **Rule:** Either `admin_user_id` or `carmen_user_id` is set — never both, never neither.
 
-**Retention:** 365 days
-
 ### `performance_logs`
 
 One row per HTTP request via `PerformanceMiddleware`.
-
-**Retention:** 90 days
 
 ### `outbound_call_logs`
 
@@ -304,19 +303,33 @@ Every outbound HTTP call (OpenRouter, Carmen ERP).
 | `service` values | `openrouter`, `carmen` |
 |---|---|
 
-**Retention:** 90 days
-
 ---
 
 ## 7. Analytics Tables
 
+Three analytics tables built nightly by `summary_service.py`. All kept indefinitely (unlike raw log tables which can be exported/deleted when storage grows).
+
 ### `daily_usage_summary`
 
-Pre-aggregated nightly by `summary_service.py`. Unique per `(tenant_id, business_unit_id, module_id, summary_date)`.
+Pre-aggregated nightly. Unique per `(tenant_id, business_unit_id, module_id, summary_date)`.
 
-Per-module breakdown enables: "AP Invoice cost this month = $X, Credit Card OCR = $Y".
+Aggregates: documents, submissions, LLM calls/tokens/cost, API calls, errors, corrections, outbound calls, latency (avg + p95).
 
 Used by `anomaly_service.py` as baseline for spike detection (7-day rolling average).
+
+### `daily_model_cost`
+
+Per-model cost breakdown. Unique per `(summary_date, tenant_id, business_unit_id, module_id, model_name)`.
+
+Answers: "What did `google/gemini-2.5-flash-lite` cost us per tenant today?"
+
+Populated from `llm_usage_logs` grouped by model. Preserved indefinitely for long-term cost analytics.
+
+### `monthly_usage_summary`
+
+Monthly rollup of `daily_usage_summary`. Unique per `(tenant_id, business_unit_id, module_id, summary_date)` where `summary_date = first day of month`.
+
+Built nightly (idempotent re-aggregation of the current month). Answers long-term trend questions without scanning daily rows.
 
 ### `anomaly_alerts`
 
@@ -335,7 +348,7 @@ One row per background scheduler job execution. Detects drift: `status = running
 
 | `job_name` values |
 |---|
-| `retention`, `session-purge`, `summary`, `anomaly-detection`, `partitions` |
+| `session-purge`, `summary`, `daily_model_cost`, `monthly_summary`, `anomaly-detection` |
 
 ---
 
@@ -488,16 +501,22 @@ Real-time counter, incremented by `usage_service.increment_quota()`.
 
 ```python
 _MIGRATIONS = [
-    ("001_squashed_initial_schema", None),          # squashes all legacy 001-033
-    ("100_partition_log_tables",    fn),             # add quarterly partitions + extend PK
-    ("101_seed_control_plane",      fn),             # seed roles, permissions, modules, banks
+    # Squashed history markers (no-op — kept for DBs that already recorded them)
+    ("001_squashed_initial_schema", None),
+    ("199_pg_baseline",             None),    # PostgreSQL migration baseline
+    # Live migrations (200+)
+    ("200_pg_seed_control_plane",   fn),      # seed roles, permissions, modules, banks, plans
+    ("201_uuid_native_type",        None),    # PGUUID columns — applied via create_all()
+    ("202_partial_unique_indexes",  None),    # partial indexes — applied via create_all()
+    ("203_partition_log_tables",    None),    # marker only — partitioning removed
+    ("204_analytics_tables",        None),    # daily_model_cost + monthly_usage_summary
 ]
 ```
 
 **Fresh install procedure:**
 ```bash
-python reset_db.py          # or: mysql -e "DROP DATABASE IF EXISTS carmen_ai"
-uvicorn app.main:app --reload   # create_all() + migrations auto-run on startup
+cd backend
+python reset_db.py   # DROP/CREATE SCHEMA public → create_all() → migrations → seed
 ```
 
 **Adding a new migration:**
@@ -508,21 +527,17 @@ uvicorn app.main:app --reload   # create_all() + migrations auto-run on startup
 
 ---
 
-## 10. Retention & Archival
+## 10. Retention
 
 Service: `backend/app/services/retention_service.py`
 Triggered by scheduler every 24h.
 
-| Table | Retention | Action |
-|---|---|---|
-| `performance_logs` | 90 days | Archive CSV → batch DELETE |
-| `outbound_call_logs` | 90 days | Archive CSV → batch DELETE |
-| `llm_usage_logs` | 365 days | Archive CSV → batch DELETE |
-| `audit_logs` | 365 days | Archive CSV → batch DELETE |
-| `ocr_sessions` (inactive) | 30 days | DELETE (no archive) |
+| Table | Action |
+|---|---|
+| `ocr_sessions` (inactive > 30 days) | Batch DELETE, 5,000 rows/pass |
+| Log tables (`llm_usage_logs`, `audit_logs`, `performance_logs`, `outbound_call_logs`) | No automatic deletion — export via script when storage grows |
 
-Batch size: 5,000 rows per DELETE to prevent long table locks.
-Archive path: `./archives/{table}/YYYY-MM.csv`
+**Business analytics** (`daily_model_cost`, `monthly_usage_summary`) are kept indefinitely; raw log deletion does not affect cost/usage visibility.
 
 ---
 
@@ -532,12 +547,12 @@ All jobs recorded in `job_runs` table. Scheduler runs inside FastAPI event loop 
 
 | Job | Schedule | Notes |
 |---|---|---|
-| `retention` | 24h | Per-tenant |
-| `session-purge` | 24h | Per-tenant |
-| `summary` | 24h | Aggregates ALL tenants in one pass |
+| `session-purge` | 24h | Deletes inactive ocr_sessions > 30d |
+| `summary` | 24h | Aggregates ALL tenants → daily_usage_summary |
+| `daily_model_cost` | 24h | Per-model breakdown → daily_model_cost |
+| `monthly_summary` | 24h | Rollup → monthly_usage_summary |
 | `anomaly-detection` | 24h | Runs after summary |
-| `partitions` | 30d | Adds future quarters via REORGANIZE |
-| pricing-sync | 8h | OpenRouter API → model_pricing |
+| `pricing-sync` | 8h | OpenRouter API → llm_model_pricing (separate loop) |
 
 ---
 

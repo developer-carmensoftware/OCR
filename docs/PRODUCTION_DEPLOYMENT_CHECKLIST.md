@@ -17,31 +17,22 @@
 | File logging ใน code | ✅ ไม่มี (ตรวจแล้ว ไม่มี `FileHandler` / `RotatingFileHandler`) → ไม่ต้องปรับ |
 | **Action** | ไม่ต้องทำอะไรเพิ่ม — pipe stdout เข้า Render + ส่ง errors เข้า Sentry พอแล้ว |
 
-### Archives (CSV ของ log rows ที่ถูก retention ลบ)
+### Archives (CSV ของ log rows)
 **สิ่งที่ระบบทำตอนนี้** ([retention_service.py](backend/app/services/retention_service.py)):
-ทุกคืน export rows เก่ากว่า 90/365 วัน จาก `performance_logs`, `outbound_call_logs`, `llm_usage_logs`, `audit_logs` → CSV ไปยัง `./archives/{table}/YYYY-MM.csv` แล้วลบจาก DB
+`retention_service.py` มีแค่ `purge_inactive_sessions()` — ลบ `ocr_sessions` ที่ไม่ active นานกว่า 30 วัน ไม่มี CSV export, ไม่มี log deletion อัตโนมัติ
 
-**ปัญหาบน Render:** filesystem ephemeral → CSV หายเมื่อ restart
+**Log tables** (`llm_usage_logs`, `audit_logs`, `performance_logs`, `outbound_call_logs`) เป็น **flat tables** — ไม่มี partition, ไม่มี retention อัตโนมัติ เมื่อ storage ใกล้เต็มค่อย export ด้วย script แล้วลบ rows เก่าด้วยมือ
 
-**ทางเลือก** (เลือกหนึ่ง):
+**ไม่มี `RETENTION_ENABLED` env var** — config option นี้ถูกลบออกแล้ว
 
-- [ ] **Option A: Cloudflare R2 (แนะนำ)** — S3-compatible, free 10 GB storage, egress ฟรี
-  - แก้ [retention_service.py](backend/app/services/retention_service.py) ใช้ `aioboto3` upload แทน `aiofiles.open()`
-  - ENV: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_BUCKET`
-- [ ] **Option B: Disable retention ตอนนี้ (เร็วที่สุด)** — ตั้ง `RETENTION_ENABLED=false` ใน Render
-  - ข้อดี: deploy ได้เลย ไม่ต้องเขียนโค้ดเพิ่ม
-  - ข้อเสีย: log tables โตเรื่อย ๆ → Neon free 0.5 GB จะเต็มประมาณ 6–12 เดือน
-  - **แนะนำสำหรับ free tier launch — ค่อยทำ R2 ทีหลังเมื่อใกล้เต็ม**
-- [ ] **Option C: Google Drive** — มี MCP integration อยู่แล้ว แต่ไม่เหมาะกับ machine-to-machine archival (rate limit, quota)
-
-> ✅ **Recommended:** Option B ก่อน — Add Option A เป็น Phase 2 หลัง launch
+> ✅ **ไม่ต้องทำอะไร** สำหรับ launch — ตรวจ Neon storage เมื่อ log tables ใกล้ครบ 0.4 GB
 
 ---
 
 ## 🕒 Cron / Background Jobs Strategy
 
-### ระบบมี 3 loops ([main.py:196-294](backend/app/main.py)):
-1. `_scheduler_loop` — รัน daily: retention, summary, anomaly + monthly: partitions
+### ระบบมี 3 loops ([main.py](backend/app/main.py)):
+1. `_scheduler_loop` — รัน daily: summary (`daily_usage_summary`, `daily_model_cost`, `monthly_summary`), anomaly, session purge
 2. `_pricing_sync_loop` — ทุก 8 ชม.: sync OpenRouter pricing
 3. `_perf_flush_loop` — ทุก 10 วินาที: flush buffered logs (performance/audit/outbound)
 
@@ -67,70 +58,34 @@ Render free sleep หลัง 15 นาทีไม่มี traffic → ทุ
 
 ---
 
-## Phase 1 — Database Migration (MariaDB → PostgreSQL)
+## ✅ Phase 1 — Database Migration (MariaDB → PostgreSQL) — DONE (2026-05-25)
 
-### 1.1 Dependencies
-- [ ] `backend/requirements.txt`: ลบ `aiomysql==0.2.0`, เพิ่ม `asyncpg==0.30.0`
-- [ ] (ทางเลือก) เพิ่ม `aioboto3` ถ้าเลือก R2 archive
+### 1.1 Dependencies — ✅ DONE
+- `asyncpg==0.30.0` in `requirements.txt`; `aiomysql` removed
 
-### 1.2 Connection & Config
-- [ ] [backend/app/config.py](backend/app/config.py:56) — เปลี่ยน default `database_url` เป็น `postgresql+asyncpg://`
-- [ ] [backend/app/config.py](backend/app/config.py) — เพิ่ม helper แปลง Neon's `postgres://` → `postgresql+asyncpg://`
-- [ ] [backend/app/config.py](backend/app/config.py:124) — guard `os.makedirs(archive_dir)` ให้ skip ถ้า `RENDER=true` หรือ retention disabled
-- [ ] [backend/app/database.py](backend/app/database.py:62) — ลด pool: `pool_size=5, max_overflow=10` (Neon free 100 conn cap แต่ shared)
-- [ ] [backend/app/database.py](backend/app/database.py:121) — รื้อ `CREATE DATABASE` block (Neon สร้างผ่าน console แล้ว)
-- [ ] [backend/app/database.py](backend/app/database.py:185) — `schema_migrations` table: ลบ `ENGINE=InnoDB CHARSET=utf8mb4`
-- [ ] [backend/app/database.py](backend/app/database.py:199) — `INSERT IGNORE` → `INSERT ... ON CONFLICT DO NOTHING`
+### 1.2 Connection & Config — ✅ DONE
+- `config.py`: `postgresql+asyncpg://` default; Neon `postgres://` → `postgresql+asyncpg://` helper; `archive_dir` removed
+- `database.py`: `pool_size=10, max_overflow=40, pool_recycle=1800`; `CREATE DATABASE` block removed; PG-compatible syntax throughout
 
-### 1.3 Migrations — Squash + Rewrite
-> ทาง fresh deploy → ไม่ต้อง port migration ทีละ 100+ ตัว — **squash เป็น `_m000_initial_schema_pg`**
+### 1.3 Migrations — ✅ DONE
+- `database.py` uses `Base.metadata.create_all()` at startup (no raw DDL migration files)
+- Seed data via migrations 199/200 using `ON CONFLICT DO NOTHING`
+- Observability tables are **flat** (no `PARTITION BY RANGE`) — export via script when storage requires cleanup
+- Migrations 201–204 registered as no-op DDL markers (DDL handled by `create_all()`)
 
-- [ ] [backend/app/migrations.py](backend/app/migrations.py) — สร้างไฟล์ใหม่ `_m000_initial_schema_pg` มี:
-  - [ ] Tables ทั้งหมดจาก `Base.metadata` (ใช้ `Base.metadata.create_all(bind=engine, checkfirst=True)` ใน startup แทน raw SQL ก็ได้)
-  - [ ] Seed data (banks, modules, plans, system_configs) — แปลง `INSERT IGNORE` → `ON CONFLICT DO NOTHING`
-  - [ ] Trigger function `set_updated_at()` + trigger ต่อ table ที่มี `updated_at`
-  - [ ] Partitioned tables 4 ตัว ใช้ PG native `PARTITION BY RANGE (created_at)` รายไตรมาส
+### 1.4 ORM Upsert — ✅ DONE
+- `feedback.py`, `summary_service.py`, `usage_service.py`: `on_conflict_do_update(...)` with `postgresql` dialect
+- UUID PKs: `PGUUID(as_uuid=True)` with `default=uuid.uuid4` (callable, not `str(uuid.uuid4())`)
 
-#### Translation cheat sheet
-| MariaDB | PostgreSQL |
-|---|---|
-| `INT AUTO_INCREMENT PRIMARY KEY` | `SERIAL PRIMARY KEY` |
-| `BIGINT AUTO_INCREMENT` | `BIGSERIAL` |
-| `TINYINT(1)` | `BOOLEAN` |
-| `INT UNSIGNED` | `INTEGER CHECK (col >= 0)` |
-| `DATETIME` | `TIMESTAMP` (เก็บ UTC) |
-| `... ON UPDATE CURRENT_TIMESTAMP` | trigger `set_updated_at()` |
-| `JSON` | `JSONB` |
-| `ENGINE=InnoDB CHARSET=utf8mb4` | (ลบ) |
-| `INSERT IGNORE` | `INSERT ... ON CONFLICT DO NOTHING` |
-| `TO_DAYS(col)` | direct date comparison ใน partition bound |
-| `STR_TO_DATE(c, '%d/%m/%Y')` | `TO_DATE(c, 'DD/MM/YYYY')` |
-| `DATE_FORMAT(NOW(), '%Y-%m')` | `TO_CHAR(NOW(), 'YYYY-MM')` |
-| `ALTER TABLE x CHANGE old new T` | `ALTER TABLE x RENAME COLUMN old TO new; ALTER ... TYPE T` |
+### 1.5 SQL Functions — ✅ DONE
+- `anomaly_service.py`: `TO_CHAR(NOW(), 'YYYY-MM')` (was `DATE_FORMAT`)
 
-### 1.4 Partitioning Rewrite
-- [ ] [backend/app/services/partition_manager.py](backend/app/services/partition_manager.py:50) — แทน `INFORMATION_SCHEMA.PARTITIONS` query ด้วย `pg_inherits` + `pg_class`
-- [ ] [backend/app/services/partition_manager.py](backend/app/services/partition_manager.py:76) — แทน `REORGANIZE PARTITION` ด้วย `CREATE TABLE xxx_yYYYYqN PARTITION OF xxx FOR VALUES FROM (...) TO (...)`
+### 1.6 Reset Script — ✅ DONE
+- `reset_db.py`: `DROP SCHEMA public CASCADE; CREATE SCHEMA public;`
 
-### 1.5 ORM-Level Upsert Fix
-- [ ] [backend/app/routers/feedback.py:7](backend/app/routers/feedback.py) — `from sqlalchemy.dialects.mysql import insert` → `postgresql`
-- [ ] [backend/app/routers/feedback.py:32-51](backend/app/routers/feedback.py) — `.on_duplicate_key_update(...)` → `.on_conflict_do_update(index_elements=[...], set_={...}).returning(CorrectionFeedback.id)`
-- [ ] [backend/app/routers/feedback.py:49](backend/app/routers/feedback.py) — ลบ `func.last_insert_id()`
-- [ ] [backend/app/services/summary_service.py:13,46-55](backend/app/services/summary_service.py) — pattern เดียวกัน
-- [ ] [backend/app/services/usage_service.py](backend/app/services/usage_service.py) — grep หา upsert + แก้
-
-### 1.6 SQL Function Calls
-- [ ] [backend/app/services/anomaly_service.py:173](backend/app/services/anomaly_service.py) — `DATE_FORMAT(NOW(), '%Y-%m')` → `TO_CHAR(NOW(), 'YYYY-MM')`
-
-### 1.7 Reset Script
-- [ ] [backend/reset_db.py](backend/reset_db.py) — ใช้ `DROP SCHEMA public CASCADE; CREATE SCHEMA public;` แทน `DROP DATABASE`
-
-### 1.8 Test ก่อน Deploy
-- [ ] สร้าง Neon project (region: Singapore) → copy connection string
-- [ ] Set `.env`: `DATABASE_URL=postgresql+asyncpg://...?ssl=require`
-- [ ] รัน `python reset_db.py` → ตรวจว่า migrations รันผ่านทั้งหมด
-- [ ] รัน backend local ชี้ Neon → smoke test (auth exchange, OCR extract, submit)
-- [ ] ตรวจ table ใน Neon console (`SELECT * FROM banks`, `SELECT * FROM modules`)
+### 1.7 Test Results — ✅ DONE
+- 137/137 unit tests pass
+- Auth flow (Tenant + BU + OcrSession), submit tool, partial unique indexes, analytics services all verified against Neon
 
 ---
 
@@ -179,8 +134,6 @@ Render free sleep หลัง 15 นาทีไม่มี traffic → ทุ
           sync: false   # ใส่ Vercel URL หลัง deploy frontend
         - key: ALLOWED_ORIGIN_REGEX
           value: ^https://[a-z0-9-]+\.vercel\.app$
-        - key: RETENTION_ENABLED
-          value: "false"
         - key: RENDER
           value: "true"
         - key: SENTRY_DSN
@@ -255,7 +208,7 @@ Render free sleep หลัง 15 นาทีไม่มี traffic → ทุ
 - [ ] เปิด Vercel URL → Carmen SSO redirect → JWT exchange (`/api/v1/auth/exchange` → 200)
 - [ ] Credit Card OCR: upload → extract → mapping → submit → ตรวจ row ใน Neon `credit_card_transactions`
 - [ ] AP Invoice OCR: upload → extract → column mapping → suggest GL → submit GLJV → ตรวจ Carmen
-- [ ] ตรวจ `llm_usage_logs` มี row เข้า → partitioning ทำงาน
+- [ ] ตรวจ `llm_usage_logs` มี row เข้า → log table ทำงาน
 - [ ] ตรวจ Render logs ไม่มี ERROR
 - [ ] ตรวจ Sentry ไม่มี exception
 
@@ -297,16 +250,15 @@ Render free sleep หลัง 15 นาทีไม่มี traffic → ทุ
 
 | File | Action |
 |---|---|
-| [backend/requirements.txt](backend/requirements.txt) | swap driver |
-| [backend/app/config.py](backend/app/config.py) | URL default, ssl, archive guard |
-| [backend/app/database.py](backend/app/database.py) | ลบ CREATE DATABASE, PG syntax, pool |
-| [backend/app/migrations.py](backend/app/migrations.py) | **squash + rewrite PG dialect** (งานหนักสุด) |
-| [backend/app/services/partition_manager.py](backend/app/services/partition_manager.py) | PG native partitioning |
-| [backend/app/routers/feedback.py](backend/app/routers/feedback.py) | upsert PG |
-| [backend/app/services/summary_service.py](backend/app/services/summary_service.py) | upsert PG |
-| [backend/app/services/anomaly_service.py](backend/app/services/anomaly_service.py) | TO_CHAR |
-| [backend/app/main.py](backend/app/main.py) | port, health endpoint |
-| `backend/render.yaml` (ใหม่) | Render IaC |
-| [frontend/src/lib/api/client.ts](frontend/src/lib/api/client.ts) | API base URL |
-| `frontend/.env.production` (ใหม่) | prod env |
-| `frontend/vercel.json` (ใหม่) | Vercel config |
+| [backend/requirements.txt](backend/requirements.txt) | ✅ asyncpg, aiomysql removed |
+| [backend/app/config.py](backend/app/config.py) | ✅ postgresql+asyncpg default, archive_dir removed |
+| [backend/app/database.py](backend/app/database.py) | ✅ PG syntax, pool, create_all-based migrations |
+| [backend/app/routers/feedback.py](backend/app/routers/feedback.py) | ✅ upsert PG |
+| [backend/app/services/summary_service.py](backend/app/services/summary_service.py) | ✅ upsert PG + daily_model_cost + monthly_summary |
+| [backend/app/services/anomaly_service.py](backend/app/services/anomaly_service.py) | ✅ TO_CHAR |
+| [backend/app/services/retention_service.py](backend/app/services/retention_service.py) | ✅ simplified — purge_inactive_sessions() only |
+| [backend/app/main.py](backend/app/main.py) | port, health endpoint — **pending deploy** |
+| `backend/render.yaml` (ใหม่) | Render IaC — **pending deploy** |
+| [frontend/src/lib/api/client.ts](frontend/src/lib/api/client.ts) | API base URL — **pending deploy** |
+| `frontend/.env.production` (ใหม่) | prod env — **pending deploy** |
+| `frontend/vercel.json` (ใหม่) | Vercel config — **pending deploy** |

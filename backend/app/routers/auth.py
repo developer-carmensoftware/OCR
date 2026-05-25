@@ -110,7 +110,7 @@ async def _upsert_tenant(db: AsyncSession, host: str) -> Tenant:
     tenant = result.scalar_one_or_none()
     if not tenant:
         tenant = Tenant(
-            id=str(uuid.uuid4()),
+            id=uuid.uuid4(),
             host=host,
             name=host,
             plan="free",
@@ -134,7 +134,7 @@ async def _upsert_business_unit(db: AsyncSession, tenant_id: str, bu_code: str) 
     bu = result.scalar_one_or_none()
     if not bu:
         bu = BusinessUnit(
-            id=str(uuid.uuid4()),
+            id=uuid.uuid4(),
             tenant_id=tenant_id,
             code=bu_code,
             name=bu_code,
@@ -222,7 +222,7 @@ async def exchange_sso_token(request: Request, body: ExchangeRequest):
         if deleted.rowcount:
             logger.info("Cleaned %d stale session(s) for tenant %s", deleted.rowcount, tenant.id)
 
-        session_id = str(uuid.uuid4())
+        session_id = uuid.uuid4()
         db.add(
             OcrSession(
                 id=session_id,
@@ -242,7 +242,7 @@ async def exchange_sso_token(request: Request, body: ExchangeRequest):
     )
 
     access_token = create_session_jwt(
-        session_id=session_id,
+        session_id=str(session_id),
         tenant_id=str(tenant.id),
         business_unit_id=str(business_unit.id),
         carmen_user_id=carmen_user_id,

@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased] — 2026-05-25
+
+### Database Migration — MariaDB → PostgreSQL (Neon)
+
+- **PostgreSQL native UUID** — All UUID PK/FK columns migrated from `String(36)` to `PGUUID(as_uuid=True)`. Default changed from `lambda: str(uuid.uuid4())` to `uuid.uuid4` (callable). ORM object creation updated in `auth.py`, `submit.py`, `ap_invoice.py`, `ocr_service.py` to use `uuid.uuid4()` (not `str()`) — required for SQLAlchemy's `INSERT ... RETURNING` sentinel matching with asyncpg.
+- **Partial unique indexes** — Replaced all `UniqueConstraint` on soft-deletable tables with PostgreSQL partial indexes (`WHERE deleted_at IS NULL`). Affected: `business_units`, `admin_users`, `prompt_templates`, `quotas`, `mapping_history`, `correction_feedback`, `bu_accounting_configs`, `bu_accounting_mapping_entries`, `ap_vendor_column_mappings`, `ap_vendor_field_mapping_entries`. Fixes crash when re-creating a record with the same unique scope after soft-deletion.
+- **Flat observability tables** — Removed `PARTITION BY RANGE (created_at)` from `llm_usage_logs`, `audit_logs`, `performance_logs`, `outbound_call_logs`. Tables are now flat; export script to be written separately when storage requires cleanup.
+- **Analytics tables** — Added `daily_model_cost` (per-model cost breakdown) and `monthly_usage_summary` (monthly rollup of `daily_usage_summary`). Populated nightly by new `build_daily_model_cost()` and `build_monthly_summary()` in `summary_service.py`.
+- **Retention service simplified** — Removed CSV archive logic, partition DROP, and `maintain_partitions()`. `retention_service.py` now only contains `purge_inactive_sessions()`.
+- **Scheduler updated** — Added `daily_model_cost` and `monthly_summary` jobs; removed `partitions` job. Migration registry: markers `201`–`204` registered as no-op DDL markers (DDL handled by `create_all()`).
+- **asyncpg driver** — Replaced `aiomysql` with `asyncpg`. Database URL format: `postgresql+asyncpg://...`.
+- **`call_text_llm` error handling** — Changed from re-raise to return `None` on API error (soft failure for suggestion calls). Updated unit test `test_B5_3` accordingly.
+
+---
+
 ## [Unreleased] — 2026-05-18
 
 ### Infrastructure

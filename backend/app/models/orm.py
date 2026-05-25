@@ -51,9 +51,11 @@ from .mixins import SoftDeleteMixin, TenantFKMixin, TimestampMixin, WriterMixin
 from .observability import (
     AnomalyAlert,
     AuditLog,
+    DailyModelCost,
     DailyUsageSummary,
     JobRun,
     LLMUsageLog,
+    MonthlyUsageSummary,
     OutboundCallLog,
     PerformanceLog,
 )
@@ -114,6 +116,8 @@ __all__ = [
     "PerformanceLog",
     "OutboundCallLog",
     "DailyUsageSummary",
+    "DailyModelCost",
+    "MonthlyUsageSummary",
     "AnomalyAlert",
     "JobRun",
 ]

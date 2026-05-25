@@ -8,13 +8,15 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
     Text,
-    UniqueConstraint,
+    text,
 )
 from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -47,7 +49,7 @@ class TenantConfigOverride(Base, TimestampMixin, WriterMixin):
 
     __tablename__ = "tenant_config_overrides"
 
-    tenant_id = Column(String(36), ForeignKey("tenants.id"), primary_key=True)
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True)
     key_name = Column(String(100), ForeignKey("system_configs.key_name"), primary_key=True)
     value = Column(JSON, nullable=False)
 
@@ -76,8 +78,8 @@ class Quota(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
 
     __tablename__ = "quotas"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id = Column(String(36), ForeignKey("tenants.id"), nullable=False, index=True)
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
     period: Column = Column(
         SAEnum(QuotaPeriod, values_callable=lambda o: [e.value for e in o]), nullable=False
     )
@@ -90,7 +92,14 @@ class Quota(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     is_custom = Column(Boolean, default=False, nullable=False)
 
     __table_args__ = (
-        UniqueConstraint("tenant_id", "period", "metric", name="uq_quota_tenant_period_metric"),
+        Index(
+            "uq_quota_tenant_period_metric_active",
+            "tenant_id",
+            "period",
+            "metric",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
     )
 
 
@@ -102,7 +111,7 @@ class QuotaUsage(Base, TimestampMixin):
 
     __tablename__ = "quota_usage"
 
-    quota_id = Column(String(36), ForeignKey("quotas.id"), primary_key=True)
+    quota_id = Column(PGUUID(as_uuid=True), ForeignKey("quotas.id"), primary_key=True)
     period_key = Column(String(10), primary_key=True)
     used = Column(Numeric(18, 4), default=0, nullable=False)
     last_updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

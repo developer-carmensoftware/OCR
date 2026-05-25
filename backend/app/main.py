@@ -207,44 +207,36 @@ async def _scheduler_loop():
     logger.info("📅 Background scheduler started")
     await asyncio.sleep(60)  # wait for app to fully start
 
-    day_counter = 0
     while True:
         try:
-            # ── Daily: retention cleanup ──
-            if settings.retention_enabled:
-                from app.services.retention_service import (
-                    archive_and_cleanup,
-                    purge_inactive_sessions,
-                )
+            from app.services.retention_service import purge_inactive_sessions
 
-                logger.info("[scheduler] Running retention archive + cleanup...")
-                await _run_job(
-                    "retention", lambda: _run_for_all_tenants(archive_and_cleanup, "retention")
-                )
-                await _run_job(
-                    "session-purge",
-                    lambda: _run_for_all_tenants(purge_inactive_sessions, "session-purge"),
-                )
+            await _run_job(
+                "session-purge",
+                lambda: _run_for_all_tenants(purge_inactive_sessions, "session-purge"),
+            )
 
             # ── Daily: build yesterday's summary (aggregates all tenants in one pass) ──
-            from app.services.summary_service import build_daily_summary
+            from app.services.summary_service import (
+                build_daily_model_cost,
+                build_daily_summary,
+                build_monthly_summary,
+            )
 
             logger.info("[scheduler] Building daily summary...")
             await _run_job("summary", build_daily_summary)
+
+            logger.info("[scheduler] Building per-model cost breakdown...")
+            await _run_job("daily_model_cost", build_daily_model_cost)
+
+            logger.info("[scheduler] Rolling up monthly summary...")
+            await _run_job("monthly_summary", build_monthly_summary)
 
             # ── Daily: anomaly detection (runs after summary so data is ready) ──
             from app.services.anomaly_service import detect_anomalies
 
             logger.info("[scheduler] Running anomaly detection...")
             await _run_job("anomaly-detection", detect_anomalies)
-
-            # ── Monthly: check partitions ──
-            day_counter += 1
-            if day_counter % 30 == 1:
-                from app.services.partition_manager import ensure_partitions
-
-                logger.info("[scheduler] Checking partitions...")
-                await _run_job("partitions", ensure_partitions)
 
         except Exception as exc:
             logger.error("[scheduler] Error: %s", exc)

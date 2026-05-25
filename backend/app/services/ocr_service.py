@@ -32,7 +32,7 @@ async def create_task(
 ) -> OCRTask:
     """Create, persist, and return a completed OCRTask. Shared by OCR and AP invoice routers."""
     task = OCRTask(
-        id=str(uuid.uuid4()),
+        id=uuid.uuid4(),
         tenant_id=tenant_id,
         business_unit_id=business_unit_id,
         module_id=module_id,

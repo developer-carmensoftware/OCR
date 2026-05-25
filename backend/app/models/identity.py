@@ -2,7 +2,8 @@
 
 import uuid
 
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -35,7 +36,7 @@ class Tenant(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
 
     __tablename__ = "tenants"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     host = Column(String(255), nullable=False, unique=True, index=True)
     name = Column(String(255), nullable=False)
     plan = Column(String(20), ForeignKey("plans.code"), nullable=False, default="free")
@@ -56,12 +57,20 @@ class BusinessUnit(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
 
     __tablename__ = "business_units"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id = Column(String(36), ForeignKey("tenants.id"), nullable=False, index=True)
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
     code = Column(String(100), nullable=False)
     name = Column(String(255), nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
 
     tenant = relationship("Tenant", back_populates="business_units")
 
-    __table_args__ = (UniqueConstraint("tenant_id", "code", name="uq_bu_tenant_code"),)
+    __table_args__ = (
+        Index(
+            "uq_bu_tenant_code_active",
+            "tenant_id",
+            "code",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )

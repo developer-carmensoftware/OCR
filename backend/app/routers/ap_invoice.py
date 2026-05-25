@@ -91,7 +91,7 @@ async def extract_ap_invoice(
 
         if not is_duplicate:
             ap_inv = APInvoice(
-                id=str(uuid.uuid4()),
+                id=uuid.uuid4(),
                 task_id=task_id,
                 tenant_id=session.tenant_id,
                 business_unit_id=session.business_unit_id,

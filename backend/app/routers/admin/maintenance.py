@@ -32,11 +32,13 @@ async def trigger_retention(
     _session: SessionInfo = Depends(get_current_session),
     _admin: None = Depends(require_admin),
 ):
-    from app.services.retention_service import archive_and_cleanup, purge_inactive_sessions
+    from app.services.retention_service import purge_inactive_sessions
 
-    result = await archive_and_cleanup()
-    await purge_inactive_sessions()
-    return {"status": "completed", "summary": result}
+    purged_sessions = await purge_inactive_sessions()
+    return {
+        "status": "completed",
+        "purged_sessions": purged_sessions,
+    }
 
 
 @router.post("/summary/rebuild")

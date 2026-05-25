@@ -92,18 +92,14 @@ class TestCallTextLlm:
 
         assert result == {"dept": "ACC", "acc": "1100"}
 
-    async def test_B5_3_api_error_raises(self):
-        # call_text_llm re-raises API errors (only JSON parse failures return None)
+    async def test_B5_3_api_error_returns_none(self):
+        # call_text_llm swallows API errors and returns None (soft failure for suggestions)
         from app.llm.client import call_text_llm
 
         self.mock_client.chat.completions.create.side_effect = Exception("network error")
 
-        try:
-            await call_text_llm("test prompt")
-            raised = False
-        except Exception:
-            raised = True
-        assert raised
+        result = await call_text_llm("test prompt")
+        assert result is None
 
     async def test_B5_4_invalid_json_returns_none(self):
         from app.llm.client import call_text_llm

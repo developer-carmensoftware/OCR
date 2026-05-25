@@ -9,11 +9,14 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
     Text,
+    text,
 )
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -29,8 +32,8 @@ class AdminUser(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
 
     __tablename__ = "admin_users"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    email = Column(String(255), nullable=False, unique=True)
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email = Column(String(255), nullable=False)
     password_hash = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
@@ -39,6 +42,15 @@ class AdminUser(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     last_login_ip = Column(String(45), nullable=True)
     failed_login_attempts = Column(Integer, default=0, nullable=False)
     locked_until = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index(
+            "uq_admin_user_email_active",
+            "email",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
 
 
 class Role(Base, TimestampMixin, SoftDeleteMixin):
@@ -83,7 +95,7 @@ class AdminUserRole(Base, TimestampMixin):
 
     __tablename__ = "admin_user_roles"
 
-    user_id = Column(String(36), ForeignKey("admin_users.id"), primary_key=True)
+    user_id = Column(PGUUID(as_uuid=True), ForeignKey("admin_users.id"), primary_key=True)
     role_id = Column(String(50), ForeignKey("roles.id"), primary_key=True)
     tenant_id = Column(String(36), primary_key=True, default="", nullable=False)
     granted_by = Column(String(36), nullable=True)
@@ -99,11 +111,11 @@ class APIKey(Base, TimestampMixin, WriterMixin):
 
     __tablename__ = "api_keys"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(100), nullable=False)
     key_prefix = Column(String(12), nullable=False, index=True)
-    key_hash = Column(String(255), nullable=False, unique=True)
-    tenant_id = Column(String(36), ForeignKey("tenants.id"), nullable=True, index=True)
+    key_hash = Column(String(255), nullable=False)
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True, index=True)
     scopes = Column(JSON, nullable=False)
     rate_limit_rpm = Column(Integer, default=60, nullable=False)
     expires_at = Column(DateTime, nullable=True, index=True)
@@ -115,13 +127,22 @@ class APIKey(Base, TimestampMixin, WriterMixin):
 
     usage = relationship("APIKeyUsage", back_populates="api_key")
 
+    __table_args__ = (
+        Index(
+            "uq_api_key_hash_active",
+            "key_hash",
+            unique=True,
+            postgresql_where=text("revoked_at IS NULL"),
+        ),
+    )
+
 
 class APIKeyUsage(Base, TimestampMixin):
     """Daily aggregate of API key usage for dashboard charts."""
 
     __tablename__ = "api_key_usage"
 
-    api_key_id = Column(String(36), ForeignKey("api_keys.id"), primary_key=True)
+    api_key_id = Column(PGUUID(as_uuid=True), ForeignKey("api_keys.id"), primary_key=True)
     usage_date = Column(DateTime, primary_key=True)
     calls = Column(Integer, default=0, nullable=False)
     errors = Column(Integer, default=0, nullable=False)

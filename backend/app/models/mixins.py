@@ -3,6 +3,7 @@ ORM mixins and SQLAlchemy event listeners shared by all model modules.
 """
 
 from sqlalchemy import Column, DateTime, ForeignKey, String, event
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -35,9 +36,9 @@ class TenantFKMixin:
     Both columns are NOT NULL — every business row belongs to a specific tenant + BU.
     """
 
-    tenant_id = Column(String(36), ForeignKey("tenants.id"), nullable=False, index=True)
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
     business_unit_id = Column(
-        String(36), ForeignKey("business_units.id"), nullable=False, index=True
+        PGUUID(as_uuid=True), ForeignKey("business_units.id"), nullable=False, index=True
     )
 
 
@@ -62,8 +63,8 @@ def _set_created_by(mapper, connection, target):
     actor = _current_actor()
     if actor:
         if not target.created_by:
-            target.created_by = actor
-        target.updated_by = actor
+            target.created_by = actor  # type: ignore[assignment]
+        target.updated_by = actor  # type: ignore[assignment]
 
 
 @event.listens_for(Base, "before_update", propagate=True)
@@ -71,4 +72,4 @@ def _set_updated_by(mapper, connection, target):
     if isinstance(target, WriterMixin):
         actor = _current_actor()
         if actor:
-            target.updated_by = actor
+            target.updated_by = actor  # type: ignore[assignment]

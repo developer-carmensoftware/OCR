@@ -194,4 +194,9 @@ _MIGRATIONS: list[tuple[str, Callable[[AsyncConnection], Awaitable[None]] | None
     ("199_pg_baseline", None),
     # ── Live migrations (200+) ────────────────────────────────────────────────
     ("200_pg_seed_control_plane", _m200_pg_seed_control_plane),
+    # Markers: DDL handled by create_all()
+    ("201_uuid_native_type", None),
+    ("202_partial_unique_indexes", None),
+    ("203_partition_log_tables", None),
+    ("204_analytics_tables", None),
 ]

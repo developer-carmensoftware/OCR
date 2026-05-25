@@ -10,7 +10,7 @@ Detected anomalies → anomaly_alerts. Duplicate open alerts are skipped.
 """
 
 import logging
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import text
@@ -31,7 +31,7 @@ BASELINE_DAYS = 7
 async def detect_anomalies(target_date: date | None = None) -> dict:
     """Run all anomaly checks. Returns {check_name: alerts_created}."""
     if target_date is None:
-        target_date = (datetime.utcnow() - timedelta(days=1)).date()
+        target_date = (datetime.now(UTC) - timedelta(days=1)).date()
     logger.info("[anomaly] Checking anomalies for %s", target_date)
     results = {}
     try:

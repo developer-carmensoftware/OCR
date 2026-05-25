@@ -14,13 +14,15 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
     Text,
-    UniqueConstraint,
+    text,
 )
 from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -38,7 +40,7 @@ class OcrSession(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin):
 
     __tablename__ = "ocr_sessions"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     carmen_user_id = Column(String(36), nullable=True, index=True)
     username = Column(String(100), nullable=True)
     carmen_token_encrypted = Column(Text, nullable=False)
@@ -55,7 +57,7 @@ class OCRTask(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin):
 
     __tablename__ = "ocr_tasks"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     module_id = Column(String(50), ForeignKey("modules.id"), nullable=False, index=True)
     original_filename = Column(String(255), nullable=False)
     status: Column = Column(
@@ -83,8 +85,8 @@ class CreditCard(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMix
 
     __tablename__ = "credit_cards"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    task_id = Column(String(36), ForeignKey("ocr_tasks.id"), nullable=False, index=True)
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    task_id = Column(PGUUID(as_uuid=True), ForeignKey("ocr_tasks.id"), nullable=False, index=True)
     bank_code = Column(String(20), ForeignKey("banks.code"), nullable=True, index=True)
     company_name = Column(String(255), nullable=True)
     bank_company_name = Column(String(255), nullable=True)
@@ -112,8 +114,10 @@ class CreditCardTransaction(Base, TimestampMixin, SoftDeleteMixin):
 
     __tablename__ = "credit_card_transactions"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    credit_card_id = Column(String(36), ForeignKey("credit_cards.id"), nullable=False, index=True)
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    credit_card_id = Column(
+        PGUUID(as_uuid=True), ForeignKey("credit_cards.id"), nullable=False, index=True
+    )
     tx_date = Column(Date, nullable=True)
     description = Column(Text, nullable=True)
     amount = Column(Numeric(18, 4), nullable=True)
@@ -131,8 +135,8 @@ class APInvoice(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixi
 
     __tablename__ = "ap_invoices"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    task_id = Column(String(36), ForeignKey("ocr_tasks.id"), nullable=False, index=True)
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    task_id = Column(PGUUID(as_uuid=True), ForeignKey("ocr_tasks.id"), nullable=False, index=True)
     vendor_name = Column(String(255), nullable=True)
     doc_no = Column(String(100), nullable=True)
     doc_date = Column(Date, nullable=True, index=True)
@@ -159,14 +163,16 @@ class MappingHistory(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, Write
     confirmed_count = Column(Integer, default=1, nullable=False)
 
     __table_args__ = (
-        UniqueConstraint(
+        Index(
+            "uq_mapping_scope_active",
             "tenant_id",
             "business_unit_id",
             "bank_code",
             "field_type",
             "dept_code",
             "acc_code",
-            name="uq_mapping_scope_bank_field_choice",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
         ),
     )
 
@@ -189,12 +195,14 @@ class CorrectionFeedback(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, W
     carmen_user_id = Column(String(36), nullable=True, index=True)
 
     __table_args__ = (
-        UniqueConstraint(
+        Index(
+            "uq_correction_scope_active",
             "tenant_id",
             "business_unit_id",
             "doc_no",
             "field_name",
-            name="uq_correction_scope_doc_field",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
         ),
     )
 
@@ -223,7 +231,13 @@ class BUAccountingConfig(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, W
     )
 
     __table_args__ = (
-        UniqueConstraint("tenant_id", "business_unit_id", name="uq_bu_accounting_config_scope"),
+        Index(
+            "uq_bu_accounting_config_active",
+            "tenant_id",
+            "business_unit_id",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
     )
 
 
@@ -249,7 +263,13 @@ class BUAccountingMappingEntry(Base, TimestampMixin, SoftDeleteMixin):
     config = relationship("BUAccountingConfig", back_populates="entries")
 
     __table_args__ = (
-        UniqueConstraint("config_id", "field_type", name="uq_bu_mapping_entry_config_field"),
+        Index(
+            "uq_bu_mapping_entry_active",
+            "config_id",
+            "field_type",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
     )
 
 
@@ -277,8 +297,13 @@ class APVendorColumnMapping(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin
     )
 
     __table_args__ = (
-        UniqueConstraint(
-            "tenant_id", "business_unit_id", "vendor_tax_id", name="uq_ap_vendor_mapping_scope"
+        Index(
+            "uq_ap_vendor_mapping_active",
+            "tenant_id",
+            "business_unit_id",
+            "vendor_tax_id",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
         ),
     )
 
@@ -307,5 +332,11 @@ class APVendorFieldMappingEntry(Base, TimestampMixin, SoftDeleteMixin):
     mapping = relationship("APVendorColumnMapping", back_populates="entries")
 
     __table_args__ = (
-        UniqueConstraint("mapping_id", "column_name", name="uq_ap_vendor_entry_mapping_col"),
+        Index(
+            "uq_ap_vendor_entry_active",
+            "mapping_id",
+            "column_name",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
     )

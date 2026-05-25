@@ -84,17 +84,14 @@
 > เป้าหมาย: ระบบไม่ผูกชะตากับ Windows server เดียว
 > งบประมาณ: ~$80-120/เดือน
 
-### Week 3: Managed Database
+### Week 3: Managed Database ✅ DONE (2026-05-25)
 
-- [ ] เปรียบเทียบตัวเลือก managed MySQL/MariaDB:
-  - DigitalOcean Managed Database ($30/mo, 1GB RAM, 10GB)
-  - AWS RDS db.t4g.small ($30/mo)
-  - Azure Database for MySQL ($30/mo)
-- [ ] เลือก provider + create instance (เลือก region ใกล้ user ที่สุด)
-- [ ] Migration plan: dump → restore → switch DATABASE_URL → test
-- [ ] เปิด auto-backup + point-in-time recovery 7 วัน
-- [ ] ทดสอบ failover scenario
-- [ ] ปิด port 3306 ของ DB เดิมหลัง migrate เสร็จ
+- [x] เลือก **Neon PostgreSQL** (serverless, free tier 0.5GB, Singapore region)
+- [x] Migration: MariaDB → PostgreSQL เสร็จสมบูรณ์ — UUID native types, partial indexes, asyncpg driver
+- [x] `reset_db.py` รัน schema + migrations + seed data ใน Neon สำเร็จ
+- [x] Smoke test: auth exchange, submit tool, summary service — ผ่านทั้งหมด
+- [ ] เปิด auto-backup ใน Neon console (point-in-time recovery)
+- [ ] ตรวจสอบ connection limit (Neon free: 100 connections — pool_size=10, max_overflow=40 ตั้งไว้แล้ว)
 
 ### Week 4: CI/CD Pipeline พื้นฐาน + Cloudflare
 

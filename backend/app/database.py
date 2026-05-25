@@ -164,7 +164,8 @@ async def get_all_tenants() -> list[str]:
             )
             ids = [row[0] for row in rows.fetchall()]
             return ids if ids else []
-    except Exception:
+    except Exception as exc:
+        logger.exception("get_all_tenants failed: %s", exc)
         return []
 
 

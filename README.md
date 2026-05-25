@@ -10,7 +10,7 @@
 | --- | --- |
 | Frontend | React 18 + Vite (port 3010) |
 | Backend | FastAPI + Python 3.12 (port 8010) |
-| Database | MariaDB 11 (`carmen_ai`) |
+| Database | PostgreSQL 16 via Neon (`neondb`) |
 | OCR / Extraction | OpenRouter Vision LLM (Gemini 2.5 Flash) |
 | Auth | Carmen SSO → JWT + Fernet-encrypted session |
 | ERP Integration | Carmen Cloud API (proxied via backend) |
@@ -45,7 +45,7 @@ OPENROUTER_OCR_MODEL=google/gemini-2.5-flash-lite
 OPENROUTER_SUGGESTION_MODEL=google/gemini-2.0-flash-lite
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 
-DATABASE_URL=mysql+aiomysql://root:password@localhost:3306/carmen_ai
+DATABASE_URL=postgresql+asyncpg://user:password@host/dbname?sslmode=require
 OCR_JWT_SECRET=<strong-random-secret>
 SESSION_ENCRYPTION_KEY=<fernet-key>
 

@@ -7,12 +7,14 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
-    UniqueConstraint,
+    text,
 )
 from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 
 from app.database import Base
 
@@ -40,7 +42,7 @@ class TenantModule(Base, TimestampMixin, WriterMixin):
 
     __tablename__ = "tenant_modules"
 
-    tenant_id = Column(String(36), ForeignKey("tenants.id"), primary_key=True)
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True)
     module_id = Column(String(50), ForeignKey("modules.id"), primary_key=True)
     enabled = Column(Boolean, default=True, nullable=False)
     enabled_at = Column(DateTime, nullable=True)
@@ -75,7 +77,7 @@ class PromptTemplate(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
 
     __tablename__ = "prompt_templates"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     bank_code = Column(String(20), ForeignKey("banks.code"), nullable=True, index=True)
     prompt_type: Column = Column(
         SAEnum(PromptType, values_callable=lambda o: [e.value for e in o]), nullable=False
@@ -90,8 +92,15 @@ class PromptTemplate(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     content = Column(Text, nullable=False)
     notes = Column(Text, nullable=True)
     published_at = Column(DateTime, nullable=True)
-    published_by = Column(String(36), ForeignKey("admin_users.id"), nullable=True)
+    published_by = Column(PGUUID(as_uuid=True), ForeignKey("admin_users.id"), nullable=True)
 
     __table_args__ = (
-        UniqueConstraint("bank_code", "prompt_type", "version", name="uq_prompt_bank_type_version"),
+        Index(
+            "uq_prompt_bank_type_version_active",
+            "bank_code",
+            "prompt_type",
+            "version",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
     )

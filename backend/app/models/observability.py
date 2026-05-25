@@ -1,16 +1,21 @@
 """
-Observability — Partitioned log tables, Analytics, Alerts, Job tracking.
+Observability — Log tables, Analytics, Alerts, Job tracking.
 
-FK constraints are NOT used on log tables because MariaDB does not support
-foreign key constraints on partitioned tables. tenant_id / business_unit_id
-are stored as plain VARCHAR(36) with indexes. Integrity is enforced by the
-application layer (auth middleware sets context; services read from context).
+Log tables (llm_usage_logs, audit_logs, performance_logs, outbound_call_logs) are
+plain flat tables. No partitioning — simple, low-overhead, easy to query and export.
+Retention is managed by an export script when needed.
+
+FK constraints are NOT used on log tables: keeping them as plain VARCHAR(36)
+indexes is pragmatic — write throughput matters more than referential integrity
+on append-only logs. Integrity is enforced at the application layer via auth
+middleware (sets context vars; services read from context).
 """
 
 from sqlalchemy import (
     JSON,
     BigInteger,
     Column,
+    Date,
     DateTime,
     Float,
     Integer,
@@ -28,12 +33,7 @@ from .mixins import TimestampMixin
 
 
 class LLMUsageLog(Base, TimestampMixin):
-    """
-    One row per LLM API call. Append-only, no soft delete.
-    module_id: replaces the old free-text usage_type string — FK to modules at app level.
-    cost_usd: estimated from model_pricing table at insert time.
-    Partitioned: quarterly by created_at.
-    """
+    """One row per LLM API call. Append-only."""
 
     __tablename__ = "llm_usage_logs"
 
@@ -54,10 +54,8 @@ class LLMUsageLog(Base, TimestampMixin):
 
 class AuditLog(Base, TimestampMixin):
     """
-    Immutable event log. Append-only, no soft delete.
+    Immutable event log. Append-only.
     Either admin_user_id OR carmen_user_id is set (never both, never neither).
-    Control-plane changes include before_value / after_value JSON for diffs.
-    Partitioned: quarterly by created_at.
     """
 
     __tablename__ = "audit_logs"
@@ -65,17 +63,14 @@ class AuditLog(Base, TimestampMixin):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     tenant_id = Column(String(36), nullable=True, index=True)
     business_unit_id = Column(String(36), nullable=True, index=True)
-    # Who performed the action
     admin_user_id = Column(String(36), nullable=True, index=True)
     carmen_user_id = Column(String(36), nullable=True, index=True)
     username = Column(String(100), nullable=True)
     session_id = Column(String(36), nullable=True, index=True)
     ip_address = Column(String(45), nullable=True)
-    # What was done
     action = Column(String(50), nullable=False, index=True)
     resource = Column(String(50), nullable=True, index=True)
     resource_id = Column(String(255), nullable=True, index=True)
-    # Control-plane diff (set only for admin config changes)
     target_type = Column(String(50), nullable=True, index=True)
     target_id = Column(String(100), nullable=True)
     before_value = Column(JSON, nullable=True)
@@ -83,10 +78,7 @@ class AuditLog(Base, TimestampMixin):
 
 
 class PerformanceLog(Base, TimestampMixin):
-    """
-    HTTP request latency — one row per request via PerformanceMiddleware.
-    Partitioned: quarterly by created_at.
-    """
+    """HTTP request latency — one row per request via PerformanceMiddleware."""
 
     __tablename__ = "performance_logs"
 
@@ -102,10 +94,7 @@ class PerformanceLog(Base, TimestampMixin):
 
 
 class OutboundCallLog(Base, TimestampMixin):
-    """
-    Every HTTP call made to external services (Carmen ERP, OpenRouter, etc.).
-    Partitioned: quarterly by created_at.
-    """
+    """Every HTTP call made to external services (Carmen ERP, OpenRouter, etc.)."""
 
     __tablename__ = "outbound_call_logs"
 
@@ -124,8 +113,9 @@ class OutboundCallLog(Base, TimestampMixin):
 
 class DailyUsageSummary(Base, TimestampMixin):
     """
-    Pre-aggregated daily metrics. Built by summary_service.py nightly.
-    Unique per (tenant, bu, module, date) — allows per-module cost breakdown.
+    Pre-aggregated daily metrics. Built by summary_service.build_daily_summary nightly.
+    Unique per (tenant, bu, module, date). Used by anomaly_service + quota dashboards.
+    Kept indefinitely — small footprint, source of long-term trend data.
     """
 
     __tablename__ = "daily_usage_summary"
@@ -155,6 +145,76 @@ class DailyUsageSummary(Base, TimestampMixin):
             "module_id",
             "summary_date",
             name="uq_summary_scope_module_date",
+        ),
+    )
+
+
+class DailyModelCost(Base, TimestampMixin):
+    """
+    Cost breakdown by LLM model per tenant/BU/module/day.
+    Built nightly from llm_usage_logs by summary_service.build_daily_model_cost.
+    Kept indefinitely — small footprint (one row per active model per tenant per day).
+    """
+
+    __tablename__ = "daily_model_cost"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    summary_date = Column(Date, nullable=False, index=True)
+    tenant_id = Column(String(36), nullable=False, index=True)
+    business_unit_id = Column(String(36), nullable=True, index=True)
+    module_id = Column(String(50), nullable=True, index=True)
+    model_name = Column(String(100), nullable=False)
+    call_count = Column(Integer, default=0)
+    input_tokens = Column(BigInteger, default=0)
+    output_tokens = Column(BigInteger, default=0)
+    cost_usd = Column(Numeric(12, 6), default=0)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "summary_date",
+            "tenant_id",
+            "business_unit_id",
+            "module_id",
+            "model_name",
+            name="uq_daily_model_cost",
+        ),
+    )
+
+
+class MonthlyUsageSummary(Base, TimestampMixin):
+    """
+    Monthly rollup of daily_usage_summary, populated by
+    summary_service.build_monthly_summary. summary_date stores the first day
+    of the month (YYYY-MM-01). Kept indefinitely.
+    """
+
+    __tablename__ = "monthly_usage_summary"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(String(36), nullable=False, index=True)
+    business_unit_id = Column(String(36), nullable=True, index=True)
+    module_id = Column(String(50), nullable=True, index=True)
+    summary_date = Column(Date, nullable=False, index=True)
+    total_documents = Column(Integer, default=0)
+    total_submissions = Column(Integer, default=0)
+    total_llm_calls = Column(Integer, default=0)
+    total_tokens = Column(BigInteger, default=0)
+    total_cost_usd = Column(Numeric(12, 4), default=0)
+    avg_llm_latency_ms = Column(Float, default=0)
+    total_api_calls = Column(Integer, default=0)
+    avg_api_latency_ms = Column(Float, default=0)
+    p95_api_latency_ms = Column(Float, default=0)
+    total_errors = Column(Integer, default=0)
+    total_corrections = Column(Integer, default=0)
+    total_outbound_calls = Column(Integer, default=0)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "business_unit_id",
+            "module_id",
+            "summary_date",
+            name="uq_monthly_summary_scope",
         ),
     )
 

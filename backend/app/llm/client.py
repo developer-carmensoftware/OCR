@@ -229,9 +229,10 @@ async def call_text_llm(
                 ),
                 label="text",
             )
-    except Exception:
+    except Exception as exc:
         status_code = 500
-        raise
+        logger.exception("Text LLM call failed: %s", exc)
+        return None
     finally:
         duration_ms = (time.perf_counter() - start) * 1000
         await log_outbound(

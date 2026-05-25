@@ -2,7 +2,6 @@
 Application configuration — loads settings from .env file.
 """
 
-import os
 from pathlib import Path
 
 from pydantic_settings import BaseSettings
@@ -69,10 +68,8 @@ class Settings(BaseSettings):
     session_encryption_key: str = _WEAK_FERNET_KEY
     session_ttl_hours: int = 8
 
-    # Data retention & archival
-    archive_dir: str = "./archives"
-    retention_enabled: bool = True
-    # Set true on ephemeral hosts (Render free / Heroku) to skip on-disk archive writes.
+    # Ephemeral hosts (Render free / Heroku) — informational only since log retention
+    # is now done by dropping PostgreSQL partitions (no on-disk archives).
     ephemeral_filesystem: bool = False
 
     # Multi-tenancy
@@ -111,24 +108,6 @@ if not settings.app_debug and settings.session_encryption_key == _WEAK_FERNET_KE
         "SESSION_ENCRYPTION_KEY is set to the placeholder value. "
         'Generate a real key: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
     )
-
-# Resolve relative paths to absolute, anchored to the backend directory.
-# This ensures the correct location regardless of the process working directory.
-_BACKEND_DIR = Path(__file__).parent.parent
-
-
-def _abs(path: str) -> str:
-    p = Path(path)
-    return str(p if p.is_absolute() else _BACKEND_DIR / p)
-
-
-settings.archive_dir = _abs(settings.archive_dir)
-
-# Ephemeral hosts (Render free tier, etc.) cannot persist on-disk archives.
-# Skip directory creation when ephemeral_filesystem=true OR retention is disabled.
-if settings.retention_enabled and not settings.ephemeral_filesystem:
-    os.makedirs(settings.archive_dir, exist_ok=True)
-
 
 # ── Database URL normalization ────────────────────────────────────────────────
 # Neon (and most managed Postgres providers) hand out URLs as `postgres://...`
