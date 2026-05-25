@@ -12,6 +12,8 @@ import {
   SplitLayout,
   UsageIndicator,
   AppHeader,
+  BugReportButton,
+  PaymentButton,
 } from '../components/common'
 import {
   UploadSection,
@@ -116,6 +118,8 @@ export default function CreditCardOCR() {
           backPath="/glJv"
         >
           <UsageIndicator />
+          <PaymentButton />
+          <BugReportButton module="credit_card_ocr" />
           <DarkModeToggle />
         </AppHeader>
 

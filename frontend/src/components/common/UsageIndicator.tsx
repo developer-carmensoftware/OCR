@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { getUsage } from '../../lib/api/auth'
 import { getStoredToken } from '../../lib/api/client'
@@ -15,6 +15,7 @@ export default function UsageIndicator() {
   const [usage, setUsage] = useState<UsageData['usage'] | null>(null)
   const [loading, setLoading] = useState(true)
   const { isAuthenticated } = useAuth() as { isAuthenticated: boolean }
+  const quotaRef = useRef<HTMLDivElement>(null)
 
   const fetchUsage = async () => {
     try {
@@ -58,38 +59,24 @@ export default function UsageIndicator() {
     }
   }, [usage])
 
+  useEffect(() => {
+    if (!quotaRef.current || !stats) return
+    quotaRef.current.style.setProperty('--used-pct', `${Math.min(100, stats.usedPercentage)}%`)
+    quotaRef.current.style.setProperty('--quota-color', stats.color)
+  }, [stats])
+
   if (loading) {
     return (
       <div className="ui-quota ui-quota--skeleton" aria-hidden="true">
-        {['Used', 'Remain', 'Total'].map((label, i) => (
-          <div key={i} className={`ui-quota-col col-${label.toLowerCase()}`}>
-            <span className="ui-quota-label">{label}</span>
-            <span className="ui-quota-value ui-quota-placeholder">—</span>
-          </div>
-        ))}
+        <div className="ui-quota-col col-remain">
+          <span className="ui-quota-label">Remain</span>
+          <span className="ui-quota-value ui-quota-placeholder">—</span>
+        </div>
       </div>
     )
   }
 
   if (!stats) return null
-
-  const usedColor =
-    stats.usedPercentage >= 90
-      ? 'var(--rose)'
-      : stats.usedPercentage >= 70
-        ? 'var(--amber)'
-        : 'var(--text-3)'
-
-  const COLS = [
-    { key: 'col-used', label: 'Used', value: stats.monthly_calls, color: usedColor },
-    {
-      key: 'col-remain',
-      label: 'Remain',
-      value: stats.remaining_calls,
-      color: stats.isLow ? 'var(--rose)' : 'var(--primary)',
-    },
-    { key: 'col-total', label: 'Total', value: stats.max_monthly_calls, color: 'var(--text-4)' },
-  ]
 
   return (
     <AnimatePresence>
@@ -99,31 +86,20 @@ export default function UsageIndicator() {
         transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
       >
         <div
+          ref={quotaRef}
           role="status"
-          aria-label={`OCR quota: used ${stats.monthly_calls}, remaining ${stats.remaining_calls}, total ${stats.max_monthly_calls}`}
+          aria-label={`OCR quota: remaining ${stats.remaining_calls} of ${stats.max_monthly_calls}`}
           onClick={() => {
             void fetchUsage()
           }}
           className={`ui-quota${stats.isLow ? ' is-low' : ''}`}
-          style={
-            {
-              '--used-pct': `${Math.min(100, stats.usedPercentage)}%`,
-              '--quota-color': stats.color,
-            } as React.CSSProperties
-          }
         >
-          {COLS.map(({ key, label, value, color }) => (
-            <div key={key} className={`ui-quota-col ${key}`}>
-              <span className="ui-quota-label">{label}</span>
-              <span className="ui-quota-value" style={{ color }}>
-                {value}
-              </span>
-            </div>
-          ))}
+          <div className="ui-quota-col col-remain">
+            <span className="ui-quota-label">Remain</span>
+            <span className="ui-quota-value">{stats.remaining_calls}</span>
+          </div>
         </div>
       </motion.div>
     </AnimatePresence>
   )
 }
-
-import type React from 'react'

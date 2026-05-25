@@ -53,6 +53,14 @@
   background: var(--muted);
 }
 
+.ui-quota-col.col-remain .ui-quota-value {
+  color: var(--primary);
+}
+
+.ui-quota.is-low .col-remain .ui-quota-value {
+  color: var(--rose);
+}
+
 /* ─── Text ─── */
 .ui-quota-label {
   font-size: 0.56rem;

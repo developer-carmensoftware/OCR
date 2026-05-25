@@ -1,18 +1,25 @@
 import { apiFetch } from './client'
 
 export interface SubmitPayload {
-  bank_code: string
-  file_prefix: string
-  file_source: string
-  company: {
-    name: string
-    taxId: string
-    branch: string
-    address: string
+  bank_type?: string
+  bank_code?: string
+  original_filename?: string
+  header: {
+    bank_name?: string
+    doc_name?: string
+    company_name?: string
+    doc_date?: string
+    doc_no?: string
+    merchant_name?: string
+    bank_company_name?: string
+    branch_no?: string
   }
-  header: Record<string, string>
-  details: Record<string, string>[]
-  mappings: Record<string, { dept: string; acc: string }>
+  details: Array<{
+    transaction?: string
+    date?: string
+    amount?: string
+    type?: string
+  }>
 }
 
 export interface SubmitResult {

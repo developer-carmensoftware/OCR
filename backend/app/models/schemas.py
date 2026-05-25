@@ -129,3 +129,26 @@ class CorrectionFeedbackBatchRequest(BaseModel):
 class CorrectionFeedbackBatchResponse(BaseModel):
     saved: int
     skipped: int
+
+
+# ── Bug Report ────────────────────────────────────────────────────────────────
+
+_MAX_SCREENSHOT_B64_LEN = 1_400_000  # ~1 MB binary → ~1.37 MB base64
+
+
+class BugReportRequest(BaseModel):
+    module: str = Field(..., max_length=50)
+    category: str = Field(..., max_length=32)
+    description: str = Field(..., min_length=1, max_length=5000)
+    screenshot_b64: str | None = Field(None, max_length=_MAX_SCREENSHOT_B64_LEN)
+    screenshot_mime: str | None = Field(None, max_length=16)
+
+
+class BugReportResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    module_id: str
+    category: str
+    status: str
+    created_at: datetime | None = None

@@ -10,6 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import SessionInfo, get_current_session
 from app.database import get_db
 from app.models import (
+    BugReport,
+    BugReportRequest,
+    BugReportResponse,
     CorrectionFeedback,
     CorrectionFeedbackBatchRequest,
     CorrectionFeedbackBatchResponse,
@@ -98,3 +101,29 @@ async def log_corrections_batch(
 
     logger.info("Batch corrections: saved=%d skipped=%d", saved, skipped)
     return CorrectionFeedbackBatchResponse(saved=saved, skipped=skipped)
+
+
+@router.post("/bug-report", response_model=BugReportResponse, status_code=201)
+async def submit_bug_report(
+    payload: BugReportRequest,
+    db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(get_current_session),
+):
+    """Submit a bug report with optional screenshot (base64, max ~1 MB)."""
+    report = BugReport(
+        tenant_id=session.tenant_id,
+        business_unit_id=session.business_unit_id,
+        module_id=payload.module,
+        category=payload.category,
+        description=payload.description,
+        screenshot_b64=payload.screenshot_b64,
+        screenshot_mime=payload.screenshot_mime,
+        carmen_user_id=session.carmen_user_id or None,
+    )
+    db.add(report)
+    await db.commit()
+    await db.refresh(report)
+    logger.info(
+        "Bug report #%d filed: module=%s category=%s", report.id, report.module_id, report.category
+    )
+    return BugReportResponse.model_validate(report)

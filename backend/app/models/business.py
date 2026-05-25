@@ -340,3 +340,22 @@ class APVendorFieldMappingEntry(Base, TimestampMixin, SoftDeleteMixin):
             postgresql_where=text("deleted_at IS NULL"),
         ),
     )
+
+
+class BugReport(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixin):
+    """
+    User-submitted bug report.
+    Append-only in practice; status field supports admin triage workflow.
+    screenshot_b64 stores a base64-encoded image (frontend caps at 1 MB).
+    """
+
+    __tablename__ = "bug_reports"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    module_id = Column(String(50), nullable=False, index=True)
+    category = Column(String(32), nullable=False)
+    description = Column(Text, nullable=False)
+    status = Column(String(16), nullable=False, server_default="open", index=True)
+    screenshot_b64 = Column(Text, nullable=True)
+    screenshot_mime = Column(String(16), nullable=True)
+    carmen_user_id = Column(String(36), nullable=True, index=True)

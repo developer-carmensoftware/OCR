@@ -56,33 +56,31 @@ export function useOcrSubmission({
     const docNo = headerData.DocNo
 
     const payload = {
-      BankType: bank,
-      OriginalFilename: undefined,
-      Header: {
-        DateProcessed: headerData.DateProcessed || '',
-        BankName: headerData.BankName || '',
-        DocName: headerData.DocName || '',
-        CompanyName: headerData.CompanyName || '',
-        DocDate: headerData.DocDate || '',
-        DocNo: headerData.DocNo || '',
-        MerchantName: headerData.MerchantName || '',
-        MerchantId: headerData.MerchantId || '',
-        BankCompanyname: headerData.BankCompanyname || '',
-        BranchNo: headerData.BranchNo || '',
+      bank_type: bank,
+      header: {
+        bank_name: headerData.BankName || '',
+        doc_name: headerData.DocName || '',
+        company_name: headerData.CompanyName || '',
+        doc_date: headerData.DocDate || '',
+        doc_no: headerData.DocNo || '',
+        merchant_name: headerData.MerchantName || '',
+        bank_company_name: headerData.BankCompanyname || '',
+        branch_no: headerData.BranchNo || '',
       },
-      Details: details.map(row => ({
-        Transaction: String(row.Transaction || row.transaction || ''),
-        PayAmt: parseFloat(String(row.PayAmt || row.pay_amt || 0).replace(/,/g, '')) || 0,
-        CommisAmt: parseFloat(String(row.CommisAmt || row.commis_amt || 0).replace(/,/g, '')) || 0,
-        TaxAmt: parseFloat(String(row.TaxAmt || row.tax_amt || 0).replace(/,/g, '')) || 0,
-        Total: parseFloat(String(row.Total || row.total || 0).replace(/,/g, '')) || 0,
-        WHTAmount: parseFloat(String(row.WHTAmount || row.wht_amount || 0).replace(/,/g, '')) || 0,
-      })),
+      details: details.map(row => {
+        const rawAmt = String(row.Total || row.total || row.PayAmt || row.pay_amt || '')
+        const cleanedAmt = rawAmt.replace(/,/g, '')
+        return {
+          transaction: String(row.Transaction || row.transaction || ''),
+          amount: cleanedAmt || undefined,
+          type: String(row.type || '') || undefined,
+        }
+      }),
     }
 
     try {
       showToast('Submitting data...', 'info')
-      await submitToLocal(payload as unknown as Parameters<typeof submitToLocal>[0])
+      await submitToLocal(payload)
 
       const corrections = diffCorrections(
         headerData,

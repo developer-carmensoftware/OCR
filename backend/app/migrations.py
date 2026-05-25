@@ -199,4 +199,5 @@ _MIGRATIONS: list[tuple[str, Callable[[AsyncConnection], Awaitable[None]] | None
     ("202_partial_unique_indexes", None),
     ("203_partition_log_tables", None),
     ("204_analytics_tables", None),
+    ("205_bug_reports_table", None),
 ]

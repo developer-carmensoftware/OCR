@@ -11,6 +11,8 @@ import {
   SplitLayout,
   UsageIndicator,
   AppHeader,
+  BugReportButton,
+  PaymentButton,
 } from '../components/common'
 import APUploadStep from '../components/ap-invoice/APUploadStep'
 import APFieldMappingStep from '../components/ap-invoice/APFieldMappingStep'
@@ -130,6 +132,8 @@ export default function APInvoice() {
           backPath="/apInvoice"
         >
           <UsageIndicator />
+          <PaymentButton />
+          <BugReportButton module="ap_invoice" />
           <DarkModeToggle />
         </AppHeader>
 

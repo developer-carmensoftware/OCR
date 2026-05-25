@@ -151,19 +151,18 @@ describe('useOcrSubmission', () => {
       const props = makeProps()
       renderHook(() => useOcrSubmission(props))
 
-      // We verify via what submitToLocal receives
       const { result } = renderHook(() => useOcrSubmission(props))
       await act(async () => {
         await result.current.handleSubmitFinal(defaultRows)
       })
 
       const payload = submitToLocal.mock.calls[0][0]
-      expect(payload.Header.BankName).toBe('Test Bank')
-      expect(payload.Header.DocNo).toBe('DOC-001')
-      expect(payload.Header.CompanyName).toBe('Acme Co')
-      expect(payload.Header.MerchantName).toBe('MerchantX')
-      expect(payload.Header.BranchNo).toBe('001')
-      expect(payload.BankType).toBe('KBANK')
+      expect(payload.header.bank_name).toBe('Test Bank')
+      expect(payload.header.doc_no).toBe('DOC-001')
+      expect(payload.header.company_name).toBe('Acme Co')
+      expect(payload.header.merchant_name).toBe('MerchantX')
+      expect(payload.header.branch_no).toBe('001')
+      expect(payload.bank_type).toBe('KBANK')
     })
 
     it('F2.2 – missing header fields fall back to empty string', async () => {
@@ -176,22 +175,19 @@ describe('useOcrSubmission', () => {
         await result.current.handleSubmitFinal(defaultRows)
       })
 
-      const { Header } = submitToLocal.mock.calls[0][0]
-      expect(Header.BankName).toBe('')
-      expect(Header.CompanyName).toBe('')
-      expect(Header.MerchantName).toBe('')
+      const { header } = submitToLocal.mock.calls[0][0]
+      expect(header.bank_name).toBe('')
+      expect(header.company_name).toBe('')
+      expect(header.merchant_name).toBe('')
     })
 
-    it('F2.3 – detail rows use camelCase keys (PayAmt, CommisAmt...)', async () => {
+    it('F2.3 – detail rows send transaction and amount (Total takes priority)', async () => {
       mockHappyPath()
       const details = [
         {
           Transaction: 'Sale',
           PayAmt: '1,000',
-          CommisAmt: '20',
-          TaxAmt: '5',
           Total: '1,025',
-          WHTAmount: '10',
         },
       ]
       const props = makeProps({ details })
@@ -200,25 +196,18 @@ describe('useOcrSubmission', () => {
         await result.current.handleSubmitFinal(defaultRows)
       })
 
-      const d = submitToLocal.mock.calls[0][0].Details[0]
-      expect(d.Transaction).toBe('Sale')
-      expect(d.PayAmt).toBe(1000)
-      expect(d.CommisAmt).toBe(20)
-      expect(d.TaxAmt).toBe(5)
-      expect(d.Total).toBe(1025)
-      expect(d.WHTAmount).toBe(10)
+      const d = submitToLocal.mock.calls[0][0].details[0]
+      expect(d.transaction).toBe('Sale')
+      expect(d.amount).toBe('1025')
     })
 
-    it('F2.4 – detail rows fall back to snake_case keys (pay_amt, commis_amt...)', async () => {
+    it('F2.4 – detail rows fall back to snake_case keys (transaction, total)', async () => {
       mockHappyPath()
       const details = [
         {
           transaction: 'Transfer',
           pay_amt: '500',
-          commis_amt: '10',
-          tax_amt: '2',
           total: '512',
-          wht_amount: '0',
         },
       ]
       const props = makeProps({ details })
@@ -227,26 +216,24 @@ describe('useOcrSubmission', () => {
         await result.current.handleSubmitFinal(defaultRows)
       })
 
-      const d = submitToLocal.mock.calls[0][0].Details[0]
-      expect(d.Transaction).toBe('Transfer')
-      expect(d.PayAmt).toBe(500)
+      const d = submitToLocal.mock.calls[0][0].details[0]
+      expect(d.transaction).toBe('Transfer')
+      expect(d.amount).toBe('512')
     })
 
-    it('F2.5 – comma-formatted amounts stripped correctly', async () => {
+    it('F2.5 – comma-formatted amounts are stripped before sending', async () => {
       mockHappyPath()
-      const details = [
-        { PayAmt: '1,234,567.89', CommisAmt: '0', TaxAmt: '0', Total: '0', WHTAmount: '0' },
-      ]
+      const details = [{ Transaction: 'Sale', Total: '2,925.82' }]
       const props = makeProps({ details })
       const { result } = renderHook(() => useOcrSubmission(props))
       await act(async () => {
         await result.current.handleSubmitFinal(defaultRows)
       })
 
-      expect(submitToLocal.mock.calls[0][0].Details[0].PayAmt).toBe(1234567.89)
+      expect(submitToLocal.mock.calls[0][0].details[0].amount).toBe('2925.82')
     })
 
-    it('F2.6 – null/undefined amounts default to 0', async () => {
+    it('F2.6 – missing amounts are omitted (undefined)', async () => {
       mockHappyPath()
       const details = [{ Transaction: 'X' }] // all amounts missing
       const props = makeProps({ details })
@@ -255,12 +242,9 @@ describe('useOcrSubmission', () => {
         await result.current.handleSubmitFinal(defaultRows)
       })
 
-      const d = submitToLocal.mock.calls[0][0].Details[0]
-      expect(d.PayAmt).toBe(0)
-      expect(d.CommisAmt).toBe(0)
-      expect(d.TaxAmt).toBe(0)
-      expect(d.Total).toBe(0)
-      expect(d.WHTAmount).toBe(0)
+      const d = submitToLocal.mock.calls[0][0].details[0]
+      expect(d.transaction).toBe('X')
+      expect(d.amount).toBeUndefined()
     })
   })
 

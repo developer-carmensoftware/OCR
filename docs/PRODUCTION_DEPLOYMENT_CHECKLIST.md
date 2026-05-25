@@ -131,9 +131,7 @@ Render free sleep หลัง 15 นาทีไม่มี traffic → ทุ
         - key: SESSION_ENCRYPTION_KEY
           sync: false
         - key: ALLOWED_ORIGINS
-          sync: false   # ใส่ Vercel URL หลัง deploy frontend
-        - key: ALLOWED_ORIGIN_REGEX
-          value: ^https://[a-z0-9-]+\.vercel\.app$
+          value: "*"   # Carmen SSO + JWT Bearer เป็น auth จริง; CORS wildcard ปลอดภัย
         - key: RENDER
           value: "true"
         - key: SENTRY_DSN
@@ -191,7 +189,6 @@ Render free sleep หลัง 15 นาทีไม่มี traffic → ทุ
   - `VITE_SENTRY_DSN=<optional>`
   - `VITE_SENTRY_ENV=production`
 - [ ] Deploy → จด Vercel URL (เช่น `https://carmen-ocr-xxx.vercel.app`)
-- [ ] กลับไป Render → ใส่ Vercel URL ใน `ALLOWED_ORIGINS` → redeploy backend
 
 ---
 
@@ -201,7 +198,7 @@ Render free sleep หลัง 15 นาทีไม่มี traffic → ทุ
 1. [ ] สร้าง Neon DB + migrations
 2. [ ] Deploy Backend Render → ได้ URL backend
 3. [ ] Deploy Frontend Vercel → ได้ URL frontend
-4. [ ] Update CORS `ALLOWED_ORIGINS` ใน Render → redeploy
+4. [ ] ตรวจ CORS → backend ใช้ `ALLOWED_ORIGINS=*` (auth จริงอยู่ที่ Carmen SSO + JWT)
 5. [ ] ติดตั้ง UptimeRobot ping
 
 ### 4.2 Smoke Tests
@@ -238,7 +235,7 @@ Render free sleep หลัง 15 นาทีไม่มี traffic → ทุ
 
 - [ ] Upgrade Render Starter $7/mo (always-on, no sleep)
 - [ ] Cloudflare R2 archive integration
-- [ ] Custom domain `api.carmen4.com` + Carmen CORS regex
+- [ ] Custom domain `api.carmen4.com`
 - [ ] Vercel Cron / GitHub Actions cron (Layer 2)
 - [ ] Render persistent disk สำหรับ archives
 - [ ] Migrate production data จริง (ถ้ามี)

@@ -13,6 +13,7 @@ from .business import (
     APVendorFieldMappingEntry,
     BUAccountingConfig,
     BUAccountingMappingEntry,
+    BugReport,
     CorrectionFeedback,
     CreditCard,
     CreditCardTransaction,
@@ -47,6 +48,8 @@ from .observability import (
     PerformanceLog,
 )
 from .schemas import (
+    BugReportRequest,
+    BugReportResponse,
     CorrectionFeedbackBatchRequest,
     CorrectionFeedbackBatchResponse,
     CorrectionFeedbackRequest,
@@ -104,6 +107,7 @@ __all__ = [
     "APInvoice",
     "MappingHistory",
     "CorrectionFeedback",
+    "BugReport",
     "BUAccountingConfig",
     "BUAccountingMappingEntry",
     "APVendorColumnMapping",
@@ -129,4 +133,6 @@ __all__ = [
     "CorrectionFeedbackResponse",
     "CorrectionFeedbackBatchRequest",
     "CorrectionFeedbackBatchResponse",
+    "BugReportRequest",
+    "BugReportResponse",
 ]
