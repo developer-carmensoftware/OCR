@@ -61,23 +61,16 @@ services:
         sync: false
 
       # ── CORS ────────────────────────────────────────────────────────────────
-      # ALLOWED_ORIGINS: comma-separated. Set to the static-site URL after the
-      #   first deploy (e.g. https://carmen-ocr-frontend.onrender.com).
-      # The regex below auto-permits any onrender.com / vercel.app subdomain
-      # so preview deploys (e.g. PR previews) work without extra config.
-      - key: ALLOWED_ORIGINS
-        sync: false
+      # All origins allowed — security enforced via JWT auth, not CORS.
+      # Tenant URLs are unpredictable (Carmen multi-tenant), so regex = .* is intentional.
       - key: ALLOWED_ORIGIN_REGEX
-        value: ^https://[a-z0-9-]+\.(onrender\.com|vercel\.app)$
+        value: ".*"
 
       # ── Render free-tier flags ──────────────────────────────────────────────
-      # Ephemeral filesystem: skip on-disk archive directory creation, log a
-      # warning that background schedulers need an external keep-alive ping.
+      # Ephemeral filesystem: log a warning that background schedulers need an
+      # external keep-alive ping (e.g. UptimeRobot every 5 min).
       - key: EPHEMERAL_FILESYSTEM
         value: "true"
-      # Disable nightly retention archive (no persistent disk for CSVs).
-      - key: RETENTION_ENABLED
-        value: "false"
 
       # ── App ─────────────────────────────────────────────────────────────────
       - key: MAX_FILE_SIZE_MB
