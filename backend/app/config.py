@@ -96,6 +96,14 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+# Normalize CORS allowed_origin_regex to strip accidentally pasted prefix
+if settings.allowed_origin_regex:
+    if settings.allowed_origin_regex.startswith("ALLOWED_ORIGIN_REGEX="):
+        settings.allowed_origin_regex = settings.allowed_origin_regex[
+            len("ALLOWED_ORIGIN_REGEX=") :
+        ]
+    settings.allowed_origin_regex = settings.allowed_origin_regex.strip("'\"")
+
 # Reject known-weak secrets in production — skipped when app_debug=True (CI / local dev).
 if not settings.app_debug and settings.ocr_jwt_secret in _WEAK_JWT_SECRETS:
     raise RuntimeError(

@@ -39,6 +39,7 @@ from app.exceptions import (
     RateLimitExceeded,
     ValidationError,
 )
+from app.middleware.cors_log import CORSLogMiddleware
 from app.middleware.performance import PerformanceMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
@@ -234,6 +235,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── CORS Logging Middleware (outermost, runs first/last to log CORS blocks) ──
+app.add_middleware(CORSLogMiddleware)
 
 # ── Global error handler ──
 _EXCEPTION_STATUS: list[tuple] = [
