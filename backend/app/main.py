@@ -226,12 +226,15 @@ app.add_middleware(PerformanceMiddleware)
 
 # ── CORS Middleware ──
 origins = [origin.strip() for origin in settings.allowed_origins.split(",") if origin.strip()]
+# When origins=["*"], allow_credentials must be False (browser rejects the combination).
+# Auth is done via Carmen SSO + Authorization: Bearer header, not cookies, so this is safe.
+_allow_credentials = "*" not in origins
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=settings.allowed_origin_regex,
-    allow_credentials=True,
+    allow_origin_regex=settings.allowed_origin_regex or None,
+    allow_credentials=_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
