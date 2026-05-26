@@ -6,11 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import SessionInfo, get_current_session
+from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
 from app.models.business import OcrSession
 
-from .deps import require_admin
+from .deps import require_permission
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -19,15 +19,15 @@ router = APIRouter()
 @router.get("/sessions")
 async def list_sessions(
     active_only: bool = Query(True),
+    tenant_id: str | None = Query(None),
     limit: int = Query(50, le=200),
     db: AsyncSession = Depends(get_db),
-    session: SessionInfo = Depends(get_current_session),
-    _admin: None = Depends(require_admin),
+    admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
 ):
-    q = select(OcrSession).where(
-        OcrSession.tenant_id == session.tenant_id,
-        OcrSession.deleted_at.is_(None),
-    )
+    tid = tenant_id if admin.is_global else admin.tenant_scope
+    q = select(OcrSession).where(OcrSession.deleted_at.is_(None))
+    if tid:
+        q = q.where(OcrSession.tenant_id == tid)
     if active_only:
         q = q.where(OcrSession.is_active == True)  # noqa: E712
     q = q.order_by(OcrSession.last_used_at.desc()).limit(limit)
@@ -39,6 +39,7 @@ async def list_sessions(
         "data": [
             {
                 "id": r.id,
+                "tenant_id": r.tenant_id,
                 "carmen_user_id": r.carmen_user_id,
                 "username": r.username,
                 "is_active": r.is_active,
@@ -54,16 +55,16 @@ async def list_sessions(
 async def revoke_session(
     session_id: str,
     db: AsyncSession = Depends(get_db),
-    session: SessionInfo = Depends(get_current_session),
-    _admin: None = Depends(require_admin),
+    admin: AdminPrincipal = Depends(require_permission("tenants", "write")),
 ):
-    result = await db.execute(
-        select(OcrSession).where(
-            OcrSession.id == session_id,
-            OcrSession.tenant_id == session.tenant_id,
-            OcrSession.deleted_at.is_(None),
-        )
+    q = select(OcrSession).where(
+        OcrSession.id == session_id,
+        OcrSession.deleted_at.is_(None),
     )
+    if not admin.is_global:
+        q = q.where(OcrSession.tenant_id == admin.tenant_scope)
+
+    result = await db.execute(q)
     target = result.scalar_one_or_none()
     if not target:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -73,4 +74,9 @@ async def revoke_session(
         {"id": session_id},
     )
     await db.commit()
+
+    from app.auth.dependencies import invalidate_session_cache
+
+    invalidate_session_cache(session_id)
+
     return {"session_id": session_id, "revoked": True}

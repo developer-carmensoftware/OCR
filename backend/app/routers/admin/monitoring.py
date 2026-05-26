@@ -8,28 +8,36 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import SessionInfo, get_current_session
+from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
 from app.models.observability import AnomalyAlert, JobRun, PerformanceLog
 
-from .deps import require_admin
+from .deps import require_permission
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _maybe_filter_tenant(q, col, admin: AdminPrincipal, tenant_id: str | None):
+    tid = tenant_id if admin.is_global else admin.tenant_scope
+    if tid:
+        return q.where(col == tid)
+    return q
+
+
 @router.get("/alerts")
 async def list_alerts(
     status: Literal["open", "resolved", "all"] = Query("open"),
-    severity: str | None = Query(None, description="warn|critical"),
+    severity: str | None = Query(None),
+    tenant_id: str | None = Query(None),
     from_date: datetime | None = Query(None, alias="from"),
     to_date: datetime | None = Query(None, alias="to"),
     limit: int = Query(50, le=500),
     db: AsyncSession = Depends(get_db),
-    session: SessionInfo = Depends(get_current_session),
-    _admin: None = Depends(require_admin),
+    admin: AdminPrincipal = Depends(require_permission("alerts", "read")),
 ):
-    q = select(AnomalyAlert).where(AnomalyAlert.tenant_id == session.tenant_id)
+    q = select(AnomalyAlert)
+    q = _maybe_filter_tenant(q, AnomalyAlert.tenant_id, admin, tenant_id)
     if status == "open":
         q = q.where(AnomalyAlert.resolved_at.is_(None))
     elif status == "resolved":
@@ -49,6 +57,7 @@ async def list_alerts(
         "data": [
             {
                 "id": r.id,
+                "tenant_id": r.tenant_id,
                 "module_id": r.module_id,
                 "metric": r.metric,
                 "severity": r.severity.value if r.severity else None,
@@ -67,15 +76,13 @@ async def list_alerts(
 async def resolve_alert(
     alert_id: int,
     db: AsyncSession = Depends(get_db),
-    session: SessionInfo = Depends(get_current_session),
-    _admin: None = Depends(require_admin),
+    admin: AdminPrincipal = Depends(require_permission("alerts", "acknowledge")),
 ):
-    result = await db.execute(
-        select(AnomalyAlert).where(
-            AnomalyAlert.id == alert_id,
-            AnomalyAlert.tenant_id == session.tenant_id,
-        )
-    )
+    q = select(AnomalyAlert).where(AnomalyAlert.id == alert_id)
+    if not admin.is_global:
+        q = q.where(AnomalyAlert.tenant_id == admin.tenant_scope)
+
+    result = await db.execute(q)
     alert = result.scalar_one_or_none()
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
@@ -86,7 +93,7 @@ async def resolve_alert(
             "resolved_at": alert.resolved_at.isoformat(),
         }
 
-    now = datetime.now(UTC)
+    now = datetime.now(UTC).replace(tzinfo=None)
     await db.execute(
         text("UPDATE anomaly_alerts SET resolved_at=:now WHERE id=:id"),
         {"now": now, "id": alert_id},
@@ -103,8 +110,7 @@ async def list_jobs(
     to_date: datetime | None = Query(None, alias="to"),
     limit: int = Query(50, le=200),
     db: AsyncSession = Depends(get_db),
-    _session: SessionInfo = Depends(get_current_session),
-    _admin: None = Depends(require_admin),
+    _admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
 ):
     q = select(JobRun)
     if status:
@@ -143,15 +149,16 @@ async def list_jobs(
 async def get_performance_logs(
     from_date: datetime | None = Query(None, alias="from"),
     to_date: datetime | None = Query(None, alias="to"),
-    endpoint: str | None = Query(None, description="Partial match on endpoint path"),
+    endpoint: str | None = Query(None),
     status_code: int | None = Query(None),
-    min_duration_ms: float | None = Query(None, description="Filter slow requests"),
+    min_duration_ms: float | None = Query(None),
+    tenant_id: str | None = Query(None),
     limit: int = Query(100, le=1000),
     db: AsyncSession = Depends(get_db),
-    session: SessionInfo = Depends(get_current_session),
-    _admin: None = Depends(require_admin),
+    admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
 ):
-    q = select(PerformanceLog).where(PerformanceLog.tenant_id == session.tenant_id)
+    q = select(PerformanceLog)
+    q = _maybe_filter_tenant(q, PerformanceLog.tenant_id, admin, tenant_id)
     if from_date:
         q = q.where(PerformanceLog.created_at >= from_date)
     if to_date:
@@ -171,6 +178,7 @@ async def get_performance_logs(
         "data": [
             {
                 "id": r.id,
+                "tenant_id": r.tenant_id,
                 "endpoint": r.endpoint,
                 "method": r.method,
                 "duration_ms": round(float(r.duration_ms or 0), 1),  # type: ignore[arg-type]
@@ -186,8 +194,7 @@ async def get_performance_logs(
 
 @router.get("/db-pool-status")
 async def get_db_pool_status(
-    _session: SessionInfo = Depends(get_current_session),
-    _admin: None = Depends(require_admin),
+    _admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
 ):
     from app.database import _get_engine
 

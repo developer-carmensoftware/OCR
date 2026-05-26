@@ -25,6 +25,7 @@ aiofiles==24.1.0
 # Authentication
 python-jose[cryptography]==3.3.0
 cryptography==42.0.8
+bcrypt==4.2.1
 
 # Observability
 sentry-sdk[fastapi]==2.22.0

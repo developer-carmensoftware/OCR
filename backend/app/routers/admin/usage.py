@@ -2,78 +2,96 @@
 
 import logging
 from datetime import UTC, date, datetime, timedelta
+from datetime import time as time_type
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import case, func, select, text
+from sqlalchemy import Date as SADate
+from sqlalchemy import case, cast, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import SessionInfo, get_current_session
+from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
 from app.models.business import OCRTask
 from app.models.enums import TaskStatus
-from app.models.observability import DailyUsageSummary, LLMUsageLog, PerformanceLog
+from app.models.identity import Tenant
+from app.models.observability import LLMUsageLog, PerformanceLog
 
-from .deps import require_admin
+from .deps import require_permission
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _resolve_tenant(admin: AdminPrincipal, tenant_id: str | None) -> str | None:
+    """
+    Return the tenant UUID to filter by, or None for cluster-wide.
+    Scoped admins always see only their assigned tenant regardless of the query param.
+    """
+    if not admin.is_global:
+        return admin.tenant_scope
+    return tenant_id or None
 
 
 @router.get("/usage-summary")
 async def get_usage_summary(
     from_date: date | None = Query(None, alias="from"),
     to_date: date | None = Query(None, alias="to"),
-    module_id: str | None = Query(None, description="Filter by module id"),
+    module_id: str | None = Query(None),
+    tenant_id: str | None = Query(None, description="Filter by tenant UUID; omit for all tenants"),
     db: AsyncSession = Depends(get_db),
-    session: SessionInfo = Depends(get_current_session),
-    _admin: None = Depends(require_admin),
+    admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
 ):
     if not from_date:
         from_date = date.today().replace(day=1)
     if not to_date:
         to_date = date.today()
 
-    query = (
-        select(DailyUsageSummary)
-        .where(
-            DailyUsageSummary.tenant_id == session.tenant_id,
-            DailyUsageSummary.summary_date >= from_date,
-            DailyUsageSummary.summary_date <= to_date,
-        )
-        .order_by(DailyUsageSummary.summary_date.desc())
-    )
-    if module_id:
-        query = query.where(DailyUsageSummary.module_id == module_id)
+    tid = _resolve_tenant(admin, tenant_id)
+    from_dt = datetime.combine(from_date, time_type.min)
+    to_dt = datetime.combine(to_date, time_type.max)
 
-    result = await db.execute(query)
-    rows = result.scalars().all()
+    q = (
+        select(
+            cast(LLMUsageLog.created_at, SADate).label("summary_date"),
+            LLMUsageLog.module_id,
+            LLMUsageLog.tenant_id,
+            func.count(LLMUsageLog.id).label("llm_calls"),
+            func.sum(LLMUsageLog.total_tokens).label("tokens"),
+            func.sum(LLMUsageLog.cost_usd).label("cost_usd"),
+            func.avg(LLMUsageLog.duration_ms).label("avg_llm_latency_ms"),
+        )
+        .where(LLMUsageLog.created_at >= from_dt, LLMUsageLog.created_at <= to_dt)
+        .group_by(
+            cast(LLMUsageLog.created_at, SADate), LLMUsageLog.module_id, LLMUsageLog.tenant_id
+        )
+        .order_by(cast(LLMUsageLog.created_at, SADate).desc())
+    )
+    if tid:
+        q = q.where(LLMUsageLog.tenant_id == tid)
+    if module_id:
+        q = q.where(LLMUsageLog.module_id == module_id)
+
+    result = await db.execute(q)
+    rows = result.mappings().all()
 
     return {
-        "tenant_id": session.tenant_id,
+        "tenant_id": tid,
         "from": str(from_date),
         "to": str(to_date),
         "days": len(rows),
         "data": [
             {
-                "date": str(
-                    r.summary_date.date()
-                    if isinstance(r.summary_date, datetime)
-                    else r.summary_date
-                ),
-                "module_id": r.module_id,
-                "documents": r.total_documents,
-                "submissions": r.total_submissions,
-                "llm_calls": r.total_llm_calls,
-                "tokens": r.total_tokens,
-                "cost_usd": float(str(r.total_cost_usd or 0)),
-                "avg_llm_latency_ms": r.avg_llm_latency_ms,
-                "api_calls": r.total_api_calls,
-                "avg_api_latency_ms": r.avg_api_latency_ms,
-                "p95_api_latency_ms": r.p95_api_latency_ms,
-                "errors": r.total_errors,
-                "corrections": r.total_corrections,
-                "outbound_calls": r.total_outbound_calls,
+                "date": str(r["summary_date"]),
+                "module_id": r["module_id"],
+                "tenant_id": r["tenant_id"],
+                "documents": 0,
+                "submissions": 0,
+                "llm_calls": int(r["llm_calls"] or 0),
+                "tokens": int(r["tokens"] or 0),
+                "cost_usd": float(str(r["cost_usd"] or 0)),
+                "errors": 0,
+                "avg_llm_latency_ms": round(float(r["avg_llm_latency_ms"] or 0), 2),
             }
             for r in rows
         ],
@@ -84,52 +102,62 @@ async def get_usage_summary(
 async def get_usage_totals(
     from_date: date | None = Query(None, alias="from"),
     to_date: date | None = Query(None, alias="to"),
+    tenant_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    session: SessionInfo = Depends(get_current_session),
-    _admin: None = Depends(require_admin),
+    admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
 ):
     if not from_date:
         from_date = date.today().replace(day=1)
     if not to_date:
         to_date = date.today()
 
-    result = await db.execute(
-        select(
-            func.sum(DailyUsageSummary.total_documents).label("total_documents"),
-            func.sum(DailyUsageSummary.total_submissions).label("total_submissions"),
-            func.sum(DailyUsageSummary.total_llm_calls).label("total_llm_calls"),
-            func.sum(DailyUsageSummary.total_tokens).label("total_tokens"),
-            func.sum(DailyUsageSummary.total_cost_usd).label("total_cost_usd"),
-            func.avg(DailyUsageSummary.avg_llm_latency_ms).label("avg_llm_latency_ms"),
-            func.sum(DailyUsageSummary.total_api_calls).label("total_api_calls"),
-            func.avg(DailyUsageSummary.avg_api_latency_ms).label("avg_api_latency_ms"),
-            func.sum(DailyUsageSummary.total_errors).label("total_errors"),
-            func.sum(DailyUsageSummary.total_corrections).label("total_corrections"),
-            func.sum(DailyUsageSummary.total_outbound_calls).label("total_outbound_calls"),
-        ).where(
-            DailyUsageSummary.tenant_id == session.tenant_id,
-            DailyUsageSummary.summary_date >= from_date,
-            DailyUsageSummary.summary_date <= to_date,
-        )
+    tid = _resolve_tenant(admin, tenant_id)
+    from_dt = datetime.combine(from_date, time_type.min)
+    to_dt = datetime.combine(to_date, time_type.max)
+
+    # LLM metrics from llm_usage_logs (real-time, always populated)
+    llm_q = select(
+        func.count(LLMUsageLog.id).label("total_llm_calls"),
+        func.sum(LLMUsageLog.total_tokens).label("total_tokens"),
+        func.sum(LLMUsageLog.cost_usd).label("total_cost_usd"),
+        func.avg(LLMUsageLog.duration_ms).label("avg_llm_latency_ms"),
+    ).where(LLMUsageLog.created_at >= from_dt, LLMUsageLog.created_at <= to_dt)
+    if tid:
+        llm_q = llm_q.where(LLMUsageLog.tenant_id == tid)
+
+    llm_result = await db.execute(llm_q)
+    llm_row = llm_result.mappings().fetchone() or {}
+
+    # Task/document metrics from ocr_tasks
+    task_q = select(
+        func.count(OCRTask.id).label("total_documents"),
+        func.sum(case((OCRTask.status == TaskStatus.COMPLETED, 1), else_=0)).label(
+            "total_submissions"
+        ),
+        func.sum(case((OCRTask.status == TaskStatus.FAILED, 1), else_=0)).label("total_errors"),
+    ).where(
+        OCRTask.created_at >= from_dt,
+        OCRTask.created_at <= to_dt,
+        OCRTask.deleted_at.is_(None),
     )
-    row = result.mappings().fetchone() or {}
+    if tid:
+        task_q = task_q.where(OCRTask.tenant_id == tid)
+
+    task_result = await db.execute(task_q)
+    task_row = task_result.mappings().fetchone() or {}
 
     return {
-        "tenant_id": session.tenant_id,
+        "tenant_id": tid,
         "from": str(from_date),
         "to": str(to_date),
         "totals": {
-            "documents": int(row.get("total_documents") or 0),
-            "submissions": int(row.get("total_submissions") or 0),
-            "llm_calls": int(row.get("total_llm_calls") or 0),
-            "tokens": int(row.get("total_tokens") or 0),
-            "cost_usd": float(row.get("total_cost_usd") or 0),
-            "avg_llm_latency_ms": round(float(row.get("avg_llm_latency_ms") or 0), 2),
-            "api_calls": int(row.get("total_api_calls") or 0),
-            "avg_api_latency_ms": round(float(row.get("avg_api_latency_ms") or 0), 2),
-            "errors": int(row.get("total_errors") or 0),
-            "corrections": int(row.get("total_corrections") or 0),
-            "outbound_calls": int(row.get("total_outbound_calls") or 0),
+            "documents": int(task_row.get("total_documents") or 0),
+            "submissions": int(task_row.get("total_submissions") or 0),
+            "llm_calls": int(llm_row.get("total_llm_calls") or 0),
+            "tokens": int(llm_row.get("total_tokens") or 0),
+            "cost_usd": float(llm_row.get("total_cost_usd") or 0),
+            "avg_llm_latency_ms": round(float(llm_row.get("avg_llm_latency_ms") or 0), 2),
+            "errors": int(task_row.get("total_errors") or 0),
         },
     }
 
@@ -139,15 +167,18 @@ async def get_llm_usage(
     from_date: datetime | None = Query(None, alias="from"),
     to_date: datetime | None = Query(None, alias="to"),
     module_id: str | None = Query(None),
+    tenant_id: str | None = Query(None),
     order_by: Literal["cost_usd", "duration_ms", "total_tokens", "created_at"] = Query(
         "created_at"
     ),
     limit: int = Query(100, le=1000),
     db: AsyncSession = Depends(get_db),
-    session: SessionInfo = Depends(get_current_session),
-    _admin: None = Depends(require_admin),
+    admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
 ):
-    q = select(LLMUsageLog).where(LLMUsageLog.tenant_id == session.tenant_id)
+    tid = _resolve_tenant(admin, tenant_id)
+    q = select(LLMUsageLog)
+    if tid:
+        q = q.where(LLMUsageLog.tenant_id == tid)
     if from_date:
         q = q.where(LLMUsageLog.created_at >= from_date)
     if to_date:
@@ -170,6 +201,7 @@ async def get_llm_usage(
         "data": [
             {
                 "id": r.id,
+                "tenant_id": r.tenant_id,
                 "module_id": r.module_id,
                 "model": r.model,
                 "task_id": r.task_id,
@@ -188,17 +220,27 @@ async def get_llm_usage(
     }
 
 
+async def _tenant_name_map(db: AsyncSession, tids: list[str]) -> dict[str, str]:
+    """Return {tenant_id_str: 'name (bu_code)'} for the given UUIDs."""
+    if not tids:
+        return {}
+    q = select(Tenant.id, Tenant.name, Tenant.bu_code).where(
+        Tenant.id.in_(tids), Tenant.deleted_at.is_(None)
+    )
+    result = await db.execute(q)
+    return {str(r.id): f"{r.name} ({r.bu_code})" for r in result.mappings().all()}
+
+
 @router.get("/tenant-ranking")
 async def tenant_ranking(
     metric: Literal["error_rate", "latency", "cost", "volume"] = Query("error_rate"),
     period_hours: int = Query(24, ge=1, le=720),
     limit: int = Query(20, le=100),
     db: AsyncSession = Depends(get_db),
-    _session: SessionInfo = Depends(get_current_session),
-    _admin: None = Depends(require_admin),
+    _admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
 ):
-    """Rank tenants (host+bu pairs) by a health metric across the cluster."""
-    since = datetime.now(UTC) - timedelta(hours=period_hours)
+    """Rank tenants by a health metric across the cluster."""
+    since = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=period_hours)
 
     if metric == "cost":
         q = (
@@ -218,12 +260,14 @@ async def tenant_ranking(
         )
         result = await db.execute(q)
         rows = result.mappings().all()
+        names = await _tenant_name_map(db, [r["tid"] for r in rows if r["tid"]])
         return {
             "metric": metric,
             "period_hours": period_hours,
             "data": [
                 {
                     "tenant_id": r["tid"],
+                    "tenant_name": names.get(r["tid"], r["tid"]),
                     "total_calls": int(r["total_calls"] or 0),
                     "total_tokens": int(r["total_tokens"] or 0),
                     "total_cost_usd": float(str(r["total_cost"] or 0)),
@@ -258,12 +302,14 @@ async def tenant_ranking(
     q = q.limit(limit)
     result = await db.execute(q)
     rows = result.mappings().all()
+    names = await _tenant_name_map(db, [r["tid"] for r in rows if r["tid"]])
     return {
         "metric": metric,
         "period_hours": period_hours,
         "data": [
             {
                 "tenant_id": r["tid"],
+                "tenant_name": names.get(r["tid"], r["tid"]),
                 "total_requests": int(r["total_requests"] or 0),
                 "errors": int(r["errors"] or 0),
                 "error_rate_pct": round((r["errors"] or 0) / r["total_requests"] * 100, 2)
@@ -281,18 +327,18 @@ async def tenant_ranking(
 async def user_usage(
     from_date: datetime | None = Query(None, alias="from"),
     to_date: datetime | None = Query(None, alias="to"),
+    tenant_id: str | None = Query(None),
     order_by: Literal["calls", "tokens", "cost"] = Query("calls"),
     limit: int = Query(50, le=200),
     db: AsyncSession = Depends(get_db),
-    session: SessionInfo = Depends(get_current_session),
-    _admin: None = Depends(require_admin),
+    admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
 ):
-    """Per-Carmen-user usage breakdown (calls, tokens, cost, latency)."""
     if not from_date:
-        from_date = datetime.now(UTC) - timedelta(days=30)
+        from_date = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=30)
     if not to_date:
-        to_date = datetime.now(UTC)
+        to_date = datetime.now(UTC).replace(tzinfo=None)
 
+    tid = _resolve_tenant(admin, tenant_id)
     q = select(
         LLMUsageLog.carmen_user_id.label("uid"),
         func.count(LLMUsageLog.id).label("total_calls"),
@@ -300,11 +346,12 @@ async def user_usage(
         func.sum(LLMUsageLog.cost_usd).label("total_cost"),
         func.avg(LLMUsageLog.duration_ms).label("avg_latency"),
     ).where(
-        LLMUsageLog.tenant_id == session.tenant_id,
         LLMUsageLog.created_at >= from_date,
         LLMUsageLog.created_at <= to_date,
         LLMUsageLog.carmen_user_id.isnot(None),
     )
+    if tid:
+        q = q.where(LLMUsageLog.tenant_id == tid)
 
     q = q.group_by(LLMUsageLog.carmen_user_id)
     order_map = {
@@ -339,30 +386,24 @@ async def user_usage(
 async def error_breakdown(
     group_by: Literal["module", "tenant", "endpoint"] = Query("module"),
     period_hours: int = Query(24, ge=1, le=720),
+    tenant_id: str | None = Query(None),
     limit: int = Query(50, le=200),
     db: AsyncSession = Depends(get_db),
-    session: SessionInfo = Depends(get_current_session),
-    _admin: None = Depends(require_admin),
+    admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
 ):
-    """Error-rate breakdown by module, tenant, or endpoint."""
-    since = datetime.now(UTC) - timedelta(hours=period_hours)
+    since = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=period_hours)
+    tid = _resolve_tenant(admin, tenant_id)
 
     if group_by == "module":
         failed_count = func.sum(case((OCRTask.status == TaskStatus.FAILED, 1), else_=0))
-        q = (
-            select(
-                OCRTask.module_id.label("group"),
-                func.count(OCRTask.id).label("total"),
-                failed_count.label("errors"),
-            )
-            .where(
-                OCRTask.tenant_id == session.tenant_id,
-                OCRTask.created_at >= since,
-            )
-            .group_by(OCRTask.module_id)
-            .order_by(text("errors DESC"))
-            .limit(limit)
-        )
+        q = select(
+            OCRTask.module_id.label("group"),
+            func.count(OCRTask.id).label("total"),
+            failed_count.label("errors"),
+        ).where(OCRTask.created_at >= since)
+        if tid:
+            q = q.where(OCRTask.tenant_id == tid)
+        q = q.group_by(OCRTask.module_id).order_by(text("errors DESC")).limit(limit)
         result = await db.execute(q)
         rows = result.mappings().all()
         return {
@@ -376,9 +417,6 @@ async def error_breakdown(
                     "error_rate_pct": round((r["errors"] or 0) / r["total"] * 100, 2)
                     if r["total"]
                     else 0,
-                    "success_rate_pct": round((1 - (r["errors"] or 0) / r["total"]) * 100, 2)
-                    if r["total"]
-                    else 0,
                 }
                 for r in rows
             ],
@@ -387,23 +425,17 @@ async def error_breakdown(
     error_count = func.sum(case((PerformanceLog.status_code >= 500, 1), else_=0))
     group_col = PerformanceLog.tenant_id if group_by == "tenant" else PerformanceLog.endpoint
 
-    q = (
-        select(
-            group_col.label("group"),
-            func.count(PerformanceLog.id).label("total"),
-            error_count.label("errors"),
-            func.avg(PerformanceLog.duration_ms).label("avg_latency"),
-        )
-        .where(
-            PerformanceLog.tenant_id == session.tenant_id,
-            PerformanceLog.created_at >= since,
-        )
-        .group_by(group_col)
-        .order_by(text("errors DESC"))
-        .limit(limit)
-    )
+    q = select(
+        group_col.label("group"),
+        func.count(PerformanceLog.id).label("total"),
+        error_count.label("errors"),
+        func.avg(PerformanceLog.duration_ms).label("avg_latency"),
+    ).where(PerformanceLog.created_at >= since)
+    if tid:
+        q = q.where(PerformanceLog.tenant_id == tid)
     if group_by == "tenant":
         q = q.where(PerformanceLog.tenant_id.isnot(None))
+    q = q.group_by(group_col).order_by(text("errors DESC")).limit(limit)
 
     result = await db.execute(q)
     rows = result.mappings().all()
@@ -416,9 +448,6 @@ async def error_breakdown(
                 "total_requests": int(r["total"] or 0),
                 "errors": int(r["errors"] or 0),
                 "error_rate_pct": round((r["errors"] or 0) / r["total"] * 100, 2)
-                if r["total"]
-                else 0,
-                "success_rate_pct": round((1 - (r["errors"] or 0) / r["total"]) * 100, 2)
                 if r["total"]
                 else 0,
                 "avg_latency_ms": round(float(r["avg_latency"] or 0), 1),

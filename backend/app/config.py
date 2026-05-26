@@ -72,6 +72,17 @@ class Settings(BaseSettings):
     session_encryption_key: str = _WEAK_FERNET_KEY
     session_ttl_hours: int = 8
 
+    # Admin Dashboard JWT — separate secret prevents token confusion attacks.
+    # Leave empty to fall back to ocr_jwt_secret (dev only; set in production).
+    # Generate: python -c "import secrets; print(secrets.token_hex(32))"
+    admin_jwt_secret: str = ""
+    admin_jwt_ttl_hours: int = 8
+
+    # Admin bootstrap credentials — read by `python -m app.bootstrap_admin`.
+    # Never leave these set in production after bootstrapping.
+    admin_bootstrap_email: str = ""
+    admin_bootstrap_password: str = ""
+
     # Ephemeral hosts (Render free / Heroku) — informational only since log retention
     # is now done by dropping PostgreSQL partitions (no on-disk archives).
     ephemeral_filesystem: bool = False

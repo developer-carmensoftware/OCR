@@ -1,4 +1,4 @@
-"""Admin maintenance endpoints — quotas, retention, summary rebuild, pricing."""
+"""Admin maintenance endpoints — retention, summary rebuild, pricing."""
 
 import logging
 from datetime import date
@@ -7,10 +7,11 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
 from app.models.billing import LLMModelPricing
 
-from .deps import require_admin
+from .deps import require_permission
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -18,7 +19,7 @@ router = APIRouter()
 
 @router.post("/retention/run")
 async def trigger_retention(
-    _admin: None = Depends(require_admin),
+    _admin: AdminPrincipal = Depends(require_permission("configs", "write")),
 ):
     from app.services.retention_service import purge_inactive_sessions
 
@@ -29,7 +30,7 @@ async def trigger_retention(
 @router.post("/summary/rebuild")
 async def trigger_summary_rebuild(
     target_date: date | None = Query(None, alias="date"),
-    _admin: None = Depends(require_admin),
+    _admin: AdminPrincipal = Depends(require_permission("configs", "write")),
 ):
     from app.services.summary_service import build_daily_summary
 
@@ -40,7 +41,7 @@ async def trigger_summary_rebuild(
 @router.post("/summary/model-cost")
 async def trigger_model_cost(
     target_date: date | None = Query(None, alias="date"),
-    _admin: None = Depends(require_admin),
+    _admin: AdminPrincipal = Depends(require_permission("configs", "write")),
 ):
     from app.services.summary_service import build_daily_model_cost
 
@@ -51,7 +52,7 @@ async def trigger_model_cost(
 @router.post("/summary/monthly")
 async def trigger_monthly_summary(
     target_date: date | None = Query(None, alias="date"),
-    _admin: None = Depends(require_admin),
+    _admin: AdminPrincipal = Depends(require_permission("configs", "write")),
 ):
     from app.services.summary_service import build_monthly_summary
 
@@ -61,7 +62,7 @@ async def trigger_monthly_summary(
 
 @router.post("/anomaly/run")
 async def trigger_anomaly_detection(
-    _admin: None = Depends(require_admin),
+    _admin: AdminPrincipal = Depends(require_permission("configs", "write")),
 ):
     from app.services.anomaly_service import detect_anomalies
 
@@ -71,7 +72,7 @@ async def trigger_anomaly_detection(
 
 @router.post("/pricing/sync")
 async def trigger_pricing_sync(
-    _admin: None = Depends(require_admin),
+    _admin: AdminPrincipal = Depends(require_permission("configs", "write")),
 ):
     from app.services.usage_service import fetch_openrouter_pricing
 
@@ -82,7 +83,7 @@ async def trigger_pricing_sync(
 @router.get("/pricing/list")
 async def get_pricing_list(
     db: AsyncSession = Depends(get_db),
-    _admin: None = Depends(require_admin),
+    _admin: AdminPrincipal = Depends(require_permission("configs", "read")),
 ):
     result = await db.execute(select(LLMModelPricing).order_by(LLMModelPricing.model_name))
     rows = result.scalars().all()
