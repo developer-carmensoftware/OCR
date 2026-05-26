@@ -90,10 +90,10 @@ export function useAPValidation({ headerData, lineItems, fieldMappings, t }: APV
     // or last item for other fields.
     let targetIdx = updated.length - 1
     if (itemKey === 'taxAmt') {
-      const lastTaxable = [...updated]
+      const taxables = [...updated]
         .map((item, i) => ({ item, i }))
         .filter(({ item }) => parseNum(item.taxPct) > 0)
-        .at(-1)
+      const lastTaxable = taxables.length ? taxables[taxables.length - 1] : undefined
       if (lastTaxable) targetIdx = lastTaxable.i
     }
 
