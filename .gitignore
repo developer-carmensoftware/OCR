@@ -2,6 +2,9 @@
 .env
 **/.env
 
+# Local test fixtures
+test-fixtures/
+
 # Python
 __pycache__/
 *.pyc
