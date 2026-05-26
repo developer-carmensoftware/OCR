@@ -118,6 +118,9 @@ export default function APReviewStep({ ctrl }: Props) {
   } = ctrl
 
   const vendorMapped = !!systemVendor.code
+  const mappedFieldValues = Object.values(fieldMappings)
+  const showFixedTaxPct = !mappedFieldValues.includes('taxPct')
+  const showFixedTaxType = !mappedFieldValues.includes('taxType')
 
   return (
     <>
@@ -172,6 +175,8 @@ export default function APReviewStep({ ctrl }: Props) {
                     }
                   </th>
                 ))}
+                {showFixedTaxPct && <th scope="col">{t.taxPct}</th>}
+                {showFixedTaxType && <th scope="col">{t.taxType}</th>}
               </tr>
             </thead>
             <tbody className="stagger-rows">
@@ -212,6 +217,32 @@ export default function APReviewStep({ ctrl }: Props) {
                       </td>
                     )
                   })}
+                  {showFixedTaxPct && (
+                    <td>
+                      <input
+                        type="text"
+                        aria-label="taxPct"
+                        className="ap-edit-input numeric"
+                        value={item.taxPct || ''}
+                        onChange={e => updateItem(ri, 'taxPct', e.target.value)}
+                        onBlur={e => blurLineItem(ri, 'taxPct', e.target.value)}
+                      />
+                    </td>
+                  )}
+                  {showFixedTaxType && (
+                    <td>
+                      <select
+                        aria-label="Tax type"
+                        className="ap-taxtype-select"
+                        value={(item.taxType as TaxTypeValue | undefined) || 'Exclude'}
+                        onChange={e => changeLineTaxType(ri, e.target.value as TaxTypeValue)}
+                      >
+                        <option value="Include">Include</option>
+                        <option value="Exclude">Exclude</option>
+                        <option value="None">None</option>
+                      </select>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -254,6 +285,8 @@ export default function APReviewStep({ ctrl }: Props) {
                     )
                   return <td key={`e${c}`} />
                 })}
+                {showFixedTaxPct && <td />}
+                {showFixedTaxType && <td />}
               </tr>
             </tfoot>
           </table>

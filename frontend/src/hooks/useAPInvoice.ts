@@ -162,8 +162,8 @@ export function useAPInvoice() {
 
     const qty = parseNum(snap.qty) || 1
     const unitPrice = parseNum(snap.unitPrice)
-    const taxPct = parseNum(snap.taxPct) || 7
     const taxType = (snap.taxType || 'Exclude') as 'Include' | 'Exclude' | 'None'
+    const taxPct = taxType === 'None' ? 0 : parseNum(snap.taxPct) || 7
 
     // discountPct → derive discountAmt; otherwise read discountAmt directly
     const discountAmt =
@@ -225,7 +225,7 @@ export function useAPInvoice() {
       const unitPrice = parseNum(item.unitPrice)
       const discountAmt = parseNum(item.discountAmt)
       const currentTaxType = (item.taxType || 'Exclude') as 'Include' | 'Exclude' | 'None'
-      const taxPct = parseNum(item.taxPct) || 7
+      const taxPct = newTaxType === 'None' ? 0 : parseNum(item.taxPct) || 7
 
       const afterDisc =
         unitPrice > 0

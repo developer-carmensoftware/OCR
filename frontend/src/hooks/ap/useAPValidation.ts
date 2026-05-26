@@ -57,19 +57,58 @@ export function useAPValidation({ headerData, lineItems, fieldMappings, t }: APV
     const diff = (Math.round(parseNum(tgt) * 100) - Math.round(parseNum(sumCur) * 100)) / 100
     if (diff === 0) return items
     const updated = [...items]
-    const last = updated.length - 1
-    updated[last] = {
-      ...updated[last],
+
+    // taxAmt with large diff (>1 THB): distribute proportionally across taxable
+    // items by lineSubTotal so no single item gets an inflated tax amount.
+    // Small diff (≤1 THB) stays on last taxable item (penny rounding).
+    if (itemKey === 'taxAmt' && Math.abs(diff) > 1) {
+      const taxableIdxs = updated
+        .map((item, i) => ({ item, i }))
+        .filter(({ item }) => parseNum(item.taxPct) > 0)
+      if (taxableIdxs.length > 0) {
+        const totalSub = taxableIdxs.reduce((s, { item }) => s + parseNum(item.lineSubTotal), 0)
+        let remaining = Math.round(diff * 100)
+        taxableIdxs.forEach(({ item, i }, pos) => {
+          const isLast = pos === taxableIdxs.length - 1
+          const share = isLast
+            ? remaining
+            : Math.round(diff * (parseNum(item.lineSubTotal) / (totalSub || 1)) * 100)
+          remaining -= share
+          const shareDec = share / 100
+          updated[i] = {
+            ...updated[i],
+            taxAmt: fmt(
+              (Math.round(round2(updated[i].taxAmt) * 100) + Math.round(shareDec * 100)) / 100
+            ),
+          }
+        })
+        return updated
+      }
+    }
+
+    // Default: absorb diff into last taxable item for taxAmt (small diff / fallback),
+    // or last item for other fields.
+    let targetIdx = updated.length - 1
+    if (itemKey === 'taxAmt') {
+      const lastTaxable = [...updated]
+        .map((item, i) => ({ item, i }))
+        .filter(({ item }) => parseNum(item.taxPct) > 0)
+        .at(-1)
+      if (lastTaxable) targetIdx = lastTaxable.i
+    }
+
+    updated[targetIdx] = {
+      ...updated[targetIdx],
       [itemKey]: fmt(
-        (Math.round(round2(updated[last][itemKey]) * 100) + Math.round(diff * 100)) / 100
+        (Math.round(round2(updated[targetIdx][itemKey]) * 100) + Math.round(diff * 100)) / 100
       ),
     }
     if (adjustTotal) {
       const ltDiff = isDiscount ? -diff : diff
-      updated[last] = {
-        ...updated[last],
+      updated[targetIdx] = {
+        ...updated[targetIdx],
         lineTotal: fmt(
-          (Math.round(round2(updated[last].lineTotal) * 100) + Math.round(ltDiff * 100)) / 100
+          (Math.round(round2(updated[targetIdx].lineTotal) * 100) + Math.round(ltDiff * 100)) / 100
         ),
       }
     }
