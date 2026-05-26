@@ -142,8 +142,9 @@ export default function APReviewStep({ ctrl }: Props) {
           <div className="header-form">
             {HEADER_FIELDS(t).map(({ key, label }) => (
               <div key={key} className="form-field">
-                <label>{label}</label>
+                <label htmlFor={key}>{label}</label>
                 <input
+                  id={key}
                   type="text"
                   value={headerData[key as keyof APInvoiceHeader] ?? ''}
                   onChange={e => updateHeader(key, e.target.value)}

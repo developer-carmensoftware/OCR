@@ -915,8 +915,8 @@
   color: var(--text);
   cursor: pointer;
   outline: none;
-  appearance: none;
   -webkit-appearance: none;
+  appearance: none;
   transition:
     border-color 0.15s,
     background 0.15s;
@@ -977,6 +977,7 @@
     background 120ms ease,
     border-color 120ms ease;
   outline: none;
+  -webkit-user-select: none;
   user-select: none;
 }
 
