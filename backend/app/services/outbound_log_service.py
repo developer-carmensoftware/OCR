@@ -12,7 +12,6 @@ burst of LLM/Carmen calls doesn't translate to a 1:1 burst of DB INSERTs.
 import logging
 
 from app.context import (
-    current_business_unit_id,
     current_carmen_user_id,
     current_ocr_session_id,
     current_tenant_id,
@@ -58,7 +57,6 @@ async def log_outbound(
         _OUTBOUND_BUFFER.append(
             {
                 "tenant_id": current_tenant_id.get() or None,
-                "business_unit_id": current_business_unit_id.get() or None,
                 "service": service,
                 "url": url,
                 "method": method,

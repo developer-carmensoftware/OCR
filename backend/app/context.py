@@ -4,10 +4,10 @@ Request-scoped context variables.
 Set by auth/dependencies.py at the start of each authenticated request.
 Read by middleware and services to enrich logs without threading data through every call.
 
-Identity hierarchy:
-  tenant_id        — UUID from tenants table (resolved from carmen_uri hostname)
-  business_unit_id — UUID from business_units table (resolved from JWT `bu` claim)
-  carmen_user_id   — Carmen ERP user UUID (from JWT, external — no FK in our DB)
+Identity:
+  tenant_id      — UUID from tenants table; one row per (carmen host, bu) pair,
+                   so this is the single FK used for all data isolation.
+  carmen_user_id — Carmen ERP user UUID (from JWT, external — no FK in our DB)
 """
 
 import logging
@@ -15,7 +15,6 @@ from contextvars import ContextVar
 
 # ── Tenant identity (FK-based, resolved from JWT) ─────────────────────────────
 current_tenant_id: ContextVar[str] = ContextVar("current_tenant_id", default="")
-current_business_unit_id: ContextVar[str] = ContextVar("current_business_unit_id", default="")
 
 # ── Carmen ERP user (external, no FK) ────────────────────────────────────────
 current_carmen_user_id: ContextVar[str] = ContextVar("current_carmen_user_id", default="")

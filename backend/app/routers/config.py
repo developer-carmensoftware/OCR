@@ -63,11 +63,10 @@ class AccountingConfigResponse(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-async def _get_config(db: AsyncSession, tenant_id: str, business_unit_id: str):
+async def _get_config(db: AsyncSession, tenant_id: str):
     result = await db.execute(
         select(BUAccountingConfig).where(
             BUAccountingConfig.tenant_id == tenant_id,
-            BUAccountingConfig.business_unit_id == business_unit_id,
             BUAccountingConfig.deleted_at.is_(None),
         )
     )
@@ -106,7 +105,7 @@ async def get_accounting_config(
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
 ):
-    row = await _get_config(db, session.tenant_id, session.business_unit_id)
+    row = await _get_config(db, session.tenant_id)
     if not row:
         return AccountingConfigResponse()
 
@@ -130,7 +129,7 @@ async def save_accounting_config(
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
 ):
-    row = await _get_config(db, session.tenant_id, session.business_unit_id)
+    row = await _get_config(db, session.tenant_id)
 
     if row:
         row.bank_code = req.bank_code
@@ -142,7 +141,6 @@ async def save_accounting_config(
     else:
         row = BUAccountingConfig(
             tenant_id=session.tenant_id,
-            business_unit_id=session.business_unit_id,
             bank_code=req.bank_code,
             file_prefix=req.file_prefix,
             file_source=req.file_source,
@@ -183,9 +181,7 @@ async def save_accounting_config(
             )
 
     await db.commit()
-    logger.info(
-        "Saved accounting config for tenant=%s bu=%s", session.tenant_id, session.business_unit_id
-    )
+    logger.info("Saved accounting config for tenant=%s", session.tenant_id)
     return {"ok": True}
 
 
@@ -201,7 +197,6 @@ async def get_ap_vendor_mapping(
     result = await db.execute(
         select(APVendorColumnMapping).where(
             APVendorColumnMapping.tenant_id == session.tenant_id,
-            APVendorColumnMapping.business_unit_id == session.business_unit_id,
             APVendorColumnMapping.vendor_tax_id == vendor_tax_id,
             APVendorColumnMapping.deleted_at.is_(None),
         )
@@ -234,7 +229,6 @@ async def save_ap_vendor_mapping(
     result = await db.execute(
         select(APVendorColumnMapping).where(
             APVendorColumnMapping.tenant_id == session.tenant_id,
-            APVendorColumnMapping.business_unit_id == session.business_unit_id,
             APVendorColumnMapping.vendor_tax_id == vendor_tax_id,
             APVendorColumnMapping.deleted_at.is_(None),
         )
@@ -244,7 +238,6 @@ async def save_ap_vendor_mapping(
     if not row:
         row = APVendorColumnMapping(
             tenant_id=session.tenant_id,
-            business_unit_id=session.business_unit_id,
             vendor_tax_id=vendor_tax_id,
         )
         db.add(row)
@@ -266,9 +259,7 @@ async def save_ap_vendor_mapping(
         )
 
     await db.commit()
-    logger.info(
-        "Saved AP vendor mapping for vendor=%s bu=%s", vendor_tax_id, session.business_unit_id
-    )
+    logger.info("Saved AP vendor mapping for vendor=%s tenant=%s", vendor_tax_id, session.tenant_id)
     return {"ok": True}
 
 
@@ -283,8 +274,8 @@ async def get_account_usage(
     _session: SessionInfo = Depends(get_current_session),
 ):
     """
-    Return all BUs (across all tenants) that have a mapping entry matching
-    the given acc_code and/or dept_code. At least one filter is required.
+    Return all tenants that have a mapping entry matching the given acc_code
+    and/or dept_code. At least one filter is required.
 
     Example: GET /api/v1/config/analytics/account-usage?acc_code=5100-00
     """
@@ -303,7 +294,6 @@ async def get_account_usage(
             BUAccountingMappingEntry.dept_code,
             BUAccountingMappingEntry.acc_code,
             BUAccountingConfig.tenant_id,
-            BUAccountingConfig.business_unit_id,
             BUAccountingConfig.bank_code,
         )
         .join(BUAccountingConfig, BUAccountingConfig.id == BUAccountingMappingEntry.config_id)
@@ -311,7 +301,7 @@ async def get_account_usage(
             BUAccountingConfig.deleted_at.is_(None),
             *conditions,
         )
-        .order_by(BUAccountingConfig.tenant_id, BUAccountingConfig.business_unit_id)
+        .order_by(BUAccountingConfig.tenant_id)
     )
     rows = result.all()
 
@@ -322,7 +312,6 @@ async def get_account_usage(
         "results": [
             {
                 "tenant_id": r.tenant_id,
-                "business_unit_id": r.business_unit_id,
                 "bank_code": r.bank_code,
                 "field_type": r.field_type,
                 "dept_code": r.dept_code,

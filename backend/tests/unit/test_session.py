@@ -31,7 +31,6 @@ def _make_jwt(**kwargs) -> str:
     defaults = dict(
         session_id="sid-001",
         tenant_id="tid-001",
-        business_unit_id="bid-001",
         carmen_user_id="cuid-001",
         username="tester",
         secret=SECRET,
@@ -54,7 +53,7 @@ class TestCreateSessionJwt:
         payload = decode_session_jwt(token, SECRET)
         assert payload["sid"] == "sid-001"
         assert payload["tid"] == "tid-001"
-        assert payload["bid"] == "bid-001"
+        assert "bid" not in payload
         assert payload["cuid"] == "cuid-001"
         assert payload["username"] == "tester"
         assert payload["bu"] == "BU01"

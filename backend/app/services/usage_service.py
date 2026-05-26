@@ -56,11 +56,11 @@ _QUOTA_RULES_CACHE: dict[str, tuple[list[_CachedQuota], float]] = {}
 # ── Context helpers ───────────────────────────────────────────────────────────
 
 
-def _ctx() -> tuple[str, str]:
-    """Return (tenant_id, business_unit_id) from the current request context."""
-    from app.context import current_business_unit_id, current_tenant_id
+def _ctx() -> str:
+    """Return tenant_id from the current request context."""
+    from app.context import current_tenant_id
 
-    return current_tenant_id.get() or "", current_business_unit_id.get() or ""
+    return current_tenant_id.get() or ""
 
 
 def _utcnow() -> datetime:
@@ -215,7 +215,7 @@ async def check_quota() -> None:
     No-ops silently if no quota rule exists for this tenant.
     Quota rules are served from a 5-minute TTL cache; only QuotaUsage hits DB.
     """
-    tenant_id, _ = _ctx()
+    tenant_id = _ctx()
     if not tenant_id:
         return
 
@@ -260,7 +260,7 @@ async def check_quota() -> None:
 
 async def increment_quota(increment: float = 1.0) -> None:
     """Increment the calls counter for all quota rules of this tenant."""
-    tenant_id, _ = _ctx()
+    tenant_id = _ctx()
     if not tenant_id:
         return
     try:
@@ -308,7 +308,7 @@ async def log_llm_usage(
     """
     from app.context import current_carmen_user_id, current_ocr_session_id
 
-    tenant_id, business_unit_id = _ctx()
+    tenant_id = _ctx()
 
     if count_quota:
         await increment_quota()
@@ -321,7 +321,6 @@ async def log_llm_usage(
             db.add(
                 LLMUsageLog(
                     tenant_id=tenant_id or None,
-                    business_unit_id=business_unit_id or None,
                     task_id=task_id,
                     module_id=module_id,
                     carmen_session_id=current_ocr_session_id.get() or None,

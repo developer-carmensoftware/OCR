@@ -22,7 +22,6 @@ export interface ExchangeResponse {
     bu: string
     uri: string
     tenant_id: string
-    business_unit_id: string
   }
 }
 

@@ -3,7 +3,7 @@ Backward-compatible re-export hub. All symbols still importable from app.models.
 
 New code should import directly from the domain modules:
   app.models.mixins       — TimestampMixin, SoftDeleteMixin, WriterMixin, TenantFKMixin
-  app.models.identity     — Plan, Tenant, BusinessUnit
+  app.models.identity     — Plan, Tenant
   app.models.admin        — AdminUser, Role, Permission, RolePermission, AdminUserRole, APIKey, APIKeyUsage
   app.models.catalog      — Module, TenantModule, Bank, PromptTemplate
   app.models.billing      — SystemConfig, TenantConfigOverride, FeatureFlag, Quota, QuotaUsage, LLMModelPricing
@@ -46,7 +46,7 @@ from .enums import (
     QuotaPeriod,
     TaskStatus,
 )
-from .identity import BusinessUnit, Plan, Tenant
+from .identity import Plan, Tenant
 from .mixins import SoftDeleteMixin, TenantFKMixin, TimestampMixin, WriterMixin
 from .observability import (
     AnomalyAlert,
@@ -77,7 +77,6 @@ __all__ = [
     # Identity
     "Plan",
     "Tenant",
-    "BusinessUnit",
     # Admin RBAC
     "AdminUser",
     "Role",

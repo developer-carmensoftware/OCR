@@ -64,31 +64,27 @@ def _parse_db_url(url: str) -> dict:
 
 
 async def setup_session(env: dict) -> str:
-    """Insert a tenant/BU/session row and return a freshly minted JWT."""
+    """Insert a tenant + session row and return a freshly minted JWT."""
     cfg = _parse_db_url(env["DATABASE_URL"])
     conn = await aiomysql.connect(autocommit=True, **cfg)
     try:
         async with conn.cursor() as cur:
             tenant_id = str(uuid.uuid4())
-            bu_id = str(uuid.uuid4())
             session_id = str(uuid.uuid4())
             carmen_user_id = "loadtest-" + uuid.uuid4().hex[:12]
 
-            # tenant
+            # tenant (one row per host+bu pair)
             await cur.execute(
                 """
-                INSERT INTO tenants (id, host, name, plan, is_active)
-                VALUES (%s, %s, %s, 'free', 1)
+                INSERT INTO tenants (id, host, bu_code, name, plan, is_active)
+                VALUES (%s, %s, %s, %s, 'free', 1)
                 """,
-                (tenant_id, f"loadtest-{tenant_id[:8]}.local", "loadtest"),
-            )
-            # business unit
-            await cur.execute(
-                """
-                INSERT INTO business_units (id, tenant_id, code, name, is_active)
-                VALUES (%s, %s, %s, %s, 1)
-                """,
-                (bu_id, tenant_id, "LT", "LoadTest BU"),
+                (
+                    tenant_id,
+                    f"loadtest-{tenant_id[:8]}.local",
+                    "LT",
+                    "loadtest/LT",
+                ),
             )
             # encrypted carmen token (fake — we won't actually call Carmen)
             f = Fernet(env["SESSION_ENCRYPTION_KEY"].encode())
@@ -97,14 +93,13 @@ async def setup_session(env: dict) -> str:
             await cur.execute(
                 """
                 INSERT INTO ocr_sessions
-                  (id, tenant_id, business_unit_id, carmen_user_id, username,
+                  (id, tenant_id, carmen_user_id, username,
                    carmen_token_encrypted, carmen_uri, is_active)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, 1)
+                VALUES (%s, %s, %s, %s, %s, %s, 1)
                 """,
                 (
                     session_id,
                     tenant_id,
-                    bu_id,
                     carmen_user_id,
                     "loadtest",
                     encrypted,
@@ -120,7 +115,6 @@ async def setup_session(env: dict) -> str:
     payload = {
         "sid": session_id,
         "tid": tenant_id,
-        "bid": bu_id,
         "cuid": carmen_user_id,
         "username": "loadtest",
         "bu": "LT",

@@ -21,7 +21,6 @@ FAKE_SESSION = SessionInfo(
     carmen_user_id="u-test",
     username="tester",
     tenant_id="t-test",
-    business_unit_id="bu-test",
     carmen_uri="https://test.carmenwork.com",
     bu="BU01",
 )
@@ -47,7 +46,6 @@ def make_test_client(mock_db):
         # propagate to route handler coroutines (sync deps run in threadpool and
         # their ContextVar writes are NOT visible to the main coroutine).
         from app.context import (
-            current_business_unit_id,
             current_carmen_token,
             current_carmen_uri,
             current_carmen_user_id,
@@ -57,7 +55,6 @@ def make_test_client(mock_db):
         )
 
         current_tenant_id.set(FAKE_SESSION.tenant_id)
-        current_business_unit_id.set(FAKE_SESSION.business_unit_id)
         current_carmen_user_id.set(FAKE_SESSION.carmen_user_id)
         current_username.set(FAKE_SESSION.username)
         current_ocr_session_id.set(FAKE_SESSION.session_id)

@@ -38,7 +38,6 @@ async def get_usage_summary(
         select(DailyUsageSummary)
         .where(
             DailyUsageSummary.tenant_id == session.tenant_id,
-            DailyUsageSummary.business_unit_id == session.business_unit_id,
             DailyUsageSummary.summary_date >= from_date,
             DailyUsageSummary.summary_date <= to_date,
         )
@@ -52,7 +51,6 @@ async def get_usage_summary(
 
     return {
         "tenant_id": session.tenant_id,
-        "business_unit_id": session.business_unit_id,
         "from": str(from_date),
         "to": str(to_date),
         "days": len(rows),
@@ -110,7 +108,6 @@ async def get_usage_totals(
             func.sum(DailyUsageSummary.total_outbound_calls).label("total_outbound_calls"),
         ).where(
             DailyUsageSummary.tenant_id == session.tenant_id,
-            DailyUsageSummary.business_unit_id == session.business_unit_id,
             DailyUsageSummary.summary_date >= from_date,
             DailyUsageSummary.summary_date <= to_date,
         )
@@ -119,7 +116,6 @@ async def get_usage_totals(
 
     return {
         "tenant_id": session.tenant_id,
-        "business_unit_id": session.business_unit_id,
         "from": str(from_date),
         "to": str(to_date),
         "totals": {
@@ -176,7 +172,6 @@ async def get_llm_usage(
                 "id": r.id,
                 "module_id": r.module_id,
                 "model": r.model,
-                "business_unit_id": r.business_unit_id,
                 "task_id": r.task_id,
                 "carmen_user_id": r.carmen_user_id,
                 "prompt_tokens": r.prompt_tokens,
@@ -193,32 +188,31 @@ async def get_llm_usage(
     }
 
 
-@router.get("/bu-ranking")
-async def bu_ranking(
+@router.get("/tenant-ranking")
+async def tenant_ranking(
     metric: Literal["error_rate", "latency", "cost", "volume"] = Query("error_rate"),
     period_hours: int = Query(24, ge=1, le=720),
     limit: int = Query(20, le=100),
     db: AsyncSession = Depends(get_db),
-    session: SessionInfo = Depends(get_current_session),
+    _session: SessionInfo = Depends(get_current_session),
     _admin: None = Depends(require_admin),
 ):
-    """Rank business units within the tenant by a health metric."""
+    """Rank tenants (host+bu pairs) by a health metric across the cluster."""
     since = datetime.now(UTC) - timedelta(hours=period_hours)
 
     if metric == "cost":
         q = (
             select(
-                LLMUsageLog.business_unit_id.label("bu"),
+                LLMUsageLog.tenant_id.label("tid"),
                 func.count(LLMUsageLog.id).label("total_calls"),
                 func.sum(LLMUsageLog.total_tokens).label("total_tokens"),
                 func.sum(LLMUsageLog.cost_usd).label("total_cost"),
             )
             .where(
-                LLMUsageLog.tenant_id == session.tenant_id,
                 LLMUsageLog.created_at >= since,
-                LLMUsageLog.business_unit_id.isnot(None),
+                LLMUsageLog.tenant_id.isnot(None),
             )
-            .group_by(LLMUsageLog.business_unit_id)
+            .group_by(LLMUsageLog.tenant_id)
             .order_by(text("total_cost DESC"))
             .limit(limit)
         )
@@ -229,7 +223,7 @@ async def bu_ranking(
             "period_hours": period_hours,
             "data": [
                 {
-                    "business_unit_id": r["bu"],
+                    "tenant_id": r["tid"],
                     "total_calls": int(r["total_calls"] or 0),
                     "total_tokens": int(r["total_tokens"] or 0),
                     "total_cost_usd": float(str(r["total_cost"] or 0)),
@@ -241,18 +235,17 @@ async def bu_ranking(
     error_count = func.sum(case((PerformanceLog.status_code >= 500, 1), else_=0))
     q = (
         select(
-            PerformanceLog.business_unit_id.label("bu"),
+            PerformanceLog.tenant_id.label("tid"),
             func.count(PerformanceLog.id).label("total_requests"),
             error_count.label("errors"),
             func.avg(PerformanceLog.duration_ms).label("avg_latency"),
             func.max(PerformanceLog.duration_ms).label("max_latency"),
         )
         .where(
-            PerformanceLog.tenant_id == session.tenant_id,
             PerformanceLog.created_at >= since,
-            PerformanceLog.business_unit_id.isnot(None),
+            PerformanceLog.tenant_id.isnot(None),
         )
-        .group_by(PerformanceLog.business_unit_id)
+        .group_by(PerformanceLog.tenant_id)
     )
 
     if metric == "error_rate":
@@ -270,7 +263,7 @@ async def bu_ranking(
         "period_hours": period_hours,
         "data": [
             {
-                "business_unit_id": r["bu"],
+                "tenant_id": r["tid"],
                 "total_requests": int(r["total_requests"] or 0),
                 "errors": int(r["errors"] or 0),
                 "error_rate_pct": round((r["errors"] or 0) / r["total_requests"] * 100, 2)
@@ -288,7 +281,6 @@ async def bu_ranking(
 async def user_usage(
     from_date: datetime | None = Query(None, alias="from"),
     to_date: datetime | None = Query(None, alias="to"),
-    business_unit_id: str | None = Query(None),
     order_by: Literal["calls", "tokens", "cost"] = Query("calls"),
     limit: int = Query(50, le=200),
     db: AsyncSession = Depends(get_db),
@@ -303,7 +295,6 @@ async def user_usage(
 
     q = select(
         LLMUsageLog.carmen_user_id.label("uid"),
-        LLMUsageLog.business_unit_id.label("bu"),
         func.count(LLMUsageLog.id).label("total_calls"),
         func.sum(LLMUsageLog.total_tokens).label("total_tokens"),
         func.sum(LLMUsageLog.cost_usd).label("total_cost"),
@@ -314,10 +305,8 @@ async def user_usage(
         LLMUsageLog.created_at <= to_date,
         LLMUsageLog.carmen_user_id.isnot(None),
     )
-    if business_unit_id:
-        q = q.where(LLMUsageLog.business_unit_id == business_unit_id)
 
-    q = q.group_by(LLMUsageLog.carmen_user_id, LLMUsageLog.business_unit_id)
+    q = q.group_by(LLMUsageLog.carmen_user_id)
     order_map = {
         "calls": text("total_calls DESC"),
         "tokens": text("total_tokens DESC"),
@@ -334,7 +323,6 @@ async def user_usage(
         "data": [
             {
                 "carmen_user_id": r["uid"],
-                "business_unit_id": r["bu"],
                 "total_calls": int(r["total_calls"] or 0),
                 "total_tokens": int(r["total_tokens"] or 0),
                 "total_cost_usd": float(str(r["total_cost"] or 0)),
@@ -349,14 +337,14 @@ async def user_usage(
 
 @router.get("/error-breakdown")
 async def error_breakdown(
-    group_by: Literal["module", "bu", "endpoint"] = Query("module"),
+    group_by: Literal["module", "tenant", "endpoint"] = Query("module"),
     period_hours: int = Query(24, ge=1, le=720),
     limit: int = Query(50, le=200),
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
     _admin: None = Depends(require_admin),
 ):
-    """Error-rate breakdown by module, business unit, or endpoint."""
+    """Error-rate breakdown by module, tenant, or endpoint."""
     since = datetime.now(UTC) - timedelta(hours=period_hours)
 
     if group_by == "module":
@@ -397,7 +385,7 @@ async def error_breakdown(
         }
 
     error_count = func.sum(case((PerformanceLog.status_code >= 500, 1), else_=0))
-    group_col = PerformanceLog.business_unit_id if group_by == "bu" else PerformanceLog.endpoint
+    group_col = PerformanceLog.tenant_id if group_by == "tenant" else PerformanceLog.endpoint
 
     q = (
         select(
@@ -414,8 +402,8 @@ async def error_breakdown(
         .order_by(text("errors DESC"))
         .limit(limit)
     )
-    if group_by == "bu":
-        q = q.where(PerformanceLog.business_unit_id.isnot(None))
+    if group_by == "tenant":
+        q = q.where(PerformanceLog.tenant_id.isnot(None))
 
     result = await db.execute(q)
     rows = result.mappings().all()

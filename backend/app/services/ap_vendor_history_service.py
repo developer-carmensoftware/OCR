@@ -4,20 +4,20 @@ from Carmen to (a) bypass LLM for descriptions seen before and (b) inject
 few-shot examples for the LLM when bypass misses.
 
 Cache pattern mirrors `correction_service.py`: plain dict keyed by
-(tenant_id, business_unit_id, vn_code) with monotonic-time TTL.
+(tenant_id, vn_code) with monotonic-time TTL.
 """
 
 import logging
 import re
 import time
 
-from app.context import current_business_unit_id, current_tenant_id
+from app.context import current_tenant_id
 from app.services.carmen_service import CarmenAPIError, get_vendor_invoices
 
 logger = logging.getLogger(__name__)
 
 _CACHE_TTL = 900.0  # 15 minutes
-_CACHE: dict[tuple[str, str, str], tuple[list[dict], float]] = {}
+_CACHE: dict[tuple[str, str], tuple[list[dict], float]] = {}
 
 
 # ── Description normalization ─────────────────────────────────────────────────
@@ -80,8 +80,7 @@ async def fetch_vendor_history(vn_code: str, carmen_token: str) -> list[dict]:
         return []
 
     tenant_id = current_tenant_id.get() or ""
-    bu_id = current_business_unit_id.get() or ""
-    cache_key = (tenant_id, bu_id, vn_code)
+    cache_key = (tenant_id, vn_code)
 
     now = time.monotonic()
     cached = _CACHE.get(cache_key)
@@ -117,16 +116,13 @@ async def fetch_vendor_history(vn_code: str, carmen_token: str) -> list[dict]:
     return trimmed
 
 
-def invalidate_vendor_history_cache(
-    tenant_id: str | None = None, business_unit_id: str | None = None
-) -> None:
-    """Drop cached entries. If args are None, clears the whole cache."""
-    if tenant_id is None and business_unit_id is None:
+def invalidate_vendor_history_cache(tenant_id: str | None = None) -> None:
+    """Drop cached entries. If tenant_id is None, clears the whole cache."""
+    if tenant_id is None:
         _CACHE.clear()
         return
     tid = tenant_id or ""
-    bid = business_unit_id or ""
-    dead = [k for k in _CACHE if k[0] == tid and k[1] == bid]
+    dead = [k for k in _CACHE if k[0] == tid]
     for k in dead:
         _CACHE.pop(k, None)
 

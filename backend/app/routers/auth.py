@@ -4,11 +4,11 @@ Auth Router — Carmen SSO token exchange.
 Flow:
   1. Frontend sends Carmen token + bu + carmen_uri.
   2. We validate the token against the Carmen API.
-  3. Upsert Tenant (by host) + BusinessUnit (by tenant + bu code) — auto-registers
-     first-time tenants without any admin intervention.
-  4. Create OcrSession with proper FK references.
-  5. Issue a short-lived OCR JWT that embeds tenant_id + business_unit_id so
-     subsequent requests need no DB lookup for tenant resolution.
+  3. Upsert Tenant (by host + bu pair) — auto-registers first-time tenants
+     without any admin intervention.
+  4. Create OcrSession with the tenant FK.
+  5. Issue a short-lived OCR JWT that embeds tenant_id so subsequent requests
+     need no DB lookup for tenant resolution.
 """
 
 import logging
@@ -32,7 +32,7 @@ from app.auth.session import (
 from app.config import settings
 from app.constants import BlockedHosts
 from app.database import async_session, get_db, provision_tenant
-from app.models.orm import BusinessUnit, OcrSession, Tenant
+from app.models.orm import OcrSession, Tenant
 from app.services.rate_limit_service import InMemoryRateLimiter
 from app.services.usage_service import upsert_tenant_quota
 
@@ -102,48 +102,29 @@ def _validate_uri(uri: str) -> str:
     return f"https://{parsed.hostname}{port_part}"
 
 
-async def _upsert_tenant(db: AsyncSession, host: str) -> Tenant:
-    """Return existing Tenant for this host, or create one on first encounter."""
+async def _upsert_tenant(db: AsyncSession, host: str, bu_code: str) -> Tenant:
+    """Return existing Tenant for this (host, bu_code), or create one on first encounter."""
     result = await db.execute(
-        select(Tenant).where(Tenant.host == host, Tenant.deleted_at.is_(None))
+        select(Tenant).where(
+            Tenant.host == host,
+            Tenant.bu_code == bu_code,
+            Tenant.deleted_at.is_(None),
+        )
     )
     tenant = result.scalar_one_or_none()
     if not tenant:
         tenant = Tenant(
             id=uuid.uuid4(),
             host=host,
-            name=host,
+            bu_code=bu_code,
+            name=f"{host}/{bu_code}",
             plan="free",
             is_active=True,
         )
         db.add(tenant)
         await db.flush()
-        logger.info("Auto-registered new tenant: host=%s id=%s", host, tenant.id)
+        logger.info("Auto-registered new tenant: host=%s bu=%s id=%s", host, bu_code, tenant.id)
     return tenant
-
-
-async def _upsert_business_unit(db: AsyncSession, tenant_id: str, bu_code: str) -> BusinessUnit:
-    """Return existing BU for this tenant+code, or create one on first encounter."""
-    result = await db.execute(
-        select(BusinessUnit).where(
-            BusinessUnit.tenant_id == tenant_id,
-            BusinessUnit.code == bu_code,
-            BusinessUnit.deleted_at.is_(None),
-        )
-    )
-    bu = result.scalar_one_or_none()
-    if not bu:
-        bu = BusinessUnit(
-            id=uuid.uuid4(),
-            tenant_id=tenant_id,
-            code=bu_code,
-            name=bu_code,
-            is_active=True,
-        )
-        db.add(bu)
-        await db.flush()
-        logger.info("Auto-registered new BU: tenant=%s code=%s id=%s", tenant_id, bu_code, bu.id)
-    return bu
 
 
 async def _validate_token(token: str, carmen_uri: str) -> None:
@@ -206,9 +187,8 @@ async def exchange_sso_token(request: Request, body: ExchangeRequest):
         raise HTTPException(status_code=500, detail="Session creation failed")
 
     async with async_session() as db:
-        tenant = await _upsert_tenant(db, host)
+        tenant = await _upsert_tenant(db, host, bu)
         await upsert_tenant_quota(db, str(tenant.id), str(tenant.plan))
-        business_unit = await _upsert_business_unit(db, str(tenant.id), bu)
 
         cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(
             hours=settings.session_ttl_hours
@@ -227,7 +207,6 @@ async def exchange_sso_token(request: Request, body: ExchangeRequest):
             OcrSession(
                 id=session_id,
                 tenant_id=tenant.id,
-                business_unit_id=business_unit.id,
                 carmen_user_id=carmen_user_id,
                 username=username,
                 carmen_token_encrypted=encrypted,
@@ -244,7 +223,6 @@ async def exchange_sso_token(request: Request, body: ExchangeRequest):
     access_token = create_session_jwt(
         session_id=str(session_id),
         tenant_id=str(tenant.id),
-        business_unit_id=str(business_unit.id),
         carmen_user_id=carmen_user_id,
         username=username,
         bu=bu,
@@ -261,7 +239,6 @@ async def exchange_sso_token(request: Request, body: ExchangeRequest):
             "bu": bu,
             "uri": carmen_uri,
             "tenant_id": tenant.id,
-            "business_unit_id": business_unit.id,
         },
     )
 

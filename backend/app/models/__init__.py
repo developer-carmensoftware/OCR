@@ -35,7 +35,7 @@ from .enums import (
     TaskStatus,
     TenantPlan,
 )
-from .identity import BusinessUnit, Plan, Tenant
+from .identity import Plan, Tenant
 from .observability import (
     AnomalyAlert,
     AuditLog,
@@ -78,7 +78,6 @@ __all__ = [
     # Identity
     "Plan",
     "Tenant",
-    "BusinessUnit",
     # Admin RBAC
     "AdminUser",
     "Role",

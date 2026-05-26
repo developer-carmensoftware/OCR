@@ -12,7 +12,6 @@ from sqlalchemy import select, update
 from app.auth.session import SessionInfo, decode_session_jwt, decrypt_carmen_token
 from app.config import settings
 from app.context import (
-    current_business_unit_id,
     current_carmen_token,
     current_carmen_uri,
     current_carmen_user_id,
@@ -117,7 +116,6 @@ async def get_current_session(
     # All identity claims are read from the signed JWT — authoritative at login time.
     session_id = payload.get("sid", "")
     tenant_id = payload.get("tid", "")
-    business_unit_id = payload.get("bid", "")
     carmen_user_id = payload.get("cuid", "")
     username = payload.get("username", "")
     bu = payload.get("bu", "")
@@ -145,7 +143,6 @@ async def get_current_session(
         carmen_user_id=carmen_user_id,
         username=username,
         tenant_id=tenant_id,
-        business_unit_id=business_unit_id,
         carmen_uri=carmen_uri,
         bu=bu,
     )
@@ -155,7 +152,6 @@ async def get_current_session(
     current_carmen_user_id.set(carmen_user_id)
     current_username.set(username)
     current_tenant_id.set(tenant_id)
-    current_business_unit_id.set(business_unit_id)
     current_carmen_token.set(carmen_token)
     current_carmen_uri.set(carmen_uri)
 

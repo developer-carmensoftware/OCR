@@ -39,7 +39,6 @@ class LLMUsageLog(Base, TimestampMixin):
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     tenant_id = Column(String(36), nullable=False, index=True)
-    business_unit_id = Column(String(36), nullable=True, index=True)
     task_id = Column(String(36), nullable=True, index=True)
     module_id = Column(String(50), nullable=True, index=True)
     carmen_session_id = Column(String(36), nullable=True, index=True)
@@ -62,7 +61,6 @@ class AuditLog(Base, TimestampMixin):
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     tenant_id = Column(String(36), nullable=True, index=True)
-    business_unit_id = Column(String(36), nullable=True, index=True)
     admin_user_id = Column(String(36), nullable=True, index=True)
     carmen_user_id = Column(String(36), nullable=True, index=True)
     username = Column(String(100), nullable=True)
@@ -84,7 +82,6 @@ class PerformanceLog(Base, TimestampMixin):
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     tenant_id = Column(String(36), nullable=True, index=True)
-    business_unit_id = Column(String(36), nullable=True, index=True)
     endpoint = Column(String(200), nullable=False, index=True)
     method = Column(String(10), nullable=True)
     duration_ms = Column(Float, nullable=False)
@@ -100,7 +97,6 @@ class OutboundCallLog(Base, TimestampMixin):
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     tenant_id = Column(String(36), nullable=True, index=True)
-    business_unit_id = Column(String(36), nullable=True, index=True)
     service = Column(String(50), nullable=False, index=True)
     url = Column(String(500), nullable=False)
     method = Column(String(10), nullable=True)
@@ -114,7 +110,7 @@ class OutboundCallLog(Base, TimestampMixin):
 class DailyUsageSummary(Base, TimestampMixin):
     """
     Pre-aggregated daily metrics. Built by summary_service.build_daily_summary nightly.
-    Unique per (tenant, bu, module, date). Used by anomaly_service + quota dashboards.
+    Unique per (tenant, module, date). Used by anomaly_service + quota dashboards.
     Kept indefinitely — small footprint, source of long-term trend data.
     """
 
@@ -122,7 +118,6 @@ class DailyUsageSummary(Base, TimestampMixin):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     tenant_id = Column(String(36), nullable=False, index=True)
-    business_unit_id = Column(String(36), nullable=True, index=True)
     module_id = Column(String(50), nullable=True, index=True)
     summary_date = Column(DateTime, nullable=False, index=True)
     total_documents = Column(Integer, default=0)
@@ -141,7 +136,6 @@ class DailyUsageSummary(Base, TimestampMixin):
     __table_args__ = (
         UniqueConstraint(
             "tenant_id",
-            "business_unit_id",
             "module_id",
             "summary_date",
             name="uq_summary_scope_module_date",
@@ -151,7 +145,7 @@ class DailyUsageSummary(Base, TimestampMixin):
 
 class DailyModelCost(Base, TimestampMixin):
     """
-    Cost breakdown by LLM model per tenant/BU/module/day.
+    Cost breakdown by LLM model per tenant/module/day.
     Built nightly from llm_usage_logs by summary_service.build_daily_model_cost.
     Kept indefinitely — small footprint (one row per active model per tenant per day).
     """
@@ -161,7 +155,6 @@ class DailyModelCost(Base, TimestampMixin):
     id = Column(Integer, primary_key=True, autoincrement=True)
     summary_date = Column(Date, nullable=False, index=True)
     tenant_id = Column(String(36), nullable=False, index=True)
-    business_unit_id = Column(String(36), nullable=True, index=True)
     module_id = Column(String(50), nullable=True, index=True)
     model_name = Column(String(100), nullable=False)
     call_count = Column(Integer, default=0)
@@ -173,7 +166,6 @@ class DailyModelCost(Base, TimestampMixin):
         UniqueConstraint(
             "summary_date",
             "tenant_id",
-            "business_unit_id",
             "module_id",
             "model_name",
             name="uq_daily_model_cost",
@@ -192,7 +184,6 @@ class MonthlyUsageSummary(Base, TimestampMixin):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     tenant_id = Column(String(36), nullable=False, index=True)
-    business_unit_id = Column(String(36), nullable=True, index=True)
     module_id = Column(String(50), nullable=True, index=True)
     summary_date = Column(Date, nullable=False, index=True)
     total_documents = Column(Integer, default=0)
@@ -211,7 +202,6 @@ class MonthlyUsageSummary(Base, TimestampMixin):
     __table_args__ = (
         UniqueConstraint(
             "tenant_id",
-            "business_unit_id",
             "module_id",
             "summary_date",
             name="uq_monthly_summary_scope",
@@ -222,14 +212,13 @@ class MonthlyUsageSummary(Base, TimestampMixin):
 class AnomalyAlert(Base, TimestampMixin):
     """
     Anomaly detected by anomaly_service.py nightly.
-    resolved_at = NULL means still open. Duplicate check: one open alert per (tenant, bu, metric).
+    resolved_at = NULL means still open. Duplicate check: one open alert per (tenant, metric).
     """
 
     __tablename__ = "anomaly_alerts"
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     tenant_id = Column(String(36), nullable=False, index=True)
-    business_unit_id = Column(String(36), nullable=True, index=True)
     module_id = Column(String(50), nullable=True, index=True)
     metric = Column(String(50), nullable=False, index=True)
     severity: Column = Column(

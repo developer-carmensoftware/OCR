@@ -1,10 +1,9 @@
 """
 Session utilities — JWT issuance/verification + Fernet token encryption.
 
-JWT payload (v2 schema):
+JWT payload (v3 schema — tenant is (host, bu) pair, no separate BU id):
   sid         — OcrSession UUID
   tid         — tenants.id (UUID resolved at login time)
-  bid         — business_units.id (UUID resolved at login time)
   cuid        — Carmen ERP user UUID (external)
   username    — display name
   bu          — raw bu code (for display in frontend, not used for DB filtering)
@@ -27,10 +26,9 @@ class SessionInfo:
     carmen_token: str  # plaintext — decrypted from DB
     carmen_user_id: str  # Carmen ERP user UUID
     username: str
-    tenant_id: str  # FK → tenants.id
-    business_unit_id: str  # FK → business_units.id
+    tenant_id: str  # FK → tenants.id (one row per host+bu pair)
     carmen_uri: str = ""
-    bu: str = ""  # raw bu code from JWT (display only)
+    bu: str = ""  # raw bu code from JWT (display only; tenant_id already encodes it)
 
 
 # ── JWT ──────────────────────────────────────────────────────────────────────
@@ -41,7 +39,6 @@ _ALGORITHM = "HS256"
 def create_session_jwt(
     session_id: str,
     tenant_id: str,
-    business_unit_id: str,
     carmen_user_id: str,
     username: str,
     secret: str,
@@ -53,7 +50,6 @@ def create_session_jwt(
     payload = {
         "sid": session_id,
         "tid": tenant_id,
-        "bid": business_unit_id,
         "cuid": carmen_user_id,
         "username": username,
         "bu": bu,

@@ -48,11 +48,10 @@ def make_mock_db(execute_rows=None, execute_lastrowid=None):
 # ── Session / context helpers ─────────────────────────────────────────────────
 
 
-def set_context(tenant_id="t-001", business_unit_id="bu-001", carmen_user_id="u-001"):
-    from app.context import current_business_unit_id, current_carmen_user_id, current_tenant_id
+def set_context(tenant_id="t-001", carmen_user_id="u-001"):
+    from app.context import current_carmen_user_id, current_tenant_id
 
     current_tenant_id.set(tenant_id)
-    current_business_unit_id.set(business_unit_id)
     current_carmen_user_id.set(carmen_user_id)
 
 
@@ -61,7 +60,7 @@ def ctx():
     """Set standard context vars for unit tests that need them."""
     set_context()
     yield
-    set_context("", "", "")
+    set_context("", "")
 
 
 @pytest.fixture(autouse=True)

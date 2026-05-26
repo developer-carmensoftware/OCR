@@ -1,7 +1,7 @@
 """
 Data plane — Business tables.
 
-All use TenantFKMixin: tenant_id + business_unit_id are NOT NULL FKs.
+All use TenantFKMixin: tenant_id is a NOT NULL FK to tenants (host + bu pair).
 SoftDeleteMixin: rows are never physically deleted.
 WriterMixin.created_by: stores carmen_user_id (the Carmen ERP user who acted).
 """
@@ -80,7 +80,7 @@ class CreditCard(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMix
     bank_code: FK to banks.code (replaces the old hardcoded BankType enum).
     Transactions are stored in CreditCardTransaction (not JSON).
     submitted_at: NULL = draft; NOT NULL = submitted to Carmen ERP.
-    Duplicate check: (tenant_id, business_unit_id, bank_code, doc_no, submitted_at IS NOT NULL).
+    Duplicate check: (tenant_id, bank_code, doc_no, submitted_at IS NOT NULL).
     """
 
     __tablename__ = "credit_cards"
@@ -166,7 +166,6 @@ class MappingHistory(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, Write
         Index(
             "uq_mapping_scope_active",
             "tenant_id",
-            "business_unit_id",
             "bank_code",
             "field_type",
             "dept_code",
@@ -198,7 +197,6 @@ class CorrectionFeedback(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, W
         Index(
             "uq_correction_scope_active",
             "tenant_id",
-            "business_unit_id",
             "doc_no",
             "field_name",
             unique=True,
@@ -209,8 +207,8 @@ class CorrectionFeedback(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, W
 
 class BUAccountingConfig(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixin):
     """
-    Per-BU accounting configuration for the credit card OCR workflow.
-    One active row per (tenant_id, business_unit_id).
+    Per-tenant accounting configuration for the credit card OCR workflow.
+    One active row per tenant_id (one tenant = one host+bu pair).
     GL field mappings live in bu_accounting_mapping_entries (normalized for analytics).
     """
 
@@ -234,7 +232,6 @@ class BUAccountingConfig(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, W
         Index(
             "uq_bu_accounting_config_active",
             "tenant_id",
-            "business_unit_id",
             unique=True,
             postgresql_where=text("deleted_at IS NULL"),
         ),
@@ -277,7 +274,7 @@ class APVendorColumnMapping(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin
     """
     Per-vendor column-to-field mapping config for the AP invoice workflow.
     Replaces ap_invoice_mapping[vendorTaxId] in localStorage.
-    One active row per (tenant_id, business_unit_id, vendor_tax_id).
+    One active row per (tenant_id, vendor_tax_id).
     Field-level mappings live in ap_vendor_field_mapping_entries (normalized).
     """
 
@@ -300,7 +297,6 @@ class APVendorColumnMapping(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin
         Index(
             "uq_ap_vendor_mapping_active",
             "tenant_id",
-            "business_unit_id",
             "vendor_tax_id",
             unique=True,
             postgresql_where=text("deleted_at IS NULL"),

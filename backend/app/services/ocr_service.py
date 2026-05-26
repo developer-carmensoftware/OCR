@@ -12,7 +12,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.context import current_business_unit_id, current_tenant_id
+from app.context import current_tenant_id
 from app.models.orm import OCRTask, TaskStatus
 from app.models.schemas import ExtractedCreditCardData
 from app.services.llm_service import extract_from_image
@@ -25,7 +25,6 @@ async def create_task(
     db: AsyncSession,
     *,
     tenant_id: str,
-    business_unit_id: str,
     module_id: str,
     original_filename: str,
     carmen_user_id: str | None = None,
@@ -34,7 +33,6 @@ async def create_task(
     task = OCRTask(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
-        business_unit_id=business_unit_id,
         module_id=module_id,
         original_filename=original_filename,
         status=TaskStatus.COMPLETED,
@@ -86,7 +84,6 @@ async def get_all_tasks(
     offset: int = 0,
 ) -> tuple[list[OCRTask], int]:
     tenant_id = current_tenant_id.get()
-    business_unit_id = current_business_unit_id.get()
 
     query = select(OCRTask).where(OCRTask.deleted_at.is_(None))
     count_q = select(func.count()).select_from(OCRTask).where(OCRTask.deleted_at.is_(None))
@@ -94,9 +91,6 @@ async def get_all_tasks(
     if tenant_id:
         query = query.where(OCRTask.tenant_id == tenant_id)
         count_q = count_q.where(OCRTask.tenant_id == tenant_id)
-    if business_unit_id:
-        query = query.where(OCRTask.business_unit_id == business_unit_id)
-        count_q = count_q.where(OCRTask.business_unit_id == business_unit_id)
     if status:
         query = query.where(OCRTask.status == status)
         count_q = count_q.where(OCRTask.status == status)

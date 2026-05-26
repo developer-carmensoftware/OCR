@@ -30,7 +30,7 @@ def make_input(**kwargs):
 
 
 async def test_B1_1_happy_path_returns_success_with_ids():
-    set_context("t-001", "bu-001", "u-001")
+    set_context("t-001", "u-001")
     db = make_mock_db(execute_rows=[])  # no duplicate found
 
     result = await run(make_input(), db)
@@ -43,7 +43,7 @@ async def test_B1_1_happy_path_returns_success_with_ids():
 
 
 async def test_B1_1_creates_task_card_and_commits():
-    set_context("t-001", "bu-001")
+    set_context("t-001")
     db = make_mock_db(execute_rows=[])
 
     result = await run(make_input(), db)
@@ -58,7 +58,7 @@ async def test_B1_1_creates_task_card_and_commits():
 
 
 async def test_B1_2_duplicate_doc_no_returns_failure():
-    set_context("t-001", "bu-001")
+    set_context("t-001")
     fake_card = MagicMock()  # simulate existing CreditCard row
     db = make_mock_db(execute_rows=[fake_card])
 
@@ -73,7 +73,7 @@ async def test_B1_2_duplicate_doc_no_returns_failure():
 
 
 async def test_B1_2_duplicate_does_not_commit():
-    set_context("t-001", "bu-001")
+    set_context("t-001")
     db = make_mock_db(execute_rows=[MagicMock()])
 
     await run(make_input(), db)
@@ -85,7 +85,7 @@ async def test_B1_2_duplicate_does_not_commit():
 
 
 async def test_B1_3_db_exception_returns_failure():
-    set_context("t-001", "bu-001")
+    set_context("t-001")
     db = make_mock_db(execute_rows=[])
     db.flush.side_effect = RuntimeError("connection lost")
 
@@ -100,7 +100,7 @@ async def test_B1_3_db_exception_returns_failure():
 
 
 async def test_B1_4_empty_details_creates_card_with_zero_transactions():
-    set_context("t-001", "bu-001")
+    set_context("t-001")
     db = make_mock_db(execute_rows=[])
 
     result = await run(make_input(details=[]), db)
@@ -113,7 +113,7 @@ async def test_B1_4_empty_details_creates_card_with_zero_transactions():
 
 
 async def test_B1_5_sort_order_matches_detail_index():
-    set_context("t-001", "bu-001")
+    set_context("t-001")
     db = make_mock_db(execute_rows=[])
     details = [
         {"transaction": "Sale A", "amount": 100},
@@ -142,7 +142,7 @@ async def test_B1_5_sort_order_matches_detail_index():
 
 
 async def test_B1_6_tenant_id_set_on_created_objects():
-    set_context("tenant-xyz", "bu-abc", "user-111")
+    set_context("tenant-xyz", "user-111")
     db = make_mock_db(execute_rows=[])
 
     added_objects = []
@@ -156,12 +156,11 @@ async def test_B1_6_tenant_id_set_on_created_objects():
     cards = [o for o in added_objects if isinstance(o, CreditCard)]
 
     assert tasks[0].tenant_id == "tenant-xyz"
-    assert tasks[0].business_unit_id == "bu-abc"
     assert cards[0].tenant_id == "tenant-xyz"
 
 
 async def test_duplicate_check_skipped_when_no_doc_no():
-    set_context("t-001", "bu-001")
+    set_context("t-001")
     db = make_mock_db(execute_rows=[])
 
     result = await run(make_input(doc_no=None), db)
@@ -173,7 +172,7 @@ async def test_duplicate_check_skipped_when_no_doc_no():
 
 
 async def test_detail_rows_without_transaction_label_skipped():
-    set_context("t-001", "bu-001")
+    set_context("t-001")
     db = make_mock_db(execute_rows=[])
     details = [
         {"transaction": "", "amount": 100},  # empty label → skipped

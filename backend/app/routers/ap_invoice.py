@@ -61,7 +61,6 @@ async def extract_ap_invoice(
         task = await create_task(
             db,
             tenant_id=session.tenant_id,
-            business_unit_id=session.business_unit_id,
             module_id=Module.AP_INVOICE,
             original_filename=filename,
             carmen_user_id=session.carmen_user_id,
@@ -82,7 +81,6 @@ async def extract_ap_invoice(
                 db,
                 APInvoice,
                 tenant_id=session.tenant_id,
-                business_unit_id=session.business_unit_id,
                 doc_no=doc_no,
                 vendor_name=vendor_name,
             )
@@ -94,7 +92,6 @@ async def extract_ap_invoice(
                 id=uuid.uuid4(),
                 task_id=task_id,
                 tenant_id=session.tenant_id,
-                business_unit_id=session.business_unit_id,
                 vendor_name=vendor_name,
                 doc_no=doc_no,
                 doc_date=parse_doc_date(data.get("documentDate")),

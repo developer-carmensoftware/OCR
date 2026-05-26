@@ -53,18 +53,17 @@ async def _check_cost_spike(target_date: date) -> int:
         rows = await db.execute(
             text("""
             SELECT
-                today.tenant_id, today.business_unit_id, today.module_id,
+                today.tenant_id, today.module_id,
                 today.total_cost_usd                        AS today_cost,
                 AVG(base.total_cost_usd)                    AS avg_cost
             FROM daily_usage_summary today
             JOIN daily_usage_summary base
               ON  base.tenant_id        = today.tenant_id
-              AND base.business_unit_id = today.business_unit_id
               AND base.module_id        = today.module_id
               AND DATE(base.summary_date) BETWEEN :base_start AND :base_end
             WHERE DATE(today.summary_date) = :target
               AND today.total_cost_usd > 0
-            GROUP BY today.tenant_id, today.business_unit_id, today.module_id, today.total_cost_usd
+            GROUP BY today.tenant_id, today.module_id, today.total_cost_usd
             HAVING today.total_cost_usd > AVG(base.total_cost_usd) * :mult
         """),
             {
@@ -76,15 +75,14 @@ async def _check_cost_spike(target_date: date) -> int:
         )
 
         for r in rows.mappings().fetchall():
-            tid, bid, mid = r["tenant_id"], r["business_unit_id"], r["module_id"]
+            tid, mid = r["tenant_id"], r["module_id"]
             actual = Decimal(str(r["today_cost"]))
             threshold = Decimal(str(r["avg_cost"])) * Decimal(str(COST_SPIKE_MULTIPLIER))
-            if await _alert_exists(db, tid, bid, "cost_spike"):
+            if await _alert_exists(db, tid, "cost_spike"):
                 continue
             await _insert_alert(
                 db,
                 tenant_id=tid,
-                business_unit_id=bid,
                 module_id=mid,
                 metric="cost_spike",
                 severity=AlertSeverity.WARN,
@@ -109,7 +107,7 @@ async def _check_error_spike(target_date: date) -> int:
         rows = await db.execute(
             text("""
             SELECT
-                today.tenant_id, today.business_unit_id,
+                today.tenant_id,
                 today.total_errors     AS today_errors,
                 today.total_api_calls  AS today_calls,
                 AVG(base.total_errors)    AS avg_errors,
@@ -117,11 +115,10 @@ async def _check_error_spike(target_date: date) -> int:
             FROM daily_usage_summary today
             JOIN daily_usage_summary base
               ON  base.tenant_id        = today.tenant_id
-              AND base.business_unit_id = today.business_unit_id
               AND DATE(base.summary_date) BETWEEN :base_start AND :base_end
             WHERE DATE(today.summary_date) = :target
               AND today.total_errors >= :min_count
-            GROUP BY today.tenant_id, today.business_unit_id,
+            GROUP BY today.tenant_id,
                      today.total_errors, today.total_api_calls
         """),
             {
@@ -133,18 +130,17 @@ async def _check_error_spike(target_date: date) -> int:
         )
 
         for r in rows.mappings().fetchall():
-            tid, bid = r["tenant_id"], r["business_unit_id"]
+            tid = r["tenant_id"]
             today_rate = Decimal(str(r["today_errors"])) / Decimal(str(max(r["today_calls"], 1)))
             avg_rate = Decimal(str(r["avg_errors"])) / Decimal(str(max(r["avg_calls"], 1)))
             threshold = avg_rate * Decimal(str(ERROR_SPIKE_MULTIPLIER))
             if today_rate <= threshold:
                 continue
-            if await _alert_exists(db, tid, bid, "error_spike"):
+            if await _alert_exists(db, tid, "error_spike"):
                 continue
             await _insert_alert(
                 db,
                 tenant_id=tid,
-                business_unit_id=bid,
                 module_id=None,
                 metric="error_spike",
                 severity=AlertSeverity.WARN,
@@ -185,12 +181,11 @@ async def _check_quota_burn() -> int:
             pct = used / limit
             severity = AlertSeverity.CRITICAL if pct >= QUOTA_CRITICAL_PCT else AlertSeverity.WARN
             metric = "quota_exhausted" if pct >= QUOTA_CRITICAL_PCT else "quota_warning"
-            if await _alert_exists(db, tid, None, metric):
+            if await _alert_exists(db, tid, metric):
                 continue
             await _insert_alert(
                 db,
                 tenant_id=tid,
-                business_unit_id=None,
                 module_id=None,
                 metric=metric,
                 severity=severity,
@@ -203,7 +198,7 @@ async def _check_quota_burn() -> int:
     return alerts
 
 
-async def _alert_exists(db, tenant_id: str, _business_unit_id: str | None, metric: str) -> bool:
+async def _alert_exists(db, tenant_id: str, metric: str) -> bool:
     result = await db.execute(
         text("""
         SELECT 1 FROM anomaly_alerts
@@ -219,7 +214,6 @@ async def _insert_alert(
     db,
     *,
     tenant_id,
-    business_unit_id,
     module_id,
     metric,
     severity: AlertSeverity,
@@ -230,14 +224,13 @@ async def _insert_alert(
     await db.execute(
         text("""
         INSERT INTO anomaly_alerts
-            (tenant_id, business_unit_id, module_id, metric, severity,
+            (tenant_id, module_id, metric, severity,
              threshold, actual, description, created_at)
         VALUES
-            (:tid, :bid, :mid, :metric, :severity, :threshold, :actual, :desc, NOW())
+            (:tid, :mid, :metric, :severity, :threshold, :actual, :desc, NOW())
     """),
         {
             "tid": tenant_id,
-            "bid": business_unit_id,
             "mid": module_id,
             "metric": metric,
             "severity": severity.value,

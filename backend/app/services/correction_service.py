@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.context import current_business_unit_id, current_tenant_id
+from app.context import current_tenant_id
 from app.models.orm import CorrectionFeedback, CreditCard
 
 logger = logging.getLogger(__name__)
@@ -23,10 +23,10 @@ TTL_DAYS = 90
 MIN_CARDS = 10  # need at least this many submitted docs for meaningful ratio
 
 # Hints are derived from 90-day aggregates — they change very slowly. The two
-# COUNT queries used to run on every /extract; cache per (tenant, bu, bank) so
+# COUNT queries used to run on every /extract; cache per (tenant, bank) so
 # we hit the DB at most once per _HINTS_CACHE_TTL seconds.
 _HINTS_CACHE_TTL = 600.0  # 10 minutes
-_HINTS_CACHE: dict[tuple[str, str, str], tuple[dict[str, str], float]] = {}
+_HINTS_CACHE: dict[tuple[str, str], tuple[dict[str, str], float]] = {}
 
 
 async def get_correction_hints(
@@ -35,12 +35,11 @@ async def get_correction_hints(
 ) -> dict[str, str]:
     """
     Return {field_name: hint_text} for fields where error rate > 10%.
-    Scoped to the current tenant + business_unit from context vars.
-    Result cached per (tenant, bu, bank_code) for _HINTS_CACHE_TTL seconds.
+    Scoped to the current tenant from context vars.
+    Result cached per (tenant, bank_code) for _HINTS_CACHE_TTL seconds.
     """
     tenant_id = current_tenant_id.get() or ""
-    business_unit_id = current_business_unit_id.get() or ""
-    cache_key = (tenant_id, business_unit_id, bank_code)
+    cache_key = (tenant_id, bank_code)
 
     now = time.monotonic()
     cached = _HINTS_CACHE.get(cache_key)
@@ -65,9 +64,6 @@ async def get_correction_hints(
     if tenant_id:
         card_filters.append(CreditCard.tenant_id == tenant_id)
         corr_filters.append(CorrectionFeedback.tenant_id == tenant_id)
-    if business_unit_id:
-        card_filters.append(CreditCard.business_unit_id == business_unit_id)
-        corr_filters.append(CorrectionFeedback.business_unit_id == business_unit_id)
 
     # Count submitted documents for this bank (denominator)
     total_result = await db.execute(
@@ -108,16 +104,13 @@ async def get_correction_hints(
     return hints
 
 
-def invalidate_hints_cache(
-    tenant_id: str | None = None, business_unit_id: str | None = None
-) -> None:
+def invalidate_hints_cache(tenant_id: str | None = None) -> None:
     """Drop cached hints — call when CorrectionFeedback rows are added so the next
-    /extract reflects new corrections. If args are None, clears the whole cache."""
-    if tenant_id is None and business_unit_id is None:
+    /extract reflects new corrections. If tenant_id is None, clears the whole cache."""
+    if tenant_id is None:
         _HINTS_CACHE.clear()
         return
     tid = tenant_id or ""
-    bid = business_unit_id or ""
-    dead = [k for k in _HINTS_CACHE if k[0] == tid and k[1] == bid]
+    dead = [k for k in _HINTS_CACHE if k[0] == tid]
     for k in dead:
         _HINTS_CACHE.pop(k, None)

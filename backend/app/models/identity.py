@@ -1,4 +1,9 @@
-"""Control plane — Identity & Multi-tenancy: Plan, Tenant, BusinessUnit."""
+"""Control plane — Identity & Multi-tenancy: Plan, Tenant.
+
+A tenant is a (host, bu_code) pair — one row per Carmen ERP customer+BU.
+Sharing a host across BUs means two distinct tenant rows; quota/config are
+scoped per tenant, so each BU gets its own.
+"""
 
 import uuid
 
@@ -29,47 +34,29 @@ class Plan(Base, TimestampMixin, WriterMixin):
 
 class Tenant(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     """
-    One row per Carmen ERP customer (company).
-    The `host` column is the hostname of their Carmen instance and is the lookup key
-    used when resolving incoming requests (extracted from JWT / X-Carmen-URI header).
+    One row per (Carmen ERP host, business unit) pair.
+    `host` = Carmen hostname (from JWT / X-Carmen-URI), `bu_code` = Carmen JWT `bu` claim.
+    Lookup key is the composite (host, bu_code).
     """
 
     __tablename__ = "tenants"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    host = Column(String(255), nullable=False, unique=True, index=True)
+    host = Column(String(255), nullable=False, index=True)
+    bu_code = Column(String(100), nullable=False)
     name = Column(String(255), nullable=False)
     plan = Column(String(20), ForeignKey("plans.code"), nullable=False, default="free")
     is_active = Column(Boolean, default=True, nullable=False)
     contact_email = Column(String(255), nullable=True)
     notes = Column(Text, nullable=True)
 
-    business_units = relationship("BusinessUnit", back_populates="tenant")
     plan_ref = relationship("Plan", back_populates="tenants")
-
-
-class BusinessUnit(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
-    """
-    A department / branch within a Tenant.
-    The `code` comes from the Carmen JWT claim `bu` and is used as the lookup key.
-    Unique per tenant: the same BU code may exist under different tenants.
-    """
-
-    __tablename__ = "business_units"
-
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
-    code = Column(String(100), nullable=False)
-    name = Column(String(255), nullable=False)
-    is_active = Column(Boolean, default=True, nullable=False)
-
-    tenant = relationship("Tenant", back_populates="business_units")
 
     __table_args__ = (
         Index(
-            "uq_bu_tenant_code_active",
-            "tenant_id",
-            "code",
+            "uq_tenants_host_bu_active",
+            "host",
+            "bu_code",
             unique=True,
             postgresql_where=text("deleted_at IS NULL"),
         ),

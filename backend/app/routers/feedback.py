@@ -33,7 +33,6 @@ def _build_upsert(feedback: CorrectionFeedbackRequest, session: SessionInfo):
     """
     stmt = pg_insert(CorrectionFeedback).values(
         tenant_id=session.tenant_id,
-        business_unit_id=session.business_unit_id,
         doc_no=feedback.doc_no,
         bank_code=feedback.bank_code,
         field_name=feedback.field_name,
@@ -59,7 +58,7 @@ async def log_correction(
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
 ):
-    """Log a user correction. Atomic UPSERT — unique per (tenant, bu, doc_no, field_name)."""
+    """Log a user correction. Atomic UPSERT — unique per (tenant, doc_no, field_name)."""
     if feedback.original_value == feedback.corrected_value:
         return CorrectionFeedbackResponse(
             id=-1,
@@ -71,9 +70,9 @@ async def log_correction(
     row_id = result.scalar_one()
     await db.commit()
 
-    # Hints are cached per (tenant, bu, bank) for 10min — drop the entry so
+    # Hints are cached per (tenant, bank) for 10min — drop the entry so
     # the next /extract reflects this new correction.
-    invalidate_hints_cache(session.tenant_id, session.business_unit_id)
+    invalidate_hints_cache(session.tenant_id)
 
     record = await db.get(CorrectionFeedback, row_id)
     logger.info("Upserted correction: %s (%s)", feedback.field_name, feedback.bank_code)
@@ -97,7 +96,7 @@ async def log_corrections_batch(
 
     if saved:
         await db.commit()
-        invalidate_hints_cache(session.tenant_id, session.business_unit_id)
+        invalidate_hints_cache(session.tenant_id)
 
     logger.info("Batch corrections: saved=%d skipped=%d", saved, skipped)
     return CorrectionFeedbackBatchResponse(saved=saved, skipped=skipped)
@@ -112,7 +111,6 @@ async def submit_bug_report(
     """Submit a bug report with optional screenshot (base64, max ~1 MB)."""
     report = BugReport(
         tenant_id=session.tenant_id,
-        business_unit_id=session.business_unit_id,
         module_id=payload.module,
         category=payload.category,
         description=payload.description,

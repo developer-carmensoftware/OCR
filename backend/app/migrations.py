@@ -188,6 +188,61 @@ async def _m200_pg_seed_control_plane(conn: AsyncConnection) -> None:
 #                                   Old MariaDB migrations 100-111 are NOT run
 #                                   on Postgres — their effects are baked in.
 
+
+async def _m206_collapse_tenant_bu(conn: AsyncConnection) -> None:
+    """
+    Collapse two-level (tenant + business_unit) hierarchy into one composite
+    tenant row keyed by (host, bu_code).
+
+    - Adds `bu_code` to `tenants`, swaps the unique key from (host) to (host, bu_code).
+    - Drops `business_unit_id` from every table that has it (data plane + observability).
+    - Drops the `business_units` table.
+
+    Idempotent. On a fresh DB built post-migration via Base.metadata.create_all(),
+    the new schema is already correct and this is effectively a no-op (no legacy
+    columns to drop, no legacy table to remove).
+    """
+    # 1. bu_code on tenants
+    await conn.execute(text("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS bu_code VARCHAR(100)"))
+    await conn.execute(
+        text("UPDATE tenants SET bu_code = COALESCE(bu_code, 'DEFAULT') WHERE bu_code IS NULL")
+    )
+    await conn.execute(text("ALTER TABLE tenants ALTER COLUMN bu_code SET NOT NULL"))
+
+    # 2. Swap unique key on (host) → partial unique on (host, bu_code)
+    await conn.execute(text("ALTER TABLE tenants DROP CONSTRAINT IF EXISTS tenants_host_key"))
+    await conn.execute(text("DROP INDEX IF EXISTS ix_tenants_host"))
+    await conn.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_tenants_host_bu_active "
+            "ON tenants (host, bu_code) WHERE deleted_at IS NULL"
+        )
+    )
+    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tenants_host ON tenants (host)"))
+
+    # 3. Drop business_unit_id from every table that has it
+    await conn.execute(
+        text("""
+        DO $$
+        DECLARE r record;
+        BEGIN
+          FOR r IN
+            SELECT table_name FROM information_schema.columns
+            WHERE column_name = 'business_unit_id'
+              AND table_schema = current_schema()
+          LOOP
+            EXECUTE format('ALTER TABLE %I DROP COLUMN business_unit_id', r.table_name);
+          END LOOP;
+        END$$;
+        """)
+    )
+
+    # 4. Drop the business_units table itself
+    await conn.execute(text("DROP TABLE IF EXISTS business_units CASCADE"))
+
+    logger.info("  ~ tenant + business_unit collapsed into single composite tenant")
+
+
 _MIGRATIONS: list[tuple[str, Callable[[AsyncConnection], Awaitable[None]] | None]] = [
     # ── Squashed history markers ──────────────────────────────────────────────
     ("001_squashed_initial_schema", None),
@@ -200,4 +255,5 @@ _MIGRATIONS: list[tuple[str, Callable[[AsyncConnection], Awaitable[None]] | None
     ("203_partition_log_tables", None),
     ("204_analytics_tables", None),
     ("205_bug_reports_table", None),
+    ("206_collapse_tenant_bu", _m206_collapse_tenant_bu),
 ]

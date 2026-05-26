@@ -14,7 +14,7 @@
 ┌─────────────────────────────────────────────────────────────────────┐
 │  CONTROL PLANE  — Admin Dashboard manages                           │
 │                                                                     │
-│  tenants · business_units                                           │
+│  tenants  (composite (host, bu_code); 1 row per Carmen host+BU pair)│
 │  admin_users · roles · permissions · role_permissions               │
 │  admin_user_roles                                                   │
 │  api_keys · api_key_usage                                           │
@@ -70,8 +70,8 @@ class WriterMixin:
     updated_by = Column(String(100), nullable=True)
 
 class TenantFKMixin:
-    tenant_id        = Column(PGUUID(as_uuid=True), FK → tenants.id, NOT NULL, index=True)
-    business_unit_id = Column(PGUUID(as_uuid=True), FK → business_units.id, NOT NULL, index=True)
+    tenant_id = Column(PGUUID(as_uuid=True), FK → tenants.id, NOT NULL, index=True)
+    # tenants.id is itself keyed by composite (host, bu_code) — no separate BU FK.
 ```
 
 ### Mixin composition per table type
@@ -110,18 +110,22 @@ The ORM `carmen_user_id` column (explicit on each data-plane model) stores the C
 ## 3. Multi-tenancy
 
 ```
-Tenant (host = 'ostin.carmenwork.com')       ← one Carmen ERP customer
-  └── BusinessUnit (code = 'OSTIN-HQ')        ← department / branch
-        └── carmen_user_id (UUID from Carmen)  ← end-user (external, no FK)
+Tenant (host = 'ostin.carmenwork.com', bu_code = 'OSTIN-HQ')   ← 1 row per (host, bu) pair
+  └── carmen_user_id (UUID from Carmen)                          ← end-user (external, no FK)
 ```
 
-**Tenant resolution at login** (`routers/auth.py`):
-1. Parse `carmen_uri` → extract `host`
-2. `UPSERT INTO tenants (host, name)` → get `tenant_id`
-3. `UPSERT INTO business_units (tenant_id, code)` → get `business_unit_id`
-4. Embed `tid`/`bid` in JWT → subsequent requests read from JWT (no DB lookup)
+A tenant is a **composite of (host, bu_code)**. The same Carmen instance with two
+different BUs produces two distinct `tenants.id` UUIDs, so quotas, configs, and
+data are isolated per-BU automatically — every data-plane row carries only a
+single `tenant_id` FK, no separate `business_unit_id`.
 
-**No raw `host`/`bu` strings anywhere in Data Plane** — all foreign-keyed to `tenants` / `business_units`.
+**Tenant resolution at login** (`routers/auth.py`):
+1. Parse `carmen_uri` → extract `host`; read `bu` from request body.
+2. `UPSERT INTO tenants (host, bu_code, name)` → get `tenant_id`.
+3. Embed `tid` in JWT → subsequent requests read from JWT (no DB lookup).
+   `bu` is also carried in the JWT for display only — not used for filtering.
+
+**No raw `host`/`bu` strings anywhere in Data Plane** — every data-plane row foreign-keys to `tenants.id`.
 
 ---
 
@@ -129,7 +133,7 @@ Tenant (host = 'ostin.carmenwork.com')       ← one Carmen ERP customer
 
 | PK type | Used on |
 |---|---|
-| `PGUUID(as_uuid=True)` | Business entities: `ocr_tasks`, `credit_cards`, `ap_invoices`, `tenants`, `business_units`, `admin_users`, `api_keys`, `ocr_sessions`, etc. Default `uuid.uuid4` (not str) |
+| `PGUUID(as_uuid=True)` | Business entities: `ocr_tasks`, `credit_cards`, `ap_invoices`, `tenants`, `admin_users`, `api_keys`, `ocr_sessions`, etc. Default `uuid.uuid4` (not str) |
 | `BigInteger` autoincrement | High-volume log tables: `llm_usage_logs`, `audit_logs`, `performance_logs`, `outbound_call_logs`, `anomaly_alerts`, `job_runs` |
 | `Integer` autoincrement | Smaller tables: `mapping_history`, `correction_feedback`, `daily_usage_summary`, `daily_model_cost`, `monthly_usage_summary` |
 | Natural string key | Reference: `banks.code` (`BBL`), `modules.id` (`credit_card_ocr`), `roles.id`, `permissions.id` |
@@ -171,7 +175,7 @@ Extracted header data from a credit card bank statement.
 | `submitted_at` | NULL = draft; NOT NULL = submitted to Carmen ERP |
 | `carmen_user_id` | |
 
-**Duplicate check:** `WHERE tenant_id=X AND business_unit_id=Y AND bank_code=Z AND doc_no=N AND submitted_at IS NOT NULL AND deleted_at IS NULL`
+**Duplicate check:** `WHERE tenant_id=X AND bank_code=Z AND doc_no=N AND submitted_at IS NOT NULL AND deleted_at IS NULL`
 
 Relationship: `→ credit_card_transactions` (1:N, ordered by `sort_order`)
 
@@ -215,7 +219,7 @@ GL mapping learning — which dept/account was confirmed for a field type and ba
 | `dept_code`, `acc_code` | GL codes confirmed by user |
 | `confirmed_count` | incremented on each confirmation |
 
-Partial unique index (active only): `(tenant_id, business_unit_id, bank_code, field_type, dept_code, acc_code) WHERE deleted_at IS NULL`
+Partial unique index (active only): `(tenant_id, bank_code, field_type, dept_code, acc_code) WHERE deleted_at IS NULL`
 
 ---
 
@@ -230,7 +234,7 @@ User corrections of LLM-extracted fields → drives `correction_service.py` whic
 | `original_value`, `corrected_value` | |
 | `carmen_user_id` | who corrected |
 
-Partial unique index (active only): `(tenant_id, business_unit_id, doc_no, field_name) WHERE deleted_at IS NULL`
+Partial unique index (active only): `(tenant_id, doc_no, field_name) WHERE deleted_at IS NULL`
 
 **Error rate formula** (`correction_service.py`):
 `error_rate = corrections(field, 90d) / submitted_receipts(bank, 90d)`
@@ -257,7 +261,7 @@ Active Carmen ERP user session.
 
 ## 6. Observability Tables
 
-Flat tables (no partitioning). `tenant_id` / `business_unit_id` are `VARCHAR(36)` + index — no FK to avoid coupling high-volume append-only tables to the tenants table. Integrity enforced at application layer.
+Flat tables (no partitioning). `tenant_id` is `VARCHAR(36)` + index — no FK to avoid coupling high-volume append-only tables to the tenants table. Integrity enforced at application layer.
 
 **Export strategy:** When log tables grow large, export old rows via a separate script (not automatic). Business analytics are preserved indefinitely in `daily_model_cost` and `monthly_usage_summary`.
 
@@ -311,7 +315,7 @@ Three analytics tables built nightly by `summary_service.py`. All kept indefinit
 
 ### `daily_usage_summary`
 
-Pre-aggregated nightly. Unique per `(tenant_id, business_unit_id, module_id, summary_date)`.
+Pre-aggregated nightly. Unique per `(tenant_id, module_id, summary_date)`.
 
 Aggregates: documents, submissions, LLM calls/tokens/cost, API calls, errors, corrections, outbound calls, latency (avg + p95).
 
@@ -319,7 +323,7 @@ Used by `anomaly_service.py` as baseline for spike detection (7-day rolling aver
 
 ### `daily_model_cost`
 
-Per-model cost breakdown. Unique per `(summary_date, tenant_id, business_unit_id, module_id, model_name)`.
+Per-model cost breakdown. Unique per `(summary_date, tenant_id, module_id, model_name)`.
 
 Answers: "What did `google/gemini-2.5-flash-lite` cost us per tenant today?"
 
@@ -327,7 +331,7 @@ Populated from `llm_usage_logs` grouped by model. Preserved indefinitely for lon
 
 ### `monthly_usage_summary`
 
-Monthly rollup of `daily_usage_summary`. Unique per `(tenant_id, business_unit_id, module_id, summary_date)` where `summary_date = first day of month`.
+Monthly rollup of `daily_usage_summary`. Unique per `(tenant_id, module_id, summary_date)` where `summary_date = first day of month`.
 
 Built nightly (idempotent re-aggregation of the current month). Answers long-term trend questions without scanning daily rows.
 
@@ -357,19 +361,17 @@ One row per background scheduler job execution. Detects drift: `status = running
 ### Identity
 
 #### `tenants`
-One row per Carmen ERP customer. Auto-registered on first login via `_upsert_tenant()`.
+One row per (Carmen ERP host, business unit) pair. Auto-registered on first login via `_upsert_tenant()`.
 
 | Key columns | Notes |
 |---|---|
-| `host` UNIQUE | `ostin.carmenwork.com` |
-| `name` | Display name (admin editable) |
+| `host` | `ostin.carmenwork.com` — Carmen instance hostname |
+| `bu_code` | `OSTIN-HQ` — Carmen JWT `bu` claim |
+| `name` | Display name (admin editable; defaults to `{host}/{bu_code}`) |
 | `plan` | free / pro / enterprise |
 | `is_active` | |
 
-#### `business_units`
-Department / branch within a tenant. Auto-registered on first login via `_upsert_business_unit()`.
-
-Unique: `(tenant_id, code)`
+Partial unique index: `(host, bu_code) WHERE deleted_at IS NULL`.
 
 ---
 

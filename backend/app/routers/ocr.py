@@ -132,7 +132,6 @@ async def extract_card(
             task = await create_task(
                 db,
                 tenant_id=session.tenant_id,
-                business_unit_id=session.business_unit_id,
                 module_id=Module.CREDIT_CARD_OCR,
                 original_filename=filename,
                 carmen_user_id=session.carmen_user_id,
@@ -165,7 +164,6 @@ async def extract_card(
                     db,
                     CreditCard,
                     tenant_id=session.tenant_id,
-                    business_unit_id=session.business_unit_id,
                     doc_no=extracted.doc_no,
                 )
             results.append(extracted)

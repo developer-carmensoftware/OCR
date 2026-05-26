@@ -49,7 +49,6 @@ async def list_alerts(
         "data": [
             {
                 "id": r.id,
-                "business_unit_id": r.business_unit_id,
                 "module_id": r.module_id,
                 "metric": r.metric,
                 "severity": r.severity.value if r.severity else None,
@@ -176,7 +175,6 @@ async def get_performance_logs(
                 "method": r.method,
                 "duration_ms": round(float(r.duration_ms or 0), 1),  # type: ignore[arg-type]
                 "status_code": r.status_code,
-                "business_unit_id": r.business_unit_id,
                 "carmen_user_id": r.carmen_user_id,
                 "resource_id": r.resource_id,
                 "created_at": r.created_at.isoformat() if r.created_at else None,

@@ -3,7 +3,7 @@ Tool: submit_card
 
 Persists user-confirmed credit card receipt data to the database.
 Creates: OCRTask → CreditCard → CreditCardTransaction (one row per line item).
-Duplicate check: (tenant_id, business_unit_id, bank_code, doc_no, submitted_at IS NOT NULL).
+Duplicate check: (tenant_id, bank_code, doc_no, submitted_at IS NOT NULL).
 """
 
 import logging
@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.constants import Module
-from app.context import current_business_unit_id, current_carmen_user_id, current_tenant_id
+from app.context import current_carmen_user_id, current_tenant_id
 from app.models.orm import CreditCard, CreditCardTransaction, OCRTask, TaskStatus
 from app.tools.base import ToolResult
 from app.utils.date_parsing import parse_doc_date
@@ -49,7 +49,6 @@ async def run(inp: SubmitInput, db: AsyncSession) -> ToolResult:
         success=False + output = {"error": "DUPLICATE_DOC_NO"} → duplicate
     """
     tenant_id = current_tenant_id.get() or ""
-    business_unit_id = current_business_unit_id.get() or ""
     carmen_user_id = current_carmen_user_id.get() or None
 
     tool_input = {"doc_no": inp.doc_no, "bank_code": inp.bank_code}
@@ -60,21 +59,19 @@ async def run(inp: SubmitInput, db: AsyncSession) -> ToolResult:
                 db,
                 CreditCard,
                 tenant_id=tenant_id,
-                business_unit_id=business_unit_id,
                 doc_no=inp.doc_no,
             ):
                 return ToolResult(
                     success=False,
                     tool=TOOL_NAME,
                     input=tool_input,
-                    errors=[f"Document {inp.doc_no} already submitted in this BU"],
+                    errors=[f"Document {inp.doc_no} already submitted for this tenant"],
                 )
 
         # 2. OCRTask (record-keeping stub)
         task = OCRTask(
             id=uuid.uuid4(),
             tenant_id=tenant_id,
-            business_unit_id=business_unit_id,
             module_id=Module.CREDIT_CARD_OCR,
             original_filename=inp.original_filename or "uploaded_file",
             status=TaskStatus.COMPLETED,
@@ -90,7 +87,6 @@ async def run(inp: SubmitInput, db: AsyncSession) -> ToolResult:
             id=uuid.uuid4(),
             task_id=task.id,
             tenant_id=tenant_id,
-            business_unit_id=business_unit_id,
             bank_code=inp.bank_code or None,
             company_name=inp.company_name,
             bank_company_name=inp.bank_company_name,

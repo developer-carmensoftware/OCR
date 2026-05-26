@@ -83,12 +83,11 @@ async def get_mapping_history(
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
 ):
-    """Return saved mapping history for a given bank, scoped to current BU."""
+    """Return saved mapping history for a given bank, scoped to current tenant."""
     result = await db.execute(
         select(MappingHistory)
         .where(
             MappingHistory.tenant_id == session.tenant_id,
-            MappingHistory.business_unit_id == session.business_unit_id,
             MappingHistory.bank_code == bank_code,
             MappingHistory.deleted_at.is_(None),
         )
@@ -122,7 +121,6 @@ async def save_mapping_history(
         existing_result = await db.execute(
             select(MappingHistory).where(
                 MappingHistory.tenant_id == session.tenant_id,
-                MappingHistory.business_unit_id == session.business_unit_id,
                 MappingHistory.bank_code == req.bank_code,
                 MappingHistory.field_type == field_type,
                 MappingHistory.dept_code == mapping.dept,
@@ -138,7 +136,6 @@ async def save_mapping_history(
             db.add(
                 MappingHistory(
                     tenant_id=session.tenant_id,
-                    business_unit_id=session.business_unit_id,
                     bank_code=req.bank_code,
                     field_type=field_type,
                     dept_code=mapping.dept,

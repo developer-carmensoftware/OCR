@@ -19,7 +19,6 @@ router = APIRouter()
 @router.get("/sessions")
 async def list_sessions(
     active_only: bool = Query(True),
-    business_unit_id: str | None = Query(None),
     limit: int = Query(50, le=200),
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
@@ -31,8 +30,6 @@ async def list_sessions(
     )
     if active_only:
         q = q.where(OcrSession.is_active == True)  # noqa: E712
-    if business_unit_id:
-        q = q.where(OcrSession.business_unit_id == business_unit_id)
     q = q.order_by(OcrSession.last_used_at.desc()).limit(limit)
 
     result = await db.execute(q)
@@ -42,7 +39,6 @@ async def list_sessions(
         "data": [
             {
                 "id": r.id,
-                "business_unit_id": r.business_unit_id,
                 "carmen_user_id": r.carmen_user_id,
                 "username": r.username,
                 "is_active": r.is_active,

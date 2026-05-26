@@ -78,7 +78,6 @@ async def log_action(
         _enqueue(
             {
                 "tenant_id": session.tenant_id or None,
-                "business_unit_id": session.business_unit_id or None,
                 "carmen_user_id": session.carmen_user_id or None,
                 "admin_user_id": None,
                 "username": session.username or None,

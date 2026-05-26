@@ -8,7 +8,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 from app.context import (
-    current_business_unit_id,
     current_carmen_uri,
     current_carmen_user_id,
     current_document_ref,
@@ -75,12 +74,10 @@ class PerformanceMiddleware(BaseHTTPMiddleware):
 
         claims = _decode_jwt_claims(request)
         tenant_id = claims.get("tid", "")
-        business_unit_id = claims.get("bid", "")
         carmen_user_id = claims.get("cuid", "")
         carmen_uri_val = claims.get("carmen_uri", "")
 
         current_tenant_id.set(tenant_id)
-        current_business_unit_id.set(business_unit_id)
         current_carmen_user_id.set(carmen_user_id)
         current_carmen_uri.set(carmen_uri_val)
 
@@ -99,7 +96,6 @@ class PerformanceMiddleware(BaseHTTPMiddleware):
         _PERF_BUFFER.append(
             {
                 "tenant_id": tenant_id or None,
-                "business_unit_id": business_unit_id or None,
                 "endpoint": request.url.path,
                 "method": request.method,
                 "duration_ms": duration_ms,

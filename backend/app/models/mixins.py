@@ -32,14 +32,12 @@ class WriterMixin:
 
 class TenantFKMixin:
     """
-    Proper FK-based tenancy for business data tables.
-    Both columns are NOT NULL — every business row belongs to a specific tenant + BU.
+    FK-based tenancy for business data tables.
+    Each tenant row is a unique (host, bu_code) pair; BU separation is achieved
+    by the tenant row itself, so a single tenant_id FK suffices.
     """
 
     tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
-    business_unit_id = Column(
-        PGUUID(as_uuid=True), ForeignKey("business_units.id"), nullable=False, index=True
-    )
 
 
 # ── Auto-populate created_by / updated_by from request context ────────────────
