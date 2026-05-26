@@ -1162,3 +1162,147 @@
     transition: none;
   }
 }
+
+/* ═══════════════════════════════════════════
+   AP REVIEW STEP & SUCCESS STEP REFACTOR CLASSES
+   ═══════════════════════════════════════════ */
+
+.ap-total-label {
+  color: var(--text-3);
+}
+
+.ap-total-val-emerald {
+  text-align: right;
+  color: var(--emerald);
+}
+
+.ap-total-val-rose-bold {
+  text-align: right;
+  color: var(--rose);
+  font-weight: 800;
+}
+
+.ap-review-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 1rem;
+}
+
+.ap-valid-icon {
+  flex-shrink: 0;
+}
+
+.ap-valid-title {
+  font-weight: 700;
+}
+
+.ap-valid-desc {
+  font-size: 0.8rem;
+  margin-top: 0.2rem;
+  font-weight: 400;
+}
+
+.ap-nav-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+}
+
+.ap-vendor-warning {
+  font-size: 0.75rem;
+  color: #b45309;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.btn-disabled,
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ap-success-step-wrap {
+  padding: 2rem 0;
+}
+
+.ap-success-title {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 0.75rem;
+}
+
+.ap-success-subtitle {
+  color: var(--text-3);
+  margin-bottom: 1.5rem;
+  line-height: 1.6;
+}
+
+.ap-success-val-highlight {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.ap-success-summary-box {
+  grid-row: span 2;
+  background: var(--ap-summary-bg, white);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+[data-theme='dark'] .ap-success-summary-box {
+  background: var(--card-bg);
+}
+
+.ap-success-summary-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.83rem;
+  margin-bottom: 0.4rem;
+}
+
+.ap-success-summary-label {
+  color: var(--text-3);
+}
+
+.ap-success-summary-val {
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ap-success-summary-val.color-rose {
+  color: var(--rose);
+}
+
+.ap-success-summary-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 0.6rem 0;
+}
+
+.ap-success-total-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.ap-success-total-label {
+  font-weight: 800;
+}
+
+.ap-success-total-val {
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 800;
+  color: var(--emerald);
+  font-size: 1.05rem;
+}
+
+.ap-success-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}

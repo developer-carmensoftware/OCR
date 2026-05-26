@@ -253,34 +253,31 @@ export default function APReviewStep({ ctrl }: Props) {
                   const fld = fieldMappings[`col${c}` as APColumnKey]
                   if (i === 0)
                     return (
-                      <td key="lbl" style={{ color: 'var(--text-3)' }}>
+                      <td key="lbl" className="ap-total-label">
                         {t.tableTotal}
                       </td>
                     )
                   if (fld === 'lineSubTotal')
                     return (
-                      <td key="st" style={{ textAlign: 'right', color: 'var(--emerald)' }}>
+                      <td key="st" className="ap-total-val-emerald">
                         {fmt(sumLineSubTotal)}
                       </td>
                     )
                   if (fld === 'lineTotal')
                     return (
-                      <td
-                        key="lt"
-                        style={{ textAlign: 'right', color: 'var(--rose)', fontWeight: 800 }}
-                      >
+                      <td key="lt" className="ap-total-val-rose-bold">
                         {fmt(sumLineTotal)}
                       </td>
                     )
                   if (fld === 'discountAmt')
                     return (
-                      <td key="da" style={{ textAlign: 'right' }}>
+                      <td key="da" className="text-right">
                         {fmt(sumDiscount)}
                       </td>
                     )
                   if (fld === 'taxAmt')
                     return (
-                      <td key="ta" style={{ textAlign: 'right' }}>
+                      <td key="ta" className="text-right">
                         {fmt(sumTax)}
                       </td>
                     )
@@ -294,22 +291,16 @@ export default function APReviewStep({ ctrl }: Props) {
         </div>
       </Card>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',
-          gap: '1rem',
-        }}
-      >
+      <div className="ap-review-summary-grid">
         <div className={isValid ? 'ap-valid-ok' : 'ap-valid-err'}>
           {isValid ? (
-            <CheckCircle2 size={22} style={{ flexShrink: 0 }} />
+            <CheckCircle2 size={22} className="ap-valid-icon" />
           ) : (
-            <AlertCircle size={22} style={{ flexShrink: 0 }} />
+            <AlertCircle size={22} className="ap-valid-icon" />
           )}
           <div>
-            <div style={{ fontWeight: 700 }}>{isValid ? t.validOk : t.validErr}</div>
-            <div style={{ fontSize: '0.8rem', marginTop: '0.2rem', fontWeight: 400 }}>
+            <div className="ap-valid-title">{isValid ? t.validOk : t.validErr}</div>
+            <div className="ap-valid-desc">
               {isValid ? t.validOkDesc : `${t.validErrPrefix} ${validationErrors.join(', ')}`}
             </div>
           </div>
@@ -335,25 +326,9 @@ export default function APReviewStep({ ctrl }: Props) {
         <button type="button" className="btn btn-outline" onClick={() => setStep(2)}>
           <ArrowLeft size={14} /> {t.backMap}
         </button>
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'flex-end',
-            gap: '0.35rem',
-          }}
-        >
+        <div className="ap-nav-right">
           {!vendorMapped && (
-            <span
-              style={{
-                fontSize: '0.75rem',
-                color: '#b45309',
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.3rem',
-              }}
-            >
+            <span className="ap-vendor-warning">
               <AlertTriangle size={13} />
               {t.warnSelectVendor}
             </span>
@@ -363,7 +338,6 @@ export default function APReviewStep({ ctrl }: Props) {
             className={`btn ${!vendorMapped ? 'btn-disabled' : isValid ? 'btn-primary' : 'btn-success'}`}
             onClick={vendorMapped ? goToAccount : undefined}
             disabled={!vendorMapped}
-            style={!vendorMapped ? { opacity: 0.55, cursor: 'not-allowed' } : undefined}
           >
             {isValid ? t.proceed : t.proceedAnyway}
             <ArrowRight size={14} />

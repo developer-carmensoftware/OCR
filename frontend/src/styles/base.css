@@ -118,6 +118,12 @@
 
   --glass-bg: oklch(1 0 0 / 0.92);
   --glass-border: oklch(0.91 0.008 258.7);
+
+  /* ── Background definitions ── */
+  --body-bg-fallback: hsl(220, 14%, 90%);
+  --body-bg-oklch: oklch(0.9 0.014 258.7);
+  --header-bg-fallback: rgba(255, 255, 255, 0.88);
+  --header-bg-oklch: oklch(1 0 0 / 0.88);
 }
 
 *,
@@ -138,8 +144,8 @@ body {
     'Sarabun',
     -apple-system,
     sans-serif;
-  background-color: hsl(220, 14%, 90%);
-  background-color: oklch(0.9 0.014 258.7);
+  background-color: var(--body-bg-fallback);
+  background-color: var(--body-bg-oklch);
   background-image: radial-gradient(
     ellipse 70% 30% at 50% 0%,
     oklch(0.4714 0.1794 258.7 / 0.1) 0%,
@@ -460,11 +466,15 @@ textarea:focus-visible {
 
   --glass-bg: oklch(0.22 0.024 258.7 / 0.92);
   --glass-border: oklch(0.32 0.026 258.7);
+
+  /* ── Background definitions ── */
+  --body-bg-fallback: hsl(220, 18%, 16%);
+  --body-bg-oklch: oklch(0.16 0.018 258.7);
+  --header-bg-fallback: rgba(30, 41, 59, 0.85);
+  --header-bg-oklch: oklch(0.2 0.022 258.7 / 0.85);
 }
 
 [data-theme='dark'] body {
-  background-color: hsl(220, 18%, 16%);
-  background-color: oklch(0.16 0.018 258.7);
   background-image: radial-gradient(
     ellipse 70% 30% at 50% 0%,
     oklch(0.5852 0.1706 253.27 / 0.12) 0%,
