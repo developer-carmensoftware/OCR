@@ -4,8 +4,8 @@ uvicorn[standard]==0.34.0
 python-multipart==0.0.20
 
 # Database
-sqlalchemy==2.0.36
-aiomysql==0.2.0
+sqlalchemy==2.0.50
+aiomysql==0.3.2
 
 # LLM via OpenRouter (OpenAI-compatible SDK)
 openai==1.58.1
