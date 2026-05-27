@@ -5,7 +5,6 @@ import {
   DocumentPreview,
   CustomModal,
   StepWizard,
-  LoadingOverlay,
   DarkModeToggle,
   ExtractionSkeleton,
   SplitLayout,
@@ -37,7 +36,8 @@ export default function APInvoice() {
     previewType,
     fileInputRef,
     loading,
-    status,
+    elapsed,
+    extractionStatus,
     error,
     setError,
     suggestLoading,
@@ -65,6 +65,7 @@ export default function APInvoice() {
     modal,
     setModal,
     isDuplicate,
+    isSubmitting,
   } = ctrl
 
   const [showPreview, setShowPreview] = useState(false)
@@ -122,8 +123,6 @@ export default function APInvoice() {
         onCancel={() => setAcceptAllModal(false)}
       />
 
-      <LoadingOverlay show={loading} status={status} />
-
       <div className="app-container">
         <AppHeader
           module="ap-invoice"
@@ -154,7 +153,9 @@ export default function APInvoice() {
             {step === 1 && !loading && !error && (
               <APUploadStep t={t} fileInputRef={fileInputRef} onFileChange={handleFileChange} />
             )}
-            {step === 1 && loading && <ExtractionSkeleton />}
+            {step === 1 && loading && (
+              <ExtractionSkeleton status={extractionStatus} elapsed={elapsed} />
+            )}
 
             {error && (
               <div className="ap-error-wrapper">
@@ -222,6 +223,7 @@ export default function APInvoice() {
                 suggestLoading={suggestLoading}
                 allMapped={allMapped}
                 isDuplicate={isDuplicate}
+                isSubmitting={isSubmitting}
               />
             )}
 

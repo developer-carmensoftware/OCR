@@ -1,6 +1,13 @@
 import { Skeleton, SkeletonGrid } from './Skeleton'
 
-export default function ExtractionSkeleton() {
+interface Props {
+  status?: string
+  elapsed?: number
+}
+
+export default function ExtractionSkeleton({ status, elapsed }: Props) {
+  const showElapsed = elapsed !== undefined && elapsed >= 10
+
   return (
     <div
       style={{
@@ -11,6 +18,12 @@ export default function ExtractionSkeleton() {
         gap: '1rem',
       }}
     >
+      <div className="extraction-status-strip">
+        <div className="extraction-spinner" />
+        <span className="extraction-status-text">{status ?? 'Reading document…'}</span>
+        {showElapsed && <span className="extraction-elapsed">{elapsed}s</span>}
+      </div>
+
       <div className="data-card">
         <div
           className="card-body"

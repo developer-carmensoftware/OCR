@@ -71,9 +71,13 @@ export function useAPValidation({ headerData, lineItems, fieldMappings, t }: APV
         let remaining = Math.round(diff * 100)
         taxableIdxs.forEach(({ item, i }, pos) => {
           const isLast = pos === taxableIdxs.length - 1
+          // When totalSub === 0, fall back to equal distribution so the diff doesn't
+          // dump entirely onto the last row.
           const share = isLast
             ? remaining
-            : Math.round(diff * (parseNum(item.lineSubTotal) / (totalSub || 1)) * 100)
+            : totalSub === 0
+              ? Math.round((diff * 100) / taxableIdxs.length)
+              : Math.round(diff * (parseNum(item.lineSubTotal) / totalSub) * 100)
           remaining -= share
           const shareDec = share / 100
           updated[i] = {

@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { toast } from 'sonner'
 import { AP_I18N } from '../constants/apInvoice'
 import type { APLocale } from '../constants/apInvoice'
 import { showToast } from '../lib/toast'
 import { parseNum, fmt, round2 } from '../lib/format'
 import { saveAPVendorMapping } from '../lib/api/config'
 import { useAPExtraction } from './ap/useAPExtraction'
+import type { APLineItem } from './ap/useAPExtraction'
 import { useAPVendor } from './ap/useAPVendor'
 import { useAPValidation } from './ap/useAPValidation'
 import { useAPSubmission } from './ap/useAPSubmission'
@@ -15,6 +17,8 @@ export function useAPInvoice() {
 
   const [step, setStep] = useState(1)
   const [modal, setModal] = useState<Record<string, unknown>>({ show: false })
+  const [isGrouped, setIsGrouped] = useState(false)
+  const [originalLineItems, setOriginalLineItems] = useState<APLineItem[] | null>(null)
 
   const extraction = useAPExtraction({ t, setStep, setModal })
 
@@ -127,13 +131,22 @@ export function useAPInvoice() {
     const tgt = parseNum(val)
     const sum = validation.sumTax
     if (tgt === sum) return
-    if (tgt === 0) {
-      extraction.setLineItems(prev =>
-        prev.map(item => ({ ...item, taxAmt: '0.00', taxPct: '0.00' }))
-      )
-    } else {
-      extraction.setLineItems(validation.adjustField(tgt, sum, 'taxAmt', extraction.lineItems))
-    }
+    const adjusted =
+      tgt === 0
+        ? extraction.lineItems.map(item => ({ ...item, taxAmt: '0.00', taxPct: '0.00' }))
+        : validation.adjustField(tgt, sum, 'taxAmt', extraction.lineItems)
+    // adjustField only writes taxAmt; reconcile lineTotal = lineSubTotal + taxAmt
+    // so per-line and header totals stay consistent.
+    const updated = adjusted.map(item => ({
+      ...item,
+      lineTotal: fmt(parseNum(item.lineSubTotal) + parseNum(item.taxAmt)),
+    }))
+    extraction.setLineItems(updated)
+    extraction.updateHeader('taxAmount', fmt(updated.reduce((s, it) => s + parseNum(it.taxAmt), 0)))
+    extraction.updateHeader(
+      'grandTotal',
+      fmt(updated.reduce((s, it) => s + parseNum(it.lineTotal), 0))
+    )
   }
 
   // Fields whose blur triggers a full line recalculation.
@@ -224,15 +237,14 @@ export function useAPInvoice() {
       const qty = parseNum(item.qty) || 1
       const unitPrice = parseNum(item.unitPrice)
       const discountAmt = parseNum(item.discountAmt)
-      const currentTaxType = (item.taxType || 'Exclude') as 'Include' | 'Exclude' | 'None'
       const taxPct = newTaxType === 'None' ? 0 : parseNum(item.taxPct) || 7
 
+      // Use lineSubTotal + discountAmt as the invariant net value across all tax types.
+      // lineSubTotal is always "before VAT", so it's the safe anchor when unitPrice is missing.
       const afterDisc =
         unitPrice > 0
           ? round2(qty * unitPrice - discountAmt)
-          : currentTaxType === 'Include'
-            ? parseNum(item.lineTotal)
-            : parseNum(item.lineSubTotal)
+          : round2(parseNum(item.lineSubTotal) + discountAmt)
 
       let lineSubTotal: number, taxAmt: number, lineTotal: number, newTaxPct: number
 
@@ -266,10 +278,113 @@ export function useAPInvoice() {
     extraction.setLineItems(updatedItems)
   }
 
+  // Builds a single line that represents the sum of `items`, keeping the row
+  // internally consistent under the blurLineItem recalc rules:
+  //   afterDisc = qty * unitPrice - discountAmt
+  //   Exclude/None: lineSubTotal = afterDisc
+  //   Include:      lineTotal    = afterDisc
+  const buildGroupedRow = (items: APLineItem[], desc: string): APLineItem => {
+    const sum = (key: keyof APLineItem) =>
+      items.reduce((s, it) => s + parseNum(it[key] as string), 0)
+    const sumLineTotal = sum('lineTotal')
+    const sumLineSubTotal = sum('lineSubTotal')
+    const sumTaxAmt = sum('taxAmt')
+    const sumDiscount = sum('discountAmt')
+    const taxType = items[0]?.taxType || 'Exclude'
+    const taxPct = taxType === 'None' ? 0 : parseNum(items[0]?.taxPct as string) || 7
+    const unitPrice =
+      taxType === 'Include' ? sumLineTotal + sumDiscount : sumLineSubTotal + sumDiscount
+    return {
+      description: desc,
+      category: '',
+      qty: '1',
+      unitPrice: fmt(unitPrice),
+      discountPct: '0.00',
+      discountAmt: fmt(sumDiscount),
+      lineSubTotal: fmt(sumLineSubTotal),
+      taxPct: fmt(taxPct),
+      taxAmt: fmt(sumTaxAmt),
+      taxType,
+      lineTotal: fmt(sumLineTotal),
+      deptCode: '',
+      accountCode: '',
+    }
+  }
+
+  const groupItems = (desc: string) => {
+    const items = extraction.lineItems
+    if (items.length <= 1) return
+    setOriginalLineItems(items)
+    extraction.setLineItems([buildGroupedRow(items, desc)])
+    setIsGrouped(true)
+  }
+
+  const groupAllItems = () => {
+    groupItems('Group all items')
+  }
+
+  const TAX_TYPE_LABELS: Record<string, string> = {
+    Include: 'Items (Include VAT)',
+    Exclude: 'Items (Exclude VAT)',
+    None: 'Items (No VAT)',
+  }
+
+  const groupItemsByTaxType = () => {
+    const items = extraction.lineItems
+    if (items.length <= 1) return
+    const groups = new Map<string, APLineItem[]>()
+    for (const item of items) {
+      const key = item.taxType || 'Exclude'
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(item)
+    }
+    const grouped: APLineItem[] = Array.from(groups.entries()).map(([taxType, grpItems]) =>
+      buildGroupedRow(grpItems, TAX_TYPE_LABELS[taxType] ?? `Items (${taxType})`)
+    )
+    setOriginalLineItems(items)
+    extraction.setLineItems(grouped)
+    setIsGrouped(true)
+  }
+
+  const hasMixedTaxTypes = useMemo(() => {
+    const types = new Set(extraction.lineItems.map(it => it.taxType || 'Exclude'))
+    return types.size > 1
+  }, [extraction.lineItems])
+
+  const removeItemWithUndo = (idx: number) => {
+    const item = extraction.lineItems[idx]
+    if (!item) return
+    extraction.removeItem(idx)
+    toast.dismiss()
+    toast('Item deleted', {
+      duration: 5000,
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          extraction.setLineItems(prev => {
+            const next = [...prev]
+            next.splice(idx, 0, item)
+            return next
+          })
+        },
+      },
+    })
+  }
+
+  const ungroupItems = () => {
+    if (originalLineItems) {
+      extraction.setLineItems(originalLineItems)
+      setOriginalLineItems(null)
+    }
+    setIsGrouped(false)
+  }
+
   const handleReset = () => {
     extraction.resetExtraction()
     vendor.resetVendor()
     submission.resetGLLoaded()
+    setIsGrouped(false)
+    setOriginalLineItems(null)
     setStep(1)
     setModal({ show: false })
   }
@@ -286,6 +401,8 @@ export function useAPInvoice() {
     fileInputRef: extraction.fileInputRef,
     loading: extraction.loading,
     status: extraction.status,
+    elapsed: extraction.elapsed,
+    extractionStatus: extraction.extractionStatus,
     error: extraction.error,
     setError: extraction.setError,
     suggestLoading: submission.suggestLoading,
@@ -329,6 +446,7 @@ export function useAPInvoice() {
     blurHeader,
     updateItem: extraction.updateItem,
     blurItem: extraction.blurItem,
+    removeItem: removeItemWithUndo,
     confirmMapping,
     goToAccount,
     handleAISuggest: submission.handleAISuggest,
@@ -338,11 +456,18 @@ export function useAPInvoice() {
     handleConfirmSuggest: submission.handleConfirmSuggest,
     handleRejectSuggest: submission.handleRejectSuggest,
     handleGenerate: submission.handleGenerate,
+    isSubmitting: submission.isSubmitting,
     handleReset,
     adjustField,
     blurLineItem,
     changeLineTaxType,
     invoiceSeq: submission.invoiceSeq,
     isDuplicate: extraction.isDuplicate,
+    isGrouped,
+    groupAllItems,
+    groupItemsByTaxType,
+    hasMixedTaxTypes,
+    ungroupItems,
+    originalLineItemsCount: originalLineItems?.length ?? 0,
   }
 }

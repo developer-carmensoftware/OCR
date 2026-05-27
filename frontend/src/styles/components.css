@@ -405,6 +405,19 @@
   transform: scale(1.005);
 }
 
+.upload-drop.dragover {
+  border-style: solid;
+  box-shadow:
+    0 0 0 4px var(--primary-glow),
+    var(--shadow-md);
+  transform: scale(1.01);
+}
+
+.upload-drop.dropping {
+  transform: scale(0.98);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
 .upload-drop input[type='file'] {
   position: absolute;
   inset: 0;
@@ -1907,6 +1920,58 @@ input[type='text'].detail-input:focus {
   min-height: 1.2em;
   word-break: break-word;
   overflow-wrap: break-word;
+}
+
+/* ─── EXTRACTION SKELETON STATUS STRIP ─── */
+
+.extraction-status-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 1rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  position: relative;
+  overflow: hidden;
+  animation: fadeDown 200ms var(--ease-out) both;
+}
+
+.extraction-status-strip::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--primary), var(--teal));
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease infinite;
+}
+
+.extraction-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--gray-200);
+  border-top-color: var(--primary);
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+.extraction-status-text {
+  font-size: 0.8rem;
+  color: var(--text-3);
+  font-family: 'IBM Plex Mono', monospace;
+  flex: 1;
+  min-width: 0;
+}
+
+.extraction-elapsed {
+  font-size: 0.72rem;
+  color: var(--text-4);
+  font-family: 'IBM Plex Mono', monospace;
+  flex-shrink: 0;
 }
 
 /* ═══════════════════════════════════════════

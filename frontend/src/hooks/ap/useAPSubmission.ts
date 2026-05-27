@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { fetchAccountCodes, fetchDepartments, submitAPInvoiceToCarmen } from '../../lib/api/carmen'
 import { apiFetch } from '../../lib/api/client'
-import { showToast } from '../../lib/toast'
+import { showToast, toast } from '../../lib/toast'
 import { parseNum } from '../../lib/format'
 import { parseDateToISO } from '../../lib/date'
 import type { APLineItem } from './useAPExtraction'
@@ -43,8 +43,8 @@ function buildInvoicePayload(
     const grossPrice = parseNum(item.unitPrice)
     const discAmt = parseNum(item.discountAmt)
     const grossLine = grossPrice * qty
-    const netPrice =
-      grossLine > 0 ? parseFloat(((grossLine - discAmt) / qty).toFixed(2)) : grossPrice
+    const netPriceRaw = grossLine > 0 ? (grossLine - discAmt) / qty : grossPrice
+    const netPrice = parseFloat(Math.max(0, netPriceRaw).toFixed(2))
 
     return {
       InvhSeq: -1,
@@ -66,7 +66,12 @@ function buildInvoicePayload(
       InvdBTaxDr: item.accountCode || '',
       InvdT1Dr: systemVendor.vat1DrAccCode || '',
       InvdT2Dr: '',
-      InvdTaxT1: taxAmt === 0 ? 'None' : headerData.taxType === 'Include' ? 'Include' : 'Add',
+      InvdTaxT1:
+        taxAmt === 0 || item.taxType === 'None'
+          ? 'None'
+          : item.taxType === 'Include'
+            ? 'Include'
+            : 'Add',
       InvdTaxR1: taxRate.toFixed(2),
       InvdTaxT2: 'None',
       InvdTaxR2: '0.00',
@@ -154,6 +159,7 @@ export function useAPSubmission({
   const [masterDepts, setMasterDepts] = useState<GLAccount[]>([])
   const [glLoaded, setGlLoaded] = useState(false)
   const [invoiceSeq, setInvoiceSeq] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const dupInvNoRef = useRef('')
   const pendingSuggestRef = useRef<unknown[]>([])
 
@@ -352,7 +358,7 @@ export function useAPSubmission({
       showToast('Please enter a new Invoice Number.', 'warning')
       return
     }
-    showToast('Re-sending AP Invoice to Carmen Cloud...', 'info')
+    const toastId = toast.loading(`Re-sending as ${newInvNo.trim()}…`)
     try {
       const modifiedHeader = { ...headerData, documentNumber: newInvNo.trim() }
       const payload = buildInvoicePayload(modifiedHeader, lineItems, systemVendor)
@@ -363,10 +369,11 @@ export function useAPSubmission({
       if ((result?.Code as number) < 0) {
         const dup = _parseCarmenDupError((result.UserMessage as string) || '')
         if (dup) {
+          toast.warning(`Invoice ${dup.invNo} already exists`, { id: toastId })
           _showDupModal(dup)
           return
         }
-        showToast('Carmen Cloud rejected the data, please verify', 'warning')
+        toast.warning('Carmen rejected the data — please verify', { id: toastId })
         setModal({
           show: true,
           type: 'warning',
@@ -379,24 +386,25 @@ export function useAPSubmission({
       }
       updateHeader?.('documentNumber', newInvNo.trim())
       setInvoiceSeq((result?.InternalMessage as string) ?? null)
-      showToast('AP Invoice created successfully', 'success')
+      toast.success(`AP Invoice ${newInvNo.trim()} created`, { id: toastId })
       setStep(5)
     } catch (err) {
       console.error('AP Invoice re-submit error:', err)
-      showToast(
-        `Failed to send AP Invoice: ${(err as Error).message || 'An error occurred'}`,
-        'error'
-      )
+      toast.error(`Could not send to Carmen — ${(err as Error).message || 'unknown error'}`, {
+        id: toastId,
+      })
     }
   }
 
   const handleGenerate = async () => {
+    if (isSubmitting) return
     const missing = lineItems.filter(i => !i.deptCode || !i.accountCode)
     if (missing.length > 0) {
       showToast('Department code and Account code is required', 'warning')
       return
     }
-    showToast('Sending AP Invoice to Carmen Cloud...', 'info')
+    setIsSubmitting(true)
+    const toastId = toast.loading('Sending to Carmen Cloud…')
     try {
       const payload = buildInvoicePayload(headerData, lineItems, systemVendor)
       const result = (await submitAPInvoiceToCarmen(payload, apInvoiceId)) as Record<
@@ -406,10 +414,11 @@ export function useAPSubmission({
       if ((result?.Code as number) < 0) {
         const dup = _parseCarmenDupError((result.UserMessage as string) || '')
         if (dup) {
+          toast.warning(`Invoice ${dup.invNo} already exists in Carmen`, { id: toastId })
           _showDupModal(dup)
           return
         }
-        showToast('Carmen Cloud rejected the data, please verify', 'warning')
+        toast.warning('Carmen rejected the data — please verify', { id: toastId })
         setModal({
           show: true,
           type: 'warning',
@@ -421,14 +430,13 @@ export function useAPSubmission({
         return
       }
       setInvoiceSeq((result?.InternalMessage as string) ?? null)
-      showToast('AP Invoice created successfully', 'success')
+      toast.success(`AP Invoice ${headerData.documentNumber || ''} created`, { id: toastId })
       setStep(5)
     } catch (err) {
       console.error('AP Invoice submit error:', err)
-      showToast(
-        `Failed to send AP Invoice: ${(err as Error).message || 'An error occurred'}`,
-        'error'
-      )
+      toast.error(`Could not send to Carmen — ${(err as Error).message || 'unknown error'}`, {
+        id: toastId,
+      })
       setModal({
         show: true,
         type: 'warning',
@@ -438,6 +446,8 @@ export function useAPSubmission({
         confirmText: 'OK',
         onConfirm: () => setModal({ show: false }),
       })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -460,5 +470,6 @@ export function useAPSubmission({
     handleGenerate,
     hasSuggestions,
     allMapped,
+    isSubmitting,
   }
 }

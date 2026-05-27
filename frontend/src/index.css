@@ -13,6 +13,7 @@
 @import './styles/layout.css';
 @import './styles/components.css';
 @import './styles/components/usage-indicator.css';
+@import './styles/components/sonner.css';
 @import './styles/tailwind.css';
 @import './styles/pages/ap-invoice.css';
 @import './styles/pages/admin.css';

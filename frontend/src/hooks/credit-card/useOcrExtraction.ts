@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   EMPTY_DETAIL_ROW,
   detectBankFromCompanyName,
@@ -44,6 +44,8 @@ interface OcrExtractionProps {
 export interface OcrExtractionHook {
   loading: boolean
   status: string
+  elapsed: number
+  extractionStatus: string
   bank: BankCode | ''
   setBank: React.Dispatch<React.SetStateAction<BankCode | ''>>
   cardId: string | null
@@ -63,6 +65,14 @@ export interface OcrExtractionHook {
 
 import type React from 'react'
 
+const EXTRACTION_STAGES = [
+  { at: 0, text: 'Reading document…' },
+  { at: 6, text: 'Analysing document structure…' },
+  { at: 13, text: 'Extracting transactions and amounts…' },
+  { at: 22, text: 'Almost done…' },
+  { at: 35, text: 'Complex document — still working…' },
+]
+
 const BANK_CODE_TO_NAME: Record<string, string> = {
   BBL: 'Bangkok Bank (BBL)',
   KBANK: 'Kasikornbank (KBANK)',
@@ -78,6 +88,21 @@ export function useOcrExtraction({
 }: OcrExtractionProps): OcrExtractionHook {
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
+  const [elapsed, setElapsed] = useState(0)
+
+  useEffect(() => {
+    if (!loading) {
+      setElapsed(0)
+      return
+    }
+    const id = window.setInterval(() => setElapsed(s => s + 1), 1000)
+    return () => clearInterval(id)
+  }, [loading])
+
+  const extractionStatus = loading
+    ? ([...EXTRACTION_STAGES].reverse().find(s => elapsed >= s.at)?.text ??
+      EXTRACTION_STAGES[0].text)
+    : status
   const [bank, setBank] = useState<BankCode | ''>('')
   const [cardId, setCardId] = useState<string | null>(null)
   const [headerData, setHeaderData] = useState<Record<string, string>>({})
@@ -279,6 +304,8 @@ export function useOcrExtraction({
   return {
     loading,
     status,
+    elapsed,
+    extractionStatus,
     bank,
     setBank,
     cardId,

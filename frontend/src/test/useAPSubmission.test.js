@@ -416,4 +416,156 @@ describe('useAPSubmission', () => {
       expect(result.current.allMapped).toBe(false)
     })
   })
+
+  // ── F6: Carmen payload — per-line InvdTaxT1 (P0 bug fix) ─────────────────────
+
+  describe('F6: Carmen payload InvdTaxT1 per line', () => {
+    const makeItems = (...types) =>
+      types.map((taxType, i) => ({
+        description: `Item ${i}`,
+        qty: '1',
+        unitPrice: '100.00',
+        discountAmt: '0',
+        discountPct: '0',
+        lineSubTotal: '100.00',
+        taxPct: taxType === 'None' ? '0' : '7',
+        taxAmt: taxType === 'None' ? '0.00' : '7.00',
+        lineTotal: taxType === 'None' ? '100.00' : '107.00',
+        taxType,
+        deptCode: 'ACC',
+        accountCode: '5100',
+      }))
+
+    it('uses "Include" for Include lines regardless of header taxType', async () => {
+      submitAPInvoiceToCarmen.mockResolvedValue({ Code: 0, InternalMessage: 'JV-1' })
+      const props = makeProps({
+        lineItems: makeItems('Include'),
+        headerData: { ...MOCK_HEADER, taxType: 'Add' },
+      })
+      const { result } = renderHook(() => useAPSubmission(props))
+      await act(async () => {
+        await result.current.handleGenerate()
+      })
+      const payload = submitAPInvoiceToCarmen.mock.calls[0][0]
+      expect(payload.Detail[0].InvdTaxT1).toBe('Include')
+    })
+
+    it('uses "Add" for Exclude lines', async () => {
+      submitAPInvoiceToCarmen.mockResolvedValue({ Code: 0, InternalMessage: 'JV-1' })
+      const props = makeProps({ lineItems: makeItems('Exclude') })
+      const { result } = renderHook(() => useAPSubmission(props))
+      await act(async () => {
+        await result.current.handleGenerate()
+      })
+      const payload = submitAPInvoiceToCarmen.mock.calls[0][0]
+      expect(payload.Detail[0].InvdTaxT1).toBe('Add')
+    })
+
+    it('uses "None" for None lines', async () => {
+      submitAPInvoiceToCarmen.mockResolvedValue({ Code: 0, InternalMessage: 'JV-1' })
+      const props = makeProps({ lineItems: makeItems('None') })
+      const { result } = renderHook(() => useAPSubmission(props))
+      await act(async () => {
+        await result.current.handleGenerate()
+      })
+      const payload = submitAPInvoiceToCarmen.mock.calls[0][0]
+      expect(payload.Detail[0].InvdTaxT1).toBe('None')
+    })
+
+    it('sends correct per-line types for mixed Include + Exclude + None invoice', async () => {
+      submitAPInvoiceToCarmen.mockResolvedValue({ Code: 0, InternalMessage: 'JV-1' })
+      const props = makeProps({
+        lineItems: makeItems('Include', 'Exclude', 'None'),
+        headerData: { ...MOCK_HEADER, taxType: 'Include' },
+      })
+      const { result } = renderHook(() => useAPSubmission(props))
+      await act(async () => {
+        await result.current.handleGenerate()
+      })
+      const detail = submitAPInvoiceToCarmen.mock.calls[0][0].Detail
+      expect(detail[0].InvdTaxT1).toBe('Include')
+      expect(detail[1].InvdTaxT1).toBe('Add')
+      expect(detail[2].InvdTaxT1).toBe('None')
+    })
+  })
+
+  // ── F7: isSubmitting guard (P1 bug fix) ──────────────────────────────────────
+
+  describe('F7: isSubmitting double-submit guard', () => {
+    it('exposes isSubmitting=false before submit', () => {
+      const props = makeProps()
+      const { result } = renderHook(() => useAPSubmission(props))
+      expect(result.current.isSubmitting).toBe(false)
+    })
+
+    it('second call to handleGenerate is a no-op while first is in-flight', async () => {
+      let resolveFirst
+      submitAPInvoiceToCarmen.mockImplementation(
+        () =>
+          new Promise(r => {
+            resolveFirst = r
+          })
+      )
+      const props = makeProps()
+      const { result } = renderHook(() => useAPSubmission(props))
+      // Fire first call (does not await — intentionally left pending)
+      act(() => {
+        result.current.handleGenerate()
+      })
+      // Second call while first is in-flight — should be ignored
+      await act(async () => {
+        await result.current.handleGenerate()
+      })
+      // Only one POST should have been made
+      expect(submitAPInvoiceToCarmen).toHaveBeenCalledTimes(1)
+      // Resolve the first call to clean up
+      resolveFirst({ Code: 0, InternalMessage: 'JV-1' })
+    })
+
+    it('resets isSubmitting=false after success', async () => {
+      submitAPInvoiceToCarmen.mockResolvedValue({ Code: 0, InternalMessage: 'JV-1' })
+      const props = makeProps()
+      const { result } = renderHook(() => useAPSubmission(props))
+      await act(async () => {
+        await result.current.handleGenerate()
+      })
+      expect(result.current.isSubmitting).toBe(false)
+    })
+
+    it('resets isSubmitting=false after network error', async () => {
+      submitAPInvoiceToCarmen.mockRejectedValue(new Error('Network failure'))
+      const props = makeProps()
+      const { result } = renderHook(() => useAPSubmission(props))
+      await act(async () => {
+        await result.current.handleGenerate()
+      })
+      expect(result.current.isSubmitting).toBe(false)
+    })
+  })
+
+  // ── F8: netPrice clamp ≥ 0 (P3 bug fix) ─────────────────────────────────────
+
+  describe('F8: netPrice clamped to 0 when discount exceeds gross', () => {
+    it('sends InvdPrice=0.00 when discountAmt > qty*unitPrice', async () => {
+      submitAPInvoiceToCarmen.mockResolvedValue({ Code: 0, InternalMessage: 'JV-1' })
+      const oversizedDiscount = [
+        {
+          ...MAPPED_ITEMS[0],
+          unitPrice: '100.00',
+          discountAmt: '200.00',
+          lineSubTotal: '0.00',
+          taxAmt: '0.00',
+          lineTotal: '0.00',
+        },
+      ]
+      const props = makeProps({ lineItems: oversizedDiscount })
+      const { result } = renderHook(() => useAPSubmission(props))
+      await act(async () => {
+        await result.current.handleGenerate()
+      })
+      const payload = submitAPInvoiceToCarmen.mock.calls[0][0]
+      const price = parseFloat(payload.Detail[0].InvdPrice)
+      expect(price).toBeGreaterThanOrEqual(0)
+    })
+  })
 })

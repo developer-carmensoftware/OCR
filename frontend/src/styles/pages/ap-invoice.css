@@ -932,6 +932,30 @@
   background-color: var(--primary-light);
 }
 
+.ap-delete-item-btn {
+  background: none;
+  border: none;
+  color: var(--gray-400, #9ca3af);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+.ap-delete-item-btn:hover:not(:disabled) {
+  color: #ef4444;
+  background: #fee2e2;
+}
+.ap-delete-item-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
 /* ═══════════════════════════════════════════
    TAX TYPE DROPDOWN — Emil-style animations
    ═══════════════════════════════════════════ */
@@ -1222,6 +1246,13 @@
 .btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+/* ─── CARD HEADER ACTIONS (group toggle + row count) ─── */
+.ap-card-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .ap-success-step-wrap {

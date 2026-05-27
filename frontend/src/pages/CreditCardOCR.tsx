@@ -6,7 +6,6 @@ import {
   StepWizard,
   FormActions,
   CustomModal,
-  LoadingOverlay,
   DarkModeToggle,
   ExtractionSkeleton,
   SplitLayout,
@@ -34,7 +33,8 @@ export default function CreditCardOCR() {
     previewType,
     loading,
     submitting,
-    status,
+    elapsed,
+    extractionStatus,
     headerData,
     details,
     fileInputRef,
@@ -108,8 +108,6 @@ export default function CreditCardOCR() {
         onCancel={modal.onCancel as (() => void) | undefined}
       />
 
-      <LoadingOverlay show={loading} status={status} />
-
       <div className="app-container">
         <AppHeader
           module="credit-card"
@@ -141,8 +139,12 @@ export default function CreditCardOCR() {
                 multiple
               />
             )}
-            {step === 1 && loading && <ExtractionSkeleton />}
-            {step === 2 && loading && <ExtractionSkeleton />}
+            {step === 1 && loading && (
+              <ExtractionSkeleton status={extractionStatus} elapsed={elapsed} />
+            )}
+            {step === 2 && loading && (
+              <ExtractionSkeleton status={extractionStatus} elapsed={elapsed} />
+            )}
 
             {step === 2 && !loading && (
               <SplitLayout

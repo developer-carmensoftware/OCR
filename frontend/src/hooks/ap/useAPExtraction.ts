@@ -1,8 +1,8 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import type React from 'react'
 import { apiFetch } from '../../lib/api/client'
 import { getAPVendorMapping } from '../../lib/api/config'
-import { showToast } from '../../lib/toast'
+import { toast } from '../../lib/toast'
 import { fmt } from '../../lib/format'
 import { EMPTY_HEADER, DEFAULT_MAPPINGS } from '../../constants/apInvoice'
 import type { APInvoiceHeader, APColumnKey, APFieldKey } from '../../constants/apInvoice'
@@ -34,6 +34,14 @@ interface APExtractionProps {
   vendorDbByTax?: Record<string, unknown>
 }
 
+const EXTRACTION_STAGES = [
+  { at: 0, text: 'Reading document…' },
+  { at: 6, text: 'Analysing document structure…' },
+  { at: 13, text: 'Extracting line items and amounts…' },
+  { at: 22, text: 'Almost done…' },
+  { at: 35, text: 'Complex document — still working…' },
+]
+
 const NUMERIC_FIELDS = [
   'qty',
   'unitPrice',
@@ -52,7 +60,22 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
   const [previewType, setPreviewType] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
+  const [elapsed, setElapsed] = useState(0)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!loading) {
+      setElapsed(0)
+      return
+    }
+    const id = window.setInterval(() => setElapsed(s => s + 1), 1000)
+    return () => clearInterval(id)
+  }, [loading])
+
+  const extractionStatus = loading
+    ? ([...EXTRACTION_STAGES].reverse().find(s => elapsed >= s.at)?.text ??
+      EXTRACTION_STAGES[0].text)
+    : status
   const [headerData, setHeaderData] = useState<APInvoiceHeader>(EMPTY_HEADER)
   const [lineItems, setLineItems] = useState<APLineItem[]>([])
   const [fieldMappings, setFieldMappings] =
@@ -130,6 +153,9 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
           if (data.is_duplicate) {
             setIsDuplicate(true)
             setStatus('Duplicate document found')
+            toast.warning(
+              `Duplicate: ${(data.documentNumber as string) || 'document'} already in system`
+            )
             setModal({
               show: true,
               type: 'warning',
@@ -153,13 +179,16 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
           }
 
           setStatus('Data extracted successfully ✓')
-          showToast('Data extracted successfully — please review and adjust', 'success')
+          toast.success(
+            `Extracted ${formattedItems.length} line${formattedItems.length === 1 ? '' : 's'} — review and adjust`
+          )
           setStep(2)
           if (loadVendors) loadVendors()
           return
         } catch (err) {
           const e = err as { message: string }
           if (e.message.includes('429')) {
+            toast.error('Monthly quota exceeded')
             setModal({
               show: true,
               type: 'warning',
@@ -178,7 +207,7 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
           retries--
           if (retries === 0) throw err
           setStatus('Retrying...')
-          showToast('Retrying...', 'info')
+          setStatus(`Retrying… (${3 - retries + 1}/3)`)
           await new Promise(r => setTimeout(r, delay))
           delay *= 2
         }
@@ -189,7 +218,7 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
       setStatus(e.message)
       setError(t.errProcess)
       if (!e.message.includes('429'))
-        showToast('Failed to extract data. Please try again.', 'error')
+        toast.error('Could not read this invoice — try a clearer scan')
     } finally {
       setLoading(false)
       window.dispatchEvent(new Event('ocr:quota-refresh'))
@@ -247,6 +276,7 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
   const blurItem = (idx: number, key: string, val: string) => {
     setLineItems(items => items.map((r, i) => (i === idx ? { ...r, [key]: fmt(val) } : r)))
   }
+  const removeItem = (idx: number) => setLineItems(items => items.filter((_, i) => i !== idx))
 
   return {
     file,
@@ -255,6 +285,8 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
     fileInputRef,
     loading,
     status,
+    elapsed,
+    extractionStatus,
     error,
     setError,
     headerData,
@@ -271,5 +303,6 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
     blurHeader,
     updateItem,
     blurItem,
+    removeItem,
   }
 }

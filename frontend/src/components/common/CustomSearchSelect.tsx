@@ -95,6 +95,8 @@ export default function CustomSearchSelect({
         borderRadius: '6px',
         boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
         zIndex: 99999,
+        transformOrigin: 'top center',
+        animation: 'fadeDown 180ms var(--ease-out)',
       })
     }
   }, [isOpen])
@@ -183,7 +185,8 @@ export default function CustomSearchSelect({
           borderRadius: '6px',
           fontSize: '0.85rem',
           outline: 'none',
-          transition: 'all 0.2s',
+          transition:
+            'border-color 180ms var(--ease-out), background-color 180ms var(--ease-out), color 180ms var(--ease-out)',
           fontFamily: "'DM Mono', monospace",
           background: isAISuggested
             ? 'var(--primary-light)'

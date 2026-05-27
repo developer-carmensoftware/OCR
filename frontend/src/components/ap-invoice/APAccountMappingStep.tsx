@@ -44,6 +44,7 @@ interface Props {
   onRejectSuggest: (idx: number) => void
   allMapped?: boolean
   isDuplicate?: boolean
+  isSubmitting?: boolean
 }
 
 interface PillProps {
@@ -165,6 +166,7 @@ export default function APAccountMappingStep({
   onConfirmSuggest,
   onRejectSuggest,
   allMapped = false,
+  isSubmitting = false,
 }: Props) {
   const taxProfile = fmtField(systemVendor.taxProfileCode1, systemVendor.taxProfileDesc1)
   const debitDept = fmtField(systemVendor.vat1DrDeptCode, systemVendor.vat1DrDeptDesc)
@@ -537,10 +539,12 @@ export default function APAccountMappingStep({
             type="button"
             className="btn btn-success"
             onClick={onGenerate}
-            disabled={!allMapped}
-            style={!allMapped ? { opacity: 0.55, cursor: 'not-allowed' } : undefined}
+            disabled={!allMapped || isSubmitting}
+            style={
+              !allMapped || isSubmitting ? { opacity: 0.55, cursor: 'not-allowed' } : undefined
+            }
           >
-            <Save size={14} /> {t.generateInv}
+            <Save size={14} /> {isSubmitting ? 'Sending...' : t.generateInv}
           </button>
         </div>
       </div>

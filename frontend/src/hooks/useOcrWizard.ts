@@ -114,6 +114,8 @@ export function useOcrWizard() {
     fileInputRef: fileUpload.fileInputRef,
     loading: extraction.loading,
     status: extraction.status,
+    elapsed: extraction.elapsed,
+    extractionStatus: extraction.extractionStatus,
     bank: extraction.bank,
     setBank: extraction.setBank,
     headerData: extraction.headerData,

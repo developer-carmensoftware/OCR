@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   AlertTriangle,
   ArrowRight,
+  Trash2,
 } from 'lucide-react'
 import { isNumFld, fmt } from '../../constants/apInvoice'
 import Card from '../common/Card'
@@ -62,6 +63,13 @@ interface Ctrl {
   ) => void
   setStep: (step: number) => void
   goToAccount: () => void
+  isGrouped: boolean
+  groupAllItems: () => void
+  groupItemsByTaxType: () => void
+  hasMixedTaxTypes: boolean
+  ungroupItems: () => void
+  originalLineItemsCount: number
+  removeItem: (idx: number) => void
 }
 
 interface Props {
@@ -115,6 +123,13 @@ export default function APReviewStep({ ctrl }: Props) {
     adjustField,
     setStep,
     goToAccount,
+    isGrouped,
+    groupAllItems,
+    groupItemsByTaxType,
+    hasMixedTaxTypes,
+    ungroupItems,
+    originalLineItemsCount,
+    removeItem,
   } = ctrl
 
   const vendorMapped = !!systemVendor.code
@@ -159,9 +174,32 @@ export default function APReviewStep({ ctrl }: Props) {
         icon={<LayoutList size={16} />}
         title={t.reviewTitle}
         right={
-          <span className="row-count">
-            {lineItems.length} {t.items}
-          </span>
+          <div className="ap-card-header-actions">
+            {(lineItems.length > 1 || isGrouped) &&
+              (isGrouped ? (
+                <button type="button" className="btn btn-sm btn-outline" onClick={ungroupItems}>
+                  Ungroup ({originalLineItemsCount} items)
+                </button>
+              ) : (
+                <>
+                  {hasMixedTaxTypes && (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline"
+                      onClick={groupItemsByTaxType}
+                    >
+                      Group by tax type
+                    </button>
+                  )}
+                  <button type="button" className="btn btn-sm btn-outline" onClick={groupAllItems}>
+                    Group all
+                  </button>
+                </>
+              ))}
+            <span className="row-count">
+              {lineItems.length} {t.items}
+            </span>
+          </div>
         }
       >
         <div className="table-wrapper">
@@ -178,9 +216,10 @@ export default function APReviewStep({ ctrl }: Props) {
                 ))}
                 {showFixedTaxPct && <th scope="col">{t.taxPct}</th>}
                 {showFixedTaxType && <th scope="col">{t.taxType}</th>}
+                <th scope="col" aria-label="Actions" />
               </tr>
             </thead>
-            <tbody className="stagger-rows">
+            <tbody className="stagger-rows" key={lineItems.length}>
               {lineItems.map((item, ri) => (
                 <tr key={ri}>
                   {activeCols.map(c => {
@@ -244,6 +283,17 @@ export default function APReviewStep({ ctrl }: Props) {
                       </select>
                     </td>
                   )}
+                  <td>
+                    <button
+                      type="button"
+                      className="ap-delete-item-btn"
+                      aria-label="Delete row"
+                      disabled={lineItems.length <= 1}
+                      onClick={() => removeItem(ri)}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -285,6 +335,7 @@ export default function APReviewStep({ ctrl }: Props) {
                 })}
                 {showFixedTaxPct && <td />}
                 {showFixedTaxType && <td />}
+                <td />
               </tr>
             </tfoot>
           </table>

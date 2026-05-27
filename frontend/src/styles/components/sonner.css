@@ -1,0 +1,50 @@
+/* ═══════════════════════════════════════════
+   SONNER — Toast theming bound to OKLCH tokens
+   Dark mode is automatic — tokens swap on [data-theme='dark'].
+   ═══════════════════════════════════════════ */
+
+[data-sonner-toaster] {
+  --normal-bg: var(--card-bg);
+  --normal-border: var(--border);
+  --normal-text: var(--text);
+
+  --success-bg: oklch(0.97 0.04 188.43);
+  --success-border: var(--emerald);
+  --success-text: var(--success-foreground);
+
+  --error-bg: oklch(0.97 0.04 24.11);
+  --error-border: var(--rose);
+  --error-text: var(--destructive);
+
+  --warning-bg: oklch(0.97 0.04 75);
+  --warning-border: var(--amber);
+  --warning-text: var(--warning-foreground);
+
+  --info-bg: oklch(0.97 0.025 253.27);
+  --info-border: var(--teal);
+  --info-text: var(--info-foreground);
+
+  font-family: 'Inter', 'Sarabun', sans-serif;
+}
+
+[data-sonner-toast] {
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--shadow-lg) !important;
+  backdrop-filter: blur(8px);
+  transition-timing-function: var(--ease-out) !important;
+}
+
+[data-sonner-toast] [data-button] {
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+[data-sonner-toast] [data-button]:active {
+  transform: scale(0.97);
+}
+
+[data-theme='dark'] [data-sonner-toaster] {
+  --success-bg: oklch(0.26 0.04 188.43);
+  --error-bg: oklch(0.28 0.06 24.11);
+  --warning-bg: oklch(0.28 0.05 75);
+  --info-bg: oklch(0.26 0.035 253.27);
+}

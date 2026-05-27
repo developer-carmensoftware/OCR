@@ -135,7 +135,15 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <ErrorBoundary>
     <AuthProvider>
       <AdminAuthProvider>
-        <Toaster richColors position="top-right" duration={3500} />
+        <Toaster
+          position="top-center"
+          duration={3500}
+          visibleToasts={4}
+          expand={false}
+          closeButton
+          richColors
+          theme="system"
+        />
         <Router />
       </AdminAuthProvider>
     </AuthProvider>

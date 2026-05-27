@@ -1,4 +1,5 @@
 import type React from 'react'
+import { useState } from 'react'
 import { UploadCloud, FolderOpen, Info } from 'lucide-react'
 
 interface Props {
@@ -15,8 +16,26 @@ const INSTRUCTIONS = [
 ]
 
 export default function APUploadStep({ t, fileInputRef, onFileChange }: Props) {
+  const [isDragOver, setIsDragOver] = useState(false)
+  const [isDropping, setIsDropping] = useState(false)
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    if (!isDragOver) setIsDragOver(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    // Only clear when leaving the drop zone itself, not children
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return
+    setIsDragOver(false)
+  }
+
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
+    setIsDragOver(false)
+    setIsDropping(true)
+    // Brief press-feedback before handing off — Emil's "received" beat
+    window.setTimeout(() => setIsDropping(false), 140)
     const f = e.dataTransfer.files[0]
     if (f) onFileChange({ target: { files: [f] } })
   }
@@ -24,10 +43,11 @@ export default function APUploadStep({ t, fileInputRef, onFileChange }: Props) {
   return (
     <div style={{ maxWidth: 560, margin: '0 auto' }}>
       <div
-        className="panel-card upload-drop"
+        className={`panel-card upload-drop${isDragOver ? ' dragover' : ''}${isDropping ? ' dropping' : ''}`}
         style={{ minHeight: 260, cursor: 'pointer' }}
         onClick={() => fileInputRef.current?.click()}
-        onDragOver={e => e.preventDefault()}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
         <input
