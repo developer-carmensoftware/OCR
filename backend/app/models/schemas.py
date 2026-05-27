@@ -84,6 +84,8 @@ class ExtractedDetailRow(BaseModel):
 
 
 class ExtractedCreditCardData(BaseModel):
+    id: str | None = Field(None, description="Credit card record ID (Draft)")
+    task_id: str | None = Field(None, description="Task ID associated with this extraction")
     bank_name: str | None = Field(None, description="ชื่อธนาคาร")
     doc_name: str | None = Field(None, description="ประเภทเอกสาร")
     company_name: str | None = Field(None, description="ชื่อบริษัท")

@@ -1,133 +1,111 @@
 -- ============================================================
--- OCR Database — Useful Views & Queries
+-- Carmen AI Platform — Useful Views & Queries (PostgreSQL)
 -- ============================================================
 
-USE ocr_db;
-
--- ────────────────────────────────────────────────────
--- VIEW: v_receipts — ดูข้อมูลทั้งหมดง่ายๆ ในตารางเดียว
--- ────────────────────────────────────────────────────
-
-CREATE OR REPLACE VIEW v_receipts AS
+-- ────────────────────────────────────────────────────────────
+-- 1. View all credit card headers
 SELECT
-    r.submitted_at                          AS `Input Date`,
-    r.bank_name                             AS `Bank Name`,
-    r.doc_name                              AS `Doc. Name`,
-    r.company_name                          AS `Company Name`,
-    r.doc_date                              AS `Doc. Date`,
-    r.doc_no                                AS `Doc. No`,
-    d.transaction                           AS `Transaction`,
-    d.pay_amt                               AS `Pay Amt`,
-    d.commis_amt                            AS `Commis Amt`,
-    d.tax_amt                               AS `Tax Amt`,
-    d.total                                 AS `Total`,
-    d.wht_amount                            AS `WHT Amount`,
-    r.id                                    AS receipt_id,
-    r.bank_type                             AS bank_type
-FROM receipts r
-LEFT JOIN receipt_details d ON d.receipt_id = r.id
-WHERE r.submitted_at IS NOT NULL
-ORDER BY r.submitted_at DESC;
+    cc.id,
+    t.host,
+    t.bu_code,
+    cc.bank_code,
+    cc.company_name,
+    cc.doc_no,
+    cc.doc_date,
+    cc.submitted_at
+FROM credit_cards cc
+JOIN tenants t ON t.id = cc.tenant_id
+WHERE cc.deleted_at IS NULL;
 
+-- 2. View specific bank type (e.g., KBANK)
+SELECT * FROM credit_cards WHERE bank_code = 'KBANK' AND deleted_at IS NULL;
 
--- ════════════════════════════════════════════════════
--- Basic Queries
--- ════════════════════════════════════════════════════
+-- 3. View documents submitted today
+SELECT * FROM credit_cards WHERE DATE(submitted_at) = CURRENT_DATE AND deleted_at IS NULL;
 
--- 1. ดูข้อมูลทั้งหมด
-SELECT * FROM v_receipts;
+-- 4. Search by Document Number
+SELECT * FROM credit_cards WHERE doc_no LIKE '%0001954%' AND deleted_at IS NULL;
 
--- 2. ดูเฉพาะธนาคาร (BBL / KBANK / SCB)
-SELECT * FROM v_receipts WHERE bank_type = 'BBL';
-
--- 3. ดูเฉพาะวันที่ submit วันนี้
-SELECT * FROM v_receipts WHERE DATE(`Input Date`) = CURDATE();
-
--- 4. ค้นหาจาก Doc No
-SELECT * FROM v_receipts WHERE `Doc. No` LIKE '%0001954%';
-
--- 5. ค้นหาจาก Tax ID (query ตรง receipts เพราะ view ไม่มี field นี้)
-SELECT v.* FROM v_receipts v
-JOIN receipts r ON r.id = v.receipt_id
-WHERE r.company_tax_id = '0105555181506';
-
--- 6. ค้นหาจาก Merchant ID (query ตรง receipts เพราะ view ไม่มี field นี้)
-SELECT v.* FROM v_receipts v
-JOIN receipts r ON r.id = v.receipt_id
-WHERE r.merchant_id = '002206198772';
-
--- 7. ดูเอกสารที่ยังไม่ได้ submit (pending review)
+-- 5. View credit card headers that are still pending submission (drafts)
 SELECT
-    r.id,
-    r.bank_name,
-    r.bank_type,
-    r.doc_no,
-    r.company_name,
-    r.company_tax_id,
-    r.merchant_id,
-    r.doc_date,
-    r.created_at
-FROM receipts r
-WHERE r.submitted_at IS NULL
-ORDER BY r.created_at DESC;
+    cc.id,
+    t.host,
+    t.bu_code,
+    cc.bank_code,
+    cc.company_name,
+    cc.doc_no,
+    cc.doc_date,
+    cc.created_at
+FROM credit_cards cc
+JOIN tenants t ON t.id = cc.tenant_id
+WHERE cc.submitted_at IS NULL
+  AND cc.deleted_at IS NULL
+ORDER BY cc.created_at DESC;
 
 
--- ════════════════════════════════════════════════════
--- Summary Queries
--- ════════════════════════════════════════════════════
+-- ════════════════════════════════════════════════════════════
+-- Summaries & Analytics
+-- ════════════════════════════════════════════════════════════
 
--- 8. สรุปยอดรวมแยกตามธนาคาร
+-- 6. Total documents aggregated by bank
 SELECT
-    bank_type,
-    COUNT(DISTINCT receipt_id)  AS total_docs,
-    SUM(`Pay Amt`)              AS total_pay_amt,
-    SUM(`Commis Amt`)           AS total_commission,
-    SUM(`Tax Amt`)              AS total_tax,
-    SUM(`WHT Amount`)           AS total_wht,
-    SUM(`Total`)                AS total_net
-FROM v_receipts
-GROUP BY bank_type;
+    bank_code,
+    COUNT(id) AS total_docs
+FROM credit_cards
+WHERE deleted_at IS NULL
+GROUP BY bank_code
+ORDER BY total_docs DESC;
 
--- 9. สรุปยอดรวมแยกตามวันที่เอกสาร
+-- 7. Daily LLM token and cost breakdown per tenant BU
 SELECT
-    `Doc. Date`,
-    COUNT(DISTINCT receipt_id)  AS total_docs,
-    SUM(`Pay Amt`)              AS total_pay_amt,
-    SUM(`WHT Amount`)           AS total_wht,
-    SUM(`Total`)                AS total_net
-FROM v_receipts
-GROUP BY `Doc. Date`
-ORDER BY `Doc. Date` DESC;
+    tenant_id,
+    DATE(created_at) AS log_date,
+    model,
+    COUNT(*)         AS total_calls,
+    SUM(total_tokens) AS total_tokens_used,
+    SUM(cost_usd)    AS total_cost_usd
+FROM llm_usage_logs
+GROUP BY tenant_id, DATE(created_at), model
+ORDER BY log_date DESC, total_cost_usd DESC;
 
--- 10. สรุปยอดรวมแยกตาม Transaction (Payment Type)
+-- 8. Top API endpoint latencies (P95 and average duration)
 SELECT
-    bank_type,
-    `Transaction`,
-    COUNT(*)                    AS total_rows,
-    SUM(`Pay Amt`)              AS total_pay_amt,
-    SUM(`Commis Amt`)           AS total_commission,
-    SUM(`Tax Amt`)              AS total_tax,
-    SUM(`Total`)                AS total_net
-FROM v_receipts
-WHERE `Transaction` IS NOT NULL
-GROUP BY bank_type, `Transaction`
-ORDER BY bank_type, total_pay_amt DESC;
+    endpoint,
+    method,
+    COUNT(*) AS request_count,
+    ROUND(AVG(duration_ms)::numeric, 2) AS avg_latency_ms,
+    ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms)::numeric, 2) AS p95_latency_ms
+FROM performance_logs
+GROUP BY endpoint, method
+HAVING COUNT(*) > 5
+ORDER BY p95_latency_ms DESC;
 
 
--- ════════════════════════════════════════════════════
--- Migration Script — อัปเดต DB เดิมให้รองรับ schema ใหม่
--- (รันเฉพาะกรณีมี DB เก่าอยู่แล้ว)
--- ════════════════════════════════════════════════════
+-- ════════════════════════════════════════════════════════════
+-- System Administration & Maintenance
+-- ════════════════════════════════════════════════════════════
 
-ALTER TABLE receipts
-    ADD COLUMN IF NOT EXISTS company_tax_id  VARCHAR(50)   NULL COMMENT 'เลขประจำตัวผู้เสียภาษี'          AFTER company_name,
-    ADD COLUMN IF NOT EXISTS company_address TEXT          NULL COMMENT 'ที่อยู่ร้านค้า'                    AFTER company_tax_id,
-    ADD COLUMN IF NOT EXISTS account_no      VARCHAR(100)  NULL COMMENT 'เลขที่บัญชีรับเงิน'               AFTER company_address,
-    ADD COLUMN IF NOT EXISTS merchant_name   VARCHAR(255)  NULL COMMENT 'MERCHANT NAME จากธนาคาร'          AFTER doc_no,
-    ADD COLUMN IF NOT EXISTS merchant_id     VARCHAR(100)  NULL COMMENT 'MERCHANT NUMBER / หมายเลขร้านค้า' AFTER merchant_name,
-    ADD COLUMN IF NOT EXISTS wht_rate        VARCHAR(20)   NULL COMMENT 'อัตราภาษีหัก ณ ที่จ่าย'           AFTER merchant_id,
-    ADD COLUMN IF NOT EXISTS wht_amount      DECIMAL(15,2) NULL COMMENT 'ภาษีหัก ณ ที่จ่าย (บาท)'         AFTER wht_rate,
-    ADD COLUMN IF NOT EXISTS net_amount      DECIMAL(15,2) NULL COMMENT 'ยอดเงินสุทธิรวม'                  AFTER wht_amount;
+-- 9. Active user sessions on Carmen SSO
+SELECT
+    s.id AS session_id,
+    t.host,
+    t.bu_code,
+    s.username,
+    s.last_used_at,
+    s.created_at
+FROM ocr_sessions s
+JOIN tenants t ON t.id = s.tenant_id
+WHERE s.is_active = TRUE
+  AND s.deleted_at IS NULL
+ORDER BY s.last_used_at DESC;
 
-ALTER TABLE receipt_details
-    CHANGE COLUMN IF EXISTS terminal_id `transaction` VARCHAR(255) NULL COMMENT 'card type / payment type label';
+-- 10. List open bug reports per module category
+SELECT
+    module_id,
+    category,
+    status,
+    COUNT(*) AS count
+FROM bug_reports
+WHERE deleted_at IS NULL
+GROUP BY module_id, category, status
+ORDER BY count DESC;

@@ -16,7 +16,6 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
-    Numeric,
     String,
     Text,
     text,
@@ -78,7 +77,6 @@ class CreditCard(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMix
     """
     Extracted data from a credit card bank statement.
     bank_code: FK to banks.code (replaces the old hardcoded BankType enum).
-    Transactions are stored in CreditCardTransaction (not JSON).
     submitted_at: NULL = draft; NOT NULL = submitted to Carmen ERP.
     Duplicate check: (tenant_id, bank_code, doc_no, submitted_at IS NOT NULL).
     """
@@ -97,34 +95,6 @@ class CreditCard(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMix
     carmen_user_id = Column(String(36), nullable=True, index=True)
 
     task = relationship("OCRTask", back_populates="credit_card")
-    transactions = relationship(
-        "CreditCardTransaction",
-        back_populates="credit_card",
-        cascade="all, delete-orphan",
-        order_by="CreditCardTransaction.sort_order",
-    )
-
-
-class CreditCardTransaction(Base, TimestampMixin, SoftDeleteMixin):
-    """
-    Individual line item from a credit card statement.
-    Replaces the old JSON `transactions` blob on CreditCard.
-    sort_order preserves the original order from the LLM output.
-    """
-
-    __tablename__ = "credit_card_transactions"
-
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    credit_card_id = Column(
-        PGUUID(as_uuid=True), ForeignKey("credit_cards.id"), nullable=False, index=True
-    )
-    tx_date = Column(Date, nullable=True)
-    description = Column(Text, nullable=True)
-    amount = Column(Numeric(18, 4), nullable=True)
-    tx_type = Column(String(50), nullable=True)
-    sort_order = Column(Integer, default=0, nullable=False)
-
-    credit_card = relationship("CreditCard", back_populates="transactions")
 
 
 class APInvoice(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixin):

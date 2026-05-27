@@ -98,12 +98,7 @@ export default function PaymentButton() {
                     <div className="hm-progress-bar">
                       <div
                         className="hm-progress-fill"
-                        ref={el => {
-                          if (el) {
-                            el.style.width = `${usedPct}%`
-                            el.style.background = barColor
-                          }
-                        }}
+                        style={{ width: `${usedPct}%`, background: barColor }}
                       />
                     </div>
                   </div>

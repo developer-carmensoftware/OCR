@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { submitToLocal } from '../../lib/api/submit'
 import { submitToCarmen } from '../../lib/api/carmen'
 import { logCorrections, diffCorrections } from '../../lib/api/feedback'
 import { getAccountingConfig } from '../../lib/api/config'
@@ -7,6 +6,21 @@ import { getCarmenUrl } from '../../lib/url'
 import { normalizeYearToCE } from '../../lib/date'
 import { showToast } from '../../lib/toast'
 import type { ModalConfig } from '../useModal'
+
+/**
+ * Parse a "DD/MM/YYYY" or "DD/MM/BBBB" (Buddhist Era) date string into an
+ * ISO-8601 timestamp. Falls back to the current timestamp when the input is
+ * absent, malformed, or results in an invalid Date.
+ */
+function parseJvhDate(docDate: string | undefined): string {
+  if (docDate) {
+    const [d, m, y] = docDate.split('/')
+    const normalizedY = normalizeYearToCE(y)
+    const parsed = new Date(`${normalizedY}-${m}-${d}`)
+    if (!isNaN(parsed.getTime())) return parsed.toISOString()
+  }
+  return new Date().toISOString()
+}
 
 export interface JvRow {
   dept: string
@@ -55,32 +69,8 @@ export function useOcrSubmission({
     setJvRows(rows)
     const docNo = headerData.DocNo
 
-    const payload = {
-      bank_type: bank,
-      header: {
-        bank_name: headerData.BankName || '',
-        doc_name: headerData.DocName || '',
-        company_name: headerData.CompanyName || '',
-        doc_date: headerData.DocDate || '',
-        doc_no: headerData.DocNo || '',
-        merchant_name: headerData.MerchantName || '',
-        bank_company_name: headerData.BankCompanyname || '',
-        branch_no: headerData.BranchNo || '',
-      },
-      details: details.map(row => {
-        const rawAmt = String(row.Total || row.total || row.PayAmt || row.pay_amt || '')
-        const cleanedAmt = rawAmt.replace(/,/g, '')
-        return {
-          transaction: String(row.Transaction || row.transaction || ''),
-          amount: cleanedAmt || undefined,
-          type: String(row.type || '') || undefined,
-        }
-      }),
-    }
-
     try {
       showToast('Submitting data...', 'info')
-      await submitToLocal(payload)
 
       const corrections = diffCorrections(
         headerData,
@@ -96,7 +86,8 @@ export function useOcrSubmission({
 
       let carmenError: string | null = null
       let jvId: string | null = null
-      let alreadyPosted = false
+      let carmenRejected = false
+
       try {
         const carmenConfig = await getAccountingConfig().catch(() => {
           try {
@@ -108,29 +99,16 @@ export function useOcrSubmission({
             return {} as Record<string, string>
           }
         })
+        const cfg = carmenConfig as Record<string, string>
         const carmenPayload = {
           JvhSeq: -1,
-          JvhDate: (() => {
-            if (headerData.DocDate) {
-              const [d, m, y] = headerData.DocDate.split('/')
-              const normalizedY = normalizeYearToCE(y)
-              const parsed = new Date(`${normalizedY}-${m}-${d}`)
-              if (!isNaN(parsed.getTime())) return parsed.toISOString()
-            }
-            return new Date().toISOString()
-          })(),
-          Prefix:
-            (carmenConfig as Record<string, string>).file_prefix ||
-            (carmenConfig as Record<string, string>).filePrefix ||
-            '',
+          JvhDate: parseJvhDate(headerData.DocDate),
+          Prefix: cfg.file_prefix || cfg.filePrefix || '',
           JvhNo: 'Auto',
-          JvhSource:
-            (carmenConfig as Record<string, string>).file_source ||
-            (carmenConfig as Record<string, string>).fileSource ||
-            '',
+          JvhSource: cfg.file_source || cfg.fileSource || '',
           Status: 'Draft',
-          Description: (carmenConfig as Record<string, string>).description
-            ? `${(carmenConfig as Record<string, string>).description}${headerData.DocDate ? ` - ${headerData.DocDate}` : ''}`
+          Description: cfg.description
+            ? `${cfg.description}${headerData.DocDate ? ` - ${headerData.DocDate}` : ''}`
             : '',
           Detail: rows.map(r => ({
             JvhSeq: -1,
@@ -149,9 +127,18 @@ export function useOcrSubmission({
           DimHList: { Dim: [] },
           UserModified: '',
         }
-        const carmenRes = (await submitToCarmen(carmenPayload)) as Record<string, unknown>
+        const metadata = {
+          doc_no: headerData.DocNo || undefined,
+          company_name: headerData.CompanyName || undefined,
+          bank_code: bank || undefined,
+          branch_no: headerData.BranchNo || undefined,
+        }
+        const carmenRes = (await submitToCarmen(carmenPayload, cardId, metadata)) as Record<
+          string,
+          unknown
+        >
         if (carmenRes?.Code !== 0) {
-          alreadyPosted = true
+          carmenRejected = true
           carmenError =
             (carmenRes?.UserMessage as string) || `Carmen error (Code: ${carmenRes?.Code})`
           showToast(`Carmen GL JV: ${carmenError}`, 'warning')
@@ -167,7 +154,7 @@ export function useOcrSubmission({
         showToast(`Carmen GL JV: ${carmenError}`, 'error')
       }
 
-      if (alreadyPosted) {
+      if (carmenRejected) {
         showModal({
           title: 'Warning: Data Already Posted',
           message: `Document number ${docNo} saved to database.\n\nCarmen: "${carmenError}"`,

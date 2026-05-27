@@ -14,8 +14,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import SessionInfo, get_current_session
+from app.constants import Module
 from app.database import get_db
-from app.models.orm import APInvoice
+from app.models.orm import APInvoice, CreditCard
+from app.services import audit_service
+from app.services.audit_service import AuditAction
 from app.services.carmen_service import (
     CarmenAPIError,
     get_account_codes,
@@ -42,8 +45,9 @@ async def _carmen_errors(detail_prefix: str = ""):
     try:
         yield
     except CarmenAPIError as e:
-        detail = f"{detail_prefix}: {e.detail}" if detail_prefix else e.detail
-        raise HTTPException(status_code=e.status_code, detail=detail)
+        msg = f"{detail_prefix}: {e.detail}" if detail_prefix else e.detail
+        logger.error("[carmen_proxy] Upstream HTTP %d: %s", e.status_code, e.detail)
+        raise HTTPException(status_code=e.status_code, detail=msg) from e
 
 
 @router.get("/account-codes")
@@ -67,10 +71,48 @@ async def proxy_gl_prefix(session: SessionInfo = Depends(get_current_session)):
 
 
 @router.post("/gljv")
-async def proxy_gljv(request: Request, session: SessionInfo = Depends(get_current_session)):
+async def proxy_gljv(
+    request: Request,
+    credit_card_id: str | None = None,
+    doc_no: str | None = None,
+    company_name: str | None = None,
+    bank_code: str | None = None,
+    branch_no: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(get_current_session),
+):
     body = await request.json()
     async with _carmen_errors("Carmen GL JV ล้มเหลว"):
-        return await post_gljv(body, session.carmen_token)
+        res = await post_gljv(body, session.carmen_token)
+        if res and res.get("Code", -1) >= 0 and credit_card_id:
+            import uuid
+
+            result = await db.execute(
+                select(CreditCard).where(CreditCard.id == uuid.UUID(credit_card_id))
+            )
+            card = result.scalar_one_or_none()
+            if card:
+                card.submitted_at = datetime.now(UTC).replace(tzinfo=None)
+                if doc_no:
+                    card.doc_no = doc_no
+                if company_name:
+                    card.company_name = company_name
+                if bank_code:
+                    card.bank_code = bank_code
+                if branch_no:
+                    card.branch_no = branch_no
+                await db.commit()
+                logger.info("Marked Credit Card %s as submitted", credit_card_id)
+
+                # Write audit log
+                await audit_service.log_action(
+                    session,
+                    AuditAction.SUBMIT,
+                    resource="credit_card",
+                    resource_id=card.doc_no or str(card.id),
+                    ip_address=request.client.host if request.client else None,
+                )
+        return res
 
 
 @router.put("/gljv/{jvh_seq}")
@@ -136,5 +178,14 @@ async def proxy_create_invoice(
                 await db.commit()
                 logger.info(
                     "Marked AP Invoice %s as submitted at %s", ap_invoice_id, inv.submitted_at
+                )
+
+                # Write audit log
+                await audit_service.log_action(
+                    session,
+                    AuditAction.SUBMIT,
+                    resource=Module.AP_INVOICE,
+                    resource_id=inv.doc_no or str(inv.id),
+                    ip_address=request.client.host if request.client else None,
                 )
         return res

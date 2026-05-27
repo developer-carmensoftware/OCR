@@ -86,7 +86,7 @@ export function useOcrExtraction({
   const [originalHeader, setOriginalHeader] = useState<Record<string, string>>({})
 
   function applyExtractedData(ext: Record<string, unknown>, taskId: string | null = null) {
-    setCardId((ext.doc_no as string) || taskId || null)
+    setCardId((ext.id as string) || (ext.doc_no as string) || taskId || null)
     const header: Record<string, string> = {
       DateProcessed: new Date().toLocaleDateString('en-GB'),
       BankName: (ext.bank_name as string) || '',
@@ -270,6 +270,8 @@ export function useOcrExtraction({
     setStatus('')
     setHeaderData({})
     setDetails([])
+    setOriginalDetails([])
+    setOriginalHeader({})
     setBank('')
     setCardId(null)
   }

@@ -1,16 +1,18 @@
 import base64
 import logging
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
+from sqlalchemy import select
 
 from app.auth import SessionInfo, get_current_session
 from app.config import settings
 from app.constants import Module
 from app.context import current_document_ref
 from app.database import async_session
-from app.models.orm import APInvoice
+from app.models.orm import APInvoice, OCRTask, TaskStatus
 from app.services import audit_service
 from app.services.ap_invoice_service import extract_ap_invoice_data, suggest_for_items
 from app.services.audit_service import AuditAction
@@ -67,45 +69,65 @@ async def extract_ap_invoice(
         )
         task_id = str(task.id)
 
-    # LLM extraction — no DB connection held during this call.
-    data = await extract_ap_invoice_data(data_url, filename, task_id)
+    try:
+        # LLM extraction — no DB connection held during this call.
+        data = await extract_ap_invoice_data(data_url, filename, task_id)
 
-    doc_no = data.get("documentNumber")
-    vendor_name = data.get("vendorName")
-    is_duplicate = False
+        doc_no = data.get("documentNumber")
+        vendor_name = data.get("vendorName")
+        is_duplicate = False
 
-    # Short DB session: duplicate check + insert AP invoice row.
-    async with async_session() as db:
-        if doc_no and vendor_name:
-            is_duplicate = await has_submitted_doc(
-                db,
-                APInvoice,
-                tenant_id=session.tenant_id,
-                doc_no=doc_no,
-                vendor_name=vendor_name,
-            )
-            if is_duplicate:
-                logger.info("Duplicate AP Invoice: %s / %s", doc_no, vendor_name)
+        # Short DB session: duplicate check + insert AP invoice row.
+        async with async_session() as db:
+            if doc_no and vendor_name:
+                is_duplicate = await has_submitted_doc(
+                    db,
+                    APInvoice,
+                    tenant_id=session.tenant_id,
+                    doc_no=doc_no,
+                    vendor_name=vendor_name,
+                )
+                if is_duplicate:
+                    logger.info("Duplicate AP Invoice: %s / %s", doc_no, vendor_name)
 
-        if not is_duplicate:
-            ap_inv = APInvoice(
-                id=uuid.uuid4(),
-                task_id=task_id,
-                tenant_id=session.tenant_id,
-                vendor_name=vendor_name,
-                doc_no=doc_no,
-                doc_date=parse_doc_date(data.get("documentDate")),
-                original_filename=file.filename,
-                carmen_user_id=session.carmen_user_id or None,
-            )
-            db.add(ap_inv)
+            if not is_duplicate:
+                ap_inv = APInvoice(
+                    id=uuid.uuid4(),
+                    task_id=uuid.UUID(task_id),
+                    tenant_id=session.tenant_id,
+                    vendor_name=vendor_name,
+                    doc_no=doc_no,
+                    doc_date=parse_doc_date(data.get("documentDate")),
+                    original_filename=file.filename,
+                    carmen_user_id=session.carmen_user_id or None,
+                )
+                db.add(ap_inv)
+                data["id"] = ap_inv.id
+            else:
+                data["id"] = None
+
+            # Mark task as completed
+            task_res = await db.execute(select(OCRTask).where(OCRTask.id == uuid.UUID(task_id)))
+            task = task_res.scalar_one_or_none()
+            if task:
+                task.status = TaskStatus.COMPLETED  # type: ignore
+                task.completed_at = datetime.now(UTC).replace(tzinfo=None)  # type: ignore
+
             await db.commit()
-            data["id"] = ap_inv.id
-        else:
-            data["id"] = None
 
-    data["is_duplicate"] = is_duplicate
-    return data
+        data["is_duplicate"] = is_duplicate
+        return data
+
+    except Exception as exc:
+        logger.error("Failed to process AP Invoice OCR task %s: %s", task_id, exc)
+        async with async_session() as db:
+            task_res = await db.execute(select(OCRTask).where(OCRTask.id == uuid.UUID(task_id)))
+            task = task_res.scalar_one_or_none()
+            if task:
+                task.status = TaskStatus.FAILED  # type: ignore
+                task.error_message = str(exc)  # type: ignore
+                await db.commit()
+        raise
 
 
 class SuggestGLItem(BaseModel):
@@ -122,7 +144,7 @@ class SuggestGLRequest(BaseModel):
 
 
 @router.post("/suggest")
-async def suggest_gl(
+async def suggest(
     request: Request,
     body: SuggestGLRequest,
     session: SessionInfo = Depends(get_current_session),
@@ -134,6 +156,7 @@ async def suggest_gl(
         resource=Module.AP_INVOICE,
         ip_address=request.client.host if request.client else None,
     )
+
     if not settings.openrouter_api_key:
         raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY is not configured")
     if not body.items:

@@ -6,10 +6,9 @@ Endpoints:
   GET  /api/v1/tools/{name}     get schema for one tool
   POST /api/v1/tools/{name}     invoke a tool by name (JSON body = kwargs)
 
-Note: tools that require a database session (submit_receipt) or raw bytes
-(extract_receipt) cannot be called through this generic endpoint — those have
-dedicated routers. The tools endpoint is primarily useful for LLM agents
-calling stateless tools: suggest_gl_fixed_fields, suggest_gl_payment_types.
+Note: tools that require raw bytes (extract_card) cannot be called through this
+generic endpoint — those have dedicated routers. The tools endpoint is primarily
+useful for LLM agents calling stateless tools: suggest_gl_fixed_fields, suggest_gl_payment_types.
 """
 
 import logging
@@ -25,7 +24,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/tools", tags=["Tools"])
 
 # Tools that require injected dependencies (bytes / DB session) — block generic invocation
-_REQUIRES_INJECTION = {"extract_receipt", "submit_receipt"}
+_REQUIRES_INJECTION = {"extract_card"}
 
 
 @router.get("")

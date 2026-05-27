@@ -7,12 +7,12 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import Date as SADate
-from sqlalchemy import case, cast, func, select, text
+from sqlalchemy import case, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
-from app.models.business import OCRTask
+from app.models.business import APInvoice, CreditCard, OCRTask
 from app.models.enums import TaskStatus
 from app.models.identity import Tenant
 from app.models.observability import LLMUsageLog, PerformanceLog
@@ -75,6 +75,89 @@ async def get_usage_summary(
     result = await db.execute(q)
     rows = result.mappings().all()
 
+    # Per-(date, module, tenant) document and error counts sourced from ocr_tasks.
+    task_count_q = (
+        select(
+            cast(OCRTask.created_at, SADate).label("task_date"),
+            OCRTask.module_id.label("task_module"),
+            OCRTask.tenant_id.label("task_tenant"),
+            func.count(OCRTask.id).label("doc_count"),
+            func.sum(case((OCRTask.status == TaskStatus.FAILED, 1), else_=0)).label("error_count"),
+        )
+        .where(
+            OCRTask.created_at >= from_dt,
+            OCRTask.created_at <= to_dt,
+            OCRTask.deleted_at.is_(None),
+        )
+        .group_by(cast(OCRTask.created_at, SADate), OCRTask.module_id, OCRTask.tenant_id)
+    )
+    if tid:
+        task_count_q = task_count_q.where(OCRTask.tenant_id == tid)
+    if module_id:
+        task_count_q = task_count_q.where(OCRTask.module_id == module_id)
+
+    task_result = await db.execute(task_count_q)
+    task_stats_map: dict[tuple, tuple[int, int]] = {
+        (str(r["task_date"]), r["task_module"], str(r["task_tenant"])): (
+            int(r["doc_count"]),
+            int(r["error_count"] or 0),
+        )
+        for r in task_result.mappings().all()
+    }
+
+    # Count submissions from credit_cards
+    cc_sub_q = (
+        select(
+            cast(CreditCard.submitted_at, SADate).label("sub_date"),
+            OCRTask.module_id.label("sub_module"),
+            CreditCard.tenant_id.label("sub_tenant"),
+            func.count(CreditCard.id).label("sub_count"),
+        )
+        .join(OCRTask, CreditCard.task_id == OCRTask.id)
+        .where(
+            CreditCard.submitted_at >= from_dt,
+            CreditCard.submitted_at <= to_dt,
+            CreditCard.deleted_at.is_(None),
+        )
+        .group_by(cast(CreditCard.submitted_at, SADate), OCRTask.module_id, CreditCard.tenant_id)
+    )
+    if tid:
+        cc_sub_q = cc_sub_q.where(CreditCard.tenant_id == tid)
+    if module_id:
+        cc_sub_q = cc_sub_q.where(OCRTask.module_id == module_id)
+
+    # Count submissions from ap_invoices
+    ap_sub_q = (
+        select(
+            cast(APInvoice.submitted_at, SADate).label("sub_date"),
+            OCRTask.module_id.label("sub_module"),
+            APInvoice.tenant_id.label("sub_tenant"),
+            func.count(APInvoice.id).label("sub_count"),
+        )
+        .join(OCRTask, APInvoice.task_id == OCRTask.id)
+        .where(
+            APInvoice.submitted_at >= from_dt,
+            APInvoice.submitted_at <= to_dt,
+            APInvoice.deleted_at.is_(None),
+        )
+        .group_by(cast(APInvoice.submitted_at, SADate), OCRTask.module_id, APInvoice.tenant_id)
+    )
+    if tid:
+        ap_sub_q = ap_sub_q.where(APInvoice.tenant_id == tid)
+    if module_id:
+        ap_sub_q = ap_sub_q.where(OCRTask.module_id == module_id)
+
+    cc_sub_result = await db.execute(cc_sub_q)
+    ap_sub_result = await db.execute(ap_sub_q)
+
+    sub_stats_map: dict[tuple, int] = {}
+    for r in cc_sub_result.mappings().all():
+        key = (str(r["sub_date"]), r["sub_module"], str(r["sub_tenant"]))
+        sub_stats_map[key] = sub_stats_map.get(key, 0) + int(r["sub_count"])
+    for r in ap_sub_result.mappings().all():
+        key = (str(r["sub_date"]), r["sub_module"], str(r["sub_tenant"]))
+        sub_stats_map[key] = sub_stats_map.get(key, 0) + int(r["sub_count"])
+
     return {
         "tenant_id": tid,
         "from": str(from_date),
@@ -85,12 +168,18 @@ async def get_usage_summary(
                 "date": str(r["summary_date"]),
                 "module_id": r["module_id"],
                 "tenant_id": r["tenant_id"],
-                "documents": 0,
-                "submissions": 0,
+                "documents": task_stats_map.get(
+                    (str(r["summary_date"]), r["module_id"], str(r["tenant_id"])), (0, 0)
+                )[0],
+                "submissions": sub_stats_map.get(
+                    (str(r["summary_date"]), r["module_id"], str(r["tenant_id"])), 0
+                ),
                 "llm_calls": int(r["llm_calls"] or 0),
                 "tokens": int(r["tokens"] or 0),
                 "cost_usd": float(str(r["cost_usd"] or 0)),
-                "errors": 0,
+                "errors": task_stats_map.get(
+                    (str(r["summary_date"]), r["module_id"], str(r["tenant_id"])), (0, 0)
+                )[1],
                 "avg_llm_latency_ms": round(float(r["avg_llm_latency_ms"] or 0), 2),
             }
             for r in rows
@@ -131,9 +220,6 @@ async def get_usage_totals(
     # Task/document metrics from ocr_tasks
     task_q = select(
         func.count(OCRTask.id).label("total_documents"),
-        func.sum(case((OCRTask.status == TaskStatus.COMPLETED, 1), else_=0)).label(
-            "total_submissions"
-        ),
         func.sum(case((OCRTask.status == TaskStatus.FAILED, 1), else_=0)).label("total_errors"),
     ).where(
         OCRTask.created_at >= from_dt,
@@ -146,13 +232,32 @@ async def get_usage_totals(
     task_result = await db.execute(task_q)
     task_row = task_result.mappings().fetchone() or {}
 
+    # Count actual submissions from credit_cards and ap_invoices
+    cc_sub_q = select(func.count(CreditCard.id)).where(
+        CreditCard.submitted_at >= from_dt,
+        CreditCard.submitted_at <= to_dt,
+        CreditCard.deleted_at.is_(None),
+    )
+    ap_sub_q = select(func.count(APInvoice.id)).where(
+        APInvoice.submitted_at >= from_dt,
+        APInvoice.submitted_at <= to_dt,
+        APInvoice.deleted_at.is_(None),
+    )
+    if tid:
+        cc_sub_q = cc_sub_q.where(CreditCard.tenant_id == tid)
+        ap_sub_q = ap_sub_q.where(APInvoice.tenant_id == tid)
+
+    cc_count = (await db.execute(cc_sub_q)).scalar() or 0
+    ap_count = (await db.execute(ap_sub_q)).scalar() or 0
+    total_submissions = cc_count + ap_count
+
     return {
         "tenant_id": tid,
         "from": str(from_date),
         "to": str(to_date),
         "totals": {
             "documents": int(task_row.get("total_documents") or 0),
-            "submissions": int(task_row.get("total_submissions") or 0),
+            "submissions": total_submissions,
             "llm_calls": int(llm_row.get("total_llm_calls") or 0),
             "tokens": int(llm_row.get("total_tokens") or 0),
             "cost_usd": float(llm_row.get("total_cost_usd") or 0),
@@ -197,7 +302,8 @@ async def get_llm_usage(
     result = await db.execute(q)
     rows = result.scalars().all()
     return {
-        "total": len(rows),
+        "count": len(rows),
+        "has_more": len(rows) == limit,
         "data": [
             {
                 "id": r.id,
@@ -255,7 +361,7 @@ async def tenant_ranking(
                 LLMUsageLog.tenant_id.isnot(None),
             )
             .group_by(LLMUsageLog.tenant_id)
-            .order_by(text("total_cost DESC"))
+            .order_by(func.sum(LLMUsageLog.cost_usd).desc())
             .limit(limit)
         )
         result = await db.execute(q)
@@ -293,11 +399,11 @@ async def tenant_ranking(
     )
 
     if metric == "error_rate":
-        q = q.order_by(text("errors / total_requests DESC"))
+        q = q.order_by((error_count / func.count(PerformanceLog.id)).desc())
     elif metric == "latency":
-        q = q.order_by(text("avg_latency DESC"))
+        q = q.order_by(func.avg(PerformanceLog.duration_ms).desc())
     else:
-        q = q.order_by(text("total_requests DESC"))
+        q = q.order_by(func.count(PerformanceLog.id).desc())
 
     q = q.limit(limit)
     result = await db.execute(q)
@@ -355,9 +461,9 @@ async def user_usage(
 
     q = q.group_by(LLMUsageLog.carmen_user_id)
     order_map = {
-        "calls": text("total_calls DESC"),
-        "tokens": text("total_tokens DESC"),
-        "cost": text("total_cost DESC"),
+        "calls": func.count(LLMUsageLog.id).desc(),
+        "tokens": func.sum(LLMUsageLog.total_tokens).desc(),
+        "cost": func.sum(LLMUsageLog.cost_usd).desc(),
     }
     q = q.order_by(order_map[order_by]).limit(limit)
 
@@ -403,7 +509,7 @@ async def error_breakdown(
         ).where(OCRTask.created_at >= since)
         if tid:
             q = q.where(OCRTask.tenant_id == tid)
-        q = q.group_by(OCRTask.module_id).order_by(text("errors DESC")).limit(limit)
+        q = q.group_by(OCRTask.module_id).order_by(failed_count.desc()).limit(limit)
         result = await db.execute(q)
         rows = result.mappings().all()
         return {
@@ -435,7 +541,7 @@ async def error_breakdown(
         q = q.where(PerformanceLog.tenant_id == tid)
     if group_by == "tenant":
         q = q.where(PerformanceLog.tenant_id.isnot(None))
-    q = q.group_by(group_col).order_by(text("errors DESC")).limit(limit)
+    q = q.group_by(group_col).order_by(error_count.desc()).limit(limit)
 
     result = await db.execute(q)
     rows = result.mappings().all()

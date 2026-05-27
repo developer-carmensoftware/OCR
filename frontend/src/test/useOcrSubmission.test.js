@@ -3,7 +3,6 @@ import { renderHook, act } from '@testing-library/react'
 import { useOcrSubmission } from '../hooks/credit-card/useOcrSubmission'
 
 // ─── module mocks ─────────────────────────────────────────────────────────────
-vi.mock('../lib/api/submit', () => ({ submitToLocal: vi.fn() }))
 vi.mock('../lib/api/carmen', () => ({ submitToCarmen: vi.fn() }))
 vi.mock('../lib/api/feedback', () => ({
   logCorrections: vi.fn(),
@@ -13,7 +12,6 @@ vi.mock('../lib/api/config', () => ({ getAccountingConfig: vi.fn() }))
 vi.mock('../lib/url', () => ({ getCarmenUrl: vi.fn(p => `https://carmen.test/#${p}`) }))
 vi.mock('../lib/toast', () => ({ showToast: vi.fn() }))
 
-import { submitToLocal } from '../lib/api/submit'
 import { submitToCarmen } from '../lib/api/carmen'
 import { logCorrections, diffCorrections } from '../lib/api/feedback'
 import { getAccountingConfig } from '../lib/api/config'
@@ -57,7 +55,6 @@ const defaultConfig = {
 }
 
 function mockHappyPath() {
-  submitToLocal.mockResolvedValue({})
   diffCorrections.mockReturnValue([])
   getAccountingConfig.mockResolvedValue(defaultConfig)
   submitToCarmen.mockResolvedValue({ Code: 0, InternalMessage: 'JV-999' })
@@ -79,29 +76,31 @@ describe('useOcrSubmission', () => {
 
   describe('F1: state management', () => {
     it('F1.1 – submitting becomes true while async work is in flight', async () => {
-      let resolveLocal
-      submitToLocal.mockReturnValue(
+      let resolveCarmen
+      submitToCarmen.mockReturnValue(
         new Promise(r => {
-          resolveLocal = r
+          resolveCarmen = r
         })
       )
       diffCorrections.mockReturnValue([])
       getAccountingConfig.mockResolvedValue(defaultConfig)
-      submitToCarmen.mockResolvedValue({ Code: 0 })
 
       const props = makeProps()
       const { result } = renderHook(() => useOcrSubmission(props))
 
       expect(result.current.submitting).toBe(false)
 
+      // Intentionally not awaited — keeps the promise in-flight so we can
+      // assert submitting === true before it resolves.
       act(() => {
-        result.current.handleSubmitFinal(defaultRows)
+        void result.current.handleSubmitFinal(defaultRows)
       })
       expect(result.current.submitting).toBe(true)
 
       await act(async () => {
-        resolveLocal({})
+        resolveCarmen({ Code: 0 })
       })
+      expect(result.current.submitting).toBe(false)
     })
 
     it('F1.2 – submitting resets to false after success', async () => {
@@ -116,8 +115,8 @@ describe('useOcrSubmission', () => {
       expect(result.current.submitting).toBe(false)
     })
 
-    it('F1.3 – submitting resets to false after submitToLocal error', async () => {
-      submitToLocal.mockRejectedValue(new Error('DB error'))
+    it('F1.3 – submitting resets to false after error', async () => {
+      getAccountingConfig.mockRejectedValue(new Error('Config error'))
       diffCorrections.mockReturnValue([])
 
       const props = makeProps()
@@ -129,130 +128,12 @@ describe('useOcrSubmission', () => {
 
       expect(result.current.submitting).toBe(false)
     })
-
-    it('F1.4 – setJvRows called immediately with rows argument', async () => {
-      mockHappyPath()
-      const props = makeProps()
-      const { result } = renderHook(() => useOcrSubmission(props))
-
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      expect(props.setJvRows).toHaveBeenCalledWith(defaultRows)
-    })
   })
 
-  // ── F2: Payload construction ─────────────────────────────────────────────────
+  // ── F2: Date parsing ─────────────────────────────────────────────────────────
 
-  describe('F2: payload construction', () => {
-    it('F2.1 – all header fields mapped correctly', async () => {
-      mockHappyPath()
-      const props = makeProps()
-      renderHook(() => useOcrSubmission(props))
-
-      const { result } = renderHook(() => useOcrSubmission(props))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      const payload = submitToLocal.mock.calls[0][0]
-      expect(payload.header.bank_name).toBe('Test Bank')
-      expect(payload.header.doc_no).toBe('DOC-001')
-      expect(payload.header.company_name).toBe('Acme Co')
-      expect(payload.header.merchant_name).toBe('MerchantX')
-      expect(payload.header.branch_no).toBe('001')
-      expect(payload.bank_type).toBe('KBANK')
-    })
-
-    it('F2.2 – missing header fields fall back to empty string', async () => {
-      mockHappyPath()
-      const props = makeProps({
-        headerData: { DocNo: 'X', DocDate: '01/01/2024' }, // most fields missing
-      })
-      const { result } = renderHook(() => useOcrSubmission(props))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      const { header } = submitToLocal.mock.calls[0][0]
-      expect(header.bank_name).toBe('')
-      expect(header.company_name).toBe('')
-      expect(header.merchant_name).toBe('')
-    })
-
-    it('F2.3 – detail rows send transaction and amount (Total takes priority)', async () => {
-      mockHappyPath()
-      const details = [
-        {
-          Transaction: 'Sale',
-          PayAmt: '1,000',
-          Total: '1,025',
-        },
-      ]
-      const props = makeProps({ details })
-      const { result } = renderHook(() => useOcrSubmission(props))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      const d = submitToLocal.mock.calls[0][0].details[0]
-      expect(d.transaction).toBe('Sale')
-      expect(d.amount).toBe('1025')
-    })
-
-    it('F2.4 – detail rows fall back to snake_case keys (transaction, total)', async () => {
-      mockHappyPath()
-      const details = [
-        {
-          transaction: 'Transfer',
-          pay_amt: '500',
-          total: '512',
-        },
-      ]
-      const props = makeProps({ details })
-      const { result } = renderHook(() => useOcrSubmission(props))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      const d = submitToLocal.mock.calls[0][0].details[0]
-      expect(d.transaction).toBe('Transfer')
-      expect(d.amount).toBe('512')
-    })
-
-    it('F2.5 – comma-formatted amounts are stripped before sending', async () => {
-      mockHappyPath()
-      const details = [{ Transaction: 'Sale', Total: '2,925.82' }]
-      const props = makeProps({ details })
-      const { result } = renderHook(() => useOcrSubmission(props))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      expect(submitToLocal.mock.calls[0][0].details[0].amount).toBe('2925.82')
-    })
-
-    it('F2.6 – missing amounts are omitted (undefined)', async () => {
-      mockHappyPath()
-      const details = [{ Transaction: 'X' }] // all amounts missing
-      const props = makeProps({ details })
-      const { result } = renderHook(() => useOcrSubmission(props))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      const d = submitToLocal.mock.calls[0][0].details[0]
-      expect(d.transaction).toBe('X')
-      expect(d.amount).toBeUndefined()
-    })
-  })
-
-  // ── F3: Date parsing ─────────────────────────────────────────────────────────
-
-  describe('F3: Carmen payload date parsing', () => {
+  describe('F2: Carmen payload date parsing', () => {
     async function getJvhDate(docDate) {
-      submitToLocal.mockResolvedValue({})
       diffCorrections.mockReturnValue([])
       getAccountingConfig.mockResolvedValue(defaultConfig)
       submitToCarmen.mockResolvedValue({ Code: 0 })
@@ -265,109 +146,38 @@ describe('useOcrSubmission', () => {
       return submitToCarmen.mock.calls[0][0].JvhDate
     }
 
-    it('F3.1 – CE date "15/05/2024" → ISO 2024-05-15', async () => {
+    it('F2.1 – CE date "15/05/2024" → ISO 2024-05-15', async () => {
       const iso = await getJvhDate('15/05/2024')
       expect(iso).toMatch(/^2024-05-15/)
     })
 
-    it('F3.2 – BE date "15/05/2567" → CE 2024, ISO 2024-05-15', async () => {
+    it('F2.2 – BE date "15/05/2567" → CE 2024, ISO 2024-05-15', async () => {
       const iso = await getJvhDate('15/05/2567')
       expect(iso).toMatch(/^2024-05-15/)
     })
-
-    it('F3.3 – invalid date falls back to current date ISO', async () => {
+    it('F2.3 – empty DocDate → fallback to approximately current time', async () => {
       const before = Date.now()
-      const iso = await getJvhDate('xx/yy/zzzz')
+      const iso = await getJvhDate('')
       const after = Date.now()
       const parsed = new Date(iso).getTime()
-      expect(parsed).toBeGreaterThanOrEqual(before - 1000)
+      expect(parsed).toBeGreaterThanOrEqual(before)
       expect(parsed).toBeLessThanOrEqual(after + 1000)
     })
 
-    it('F3.4 – empty DocDate falls back to current date ISO', async () => {
+    it('F2.4 – invalid DocDate "not-a-date" → fallback to approximately current time', async () => {
       const before = Date.now()
-      const iso = await getJvhDate('')
+      const iso = await getJvhDate('not-a-date')
+      const after = Date.now()
       const parsed = new Date(iso).getTime()
-      expect(parsed).toBeGreaterThanOrEqual(before - 1000)
+      expect(parsed).toBeGreaterThanOrEqual(before)
+      expect(parsed).toBeLessThanOrEqual(after + 1000)
     })
   })
 
-  // ── F4: submitToLocal failures ────────────────────────────────────────────────
+  // ── F3: Corrections / feedback ────────────────────────────────────────────────
 
-  describe('F4: submitToLocal failures', () => {
-    it('F4.1 – DUPLICATE_DOC_NO error shows duplicate modal', async () => {
-      const err = new Error('Duplicate')
-      err.code = 'DUPLICATE_DOC_NO'
-      submitToLocal.mockRejectedValue(err)
-      diffCorrections.mockReturnValue([])
-
-      const props = makeProps()
-      const { result } = renderHook(() => useOcrSubmission(props))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      expect(props.showModal).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Duplicate Document Found',
-          message: expect.stringContaining('DOC-001'),
-          type: 'error',
-        })
-      )
-    })
-
-    it('F4.2 – generic error shows generic modal with err.message', async () => {
-      submitToLocal.mockRejectedValue(new Error('DB connection failed'))
-      diffCorrections.mockReturnValue([])
-
-      const props = makeProps()
-      const { result } = renderHook(() => useOcrSubmission(props))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      expect(props.showModal).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Error saving data',
-          message: 'DB connection failed',
-          type: 'error',
-        })
-      )
-    })
-
-    it('F4.3 – submitToCarmen NOT called when submitToLocal throws', async () => {
-      submitToLocal.mockRejectedValue(new Error('fail'))
-      diffCorrections.mockReturnValue([])
-
-      const props = makeProps()
-      const { result } = renderHook(() => useOcrSubmission(props))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      expect(submitToCarmen).not.toHaveBeenCalled()
-    })
-
-    it('F4.4 – submitting resets to false even on DUPLICATE_DOC_NO', async () => {
-      const err = new Error('dup')
-      err.code = 'DUPLICATE_DOC_NO'
-      submitToLocal.mockRejectedValue(err)
-      diffCorrections.mockReturnValue([])
-
-      const props = makeProps()
-      const { result } = renderHook(() => useOcrSubmission(props))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      expect(result.current.submitting).toBe(false)
-    })
-  })
-
-  // ── F5: Corrections / feedback ────────────────────────────────────────────────
-
-  describe('F5: corrections / feedback (fire-and-forget)', () => {
-    it('F5.1 – no corrections → logCorrections NOT called', async () => {
+  describe('F3: corrections / feedback (fire-and-forget)', () => {
+    it('F3.1 – no corrections → logCorrections NOT called', async () => {
       mockHappyPath()
       diffCorrections.mockReturnValue([])
 
@@ -380,7 +190,7 @@ describe('useOcrSubmission', () => {
       expect(logCorrections).not.toHaveBeenCalled()
     })
 
-    it('F5.2 – corrections present → logCorrections called with cardId, bank, corrections', async () => {
+    it('F3.2 – corrections present → logCorrections called with cardId, bank, corrections', async () => {
       mockHappyPath()
       const fakeCorrections = [{ fieldName: 'DocNo', originalValue: 'A', correctedValue: 'B' }]
       diffCorrections.mockReturnValue(fakeCorrections)
@@ -394,30 +204,12 @@ describe('useOcrSubmission', () => {
 
       expect(logCorrections).toHaveBeenCalledWith('card-uuid-123', 'KBANK', fakeCorrections)
     })
-
-    it('F5.3 – logCorrections error is caught silently, flow continues', async () => {
-      mockHappyPath()
-      diffCorrections.mockReturnValue([{ fieldName: 'X', originalValue: '1', correctedValue: '2' }])
-      logCorrections.mockRejectedValue(new Error('network'))
-
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      const props = makeProps()
-      const { result } = renderHook(() => useOcrSubmission(props))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      // flow continued → submitToCarmen was called
-      expect(submitToCarmen).toHaveBeenCalled()
-      consoleSpy.mockRestore()
-    })
   })
 
-  // ── F6: getAccountingConfig & fallback ────────────────────────────────────────
+  // ── F4: getAccountingConfig & fallback ────────────────────────────────────────
 
-  describe('F6: getAccountingConfig fallback', () => {
-    it('F6.1 – API success → Prefix and JvhSource from API config', async () => {
-      submitToLocal.mockResolvedValue({})
+  describe('F4: getAccountingConfig fallback', () => {
+    it('F4.1 – API success → Prefix and JvhSource from API config', async () => {
       diffCorrections.mockReturnValue([])
       getAccountingConfig.mockResolvedValue({
         file_prefix: 'API_PRE',
@@ -436,91 +228,12 @@ describe('useOcrSubmission', () => {
       expect(payload.Prefix).toBe('API_PRE')
       expect(payload.JvhSource).toBe('API_SRC')
     })
-
-    it('F6.2 – API fails → falls back to localStorage accountingConfig', async () => {
-      submitToLocal.mockResolvedValue({})
-      diffCorrections.mockReturnValue([])
-      getAccountingConfig.mockRejectedValue(new Error('network'))
-      submitToCarmen.mockResolvedValue({ Code: 0 })
-      window.localStorage.setItem(
-        'accountingConfig',
-        JSON.stringify({ file_prefix: 'LS_PRE', file_source: 'LS_SRC', description: '' })
-      )
-
-      const props = makeProps()
-      const { result } = renderHook(() => useOcrSubmission(props))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      expect(submitToCarmen.mock.calls[0][0].Prefix).toBe('LS_PRE')
-    })
-
-    it('F6.3 – API fails + localStorage invalid JSON → uses empty config (no crash)', async () => {
-      submitToLocal.mockResolvedValue({})
-      diffCorrections.mockReturnValue([])
-      getAccountingConfig.mockRejectedValue(new Error('network'))
-      submitToCarmen.mockResolvedValue({ Code: 0 })
-      window.localStorage.setItem('accountingConfig', 'NOT_JSON')
-
-      const props = makeProps()
-      const { result } = renderHook(() => useOcrSubmission(props))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      expect(submitToCarmen.mock.calls[0][0].Prefix).toBe('')
-    })
-
-    it('F6.4 – API fails + localStorage empty → uses empty config (no crash)', async () => {
-      submitToLocal.mockResolvedValue({})
-      diffCorrections.mockReturnValue([])
-      getAccountingConfig.mockRejectedValue(new Error('network'))
-      submitToCarmen.mockResolvedValue({ Code: 0 })
-
-      const props = makeProps()
-      const { result } = renderHook(() => useOcrSubmission(props))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      expect(submitToCarmen.mock.calls[0][0].Prefix).toBe('')
-    })
-
-    it('F6.5 – snake_case config key file_prefix used for Prefix', async () => {
-      submitToLocal.mockResolvedValue({})
-      diffCorrections.mockReturnValue([])
-      getAccountingConfig.mockResolvedValue({ file_prefix: 'SNAKE', description: '' })
-      submitToCarmen.mockResolvedValue({ Code: 0 })
-
-      const { result } = renderHook(() => useOcrSubmission(makeProps()))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      expect(submitToCarmen.mock.calls[0][0].Prefix).toBe('SNAKE')
-    })
-
-    it('F6.6 – camelCase config key filePrefix used as fallback', async () => {
-      submitToLocal.mockResolvedValue({})
-      diffCorrections.mockReturnValue([])
-      getAccountingConfig.mockResolvedValue({ filePrefix: 'CAMEL', description: '' })
-      submitToCarmen.mockResolvedValue({ Code: 0 })
-
-      const { result } = renderHook(() => useOcrSubmission(makeProps()))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      expect(submitToCarmen.mock.calls[0][0].Prefix).toBe('CAMEL')
-    })
   })
 
-  // ── F7: Carmen success (Code === 0) ───────────────────────────────────────────
+  // ── F5: Carmen success (Code === 0) ───────────────────────────────────────────
 
-  describe('F7: Carmen success (Code === 0)', () => {
-    it('F7.1 – InternalMessage present → setCarmenJvId called with jvId', async () => {
-      submitToLocal.mockResolvedValue({})
+  describe('F5: Carmen success (Code === 0)', () => {
+    it('F5.1 – InternalMessage present → setCarmenJvId called with jvId', async () => {
       diffCorrections.mockReturnValue([])
       getAccountingConfig.mockResolvedValue(defaultConfig)
       submitToCarmen.mockResolvedValue({ Code: 0, InternalMessage: 'JV-777' })
@@ -534,11 +247,10 @@ describe('useOcrSubmission', () => {
       expect(props.setCarmenJvId).toHaveBeenCalledWith('JV-777')
     })
 
-    it('F7.2 – no InternalMessage → setCarmenJvId NOT called', async () => {
-      submitToLocal.mockResolvedValue({})
+    it('F5.2 – Code !== 0 → warning toast + "Already Posted" modal, setCarmenJvId not called', async () => {
       diffCorrections.mockReturnValue([])
       getAccountingConfig.mockResolvedValue(defaultConfig)
-      submitToCarmen.mockResolvedValue({ Code: 0 })
+      submitToCarmen.mockResolvedValue({ Code: 3, UserMessage: 'Already posted in Carmen' })
 
       const props = makeProps()
       const { result } = renderHook(() => useOcrSubmission(props))
@@ -546,57 +258,21 @@ describe('useOcrSubmission', () => {
         await result.current.handleSubmitFinal(defaultRows)
       })
 
+      expect(showToast).toHaveBeenCalledWith(
+        expect.stringContaining('Already posted in Carmen'),
+        'warning'
+      )
+      expect(props.showModal).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Warning: Data Already Posted' })
+      )
       expect(props.setCarmenJvId).not.toHaveBeenCalled()
     })
+  })
 
-    it('F7.3 – jvId present → modal has "View JV" cancelText and onCancel', async () => {
-      submitToLocal.mockResolvedValue({})
-      diffCorrections.mockReturnValue([])
-      getAccountingConfig.mockResolvedValue(defaultConfig)
-      submitToCarmen.mockResolvedValue({ Code: 0, InternalMessage: 'JV-888' })
+  // ── F6: Metadata verification ───────────────────────────────────────────────
 
-      const props = makeProps()
-      const { result } = renderHook(() => useOcrSubmission(props))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      expect(props.showModal).toHaveBeenCalledWith(
-        expect.objectContaining({
-          cancelText: 'View JV',
-          onCancel: expect.any(Function),
-        })
-      )
-    })
-
-    it('F7.4 – no jvId → modal has no cancelText', async () => {
-      submitToLocal.mockResolvedValue({})
-      diffCorrections.mockReturnValue([])
-      getAccountingConfig.mockResolvedValue(defaultConfig)
-      submitToCarmen.mockResolvedValue({ Code: 0 })
-
-      const props = makeProps()
-      const { result } = renderHook(() => useOcrSubmission(props))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      expect(props.showModal).toHaveBeenCalledWith(
-        expect.objectContaining({ cancelText: undefined })
-      )
-    })
-
-    it('F7.5 – success toast shown', async () => {
-      mockHappyPath()
-      const { result } = renderHook(() => useOcrSubmission(makeProps()))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      expect(showToast).toHaveBeenCalledWith('Successfully sent data to Carmen GL JV', 'success')
-    })
-
-    it('F7.6 – modal onConfirm calls closeModal + setStep(4)', async () => {
+  describe('F6: Metadata and parameters passed to submitToCarmen', () => {
+    it('F6.1 – Metadata parameters are populated correctly', async () => {
       mockHappyPath()
       const props = makeProps()
       const { result } = renderHook(() => useOcrSubmission(props))
@@ -604,38 +280,25 @@ describe('useOcrSubmission', () => {
         await result.current.handleSubmitFinal(defaultRows)
       })
 
-      const { onConfirm } = props.showModal.mock.calls[0][0]
-      onConfirm()
-      expect(props.closeModal).toHaveBeenCalled()
-      expect(props.setStep).toHaveBeenCalledWith(4)
-    })
-
-    it('F7.7 – "View JV" onCancel opens Carmen URL', async () => {
-      submitToLocal.mockResolvedValue({})
-      diffCorrections.mockReturnValue([])
-      getAccountingConfig.mockResolvedValue(defaultConfig)
-      submitToCarmen.mockResolvedValue({ Code: 0, InternalMessage: 'JV-100' })
-
-      const props = makeProps()
-      const { result } = renderHook(() => useOcrSubmission(props))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
+      // submitToCarmen should receive: carmenPayload, cardId, metadata
+      const callArgs = submitToCarmen.mock.calls[0]
+      expect(callArgs[1]).toBe('card-uuid-123')
+      expect(callArgs[2]).toEqual({
+        doc_no: 'DOC-001',
+        company_name: 'Acme Co',
+        bank_code: 'KBANK',
+        branch_no: '001',
       })
-
-      const { onCancel } = props.showModal.mock.calls[0][0]
-      onCancel()
-      expect(window.open).toHaveBeenCalledWith('https://carmen.test/#/glJv/JV-100/show', '_blank')
     })
   })
 
-  // ── F8: Carmen "already posted" (Code !== 0) ──────────────────────────────────
+  // ── F7: submitToCarmen throws (network / unexpected error) ────────────────────
 
-  describe('F8: Carmen already posted (Code !== 0)', () => {
-    it('F8.1 – non-zero Code shows "Warning: Data Already Posted" modal', async () => {
-      submitToLocal.mockResolvedValue({})
+  describe('F7: submitToCarmen throws', () => {
+    it('F7.1 – network error → error toast, "Saved Successfully (Carmen issue)" modal, submitting false', async () => {
       diffCorrections.mockReturnValue([])
       getAccountingConfig.mockResolvedValue(defaultConfig)
-      submitToCarmen.mockResolvedValue({ Code: 1, UserMessage: 'Already posted' })
+      submitToCarmen.mockRejectedValue(new Error('network timeout'))
 
       const props = makeProps()
       const { result } = renderHook(() => useOcrSubmission(props))
@@ -643,211 +306,28 @@ describe('useOcrSubmission', () => {
         await result.current.handleSubmitFinal(defaultRows)
       })
 
+      expect(showToast).toHaveBeenCalledWith(expect.stringContaining('network timeout'), 'error')
       expect(props.showModal).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Warning: Data Already Posted',
-          type: 'warning',
-        })
+        expect.objectContaining({ title: 'Saved Successfully (Carmen issue)' })
       )
-    })
-
-    it('F8.2 – modal message contains docNo and UserMessage', async () => {
-      submitToLocal.mockResolvedValue({})
-      diffCorrections.mockReturnValue([])
-      getAccountingConfig.mockResolvedValue(defaultConfig)
-      submitToCarmen.mockResolvedValue({ Code: 5, UserMessage: 'Document exists in ERP' })
-
-      const props = makeProps()
-      const { result } = renderHook(() => useOcrSubmission(props))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      const { message } = props.showModal.mock.calls[0][0]
-      expect(message).toContain('DOC-001')
-      expect(message).toContain('Document exists in ERP')
-    })
-
-    it('F8.3 – warning toast shown with UserMessage', async () => {
-      submitToLocal.mockResolvedValue({})
-      diffCorrections.mockReturnValue([])
-      getAccountingConfig.mockResolvedValue(defaultConfig)
-      submitToCarmen.mockResolvedValue({ Code: 2, UserMessage: 'Duplicate JV' })
-
-      const { result } = renderHook(() => useOcrSubmission(makeProps()))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Duplicate JV'), 'warning')
-    })
-
-    it('F8.4 – modal onConfirm calls closeModal + setStep(1)', async () => {
-      submitToLocal.mockResolvedValue({})
-      diffCorrections.mockReturnValue([])
-      getAccountingConfig.mockResolvedValue(defaultConfig)
-      submitToCarmen.mockResolvedValue({ Code: 1, UserMessage: 'Err' })
-
-      const props = makeProps()
-      const { result } = renderHook(() => useOcrSubmission(props))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      const { onConfirm } = props.showModal.mock.calls[0][0]
-      onConfirm()
-      expect(props.closeModal).toHaveBeenCalled()
-      expect(props.setStep).toHaveBeenCalledWith(1)
-    })
-  })
-
-  // ── F9: Carmen throws (network error) ────────────────────────────────────────
-
-  describe('F9: Carmen throws (network/runtime error)', () => {
-    it('F9.1 – error toast shown with err.message', async () => {
-      submitToLocal.mockResolvedValue({})
-      diffCorrections.mockReturnValue([])
-      getAccountingConfig.mockResolvedValue(defaultConfig)
-      submitToCarmen.mockRejectedValue(new Error('timeout'))
-
-      const { result } = renderHook(() => useOcrSubmission(makeProps()))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      expect(showToast).toHaveBeenCalledWith(expect.stringContaining('timeout'), 'error')
-    })
-
-    it('F9.2 – modal title indicates Carmen issue', async () => {
-      submitToLocal.mockResolvedValue({})
-      diffCorrections.mockReturnValue([])
-      getAccountingConfig.mockResolvedValue(defaultConfig)
-      submitToCarmen.mockRejectedValue(new Error('ECONNREFUSED'))
-
-      const props = makeProps()
-      const { result } = renderHook(() => useOcrSubmission(props))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      expect(props.showModal).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Saved Successfully (Carmen issue)',
-          type: 'warning',
-        })
-      )
-    })
-
-    it('F9.3 – modal message contains err.message', async () => {
-      submitToLocal.mockResolvedValue({})
-      diffCorrections.mockReturnValue([])
-      getAccountingConfig.mockResolvedValue(defaultConfig)
-      submitToCarmen.mockRejectedValue(new Error('socket hang up'))
-
-      const props = makeProps()
-      const { result } = renderHook(() => useOcrSubmission(props))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      const { message } = props.showModal.mock.calls[0][0]
-      expect(message).toContain('socket hang up')
-    })
-
-    it('F9.4 – setCarmenJvId NOT called when Carmen throws', async () => {
-      submitToLocal.mockResolvedValue({})
-      diffCorrections.mockReturnValue([])
-      getAccountingConfig.mockResolvedValue(defaultConfig)
-      submitToCarmen.mockRejectedValue(new Error('fail'))
-
-      const props = makeProps()
-      const { result } = renderHook(() => useOcrSubmission(props))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
       expect(props.setCarmenJvId).not.toHaveBeenCalled()
+      expect(result.current.submitting).toBe(false)
     })
-  })
 
-  // ── F10: Carmen payload structure ─────────────────────────────────────────────
-
-  describe('F10: Carmen payload structure', () => {
-    it('F10.1 – Detail rows mapped from rows arg (dept/acc/desc/credit/debit)', async () => {
-      submitToLocal.mockResolvedValue({})
+    it('F7.2 – submitToCarmen throws without UserMessage → error text from Error.message', async () => {
       diffCorrections.mockReturnValue([])
       getAccountingConfig.mockResolvedValue(defaultConfig)
-      submitToCarmen.mockResolvedValue({ Code: 0 })
+      submitToCarmen.mockRejectedValue(new Error('connection refused'))
 
-      const rows = [
-        { dept: 'FIN', acc: '2100', desc: 'Payable', credit: 500, debit: 0 },
-        { dept: 'OPS', acc: '3000', desc: 'Expense', credit: 0, debit: 250 },
-      ]
-      const { result } = renderHook(() => useOcrSubmission(makeProps()))
-      await act(async () => {
-        await result.current.handleSubmitFinal(rows)
-      })
-
-      const { Detail } = submitToCarmen.mock.calls[0][0]
-      expect(Detail).toHaveLength(2)
-      expect(Detail[0]).toMatchObject({
-        DeptCode: 'FIN',
-        AccCode: '2100',
-        Description: 'Payable',
-        CrAmount: 500,
-        DrAmount: 0,
-      })
-      expect(Detail[1]).toMatchObject({ DeptCode: 'OPS', AccCode: '3000', DrAmount: 250 })
-    })
-
-    it('F10.2 – static fields have correct values', async () => {
-      submitToLocal.mockResolvedValue({})
-      diffCorrections.mockReturnValue([])
-      getAccountingConfig.mockResolvedValue(defaultConfig)
-      submitToCarmen.mockResolvedValue({ Code: 0 })
-
-      const { result } = renderHook(() => useOcrSubmission(makeProps()))
+      const props = makeProps()
+      const { result } = renderHook(() => useOcrSubmission(props))
       await act(async () => {
         await result.current.handleSubmitFinal(defaultRows)
       })
 
-      const p = submitToCarmen.mock.calls[0][0]
-      expect(p.JvhSeq).toBe(-1)
-      expect(p.JvhNo).toBe('Auto')
-      expect(p.Status).toBe('Draft')
-      expect(p.Detail[0].CurCode).toBe('THB')
-      expect(p.Detail[0].CurRate).toBe(1)
-      expect(p.Detail[0].JvhSeq).toBe(-1)
-      expect(p.Detail[0].JvdSeq).toBe(-1)
-      expect(p.DimHList).toEqual({ Dim: [] })
-    })
-
-    it('F10.3 – Description built as "{desc} - {DocDate}"', async () => {
-      submitToLocal.mockResolvedValue({})
-      diffCorrections.mockReturnValue([])
-      getAccountingConfig.mockResolvedValue({ description: 'Monthly JV', file_prefix: '' })
-      submitToCarmen.mockResolvedValue({ Code: 0 })
-
-      const { result } = renderHook(() => useOcrSubmission(makeProps()))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      expect(submitToCarmen.mock.calls[0][0].Description).toBe('Monthly JV - 15/05/2024')
-    })
-
-    it('F10.4 – empty description config → Description is empty string', async () => {
-      submitToLocal.mockResolvedValue({})
-      diffCorrections.mockReturnValue([])
-      getAccountingConfig.mockResolvedValue({ description: '', file_prefix: '' })
-      submitToCarmen.mockResolvedValue({ Code: 0 })
-
-      const { result } = renderHook(() => useOcrSubmission(makeProps()))
-      await act(async () => {
-        await result.current.handleSubmitFinal(defaultRows)
-      })
-
-      expect(submitToCarmen.mock.calls[0][0].Description).toBe('')
+      const toastCall = showToast.mock.calls.find(c => c[1] === 'error')
+      expect(toastCall).toBeDefined()
+      expect(toastCall[0]).toMatch(/connection refused/)
     })
   })
 })

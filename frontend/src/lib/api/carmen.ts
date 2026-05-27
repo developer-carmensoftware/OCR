@@ -36,8 +36,29 @@ export async function fetchGLPrefixes(): Promise<CarmenCodeItem[]> {
   return json.Data || []
 }
 
-export async function submitToCarmen(payload: unknown): Promise<unknown> {
-  const res = await apiFetch('/api/v1/ocr/carmen/gljv', {
+export async function submitToCarmen(
+  payload: unknown,
+  credit_card_id: string | null = null,
+  metadata?: {
+    doc_no?: string
+    company_name?: string
+    bank_code?: string
+    branch_no?: string
+  }
+): Promise<unknown> {
+  let url = '/api/v1/ocr/carmen/gljv'
+  const params = new URLSearchParams()
+  if (credit_card_id) params.append('credit_card_id', credit_card_id)
+  if (metadata) {
+    if (metadata.doc_no) params.append('doc_no', metadata.doc_no)
+    if (metadata.company_name) params.append('company_name', metadata.company_name)
+    if (metadata.bank_code) params.append('bank_code', metadata.bank_code)
+    if (metadata.branch_no) params.append('branch_no', metadata.branch_no)
+  }
+  const q = params.toString()
+  if (q) url += `?${q}`
+
+  const res = await apiFetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),

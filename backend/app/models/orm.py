@@ -7,7 +7,7 @@ New code should import directly from the domain modules:
   app.models.admin        — AdminUser, Role, Permission, RolePermission, AdminUserRole, APIKey, APIKeyUsage
   app.models.catalog      — Module, TenantModule, Bank, PromptTemplate
   app.models.billing      — SystemConfig, TenantConfigOverride, FeatureFlag, Quota, QuotaUsage, LLMModelPricing
-  app.models.business     — OcrSession, OCRTask, CreditCard, CreditCardTransaction, APInvoice,
+  app.models.business     — OcrSession, OCRTask, CreditCard, APInvoice,
                             MappingHistory, CorrectionFeedback, BUAccountingConfig,
                             BUAccountingMappingEntry, APVendorColumnMapping, APVendorFieldMappingEntry
   app.models.observability — LLMUsageLog, AuditLog, PerformanceLog, OutboundCallLog,
@@ -31,7 +31,6 @@ from .business import (
     BUAccountingMappingEntry,
     CorrectionFeedback,
     CreditCard,
-    CreditCardTransaction,
     MappingHistory,
     OcrSession,
     OCRTask,
@@ -101,7 +100,6 @@ __all__ = [
     "OcrSession",
     "OCRTask",
     "CreditCard",
-    "CreditCardTransaction",
     "APInvoice",
     "MappingHistory",
     "CorrectionFeedback",

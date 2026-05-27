@@ -302,5 +302,25 @@ describe('useOcrExtraction', () => {
       expect(result.current.status).toBe('')
       expect(result.current.cardId).toBeNull()
     })
+
+    it('F4.2 – also resets originalDetails and originalHeader to prevent stale diffs on re-use', async () => {
+      // Populate state via a first extraction
+      extractFromFile.mockResolvedValue(MOCK_EXTRACTED)
+      const props = makeProps()
+      const { result } = renderHook(() => useOcrExtraction(props))
+      await act(async () => {
+        await result.current.processFile([MOCK_FILE])
+      })
+      // Verify originals were captured
+      expect(result.current.originalDetails).toHaveLength(1)
+      expect(result.current.originalHeader).not.toEqual({})
+
+      act(() => {
+        result.current.resetExtractionState()
+      })
+      // After reset, originals must also be empty so diff on next submission starts clean
+      expect(result.current.originalDetails).toEqual([])
+      expect(result.current.originalHeader).toEqual({})
+    })
   })
 })

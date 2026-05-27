@@ -35,7 +35,7 @@ async def create_task(
         tenant_id=tenant_id,
         module_id=module_id,
         original_filename=original_filename,
-        status=TaskStatus.COMPLETED,
+        status=TaskStatus.PROCESSING,
         ocr_engine=settings.ocr_engine,
         carmen_user_id=carmen_user_id or None,
     )

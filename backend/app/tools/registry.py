@@ -16,7 +16,7 @@ returning a failed ToolResult with clear errors instead of a raw exception.
 from collections.abc import Callable
 from typing import Any, cast
 
-from app.tools import extract, map_gl, submit
+from app.tools import extract, map_gl
 from app.tools.base import ToolResult
 
 # ── JSON Schema definitions ───────────────────────────────────────────────────
@@ -36,16 +36,6 @@ _SCHEMA_EXTRACT = {
             "enum": ["SCB", "BBL", "KBANK"],
             "description": "Bank-specific prompt selector",
         },
-    },
-    "additionalProperties": True,
-}
-
-_SCHEMA_SUBMIT = {
-    "type": "object",
-    "required": ["inp", "db"],
-    "properties": {
-        "inp": {"description": "SubmitInput dataclass"},
-        "db": {"description": "AsyncSession — injected by router"},
     },
     "additionalProperties": True,
 }
@@ -92,11 +82,6 @@ _REGISTRY: dict[str, dict] = {
         "fn": extract.run,
         "description": "Extract structured data from a bank receipt/credit card document using Vision LLM",
         "input_schema": _SCHEMA_EXTRACT,
-    },
-    submit.TOOL_NAME: {
-        "fn": submit.run,
-        "description": "Persist confirmed credit card document data to the local database",
-        "input_schema": _SCHEMA_SUBMIT,
     },
     map_gl.TOOL_FIXED: {
         "fn": map_gl.suggest_fixed_fields,

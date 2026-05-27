@@ -2,17 +2,16 @@
 OCR API Routes — thin HTTP layer.
 
 Business logic lives in:
-  app/tools/submit.py        — receipt persistence
   app/services/ocr_service.py — task/export helpers
 """
 
 import asyncio
 import logging
+import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -29,44 +28,8 @@ from app.services.correction_service import get_correction_hints
 from app.services.file_service import file_service
 from app.services.ocr_service import create_task
 from app.services.usage_service import check_quota
-from app.tools import submit as submit_tool
-from app.tools.submit import SubmitInput
-from app.utils.date_parsing import format_doc_date
+from app.utils.date_parsing import format_doc_date, parse_doc_date
 from app.utils.db_helpers import has_submitted_doc
-
-# ── Submit payload schemas ────────────────────────────────────────────────────
-
-
-class SubmitDetailItem(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    transaction: str | None = None
-    date: str | None = None
-    amount: str | None = None
-    type: str | None = None
-
-
-class SubmitHeader(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    bank_code: str | None = None
-    company_name: str | None = None
-    bank_company_name: str | None = None
-    doc_date: str | None = None
-    doc_no: str | None = None
-    branch_no: str | None = None
-    # Legacy frontend fields — still accepted, not persisted
-    bank_name: str | None = None
-    doc_name: str | None = None
-    merchant_name: str | None = None
-
-
-class SubmitPayload(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    bank_code: str | None = None
-    bank_type: str | None = None  # legacy alias
-    original_filename: str | None = None
-    header: SubmitHeader
-    details: list[SubmitDetailItem] = []
-
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/ocr", tags=["OCR"])
@@ -74,7 +37,7 @@ router = APIRouter(prefix="/api/v1/ocr", tags=["OCR"])
 
 def _task_to_dict(task: OCRTask) -> dict:
     return {
-        "id": task.id,
+        "id": str(task.id),
         "original_filename": task.original_filename,
         "module_id": task.module_id,
         "status": task.status.value if hasattr(task.status, "value") else task.status,
@@ -138,35 +101,80 @@ async def extract_card(
             )
             task_records.append((filename, file_bytes, str(task.id)))
 
-    # Phase 3: parallel LLM extraction — the bottleneck (2-10s per file).
-    # No DB connection is held during this phase.
-    extractions: list[ExtractedCreditCardData] = list(
+    # Phase 3 & 4: process each file in parallel with task status tracking
+    async def process_single_task(
+        filename: str, file_bytes: bytes, task_id: str
+    ) -> ExtractedCreditCardData:
+        try:
+            extracted = await ocr_service.extract_stateless(
+                file_bytes=file_bytes,
+                original_filename=filename,
+                bank_code=bank_code,
+                hints=hints or None,
+                task_id=task_id,
+            )
+            extracted.task_id = task_id
+
+            async with async_session() as db:
+                if extracted.doc_no:
+                    extracted.is_duplicate = await has_submitted_doc(
+                        db,
+                        CreditCard,
+                        tenant_id=session.tenant_id,
+                        doc_no=extracted.doc_no,
+                    )
+
+                if not extracted.is_duplicate:
+                    card_id = uuid.uuid4()
+                    doc_date_parsed = parse_doc_date(extracted.doc_date)
+
+                    card = CreditCard(
+                        id=card_id,
+                        task_id=uuid.UUID(task_id),
+                        tenant_id=session.tenant_id,
+                        bank_code=bank_code or None,
+                        company_name=extracted.company_name,
+                        bank_company_name=extracted.bank_companyname,
+                        doc_date=doc_date_parsed,
+                        doc_no=extracted.doc_no,
+                        branch_no=extracted.branch_no,
+                        submitted_at=None,  # Draft
+                        carmen_user_id=session.carmen_user_id,
+                    )
+                    db.add(card)
+                    extracted.id = str(card_id)
+                else:
+                    extracted.id = None
+
+                # Mark task as completed
+                task_res = await db.execute(select(OCRTask).where(OCRTask.id == uuid.UUID(task_id)))
+                task = task_res.scalar_one_or_none()
+                if task:
+                    task.status = TaskStatus.COMPLETED  # type: ignore
+                    task.completed_at = datetime.now(UTC).replace(tzinfo=None)  # type: ignore
+
+                await db.commit()
+            return extracted
+
+        except Exception as exc:
+            logger.error("Failed to process OCR task %s: %s", task_id, exc)
+            async with async_session() as db:
+                task_res = await db.execute(select(OCRTask).where(OCRTask.id == uuid.UUID(task_id)))
+                task = task_res.scalar_one_or_none()
+                if task:
+                    task.status = TaskStatus.FAILED  # type: ignore
+                    task.error_message = str(exc)  # type: ignore
+                    await db.commit()
+            raise
+
+    results: list[ExtractedCreditCardData] = list(
         await asyncio.gather(
             *[
-                ocr_service.extract_stateless(
-                    file_bytes=file_bytes,
-                    original_filename=filename,
-                    bank_code=bank_code,
-                    hints=hints or None,
-                    task_id=task_id,
-                )
+                process_single_task(filename, file_bytes, task_id)
                 for filename, file_bytes, task_id in task_records
             ]
         )
     )
-
-    # Phase 4: short-lived DB session — duplicate checks.
-    results: list[ExtractedCreditCardData] = []
-    async with async_session() as db:
-        for extracted in extractions:
-            if extracted.doc_no:
-                extracted.is_duplicate = await has_submitted_doc(
-                    db,
-                    CreditCard,
-                    tenant_id=session.tenant_id,
-                    doc_no=extracted.doc_no,
-                )
-            results.append(extracted)
 
     return results
 
@@ -215,19 +223,9 @@ async def get_task(
     card = task.credit_card
     card_data = None
     if card:
-        from app.models.orm import CreditCardTransaction
-
-        tx_result = await db.execute(
-            select(CreditCardTransaction)
-            .where(
-                CreditCardTransaction.credit_card_id == card.id,
-                CreditCardTransaction.deleted_at.is_(None),
-            )
-            .order_by(CreditCardTransaction.sort_order)
-        )
         card_data = {
-            "id": card.id,
-            "task_id": card.task_id,
+            "id": str(card.id),
+            "task_id": str(card.task_id),
             "bank_code": card.bank_code,
             "company_name": card.company_name,
             "bank_company_name": card.bank_company_name,
@@ -236,69 +234,9 @@ async def get_task(
             "branch_no": card.branch_no,
             "submitted_at": card.submitted_at.isoformat() if card.submitted_at else None,
             "created_at": card.created_at.isoformat() if card.created_at else None,
-            "transactions": [
-                {
-                    "tx_date": format_doc_date(t.tx_date),  # type: ignore
-                    "description": t.description,
-                    "amount": float(t.amount) if t.amount else None,  # type: ignore
-                    "tx_type": t.tx_type,
-                }
-                for t in tx_result.scalars().all()
-            ],
         }
 
     return JSONResponse(content={**_task_to_dict(task), "credit_card": card_data})
-
-
-# ═══════════════════════════════════════════════════
-# POST /api/v1/ocr/submit
-# ═══════════════════════════════════════════════════
-
-
-@router.post("/submit")
-async def submit_receipt_stateless(
-    request: Request,
-    payload: SubmitPayload,
-    db: AsyncSession = Depends(get_db),
-    session: SessionInfo = Depends(get_current_session),
-):
-    """Save user-confirmed receipt data to DB via submit_tool."""
-    doc_ref = payload.header.doc_no or payload.original_filename or ""
-    current_document_ref.set(doc_ref)
-    await audit_service.log_action(
-        session,
-        AuditAction.SUBMIT,
-        resource="credit_card",
-        resource_id=doc_ref,
-        ip_address=request.client.host if request.client else None,
-    )
-
-    bank_code = payload.bank_code or payload.header.bank_code or payload.bank_type or None
-
-    inp = SubmitInput(
-        bank_code=bank_code,
-        original_filename=payload.original_filename or "uploaded_file",
-        doc_no=payload.header.doc_no,
-        doc_date=payload.header.doc_date,
-        bank_name=payload.header.bank_name,
-        company_name=payload.header.company_name,
-        merchant_name=payload.header.merchant_name,
-        bank_company_name=payload.header.bank_company_name,
-        branch_no=payload.header.branch_no,
-        details=[
-            {"transaction": d.transaction, "date": d.date, "amount": d.amount, "type": d.type}
-            for d in payload.details
-        ],
-    )
-
-    result = await submit_tool.run(inp, db)
-
-    if not result.success:
-        err = result.errors[0] if result.errors else "Submit failed"
-        status_code = 409 if (result.output or {}).get("error") == "DUPLICATE_DOC_NO" else 500
-        raise HTTPException(status_code=status_code, detail=err)
-
-    return {"ok": True, **result.output}
 
 
 # ═══════════════════════════════════════════════════

@@ -13,10 +13,12 @@ import logging
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import text
+from sqlalchemy import func, select
+from sqlalchemy.orm import aliased
 
 from app.database import async_session
 from app.models.enums import AlertSeverity
+from app.models.orm import AnomalyAlert, DailyUsageSummary, Quota, QuotaUsage
 
 logger = logging.getLogger(__name__)
 
@@ -50,34 +52,33 @@ async def _check_cost_spike(target_date: date) -> int:
     alerts = 0
 
     async with async_session() as db:
-        rows = await db.execute(
-            text("""
-            SELECT
-                today.tenant_id, today.module_id,
-                today.total_cost_usd                        AS today_cost,
-                AVG(base.total_cost_usd)                    AS avg_cost
-            FROM daily_usage_summary today
-            JOIN daily_usage_summary base
-              ON  base.tenant_id        = today.tenant_id
-              AND base.module_id        = today.module_id
-              AND DATE(base.summary_date) BETWEEN :base_start AND :base_end
-            WHERE DATE(today.summary_date) = :target
-              AND today.total_cost_usd > 0
-            GROUP BY today.tenant_id, today.module_id, today.total_cost_usd
-            HAVING today.total_cost_usd > AVG(base.total_cost_usd) * :mult
-        """),
-            {
-                "target": target_date,
-                "base_start": baseline_start,
-                "base_end": baseline_end,
-                "mult": COST_SPIKE_MULTIPLIER,
-            },
+        base = aliased(DailyUsageSummary, name="base")
+        today = aliased(DailyUsageSummary, name="today")
+
+        stmt = (
+            select(
+                today.tenant_id,
+                today.module_id,
+                today.total_cost_usd.label("today_cost"),
+                func.avg(base.total_cost_usd).label("avg_cost"),
+            )
+            .join(
+                base,
+                (base.tenant_id == today.tenant_id)
+                & (base.module_id == today.module_id)
+                & (func.date(base.summary_date).between(baseline_start, baseline_end)),
+            )
+            .where(func.date(today.summary_date) == target_date, today.total_cost_usd > 0)
+            .group_by(today.tenant_id, today.module_id, today.total_cost_usd)
+            .having(today.total_cost_usd > func.avg(base.total_cost_usd) * COST_SPIKE_MULTIPLIER)
         )
 
-        for r in rows.mappings().fetchall():
-            tid, mid = r["tenant_id"], r["module_id"]
-            actual = Decimal(str(r["today_cost"]))
-            threshold = Decimal(str(r["avg_cost"])) * Decimal(str(COST_SPIKE_MULTIPLIER))
+        rows = await db.execute(stmt)
+
+        for r in rows.all():
+            tid, mid = r.tenant_id, r.module_id
+            actual = Decimal(str(r.today_cost))
+            threshold = Decimal(str(r.avg_cost)) * Decimal(str(COST_SPIKE_MULTIPLIER))
             if await _alert_exists(db, tid, "cost_spike"):
                 continue
             await _insert_alert(
@@ -104,35 +105,34 @@ async def _check_error_spike(target_date: date) -> int:
     alerts = 0
 
     async with async_session() as db:
-        rows = await db.execute(
-            text("""
-            SELECT
+        base = aliased(DailyUsageSummary, name="base")
+        today = aliased(DailyUsageSummary, name="today")
+
+        stmt = (
+            select(
                 today.tenant_id,
-                today.total_errors     AS today_errors,
-                today.total_api_calls  AS today_calls,
-                AVG(base.total_errors)    AS avg_errors,
-                AVG(base.total_api_calls) AS avg_calls
-            FROM daily_usage_summary today
-            JOIN daily_usage_summary base
-              ON  base.tenant_id        = today.tenant_id
-              AND DATE(base.summary_date) BETWEEN :base_start AND :base_end
-            WHERE DATE(today.summary_date) = :target
-              AND today.total_errors >= :min_count
-            GROUP BY today.tenant_id,
-                     today.total_errors, today.total_api_calls
-        """),
-            {
-                "target": target_date,
-                "base_start": baseline_start,
-                "base_end": baseline_end,
-                "min_count": ERROR_MIN_COUNT,
-            },
+                today.total_errors.label("today_errors"),
+                today.total_api_calls.label("today_calls"),
+                func.avg(base.total_errors).label("avg_errors"),
+                func.avg(base.total_api_calls).label("avg_calls"),
+            )
+            .join(
+                base,
+                (base.tenant_id == today.tenant_id)
+                & (func.date(base.summary_date).between(baseline_start, baseline_end)),
+            )
+            .where(
+                func.date(today.summary_date) == target_date, today.total_errors >= ERROR_MIN_COUNT
+            )
+            .group_by(today.tenant_id, today.total_errors, today.total_api_calls)
         )
 
-        for r in rows.mappings().fetchall():
-            tid = r["tenant_id"]
-            today_rate = Decimal(str(r["today_errors"])) / Decimal(str(max(r["today_calls"], 1)))
-            avg_rate = Decimal(str(r["avg_errors"])) / Decimal(str(max(r["avg_calls"], 1)))
+        rows = await db.execute(stmt)
+
+        for r in rows.all():
+            tid = r.tenant_id
+            today_rate = Decimal(str(r.today_errors)) / Decimal(str(max(r.today_calls, 1)))
+            avg_rate = Decimal(str(r.avg_errors)) / Decimal(str(max(r.avg_calls, 1)))
             threshold = avg_rate * Decimal(str(ERROR_SPIKE_MULTIPLIER))
             if today_rate <= threshold:
                 continue
@@ -158,24 +158,33 @@ async def _check_error_spike(target_date: date) -> int:
 
 async def _check_quota_burn() -> int:
     alerts = 0
+    period_key = datetime.now(UTC).strftime("%Y-%m")
     async with async_session() as db:
-        rows = await db.execute(
-            text("""
-            SELECT q.id, q.tenant_id, q.limit_value, q.soft_warn_pct,
-                   COALESCE(qu.used, 0) AS used
-            FROM quotas q
-            LEFT JOIN quota_usage qu
-              ON qu.quota_id = q.id
-              AND qu.period_key = TO_CHAR(NOW(), 'YYYY-MM')
-            WHERE q.period = 'monthly' AND q.metric = 'calls'
-              AND q.deleted_at IS NULL
-        """)
+        stmt = (
+            select(
+                Quota.id,
+                Quota.tenant_id,
+                Quota.limit_value,
+                Quota.soft_warn_pct,
+                func.coalesce(QuotaUsage.used, 0).label("used"),
+            )
+            .outerjoin(
+                QuotaUsage,
+                (QuotaUsage.quota_id == Quota.id) & (QuotaUsage.period_key == period_key),
+            )
+            .where(
+                Quota.period == "monthly",
+                Quota.metric == "calls",
+                Quota.deleted_at.is_(None),
+            )
         )
 
-        for r in rows.mappings().fetchall():
-            tid = r["tenant_id"]
-            used = float(r["used"])
-            limit = float(r["limit_value"])
+        rows = await db.execute(stmt)
+
+        for r in rows.all():
+            tid = r.tenant_id
+            used = float(r.used)
+            limit = float(r.limit_value)
             if limit <= 0 or used < limit * QUOTA_WARN_PCT:
                 continue
             pct = used / limit
@@ -199,15 +208,18 @@ async def _check_quota_burn() -> int:
 
 
 async def _alert_exists(db, tenant_id: str, metric: str) -> bool:
-    result = await db.execute(
-        text("""
-        SELECT 1 FROM anomaly_alerts
-        WHERE tenant_id = :tid AND metric = :metric AND resolved_at IS NULL
-        LIMIT 1
-    """),
-        {"tid": tenant_id, "metric": metric},
+    stmt = (
+        select(1)
+        .select_from(AnomalyAlert)
+        .where(
+            AnomalyAlert.tenant_id == tenant_id,
+            AnomalyAlert.metric == metric,
+            AnomalyAlert.resolved_at.is_(None),
+        )
+        .limit(1)
     )
-    return result.fetchone() is not None
+    result = await db.execute(stmt)
+    return result.scalar() is not None
 
 
 async def _insert_alert(
@@ -221,24 +233,16 @@ async def _insert_alert(
     actual,
     description,
 ) -> None:
-    await db.execute(
-        text("""
-        INSERT INTO anomaly_alerts
-            (tenant_id, module_id, metric, severity,
-             threshold, actual, description, created_at)
-        VALUES
-            (:tid, :mid, :metric, :severity, :threshold, :actual, :desc, NOW())
-    """),
-        {
-            "tid": tenant_id,
-            "mid": module_id,
-            "metric": metric,
-            "severity": severity.value,
-            "threshold": float(threshold),
-            "actual": float(actual),
-            "desc": description,
-        },
+    alert = AnomalyAlert(
+        tenant_id=tenant_id,
+        module_id=module_id,
+        metric=metric,
+        severity=severity,
+        threshold=threshold,
+        actual=actual,
+        description=description,
     )
+    db.add(alert)
     logger.info(
         "[anomaly] Alert: tenant=%s metric=%s severity=%s actual=%s",
         tenant_id,
