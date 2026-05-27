@@ -74,7 +74,7 @@ function buildInvoicePayload(
       LastModified: now,
       InvdBTaxCr1DeptCode: systemVendor.crDeptCode || '',
       InvdT1DrDeptCode: systemVendor.vat1DrDeptCode || '',
-      InvdT2DrDeptCode: item.deptCode || '',
+      InvdT2DrDeptCode: '',
       TaxProfileCode1: systemVendor.taxProfileCode1 || null,
       TaxProfileCode2: null,
       Tax1Overwrite: false,

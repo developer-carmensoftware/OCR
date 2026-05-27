@@ -44,6 +44,7 @@ export function useAPValidation({ headerData, lineItems, fieldMappings, t }: APV
   const activeCols = Object.keys(fieldMappings || {})
     .map(k => parseInt(k.replace('col', ''), 10))
     .filter(c => fieldMappings[`col${c}`] !== 'ignore' && fieldMappings[`col${c}`] !== 'category')
+    .sort((a, b) => a - b)
 
   const adjustField = (
     tgt: unknown,

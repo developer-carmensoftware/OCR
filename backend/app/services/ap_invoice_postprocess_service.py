@@ -224,6 +224,8 @@ def postprocess(raw: dict | None) -> dict:
     for item in items:
         _compute_line_totals(item, tax_type, has_footer_disc=has_footer_disc)
 
+    items = [i for i in items if _num(i.get("lineTotal")) != 0]
+
     deposit_row = _build_deposit_row(items, deposit_pct, deposit_label, tax_type)
     if deposit_row is not None:
         items.append(deposit_row)

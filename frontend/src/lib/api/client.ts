@@ -31,6 +31,8 @@ export function clearToken(): void {
   sessionStorage.removeItem(TOKEN_KEY)
 }
 
+let _unauthFired = false
+
 export async function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
   const token = getStoredToken()
 
@@ -43,7 +45,13 @@ export async function apiFetch(url: string, options: RequestInit = {}): Promise<
 
   if (response.status === 401) {
     if (token) clearToken()
-    window.dispatchEvent(new CustomEvent('ocr:unauthorized'))
+    if (!_unauthFired) {
+      _unauthFired = true
+      window.dispatchEvent(new CustomEvent('ocr:unauthorized'))
+      setTimeout(() => {
+        _unauthFired = false
+      }, 2000)
+    }
   }
 
   return response

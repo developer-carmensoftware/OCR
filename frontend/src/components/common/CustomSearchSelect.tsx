@@ -156,6 +156,10 @@ export default function CustomSearchSelect({
           setIsOpen(true)
           setSearchTerm('')
         }}
+        onClick={() => {
+          setIsOpen(true)
+          setSearchTerm('')
+        }}
         onChange={e => setSearchTerm(e.target.value)}
         title={
           isAISuggested

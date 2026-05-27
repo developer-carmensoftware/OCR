@@ -264,18 +264,6 @@ export function useAPInvoice() {
     })
 
     extraction.setLineItems(updatedItems)
-    extraction.updateHeader(
-      'taxAmount',
-      fmt(updatedItems.reduce((s, i) => s + parseNum(i.taxAmt), 0))
-    )
-    extraction.updateHeader(
-      'grandTotal',
-      fmt(updatedItems.reduce((s, i) => s + parseNum(i.lineTotal), 0))
-    )
-    extraction.updateHeader(
-      'subTotal',
-      fmt(updatedItems.reduce((s, i) => s + parseNum(i.lineSubTotal), 0))
-    )
   }
 
   const handleReset = () => {

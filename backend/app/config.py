@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     # Generate session_encryption_key: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     ocr_jwt_secret: str = "dev-ocr-jwt-secret-change-in-production"
     session_encryption_key: str = _WEAK_FERNET_KEY
-    session_ttl_hours: int = 8
+    session_ttl_hours: float = 0.5
 
     # Admin Dashboard JWT — separate secret prevents token confusion attacks.
     # Leave empty to fall back to ocr_jwt_secret (dev only; set in production).
