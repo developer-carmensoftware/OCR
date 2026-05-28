@@ -38,7 +38,7 @@ def mock_session():
 
 
 class TestExtractAPInvoice:
-    @patch("app.routers.ap_invoice.check_quota", new_callable=AsyncMock)
+    @patch("app.routers.ap_invoice.consume_quota", new_callable=AsyncMock)
     @patch("app.routers.ap_invoice.create_task")
     @patch("app.routers.ap_invoice.extract_ap_invoice_data", new_callable=AsyncMock)
     @patch("app.routers.ap_invoice.has_submitted_doc", new_callable=AsyncMock)
@@ -93,7 +93,7 @@ class TestExtractAPInvoice:
         assert data["id"] is not None
         assert dummy_task.status == TaskStatus.COMPLETED
 
-    @patch("app.routers.ap_invoice.check_quota", new_callable=AsyncMock)
+    @patch("app.routers.ap_invoice.consume_quota", new_callable=AsyncMock)
     @patch("app.routers.ap_invoice.create_task")
     @patch("app.routers.ap_invoice.extract_ap_invoice_data", new_callable=AsyncMock)
     @patch("app.routers.ap_invoice.has_submitted_doc", new_callable=AsyncMock)
@@ -147,7 +147,7 @@ class TestExtractAPInvoice:
         assert data["id"] is None
         assert dummy_task.status == TaskStatus.COMPLETED
 
-    @patch("app.routers.ap_invoice.check_quota", new_callable=AsyncMock)
+    @patch("app.routers.ap_invoice.consume_quota", new_callable=AsyncMock)
     @patch("app.routers.ap_invoice.create_task")
     @patch("app.routers.ap_invoice.extract_ap_invoice_data", new_callable=AsyncMock)
     def test_extract_ap_invoice_error_marks_failed(

@@ -33,7 +33,7 @@ export default function APFieldMappingStep({
         </div>
       </div>
       <div className="card-body-flush">
-        <div className="mapping-table-wrap" style={{ padding: '0.5rem' }}>
+        <div className="mapping-table-wrap mapping-table-wrap--padded">
           <table className="mapping-table">
             <thead>
               <tr>
@@ -80,16 +80,7 @@ export default function APFieldMappingStep({
               ))}
               {lineItems.length > 3 && (
                 <tr>
-                  <td
-                    colSpan={10}
-                    style={{
-                      textAlign: 'center',
-                      color: 'var(--text-4)',
-                      fontStyle: 'italic',
-                      fontSize: '0.8rem',
-                      padding: '0.75rem',
-                    }}
-                  >
+                  <td colSpan={10} className="mapping-table-more-rows">
                     … View {lineItems.length - 3} more items in the next step
                   </td>
                 </tr>

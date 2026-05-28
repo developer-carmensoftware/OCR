@@ -51,6 +51,7 @@ async def _resolve_session_token(session_id: str) -> tuple[str | None, bool]:
         result = await db.execute(
             select(OcrSession.carmen_token_encrypted, OcrSession.is_active).where(
                 OcrSession.id == session_id,
+                OcrSession.deleted_at.is_(None),
             )
         )
         row = result.first()

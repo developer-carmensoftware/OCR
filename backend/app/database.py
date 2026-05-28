@@ -111,16 +111,22 @@ class Base(DeclarativeBase):
 
 # ── DB Provisioning ───────────────────────────────────────────────────────────
 
+_DB_INITIALIZED = False
+
 
 async def ensure_db() -> None:
     """
     Verify connectivity, create/verify all tables, run migrations.
-    Safe to call multiple times (idempotent).
+    Runs once at startup; subsequent calls are no-ops.
 
     NOTE: Unlike the previous MariaDB implementation, this does NOT create the
     database itself — Neon (and most managed Postgres providers) require the
     database to be provisioned via their console/API.
     """
+    global _DB_INITIALIZED
+    if _DB_INITIALIZED:
+        return
+
     # Force all ORM models to register with Base before create_all().
     import app.models.orm  # noqa: F401
 
@@ -135,12 +141,7 @@ async def ensure_db() -> None:
 
     await migrate_db()
 
-    from app.services.usage_service import fetch_openrouter_pricing
-
-    try:
-        await fetch_openrouter_pricing()
-    except Exception as exc:
-        logger.warning("Initial pricing sync failed: %s", exc)
+    _DB_INITIALIZED = True
 
 
 async def init_db() -> None:

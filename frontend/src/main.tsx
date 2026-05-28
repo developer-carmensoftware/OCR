@@ -19,7 +19,27 @@ import { AdminAuthProvider } from './contexts/AdminAuthContext'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import AdminProtectedRoute from './components/admin/AdminProtectedRoute'
 import ErrorBoundary from './components/common/ErrorBoundary'
+import PageSkeleton from './components/common/PageSkeleton'
 import './index.css'
+
+/** Remove the static HTML loader after React has painted. */
+function dismissInitialLoader() {
+  const bar = document.getElementById('app-loader-bar')
+  const overlay = document.getElementById('app-loader')
+
+  if (bar) {
+    // Flash bar to 100% then fade it out
+    bar.style.transition = 'width 0.25s ease, opacity 0.3s ease 0.25s'
+    bar.style.width = '100%'
+    bar.style.opacity = '0'
+    setTimeout(() => bar.remove(), 600)
+  }
+
+  if (overlay) {
+    overlay.classList.add('done')
+    setTimeout(() => overlay.remove(), 350)
+  }
+}
 
 const Home = lazy(() => import('./pages/Home'))
 const CreditCardOCR = lazy(() => import('./pages/CreditCardOCR'))
@@ -99,11 +119,7 @@ function Router() {
   // Admin section — has its own auth, separate from Carmen
   if (route.startsWith('admin')) {
     return (
-      <Suspense
-        fallback={
-          <div className="flex h-screen items-center justify-center text-gray-400">Loading…</div>
-        }
-      >
+      <Suspense fallback={<PageSkeleton />}>
         <AdminRouter />
       </Suspense>
     )
@@ -120,18 +136,15 @@ function Router() {
   }
 
   return (
-    <Suspense
-      fallback={
-        <div className="flex h-screen items-center justify-center text-gray-400">Loading…</div>
-      }
-    >
+    <Suspense fallback={<PageSkeleton />}>
       <div className="bg-blob-mid" aria-hidden="true" />
       <ProtectedRoute>{Page}</ProtectedRoute>
     </Suspense>
   )
 }
 
-ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
+const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement)
+root.render(
   <ErrorBoundary>
     <AuthProvider>
       <AdminAuthProvider>
@@ -142,10 +155,13 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
           expand={false}
           closeButton
           richColors
-          theme="system"
+          theme="light"
         />
         <Router />
       </AdminAuthProvider>
     </AuthProvider>
   </ErrorBoundary>
 )
+
+// Hand off from the static HTML loader to the React app
+dismissInitialLoader()

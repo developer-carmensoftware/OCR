@@ -233,6 +233,18 @@
 .mapping-table-wrap {
   overflow-x: auto;
 }
+
+.mapping-table-wrap--padded {
+  padding: 0.5rem;
+}
+
+.mapping-table-more-rows {
+  text-align: center;
+  color: var(--text-4);
+  font-style: italic;
+  font-size: 0.8rem;
+  padding: 0.75rem;
+}
 .mapping-table {
   width: 100%;
   border-collapse: collapse;
@@ -1005,6 +1017,23 @@
   user-select: none;
 }
 
+/* Trigger colours driven by data-value attribute */
+.ttd-trigger[data-value='Include'] {
+  --ttd-color: var(--amber-700, #b45309);
+  --ttd-bg: var(--ap-include-bg, #fffbeb);
+  --ttd-border: var(--amber-300, #fcd34d);
+}
+.ttd-trigger[data-value='Exclude'] {
+  --ttd-color: var(--blue-700, #1d4ed8);
+  --ttd-bg: var(--ap-exclude-bg, #eff6ff);
+  --ttd-border: var(--blue-300, #93c5fd);
+}
+.ttd-trigger[data-value='None'] {
+  --ttd-color: var(--emerald, #059669);
+  --ttd-bg: var(--ap-none-bg, #f0fdf4);
+  --ttd-border: var(--emerald-300, #6ee7b7);
+}
+
 .ttd-trigger:hover {
   filter: brightness(0.96);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
@@ -1026,13 +1055,18 @@
   line-height: 1;
 }
 
-/* Chevron rotates smoothly on open/close */
+/* Chevron rotates via class instead of inline style */
 .ttd-chevron {
   margin-left: 0.1rem;
   color: currentColor;
   opacity: 0.7;
   transition: transform 200ms var(--ttd-ease-out);
   flex-shrink: 0;
+  transform: rotate(0deg);
+}
+
+.ttd-chevron--open {
+  transform: rotate(-180deg);
 }
 
 /* ─── Dropdown panel ─── */
@@ -1146,6 +1180,57 @@
   font-weight: 700;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+/* Badge colours driven by data-value attribute */
+.ttd-option-badge[data-value='Include'] {
+  color: var(--amber-700, #b45309);
+  background: var(--ap-include-bg, #fffbeb);
+  border: 1px solid var(--amber-300, #fcd34d);
+}
+.ttd-option-badge[data-value='Exclude'] {
+  color: var(--blue-700, #1d4ed8);
+  background: var(--ap-exclude-bg, #eff6ff);
+  border: 1px solid var(--blue-300, #93c5fd);
+}
+.ttd-option-badge[data-value='None'] {
+  color: var(--emerald, #059669);
+  background: var(--ap-none-bg, #f0fdf4);
+  border: 1px solid var(--emerald-300, #6ee7b7);
+}
+
+/* Option dot colours driven by data-value on the parent button */
+.ttd-option[data-value='Include'] .ttd-option-dot {
+  border: 2px solid var(--amber-700, #b45309);
+  background: transparent;
+}
+.ttd-option[data-value='Include'][data-active='true'] .ttd-option-dot {
+  background: var(--amber-700, #b45309);
+}
+.ttd-option[data-value='Exclude'] .ttd-option-dot {
+  border: 2px solid var(--blue-700, #1d4ed8);
+  background: transparent;
+}
+.ttd-option[data-value='Exclude'][data-active='true'] .ttd-option-dot {
+  background: var(--blue-700, #1d4ed8);
+}
+.ttd-option[data-value='None'] .ttd-option-dot {
+  border: 2px solid var(--emerald, #059669);
+  background: transparent;
+}
+.ttd-option[data-value='None'][data-active='true'] .ttd-option-dot {
+  background: var(--emerald, #059669);
+}
+
+/* Stagger animation delay via data-index attribute */
+.ttd-option[data-index='0'] {
+  --ttd-delay: 0ms;
+}
+.ttd-option[data-index='1'] {
+  --ttd-delay: 28ms;
+}
+.ttd-option[data-index='2'] {
+  --ttd-delay: 56ms;
 }
 
 .ttd-option-sub {

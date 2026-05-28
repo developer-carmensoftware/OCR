@@ -18,7 +18,7 @@ from decimal import Decimal
 from typing import cast
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -207,13 +207,44 @@ async def upsert_tenant_quota(db: AsyncSession, tenant_id: str, plan_code: str) 
         )
 
 
+def _evaluate_quotas(
+    tenant_id: str,
+    quotas: list[_CachedQuota],
+    usage_map: dict[str, float],
+    *,
+    post_increment: bool,
+) -> None:
+    """Common limit/soft-warn check used by both check_quota and consume_quota.
+    Raises RateLimitExceeded if any hard quota is exceeded."""
+    for quota in quotas:
+        used = usage_map.get(quota.id, 0.0)
+        limit = quota.limit_value
+        warn_at = limit * quota.soft_warn_pct
+
+        exceeded = (used > limit) if post_increment else (used >= limit)
+        if quota.is_hard and exceeded:
+            logger.warning("Hard quota hit: tenant=%s used=%s limit=%s", tenant_id, used, limit)
+            raise RateLimitExceeded(tenant_id, int(limit))
+
+        if used >= warn_at:
+            logger.warning(
+                "Soft quota warning: tenant=%s used=%s/%s (%.0f%%)",
+                tenant_id,
+                used,
+                limit,
+                (used / limit * 100),
+            )
+
+
 async def check_quota() -> None:
     """
-    Check call quota for current request context.
+    Check call quota for current request context (read-only).
     Raises RateLimitExceeded if a hard limit is reached.
     Logs a warning if soft_warn_pct threshold is crossed.
     No-ops silently if no quota rule exists for this tenant.
-    Quota rules are served from a 5-minute TTL cache; only QuotaUsage hits DB.
+
+    Note: prefer consume_quota() for atomic check-and-increment; this function
+    is kept for callers that only need a pre-check (e.g. dashboards).
     """
     tenant_id = _ctx()
     if not tenant_id:
@@ -224,34 +255,16 @@ async def check_quota() -> None:
         if not quotas:
             return
 
+        pairs = [(q.id, _period_key(q.period)) for q in quotas]
         async with async_session() as db:
-            for quota in quotas:
-                key = _period_key(quota.period)
-                result = await db.execute(
-                    select(QuotaUsage).where(
-                        QuotaUsage.quota_id == quota.id,
-                        QuotaUsage.period_key == key,
-                    )
+            result = await db.execute(
+                select(QuotaUsage.quota_id, QuotaUsage.used).where(
+                    tuple_(QuotaUsage.quota_id, QuotaUsage.period_key).in_(pairs)
                 )
-                usage = result.scalar_one_or_none()
-                used = float(cast(Decimal, usage.used)) if usage else 0.0
-                limit = quota.limit_value
-                warn_at = limit * quota.soft_warn_pct
+            )
+            usage_map = {str(qid): float(cast(Decimal, u)) for qid, u in result.all()}
 
-                if quota.is_hard and used >= limit:
-                    logger.warning(
-                        "Hard quota hit: tenant=%s used=%s limit=%s", tenant_id, used, limit
-                    )
-                    raise RateLimitExceeded(tenant_id, int(limit))
-
-                if used >= warn_at:
-                    logger.warning(
-                        "Soft quota warning: tenant=%s used=%s/%s (%.0f%%)",
-                        tenant_id,
-                        used,
-                        limit,
-                        (used / limit * 100),
-                    )
+        _evaluate_quotas(tenant_id, quotas, usage_map, post_increment=False)
     except RateLimitExceeded:
         raise
     except Exception as exc:
@@ -259,7 +272,12 @@ async def check_quota() -> None:
 
 
 async def increment_quota(increment: float = 1.0) -> None:
-    """Increment the calls counter for all quota rules of this tenant."""
+    """Increment the calls counter for all quota rules of this tenant.
+
+    Batched into a single multi-row upsert. Prefer consume_quota() for atomic
+    check-and-increment; this function is kept for callers that increment
+    without enforcement (e.g. backfill scripts).
+    """
     tenant_id = _ctx()
     if not tenant_id:
         return
@@ -267,25 +285,70 @@ async def increment_quota(increment: float = 1.0) -> None:
         quotas = await _get_cached_quota_rules(tenant_id)
         if not quotas:
             return
+        values = [
+            {"quota_id": q.id, "period_key": _period_key(q.period), "used": increment}
+            for q in quotas
+        ]
         async with async_session() as db:
-            for quota in quotas:
-                key = _period_key(quota.period)
-                ins = pg_insert(QuotaUsage).values(
-                    quota_id=quota.id,
-                    period_key=key,
-                    used=increment,
-                )
-                stmt = ins.on_conflict_do_update(
+            stmt = (
+                pg_insert(QuotaUsage)
+                .values(values)
+                .on_conflict_do_update(
                     index_elements=["quota_id", "period_key"],
                     set_={
                         "used": QuotaUsage.used + increment,
                         "last_updated_at": _utcnow(),
                     },
                 )
-                await db.execute(stmt)
+            )
+            await db.execute(stmt)
             await db.commit()
     except Exception as exc:
         logger.error("increment_quota failed: %s", exc)
+
+
+async def consume_quota(increment: float = 1.0) -> None:
+    """Atomic check-and-increment for all quota rules of this tenant.
+
+    Performs a single multi-row upsert with RETURNING, then verifies each
+    post-increment value against its hard limit. If any hard quota is exceeded
+    the transaction is rolled back (undoing all increments) before raising
+    RateLimitExceeded — so concurrent requests cannot both squeeze past a
+    hard limit.
+    """
+    tenant_id = _ctx()
+    if not tenant_id:
+        return
+    quotas = await _get_cached_quota_rules(tenant_id)
+    if not quotas:
+        return
+
+    values = [
+        {"quota_id": q.id, "period_key": _period_key(q.period), "used": increment} for q in quotas
+    ]
+    try:
+        async with async_session() as db:
+            async with db.begin():
+                stmt = (
+                    pg_insert(QuotaUsage)
+                    .values(values)
+                    .on_conflict_do_update(
+                        index_elements=["quota_id", "period_key"],
+                        set_={
+                            "used": QuotaUsage.used + increment,
+                            "last_updated_at": _utcnow(),
+                        },
+                    )
+                    .returning(QuotaUsage.quota_id, QuotaUsage.used)
+                )
+                result = await db.execute(stmt)
+                usage_map = {str(qid): float(cast(Decimal, u)) for qid, u in result.all()}
+                # Hard-limit violations raise here and roll back the transaction.
+                _evaluate_quotas(tenant_id, quotas, usage_map, post_increment=True)
+    except RateLimitExceeded:
+        raise
+    except Exception as exc:
+        logger.error("consume_quota failed: %s", exc)
 
 
 # ── LLM usage logging ─────────────────────────────────────────────────────────
@@ -303,15 +366,16 @@ async def log_llm_usage(
 ) -> None:
     """
     Insert one LLMUsageLog row for cost tracking.
-    count_quota=True → also increment the quota counter (extract calls only).
     Silent on failure — never disrupts the main OCR flow.
+
+    Note: `count_quota` is retained for API compatibility but is a no-op —
+    quota consumption is now performed atomically at the start of each
+    extract endpoint via `consume_quota()`, so incrementing here would
+    double-count.
     """
     from app.context import current_carmen_user_id, current_ocr_session_id
 
     tenant_id = _ctx()
-
-    if count_quota:
-        await increment_quota()
 
     try:
         rates = await _get_pricing(model)

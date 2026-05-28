@@ -19,7 +19,7 @@ from app.services.audit_service import AuditAction
 from app.services.carmen_service import CarmenAPIError, get_account_codes, get_departments
 from app.services.file_service import file_service
 from app.services.ocr_service import create_task
-from app.services.usage_service import check_quota
+from app.services.usage_service import consume_quota
 from app.utils.date_parsing import parse_doc_date
 from app.utils.db_helpers import has_submitted_doc
 from app.utils.mime import get_mime_type
@@ -48,7 +48,7 @@ async def extract_ap_invoice(
         ip_address=request.client.host if request.client else None,
     )
 
-    await check_quota()
+    await consume_quota()
 
     if not settings.openrouter_api_key:
         raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY is not configured")

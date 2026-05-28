@@ -58,9 +58,9 @@ async def _bootstrap(reset_password: bool) -> None:
                 existing.failed_login_attempts = 0  # type: ignore[assignment]
                 existing.locked_until = None  # type: ignore[assignment]
                 await db.commit()
-                print(f"✅ Password reset for {email}")
+                print(f"[OK] Password reset for {email}")
             else:
-                print(f"ℹ️  Admin {email} already exists. Use --reset-password to update.")
+                print(f"[INFO] Admin {email} already exists. Use --reset-password to update.")
             return
 
         import uuid
@@ -86,7 +86,7 @@ async def _bootstrap(reset_password: bool) -> None:
         db.add(role_grant)
         await db.commit()
 
-        print(f"✅ Created super_admin: {email}")
+        print(f"[OK] Created super_admin: {email}")
         print("   Log in at the admin dashboard and change the password after first use.")
         print("   Clear ADMIN_BOOTSTRAP_EMAIL and ADMIN_BOOTSTRAP_PASSWORD from your env.")
 

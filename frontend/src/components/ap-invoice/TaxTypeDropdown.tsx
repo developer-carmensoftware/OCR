@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
 import { ChevronDown, CircleDot, PlusCircle, Ban } from 'lucide-react'
-import type React from 'react'
 
 export type TaxTypeValue = 'Include' | 'Exclude' | 'None'
 
@@ -88,24 +87,13 @@ export default function TaxTypeDropdown({ value, onChange }: Props) {
       <button
         type="button"
         className="ttd-trigger"
-        style={
-          {
-            '--ttd-color': selected.colorVar,
-            '--ttd-bg': selected.bgVar,
-            '--ttd-border': selected.borderVar,
-          } as React.CSSProperties
-        }
+        data-value={selected.value}
         onClick={() => setOpen(v => !v)}
         aria-haspopup="listbox"
-        aria-expanded={open}
       >
         <span className="ttd-trigger-icon">{selected.icon}</span>
         <span className="ttd-trigger-text">{selected.label}</span>
-        <ChevronDown
-          size={13}
-          className="ttd-chevron"
-          style={{ transform: open ? 'rotate(-180deg)' : 'rotate(0deg)' }}
-        />
+        <ChevronDown size={13} className={`ttd-chevron${open ? ' ttd-chevron--open' : ''}`} />
       </button>
 
       {/* Dropdown panel */}
@@ -115,27 +103,14 @@ export default function TaxTypeDropdown({ value, onChange }: Props) {
             key={opt.value}
             type="button"
             role="option"
-            aria-selected={opt.value === value}
             className="ttd-option"
-            style={{ '--ttd-delay': `${i * 28}ms` } as React.CSSProperties}
+            data-index={i}
+            data-value={opt.value}
             data-active={opt.value === value}
             onClick={() => handleSelect(opt.value)}
           >
-            <span
-              className="ttd-option-dot"
-              style={{
-                background: opt.value === value ? opt.colorVar : 'transparent',
-                border: `2px solid ${opt.colorVar}`,
-              }}
-            />
-            <span
-              className="ttd-option-badge"
-              style={{
-                color: opt.colorVar,
-                background: opt.bgVar,
-                border: `1px solid ${opt.borderVar}`,
-              }}
-            >
+            <span className="ttd-option-dot" />
+            <span className="ttd-option-badge" data-value={opt.value}>
               {opt.icon}
               {opt.label}
             </span>

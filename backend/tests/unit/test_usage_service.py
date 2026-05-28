@@ -69,16 +69,34 @@ def _make_usage(used: float):
     return u
 
 
+@pytest.fixture(autouse=True)
+def _clear_quota_cache():
+    """Ensure the module-level quota-rules cache is empty between tests."""
+    from app.services import usage_service
+
+    usage_service._QUOTA_RULES_CACHE.clear()
+    yield
+    usage_service._QUOTA_RULES_CACHE.clear()
+
+
 class TestCheckQuota:
     def _mock_db_session(self, quota, usage):
-        """Return an async context manager mock for async_session()."""
+        """Return an async context manager mock for async_session().
+
+        First execute() returns the quota-rules query result (used by
+        _get_cached_quota_rules); second execute() returns the batched
+        QuotaUsage rows as a list of (quota_id, used) tuples.
+        """
         mock_db = AsyncMock()
 
         quota_result = MagicMock()
         quota_result.scalars.return_value.all.return_value = [quota] if quota else []
 
         usage_result = MagicMock()
-        usage_result.scalar_one_or_none.return_value = usage
+        if quota and usage:
+            usage_result.all.return_value = [(quota.id, usage.used)]
+        else:
+            usage_result.all.return_value = []
 
         mock_db.execute.side_effect = [quota_result, usage_result]
 
@@ -187,7 +205,11 @@ class TestLogLlmUsage:
         assert isinstance(added, LLMUsageLog)
         assert added.model == "test-model"
 
-    async def test_B4_6_count_quota_true_calls_increment_quota(self):
+    async def test_B4_6_count_quota_true_is_noop_after_consume_quota_refactor(self):
+        """Quota is now consumed atomically at the start of each extract endpoint
+        via consume_quota(); log_llm_usage no longer increments to avoid
+        double-counting. The `count_quota` parameter is kept only for API
+        compatibility."""
         from app.services import usage_service
 
         set_context("t-001", "bu-001")
@@ -213,7 +235,7 @@ class TestLogLlmUsage:
                 count_quota=True,
             )
 
-        mock_increment.assert_called_once()
+        mock_increment.assert_not_called()
 
 
 # ── increment_quota ───────────────────────────────────────────────────────────

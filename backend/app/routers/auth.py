@@ -13,13 +13,11 @@ Flow:
 
 import logging
 import uuid
-from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse
 
-import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import SessionInfo, get_current_session
@@ -128,9 +126,14 @@ async def _upsert_tenant(db: AsyncSession, host: str, bu_code: str) -> Tenant:
 
 
 async def _validate_token(token: str, carmen_uri: str) -> None:
+    from app.services.carmen_service import _get_client
+
     headers = {"Authorization": token, "User-Agent": "OCR-SSO-Validator"}
-    async with httpx.AsyncClient(timeout=_VALIDATE_TIMEOUT) as client:
-        resp = await client.get(f"{_carmen_base(carmen_uri)}/department", headers=headers)
+    resp = await _get_client().get(
+        f"{_carmen_base(carmen_uri)}/department",
+        headers=headers,
+        timeout=_VALIDATE_TIMEOUT,
+    )
     if resp.status_code == 401:
         raise HTTPException(
             status_code=401, detail="Carmen token rejected — please re-login to Carmen"
@@ -189,18 +192,6 @@ async def exchange_sso_token(request: Request, body: ExchangeRequest):
     async with async_session() as db:
         tenant = await _upsert_tenant(db, host, bu)
         await upsert_tenant_quota(db, str(tenant.id), str(tenant.plan))
-
-        cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(
-            hours=settings.session_ttl_hours
-        )
-        deleted = await db.execute(
-            delete(OcrSession).where(
-                (OcrSession.tenant_id == tenant.id)
-                & ((OcrSession.created_at < cutoff) | (OcrSession.is_active == False))  # noqa: E712
-            )
-        )
-        if deleted.rowcount:
-            logger.info("Cleaned %d stale session(s) for tenant %s", deleted.rowcount, tenant.id)
 
         session_id = uuid.uuid4()
         db.add(

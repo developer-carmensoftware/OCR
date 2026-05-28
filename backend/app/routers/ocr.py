@@ -27,7 +27,7 @@ from app.services.audit_service import AuditAction
 from app.services.correction_service import get_correction_hints
 from app.services.file_service import file_service
 from app.services.ocr_service import create_task
-from app.services.usage_service import check_quota
+from app.services.usage_service import consume_quota
 from app.utils.date_parsing import format_doc_date, parse_doc_date
 from app.utils.db_helpers import has_submitted_doc
 
@@ -78,7 +78,7 @@ async def extract_card(
         ip_address=request.client.host if request.client else None,
     )
 
-    await check_quota()
+    await consume_quota()
 
     # Phase 1: validate + read all files into memory (no DB held)
     file_data: list[tuple[str, bytes]] = []
@@ -121,6 +121,7 @@ async def extract_card(
                         db,
                         CreditCard,
                         tenant_id=session.tenant_id,
+                        bank_code=bank_code,
                         doc_no=extracted.doc_no,
                     )
 

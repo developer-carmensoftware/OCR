@@ -1,0 +1,210 @@
+/* ═══════════════════════════════════════════
+   PAGE SKELETON — Sentry-style loading screen
+   Shown as Suspense fallback during lazy-loads.
+   Uses design tokens so dark mode works for free.
+   ═══════════════════════════════════════════ */
+
+/* ─── Layout wrapper ─── */
+.page-skeleton {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--body-bg-fallback);
+  background-color: var(--body-bg-oklch);
+  background-image: radial-gradient(
+    ellipse 70% 30% at 50% 0%,
+    oklch(0.4714 0.1794 258.7 / 0.08) 0%,
+    transparent 100%
+  );
+  z-index: 100;
+  animation: sk-fade-in 0.2s var(--ease) both;
+}
+
+@keyframes sk-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ─── Top progress bar ─── */
+.page-skeleton-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 3px;
+  width: 0%;
+  background: linear-gradient(90deg, var(--primary), var(--teal));
+  border-radius: 0 99px 99px 0;
+  box-shadow: 0 0 10px var(--primary-glow);
+  /* Animates to 90%, then main.tsx completes it to 100% when React mounts */
+  animation: sk-bar-grow 1.8s cubic-bezier(0.1, 0.6, 0.3, 1) forwards;
+}
+
+@keyframes sk-bar-grow {
+  0% {
+    width: 0%;
+  }
+  60% {
+    width: 72%;
+  }
+  90% {
+    width: 88%;
+  }
+  100% {
+    width: 88%;
+  }
+}
+
+/* ─── Body — the skeleton card area ─── */
+.page-skeleton-body {
+  width: min(480px, 90vw);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: sk-body-in 0.35s 0.1s var(--ease) both;
+}
+
+@keyframes sk-body-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ─── Header row ─── */
+.page-skeleton-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ─── Card shell ─── */
+.page-skeleton-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ─── Footer action strip ─── */
+.page-skeleton-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* ─── Shimmer keyframe ─── */
+@keyframes sk-shimmer {
+  0% {
+    background-position: -300% center;
+  }
+  100% {
+    background-position: 300% center;
+  }
+}
+
+/* ─── Base skeleton block ─── */
+.sk-block {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--gray-100) 25%, var(--gray-200) 50%, var(--gray-100) 75%);
+  background-size: 300% 100%;
+  animation: sk-shimmer 1.6s ease infinite;
+}
+
+/* ─── Block size variants ─── */
+.sk-title {
+  height: 22px;
+  width: 180px;
+  border-radius: var(--radius-md);
+}
+.sk-badge {
+  height: 22px;
+  width: 80px;
+  border-radius: 99px;
+}
+
+.sk-upload-zone {
+  height: 120px;
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 1.5px dashed var(--border-hi);
+  /* Override shimmer bg — zone has its own muted look */
+  background: linear-gradient(90deg, var(--gray-50) 25%, var(--gray-100) 50%, var(--gray-50) 75%);
+  background-size: 300% 100%;
+  animation: sk-shimmer 1.8s ease infinite;
+}
+
+.sk-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+
+.sk-line {
+  height: 12px;
+  border-radius: 99px;
+}
+.sk-line-sm {
+  width: 55%;
+}
+.sk-line-md {
+  width: 75%;
+}
+.sk-line-lg {
+  width: 85%;
+}
+.sk-line-full {
+  width: 100%;
+}
+
+.sk-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 2px 0;
+}
+
+.sk-pills {
+  display: flex;
+  gap: 8px;
+}
+.sk-pill {
+  height: 26px;
+  width: 80px;
+  border-radius: 99px;
+}
+
+.sk-btn {
+  height: 34px;
+  width: 90px;
+  border-radius: var(--radius-md);
+}
+.sk-btn-primary {
+  width: 110px;
+}
+
+/* ─── Dark mode: deeper shimmer ─── */
+[data-theme='dark'] .sk-block,
+[data-theme='dark'] .sk-upload-zone {
+  background: linear-gradient(90deg, var(--gray-100) 25%, var(--gray-200) 50%, var(--gray-100) 75%);
+  background-size: 300% 100%;
+  animation: sk-shimmer 1.6s ease infinite;
+}

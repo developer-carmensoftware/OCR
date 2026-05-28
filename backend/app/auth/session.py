@@ -42,7 +42,7 @@ def create_session_jwt(
     carmen_user_id: str,
     username: str,
     secret: str,
-    ttl_hours: int = 8,
+    ttl_hours: float = 8,
     carmen_uri: str = "",
     bu: str = "",
 ) -> str:
