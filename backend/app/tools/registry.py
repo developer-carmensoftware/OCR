@@ -16,7 +16,8 @@ returning a failed ToolResult with clear errors instead of a raw exception.
 from collections.abc import Callable
 from typing import Any, cast
 
-from app.tools import extract, map_gl
+from app.services import gl_suggestion_service as map_gl
+from app.tools import extract
 from app.tools.base import ToolResult
 
 # ── JSON Schema definitions ───────────────────────────────────────────────────

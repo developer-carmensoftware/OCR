@@ -15,7 +15,7 @@ import VendorSearch from './APVendorSearch'
 import AmountSummary from './APAmountSummary'
 import type { TaxTypeValue } from './TaxTypeDropdown'
 import type { APColumnKey } from '../../constants/apInvoice'
-import type { Vendor } from '../../hooks/ap/useAPVendor'
+import type { Vendor } from '../../hooks/ap-invoice/useAPVendor'
 import type { APInvoiceHeader } from '../../constants/apInvoice'
 
 interface Ctrl {

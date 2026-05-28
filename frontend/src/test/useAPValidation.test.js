@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { useAPValidation } from '../hooks/ap/useAPValidation'
+import { useAPValidation } from '../hooks/ap-invoice/useAPValidation'
 
 // useAPValidation is a pure computation hook — no mocks needed.
 

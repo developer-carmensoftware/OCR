@@ -1,6 +1,6 @@
 """
 Mapping router — thin HTTP layer for GL account/dept mapping.
-Business logic lives in app/tools/map_gl.py.
+Business logic lives in app/services/gl_suggestion_service.py.
 """
 
 import logging
@@ -13,8 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import SessionInfo, get_current_session
 from app.database import get_db
 from app.models import MappingHistory
+from app.services import gl_suggestion_service as map_gl
 from app.services.mapping_history_service import BYPASS_THRESHOLD, get_confirmed_mappings
-from app.tools import map_gl
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/mapping", tags=["Mapping"])

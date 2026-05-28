@@ -207,7 +207,7 @@ class TestSuggestGL:
     ):
         mock_get_accs.return_value = {"Data": []}
         mock_get_depts.return_value = {"Data": []}
-        mock_suggest.return_value = {"0": {"acc": "5100", "dept": "FIN"}}
+        mock_suggest.return_value = ({"0": {"acc": "5100", "dept": "FIN"}}, True)
 
         payload = {
             "items": [

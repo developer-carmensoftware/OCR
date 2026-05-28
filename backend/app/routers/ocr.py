@@ -2,12 +2,13 @@
 OCR API Routes — thin HTTP layer.
 
 Business logic lives in:
-  app/services/ocr_service.py — task/export helpers
+  app/services/ocr_service.py          — stateless extract + task listing
+  app/services/credit_card_service.py  — finalize_extraction / mark_task_failed
+  app/services/task_service.py         — shared OCRTask creation
 """
 
 import asyncio
 import logging
-import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
@@ -21,15 +22,15 @@ from app.config import settings
 from app.constants import Module
 from app.context import current_document_ref
 from app.database import async_session, get_db
-from app.models import CreditCard, ExtractedCreditCardData, OCRTask, TaskStatus
+from app.models import ExtractedCreditCardData, OCRTask, TaskStatus
 from app.services import audit_service, ocr_service
 from app.services.audit_service import AuditAction
 from app.services.correction_service import get_correction_hints
+from app.services.credit_card_service import finalize_extraction, mark_task_failed
 from app.services.file_service import file_service
-from app.services.ocr_service import create_task
+from app.services.task_service import create_task
 from app.services.usage_service import consume_quota
-from app.utils.date_parsing import format_doc_date, parse_doc_date
-from app.utils.db_helpers import has_submitted_doc
+from app.utils.date_parsing import format_doc_date
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/ocr", tags=["OCR"])
@@ -114,58 +115,11 @@ async def extract_card(
                 task_id=task_id,
             )
             extracted.task_id = task_id
-
-            async with async_session() as db:
-                if extracted.doc_no:
-                    extracted.is_duplicate = await has_submitted_doc(
-                        db,
-                        CreditCard,
-                        tenant_id=session.tenant_id,
-                        bank_code=bank_code,
-                        doc_no=extracted.doc_no,
-                    )
-
-                if not extracted.is_duplicate:
-                    card_id = uuid.uuid4()
-                    doc_date_parsed = parse_doc_date(extracted.doc_date)
-
-                    card = CreditCard(
-                        id=card_id,
-                        task_id=uuid.UUID(task_id),
-                        tenant_id=session.tenant_id,
-                        bank_code=bank_code or None,
-                        company_name=extracted.company_name,
-                        bank_company_name=extracted.bank_companyname,
-                        doc_date=doc_date_parsed,
-                        doc_no=extracted.doc_no,
-                        branch_no=extracted.branch_no,
-                        submitted_at=None,  # Draft
-                        carmen_user_id=session.carmen_user_id,
-                    )
-                    db.add(card)
-                    extracted.id = str(card_id)
-                else:
-                    extracted.id = None
-
-                # Mark task as completed
-                task_res = await db.execute(select(OCRTask).where(OCRTask.id == uuid.UUID(task_id)))
-                task = task_res.scalar_one_or_none()
-                if task:
-                    task.status = TaskStatus.COMPLETED  # type: ignore
-                    task.completed_at = datetime.now(UTC).replace(tzinfo=None)  # type: ignore
-
-                await db.commit()
-            return extracted
-
+            return await finalize_extraction(
+                extracted, task_id, session.tenant_id, bank_code, session.carmen_user_id
+            )
         except Exception as exc:
-            logger.error("Failed to process OCR task %s: %s", task_id, exc)
-            async with async_session() as db:
-                task_res = await db.execute(select(OCRTask).where(OCRTask.id == uuid.UUID(task_id)))
-                task = task_res.scalar_one_or_none()
-                if task:
-                    task.status = TaskStatus.FAILED  # type: ignore
-                    task.error_message = str(exc)  # type: ignore
-                    await db.commit()
+            await mark_task_failed(task_id, exc)
             raise
 
     results: list[ExtractedCreditCardData] = list(

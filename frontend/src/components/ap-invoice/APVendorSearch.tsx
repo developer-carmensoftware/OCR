@@ -2,7 +2,7 @@ import { User, CheckCircle2, AlertTriangle, Plus, RotateCw, Search, Info } from 
 import Badge from '../common/Badge'
 import Tooltip from '../common/Tooltip'
 import { getCarmenUrl } from '../../lib/url'
-import type { Vendor } from '../../hooks/ap/useAPVendor'
+import type { Vendor } from '../../hooks/ap-invoice/useAPVendor'
 import type React from 'react'
 
 interface Props {

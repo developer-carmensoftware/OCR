@@ -1,7 +1,5 @@
 """
-Tool: map_gl
-
-LLM-powered GL account/department mapping suggestions.
+GL Suggestion Service — LLM-powered GL account/department mapping suggestions.
 
 Two entry points:
   suggest_fixed_fields()    — Credit card commission, Input Tax, Bank Account (always present)
@@ -67,16 +65,13 @@ def _validate_codes(
         )
         dept = raw_dept if raw_dept in valid_dept else None
         acc = raw_acc if raw_acc in valid_acc else None
-        # Default dept to GEN whenever an account was matched — bank fees / commissions
-        # are typically charged to the general cost-center, and an empty dept forces the
-        # user to fill it in manually for every row.
         if acc and not dept and "GEN" in valid_dept:
             dept = "GEN"
         suggestions[key] = {"dept": dept, "acc": acc}
     return suggestions
 
 
-# ── Tools ─────────────────────────────────────────────────────────────────────
+# ── Public functions ───────────────────────────────────────────────────────────
 
 
 async def suggest_fixed_fields(
@@ -106,8 +101,6 @@ async def suggest_fixed_fields(
         commission_acc = _filter_by_type(accounts, "income")
         balance_acc = _filter_by_type(accounts, "balancesheet")
 
-        # Pre-filter by domain keywords — split per-field so we can fall back to the
-        # top-ranked candidate when the LLM returns null.
         commission_filtered = _filter_by_keywords(
             commission_acc,
             ["commission", "credit card", "เครดิตการ์ด", "ค่าธรรมเนียม", "bank charge"],
@@ -124,7 +117,6 @@ async def suggest_fixed_fields(
             limit=30,
         )
 
-        # Combine balance-sheet candidates for the prompt (dedupe, preserve rank order)
         seen: set = set()
         balance_filtered: list[dict[str, Any]] = []
         for a in tax_filtered + bank_filtered:
@@ -156,8 +148,6 @@ async def suggest_fixed_fields(
         valid_dept = {d["code"] for d in departments}
         suggestions = _validate_codes(data, FIXED_TYPES, valid_acc, valid_dept)
 
-        # Per-field fallback — never return null; pick top-ranked pre-filtered candidate.
-        # Falls back to the broader type pool if a keyword filter found nothing.
         fallback_acc = {
             "Credit card commission": (commission_filtered or commission_acc or [{}])[0].get(
                 "code"
@@ -184,7 +174,7 @@ async def suggest_fixed_fields(
     except Exception as exc:
         logger.error(f"[{TOOL_FIXED}] error: {exc}\n{traceback.format_exc()}")
         return ToolResult(
-            success=True,  # graceful degradation — empty suggestions, not a hard failure
+            success=True,
             tool=TOOL_FIXED,
             input=tool_input,
             output={"suggestions": {}, "source": "ai"},
@@ -219,7 +209,6 @@ async def suggest_payment_types(
 
         b_accounts = _filter_by_type(accounts, "balancesheet")
 
-        # Payment types are bank receivables — pre-filter to bank/receivable accounts
         b_filtered = _filter_by_keywords(
             b_accounts,
             [
@@ -262,10 +251,6 @@ async def suggest_payment_types(
         valid_dept = {d["code"] for d in departments}
         suggestions = _validate_codes(data, payment_types, valid_acc, valid_dept)
 
-        # Fallback: if LLM couldn't match (e.g. payment_type is a numeric account
-        # number rather than a card-type abbreviation), default to the top-ranked
-        # bank/receivable account. Falls back through b_filtered → b_accounts → any
-        # account so we always emit a non-null suggestion.
         fallback_pool = b_filtered or b_accounts or accounts
         fallback_acc = fallback_pool[0]["code"] if fallback_pool else None
         if fallback_acc and fallback_acc in valid_acc:
@@ -290,7 +275,7 @@ async def suggest_payment_types(
     except Exception as exc:
         logger.error(f"[{TOOL_PAYMENT}] error: {exc}\n{traceback.format_exc()}")
         return ToolResult(
-            success=True,  # graceful degradation
+            success=True,
             tool=TOOL_PAYMENT,
             input=tool_input,
             output={"suggestions": {}, "source": "ai"},

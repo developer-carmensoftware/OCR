@@ -16,8 +16,8 @@ import {
 import { SkeletonRow } from '../common/Skeleton'
 import CustomSearchSelect from '../common/CustomSearchSelect'
 import AISuggestBar from '../common/AISuggestBar'
-import type { APLineItem } from '../../hooks/ap/useAPExtraction'
-import type { Vendor } from '../../hooks/ap/useAPVendor'
+import type { APLineItem } from '../../hooks/ap-invoice/useAPExtraction'
+import type { Vendor } from '../../hooks/ap-invoice/useAPVendor'
 import type { APInvoiceHeader } from '../../constants/apInvoice'
 
 interface GLAccount {

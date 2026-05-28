@@ -1,6 +1,6 @@
 import { SlidersHorizontal, ArrowLeft, ArrowRight } from 'lucide-react'
 import { isNumFld, fmt } from '../../constants/apInvoice'
-import type { APLineItem } from '../../hooks/ap/useAPExtraction'
+import type { APLineItem } from '../../hooks/ap-invoice/useAPExtraction'
 import type { APColumnKey, APFieldKey, FieldOption } from '../../constants/apInvoice'
 
 interface Props {

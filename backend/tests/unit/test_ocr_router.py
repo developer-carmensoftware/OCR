@@ -42,7 +42,7 @@ class TestExtractCard:
     @patch("app.routers.ocr.get_correction_hints", new_callable=AsyncMock)
     @patch("app.routers.ocr.create_task")
     @patch("app.routers.ocr.ocr_service.extract_stateless", new_callable=AsyncMock)
-    @patch("app.routers.ocr.has_submitted_doc", new_callable=AsyncMock)
+    @patch("app.services.credit_card_service.has_submitted_doc", new_callable=AsyncMock)
     def test_extract_card_happy_path(
         self,
         mock_has_submitted,
@@ -86,6 +86,7 @@ class TestExtractCard:
 
         with (
             patch("app.routers.ocr.async_session", return_value=ctx_mock),
+            patch("app.services.credit_card_service.async_session", return_value=ctx_mock),
             make_test_client(db_mock) as client,
         ):
             files = [("files", ("receipt.jpg", b"\xff\xd8\xff\xe0" + b"\x00" * 20, "image/jpeg"))]
@@ -107,7 +108,7 @@ class TestExtractCard:
     @patch("app.routers.ocr.get_correction_hints", new_callable=AsyncMock)
     @patch("app.routers.ocr.create_task")
     @patch("app.routers.ocr.ocr_service.extract_stateless", new_callable=AsyncMock)
-    @patch("app.routers.ocr.has_submitted_doc", new_callable=AsyncMock)
+    @patch("app.services.credit_card_service.has_submitted_doc", new_callable=AsyncMock)
     def test_extract_card_duplicate_skipped(
         self,
         mock_has_submitted,
@@ -147,6 +148,7 @@ class TestExtractCard:
 
         with (
             patch("app.routers.ocr.async_session", return_value=ctx_mock),
+            patch("app.services.credit_card_service.async_session", return_value=ctx_mock),
             make_test_client(db_mock) as client,
         ):
             files = [("files", ("receipt.jpg", b"\xff\xd8\xff\xe0" + b"\x00" * 20, "image/jpeg"))]
@@ -194,6 +196,7 @@ class TestExtractCard:
 
         with (
             patch("app.routers.ocr.async_session", return_value=ctx_mock),
+            patch("app.services.credit_card_service.async_session", return_value=ctx_mock),
             make_test_client(db_mock) as client,
         ):
             files = [("files", ("receipt.jpg", b"\xff\xd8\xff\xe0" + b"\x00" * 20, "image/jpeg"))]

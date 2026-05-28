@@ -5,11 +5,11 @@ import type { APLocale } from '../constants/apInvoice'
 import { showToast } from '../lib/toast'
 import { parseNum, fmt, round2 } from '../lib/format'
 import { saveAPVendorMapping } from '../lib/api/config'
-import { useAPExtraction } from './ap/useAPExtraction'
-import type { APLineItem } from './ap/useAPExtraction'
-import { useAPVendor } from './ap/useAPVendor'
-import { useAPValidation } from './ap/useAPValidation'
-import { useAPSubmission } from './ap/useAPSubmission'
+import { useAPExtraction } from './ap-invoice/useAPExtraction'
+import type { APLineItem } from './ap-invoice/useAPExtraction'
+import { useAPVendor } from './ap-invoice/useAPVendor'
+import { useAPValidation } from './ap-invoice/useAPValidation'
+import { useAPSubmission } from './ap-invoice/useAPSubmission'
 
 export function useAPInvoice() {
   const [lang, setLang] = useState<APLocale>('en')

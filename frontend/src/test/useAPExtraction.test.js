@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useAPExtraction } from '../hooks/ap/useAPExtraction'
+import { useAPExtraction } from '../hooks/ap-invoice/useAPExtraction'
 
 vi.mock('../lib/api/client', () => ({ apiFetch: vi.fn() }))
 vi.mock('../lib/api/config', () => ({ getAPVendorMapping: vi.fn() }))

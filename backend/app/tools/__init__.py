@@ -5,7 +5,6 @@ Each tool is an async function that accepts typed inputs and returns a ToolResul
 Tools are independent of the HTTP layer and can be invoked directly by agent code.
 """
 
-from app.tools import extract, map_gl, registry
 from app.tools.base import ToolResult
 
-__all__ = ["ToolResult", "extract", "map_gl", "registry"]
+__all__ = ["ToolResult"]

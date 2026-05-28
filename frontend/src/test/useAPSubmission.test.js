@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useAPSubmission } from '../hooks/ap/useAPSubmission'
+import { useAPSubmission } from '../hooks/ap-invoice/useAPSubmission'
 
 vi.mock('../lib/api/carmen', () => ({
   fetchAccountCodes: vi.fn(),

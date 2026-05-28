@@ -6,12 +6,10 @@ import asyncio
 import functools
 import logging
 import os
-import uuid
 
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
 from app.context import current_tenant_id
 from app.models.orm import OCRTask, TaskStatus
 from app.models.schemas import ExtractedCreditCardData
@@ -19,29 +17,6 @@ from app.services.llm_service import extract_from_image
 from app.utils.image_processing import resize_if_needed
 
 logger = logging.getLogger(__name__)
-
-
-async def create_task(
-    db: AsyncSession,
-    *,
-    tenant_id: str,
-    module_id: str,
-    original_filename: str,
-    carmen_user_id: str | None = None,
-) -> OCRTask:
-    """Create, persist, and return a completed OCRTask. Shared by OCR and AP invoice routers."""
-    task = OCRTask(
-        id=uuid.uuid4(),
-        tenant_id=tenant_id,
-        module_id=module_id,
-        original_filename=original_filename,
-        status=TaskStatus.PROCESSING,
-        ocr_engine=settings.ocr_engine,
-        carmen_user_id=carmen_user_id or None,
-    )
-    db.add(task)
-    await db.commit()
-    return task
 
 
 async def extract_stateless(

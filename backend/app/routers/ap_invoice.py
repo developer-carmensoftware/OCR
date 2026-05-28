@@ -18,7 +18,7 @@ from app.services.ap_invoice_service import extract_ap_invoice_data, suggest_for
 from app.services.audit_service import AuditAction
 from app.services.carmen_service import CarmenAPIError, get_account_codes, get_departments
 from app.services.file_service import file_service
-from app.services.ocr_service import create_task
+from app.services.task_service import create_task
 from app.services.usage_service import consume_quota
 from app.utils.date_parsing import parse_doc_date
 from app.utils.db_helpers import has_submitted_doc
