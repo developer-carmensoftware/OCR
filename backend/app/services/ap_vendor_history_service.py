@@ -44,15 +44,18 @@ _TH_MONTHS_FULL = (
     "พฤศจิกายน",
     "ธันวาคม",
 )
-_DIGITS = re.compile(r"\d+")
+_YEAR_4D = re.compile(r"\b(?:25\d{2}|(?:19|20)\d{2})\b")  # Buddhist (25xx) or CE (19xx/20xx) years
+_DATE_SLASH = re.compile(r"\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b")  # DD/MM or DD/MM/YYYY
 _WHITESPACE = re.compile(r"\s+")
 
 
 def normalize_description(s: str) -> str:
-    """Strip digits, month names (en/th), and collapse whitespace → lowercase.
+    """Strip month names (en/th), 4-digit years, and date patterns — keep other digits/versions.
 
     "Telephone Fee for Aug 2024" → "telephone fee for"
     "Internet ม.ค. 2568" → "internet"
+    "Software License v1.0" → "software license v1.0"  (version kept)
+    "Meeting Room B2" → "meeting room b2"  (room number kept)
     """
     if not s:
         return ""
@@ -61,7 +64,8 @@ def normalize_description(s: str) -> str:
     out = _TH_MONTH_ABBR.sub("", out)
     for m in _TH_MONTHS_FULL:
         out = out.replace(m, "")
-    out = _DIGITS.sub("", out)
+    out = _DATE_SLASH.sub("", out)
+    out = _YEAR_4D.sub("", out)
     out = _WHITESPACE.sub(" ", out)
     return out.strip()
 

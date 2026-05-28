@@ -209,6 +209,7 @@ export function useAPSubmission({
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = (await res.json()) as {
         suggestions?: Record<number, { deptCode?: string; accountCode?: string }>
+        llm_partial?: boolean
       }
       const suggestions = data.suggestions || {}
       let suggestedCount = 0
@@ -229,7 +230,14 @@ export function useAPSubmission({
           }
         })
       )
-      if (suggestedCount > 0) {
+      if (data.llm_partial) {
+        showToast(
+          suggestedCount > 0
+            ? `AI partially suggested ${suggestedCount} item${suggestedCount > 1 ? 's' : ''} — some items need manual mapping.`
+            : 'AI could not generate suggestions. Please fill in manually.',
+          'warning'
+        )
+      } else if (suggestedCount > 0) {
         showToast(
           `AI suggested ${suggestedCount} account code${suggestedCount > 1 ? 's' : ''} — please review.`,
           'success'

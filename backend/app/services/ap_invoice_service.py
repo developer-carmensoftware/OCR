@@ -36,7 +36,7 @@ _CATEGORY_KW: dict[str, list[str]] = {
 
 
 def _filter_expense_accounts(
-    accounts: list[dict], items: list[dict], max_acc: int = 60, invoice_desc: str = ""
+    accounts: list[dict], items: list[dict], max_acc: int = 100, invoice_desc: str = ""
 ) -> list[dict]:
     """Return the most relevant expense accounts by keyword-scoring against
     category + description + invoice_desc. Falls back to the first `max_acc` when nothing matches."""
@@ -95,7 +95,7 @@ async def suggest_for_items(
     invoice_desc: str = "",
     vn_code: str = "",
     carmen_token: str = "",
-) -> dict[int, dict[str, Any]]:
+) -> tuple[dict[int, dict[str, Any]], bool]:
     """AI-suggest dept/acc for AP invoice expense items.
 
     When `vn_code` + `carmen_token` are supplied, the vendor's Carmen invoice
@@ -162,14 +162,14 @@ async def suggest_for_items(
             )
 
     if not remaining_items:
-        return bypassed
+        return bypassed, True
 
     # Pre-filter expense accounts using remaining items' keywords
     filtered_accounts = _filter_expense_accounts(
         expense_accounts, remaining_items, invoice_desc=invoice_desc
     )
 
-    dept_lines = "\n".join(f"  {d['code']} {d['name']}" for d in departments[:50])
+    dept_lines = "\n".join(f"  {d['code']} {d['name']}" for d in departments)
     expense_acc_lines = "\n".join(f"  {a['code']} {a['name']}" for a in filtered_accounts)
 
     vendor_history_lines = ""
@@ -186,9 +186,10 @@ async def suggest_for_items(
         vendor_history_lines=vendor_history_lines,
     )
 
-    data = await call_text_llm(prompt, module_id=Module.AP_INVOICE)
+    data = await call_text_llm(prompt, module_id=Module.AP_INVOICE, max_tokens=4096)
     if data is None:
-        return bypassed
+        logger.warning("AP invoice suggest LLM returned None — returning bypass-only results")
+        return bypassed, False
 
     def _resolve(raw, valid_map: dict):
         """Match LLM-returned code against valid_map.
@@ -222,4 +223,4 @@ async def suggest_for_items(
         acc = _resolve(raw_acc, valid_acc_map)
         suggestions[item["index"]] = {"deptCode": dept, "accountCode": acc}
 
-    return suggestions
+    return suggestions, True

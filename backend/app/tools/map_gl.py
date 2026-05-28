@@ -82,6 +82,7 @@ def _validate_codes(
 async def suggest_fixed_fields(
     accounts: list[dict[str, Any]],
     departments: list[dict[str, Any]],
+    hint_text: str = "",
 ) -> ToolResult:
     """
     Suggest dept/acc for Credit card commission, Input Tax, Bank Account.
@@ -141,6 +142,7 @@ async def suggest_fixed_fields(
             balance_acc_lines=balance_acc_lines,
             commission_acc_count=len(commission_filtered),
             balance_acc_count=len(balance_filtered),
+            hint_text=hint_text,
         )
 
         data = await call_text_llm(prompt, module_id=Module.CREDIT_CARD_OCR)
@@ -194,6 +196,7 @@ async def suggest_payment_types(
     payment_types: list[str],
     accounts: list[dict[str, Any]],
     departments: list[dict[str, Any]],
+    hint_text: str = "",
 ) -> ToolResult:
     """
     Suggest dept/acc for a dynamic list of payment types (Visa, MCA, QR, etc.).
@@ -245,6 +248,7 @@ async def suggest_payment_types(
             acc_lines=acc_lines,
             b_account_count=len(b_filtered),
             payment_types=payment_types,
+            hint_text=hint_text,
         )
 
         data = await call_text_llm(prompt, module_id=Module.CREDIT_CARD_OCR)

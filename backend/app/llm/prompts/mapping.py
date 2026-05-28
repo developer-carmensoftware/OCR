@@ -7,7 +7,13 @@ def build_fixed_fields_prompt(
     balance_acc_lines: str,
     commission_acc_count: int,
     balance_acc_count: int,
+    hint_text: str = "",
 ) -> str:
+    history_section = (
+        f"Prior confirmed mappings for this tenant (use as strong hints):\n{hint_text}\n\n"
+        if hint_text.strip()
+        else ""
+    )
     return f"""Map 3 bank-statement fields to Thai accounting codes. Return JSON only — no markdown.
 
 Fields:
@@ -24,7 +30,7 @@ Credit card commission accounts (Income, {commission_acc_count}):
 Input Tax + Bank Account accounts (BalanceSheet, {balance_acc_count}):
 {balance_acc_lines or "  (none)"}
 
-Rules: use codes exactly as listed; null if no match; dept optional.
+{history_section}Rules: use codes exactly as listed; null if no match; dept optional.
 {{"Credit card commission":{{"dept":null,"acc":null}},"Input Tax":{{"dept":null,"acc":null}},"Bank Account":{{"dept":null,"acc":null}}}}"""
 
 
@@ -34,8 +40,14 @@ def build_payment_types_prompt(
     acc_lines: str,
     b_account_count: int,
     payment_types: list[str],
+    hint_text: str = "",
 ) -> str:
     keys = ", ".join(f'"{t}"' for t in payment_types)
+    history_section = (
+        f"Prior confirmed mappings for this tenant (use as strong hints):\n{hint_text}\n\n"
+        if hint_text.strip()
+        else ""
+    )
     return f"""Map card/payment settlement types to Thai accounting codes. Return JSON only — no markdown.
 
 Payment types (all map to bank receivable/asset accounts):
@@ -49,7 +61,7 @@ Departments:
 BalanceSheet accounts ({b_account_count}):
 {acc_lines or "  (none)"}
 
-Rules: use codes exactly as listed; null if no match; all types typically share the same account.
+{history_section}Rules: use codes exactly as listed; null if no match; all types typically share the same account.
 Keys must be: {keys}
 {{"{payment_types[0] if payment_types else ""}":{{"dept":null,"acc":null}},...}}"""
 

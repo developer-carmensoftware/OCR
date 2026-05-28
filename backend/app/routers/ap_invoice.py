@@ -177,7 +177,7 @@ async def suggest(
         }
         for i in body.items
     ]
-    suggestions = await suggest_for_items(
+    suggestions, llm_ok = await suggest_for_items(
         items_payload,
         accounts_raw,
         depts_raw,
@@ -185,4 +185,4 @@ async def suggest(
         vn_code=body.vn_code,
         carmen_token=session.carmen_token,
     )
-    return {"suggestions": suggestions}
+    return {"suggestions": suggestions, "llm_partial": not llm_ok}

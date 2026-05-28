@@ -192,6 +192,7 @@ async def call_text_llm(
     model: str | None = None,
     task_id: str | None = None,
     module_id: str | None = None,
+    max_tokens: int = 2048,
     # Legacy alias
     usage_type: str | None = None,
 ) -> dict | None:
@@ -224,7 +225,7 @@ async def call_text_llm(
                     model=target_model,
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.0,
-                    max_tokens=2048,
+                    max_tokens=max_tokens,
                     extra_headers=extra_headers,
                 ),
                 label="text",

@@ -188,4 +188,5 @@ async def proxy_create_invoice(
                     resource_id=inv.doc_no or str(inv.id),
                     ip_address=request.client.host if request.client else None,
                 )
+
         return res

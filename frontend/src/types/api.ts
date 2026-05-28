@@ -99,11 +99,13 @@ export interface CodeOption {
 }
 
 export interface SuggestRequest {
+  bank_code: string
   accounts: CodeOption[]
   departments: CodeOption[]
 }
 
 export interface SuggestPaymentTypesRequest {
+  bank_code: string
   payment_types: string[]
   accounts: CodeOption[]
   departments: CodeOption[]

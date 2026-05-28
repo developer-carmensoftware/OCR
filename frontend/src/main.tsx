@@ -149,7 +149,7 @@ root.render(
     <AuthProvider>
       <AdminAuthProvider>
         <Toaster
-          position="top-center"
+          position="bottom-center"
           duration={3500}
           visibleToasts={4}
           expand={false}

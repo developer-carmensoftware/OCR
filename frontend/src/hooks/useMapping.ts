@@ -47,6 +47,7 @@ export function useMapping() {
   const paymentTypes = usePaymentTypes()
 
   const suggestions = useMappingSuggestions({
+    bankCode: BANK_CODE_MAP[bankConfig.bank as BankDisplayName] || bankConfig.bank || '',
     masterAccounts: masterData.masterAccounts,
     masterDepartments: masterData.masterDepartments,
     mappings,
