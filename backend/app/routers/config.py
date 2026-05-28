@@ -80,7 +80,7 @@ async def _get_entries(db: AsyncSession, config_id: int) -> list[BUAccountingMap
             BUAccountingMappingEntry.deleted_at.is_(None),
         )
     )
-    return result.scalars().all()
+    return list(result.scalars().all())
 
 
 def _entries_to_response(entries: list[BUAccountingMappingEntry]) -> tuple[dict, list]:
@@ -282,7 +282,7 @@ async def get_account_usage(
     if not acc_code and not dept_code:
         return {"error": "Provide acc_code or dept_code query param", "results": []}
 
-    conditions = [BUAccountingMappingEntry.deleted_at.is_(None)]
+    conditions: list[Any] = [BUAccountingMappingEntry.deleted_at.is_(None)]
     if acc_code:
         conditions.append(BUAccountingMappingEntry.acc_code == acc_code)
     if dept_code:

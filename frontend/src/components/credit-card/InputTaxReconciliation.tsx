@@ -109,12 +109,10 @@ export default function InputTaxReconciliation({
     }
   }
 
-  const thStyle = { color: 'inherit', background: 'inherit' } as const
-
   return (
     <div>
       <div className="section-header">
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+        <span className="cc-step-title">
           <FileText size={16} /> Step 6: Input Tax Reconciliation
         </span>
       </div>
@@ -125,34 +123,8 @@ export default function InputTaxReconciliation({
             <Scale size={16} /> Input Tax Reconciliation
           </div>
           <div className="card-title-badges">
-            <span
-              style={{
-                background: 'var(--primary-light)',
-                color: 'var(--primary)',
-                border: '1px solid var(--primary-mid)',
-                borderRadius: '4px',
-                padding: '0.2rem 0.65rem',
-                fontSize: '0.8rem',
-                fontWeight: 600,
-              }}
-            >
-              Source: ACTX
-            </span>
-            {taxPeriod && (
-              <span
-                style={{
-                  background: 'var(--gray-100)',
-                  color: 'var(--text-2)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '4px',
-                  padding: '0.2rem 0.65rem',
-                  fontSize: '0.8rem',
-                  fontWeight: 500,
-                }}
-              >
-                Tax Period: {taxPeriod}
-              </span>
-            )}
+            <span className="cc-badge-primary">Source: ACTX</span>
+            {taxPeriod && <span className="cc-badge-gray">Tax Period: {taxPeriod}</span>}
           </div>
         </div>
 
@@ -160,12 +132,7 @@ export default function InputTaxReconciliation({
           <div className="table-wrapper">
             <table className="data-table">
               <thead>
-                <tr
-                  style={{
-                    backgroundColor: 'var(--bg-table-header, #2b4d81)',
-                    color: 'var(--text-table-header, #fff)',
-                  }}
-                >
+                <tr className="cc-table-header-row">
                   {[
                     'Source',
                     'Tax Invoice No.',
@@ -176,12 +143,12 @@ export default function InputTaxReconciliation({
                     'Description',
                     'Tax Profile',
                   ].map(h => (
-                    <th key={h} scope="col" style={thStyle}>
+                    <th key={h} scope="col">
                       {h}
                     </th>
                   ))}
                   {['Tax Rate %', 'Net Amount', 'Tax', 'Total'].map(h => (
-                    <th key={h} scope="col" className="text-right" style={thStyle}>
+                    <th key={h} scope="col" className="text-right">
                       {h}
                     </th>
                   ))}
@@ -190,119 +157,40 @@ export default function InputTaxReconciliation({
               <tbody>
                 {!hasData ? (
                   <tr>
-                    <td
-                      colSpan={12}
-                      style={{ textAlign: 'center', padding: '2rem', color: 'var(--gray-500)' }}
-                    >
+                    <td colSpan={12} className="cc-empty-row-text">
                       No Credit card commission / Input Tax data available
                     </td>
                   </tr>
                 ) : (
                   <tr>
                     <td>
-                      <span
-                        style={{
-                          background: 'var(--teal-light)',
-                          color: 'var(--teal)',
-                          border: '1px solid var(--btn-ok-border, #99f6e4)',
-                          borderRadius: '4px',
-                          padding: '0.15rem 0.5rem',
-                          fontSize: '0.78rem',
-                          fontWeight: 700,
-                        }}
-                      >
-                        ACTX
-                      </span>
+                      <span className="cc-badge-teal-bold">ACTX</span>
                     </td>
-                    <td style={{ fontFamily: "'DM Mono', monospace", fontSize: '0.83rem' }}>
-                      {headerData.DocNo || '—'}
-                    </td>
+                    <td className="cc-mono-text">{headerData.DocNo || '—'}</td>
                     <td>{headerData.DocDate || '—'}</td>
-                    <td style={{ maxWidth: '160px', whiteSpace: 'normal' }}>
-                      {company.name || '—'}
-                    </td>
-                    <td style={{ fontFamily: "'DM Mono', monospace", fontSize: '0.83rem' }}>
-                      {company.taxId || '—'}
-                    </td>
+                    <td className="cc-max-w-160-wrap">{company.name || '—'}</td>
+                    <td className="cc-mono-text">{company.taxId || '—'}</td>
                     <td>{company.branch || '—'}</td>
-                    <td
-                      style={{
-                        maxWidth: '180px',
-                        whiteSpace: 'normal',
-                        color: 'var(--text-2)',
-                        fontSize: '0.83rem',
-                      }}
-                    >
-                      {description || '—'}
-                    </td>
+                    <td className="cc-desc-cell">{description || '—'}</td>
                     <td>
-                      <span
-                        style={{
-                          background: 'var(--primary-light)',
-                          color: 'var(--primary)',
-                          border: '1px solid var(--primary-mid)',
-                          borderRadius: '4px',
-                          padding: '0.15rem 0.5rem',
-                          fontSize: '0.78rem',
-                          fontWeight: 600,
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {taxProfile}
-                      </span>
+                      <span className="cc-badge-primary-nowrap">{taxProfile}</span>
                     </td>
-                    <td className="text-right" style={{ fontFamily: "'DM Mono', monospace" }}>
-                      {fmt(taxRate)}
-                    </td>
-                    <td
-                      className="text-right"
-                      style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600 }}
-                    >
-                      {fmt(netAmount)}
-                    </td>
-                    <td
-                      className="text-right"
-                      style={{ fontFamily: "'DM Mono', monospace", fontWeight: 600 }}
-                    >
-                      {fmt(taxAmount)}
-                    </td>
-                    <td
-                      className="text-right"
-                      style={{
-                        fontFamily: "'DM Mono', monospace",
-                        fontWeight: 700,
-                        color: 'var(--teal)',
-                      }}
-                    >
-                      {fmt(total)}
-                    </td>
+                    <td className="text-right cc-mono-only">{fmt(taxRate)}</td>
+                    <td className="text-right cc-mono-semi-bold">{fmt(netAmount)}</td>
+                    <td className="text-right cc-mono-semi-bold">{fmt(taxAmount)}</td>
+                    <td className="text-right cc-mono-bold-teal">{fmt(total)}</td>
                   </tr>
                 )}
               </tbody>
               {hasData && (
                 <tfoot>
                   <tr className="jv-total-row">
-                    <td colSpan={9} style={{ textAlign: 'right', fontWeight: 700 }}>
+                    <td colSpan={9} className="text-right cc-font-bold">
                       TOTAL:
                     </td>
-                    <td
-                      className="text-right"
-                      style={{ fontWeight: 700, fontFamily: "'DM Mono', monospace" }}
-                    >
-                      {fmt(netAmount)}
-                    </td>
-                    <td
-                      className="text-right"
-                      style={{ fontWeight: 700, fontFamily: "'DM Mono', monospace" }}
-                    >
-                      {fmt(taxAmount)}
-                    </td>
-                    <td
-                      className="text-right"
-                      style={{ fontWeight: 700, fontFamily: "'DM Mono', monospace" }}
-                    >
-                      {fmt(total)}
-                    </td>
+                    <td className="text-right cc-mono-bold">{fmt(netAmount)}</td>
+                    <td className="text-right cc-mono-bold">{fmt(taxAmount)}</td>
+                    <td className="text-right cc-mono-bold">{fmt(total)}</td>
                   </tr>
                 </tfoot>
               )}
@@ -331,80 +219,28 @@ export default function InputTaxReconciliation({
 
       {showConfirm &&
         createPortal(
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'var(--modal-overlay-bg, rgba(0,0,0,0.45))',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 9999,
-            }}
-          >
-            <div className="modal-box" style={{ textAlign: 'center' }}>
-              <div
-                style={{
-                  marginBottom: '0.75rem',
-                  color: 'var(--teal)',
-                  display: 'flex',
-                  justifyContent: 'center',
-                }}
-              >
+          <div className="cc-modal-overlay-container">
+            <div className="modal-box">
+              <div className="cc-modal-icon-teal">
                 <FileText size={36} />
               </div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.65rem' }}>
-                Add Input Tax Reconciliation
-              </div>
-              <p
-                style={{
-                  color: 'var(--text-2)',
-                  fontSize: '0.92rem',
-                  marginBottom: '1rem',
-                  lineHeight: 1.7,
-                }}
-              >
+              <div className="cc-modal-title">Add Input Tax Reconciliation</div>
+              <p className="cc-modal-body-text">
                 This item will be automatically added to the system as an
                 <br />
                 <strong>Input Tax Reconciliation</strong>.<br />
                 Do you want to proceed?
               </p>
-              <div
-                style={{
-                  background: 'var(--teal-light)',
-                  border: '1px solid var(--btn-ok-border, #99f6e4)',
-                  borderRadius: '6px',
-                  padding: '0.55rem 0.85rem',
-                  marginBottom: '1.25rem',
-                  color: 'var(--teal)',
-                  fontSize: '0.82rem',
-                  textAlign: 'left',
-                  display: 'flex',
-                  gap: '0.5rem',
-                  alignItems: 'flex-start',
-                }}
-              >
-                <Flag size={14} style={{ marginTop: '0.15rem', flexShrink: 0 }} />
+              <div className="cc-modal-info-box-teal">
+                <Flag size={14} className="cc-info-icon-flag" />
                 <span>
                   After confirmation, the system will <strong>complete the entire process</strong>{' '}
                   and return to the start page automatically.
                 </span>
               </div>
               {submitError && (
-                <div
-                  style={{
-                    background: 'var(--btn-err-bg, #fef2f2)',
-                    border: '1px solid var(--btn-err-border, #fca5a5)',
-                    borderRadius: '6px',
-                    padding: '0.6rem 0.85rem',
-                    marginBottom: '1.25rem',
-                    color: 'var(--btn-err-text, #b91c1c)',
-                    fontSize: '0.85rem',
-                    textAlign: 'left',
-                  }}
-                >
-                  <AlertCircle size={14} style={{ marginRight: '0.4rem', flexShrink: 0 }} />{' '}
-                  {submitError}
+                <div className="cc-modal-error-box">
+                  <AlertCircle size={14} className="cc-error-icon-alert" /> {submitError}
                 </div>
               )}
               <div className="modal-actions">
@@ -440,57 +276,17 @@ export default function InputTaxReconciliation({
 
       {showDiscardConfirm &&
         createPortal(
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'var(--modal-overlay-bg, rgba(0,0,0,0.45))',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 9999,
-            }}
-          >
-            <div className="modal-box" style={{ textAlign: 'center' }}>
-              <div
-                style={{
-                  marginBottom: '0.75rem',
-                  color: 'var(--rose)',
-                  display: 'flex',
-                  justifyContent: 'center',
-                }}
-              >
+          <div className="cc-modal-overlay-container">
+            <div className="modal-box">
+              <div className="cc-modal-icon-rose">
                 <Flag size={36} />
               </div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem' }}>
-                Skip Input Tax step?
-              </div>
-              <p
-                style={{
-                  color: 'var(--text-2)',
-                  fontSize: '0.92rem',
-                  marginBottom: '1rem',
-                  lineHeight: 1.7,
-                }}
-              >
+              <div className="cc-modal-title">Skip Input Tax step?</div>
+              <p className="cc-modal-body-text">
                 You chose <strong>not to add Input Tax</strong> to the system.
               </p>
-              <div
-                style={{
-                  background: 'var(--btn-err-bg, #fef2f2)',
-                  border: '1px solid var(--btn-err-border, #fca5a5)',
-                  borderRadius: '6px',
-                  padding: '0.55rem 0.85rem',
-                  marginBottom: '1.5rem',
-                  color: 'var(--btn-err-text, #b91c1c)',
-                  fontSize: '0.82rem',
-                  textAlign: 'left',
-                  display: 'flex',
-                  gap: '0.5rem',
-                  alignItems: 'flex-start',
-                }}
-              >
-                <Flag size={14} style={{ marginTop: '0.15rem', flexShrink: 0 }} />
+              <div className="cc-modal-info-box-rose">
+                <Flag size={14} className="cc-info-icon-flag" />
                 <span>
                   This action will <strong>complete the entire process</strong> and return to the
                   start page.
@@ -506,8 +302,7 @@ export default function InputTaxReconciliation({
                 </button>
                 <button
                   type="button"
-                  className="btn-danger"
-                  style={{ background: 'var(--rose)', color: 'white' }}
+                  className="btn-danger cc-btn-danger-rose"
                   onClick={() => {
                     setShowDiscardConfirm(false)
                     toast.info('Process completed without adding Input Tax')

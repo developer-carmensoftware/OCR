@@ -1,4 +1,3 @@
-import type React from 'react'
 import { Calculator, RotateCw } from 'lucide-react'
 import Badge from '../common/Badge'
 import Card from '../common/Card'
@@ -45,7 +44,7 @@ interface SummaryRowProps {
   label: string
   isDiff: boolean
   tableVal: string
-  tableStyle?: React.CSSProperties
+  tableClassName?: string
   docVal: string
   onAdjust: () => void
   onChange: (v: string) => void
@@ -57,7 +56,7 @@ function SummaryRow({
   label,
   isDiff,
   tableVal,
-  tableStyle,
+  tableClassName,
   docVal,
   onAdjust,
   onChange,
@@ -72,7 +71,7 @@ function SummaryRow({
             <RotateCw size={14} /> {t.adjust}
           </button>
         )}
-        <span className={`ap-sum-from-table ${isDiff ? 'diff' : ''}`} style={tableStyle}>
+        <span className={`ap-sum-from-table ${isDiff ? 'diff' : ''} ${tableClassName || ''}`}>
           {tableVal}
         </span>
         <input
@@ -106,7 +105,7 @@ export default function AmountSummary({
       icon={<Calculator size={16} />}
       title={t.summaryAccount}
       right={
-        <div style={{ display: 'flex', gap: '0.4rem' }}>
+        <div className="ap-summary-badges">
           <Badge variant="success" pill={false}>
             {t.sumFromTable}
           </Badge>
@@ -136,7 +135,7 @@ export default function AmountSummary({
           onAdjust={() => adjustField(tgtDisc, discount, 'discountAmt')}
           onChange={v => updateHeader('totalDiscount', v)}
           onBlur={v => blurHeader('totalDiscount', v)}
-          tableStyle={{ color: isDiscDiff ? undefined : 'var(--rose)' }}
+          tableClassName={isDiscDiff ? '' : 'ap-sum-discount-no-diff'}
         />
         <SummaryRow
           t={t}
@@ -149,7 +148,7 @@ export default function AmountSummary({
           onBlur={v => blurHeader('taxAmount', v)}
         />
         <div className="ap-grand-total-row">
-          <span style={{ fontWeight: 800, fontSize: '1rem' }}>{t.grandTotal}</span>
+          <span className="ap-grand-total-label">{t.grandTotal}</span>
           <div className="ap-summary-values">
             {isGrandDiff && (
               <button
@@ -160,19 +159,11 @@ export default function AmountSummary({
                 <RotateCw size={14} /> {t.adjust}
               </button>
             )}
-            <span
-              style={{
-                fontFamily: 'IBM Plex Mono',
-                fontWeight: 800,
-                fontSize: '1rem',
-                color: isGrandDiff ? 'var(--rose)' : 'var(--text)',
-              }}
-            >
+            <span className={`ap-grand-total-table-val ${isGrandDiff ? 'diff' : ''}`}>
               {fmt(lineTotal)}
             </span>
             <input
-              className={`ap-sum-from-doc ${isGrandDiff ? 'diff' : ''}`}
-              style={{ fontSize: '0.95rem', fontWeight: 800 }}
+              className={`ap-sum-from-doc grand-total ${isGrandDiff ? 'diff' : ''}`}
               aria-label={t.grandTotal}
               value={headerData.grandTotal}
               onChange={e => updateHeader('grandTotal', e.target.value)}

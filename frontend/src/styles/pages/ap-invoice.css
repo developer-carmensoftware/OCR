@@ -1422,3 +1422,243 @@
   gap: 0.75rem;
   justify-content: center;
 }
+
+/* APAccountMappingStep / AmountSummary custom classes to replace inline styles */
+.ap-vendor-info-pill {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.15rem;
+  padding: 0.55rem 1rem;
+  border-right: 1px solid var(--ap-vendor-pill-border, #ddd6fe);
+  flex: 1;
+}
+
+.ap-vendor-info-pill.last {
+  border-right: none;
+}
+
+.ap-vendor-info-pill-label {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.68rem;
+  color: var(--ap-vendor-text-muted, #7c3aed);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ap-vendor-info-pill-value {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--ap-vendor-text, #1e1b4b);
+}
+
+.ap-account-card-title {
+  font-weight: 700;
+  font-size: 0.87rem;
+  color: var(--text);
+}
+
+.ap-account-card .field-label {
+  margin-bottom: 0.3rem;
+}
+
+.ap-account-body-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.6rem;
+}
+
+.ap-account-body-grid-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+.ap-static-field.highlight-primary {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.ap-static-field.highlight-emerald {
+  color: var(--emerald);
+  font-weight: 700;
+}
+
+.ap-mapping-step-container {
+  max-width: 1080px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  box-sizing: border-box;
+}
+
+.ap-vendor-info-bar {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 0;
+  background: var(--ap-vendor-bg, #f5f3ff);
+  border: 1.5px solid var(--ap-vendor-border, #c4b5fd);
+  border-radius: 12px;
+  padding: 0;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.ap-vendor-name-section {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem 1.1rem;
+  border-right: 1.5px solid var(--ap-vendor-border, #c4b5fd);
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.ap-vendor-icon-container {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--ap-vendor-icon-bg, #7c3aed);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.ap-vendor-display-name {
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--ap-vendor-text, #3b0764);
+}
+
+.ap-vendor-code {
+  font-size: 0.75rem;
+  color: var(--ap-vendor-text-muted, #7c3aed);
+  margin-top: 0.05rem;
+  font-weight: 600;
+}
+
+.ap-vendor-pills-container {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 0;
+  flex: 1;
+}
+
+.ap-invoice-desc-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.ap-invoice-desc-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--ap-vendor-text-muted, #7c3aed);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ap-invoice-desc-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.88rem;
+  border: 1.5px solid var(--ap-inv-desc-border, #c4b5fd);
+  border-radius: 8px;
+  background: var(--ap-inv-desc-bg, #faf5ff);
+  color: var(--ap-vendor-text, #1e1b4b);
+  outline: none;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.ap-invoice-desc-input:focus {
+  border-color: var(--ap-vendor-icon-bg, #7c3aed);
+  box-shadow: var(--ap-inv-desc-shadow, 0 0 0 3px #ede9fe);
+}
+
+.ap-fixed-gl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 1.25rem;
+}
+
+.ap-card-title-right {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.ap-card-title-sub {
+  font-size: 0.8rem;
+  color: var(--text-3);
+}
+
+.ap-acct-table th.col-description {
+  width: 40%;
+}
+
+.ap-acct-table th.col-dept {
+  width: 26%;
+}
+
+.ap-acct-table th.col-acc {
+  width: 26%;
+}
+
+.ap-acct-table th.col-actions {
+  width: 8%;
+}
+
+.ap-acct-table tbody tr.row-suggest {
+  background: var(--ap-suggest-bg, #f5f3ff);
+}
+
+.ap-acct-table tbody tr.row-error {
+  background: var(--ap-error-bg, #fff1f2);
+}
+
+.ap-acct-table td.ap-line-desc {
+  font-size: 0.83rem;
+  color: var(--text-2);
+  padding-left: 1rem;
+}
+
+.ap-summary-badges {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.ap-sum-discount-no-diff {
+  color: var(--rose) !important;
+}
+
+.ap-grand-total-label {
+  font-weight: 800;
+  font-size: 1rem;
+}
+
+.ap-grand-total-table-val {
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 800;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.ap-grand-total-table-val.diff {
+  color: var(--rose);
+}
+
+.ap-sum-from-doc.grand-total {
+  font-size: 0.95rem;
+  font-weight: 800;
+}

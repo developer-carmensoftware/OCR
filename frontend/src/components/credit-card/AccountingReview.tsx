@@ -140,7 +140,7 @@ export default function AccountingReview({
   return (
     <div>
       <div className="section-header">
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+        <span className="cc-step-title">
           <CheckCheck size={16} /> Step 4: Accounting Review (Journal Concept)
         </span>
       </div>
@@ -148,7 +148,7 @@ export default function AccountingReview({
       {hasMissing && (
         <div className="mapping-alert">
           <AlertTriangle size={16} />
-          <span style={{ flex: 1 }}>
+          <span className="cc-alert-text">
             Missing account mapping for: <strong>{unmappedFields.join(', ')}</strong>
           </span>
           <button type="button" className="btn btn-sm btn-danger" onClick={onGoMapping}>
@@ -159,7 +159,7 @@ export default function AccountingReview({
       {!rawConfig && (
         <div className="mapping-alert">
           <Info size={16} />
-          <span style={{ flex: 1 }}>No Account Mapping configured</span>
+          <span className="cc-alert-text">No Account Mapping configured</span>
           <button type="button" className="btn btn-sm btn-primary" onClick={onGoMapping}>
             Go to Mapping Settings
           </button>
@@ -172,17 +172,7 @@ export default function AccountingReview({
           <>
             Journal Details
             {accLoading && (
-              <span
-                style={{
-                  fontSize: '0.75rem',
-                  color: 'var(--text-4)',
-                  fontWeight: 400,
-                  marginLeft: '0.5rem',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.3rem',
-                }}
-              >
+              <span className="cc-loader-text">
                 <Loader2 size={12} className="animate-spin" /> Loading account names...
               </span>
             )}
@@ -202,24 +192,24 @@ export default function AccountingReview({
           <table className="data-table">
             <thead>
               <tr>
-                <th scope="col" style={{ width: 120 }}>
+                <th scope="col" className="w-120">
                   Dept. Code
                 </th>
-                <th scope="col" style={{ width: 120 }}>
+                <th scope="col" className="w-120">
                   Acc Code
                 </th>
                 <th scope="col">Account Name</th>
                 <th scope="col">Description</th>
-                <th scope="col" style={{ width: 90 }} className="text-center">
+                <th scope="col" className="text-center w-90">
                   Currency
                 </th>
-                <th scope="col" style={{ width: 110 }} className="text-right">
+                <th scope="col" className="text-right w-110">
                   Rate
                 </th>
-                <th scope="col" style={{ width: 140 }} className="text-right">
+                <th scope="col" className="text-right w-140">
                   Debit
                 </th>
-                <th scope="col" style={{ width: 140 }} className="text-right">
+                <th scope="col" className="text-right w-140">
                   Credit
                 </th>
               </tr>
@@ -230,10 +220,7 @@ export default function AccountingReview({
                 Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} cols={8} />)}
               {rows.length === 0 && !accLoading && (
                 <tr>
-                  <td
-                    colSpan={8}
-                    style={{ textAlign: 'center', padding: '2rem', color: 'var(--gray-500)' }}
-                  >
+                  <td colSpan={8} className="cc-empty-row-text">
                     No data — Please configure Account Mapping first
                   </td>
                 </tr>
@@ -242,21 +229,19 @@ export default function AccountingReview({
                 <tr key={i}>
                   <td className={!r.dept ? 'missing-cell animate-pulse' : ''}>
                     {r.dept || (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                      <span className="cc-missing-cell-text">
                         <AlertCircle size={12} /> MISSING
                       </span>
                     )}
                   </td>
                   <td className={!r.acc ? 'missing-cell animate-pulse' : ''}>
                     {r.acc || (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                      <span className="cc-missing-cell-text">
                         <AlertCircle size={12} /> MISSING
                       </span>
                     )}
                   </td>
-                  <td style={{ color: 'var(--text-3)', fontSize: '0.85rem' }}>
-                    {getAccName(r.acc)}
-                  </td>
+                  <td className="cc-account-name-cell">{getAccName(r.acc)}</td>
                   <td>{r.desc}</td>
                   <td className="text-center">THB</td>
                   <td className="text-right text-mono">1.00000000</td>
@@ -283,12 +268,7 @@ export default function AccountingReview({
           <button type="button" className="btn-cancel" onClick={onBack}>
             <ArrowLeft size={14} /> Back
           </button>
-          <button
-            type="button"
-            className="btn-cancel"
-            onClick={onGoMapping}
-            style={{ marginRight: 'auto' }}
-          >
+          <button type="button" className="btn-cancel cc-mr-auto" onClick={onGoMapping}>
             <Settings size={14} /> Mapping Settings
           </button>
           <button

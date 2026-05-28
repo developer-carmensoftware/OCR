@@ -57,7 +57,7 @@ interface GLCardRow {
   label: string
   value: string
   colSpan?: boolean
-  highlight?: string
+  highlight?: 'primary' | 'emerald'
 }
 interface GLCardProps {
   title: string
@@ -72,37 +72,12 @@ function fmtField(code?: string | null, desc?: string | null): string {
 
 function VendorInfoPill({ icon, label, value, last = false }: PillProps) {
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        gap: '0.15rem',
-        padding: '0.55rem 1rem',
-        borderRight: last ? 'none' : '1px solid var(--ap-vendor-pill-border, #ddd6fe)',
-        flex: 1,
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.3rem',
-          fontSize: '0.68rem',
-          color: 'var(--ap-vendor-text-muted, #7c3aed)',
-          fontWeight: 700,
-          textTransform: 'uppercase',
-          letterSpacing: '0.05em',
-        }}
-      >
+    <div className={`ap-vendor-info-pill ${last ? 'last' : ''}`}>
+      <div className="ap-vendor-info-pill-label">
         {icon}
         {label}
       </div>
-      <div
-        style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--ap-vendor-text, #1e1b4b)' }}
-      >
-        {value}
-      </div>
+      <div className="ap-vendor-info-pill-value">{value}</div>
     </div>
   )
 }
@@ -115,28 +90,21 @@ function GLAccountCard({ title, iconColor, rows }: GLCardProps) {
         <div className={`ap-account-icon ${iconColor}`}>
           <Database size={14} />
         </div>
-        <div style={{ fontWeight: 700, fontSize: '0.87rem', color: 'var(--text)' }}>{title}</div>
+        <div className="ap-account-card-title">{title}</div>
       </div>
       <div className="ap-account-body">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.6rem' }}>
+        <div className="ap-account-body-grid">
           {firstRow && (
             <div>
-              <div className="field-label" style={{ marginBottom: '0.3rem' }}>
-                {firstRow.label}
-              </div>
+              <div className="field-label">{firstRow.label}</div>
               <div className="ap-static-field">{firstRow.value}</div>
             </div>
           )}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+          <div className="ap-account-body-grid-pair">
             {pairRows.map(({ label, value, highlight }) => (
               <div key={label}>
-                <div className="field-label" style={{ marginBottom: '0.3rem' }}>
-                  {label}
-                </div>
-                <div
-                  className="ap-static-field"
-                  style={highlight ? { color: highlight, fontWeight: 700 } : undefined}
-                >
+                <div className="field-label">{label}</div>
+                <div className={`ap-static-field ${highlight ? `highlight-${highlight}` : ''}`}>
                   {value}
                 </div>
               </div>
@@ -183,82 +151,19 @@ export default function APAccountMappingStep({
   const docDate = headerData.documentDate || '—'
 
   return (
-    <div
-      style={{
-        maxWidth: 1080,
-        width: '100%',
-        margin: '0 auto',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '1.25rem',
-        boxSizing: 'border-box',
-      }}
-    >
+    <div className="ap-mapping-step-container">
       {/* Vendor info bar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'stretch',
-          flexWrap: 'wrap',
-          gap: '0',
-          background: 'var(--ap-vendor-bg, #f5f3ff)',
-          border: '1.5px solid var(--ap-vendor-border, #c4b5fd)',
-          borderRadius: '12px',
-          padding: '0',
-          overflow: 'hidden',
-          minWidth: 0,
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.6rem',
-            padding: '0.7rem 1.1rem',
-            borderRight: '1.5px solid var(--ap-vendor-border, #c4b5fd)',
-            flexShrink: 0,
-            minWidth: 0,
-          }}
-        >
-          <div
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: '8px',
-              background: 'var(--ap-vendor-icon-bg, #7c3aed)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
+      <div className="ap-vendor-info-bar">
+        <div className="ap-vendor-name-section">
+          <div className="ap-vendor-icon-container">
             <Building size={16} color="#fff" />
           </div>
           <div>
-            <div
-              style={{
-                fontWeight: 700,
-                fontSize: '0.92rem',
-                color: 'var(--ap-vendor-text, #3b0764)',
-              }}
-            >
-              {vendorDisplayName}
-            </div>
-            <div
-              style={{
-                fontSize: '0.75rem',
-                color: 'var(--ap-vendor-text-muted, #7c3aed)',
-                marginTop: '0.05rem',
-                fontWeight: 600,
-              }}
-            >
-              Code: {vendorCode}
-            </div>
+            <div className="ap-vendor-display-name">{vendorDisplayName}</div>
+            <div className="ap-vendor-code">Code: {vendorCode}</div>
           </div>
         </div>
-        <div
-          style={{ display: 'flex', alignItems: 'stretch', flexWrap: 'wrap', gap: '0', flex: 1 }}
-        >
+        <div className="ap-vendor-pills-container">
           <VendorInfoPill icon={<IdCard size={10} />} label="Tax ID" value={vendorTaxId} />
           <VendorInfoPill icon={<GitBranch size={10} />} label="Branch No" value={branchNo} />
           <VendorInfoPill icon={<FileText size={10} />} label="Document No." value={docNo} />
@@ -272,16 +177,8 @@ export default function APAccountMappingStep({
       </div>
 
       {/* Invoice description */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-        <label
-          style={{
-            fontSize: '0.72rem',
-            fontWeight: 700,
-            color: 'var(--ap-vendor-text-muted, #7c3aed)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-          }}
-        >
+      <div className="ap-invoice-desc-container">
+        <label className="ap-invoice-desc-label">
           <AlignLeft size={13} style={{ marginRight: '0.35rem' }} /> Invoice Description
         </label>
         <input
@@ -290,43 +187,19 @@ export default function APAccountMappingStep({
           onChange={e => updateHeader('invhDesc', e.target.value)}
           placeholder="Invoice description..."
           aria-label="Invoice Description"
-          style={{
-            width: '100%',
-            boxSizing: 'border-box',
-            padding: '0.55rem 0.85rem',
-            fontSize: '0.88rem',
-            border: '1.5px solid var(--ap-inv-desc-border, #c4b5fd)',
-            borderRadius: '8px',
-            background: 'var(--ap-inv-desc-bg, #faf5ff)',
-            color: 'var(--ap-vendor-text, #1e1b4b)',
-            outline: 'none',
-          }}
-          onFocus={e => {
-            e.target.style.borderColor = 'var(--ap-vendor-icon-bg, #7c3aed)'
-            e.target.style.boxShadow = 'var(--ap-inv-desc-shadow, 0 0 0 3px #ede9fe)'
-          }}
-          onBlur={e => {
-            e.target.style.borderColor = 'var(--ap-inv-desc-border, #c4b5fd)'
-            e.target.style.boxShadow = 'none'
-          }}
+          className="ap-invoice-desc-input"
         />
       </div>
 
       {/* Fixed GL accounts */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))',
-          gap: '1.25rem',
-        }}
-      >
+      <div className="ap-fixed-gl-grid">
         <GLAccountCard
           title={t.debitTax}
           iconColor="blue"
           rows={[
             { label: t.taxProfile, value: taxProfile, colSpan: true },
             { label: t.deptCode, value: debitDept },
-            { label: t.accountCode, value: debitAcc, highlight: 'var(--primary)' },
+            { label: t.accountCode, value: debitAcc, highlight: 'primary' },
           ]}
         />
         <GLAccountCard
@@ -335,7 +208,7 @@ export default function APAccountMappingStep({
           rows={[
             { label: t.vendorGroup, value: vendorGroup, colSpan: true },
             { label: t.deptCode, value: creditDept },
-            { label: t.accountCode, value: creditAcc, highlight: 'var(--emerald)' },
+            { label: t.accountCode, value: creditAcc, highlight: 'emerald' },
           ]}
         />
       </div>
@@ -347,8 +220,8 @@ export default function APAccountMappingStep({
             <Database size={15} color="#7c3aed" />
             {t.debitExpense}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-3)' }}>{t.expenseDesc}</span>
+          <div className="ap-card-title-right">
+            <span className="ap-card-title-sub">{t.expenseDesc}</span>
             <AISuggestBar
               onSuggest={onAISuggest}
               onAcceptAll={onAcceptAll}
@@ -361,16 +234,16 @@ export default function APAccountMappingStep({
           <table className="ap-acct-table">
             <thead>
               <tr>
-                <th scope="col" style={{ width: '40%' }}>
+                <th scope="col" className="col-description">
                   {t.description}
                 </th>
-                <th scope="col" style={{ width: '26%' }}>
+                <th scope="col" className="col-dept">
                   {t.deptCode}
                 </th>
-                <th scope="col" style={{ width: '26%' }}>
+                <th scope="col" className="col-acc">
                   {t.accountCode}
                 </th>
-                {hasSuggestions && <th scope="col" style={{ width: '8%' }}></th>}
+                {hasSuggestions && <th scope="col" className="col-actions"></th>}
               </tr>
             </thead>
             <tbody>
@@ -401,20 +274,10 @@ export default function APAccountMappingStep({
                   return (
                     <tr
                       key={ri}
-                      style={
-                        hasSuggest
-                          ? { background: 'var(--ap-suggest-bg, #f5f3ff)' }
-                          : hasError
-                            ? { background: 'var(--ap-error-bg, #fff1f2)' }
-                            : undefined
-                      }
+                      className={hasSuggest ? 'row-suggest' : hasError ? 'row-error' : undefined}
                     >
-                      <td
-                        style={{ fontSize: '0.83rem', color: 'var(--text-2)', paddingLeft: '1rem' }}
-                      >
-                        {item.description || '—'}
-                      </td>
-                      <td style={{ padding: '0.35rem 0.5rem' }}>
+                      <td className="ap-line-desc">{item.description || '—'}</td>
+                      <td>
                         <div
                           style={
                             missingDept
@@ -434,7 +297,7 @@ export default function APAccountMappingStep({
                           />
                         </div>
                       </td>
-                      <td style={{ padding: '0.35rem 0.5rem' }}>
+                      <td>
                         <div
                           style={
                             missingAcc
@@ -455,7 +318,7 @@ export default function APAccountMappingStep({
                         </div>
                       </td>
                       {hasSuggestions && (
-                        <td style={{ padding: '0.35rem 0.25rem', textAlign: 'center' }}>
+                        <td>
                           {hasSuggest && (
                             <div
                               style={{ display: 'flex', gap: '0.25rem', justifyContent: 'center' }}

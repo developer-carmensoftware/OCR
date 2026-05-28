@@ -60,24 +60,12 @@ export default function AccountMappingTable({
 }: Props) {
   return (
     <div className="section">
-      <div
-        className="section-title"
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+      <div className="section-title cc-section-title-container">
+        <div className="cc-flex-center-gap">
           <span>
             ACCOUNT CODE MAPPING{' '}
             {loadingOpts && (
-              <span
-                style={{
-                  marginLeft: '10px',
-                  fontSize: '0.8rem',
-                  color: 'var(--primary)',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.3rem',
-                }}
-              >
+              <span className="cc-loading-text-primary">
                 <Loader2 size={13} className="animate-spin" /> Loading account codes...
               </span>
             )}
@@ -94,106 +82,53 @@ export default function AccountMappingTable({
         />
       </div>
 
-      <div className="table-wrapper" style={{ paddingBottom: '0' }}>
-        <div
-          className="mapping-container"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '70px 140px minmax(0, 1fr) minmax(0, 1fr) auto',
-            gap: '0.5rem',
-            alignItems: 'center',
-            width: '100%',
-          }}
-        >
+      <div className="table-wrapper cc-pb-0">
+        <div className="cc-mapping-grid-container">
           <div />
           <div />
-          <div className="mapping-header" style={{ fontWeight: 600 }}>
-            Department Code
-          </div>
-          <div className="mapping-header" style={{ fontWeight: 600 }}>
-            Account Code
-          </div>
+          <div className="mapping-header">Department Code</div>
+          <div className="mapping-header">Account Code</div>
           <div />
 
           {/* Credit row — Account Receivable */}
+          <div className="mapping-type type-credit cc-mapping-type-credit">Credit</div>
           <div
-            className="mapping-type type-credit"
-            style={{
-              color: 'var(--primary)',
-              background: 'var(--primary-light)',
-              padding: '0.2rem 0.5rem',
-              borderRadius: '4px',
-              textAlign: 'center',
-              fontWeight: 'bold',
-            }}
-          >
-            Credit
-          </div>
-          <div
-            className="mapping-label clickable"
-            style={{ cursor: 'pointer', color: 'var(--primary)', textDecoration: 'underline' }}
+            className="mapping-label clickable cc-mapping-label-clickable"
             onClick={openAmountModal}
           >
             Account Receivable (Click to Map)
           </div>
-          <div style={{ gridColumn: 'span 3' }}>
+          <div className="cc-grid-span-3">
             <div
               id="amountMappingStatus"
-              style={{
-                fontSize: '0.85rem',
-                padding: '0.6rem 1rem',
-                borderRadius: '8px',
-                border: '1px solid',
-                display: 'flex',
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                gap: '0.5rem',
-                color: requiredMissingCount > 0 ? '#dc2626' : 'var(--teal)',
-                background:
-                  requiredMissingCount > 0 ? 'var(--btn-err-bg, #fff1f2)' : 'var(--teal-light)',
-                borderColor: requiredMissingCount > 0 ? '#fca5a5' : 'var(--teal)',
-              }}
+              className={`cc-mapping-status ${requiredMissingCount > 0 ? 'missing' : 'ready'}`}
             >
               {activeScan.paymentTypes.size === 0 ? (
                 <>
-                  <Info size={14} style={{ flexShrink: 0 }} />
+                  <Info size={14} className="cc-flex-shrink-0" />
                   <span>
                     Click <strong>Account Receivable</strong> to open mapping modal
                   </span>
                 </>
               ) : requiredMissingCount > 0 ? (
                 <>
-                  <AlertTriangle size={14} color="#dc2626" style={{ flexShrink: 0 }} />
+                  <AlertTriangle size={14} color="#dc2626" className="cc-flex-shrink-0" />
                   <span>
                     Found <strong>{activeScan.paymentTypes.size}</strong> items in document
                   </span>
-                  <span style={{ color: '#fca5a5' }}>·</span>
+                  <span className="cc-bullet-divider-missing">·</span>
                   <span>
                     <strong>{requiredMissingCount}</strong> pending mapping
                   </span>
-                  <span
-                    style={{
-                      marginLeft: 'auto',
-                      fontSize: '0.72rem',
-                      background: 'var(--rose)',
-                      color: 'white',
-                      padding: '2px 10px',
-                      borderRadius: '10px',
-                      fontWeight: 600,
-                      whiteSpace: 'nowrap',
-                      flexShrink: 0,
-                    }}
-                  >
-                    Required for this scan
-                  </span>
+                  <span className="cc-required-badge">Required for this scan</span>
                 </>
               ) : (
                 <>
-                  <CheckCircle2 size={14} style={{ flexShrink: 0 }} />
+                  <CheckCircle2 size={14} className="cc-flex-shrink-0" />
                   <span>
                     All <strong>{activeScan.paymentTypes.size}</strong> items mapped
                   </span>
-                  <span style={{ fontSize: '0.78rem', opacity: 0.75 }}>Ready for JV</span>
+                  <span className="cc-ready-subtext">Ready for JV</span>
                 </>
               )}
             </div>
@@ -235,39 +170,11 @@ export default function AccountMappingTable({
 
             return (
               <React.Fragment key={key}>
-                <div
-                  className="mapping-type type-debit"
-                  style={{
-                    color: '#d97706',
-                    background: 'var(--ap-include-bg, #fef3c7)',
-                    padding: '0.2rem 0.5rem',
-                    borderRadius: '4px',
-                    textAlign: 'center',
-                    fontWeight: 'bold',
-                  }}
-                >
-                  Debit
-                </div>
-                <div
-                  className="mapping-label"
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                >
+                <div className="mapping-type type-debit cc-mapping-type-debit">Debit</div>
+                <div className="mapping-label cc-label-flex-container">
                   <span>{LABEL_MAP[key]}</span>
                   {badge && (
-                    <span
-                      style={{
-                        fontSize: '0.75rem',
-                        color: badge.color,
-                        background: badge.bg,
-                        padding: '3px 8px',
-                        borderRadius: '4px',
-                        border: `1px solid ${badge.border}`,
-                        fontWeight: 600,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.4rem',
-                      }}
-                    >
+                    <span className="cc-history-badge">
                       <History size={11} /> {badge.label}
                     </span>
                   )}
@@ -292,26 +199,14 @@ export default function AccountMappingTable({
                     suggestedValue={suggestion?.acc ?? null}
                   />
                 </div>
-                <div style={{ display: 'flex', gap: '0.3rem' }}>
+                <div className="cc-suggestion-buttons">
                   {hasSuggestionButtons && (
                     <>
                       <button
                         type="button"
                         onClick={() => confirmMainSuggestion(key)}
                         title="Accept suggestion"
-                        style={{
-                          padding: '4px 10px',
-                          background: '#f0fdf4',
-                          color: '#15803d',
-                          border: '1px solid #86efac',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          fontSize: '0.78rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.3rem',
-                          fontWeight: 600,
-                        }}
+                        className="cc-btn-accept"
                       >
                         <Check size={13} />
                       </button>
@@ -319,19 +214,7 @@ export default function AccountMappingTable({
                         type="button"
                         onClick={() => rejectMainSuggestion(key)}
                         title="Reject and clear"
-                        style={{
-                          padding: '4px 10px',
-                          background: 'var(--btn-err-bg, #fff1f2)',
-                          color: 'var(--btn-err-text, #dc2626)',
-                          border: '1px solid var(--btn-err-border, #fecaca)',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          fontSize: '0.78rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.3rem',
-                          fontWeight: 600,
-                        }}
+                        className="cc-btn-reject"
                       >
                         <X size={13} />
                       </button>
