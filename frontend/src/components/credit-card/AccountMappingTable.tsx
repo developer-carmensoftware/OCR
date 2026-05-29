@@ -4,7 +4,7 @@ import CustomSearchSelect from '../common/CustomSearchSelect'
 import AISuggestBar from '../common/AISuggestBar'
 import type { FieldMapping } from '../../types/api'
 import type { MasterAccount, MasterDepartment } from '../../hooks/mapping/useMappingData'
-import type { MainMappings, ActiveScan } from '../../hooks/useMapping'
+import type { MainMappings, ActiveScan } from '../../hooks/mapping/useMapping'
 import type {
   MainMappingKey,
   Suggestion,

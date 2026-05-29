@@ -17,7 +17,7 @@ CRITICAL: Each payment/card type row = ONE separate JSON object inside the "deta
 Do NOT merge multiple rows into one object.
 
 Header fields to extract:
-- bank_companyname : ชื่อนิติบุคคลของธนาคาร (ผู้ออกเอกสาร) จาก header/footer ของธนาคาร — ไม่ใช่ชื่อร้านค้า
+- bank_company_name : ชื่อนิติบุคคลของธนาคาร (ผู้ออกเอกสาร) จาก header/footer ของธนาคาร — ไม่ใช่ชื่อร้านค้า
 - branch_no        : รหัสสาขาของธนาคาร (ถ้ามี)
 - bank_name        : ชื่อธนาคารภาษาไทย (กำหนดตายตัวในแต่ละ bank prompt)
 - doc_name         : document title (e.g. "ใบเสร็จรับเงิน/ใบกำกับภาษี")
@@ -35,7 +35,7 @@ Detail row fields (one object per card/payment type row):
 - total        : net amount credited to merchant per row (AMOUNT CREDIT TO MERCHANT / จำนวนเงินสุทธิ)
 
 Output structure:
-{"bank_companyname":…,"branch_no":…,"bank_name":…,"doc_name":…,"company_name":…,"doc_date":…,"doc_no":…,"merchant_name":…,"merchant_id":…,"details":[{"transaction":…,"pay_amt":…,"commis_amt":…,"tax_amt":…,"total":…}]}
+{"bank_company_name":…,"branch_no":…,"bank_name":…,"doc_name":…,"company_name":…,"doc_date":…,"doc_no":…,"merchant_name":…,"merchant_id":…,"details":[{"transaction":…,"pay_amt":…,"commis_amt":…,"tax_amt":…,"total":…}]}
 """
 
 _BASE_INTRO = (

@@ -16,9 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import SessionInfo, get_current_session
 from app.constants import Module
 from app.database import get_db
-from app.models.orm import APInvoice, CreditCard
+from app.models.orm import CreditCard
 from app.services import audit_service
 from app.services.audit_service import AuditAction
+from app.services.ap_invoice_service import mark_invoice_submitted
 from app.services.carmen_service import (
     CarmenAPIError,
     get_account_codes,
@@ -171,22 +172,12 @@ async def proxy_create_invoice(
     async with _carmen_errors("Carmen Invoice ล้มเหลว"):
         res = await post_invoice(body, session.carmen_token)
         if res and res.get("Code", 0) >= 0 and ap_invoice_id:
-            result = await db.execute(select(APInvoice).where(APInvoice.id == ap_invoice_id))
-            inv = result.scalar_one_or_none()
-            if inv:
-                inv.submitted_at = datetime.now(UTC).replace(tzinfo=None)  # type: ignore[assignment]
-                await db.commit()
-                logger.info(
-                    "Marked AP Invoice %s as submitted at %s", ap_invoice_id, inv.submitted_at
-                )
-
-                # Write audit log
-                await audit_service.log_action(
-                    session,
-                    AuditAction.SUBMIT,
-                    resource=Module.AP_INVOICE,
-                    resource_id=inv.doc_no or str(inv.id),
-                    ip_address=request.client.host if request.client else None,
-                )
-
+            await mark_invoice_submitted(db, ap_invoice_id)
+            await audit_service.log_action(
+                session,
+                AuditAction.SUBMIT,
+                resource=Module.AP_INVOICE,
+                resource_id=ap_invoice_id,
+                ip_address=request.client.host if request.client else None,
+            )
         return res

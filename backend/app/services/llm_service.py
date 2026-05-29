@@ -8,15 +8,13 @@ structured data extraction in a single API call.
 import base64
 import json
 import logging
-import pathlib
-import stat
-import tempfile
 
 from app.config import settings
 from app.constants import Module
 from app.llm.client import _strip_code_fences, call_vision_llm
 from app.llm.prompts import get_ocr_prompt
 from app.models import ExtractedCreditCardData
+from app.utils import debug_buffer
 from app.utils.mime import get_mime_type
 
 logger = logging.getLogger(__name__)
@@ -77,12 +75,7 @@ async def extract_from_image(
         raise ValueError("LLM returned empty string from vision model")
 
     if settings.app_debug:
-        tmp = pathlib.Path(tempfile.gettempdir()) / "last_llm_response.txt"
-        tmp.write_text(result_text, encoding="utf-8")
-        try:
-            tmp.chmod(stat.S_IRUSR | stat.S_IWUSR)
-        except Exception:
-            pass
+        debug_buffer.record(result_text, source="vision_llm")
 
     result_text = _strip_code_fences(result_text)
     data: dict = json.loads(result_text)

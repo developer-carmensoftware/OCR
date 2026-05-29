@@ -1,6 +1,9 @@
 import json
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.constants import ExpenseAccounts, Module
@@ -224,3 +227,19 @@ async def suggest_for_items(
         suggestions[item["index"]] = {"deptCode": dept, "accountCode": acc}
 
     return suggestions, True
+
+
+async def mark_invoice_submitted(db: "AsyncSession", ap_invoice_id: str) -> None:
+    """Mark an AP Invoice as submitted (set submitted_at = now)."""
+    from datetime import UTC, datetime
+
+    from sqlalchemy import select
+
+    from app.models.orm import APInvoice
+
+    result = await db.execute(select(APInvoice).where(APInvoice.id == ap_invoice_id))
+    inv = result.scalar_one_or_none()
+    if inv:
+        inv.submitted_at = datetime.now(UTC).replace(tzinfo=None)  # type: ignore[assignment]
+        await db.commit()
+        logger.info("Marked AP Invoice %s as submitted", ap_invoice_id)

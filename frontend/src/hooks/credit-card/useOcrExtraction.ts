@@ -18,7 +18,7 @@ export interface HeaderData {
   DocNo: string
   MerchantName: string
   MerchantId: string
-  BankCompanyname: string
+  BankCompanyName: string
   BranchNo: string
   [key: string]: string
 }
@@ -121,7 +121,7 @@ export function useOcrExtraction({
       DocNo: (ext.doc_no as string) || '',
       MerchantName: (ext.merchant_name as string) || '',
       MerchantId: (ext.merchant_id as string) || '',
-      BankCompanyname: (ext.bank_companyname as string) || '',
+      BankCompanyName: (ext.bank_company_name as string) || '',
       BranchNo: (ext.branch_no as string) || '',
     }
     setHeaderData(header)
@@ -136,7 +136,7 @@ export function useOcrExtraction({
     try {
       const bankCode =
         detectBankFromExtracted(ext as Record<string, string | null | undefined>) ||
-        detectBankFromCompanyName(ext.bank_companyname as string) ||
+        detectBankFromCompanyName(ext.bank_company_name as string) ||
         ''
       localStorage.setItem(
         'ocr_wizard_state',
@@ -146,7 +146,7 @@ export function useOcrExtraction({
       /* ignore */
     }
 
-    if (ext.bank_companyname || ext.branch_no) {
+    if (ext.bank_company_name || ext.branch_no) {
       try {
         const existing = JSON.parse(localStorage.getItem('accountingConfig') || '{}') as Record<
           string,
@@ -156,10 +156,10 @@ export function useOcrExtraction({
         const updatedCompany: Record<string, unknown> = {
           ...(existingCompany as Record<string, unknown>),
         }
-        if (ext.bank_companyname) updatedCompany.name = ext.bank_companyname as string
+        if (ext.bank_company_name) updatedCompany.name = ext.bank_company_name as string
         if (ext.branch_no) updatedCompany.branch = ext.branch_no as string
         existing.company = updatedCompany
-        const detectedBankCode = detectBankFromCompanyName(ext.bank_companyname as string)
+        const detectedBankCode = detectBankFromCompanyName(ext.bank_company_name as string)
         if (detectedBankCode && BANK_CODE_TO_NAME[detectedBankCode]) {
           existing.bank = BANK_CODE_TO_NAME[detectedBankCode]
         }

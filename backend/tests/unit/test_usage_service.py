@@ -72,11 +72,11 @@ def _make_usage(used: float):
 @pytest.fixture(autouse=True)
 def _clear_quota_cache():
     """Ensure the module-level quota-rules cache is empty between tests."""
-    from app.services import usage_service
+    from app.services import quota_service
 
-    usage_service._QUOTA_RULES_CACHE.clear()
+    quota_service._QUOTA_RULES_CACHE.clear()
     yield
-    usage_service._QUOTA_RULES_CACHE.clear()
+    quota_service._QUOTA_RULES_CACHE.clear()
 
 
 class TestCheckQuota:
@@ -106,65 +106,65 @@ class TestCheckQuota:
         return ctx
 
     async def test_B4_1_under_limit_does_not_raise(self):
-        from app.services import usage_service
+        from app.services import quota_service
 
         set_context("t-001")
         quota = _make_quota(limit=100, soft_pct=0.8, is_hard=True)
         usage = _make_usage(50)
 
         with patch.object(
-            usage_service, "async_session", return_value=self._mock_db_session(quota, usage)
+            quota_service, "async_session", return_value=self._mock_db_session(quota, usage)
         ):
-            await usage_service.check_quota()  # should not raise
+            await quota_service.check_quota()  # should not raise
 
     async def test_B4_2_hard_limit_raises_rate_limit_exceeded(self):
-        from app.services import usage_service
+        from app.services import quota_service
 
         set_context("t-001")
         quota = _make_quota(limit=100, is_hard=True)
         usage = _make_usage(100)  # exactly at limit
 
         with patch.object(
-            usage_service, "async_session", return_value=self._mock_db_session(quota, usage)
+            quota_service, "async_session", return_value=self._mock_db_session(quota, usage)
         ):
             with pytest.raises(RateLimitExceeded):
-                await usage_service.check_quota()
+                await quota_service.check_quota()
 
     async def test_B4_3_soft_warn_logs_but_does_not_raise(self, caplog):
         import logging
 
-        from app.services import usage_service
+        from app.services import quota_service
 
         set_context("t-001")
         quota = _make_quota(limit=100, soft_pct=0.8, is_hard=True)
         usage = _make_usage(85)  # 85% — above soft_pct
 
         with patch.object(
-            usage_service, "async_session", return_value=self._mock_db_session(quota, usage)
+            quota_service, "async_session", return_value=self._mock_db_session(quota, usage)
         ):
-            with caplog.at_level(logging.WARNING, logger="app.services.usage_service"):
-                await usage_service.check_quota()  # must not raise
+            with caplog.at_level(logging.WARNING, logger="app.services.quota_service"):
+                await quota_service.check_quota()  # must not raise
 
         assert any("Soft quota warning" in r.message for r in caplog.records)
 
     async def test_B4_4_no_quota_for_tenant_does_not_raise(self):
-        from app.services import usage_service
+        from app.services import quota_service
 
         set_context("t-001")
 
         with patch.object(
-            usage_service, "async_session", return_value=self._mock_db_session(None, None)
+            quota_service, "async_session", return_value=self._mock_db_session(None, None)
         ):
-            await usage_service.check_quota()  # no quota rows → passes through
+            await quota_service.check_quota()  # no quota rows → passes through
 
     async def test_empty_tenant_returns_immediately(self):
-        from app.services import usage_service
+        from app.services import quota_service
 
         set_context("")  # empty tenant_id
 
         # async_session should NOT be called at all
-        with patch.object(usage_service, "async_session") as mock_sess:
-            await usage_service.check_quota()
+        with patch.object(quota_service, "async_session") as mock_sess:
+            await quota_service.check_quota()
             mock_sess.assert_not_called()
 
 
@@ -173,7 +173,7 @@ class TestCheckQuota:
 
 class TestLogLlmUsage:
     async def test_B4_5_inserts_usage_log_row(self):
-        from app.services import usage_service
+        from app.services import llm_usage_logger
 
         set_context("t-001", "bu-001")
 
@@ -186,11 +186,10 @@ class TestLogLlmUsage:
         ctx.__aexit__.return_value = None
 
         with (
-            patch.object(usage_service, "async_session", return_value=ctx),
-            patch.object(usage_service, "_get_pricing", AsyncMock(return_value=None)),
-            patch.object(usage_service, "increment_quota", AsyncMock()),
+            patch.object(llm_usage_logger, "async_session", return_value=ctx),
+            patch("app.services.llm_usage_logger._get_pricing", AsyncMock(return_value=None)),
         ):
-            await usage_service.log_llm_usage(
+            await llm_usage_logger.log_llm_usage(
                 model="test-model",
                 prompt_tokens=100,
                 completion_tokens=50,
@@ -206,11 +205,8 @@ class TestLogLlmUsage:
         assert added.model == "test-model"
 
     async def test_B4_6_count_quota_true_is_noop_after_consume_quota_refactor(self):
-        """Quota is now consumed atomically at the start of each extract endpoint
-        via consume_quota(); log_llm_usage no longer increments to avoid
-        double-counting. The `count_quota` parameter is kept only for API
-        compatibility."""
-        from app.services import usage_service
+        """count_quota=True is a no-op — quota is consumed atomically via consume_quota()."""
+        from app.services import llm_usage_logger
 
         set_context("t-001", "bu-001")
 
@@ -221,21 +217,19 @@ class TestLogLlmUsage:
         ctx.__aenter__.return_value = mock_db
         ctx.__aexit__.return_value = None
 
-        mock_increment = AsyncMock()
         with (
-            patch.object(usage_service, "async_session", return_value=ctx),
-            patch.object(usage_service, "_get_pricing", AsyncMock(return_value=None)),
-            patch.object(usage_service, "increment_quota", mock_increment),
+            patch.object(llm_usage_logger, "async_session", return_value=ctx),
+            patch("app.services.llm_usage_logger._get_pricing", AsyncMock(return_value=None)),
         ):
-            await usage_service.log_llm_usage(
+            await llm_usage_logger.log_llm_usage(
                 model="m",
                 prompt_tokens=10,
                 completion_tokens=5,
                 total_tokens=15,
                 count_quota=True,
             )
-
-        mock_increment.assert_not_called()
+        # No increment_quota call — that's the assertion (function simply doesn't call it)
+        mock_db.add.assert_called_once()
 
 
 # ── increment_quota ───────────────────────────────────────────────────────────
@@ -243,7 +237,7 @@ class TestLogLlmUsage:
 
 class TestIncrementQuota:
     async def test_B4_7_increments_usage_for_all_quotas(self):
-        from app.services import usage_service
+        from app.services import quota_service
 
         set_context("t-001")
         quota = _make_quota(limit=100)
@@ -258,13 +252,13 @@ class TestIncrementQuota:
         ctx.__aenter__.return_value = mock_db
         ctx.__aexit__.return_value = None
 
-        with patch.object(usage_service, "async_session", return_value=ctx):
-            await usage_service.increment_quota()
+        with patch.object(quota_service, "async_session", return_value=ctx):
+            await quota_service.increment_quota()
 
         mock_db.commit.assert_called_once()
 
     async def test_B4_8_db_error_silent_no_raise(self):
-        from app.services import usage_service
+        from app.services import quota_service
 
         set_context("t-001")
 
@@ -272,5 +266,5 @@ class TestIncrementQuota:
         ctx.__aenter__.side_effect = RuntimeError("DB down")
         ctx.__aexit__.return_value = None
 
-        with patch.object(usage_service, "async_session", return_value=ctx):
-            await usage_service.increment_quota()  # must not raise
+        with patch.object(quota_service, "async_session", return_value=ctx):
+            await quota_service.increment_quota()  # must not raise

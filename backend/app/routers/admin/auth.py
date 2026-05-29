@@ -3,30 +3,15 @@
 import logging
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel
 
 from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
+from app.models.schemas import LoginRequest, LoginResponse, MFAVerifyRequest
 from app.routers.admin.deps import get_current_admin
 from app.services import admin_auth_service as svc
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["Admin Auth"])
-
-
-class LoginRequest(BaseModel):
-    email: str
-    password: str
-
-
-class LoginResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    admin_id: str
-    email: str
-    roles: list[str]
-    tenant_scope: str
-    mfa_required: bool
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -92,10 +77,6 @@ async def admin_logout(admin: AdminPrincipal = Depends(get_current_admin)):
 
 
 # ── MFA (Phase 1.5 stub) ─────────────────────────────────────────────────────
-
-
-class MFAVerifyRequest(BaseModel):
-    totp_code: str
 
 
 @router.post("/mfa/verify")

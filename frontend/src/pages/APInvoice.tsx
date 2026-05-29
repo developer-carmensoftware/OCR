@@ -18,7 +18,7 @@ import APFieldMappingStep from '../components/ap-invoice/APFieldMappingStep'
 import APReviewStep from '../components/ap-invoice/APReviewStep'
 import APAccountMappingStep from '../components/ap-invoice/APAccountMappingStep'
 import APSuccessStep from '../components/ap-invoice/APSuccessStep'
-import { useAPInvoice } from '../hooks/useAPInvoice'
+import { useAPInvoice } from '../hooks/ap-invoice'
 import { AP_STEPS } from '../constants/apInvoice'
 import type { APColumnKey, APFieldKey } from '../constants/apInvoice'
 
@@ -95,18 +95,18 @@ export default function APInvoice() {
   return (
     <>
       <CustomModal
-        show={!!modal.show}
-        title={modal.title as string}
-        message={modal.message as string}
-        type={modal.type as 'info' | 'success' | 'warning' | 'error'}
-        confirmText={modal.confirmText as string}
-        cancelText={modal.cancelText as string | undefined}
-        onConfirm={modal.onConfirm as (() => void) | undefined}
-        onCancel={modal.onCancel as (() => void) | undefined}
-        inputLabel={modal.inputLabel as string | undefined}
-        inputValue={modal.inputValue as string | undefined}
-        onInputChange={modal.onInputChange as ((v: string) => void) | undefined}
-        inputPlaceholder={modal.inputPlaceholder as string | undefined}
+        show={modal.show}
+        title={modal.show ? modal.title : ''}
+        message={modal.show ? modal.message : ''}
+        type={modal.show ? modal.type : 'info'}
+        confirmText={modal.show ? modal.confirmText : undefined}
+        cancelText={modal.show ? modal.cancelText : undefined}
+        onConfirm={modal.show ? modal.onConfirm : undefined}
+        onCancel={modal.show ? modal.onCancel : undefined}
+        inputLabel={modal.show ? modal.inputLabel : undefined}
+        inputValue={modal.show ? modal.inputValue : undefined}
+        onInputChange={modal.show ? modal.onInputChange : undefined}
+        inputPlaceholder={modal.show ? modal.inputPlaceholder : undefined}
       />
 
       <CustomModal

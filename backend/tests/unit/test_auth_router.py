@@ -151,9 +151,11 @@ class TestExchangeRateLimit:
         for _ in range(limiter._max):
             limiter.check(req)
 
-        with pytest.raises(HTTPException) as exc:
+        from app.exceptions import RequestRateLimitExceeded
+
+        with pytest.raises(RequestRateLimitExceeded) as exc:
             limiter.check(req)
-        assert exc.value.status_code == 429
+        assert exc.value.retry_after == int(limiter._window)
 
     def test_different_ips_do_not_share_limit(self):
         self._reset()

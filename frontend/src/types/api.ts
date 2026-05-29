@@ -43,7 +43,7 @@ export interface ExtractedCreditCardData {
   doc_no: string | null
   merchant_name: string | null
   merchant_id: string | null
-  bank_companyname: string | null
+  bank_company_name: string | null
   branch_no: string | null
   details: ExtractedDetailRow[]
   is_duplicate: boolean

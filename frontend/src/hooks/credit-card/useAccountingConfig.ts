@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
-import { getAccountingConfig } from '../lib/api/config'
-import type { FieldMapping } from '../types/api'
+import { getAccountingConfig } from '../../lib/api/config'
+import type { FieldMapping } from '../../types/api'
 
 export interface AccountingConfig {
   bank?: string

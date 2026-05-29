@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
-import { useModal } from './useModal'
-import { useFileUpload } from './credit-card/useFileUpload'
-import { useOcrExtraction } from './credit-card/useOcrExtraction'
-import { useOcrSubmission } from './credit-card/useOcrSubmission'
-import { showToast } from '../lib/toast'
-import type { JvRow } from './credit-card/useOcrSubmission'
+import { useModal } from '../useModal'
+import { useFileUpload } from './useFileUpload'
+import { useOcrExtraction } from './useOcrExtraction'
+import { useOcrSubmission } from './useOcrSubmission'
+import { showToast } from '../../lib/toast'
+import type { JvRow } from './useOcrSubmission'
 import type React from 'react'
 
 export function useOcrWizard() {

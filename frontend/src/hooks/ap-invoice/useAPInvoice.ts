@@ -1,22 +1,23 @@
 import { useState, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
-import { AP_I18N } from '../constants/apInvoice'
-import type { APLocale } from '../constants/apInvoice'
-import { showToast } from '../lib/toast'
-import { parseNum, fmt, round2 } from '../lib/format'
-import { saveAPVendorMapping } from '../lib/api/config'
-import { useAPExtraction } from './ap-invoice/useAPExtraction'
-import type { APLineItem } from './ap-invoice/useAPExtraction'
-import { useAPVendor } from './ap-invoice/useAPVendor'
-import { useAPValidation } from './ap-invoice/useAPValidation'
-import { useAPSubmission } from './ap-invoice/useAPSubmission'
+import { AP_I18N } from '../../constants/apInvoice'
+import type { APLocale } from '../../constants/apInvoice'
+import { showToast } from '../../lib/toast'
+import { parseNum, fmt, round2 } from '../../lib/format'
+import { saveAPVendorMapping } from '../../lib/api/config'
+import { useAPExtraction } from './useAPExtraction'
+import type { APLineItem } from './useAPExtraction'
+import { useAPVendor } from './useAPVendor'
+import { useAPValidation } from './useAPValidation'
+import { useAPSubmission } from './useAPSubmission'
+import type { ModalState } from '../../types/modal'
 
 export function useAPInvoice() {
   const [lang, setLang] = useState<APLocale>('en')
   const t = AP_I18N[lang]
 
   const [step, setStep] = useState(1)
-  const [modal, setModal] = useState<Record<string, unknown>>({ show: false })
+  const [modal, setModal] = useState<ModalState>({ show: false })
   const [isGrouped, setIsGrouped] = useState(false)
   const [originalLineItems, setOriginalLineItems] = useState<APLineItem[] | null>(null)
 

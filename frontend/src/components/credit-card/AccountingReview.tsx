@@ -17,7 +17,7 @@ import Card from '../common/Card'
 import Badge from '../common/Badge'
 import { fetchAccountCodes } from '../../lib/api/carmen'
 import { toNum, fmt } from '../../lib/format'
-import { useAccountingConfig } from '../../hooks/useAccountingConfig'
+import { useAccountingConfig } from '../../hooks/credit-card'
 import type { DetailRow } from './DetailTable'
 import type { JvRow } from '../../hooks/credit-card/useOcrSubmission'
 

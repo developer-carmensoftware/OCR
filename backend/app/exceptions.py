@@ -7,9 +7,11 @@ can map them to correct HTTP status codes.
 HTTP mapping (see main.py):
   400  — bad user input (validation, missing fields)
   409  — conflict (duplicate document)
+  413  — payload too large (file size)
   422  — unprocessable entity (LLM parse error, post-process failure)
+  429  — too many requests (quota or IP rate limit)
+  500  — unexpected internal error (everything else, incl. programming bugs)
   503  — upstream service unavailable (LLM API down, Carmen unreachable)
-  500  — unexpected internal error (everything else)
 """
 
 
@@ -44,3 +46,27 @@ class RateLimitExceeded(RuntimeError):
         self.bu_name = bu_name
         self.limit = limit
         super().__init__(f"BU '{bu_name}' has exceeded its monthly quota of {limit} LLM calls.")
+
+
+class RequestRateLimitExceeded(RuntimeError):
+    """Caller has exceeded per-IP request rate limit. → 429
+
+    Distinct from RateLimitExceeded (tenant quota) — this is short-window IP throttling.
+    """
+
+    def __init__(self, message: str = "Too many requests — please slow down.", retry_after: int = 60):
+        self.retry_after = retry_after
+        super().__init__(message)
+
+
+class FileTooLargeError(ValidationError):
+    """Uploaded file exceeds the configured size limit. → 413"""
+
+
+class TenantContextMissing(RuntimeError):
+    """Programmer error — service called without tenant context being set.
+
+    Raised by require_tenant() in app/context.py. Maps to 500 because the
+    middleware/dependency should have established context before this point;
+    reaching a service without it indicates a wiring bug, not user error.
+    """

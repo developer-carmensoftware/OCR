@@ -31,28 +31,36 @@ export function clearToken(): void {
   sessionStorage.removeItem(TOKEN_KEY)
 }
 
-let _unauthFired = false
-
-export async function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
-  const token = getStoredToken()
-
-  const headers = new Headers(options.headers || {})
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`)
-  }
-
-  const response = await fetch(resolveUrl(url), { ...options, headers })
-
-  if (response.status === 401) {
-    if (token) clearToken()
-    if (!_unauthFired) {
-      _unauthFired = true
-      window.dispatchEvent(new CustomEvent('ocr:unauthorized'))
-      setTimeout(() => {
-        _unauthFired = false
-      }, 2000)
-    }
-  }
-
-  return response
+export interface ApiClientOptions {
+  tokenProvider: () => string | null
+  unauthorizedEvent: string
+  onUnauthorized?: () => void
+  debounce401Ms?: number
 }
+
+export function createApiClient(opts: ApiClientOptions) {
+  let _fired = false
+  return async function fetchFn(url: string, options: RequestInit = {}): Promise<Response> {
+    const token = opts.tokenProvider()
+    const headers = new Headers(options.headers || {})
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+
+    const response = await fetch(resolveUrl(url), { ...options, headers })
+
+    if (response.status === 401) {
+      opts.onUnauthorized?.()
+      if (!_fired) {
+        _fired = true
+        window.dispatchEvent(new CustomEvent(opts.unauthorizedEvent))
+        setTimeout(() => { _fired = false }, opts.debounce401Ms ?? 2000)
+      }
+    }
+    return response
+  }
+}
+
+export const apiFetch = createApiClient({
+  tokenProvider: getStoredToken,
+  unauthorizedEvent: 'ocr:unauthorized',
+  onUnauthorized: clearToken,
+})

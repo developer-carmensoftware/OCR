@@ -36,7 +36,7 @@ const MOCK_EXTRACTED = {
   doc_no: 'DOC-001',
   merchant_name: 'MerchantX',
   merchant_id: 'M123',
-  bank_companyname: 'KBANK',
+  bank_company_name: 'KBANK',
   branch_no: '001',
   details: [{ desc: 'Payment', amount: 1000, type: 'purchase' }],
   is_duplicate: false,

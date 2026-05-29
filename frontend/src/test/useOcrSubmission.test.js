@@ -32,7 +32,7 @@ function makeProps(overrides = {}) {
       DocDate: '15/05/2024',
       MerchantName: 'MerchantX',
       MerchantId: 'M123',
-      BankCompanyname: 'BCO',
+      BankCompanyName: 'BCO',
       BranchNo: '001',
     },
     details: [],

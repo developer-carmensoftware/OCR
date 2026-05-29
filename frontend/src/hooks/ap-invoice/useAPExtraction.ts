@@ -6,6 +6,7 @@ import { toast } from '../../lib/toast'
 import { fmt } from '../../lib/format'
 import { EMPTY_HEADER, DEFAULT_MAPPINGS } from '../../constants/apInvoice'
 import type { APInvoiceHeader, APColumnKey, APFieldKey } from '../../constants/apInvoice'
+import type { ModalState } from '../../types/modal'
 
 export interface APLineItem {
   category?: string
@@ -29,7 +30,7 @@ export interface APLineItem {
 interface APExtractionProps {
   t: Record<string, string>
   setStep: (step: number) => void
-  setModal: (config: Record<string, unknown>) => void
+  setModal: (state: ModalState) => void
   loadVendors?: (() => void) | null
   vendorDbByTax?: Record<string, unknown>
 }

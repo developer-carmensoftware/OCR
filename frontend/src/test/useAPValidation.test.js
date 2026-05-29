@@ -1,3 +1,6 @@
+/* eslint-disable react-hooks/rules-of-hooks --
+   useAPValidation is a pure computation function (no React hooks inside); it's
+   only `use`-prefixed by naming convention, so calling it directly in tests is safe. */
 import { describe, it, expect } from 'vitest'
 import { useAPValidation } from '../hooks/ap-invoice/useAPValidation'
 

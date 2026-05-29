@@ -78,7 +78,7 @@ export function detectBankFromExtracted(
 ): BankCode | null {
   if (!ext) return null
 
-  const nameSignals = [ext.bank_companyname, ext.bank_name, ext.company_name]
+  const nameSignals = [ext.bank_company_name, ext.bank_name, ext.company_name]
   for (const name of nameSignals) {
     const detected = detectBankFromCompanyName(name)
     if (detected) return BANK_CODE_MAP[detected]

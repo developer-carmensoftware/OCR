@@ -8,8 +8,7 @@ export interface Column<T> {
   align?: 'left' | 'right' | 'center'
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-interface DataTableProps<T = any> {
+interface DataTableProps<T = Record<string, unknown>> {
   columns: Column<T>[]
   rows: T[]
   pageSize?: number
@@ -24,8 +23,7 @@ function getCell(row: unknown, key: string): unknown {
   }, row)
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function DataTable<T = any>({
+export default function DataTable<T = Record<string, unknown>>({
   columns,
   rows,
   pageSize = 50,

@@ -3,8 +3,9 @@
  * Uses a distinct sessionStorage key so admin and OCR sessions never collide.
  */
 
+import { createApiClient } from './client'
+
 const ADMIN_TOKEN_KEY = 'ocr_admin_token'
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '')
 
 export function getAdminToken(): string | null {
   return sessionStorage.getItem(ADMIN_TOKEN_KEY)
@@ -19,26 +20,12 @@ export function clearAdminToken(): void {
   sessionStorage.removeItem('ocr_admin_user')
 }
 
-function resolveUrl(url: string): string {
-  if (/^https?:\/\//i.test(url)) return url
-  if (!API_BASE) return url
-  return url.startsWith('/') ? `${API_BASE}${url}` : `${API_BASE}/${url}`
-}
-
-export async function adminFetch(url: string, options: RequestInit = {}): Promise<Response> {
-  const token = getAdminToken()
-  const headers = new Headers(options.headers || {})
-  if (token) headers.set('Authorization', `Bearer ${token}`)
-
-  const response = await fetch(resolveUrl(url), { ...options, headers })
-
-  if (response.status === 401) {
-    clearAdminToken()
-    window.dispatchEvent(new CustomEvent('admin:unauthorized'))
-  }
-
-  return response
-}
+export const adminFetch = createApiClient({
+  tokenProvider: getAdminToken,
+  unauthorizedEvent: 'admin:unauthorized',
+  onUnauthorized: clearAdminToken,
+  debounce401Ms: 0,
+})
 
 // ── Typed helpers ─────────────────────────────────────────────────────────────
 

@@ -1647,6 +1647,63 @@
   font-size: 1rem;
 }
 
+/* AccountMappingTable — extracted inline styles */
+.ap-field-error-ring {
+  border-radius: 7px;
+  outline: 2px solid var(--ap-error-border, #fca5a5);
+}
+
+.ap-suggest-btn {
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  border-width: 1px;
+  border-style: solid;
+}
+
+.ap-suggest-btn--ok {
+  background: var(--btn-ok-bg, #f0fdf4);
+  color: var(--btn-ok-text, #15803d);
+  border-color: var(--btn-ok-border, #86efac);
+}
+
+.ap-suggest-btn--err {
+  background: var(--btn-err-bg, #fff1f2);
+  color: var(--btn-err-text, #dc2626);
+  border-color: var(--btn-err-border, #fca5a5);
+}
+
+.ap-suggest-actions {
+  display: flex;
+  gap: 0.25rem;
+  justify-content: center;
+}
+
+.ap-step-nav-end {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+}
+
+.ap-mapping-warning {
+  font-size: 0.75rem;
+  color: #b45309;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.btn:disabled,
+.btn[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .ap-grand-total-table-val {
   font-family: 'IBM Plex Mono', monospace;
   font-weight: 800;

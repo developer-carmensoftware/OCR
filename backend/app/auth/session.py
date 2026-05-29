@@ -11,11 +11,16 @@ JWT payload (v3 schema — tenant is (host, bu) pair, no separate BU id):
   iat / exp   — standard claims
 """
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from cryptography.fernet import Fernet, InvalidToken
 from jose import JWTError, jwt
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -93,3 +98,17 @@ def extract_user_id_from_token(carmen_token: str) -> str:
     """Carmen token format: <hash>|<user_uuid> — returns the UUID portion."""
     parts = carmen_token.split("|", 1)
     return parts[1] if len(parts) == 2 else carmen_token
+
+
+async def revoke_session_by_id(db: AsyncSession, session_id: str) -> bool:
+    """Deactivate an OcrSession row by ID. Returns True if found and revoked."""
+    from app.models.orm import OcrSession  # late import avoids circular dependency
+
+    result = await db.execute(select(OcrSession).where(OcrSession.id == session_id))
+    session = result.scalar_one_or_none()
+    if session:
+        session.is_active = False  # type: ignore[assignment]
+        await db.commit()
+        logger.info("Session revoked: %s", session_id)
+        return True
+    return False

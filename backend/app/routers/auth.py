@@ -16,7 +16,6 @@ import uuid
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,11 +25,13 @@ from app.auth.session import (
     decode_session_jwt,
     encrypt_carmen_token,
     extract_user_id_from_token,
+    revoke_session_by_id,
 )
 from app.config import settings
 from app.constants import BlockedHosts
 from app.database import async_session, get_db, provision_tenant
 from app.models.orm import OcrSession, Tenant
+from app.models.schemas import ExchangeRequest, ExchangeResponse
 from app.services.rate_limit_service import InMemoryRateLimiter
 from app.services.usage_service import upsert_tenant_quota
 
@@ -143,22 +144,6 @@ async def _validate_token(token: str, carmen_uri: str) -> None:
         raise HTTPException(status_code=502, detail="Cannot reach Carmen to validate token")
 
 
-# ── Schemas ───────────────────────────────────────────────────────────────────
-
-
-class ExchangeRequest(BaseModel):
-    token: str
-    bu: str
-    user: str = ""
-    uri: str = ""
-
-
-class ExchangeResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    expires_in: int
-    user: dict
-
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
@@ -247,15 +232,11 @@ async def revoke_session(
     except ValueError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    result = await db.execute(select(OcrSession).where(OcrSession.id == payload.get("sid")))
-    session = result.scalar_one_or_none()
-    if session:
-        session.is_active = False  # type: ignore[assignment]
-        await db.commit()
+    sid = str(payload.get("sid", ""))
+    revoked = await revoke_session_by_id(db, sid)
+    if revoked:
         from app.auth.dependencies import invalidate_session_cache
-
-        invalidate_session_cache(str(session.id))
-        logger.info("Session revoked: %s", session.id)
+        invalidate_session_cache(sid)
     return {"ok": True}
 
 

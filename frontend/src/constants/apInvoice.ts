@@ -192,6 +192,10 @@ export const AP_I18N: Record<APLocale, APTranslations> = {
     invDescMsg:
       'การเพิ่มคำอธิบายใบแจ้งหนี้ช่วยให้ AI แนะนำรหัสบัญชีได้แม่นยำขึ้น\nสามารถเพิ่มได้ที่ช่อง Invoice Description ด้านบน',
     backFillDesc: 'กลับเพื่อกรอกคำอธิบาย',
+    mappingWarning: 'กรุณาระบุรหัสแผนกและรหัสบัญชีให้ครบทุกรายการก่อนดำเนินการต่อ',
+    sending: 'กำลังส่ง...',
+    invDescLabel: 'คำอธิบายใบแจ้งหนี้',
+    invDescPlaceholder: 'ใส่คำอธิบาย...',
   },
   en: {
     appTitle: 'Carmen Cloud',
@@ -274,5 +278,9 @@ export const AP_I18N: Record<APLocale, APTranslations> = {
     invDescMsg:
       'Adding an Invoice Description helps AI suggest more accurate GL accounts.\nYou can add it in the Invoice Description field above.',
     backFillDesc: 'Back to fill description',
+    mappingWarning: 'Please provide both Department and Account codes for all line items before proceeding.',
+    sending: 'Sending...',
+    invDescLabel: 'Invoice Description',
+    invDescPlaceholder: 'Invoice description...',
   },
 }

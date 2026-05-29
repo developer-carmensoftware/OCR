@@ -36,6 +36,21 @@ current_scheduler_tenant: ContextVar[str] = ContextVar("current_scheduler_tenant
 current_request_id: ContextVar[str] = ContextVar("current_request_id", default="")
 
 
+def require_tenant() -> str:
+    """Return the current tenant_id or raise TenantContextMissing.
+
+    Use this at the entry of every service function that touches tenant-scoped data,
+    so a missing/empty context becomes a loud 500 (wiring bug) instead of a silent
+    cross-tenant query with tenant_id=''.
+    """
+    tid = current_tenant_id.get("")
+    if not tid:
+        from app.exceptions import TenantContextMissing
+
+        raise TenantContextMissing("tenant_id not set in request context")
+    return tid
+
+
 class RequestIdFilter(logging.Filter):
     """Injects current_request_id into every log record — attach once to root logger."""
 

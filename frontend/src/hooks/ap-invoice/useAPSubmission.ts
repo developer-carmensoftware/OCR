@@ -3,6 +3,7 @@ import { fetchAccountCodes, fetchDepartments, submitAPInvoiceToCarmen } from '..
 import { apiFetch } from '../../lib/api/client'
 import { showToast, toast } from '../../lib/toast'
 import { parseNum } from '../../lib/format'
+import type { ModalState } from '../../types/modal'
 import { parseDateToISO } from '../../lib/date'
 import type { APLineItem } from './useAPExtraction'
 import type { APInvoiceHeader } from '../../constants/apInvoice'
@@ -133,7 +134,7 @@ function _parseCarmenDupError(msg: string): { invNo: string; vnCode: string } | 
 
 interface APSubmissionProps {
   setStep: (step: number) => void
-  setModal: (config: Record<string, unknown>) => void
+  setModal: (state: ModalState) => void
   headerData: APInvoiceHeader
   lineItems: APLineItem[]
   setLineItems: React.Dispatch<React.SetStateAction<APLineItem[]>>

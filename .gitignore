@@ -23,6 +23,10 @@ backend/scratch/
 backend/example_field/
 backend/logs/
 
+# Dev artifacts (refactor baselines, API schema export dumps)
+archives/
+swagger.json
+
 # Google Cloud credentials
 credentials/
 

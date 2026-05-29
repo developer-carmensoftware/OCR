@@ -238,10 +238,9 @@ async def health_check():
 async def debug_last_llm_response():
     if not settings.app_debug:
         raise HTTPException(status_code=403, detail="Debug mode is disabled")
-    import pathlib
-    import tempfile
+    from app.utils import debug_buffer
 
-    p = pathlib.Path(tempfile.gettempdir()) / "last_llm_response.txt"
-    if not p.exists():
-        return {"raw": "(no response saved yet)", "path": str(p)}
-    return {"raw": p.read_text(encoding="utf-8"), "path": str(p)}
+    entry = debug_buffer.latest()
+    if entry is None:
+        return {"raw": "(no response saved yet)", "source": None, "ts": None}
+    return {"raw": entry["raw"], "source": entry["source"], "ts": entry["ts"]}

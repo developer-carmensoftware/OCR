@@ -15,7 +15,7 @@ import {
 import { submitInputTax } from '../../lib/api/carmen'
 import { normalizeYearToCE } from '../../lib/date'
 import { toNum, fmt } from '../../lib/format'
-import { useAccountingConfig } from '../../hooks/useAccountingConfig'
+import { useAccountingConfig } from '../../hooks/credit-card'
 import type { DetailRow } from './DetailTable'
 
 interface Props {

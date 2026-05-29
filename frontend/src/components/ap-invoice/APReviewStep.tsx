@@ -1,18 +1,16 @@
 import type React from 'react'
 import {
   Building,
-  LayoutList,
   CheckCircle2,
   AlertCircle,
   ArrowLeft,
   AlertTriangle,
   ArrowRight,
-  Trash2,
 } from 'lucide-react'
-import { isNumFld, fmt } from '../../constants/apInvoice'
 import Card from '../common/Card'
 import VendorSearch from './APVendorSearch'
 import AmountSummary from './APAmountSummary'
+import APLineItemsTable from './APLineItemsTable'
 import type { TaxTypeValue } from './TaxTypeDropdown'
 import type { APColumnKey } from '../../constants/apInvoice'
 import type { Vendor } from '../../hooks/ap-invoice/useAPVendor'
@@ -133,9 +131,6 @@ export default function APReviewStep({ ctrl }: Props) {
   } = ctrl
 
   const vendorMapped = !!systemVendor.code
-  const mappedFieldValues = Object.values(fieldMappings)
-  const showFixedTaxPct = !mappedFieldValues.includes('taxPct')
-  const showFixedTaxType = !mappedFieldValues.includes('taxType')
 
   return (
     <>
@@ -170,177 +165,27 @@ export default function APReviewStep({ ctrl }: Props) {
         </div>
       </Card>
 
-      <Card
-        icon={<LayoutList size={16} />}
-        title={t.reviewTitle}
-        right={
-          <div className="ap-card-header-actions">
-            {(lineItems.length > 1 || isGrouped) &&
-              (isGrouped ? (
-                <button type="button" className="btn btn-sm btn-outline" onClick={ungroupItems}>
-                  Ungroup ({originalLineItemsCount} items)
-                </button>
-              ) : (
-                <>
-                  {hasMixedTaxTypes && (
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline"
-                      onClick={groupItemsByTaxType}
-                    >
-                      Group by tax type
-                    </button>
-                  )}
-                  <button type="button" className="btn btn-sm btn-outline" onClick={groupAllItems}>
-                    Group all
-                  </button>
-                </>
-              ))}
-            <span className="row-count">
-              {lineItems.length} {t.items}
-            </span>
-          </div>
-        }
-      >
-        <div className="table-wrapper">
-          <table className="ap-review-table">
-            <thead>
-              <tr>
-                {activeCols.map(c => (
-                  <th key={c} scope="col">
-                    {
-                      availableFields.find(f => f.value === fieldMappings[`col${c}` as APColumnKey])
-                        ?.label
-                    }
-                  </th>
-                ))}
-                {showFixedTaxPct && <th scope="col">{t.taxPct}</th>}
-                {showFixedTaxType && <th scope="col">{t.taxType}</th>}
-                <th scope="col" aria-label="Actions" />
-              </tr>
-            </thead>
-            <tbody className="stagger-rows" key={lineItems.length}>
-              {lineItems.map((item, ri) => (
-                <tr key={ri}>
-                  {activeCols.map(c => {
-                    const fld = fieldMappings[`col${c}` as APColumnKey]
-                    const numeric = isNumFld(fld)
-
-                    if (fld === 'taxType') {
-                      const tv = (item.taxType as TaxTypeValue | undefined) || 'Exclude'
-                      return (
-                        <td key={c}>
-                          <select
-                            aria-label="Tax type"
-                            className="ap-taxtype-select"
-                            value={tv}
-                            onChange={e => changeLineTaxType(ri, e.target.value as TaxTypeValue)}
-                          >
-                            <option value="Include">Include</option>
-                            <option value="Exclude">Exclude</option>
-                            <option value="None">None</option>
-                          </select>
-                        </td>
-                      )
-                    }
-
-                    return (
-                      <td key={c}>
-                        <input
-                          type="text"
-                          aria-label={fld}
-                          className={`ap-edit-input ${numeric ? 'numeric' : ''} ${fld === 'category' ? 'category' : ''}`}
-                          value={item[fld] || ''}
-                          onChange={e => updateItem(ri, fld, e.target.value)}
-                          onBlur={e => numeric && blurLineItem(ri, fld, e.target.value)}
-                        />
-                      </td>
-                    )
-                  })}
-                  {showFixedTaxPct && (
-                    <td>
-                      <input
-                        type="text"
-                        aria-label="taxPct"
-                        className="ap-edit-input numeric"
-                        value={item.taxPct || ''}
-                        onChange={e => updateItem(ri, 'taxPct', e.target.value)}
-                        onBlur={e => blurLineItem(ri, 'taxPct', e.target.value)}
-                      />
-                    </td>
-                  )}
-                  {showFixedTaxType && (
-                    <td>
-                      <select
-                        aria-label="Tax type"
-                        className="ap-taxtype-select"
-                        value={(item.taxType as TaxTypeValue | undefined) || 'Exclude'}
-                        onChange={e => changeLineTaxType(ri, e.target.value as TaxTypeValue)}
-                      >
-                        <option value="Include">Include</option>
-                        <option value="Exclude">Exclude</option>
-                        <option value="None">None</option>
-                      </select>
-                    </td>
-                  )}
-                  <td>
-                    <button
-                      type="button"
-                      className="ap-delete-item-btn"
-                      aria-label="Delete row"
-                      disabled={lineItems.length <= 1}
-                      onClick={() => removeItem(ri)}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                {activeCols.map((c, i) => {
-                  const fld = fieldMappings[`col${c}` as APColumnKey]
-                  if (i === 0)
-                    return (
-                      <td key="lbl" className="ap-total-label">
-                        {t.tableTotal}
-                      </td>
-                    )
-                  if (fld === 'lineSubTotal')
-                    return (
-                      <td key="st" className="ap-total-val-emerald">
-                        {fmt(sumLineSubTotal)}
-                      </td>
-                    )
-                  if (fld === 'lineTotal')
-                    return (
-                      <td key="lt" className="ap-total-val-rose-bold">
-                        {fmt(sumLineTotal)}
-                      </td>
-                    )
-                  if (fld === 'discountAmt')
-                    return (
-                      <td key="da" className="text-right">
-                        {fmt(sumDiscount)}
-                      </td>
-                    )
-                  if (fld === 'taxAmt')
-                    return (
-                      <td key="ta" className="text-right">
-                        {fmt(sumTax)}
-                      </td>
-                    )
-                  return <td key={`e${c}`} />
-                })}
-                {showFixedTaxPct && <td />}
-                {showFixedTaxType && <td />}
-                <td />
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </Card>
+      <APLineItemsTable
+        t={t}
+        lineItems={lineItems}
+        fieldMappings={fieldMappings}
+        activeCols={activeCols}
+        availableFields={availableFields}
+        sumLineSubTotal={sumLineSubTotal}
+        sumLineTotal={sumLineTotal}
+        sumDiscount={sumDiscount}
+        sumTax={sumTax}
+        isGrouped={isGrouped}
+        hasMixedTaxTypes={hasMixedTaxTypes}
+        originalLineItemsCount={originalLineItemsCount}
+        changeLineTaxType={changeLineTaxType}
+        updateItem={updateItem}
+        blurLineItem={blurLineItem}
+        groupAllItems={groupAllItems}
+        groupItemsByTaxType={groupItemsByTaxType}
+        ungroupItems={ungroupItems}
+        removeItem={removeItem}
+      />
 
       <div className="ap-review-summary-grid">
         <div className={isValid ? 'ap-valid-ok' : 'ap-valid-err'}>

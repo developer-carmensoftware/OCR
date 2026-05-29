@@ -18,7 +18,7 @@ export interface ExtractResult {
   doc_no: string
   merchant_name: string
   merchant_id: string
-  bank_companyname: string
+  bank_company_name: string
   branch_no: string
   is_duplicate: boolean
   details: ExtractedRow[]
@@ -65,7 +65,7 @@ export async function extractFromFile(file: File, bankType?: string): Promise<Ex
     doc_no: (card.doc_no as string) || '',
     merchant_name: (card.merchant_name as string) || '',
     merchant_id: (card.merchant_id as string) || '',
-    bank_companyname: (card.bank_companyname as string) || '',
+    bank_company_name: (card.bank_company_name as string) || '',
     branch_no: (card.branch_no as string) || '',
     is_duplicate: (card.is_duplicate as boolean) || false,
     details,

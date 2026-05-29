@@ -4,7 +4,18 @@ import { useAPExtraction } from '../hooks/ap-invoice/useAPExtraction'
 
 vi.mock('../lib/api/client', () => ({ apiFetch: vi.fn() }))
 vi.mock('../lib/api/config', () => ({ getAPVendorMapping: vi.fn() }))
-vi.mock('../lib/toast', () => ({ showToast: vi.fn() }))
+vi.mock('../lib/toast', () => ({
+  showToast: vi.fn(),
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn(),
+    info: vi.fn(),
+    dismiss: vi.fn(),
+    promise: vi.fn(),
+    loading: vi.fn(() => 'toast-id'),
+  },
+}))
 vi.mock('../lib/format', () => ({
   fmt: vi.fn(v => (v !== undefined && v !== '' ? String(v) : '')),
   parseNum: vi.fn(v => parseFloat(String(v).replace(/,/g, '')) || 0),
@@ -28,7 +39,7 @@ vi.mock('../constants/apInvoice', () => ({
 
 import { apiFetch } from '../lib/api/client'
 import { getAPVendorMapping } from '../lib/api/config'
-import { showToast } from '../lib/toast'
+import { showToast, toast } from '../lib/toast'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -128,7 +139,7 @@ describe('useAPExtraction', () => {
       await act(async () => {
         await result.current.runOCR(MOCK_FILE)
       })
-      expect(showToast).toHaveBeenCalledWith(expect.stringContaining('extracted'), 'success')
+      expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('Extracted'))
     })
 
     it('calls loadVendors after successful extraction', async () => {

@@ -94,8 +94,6 @@ async def call_vision_llm(
     module_id: str | None = None,
     image_size_bytes: int = 0,
     count_quota: bool = False,
-    # Legacy alias — callers that still pass usage_type will be ignored
-    usage_type: str | None = None,
 ) -> str:
     """
     Send a multimodal (vision) request to OpenRouter.
@@ -158,7 +156,7 @@ async def call_vision_llm(
             completion_tokens=response.usage.completion_tokens,
             total_tokens=response.usage.total_tokens,
             task_id=task_id,
-            module_id=module_id or usage_type,
+            module_id=module_id,
             duration_ms=(time.perf_counter() - start) * 1000,
             count_quota=count_quota,
         )
@@ -193,8 +191,6 @@ async def call_text_llm(
     task_id: str | None = None,
     module_id: str | None = None,
     max_tokens: int = 2048,
-    # Legacy alias
-    usage_type: str | None = None,
 ) -> dict | None:
     """
     Call the text/suggestion LLM with a single user prompt.
@@ -252,7 +248,7 @@ async def call_text_llm(
             completion_tokens=response.usage.completion_tokens,
             total_tokens=response.usage.total_tokens,
             task_id=task_id,
-            module_id=module_id or usage_type,
+            module_id=module_id,
             duration_ms=duration_ms,
         )
 

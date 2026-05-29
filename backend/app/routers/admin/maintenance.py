@@ -4,12 +4,11 @@ import logging
 from datetime import date
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
-from app.models.billing import LLMModelPricing
+from app.services.usage_service import list_model_pricing
 
 from .deps import require_permission
 
@@ -85,21 +84,5 @@ async def get_pricing_list(
     db: AsyncSession = Depends(get_db),
     _admin: AdminPrincipal = Depends(require_permission("configs", "read")),
 ):
-    result = await db.execute(select(LLMModelPricing).order_by(LLMModelPricing.model_name))
-    rows = result.scalars().all()
-    return {
-        "count": len(rows),
-        "data": [
-            {
-                "model_name": r.model_name,
-                "input_price_per_1m": float(str(r.input_price_per_1m)),
-                "output_price_per_1m": float(str(r.output_price_per_1m)),
-                "source": r.source,
-                "price_verified_at": r.price_verified_at.isoformat()
-                if r.price_verified_at
-                else None,
-                "updated_at": r.updated_at.isoformat() if r.updated_at else None,
-            }
-            for r in rows
-        ],
-    }
+    data = await list_model_pricing(db)
+    return {"count": len(data), "data": data}

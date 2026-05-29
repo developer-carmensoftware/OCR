@@ -16,7 +16,7 @@ import AISuggestBar from '../common/AISuggestBar'
 import '../../styles/components/payment-modal.css'
 import type { FieldMapping } from '../../types/api'
 import type { MasterAccount, MasterDepartment } from '../../hooks/mapping/useMappingData'
-import type { ActiveScan } from '../../hooks/useMapping'
+import type { ActiveScan } from '../../hooks/mapping/useMapping'
 import type { Suggestion } from '../../hooks/mapping/useMappingSuggestions'
 
 interface Props {

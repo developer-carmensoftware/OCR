@@ -1,7 +1,12 @@
+import logging
 import time
 from collections import defaultdict
 
-from fastapi import HTTPException, Request
+from fastapi import Request
+
+from app.exceptions import RequestRateLimitExceeded
+
+logger = logging.getLogger(__name__)
 
 
 class InMemoryRateLimiter:
@@ -39,10 +44,10 @@ class InMemoryRateLimiter:
         recent = [t for t in self._calls[ip] if now - t < self._window]
         if len(recent) >= self._max:
             self._calls[ip] = recent
-            raise HTTPException(
-                status_code=429,
-                detail="Too many login attempts. Please try again later.",
-                headers={"Retry-After": str(int(self._window))},
+            logger.info("rate_limit triggered: ip=%s window=%ss limit=%d", ip, self._window, self._max)
+            raise RequestRateLimitExceeded(
+                "Too many login attempts. Please try again later.",
+                retry_after=int(self._window),
             )
         recent.append(now)
         self._calls[ip] = recent

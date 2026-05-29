@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useOcrWizard } from '../hooks/useOcrWizard'
+import { useOcrWizard } from '../hooks/credit-card'
 import {
   StepWizard,
   FormActions,

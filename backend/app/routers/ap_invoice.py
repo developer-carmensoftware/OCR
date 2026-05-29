@@ -4,7 +4,6 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.auth import SessionInfo, get_current_session
@@ -13,12 +12,13 @@ from app.constants import Module
 from app.context import current_document_ref
 from app.database import async_session
 from app.models.orm import APInvoice, OCRTask, TaskStatus
+from app.models.schemas import SuggestGLRequest
 from app.services import audit_service
 from app.services.ap_invoice_service import extract_ap_invoice_data, suggest_for_items
 from app.services.audit_service import AuditAction
 from app.services.carmen_service import CarmenAPIError, get_account_codes, get_departments
 from app.services.file_service import file_service
-from app.services.task_service import create_task
+from app.services.task_service import create_task, mark_failed
 from app.services.usage_service import consume_quota
 from app.utils.date_parsing import parse_doc_date
 from app.utils.db_helpers import has_submitted_doc
@@ -106,12 +106,11 @@ async def extract_ap_invoice(
             else:
                 data["id"] = None
 
-            # Mark task as completed
             task_res = await db.execute(select(OCRTask).where(OCRTask.id == uuid.UUID(task_id)))
-            task = task_res.scalar_one_or_none()
-            if task:
-                task.status = TaskStatus.COMPLETED  # type: ignore
-                task.completed_at = datetime.now(UTC).replace(tzinfo=None)  # type: ignore
+            task_obj = task_res.scalar_one_or_none()
+            if task_obj:
+                task_obj.status = TaskStatus.COMPLETED  # type: ignore[assignment]
+                task_obj.completed_at = datetime.now(UTC).replace(tzinfo=None)  # type: ignore[assignment]
 
             await db.commit()
 
@@ -121,26 +120,8 @@ async def extract_ap_invoice(
     except Exception as exc:
         logger.error("Failed to process AP Invoice OCR task %s: %s", task_id, exc)
         async with async_session() as db:
-            task_res = await db.execute(select(OCRTask).where(OCRTask.id == uuid.UUID(task_id)))
-            task = task_res.scalar_one_or_none()
-            if task:
-                task.status = TaskStatus.FAILED  # type: ignore
-                task.error_message = str(exc)  # type: ignore
-                await db.commit()
+            await mark_failed(db, task_id, str(exc))
         raise
-
-
-class SuggestGLItem(BaseModel):
-    index: int
-    category: str = ""
-    description: str = ""
-    unit_price: float = 0.0
-
-
-class SuggestGLRequest(BaseModel):
-    items: list[SuggestGLItem]
-    invoice_desc: str = ""
-    vn_code: str = ""
 
 
 @router.post("/suggest")

@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.utils.date_parsing import format_doc_date
 
-from .enums import FieldName, TaskStatus
+from app.models.enums import FieldName, TaskStatus
 
 # ── Credit Card ───────────────────────────────────────────────────────────────
 
@@ -93,7 +93,7 @@ class ExtractedCreditCardData(BaseModel):
     doc_no: str | None = Field(None, description="เลขที่เอกสาร")
     merchant_name: str | None = Field(None, description="ชื่อร้านค้า")
     merchant_id: str | None = Field(None, description="หมายเลขร้านค้า")
-    bank_companyname: str | None = Field(None, description="ชื่อนิติบุคคลของธนาคาร")
+    bank_company_name: str | None = Field(None, description="ชื่อนิติบุคคลของธนาคาร")
     branch_no: str | None = Field(None, description="รหัสสาขา")
     details: list[ExtractedDetailRow] = Field(default_factory=list)
     is_duplicate: bool = Field(False)

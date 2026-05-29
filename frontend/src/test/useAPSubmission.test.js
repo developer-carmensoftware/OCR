@@ -8,7 +8,18 @@ vi.mock('../lib/api/carmen', () => ({
   submitAPInvoiceToCarmen: vi.fn(),
 }))
 vi.mock('../lib/api/client', () => ({ apiFetch: vi.fn() }))
-vi.mock('../lib/toast', () => ({ showToast: vi.fn() }))
+vi.mock('../lib/toast', () => ({
+  showToast: vi.fn(),
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn(),
+    info: vi.fn(),
+    dismiss: vi.fn(),
+    promise: vi.fn(),
+    loading: vi.fn(() => 'toast-id'),
+  },
+}))
 vi.mock('../lib/format', () => ({
   parseNum: vi.fn(v => parseFloat(String(v).replace(/,/g, '')) || 0),
 }))
@@ -18,7 +29,7 @@ vi.mock('../lib/date', () => ({
 
 import { fetchAccountCodes, fetchDepartments, submitAPInvoiceToCarmen } from '../lib/api/carmen'
 import { apiFetch } from '../lib/api/client'
-import { showToast } from '../lib/toast'
+import { showToast, toast } from '../lib/toast'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -164,7 +175,10 @@ describe('useAPSubmission', () => {
       await act(async () => {
         await result.current.handleGenerate()
       })
-      expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Failed'), 'error')
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringContaining('Could not send'),
+        expect.any(Object)
+      )
       expect(props.setModal).toHaveBeenCalledWith(expect.objectContaining({ show: true }))
     })
   })

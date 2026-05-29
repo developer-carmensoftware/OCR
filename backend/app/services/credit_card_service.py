@@ -45,7 +45,7 @@ async def finalize_extraction(
                 tenant_id=tenant_id,
                 bank_code=bank_code or None,
                 company_name=extracted.company_name,
-                bank_company_name=extracted.bank_companyname,
+                bank_company_name=extracted.bank_company_name,
                 doc_date=parse_doc_date(extracted.doc_date),
                 doc_no=extracted.doc_no,
                 branch_no=extracted.branch_no,
