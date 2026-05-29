@@ -108,24 +108,26 @@ async def proxy_gljv(
             )
             card = result.scalar_one_or_none()
             if card:
-                card.submitted_at = datetime.now(UTC).replace(tzinfo=None)
+                card.submitted_at = datetime.now(UTC).replace(tzinfo=None)  # type: ignore[assignment]
                 if doc_no:
-                    card.doc_no = doc_no
+                    card.doc_no = doc_no  # type: ignore[assignment]
                 if company_name:
-                    card.company_name = company_name
+                    card.company_name = company_name  # type: ignore[assignment]
                 if bank_code:
-                    card.bank_code = bank_code
+                    card.bank_code = bank_code  # type: ignore[assignment]
                 if branch_no:
-                    card.branch_no = branch_no
+                    card.branch_no = branch_no  # type: ignore[assignment]
                 await db.commit()
                 logger.info("Marked Credit Card %s as submitted", credit_card_id)
+
+                card_doc_no: str | None = card.doc_no  # type: ignore[assignment]
 
                 # Write audit log
                 await audit_service.log_action(
                     session,
                     AuditAction.SUBMIT,
                     resource="credit_card",
-                    resource_id=card.doc_no or str(card.id),
+                    resource_id=card_doc_no or str(card.id),
                     ip_address=request.client.host if request.client else None,
                 )
         return res

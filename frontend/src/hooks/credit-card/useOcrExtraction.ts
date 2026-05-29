@@ -60,7 +60,7 @@ export interface OcrExtractionHook {
   addRow: () => void
   deleteRow: (index: number) => void
   resetExtractionState: () => void
-  applyExtractedData: (ext: Record<string, unknown>, taskId?: string | null) => void
+  applyExtractedData: (ext: Record<string, unknown>, _taskId?: string | null) => void
 }
 
 import type React from 'react'
@@ -110,7 +110,7 @@ export function useOcrExtraction({
   const [originalDetails, setOriginalDetails] = useState<DetailRow[]>([])
   const [originalHeader, setOriginalHeader] = useState<Record<string, string>>({})
 
-  function applyExtractedData(ext: Record<string, unknown>, taskId: string | null = null) {
+  function applyExtractedData(ext: Record<string, unknown>, _taskId: string | null = null) {
     setCardId((ext.id as string) || null)
     const header: Record<string, string> = {
       DateProcessed: new Date().toLocaleDateString('en-GB'),
