@@ -1,6 +1,7 @@
 import { Calculator, RotateCw } from 'lucide-react'
 import Badge from '../common/Badge'
 import Card from '../common/Card'
+import NumericInput from '../common/NumericInput'
 import { fmt, round2 } from '../../constants/apInvoice'
 import type { APInvoiceHeader } from '../../constants/apInvoice'
 
@@ -74,12 +75,12 @@ function SummaryRow({
         <span className={`ap-sum-from-table ${isDiff ? 'diff' : ''} ${tableClassName || ''}`}>
           {tableVal}
         </span>
-        <input
+        <NumericInput
           className={`ap-sum-from-doc ${isDiff ? 'diff' : ''}`}
           aria-label={label}
           value={docVal}
-          onChange={e => onChange(e.target.value)}
-          onBlur={e => onBlur(e.target.value)}
+          onChange={onChange}
+          onBlur={onBlur}
         />
       </div>
     </div>
@@ -162,12 +163,12 @@ export default function AmountSummary({
             <span className={`ap-grand-total-table-val ${isGrandDiff ? 'diff' : ''}`}>
               {fmt(lineTotal)}
             </span>
-            <input
+            <NumericInput
               className={`ap-sum-from-doc grand-total ${isGrandDiff ? 'diff' : ''}`}
               aria-label={t.grandTotal}
               value={headerData.grandTotal}
-              onChange={e => updateHeader('grandTotal', e.target.value)}
-              onBlur={e => blurHeader('grandTotal', e.target.value)}
+              onChange={v => updateHeader('grandTotal', v)}
+              onBlur={v => blurHeader('grandTotal', v)}
             />
           </div>
         </div>

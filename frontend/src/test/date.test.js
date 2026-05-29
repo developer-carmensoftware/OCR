@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeYearToCE, parseDateToISO } from '../lib/date'
+import {
+  normalizeYearToCE,
+  parseDateToISO,
+  parseDDMMYYYYToDate,
+  formatDateToDDMMYYYY,
+} from '../lib/date'
 
 // ── normalizeYearToCE ──────────────────────────────────────────────────────────
 
@@ -94,5 +99,50 @@ describe('parseDateToISO', () => {
   it('returns an ISO-8601 string (ends with Z)', () => {
     const iso = parseDateToISO('01/01/2024')
     expect(iso).toMatch(/Z$/)
+  })
+})
+
+// ── parseDDMMYYYYToDate ──────────────────────────────────────────────────────────
+
+describe('parseDDMMYYYYToDate', () => {
+  it('parses a valid CE date', () => {
+    const d = parseDDMMYYYYToDate('15/05/2024')
+    expect(d.getFullYear()).toBe(2024)
+    expect(d.getMonth()).toBe(4) // 0-based May
+    expect(d.getDate()).toBe(15)
+  })
+
+  it('normalizes a Buddhist-era year to CE', () => {
+    const d = parseDDMMYYYYToDate('15/05/2567')
+    expect(d.getFullYear()).toBe(2024)
+  })
+
+  it('handles single-digit day/month', () => {
+    const d = parseDDMMYYYYToDate('1/2/2025')
+    expect(d.getMonth()).toBe(1)
+    expect(d.getDate()).toBe(1)
+  })
+
+  it('returns null for empty / malformed / wrong part count', () => {
+    expect(parseDDMMYYYYToDate('')).toBeNull()
+    expect(parseDDMMYYYYToDate(null)).toBeNull()
+    expect(parseDDMMYYYYToDate('15/05')).toBeNull()
+    expect(parseDDMMYYYYToDate('ab/cd/efgh')).toBeNull()
+  })
+
+  it('rejects overflow dates like 31/02', () => {
+    expect(parseDDMMYYYYToDate('31/02/2024')).toBeNull()
+  })
+})
+
+// ── formatDateToDDMMYYYY ─────────────────────────────────────────────────────────
+
+describe('formatDateToDDMMYYYY', () => {
+  it('zero-pads day and month', () => {
+    expect(formatDateToDDMMYYYY(new Date(2025, 1, 1))).toBe('01/02/2025')
+  })
+
+  it('round-trips with parseDDMMYYYYToDate', () => {
+    expect(formatDateToDDMMYYYY(parseDDMMYYYYToDate('15/05/2024'))).toBe('15/05/2024')
   })
 })

@@ -1,6 +1,7 @@
 import { LayoutList, Trash2 } from 'lucide-react'
 import { isNumFld, fmt } from '../../constants/apInvoice'
 import Card from '../common/Card'
+import NumericInput from '../common/NumericInput'
 import type { TaxTypeValue } from './TaxTypeDropdown'
 import type { APColumnKey } from '../../constants/apInvoice'
 
@@ -126,28 +127,37 @@ export default function APLineItemsTable({
                     )
                   }
 
+                  const cellClass = `ap-edit-input ${numeric ? 'numeric' : ''} ${fld === 'category' ? 'category' : ''}`
                   return (
                     <td key={c}>
-                      <input
-                        type="text"
-                        aria-label={fld}
-                        className={`ap-edit-input ${numeric ? 'numeric' : ''} ${fld === 'category' ? 'category' : ''}`}
-                        value={item[fld] || ''}
-                        onChange={e => updateItem(ri, fld, e.target.value)}
-                        onBlur={e => numeric && blurLineItem(ri, fld, e.target.value)}
-                      />
+                      {numeric ? (
+                        <NumericInput
+                          aria-label={fld}
+                          className={cellClass}
+                          value={item[fld] || ''}
+                          onChange={v => updateItem(ri, fld, v)}
+                          onBlur={v => blurLineItem(ri, fld, v)}
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          aria-label={fld}
+                          className={cellClass}
+                          value={item[fld] || ''}
+                          onChange={e => updateItem(ri, fld, e.target.value)}
+                        />
+                      )}
                     </td>
                   )
                 })}
                 {showFixedTaxPct && (
                   <td>
-                    <input
-                      type="text"
+                    <NumericInput
                       aria-label="taxPct"
                       className="ap-edit-input numeric"
                       value={item.taxPct || ''}
-                      onChange={e => updateItem(ri, 'taxPct', e.target.value)}
-                      onBlur={e => blurLineItem(ri, 'taxPct', e.target.value)}
+                      onChange={v => updateItem(ri, 'taxPct', v)}
+                      onBlur={v => blurLineItem(ri, 'taxPct', v)}
                     />
                   </td>
                 )}

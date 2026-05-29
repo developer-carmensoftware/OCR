@@ -137,17 +137,15 @@ export function useAPInvoice() {
         ? extraction.lineItems.map(item => ({ ...item, taxAmt: '0.00', taxPct: '0.00' }))
         : validation.adjustField(tgt, sum, 'taxAmt', extraction.lineItems)
     // adjustField only writes taxAmt; reconcile lineTotal = lineSubTotal + taxAmt
-    // so per-line and header totals stay consistent.
+    // so per-line totals stay consistent.
     const updated = adjusted.map(item => ({
       ...item,
       lineTotal: fmt(parseNum(item.lineSubTotal) + parseNum(item.taxAmt)),
     }))
     extraction.setLineItems(updated)
-    extraction.updateHeader('taxAmount', fmt(updated.reduce((s, it) => s + parseNum(it.taxAmt), 0)))
-    extraction.updateHeader(
-      'grandTotal',
-      fmt(updated.reduce((s, it) => s + parseNum(it.lineTotal), 0))
-    )
+    // Keep the "From Document" header values fixed: blurHeader (line 130) already stored the
+    // user-typed taxAmount. Do not re-sync taxAmount/grandTotal from line sums — that would
+    // mutate the immutable document totals and hide any remaining grand-total diff.
   }
 
   // Fields whose blur triggers a full line recalculation.
@@ -177,7 +175,9 @@ export function useAPInvoice() {
     const qty = parseNum(snap.qty) || 1
     const unitPrice = parseNum(snap.unitPrice)
     const taxType = (snap.taxType || 'Exclude') as 'Include' | 'Exclude' | 'None'
-    const taxPct = taxType === 'None' ? 0 : parseNum(snap.taxPct) || 7
+    // Clamp to >= 0 so the Include formula's (100 + taxPct) denominator can never hit 0
+    // (taxPct <= -100 would otherwise produce Infinity/NaN).
+    const taxPct = taxType === 'None' ? 0 : Math.max(0, parseNum(snap.taxPct) || 7)
 
     // discountPct → derive discountAmt; otherwise read discountAmt directly
     const discountAmt =
@@ -214,20 +214,9 @@ export function useAPInvoice() {
 
     const updatedItems = extraction.lineItems.map((it, i) => (i === rowIndex ? updatedItem : it))
     extraction.setLineItems(updatedItems)
-
-    // Sync header summary totals
-    extraction.updateHeader(
-      'taxAmount',
-      fmt(updatedItems.reduce((s, it) => s + parseNum(it.taxAmt), 0))
-    )
-    extraction.updateHeader(
-      'grandTotal',
-      fmt(updatedItems.reduce((s, it) => s + parseNum(it.lineTotal), 0))
-    )
-    extraction.updateHeader(
-      'subTotal',
-      fmt(updatedItems.reduce((s, it) => s + parseNum(it.lineSubTotal), 0))
-    )
+    // Do NOT sync header totals here. headerData.{subTotal,taxAmount,grandTotal} are the
+    // immutable "From Document" values; the "From Table" column recomputes reactively via
+    // useAPValidation. Overwriting them hid the reconciliation diff (and the submit gate).
   }
 
   // Recalculates only the changed row; leaves all other rows untouched.
@@ -238,7 +227,8 @@ export function useAPInvoice() {
       const qty = parseNum(item.qty) || 1
       const unitPrice = parseNum(item.unitPrice)
       const discountAmt = parseNum(item.discountAmt)
-      const taxPct = newTaxType === 'None' ? 0 : parseNum(item.taxPct) || 7
+      // Clamp to >= 0 so the Include formula's (100 + taxPct) denominator can never hit 0.
+      const taxPct = newTaxType === 'None' ? 0 : Math.max(0, parseNum(item.taxPct) || 7)
 
       // Use lineSubTotal + discountAmt as the invariant net value across all tax types.
       // lineSubTotal is always "before VAT", so it's the safe anchor when unitPrice is missing.

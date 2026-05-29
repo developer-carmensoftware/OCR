@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { List, Calculator } from 'lucide-react'
 import { DETAIL_COLUMNS, DETAIL_LABELS } from '../../constants'
 import type { DetailColumn } from '../../constants/fields'
+import NumericInput from '../common/NumericInput'
 
 export interface DetailRow {
   Transaction?: string
@@ -82,18 +83,26 @@ export default function DetailTable({
                         : String(row[col] ?? '').replace(/,/g, '')
                     return (
                       <td key={col}>
-                        <input
-                          type="text"
-                          aria-label={col}
-                          className="detail-input"
-                          value={displayValue}
-                          readOnly={readOnly}
-                          onFocus={() =>
-                            !readOnly && isAmountField && setFocusedCell({ row: rowIdx, col })
-                          }
-                          onBlur={() => setFocusedCell(null)}
-                          onChange={e => !readOnly && onUpdate?.(rowIdx, col, e.target.value)}
-                        />
+                        {isAmountField ? (
+                          <NumericInput
+                            aria-label={col}
+                            className="detail-input"
+                            value={displayValue}
+                            readOnly={readOnly}
+                            onFocus={() => !readOnly && setFocusedCell({ row: rowIdx, col })}
+                            onBlur={() => setFocusedCell(null)}
+                            onChange={v => !readOnly && onUpdate?.(rowIdx, col, v)}
+                          />
+                        ) : (
+                          <input
+                            type="text"
+                            aria-label={col}
+                            className="detail-input"
+                            value={displayValue}
+                            readOnly={readOnly}
+                            onChange={e => !readOnly && onUpdate?.(rowIdx, col, e.target.value)}
+                          />
+                        )}
                       </td>
                     )
                   })}

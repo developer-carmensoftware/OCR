@@ -2968,3 +2968,211 @@ input[type='text'].detail-input:focus {
   background: var(--rose) !important;
   color: white !important;
 }
+
+/* ─── DATE INPUT (react-day-picker) ─── */
+.date-input {
+  position: relative;
+}
+
+.date-input-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1.5px solid var(--border);
+  border-radius: 0;
+  padding: 0.45rem 0;
+  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.2s var(--ease);
+}
+
+.date-input-trigger:hover:not(:disabled) {
+  border-bottom-color: var(--primary);
+}
+
+.date-input-trigger:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.date-input-trigger svg {
+  color: var(--text-4);
+  flex-shrink: 0;
+  transition: color 0.2s var(--ease);
+}
+
+.date-input-trigger:hover:not(:disabled) svg {
+  color: var(--primary);
+}
+
+.date-input-placeholder {
+  color: var(--text-4);
+}
+
+.date-input-popover {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 6px);
+  left: 0;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 0.6rem;
+  transform-origin: top left;
+  animation: dateInPop 0.18s var(--ease) both;
+  /* clamp so it never exceeds the viewport on small screens */
+  max-width: calc(100vw - 24px);
+  /* react-day-picker v10 theme variables */
+  --rdp-accent-color: var(--primary);
+  --rdp-accent-background-color: var(--primary-light);
+  --rdp-day-width: 2.3rem;
+  --rdp-day-height: 2.3rem;
+  --rdp-day_button-width: 2.1rem;
+  --rdp-day_button-height: 2.1rem;
+  --rdp-day_button-border-radius: var(--radius-md);
+  --rdp-selected-border: none;
+  --rdp-today-color: var(--primary);
+  --rdp-outside-opacity: 0.35;
+  --rdp-font-family: 'Inter', 'Sarabun', sans-serif;
+  --rdp-weekday-opacity: 1;
+  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-size: 0.85rem;
+  color: var(--text-2);
+}
+
+.date-input-popover.align-right {
+  left: auto;
+  right: 0;
+  transform-origin: top right;
+}
+
+@keyframes dateInPop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .date-input-popover {
+    animation: dateInFade 0.12s ease both;
+  }
+  @keyframes dateInFade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
+
+.date-input-popover .rdp-root {
+  margin: 0;
+}
+
+.date-input-popover .rdp-month_caption {
+  font-weight: 700;
+  color: var(--text-2);
+  font-size: 0.92rem;
+  padding-bottom: 0.4rem;
+}
+
+.date-input-popover .rdp-weekday {
+  color: var(--text-4);
+  font-weight: 600;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.date-input-popover .rdp-day_button {
+  border: none;
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  color: var(--text-2);
+  transition:
+    background-color 0.15s var(--ease),
+    color 0.15s var(--ease),
+    transform 0.12s var(--ease);
+}
+
+.date-input-popover .rdp-day_button:hover:not([disabled]) {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.date-input-popover .rdp-selected .rdp-day_button {
+  background: var(--primary);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: var(--shadow-primary);
+}
+
+.date-input-popover .rdp-selected .rdp-day_button:hover {
+  background: var(--primary-hover);
+  color: #fff;
+}
+
+.date-input-popover .rdp-today:not(.rdp-selected) .rdp-day_button {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.date-input-popover .rdp-button_previous,
+.date-input-popover .rdp-button_next {
+  border-radius: var(--radius-sm);
+  transition: background-color 0.15s var(--ease);
+}
+
+.date-input-popover .rdp-button_previous:hover:not([disabled]),
+.date-input-popover .rdp-button_next:hover:not([disabled]) {
+  background: var(--primary-light);
+}
+
+.date-input-popover .rdp-chevron {
+  fill: var(--text-3);
+  transition: fill 0.15s var(--ease);
+}
+
+.date-input-popover .rdp-button_previous:hover:not([disabled]) .rdp-chevron,
+.date-input-popover .rdp-button_next:hover:not([disabled]) .rdp-chevron {
+  fill: var(--primary);
+}
+
+/* Month / year dropdowns (captionLayout="dropdown") styled as pills */
+.date-input-popover .rdp-dropdown_root {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+  color: var(--text-2);
+  transition: background-color 0.15s var(--ease);
+}
+
+.date-input-popover .rdp-dropdown_root:hover {
+  background: var(--primary-light);
+}
+
+.date-input-popover .rdp-dropdown {
+  cursor: pointer;
+}
+
+.date-input-popover .rdp-dropdown_root .rdp-chevron {
+  margin-left: 0.15rem;
+}

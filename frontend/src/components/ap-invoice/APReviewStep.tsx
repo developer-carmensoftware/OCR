@@ -8,6 +8,7 @@ import {
   ArrowRight,
 } from 'lucide-react'
 import Card from '../common/Card'
+import DateInput from '../common/DateInput'
 import VendorSearch from './APVendorSearch'
 import AmountSummary from './APAmountSummary'
 import APLineItemsTable from './APLineItemsTable'
@@ -153,12 +154,21 @@ export default function APReviewStep({ ctrl }: Props) {
             {HEADER_FIELDS(t).map(({ key, label }) => (
               <div key={key} className="form-field">
                 <label htmlFor={key}>{label}</label>
-                <input
-                  id={key}
-                  type="text"
-                  value={headerData[key as keyof APInvoiceHeader] ?? ''}
-                  onChange={e => updateHeader(key, e.target.value)}
-                />
+                {key === 'documentDate' ? (
+                  <DateInput
+                    id={key}
+                    aria-label={label}
+                    value={headerData[key as keyof APInvoiceHeader] ?? ''}
+                    onChange={v => updateHeader(key, v)}
+                  />
+                ) : (
+                  <input
+                    id={key}
+                    type="text"
+                    value={headerData[key as keyof APInvoiceHeader] ?? ''}
+                    onChange={e => updateHeader(key, e.target.value)}
+                  />
+                )}
               </div>
             ))}
           </div>

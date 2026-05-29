@@ -1,11 +1,14 @@
 import { IdCard } from 'lucide-react'
 import { HEADER_LABELS } from '../../constants'
+import DateInput from '../common/DateInput'
 
 interface Props {
   headerData: Record<string, string>
   onUpdate?: (key: string, value: string) => void
   readOnly?: boolean
 }
+
+const DATE_KEYS = new Set(['DocDate', 'DateProcessed'])
 
 export default function HeaderCard({ headerData, onUpdate, readOnly }: Props) {
   return (
@@ -22,12 +25,22 @@ export default function HeaderCard({ headerData, onUpdate, readOnly }: Props) {
             return (
               <div key={key} className="form-field">
                 <label dangerouslySetInnerHTML={{ __html: labelHtml }} />
-                <input
-                  type="text"
-                  value={value}
-                  readOnly={readOnly}
-                  onChange={e => !readOnly && onUpdate?.(key, e.target.value)}
-                />
+                {DATE_KEYS.has(key) ? (
+                  <DateInput
+                    aria-label={key}
+                    value={value}
+                    readOnly={readOnly}
+                    onChange={v => !readOnly && onUpdate?.(key, v)}
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    aria-label={key}
+                    value={value}
+                    readOnly={readOnly}
+                    onChange={e => !readOnly && onUpdate?.(key, e.target.value)}
+                  />
+                )}
               </div>
             )
           })}
