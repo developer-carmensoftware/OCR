@@ -21,11 +21,9 @@ if (-Not (Test-Path $venvPython)) {
     exit 1
 }
 
-$backendJob = Start-Process -FilePath "powershell.exe" -ArgumentList @(
-    "-NoExit",
-    "-Command",
-    "Set-Location '$backendPath'; & '$venvPython' -m uvicorn app.main:app --reload --port 8010"
-) -PassThru -WindowStyle Normal
+$uvicorn = Join-Path $backendPath "venv\Scripts\uvicorn.exe"
+$backendJob = Start-Process -FilePath $uvicorn -ArgumentList "app.main:app", "--port", "8010" `
+    -WorkingDirectory $backendPath -PassThru -WindowStyle Normal
 
 # ── Frontend ─────────────────────────────────────────────
 $frontendPath = Join-Path $ROOT "frontend"

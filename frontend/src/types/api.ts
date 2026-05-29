@@ -100,20 +100,17 @@ export interface CodeOption {
 
 export interface SuggestRequest {
   bank_code: string
+  source?: string | null
   accounts: CodeOption[]
   departments: CodeOption[]
 }
 
 export interface SuggestPaymentTypesRequest {
   bank_code: string
+  source?: string | null
   payment_types: string[]
   accounts: CodeOption[]
   departments: CodeOption[]
-}
-
-export interface SaveHistoryRequest {
-  bank_code: string
-  mappings: Record<string, FieldMapping>
 }
 
 export interface SuggestGLItem {

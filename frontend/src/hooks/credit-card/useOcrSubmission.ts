@@ -79,7 +79,7 @@ export function useOcrSubmission({
         originalDetails
       )
       if (corrections.length > 0) {
-        logCorrections(cardId || '', bank, corrections).catch(err =>
+        logCorrections(headerData.DocNo || '', bank, corrections).catch(err =>
           console.error('[feedback] Error logging corrections:', err)
         )
       }

@@ -243,6 +243,17 @@ async def _m206_collapse_tenant_bu(conn: AsyncConnection) -> None:
     logger.info("  ~ tenant + business_unit collapsed into single composite tenant")
 
 
+async def _m207_drop_mapping_history(conn: AsyncConnection) -> None:
+    """Drop the legacy mapping_history table.
+
+    Credit-card GL mapping history is now derived live from Carmen
+    (/spGetListJvBySource), mirroring AP invoice vendor history — so the local
+    table is redundant (data minimization: Carmen is the source of truth).
+    """
+    await conn.execute(text("DROP TABLE IF EXISTS mapping_history CASCADE"))
+    logger.info("  ~ dropped mapping_history (now derived from Carmen JV history)")
+
+
 _MIGRATIONS: list[tuple[str, Callable[[AsyncConnection], Awaitable[None]] | None]] = [
     # ── Squashed history markers ──────────────────────────────────────────────
     ("001_squashed_initial_schema", None),
@@ -256,4 +267,5 @@ _MIGRATIONS: list[tuple[str, Callable[[AsyncConnection], Awaitable[None]] | None
     ("204_analytics_tables", None),
     ("205_bug_reports_table", None),
     ("206_collapse_tenant_bu", _m206_collapse_tenant_bu),
+    ("207_drop_mapping_history", _m207_drop_mapping_history),
 ]

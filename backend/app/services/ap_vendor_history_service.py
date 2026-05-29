@@ -104,14 +104,17 @@ async def fetch_vendor_history(vn_code: str, carmen_token: str) -> list[dict]:
     else:
         rows = []
 
+    # New endpoint (/spGetListInvoiceByVnCode) omits Invhseq. Fall back to the
+    # row's position so aggregate_history's recency tie-break still works,
+    # treating Carmen's list order (oldest→newest) as a recency proxy.
     trimmed = [
         {
             "InvdDesc": r.get("InvdDesc") or "",
             "DeptCode": (r.get("DeptCode") or "").strip(),
             "InvdBTaxDr": (r.get("InvdBTaxDr") or "").strip(),
-            "Invhseq": r.get("Invhseq") or 0,
+            "Invhseq": r.get("Invhseq") or idx,
         }
-        for r in rows
+        for idx, r in enumerate(rows)
         if isinstance(r, dict)
     ]
 

@@ -58,9 +58,15 @@ export default function AccountMappingTable({
         <table className="ap-acct-table">
           <thead>
             <tr>
-              <th scope="col" className="col-description">{t.description}</th>
-              <th scope="col" className="col-dept">{t.deptCode}</th>
-              <th scope="col" className="col-acc">{t.accountCode}</th>
+              <th scope="col" className="col-description">
+                {t.description}
+              </th>
+              <th scope="col" className="col-dept">
+                {t.deptCode}
+              </th>
+              <th scope="col" className="col-acc">
+                {t.accountCode}
+              </th>
               {hasSuggestions && <th scope="col" className="col-actions"></th>}
             </tr>
           </thead>

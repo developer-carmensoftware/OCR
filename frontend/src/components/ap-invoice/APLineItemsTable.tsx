@@ -90,7 +90,10 @@ export default function APLineItemsTable({
             <tr>
               {activeCols.map(c => (
                 <th key={c} scope="col">
-                  {availableFields.find(f => f.value === fieldMappings[`col${c}` as APColumnKey])?.label}
+                  {
+                    availableFields.find(f => f.value === fieldMappings[`col${c}` as APColumnKey])
+                      ?.label
+                  }
                 </th>
               ))}
               {showFixedTaxPct && <th scope="col">{t.taxPct}</th>}
@@ -181,15 +184,35 @@ export default function APLineItemsTable({
               {activeCols.map((c, i) => {
                 const fld = fieldMappings[`col${c}` as APColumnKey]
                 if (i === 0)
-                  return <td key="lbl" className="ap-total-label">{t.tableTotal}</td>
+                  return (
+                    <td key="lbl" className="ap-total-label">
+                      {t.tableTotal}
+                    </td>
+                  )
                 if (fld === 'lineSubTotal')
-                  return <td key="st" className="ap-total-val-emerald">{fmt(sumLineSubTotal)}</td>
+                  return (
+                    <td key="st" className="ap-total-val-emerald">
+                      {fmt(sumLineSubTotal)}
+                    </td>
+                  )
                 if (fld === 'lineTotal')
-                  return <td key="lt" className="ap-total-val-rose-bold">{fmt(sumLineTotal)}</td>
+                  return (
+                    <td key="lt" className="ap-total-val-rose-bold">
+                      {fmt(sumLineTotal)}
+                    </td>
+                  )
                 if (fld === 'discountAmt')
-                  return <td key="da" className="text-right">{fmt(sumDiscount)}</td>
+                  return (
+                    <td key="da" className="text-right">
+                      {fmt(sumDiscount)}
+                    </td>
+                  )
                 if (fld === 'taxAmt')
-                  return <td key="ta" className="text-right">{fmt(sumTax)}</td>
+                  return (
+                    <td key="ta" className="text-right">
+                      {fmt(sumTax)}
+                    </td>
+                  )
                 return <td key={`e${c}`} />
               })}
               {showFixedTaxPct && <td />}

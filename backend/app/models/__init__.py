@@ -16,7 +16,6 @@ from .business import (
     BugReport,
     CorrectionFeedback,
     CreditCard,
-    MappingHistory,
     OcrSession,
     OCRTask,
 )
@@ -102,7 +101,6 @@ __all__ = [
     "OCRTask",
     "CreditCard",
     "APInvoice",
-    "MappingHistory",
     "CorrectionFeedback",
     "BugReport",
     "BUAccountingConfig",

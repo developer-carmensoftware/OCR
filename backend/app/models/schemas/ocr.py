@@ -2,9 +2,8 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
-from app.utils.date_parsing import format_doc_date
-
 from app.models.enums import FieldName, TaskStatus
+from app.utils.date_parsing import format_doc_date
 
 # ── Credit Card ───────────────────────────────────────────────────────────────
 

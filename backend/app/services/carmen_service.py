@@ -257,7 +257,26 @@ async def get_vendor_invoices(vn_code: str, carmen_token: str) -> Any:
     """
     try:
         resp = await _get_client().get(
-            f"{_base_url()}/invoice/{vn_code}", headers=_headers(carmen_token)
+            f"{_base_url()}/spGetListInvoiceByVnCode/{vn_code}", headers=_headers(carmen_token)
+        )
+        if resp.status_code == 404:
+            return []
+        if resp.status_code != 200:
+            raise CarmenAPIError(resp.status_code, resp.text)
+        return resp.json()
+    except RequestError as e:
+        raise _wrap_network_error(e) from e
+
+
+async def get_jv_by_source(source: str, carmen_token: str) -> Any:
+    """Fetch prior GL JV detail lines for a credit-card JV `source`.
+
+    Mirrors `get_vendor_invoices` — returns the raw list (or {"Data": [...]}
+    wrapper); caller normalizes. Empty list on 404 (no prior JVs for source).
+    """
+    try:
+        resp = await _get_client().get(
+            f"{_base_url()}/spGetListJvBySource/{source}", headers=_headers(carmen_token)
         )
         if resp.status_code == 404:
             return []

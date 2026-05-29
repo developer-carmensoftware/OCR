@@ -5,7 +5,6 @@ from app.models.schemas.common import FieldMapping
 from app.models.schemas.config import AccountingConfigRequest, AccountingConfigResponse
 from app.models.schemas.mapping import (
     CodeOption,
-    SaveHistoryRequest,
     SuggestPaymentTypesRequest,
     SuggestRequest,
 )
@@ -32,7 +31,6 @@ __all__ = [
     "CodeOption",
     "SuggestRequest",
     "SuggestPaymentTypesRequest",
-    "SaveHistoryRequest",
     # config
     "AccountingConfigRequest",
     "AccountingConfigResponse",

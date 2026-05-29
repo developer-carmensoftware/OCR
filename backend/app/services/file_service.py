@@ -38,9 +38,7 @@ class FileService:
 
         # 1. Type Validation (Extension)
         if not is_valid_image(filename):
-            raise ValidationError(
-                f"ประเภทไฟล์ไม่รองรับ: {filename} (รองรับ JPG, PNG, PDF, WebP)"
-            )
+            raise ValidationError(f"ประเภทไฟล์ไม่รองรับ: {filename} (รองรับ JPG, PNG, PDF, WebP)")
 
         max_bytes = settings.max_file_size_mb * 1024 * 1024
 

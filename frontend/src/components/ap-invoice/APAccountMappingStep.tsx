@@ -165,7 +165,12 @@ export default function APAccountMappingStep({
           <VendorInfoPill icon={<IdCard size={10} />} label="Tax ID" value={vendorTaxId} />
           <VendorInfoPill icon={<GitBranch size={10} />} label="Branch No" value={branchNo} />
           <VendorInfoPill icon={<FileText size={10} />} label="Document No." value={docNo} />
-          <VendorInfoPill icon={<Calendar size={10} />} label="Document Date" value={docDate} last />
+          <VendorInfoPill
+            icon={<Calendar size={10} />}
+            label="Document Date"
+            value={docDate}
+            last
+          />
         </div>
       </div>
 

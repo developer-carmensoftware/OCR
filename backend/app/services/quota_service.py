@@ -43,6 +43,7 @@ _QUOTA_RULES_CACHE: dict[str, tuple[list[_CachedQuota], float]] = {}
 
 def _ctx() -> str:
     from app.context import current_tenant_id
+
     return current_tenant_id.get() or ""
 
 

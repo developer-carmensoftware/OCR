@@ -78,7 +78,8 @@ async def extract_from_image(
         debug_buffer.record(result_text, source="vision_llm")
 
     result_text = _strip_code_fences(result_text)
-    data: dict = json.loads(result_text)
+    parsed = json.loads(result_text)
+    data: dict = parsed[0] if isinstance(parsed, list) else parsed
 
     raw_text: str = data.pop("raw_text", "") or ""
 

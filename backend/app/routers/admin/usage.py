@@ -64,7 +64,9 @@ async def get_llm_usage(
     to_date: datetime | None = Query(None, alias="to"),
     module_id: str | None = Query(None),
     tenant_id: str | None = Query(None),
-    order_by: Literal["cost_usd", "duration_ms", "total_tokens", "created_at"] = Query("created_at"),
+    order_by: Literal["cost_usd", "duration_ms", "total_tokens", "created_at"] = Query(
+        "created_at"
+    ),
     limit: int = Query(100, le=1000),
     db: AsyncSession = Depends(get_db),
     admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
@@ -102,7 +104,12 @@ async def user_usage(
         to_date = datetime.now(UTC).replace(tzinfo=None)
     tid = _resolve_tenant(admin, tenant_id)
     data = await svc.get_user_usage(db, tid, from_date, to_date, order_by, limit)
-    return {"from": from_date.isoformat(), "to": to_date.isoformat(), "total_users": len(data), "data": data}
+    return {
+        "from": from_date.isoformat(),
+        "to": to_date.isoformat(),
+        "total_users": len(data),
+        "data": data,
+    }
 
 
 @router.get("/error-breakdown")

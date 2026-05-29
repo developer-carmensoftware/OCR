@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 def _ctx() -> str:
     from app.context import current_tenant_id
+
     return current_tenant_id.get() or ""
 
 

@@ -144,7 +144,6 @@ async def _validate_token(token: str, carmen_uri: str) -> None:
         raise HTTPException(status_code=502, detail="Cannot reach Carmen to validate token")
 
 
-
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
@@ -236,6 +235,7 @@ async def revoke_session(
     revoked = await revoke_session_by_id(db, sid)
     if revoked:
         from app.auth.dependencies import invalidate_session_cache
+
         invalidate_session_cache(sid)
     return {"ok": True}
 

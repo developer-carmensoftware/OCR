@@ -117,35 +117,6 @@ class APInvoice(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixi
     task = relationship("OCRTask", back_populates="ap_invoice")
 
 
-class MappingHistory(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixin):
-    """
-    GL mapping learning: which dept/account code was confirmed for a field type + bank.
-    confirmed_count is incremented each time a user confirms the same mapping.
-    """
-
-    __tablename__ = "mapping_history"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    bank_code = Column(String(20), ForeignKey("banks.code"), nullable=False, index=True)
-    field_type = Column(String(100), nullable=False)
-    dept_code = Column(String(100), nullable=True)
-    acc_code = Column(String(100), nullable=True)
-    confirmed_count = Column(Integer, default=1, nullable=False)
-
-    __table_args__ = (
-        Index(
-            "uq_mapping_scope_active",
-            "tenant_id",
-            "bank_code",
-            "field_type",
-            "dept_code",
-            "acc_code",
-            unique=True,
-            postgresql_where=text("deleted_at IS NULL"),
-        ),
-    )
-
-
 class CorrectionFeedback(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixin):
     """
     User correction of an LLM-extracted field.

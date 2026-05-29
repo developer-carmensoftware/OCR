@@ -39,7 +39,9 @@ async def get_usage_summary(
             func.avg(LLMUsageLog.duration_ms).label("avg_llm_latency_ms"),
         )
         .where(LLMUsageLog.created_at >= from_dt, LLMUsageLog.created_at <= to_dt)
-        .group_by(cast(LLMUsageLog.created_at, SADate), LLMUsageLog.module_id, LLMUsageLog.tenant_id)
+        .group_by(
+            cast(LLMUsageLog.created_at, SADate), LLMUsageLog.module_id, LLMUsageLog.tenant_id
+        )
         .order_by(cast(LLMUsageLog.created_at, SADate).desc())
     )
     if tenant_id:
@@ -56,7 +58,9 @@ async def get_usage_summary(
             func.count(OCRTask.id).label("doc_count"),
             func.sum(case((OCRTask.status == TaskStatus.FAILED, 1), else_=0)).label("error_count"),
         )
-        .where(OCRTask.created_at >= from_dt, OCRTask.created_at <= to_dt, OCRTask.deleted_at.is_(None))
+        .where(
+            OCRTask.created_at >= from_dt, OCRTask.created_at <= to_dt, OCRTask.deleted_at.is_(None)
+        )
         .group_by(cast(OCRTask.created_at, SADate), OCRTask.module_id, OCRTask.tenant_id)
     )
     if tenant_id:
@@ -79,7 +83,11 @@ async def get_usage_summary(
             func.count(CreditCard.id).label("sub_count"),
         )
         .join(OCRTask, CreditCard.task_id == OCRTask.id)
-        .where(CreditCard.submitted_at >= from_dt, CreditCard.submitted_at <= to_dt, CreditCard.deleted_at.is_(None))
+        .where(
+            CreditCard.submitted_at >= from_dt,
+            CreditCard.submitted_at <= to_dt,
+            CreditCard.deleted_at.is_(None),
+        )
         .group_by(cast(CreditCard.submitted_at, SADate), OCRTask.module_id, CreditCard.tenant_id)
     )
     ap_sub_q = (
@@ -90,7 +98,11 @@ async def get_usage_summary(
             func.count(APInvoice.id).label("sub_count"),
         )
         .join(OCRTask, APInvoice.task_id == OCRTask.id)
-        .where(APInvoice.submitted_at >= from_dt, APInvoice.submitted_at <= to_dt, APInvoice.deleted_at.is_(None))
+        .where(
+            APInvoice.submitted_at >= from_dt,
+            APInvoice.submitted_at <= to_dt,
+            APInvoice.deleted_at.is_(None),
+        )
         .group_by(cast(APInvoice.submitted_at, SADate), OCRTask.module_id, APInvoice.tenant_id)
     )
     if tenant_id:
@@ -156,16 +168,22 @@ async def get_usage_totals(
     task_q = select(
         func.count(OCRTask.id).label("total_documents"),
         func.sum(case((OCRTask.status == TaskStatus.FAILED, 1), else_=0)).label("total_errors"),
-    ).where(OCRTask.created_at >= from_dt, OCRTask.created_at <= to_dt, OCRTask.deleted_at.is_(None))
+    ).where(
+        OCRTask.created_at >= from_dt, OCRTask.created_at <= to_dt, OCRTask.deleted_at.is_(None)
+    )
     if tenant_id:
         task_q = task_q.where(OCRTask.tenant_id == tenant_id)
     task_row = (await db.execute(task_q)).mappings().fetchone() or {}
 
     cc_sub_q = select(func.count(CreditCard.id)).where(
-        CreditCard.submitted_at >= from_dt, CreditCard.submitted_at <= to_dt, CreditCard.deleted_at.is_(None)
+        CreditCard.submitted_at >= from_dt,
+        CreditCard.submitted_at <= to_dt,
+        CreditCard.deleted_at.is_(None),
     )
     ap_sub_q = select(func.count(APInvoice.id)).where(
-        APInvoice.submitted_at >= from_dt, APInvoice.submitted_at <= to_dt, APInvoice.deleted_at.is_(None)
+        APInvoice.submitted_at >= from_dt,
+        APInvoice.submitted_at <= to_dt,
+        APInvoice.deleted_at.is_(None),
     )
     if tenant_id:
         cc_sub_q = cc_sub_q.where(CreditCard.tenant_id == tenant_id)
@@ -223,7 +241,9 @@ async def get_llm_usage(
             "prompt_tokens": r.prompt_tokens,
             "completion_tokens": r.completion_tokens,
             "total_tokens": r.total_tokens,
-            "duration_ms": round(float(str(r.duration_ms)), 1) if r.duration_ms is not None else None,
+            "duration_ms": round(float(str(r.duration_ms)), 1)
+            if r.duration_ms is not None
+            else None,
             "cost_usd": float(str(r.cost_usd)) if r.cost_usd is not None else None,
             "created_at": r.created_at.isoformat() if r.created_at else None,
         }
@@ -291,7 +311,9 @@ async def get_tenant_ranking(
             "tenant_name": names.get(r["tid"], r["tid"]),
             "total_requests": int(r["total_requests"] or 0),
             "errors": int(r["errors"] or 0),
-            "error_rate_pct": round((r["errors"] or 0) / r["total_requests"] * 100, 2) if r["total_requests"] else 0,
+            "error_rate_pct": round((r["errors"] or 0) / r["total_requests"] * 100, 2)
+            if r["total_requests"]
+            else 0,
             "avg_latency_ms": round(float(r["avg_latency"] or 0), 1),
             "max_latency_ms": round(float(r["max_latency"] or 0), 1),
         }
@@ -334,7 +356,9 @@ async def get_user_usage(
             "total_calls": int(r["total_calls"] or 0),
             "total_tokens": int(r["total_tokens"] or 0),
             "total_cost_usd": float(str(r["total_cost"] or 0)),
-            "avg_latency_ms": round(float(r["avg_latency"] or 0), 1) if r["avg_latency"] is not None else None,
+            "avg_latency_ms": round(float(r["avg_latency"] or 0), 1)
+            if r["avg_latency"] is not None
+            else None,
         }
         for r in rows
     ]
@@ -351,19 +375,30 @@ async def get_error_breakdown(
 
     if group_by == "module":
         failed_count = func.sum(case((OCRTask.status == TaskStatus.FAILED, 1), else_=0))
-        q = (
-            select(OCRTask.module_id.label("group"), func.count(OCRTask.id).label("total"), failed_count.label("errors"))
-            .where(OCRTask.created_at >= since)
-        )
+        q = select(
+            OCRTask.module_id.label("group"),
+            func.count(OCRTask.id).label("total"),
+            failed_count.label("errors"),
+        ).where(OCRTask.created_at >= since)
         if tenant_id:
             q = q.where(OCRTask.tenant_id == tenant_id)
-        rows = (await db.execute(q.group_by(OCRTask.module_id).order_by(failed_count.desc()).limit(limit))).mappings().all()
+        rows = (
+            (
+                await db.execute(
+                    q.group_by(OCRTask.module_id).order_by(failed_count.desc()).limit(limit)
+                )
+            )
+            .mappings()
+            .all()
+        )
         return [
             {
                 "group": r["group"],
                 "total_tasks": int(r["total"] or 0),
                 "errors": int(r["errors"] or 0),
-                "error_rate_pct": round((r["errors"] or 0) / r["total"] * 100, 2) if r["total"] else 0,
+                "error_rate_pct": round((r["errors"] or 0) / r["total"] * 100, 2)
+                if r["total"]
+                else 0,
             }
             for r in rows
         ]
@@ -380,7 +415,11 @@ async def get_error_breakdown(
         q = q.where(PerformanceLog.tenant_id == tenant_id)
     if group_by == "tenant":
         q = q.where(PerformanceLog.tenant_id.isnot(None))
-    rows = (await db.execute(q.group_by(group_col).order_by(error_count.desc()).limit(limit))).mappings().all()
+    rows = (
+        (await db.execute(q.group_by(group_col).order_by(error_count.desc()).limit(limit)))
+        .mappings()
+        .all()
+    )
     return [
         {
             "group": r["group"],
@@ -397,6 +436,8 @@ async def _tenant_name_map(db: AsyncSession, tids: list[str]) -> dict[str, str]:
     if not tids:
         return {}
     result = await db.execute(
-        select(Tenant.id, Tenant.name, Tenant.bu_code).where(Tenant.id.in_(tids), Tenant.deleted_at.is_(None))
+        select(Tenant.id, Tenant.name, Tenant.bu_code).where(
+            Tenant.id.in_(tids), Tenant.deleted_at.is_(None)
+        )
     )
     return {str(r.id): f"{r.name} ({r.bu_code})" for r in result.mappings().all()}

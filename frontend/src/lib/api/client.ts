@@ -52,7 +52,9 @@ export function createApiClient(opts: ApiClientOptions) {
       if (!_fired) {
         _fired = true
         window.dispatchEvent(new CustomEvent(opts.unauthorizedEvent))
-        setTimeout(() => { _fired = false }, opts.debounce401Ms ?? 2000)
+        setTimeout(() => {
+          _fired = false
+        }, opts.debounce401Ms ?? 2000)
       }
     }
     return response

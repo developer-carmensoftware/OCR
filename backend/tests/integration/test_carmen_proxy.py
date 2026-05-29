@@ -115,3 +115,19 @@ def test_gljv_forwards_409():
             resp = client.post(f"{BASE}/gljv", json={}, headers=AUTH)
     assert resp.status_code == 409
     assert "Carmen" in resp.json().get("detail", "")
+
+
+def test_gljv_non_uuid_credit_card_id_does_not_500():
+    """Regression: on duplicate re-submission the frontend sends doc_no (not a
+    UUID) as credit_card_id. The post-submit bookkeeping must fall back to a
+    doc_no lookup and must never turn a successful Carmen submit into a 500."""
+    mock_db = make_mock_db()  # no rows → card lookup returns None
+    with _patch_service("post_gljv", _ok({"Code": 0, "InternalMessage": "JV-2"})):
+        with make_test_client(mock_db) as client:
+            resp = client.post(
+                f"{BASE}/gljv?credit_card_id=26079-0001954&doc_no=26079-0001954&bank_code=BBL",
+                json={"JvhSeq": -1, "Detail": []},
+                headers=AUTH,
+            )
+    assert resp.status_code == 200
+    assert resp.json().get("Code") == 0

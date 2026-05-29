@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react'
-import { saveMappingHistory } from '../../lib/api/mapping'
 import { saveAccountingConfig } from '../../lib/api/config'
 import { BANK_INFO, BANK_CODE_MAP, BANK_SOURCE_MAP } from '../../constants/banks'
 import { useBankConfig } from './useBankConfig'
@@ -48,6 +47,7 @@ export function useMapping() {
 
   const suggestions = useMappingSuggestions({
     bankCode: BANK_CODE_MAP[bankConfig.bank as BankDisplayName] || bankConfig.bank || '',
+    source: bankConfig.fileSource || '',
     masterAccounts: masterData.masterAccounts,
     masterDepartments: masterData.masterDepartments,
     mappings,
@@ -225,17 +225,6 @@ export function useMapping() {
         localStorage.setItem('accounting_config_updated', Date.now().toString())
       } catch {
         /* ignore — localStorage already saved */
-      }
-
-      if (bankConfig.bank) {
-        try {
-          await saveMappingHistory({
-            bank_code: BANK_CODE_MAP[bankConfig.bank as BankDisplayName] || bankConfig.bank,
-            mappings: allMappings,
-          })
-        } catch {
-          /* ignore */
-        }
       }
 
       if (shouldClose && window.opener) {

@@ -44,7 +44,9 @@ class InMemoryRateLimiter:
         recent = [t for t in self._calls[ip] if now - t < self._window]
         if len(recent) >= self._max:
             self._calls[ip] = recent
-            logger.info("rate_limit triggered: ip=%s window=%ss limit=%d", ip, self._window, self._max)
+            logger.info(
+                "rate_limit triggered: ip=%s window=%ss limit=%d", ip, self._window, self._max
+            )
             raise RequestRateLimitExceeded(
                 "Too many login attempts. Please try again later.",
                 retry_after=int(self._window),

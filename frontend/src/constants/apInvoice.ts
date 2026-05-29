@@ -278,7 +278,8 @@ export const AP_I18N: Record<APLocale, APTranslations> = {
     invDescMsg:
       'Adding an Invoice Description helps AI suggest more accurate GL accounts.\nYou can add it in the Invoice Description field above.',
     backFillDesc: 'Back to fill description',
-    mappingWarning: 'Please provide both Department and Account codes for all line items before proceeding.',
+    mappingWarning:
+      'Please provide both Department and Account codes for all line items before proceeding.',
     sending: 'Sending...',
     invDescLabel: 'Invoice Description',
     invDescPlaceholder: 'Invoice description...',

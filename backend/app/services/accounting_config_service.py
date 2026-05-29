@@ -204,9 +204,7 @@ async def get_account_usage(
 # ── Internal helpers ───────────────────────────────────────────────────────────
 
 
-async def _get_config(
-    db: AsyncSession, tenant_id: str
-) -> BUAccountingConfig | None:
+async def _get_config(db: AsyncSession, tenant_id: str) -> BUAccountingConfig | None:
     result = await db.execute(
         select(BUAccountingConfig).where(
             BUAccountingConfig.tenant_id == tenant_id,
@@ -216,9 +214,7 @@ async def _get_config(
     return result.scalar_one_or_none()
 
 
-async def _get_entries(
-    db: AsyncSession, config_id: int
-) -> list[BUAccountingMappingEntry]:
+async def _get_entries(db: AsyncSession, config_id: int) -> list[BUAccountingMappingEntry]:
     result = await db.execute(
         select(BUAccountingMappingEntry).where(
             BUAccountingMappingEntry.config_id == config_id,

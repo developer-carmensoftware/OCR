@@ -2,7 +2,7 @@
 Unit tests for GL mapping history feature.
 
 Covers:
-  - mapping_history_service.get_confirmed_mappings  (DB abstraction)
+  - mapping_history_service.get_confirmed_mappings  (Carmen JV-derived)
   - mapping router /suggest and /suggest-payment-types (bypass / hint / merge logic)
   - prompts/mapping.py hint_text injection
 """
@@ -22,91 +22,97 @@ BASE_URL = "/api/v1/mapping"
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _make_history_row(field_type: str, dept: str, acc: str, confirmed_count: int):
-    row = MagicMock()
-    row.field_type = field_type
-    row.dept_code = dept
-    row.acc_code = acc
-    row.confirmed_count = confirmed_count
-    row.deleted_at = None
-    return row
+def _jv(desc: str, dept: str, acc: str) -> dict:
+    """One JV detail line as returned by Carmen /spGetListJvBySource."""
+    return {"JvdDesc": desc, "DeptCode": dept, "AccCode": acc}
+
+
+def _patch_jv_rows(rows: list[dict]):
+    """Patch the Carmen JV fetch + clear the module cache for a clean read."""
+    from app.services import mapping_history_service as svc
+
+    svc._CACHE.clear()
+    return patch.object(svc, "get_jv_by_source", new_callable=AsyncMock, return_value=rows)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 1. mapping_history_service
+# 1. mapping_history_service — derives confirmed mappings from Carmen JVs
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
 class TestGetConfirmedMappings:
-    """Service layer — fetches best row per field_type from local DB."""
+    """Service layer — aggregates prior Carmen JV lines into best (dept, acc) per field_type."""
 
     @pytest.mark.asyncio
-    async def test_returns_empty_when_no_history(self):
+    async def test_returns_empty_without_source_or_token(self):
         set_context(TENANT_ID)
-        db = make_mock_db(execute_rows=[])
-
         from app.services.mapping_history_service import get_confirmed_mappings
 
-        result = await get_confirmed_mappings(db, "BBL", ["Credit card commission", "Input Tax"])
+        assert await get_confirmed_mappings("BBL", ["Input Tax"], "", "tok") == {}
+        assert await get_confirmed_mappings("BBL", ["Input Tax"], "acbb", "") == {}
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_no_jv_history(self):
+        set_context(TENANT_ID)
+        from app.services.mapping_history_service import get_confirmed_mappings
+
+        with _patch_jv_rows([]):
+            result = await get_confirmed_mappings(
+                "BBL", ["Credit card commission", "Input Tax"], "acbb", "tok"
+            )
         assert result == {}
 
     @pytest.mark.asyncio
-    async def test_returns_best_row_per_field_type(self):
+    async def test_matches_field_type_by_label_and_counts_frequency(self):
         set_context(TENANT_ID)
         rows = [
-            _make_history_row("Credit card commission", "GEN", "5100-00", 5),
-            _make_history_row("Input Tax", "ADM", "1510-01", 2),
+            _jv("002205993264", "GEN", "1011001"),  # transaction line — ignored
+            _jv("Credit card commission", "GEN", "6080008"),
+            _jv("Input Tax", "GEN", "1022005"),
+            _jv("Credit card commission", "GEN", "6080008"),
         ]
-        db = make_mock_db(execute_rows=rows)
-
         from app.services.mapping_history_service import get_confirmed_mappings
 
-        result = await get_confirmed_mappings(db, "BBL", ["Credit card commission", "Input Tax"])
+        with _patch_jv_rows(rows):
+            result = await get_confirmed_mappings(
+                "BBL", ["Credit card commission", "Input Tax", "Bank Account"], "acbb", "tok"
+            )
 
         assert result["Credit card commission"] == {
             "dept": "GEN",
-            "acc": "5100-00",
-            "confirmed_count": 5,
+            "acc": "6080008",
+            "confirmed_count": 2,
         }
-        assert result["Input Tax"] == {"dept": "ADM", "acc": "1510-01", "confirmed_count": 2}
+        assert result["Input Tax"] == {"dept": "GEN", "acc": "1022005", "confirmed_count": 1}
+        assert "Bank Account" not in result  # no matching JV line
 
     @pytest.mark.asyncio
-    async def test_deduplicates_keeps_highest_count(self):
-        """If DB returns two rows for the same field_type, keep the first (highest confirmed_count)."""
+    async def test_picks_most_frequent_combo_for_field_type(self):
+        """'Bank Account' seen with two accounts → most frequent combo wins, count = its frequency."""
         set_context(TENANT_ID)
         rows = [
-            _make_history_row("Credit card commission", "GEN", "5100-00", 10),
-            _make_history_row("Credit card commission", "GEN", "9999-XX", 1),
+            _jv("Bank Account", "GEN", "1011002"),
+            _jv("Bank Account", "GEN", "1011001"),
+            _jv("Bank Account", "GEN", "1011001"),
+            _jv("Bank Account", "GEN", "1011001"),
         ]
-        db = make_mock_db(execute_rows=rows)
-
         from app.services.mapping_history_service import get_confirmed_mappings
 
-        result = await get_confirmed_mappings(db, "BBL", ["Credit card commission"])
-        assert result["Credit card commission"]["acc"] == "5100-00"
-        assert result["Credit card commission"]["confirmed_count"] == 10
+        with _patch_jv_rows(rows):
+            result = await get_confirmed_mappings("BBL", ["Bank Account"], "acbb", "tok")
+
+        assert result["Bank Account"] == {"dept": "GEN", "acc": "1011001", "confirmed_count": 3}
 
     @pytest.mark.asyncio
-    async def test_confirmed_count_defaults_to_zero_when_none(self):
+    async def test_matches_payment_type_label(self):
         set_context(TENANT_ID)
-        rows = [_make_history_row("Bank Account", "GEN", "1020-01", None)]
-        db = make_mock_db(execute_rows=rows)
-
+        rows = [_jv("VSA-INT-P", "GEN", "1021004")]
         from app.services.mapping_history_service import get_confirmed_mappings
 
-        result = await get_confirmed_mappings(db, "BBL", ["Bank Account"])
-        assert result["Bank Account"]["confirmed_count"] == 0
+        with _patch_jv_rows(rows):
+            result = await get_confirmed_mappings("BBL", ["VSA-INT-P"], "acbb", "tok")
 
-    @pytest.mark.asyncio
-    async def test_passes_through_without_carmen_token(self):
-        """carmen_token param is reserved; absence must not raise."""
-        set_context(TENANT_ID)
-        db = make_mock_db(execute_rows=[])
-
-        from app.services.mapping_history_service import get_confirmed_mappings
-
-        result = await get_confirmed_mappings(db, "BBL", ["Input Tax"])
-        assert isinstance(result, dict)
+        assert result["VSA-INT-P"] == {"dept": "GEN", "acc": "1021004", "confirmed_count": 1}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -132,6 +138,7 @@ class TestSuggestEndpoint:
     def _suggest_body(self, bank_code="BBL"):
         return {
             "bank_code": bank_code,
+            "source": "acbb",
             "accounts": _ACCOUNTS,
             "departments": _DEPARTMENTS,
         }
@@ -315,6 +322,7 @@ class TestSuggestPaymentTypesEndpoint:
     def _body(self, payment_types=None):
         return {
             "bank_code": "BBL",
+            "source": "acbb",
             "payment_types": payment_types or ["VSA", "MCA"],
             "accounts": _ACCOUNTS,
             "departments": _DEPARTMENTS,

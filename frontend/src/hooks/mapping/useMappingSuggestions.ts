@@ -14,6 +14,7 @@ export type MainMappingKey = 'commission' | 'tax' | 'net'
 
 export interface MappingSuggestionsProps {
   bankCode: string
+  source?: string
   masterAccounts: MasterAccount[]
   masterDepartments: MasterDepartment[]
   mappings: Record<MainMappingKey, FieldMapping>
@@ -49,6 +50,7 @@ import type React from 'react'
 
 export function useMappingSuggestions({
   bankCode,
+  source,
   masterAccounts,
   masterDepartments,
   mappings,
@@ -98,6 +100,7 @@ export function useMappingSuggestions({
     try {
       const aiResult = await suggestMapping({
         bank_code: bankCode,
+        source: source || null,
         accounts: masterAccounts.map(a => ({ code: a.code, name: a.name, type: a.type })),
         departments: masterDepartments.map(d => ({ code: d.code, name: d.name })),
       })
@@ -191,6 +194,7 @@ export function useMappingSuggestions({
     try {
       const result = await suggestPaymentTypes({
         bank_code: bankCode,
+        source: source || null,
         payment_types: needsAI,
         accounts: masterAccounts.map(a => ({ code: a.code, name: a.name, type: a.type })),
         departments: masterDepartments.map(d => ({ code: d.code, name: d.name })),

@@ -12,20 +12,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import SessionInfo, get_current_session
 from app.database import get_db
 from app.models.schemas import (
-    SaveHistoryRequest,
     SuggestPaymentTypesRequest,
     SuggestRequest,
 )
 from app.services import gl_suggestion_service as map_gl
+from app.services.accounting_config_service import get_accounting_config
 from app.services.mapping_history_service import (
     BYPASS_THRESHOLD,
     get_confirmed_mappings,
-    list_history,
-    save_history,
 )
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/mapping", tags=["Mapping"])
+
+
+async def _resolve_source(req_source: str | None, session: SessionInfo, db: AsyncSession) -> str:
+    """Use the source sent by the frontend, else fall back to the tenant's
+    saved accounting-config file_source."""
+    if req_source:
+        return req_source
+    cfg = await get_accounting_config(db, session.tenant_id)
+    return cfg.file_source or ""
+
 
 _FIXED_FIELD_TYPES = ["Credit card commission", "Input Tax", "Bank Account"]
 
@@ -34,9 +42,12 @@ _FIXED_FIELD_TYPES = ["Credit card commission", "Input Tax", "Bank Account"]
 async def suggest_mapping(
     req: SuggestRequest,
     db: AsyncSession = Depends(get_db),
-    _session: SessionInfo = Depends(get_current_session),
+    session: SessionInfo = Depends(get_current_session),
 ):
-    history = await get_confirmed_mappings(db, req.bank_code, _FIXED_FIELD_TYPES)
+    source = await _resolve_source(req.source, session, db)
+    history = await get_confirmed_mappings(
+        req.bank_code, _FIXED_FIELD_TYPES, source, session.carmen_token
+    )
 
     bypass: dict[str, dict] = {}
     hint_lines: list[str] = []
@@ -70,9 +81,12 @@ async def suggest_mapping(
 async def suggest_payment_types(
     req: SuggestPaymentTypesRequest,
     db: AsyncSession = Depends(get_db),
-    _session: SessionInfo = Depends(get_current_session),
+    session: SessionInfo = Depends(get_current_session),
 ):
-    history = await get_confirmed_mappings(db, req.bank_code, req.payment_types)
+    source = await _resolve_source(req.source, session, db)
+    history = await get_confirmed_mappings(
+        req.bank_code, req.payment_types, source, session.carmen_token
+    )
 
     bypass: dict[str, dict] = {}
     hint_lines: list[str] = []
@@ -101,23 +115,3 @@ async def suggest_payment_types(
     )
     ai_suggestions = (result.output or {}).get("suggestions", {})
     return {"suggestions": {**ai_suggestions, **bypass}, "source": "history" if bypass else "ai"}
-
-
-@router.get("/history")
-async def get_mapping_history(
-    bank_code: str,
-    db: AsyncSession = Depends(get_db),
-    session: SessionInfo = Depends(get_current_session),
-):
-    history = await list_history(db, session.tenant_id, bank_code)
-    return {"bank_code": bank_code, "history": history}
-
-
-@router.post("/history/save")
-async def save_mapping_history(
-    req: SaveHistoryRequest,
-    db: AsyncSession = Depends(get_db),
-    session: SessionInfo = Depends(get_current_session),
-):
-    saved = await save_history(db, session.tenant_id, req.bank_code, req.mappings)
-    return {"ok": True, "saved": saved}

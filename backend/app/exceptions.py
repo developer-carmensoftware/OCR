@@ -54,7 +54,9 @@ class RequestRateLimitExceeded(RuntimeError):
     Distinct from RateLimitExceeded (tenant quota) — this is short-window IP throttling.
     """
 
-    def __init__(self, message: str = "Too many requests — please slow down.", retry_after: int = 60):
+    def __init__(
+        self, message: str = "Too many requests — please slow down.", retry_after: int = 60
+    ):
         self.retry_after = retry_after
         super().__init__(message)
 

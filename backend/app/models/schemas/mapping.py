@@ -1,7 +1,5 @@
 from pydantic import BaseModel
 
-from app.models.schemas.common import FieldMapping
-
 
 class CodeOption(BaseModel):
     code: str
@@ -13,6 +11,7 @@ class SuggestRequest(BaseModel):
     bank_code: str
     accounts: list[CodeOption]
     departments: list[CodeOption]
+    source: str | None = None  # JV source (file_source) for Carmen history lookup
 
 
 class SuggestPaymentTypesRequest(BaseModel):
@@ -20,8 +19,4 @@ class SuggestPaymentTypesRequest(BaseModel):
     payment_types: list[str]
     accounts: list[CodeOption]
     departments: list[CodeOption]
-
-
-class SaveHistoryRequest(BaseModel):
-    bank_code: str
-    mappings: dict[str, FieldMapping]
+    source: str | None = None  # JV source (file_source) for Carmen history lookup

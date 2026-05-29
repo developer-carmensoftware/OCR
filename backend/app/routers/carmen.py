@@ -18,8 +18,8 @@ from app.constants import Module
 from app.database import get_db
 from app.models.orm import CreditCard
 from app.services import audit_service
-from app.services.audit_service import AuditAction
 from app.services.ap_invoice_service import mark_invoice_submitted
+from app.services.audit_service import AuditAction
 from app.services.carmen_service import (
     CarmenAPIError,
     get_account_codes,
@@ -88,8 +88,23 @@ async def proxy_gljv(
         if res and res.get("Code", -1) >= 0 and credit_card_id:
             import uuid
 
+            # Carmen has already accepted the JV; the bookkeeping below must
+            # never turn a successful submit into an HTTP 500. Guard the UUID
+            # parse defensively — `credit_card_id` must be a UUID, but a
+            # malformed value should degrade gracefully rather than raise.
+            try:
+                card_uuid = uuid.UUID(credit_card_id)
+            except (ValueError, AttributeError):
+                logger.warning(
+                    "Skipping post-submit bookkeeping: credit_card_id %r is not a UUID",
+                    credit_card_id,
+                )
+                return res
+
             result = await db.execute(
-                select(CreditCard).where(CreditCard.id == uuid.UUID(credit_card_id))
+                select(CreditCard).where(
+                    CreditCard.id == card_uuid, CreditCard.deleted_at.is_(None)
+                )
             )
             card = result.scalar_one_or_none()
             if card:
