@@ -17,7 +17,7 @@ const OPTIONS: Option[] = [
   {
     value: 'Include',
     label: 'Tax Include',
-    sublabel: 'VAT รวมในราคา',
+    sublabel: 'VAT Included',
     icon: <CircleDot size={14} />,
     colorVar: 'var(--amber-700, #b45309)',
     bgVar: 'var(--ap-include-bg, #fffbeb)',
@@ -26,7 +26,7 @@ const OPTIONS: Option[] = [
   {
     value: 'Exclude',
     label: 'Tax Exclude',
-    sublabel: 'VAT บวกเพิ่มจากราคา',
+    sublabel: 'VAT Excluded',
     icon: <PlusCircle size={14} />,
     colorVar: 'var(--blue-700, #1d4ed8)',
     bgVar: 'var(--ap-exclude-bg, #eff6ff)',
@@ -35,7 +35,7 @@ const OPTIONS: Option[] = [
   {
     value: 'None',
     label: 'No VAT',
-    sublabel: 'ไม่มีภาษีมูลค่าเพิ่ม (0%)',
+    sublabel: 'No VAT (0%)',
     icon: <Ban size={14} />,
     colorVar: 'var(--emerald, #059669)',
     bgVar: 'var(--ap-none-bg, #f0fdf4)',

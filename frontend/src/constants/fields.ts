@@ -9,8 +9,7 @@ export const DETAIL_COLUMNS: DetailColumn[] = [
 ]
 
 export const HEADER_LABELS: Record<string, string> = {
-  DateProcessed:
-    'Input Date<br><span style="font-size: 0.8em; color: #666;">Date Processed (วันที่ระบบอ่าน)</span>',
+  DateProcessed: 'Input Date<br><span style="font-size: 0.8em; color: #666;">Date Processed</span>',
   BankName: 'Bank Name<br><span style="font-size: 0.8em; color: #666;">Bank Name</span>',
   DocName: 'Doc. Name<br><span style="font-size: 0.8em; color: #666;">Doc Name</span>',
   CompanyName: 'Company Name<br><span style="font-size: 0.8em; color: #666;">Company Name</span>',

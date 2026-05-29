@@ -115,14 +115,14 @@
 
 /* ─── Responsive ─── */
 
-/* tablet: ซ่อน used column */
+/* tablet: hide used column */
 @media (max-width: 768px) {
   .ui-quota-col.col-used {
     display: none;
   }
 }
 
-/* mobile: ซ่อน total column ด้วย + padding แน่นขึ้น */
+/* mobile: hide total column too + tighter padding */
 @media (max-width: 480px) {
   .ui-quota-col.col-total {
     display: none;

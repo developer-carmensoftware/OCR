@@ -202,7 +202,7 @@ describe('useOcrSubmission', () => {
         await result.current.handleSubmitFinal(defaultRows)
       })
 
-      expect(logCorrections).toHaveBeenCalledWith('card-uuid-123', 'KBANK', fakeCorrections)
+      expect(logCorrections).toHaveBeenCalledWith('DOC-001', 'KBANK', fakeCorrections)
     })
   })
 

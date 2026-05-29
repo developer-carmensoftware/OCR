@@ -34,11 +34,13 @@ class FileService:
         """
         filename = file.filename
         if not filename:
-            raise ValidationError("ชื่อไฟล์ไม่ถูกต้อง")
+            raise ValidationError("Invalid filename")
 
         # 1. Type Validation (Extension)
         if not is_valid_image(filename):
-            raise ValidationError(f"ประเภทไฟล์ไม่รองรับ: {filename} (รองรับ JPG, PNG, PDF, WebP)")
+            raise ValidationError(
+                f"Unsupported file type: {filename} (Supported: JPG, PNG, PDF, WebP)"
+            )
 
         max_bytes = settings.max_file_size_mb * 1024 * 1024
 
@@ -54,12 +56,12 @@ class FileService:
                 logger.warning("File size limit exceeded: %s (%d+ bytes)", filename, total)
                 # Stop draining — release the connection and reject.
                 raise FileTooLargeError(
-                    f"ไฟล์ {filename} มีขนาดใหญ่เกินไป (จำกัด {settings.max_file_size_mb}MB)"
+                    f"File {filename} is too large (Limit {settings.max_file_size_mb}MB)"
                 )
             chunks.append(chunk)
 
         if total == 0:
-            raise ValidationError(f"ไฟล์ {filename} ไม่มีข้อมูล (Empty file)")
+            raise ValidationError(f"File {filename} is empty (Empty file)")
 
         content = b"".join(chunks)
 

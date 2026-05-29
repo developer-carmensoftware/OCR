@@ -129,7 +129,7 @@ export default function CustomSearchSelect({
           border: 'var(--btn-ok-border, #86efac)',
         }
       : {
-          label: 'AI แนะนำ',
+          label: 'AI Suggested',
           bg: 'var(--ap-suggest-bg, #f5f3ff)',
           color: 'var(--primary, #7c3aed)',
           border: 'var(--primary-mid, #c4b5fd)',
@@ -165,7 +165,7 @@ export default function CustomSearchSelect({
         onChange={e => setSearchTerm(e.target.value)}
         title={
           isAISuggested
-            ? `AI แนะนำ: ${suggestedValue}${suggestedDesc ? ` — ${suggestedDesc}` : ''}`
+            ? `AI Suggested: ${suggestedValue}${suggestedDesc ? ` — ${suggestedDesc}` : ''}`
             : value && selectedDesc
               ? `${value} — ${selectedDesc}`
               : ''
@@ -264,7 +264,7 @@ export default function CustomSearchSelect({
                       borderBottom: '1px solid var(--gray-100)',
                     }}
                   >
-                    ตัวเลือกทั้งหมด
+                    All Options
                   </div>
                 )}
               </>
@@ -334,7 +334,7 @@ export default function CustomSearchSelect({
                   textAlign: 'center',
                 }}
               >
-                ไม่พบข้อมูล
+                No results found
               </div>
             )}
           </div>,

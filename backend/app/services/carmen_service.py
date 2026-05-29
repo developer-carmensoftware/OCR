@@ -142,11 +142,11 @@ async def close_client() -> None:
 def _wrap_network_error(exc: RequestError) -> CarmenAPIError:
     if isinstance(exc, ConnectError):
         return CarmenAPIError(
-            503, "ไม่สามารถเชื่อมต่อ Carmen Server ได้ กรุณาตรวจสอบการเชื่อมต่อและลองใหม่อีกครั้ง"
+            503, "Unable to connect to Carmen Server. Please check your connection and try again."
         )
     if isinstance(exc, TimeoutException):
-        return CarmenAPIError(504, "Carmen Server ใช้เวลานานเกินไป กรุณาลองใหม่อีกครั้ง")
-    return CarmenAPIError(503, f"เกิดข้อผิดพลาดในการเชื่อมต่อ Carmen: {exc}")
+        return CarmenAPIError(504, "Carmen Server request timed out. Please try again.")
+    return CarmenAPIError(503, f"Connection to Carmen failed: {exc}")
 
 
 async def get_account_codes(carmen_token: str) -> Any:
