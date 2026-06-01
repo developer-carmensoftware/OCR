@@ -127,3 +127,69 @@ class LLMModelPricing(Base, TimestampMixin):
     output_price_per_1m = Column(Numeric(18, 9), default=0)
     source = Column(String(50), default="manual")
     price_verified_at = Column(DateTime, nullable=True)
+
+
+# ── Top-up credits ────────────────────────────────────────────────────────────
+# Every tenant gets a free monthly document quota (the `quotas` MONTHLY/CALLS
+# rule). When that is exhausted, extraction consumes from a persistent top-up
+# credit balance that never expires (rolls over month to month). These tables
+# implement that balance, its audit ledger, the purchasable pack catalog, and a
+# stub order table so a payment gateway can plug in later.
+
+
+class CreditPack(Base, TimestampMixin, WriterMixin):
+    """
+    Purchasable top-up pack catalog (CMS-editable like banks/plans).
+    The free 30 docs/month tier is NOT a pack — it lives in the quotas table.
+    """
+
+    __tablename__ = "credit_packs"
+
+    code = Column(String(20), primary_key=True)  # 'p100', 'p500', 'p1000', 'p5000'
+    credits = Column(Integer, nullable=False)
+    price_thb = Column(Numeric(10, 2), nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    sort_order = Column(Integer, default=0, nullable=False)
+
+
+class TenantCredit(Base, TimestampMixin):
+    """Persistent top-up balance per tenant — runtime source of truth."""
+
+    __tablename__ = "tenant_credits"
+
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True)
+    balance = Column(Integer, nullable=False, default=0)
+
+
+class CreditLedger(Base, TimestampMixin, WriterMixin):
+    """Append-only audit of every credit balance change."""
+
+    __tablename__ = "credit_ledger"
+
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
+    delta = Column(Integer, nullable=False)  # +grant / -consumption
+    balance_after = Column(Integer, nullable=False)
+    reason = Column(String(20), nullable=False)  # topup | consumption | admin_adjust | refund
+    pack_code = Column(String(20), ForeignKey("credit_packs.code"), nullable=True)
+    ref = Column(String(64), nullable=True)  # ocr_task id / order id
+    note = Column(Text, nullable=True)
+
+
+class CreditOrder(Base, TimestampMixin, WriterMixin):
+    """
+    Top-up order — groundwork for a future payment gateway.
+    v1: created as 'pending'; an admin (or webhook later) marks it 'paid',
+    which grants the credits and writes a ledger row.
+    """
+
+    __tablename__ = "credit_orders"
+
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
+    pack_code = Column(String(20), ForeignKey("credit_packs.code"), nullable=False)
+    credits = Column(Integer, nullable=False)
+    amount_thb = Column(Numeric(10, 2), nullable=False)
+    status = Column(String(20), nullable=False, default="pending")  # pending | paid | cancelled
+    payment_ref = Column(String(128), nullable=True)
+    paid_at = Column(DateTime, nullable=True)

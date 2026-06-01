@@ -3,6 +3,15 @@ from app.models.schemas.ap_invoice import SuggestGLItem, SuggestGLRequest
 from app.models.schemas.auth import ExchangeRequest, ExchangeResponse
 from app.models.schemas.common import FieldMapping
 from app.models.schemas.config import AccountingConfigRequest, AccountingConfigResponse
+from app.models.schemas.credits import (
+    AdjustRequest,
+    CreateOrderRequest,
+    CreditBalanceResponse,
+    CreditLedgerEntry,
+    CreditOrderResponse,
+    CreditPackResponse,
+    TopupRequest,
+)
 from app.models.schemas.mapping import (
     CodeOption,
     SuggestPaymentTypesRequest,
@@ -34,6 +43,14 @@ __all__ = [
     # config
     "AccountingConfigRequest",
     "AccountingConfigResponse",
+    # credits
+    "CreditPackResponse",
+    "CreateOrderRequest",
+    "CreditOrderResponse",
+    "TopupRequest",
+    "AdjustRequest",
+    "CreditBalanceResponse",
+    "CreditLedgerEntry",
     # ap_invoice
     "SuggestGLItem",
     "SuggestGLRequest",

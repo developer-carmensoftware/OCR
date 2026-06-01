@@ -7,6 +7,7 @@ export interface UsageData {
     monthly_calls: number
     max_monthly_calls: number
     remaining_calls: number
+    credit_balance: number
   }
 }
 

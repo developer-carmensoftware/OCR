@@ -1,0 +1,87 @@
+/* ─── ADMIN CREDITS PAGE ─── */
+
+.ac-empty {
+  padding: 1.5rem;
+  color: var(--text-3);
+  font-size: 0.875rem;
+}
+
+.ac-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.ac-balance-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 1.25rem;
+}
+
+.ac-balance-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+
+.ac-balance-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--primary);
+  line-height: 1;
+}
+
+.ac-action-card {
+  padding: 1.25rem;
+}
+
+.ac-action-title {
+  margin: 0 0 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.ac-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.ac-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.82rem;
+  font-family: 'Inter', 'Sarabun', sans-serif;
+  background: var(--input-bg, var(--muted));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  color: var(--text);
+}
+
+.ac-input--num {
+  max-width: 110px;
+  flex: 0 0 auto;
+}
+
+.ac-input:focus {
+  outline: none;
+  border-color: var(--primary-mid);
+  box-shadow: 0 0 0 2px var(--primary-light);
+}
+
+[data-theme='dark'] .ac-input {
+  background: oklch(0.22 0.02 258.7);
+  color-scheme: dark;
+}

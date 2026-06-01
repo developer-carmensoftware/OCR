@@ -269,6 +269,86 @@
   text-align: center;
 }
 
+/* ─── Top-up credit packs ─── */
+.hm-label--tight {
+  margin-bottom: -0.25rem;
+}
+
+.hm-hint--left {
+  text-align: left;
+  margin: 0;
+}
+
+.hm-coins-icon {
+  vertical-align: -2px;
+  margin-right: 4px;
+}
+
+.hm-pack-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+}
+
+.hm-pack-credits {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.hm-pack-unit {
+  font-weight: 500;
+  color: var(--text-4);
+}
+
+.hm-pack-price {
+  margin-left: auto;
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--text-2);
+}
+
+.hm-pack-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  font-family: 'Inter', 'Sarabun', sans-serif;
+  color: #fff;
+  background: var(--primary);
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+  transition:
+    opacity 0.15s,
+    transform 0.1s;
+  flex-shrink: 0;
+}
+
+.hm-pack-btn:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.hm-pack-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.hm-pack-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.hm-pack-btn--done {
+  background: var(--teal, #0d9488);
+}
+
 /* ─── Module badge (read-only) ─── */
 .hm-module-badge {
   display: inline-flex;

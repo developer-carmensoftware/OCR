@@ -254,6 +254,64 @@ async def _m207_drop_mapping_history(conn: AsyncConnection) -> None:
     logger.info("  ~ dropped mapping_history (now derived from Carmen JV history)")
 
 
+async def _m208_credit_topup_billing(conn: AsyncConnection) -> None:
+    """
+    Switch billing from plan tiers to "free 30 docs/month + top-up credits".
+
+    - Free tier: everyone on `free` with a 30/month quota (auto-resets via
+      period_key). pro/enterprise tenants are downgraded to free.
+    - Top-up credits: a persistent balance (tables created by create_all) that
+      kicks in once the monthly free quota is spent; never expires.
+
+    New tables (tenant_credits, credit_ledger, credit_packs, credit_orders) are
+    built by Base.metadata.create_all(); this migration only adjusts data + seeds
+    the pack catalog. Idempotent.
+    """
+    # 1. Free plan limit → 30 docs/month
+    await conn.execute(text("UPDATE plans SET monthly_call_limit = 30 WHERE code = 'free'"))
+
+    # 2. Everyone on free; retire the old paid tiers
+    await conn.execute(
+        text(
+            "UPDATE tenants SET plan = 'free' "
+            "WHERE plan IN ('pro', 'enterprise') AND deleted_at IS NULL"
+        )
+    )
+    await conn.execute(
+        text("UPDATE plans SET is_active = false WHERE code IN ('pro', 'enterprise')")
+    )
+
+    # 3. Sync existing non-custom monthly call quotas to 30 immediately
+    #    (login also syncs, but make the change take effect without a re-login)
+    await conn.execute(
+        text(
+            "UPDATE quotas SET limit_value = 30 "
+            "WHERE metric = 'calls' AND period = 'monthly' "
+            "AND is_custom = false AND deleted_at IS NULL"
+        )
+    )
+
+    # 4. Seed the top-up pack catalog (30 = the free tier, so NOT a pack)
+    packs = [
+        ("p100", 100, 290.00, 1),
+        ("p500", 500, 1250.00, 2),
+        ("p1000", 1000, 2000.00, 3),
+        ("p5000", 5000, 7500.00, 4),
+    ]
+    for code, credits, price, order in packs:
+        await conn.execute(
+            text("""
+                INSERT INTO credit_packs
+                    (code, credits, price_thb, is_active, sort_order, created_at)
+                VALUES (:code, :credits, :price, true, :order, NOW())
+                ON CONFLICT (code) DO NOTHING
+            """),
+            {"code": code, "credits": credits, "price": price, "order": order},
+        )
+
+    logger.info("  ~ billing switched to free 30/month + top-up credits; pack catalog seeded")
+
+
 _MIGRATIONS: list[tuple[str, Callable[[AsyncConnection], Awaitable[None]] | None]] = [
     # ── Squashed history markers ──────────────────────────────────────────────
     ("001_squashed_initial_schema", None),
@@ -268,4 +326,5 @@ _MIGRATIONS: list[tuple[str, Callable[[AsyncConnection], Awaitable[None]] | None
     ("205_bug_reports_table", None),
     ("206_collapse_tenant_bu", _m206_collapse_tenant_bu),
     ("207_drop_mapping_history", _m207_drop_mapping_history),
+    ("208_credit_topup_billing", _m208_credit_topup_billing),
 ]

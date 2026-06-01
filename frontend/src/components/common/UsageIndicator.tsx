@@ -44,7 +44,8 @@ export default function UsageIndicator() {
 
   const stats = useMemo((): UsageStats | null => {
     if (!usage) return null
-    const { monthly_calls, max_monthly_calls, remaining_calls } = usage
+    const { monthly_calls, max_monthly_calls, remaining_calls, credit_balance } = usage
+    const totalRemaining = remaining_calls + credit_balance
     const usedPercentage = max_monthly_calls > 0 ? (monthly_calls / max_monthly_calls) * 100 : 0
     let color = 'var(--teal)'
     if (usedPercentage >= 90) color = 'var(--rose)'
@@ -52,10 +53,11 @@ export default function UsageIndicator() {
     return {
       monthly_calls,
       max_monthly_calls,
-      remaining_calls,
+      remaining_calls: totalRemaining,
+      credit_balance,
       usedPercentage,
       color,
-      isLow: remaining_calls <= 5 || usedPercentage >= 90,
+      isLow: totalRemaining <= 5,
     }
   }, [usage])
 
@@ -88,9 +90,10 @@ export default function UsageIndicator() {
         <div
           ref={quotaRef}
           role="status"
-          aria-label={`OCR quota: remaining ${stats.remaining_calls} of ${stats.max_monthly_calls}`}
+          aria-label={`OCR quota: ${stats.remaining_calls} documents remaining`}
+          title="Open plan & credits"
           onClick={() => {
-            void fetchUsage()
+            window.dispatchEvent(new Event('ocr:open-topup'))
           }}
           className={`ui-quota${stats.isLow ? ' is-low' : ''}`}
         >

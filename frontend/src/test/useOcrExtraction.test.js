@@ -105,8 +105,8 @@ describe('useOcrExtraction', () => {
       expect(props.setStep).not.toHaveBeenCalledWith(2)
     })
 
-    it('shows quota modal and resets to step 1 on 429 error', async () => {
-      const err = Object.assign(new Error('Quota exceeded'), { status: 429 })
+    it('shows out-of-documents modal and resets to step 1 on 402 error', async () => {
+      const err = Object.assign(new Error('No credits'), { status: 402 })
       extractFromFile.mockRejectedValue(err)
       const props = makeProps()
       const { result } = renderHook(() => useOcrExtraction(props))
@@ -114,7 +114,21 @@ describe('useOcrExtraction', () => {
         await result.current.processFile([MOCK_FILE])
       })
       expect(props.showModal).toHaveBeenCalledWith(
-        expect.objectContaining({ title: expect.stringContaining('Quota') })
+        expect.objectContaining({ title: expect.stringContaining('Out of Documents') })
+      )
+      expect(props.setStep).toHaveBeenCalledWith(1)
+    })
+
+    it('shows rate-limit modal and resets to step 1 on 429 error', async () => {
+      const err = Object.assign(new Error('Too many'), { status: 429 })
+      extractFromFile.mockRejectedValue(err)
+      const props = makeProps()
+      const { result } = renderHook(() => useOcrExtraction(props))
+      await act(async () => {
+        await result.current.processFile([MOCK_FILE])
+      })
+      expect(props.showModal).toHaveBeenCalledWith(
+        expect.objectContaining({ title: expect.stringContaining('Too Many Requests') })
       )
       expect(props.setStep).toHaveBeenCalledWith(1)
     })

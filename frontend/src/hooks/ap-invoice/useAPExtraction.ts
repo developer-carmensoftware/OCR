@@ -188,13 +188,33 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
           return
         } catch (err) {
           const e = err as { message: string }
-          if (e.message.includes('429')) {
-            toast.error('Monthly quota exceeded')
+          if (e.message.includes('402')) {
+            toast.error('Out of documents')
             setModal({
               show: true,
               type: 'warning',
-              title: 'Monthly Quota Exceeded',
-              message: 'Your Business Unit has reached the monthly document processing limit.',
+              title: 'Out of Documents',
+              message:
+                'Your free 30 documents this month are used up and you have no top-up credits left. Buy a credit pack to continue — credits never expire.',
+              confirmText: 'Buy Credits',
+              onConfirm: () => {
+                setModal({ show: false })
+                window.dispatchEvent(new Event('ocr:open-topup'))
+                setStep(1)
+                setFile(null)
+                setPreviewUrl(null)
+              },
+            })
+            return
+          }
+          if (e.message.includes('429')) {
+            toast.error('Too many requests')
+            setModal({
+              show: true,
+              type: 'warning',
+              title: 'Too Many Requests',
+              message:
+                'You are sending requests too quickly. Please slow down and try again shortly.',
               confirmText: 'Acknowledge',
               onConfirm: () => {
                 setModal({ show: false })

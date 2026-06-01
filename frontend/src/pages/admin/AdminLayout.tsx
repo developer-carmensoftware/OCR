@@ -4,6 +4,7 @@ import {
   BarChart3,
   Bell,
   Bot,
+  Coins,
   LayoutDashboard,
   LogOut,
   Settings,
@@ -44,6 +45,7 @@ const NAV: NavItem[] = [
   { label: 'Anomalies', hash: '/admin/anomalies', icon: <Bell size={ICON_SIZE} strokeWidth={2} /> },
   { label: 'Jobs', hash: '/admin/jobs', icon: <Settings size={ICON_SIZE} strokeWidth={2} /> },
   { label: 'Sessions', hash: '/admin/sessions', icon: <Users size={ICON_SIZE} strokeWidth={2} /> },
+  { label: 'Credits', hash: '/admin/credits', icon: <Coins size={ICON_SIZE} strokeWidth={2} /> },
 ]
 
 function getActiveHash(): string {

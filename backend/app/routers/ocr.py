@@ -27,9 +27,9 @@ from app.services import audit_service, ocr_service
 from app.services.audit_service import AuditAction
 from app.services.correction_service import get_correction_hints
 from app.services.credit_card_service import finalize_extraction, mark_task_failed
+from app.services.credit_service import consume_document
 from app.services.file_service import file_service
 from app.services.task_service import create_task
-from app.services.usage_service import consume_quota
 from app.utils.date_parsing import format_doc_date
 
 logger = logging.getLogger(__name__)
@@ -79,7 +79,7 @@ async def extract_card(
         ip_address=request.client.host if request.client else None,
     )
 
-    await consume_quota()
+    await consume_document()
 
     # Phase 1: validate + read all files into memory (no DB held)
     file_data: list[tuple[str, bytes]] = []

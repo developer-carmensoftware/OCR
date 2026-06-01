@@ -159,3 +159,63 @@ export async function fetchErrorBreakdown(params: QueryParams = {}) {
   if (!res.ok) throw new Error('Failed to fetch error breakdown')
   return res.json()
 }
+
+// ── Top-up credits ────────────────────────────────────────────────────────────
+
+export interface CreditBalance {
+  tenant_id: string
+  balance: number
+}
+
+export interface CreditLedgerEntry {
+  id: string
+  delta: number
+  balance_after: number
+  reason: string
+  pack_code: string | null
+  ref: string | null
+  note: string | null
+  created_at: string | null
+}
+
+export async function fetchCreditBalance(tenantId: string): Promise<CreditBalance> {
+  const res = await adminFetch(`/api/v1/admin/tenants/${tenantId}/credits`)
+  if (!res.ok) throw new Error('Failed to fetch credit balance')
+  return res.json()
+}
+
+export async function fetchCreditLedger(tenantId: string): Promise<CreditLedgerEntry[]> {
+  const res = await adminFetch(`/api/v1/admin/tenants/${tenantId}/credits/ledger`)
+  if (!res.ok) throw new Error('Failed to fetch credit ledger')
+  return res.json()
+}
+
+export async function topupCredits(tenantId: string, packCode: string): Promise<CreditBalance> {
+  const res = await adminFetch(`/api/v1/admin/tenants/${tenantId}/credits/topup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pack_code: packCode }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Top-up failed')
+  }
+  return res.json()
+}
+
+export async function adjustCredits(
+  tenantId: string,
+  delta: number,
+  note?: string
+): Promise<CreditBalance> {
+  const res = await adminFetch(`/api/v1/admin/tenants/${tenantId}/credits/adjust`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ delta, note }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Adjust failed')
+  }
+  return res.json()
+}

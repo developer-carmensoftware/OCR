@@ -38,7 +38,7 @@ def mock_session():
 
 
 class TestExtractCard:
-    @patch("app.routers.ocr.consume_quota", new_callable=AsyncMock)
+    @patch("app.routers.ocr.consume_document", new_callable=AsyncMock)
     @patch("app.routers.ocr.get_correction_hints", new_callable=AsyncMock)
     @patch("app.routers.ocr.create_task")
     @patch("app.routers.ocr.ocr_service.extract_stateless", new_callable=AsyncMock)
@@ -104,7 +104,7 @@ class TestExtractCard:
         assert data[0]["id"] is not None
         assert dummy_task.status == TaskStatus.COMPLETED
 
-    @patch("app.routers.ocr.consume_quota", new_callable=AsyncMock)
+    @patch("app.routers.ocr.consume_document", new_callable=AsyncMock)
     @patch("app.routers.ocr.get_correction_hints", new_callable=AsyncMock)
     @patch("app.routers.ocr.create_task")
     @patch("app.routers.ocr.ocr_service.extract_stateless", new_callable=AsyncMock)
@@ -164,7 +164,7 @@ class TestExtractCard:
         assert data[0]["id"] is None
         assert dummy_task.status == TaskStatus.COMPLETED
 
-    @patch("app.routers.ocr.consume_quota", new_callable=AsyncMock)
+    @patch("app.routers.ocr.consume_document", new_callable=AsyncMock)
     @patch("app.routers.ocr.get_correction_hints", new_callable=AsyncMock)
     @patch("app.routers.ocr.create_task")
     @patch("app.routers.ocr.ocr_service.extract_stateless", new_callable=AsyncMock)

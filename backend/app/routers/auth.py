@@ -242,7 +242,8 @@ async def revoke_session(
 
 @router.get("/usage")
 async def get_usage(_session: SessionInfo = Depends(get_current_session)):
-    """Get quota usage for the current tenant."""
+    """Get quota usage + top-up credit balance for the current tenant."""
+    from app.services.credit_service import get_credit_balance
     from app.services.usage_service import get_quota_summary
 
     summary = await get_quota_summary(_session.tenant_id)
@@ -257,10 +258,12 @@ async def get_usage(_session: SessionInfo = Depends(get_current_session)):
     )
     used = int(monthly["used"]) if monthly else 0
     limit = int(monthly["limit"]) if monthly else 0
+    credit_balance = await get_credit_balance(_session.tenant_id)
     return {
         "usage": {
             "monthly_calls": used,
             "max_monthly_calls": limit,
             "remaining_calls": max(0, limit - used),
+            "credit_balance": credit_balance,
         }
     }

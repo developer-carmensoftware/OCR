@@ -7,6 +7,7 @@ can map them to correct HTTP status codes.
 HTTP mapping (see main.py):
   400  — bad user input (validation, missing fields)
   409  — conflict (duplicate document)
+  402  — payment required (free quota exhausted, no top-up credits left)
   413  — payload too large (file size)
   422  — unprocessable entity (LLM parse error, post-process failure)
   429  — too many requests (quota or IP rate limit)
@@ -46,6 +47,21 @@ class RateLimitExceeded(RuntimeError):
         self.bu_name = bu_name
         self.limit = limit
         super().__init__(f"BU '{bu_name}' has exceeded its monthly quota of {limit} LLM calls.")
+
+
+class InsufficientCredits(RuntimeError):
+    """Free monthly quota exhausted and no top-up credits remain. → 402
+
+    Distinct from RateLimitExceeded (429): this signals the tenant should buy a
+    top-up credit pack, not that they are being throttled.
+    """
+
+    def __init__(self, tenant_id: str):
+        self.tenant_id = tenant_id
+        super().__init__(
+            "Monthly free document quota exhausted and no top-up credits remain. "
+            "Purchase a credit pack to continue."
+        )
 
 
 class RequestRateLimitExceeded(RuntimeError):

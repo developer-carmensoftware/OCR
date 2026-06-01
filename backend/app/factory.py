@@ -14,6 +14,7 @@ from app.exceptions import (
     DuplicateDocumentError,
     ExtractionError,
     FileTooLargeError,
+    InsufficientCredits,
     LLMParseError,
     LLMServiceError,
     RateLimitExceeded,
@@ -30,6 +31,7 @@ from app.routers.ap_invoice import router as ap_invoice_router
 from app.routers.auth import router as auth_router
 from app.routers.carmen import router as carmen_router
 from app.routers.config import router as config_router
+from app.routers.credits import router as credits_router
 from app.routers.feedback import router as feedback_router
 from app.routers.mapping import router as mapping_router
 from app.routers.ocr import router as ocr_router
@@ -41,6 +43,7 @@ logger = logging.getLogger(__name__)
 _EXCEPTION_STATUS: list[tuple] = [
     (HTTPException, None),
     (DuplicateDocumentError, 409),
+    (InsufficientCredits, 402),
     (FileTooLargeError, 413),
     (ValidationError, 400),
     (LLMParseError, 422),
@@ -121,5 +124,6 @@ def create_app(lifespan=None) -> FastAPI:
     app.include_router(ap_invoice_router)
     app.include_router(admin_router)
     app.include_router(config_router)
+    app.include_router(credits_router)
 
     return app

@@ -228,10 +228,25 @@ describe('useAPExtraction', () => {
     })
   })
 
-  // ── F3: quota exceeded ───────────────────────────────────────────────────────
+  // ── F3: out of documents / rate limit ────────────────────────────────────────
 
-  describe('F3: quota exceeded (429)', () => {
-    it('shows quota modal and resets to step 1 on 429 response', async () => {
+  describe('F3: billing limits', () => {
+    it('shows out-of-documents modal on 402 response', async () => {
+      apiFetch.mockResolvedValue({ ok: false, status: 402 })
+      const props = makeProps()
+      const { result } = renderHook(() => useAPExtraction(props))
+      await act(async () => {
+        await result.current.runOCR(MOCK_FILE)
+      })
+      expect(props.setModal).toHaveBeenCalledWith(
+        expect.objectContaining({
+          show: true,
+          title: expect.stringContaining('Out of Documents'),
+        })
+      )
+    })
+
+    it('shows rate-limit modal on 429 response', async () => {
       apiFetch.mockResolvedValue({ ok: false, status: 429 })
       const props = makeProps()
       const { result } = renderHook(() => useAPExtraction(props))
@@ -241,7 +256,7 @@ describe('useAPExtraction', () => {
       expect(props.setModal).toHaveBeenCalledWith(
         expect.objectContaining({
           show: true,
-          title: expect.stringContaining('Quota'),
+          title: expect.stringContaining('Too Many Requests'),
         })
       )
     })

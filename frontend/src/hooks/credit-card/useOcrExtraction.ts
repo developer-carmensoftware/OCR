@@ -216,11 +216,24 @@ export function useOcrExtraction({
       )
     } catch (err) {
       const e = err as { status?: number; message: string }
-      if (e.status === 429) {
+      if (e.status === 402) {
         showModal({
-          title: 'Monthly Quota Exceeded',
+          title: 'Out of Documents',
           message:
-            'Your Business Unit has reached the monthly document processing limit. Please contact your administrator to upgrade your plan.',
+            'Your free 30 documents this month are used up and you have no top-up credits left. Buy a credit pack to continue — credits never expire.',
+          type: 'warning',
+          confirmText: 'Buy Credits',
+          onConfirm: () => {
+            closeModal()
+            window.dispatchEvent(new Event('ocr:open-topup'))
+            setStep(1)
+            clearFiles()
+          },
+        })
+      } else if (e.status === 429) {
+        showModal({
+          title: 'Too Many Requests',
+          message: 'You are sending requests too quickly. Please slow down and try again shortly.',
           type: 'warning',
           confirmText: 'Acknowledge',
           onConfirm: () => {

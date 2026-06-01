@@ -16,12 +16,16 @@ New code should import directly from the domain modules:
 
 from .admin import AdminUser, AdminUserRole, APIKey, APIKeyUsage, Permission, Role, RolePermission
 from .billing import (
+    CreditLedger,
+    CreditOrder,
+    CreditPack,
     FeatureFlag,
     LLMModelPricing,
     Quota,
     QuotaUsage,
     SystemConfig,
     TenantConfigOverride,
+    TenantCredit,
 )
 from .business import (
     APInvoice,
@@ -95,6 +99,10 @@ __all__ = [
     "Quota",
     "QuotaUsage",
     "LLMModelPricing",
+    "CreditPack",
+    "TenantCredit",
+    "CreditLedger",
+    "CreditOrder",
     # Business
     "OcrSession",
     "OCRTask",
