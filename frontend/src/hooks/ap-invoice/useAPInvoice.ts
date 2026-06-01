@@ -10,6 +10,8 @@ import type { APLineItem } from './useAPExtraction'
 import { useAPVendor } from './useAPVendor'
 import { useAPValidation, reconcileRows } from './useAPValidation'
 import { useAPSubmission } from './useAPSubmission'
+import { fetchTaxProfiles } from '../../lib/api/carmen'
+import type { TaxProfileItem } from '../../lib/api/carmen'
 import type { ModalState } from '../../types/modal'
 
 export function useAPInvoice() {
@@ -20,6 +22,7 @@ export function useAPInvoice() {
   const [modal, setModal] = useState<ModalState>({ show: false })
   const [isGrouped, setIsGrouped] = useState(false)
   const [originalLineItems, setOriginalLineItems] = useState<APLineItem[] | null>(null)
+  const [taxProfiles, setTaxProfiles] = useState<TaxProfileItem[]>([])
 
   const extraction = useAPExtraction({ t, setStep, setModal })
 
@@ -30,6 +33,7 @@ export function useAPInvoice() {
     headerData: extraction.headerData,
     lineItems: extraction.lineItems,
     fieldMappings: extraction.fieldMappings,
+    taxProfiles,
   })
 
   const submission = useAPSubmission({
@@ -45,6 +49,9 @@ export function useAPInvoice() {
 
   useEffect(() => {
     vendor.loadVendors()
+    fetchTaxProfiles()
+      .then(setTaxProfiles)
+      .catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -404,6 +411,7 @@ export function useAPInvoice() {
     filteredVendors: vendor.filteredVendors,
     vendorRefreshing: vendor.vendorRefreshing,
     refreshVendors: vendor.refreshVendors,
+    taxProfiles,
     modal,
     setModal,
     sumLineSubTotal: validation.sumLineSubTotal,

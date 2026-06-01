@@ -16,6 +16,7 @@ import type { TaxTypeValue } from './TaxTypeDropdown'
 import type { APColumnKey } from '../../constants/apInvoice'
 import type { Vendor } from '../../hooks/ap-invoice/useAPVendor'
 import type { APInvoiceHeader } from '../../constants/apInvoice'
+import type { TaxProfileItem } from '../../lib/api/carmen'
 
 interface Ctrl {
   t: Record<string, string>
@@ -24,6 +25,7 @@ interface Ctrl {
   fieldMappings: Record<APColumnKey, string>
   activeCols: number[]
   availableFields: Array<{ value: string; label: string }>
+  taxProfiles: TaxProfileItem[]
   systemVendor: Vendor
   setSystemVendor: React.Dispatch<React.SetStateAction<Vendor>>
   vendorSearch: string
@@ -86,6 +88,7 @@ export default function APReviewStep({ ctrl }: Props) {
     fieldMappings,
     activeCols,
     availableFields,
+    taxProfiles,
     systemVendor,
     setSystemVendor,
     vendorSearch,
@@ -175,6 +178,8 @@ export default function APReviewStep({ ctrl }: Props) {
         fieldMappings={fieldMappings}
         activeCols={activeCols}
         availableFields={availableFields}
+        taxProfiles={taxProfiles}
+        systemVendor={systemVendor}
         sumLineSubTotal={sumLineSubTotal}
         sumLineTotal={sumLineTotal}
         sumDiscount={sumDiscount}

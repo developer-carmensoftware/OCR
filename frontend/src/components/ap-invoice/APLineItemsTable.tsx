@@ -1,9 +1,12 @@
+import { Fragment } from 'react'
 import { LayoutList, Trash2 } from 'lucide-react'
 import { isNumFld, fmt } from '../../constants/apInvoice'
 import Card from '../common/Card'
 import NumericInput from '../common/NumericInput'
 import type { TaxTypeValue } from './TaxTypeDropdown'
 import type { APColumnKey } from '../../constants/apInvoice'
+import type { TaxProfileItem } from '../../lib/api/carmen'
+import type { Vendor } from '../../hooks/ap-invoice/useAPVendor'
 
 interface Props {
   t: Record<string, string>
@@ -11,6 +14,8 @@ interface Props {
   fieldMappings: Record<APColumnKey, string>
   activeCols: number[]
   availableFields: Array<{ value: string; label: string }>
+  taxProfiles: TaxProfileItem[]
+  systemVendor: Vendor
   sumLineSubTotal: number
   sumLineTotal: number
   sumDiscount: number
@@ -33,6 +38,8 @@ export default function APLineItemsTable({
   fieldMappings,
   activeCols,
   availableFields,
+  taxProfiles,
+  systemVendor,
   sumLineSubTotal,
   sumLineTotal,
   sumDiscount,
@@ -51,6 +58,31 @@ export default function APLineItemsTable({
   const mappedFieldValues = Object.values(fieldMappings)
   const showFixedTaxPct = !mappedFieldValues.includes('taxPct')
   const showFixedTaxType = !mappedFieldValues.includes('taxType')
+  const showFixedTaxProfile = !mappedFieldValues.includes('taxProfileCode1')
+
+  // Rendered immediately before the Tax Type cell (mapped or fixed) on each row.
+  const taxProfileCell = (ri: number, item: Record<string, string | undefined>) => (
+    <td>
+      <select
+        aria-label="Tax profile"
+        className="ap-taxtype-select"
+        value={item.taxProfileCode1 || systemVendor.taxProfileCode1 || ''}
+        onChange={e => {
+          const code = e.target.value
+          const profile = taxProfiles.find(p => p.code === code)
+          if (profile?.rate != null) blurLineItem(ri, 'taxPct', String(profile.rate))
+          updateItem(ri, 'taxProfileCode1', code)
+        }}
+      >
+        <option value="">—</option>
+        {taxProfiles.map(p => (
+          <option key={p.code} value={p.code}>
+            {p.code}
+          </option>
+        ))}
+      </select>
+    </td>
+  )
 
   return (
     <Card
@@ -89,16 +121,30 @@ export default function APLineItemsTable({
         <table className="ap-review-table">
           <thead>
             <tr>
-              {activeCols.map(c => (
-                <th key={c} scope="col">
-                  {
-                    availableFields.find(f => f.value === fieldMappings[`col${c}` as APColumnKey])
-                      ?.label
-                  }
-                </th>
-              ))}
+              {activeCols.map(c => {
+                const fld = fieldMappings[`col${c}` as APColumnKey]
+                const label = availableFields.find(f => f.value === fld)?.label
+                if (fld === 'taxType') {
+                  return (
+                    <Fragment key={c}>
+                      {showFixedTaxProfile && <th scope="col">{t.taxProfile}</th>}
+                      <th scope="col">{label}</th>
+                    </Fragment>
+                  )
+                }
+                return (
+                  <th key={c} scope="col">
+                    {label}
+                  </th>
+                )
+              })}
               {showFixedTaxPct && <th scope="col">{t.taxPct}</th>}
-              {showFixedTaxType && <th scope="col">{t.taxType}</th>}
+              {showFixedTaxType && (
+                <>
+                  {showFixedTaxProfile && <th scope="col">{t.taxProfile}</th>}
+                  <th scope="col">{t.taxType}</th>
+                </>
+              )}
               <th scope="col" aria-label="Actions" />
             </tr>
           </thead>
@@ -109,21 +155,50 @@ export default function APLineItemsTable({
                   const fld = fieldMappings[`col${c}` as APColumnKey]
                   const numeric = isNumFld(fld)
 
-                  if (fld === 'taxType') {
-                    const tv = (item.taxType as TaxTypeValue | undefined) || 'Exclude'
+                  if (fld === 'taxProfileCode1') {
                     return (
                       <td key={c}>
                         <select
-                          aria-label="Tax type"
+                          aria-label="Tax profile"
                           className="ap-taxtype-select"
-                          value={tv}
-                          onChange={e => changeLineTaxType(ri, e.target.value as TaxTypeValue)}
+                          value={item.taxProfileCode1 || systemVendor.taxProfileCode1 || ''}
+                          onChange={e => {
+                            const code = e.target.value
+                            const profile = taxProfiles.find(p => p.code === code)
+                            if (profile?.rate != null)
+                              blurLineItem(ri, 'taxPct', String(profile.rate))
+                            updateItem(ri, 'taxProfileCode1', code)
+                          }}
                         >
-                          <option value="Include">Include</option>
-                          <option value="Exclude">Exclude</option>
-                          <option value="None">None</option>
+                          <option value="">—</option>
+                          {taxProfiles.map(p => (
+                            <option key={p.code} value={p.code}>
+                              {p.code}
+                            </option>
+                          ))}
                         </select>
                       </td>
+                    )
+                  }
+
+                  if (fld === 'taxType') {
+                    const tv = (item.taxType as TaxTypeValue | undefined) || 'Exclude'
+                    return (
+                      <Fragment key={c}>
+                        {showFixedTaxProfile && taxProfileCell(ri, item)}
+                        <td>
+                          <select
+                            aria-label="Tax type"
+                            className="ap-taxtype-select"
+                            value={tv}
+                            onChange={e => changeLineTaxType(ri, e.target.value as TaxTypeValue)}
+                          >
+                            <option value="Include">Include</option>
+                            <option value="Exclude">Exclude</option>
+                            <option value="None">None</option>
+                          </select>
+                        </td>
+                      </Fragment>
                     )
                   }
 
@@ -162,18 +237,21 @@ export default function APLineItemsTable({
                   </td>
                 )}
                 {showFixedTaxType && (
-                  <td>
-                    <select
-                      aria-label="Tax type"
-                      className="ap-taxtype-select"
-                      value={(item.taxType as TaxTypeValue | undefined) || 'Exclude'}
-                      onChange={e => changeLineTaxType(ri, e.target.value as TaxTypeValue)}
-                    >
-                      <option value="Include">Include</option>
-                      <option value="Exclude">Exclude</option>
-                      <option value="None">None</option>
-                    </select>
-                  </td>
+                  <>
+                    {showFixedTaxProfile && taxProfileCell(ri, item)}
+                    <td>
+                      <select
+                        aria-label="Tax type"
+                        className="ap-taxtype-select"
+                        value={(item.taxType as TaxTypeValue | undefined) || 'Exclude'}
+                        onChange={e => changeLineTaxType(ri, e.target.value as TaxTypeValue)}
+                      >
+                        <option value="Include">Include</option>
+                        <option value="Exclude">Exclude</option>
+                        <option value="None">None</option>
+                      </select>
+                    </td>
+                  </>
                 )}
                 <td>
                   <button
@@ -227,6 +305,7 @@ export default function APLineItemsTable({
               })}
               {showFixedTaxPct && <td />}
               {showFixedTaxType && <td />}
+              {showFixedTaxProfile && <td />}
               <td />
             </tr>
           </tfoot>

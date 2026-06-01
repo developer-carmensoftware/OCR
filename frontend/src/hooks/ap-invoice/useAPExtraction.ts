@@ -20,6 +20,7 @@ export interface APLineItem {
   taxType?: string
   taxAmt?: string
   lineTotal?: string
+  taxProfileCode1?: string
   deptCode?: string
   accountCode?: string
   _suggestDept?: string

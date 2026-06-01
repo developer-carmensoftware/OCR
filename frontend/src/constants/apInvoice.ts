@@ -17,6 +17,7 @@ export type APFieldKey =
   | 'taxType'
   | 'taxAmt'
   | 'lineTotal'
+  | 'taxProfileCode1'
 
 export type APColumnKey = `col${number}`
 
@@ -103,6 +104,7 @@ export const getAvailableFields = (t: Record<string, string>): FieldOption[] => 
   { value: 'discountAmt', label: t.discountAmt },
   { value: 'lineSubTotal', label: t.lineSubTotal },
   { value: 'taxPct', label: t.taxPct },
+  { value: 'taxProfileCode1', label: t.taxProfile },
   { value: 'taxType', label: t.taxType },
   { value: 'taxAmt', label: t.taxAmt },
   { value: 'lineTotal', label: t.lineTotal },
@@ -148,6 +150,7 @@ export const AP_I18N: Record<APLocale, APTranslations> = {
     creditAp: 'Credit — Account Payable (A/P)',
     debitExpense: 'Debit — Expense',
     taxProfile: 'Tax Profile',
+    taxProfileMismatch: 'Tax Profile / Tax% ไม่ตรงกัน',
     deptCode: 'Dept. Code',
     accountCode: 'Account Code',
     vendorGroup: 'Vendor Group',
@@ -235,6 +238,7 @@ export const AP_I18N: Record<APLocale, APTranslations> = {
     creditAp: 'Credit — Account Payable (A/P)',
     debitExpense: 'Debit — Expense',
     taxProfile: 'Tax Profile',
+    taxProfileMismatch: 'Tax Profile / Tax% mismatch',
     deptCode: 'Dept. Code',
     accountCode: 'Account Code',
     vendorGroup: 'Vendor Group',

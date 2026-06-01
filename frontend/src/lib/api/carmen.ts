@@ -36,6 +36,26 @@ export async function fetchGLPrefixes(): Promise<CarmenCodeItem[]> {
   return json.Data || []
 }
 
+export interface TaxProfileItem {
+  code: string
+  desc: string
+  rate?: number
+}
+
+export async function fetchTaxProfiles(): Promise<TaxProfileItem[]> {
+  const res = await apiFetch('/api/v1/ocr/carmen/tax-profiles')
+  if (!res.ok) throw new Error(`Failed to fetch tax profiles (${res.status})`)
+  const json = (await res.json()) as { Data?: Array<Record<string, unknown>> }
+  return (json.Data || [])
+    .filter(p => p.Active !== false) // hide inactive profiles
+    .map(p => ({
+      code: String(p.Code ?? ''), // e.g. "VAT07"
+      desc: String(p.Description ?? ''), // e.g. "VAT 7%"
+      rate: p.TaxRate != null ? Number(p.TaxRate) : undefined,
+    }))
+    .filter(p => p.code)
+}
+
 export async function submitToCarmen(
   payload: unknown,
   credit_card_id: string | null = null,
