@@ -34,10 +34,8 @@ export default function UsageIndicator() {
   useEffect(() => {
     if (!isAuthenticated) return
     void fetchUsage()
-    const interval = setInterval(fetchUsage, 5 * 60 * 1000)
     window.addEventListener('ocr:quota-refresh', fetchUsage)
     return () => {
-      clearInterval(interval)
       window.removeEventListener('ocr:quota-refresh', fetchUsage)
     }
   }, [isAuthenticated])

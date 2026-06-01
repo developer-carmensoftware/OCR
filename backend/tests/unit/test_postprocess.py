@@ -8,6 +8,7 @@ import pytest
 from app.services.ap_invoice_postprocess_service import (
     _build_deposit_row,
     _compute_line_totals,
+    _deposit_applies,
     _detect_tax_type,
     _distribute_footer_discount,
     _num,
@@ -260,6 +261,33 @@ class TestBuildDepositRow:
         assert row["category"] == "เงินมัดจำ"
 
 
+# ── B2: _deposit_applies ──────────────────────────────────────────────────────
+
+
+class TestDepositApplies:
+    def _item(self, qty=1, unit_price=100.0, discount_amt=0.0):
+        return {"qty": qty, "unitPrice": unit_price, "discountAmt": discount_amt}
+
+    def test_informational_note_when_full_total_matches_grand(self):
+        # Quotation SEP6905-089 shape: full=3500, +7% VAT = 3745 = docGrandTotal.
+        # "มัดจำ 50%" is only a payment-term note → deposit does NOT apply.
+        items = [self._item(qty=100, unit_price=35.0)]
+        assert _deposit_applies(items, deposit_pct=50, doc_sub=3500.0, doc_grand=3745.0) is False
+
+    def test_real_deposit_when_scaled_total_matches_grand(self):
+        # Receipt AI2305010 shape: full=17800, deposit 50% +7% VAT = 9523 = grand.
+        items = [self._item(qty=200, unit_price=54.0), self._item(qty=200, unit_price=35.0)]
+        assert _deposit_applies(items, deposit_pct=50, doc_sub=8900.0, doc_grand=9523.0) is True
+
+    def test_no_footer_totals_defaults_to_applied(self):
+        items = [self._item(qty=1, unit_price=200.0)]
+        assert _deposit_applies(items, deposit_pct=50, doc_sub=0, doc_grand=0) is True
+
+    def test_zero_deposit_pct_returns_false(self):
+        items = [self._item(qty=1, unit_price=100.0)]
+        assert _deposit_applies(items, deposit_pct=0, doc_sub=100.0, doc_grand=107.0) is False
+
+
 # ── B2: postprocess() top-level ───────────────────────────────────────────────
 
 
@@ -345,6 +373,68 @@ class TestPostprocess:
         )
         result = postprocess(raw)
         assert all(i.get("category") != "เงินมัดจำ" for i in result["items"])
+
+    def test_informational_deposit_note_bills_full_amount(self):
+        # Quotation SEP6905-089: "มัดจำ 50%" is only a payment-term note;
+        # footer total = full amount → no deposit row, bill the full 3,745.
+        raw = self._raw(
+            items=[{"qty": 100, "unitPrice": 35.0, "discountAmt": 0, "taxPct": 7}],
+            depositPct=50,
+            depositLabel="มัดจำ 50%",
+            docSubTotal=3500.0,
+            docTaxAmount=245.0,
+            docGrandTotal=3745.0,
+        )
+        result = postprocess(raw)
+        assert all(i.get("category") != "เงินมัดจำ" for i in result["items"])
+        assert result["depositPct"] == 0
+        assert result["depositAmt"] == 0.0
+        assert result["grandTotal"] == 3745.0
+
+    def test_real_deposit_invoice_bills_deposit_amount(self):
+        # Receipt AI2305010: footer total = 50% of full + VAT → keep deposit row.
+        raw = self._raw(
+            items=[
+                {"qty": 200, "unitPrice": 54.0, "discountAmt": 0, "taxPct": 7},
+                {"qty": 200, "unitPrice": 35.0, "discountAmt": 0, "taxPct": 7},
+            ],
+            depositPct=50,
+            depositLabel="มัดจำ 50%",
+            docSubTotal=8900.0,
+            docTaxAmount=623.0,
+            docGrandTotal=9523.0,
+        )
+        result = postprocess(raw)
+        assert any(i.get("category") == "เงินมัดจำ" for i in result["items"])
+        assert result["grandTotal"] == 9523.0
+
+    def test_informational_deposit_with_footer_discount_bills_full(self):
+        # Informational "มัดจำ 50%" note alongside a footer discount.
+        # gross 1000, docDiscount 100 → net 900, +7% VAT = 963 = docGrandTotal.
+        # _deposit_applies runs AFTER footer-discount distribution, so item_sum=900
+        # and 900×1.07≈963 reconciles to the FULL total → deposit is informational.
+        raw = self._raw(
+            items=[{"qty": 10, "unitPrice": 100.0, "discountAmt": 0, "taxPct": 7}],
+            depositPct=50,
+            depositLabel="มัดจำ 50%",
+            docSubTotal=1000.0,
+            docDiscount=100.0,
+            docTaxAmount=63.0,
+            docGrandTotal=963.0,
+        )
+        result = postprocess(raw)
+        assert all(i.get("category") != "เงินมัดจำ" for i in result["items"])
+        assert result["depositPct"] == 0
+        assert result["grandTotal"] == 963.0
+
+    def test_no_footer_total_keeps_deposit(self):
+        # No footer total to reconcile against → honour the deposit (legacy behavior).
+        raw = self._raw(
+            items=[{"qty": 1, "unitPrice": 200.0, "discountAmt": 0, "taxPct": 7}],
+            depositPct=50,
+        )
+        result = postprocess(raw)
+        assert any(i.get("category") == "เงินมัดจำ" for i in result["items"])
 
     def test_electricity_bill_penalty_row_is_vat_exempt(self):
         # ค่าไฟฟ้า (Exclude 7%) + เบี้ยปรับผิดนัด (VAT-exempt, taxPct=0)

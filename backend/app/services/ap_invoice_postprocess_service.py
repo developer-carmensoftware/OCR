@@ -27,6 +27,50 @@ def _r2(x: float) -> float:
     return round(x + 1e-9, 2)
 
 
+def _deposit_applies(
+    items: list[dict], deposit_pct: float, doc_sub: float, doc_grand: float
+) -> bool:
+    """Decide whether a detected ``deposit_pct`` is actually applied to the
+    document total, or is merely an informational payment-term note.
+
+    A "มัดจำ X%" keyword can appear in two very different documents:
+    - a *real deposit invoice* where the footer total already reflects the
+      deposit (full order scaled down by the deposit factor), or
+    - a *full invoice* that only mentions the deposit in a payment-schedule
+      note (footer total = full amount).
+
+    Returns True when the document total reflects the DEPOSIT amount (honour
+    the deposit, build the negative row). Returns False when the total is the
+    FULL amount and the deposit is informational only. Defaults to True (honour
+    the deposit) whenever there is no footer total to reconcile against.
+    """
+    if not (0 < deposit_pct < 100) or not items:
+        return deposit_pct > 0
+    item_sum = sum(
+        _r2(_num(i.get("qty")) * _num(i.get("unitPrice")) - _num(i.get("discountAmt")))
+        for i in items
+    )  # full, pre-tax
+    if item_sum <= 0:
+        return True
+    refs = [r for r in (doc_sub, doc_grand) if r > 0]
+    if not refs:
+        return True
+
+    def near(a: float, b: float) -> bool:  # absorb rounding; 1.2% covers VAT-free noise
+        return abs(a - b) <= max(0.05, b * 0.012)
+
+    def matches(v: float) -> bool:  # reconciles to a ref pre-tax OR with 7% VAT added
+        return any(near(v, r) or near(v * 1.07, r) for r in refs)
+
+    full = item_sum
+    dep = item_sum * deposit_pct / 100.0
+    # Deposit is informational only when the FULL total reconciles and the
+    # deposit-scaled total does not.
+    if matches(full) and not matches(dep):
+        return False
+    return True
+
+
 def _detect_tax_type(
     items: list[dict], deposit_pct: float, doc_sub: float, doc_grand: float, doc_tax: float = 0.0
 ) -> str:
@@ -220,6 +264,11 @@ def postprocess(raw: dict | None) -> dict:
 
     has_footer_disc = doc_disc > 0
     _distribute_footer_discount(items, doc_disc)
+    # If "มัดจำ X%" is only an informational payment-term note (footer total =
+    # full amount), neutralise the deposit so tax-type detection and the deposit
+    # row below don't wrongly scale the document down.
+    if not _deposit_applies(items, deposit_pct, doc_sub, doc_grand):
+        deposit_pct = 0.0
     tax_type = _detect_tax_type(items, deposit_pct, doc_sub, doc_grand, doc_tax)
     for item in items:
         _compute_line_totals(item, tax_type, has_footer_disc=has_footer_disc)
