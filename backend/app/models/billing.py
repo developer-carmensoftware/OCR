@@ -21,7 +21,7 @@ from sqlalchemy.sql import func
 
 from app.database import Base
 
-from .enums import QuotaMetric, QuotaPeriod
+from .enums import CreditLedgerReason, CreditOrderStatus, QuotaMetric, QuotaPeriod
 from .mixins import SoftDeleteMixin, TimestampMixin, WriterMixin
 
 
@@ -159,6 +159,8 @@ class TenantCredit(Base, TimestampMixin):
 
     tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True)
     balance = Column(Integer, nullable=False, default=0)
+    credits_purchased = Column(Integer, nullable=False, default=0)
+    credits_consumed = Column(Integer, nullable=False, default=0)
 
 
 class CreditLedger(Base, TimestampMixin, WriterMixin):
@@ -170,13 +172,18 @@ class CreditLedger(Base, TimestampMixin, WriterMixin):
     tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
     delta = Column(Integer, nullable=False)  # +grant / -consumption
     balance_after = Column(Integer, nullable=False)
-    reason = Column(String(20), nullable=False)  # topup | consumption | admin_adjust | refund
+    reason: Column = Column(
+        SAEnum(CreditLedgerReason, values_callable=lambda o: [e.value for e in o]),
+        nullable=False,
+    )
     pack_code = Column(String(20), ForeignKey("credit_packs.code"), nullable=True)
     ref = Column(String(64), nullable=True)  # ocr_task id / order id
     note = Column(Text, nullable=True)
 
+    __table_args__ = (Index("ix_credit_ledger_tenant_created", "tenant_id", "created_at"),)
 
-class CreditOrder(Base, TimestampMixin, WriterMixin):
+
+class CreditOrder(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     """
     Top-up order — groundwork for a future payment gateway.
     v1: created as 'pending'; an admin (or webhook later) marks it 'paid',
@@ -190,6 +197,28 @@ class CreditOrder(Base, TimestampMixin, WriterMixin):
     pack_code = Column(String(20), ForeignKey("credit_packs.code"), nullable=False)
     credits = Column(Integer, nullable=False)
     amount_thb = Column(Numeric(10, 2), nullable=False)
-    status = Column(String(20), nullable=False, default="pending")  # pending | paid | cancelled
+    status: Column = Column(
+        SAEnum(CreditOrderStatus, values_callable=lambda o: [e.value for e in o]),
+        nullable=False,
+        default=CreditOrderStatus.PENDING,
+    )
     payment_ref = Column(String(128), nullable=True)
     paid_at = Column(DateTime, nullable=True)
+    approved_by = Column(String(100), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index(
+            "ix_credit_orders_tenant_status",
+            "tenant_id",
+            "status",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+        Index(
+            "uq_credit_orders_one_pending_per_pack",
+            "tenant_id",
+            "pack_code",
+            unique=True,
+            postgresql_where=text("status = 'pending' AND deleted_at IS NULL"),
+        ),
+    )

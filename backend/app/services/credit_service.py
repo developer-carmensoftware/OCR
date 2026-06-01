@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.context import current_document_ref
 from app.database import async_session
 from app.exceptions import InsufficientCredits, ValidationError
-from app.models.enums import QuotaPeriod
+from app.models.enums import CreditLedgerReason, QuotaPeriod
 from app.models.orm import CreditLedger, QuotaUsage, TenantCredit
 from app.services.quota_service import (
     _CachedQuota,
@@ -61,7 +61,10 @@ async def _consume_credits(db: AsyncSession, tenant_id: str, increment: int) -> 
     stmt = (
         update(TenantCredit)
         .where(TenantCredit.tenant_id == tenant_id, TenantCredit.balance >= increment)
-        .values(balance=TenantCredit.balance - increment)
+        .values(
+            balance=TenantCredit.balance - increment,
+            credits_consumed=TenantCredit.credits_consumed + increment,
+        )
         .returning(TenantCredit.balance)
     )
     row = (await db.execute(stmt)).first()
@@ -72,7 +75,7 @@ async def _consume_credits(db: AsyncSession, tenant_id: str, increment: int) -> 
             tenant_id=tenant_id,
             delta=-increment,
             balance_after=int(row[0]),
-            reason="consumption",
+            reason=CreditLedgerReason.CONSUMPTION,
             ref=(current_document_ref.get() or None),
         )
     )
@@ -111,7 +114,7 @@ async def grant_credits(
     db: AsyncSession,
     tenant_id: str,
     amount: int,
-    reason: str,
+    reason: CreditLedgerReason,
     *,
     pack_code: str | None = None,
     ref: str | None = None,
@@ -124,12 +127,23 @@ async def grant_credits(
     The caller owns the transaction — this does not commit. Raises
     ValidationError if the result would be negative.
     """
+    purchased_delta = max(0, amount)
+    consumed_delta = max(0, -amount)
     stmt = (
         pg_insert(TenantCredit)
-        .values(tenant_id=tenant_id, balance=amount)
+        .values(
+            tenant_id=tenant_id,
+            balance=amount,
+            credits_purchased=purchased_delta,
+            credits_consumed=consumed_delta,
+        )
         .on_conflict_do_update(
             index_elements=["tenant_id"],
-            set_={"balance": TenantCredit.balance + amount},
+            set_={
+                "balance": TenantCredit.balance + amount,
+                "credits_purchased": TenantCredit.credits_purchased + purchased_delta,
+                "credits_consumed": TenantCredit.credits_consumed + consumed_delta,
+            },
         )
         .returning(TenantCredit.balance)
     )

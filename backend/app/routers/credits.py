@@ -12,10 +12,12 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import SessionInfo, get_current_session
 from app.database import get_db
+from app.models.enums import CreditOrderStatus
 from app.models.orm import CreditOrder, CreditPack
 from app.models.schemas import (
     CreateOrderRequest,
@@ -76,11 +78,15 @@ async def create_order(
         pack_code=pack.code,
         credits=pack.credits,
         amount_thb=pack.price_thb,
-        status="pending",
+        status=CreditOrderStatus.PENDING,
     )
-    db.add(order)
-    await db.commit()
-    await db.refresh(order)
+    try:
+        db.add(order)
+        await db.commit()
+        await db.refresh(order)
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="A pending order for this pack already exists")
 
     return CreditOrderResponse(
         id=str(order.id),

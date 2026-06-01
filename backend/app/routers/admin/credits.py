@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
+from app.models.enums import CreditLedgerReason, CreditOrderStatus
 from app.models.orm import CreditLedger, CreditOrder, CreditPack
 from app.models.schemas import (
     AdjustRequest,
@@ -64,17 +65,19 @@ async def topup(
         ).scalar_one_or_none()
         if order is None or str(order.tenant_id) != str(tenant_id):
             raise HTTPException(status_code=404, detail="Order not found")
-        if order.status == "paid":
+        if order.status == CreditOrderStatus.PAID:
             raise HTTPException(status_code=409, detail="Order already fulfilled")
-        order.status = "paid"
+        order.status = CreditOrderStatus.PAID
         order.paid_at = datetime.now(UTC).replace(tzinfo=None)
+        order.approved_by = admin.email
+        order.approved_at = datetime.now(UTC).replace(tzinfo=None)
         order_ref = str(order.id)
 
     balance = await grant_credits(
         db,
         tenant_id,
         pack.credits,
-        reason="topup",
+        reason=CreditLedgerReason.TOPUP,
         pack_code=pack.code,
         ref=order_ref,
     )
@@ -94,7 +97,9 @@ async def adjust(
     if body.delta == 0:
         raise HTTPException(status_code=400, detail="delta must be non-zero")
 
-    balance = await grant_credits(db, tenant_id, body.delta, reason="admin_adjust", note=body.note)
+    balance = await grant_credits(
+        db, tenant_id, body.delta, reason=CreditLedgerReason.ADMIN_ADJUST, note=body.note
+    )
     await db.commit()
     return CreditBalanceResponse(tenant_id=tenant_id, balance=balance)
 

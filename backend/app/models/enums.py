@@ -79,3 +79,16 @@ class TenantPlan(str, Enum):
     FREE = "free"
     PRO = "pro"
     ENTERPRISE = "enterprise"
+
+
+class CreditLedgerReason(str, Enum):
+    TOPUP = "topup"
+    CONSUMPTION = "consumption"
+    ADMIN_ADJUST = "admin_adjust"
+    REFUND = "refund"
+
+
+class CreditOrderStatus(str, Enum):
+    PENDING = "pending"
+    PAID = "paid"
+    CANCELLED = "cancelled"
