@@ -53,13 +53,7 @@ interface Ctrl {
   updateItem: (idx: number, key: string, val: string) => void
   blurItem: (idx: number, key: string, val: string) => void
   blurLineItem: (idx: number, key: string, val: string) => void
-  adjustField: (
-    tgt: unknown,
-    sumCur: unknown,
-    key: string,
-    adjustTotal?: boolean,
-    isDiscount?: boolean
-  ) => void
+  adjustField: (tgt: unknown, sumCur: unknown, key: string) => void
   setStep: (step: number) => void
   goToAccount: () => void
   isGrouped: boolean

@@ -31,13 +31,7 @@ interface Props {
   headerData: APInvoiceHeader
   updateHeader: (key: string, val: string) => void
   blurHeader: (key: string, val: string) => void
-  adjustField: (
-    tgt: unknown,
-    sumCur: unknown,
-    itemKey: string,
-    adjustTotal?: boolean,
-    isDiscount?: boolean
-  ) => void
+  adjustField: (tgt: unknown, sumCur: unknown, itemKey: string) => void
 }
 
 interface SummaryRowProps {

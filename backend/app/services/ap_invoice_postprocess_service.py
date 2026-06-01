@@ -92,6 +92,9 @@ def _detect_tax_type(
     tax_pct = _num(items[0].get("taxPct")) or 7.0
 
     if doc_grand > 0:
+        # inc_diff intentionally equals none_diff here: doc_grand already includes VAT, and
+        # an Include invoice's item sum (gross unitPrice) already ≈ grand, so the two are
+        # indistinguishable by this metric. None is disambiguated below via doc_tax == 0.
         none_diff = abs(effective - doc_grand)
         inc_diff = abs(effective - doc_grand)
         exc_diff = abs(effective * (1 + tax_pct / 100) - doc_grand)
@@ -305,6 +308,10 @@ def postprocess(raw: dict | None) -> dict:
             last = regular_items[-1]
             last["taxAmt"] = _r2(_num(last["taxAmt"]) + diff)
             last["lineTotal"] = _r2(_num(last["lineSubTotal"]) + _num(last["taxAmt"]))
+            # The penny went into tax, so move the header tax by the same amount to keep
+            # sum(item.taxAmt) == tax_amount and sub + tax == grand. Otherwise the frontend
+            # would see a phantom tax diff and force the user onto the Adjust button.
+            tax_amount = _r2(tax_amount + diff)
 
     deposit_amt = _r2(grand_total) if deposit_pct > 0 else 0.0
 

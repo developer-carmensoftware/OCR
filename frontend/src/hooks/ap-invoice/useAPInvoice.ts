@@ -8,7 +8,7 @@ import { saveAPVendorMapping } from '../../lib/api/config'
 import { useAPExtraction } from './useAPExtraction'
 import type { APLineItem } from './useAPExtraction'
 import { useAPVendor } from './useAPVendor'
-import { useAPValidation } from './useAPValidation'
+import { useAPValidation, reconcileRows } from './useAPValidation'
 import { useAPSubmission } from './useAPSubmission'
 import type { ModalState } from '../../types/modal'
 
@@ -105,22 +105,14 @@ export function useAPInvoice() {
     }
   }
 
-  const adjustField = (
-    tgt: unknown,
-    sumCur: unknown,
-    itemKey: string,
-    adjustTotal = false,
-    isDiscount = false
-  ) => {
-    const updated = validation.adjustField(
-      tgt,
-      sumCur,
-      itemKey,
-      extraction.lineItems,
-      adjustTotal,
-      isDiscount
-    )
-    extraction.setLineItems(updated)
+  // adjustField (validation) writes a single field onto the target row(s); reconcileRows
+  // (shared, in useAPValidation) re-derives the dependent field per taxType so every row
+  // stays internally consistent and fixing one summary line never opens another.
+  const adjustField = (tgt: unknown, sumCur: unknown, itemKey: string) => {
+    const updated = validation.adjustField(tgt, sumCur, itemKey, extraction.lineItems)
+    // discountAmt is informational (lineSubTotal is already net); reconciling it is a no-op,
+    // so a single reconcile pass is safe for every field.
+    extraction.setLineItems(reconcileRows(updated))
   }
 
   // Wraps extraction.blurHeader so that editing header taxAmount also propagates
@@ -134,16 +126,16 @@ export function useAPInvoice() {
     if (tgt === sum) return
     const adjusted =
       tgt === 0
-        ? extraction.lineItems.map(item => ({ ...item, taxAmt: '0.00', taxPct: '0.00' }))
+        ? extraction.lineItems.map(item => ({
+            ...item,
+            taxAmt: '0.00',
+            taxPct: '0.00',
+            taxType: 'None' as const,
+          }))
         : validation.adjustField(tgt, sum, 'taxAmt', extraction.lineItems)
-    // adjustField only writes taxAmt; reconcile lineTotal = lineSubTotal + taxAmt
-    // so per-line totals stay consistent.
-    const updated = adjusted.map(item => ({
-      ...item,
-      lineTotal: fmt(parseNum(item.lineSubTotal) + parseNum(item.taxAmt)),
-    }))
-    extraction.setLineItems(updated)
-    // Keep the "From Document" header values fixed: blurHeader (line 130) already stored the
+    // adjustField only writes taxAmt; reconcile per-line totals so they stay consistent.
+    extraction.setLineItems(reconcileRows(adjusted))
+    // Keep the "From Document" header values fixed: blurHeader above already stored the
     // user-typed taxAmount. Do not re-sync taxAmount/grandTotal from line sums — that would
     // mutate the immutable document totals and hide any remaining grand-total diff.
   }

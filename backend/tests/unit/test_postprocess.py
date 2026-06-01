@@ -346,6 +346,19 @@ class TestPostprocess:
         computed = round(sum(i["lineTotal"] for i in result["items"]), 2)
         assert abs(computed - result["grandTotal"]) <= 0.02
 
+    def test_penny_reconcile_keeps_header_tax_consistent(self):
+        # 3 × 33.33 (Exclude 7%) → computed grand 106.99, snapped to 107.00, then the
+        # 0.01 penny is absorbed into the last item's taxAmt. The header tax_amount must
+        # move with it so the frontend doesn't see a phantom tax diff.
+        raw = self._raw(
+            items=[{"qty": 3, "unitPrice": 33.33, "discountAmt": 0, "taxPct": 7}],
+            docGrandTotal=107.0,
+        )
+        result = postprocess(raw)
+        item_tax = round(sum(i["taxAmt"] for i in result["items"]), 2)
+        assert result["taxAmount"] == item_tax
+        assert round(result["subTotal"] + result["taxAmount"], 2) == result["grandTotal"]
+
     def test_grand_total_snapped_to_doc_value_within_tolerance(self):
         # doc_grand=107.0, computed might be 107.01 due to rounding
         raw = self._raw(

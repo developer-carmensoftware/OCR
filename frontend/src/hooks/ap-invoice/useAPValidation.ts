@@ -10,6 +10,20 @@ interface APValidationProps {
   t?: Record<string, string>
 }
 
+// adjustField writes a single field onto the target row(s). reconcileRows re-derives the
+// dependent field per taxType so every row stays internally consistent. Shared by the
+// Adjust buttons and the header-tax blur — this is what stops the "whack-a-mole" where
+// fixing one summary line opens a diff on another.
+//   Include:      lineSubTotal = lineTotal − taxAmt   (lineTotal is the fixed gross)
+//   Exclude/None: lineTotal    = lineSubTotal + taxAmt
+export function reconcileRows(items: APLineItem[]): APLineItem[] {
+  return items.map(item =>
+    item.taxType === 'Include'
+      ? { ...item, lineSubTotal: fmt(parseNum(item.lineTotal) - parseNum(item.taxAmt)) }
+      : { ...item, lineTotal: fmt(parseNum(item.lineSubTotal) + parseNum(item.taxAmt)) }
+  )
+}
+
 export function useAPValidation({ headerData, lineItems, fieldMappings, t }: APValidationProps) {
   const sumLineSubTotal =
     lineItems.reduce((s, i) => s + Math.round(parseNum(i.lineSubTotal) * 100), 0) / 100
@@ -50,9 +64,7 @@ export function useAPValidation({ headerData, lineItems, fieldMappings, t }: APV
     tgt: unknown,
     sumCur: unknown,
     itemKey: string,
-    items: APLineItem[],
-    adjustTotal = false,
-    isDiscount = false
+    items: APLineItem[]
   ): APLineItem[] => {
     if (!items.length) return items
     const diff = (Math.round(parseNum(tgt) * 100) - Math.round(parseNum(sumCur) * 100)) / 100
@@ -102,20 +114,14 @@ export function useAPValidation({ headerData, lineItems, fieldMappings, t }: APV
       if (lastTaxable) targetIdx = lastTaxable.i
     }
 
+    // Writes only `itemKey`. The caller (useAPInvoice.adjustField / blurHeader) runs a
+    // per-row reconcile afterwards to re-derive the dependent field by taxType, so the
+    // touched row stays internally consistent (lineSubTotal + taxAmt == lineTotal).
     updated[targetIdx] = {
       ...updated[targetIdx],
       [itemKey]: fmt(
         (Math.round(round2(updated[targetIdx][itemKey]) * 100) + Math.round(diff * 100)) / 100
       ),
-    }
-    if (adjustTotal) {
-      const ltDiff = isDiscount ? -diff : diff
-      updated[targetIdx] = {
-        ...updated[targetIdx],
-        lineTotal: fmt(
-          (Math.round(round2(updated[targetIdx].lineTotal) * 100) + Math.round(ltDiff * 100)) / 100
-        ),
-      }
     }
     return updated
   }
