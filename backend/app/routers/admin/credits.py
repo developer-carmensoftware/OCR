@@ -67,18 +67,18 @@ async def topup(
             raise HTTPException(status_code=404, detail="Order not found")
         if order.status == CreditOrderStatus.PAID:
             raise HTTPException(status_code=409, detail="Order already fulfilled")
-        order.status = CreditOrderStatus.PAID
-        order.paid_at = datetime.now(UTC).replace(tzinfo=None)
-        order.approved_by = admin.email
-        order.approved_at = datetime.now(UTC).replace(tzinfo=None)
+        order.status = CreditOrderStatus.PAID  # type: ignore[assignment]
+        order.paid_at = datetime.now(UTC).replace(tzinfo=None)  # type: ignore[assignment]
+        order.approved_by = admin.email  # type: ignore[assignment]
+        order.approved_at = datetime.now(UTC).replace(tzinfo=None)  # type: ignore[assignment]
         order_ref = str(order.id)
 
     balance = await grant_credits(
         db,
         tenant_id,
-        pack.credits,
+        pack.credits,  # type: ignore[arg-type]
         reason=CreditLedgerReason.TOPUP,
-        pack_code=pack.code,
+        pack_code=pack.code,  # type: ignore[arg-type]
         ref=order_ref,
     )
     await db.commit()
