@@ -1,10 +1,12 @@
 """Pydantic schemas for the top-up credit system."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class CreditPackResponse(BaseModel):
     """A purchasable top-up pack in the catalog."""
+
+    model_config = ConfigDict(from_attributes=True)
 
     code: str
     credits: int
@@ -17,11 +19,18 @@ class CreateOrderRequest(BaseModel):
 
 
 class CreditOrderResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     pack_code: str
     credits: int
     amount_thb: float
     status: str
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def _coerce_id(cls, v: object) -> str:
+        return str(v)
 
 
 class TopupRequest(BaseModel):
@@ -44,6 +53,8 @@ class CreditBalanceResponse(BaseModel):
 
 
 class CreditLedgerEntry(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     delta: int
     balance_after: int
@@ -52,3 +63,13 @@ class CreditLedgerEntry(BaseModel):
     ref: str | None = None
     note: str | None = None
     created_at: str | None = None
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def _coerce_id(cls, v: object) -> str:
+        return str(v)
+
+    @field_validator("created_at", mode="before")
+    @classmethod
+    def _coerce_created_at(cls, v: object) -> object:
+        return v.isoformat() if hasattr(v, "isoformat") else v

@@ -46,15 +46,7 @@ async def list_packs(
         .scalars()
         .all()
     )
-    return [
-        CreditPackResponse(
-            code=p.code,
-            credits=p.credits,
-            price_thb=float(p.price_thb),
-            sort_order=p.sort_order,
-        )
-        for p in rows
-    ]
+    return [CreditPackResponse.model_validate(p) for p in rows]
 
 
 @router.post("/orders", response_model=CreditOrderResponse)
@@ -88,10 +80,4 @@ async def create_order(
         await db.rollback()
         raise HTTPException(status_code=409, detail="A pending order for this pack already exists")
 
-    return CreditOrderResponse(
-        id=str(order.id),
-        pack_code=order.pack_code,
-        credits=order.credits,
-        amount_thb=float(order.amount_thb),
-        status=order.status,
-    )
+    return CreditOrderResponse.model_validate(order)

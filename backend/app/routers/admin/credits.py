@@ -125,16 +125,4 @@ async def ledger(
         .scalars()
         .all()
     )
-    return [
-        CreditLedgerEntry(
-            id=str(r.id),
-            delta=r.delta,
-            balance_after=r.balance_after,
-            reason=r.reason,
-            pack_code=r.pack_code,
-            ref=r.ref,
-            note=r.note,
-            created_at=r.created_at.isoformat() if r.created_at else None,
-        )
-        for r in rows
-    ]
+    return [CreditLedgerEntry.model_validate(r) for r in rows]
