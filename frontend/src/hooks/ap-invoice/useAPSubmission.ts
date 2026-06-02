@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { fetchAccountCodes, fetchDepartments, submitAPInvoiceToCarmen } from '../../lib/api/carmen'
+import type { TaxProfileItem } from '../../lib/api/carmen'
 import { apiFetch } from '../../lib/api/client'
 import { showToast, toast } from '../../lib/toast'
 import { parseNum } from '../../lib/format'
@@ -24,7 +25,8 @@ function addDays(isoDate: string, days: number): string {
 function buildInvoicePayload(
   headerData: APInvoiceHeader,
   lineItems: APLineItem[],
-  systemVendor: Vendor
+  systemVendor: Vendor,
+  taxProfiles: TaxProfileItem[]
 ): Record<string, unknown> {
   const now = new Date().toISOString()
   const invDate = parseDateToISO(headerData.documentDate)
@@ -39,7 +41,20 @@ function buildInvoicePayload(
     const total = parseNum(item.lineTotal)
     // When the line has no VAT (taxAmt === 0), keep rate at 0 so Carmen does not
     // recompute tax from the rate. The || 7 default only applies to non-zero-tax lines.
-    const taxRate = taxAmt === 0 ? 0 : parseNum(item.taxPct) || 7
+    const taxRate = taxAmt === 0 ? 0 : parseNum(item.taxPct)
+    // None / non-VAT line: no profile, no rate. Otherwise use the line's own profile,
+    // falling back to the vendor default.
+    const resolvedProfile =
+      item.taxType === 'None' ? null : item.taxProfileCode1 || systemVendor.taxProfileCode1 || null
+    const profileRate = resolvedProfile
+      ? (taxProfiles.find(p => p.code === resolvedProfile)?.rate ?? null)
+      : null
+    // When our explicit rate disagrees with the resolved profile's rate (rate-match
+    // fallback to vendor, or a manual Tax% override), force Carmen to honour the rate +
+    // tax amount WE send instead of recomputing from the profile. Also overwrite when a
+    // taxable line resolved no profile rate at all.
+    const tax1Overwrite =
+      taxAmt > 0 && (profileRate == null || Math.abs(profileRate - taxRate) > 0.01)
     const qty = parseNum(item.qty) || 1
     const grossPrice = parseNum(item.unitPrice)
     const discAmt = parseNum(item.discountAmt)
@@ -81,9 +96,9 @@ function buildInvoicePayload(
       InvdBTaxCr1DeptCode: systemVendor.crDeptCode || '',
       InvdT1DrDeptCode: systemVendor.vat1DrDeptCode || '',
       InvdT2DrDeptCode: '',
-      TaxProfileCode1: item.taxProfileCode1 || systemVendor.taxProfileCode1 || null,
+      TaxProfileCode1: resolvedProfile,
       TaxProfileCode2: null,
-      Tax1Overwrite: false,
+      Tax1Overwrite: tax1Overwrite,
       Tax2Overwrite: false,
     }
   })
@@ -139,6 +154,7 @@ interface APSubmissionProps {
   lineItems: APLineItem[]
   setLineItems: React.Dispatch<React.SetStateAction<APLineItem[]>>
   systemVendor: Vendor
+  taxProfiles: TaxProfileItem[]
   apInvoiceId: string | null
   updateHeader?: (key: string, val: string) => void
 }
@@ -152,6 +168,7 @@ export function useAPSubmission({
   lineItems,
   setLineItems,
   systemVendor,
+  taxProfiles,
   apInvoiceId,
   updateHeader,
 }: APSubmissionProps) {
@@ -370,7 +387,7 @@ export function useAPSubmission({
     const toastId = toast.loading(`Re-sending as ${newInvNo.trim()}…`)
     try {
       const modifiedHeader = { ...headerData, documentNumber: newInvNo.trim() }
-      const payload = buildInvoicePayload(modifiedHeader, lineItems, systemVendor)
+      const payload = buildInvoicePayload(modifiedHeader, lineItems, systemVendor, taxProfiles)
       const result = (await submitAPInvoiceToCarmen(payload, apInvoiceId)) as Record<
         string,
         unknown
@@ -415,7 +432,7 @@ export function useAPSubmission({
     setIsSubmitting(true)
     const toastId = toast.loading('Sending to Carmen Cloud…')
     try {
-      const payload = buildInvoicePayload(headerData, lineItems, systemVendor)
+      const payload = buildInvoicePayload(headerData, lineItems, systemVendor, taxProfiles)
       const result = (await submitAPInvoiceToCarmen(payload, apInvoiceId)) as Record<
         string,
         unknown

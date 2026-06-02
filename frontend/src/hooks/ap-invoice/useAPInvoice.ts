@@ -33,7 +33,6 @@ export function useAPInvoice() {
     headerData: extraction.headerData,
     lineItems: extraction.lineItems,
     fieldMappings: extraction.fieldMappings,
-    taxProfiles,
   })
 
   const submission = useAPSubmission({
@@ -43,6 +42,7 @@ export function useAPInvoice() {
     lineItems: extraction.lineItems,
     setLineItems: extraction.setLineItems,
     systemVendor: vendor.systemVendor,
+    taxProfiles,
     apInvoiceId: extraction.apInvoiceId,
     updateHeader: extraction.updateHeader,
   })
@@ -65,6 +65,47 @@ export function useAPInvoice() {
     if (step === 4) submission.loadGLData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step])
+
+  // Auto-match each taxable line's Tax Profile to its extracted rate, falling back to the vendor
+  // default. On an exact rate match the totals are already correct, so only the code is set. On a
+  // vendor fallback the line's Tax% is snapped to the vendor profile's rate (and the row recalced)
+  // so Tax% stays a valid dropdown option — Tax% can only ever be a configured profile rate.
+  // None lines are left untouched (no profile = correct). The `changed` flag prevents a render
+  // loop: lines with no resolvable code stay empty and are not retried until one is available.
+  useEffect(() => {
+    if (!taxProfiles.length) return
+    const vendorDefault = vendor.systemVendor.taxProfileCode1 || ''
+    const rateOf = (code: string) => taxProfiles.find(p => p.code === code)?.rate ?? null
+    extraction.setLineItems(prev => {
+      if (!prev.length) return prev
+      let changed = false
+      const next = prev.map(it => {
+        if (it.taxType === 'None') return it
+        if (it.taxProfileCode1) {
+          const existingRate = rateOf(it.taxProfileCode1)
+          if (existingRate == null || Math.abs(existingRate - parseNum(it.taxPct)) < 0.01) return it
+        }
+        const rate = parseNum(it.taxPct)
+        const match = taxProfiles.find(p => p.rate != null && Math.abs(p.rate - rate) < 0.01)
+        if (match) {
+          changed = true
+          return { ...it, taxProfileCode1: match.code }
+        }
+        if (vendorDefault) {
+          changed = true
+          const vr = rateOf(vendorDefault)
+          return recalcRow({
+            ...it,
+            taxProfileCode1: vendorDefault,
+            taxPct: vr != null ? String(vr) : it.taxPct,
+          })
+        }
+        return it
+      })
+      return changed ? next : prev
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taxProfiles, vendor.systemVendor.taxProfileCode1])
 
   const confirmMapping = () => {
     const taxId = extraction.headerData.vendorTaxId
@@ -150,6 +191,46 @@ export function useAPInvoice() {
   // Fields whose blur triggers a full line recalculation.
   const RECALC_TRIGGERS = new Set(['qty', 'unitPrice', 'discountPct', 'discountAmt', 'taxPct'])
 
+  // Pure per-row recalculation of lineSubTotal/taxAmt/lineTotal from qty/unitPrice/discount, the
+  // row's taxType and its taxPct. taxPct is clamped >= 0 and forced to 0 for None. Uses
+  // lineSubTotal + discountAmt as the net anchor when unitPrice is missing (e.g. grouped rows).
+  const recalcRow = (item: APLineItem): APLineItem => {
+    const qty = parseNum(item.qty) || 1
+    const unitPrice = parseNum(item.unitPrice)
+    const discountAmt = parseNum(item.discountAmt)
+    const taxType = (item.taxType || 'Exclude') as 'Include' | 'Exclude' | 'None'
+    const taxPct = taxType === 'None' ? 0 : Math.max(0, parseNum(item.taxPct))
+
+    const afterDisc =
+      unitPrice > 0
+        ? round2(qty * unitPrice - discountAmt)
+        : round2(parseNum(item.lineSubTotal) + discountAmt)
+
+    let lineSubTotal: number, taxAmt: number, lineTotal: number
+    if (taxType === 'None') {
+      lineSubTotal = afterDisc
+      taxAmt = 0
+      lineTotal = afterDisc
+    } else if (taxType === 'Include') {
+      lineSubTotal = round2((afterDisc * 100) / (100 + taxPct))
+      taxAmt = round2(afterDisc - lineSubTotal)
+      lineTotal = afterDisc
+    } else {
+      lineSubTotal = afterDisc
+      taxAmt = round2((lineSubTotal * taxPct) / 100)
+      lineTotal = round2(lineSubTotal + taxAmt)
+    }
+
+    return {
+      ...item,
+      taxType,
+      taxPct: fmt(taxPct),
+      lineSubTotal: fmt(lineSubTotal),
+      taxAmt: fmt(taxAmt),
+      lineTotal: fmt(lineTotal),
+    }
+  }
+
   // Drop-in replacement for extraction.blurItem for table cells.
   // Formats the edited value and, for driver fields, recalculates all dependent amounts
   // in a single setLineItems call so there is no stale-state race.
@@ -170,103 +251,88 @@ export function useAPInvoice() {
 
     // Build a snapshot of the row with the newly formatted value applied
     const snap = { ...item, [field]: formattedValue }
-
-    const qty = parseNum(snap.qty) || 1
-    const unitPrice = parseNum(snap.unitPrice)
-    const taxType = (snap.taxType || 'Exclude') as 'Include' | 'Exclude' | 'None'
-    // Clamp to >= 0 so the Include formula's (100 + taxPct) denominator can never hit 0
-    // (taxPct <= -100 would otherwise produce Infinity/NaN).
-    const taxPct = taxType === 'None' ? 0 : Math.max(0, parseNum(snap.taxPct) || 7)
-
-    // discountPct → derive discountAmt; otherwise read discountAmt directly
-    const discountAmt =
+    const resolvedSnap =
       field === 'discountPct'
-        ? round2((qty * unitPrice * parseNum(snap.discountPct)) / 100)
-        : parseNum(snap.discountAmt)
+        ? {
+            ...snap,
+            discountAmt: fmt(
+              round2(
+                ((parseNum(snap.qty) || 1) *
+                  parseNum(snap.unitPrice) *
+                  parseNum(snap.discountPct)) /
+                  100
+              )
+            ),
+          }
+        : snap
 
-    const afterDisc = round2(qty * unitPrice - discountAmt)
-
-    let lineSubTotal: number, taxAmt: number, lineTotal: number
-
-    if (taxType === 'None') {
-      lineSubTotal = afterDisc
-      taxAmt = 0
-      lineTotal = afterDisc
-    } else if (taxType === 'Include') {
-      lineSubTotal = round2((afterDisc * 100) / (100 + taxPct))
-      taxAmt = round2(afterDisc - lineSubTotal)
-      lineTotal = afterDisc
-    } else {
-      lineSubTotal = afterDisc
-      taxAmt = round2((lineSubTotal * taxPct) / 100)
-      lineTotal = round2(lineSubTotal + taxAmt)
-    }
-
-    const updatedItem = {
-      ...snap,
-      [field]: formattedValue,
-      discountAmt: fmt(discountAmt),
-      lineSubTotal: fmt(lineSubTotal),
-      taxAmt: fmt(taxAmt),
-      lineTotal: fmt(lineTotal),
-    }
-
-    const updatedItems = extraction.lineItems.map((it, i) => (i === rowIndex ? updatedItem : it))
-    extraction.setLineItems(updatedItems)
+    extraction.setLineItems(prev =>
+      prev.map((it, i) => (i === rowIndex ? recalcRow(resolvedSnap) : it))
+    )
     // Do NOT sync header totals here. headerData.{subTotal,taxAmount,grandTotal} are the
     // immutable "From Document" values; the "From Table" column recomputes reactively via
     // useAPValidation. Overwriting them hid the reconciliation diff (and the submit gate).
   }
 
-  // Recalculates only the changed row; leaves all other rows untouched.
-  const changeLineTaxType = (rowIndex: number, newTaxType: 'Include' | 'Exclude' | 'None') => {
-    const updatedItems = extraction.lineItems.map((item, i) => {
-      if (i !== rowIndex) return item
+  // Single entry point keeping the three per-line tax fields interlocked, then recalcs the row in
+  // one commit. Every tax <select> in the review table routes through here with just the changed
+  // field; this function derives the dependent fields:
+  //   • profile '' (or taxType None)        → non-VAT: clear profile, taxPct 0
+  //   • profile = real code                 → taxPct := that profile's rate; un-None to Exclude
+  //   • taxPct = rate                        → profile := first profile with that rate (keep current if it matches)
+  //   • taxType None → Include/Exclude       → adopt the vendor default profile + its rate
+  const applyLineTax = (
+    rowIndex: number,
+    patch: { taxType?: 'Include' | 'Exclude' | 'None'; taxProfileCode1?: string; taxPct?: string }
+  ) => {
+    const vendorDefault = vendor.systemVendor.taxProfileCode1 || ''
+    const rateOf = (code: string) => taxProfiles.find(p => p.code === code)?.rate ?? null
+    const codeForRate = (rate: number) =>
+      taxProfiles.find(p => p.rate != null && Math.abs(p.rate - rate) < 0.01)?.code || ''
 
-      const qty = parseNum(item.qty) || 1
-      const unitPrice = parseNum(item.unitPrice)
-      const discountAmt = parseNum(item.discountAmt)
-      // Clamp to >= 0 so the Include formula's (100 + taxPct) denominator can never hit 0.
-      const taxPct = newTaxType === 'None' ? 0 : Math.max(0, parseNum(item.taxPct) || 7)
+    const headerTaxType = extraction.headerData.taxType
 
-      // Use lineSubTotal + discountAmt as the invariant net value across all tax types.
-      // lineSubTotal is always "before VAT", so it's the safe anchor when unitPrice is missing.
-      const afterDisc =
-        unitPrice > 0
-          ? round2(qty * unitPrice - discountAmt)
-          : round2(parseNum(item.lineSubTotal) + discountAmt)
+    extraction.setLineItems(prev =>
+      prev.map((it, i) => {
+        if (i !== rowIndex) return it
+        const merged = { ...it, ...patch }
 
-      let lineSubTotal: number, taxAmt: number, lineTotal: number, newTaxPct: number
+        // Derive the effective taxType, honouring profile-driven None.
+        let taxType = (merged.taxType || 'Exclude') as 'Include' | 'Exclude' | 'None'
+        if (patch.taxProfileCode1 !== undefined) {
+          if (patch.taxProfileCode1 === '') taxType = 'None'
+          else if (taxType === 'None') {
+            // Restore to the document-level tax type (Include/Exclude) when un-Noning a line
+            // by picking a profile; fall back to Exclude if the header is also None/missing.
+            taxType = headerTaxType === 'Include' ? 'Include' : 'Exclude'
+          }
+        }
 
-      if (newTaxType === 'None') {
-        lineSubTotal = afterDisc
-        taxAmt = 0
-        lineTotal = afterDisc
-        newTaxPct = 0
-      } else if (newTaxType === 'Include') {
-        newTaxPct = taxPct
-        lineSubTotal = round2((afterDisc * 100) / (100 + taxPct))
-        taxAmt = round2(afterDisc - lineSubTotal)
-        lineTotal = afterDisc
-      } else {
-        newTaxPct = taxPct
-        lineSubTotal = afterDisc
-        taxAmt = round2((lineSubTotal * taxPct) / 100)
-        lineTotal = round2(lineSubTotal + taxAmt)
-      }
+        if (taxType === 'None') {
+          return recalcRow({ ...merged, taxType: 'None', taxProfileCode1: '', taxPct: '0' })
+        }
 
-      return {
-        ...item,
-        lineSubTotal: fmt(lineSubTotal),
-        taxAmt: fmt(taxAmt),
-        lineTotal: fmt(lineTotal),
-        taxPct: fmt(newTaxPct),
-        taxType: newTaxType,
-      }
-    })
+        let code = merged.taxProfileCode1 || ''
+        let rate = parseNum(merged.taxPct)
+        if (patch.taxProfileCode1) {
+          const r = rateOf(code) // profile drives the rate
+          if (r != null) rate = r
+        } else if (patch.taxPct !== undefined) {
+          if (rateOf(code) !== rate) code = codeForRate(rate) || code // rate drives the profile
+        } else if (!code) {
+          code = vendorDefault // None → taxable: adopt vendor default
+          const r = rateOf(code)
+          if (r != null) rate = r
+        }
 
-    extraction.setLineItems(updatedItems)
+        return recalcRow({ ...merged, taxType, taxProfileCode1: code, taxPct: String(rate) })
+      })
+    )
   }
+
+  // Tax Type select routes through the shared interlock.
+  const changeLineTaxType = (rowIndex: number, newTaxType: 'Include' | 'Exclude' | 'None') =>
+    applyLineTax(rowIndex, { taxType: newTaxType })
 
   // Builds a single line that represents the sum of `items`, keeping the row
   // internally consistent under the blurLineItem recalc rules:
@@ -452,6 +518,7 @@ export function useAPInvoice() {
     adjustField,
     blurLineItem,
     changeLineTaxType,
+    applyLineTax,
     invoiceSeq: submission.invoiceSeq,
     isDuplicate: extraction.isDuplicate,
     isGrouped,
