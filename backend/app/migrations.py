@@ -312,6 +312,40 @@ async def _m208_credit_topup_billing(conn: AsyncConnection) -> None:
     logger.info("  ~ billing switched to free 30/month + top-up credits; pack catalog seeded")
 
 
+async def _m209_tenant_credits_lifetime_cols(conn: AsyncConnection) -> None:
+    """
+    Add credits_purchased / credits_consumed to tenant_credits.
+
+    These lifetime-counter columns were added to the ORM model after the table
+    was first created by create_all(); existing rows default to 0.
+    """
+    await conn.execute(
+        text(
+            "ALTER TABLE tenant_credits "
+            "ADD COLUMN IF NOT EXISTS credits_purchased INTEGER NOT NULL DEFAULT 0"
+        )
+    )
+    await conn.execute(
+        text(
+            "ALTER TABLE tenant_credits "
+            "ADD COLUMN IF NOT EXISTS credits_consumed INTEGER NOT NULL DEFAULT 0"
+        )
+    )
+    logger.info("  ~ tenant_credits: added credits_purchased + credits_consumed")
+
+
+async def _m210_credit_ledger_ref_text(conn: AsyncConnection) -> None:
+    """
+    Widen credit_ledger.ref from VARCHAR(64) to TEXT.
+
+    The ref column was used for UUIDs (≤36 chars) in TOPUP/ADMIN_ADJUST records,
+    but for CONSUMPTION records it stores filenames which can exceed 64 chars,
+    causing silent transaction rollback and preventing credit deduction.
+    """
+    await conn.execute(text("ALTER TABLE credit_ledger ALTER COLUMN ref TYPE TEXT"))
+    logger.info("  ~ credit_ledger.ref widened to TEXT")
+
+
 _MIGRATIONS: list[tuple[str, Callable[[AsyncConnection], Awaitable[None]] | None]] = [
     # ── Squashed history markers ──────────────────────────────────────────────
     ("001_squashed_initial_schema", None),
@@ -327,4 +361,6 @@ _MIGRATIONS: list[tuple[str, Callable[[AsyncConnection], Awaitable[None]] | None
     ("206_collapse_tenant_bu", _m206_collapse_tenant_bu),
     ("207_drop_mapping_history", _m207_drop_mapping_history),
     ("208_credit_topup_billing", _m208_credit_topup_billing),
+    ("209_tenant_credits_lifetime_cols", _m209_tenant_credits_lifetime_cols),
+    ("210_credit_ledger_ref_text", _m210_credit_ledger_ref_text),
 ]

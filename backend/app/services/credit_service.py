@@ -70,14 +70,22 @@ async def _consume_credits(db: AsyncSession, tenant_id: str, increment: int) -> 
     row = (await db.execute(stmt)).first()
     if row is None:
         raise InsufficientCredits(tenant_id)
+    raw_ref = current_document_ref.get() or None
     db.add(
         CreditLedger(
             tenant_id=tenant_id,
             delta=-increment,
             balance_after=int(row[0]),
             reason=CreditLedgerReason.CONSUMPTION,
-            ref=(current_document_ref.get() or None),
+            ref=raw_ref,
         )
+    )
+    logger.info(
+        "credit consumed: tenant=%s delta=-%d balance_after=%d ref=%s",
+        tenant_id,
+        increment,
+        int(row[0]),
+        raw_ref,
     )
 
 
@@ -102,12 +110,17 @@ async def consume_document(increment: int = 1) -> None:
         async with async_session() as db:
             async with db.begin():
                 if await _try_consume_free(db, monthly, increment):
+                    logger.info(
+                        "free slot consumed: tenant=%s limit=%.0f",
+                        tenant_id,
+                        monthly.limit_value,
+                    )
                     return
                 await _consume_credits(db, tenant_id, increment)
     except InsufficientCredits:
         raise
     except Exception as exc:
-        logger.error("consume_document failed: %s", exc)
+        logger.exception("consume_document failed: %s", exc)
 
 
 async def grant_credits(

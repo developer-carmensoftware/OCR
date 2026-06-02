@@ -92,6 +92,18 @@ class TestDetectTaxType:
         result = _detect_tax_type(items, deposit_pct=0, doc_sub=100.0, doc_grand=0, doc_tax=7.0)
         assert result == "Exclude"
 
+    def test_detection_rate_skips_leading_exempt_row(self):
+        # Regression: a leading VAT-exempt row (taxPct 0) must not pin the detection rate to
+        # the 7% fallback. With unitPrice 0 the exempt row adds nothing to the sum, so the
+        # only taxed row (100 @ 10%) drives a clean Exclude at grand=110. Asserts the
+        # first-non-zero-rate selection participates without flipping a clean decision.
+        items = [
+            self._item(qty=1, unit_price=0.0, tax_pct=0.0),
+            self._item(qty=1, unit_price=100.0, tax_pct=10.0),
+        ]
+        result = _detect_tax_type(items, deposit_pct=0, doc_sub=0, doc_grand=110.0, doc_tax=10.0)
+        assert result == "Exclude"
+
 
 # ── B2: _distribute_footer_discount ──────────────────────────────────────────
 

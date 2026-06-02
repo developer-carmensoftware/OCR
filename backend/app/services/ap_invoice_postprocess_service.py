@@ -89,7 +89,9 @@ def _detect_tax_type(
     )
     factor = (deposit_pct / 100.0) if 0 < deposit_pct < 100 else 1.0
     effective = item_sum * factor
-    tax_pct = _num(items[0].get("taxPct")) or 7.0
+    # Use the first non-zero rate across all items, not items[0] alone — a leading
+    # exempt/None row (taxPct 0) must not force whole-document detection back to 7%.
+    tax_pct = next((r for r in (_num(i.get("taxPct")) for i in items) if r > 0), 7.0)
 
     if doc_grand > 0:
         # inc_diff intentionally equals none_diff here: doc_grand already includes VAT, and

@@ -386,6 +386,14 @@
   font-weight: 600;
 }
 
+/* None / non-VAT line: Tax% is not applicable — show a locked dash, not 0.00, so it
+   reads differently from a 0% (zero-rated) VAT line. */
+.ap-tax-na {
+  display: inline-block;
+  color: var(--muted-foreground);
+  cursor: default;
+}
+
 /* ─── SUMMARY COMPARE CARD ─── */
 .ap-summary-row {
   display: flex;

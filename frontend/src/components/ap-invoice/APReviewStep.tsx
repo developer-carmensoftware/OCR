@@ -55,6 +55,10 @@ interface Ctrl {
   updateItem: (idx: number, key: string, val: string) => void
   blurItem: (idx: number, key: string, val: string) => void
   blurLineItem: (idx: number, key: string, val: string) => void
+  applyLineTax: (
+    idx: number,
+    patch: { taxType?: TaxTypeValue; taxProfileCode1?: string; taxPct?: string }
+  ) => void
   adjustField: (tgt: unknown, sumCur: unknown, key: string) => void
   setStep: (step: number) => void
   goToAccount: () => void
@@ -116,6 +120,7 @@ export default function APReviewStep({ ctrl }: Props) {
     blurHeader,
     updateItem,
     blurLineItem,
+    applyLineTax,
     adjustField,
     setStep,
     goToAccount,
@@ -190,6 +195,7 @@ export default function APReviewStep({ ctrl }: Props) {
         changeLineTaxType={changeLineTaxType}
         updateItem={updateItem}
         blurLineItem={blurLineItem}
+        applyLineTax={applyLineTax}
         groupAllItems={groupAllItems}
         groupItemsByTaxType={groupItemsByTaxType}
         ungroupItems={ungroupItems}

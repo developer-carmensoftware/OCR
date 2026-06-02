@@ -177,7 +177,7 @@ class CreditLedger(Base, TimestampMixin, WriterMixin):
         nullable=False,
     )
     pack_code = Column(String(20), ForeignKey("credit_packs.code"), nullable=True)
-    ref = Column(String(64), nullable=True)  # ocr_task id / order id
+    ref = Column(Text, nullable=True)  # ocr_task id / order id / filename
     note = Column(Text, nullable=True)
 
     __table_args__ = (Index("ix_credit_ledger_tenant_created", "tenant_id", "created_at"),)

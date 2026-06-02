@@ -2,13 +2,11 @@ import { parseNum, round2, fmt } from '../../lib/format'
 import { getAvailableFields } from '../../constants/apInvoice'
 import type { APLineItem } from './useAPExtraction'
 import type { APInvoiceHeader } from '../../constants/apInvoice'
-import type { TaxProfileItem } from '../../lib/api/carmen'
 
 interface APValidationProps {
   headerData: APInvoiceHeader
   lineItems: APLineItem[]
   fieldMappings: Record<string, string>
-  taxProfiles?: TaxProfileItem[]
   t?: Record<string, string>
 }
 
@@ -26,13 +24,7 @@ export function reconcileRows(items: APLineItem[]): APLineItem[] {
   )
 }
 
-export function useAPValidation({
-  headerData,
-  lineItems,
-  fieldMappings,
-  taxProfiles = [],
-  t,
-}: APValidationProps) {
+export function useAPValidation({ headerData, lineItems, fieldMappings, t }: APValidationProps) {
   const sumLineSubTotal =
     lineItems.reduce((s, i) => s + Math.round(parseNum(i.lineSubTotal) * 100), 0) / 100
   const sumLineTotal =
@@ -53,22 +45,11 @@ export function useAPValidation({
   const calcGrandFromLines = sumLineTotal
   const isGrandDiff = calcGrandFromLines !== tgtGrand
 
-  const hasTaxProfileMismatch =
-    taxProfiles.length > 0 &&
-    lineItems.some(item => {
-      if (!item.taxProfileCode1) return false
-      if (item.taxType === 'None') return false
-      const profile = taxProfiles.find(p => p.code === item.taxProfileCode1)
-      if (!profile || profile.rate == null) return false
-      return Math.abs(parseNum(item.taxPct) - profile.rate) > 0.01
-    })
-
   const validationErrors: string[] = [
     isSubDiff && t?.subTotal,
     isDiscDiff && t?.discount,
     isTaxDiff && t?.tax,
     isGrandDiff && t?.grandTotal,
-    hasTaxProfileMismatch && t?.taxProfileMismatch,
   ].filter((v): v is string => Boolean(v))
 
   const isValid = validationErrors.length === 0
