@@ -67,11 +67,16 @@ def _get_engine():
         # Supabase / Neon connection poolers (e.g. PgBouncer, Supavisor on port 6543)
         # require disabling prepared statements in asyncpg.
         connect_args = {}
-        if "pooler" in settings.database_url or "6543" in settings.database_url:
-            connect_args["prepared_statement_cache_size"] = 0
+        db_url = settings.database_url
+        if "pooler" in db_url or "6543" in db_url:
+            connect_args["statement_cache_size"] = 0
+            if "?" in db_url:
+                db_url += "&prepared_statement_cache_size=0"
+            else:
+                db_url += "?prepared_statement_cache_size=0"
 
         _ENGINE = create_async_engine(
-            settings.database_url,
+            db_url,
             echo=settings.app_debug,
             pool_pre_ping=True,
             pool_size=10,
