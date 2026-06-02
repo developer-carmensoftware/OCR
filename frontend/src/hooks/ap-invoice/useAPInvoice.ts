@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { AP_I18N } from '../../constants/apInvoice'
 import type { APLocale } from '../../constants/apInvoice'
@@ -10,6 +10,7 @@ import type { APLineItem } from './useAPExtraction'
 import { useAPVendor } from './useAPVendor'
 import { useAPValidation, reconcileRows } from './useAPValidation'
 import { recalcRow, nudgeAnchorForTarget } from '../../lib/apTax'
+import { buildGroupedRow, groupByTaxProfile, allSameProfile } from '../../lib/apGroup'
 import { useAPSubmission } from './useAPSubmission'
 import { fetchTaxProfiles } from '../../lib/api/carmen'
 import type { TaxProfileItem } from '../../lib/api/carmen'
@@ -343,78 +344,44 @@ export function useAPInvoice() {
   const changeLineTaxType = (rowIndex: number, newTaxType: 'Include' | 'Exclude' | 'None') =>
     applyLineTax(rowIndex, { taxType: newTaxType })
 
-  // Builds a single line that represents the sum of `items`, keeping the row
-  // internally consistent under the blurLineItem recalc rules:
-  //   afterDisc = qty * unitPrice - discountAmt
-  //   Exclude/None: lineSubTotal = afterDisc
-  //   Include:      lineTotal    = afterDisc
-  const buildGroupedRow = (items: APLineItem[], desc: string): APLineItem => {
-    const sum = (key: keyof APLineItem) =>
-      items.reduce((s, it) => s + parseNum(it[key] as string), 0)
-    const sumLineTotal = sum('lineTotal')
-    const sumLineSubTotal = sum('lineSubTotal')
-    const sumTaxAmt = sum('taxAmt')
-    const sumDiscount = sum('discountAmt')
-    const taxType = items[0]?.taxType || 'Exclude'
-    const taxPct = taxType === 'None' ? 0 : parseNum(items[0]?.taxPct as string) || 7
-    const unitPrice =
-      taxType === 'Include' ? sumLineTotal + sumDiscount : sumLineSubTotal + sumDiscount
-    return {
-      description: desc,
-      category: '',
-      qty: '1',
-      unitPrice: fmt(unitPrice),
-      discountPct: '0.00',
-      discountAmt: fmt(sumDiscount),
-      lineSubTotal: fmt(sumLineSubTotal),
-      taxPct: fmt(taxPct),
-      taxAmt: fmt(sumTaxAmt),
-      taxType,
-      lineTotal: fmt(sumLineTotal),
-      deptCode: '',
-      accountCode: '',
-    }
-  }
-
-  const groupItems = (desc: string) => {
-    const items = extraction.lineItems
-    if (items.length <= 1) return
-    setOriginalLineItems(items)
-    extraction.setLineItems([buildGroupedRow(items, desc)])
-    setIsGrouped(true)
-  }
-
+  // Group all: collapse into one row per distinct (taxType, tax profile). Reuses the same totals
+  // aggregation as Group by description via the shared apGroup helpers.
   const groupAllItems = () => {
-    groupItems('Group all items')
-  }
-
-  const TAX_TYPE_LABELS: Record<string, string> = {
-    Include: 'Items (Include VAT)',
-    Exclude: 'Items (Exclude VAT)',
-    None: 'Items (No VAT)',
-  }
-
-  const groupItemsByTaxType = () => {
     const items = extraction.lineItems
     if (items.length <= 1) return
-    const groups = new Map<string, APLineItem[]>()
-    for (const item of items) {
-      const key = item.taxType || 'Exclude'
-      if (!groups.has(key)) groups.set(key, [])
-      groups.get(key)!.push(item)
-    }
-    const grouped: APLineItem[] = Array.from(groups.entries()).map(([taxType, grpItems]) =>
-      buildGroupedRow(grpItems, TAX_TYPE_LABELS[taxType] ?? `Items (${taxType})`)
-    )
-    setOriginalLineItems(items)
+    const grouped = groupByTaxProfile(items, vendor.systemVendor.taxProfileCode1 || '')
+    if (!originalLineItems) setOriginalLineItems(items)
     extraction.setLineItems(grouped)
     setIsGrouped(true)
   }
 
-  const hasMixedTaxTypes = useMemo(() => {
-    const types = new Set(extraction.lineItems.map(it => it.taxType || 'Exclude'))
-    return types.size > 1
-  }, [extraction.lineItems])
+  // Group by description: merge the user-selected subset of rows into one row, named by the
+  // user-supplied description (set in the Group modal). All selected rows must share one tax profile
+  // — otherwise we reject with a toast and leave the table untouched. Partial and repeatable:
+  // unselected rows stay individual, and originalLineItems is captured only on the first grouping so
+  // Ungroup restores all.
+  const groupByDescription = (indices: number[], description: string): boolean => {
+    const items = extraction.lineItems
+    if (indices.length < 2) return false
+    const sorted = [...indices].sort((a, b) => a - b)
+    const selected = sorted.map(i => items[i])
+    if (!allSameProfile(selected, vendor.systemVendor.taxProfileCode1 || '')) {
+      showToast(t.groupSameProfile, 'error')
+      return false
+    }
+    const desc = description.trim() || items[sorted[0]]?.description || 'Grouped items'
+    const merged = buildGroupedRow(selected, desc)
+    const drop = new Set(sorted)
+    const next: APLineItem[] = []
+    items.forEach((it, i) => {
+      if (i === sorted[0]) next.push(merged)
+      else if (!drop.has(i)) next.push(it)
+    })
+    if (!originalLineItems) setOriginalLineItems(items)
+    extraction.setLineItems(next)
+    setIsGrouped(true)
+    return true
+  }
 
   const removeItemWithUndo = (idx: number) => {
     const item = extraction.lineItems[idx]
@@ -532,8 +499,7 @@ export function useAPInvoice() {
     isDuplicate: extraction.isDuplicate,
     isGrouped,
     groupAllItems,
-    groupItemsByTaxType,
-    hasMixedTaxTypes,
+    groupByDescription,
     ungroupItems,
     originalLineItemsCount: originalLineItems?.length ?? 0,
   }

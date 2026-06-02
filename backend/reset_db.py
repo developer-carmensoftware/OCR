@@ -18,7 +18,13 @@ from app.config import settings
 
 
 async def reset() -> None:
-    engine = create_async_engine(settings.database_url, echo=False)
+    # Supabase / Neon connection poolers (e.g. PgBouncer, Supavisor on port 6543)
+    # require disabling prepared statements in asyncpg.
+    connect_args = {}
+    if "pooler" in settings.database_url or "6543" in settings.database_url:
+        connect_args["prepared_statement_cache_size"] = 0
+
+    engine = create_async_engine(settings.database_url, echo=False, connect_args=connect_args)
     async with engine.begin() as conn:
         await conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
         print("Dropped schema public")

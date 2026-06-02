@@ -64,8 +64,7 @@ interface Ctrl {
   goToAccount: () => void
   isGrouped: boolean
   groupAllItems: () => void
-  groupItemsByTaxType: () => void
-  hasMixedTaxTypes: boolean
+  groupByDescription: (indices: number[], description: string) => boolean
   ungroupItems: () => void
   originalLineItemsCount: number
   removeItem: (idx: number) => void
@@ -126,8 +125,7 @@ export default function APReviewStep({ ctrl }: Props) {
     goToAccount,
     isGrouped,
     groupAllItems,
-    groupItemsByTaxType,
-    hasMixedTaxTypes,
+    groupByDescription,
     ungroupItems,
     originalLineItemsCount,
     removeItem,
@@ -190,14 +188,13 @@ export default function APReviewStep({ ctrl }: Props) {
         sumDiscount={sumDiscount}
         sumTax={sumTax}
         isGrouped={isGrouped}
-        hasMixedTaxTypes={hasMixedTaxTypes}
         originalLineItemsCount={originalLineItemsCount}
         changeLineTaxType={changeLineTaxType}
         updateItem={updateItem}
         blurLineItem={blurLineItem}
         applyLineTax={applyLineTax}
         groupAllItems={groupAllItems}
-        groupItemsByTaxType={groupItemsByTaxType}
+        groupByDescription={groupByDescription}
         ungroupItems={ungroupItems}
         removeItem={removeItem}
       />

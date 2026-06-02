@@ -64,6 +64,12 @@ _SESSION_FACTORY: async_sessionmaker[AsyncSession] | None = None
 def _get_engine():
     global _ENGINE, _SESSION_FACTORY
     if _ENGINE is None:
+        # Supabase / Neon connection poolers (e.g. PgBouncer, Supavisor on port 6543)
+        # require disabling prepared statements in asyncpg.
+        connect_args = {}
+        if "pooler" in settings.database_url or "6543" in settings.database_url:
+            connect_args["prepared_statement_cache_size"] = 0
+
         _ENGINE = create_async_engine(
             settings.database_url,
             echo=settings.app_debug,
@@ -71,6 +77,7 @@ def _get_engine():
             pool_size=10,
             max_overflow=40,
             pool_recycle=1800,  # Neon idle-suspends after ~5min; recycle stale conns.
+            connect_args=connect_args,
         )
         _SESSION_FACTORY = async_sessionmaker(
             _ENGINE,

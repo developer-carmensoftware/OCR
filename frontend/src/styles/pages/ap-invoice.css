@@ -348,6 +348,123 @@
   background: var(--gray-50);
 }
 
+/* Group-by-description modal — backdrop + tokens mirror the app's .modal-overlay/.modal-box. */
+.ap-group-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(8, 6, 20, 0.6);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+.ap-group-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 100%);
+  max-height: 80vh;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+}
+.ap-group-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.85rem 1rem;
+  font-weight: 600;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+.ap-group-modal-body {
+  padding: 1rem;
+  overflow-y: auto;
+}
+.ap-group-modal-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 0.35rem;
+}
+.ap-group-modal-input {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  background: var(--card-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+  transition: border-color 0.15s var(--ease);
+}
+.ap-group-modal-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+.ap-group-modal-hint {
+  margin: 0.75rem 0 0.4rem;
+  font-size: 0.78rem;
+  color: var(--text-3);
+}
+.ap-group-modal-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.ap-group-modal-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.65rem;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text);
+  transition: background-color 0.12s var(--ease);
+}
+.ap-group-modal-row:last-child {
+  border-bottom: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .ap-group-modal-row:hover {
+    background: var(--gray-50);
+  }
+}
+.ap-group-modal-row-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ap-group-modal-row-profile {
+  font-size: 0.72rem;
+  color: var(--text-3);
+  font-family: 'IBM Plex Mono', monospace;
+}
+.ap-group-modal-row-amt {
+  font-family: 'IBM Plex Mono', monospace;
+  text-align: right;
+}
+.ap-group-modal-warn {
+  margin-top: 0.6rem;
+  font-size: 0.78rem;
+  color: var(--rose);
+}
+.ap-group-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--border);
+}
+
 .ap-review-table tfoot td {
   padding: 0.75rem 0.85rem;
   background: var(--gray-50);
