@@ -97,38 +97,47 @@ export default function APLineItemsTable({
     </td>
   )
 
-  // Tax% select — options are the configured profile rates. None lines show a locked —. Falls
-  // back to a free NumericInput only if no profiles loaded (so the cell is never empty).
-  const taxPctCell = (ri: number, item: Record<string, string | undefined>) => (
-    <td>
-      {item.taxType === 'None' ? (
-        <span className="ap-edit-input numeric ap-tax-na" aria-label="taxPct">
-          —
-        </span>
-      ) : rateOptions.length ? (
-        <select
-          aria-label="taxPct"
-          className="ap-taxtype-select"
-          value={String(parseNum(item.taxPct))}
-          onChange={e => applyLineTax(ri, { taxPct: e.target.value })}
-        >
-          {rateOptions.map(r => (
-            <option key={r} value={String(r)}>
-              {r}%
-            </option>
-          ))}
-        </select>
-      ) : (
-        <NumericInput
-          aria-label="taxPct"
-          className="ap-edit-input numeric"
-          value={item.taxPct || ''}
-          onChange={v => updateItem(ri, 'taxPct', v)}
-          onBlur={v => blurLineItem(ri, 'taxPct', v)}
-        />
-      )}
-    </td>
-  )
+  // Tax% select — options are the configured profile rates, plus the row's own rate when no profile
+  // defines it (so the dropdown always shows the true extracted value, e.g. 10%, and warns instead
+  // of silently snapping to 7%). None lines show a locked —. Falls back to a free NumericInput only
+  // if no profiles loaded (so the cell is never empty).
+  const taxPctCell = (ri: number, item: Record<string, string | undefined>) => {
+    const cur = parseNum(item.taxPct)
+    const unmatched =
+      item.taxType !== 'None' && cur > 0 && !rateOptions.some(r => Math.abs(r - cur) < 0.01)
+    const opts = unmatched ? [...rateOptions, cur].sort((a, b) => a - b) : rateOptions
+    return (
+      <td>
+        {item.taxType === 'None' ? (
+          <span className="ap-edit-input numeric ap-tax-na" aria-label="taxPct">
+            —
+          </span>
+        ) : opts.length ? (
+          <select
+            aria-label="taxPct"
+            className={`ap-taxtype-select${unmatched ? ' ap-tax-unmatched' : ''}`}
+            title={unmatched ? t.taxRateUnmatched : undefined}
+            value={String(cur)}
+            onChange={e => applyLineTax(ri, { taxPct: e.target.value })}
+          >
+            {opts.map(r => (
+              <option key={r} value={String(r)}>
+                {r}%
+              </option>
+            ))}
+          </select>
+        ) : (
+          <NumericInput
+            aria-label="taxPct"
+            className="ap-edit-input numeric"
+            value={item.taxPct || ''}
+            onChange={v => updateItem(ri, 'taxPct', v)}
+            onBlur={v => blurLineItem(ri, 'taxPct', v)}
+          />
+        )}
+      </td>
+    )
+  }
 
   return (
     <Card

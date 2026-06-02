@@ -98,12 +98,22 @@ async def suggest_fixed_fields(
                 output={"suggestions": {}, "source": "ai"},
             )
 
-        commission_acc = _filter_by_type(accounts, "income")
+        commission_acc = _filter_by_type(accounts, "expense")
         balance_acc = _filter_by_type(accounts, "balancesheet")
 
         commission_filtered = _filter_by_keywords(
             commission_acc,
-            ["commission", "credit card", "เครดิตการ์ด", "ค่าธรรมเนียม", "bank charge"],
+            [
+                "commission",
+                "credit card",
+                "เครดิตการ์ด",
+                "ค่าธรรมเนียม",
+                "bank charge",
+                "bank fee",
+                "ค่าธรรมเนียมธนาคาร",
+                "financial cost",
+                "ค่าใช้จ่ายทางการเงิน",
+            ],
             limit=40,
         )
         tax_filtered = _filter_by_keywords(

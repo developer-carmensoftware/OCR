@@ -211,7 +211,9 @@ def _build_deposit_row(
     not_collected = (100.0 - deposit_pct) / 100.0
     full_sub = _r2(sum(_num(i["lineSubTotal"]) for i in items))
     full_grand = _r2(sum(_num(i["lineTotal"]) for i in items))
-    tax_pct = _num(items[0].get("taxPct"))
+    # Use the first non-zero rate across items, not items[0] alone — a leading exempt/None row
+    # (taxPct 0) must not drag the deposit row's rate to 0. Mirrors _detect_tax_type.
+    tax_pct = next((r for r in (_num(i.get("taxPct")) for i in items) if r > 0), 0.0)
     if tax_type != "None" and tax_pct == 0.0:
         tax_pct = 7.0
 

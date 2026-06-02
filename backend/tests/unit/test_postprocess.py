@@ -272,6 +272,18 @@ class TestBuildDepositRow:
         assert row is not None
         assert row["category"] == "เงินมัดจำ"
 
+    def test_deposit_rate_skips_leading_exempt_row(self):
+        # A leading VAT-exempt row (taxPct 0) must not drag the deposit row's rate to 0 — it should
+        # inherit the first non-zero rate, mirroring _detect_tax_type. (regression)
+        items = [
+            {"lineSubTotal": 50.0, "lineTotal": 50.0, "taxPct": 0.0, "taxAmt": 0.0},
+            {"lineSubTotal": 100.0, "lineTotal": 107.0, "taxPct": 7.0, "taxAmt": 7.0},
+        ]
+        row = _build_deposit_row(items, deposit_pct=50, deposit_label="", tax_type="Exclude")
+        assert row is not None
+        assert row["taxPct"] == 7.0
+        assert row["taxAmt"] != 0.0
+
 
 # ── B2: _deposit_applies ──────────────────────────────────────────────────────
 

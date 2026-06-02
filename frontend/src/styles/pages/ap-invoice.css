@@ -394,6 +394,13 @@
   cursor: default;
 }
 
+/* Tax% whose rate has no matching Tax Profile: kept as-is (e.g. a VAT 10% line where only 7%/0%
+   profiles are configured). Amber outline flags it for review without blocking the user. */
+.ap-tax-unmatched {
+  border-color: #f59e0b !important;
+  color: #b45309;
+}
+
 /* ─── SUMMARY COMPARE CARD ─── */
 .ap-summary-row {
   display: flex;

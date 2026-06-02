@@ -19,7 +19,25 @@ PROMPT = """คุณเป็นผู้ช่วย OCR สำหรับใ
   "documentNumber": "",
   "items": [
     {
-      "category": "",         // หมวดบัญชีอนุมานจากชื่อสินค้า: ค่าบริการ / ซอฟต์แวร์ / วัสดุสำนักงาน / อุปกรณ์ไอที / ค่าโฆษณา / ค่าขนส่ง / วัตถุดิบ / บรรจุภัณฑ์ / ค่าเช่า / ยา-เวชภัณฑ์
+      "category": "",         // หมวดบัญชีอนุมานจากชื่อสินค้า/บริการ:
+                              //   ค่าบริการ      — ค่าจ้างที่ปรึกษา, professional fee, service fee
+                              //   ซอฟต์แวร์     — software license, subscription, SaaS, IT system
+                              //   วัสดุสำนักงาน  — office supplies, stationery, เครื่องเขียน
+                              //   อุปกรณ์ไอที    — hardware, computer, server, อุปกรณ์คอมพิวเตอร์
+                              //   ค่าโฆษณา      — advertising, marketing, promotion, สื่อโฆษณา
+                              //   ค่าขนส่ง       — freight, delivery, logistics, ค่าส่ง
+                              //   วัตถุดิบ       — raw material, ingredient, วัตถุดิบการผลิต
+                              //   บรรจุภัณฑ์     — packaging, กล่อง, ถุง, ฉลาก
+                              //   ค่าเช่า        — rental, lease, ค่าเช่าพื้นที่/อุปกรณ์
+                              //   ยา-เวชภัณฑ์   — medicine, medical supply, pharmaceutical
+                              //   ค่าสาธารณูปโภค — electricity, water, telephone, internet, ค่าไฟ, ค่าน้ำ, โทรศัพท์
+                              //   ค่าซ่อมบำรุง  — repair, maintenance, ซ่อมแซม, บำรุงรักษา
+                              //   ค่าประกันภัย  — insurance premium, ประกันภัย, ประกันอัคคีภัย
+                              //   เบี้ยปรับ     — penalty, fine, liquidated damages, ค่าปรับสัญญา (VAT-exempt)
+                              //   สินทรัพย์     — ซื้อสินทรัพย์ถาวร (มูลค่าสูง อายุการใช้งาน > 1 ปี) เช่น เครื่องจักร, ยานพาหนะ
+                              // แนวทางแยก expense vs สินทรัพย์:
+                              //   - มูลค่าต่ำ หรือใช้แล้วหมด (consumable) → เลือก expense category
+                              //   - มูลค่าสูง + อายุการใช้งาน > 1 ปี → เลือก สินทรัพย์
       "description": "",      // รายละเอียดตามเอกสาร
       "qty": 0,               // จำนวน (ไม่ระบุใส่ 1)
       "unitPrice": 0,         // ราคา/หน่วย ตามที่เอกสารระบุ (ห้ามหาร %)

@@ -9,6 +9,7 @@ import { useAPExtraction } from './useAPExtraction'
 import type { APLineItem } from './useAPExtraction'
 import { useAPVendor } from './useAPVendor'
 import { useAPValidation, reconcileRows } from './useAPValidation'
+import { recalcRow, nudgeAnchorForTarget } from '../../lib/apTax'
 import { useAPSubmission } from './useAPSubmission'
 import { fetchTaxProfiles } from '../../lib/api/carmen'
 import type { TaxProfileItem } from '../../lib/api/carmen'
@@ -66,39 +67,29 @@ export function useAPInvoice() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step])
 
-  // Auto-match each taxable line's Tax Profile to its extracted rate, falling back to the vendor
-  // default. On an exact rate match the totals are already correct, so only the code is set. On a
-  // vendor fallback the line's Tax% is snapped to the vendor profile's rate (and the row recalced)
-  // so Tax% stays a valid dropdown option — Tax% can only ever be a configured profile rate.
-  // None lines are left untouched (no profile = correct). The `changed` flag prevents a render
-  // loop: lines with no resolvable code stay empty and are not retried until one is available.
+  // Auto-match each taxable line's Tax Profile to its extracted rate. On an exact rate match the
+  // code is set (totals already correct). When NO profile defines the line's rate, the extracted
+  // rate is kept and the profile is left blank — we never silently rewrite a valid rate (e.g. 10%)
+  // to the vendor default; the UI surfaces an "unmatched rate" warning instead. None lines are left
+  // untouched. The `changed` flag prevents a render loop: unresolvable lines stay as-is.
   useEffect(() => {
     if (!taxProfiles.length) return
-    const vendorDefault = vendor.systemVendor.taxProfileCode1 || ''
     const rateOf = (code: string) => taxProfiles.find(p => p.code === code)?.rate ?? null
     extraction.setLineItems(prev => {
       if (!prev.length) return prev
       let changed = false
       const next = prev.map(it => {
         if (it.taxType === 'None') return it
+        // Keep an already-set profile when its rate still matches the line.
         if (it.taxProfileCode1) {
           const existingRate = rateOf(it.taxProfileCode1)
           if (existingRate == null || Math.abs(existingRate - parseNum(it.taxPct)) < 0.01) return it
         }
         const rate = parseNum(it.taxPct)
         const match = taxProfiles.find(p => p.rate != null && Math.abs(p.rate - rate) < 0.01)
-        if (match) {
+        if (match && it.taxProfileCode1 !== match.code) {
           changed = true
           return { ...it, taxProfileCode1: match.code }
-        }
-        if (vendorDefault) {
-          changed = true
-          const vr = rateOf(vendorDefault)
-          return recalcRow({
-            ...it,
-            taxProfileCode1: vendorDefault,
-            taxPct: vr != null ? String(vr) : it.taxPct,
-          })
         }
         return it
       })
@@ -153,13 +144,35 @@ export function useAPInvoice() {
     }
   }
 
-  // adjustField (validation) writes a single field onto the target row(s); reconcileRows
-  // (shared, in useAPValidation) re-derives the dependent field per taxType so every row
-  // stays internally consistent and fixing one summary line never opens another.
+  // Adjust button. Sub-Total / Grand-Total are rate-based: the diff is landed on the last taxable
+  // row's net anchor and the row is re-derived through recalcRow, so it stays internally consistent
+  // (sub + tax = total) and the targeted From-Table sum lands on the document value — when the
+  // document itself is consistent (sub + tax = grand) the related diffs clear in one click.
+  // taxAmt (genuine penny-rounding, tax ≠ sub×rate) and discountAmt (informational) keep the
+  // single-field write + reconcileRows path.
   const adjustField = (tgt: unknown, sumCur: unknown, itemKey: string) => {
-    const updated = validation.adjustField(tgt, sumCur, itemKey, extraction.lineItems)
-    // discountAmt is informational (lineSubTotal is already net); reconciling it is a no-op,
-    // so a single reconcile pass is safe for every field.
+    const items = extraction.lineItems
+    if (!items.length) return
+
+    if (itemKey === 'lineSubTotal' || itemKey === 'lineTotal') {
+      const diff = round2(tgt) - round2(sumCur)
+      if (Math.abs(diff) < 0.005) return
+      // Prefer the last taxable row so the rate recompute is meaningful; fall back to the last row.
+      let idx = items.length - 1
+      for (let i = items.length - 1; i >= 0; i--) {
+        if (items[i].taxType !== 'None' && parseNum(items[i].taxPct) > 0) {
+          idx = i
+          break
+        }
+      }
+      const kind = itemKey === 'lineSubTotal' ? ('sub' as const) : ('grand' as const)
+      extraction.setLineItems(prev =>
+        prev.map((it, i) => (i === idx ? nudgeAnchorForTarget(it, kind, diff) : it))
+      )
+      return
+    }
+
+    const updated = validation.adjustField(tgt, sumCur, itemKey, items)
     extraction.setLineItems(reconcileRows(updated))
   }
 
@@ -172,16 +185,24 @@ export function useAPInvoice() {
     const tgt = parseNum(val)
     const sum = validation.sumTax
     if (tgt === sum) return
-    const adjusted =
-      tgt === 0
-        ? extraction.lineItems.map(item => ({
-            ...item,
-            taxAmt: '0.00',
-            taxPct: '0.00',
-            taxType: 'None' as const,
-          }))
-        : validation.adjustField(tgt, sum, 'taxAmt', extraction.lineItems)
+    if (tgt === 0) {
+      // Zero VAT: make every row non-VAT but PRESERVE its net subtotal — collapse lineTotal onto
+      // lineSubTotal instead of re-anchoring on unitPrice (which is gross for Include rows and
+      // would inflate the line to its gross amount). Clear the profile to match None elsewhere.
+      extraction.setLineItems(prev =>
+        prev.map(item => ({
+          ...item,
+          taxType: 'None' as const,
+          taxPct: '0.00',
+          taxAmt: '0.00',
+          taxProfileCode1: '',
+          lineTotal: fmt(item.lineSubTotal),
+        }))
+      )
+      return
+    }
     // adjustField only writes taxAmt; reconcile per-line totals so they stay consistent.
+    const adjusted = validation.adjustField(tgt, sum, 'taxAmt', extraction.lineItems)
     extraction.setLineItems(reconcileRows(adjusted))
     // Keep the "From Document" header values fixed: blurHeader above already stored the
     // user-typed taxAmount. Do not re-sync taxAmount/grandTotal from line sums — that would
@@ -191,45 +212,8 @@ export function useAPInvoice() {
   // Fields whose blur triggers a full line recalculation.
   const RECALC_TRIGGERS = new Set(['qty', 'unitPrice', 'discountPct', 'discountAmt', 'taxPct'])
 
-  // Pure per-row recalculation of lineSubTotal/taxAmt/lineTotal from qty/unitPrice/discount, the
-  // row's taxType and its taxPct. taxPct is clamped >= 0 and forced to 0 for None. Uses
-  // lineSubTotal + discountAmt as the net anchor when unitPrice is missing (e.g. grouped rows).
-  const recalcRow = (item: APLineItem): APLineItem => {
-    const qty = parseNum(item.qty) || 1
-    const unitPrice = parseNum(item.unitPrice)
-    const discountAmt = parseNum(item.discountAmt)
-    const taxType = (item.taxType || 'Exclude') as 'Include' | 'Exclude' | 'None'
-    const taxPct = taxType === 'None' ? 0 : Math.max(0, parseNum(item.taxPct))
-
-    const afterDisc =
-      unitPrice > 0
-        ? round2(qty * unitPrice - discountAmt)
-        : round2(parseNum(item.lineSubTotal) + discountAmt)
-
-    let lineSubTotal: number, taxAmt: number, lineTotal: number
-    if (taxType === 'None') {
-      lineSubTotal = afterDisc
-      taxAmt = 0
-      lineTotal = afterDisc
-    } else if (taxType === 'Include') {
-      lineSubTotal = round2((afterDisc * 100) / (100 + taxPct))
-      taxAmt = round2(afterDisc - lineSubTotal)
-      lineTotal = afterDisc
-    } else {
-      lineSubTotal = afterDisc
-      taxAmt = round2((lineSubTotal * taxPct) / 100)
-      lineTotal = round2(lineSubTotal + taxAmt)
-    }
-
-    return {
-      ...item,
-      taxType,
-      taxPct: fmt(taxPct),
-      lineSubTotal: fmt(lineSubTotal),
-      taxAmt: fmt(taxAmt),
-      lineTotal: fmt(lineTotal),
-    }
-  }
+  // recalcRow (the per-row Include/Exclude/None formula) lives in lib/apTax so the hook,
+  // validation, and Adjust all share one implementation. See ../../lib/apTax.
 
   // Drop-in replacement for extraction.blurItem for table cells.
   // Formats the edited value and, for driver fields, recalculates all dependent amounts
@@ -296,6 +280,7 @@ export function useAPInvoice() {
       prev.map((it, i) => {
         if (i !== rowIndex) return it
         const merged = { ...it, ...patch }
+        const prevType = (it.taxType || 'Exclude') as 'Include' | 'Exclude' | 'None'
 
         // Derive the effective taxType, honouring profile-driven None.
         let taxType = (merged.taxType || 'Exclude') as 'Include' | 'Exclude' | 'None'
@@ -312,13 +297,37 @@ export function useAPInvoice() {
           return recalcRow({ ...merged, taxType: 'None', taxProfileCode1: '', taxPct: '0' })
         }
 
+        // Pure Include ↔ Exclude toggle (only taxType changed, neither side None): pin the net
+        // subtotal and re-derive tax/total from the rate. recalcRow re-anchors on unitPrice, whose
+        // gross/net meaning differs by tax type, so going through it here would make the line jump
+        // to the stored unitPrice's gross — pinning the subtotal keeps the toggle non-destructive.
+        const isToggle =
+          patch.taxType !== undefined &&
+          patch.taxProfileCode1 === undefined &&
+          patch.taxPct === undefined &&
+          prevType !== 'None'
+        if (isToggle) {
+          const r = Math.max(0, parseNum(merged.taxPct))
+          const sub = round2(merged.lineSubTotal)
+          const taxAmt = round2((sub * r) / 100)
+          return {
+            ...merged,
+            taxType,
+            lineSubTotal: fmt(sub),
+            taxAmt: fmt(taxAmt),
+            lineTotal: fmt(sub + taxAmt),
+          }
+        }
+
         let code = merged.taxProfileCode1 || ''
         let rate = parseNum(merged.taxPct)
         if (patch.taxProfileCode1) {
           const r = rateOf(code) // profile drives the rate
           if (r != null) rate = r
         } else if (patch.taxPct !== undefined) {
-          if (rateOf(code) !== rate) code = codeForRate(rate) || code // rate drives the profile
+          // Rate drives the profile. When no profile defines this rate, blank the profile (keep the
+          // rate) rather than holding a stale code — the line stays taxable and the UI warns.
+          if (rateOf(code) !== rate) code = codeForRate(rate)
         } else if (!code) {
           code = vendorDefault // None → taxable: adopt vendor default
           const r = rateOf(code)
