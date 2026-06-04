@@ -1,0 +1,367 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-06-04T00:00:00Z",
+  "title": "Design System: Carmen AI Automation",
+  "extensions": {
+    "colorMeta": {
+      "carmen-blue": {
+        "role": "primary",
+        "displayName": "Carmen Blue",
+        "canonical": "oklch(0.4714 0.1794 258.7)",
+        "tonalRamp": [
+          "oklch(0.15 0.14 258.7)",
+          "oklch(0.25 0.15 258.7)",
+          "oklch(0.35 0.17 258.7)",
+          "oklch(0.4714 0.1794 258.7)",
+          "oklch(0.60 0.16 258.7)",
+          "oklch(0.75 0.12 258.7)",
+          "oklch(0.88 0.04 258.7)",
+          "oklch(0.95 0.014 258.7)"
+        ]
+      },
+      "process-teal": {
+        "role": "secondary",
+        "displayName": "Process Teal",
+        "canonical": "oklch(0.5852 0.1706 253.27)",
+        "tonalRamp": [
+          "oklch(0.15 0.13 253.27)",
+          "oklch(0.25 0.14 253.27)",
+          "oklch(0.38 0.16 253.27)",
+          "oklch(0.5852 0.1706 253.27)",
+          "oklch(0.68 0.14 253.27)",
+          "oklch(0.78 0.10 253.27)",
+          "oklch(0.88 0.05 253.27)",
+          "oklch(0.95 0.014 253.27)"
+        ]
+      },
+      "alert-rose": {
+        "role": "error",
+        "displayName": "Alert Rose",
+        "canonical": "oklch(0.666 0.2013 24.11)",
+        "tonalRamp": [
+          "oklch(0.15 0.14 24.11)",
+          "oklch(0.28 0.14 24.11)",
+          "oklch(0.42 0.18 24.11)",
+          "oklch(0.666 0.2013 24.11)",
+          "oklch(0.75 0.16 24.11)",
+          "oklch(0.84 0.10 24.11)",
+          "oklch(0.92 0.05 24.11)",
+          "oklch(0.95 0.025 24.11)"
+        ]
+      },
+      "caution-amber": {
+        "role": "warning",
+        "displayName": "Caution Amber",
+        "canonical": "oklch(0.78 0.15 75)",
+        "tonalRamp": [
+          "oklch(0.18 0.10 75)",
+          "oklch(0.30 0.12 75)",
+          "oklch(0.46 0.14 75)",
+          "oklch(0.78 0.15 75)",
+          "oklch(0.86 0.12 75)",
+          "oklch(0.90 0.08 75)",
+          "oklch(0.94 0.05 75)",
+          "oklch(0.97 0.025 75)"
+        ]
+      },
+      "success-emerald": {
+        "role": "success",
+        "displayName": "Success Emerald",
+        "canonical": "oklch(0.7515 0.1117 188.43)",
+        "tonalRamp": [
+          "oklch(0.16 0.08 188.43)",
+          "oklch(0.28 0.09 188.43)",
+          "oklch(0.42 0.10 188.43)",
+          "oklch(0.7515 0.1117 188.43)",
+          "oklch(0.80 0.09 188.43)",
+          "oklch(0.87 0.07 188.43)",
+          "oklch(0.92 0.04 188.43)",
+          "oklch(0.96 0.025 188.43)"
+        ]
+      },
+      "surface-body": {
+        "role": "neutral",
+        "displayName": "Blueprint Gray",
+        "canonical": "oklch(0.9 0.014 258.7)",
+        "tonalRamp": [
+          "oklch(0.14 0.018 258.7)",
+          "oklch(0.22 0.022 258.7)",
+          "oklch(0.33 0.018 258.7)",
+          "oklch(0.46 0.016 258.7)",
+          "oklch(0.70 0.014 258.7)",
+          "oklch(0.84 0.010 258.7)",
+          "oklch(0.91 0.008 258.7)",
+          "oklch(0.95 0.008 258.7)"
+        ]
+      },
+      "ink-primary": {
+        "role": "neutral",
+        "displayName": "Deep Slate Ink",
+        "canonical": "oklch(0.16 0.02 258.7)",
+        "tonalRamp": [
+          "oklch(0.10 0.02 258.7)",
+          "oklch(0.16 0.02 258.7)",
+          "oklch(0.33 0.018 258.7)",
+          "oklch(0.46 0.016 258.7)",
+          "oklch(0.56 0.016 258.7)",
+          "oklch(0.70 0.014 258.7)",
+          "oklch(0.84 0.010 258.7)",
+          "oklch(0.94 0.006 258.7)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Modal titles, card section headings, step wizard titles. Compact but authoritative."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Module card names, data card headers, confirmation screen titles. Primary visual anchor within a card."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Module descriptions, modal messages, helper text, how-to steps. Max 65ch on prose surfaces."
+      },
+      "label": {
+        "displayName": "Label (Uppercase)",
+        "purpose": "Form field labels, table column headers, step badge text. Always uppercase, always short (under 4 words), always 700 weight."
+      },
+      "data": {
+        "displayName": "Data (Mono)",
+        "purpose": "All financial amounts, account codes, document numbers, elapsed timers, bank codes. The switch to mono signals this value must be verified."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow-xs",
+        "value": "0 0.0625rem 0.125rem oklch(0.25 0.03 258.7 / 0.04)",
+        "purpose": "Micro-lift for small UI elements: file-info strips, row-count badges, small tool buttons."
+      },
+      {
+        "name": "shadow-sm",
+        "value": "0 0.0625rem 0.25rem oklch(0.25 0.03 258.7 / 0.07), 0 0.0625rem 0.125rem oklch(0.25 0.03 258.7 / 0.04)",
+        "purpose": "Default card shadow. Module cards and panel cards at rest."
+      },
+      {
+        "name": "shadow-md",
+        "value": "0 0.25rem 0.5rem oklch(0.25 0.03 258.7 / 0.09), 0 0.125rem 0.25rem oklch(0.25 0.03 258.7 / 0.05)",
+        "purpose": "Hover state on cards, document preview toolbar, floating tool buttons."
+      },
+      {
+        "name": "shadow-lg",
+        "value": "0 0.5rem 0.875rem oklch(0.25 0.03 258.7 / 0.09), 0 0.25rem 0.375rem oklch(0.25 0.03 258.7 / 0.05)",
+        "purpose": "Hover state on elevated cards, dropdowns, active-step pulse animation."
+      },
+      {
+        "name": "shadow-xl",
+        "value": "0 1rem 1.5rem oklch(0.25 0.03 258.7 / 0.09), 0 0.5rem 0.625rem oklch(0.25 0.03 258.7 / 0.04)",
+        "purpose": "Modals and loading overlays. Maximum depth in the system."
+      },
+      {
+        "name": "shadow-primary",
+        "value": "0 4px 18px oklch(0.4714 0.1794 258.7 / 0.2)",
+        "purpose": "Exclusive to primary buttons and the active step indicator. Carmen Blue ambient glow."
+      },
+      {
+        "name": "shadow-teal",
+        "value": "0 4px 16px oklch(0.5852 0.1706 253.27 / 0.18)",
+        "purpose": "Exclusive to the success/teal button variant. Process Teal ambient glow."
+      },
+      {
+        "name": "panel-card-inset",
+        "value": "inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 3px rgba(15,25,60,0.1), 0 4px 16px rgba(15,25,60,0.1), 0 12px 32px rgba(15,25,60,0.07)",
+        "purpose": "Panel-card and data-card default. Multi-layer outer shadow with inset top-edge highlight."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-expo-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Default easing for all state transitions. Matches --ease in base.css."
+      },
+      {
+        "name": "ease-drawer",
+        "value": "cubic-bezier(0.32, 0.72, 0, 1)",
+        "purpose": "Panel and drawer slide-in. Heavier deceleration than standard."
+      },
+      {
+        "name": "dur-fast",
+        "value": "120ms",
+        "purpose": "Micro-interactions: button active scale, icon hover, row highlight."
+      },
+      {
+        "name": "dur-base",
+        "value": "200ms",
+        "purpose": "Standard transition duration. Button hover, card hover, border color shifts."
+      },
+      {
+        "name": "dur-slow",
+        "value": "280ms",
+        "purpose": "Larger state changes: modal entry, step wizard transition, panel fade."
+      },
+      {
+        "name": "fade-up",
+        "value": "opacity 0 → 1, translateY 16px → 0, 250ms ease-expo-out",
+        "purpose": "Page-level content entrance. Used on .app-container and .main-content."
+      },
+      {
+        "name": "modal-scale-in",
+        "value": "opacity 0 → 1, scale 0.95 → 1, translateY 12px → 0, 300ms ease-expo-out",
+        "purpose": "Modal box entrance. The only scale-from-center animation in the system."
+      },
+      {
+        "name": "shimmer",
+        "value": "background-position -200% → 200%, 1.8s ease infinite",
+        "purpose": "Exclusive to the 3px top-edge loading stripe on the OCR overlay and extraction status strip."
+      },
+      {
+        "name": "pulse-ring",
+        "value": "scale 1 → 1.04, opacity 0.5 → 0, 1.8s ease-out infinite",
+        "purpose": "Active step panel-card outline pulse. Communicates that this panel is awaiting user action."
+      }
+    ],
+    "breakpoints": [
+      { "name": "mobile-sm", "value": "480px", "purpose": "Compact padding, single-column layout, simplified header." },
+      { "name": "mobile", "value": "640px", "purpose": "Step wizard collapses to number-only; upload grid becomes 1-column; modal actions stack." },
+      { "name": "tablet", "value": "768px", "purpose": "44px minimum tap targets enforced; preview height caps at 45vh." },
+      { "name": "tablet-lg", "value": "900px", "purpose": "Upload section grid transitions from 3 to 2 columns." },
+      { "name": "desktop", "value": "1100px", "purpose": "Main content grid switches from 1-column to 2-column; preview column becomes sticky." },
+      { "name": "desktop-lg", "value": "1480px", "purpose": "App container max-width cap." }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single highest-priority action on any screen. Carmen Blue fill with a glow shadow.",
+      "html": "<button class=\"ds-btn-primary\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9 18l6-6-6-6\"/></svg>Process Document</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.65rem 1.5rem; background: oklch(0.4714 0.1794 258.7); color: white; font-family: Inter, -apple-system, sans-serif; font-size: 0.85rem; font-weight: 600; border-radius: 9px; border: none; box-shadow: 0 4px 18px oklch(0.4714 0.1794 258.7 / 0.2); cursor: pointer; transition: background 0.2s cubic-bezier(0.16,1,0.3,1), transform 0.12s cubic-bezier(0.16,1,0.3,1), box-shadow 0.2s cubic-bezier(0.16,1,0.3,1); letter-spacing: -0.01em; } .ds-btn-primary:hover { background: oklch(0.4 0.18 258.7); transform: translateY(-2px); box-shadow: 0 8px 24px oklch(0.4714 0.1794 258.7 / 0.32); } .ds-btn-primary:focus-visible { outline: 2.5px solid oklch(0.4714 0.1794 258.7); outline-offset: 3px; } .ds-btn-primary:active { transform: scale(0.97); } .ds-btn-primary:disabled { opacity: 0.42; cursor: not-allowed; transform: none; box-shadow: none; }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Secondary action. Recedes behind the primary. Shifts to a primary tint on hover.",
+      "html": "<button class=\"ds-btn-outline\">Cancel</button>",
+      "css": ".ds-btn-outline { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.65rem 1.25rem; background: white; color: oklch(0.33 0.018 258.7); font-family: Inter, -apple-system, sans-serif; font-size: 0.85rem; font-weight: 500; border-radius: 9px; border: 1px solid oklch(0.84 0.01 258.7); cursor: pointer; transition: all 0.15s cubic-bezier(0.16,1,0.3,1); } .ds-btn-outline:hover { background: oklch(0.95 0.014 258.7); color: oklch(0.4714 0.1794 258.7); border-color: oklch(0.88 0.04 258.7); } .ds-btn-outline:focus-visible { outline: 2.5px solid oklch(0.4714 0.1794 258.7); outline-offset: 3px; } .ds-btn-outline:active { transform: scale(0.97); }"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Destructive confirmation. Soft rose at rest, fills solid on hover — the escalation is intentional.",
+      "html": "<button class=\"ds-btn-danger\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"3 6 5 6 21 6\"/><path d=\"M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6\"/><path d=\"M10 11v6m4-6v6\"/></svg>Delete row</button>",
+      "css": ".ds-btn-danger { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.65rem 1.25rem; background: oklch(0.95 0.025 24.11); color: oklch(0.666 0.2013 24.11); font-family: Inter, -apple-system, sans-serif; font-size: 0.85rem; font-weight: 500; border-radius: 9px; border: 1px solid oklch(0.84 0.08 24.11); cursor: pointer; transition: all 0.15s cubic-bezier(0.16,1,0.3,1); } .ds-btn-danger:hover { background: oklch(0.666 0.2013 24.11); color: white; border-color: oklch(0.666 0.2013 24.11); transform: translateY(-1px); } .ds-btn-danger:focus-visible { outline: 2.5px solid oklch(0.666 0.2013 24.11); outline-offset: 3px; } .ds-btn-danger:active { transform: scale(0.97); }"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "badge-info",
+      "description": "Semantic state pill. Four variants: info (Carmen Blue), success (Emerald), warning (Amber), error (Rose). Color is meaning.",
+      "html": "<div style=\"display:flex;gap:0.5rem;flex-wrap:wrap;\"><span class=\"ds-badge ds-badge-info\"><svg width=\"9\" height=\"9\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\"><path d=\"M22 11.08V12a10 10 0 11-5.93-9.14\"/><polyline points=\"22 4 12 14.01 9 11.01\"/></svg>ACTIVE</span><span class=\"ds-badge ds-badge-success\">POSTED</span><span class=\"ds-badge ds-badge-warning\">REVIEW</span><span class=\"ds-badge ds-badge-error\">MISSING</span></div>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; gap: 0.3rem; font-family: Inter, sans-serif; font-size: 0.68rem; font-weight: 700; padding: 0.28rem 0.7rem; border-radius: 100px; letter-spacing: 0.05em; border: 1px solid transparent; } .ds-badge-info { background: oklch(0.95 0.014 258.7); color: oklch(0.4714 0.1794 258.7); border-color: oklch(0.88 0.04 258.7); } .ds-badge-success { background: oklch(0.96 0.025 188.43); color: oklch(0.7515 0.1117 188.43); border-color: oklch(0.88 0.06 188.43); } .ds-badge-warning { background: oklch(0.97 0.025 75); color: oklch(0.78 0.15 75); border-color: oklch(0.9 0.08 75); } .ds-badge-error { background: oklch(0.95 0.025 24.11); color: oklch(0.666 0.2013 24.11); border-color: oklch(0.84 0.08 24.11); }"
+    },
+    {
+      "name": "Panel Card",
+      "kind": "card",
+      "refersTo": "button-primary",
+      "description": "The primary work surface. White card on blue-gray body; multi-layer shadow creates physical depth without drama.",
+      "html": "<div class=\"ds-panel-card\"><div class=\"ds-panel-card-label\">BANK SELECTION</div><div class=\"ds-panel-card-body\">Content goes here</div></div>",
+      "css": ".ds-panel-card { background: white; border: 1px solid rgba(255,255,255,0.7); border-radius: 14px; padding: 1.5rem; box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 3px rgba(15,25,60,0.1), 0 4px 16px rgba(15,25,60,0.1), 0 12px 32px rgba(15,25,60,0.07); transition: box-shadow 0.25s cubic-bezier(0.16,1,0.3,1), border-color 0.25s cubic-bezier(0.16,1,0.3,1), transform 0.25s cubic-bezier(0.16,1,0.3,1); } .ds-panel-card:hover { box-shadow: inset 0 1px 0 rgba(255,255,255,0.95), 0 2px 6px rgba(15,25,60,0.12), 0 8px 24px rgba(15,25,60,0.12), 0 20px 48px rgba(15,25,60,0.08); transform: translateY(-2px); } .ds-panel-card-label { font-family: Inter, sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.10em; text-transform: uppercase; color: oklch(0.56 0.016 258.7); margin-bottom: 1rem; } .ds-panel-card-body { font-family: Inter, sans-serif; font-size: 0.875rem; color: oklch(0.33 0.018 258.7); }"
+    },
+    {
+      "name": "Data Table Row",
+      "kind": "custom",
+      "refersTo": "button-primary",
+      "description": "Table rows for extracted invoice/statement data. Hover reveals a Carmen Blue left-inset bar and tinted background.",
+      "html": "<table class=\"ds-data-table\"><thead><tr><th>DATE</th><th>DESCRIPTION</th><th class=\"ds-right\">AMOUNT</th></tr></thead><tbody><tr><td>04/06/2026</td><td>Office supplies — ABC Co.</td><td class=\"ds-right ds-mono\">12,450.00</td></tr><tr><td>03/06/2026</td><td>Vendor payment</td><td class=\"ds-right ds-mono\">8,200.00</td></tr></tbody></table>",
+      "css": ".ds-data-table { width: 100%; border-collapse: collapse; font-family: Inter, -apple-system, sans-serif; } .ds-data-table th { padding: 0.8rem 1rem; text-align: left; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: oklch(0.56 0.016 258.7); background: oklch(0.985 0.003 258.7); border-bottom: 1px solid oklch(0.91 0.008 258.7); white-space: nowrap; } .ds-data-table tbody tr { border-bottom: 1px solid oklch(0.96 0.006 258.7); transition: background 0.12s, box-shadow 0.12s; } .ds-data-table tbody tr:nth-child(even) { background: rgba(248,250,252,0.6); } .ds-data-table td { padding: 0.5rem 1rem; font-size: 0.85rem; color: oklch(0.33 0.018 258.7); vertical-align: middle; } .ds-data-table tbody tr:hover { background: oklch(0.95 0.014 258.7); box-shadow: inset 3px 0 0 oklch(0.4714 0.1794 258.7); } .ds-right { text-align: right; } .ds-mono { font-family: 'IBM Plex Mono', monospace; font-size: 0.83rem; font-weight: 500; }"
+    },
+    {
+      "name": "Form Field (Bottom Border)",
+      "kind": "input",
+      "refersTo": "button-outline",
+      "description": "Header form fields for company info, dates, document numbers. Transparent by default; feels like filling in a document.",
+      "html": "<div class=\"ds-form-field\"><label class=\"ds-form-label\">Document Number</label><input class=\"ds-form-input\" type=\"text\" placeholder=\"e.g. INV-2026-001\" /></div>",
+      "css": ".ds-form-field { display: flex; flex-direction: column; gap: 0.3rem; } .ds-form-label { font-family: Inter, sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: oklch(0.56 0.016 258.7); } .ds-form-input { background: transparent; border: none; border-bottom: 1.5px solid oklch(0.91 0.008 258.7); border-radius: 0; padding: 0.45rem 0; font-family: Inter, Sarabun, -apple-system, sans-serif; font-size: 0.9rem; font-weight: 500; color: oklch(0.16 0.02 258.7); outline: none; width: 100%; transition: border-color 0.2s; } .ds-form-input:focus { border-bottom-color: oklch(0.4714 0.1794 258.7); } .ds-form-input::placeholder { color: oklch(0.7 0.014 258.7); }"
+    },
+    {
+      "name": "Step Wizard",
+      "kind": "nav",
+      "refersTo": "button-primary",
+      "description": "5-step progress indicator. The active step wears Carmen Blue (animated pill via Framer Motion). Done steps show an Emerald-filled circle.",
+      "html": "<div class=\"ds-step-wizard\"><div class=\"ds-step ds-step-done\"><div class=\"ds-step-num\">✓</div><span class=\"ds-step-label\">Upload</span></div><div class=\"ds-step-sep\"></div><div class=\"ds-step ds-step-active\"><div class=\"ds-step-num\">2</div><span class=\"ds-step-label\">Review</span></div><div class=\"ds-step-sep\"></div><div class=\"ds-step ds-step-pending\"><div class=\"ds-step-num\">3</div><span class=\"ds-step-label\">Map GL</span></div><div class=\"ds-step-sep\"></div><div class=\"ds-step ds-step-pending\"><div class=\"ds-step-num\">4</div><span class=\"ds-step-label\">Confirm</span></div><div class=\"ds-step-sep\"></div><div class=\"ds-step ds-step-pending\"><div class=\"ds-step-num\">5</div><span class=\"ds-step-label\">Submit</span></div></div>",
+      "css": ".ds-step-wizard { display: flex; align-items: center; justify-content: center; padding: 0.65rem 1.5rem; background: white; border: 1px solid oklch(0.91 0.008 258.7); border-radius: 20px; box-shadow: 0 1px 3px rgba(15,25,60,0.07); gap: 0; } .ds-step { display: flex; align-items: center; gap: 0.55rem; padding: 0.5rem 1rem; border-radius: 100px; font-family: Inter, sans-serif; font-size: 0.8rem; font-weight: 500; color: oklch(0.7 0.014 258.7); white-space: nowrap; } .ds-step-active { background: oklch(0.4714 0.1794 258.7); color: white; font-weight: 700; box-shadow: 0 4px 18px oklch(0.4714 0.1794 258.7 / 0.2); } .ds-step-done { color: oklch(0.7515 0.1117 188.43); } .ds-step-num { width: 22px; height: 22px; border-radius: 50%; border: 2px solid currentColor; display: flex; align-items: center; justify-content: center; font-size: 0.62rem; font-weight: 700; font-family: 'IBM Plex Mono', monospace; flex-shrink: 0; } .ds-step-active .ds-step-num { border-color: rgba(255,255,255,0.6); color: white; } .ds-step-done .ds-step-num { background: linear-gradient(135deg, oklch(0.7515 0.1117 188.43), #34d399); border-color: transparent; color: white; box-shadow: 0 2px 8px rgba(5,150,105,0.35); } .ds-step-label { font-size: 0.8rem; } .ds-step-sep { flex: 1; max-width: 40px; height: 2px; background: oklch(0.91 0.008 258.7); border-radius: 100px; margin: 0 0.25rem; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Instrument Panel",
+    "overview": "Carmen AI Automation is a tool where the stakes are real: extracted numbers go directly into GL entries. The interface treats every pixel as a readout, not a decoration. Surfaces recede. Headers read like panel labels. Numeric values surface in monospace, unambiguous. Motion conveys state, not atmosphere. The tool is precise because the work demands precision.\n\nThe system rejects the SaaS playbook entirely. There are no gradient text treatments, no hero metrics with big numbers and gradient accents, no celebratory animations for routine accounting tasks, and no enterprise-legacy chrome. The palette is restrained: one brand accent used as a state indicator, not an identity statement. Color communicates \"this needs your attention\" or \"this is confirmed\" — never \"look how polished we are.\"\n\nThai and English are equally considered. Sarabun sits alongside Inter in every font stack. Vendor names, GL labels, and invoice text arrive in Thai; every layout decision accounts for it.",
+    "keyCharacteristics": [
+      "Surfaces recede; data leads. Card chrome is minimal so extracted values stand forward.",
+      "Mono for amounts, Inter/Sarabun for everything else. The distinction is structural.",
+      "Color = state. Carmen Blue signals the active action or current step. Color signals state, never mood.",
+      "Dark mode is first-class. Every token has a dark variant; no surfaces use raw hex.",
+      "Workflow-first layout. Every screen belongs to a step in the document-processing flow.",
+      "44px minimum tap targets on mobile. Accounting tools are used on tablets."
+    ],
+    "rules": [
+      {
+        "name": "The One Voice Rule",
+        "body": "Carmen Blue appears on ≤15% of any given screen. When every action and every active state wears the same color, that color retains its signal value. Do not use Carmen Blue for decorative gradients, section dividers, or inactive-state backgrounds.",
+        "section": "colors"
+      },
+      {
+        "name": "The No-Raw-Hex Rule",
+        "body": "All color values must reference a CSS custom property from :root. Dark mode works because every token has a [data-theme='dark'] override. Never hardcode oklch() or hex values in component code.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mono Signal Rule",
+        "body": "IBM Plex Mono appears only on values the user must verify: amounts, codes, dates, status strings, elapsed timers. It does not appear on headings, button labels, or descriptive text. If a piece of text is in mono, it is data.",
+        "section": "typography"
+      },
+      {
+        "name": "The Scale Ceiling Rule",
+        "body": "No heading in the product exceeds clamp(2.1rem, 5vw, 2.6rem) (the home page h1). Module-internal headings are capped at 1.1rem. Product UI does not shout; it organizes.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "Shadows appear only on surfaces that contain or represent interactive content. Purely structural surfaces (dividers, separators, empty containers) are flat. A shadow is a promise that something is interactive or elevated.",
+        "section": "elevation"
+      },
+      {
+        "name": "The One-Layer-of-Blur Rule",
+        "body": "Backdrop blur is reserved for the sticky app-header (14px), modal overlays (16px), toast containers (16px), and the OCR loading overlay (8px). Never applied to cards, panels, or inline UI.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do use IBM Plex Mono for every financial amount, account code, document number, and date value.",
+      "Do give every interactive element a focus-visible ring: outline 2.5px solid var(--primary) with outline-offset 2px.",
+      "Do reference CSS custom properties for every color — never raw hex or oklch in component code.",
+      "Do use the 44px minimum tap target for all buttons on mobile.",
+      "Do apply @media (prefers-reduced-motion: reduce) for every animation.",
+      "Do apply text-wrap: balance on headings and text-wrap: pretty on modal messages.",
+      "Do treat the step wizard as the primary navigation metaphor on all module screens.",
+      "Do verify Ink Tertiary contrast on every new surface — it borders WCAG AA at the body text floor.",
+      "Do include all five button states in every new button variant: default, hover, focus, active, disabled.",
+      "Do use the Sarabun font stack on every text element that may contain Thai script."
+    ],
+    "donts": [
+      "Don't add background-clip: text with a gradient background. Gradient text is prohibited.",
+      "Don't use border-left or border-right greater than 1px as a colored accent stripe — the existing toast is a legacy issue, not a template.",
+      "Don't use backdrop-filter: blur on cards, panel surfaces, or inline UI elements.",
+      "Don't introduce a display font. Inter handles all hierarchy within this product.",
+      "Don't add a flash AI SaaS aesthetic: no hero-metric big-number layouts, no gradient accents, no celebration animations.",
+      "Don't use Carmen Blue on more than 15% of a given screen surface.",
+      "Don't use modal-first for actions where an inline confirmation or toast would work.",
+      "Don't hardcode raw hex or rgba values in new component code — dark mode breaks on raw values.",
+      "Don't ship a new workflow screen without empty states for tables and data columns.",
+      "Don't animate layout properties (width, height, top, left). Animate transform and opacity only."
+    ]
+  }
+}
