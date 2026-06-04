@@ -1,16 +1,16 @@
-# Graph Report - OCR  (2026-06-02)
+# Graph Report - OCR  (2026-06-04)
 
 ## Corpus Check
-- 131 files · ~59,903 words
+- 131 files · ~60,234 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 946 nodes · 1520 edges · 118 communities (97 shown, 21 thin omitted)
-- Extraction: 81% EXTRACTED · 19% INFERRED · 0% AMBIGUOUS · INFERRED: 284 edges (avg confidence: 0.72)
+- 952 nodes · 1536 edges · 118 communities (97 shown, 21 thin omitted)
+- Extraction: 81% EXTRACTED · 19% INFERRED · 0% AMBIGUOUS · INFERRED: 288 edges (avg confidence: 0.72)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `8e140086`
+- Built from commit: `acb686f7`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -34,8 +34,8 @@
 - [[_COMMUNITY_Community 16|Community 16]]
 - [[_COMMUNITY_Community 17|Community 17]]
 - [[_COMMUNITY_Community 18|Community 18]]
+- [[_COMMUNITY_Community 19|Community 19]]
 - [[_COMMUNITY_Community 20|Community 20]]
-- [[_COMMUNITY_Community 21|Community 21]]
 - [[_COMMUNITY_Community 22|Community 22]]
 - [[_COMMUNITY_Community 23|Community 23]]
 - [[_COMMUNITY_Community 24|Community 24]]
@@ -97,11 +97,11 @@
 
 ### Community 0 - "Community 0"
 Cohesion: 0.05
-Nodes (72): Base, Base, BaseModel, DeclarativeBase, Enum, BankType, DocumentType, TaskStatus (+64 more)
+Nodes (73): Base, Base, BaseModel, DeclarativeBase, Enum, BankType, DocumentType, TaskStatus (+65 more)
 
 ### Community 1 - "Community 1"
-Cohesion: 0.05
-Nodes (40): addDays(), buildInvoicePayload(), addDays(), buildInvoicePayload(), fetchAccountCodes(), fetchDepartments(), fetchGLPrefixes(), _parseCarmenHttpError() (+32 more)
+Cohesion: 0.06
+Nodes (39): addDays(), buildInvoicePayload(), useAPSubmission(), addDays(), buildInvoicePayload(), useAPSubmission(), fetchAccountCodes(), fetchDepartments() (+31 more)
 
 ### Community 2 - "Community 2"
 Cohesion: 0.06
@@ -109,7 +109,7 @@ Nodes (36): AdminLayout(), AdminLogin(), AdminProtectedRoute(), handleResolve(),
 
 ### Community 3 - "Community 3"
 Cohesion: 0.07
-Nodes (29): profileLabel(), useAPExtraction(), useAPInvoice(), useAPSubmission(), reconcileRows(), useAPValidation(), useAPVendor(), useAPExtraction() (+21 more)
+Nodes (32): profileLabel(), useAPExtraction(), useAPInvoice(), reconcileRows(), header(), masterReconcile(), sum(), useAPValidation() (+24 more)
 
 ### Community 4 - "Community 4"
 Cohesion: 0.07
@@ -124,12 +124,12 @@ Cohesion: 0.1
 Nodes (39): Exception, AI-suggest dept/acc for AP invoice expense items using category + description., suggest_gl(), proxy_account_codes(), proxy_create_input_tax(), proxy_create_invoice(), proxy_departments(), proxy_gl_prefix() (+31 more)
 
 ### Community 7 - "Community 7"
-Cohesion: 0.1
-Nodes (22): exchangeSSOToken(), getUsage(), revokeSession(), clearToken(), createApiClient(), getStoredToken(), resolveUrl(), storeToken() (+14 more)
+Cohesion: 0.07
+Nodes (13): APReviewStep(), HEADER_FIELDS(), APSuccessStep(), VendorSearch(), AuthScreen(), fmt(), isNumFld(), parseNum() (+5 more)
 
 ### Community 8 - "Community 8"
-Cohesion: 0.08
-Nodes (13): APReviewStep(), HEADER_FIELDS(), APSuccessStep(), VendorSearch(), AuthScreen(), fmt(), isNumFld(), parseNum() (+5 more)
+Cohesion: 0.1
+Nodes (22): exchangeSSOToken(), getUsage(), revokeSession(), clearToken(), createApiClient(), getStoredToken(), resolveUrl(), storeToken() (+14 more)
 
 ### Community 9 - "Community 9"
 Cohesion: 0.08
@@ -141,61 +141,61 @@ Nodes (33): Backend Python Requirements, CHANGELOG — Unreleased 2026-05-02, CL
 
 ### Community 11 - "Community 11"
 Cohesion: 0.09
-Nodes (26): get_current_session(), FastAPI dependency — resolves the current authenticated session from JWT + DB., Validates the OCR JWT, looks up the session record, and returns a SessionInfo, create_session_jwt(), decode_session_jwt(), decrypt_carmen_token(), encrypt_carmen_token(), extract_user_id_from_token() (+18 more)
+Nodes (25): get_current_session(), FastAPI dependency — resolves the current authenticated session from JWT + DB., Validates the OCR JWT, looks up the session record, and returns a SessionInfo, create_session_jwt(), decode_session_jwt(), decrypt_carmen_token(), encrypt_carmen_token(), extract_user_id_from_token() (+17 more)
 
 ### Community 12 - "Community 12"
 Cohesion: 0.15
 Nodes (15): saveAccountingConfig(), detectBankFromCompanyName(), detectBankFromExtracted(), useMapping(), codeToDisplayName(), getBankInfo(), getGLSourceCode(), isApiShape() (+7 more)
 
 ### Community 13 - "Community 13"
-Cohesion: 0.14
-Nodes (20): _db_root_url(), get_all_tenants(), get_db(), _get_engine(), _get_session_factory(), init_db(), _m021_remove_tenant_columns(), migrate_all_tenants() (+12 more)
+Cohesion: 0.15
+Nodes (18): _db_root_url(), get_db(), _get_engine(), _get_session_factory(), init_db(), _m021_remove_tenant_columns(), migrate_all_tenants(), migrate_db() (+10 more)
 
 ### Community 14 - "Community 14"
 Cohesion: 0.11
 Nodes (13): FileService, Centralized service for file validation and handling.     Implements security c, validate_and_read(), export_tasks_to_csv(), extract_stateless(), OCR Service — stateless extraction + task listing/export helpers., Stateless OCR extraction:     resize → OpenRouter vision LLM → return structure, Export submitted credit card documents to CSV — one row per transaction label. (+5 more)
 
 ### Community 15 - "Community 15"
+Cohesion: 0.14
+Nodes (11): Admin Router — usage summary queries + manual trigger endpoints.  All endpoint, Manually rebuild daily summary for the current tenant., Manually sync LLM pricing from OpenRouter API., trigger_pricing_sync(), trigger_summary_rebuild(), _aggregate(), backfill_summaries(), build_daily_summary() (+3 more)
+
+### Community 16 - "Community 16"
+Cohesion: 0.18
+Nodes (12): get_all_tenants(), List all provisioned tenants by querying INFORMATION_SCHEMA for     databases n, lifespan(), _pricing_sync_loop(), Sync OpenRouter model pricing into every tenant DB every 8 hours., Initialize database on startup, start background scheduler., Returns app version and registered prompt versions for audit/traceability., Run an async coroutine factory once per provisioned tenant, setting current_tena (+4 more)
+
+### Community 17 - "Community 17"
 Cohesion: 0.3
 Nodes (13): _build_deposit_row(), _compute_line_totals(), _detect_tax_type(), _distribute_footer_discount(), _num(), postprocess(), _r2(), Post-process raw AP-invoice extraction from LLM into the final shape expected b (+5 more)
 
-### Community 16 - "Community 16"
-Cohesion: 0.21
-Nodes (10): lifespan(), _pricing_sync_loop(), Sync OpenRouter model pricing into every tenant DB every 8 hours., Initialize database on startup, start background scheduler., Returns app version and registered prompt versions for audit/traceability., Run an async coroutine factory once per provisioned tenant, setting current_tena, Lightweight background scheduler — runs inside the FastAPI event loop.      Sc, _run_for_all_tenants() (+2 more)
-
-### Community 17 - "Community 17"
-Cohesion: 0.24
-Nodes (9): Manually trigger archive + cleanup for the current tenant., trigger_retention(), archive_and_cleanup(), _process_table(), purge_inactive_sessions(), Retention Service — archive old log rows to CSV, then delete from DB.  Runs ni, Delete ocr_sessions rows that have been inactive (is_active=0)     for more tha, For each table in RETENTION_POLICY:       1. SELECT rows older than retention p (+1 more)
-
 ### Community 18 - "Community 18"
+Cohesion: 0.22
+Nodes (4): AccountingReview(), buildRows(), fmt(), useAccountingConfig()
+
+### Community 19 - "Community 19"
 Cohesion: 0.29
 Nodes (9): async_session(), Context-aware session — backward-compatible with all existing     `async with a, _estimate_cost(), fetch_openrouter_pricing(), _get_pricing(), log_llm_usage(), Get pricing from cache or DB., Calculate cost in USD. (+1 more)
 
 ### Community 20 - "Community 20"
-Cohesion: 0.22
-Nodes (5): Admin Router — usage summary queries + manual trigger endpoints.  All endpoint, Manually rebuild daily summary for the current tenant., Manually sync LLM pricing from OpenRouter API., trigger_pricing_sync(), trigger_summary_rebuild()
+Cohesion: 0.24
+Nodes (9): Manually trigger archive + cleanup for the current tenant., trigger_retention(), archive_and_cleanup(), _process_table(), purge_inactive_sessions(), Retention Service — archive old log rows to CSV, then delete from DB.  Runs ni, Delete ocr_sessions rows that have been inactive (is_active=0)     for more tha, For each table in RETENTION_POLICY:       1. SELECT rows older than retention p (+1 more)
 
-### Community 21 - "Community 21"
+### Community 22 - "Community 22"
 Cohesion: 0.31
 Nodes (7): BaseHTTPMiddleware, PerformanceMiddleware, _persist(), Decode user_id from JWT without DB lookup — lightweight, never raises., Derive tenant from Origin header.     Strictly validates the subdomain to preve, _tenant_from_request(), _user_id_from_request()
 
-### Community 22 - "Community 22"
+### Community 23 - "Community 23"
 Cohesion: 0.32
 Nodes (7): get_tool_schema(), invoke_tool(), list_tools(), Tools Router — HTTP interface to the tool registry.  Endpoints:   GET  /api/v, List all registered tools with their descriptions and input schemas., Return description and input schema for a single tool., Invoke a registered tool by name.      Request body: JSON object whose keys ma
 
-### Community 23 - "Community 23"
+### Community 24 - "Community 24"
 Cohesion: 0.43
 Nodes (7): copy_global_table(), copy_tenant_table(), get_distinct_tenants(), mark_migrations_applied(), One-time migration: ocr_db (shared schema) → carmen_ai_{tenant} (separate schema, run(), table_exists()
 
-### Community 24 - "Community 24"
+### Community 25 - "Community 25"
 Cohesion: 0.29
 Nodes (5): Config, Application configuration — loads settings from .env file., Application settings loaded from environment variables / .env file., Settings, BaseSettings
 
-### Community 25 - "Community 25"
-Cohesion: 0.38
-Nodes (6): _aggregate(), backfill_summaries(), build_daily_summary(), Summary Service — build daily usage aggregates for the current tenant.  Runs n, Rebuild summaries for a date range (inclusive). Returns count of days processed., Aggregate one day's data into daily_usage_summary for the current tenant.     T
-
-### Community 28 - "Community 28"
+### Community 27 - "Community 27"
 Cohesion: 0.5
 Nodes (4): ensure_partitions(), _quarter_boundaries(), Partition Manager — auto-create quarterly partitions for hot log tables.  Runs, Check each partitioned table and create missing quarterly partitions.     Opera
 
@@ -211,11 +211,11 @@ Nodes (3): Hash-Based Routing for IIS Static Deployment, IIS Deployment Guide (W
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `apiFetch()` connect `Community 1` to `Community 3`, `Community 4`, `Community 12`, `Community 7`?**
-  _High betweenness centrality (0.078) - this node is a cross-community bridge._
-- **Why does `async_session()` connect `Community 18` to `Community 0`, `Community 5`, `Community 6`, `Community 11`, `Community 13`, `Community 17`, `Community 21`, `Community 25`, `Community 28`?**
-  _High betweenness centrality (0.041) - this node is a cross-community bridge._
-- **Why does `createApiClient()` connect `Community 7` to `Community 2`?**
+- **Why does `apiFetch()` connect `Community 1` to `Community 8`, `Community 3`, `Community 4`, `Community 12`?**
+  _High betweenness centrality (0.079) - this node is a cross-community bridge._
+- **Why does `async_session()` connect `Community 19` to `Community 0`, `Community 5`, `Community 6`, `Community 11`, `Community 13`, `Community 15`, `Community 20`, `Community 22`, `Community 27`?**
+  _High betweenness centrality (0.040) - this node is a cross-community bridge._
+- **Why does `createApiClient()` connect `Community 8` to `Community 2`?**
   _High betweenness centrality (0.039) - this node is a cross-community bridge._
 - **Are the 19 inferred relationships involving `apiFetch()` (e.g. with `handleSubmit()` and `fetchAccountCodes()`) actually correct?**
   _`apiFetch()` has 19 INFERRED edges - model-reasoned connections that need verification._
