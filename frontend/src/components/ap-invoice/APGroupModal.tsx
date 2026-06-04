@@ -5,13 +5,11 @@ import { Layers } from 'lucide-react'
 import { fmt, parseNum } from '../../constants/apInvoice'
 import { effectiveTaxProfile, allSameProfile } from '../../lib/apGroup'
 import type { APLineItem } from '../../hooks/ap-invoice/useAPExtraction'
-import type { Vendor } from '../../hooks/ap-invoice/useAPVendor'
 
 interface Props {
   show: boolean
   t: Record<string, string>
   lineItems: APLineItem[]
-  systemVendor: Vendor
   groupByDescription: (indices: number[], description: string) => boolean
   onClose: () => void
 }
@@ -20,14 +18,7 @@ interface Props {
 // merge. Selected rows must share one tax profile — the Group button stays disabled (with an inline
 // warning) until the selection is valid, and the hook re-checks as a backstop. Enter/exit motion
 // mirrors CustomModal so every dialog in the app settles the same way.
-export default function APGroupModal({
-  show,
-  t,
-  lineItems,
-  systemVendor,
-  groupByDescription,
-  onClose,
-}: Props) {
+export default function APGroupModal({ show, t, lineItems, groupByDescription, onClose }: Props) {
   const [desc, setDesc] = useState('')
   const [selected, setSelected] = useState<Set<number>>(new Set())
 
@@ -47,14 +38,15 @@ export default function APGroupModal({
     return () => document.removeEventListener('keydown', onKey)
   }, [show, onClose])
 
-  const vendorDefault = systemVendor.taxProfileCode1 || ''
   const profileLabel = (item: APLineItem) => {
-    const p = effectiveTaxProfile(item, vendorDefault)
+    const p = effectiveTaxProfile(item)
     return p === 'None' ? 'No VAT' : p || '—'
   }
 
   const selectedItems = [...selected].map(i => lineItems[i])
-  const mixed = selected.size >= 2 && !allSameProfile(selectedItems, vendorDefault)
+  const mixed = selected.size >= 2 && !allSameProfile(selectedItems)
+  const missingDesc = desc.trim().length === 0 && selected.size >= 2
+  const needMoreItems = selected.size === 1
   const canGroup = desc.trim().length > 0 && selected.size >= 2 && !mixed
 
   const toggle = (i: number) =>
@@ -103,12 +95,18 @@ export default function APGroupModal({
               </label>
               <input
                 id="ap-group-desc"
-                className="ap-group-modal-input"
+                className={`ap-group-modal-input${missingDesc ? ' ap-group-modal-input--error' : ''}`}
                 value={desc}
                 onChange={e => setDesc(e.target.value)}
                 placeholder="Describe the grouped line..."
+                autoComplete="off"
                 autoFocus
               />
+              {missingDesc && (
+                <div className="ap-group-modal-warn">
+                  Please enter a description before grouping.
+                </div>
+              )}
 
               <div className="ap-group-modal-hint">
                 Select items to combine — they must share the same tax profile.
@@ -127,6 +125,7 @@ export default function APGroupModal({
                 ))}
               </div>
 
+              {needMoreItems && <div className="ap-group-modal-warn">{t.warnSelectMore}</div>}
               {mixed && <div className="ap-group-modal-warn">{t.groupSameProfile}</div>}
             </div>
 

@@ -21,6 +21,7 @@ interface Diffs {
   isDiscDiff: boolean
   isTaxDiff: boolean
   isGrandDiff: boolean
+  isDocInconsistent: boolean
 }
 
 interface Props {
@@ -93,7 +94,7 @@ export default function AmountSummary({
 }: Props) {
   const { lineSubTotal, discount, tax, lineTotal } = sums
   const { subTotal: tgtSub, discount: tgtDisc, tax: tgtTax } = targets
-  const { isSubDiff, isDiscDiff, isTaxDiff, isGrandDiff } = diffs
+  const { isSubDiff, isDiscDiff, isTaxDiff, isGrandDiff, isDocInconsistent } = diffs
 
   return (
     <Card
@@ -145,14 +146,22 @@ export default function AmountSummary({
         <div className="ap-grand-total-row">
           <span className="ap-grand-total-label">{t.grandTotal}</span>
           <div className="ap-summary-values">
-            {isGrandDiff && (
-              <button
-                type="button"
-                className="ap-adjust-btn"
-                onClick={() => adjustField(round2(headerData.grandTotal), lineTotal, 'lineTotal')}
-              >
-                <RotateCw size={14} /> {t.adjust}
-              </button>
+            {isGrandDiff && isDocInconsistent ? (
+              // The document's own figures don't add up (sub + tax ≠ grand): reconciling line
+              // items can never clear this, so warn instead of offering an Adjust that would loop.
+              <span className="ap-doc-inconsistent" title={t.docInconsistent}>
+                {t.docInconsistent}
+              </span>
+            ) : (
+              isGrandDiff && (
+                <button
+                  type="button"
+                  className="ap-adjust-btn"
+                  onClick={() => adjustField(round2(headerData.grandTotal), lineTotal, 'lineTotal')}
+                >
+                  <RotateCw size={14} /> {t.adjust}
+                </button>
+              )
             )}
             <span className={`ap-grand-total-table-val ${isGrandDiff ? 'diff' : ''}`}>
               {fmt(lineTotal)}

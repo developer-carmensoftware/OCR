@@ -19,37 +19,35 @@ const row = (over: Partial<APLineItem>): APLineItem => ({
 
 describe('effectiveTaxProfile', () => {
   it('returns None for None lines regardless of profile code', () => {
-    expect(effectiveTaxProfile(row({ taxType: 'None', taxProfileCode1: 'VAT07' }), 'VD')).toBe(
-      'None'
-    )
+    expect(effectiveTaxProfile(row({ taxType: 'None', taxProfileCode1: 'VAT07' }))).toBe('None')
   })
 
   it('uses the line profile code when present', () => {
-    expect(effectiveTaxProfile(row({ taxProfileCode1: 'VAT07' }), 'VD')).toBe('VAT07')
+    expect(effectiveTaxProfile(row({ taxProfileCode1: 'VAT07' }))).toBe('VAT07')
   })
 
-  it('falls back to the vendor default when the line has no profile', () => {
-    expect(effectiveTaxProfile(row({ taxProfileCode1: '' }), 'VD')).toBe('VD')
+  it('returns empty string when the line has no profile', () => {
+    expect(effectiveTaxProfile(row({ taxProfileCode1: '' }))).toBe('')
   })
 })
 
 describe('allSameProfile', () => {
   it('true when all share the same effective profile', () => {
-    expect(allSameProfile([row({}), row({ taxProfileCode1: 'VAT07' })], '')).toBe(true)
+    expect(allSameProfile([row({}), row({ taxProfileCode1: 'VAT07' })])).toBe(true)
   })
 
   it('false when profiles differ', () => {
     expect(
-      allSameProfile([row({ taxProfileCode1: 'VAT07' }), row({ taxProfileCode1: 'VAT10' })], '')
+      allSameProfile([row({ taxProfileCode1: 'VAT07' }), row({ taxProfileCode1: 'VAT10' })])
     ).toBe(false)
   })
 
   it('treats a None line as a distinct profile', () => {
-    expect(allSameProfile([row({}), row({ taxType: 'None' })], '')).toBe(false)
+    expect(allSameProfile([row({}), row({ taxType: 'None' })])).toBe(false)
   })
 
   it('empty list is trivially same', () => {
-    expect(allSameProfile([], '')).toBe(true)
+    expect(allSameProfile([])).toBe(true)
   })
 })
 
@@ -95,55 +93,46 @@ describe('buildGroupedRow', () => {
 
 describe('groupByTaxProfile', () => {
   it('one bucket per distinct profile', () => {
-    const out = groupByTaxProfile(
-      [
-        row({ taxProfileCode1: 'VAT07' }),
-        row({ taxProfileCode1: 'VAT07' }),
-        row({ taxProfileCode1: 'VAT10' }),
-      ],
-      ''
-    )
+    const out = groupByTaxProfile([
+      row({ taxProfileCode1: 'VAT07' }),
+      row({ taxProfileCode1: 'VAT07' }),
+      row({ taxProfileCode1: 'VAT10' }),
+    ])
     expect(out).toHaveLength(2)
   })
 
   it('splits the same profile across Include vs Exclude', () => {
-    const out = groupByTaxProfile(
-      [
-        row({ taxProfileCode1: 'VAT07', taxType: 'Include' }),
-        row({ taxProfileCode1: 'VAT07', taxType: 'Exclude' }),
-      ],
-      ''
-    )
+    const out = groupByTaxProfile([
+      row({ taxProfileCode1: 'VAT07', taxType: 'Include' }),
+      row({ taxProfileCode1: 'VAT07', taxType: 'Exclude' }),
+    ])
     expect(out).toHaveLength(2)
   })
 
   it('labels None and profile buckets, preserving first-seen order', () => {
-    const out = groupByTaxProfile(
-      [row({ taxProfileCode1: 'VAT07' }), row({ taxType: 'None', taxProfileCode1: '' })],
-      ''
-    )
+    const out = groupByTaxProfile([
+      row({ taxProfileCode1: 'VAT07' }),
+      row({ taxType: 'None', taxProfileCode1: '' }),
+    ])
     expect(out[0].description).toBe('Items (VAT07)')
     expect(out[1].description).toBe('Items (No VAT)')
   })
 
   it('totals are preserved across grouping', () => {
-    const out = groupByTaxProfile(
-      [
-        row({
-          taxProfileCode1: 'VAT07',
-          lineSubTotal: '100.00',
-          taxAmt: '7.00',
-          lineTotal: '107.00',
-        }),
-        row({
-          taxProfileCode1: 'VAT07',
-          lineSubTotal: '50.00',
-          taxAmt: '3.50',
-          lineTotal: '53.50',
-        }),
-      ],
-      ''
-    )
+    const out = groupByTaxProfile([
+      row({
+        taxProfileCode1: 'VAT07',
+        lineSubTotal: '100.00',
+        taxAmt: '7.00',
+        lineTotal: '107.00',
+      }),
+      row({
+        taxProfileCode1: 'VAT07',
+        lineSubTotal: '50.00',
+        taxAmt: '3.50',
+        lineTotal: '53.50',
+      }),
+    ])
     expect(out).toHaveLength(1)
     expect(parseNum(out[0].lineTotal)).toBeCloseTo(160.5, 2)
   })

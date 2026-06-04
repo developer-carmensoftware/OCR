@@ -11,16 +11,16 @@ const TAX_TYPE_LABELS: Record<string, string> = {
 // The grouping identity of a line: None lines collapse to 'None'; taxable lines are keyed by their
 // own profile code, falling back to the vendor default. Used both for the same-profile guard
 // (Group by description) and the Group-all bucket key.
-export function effectiveTaxProfile(item: APLineItem, vendorDefaultProfile: string): string {
+export function effectiveTaxProfile(item: APLineItem): string {
   if ((item.taxType || 'Exclude') === 'None') return 'None'
-  return item.taxProfileCode1 || vendorDefaultProfile || ''
+  return item.taxProfileCode1 || ''
 }
 
 // True when every item shares the same effective tax profile.
-export function allSameProfile(items: APLineItem[], vendorDefaultProfile: string): boolean {
+export function allSameProfile(items: APLineItem[]): boolean {
   if (items.length === 0) return true
-  const first = effectiveTaxProfile(items[0], vendorDefaultProfile)
-  return items.every(it => effectiveTaxProfile(it, vendorDefaultProfile) === first)
+  const first = effectiveTaxProfile(items[0])
+  return items.every(it => effectiveTaxProfile(it) === first)
 }
 
 // Builds a single line that represents the sum of `items`, keeping the row internally consistent
@@ -57,24 +57,22 @@ export function buildGroupedRow(items: APLineItem[], desc: string): APLineItem {
 }
 
 // A human label for an auto-generated group, named by its profile code when available.
-function groupLabel(item: APLineItem, vendorDefaultProfile: string): string {
+function groupLabel(item: APLineItem): string {
   const taxType = item.taxType || 'Exclude'
   if (taxType === 'None') return TAX_TYPE_LABELS.None
-  const profile = item.taxProfileCode1 || vendorDefaultProfile
+  const profile = item.taxProfileCode1
   return profile ? `Items (${profile})` : (TAX_TYPE_LABELS[taxType] ?? 'Items')
 }
 
 // Collapses `items` into one row per distinct (taxType, effectiveTaxProfile), preserving the order
 // in which each bucket is first seen.
-export function groupByTaxProfile(items: APLineItem[], vendorDefaultProfile: string): APLineItem[] {
+export function groupByTaxProfile(items: APLineItem[]): APLineItem[] {
   const groups = new Map<string, APLineItem[]>()
   for (const item of items) {
     const taxType = item.taxType || 'Exclude'
-    const key = `${taxType}__${effectiveTaxProfile(item, vendorDefaultProfile)}`
+    const key = `${taxType}__${effectiveTaxProfile(item)}`
     if (!groups.has(key)) groups.set(key, [])
     groups.get(key)!.push(item)
   }
-  return Array.from(groups.values()).map(grp =>
-    buildGroupedRow(grp, groupLabel(grp[0], vendorDefaultProfile))
-  )
+  return Array.from(groups.values()).map(grp => buildGroupedRow(grp, groupLabel(grp[0])))
 }

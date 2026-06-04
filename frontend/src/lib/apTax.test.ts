@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { recalcRow, nudgeAnchorForTarget } from './apTax'
+import { recalcRow, syncLineTotals } from './apTax'
 import { parseNum } from './format'
 import type { APLineItem } from '../hooks/ap-invoice/useAPExtraction'
 
@@ -44,42 +44,33 @@ describe('recalcRow', () => {
   })
 })
 
-describe('nudgeAnchorForTarget — Adjust button math', () => {
-  it('Exclude grand: moves the line total by diff and stays consistent', () => {
-    const r = nudgeAnchorForTarget(row({}), 'grand', 10)
-    expect(parseNum(r.lineTotal)).toBeCloseTo(117, 2)
-    expect(parseNum(r.lineSubTotal) + parseNum(r.taxAmt)).toBeCloseTo(parseNum(r.lineTotal), 2)
+describe('syncLineTotals — pin-based Adjust keeps lineTotal = sub + tax', () => {
+  it('Exclude: total follows sub + tax', () => {
+    const [r] = syncLineTotals([row({ lineSubTotal: '110.00', taxAmt: '7.70', lineTotal: '0.00' })])
+    expect(parseNum(r.lineTotal)).toBeCloseTo(117.7, 2)
   })
 
-  it('Exclude sub: moves the subtotal by diff and re-derives tax', () => {
-    const r = nudgeAnchorForTarget(row({}), 'sub', 10)
-    expect(parseNum(r.lineSubTotal)).toBeCloseTo(110, 2)
-    expect(parseNum(r.taxAmt)).toBeCloseTo(7.7, 2)
+  it('Include: recomputed uniformly from sub + tax (stale gross is overwritten)', () => {
+    const [r] = syncLineTotals([
+      row({ taxType: 'Include', lineSubTotal: '100.00', taxAmt: '7.00', lineTotal: '999.99' }),
+    ])
+    expect(parseNum(r.lineTotal)).toBeCloseTo(107, 2)
   })
 
-  it('Include grand: moves the gross total by diff', () => {
-    const r = nudgeAnchorForTarget(row({ unitPrice: '107.00', taxType: 'Include' }), 'grand', 10)
-    expect(parseNum(r.lineTotal)).toBeCloseTo(117, 2)
+  it('None: total equals subtotal', () => {
+    const [r] = syncLineTotals([
+      row({ taxType: 'None', lineSubTotal: '50.00', taxAmt: '0.00', lineTotal: '0.00' }),
+    ])
+    expect(parseNum(r.lineTotal)).toBeCloseTo(50, 2)
   })
 
-  it('Include sub: moves the subtotal by diff', () => {
-    const r = nudgeAnchorForTarget(row({ unitPrice: '107.00', taxType: 'Include' }), 'sub', 10)
-    expect(parseNum(r.lineSubTotal)).toBeCloseTo(110, 2)
-  })
-
-  it('None: sub and grand both move by diff', () => {
-    const r = nudgeAnchorForTarget(row({ unitPrice: '50.00', taxType: 'None' }), 'sub', 10)
-    expect(parseNum(r.lineSubTotal)).toBeCloseTo(60, 2)
-    expect(parseNum(r.lineTotal)).toBeCloseTo(60, 2)
-  })
-
-  it('grouped Exclude row (no unitPrice): grand adjust still moves the total', () => {
-    const r = nudgeAnchorForTarget(
-      row({ unitPrice: '0', lineSubTotal: '200.00', taxAmt: '14.00', lineTotal: '214.00' }),
-      'grand',
-      10
+  it('keeps every row consistent across a list', () => {
+    const out = syncLineTotals([
+      row({ lineSubTotal: '300.01', taxAmt: '21.00' }),
+      row({ taxType: 'None', lineSubTotal: '40.00', taxAmt: '0.00' }),
+    ])
+    out.forEach(r =>
+      expect(parseNum(r.lineSubTotal) + parseNum(r.taxAmt)).toBeCloseTo(parseNum(r.lineTotal), 2)
     )
-    expect(parseNum(r.lineTotal)).toBeCloseTo(224, 2)
-    expect(parseNum(r.lineSubTotal) + parseNum(r.taxAmt)).toBeCloseTo(parseNum(r.lineTotal), 2)
   })
 })

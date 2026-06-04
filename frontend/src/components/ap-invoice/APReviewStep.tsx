@@ -1,10 +1,12 @@
+import { useMemo } from 'react'
 import type React from 'react'
 import {
   Building,
   CheckCircle2,
+  XCircle,
   AlertCircle,
-  ArrowLeft,
   AlertTriangle,
+  ArrowLeft,
   ArrowRight,
 } from 'lucide-react'
 import Card from '../common/Card'
@@ -12,6 +14,7 @@ import DateInput from '../common/DateInput'
 import VendorSearch from './APVendorSearch'
 import AmountSummary from './APAmountSummary'
 import APLineItemsTable from './APLineItemsTable'
+import { parseNum } from '../../constants/apInvoice'
 import type { TaxTypeValue } from './TaxTypeDropdown'
 import type { APColumnKey } from '../../constants/apInvoice'
 import type { Vendor } from '../../hooks/ap-invoice/useAPVendor'
@@ -48,6 +51,7 @@ interface Ctrl {
   isDiscDiff: boolean
   isTaxDiff: boolean
   isGrandDiff: boolean
+  isDocInconsistent: boolean
   isInclude: boolean
   changeLineTaxType: (rowIndex: number, v: TaxTypeValue) => void
   updateHeader: (key: string, val: string) => void
@@ -114,6 +118,7 @@ export default function APReviewStep({ ctrl }: Props) {
     isDiscDiff,
     isTaxDiff,
     isGrandDiff,
+    isDocInconsistent,
     changeLineTaxType,
     updateHeader,
     blurHeader,
@@ -132,6 +137,66 @@ export default function APReviewStep({ ctrl }: Props) {
   } = ctrl
 
   const vendorMapped = !!systemVendor.code
+  const missingHeader = !headerData.documentNumber?.trim() || !headerData.documentDate?.trim()
+
+  const rateOptions = useMemo(
+    () =>
+      Array.from(new Set(taxProfiles.filter(p => p.rate != null).map(p => p.rate as number))).sort(
+        (a, b) => a - b
+      ),
+    [taxProfiles]
+  )
+  const vendorDefault = systemVendor.taxProfileCode1 || ''
+  const mismatchCount = useMemo(
+    () =>
+      vendorDefault
+        ? lineItems.filter(item => {
+            const isNone = item.taxType === 'None'
+            const val = isNone ? 'NONE' : item.taxProfileCode1 || ''
+            return !isNone && val !== vendorDefault
+          }).length
+        : 0,
+    [lineItems, vendorDefault]
+  )
+  const unmatchedCount = useMemo(
+    () =>
+      lineItems.filter(item => {
+        const cur = parseNum(item.taxPct)
+        return (
+          item.taxType !== 'None' && cur > 0 && !rateOptions.some(r => Math.abs(r - cur) < 0.01)
+        )
+      }).length,
+    [lineItems, rateOptions]
+  )
+  const descMapped = Object.values(fieldMappings).includes('description')
+  const emptyDescCount = useMemo(
+    () => (descMapped ? lineItems.filter(item => !item.description?.trim()).length : 0),
+    [lineItems, descMapped]
+  )
+
+  const hasWarnings = mismatchCount > 0 || unmatchedCount > 0 || emptyDescCount > 0
+  const allClear = isValid && !hasWarnings
+
+  type CheckItem = { ok: boolean; label: string }
+  const checks: CheckItem[] = [
+    {
+      ok: isValid,
+      label: isValid ? t.validOk : `${t.validErrPrefix} ${validationErrors.join(', ')}`,
+    },
+    {
+      ok: mismatchCount === 0,
+      label: mismatchCount > 0 ? `${mismatchCount} ${t.warnTaxMismatch}` : 'Tax profiles OK',
+    },
+    {
+      ok: unmatchedCount === 0,
+      label: unmatchedCount > 0 ? `${unmatchedCount} ${t.warnTaxUnmatched}` : 'Tax rates OK',
+    },
+    {
+      ok: emptyDescCount === 0,
+      label:
+        emptyDescCount > 0 ? `${emptyDescCount} ${t.warnEmptyDesc}` : 'All descriptions filled',
+    },
+  ]
 
   return (
     <>
@@ -200,17 +265,38 @@ export default function APReviewStep({ ctrl }: Props) {
       />
 
       <div className="ap-review-summary-grid">
-        <div className={isValid ? 'ap-valid-ok' : 'ap-valid-err'}>
-          {isValid ? (
+        <div
+          className={
+            allClear
+              ? 'ap-valid-ok'
+              : !isValid
+                ? 'ap-valid-err ap-valid--checklist'
+                : 'ap-valid-warn ap-valid--checklist'
+          }
+        >
+          {allClear ? (
             <CheckCircle2 size={22} className="ap-valid-icon" />
-          ) : (
+          ) : !isValid ? (
             <AlertCircle size={22} className="ap-valid-icon" />
+          ) : (
+            <AlertTriangle size={22} className="ap-valid-icon" />
           )}
           <div>
-            <div className="ap-valid-title">{isValid ? t.validOk : t.validErr}</div>
-            <div className="ap-valid-desc">
-              {isValid ? t.validOkDesc : `${t.validErrPrefix} ${validationErrors.join(', ')}`}
+            <div className="ap-valid-title">
+              {allClear ? t.validOk : !isValid ? t.validErr : 'Review warnings'}
             </div>
+            {allClear ? (
+              <div className="ap-valid-desc">{t.validOkDesc}</div>
+            ) : (
+              <ul className="ap-valid-check-list">
+                {checks.map((c, i) => (
+                  <li key={i} className={c.ok ? 'ap-check-ok' : 'ap-check-fail'}>
+                    {c.ok ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+                    <span>{c.label}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
         <AmountSummary
@@ -222,7 +308,7 @@ export default function APReviewStep({ ctrl }: Props) {
             lineTotal: sumLineTotal,
           }}
           targets={{ subTotal: tgtSubTotal, discount: tgtDiscount, tax: tgtTax }}
-          diffs={{ isSubDiff, isDiscDiff, isTaxDiff, isGrandDiff }}
+          diffs={{ isSubDiff, isDiscDiff, isTaxDiff, isGrandDiff, isDocInconsistent }}
           headerData={headerData}
           updateHeader={updateHeader}
           blurHeader={blurHeader}
@@ -235,6 +321,12 @@ export default function APReviewStep({ ctrl }: Props) {
           <ArrowLeft size={14} /> {t.backMap}
         </button>
         <div className="ap-nav-right">
+          {missingHeader && (
+            <span className="ap-vendor-warning">
+              <AlertTriangle size={13} />
+              {t.warnMissingHeader}
+            </span>
+          )}
           {!vendorMapped && (
             <span className="ap-vendor-warning">
               <AlertTriangle size={13} />

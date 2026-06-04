@@ -45,6 +45,11 @@ export function useAPValidation({ headerData, lineItems, fieldMappings, t }: APV
   const calcGrandFromLines = sumLineTotal
   const isGrandDiff = calcGrandFromLines !== tgtGrand
 
+  // The document's own From-Document figures don't add up (subTotal + tax ≠ grand). When this is
+  // true a Grand diff can never be cleared by reconciling line items (grand ≡ Σsub + Σtax), so the
+  // UI shows a warning instead of an Adjust button that would loop forever.
+  const isDocInconsistent = tgtGrand > 0 && Math.abs(tgtSubTotal + tgtTax - tgtGrand) > 0.005
+
   const validationErrors: string[] = [
     isSubDiff && t?.subTotal,
     isDiscDiff && t?.discount,
@@ -141,6 +146,7 @@ export function useAPValidation({ headerData, lineItems, fieldMappings, t }: APV
     isTaxDiff,
     calcGrandFromLines,
     isGrandDiff,
+    isDocInconsistent,
     validationErrors,
     isValid,
     availableFields,

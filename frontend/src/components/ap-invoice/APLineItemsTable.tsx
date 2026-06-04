@@ -76,28 +76,37 @@ export default function APLineItemsTable({
     [taxProfiles]
   )
 
-  // Tax Profile select. Empty option (—) means non-VAT (None); picking a profile makes the line
-  // taxable. All routing goes through applyLineTax which keeps Profile/Tax%/Tax Type interlocked
-  // and recalcs the row. None lines show — (no vendor fallback).
-  const taxProfileCell = (ri: number, item: Record<string, string | undefined>) => (
-    <td>
-      <select
-        aria-label="Tax profile"
-        className="ap-taxtype-select"
-        value={
-          item.taxType === 'None' ? '' : item.taxProfileCode1 || systemVendor.taxProfileCode1 || ''
-        }
-        onChange={e => applyLineTax(ri, { taxProfileCode1: e.target.value })}
-      >
-        <option value="">—</option>
-        {taxProfiles.map(p => (
-          <option key={p.code} value={p.code}>
-            {p.code}
-          </option>
-        ))}
-      </select>
-    </td>
-  )
+  // Tax Profile select. NONE means non-VAT (the explicit no-VAT choice); the empty option (—) means
+  // taxable with no specific profile (keeps the line's current rate, no vendor-default fallback);
+  // picking a real profile drives the rate. All routing goes through applyLineTax which keeps
+  // Profile/Tax%/Tax Type interlocked and recalcs the row. None lines show NONE.
+  const taxProfileCell = (ri: number, item: Record<string, string | undefined>) => {
+    const isNone = item.taxType === 'None'
+    const val = isNone ? 'NONE' : item.taxProfileCode1 || ''
+    const vendorDefault = systemVendor.taxProfileCode1 || ''
+    const isMismatch = !isNone && vendorDefault !== '' && val !== vendorDefault
+    const hasNoneProfile = taxProfiles.some(p => p.code === 'NONE')
+
+    return (
+      <td>
+        <select
+          aria-label="Tax profile"
+          className={`ap-taxtype-select${isMismatch ? ' ap-tax-mismatch' : ''}`}
+          title={isMismatch ? `${t.taxProfileMismatch}${vendorDefault}` : undefined}
+          value={val}
+          onChange={e => applyLineTax(ri, { taxProfileCode1: e.target.value })}
+        >
+          <option value="">—</option>
+          {!hasNoneProfile && <option value="NONE">NONE</option>}
+          {taxProfiles.map(p => (
+            <option key={p.code} value={p.code}>
+              {p.code}
+            </option>
+          ))}
+        </select>
+      </td>
+    )
+  }
 
   // Tax% select — options are the configured profile rates, plus the row's own rate when no profile
   // defines it (so the dropdown always shows the true extracted value, e.g. 10%, and warns instead
@@ -112,7 +121,7 @@ export default function APLineItemsTable({
       <td>
         {item.taxType === 'None' ? (
           <span className="ap-edit-input numeric ap-tax-na" aria-label="taxPct">
-            —
+            0%
           </span>
         ) : opts.length ? (
           <select
@@ -255,8 +264,9 @@ export default function APLineItemsTable({
                     }
 
                     const cellClass = `ap-edit-input ${numeric ? 'numeric' : ''} ${fld === 'category' ? 'category' : ''}`
+                    const isMissingDesc = fld === 'description' && !item[fld]?.trim()
                     return (
-                      <td key={c}>
+                      <td key={c} className={isMissingDesc ? 'ap-cell-missing' : undefined}>
                         {numeric ? (
                           <NumericInput
                             aria-label={fld}
@@ -371,7 +381,6 @@ export default function APLineItemsTable({
         show={showGroupModal}
         t={t}
         lineItems={lineItems as APLineItem[]}
-        systemVendor={systemVendor}
         groupByDescription={groupByDescription}
         onClose={() => setShowGroupModal(false)}
       />

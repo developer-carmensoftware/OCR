@@ -42,10 +42,8 @@ function buildInvoicePayload(
     // When the line has no VAT (taxAmt === 0), keep rate at 0 so Carmen does not
     // recompute tax from the rate. The || 7 default only applies to non-zero-tax lines.
     const taxRate = taxAmt === 0 ? 0 : parseNum(item.taxPct)
-    // None / non-VAT line: no profile, no rate. Otherwise use the line's own profile,
-    // falling back to the vendor default.
-    const resolvedProfile =
-      item.taxType === 'None' ? null : item.taxProfileCode1 || systemVendor.taxProfileCode1 || null
+    // None / non-VAT line: no profile, no rate. Otherwise use the line's own profile code.
+    const resolvedProfile = item.taxType === 'None' ? null : item.taxProfileCode1 || null
     const profileRate = resolvedProfile
       ? (taxProfiles.find(p => p.code === resolvedProfile)?.rate ?? null)
       : null

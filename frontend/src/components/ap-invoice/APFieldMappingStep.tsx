@@ -14,6 +14,7 @@ interface Props {
 }
 
 const COLS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+const REQUIRED_FIELDS: (APFieldKey | 'ignore')[] = ['description', 'lineTotal']
 
 export default function APFieldMappingStep({
   t,
@@ -41,7 +42,12 @@ export default function APFieldMappingStep({
                   const val = fieldMappings[`col${c}` as APColumnKey]
                   return (
                     <th key={c}>
-                      <div className="col-label">Column {index + 1}</div>
+                      <div className="col-label">
+                        Column {index + 1}
+                        {REQUIRED_FIELDS.includes(val) && (
+                          <span className="ap-required-badge">Required</span>
+                        )}
+                      </div>
                       <select
                         value={val}
                         onChange={e => onMappingChange(c, e.target.value)}

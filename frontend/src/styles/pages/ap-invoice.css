@@ -402,6 +402,9 @@
   font-size: 0.9rem;
   transition: border-color 0.15s var(--ease);
 }
+.ap-group-modal-input--error {
+  border-color: var(--danger, #e53e3e) !important;
+}
 .ap-group-modal-input:focus {
   outline: none;
   border-color: var(--primary);
@@ -511,11 +514,73 @@
   cursor: default;
 }
 
-/* Tax% whose rate has no matching Tax Profile: kept as-is (e.g. a VAT 10% line where only 7%/0%
-   profiles are configured). Amber outline flags it for review without blocking the user. */
-.ap-tax-unmatched {
+/* Tax% whose rate has no matching Tax Profile or Tax Profile mismatching vendor default.
+   Amber outline flags it for review without blocking the user. */
+.ap-tax-unmatched,
+.ap-tax-mismatch {
   border-color: #f59e0b !important;
   color: #b45309;
+}
+
+/* Amber variant of the validation card — amounts OK but warnings present */
+.ap-valid-warn {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  background: var(--amber-light);
+  border: 1px solid var(--amber-mid);
+  border-radius: var(--radius-md);
+  color: var(--amber);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+/* Checklist modifier — align icon to top when multiple rows are shown */
+.ap-valid--checklist {
+  align-items: flex-start;
+}
+
+/* Checklist inside the validation card */
+.ap-valid-check-list {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.ap-valid-check-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+.ap-check-ok {
+  opacity: 0.65;
+}
+.ap-check-fail {
+  font-weight: 600;
+}
+
+/* Cell-level missing-description highlight in the line items table */
+.ap-cell-missing {
+  background: var(--rose-light);
+}
+
+/* Required badge in field mapping step header cells */
+.ap-required-badge {
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.35rem;
+  background: var(--amber-mid);
+  color: var(--amber);
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  vertical-align: middle;
 }
 
 /* ─── SUMMARY COMPARE CARD ─── */
@@ -595,6 +660,17 @@
 }
 .ap-adjust-btn:hover {
   background: var(--gray-700);
+}
+
+/* Shown in the Grand-Total row when the document's own figures don't add up (sub + tax ≠ grand):
+   a reconcile can never clear this, so we warn instead of offering an Adjust that would loop. */
+.ap-doc-inconsistent {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #b45309;
+  max-width: 16rem;
+  text-align: right;
+  line-height: 1.2;
 }
 
 .ap-grand-total-row {

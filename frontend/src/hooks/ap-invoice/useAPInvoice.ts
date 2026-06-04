@@ -9,7 +9,7 @@ import { useAPExtraction } from './useAPExtraction'
 import type { APLineItem } from './useAPExtraction'
 import { useAPVendor } from './useAPVendor'
 import { useAPValidation, reconcileRows } from './useAPValidation'
-import { recalcRow, nudgeAnchorForTarget } from '../../lib/apTax'
+import { recalcRow, syncLineTotals } from '../../lib/apTax'
 import { buildGroupedRow, groupByTaxProfile, allSameProfile } from '../../lib/apGroup'
 import { useAPSubmission } from './useAPSubmission'
 import { fetchTaxProfiles } from '../../lib/api/carmen'
@@ -76,30 +76,46 @@ export function useAPInvoice() {
   useEffect(() => {
     if (!taxProfiles.length) return
     const rateOf = (code: string) => taxProfiles.find(p => p.code === code)?.rate ?? null
+    const codeForRate = (rate: number) =>
+      taxProfiles.find(p => p.rate != null && Math.abs(p.rate - rate) < 0.01)?.code || ''
+
     extraction.setLineItems(prev => {
       if (!prev.length) return prev
       let changed = false
       const next = prev.map(it => {
-        if (it.taxType === 'None') return it
+        if (it.taxType === 'None') {
+          if (it.taxProfileCode1 !== '') {
+            changed = true
+            return { ...it, taxProfileCode1: '' }
+          }
+          return it
+        }
+        const rate = parseNum(it.taxPct)
         // Keep an already-set profile when its rate still matches the line.
         if (it.taxProfileCode1) {
           const existingRate = rateOf(it.taxProfileCode1)
-          if (existingRate == null || Math.abs(existingRate - parseNum(it.taxPct)) < 0.01) return it
+          if (existingRate != null && Math.abs(existingRate - rate) < 0.01) {
+            return it
+          }
         }
-        const rate = parseNum(it.taxPct)
-        const match = taxProfiles.find(p => p.rate != null && Math.abs(p.rate - rate) < 0.01)
-        if (match && it.taxProfileCode1 !== match.code) {
+        const matchCode = codeForRate(rate)
+        if (it.taxProfileCode1 !== matchCode) {
           changed = true
-          return { ...it, taxProfileCode1: match.code }
+          return { ...it, taxProfileCode1: matchCode }
         }
         return it
       })
       return changed ? next : prev
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taxProfiles, vendor.systemVendor.taxProfileCode1])
+  }, [taxProfiles, extraction.lineItems.length])
 
   const confirmMapping = () => {
+    const mappedValues = Object.values(extraction.fieldMappings)
+    if (!mappedValues.includes('description') || !mappedValues.includes('lineTotal')) {
+      showToast(t.warnMissingMapping, 'warning')
+      return
+    }
     const taxId = extraction.headerData.vendorTaxId
     if (taxId) {
       saveAPVendorMapping(
@@ -145,31 +161,40 @@ export function useAPInvoice() {
     }
   }
 
-  // Adjust button. Sub-Total / Grand-Total are rate-based: the diff is landed on the last taxable
-  // row's net anchor and the row is re-derived through recalcRow, so it stays internally consistent
-  // (sub + tax = total) and the targeted From-Table sum lands on the document value — when the
-  // document itself is consistent (sub + tax = grand) the related diffs clear in one click.
-  // taxAmt (genuine penny-rounding, tax ≠ sub×rate) and discountAmt (informational) keep the
-  // single-field write + reconcileRows path.
+  // Adjust button — pin-based. Because every row keeps lineTotal = lineSubTotal + taxAmt, the
+  // summary has only two free quantities (Σsub, Σtax) and Σgrand ≡ Σsub + Σtax. Each adjust moves
+  // ONLY its own amount field on the plug row(s) and lets the total follow via syncLineTotals — it
+  // never re-derives a sibling field from the rate, so the diffs no longer fight each other:
+  //   • lineSubTotal (Sub) → plug net subtotal; taxAmt untouched (Σtax unchanged).
+  //   • taxAmt (Tax)       → plug tax; lineSubTotal untouched (Σsub unchanged).
+  //   • lineTotal (Grand)  → MASTER RECONCILE: land Σsub on docSub AND Σtax on docTax in one pass,
+  //                          so grand = docSub + docTax follows and every diff clears in one click.
+  //   • discountAmt        → informational; keeps the single-field write + reconcileRows path.
   const adjustField = (tgt: unknown, sumCur: unknown, itemKey: string) => {
     const items = extraction.lineItems
     if (!items.length) return
 
-    if (itemKey === 'lineSubTotal' || itemKey === 'lineTotal') {
-      const diff = round2(tgt) - round2(sumCur)
-      if (Math.abs(diff) < 0.005) return
-      // Prefer the last taxable row so the rate recompute is meaningful; fall back to the last row.
-      let idx = items.length - 1
-      for (let i = items.length - 1; i >= 0; i--) {
-        if (items[i].taxType !== 'None' && parseNum(items[i].taxPct) > 0) {
-          idx = i
-          break
-        }
-      }
-      const kind = itemKey === 'lineSubTotal' ? ('sub' as const) : ('grand' as const)
-      extraction.setLineItems(prev =>
-        prev.map((it, i) => (i === idx ? nudgeAnchorForTarget(it, kind, diff) : it))
+    if (itemKey === 'lineSubTotal' || itemKey === 'taxAmt') {
+      const updated = validation.adjustField(tgt, sumCur, itemKey, items)
+      extraction.setLineItems(syncLineTotals(updated))
+      return
+    }
+
+    if (itemKey === 'lineTotal') {
+      // The sub step writes only lineSubTotal, so Σtax is still validation.sumTax for the tax step.
+      let updated = validation.adjustField(
+        round2(extraction.headerData.subTotal),
+        validation.sumLineSubTotal,
+        'lineSubTotal',
+        items
       )
+      updated = validation.adjustField(
+        round2(extraction.headerData.taxAmount),
+        validation.sumTax,
+        'taxAmt',
+        updated
+      )
+      extraction.setLineItems(syncLineTotals(updated))
       return
     }
 
@@ -262,15 +287,14 @@ export function useAPInvoice() {
   // Single entry point keeping the three per-line tax fields interlocked, then recalcs the row in
   // one commit. Every tax <select> in the review table routes through here with just the changed
   // field; this function derives the dependent fields:
-  //   • profile '' (or taxType None)        → non-VAT: clear profile, taxPct 0
+  //   • profile NONE (or taxType None)       → non-VAT: clear profile, taxPct 0
   //   • profile = real code                 → taxPct := that profile's rate; un-None to Exclude
+  //   • profile '' (—)                       → taxable, no specific profile, keep current rate (no vendor default)
   //   • taxPct = rate                        → profile := first profile with that rate (keep current if it matches)
-  //   • taxType None → Include/Exclude       → adopt the vendor default profile + its rate
   const applyLineTax = (
     rowIndex: number,
     patch: { taxType?: 'Include' | 'Exclude' | 'None'; taxProfileCode1?: string; taxPct?: string }
   ) => {
-    const vendorDefault = vendor.systemVendor.taxProfileCode1 || ''
     const rateOf = (code: string) => taxProfiles.find(p => p.code === code)?.rate ?? null
     const codeForRate = (rate: number) =>
       taxProfiles.find(p => p.rate != null && Math.abs(p.rate - rate) < 0.01)?.code || ''
@@ -286,8 +310,16 @@ export function useAPInvoice() {
         // Derive the effective taxType, honouring profile-driven None.
         let taxType = (merged.taxType || 'Exclude') as 'Include' | 'Exclude' | 'None'
         if (patch.taxProfileCode1 !== undefined) {
-          if (patch.taxProfileCode1 === '') taxType = 'None'
-          else if (taxType === 'None') {
+          if (patch.taxProfileCode1 === 'NONE') {
+            taxType = 'None'
+            merged.taxProfileCode1 = ''
+          } else if (patch.taxProfileCode1 === '') {
+            if (taxType === 'None') {
+              // Restore to the document-level tax type when selecting "—" on a None line
+              taxType = headerTaxType === 'Include' ? 'Include' : 'Exclude'
+            }
+            merged.taxProfileCode1 = ''
+          } else if (taxType === 'None') {
             // Restore to the document-level tax type (Include/Exclude) when un-Noning a line
             // by picking a profile; fall back to Exclude if the header is also None/missing.
             taxType = headerTaxType === 'Include' ? 'Include' : 'Exclude'
@@ -329,11 +361,10 @@ export function useAPInvoice() {
           // Rate drives the profile. When no profile defines this rate, blank the profile (keep the
           // rate) rather than holding a stale code — the line stays taxable and the UI warns.
           if (rateOf(code) !== rate) code = codeForRate(rate)
-        } else if (!code) {
-          code = vendorDefault // None → taxable: adopt vendor default
-          const r = rateOf(code)
-          if (r != null) rate = r
         }
+        // No `!code` fallback: picking "—" (or un-Noning with no profile) leaves the line taxable
+        // with no specific profile and its current rate — we never silently inject the vendor
+        // default (matches auto-match / grouping / submission, which also dropped that fallback).
 
         return recalcRow({ ...merged, taxType, taxProfileCode1: code, taxPct: String(rate) })
       })
@@ -349,7 +380,7 @@ export function useAPInvoice() {
   const groupAllItems = () => {
     const items = extraction.lineItems
     if (items.length <= 1) return
-    const grouped = groupByTaxProfile(items, vendor.systemVendor.taxProfileCode1 || '')
+    const grouped = groupByTaxProfile(items)
     if (!originalLineItems) setOriginalLineItems(items)
     extraction.setLineItems(grouped)
     setIsGrouped(true)
@@ -365,7 +396,7 @@ export function useAPInvoice() {
     if (indices.length < 2) return false
     const sorted = [...indices].sort((a, b) => a - b)
     const selected = sorted.map(i => items[i])
-    if (!allSameProfile(selected, vendor.systemVendor.taxProfileCode1 || '')) {
+    if (!allSameProfile(selected)) {
       showToast(t.groupSameProfile, 'error')
       return false
     }
@@ -468,6 +499,7 @@ export function useAPInvoice() {
     isDiscDiff: validation.isDiscDiff,
     isTaxDiff: validation.isTaxDiff,
     isGrandDiff: validation.isGrandDiff,
+    isDocInconsistent: validation.isDocInconsistent,
     isInclude: validation.isInclude,
     calcGrandFromLines: validation.calcGrandFromLines,
     validationErrors: validation.validationErrors,

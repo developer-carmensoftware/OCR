@@ -47,36 +47,13 @@ export function recalcRow(item: APLineItem): APLineItem {
   }
 }
 
-// Returns a copy of `item` whose net anchor (unitPrice, or lineSubTotal for grouped rows) is shifted
-// so that after recalcRow the targeted amount moves by `diff` — `kind:'sub'` targets the row's
-// lineSubTotal, `kind:'grand'` targets its lineTotal. Used by the Adjust buttons so a row stays
-// internally consistent (sub + tax = total) while its From-Table contribution lands on the
-// document value. The shift is expressed on `afterDisc` then mapped onto whichever anchor exists.
-export function nudgeAnchorForTarget(
-  item: APLineItem,
-  kind: 'sub' | 'grand',
-  diff: number
-): APLineItem {
-  const taxType = (item.taxType || 'Exclude') as APTaxType
-  const r = taxType === 'None' ? 0 : Math.max(0, parseNum(item.taxPct))
-  const factor = 1 + r / 100
-
-  // How much `afterDisc` (the net-after-discount anchor) must move for the targeted amount to
-  // change by `diff`, given how recalcRow maps afterDisc → sub/total per tax type.
-  let deltaAfterDisc: number
-  if (taxType === 'None') {
-    deltaAfterDisc = diff // sub === grand === afterDisc
-  } else if (taxType === 'Exclude') {
-    deltaAfterDisc = kind === 'sub' ? diff : diff / factor // grand = afterDisc * factor
-  } else {
-    deltaAfterDisc = kind === 'sub' ? diff * factor : diff // sub = afterDisc / factor; grand = afterDisc
-  }
-
-  const qty = parseNum(item.qty) || 1
-  const unitPrice = parseNum(item.unitPrice)
-  if (unitPrice > 0) {
-    return recalcRow({ ...item, unitPrice: fmt(unitPrice + deltaAfterDisc / qty) })
-  }
-  // Grouped / no-unitPrice row: recalcRow anchors on lineSubTotal + discountAmt.
-  return recalcRow({ ...item, lineSubTotal: fmt(parseNum(item.lineSubTotal) + deltaAfterDisc) })
+// Keeps every row's lineTotal == lineSubTotal + taxAmt (uniform across tax types). Used by the
+// Adjust buttons after a pin-based plug onto lineSubTotal or taxAmt: the targeted amount field is
+// written directly and the total simply follows, so an adjustment never re-derives a sibling field
+// from the rate (which is what made the summary diffs fight each other and need repeated clicks).
+export function syncLineTotals(items: APLineItem[]): APLineItem[] {
+  return items.map(i => ({
+    ...i,
+    lineTotal: fmt(round2(i.lineSubTotal) + round2(i.taxAmt)),
+  }))
 }
