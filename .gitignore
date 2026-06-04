@@ -71,3 +71,4 @@ skills-lock.json
 cron_service/cron
 cron_service/cron.exe
 .vercel
+.bin/

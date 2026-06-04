@@ -89,6 +89,8 @@ const sum = (items: APLineItem[], k: keyof APLineItem) =>
   items.reduce((s, i) => s + Number(i[k] || 0), 0)
 
 const masterReconcile = (items: APLineItem[], docSub: number, docTax: number): APLineItem[] => {
+  // useAPValidation is a pure computation (no React hooks inside); calling it here is safe.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   const v = useAPValidation({
     headerData: header({ subTotal: String(docSub), taxAmount: String(docTax) }),
     lineItems: items,
