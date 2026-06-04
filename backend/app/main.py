@@ -78,7 +78,7 @@ app = create_app(lifespan=lifespan)
 
 
 @app.get("/livez", tags=["Health"], include_in_schema=False)
-@app.get("/api/v1/health", tags=["Health"], include_in_schema=False)
+@app.api_route("/api/v1/health", tags=["Health"], include_in_schema=False, methods=["GET", "HEAD"])
 async def liveness():
     """Liveness probe — app process is alive. No dependency checks."""
     return {"status": "ok"}
