@@ -68,7 +68,10 @@ export default function BankDetectionBanner({ bank, loading, onReExtract }: Prop
           <ChevronDown size={12} className="bank-reextract-chevron" />
         </button>
 
-        <div className={`bank-reextract-dropdown ${open ? 'is-open' : ''}`} aria-hidden={!open}>
+        <div
+          className={`bank-reextract-dropdown ${open ? 'is-open' : ''}`}
+          {...(!open && { 'aria-hidden': true })}
+        >
           <div className="bank-reextract-hint">Re-extract with:</div>
           {OPTIONS.map((opt, i) => (
             <button

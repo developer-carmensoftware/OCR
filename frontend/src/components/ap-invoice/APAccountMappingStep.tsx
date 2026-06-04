@@ -154,7 +154,7 @@ export default function APAccountMappingStep({
       <div className="ap-vendor-info-bar">
         <div className="ap-vendor-name-section">
           <div className="ap-vendor-icon-container">
-            <Building size={16} color="#fff" />
+            <Building size={16} color="white" />
           </div>
           <div>
             <div className="ap-vendor-display-name">{vendorDisplayName}</div>

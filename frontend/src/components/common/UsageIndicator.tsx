@@ -61,7 +61,10 @@ export default function UsageIndicator() {
 
   useEffect(() => {
     if (!quotaRef.current || !stats) return
-    quotaRef.current.style.setProperty('--used-pct', `${Math.min(100, stats.usedPercentage)}%`)
+    quotaRef.current.style.setProperty(
+      '--used-pct-factor',
+      `${Math.min(100, stats.usedPercentage) / 100}`
+    )
     quotaRef.current.style.setProperty('--quota-color', stats.color)
   }, [stats])
 

@@ -128,7 +128,7 @@ export default function PaymentButton() {
                     <div className="hm-progress-bar">
                       <div
                         className="hm-progress-fill"
-                        style={{ width: `${usedPct}%`, background: barColor }}
+                        style={{ transform: `scaleX(${usedPct / 100})`, background: barColor }}
                       />
                     </div>
                     <div className="hm-plan-row">

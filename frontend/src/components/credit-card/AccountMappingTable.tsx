@@ -86,8 +86,24 @@ export default function AccountMappingTable({
         <div className="cc-mapping-grid-container">
           <div />
           <div />
-          <div className="mapping-header">Department Code</div>
-          <div className="mapping-header">Account Code</div>
+          <div className="mapping-header">
+            Department Code
+            <span
+              className="gl-help-tip"
+              title="Department code from Carmen Cloud — e.g. ACC, SALE, MKT"
+            >
+              ?
+            </span>
+          </div>
+          <div className="mapping-header">
+            Account Code
+            <span
+              className="gl-help-tip"
+              title="Account code from Carmen Cloud — e.g. 1101-01, 5100-00"
+            >
+              ?
+            </span>
+          </div>
           <div />
 
           {/* Credit row — Account Receivable */}
@@ -112,7 +128,7 @@ export default function AccountMappingTable({
                 </>
               ) : requiredMissingCount > 0 ? (
                 <>
-                  <AlertTriangle size={14} color="#dc2626" className="cc-flex-shrink-0" />
+                  <AlertTriangle size={14} color="var(--rose)" className="cc-flex-shrink-0" />
                   <span>
                     Found <strong>{activeScan.paymentTypes.size}</strong> items in document
                   </span>
@@ -137,10 +153,7 @@ export default function AccountMappingTable({
           {/* Debit rows — commission, tax, net */}
           {(['commission', 'tax', 'net'] as MainMappingKey[]).map(key => {
             const meta = suggestionMeta[key]
-            const badge =
-              meta === 'history'
-                ? { label: 'History', bg: '#f0fdf4', color: '#16a34a', border: '#86efac' }
-                : null
+            const badge = meta === 'history' ? { label: 'History' } : null
             const hasSuggestionButtons = meta === 'ai' || meta === 'history'
             const suggestion = mainSuggestions[key] ?? null
 
@@ -187,6 +200,7 @@ export default function AccountMappingTable({
                     placeholder="Type Dept. Code..."
                     topChoice={deptTopChoice?.code ? deptTopChoice : null}
                     suggestedValue={suggestion?.dept ?? null}
+                    hasError={!mappings[key].dept}
                   />
                 </div>
                 <div>
@@ -197,6 +211,7 @@ export default function AccountMappingTable({
                     placeholder="Type Account Code..."
                     topChoice={accTopChoice?.code ? accTopChoice : null}
                     suggestedValue={suggestion?.acc ?? null}
+                    hasError={!mappings[key].acc}
                   />
                 </div>
                 <div className="cc-suggestion-buttons">

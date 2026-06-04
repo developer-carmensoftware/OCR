@@ -574,7 +574,7 @@
   margin-left: 0.35rem;
   padding: 0.05rem 0.35rem;
   background: var(--amber-mid);
-  color: var(--amber);
+  color: var(--amber-text);
   border-radius: 999px;
   font-size: 0.65rem;
   font-weight: 700;

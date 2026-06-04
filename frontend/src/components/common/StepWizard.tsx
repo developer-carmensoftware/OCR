@@ -30,25 +30,27 @@ export default function StepWizard({ step, steps, onStepClick }: Props) {
           const isDone = step > s.n
           const isActive = step === s.n
           const isClickable = isDone && !!onStepClick
+          const interactiveProps: React.HTMLAttributes<HTMLDivElement> & { tabIndex?: number } =
+            isClickable
+              ? {
+                  role: 'button',
+                  tabIndex: 0,
+                  title: `Back to Step ${s.n}: ${s.label}`,
+                  onClick: () => onStepClick!(s.n),
+                  onKeyDown: e => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      onStepClick!(s.n)
+                    }
+                  },
+                }
+              : {}
           return (
             <div key={s.n} style={{ display: 'contents' }}>
               <div
                 className={`step ${isActive ? 'active' : isDone ? 'done' : ''} ${isClickable ? 'clickable' : ''}`}
                 style={{ position: 'relative' }}
-                onClick={isClickable ? () => onStepClick!(s.n) : undefined}
-                role={isClickable ? ('button' as React.AriaRole) : undefined}
-                tabIndex={isClickable ? 0 : undefined}
-                title={isClickable ? `Back to Step ${s.n}: ${s.label}` : undefined}
-                onKeyDown={
-                  isClickable
-                    ? e => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          onStepClick!(s.n)
-                        }
-                      }
-                    : undefined
-                }
+                {...interactiveProps}
               >
                 {isActive && (
                   <motion.span

@@ -48,7 +48,7 @@
   animation: fadeDown 0.3s var(--ease) both;
   position: sticky;
   top: 0.75rem;
-  z-index: 50;
+  z-index: var(--z-sticky);
   -webkit-backdrop-filter: blur(14px) saturate(1.4);
   backdrop-filter: blur(14px) saturate(1.4);
   background-color: var(--header-bg-fallback);

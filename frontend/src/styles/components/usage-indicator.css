@@ -27,9 +27,11 @@
   bottom: 0;
   left: 0;
   height: 2px;
-  width: var(--used-pct, 0%);
+  width: 100%;
   background: var(--quota-color, var(--teal));
-  transition: width 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: scaleX(var(--used-pct-factor, 0));
+  transform-origin: left;
+  transition: transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
   border-radius: 0 99px 99px 0;
 }
 

@@ -40,7 +40,7 @@ export default function AccountMappingTable({
     <div className="data-card card-acct">
       <div className="card-title">
         <div className="card-title-left">
-          <Database size={15} color="#7c3aed" />
+          <Database size={15} color="var(--primary)" />
           {t.debitExpense}
         </div>
         <div className="ap-card-title-right">
@@ -63,9 +63,21 @@ export default function AccountMappingTable({
               </th>
               <th scope="col" className="col-dept">
                 {t.deptCode}
+                <span
+                  className="gl-help-tip"
+                  title="Department code from Carmen Cloud — e.g. ACC, SALE, MKT"
+                >
+                  ?
+                </span>
               </th>
               <th scope="col" className="col-acc">
                 {t.accountCode}
+                <span
+                  className="gl-help-tip"
+                  title="Account code from Carmen Cloud — e.g. 1101-01, 5100-00"
+                >
+                  ?
+                </span>
               </th>
               {hasSuggestions && <th scope="col" className="col-actions"></th>}
             </tr>
@@ -102,26 +114,24 @@ export default function AccountMappingTable({
                   >
                     <td className="ap-line-desc">{item.description || '—'}</td>
                     <td>
-                      <div className={missingDept ? 'ap-field-error-ring' : undefined}>
-                        <CustomSearchSelect
-                          value={item.deptCode || ''}
-                          options={masterDepts}
-                          placeholder={t.searchDept}
-                          topChoice={deptChoice}
-                          onChange={val => updateItem(ri, 'deptCode', val)}
-                        />
-                      </div>
+                      <CustomSearchSelect
+                        value={item.deptCode || ''}
+                        options={masterDepts}
+                        placeholder={t.searchDept}
+                        topChoice={deptChoice}
+                        onChange={val => updateItem(ri, 'deptCode', val)}
+                        hasError={missingDept}
+                      />
                     </td>
                     <td>
-                      <div className={missingAcc ? 'ap-field-error-ring' : undefined}>
-                        <CustomSearchSelect
-                          value={item.accountCode || ''}
-                          options={masterAccounts}
-                          placeholder={t.searchAcc}
-                          topChoice={accChoice}
-                          onChange={val => updateItem(ri, 'accountCode', val)}
-                        />
-                      </div>
+                      <CustomSearchSelect
+                        value={item.accountCode || ''}
+                        options={masterAccounts}
+                        placeholder={t.searchAcc}
+                        topChoice={accChoice}
+                        onChange={val => updateItem(ri, 'accountCode', val)}
+                        hasError={missingAcc}
+                      />
                     </td>
                     {hasSuggestions && (
                       <td>

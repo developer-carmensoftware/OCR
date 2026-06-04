@@ -154,7 +154,7 @@ export default function PaymentTypeModal({
                         >
                           {type}
                         </div>
-                        {isPending && <AlertTriangle size={14} color="#dc2626" />}
+                        {isPending && <AlertTriangle size={14} color="var(--rose)" />}
                       </div>
                       <CustomSearchSelect
                         value={pAmt.dept}

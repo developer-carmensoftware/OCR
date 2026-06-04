@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { AP_I18N } from '../../constants/apInvoice'
-import type { APLocale } from '../../constants/apInvoice'
 import { showToast } from '../../lib/toast'
 import { parseNum, fmt, round2 } from '../../lib/format'
 import { saveAPVendorMapping } from '../../lib/api/config'
@@ -17,8 +16,7 @@ import type { TaxProfileItem } from '../../lib/api/carmen'
 import type { ModalState } from '../../types/modal'
 
 export function useAPInvoice() {
-  const [lang, setLang] = useState<APLocale>('en')
-  const t = AP_I18N[lang]
+  const t = AP_I18N
 
   const [step, setStep] = useState(1)
   const [modal, setModal] = useState<ModalState>({ show: false })
@@ -61,7 +59,7 @@ export function useAPInvoice() {
     if (vendor.showVendorDrop) return
     vendor.autoMatchVendor(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [extraction.headerData.vendorTaxId, lang, vendor.vendorDbByTax])
+  }, [extraction.headerData.vendorTaxId, vendor.vendorDbByTax])
 
   useEffect(() => {
     if (step === 4) submission.loadGLData()
@@ -453,8 +451,6 @@ export function useAPInvoice() {
   }
 
   return {
-    lang,
-    setLang,
     t,
     step,
     setStep,

@@ -7,7 +7,7 @@
 :root {
   /* ── Design tokens (shadcn/ui oklch system) ── */
   --radius: 0.625rem;
-  --background: oklch(0.98 0.004 258.7);
+  --background: oklch(0.9 0.014 258.7);
   --foreground: oklch(0.16 0.02 258.7);
   --card-bg: oklch(1 0 0);
   --card-foreground: oklch(0.16 0.02 258.7);
@@ -46,13 +46,16 @@
   --rose: oklch(0.666 0.2013 24.11);
   --rose-light: oklch(0.95 0.025 24.11);
   --rose-mid: oklch(0.84 0.08 24.11);
+  --rose-hover: oklch(0.55 0.18 24.11);
 
   --amber: oklch(0.78 0.15 75);
   --amber-light: oklch(0.97 0.025 75);
   --amber-mid: oklch(0.9 0.08 75);
+  --amber-text: oklch(0.41 0.13 60);
 
   --emerald: oklch(0.7515 0.1117 188.43);
   --emerald-light: oklch(0.96 0.025 188.43);
+  --emerald-mid: oklch(0.88 0.06 188.43);
 
   /* ── Neutrals ── */
   --gray-50: oklch(0.985 0.003 258.7);
@@ -97,13 +100,25 @@
     0 0.5rem 0.625rem -0.375rem oklch(0.25 0.03 258.7 / 0.04);
   --shadow-primary: 0 4px 18px oklch(0.4714 0.1794 258.7 / 0.2);
   --shadow-teal: 0 4px 16px oklch(0.5852 0.1706 253.27 / 0.18);
+  --shadow-card:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 1px 3px rgba(15, 25, 60, 0.1),
+    0 4px 16px rgba(15, 25, 60, 0.1), 0 12px 32px rgba(15, 25, 60, 0.07);
+  --shadow-card-hover:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 2px 6px rgba(15, 25, 60, 0.12),
+    0 8px 24px rgba(15, 25, 60, 0.12), 0 20px 48px rgba(15, 25, 60, 0.08);
+
+  /* ── Z-index scale ── */
+  --z-sticky: 50;
+  --z-modal-backdrop: 300;
+  --z-toast: 350;
+  --z-modal: 400;
+  --z-loading: 500;
 
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
-  --ease-spring: cubic-bezier(0.5, 1.25, 0.75, 1.25);
 
   --dur-fast: 120ms;
   --dur-base: 200ms;
@@ -154,12 +169,6 @@ body {
     sans-serif;
   background-color: var(--body-bg-fallback);
   background-color: var(--body-bg-oklch);
-  background-image: radial-gradient(
-    ellipse 70% 30% at 50% 0%,
-    oklch(0.4714 0.1794 258.7 / 0.1) 0%,
-    transparent 100%
-  );
-  background-attachment: fixed;
   color: var(--text);
   min-height: 100vh;
   padding: 2.5rem 2rem 6rem;
@@ -423,6 +432,7 @@ textarea:focus-visible {
   --amber: oklch(0.82 0.13 75);
   --amber-light: oklch(0.28 0.04 75);
   --amber-mid: oklch(0.42 0.08 75);
+  --amber-text: oklch(0.88 0.1 75);
 
   --emerald: oklch(0.7515 0.1117 188.43);
   --emerald-light: oklch(0.26 0.035 188.43);
@@ -450,6 +460,12 @@ textarea:focus-visible {
     0 0.5rem 0.625rem -0.375rem oklch(0.1 0.04 258.7 / 0.18);
   --shadow-primary: 0 4px 18px oklch(0.5852 0.1706 253.27 / 0.28);
   --shadow-teal: 0 4px 16px oklch(0.7515 0.1117 188.43 / 0.2);
+  --shadow-card:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 1px 3px rgba(0, 0, 0, 0.35),
+    0 4px 16px rgba(0, 0, 0, 0.25), 0 12px 32px rgba(0, 0, 0, 0.25);
+  --shadow-card-hover:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 2px 6px rgba(0, 0, 0, 0.45),
+    0 8px 24px rgba(0, 0, 0, 0.35), 0 20px 48px rgba(0, 0, 0, 0.28);
 
   --gray-50: oklch(0.2 0.02 258.7);
   --gray-100: oklch(0.24 0.022 258.7);
@@ -488,12 +504,6 @@ textarea:focus-visible {
 }
 
 [data-theme='dark'] body {
-  background-image: radial-gradient(
-    ellipse 70% 30% at 50% 0%,
-    oklch(0.5852 0.1706 253.27 / 0.12) 0%,
-    transparent 100%
-  );
-  background-attachment: fixed;
   color: var(--text);
 }
 
@@ -518,28 +528,19 @@ textarea:focus-visible {
 [data-theme='dark'] .panel-card {
   background: var(--card-bg) !important;
   border-color: var(--border) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 1px 3px rgba(0, 0, 0, 0.35),
-    0 4px 16px rgba(0, 0, 0, 0.25) !important;
+  box-shadow: var(--shadow-card) !important;
 }
 
 [data-theme='dark'] .panel-card:hover {
   border-color: var(--border-hi) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 2px 6px rgba(0, 0, 0, 0.45),
-    0 8px 24px rgba(0, 0, 0, 0.35) !important;
+  box-shadow: var(--shadow-card-hover) !important;
 }
 
 [data-theme='dark'] .module-card,
 [data-theme='dark'] .data-card {
   background: var(--card-bg) !important;
   border-color: var(--border) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 1px 3px rgba(0, 0, 0, 0.35),
-    0 4px 16px rgba(0, 0, 0, 0.25) !important;
+  box-shadow: var(--shadow-card) !important;
 }
 
 [data-theme='dark'] .data-card:hover {

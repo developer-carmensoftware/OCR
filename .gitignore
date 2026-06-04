@@ -33,6 +33,7 @@ credentials/
 # IDE
 .vscode/
 .idea/
+.impeccable/
 
 # OS
 .DS_Store
