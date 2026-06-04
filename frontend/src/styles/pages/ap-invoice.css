@@ -514,10 +514,9 @@
   cursor: default;
 }
 
-/* Tax% whose rate has no matching Tax Profile or Tax Profile mismatching vendor default.
+/* Tax% whose rate has no matching Tax Profile.
    Amber outline flags it for review without blocking the user. */
-.ap-tax-unmatched,
-.ap-tax-mismatch {
+.ap-tax-unmatched {
   border-color: #f59e0b !important;
   color: #b45309;
 }

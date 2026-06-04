@@ -146,18 +146,6 @@ export default function APReviewStep({ ctrl }: Props) {
       ),
     [taxProfiles]
   )
-  const vendorDefault = systemVendor.taxProfileCode1 || ''
-  const mismatchCount = useMemo(
-    () =>
-      vendorDefault
-        ? lineItems.filter(item => {
-            const isNone = item.taxType === 'None'
-            const val = isNone ? 'NONE' : item.taxProfileCode1 || ''
-            return !isNone && val !== vendorDefault
-          }).length
-        : 0,
-    [lineItems, vendorDefault]
-  )
   const unmatchedCount = useMemo(
     () =>
       lineItems.filter(item => {
@@ -174,7 +162,7 @@ export default function APReviewStep({ ctrl }: Props) {
     [lineItems, descMapped]
   )
 
-  const hasWarnings = mismatchCount > 0 || unmatchedCount > 0 || emptyDescCount > 0
+  const hasWarnings = unmatchedCount > 0 || emptyDescCount > 0
   const allClear = isValid && !hasWarnings
 
   type CheckItem = { ok: boolean; label: string }
@@ -182,10 +170,6 @@ export default function APReviewStep({ ctrl }: Props) {
     {
       ok: isValid,
       label: isValid ? t.validOk : `${t.validErrPrefix} ${validationErrors.join(', ')}`,
-    },
-    {
-      ok: mismatchCount === 0,
-      label: mismatchCount > 0 ? `${mismatchCount} ${t.warnTaxMismatch}` : 'Tax profiles OK',
     },
     {
       ok: unmatchedCount === 0,
@@ -247,7 +231,6 @@ export default function APReviewStep({ ctrl }: Props) {
         activeCols={activeCols}
         availableFields={availableFields}
         taxProfiles={taxProfiles}
-        systemVendor={systemVendor}
         sumLineSubTotal={sumLineSubTotal}
         sumLineTotal={sumLineTotal}
         sumDiscount={sumDiscount}

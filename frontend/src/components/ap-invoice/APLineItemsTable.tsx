@@ -7,7 +7,6 @@ import APGroupModal from './APGroupModal'
 import type { TaxTypeValue } from './TaxTypeDropdown'
 import type { APColumnKey } from '../../constants/apInvoice'
 import type { TaxProfileItem } from '../../lib/api/carmen'
-import type { Vendor } from '../../hooks/ap-invoice/useAPVendor'
 import type { APLineItem } from '../../hooks/ap-invoice/useAPExtraction'
 
 interface Props {
@@ -17,7 +16,6 @@ interface Props {
   activeCols: number[]
   availableFields: Array<{ value: string; label: string }>
   taxProfiles: TaxProfileItem[]
-  systemVendor: Vendor
   sumLineSubTotal: number
   sumLineTotal: number
   sumDiscount: number
@@ -44,7 +42,6 @@ export default function APLineItemsTable({
   activeCols,
   availableFields,
   taxProfiles,
-  systemVendor,
   sumLineSubTotal,
   sumLineTotal,
   sumDiscount,
@@ -83,16 +80,13 @@ export default function APLineItemsTable({
   const taxProfileCell = (ri: number, item: Record<string, string | undefined>) => {
     const isNone = item.taxType === 'None'
     const val = isNone ? 'NONE' : item.taxProfileCode1 || ''
-    const vendorDefault = systemVendor.taxProfileCode1 || ''
-    const isMismatch = !isNone && vendorDefault !== '' && val !== vendorDefault
     const hasNoneProfile = taxProfiles.some(p => p.code === 'NONE')
 
     return (
       <td>
         <select
           aria-label="Tax profile"
-          className={`ap-taxtype-select${isMismatch ? ' ap-tax-mismatch' : ''}`}
-          title={isMismatch ? `${t.taxProfileMismatch}${vendorDefault}` : undefined}
+          className="ap-taxtype-select"
           value={val}
           onChange={e => applyLineTax(ri, { taxProfileCode1: e.target.value })}
         >
