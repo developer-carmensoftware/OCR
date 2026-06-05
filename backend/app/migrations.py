@@ -346,6 +346,12 @@ async def _m210_credit_ledger_ref_text(conn: AsyncConnection) -> None:
     logger.info("  ~ credit_ledger.ref widened to TEXT")
 
 
+async def _m214_drop_ap_vendor_field_config(conn: AsyncConnection) -> None:
+    """Drop tables created by the reverted field-mapping engine (migrations 211-213)."""
+    await conn.execute(text("DROP TABLE IF EXISTS ap_vendor_field_config CASCADE"))
+    logger.info("  ~ dropped ap_vendor_field_config (engine reverted)")
+
+
 _MIGRATIONS: list[tuple[str, Callable[[AsyncConnection], Awaitable[None]] | None]] = [
     # ── Squashed history markers ──────────────────────────────────────────────
     ("001_squashed_initial_schema", None),
@@ -363,4 +369,9 @@ _MIGRATIONS: list[tuple[str, Callable[[AsyncConnection], Awaitable[None]] | None
     ("208_credit_topup_billing", _m208_credit_topup_billing),
     ("209_tenant_credits_lifetime_cols", _m209_tenant_credits_lifetime_cols),
     ("210_credit_ledger_ref_text", _m210_credit_ledger_ref_text),
+    # Markers: 211-213 were applied to prod DB then the engine was reverted from code
+    ("211_ap_vendor_field_config_table", None),
+    ("212_ap_vendor_field_config_indexes", None),
+    ("213_widen_vendor_tax_id", None),
+    ("214_drop_ap_vendor_field_config", _m214_drop_ap_vendor_field_config),
 ]
