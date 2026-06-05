@@ -6,6 +6,7 @@ interface Props {
   fileInputRef: React.RefObject<HTMLInputElement | null>
   fileName?: string
   multiple?: boolean
+  pdfInfoLoading?: boolean
 }
 
 const INSTRUCTIONS = [
@@ -15,7 +16,13 @@ const INSTRUCTIONS = [
   { n: 4, c: 'teal', text: 'Confirm accounting entries and submit to Carmen GL JV' },
 ]
 
-export default function UploadSection({ onFileChange, fileInputRef, fileName, multiple }: Props) {
+export default function UploadSection({
+  onFileChange,
+  fileInputRef,
+  fileName,
+  multiple,
+  pdfInfoLoading,
+}: Props) {
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     if (e.dataTransfer.files?.[0]) {
@@ -39,7 +46,7 @@ export default function UploadSection({ onFileChange, fileInputRef, fileName, mu
           id="fileInput"
           aria-label="Upload document file"
           ref={fileInputRef}
-          accept="image/*, application/pdf"
+          accept="image/*,application/pdf,.heic,.heif"
           multiple={multiple}
           onChange={e => onFileChange(e)}
           style={{ display: 'none' }}
@@ -54,7 +61,13 @@ export default function UploadSection({ onFileChange, fileInputRef, fileName, mu
               : fileName
             : 'Click or drag file here'}
         </div>
-        <div className="upload-hint">Supports JPG · PNG · PDF · up to 20 MB</div>
+        {pdfInfoLoading ? (
+          <div className="upload-hint" style={{ color: 'var(--primary, #3b82f6)' }}>
+            Analyzing PDF…
+          </div>
+        ) : (
+          <div className="upload-hint">Supports JPG · PNG · PDF · HEIC · up to 20 MB</div>
+        )}
         <button
           type="button"
           className="btn btn-primary"

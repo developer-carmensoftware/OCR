@@ -10,6 +10,8 @@ _MIME_MAP = {
     ".webp": "image/webp",
     ".gif": "image/gif",
     ".pdf": "application/pdf",
+    ".heic": "image/heic",
+    ".heif": "image/heif",
 }
 
 

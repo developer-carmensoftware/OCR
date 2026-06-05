@@ -8,10 +8,11 @@ Business logic lives in:
 """
 
 import asyncio
+import json
 import logging
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -59,6 +60,9 @@ async def extract_card(
     request: Request,
     files: list[UploadFile] = File(...),
     bank_code: str | None = Query(None, description="Bank code: BBL / KBANK / SCB"),
+    selected_pages: str | None = Form(
+        None, description="JSON-encoded 0-based page indices for PDF, e.g. '[0,1,2]'"
+    ),
     session: SessionInfo = Depends(get_current_session),
 ):
     """Stateless extraction — reads files, calls LLM, returns JSON. Does NOT write to DB.
@@ -84,9 +88,8 @@ async def extract_card(
     # Phase 1: validate + read all files into memory (no DB held)
     file_data: list[tuple[str, bytes]] = []
     for upload_file in files:
-        filename = upload_file.filename or "upload"
-        file_bytes = await file_service.validate_and_read(upload_file)
-        file_data.append((filename, file_bytes))
+        file_bytes, effective_name = await file_service.validate_and_read(upload_file)
+        file_data.append((effective_name, file_bytes))
 
     # Phase 2: short-lived DB session — fetch hints + create task rows, then release.
     task_records: list[tuple[str, bytes, str]] = []
@@ -102,6 +105,15 @@ async def extract_card(
             )
             task_records.append((filename, file_bytes, str(task.id)))
 
+    parsed_pages: list[int] | None = None
+    if selected_pages:
+        try:
+            parsed_pages = json.loads(selected_pages)
+        except (json.JSONDecodeError, ValueError):
+            raise HTTPException(
+                status_code=400, detail="selected_pages must be a JSON array of integers"
+            )
+
     # Phase 3 & 4: process each file in parallel with task status tracking
     async def process_single_task(
         filename: str, file_bytes: bytes, task_id: str
@@ -113,6 +125,7 @@ async def extract_card(
                 bank_code=bank_code,
                 hints=hints or None,
                 task_id=task_id,
+                selected_pages=parsed_pages,
             )
             extracted.task_id = task_id
             return await finalize_extraction(

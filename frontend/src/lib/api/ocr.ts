@@ -28,9 +28,48 @@ export interface ApiError extends Error {
   status?: number
 }
 
-export async function extractFromFile(file: File, bankType?: string): Promise<ExtractResult> {
+export interface PdfInfoResult {
+  page_count: number
+  thumbnails: string[]
+}
+
+export async function getPdfInfo(file: File): Promise<PdfInfoResult> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await apiFetch('/api/v1/files/pdf-info', { method: 'POST', body: formData })
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { detail?: string }
+    throw new Error(err.detail || `PDF info failed (${res.status})`)
+  }
+  return res.json() as Promise<PdfInfoResult>
+}
+
+/**
+ * Get a browser-renderable preview for an image the browser can't decode itself
+ * (HEIC/HEIF). The backend converts HEIC -> JPEG and returns a base64 data URL.
+ */
+export async function getFilePreview(file: File): Promise<string> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await apiFetch('/api/v1/files/preview', { method: 'POST', body: formData })
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { detail?: string }
+    throw new Error(err.detail || `Preview failed (${res.status})`)
+  }
+  const data = (await res.json()) as { data_url: string }
+  return data.data_url
+}
+
+export async function extractFromFile(
+  file: File,
+  bankType?: string,
+  selectedPages?: number[]
+): Promise<ExtractResult> {
   const formData = new FormData()
   formData.append('files', file)
+  if (selectedPages && selectedPages.length > 0) {
+    formData.append('selected_pages', JSON.stringify(selectedPages))
+  }
 
   const url = bankType ? `/api/v1/ocr/extract?bank_type=${bankType}` : '/api/v1/ocr/extract'
 

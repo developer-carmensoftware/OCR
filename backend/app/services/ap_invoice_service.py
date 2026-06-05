@@ -1,5 +1,9 @@
+import asyncio
+import base64
+import functools
 import json
 import logging
+import os
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -19,6 +23,8 @@ from app.services.ap_vendor_history_service import (
     select_examples,
 )
 from app.utils.gl_filter import score_and_pad
+from app.utils.mime import get_mime_type
+from app.utils.pdf_utils import MAX_PAGES_PER_CALL, get_pdf_page_count, render_pdf_pages
 
 logger = logging.getLogger(__name__)
 
@@ -99,21 +105,75 @@ def _filter_expense_accounts(
     return score_and_pad(accounts, keywords, max_acc)
 
 
-async def extract_ap_invoice_data(data_url: str, filename: str, task_id: str) -> dict[str, Any]:
-    """Extract AP Invoice details using Vision LLM."""
+async def extract_ap_invoice_data(
+    file_bytes: bytes,
+    filename: str,
+    task_id: str,
+    selected_pages: list[int] | None = None,
+) -> dict[str, Any]:
+    """Extract AP Invoice details using Vision LLM.
+
+    For multi-page PDFs, the rendered pages are sent in a single LLM call so the
+    model can correlate header/footer/line data across pages. ``selected_pages``
+    (0-based) restricts which pages are sent; None → all pages.
+    """
     ap_model = settings.openrouter_ap_invoice_model or settings.openrouter_ocr_model
-    logger.info(f"Extracting AP Invoice: {filename} (model: {ap_model})")
+    ext = os.path.splitext(filename)[1].lower()
+
+    if ext == ".pdf":
+        page_count = await asyncio.get_running_loop().run_in_executor(
+            None, get_pdf_page_count, file_bytes
+        )
+        # Honour an explicit selection (filtered to valid indices); else all pages.
+        if selected_pages:
+            pages = [p for p in selected_pages if 0 <= p < page_count]
+        else:
+            pages = list(range(page_count))
+        if len(pages) > MAX_PAGES_PER_CALL:
+            logger.warning(
+                "AP Invoice PDF %s: %d pages selected; capping at %d",
+                filename,
+                len(pages),
+                MAX_PAGES_PER_CALL,
+            )
+            pages = pages[:MAX_PAGES_PER_CALL]
+        page_images = await asyncio.get_running_loop().run_in_executor(
+            None, functools.partial(render_pdf_pages, file_bytes, pages)
+        )
+        image_items = [
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{base64.b64encode(p).decode()}"},
+            }
+            for p in page_images
+        ]
+        total_bytes = sum(len(p) for p in page_images)
+        logger.info(
+            "Extracting AP Invoice: %s (model: %s, pages: %d)", filename, ap_model, len(page_images)
+        )
+    else:
+        mime_type = get_mime_type(filename)
+        image_items = [
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:{mime_type};base64,{base64.b64encode(file_bytes).decode()}"
+                },
+            }
+        ]
+        total_bytes = len(file_bytes)
+        logger.info("Extracting AP Invoice: %s (model: %s)", filename, ap_model)
 
     result_text = await call_vision_llm(
         system_prompt=AP_INVOICE_PROMPT,
         user_content=[
-            {"type": "image_url", "image_url": {"url": data_url}},
+            *image_items,
             {"type": "text", "text": "Extract details and return JSON."},
         ],
         model=ap_model,
         task_id=task_id,
         module_id=Module.AP_INVOICE,
-        image_size_bytes=len(data_url.encode()),
+        image_size_bytes=total_bytes,
         count_quota=True,
     )
 

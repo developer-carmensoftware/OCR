@@ -1,9 +1,9 @@
-import base64
+import json
 import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy import select
 
 from app.auth import SessionInfo, get_current_session
@@ -22,7 +22,6 @@ from app.services.file_service import file_service
 from app.services.task_service import create_task, mark_failed
 from app.utils.date_parsing import parse_doc_date
 from app.utils.db_helpers import has_submitted_doc
-from app.utils.mime import get_mime_type
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/ap-invoice", tags=["AP Invoice"])
@@ -32,6 +31,7 @@ router = APIRouter(prefix="/api/v1/ap-invoice", tags=["AP Invoice"])
 async def extract_ap_invoice(
     request: Request,
     file: UploadFile = File(...),
+    selected_pages: str | None = Form(None),
     session: SessionInfo = Depends(get_current_session),
 ):
     """Stateless AP Invoice OCR extraction using Vision LLM.
@@ -53,10 +53,20 @@ async def extract_ap_invoice(
     if not settings.openrouter_api_key:
         raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY is not configured")
 
-    filename = file.filename or "invoice"
-    file_bytes = await file_service.validate_and_read(file)
-    mime_type = get_mime_type(filename)
-    data_url = f"data:{mime_type};base64,{base64.b64encode(file_bytes).decode()}"
+    file_bytes, filename = await file_service.validate_and_read(file)
+    if not filename:
+        filename = "invoice"
+
+    # Optional page selection (JSON-encoded 0-based list, e.g. "[0,1,3]"). Form data
+    # can't carry a list directly. None/empty → service processes all pages.
+    parsed_pages: list[int] | None = None
+    if selected_pages:
+        try:
+            parsed = json.loads(selected_pages)
+            if isinstance(parsed, list):
+                parsed_pages = [int(p) for p in parsed]
+        except (json.JSONDecodeError, ValueError, TypeError):
+            logger.warning("Invalid selected_pages payload: %r", selected_pages)
 
     # Short DB session: create the task row, then release the connection.
     async with async_session() as db:
@@ -71,7 +81,9 @@ async def extract_ap_invoice(
 
     try:
         # LLM extraction — no DB connection held during this call.
-        data = await extract_ap_invoice_data(data_url, filename, task_id)
+        data = await extract_ap_invoice_data(
+            file_bytes, filename, task_id, selected_pages=parsed_pages
+        )
 
         doc_no = data.get("documentNumber")
         vendor_name = data.get("vendorName")

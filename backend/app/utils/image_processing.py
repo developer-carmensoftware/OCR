@@ -8,6 +8,14 @@ import os
 
 from PIL import Image, ImageEnhance, ImageFilter
 
+try:
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
+    _HEIF_AVAILABLE = True
+except ImportError:
+    _HEIF_AVAILABLE = False
+
 
 def preprocess_image(
     image_bytes: bytes,
@@ -77,9 +85,33 @@ def resize_if_needed(image_bytes: bytes, max_dimension: int = 4096) -> bytes:
     return output.getvalue()
 
 
+def convert_heic_to_jpeg(raw_bytes: bytes) -> bytes:
+    """Convert HEIC/HEIF image bytes to JPEG. Requires pillow-heif."""
+    if not _HEIF_AVAILABLE:
+        raise ValueError("HEIC support is not available. Install pillow-heif.")
+    img = Image.open(io.BytesIO(raw_bytes))
+    # JPEG supports only L, RGB, CMYK — convert everything else (RGBA, P, LA, …) to RGB.
+    if img.mode not in ("L", "RGB", "CMYK"):
+        img = img.convert("RGB")
+    output = io.BytesIO()
+    img.save(output, format="JPEG", quality=92)
+    return output.getvalue()
+
+
 def is_valid_image(filename: str) -> bool:
     """Check if the filename has a supported image extension."""
-    valid_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp", ".pdf"}
+    valid_extensions = {
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".bmp",
+        ".tiff",
+        ".tif",
+        ".webp",
+        ".pdf",
+        ".heic",
+        ".heif",
+    }
     ext = os.path.splitext(filename)[1].lower()
     return ext in valid_extensions
 
@@ -98,6 +130,15 @@ _MAGIC_SIGNATURES: list[tuple[int, bytes]] = [
 _WEBP_RIFF = b"RIFF"
 _WEBP_MARK = b"WEBP"
 
+# HEIC/HEIF: ISO Base Media File Format — "ftyp" box at bytes 4-7,
+# brand code at bytes 8-11. Common brands: heic, heix, hevc, mif1, msf1
+_HEIF_BRANDS = {b"heic", b"heix", b"hevc", b"mif1", b"msf1", b"avif"}
+
+
+def _is_heif(content: bytes) -> bool:
+    """Return True if content is a HEIC/HEIF file."""
+    return len(content) >= 12 and content[4:8] == b"ftyp" and content[8:12] in _HEIF_BRANDS
+
 
 def validate_magic_bytes(content: bytes, filename: str) -> None:
     """
@@ -106,6 +147,9 @@ def validate_magic_bytes(content: bytes, filename: str) -> None:
     """
     if len(content) < 12:
         raise ValueError(f"File too small to determine type: {filename}")
+
+    if _is_heif(content):
+        return
 
     # WebP: bytes 0-3 == RIFF and bytes 8-11 == WEBP
     if content[:4] == _WEBP_RIFF and content[8:12] == _WEBP_MARK:

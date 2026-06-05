@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import type React from 'react'
 import { apiFetch } from '../../lib/api/client'
 import { getAPVendorMapping } from '../../lib/api/config'
+import { getPdfInfo, getFilePreview } from '../../lib/api/ocr'
 import { toast } from '../../lib/toast'
 import { fmt } from '../../lib/format'
 import { EMPTY_HEADER, DEFAULT_MAPPINGS } from '../../constants/apInvoice'
@@ -68,6 +69,11 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
   const [status, setStatus] = useState('')
   const [elapsed, setElapsed] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [pdfInfoLoading, setPdfInfoLoading] = useState(false)
+  const [pdfSelector, setPdfSelector] = useState<{
+    thumbnails: string[]
+    pendingFile: File
+  } | null>(null)
 
   useEffect(() => {
     if (!loading) {
@@ -91,7 +97,7 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const previewUrlRef = useRef<string | null>(null)
 
-  const runOCR = async (fileObj: File) => {
+  const runOCR = async (fileObj: File, selectedPages?: number[]) => {
     setLoading(true)
     setStatus('AI is extracting data from document...')
     setError(null)
@@ -102,6 +108,9 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
         try {
           const formData = new FormData()
           formData.append('file', fileObj)
+          if (selectedPages && selectedPages.length > 0) {
+            formData.append('selected_pages', JSON.stringify(selectedPages))
+          }
           const res = await apiFetch('/api/v1/ap-invoice/extract', {
             method: 'POST',
             body: formData,
@@ -256,13 +265,70 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
   ) => {
     const f = e.target.files?.[0]
     if (!f) return
+    // Ignore a new selection while we're still analysing a PDF or extracting.
+    if (pdfInfoLoading || loading) return
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
-    const url = URL.createObjectURL(f)
-    previewUrlRef.current = url
+    previewUrlRef.current = null
     setFile(f)
-    setPreviewUrl(url)
-    setPreviewType(f.type === 'application/pdf' ? 'pdf' : 'image')
-    runOCR(f)
+
+    const name = f.name.toLowerCase()
+    const isPdf = name.endsWith('.pdf') || f.type === 'application/pdf'
+    const isHeic =
+      /\.(heic|heif)$/i.test(name) || f.type === 'image/heic' || f.type === 'image/heif'
+
+    if (isHeic) {
+      // Browsers can't decode HEIC — fetch a server-converted JPEG data URL.
+      setPreviewType('image')
+      setPreviewUrl(null)
+      getFilePreview(f)
+        .then(setPreviewUrl)
+        .catch(() => setPreviewType('HEIC'))
+    } else {
+      const url = URL.createObjectURL(f)
+      previewUrlRef.current = url
+      setPreviewUrl(url)
+      setPreviewType(isPdf ? 'pdf' : 'image')
+    }
+
+    if (isPdf) {
+      // Multi-page → let the user choose pages; single page → extract straight away.
+      setPdfInfoLoading(true)
+      getPdfInfo(f)
+        .then(info => {
+          if (info.page_count > 1) {
+            setPdfSelector({ thumbnails: info.thumbnails, pendingFile: f })
+          } else {
+            runOCR(f)
+          }
+        })
+        .catch(() => {
+          // Can't read pages — don't block the user, process the whole document.
+          toast.info('Could not read PDF pages — processing the whole document')
+          runOCR(f)
+        })
+        .finally(() => setPdfInfoLoading(false))
+    } else {
+      runOCR(f)
+    }
+  }
+
+  const confirmPageSelection = (selectedPages: number[]) => {
+    const sel = pdfSelector
+    if (!sel) return
+    setPdfSelector(null)
+    runOCR(sel.pendingFile, selectedPages)
+  }
+
+  const cancelPageSelection = () => {
+    setPdfSelector(null)
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current)
+      previewUrlRef.current = null
+    }
+    setFile(null)
+    setPreviewUrl(null)
+    setPreviewType(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const resetExtraction = () => {
@@ -280,6 +346,8 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
     setApInvoiceId(null)
     setStatus('')
     setError(null)
+    setPdfInfoLoading(false)
+    setPdfSelector(null)
   }
 
   const updateHeader = (key: string, val: string) => setHeaderData(p => ({ ...p, [key]: val }))
@@ -322,6 +390,10 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
     setFieldMappings,
     apInvoiceId,
     isDuplicate,
+    pdfInfoLoading,
+    pdfSelector,
+    confirmPageSelection,
+    cancelPageSelection,
     handleFileChange,
     runOCR,
     resetExtraction,

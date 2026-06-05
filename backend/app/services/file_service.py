@@ -1,15 +1,18 @@
 import logging
+import os
 
 from fastapi import UploadFile
 
 from app.config import settings
 from app.exceptions import FileTooLargeError, ValidationError
-from app.utils.image_processing import is_valid_image, validate_magic_bytes
+from app.utils.image_processing import convert_heic_to_jpeg, is_valid_image, validate_magic_bytes
 
 logger = logging.getLogger(__name__)
 
 # Read in 1MB chunks so we can abort before loading a 200MB upload bomb into memory.
 _READ_CHUNK_SIZE = 1024 * 1024
+
+_HEIC_EXTENSIONS = {".heic", ".heif"}
 
 
 class FileService:
@@ -18,14 +21,15 @@ class FileService:
     Implements security checks for file size and types.
     """
 
-    ALLOWED_EXTENSIONS: set[str] = {".jpg", ".jpeg", ".png", ".pdf", ".webp"}
+    ALLOWED_EXTENSIONS: set[str] = {".jpg", ".jpeg", ".png", ".pdf", ".webp", ".heic", ".heif"}
 
     @staticmethod
-    async def validate_and_read(file: UploadFile) -> bytes:
+    async def validate_and_read(file: UploadFile) -> tuple[bytes, str]:
         """
         Validates file type and size, then reads into memory.
-        Raises ValidationError / FileTooLargeError on failure — the global
-        handler in main.py maps these to HTTP 400 / 413.
+        Returns (content_bytes, effective_filename) — HEIC files are converted
+        to JPEG and the filename is updated to .jpg accordingly.
+        Raises ValidationError / FileTooLargeError on failure.
 
         Reads the upload in chunks so we abort early on oversize files instead
         of loading the whole body into RAM before checking size. This prevents
@@ -39,7 +43,7 @@ class FileService:
         # 1. Type Validation (Extension)
         if not is_valid_image(filename):
             raise ValidationError(
-                f"Unsupported file type: {filename} (Supported: JPG, PNG, PDF, WebP)"
+                f"Unsupported file type: {filename} (Supported: JPG, PNG, PDF, WebP, HEIC)"
             )
 
         max_bytes = settings.max_file_size_mb * 1024 * 1024
@@ -71,7 +75,17 @@ class FileService:
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
 
-        return content
+        # 4. HEIC → JPEG conversion (server-side; browser cannot render HEIC).
+        ext = os.path.splitext(filename)[1].lower()
+        if ext in _HEIC_EXTENSIONS:
+            try:
+                content = convert_heic_to_jpeg(content)
+                stem = os.path.splitext(filename)[0]
+                filename = f"{stem}.jpg"
+            except Exception as exc:
+                raise ValidationError(f"Failed to convert HEIC file: {exc}") from exc
+
+        return content, filename
 
     @staticmethod
     def get_filenames_string(files: list[UploadFile]) -> str:

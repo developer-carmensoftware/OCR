@@ -14,6 +14,7 @@ import {
   BugReportButton,
   PaymentButton,
 } from '../components/common'
+import PDFPageSelector from '../components/common/PDFPageSelector'
 import {
   UploadSection,
   BankDetectionBanner,
@@ -52,6 +53,10 @@ export default function CreditCardOCR() {
     handleSubmitFinal,
     handleCancel,
     resetAll,
+    pdfSelector,
+    pdfInfoLoading,
+    confirmPageSelection,
+    cancelPageSelection,
   } = useOcrWizard()
 
   const [showPreview, setShowPreview] = useState(false)
@@ -96,6 +101,13 @@ export default function CreditCardOCR() {
 
   return (
     <>
+      {pdfSelector && (
+        <PDFPageSelector
+          thumbnails={pdfSelector.thumbnails}
+          onConfirm={confirmPageSelection}
+          onCancel={cancelPageSelection}
+        />
+      )}
       <CustomModal
         show={modal.show}
         title={modal.title as string}
@@ -137,6 +149,7 @@ export default function CreditCardOCR() {
                 fileInputRef={fileInputRef}
                 fileName={files.length > 1 ? `${files.length} files selected` : files[0]?.name}
                 multiple
+                pdfInfoLoading={pdfInfoLoading}
               />
             )}
             {step === 1 && loading && (

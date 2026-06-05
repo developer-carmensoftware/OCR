@@ -6,6 +6,7 @@ interface Props {
   t: Record<string, string>
   fileInputRef: React.RefObject<HTMLInputElement | null>
   onFileChange: (e: React.ChangeEvent<HTMLInputElement> | { target: { files: File[] } }) => void
+  pdfInfoLoading?: boolean
 }
 
 const INSTRUCTIONS = [
@@ -15,7 +16,7 @@ const INSTRUCTIONS = [
   { n: 4, c: 'teal', text: 'Map GL accounts for each item, then click Generate Invoice' },
 ]
 
-export default function APUploadStep({ t, fileInputRef, onFileChange }: Props) {
+export default function APUploadStep({ t, fileInputRef, onFileChange, pdfInfoLoading }: Props) {
   const [isDragOver, setIsDragOver] = useState(false)
   const [isDropping, setIsDropping] = useState(false)
 
@@ -54,7 +55,7 @@ export default function APUploadStep({ t, fileInputRef, onFileChange }: Props) {
           type="file"
           aria-label="Upload invoice file"
           ref={fileInputRef}
-          accept="image/*,application/pdf"
+          accept="image/*,application/pdf,.heic,.heif"
           onChange={e => onFileChange(e)}
           style={{ display: 'none' }}
         />
@@ -62,7 +63,13 @@ export default function APUploadStep({ t, fileInputRef, onFileChange }: Props) {
           <UploadCloud size={40} />
         </div>
         <div className="upload-label">{t.uploadTitle}</div>
-        <div className="upload-hint">{t.uploadDesc}</div>
+        {pdfInfoLoading ? (
+          <div className="upload-hint" style={{ color: 'var(--primary, #3b82f6)' }}>
+            Analyzing PDF…
+          </div>
+        ) : (
+          <div className="upload-hint">{t.uploadDesc}</div>
+        )}
         <button
           type="button"
           className="btn btn-primary"

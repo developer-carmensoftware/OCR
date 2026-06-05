@@ -13,6 +13,7 @@ import {
   BugReportButton,
   PaymentButton,
 } from '../components/common'
+import PDFPageSelector from '../components/common/PDFPageSelector'
 import APUploadStep from '../components/ap-invoice/APUploadStep'
 import APFieldMappingStep from '../components/ap-invoice/APFieldMappingStep'
 import APReviewStep from '../components/ap-invoice/APReviewStep'
@@ -66,6 +67,10 @@ export default function APInvoice() {
     setModal,
     isDuplicate,
     isSubmitting,
+    pdfInfoLoading,
+    pdfSelector,
+    confirmPageSelection,
+    cancelPageSelection,
   } = ctrl
 
   const [showPreview, setShowPreview] = useState(false)
@@ -94,6 +99,13 @@ export default function APInvoice() {
 
   return (
     <>
+      {pdfSelector && (
+        <PDFPageSelector
+          thumbnails={pdfSelector.thumbnails}
+          onConfirm={confirmPageSelection}
+          onCancel={cancelPageSelection}
+        />
+      )}
       <CustomModal
         show={modal.show}
         title={modal.show ? modal.title : ''}
@@ -151,7 +163,12 @@ export default function APInvoice() {
             transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
           >
             {step === 1 && !loading && !error && (
-              <APUploadStep t={t} fileInputRef={fileInputRef} onFileChange={handleFileChange} />
+              <APUploadStep
+                t={t}
+                fileInputRef={fileInputRef}
+                onFileChange={handleFileChange}
+                pdfInfoLoading={pdfInfoLoading}
+              />
             )}
             {step === 1 && loading && (
               <ExtractionSkeleton status={extractionStatus} elapsed={elapsed} />

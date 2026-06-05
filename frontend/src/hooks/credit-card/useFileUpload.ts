@@ -1,5 +1,8 @@
 import { useState, useRef } from 'react'
 import type React from 'react'
+import { getFilePreview } from '../../lib/api/ocr'
+
+const HEIC_RE = /\.(heic|heif)$/i
 
 export interface FileUploadHook {
   files: File[]
@@ -25,6 +28,15 @@ export function useFileUpload(): FileUploadHook {
   function setPreview(file: File) {
     if (previewUrl) URL.revokeObjectURL(previewUrl.split('#')[0])
     const name = file.name.toLowerCase()
+    // HEIC/HEIF can't be decoded by browsers — fetch a server-converted JPEG.
+    if (HEIC_RE.test(name) || file.type === 'image/heic' || file.type === 'image/heif') {
+      setPreviewType('image')
+      setPreviewUrl(null)
+      getFilePreview(file)
+        .then(setPreviewUrl)
+        .catch(() => setPreviewType('HEIC')) // fall back to the unsupported-type card
+      return
+    }
     const isImage = file.type.startsWith('image/') || /\.(jpe?g|png|gif|bmp|webp)$/i.test(name)
     const isPDF = file.type === 'application/pdf' || /\.pdf$/i.test(name)
     if (isImage) {

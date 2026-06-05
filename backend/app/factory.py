@@ -33,6 +33,7 @@ from app.routers.carmen import router as carmen_router
 from app.routers.config import router as config_router
 from app.routers.credits import router as credits_router
 from app.routers.feedback import router as feedback_router
+from app.routers.files import router as files_router
 from app.routers.mapping import router as mapping_router
 from app.routers.ocr import router as ocr_router
 from app.routers.tool_registry import router as tools_router
@@ -122,6 +123,7 @@ def create_app(lifespan=None) -> FastAPI:
     app.include_router(tools_router)
     app.include_router(feedback_router)
     app.include_router(ap_invoice_router)
+    app.include_router(files_router)
     app.include_router(admin_router)
     app.include_router(config_router)
     app.include_router(credits_router)
