@@ -1363,6 +1363,24 @@ input[type='text'].detail-input:focus {
   transform: scale(0.93);
 }
 
+.btn-icon:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  background: var(--muted);
+  border-color: var(--border);
+  color: var(--text-4);
+}
+
+.btn-icon:disabled:hover {
+  border-color: var(--border);
+  color: var(--text-4);
+  background: var(--muted);
+}
+
+.btn-icon:disabled:active {
+  transform: none;
+}
+
 .form-actions-sep {
   width: 1px;
   height: 22px;

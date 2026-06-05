@@ -11,8 +11,6 @@ import {
   SplitLayout,
   UsageIndicator,
   AppHeader,
-  BugReportButton,
-  PaymentButton,
 } from '../components/common'
 import PDFPageSelector from '../components/common/PDFPageSelector'
 import {
@@ -128,8 +126,7 @@ export default function CreditCardOCR() {
           backPath="/glJv"
         >
           <UsageIndicator />
-          <PaymentButton />
-          <BugReportButton module="credit_card_ocr" />
+          {/* Plan & Credits + Bug Report hidden for now — pending finalisation */}
           <DarkModeToggle />
         </AppHeader>
 

@@ -1,26 +1,21 @@
 import { useEffect, useState } from 'react'
 import ReactDOM from 'react-dom'
-import { Wallet, X, Coins, Check } from 'lucide-react'
+import { Wallet, X, Coins } from 'lucide-react'
 import { getUsage } from '../../lib/api/auth'
 import { getStoredToken } from '../../lib/api/client'
-import { getCreditPacks, createCreditOrder, type CreditPack } from '../../lib/api/credits'
+import { getCreditPacks, type CreditPack } from '../../lib/api/credits'
 import '../../styles/components/header-modals.css'
 import type { UsageData } from '../../lib/api/auth'
-
-const SUPPORT_EMAIL = 'support@carmen-cloud.com'
 
 export default function PaymentButton() {
   const [open, setOpen] = useState(false)
   const [usage, setUsage] = useState<UsageData['usage'] | null>(null)
   const [packs, setPacks] = useState<CreditPack[]>([])
   const [loading, setLoading] = useState(false)
-  const [requesting, setRequesting] = useState<string | null>(null)
-  const [orderedPack, setOrderedPack] = useState<string | null>(null)
 
   const handleOpen = async () => {
     setOpen(true)
     setLoading(true)
-    setOrderedPack(null)
     try {
       const token = getStoredToken()
       if (token) {
@@ -48,24 +43,6 @@ export default function PaymentButton() {
     setOpen(false)
     setUsage(null)
     setPacks([])
-    setOrderedPack(null)
-  }
-
-  const handleRequest = async (pack: CreditPack) => {
-    setRequesting(pack.code)
-    try {
-      const order = await createCreditOrder(pack.code)
-      setOrderedPack(pack.code)
-      const subject = encodeURIComponent(`Credit top-up request — ${pack.credits} credits`)
-      const body = encodeURIComponent(
-        `Hi, I would like to top up ${pack.credits} credits (฿${pack.price_thb}).\nOrder ID: ${order.id}`
-      )
-      window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`
-    } catch {
-      /* surfaced via the requesting reset below */
-    } finally {
-      setRequesting(null)
-    }
   }
 
   const usedPct =
@@ -81,10 +58,9 @@ export default function PaymentButton() {
       <button
         type="button"
         className="btn-icon"
-        title="Plan & credits"
-        onClick={() => {
-          void handleOpen()
-        }}
+        title="Plan & credits — coming soon"
+        disabled
+        aria-disabled="true"
       >
         <Wallet size={15} strokeWidth={2} />
       </button>
@@ -147,42 +123,36 @@ export default function PaymentButton() {
 
                 <div className="hm-divider" />
 
-                <p className="hm-label hm-label--tight">Buy top-up credits</p>
-                <p className="hm-hint hm-hint--left">
-                  Free 30 documents reset every month. Buy credits to keep going once it runs out —
-                  credits never expire.
-                </p>
+                {/* Pricing is not finalised — blur the purchase UI until rates are confirmed. */}
+                <div className="hm-buy-section">
+                  <div className="hm-buy-blur" aria-hidden="true">
+                    <p className="hm-label hm-label--tight">Buy top-up credits</p>
+                    <p className="hm-hint hm-hint--left">
+                      Free 30 documents reset every month. Buy credits to keep going once it runs
+                      out — credits never expire.
+                    </p>
 
-                {packs.map(pack => (
-                  <div key={pack.code} className="hm-pack-row">
-                    <span className="hm-pack-credits">
-                      {pack.credits.toLocaleString()} <span className="hm-pack-unit">credits</span>
-                    </span>
-                    <span className="hm-pack-price">฿{pack.price_thb.toLocaleString()}</span>
-                    <button
-                      type="button"
-                      className={`hm-pack-btn${orderedPack === pack.code ? ' hm-pack-btn--done' : ''}`}
-                      disabled={requesting !== null}
-                      onClick={() => {
-                        void handleRequest(pack)
-                      }}
-                    >
-                      {orderedPack === pack.code ? (
-                        <>
-                          <Check size={12} /> Requested
-                        </>
-                      ) : requesting === pack.code ? (
-                        'Requesting…'
-                      ) : (
-                        'Request'
-                      )}
-                    </button>
+                    {packs.map(pack => (
+                      <div key={pack.code} className="hm-pack-row">
+                        <span className="hm-pack-credits">
+                          {pack.credits.toLocaleString()}{' '}
+                          <span className="hm-pack-unit">credits</span>
+                        </span>
+                        <span className="hm-pack-price">฿{pack.price_thb.toLocaleString()}</span>
+                        <button type="button" className="hm-pack-btn" disabled tabIndex={-1}>
+                          Request
+                        </button>
+                      </div>
+                    ))}
+
+                    <p className="hm-hint">
+                      Requesting a pack emails our team to confirm payment and credit your account.
+                    </p>
                   </div>
-                ))}
-
-                <p className="hm-hint">
-                  Requesting a pack emails our team to confirm payment and credit your account.
-                </p>
+                  <div className="hm-buy-overlay">
+                    <span className="hm-buy-badge">Coming soon</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>,

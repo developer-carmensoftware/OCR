@@ -352,6 +352,42 @@
   background: var(--teal, #0d9488);
 }
 
+/* ─── Buy section — blurred while pricing is not finalised ─── */
+.hm-buy-section {
+  position: relative;
+}
+
+.hm-buy-blur {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  filter: blur(4px);
+  opacity: 0.6;
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.hm-buy-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hm-buy-badge {
+  padding: 0.3rem 0.8rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+  background: var(--card-bg);
+  border: 1px solid var(--border-hi);
+  border-radius: 99px;
+  box-shadow: var(--shadow-sm);
+}
+
 /* ─── Module badge (read-only) ─── */
 .hm-module-badge {
   display: inline-flex;

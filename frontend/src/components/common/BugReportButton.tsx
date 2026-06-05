@@ -97,7 +97,13 @@ export default function BugReportButton({ module }: Props) {
 
   return (
     <>
-      <button type="button" className="btn-icon" title="Report a bug" onClick={() => setOpen(true)}>
+      <button
+        type="button"
+        className="btn-icon"
+        title="Report a bug — coming soon"
+        disabled
+        aria-disabled="true"
+      >
         <Bug size={15} strokeWidth={2} />
       </button>
 

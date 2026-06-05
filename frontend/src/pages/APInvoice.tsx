@@ -10,8 +10,6 @@ import {
   SplitLayout,
   UsageIndicator,
   AppHeader,
-  BugReportButton,
-  PaymentButton,
 } from '../components/common'
 import PDFPageSelector from '../components/common/PDFPageSelector'
 import APUploadStep from '../components/ap-invoice/APUploadStep'
@@ -143,8 +141,7 @@ export default function APInvoice() {
           backPath="/apInvoice"
         >
           <UsageIndicator />
-          <PaymentButton />
-          <BugReportButton module="ap_invoice" />
+          {/* Plan & Credits + Bug Report hidden for now — pending finalisation */}
           <DarkModeToggle />
         </AppHeader>
 

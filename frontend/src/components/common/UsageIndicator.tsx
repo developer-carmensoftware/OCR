@@ -44,7 +44,9 @@ export default function UsageIndicator() {
     if (!usage) return null
     const { monthly_calls, max_monthly_calls, remaining_calls, credit_balance } = usage
     const totalRemaining = remaining_calls + credit_balance
-    const usedPercentage = max_monthly_calls > 0 ? (monthly_calls / max_monthly_calls) * 100 : 0
+    // Bar reflects usage against the full pool: free monthly allowance + top-up credits.
+    const totalCapacity = max_monthly_calls + credit_balance
+    const usedPercentage = totalCapacity > 0 ? (monthly_calls / totalCapacity) * 100 : 0
     let color = 'var(--teal)'
     if (usedPercentage >= 90) color = 'var(--rose)'
     else if (usedPercentage >= 70) color = 'var(--amber)'
@@ -92,10 +94,6 @@ export default function UsageIndicator() {
           ref={quotaRef}
           role="status"
           aria-label={`OCR quota: ${stats.remaining_calls} documents remaining`}
-          title="Open plan & credits"
-          onClick={() => {
-            window.dispatchEvent(new Event('ocr:open-topup'))
-          }}
           className={`ui-quota${stats.isLow ? ' is-low' : ''}`}
         >
           <div className="ui-quota-col col-remain">
