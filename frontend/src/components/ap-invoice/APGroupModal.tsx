@@ -14,10 +14,11 @@ interface Props {
   onClose: () => void
 }
 
-// Group-by-description dialog. The user sets the target description first, then ticks the rows to
-// merge. Selected rows must share one tax profile — the Group button stays disabled (with an inline
-// warning) until the selection is valid, and the hook re-checks as a backstop. Enter/exit motion
-// mirrors CustomModal so every dialog in the app settles the same way.
+// Group-by-description dialog. Flow is select -> review -> name: the user ticks the rows to merge,
+// the summary strip shows the running count, shared tax profile, and combined total, then they name
+// the grouped line. Selected rows must share one tax profile; the Group button stays disabled (with
+// inline conflict highlighting) until the selection is valid, and the hook re-checks as a backstop.
+// Enter/exit motion mirrors CustomModal so every dialog in the app settles the same way.
 export default function APGroupModal({ show, t, lineItems, groupByDescription, onClose }: Props) {
   const [desc, setDesc] = useState('')
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -49,6 +50,10 @@ export default function APGroupModal({ show, t, lineItems, groupByDescription, o
   const needMoreItems = selected.size === 1
   const canGroup = desc.trim().length > 0 && selected.size >= 2 && !mixed
 
+  const combinedTotal = selectedItems.reduce((sum, it) => sum + parseNum(it.lineTotal), 0)
+  const sharedProfile = selected.size >= 1 && !mixed ? profileLabel(selectedItems[0]) : null
+  const allSelected = lineItems.length > 0 && selected.size === lineItems.length
+
   const toggle = (i: number) =>
     setSelected(prev => {
       const next = new Set(prev)
@@ -56,6 +61,8 @@ export default function APGroupModal({ show, t, lineItems, groupByDescription, o
       else next.add(i)
       return next
     })
+
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(lineItems.map((_, i) => i)))
 
   const handleGroup = () => {
     if (!canGroup) return
@@ -85,48 +92,99 @@ export default function APGroupModal({ show, t, lineItems, groupByDescription, o
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
           >
             <div className="ap-group-modal-header">
-              <Layers size={16} />
-              <span>Group by description</span>
+              <span className="ap-group-modal-header-icon">
+                <Layers size={15} strokeWidth={2.25} />
+              </span>
+              <div className="ap-group-modal-header-text">
+                <span className="ap-group-modal-title">Group by description</span>
+                <span className="ap-group-modal-subtitle">
+                  Combine line items that share one tax profile into a single line.
+                </span>
+              </div>
             </div>
 
             <div className="ap-group-modal-body">
-              <label className="ap-group-modal-label" htmlFor="ap-group-desc">
-                Group description
-              </label>
-              <input
-                id="ap-group-desc"
-                className={`ap-group-modal-input${missingDesc ? ' ap-group-modal-input--error' : ''}`}
-                value={desc}
-                onChange={e => setDesc(e.target.value)}
-                placeholder="Describe the grouped line..."
-                autoComplete="off"
-                autoFocus
-              />
-              {missingDesc && (
-                <div className="ap-group-modal-warn">
-                  Please enter a description before grouping.
-                </div>
-              )}
-
-              <div className="ap-group-modal-hint">
-                Select items to combine — they must share the same tax profile.
+              <div className="ap-group-modal-list-head">
+                <span className="ap-group-modal-list-head-label">Select items to combine</span>
+                {lineItems.length > 0 && (
+                  <button type="button" className="ap-group-modal-selectall" onClick={toggleAll}>
+                    {allSelected ? 'Clear all' : 'Select all'}
+                  </button>
+                )}
               </div>
 
-              <div className="ap-group-modal-list">
-                {lineItems.map((item, i) => (
-                  <label key={i} className="ap-group-modal-row">
-                    <input type="checkbox" checked={selected.has(i)} onChange={() => toggle(i)} />
-                    <span className="ap-group-modal-row-desc">
-                      {item.description || `(item ${i + 1})`}
+              <div className="ap-group-modal-list" role="group" aria-label="Line items">
+                {lineItems.length === 0 && (
+                  <div className="ap-group-modal-empty">No line items to group.</div>
+                )}
+                {lineItems.map((item, i) => {
+                  const isSelected = selected.has(i)
+                  const conflict = isSelected && mixed
+                  const cls = [
+                    'ap-group-modal-row',
+                    isSelected && 'is-selected',
+                    conflict && 'is-conflict',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')
+                  return (
+                    <label key={i} className={cls}>
+                      <input
+                        type="checkbox"
+                        className="ap-group-modal-check"
+                        checked={isSelected}
+                        onChange={() => toggle(i)}
+                      />
+                      <span className="ap-group-modal-row-desc">
+                        {item.description || `(item ${i + 1})`}
+                      </span>
+                      <span className="ap-group-modal-row-profile">{profileLabel(item)}</span>
+                      <span className="ap-group-modal-row-amt">
+                        {fmt(parseNum(item.lineTotal))}
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+
+              <div className="ap-group-modal-summary" data-state={mixed ? 'error' : 'ok'}>
+                {selected.size < 2 ? (
+                  <span className="ap-group-modal-summary-hint">
+                    {needMoreItems ? t.warnSelectMore : 'Select at least two items.'}
+                  </span>
+                ) : mixed ? (
+                  <span className="ap-group-modal-summary-hint ap-group-modal-summary-hint--error">
+                    {t.groupSameProfile}
+                  </span>
+                ) : (
+                  <>
+                    <span className="ap-group-modal-summary-meta">
+                      <strong>{selected.size}</strong> items
+                      {sharedProfile && (
+                        <span className="ap-group-modal-summary-profile">{sharedProfile}</span>
+                      )}
                     </span>
-                    <span className="ap-group-modal-row-profile">{profileLabel(item)}</span>
-                    <span className="ap-group-modal-row-amt">{fmt(parseNum(item.lineTotal))}</span>
-                  </label>
-                ))}
+                    <span className="ap-group-modal-summary-total">{fmt(combinedTotal)}</span>
+                  </>
+                )}
               </div>
 
-              {needMoreItems && <div className="ap-group-modal-warn">{t.warnSelectMore}</div>}
-              {mixed && <div className="ap-group-modal-warn">{t.groupSameProfile}</div>}
+              <div className="ap-group-modal-field">
+                <label className="ap-group-modal-label" htmlFor="ap-group-desc">
+                  Name the grouped line
+                </label>
+                <input
+                  id="ap-group-desc"
+                  className={`ap-group-modal-input${missingDesc ? ' ap-group-modal-input--error' : ''}`}
+                  value={desc}
+                  onChange={e => setDesc(e.target.value)}
+                  placeholder="e.g. ค่าบำรุงรักษาระบบ (รวม)"
+                  autoComplete="off"
+                />
+                {missingDesc && (
+                  <div className="ap-group-modal-warn">Enter a name for the combined line.</div>
+                )}
+              </div>
             </div>
 
             <div className="ap-group-modal-footer">
@@ -139,7 +197,7 @@ export default function APGroupModal({ show, t, lineItems, groupByDescription, o
                 disabled={!canGroup}
                 onClick={handleGroup}
               >
-                Group{selected.size > 0 ? ` (${selected.size})` : ''}
+                Group{selected.size > 0 ? ` ${selected.size}` : ''}
               </button>
             </div>
           </motion.div>

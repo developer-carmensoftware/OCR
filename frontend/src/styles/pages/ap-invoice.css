@@ -364,56 +364,92 @@
 .ap-group-modal {
   display: flex;
   flex-direction: column;
-  width: min(520px, 100%);
-  max-height: 80vh;
+  width: min(540px, 100%);
+  max-height: min(85vh, 720px);
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xl);
   overflow: hidden;
 }
+
+/* Header — icon chip + title/subtitle, mirroring the app's modal headers. */
 .ap-group-modal-header {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.85rem 1rem;
-  font-weight: 600;
-  color: var(--text);
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 1.1rem 1.25rem;
   border-bottom: 1px solid var(--border);
 }
+.ap-group-modal-header-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: var(--primary-light);
+  color: var(--primary);
+}
+.ap-group-modal-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.ap-group-modal-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  line-height: 1.2;
+}
+.ap-group-modal-subtitle {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-3);
+  text-wrap: pretty;
+}
+
 .ap-group-modal-body {
-  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 1rem 1.25rem 1.1rem;
   overflow-y: auto;
 }
-.ap-group-modal-label {
-  display: block;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text);
-  margin-bottom: 0.35rem;
+
+/* List header — section label + select-all affordance. */
+.ap-group-modal-list-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
 }
-.ap-group-modal-input {
-  width: 100%;
-  padding: 0.5rem 0.65rem;
-  background: var(--card-bg);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  font-size: 0.9rem;
-  transition: border-color 0.15s var(--ease);
-}
-.ap-group-modal-input--error {
-  border-color: var(--danger, #e53e3e) !important;
-}
-.ap-group-modal-input:focus {
-  outline: none;
-  border-color: var(--primary);
-}
-.ap-group-modal-hint {
-  margin: 0.75rem 0 0.4rem;
-  font-size: 0.78rem;
+.ap-group-modal-list-head-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--text-3);
 }
+.ap-group-modal-selectall {
+  padding: 0.15rem 0.35rem;
+  margin: -0.15rem -0.35rem;
+  border: none;
+  background: none;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--primary);
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  transition: background-color 0.12s var(--ease);
+}
+.ap-group-modal-selectall:hover {
+  background: var(--primary-light);
+}
+
 .ap-group-modal-list {
   display: flex;
   flex-direction: column;
@@ -421,17 +457,27 @@
   border-radius: var(--radius-md);
   overflow: hidden;
 }
+.ap-group-modal-empty {
+  padding: 1.25rem;
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--text-3);
+}
 .ap-group-modal-row {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto 1fr auto minmax(86px, auto);
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.45rem 0.65rem;
+  gap: 0.7rem;
+  padding: 0.55rem 0.7rem;
   border-bottom: 1px solid var(--border);
   cursor: pointer;
   font-size: 0.85rem;
-  color: var(--text);
-  transition: background-color 0.12s var(--ease);
+  line-height: 1.35;
+  color: var(--text-2);
+  background: var(--card-bg);
+  transition:
+    background-color 0.12s var(--ease),
+    box-shadow 0.12s var(--ease);
 }
 .ap-group-modal-row:last-child {
   border-bottom: none;
@@ -441,22 +487,153 @@
     background: var(--gray-50);
   }
 }
+.ap-group-modal-row.is-selected {
+  background: var(--primary-light);
+  color: var(--text);
+}
+.ap-group-modal-row.is-selected .ap-group-modal-row-desc {
+  font-weight: 600;
+}
+/* Selected rows carry a thin inset rail so the highlight reads as "chosen", not "hovered". */
+.ap-group-modal-row.is-selected {
+  box-shadow: inset 2px 0 0 var(--primary);
+}
+.ap-group-modal-row.is-conflict {
+  background: var(--rose-light);
+  box-shadow: inset 2px 0 0 var(--rose);
+}
+.ap-group-modal-check {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+  cursor: pointer;
+  flex: none;
+}
+.ap-group-modal-row.is-conflict .ap-group-modal-check {
+  accent-color: var(--rose);
+}
 .ap-group-modal-row-desc {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .ap-group-modal-row-profile {
-  font-size: 0.72rem;
-  color: var(--text-3);
+  justify-self: start;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-sm);
+  background: var(--gray-100);
+  border: 1px solid var(--border);
   font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  letter-spacing: -0.01em;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.ap-group-modal-row.is-conflict .ap-group-modal-row-profile {
+  background: var(--card-bg);
+  border-color: var(--rose-mid);
+  color: var(--rose);
 }
 .ap-group-modal-row-amt {
   font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.82rem;
   text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Live summary strip — the running readout of what the merge will produce. */
+.ap-group-modal-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 2.4rem;
+  margin-top: 0.65rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--gray-50);
+}
+.ap-group-modal-summary[data-state='error'] {
+  border-color: var(--rose-mid);
+  background: var(--rose-light);
+}
+.ap-group-modal-summary-hint {
+  font-size: 0.8rem;
+  color: var(--text-3);
+}
+.ap-group-modal-summary-hint--error {
+  color: var(--rose);
+  font-weight: 500;
+}
+.ap-group-modal-summary-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--text-2);
+}
+.ap-group-modal-summary-meta strong {
+  color: var(--text);
+  font-weight: 700;
+}
+.ap-group-modal-summary-profile {
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  color: var(--text-3);
+}
+.ap-group-modal-summary-total {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.ap-group-modal-field {
+  margin-top: 0.9rem;
+}
+.ap-group-modal-label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 0.4rem;
+}
+.ap-group-modal-input {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  background: var(--card-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+  transition:
+    border-color 0.15s var(--ease),
+    box-shadow 0.15s var(--ease);
+}
+.ap-group-modal-input::placeholder {
+  color: var(--text-4);
+}
+.ap-group-modal-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-glow);
+}
+.ap-group-modal-input--error {
+  border-color: var(--rose);
+}
+.ap-group-modal-input--error:focus {
+  box-shadow: 0 0 0 3px var(--rose-light);
 }
 .ap-group-modal-warn {
-  margin-top: 0.6rem;
+  margin-top: 0.45rem;
   font-size: 0.78rem;
   color: var(--rose);
 }
@@ -464,8 +641,9 @@
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
-  padding: 0.75rem 1rem;
+  padding: 0.85rem 1.25rem;
   border-top: 1px solid var(--border);
+  background: var(--gray-50);
 }
 
 .ap-review-table tfoot td {
