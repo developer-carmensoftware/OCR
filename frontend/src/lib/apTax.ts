@@ -1,7 +1,25 @@
 import { parseNum, fmt, round2 } from './format'
 import type { APLineItem } from '../hooks/ap-invoice/useAPExtraction'
+import type { TaxProfileItem } from './api/carmen'
 
 export type APTaxType = 'Include' | 'Exclude' | 'None'
+
+// Resolve a line's Tax Profile code from its rate. Among profiles that share the rate, prefer
+// the vendor's default profile (Carmen profiles carry only a rate — same-rate profiles are
+// otherwise indistinguishable, so the bare first-match picks an arbitrary GL/tax-report bucket).
+// Returns '' when no profile defines the rate — the caller keeps the line's rate and surfaces the
+// unmatched-rate warning rather than rewriting a valid rate to the vendor default.
+export function resolveTaxProfileForRate(
+  rate: number,
+  taxProfiles: TaxProfileItem[],
+  vendorDefaultCode?: string
+): string {
+  if (vendorDefaultCode) {
+    const vr = taxProfiles.find(p => p.code === vendorDefaultCode)?.rate
+    if (vr != null && Math.abs(vr - rate) < 0.01) return vendorDefaultCode
+  }
+  return taxProfiles.find(p => p.rate != null && Math.abs(p.rate - rate) < 0.01)?.code || ''
+}
 
 // Single source of truth for the per-row Include / Exclude / None tax formula. Derives
 // lineSubTotal / taxAmt / lineTotal from qty, unitPrice, discount, the row's taxType and taxPct.

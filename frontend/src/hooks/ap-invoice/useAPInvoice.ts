@@ -8,7 +8,7 @@ import { useAPExtraction } from './useAPExtraction'
 import type { APLineItem } from './useAPExtraction'
 import { useAPVendor } from './useAPVendor'
 import { useAPValidation, reconcileRows } from './useAPValidation'
-import { recalcRow, syncLineTotals } from '../../lib/apTax'
+import { recalcRow, syncLineTotals, resolveTaxProfileForRate } from '../../lib/apTax'
 import { buildGroupedRow, groupByTaxProfile, allSameProfile } from '../../lib/apGroup'
 import { useAPSubmission } from './useAPSubmission'
 import { fetchTaxProfiles } from '../../lib/api/carmen'
@@ -66,21 +66,23 @@ export function useAPInvoice() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step])
 
-  // Auto-match each taxable line's Tax Profile to its extracted rate. On an exact rate match the
-  // code is set (totals already correct). When NO profile defines the line's rate, the extracted
-  // rate is kept and the profile is left blank — we never silently rewrite a valid rate (e.g. 10%)
-  // to the vendor default; the UI surfaces an "unmatched rate" warning instead. None lines are left
-  // untouched. The `changed` flag prevents a render loop: unresolvable lines stay as-is.
+  // Auto-match each taxable line's Tax Profile to its extracted rate, preferring the vendor's
+  // default profile among same-rate profiles (resolveTaxProfileForRate). When NO profile defines
+  // the line's rate, the extracted rate is kept and the profile is left blank — we never silently
+  // rewrite a valid rate (e.g. 10%) to the vendor default; the UI surfaces an "unmatched rate"
+  // warning instead. None lines are left untouched. Rows the user has manually edited
+  // (_taxProfileTouched) are skipped so the choice sticks. The effect re-runs once the vendor
+  // resolves (its default profile lands) and upgrades untouched lines from the arbitrary
+  // first-match to the vendor's profile. The `changed` flag prevents a render loop.
+  const vendorTaxProfile = vendor.systemVendor.taxProfileCode1
   useEffect(() => {
     if (!taxProfiles.length) return
-    const rateOf = (code: string) => taxProfiles.find(p => p.code === code)?.rate ?? null
-    const codeForRate = (rate: number) =>
-      taxProfiles.find(p => p.rate != null && Math.abs(p.rate - rate) < 0.01)?.code || ''
 
     extraction.setLineItems(prev => {
       if (!prev.length) return prev
       let changed = false
       const next = prev.map(it => {
+        if (it._taxProfileTouched) return it
         if (it.taxType === 'None') {
           if (it.taxProfileCode1 !== '') {
             changed = true
@@ -89,24 +91,17 @@ export function useAPInvoice() {
           return it
         }
         const rate = parseNum(it.taxPct)
-        // Keep an already-set profile when its rate still matches the line.
-        if (it.taxProfileCode1) {
-          const existingRate = rateOf(it.taxProfileCode1)
-          if (existingRate != null && Math.abs(existingRate - rate) < 0.01) {
-            return it
-          }
-        }
-        const matchCode = codeForRate(rate)
-        if (it.taxProfileCode1 !== matchCode) {
+        const desired = resolveTaxProfileForRate(rate, taxProfiles, vendorTaxProfile)
+        if (it.taxProfileCode1 !== desired) {
           changed = true
-          return { ...it, taxProfileCode1: matchCode }
+          return { ...it, taxProfileCode1: desired }
         }
         return it
       })
       return changed ? next : prev
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taxProfiles, extraction.lineItems.length])
+  }, [taxProfiles, extraction.lineItems.length, vendorTaxProfile])
 
   const confirmMapping = () => {
     const mappedValues = Object.values(extraction.fieldMappings)

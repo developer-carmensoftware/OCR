@@ -25,6 +25,10 @@ export interface APLineItem {
   accountCode?: string
   _suggestDept?: string
   _suggestAcc?: string
+  // Transient: set when the user manually edits this row's Tax Profile / Tax% / Tax Type so the
+  // auto-match effect never clobbers the choice. Stored as a string ('1') to fit the index
+  // signature; never sent to Carmen (buildInvoicePayload uses an explicit key list).
+  _taxProfileTouched?: string
   [key: string]: string | undefined
 }
 

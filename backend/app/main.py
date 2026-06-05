@@ -104,10 +104,10 @@ async def readiness():
 @app.get("/", tags=["Root"])
 async def root():
     return {
-        "app": "AI OCR Credit Card Statement Backend",
+        "app": "Carmen-AI Backend",
         "version": _cfg_early.app_version,
         "docs": "/docs",
-        "health": "/api/v1/ocr/health",
+        "health": "/api/v1/health",
     }
 
 
