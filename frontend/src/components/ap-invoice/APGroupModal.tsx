@@ -178,7 +178,7 @@ export default function APGroupModal({ show, t, lineItems, groupByDescription, o
                   className={`ap-group-modal-input${missingDesc ? ' ap-group-modal-input--error' : ''}`}
                   value={desc}
                   onChange={e => setDesc(e.target.value)}
-                  placeholder="e.g. ค่าบำรุงรักษาระบบ (รวม)"
+                  placeholder="e.g. Maintenance services (combined)"
                   autoComplete="off"
                 />
                 {missingDesc && (
