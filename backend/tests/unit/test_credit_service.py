@@ -170,7 +170,9 @@ class TestGrantCredits:
         db = AsyncMock()
         db.add = MagicMock()
         db.execute.return_value = _result(scalar=100)
-        balance = await credit_service.grant_credits(db, "t-001", 100, CreditLedgerReason.TOPUP, pack_code="p100")
+        balance = await credit_service.grant_credits(
+            db, "t-001", 100, CreditLedgerReason.TOPUP, pack_code="p100"
+        )
 
         assert balance == 100
         ledger = db.add.call_args[0][0]
