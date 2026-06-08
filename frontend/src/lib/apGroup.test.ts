@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { effectiveTaxProfile, allSameProfile, buildGroupedRow, groupByTaxProfile } from './apGroup'
+import { effectiveTaxProfile, buildGroupedRow, groupSelected } from './apGroup'
 import { parseNum } from './format'
 import type { APLineItem } from '../hooks/ap-invoice/useAPExtraction'
 
@@ -28,26 +28,6 @@ describe('effectiveTaxProfile', () => {
 
   it('returns empty string when the line has no profile', () => {
     expect(effectiveTaxProfile(row({ taxProfileCode1: '' }))).toBe('')
-  })
-})
-
-describe('allSameProfile', () => {
-  it('true when all share the same effective profile', () => {
-    expect(allSameProfile([row({}), row({ taxProfileCode1: 'VAT07' })])).toBe(true)
-  })
-
-  it('false when profiles differ', () => {
-    expect(
-      allSameProfile([row({ taxProfileCode1: 'VAT07' }), row({ taxProfileCode1: 'VAT10' })])
-    ).toBe(false)
-  })
-
-  it('treats a None line as a distinct profile', () => {
-    expect(allSameProfile([row({}), row({ taxType: 'None' })])).toBe(false)
-  })
-
-  it('empty list is trivially same', () => {
-    expect(allSameProfile([])).toBe(true)
   })
 })
 
@@ -89,51 +69,95 @@ describe('buildGroupedRow', () => {
     )
     expect(parseNum(merged.taxPct)).toBe(0)
   })
+
+  it('stamps _taxProfileTouched on the result', () => {
+    const merged = buildGroupedRow([row({})], 'Grouped')
+    expect(merged._taxProfileTouched).toBe('1')
+  })
 })
 
-describe('groupByTaxProfile', () => {
-  it('one bucket per distinct profile', () => {
-    const out = groupByTaxProfile([
-      row({ taxProfileCode1: 'VAT07' }),
-      row({ taxProfileCode1: 'VAT07' }),
-      row({ taxProfileCode1: 'VAT10' }),
-    ])
+describe('groupSelected', () => {
+  it('same profile → 1 bucket, row uses the supplied description', () => {
+    const out = groupSelected(
+      [row({ taxProfileCode1: 'VAT07' }), row({ taxProfileCode1: 'VAT07' })],
+      'Services'
+    )
+    expect(out).toHaveLength(1)
+    expect(out[0].bucket).toHaveLength(2)
+    expect(out[0].row.description).toBe('Services')
+  })
+
+  it('different profiles → 2 buckets, both rows share the same description', () => {
+    const out = groupSelected(
+      [row({ taxProfileCode1: 'VAT07' }), row({ taxProfileCode1: 'VAT10' })],
+      'Mixed services'
+    )
+    expect(out).toHaveLength(2)
+    expect(out[0].row.description).toBe('Mixed services')
+    expect(out[1].row.description).toBe('Mixed services')
+  })
+
+  it('different taxType (Include vs Exclude) same profile → 2 buckets', () => {
+    const out = groupSelected(
+      [
+        row({ taxType: 'Include', taxProfileCode1: 'VAT07' }),
+        row({ taxType: 'Exclude', taxProfileCode1: 'VAT07' }),
+      ],
+      'Combined'
+    )
     expect(out).toHaveLength(2)
   })
 
-  it('splits the same profile across Include vs Exclude', () => {
-    const out = groupByTaxProfile([
-      row({ taxProfileCode1: 'VAT07', taxType: 'Include' }),
-      row({ taxProfileCode1: 'VAT07', taxType: 'Exclude' }),
-    ])
+  it('None + profile → 2 buckets', () => {
+    const out = groupSelected(
+      [row({ taxType: 'None', taxProfileCode1: '' }), row({ taxProfileCode1: 'VAT07' })],
+      'Combined'
+    )
     expect(out).toHaveLength(2)
-  })
-
-  it('labels None and profile buckets, preserving first-seen order', () => {
-    const out = groupByTaxProfile([
-      row({ taxProfileCode1: 'VAT07' }),
-      row({ taxType: 'None', taxProfileCode1: '' }),
-    ])
-    expect(out[0].description).toBe('Items (VAT07)')
-    expect(out[1].description).toBe('Items (No VAT)')
   })
 
   it('totals are preserved across grouping', () => {
-    const out = groupByTaxProfile([
-      row({
-        taxProfileCode1: 'VAT07',
-        lineSubTotal: '100.00',
-        taxAmt: '7.00',
-        lineTotal: '107.00',
-      }),
-      row({
-        taxProfileCode1: 'VAT07',
-        lineSubTotal: '50.00',
-        taxAmt: '3.50',
-        lineTotal: '53.50',
-      }),
-    ])
+    const out = groupSelected(
+      [
+        row({
+          taxProfileCode1: 'VAT07',
+          lineSubTotal: '100.00',
+          taxAmt: '7.00',
+          lineTotal: '107.00',
+        }),
+        row({
+          taxProfileCode1: 'VAT07',
+          lineSubTotal: '50.00',
+          taxAmt: '3.50',
+          lineTotal: '53.50',
+        }),
+      ],
+      'Services'
+    )
     expect(out).toHaveLength(1)
-    expect(parseNum(out[0].lineTotal)).toBeCloseTo(160.5, 2)
+    expect(parseNum(out[0].row.lineTotal)).toBeCloseTo(160.5, 2)
+  })
+
+  it('each grouped row has _taxProfileTouched stamped', () => {
+    const out = groupSelected(
+      [row({ taxProfileCode1: 'VAT07' }), row({ taxProfileCode1: 'VAT10' })],
+      'Test'
+    )
+    expect(out[0].row._taxProfileTouched).toBe('1')
+    expect(out[1].row._taxProfileTouched).toBe('1')
+  })
+
+  it('preserves first-seen profile order', () => {
+    const out = groupSelected(
+      [
+        row({ taxProfileCode1: 'VAT10' }),
+        row({ taxProfileCode1: 'VAT07' }),
+        row({ taxProfileCode1: 'VAT10' }),
+      ],
+      'Test'
+    )
+    expect(out).toHaveLength(2)
+    expect(out[0].bucket[0].taxProfileCode1).toBe('VAT10')
+    expect(out[1].bucket[0].taxProfileCode1).toBe('VAT07')
   })
 })

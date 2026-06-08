@@ -1,26 +1,12 @@
 import { parseNum, fmt } from './format'
 import type { APLineItem } from '../hooks/ap-invoice/useAPExtraction'
 
-// Tax-type labels used when a group has no profile code to name it by.
-const TAX_TYPE_LABELS: Record<string, string> = {
-  Include: 'Items (Include VAT)',
-  Exclude: 'Items (Exclude VAT)',
-  None: 'Items (No VAT)',
-}
-
 // The grouping identity of a line: None lines collapse to 'None'; taxable lines are keyed by their
-// own profile code, falling back to the vendor default. Used both for the same-profile guard
-// (Group by description) and the Group-all bucket key.
-export function effectiveTaxProfile(item: APLineItem): string {
+// own profile code. Used as the bucket key in groupSelected.
+export function effectiveTaxProfile(item: APLineItem | undefined): string {
+  if (!item) return ''
   if ((item.taxType || 'Exclude') === 'None') return 'None'
   return item.taxProfileCode1 || ''
-}
-
-// True when every item shares the same effective tax profile.
-export function allSameProfile(items: APLineItem[]): boolean {
-  if (items.length === 0) return true
-  const first = effectiveTaxProfile(items[0])
-  return items.every(it => effectiveTaxProfile(it) === first)
 }
 
 // Builds a single line that represents the sum of `items`, keeping the row internally consistent
@@ -28,6 +14,7 @@ export function allSameProfile(items: APLineItem[]): boolean {
 //   afterDisc = qty * unitPrice - discountAmt
 //   Exclude/None: lineSubTotal = afterDisc
 //   Include:      lineTotal    = afterDisc
+// _taxProfileTouched is stamped so the auto-match effect never overwrites the grouped row's profile.
 export function buildGroupedRow(items: APLineItem[], desc: string): APLineItem {
   const sum = (key: keyof APLineItem) => items.reduce((s, it) => s + parseNum(it[key] as string), 0)
   const sumLineTotal = sum('lineTotal')
@@ -53,26 +40,26 @@ export function buildGroupedRow(items: APLineItem[], desc: string): APLineItem {
     taxProfileCode1: items[0]?.taxProfileCode1 || '',
     deptCode: '',
     accountCode: '',
+    _taxProfileTouched: '1',
   }
 }
 
-// A human label for an auto-generated group, named by its profile code when available.
-function groupLabel(item: APLineItem): string {
-  const taxType = item.taxType || 'Exclude'
-  if (taxType === 'None') return TAX_TYPE_LABELS.None
-  const profile = item.taxProfileCode1
-  return profile ? `Items (${profile})` : (TAX_TYPE_LABELS[taxType] ?? 'Items')
-}
-
-// Collapses `items` into one row per distinct (taxType, effectiveTaxProfile), preserving the order
-// in which each bucket is first seen.
-export function groupByTaxProfile(items: APLineItem[]): APLineItem[] {
+// Groups `selected` into one row per distinct (taxType, effectiveTaxProfile), all sharing `desc`.
+// Preserves first-seen order of profiles. Returns {row, bucket} pairs for the caller to build
+// groupSources. Mixed-profile selections naturally produce multiple rows, each with the same name.
+export function groupSelected(
+  selected: APLineItem[],
+  desc: string
+): { row: APLineItem; bucket: APLineItem[] }[] {
   const groups = new Map<string, APLineItem[]>()
-  for (const item of items) {
+  for (const item of selected) {
     const taxType = item.taxType || 'Exclude'
     const key = `${taxType}__${effectiveTaxProfile(item)}`
     if (!groups.has(key)) groups.set(key, [])
     groups.get(key)!.push(item)
   }
-  return Array.from(groups.values()).map(grp => buildGroupedRow(grp, groupLabel(grp[0])))
+  return Array.from(groups.values()).map(bucket => ({
+    row: buildGroupedRow(bucket, desc),
+    bucket,
+  }))
 }

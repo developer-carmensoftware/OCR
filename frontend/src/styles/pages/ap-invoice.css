@@ -414,14 +414,16 @@
 .ap-group-modal-body {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   min-height: 0;
   padding: 1rem 1.25rem 1.1rem;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 /* List header — section label + select-all affordance. */
 .ap-group-modal-list-head {
   display: flex;
+  flex: none;
   align-items: baseline;
   justify-content: space-between;
   gap: 0.75rem;
@@ -453,9 +455,12 @@
 .ap-group-modal-list {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  overflow: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .ap-group-modal-empty {
   padding: 1.25rem;
@@ -544,6 +549,7 @@
 /* Live summary strip — the running readout of what the merge will produce. */
 .ap-group-modal-summary {
   display: flex;
+  flex: none;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
@@ -564,6 +570,10 @@
 }
 .ap-group-modal-summary-hint--error {
   color: var(--rose);
+  font-weight: 500;
+}
+.ap-group-modal-summary-hint--info {
+  color: var(--text-2);
   font-weight: 500;
 }
 .ap-group-modal-summary-meta {
@@ -595,6 +605,7 @@
 }
 
 .ap-group-modal-field {
+  flex: none;
   margin-top: 0.9rem;
 }
 .ap-group-modal-label {

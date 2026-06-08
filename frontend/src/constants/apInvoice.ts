@@ -169,7 +169,6 @@ export const AP_I18N: APTranslations = {
   taxType: 'Tax Type',
   taxRateUnmatched: 'This rate has no matching Tax Profile — the document rate is kept as-is.',
   docInconsistent: 'Subtotal + Tax ≠ Grand Total — check the document figures',
-  groupSameProfile: 'All selected items must share the same tax profile.',
   taxAmt: 'Tax Amount',
   lineTotal: 'Line Total',
   backUpload: 'Back',

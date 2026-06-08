@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { AP_I18N } from '../../constants/apInvoice'
 import { showToast } from '../../lib/toast'
@@ -9,7 +9,7 @@ import type { APLineItem } from './useAPExtraction'
 import { useAPVendor } from './useAPVendor'
 import { useAPValidation, reconcileRows } from './useAPValidation'
 import { recalcRow, syncLineTotals, resolveTaxProfileForRate } from '../../lib/apTax'
-import { buildGroupedRow, groupByTaxProfile, allSameProfile } from '../../lib/apGroup'
+import { groupSelected } from '../../lib/apGroup'
 import { useAPSubmission } from './useAPSubmission'
 import { fetchTaxProfiles } from '../../lib/api/carmen'
 import type { TaxProfileItem } from '../../lib/api/carmen'
@@ -20,8 +20,10 @@ export function useAPInvoice() {
 
   const [step, setStep] = useState(1)
   const [modal, setModal] = useState<ModalState>({ show: false })
-  const [isGrouped, setIsGrouped] = useState(false)
-  const [originalLineItems, setOriginalLineItems] = useState<APLineItem[] | null>(null)
+  // groupSources maps a _groupId to the original source rows that were merged into that grouped row.
+  // Source rows are always flat (never contain other _groupId rows) so ungroup is always one level.
+  const [groupSources, setGroupSources] = useState<Record<string, APLineItem[]>>({})
+  const groupIdCounter = useRef(0)
   const [taxProfiles, setTaxProfiles] = useState<TaxProfileItem[]>([])
 
   const extraction = useAPExtraction({ t, setStep, setModal })
@@ -368,42 +370,61 @@ export function useAPInvoice() {
   const changeLineTaxType = (rowIndex: number, newTaxType: 'Include' | 'Exclude' | 'None') =>
     applyLineTax(rowIndex, { taxType: newTaxType })
 
-  // Group all: collapse into one row per distinct (taxType, tax profile). Reuses the same totals
-  // aggregation as Group by description via the shared apGroup helpers.
-  const groupAllItems = () => {
-    const items = extraction.lineItems
-    if (items.length <= 1) return
-    const grouped = groupByTaxProfile(items)
-    if (!originalLineItems) setOriginalLineItems(items)
-    extraction.setLineItems(grouped)
-    setIsGrouped(true)
-  }
+  // Derived: true when any row in the current list is a grouped row.
+  const isGrouped = extraction.lineItems.some(it => it._groupId)
 
-  // Group by description: merge the user-selected subset of rows into one row, named by the
-  // user-supplied description (set in the Group modal). All selected rows must share one tax profile
-  // — otherwise we reject with a toast and leave the table untouched. Partial and repeatable:
-  // unselected rows stay individual, and originalLineItems is captured only on the first grouping so
-  // Ungroup restores all.
+  // Derived: how many rows would be in the list after fully expanding all groups.
+  const originalLineItemsCount = extraction.lineItems.reduce(
+    (n, it) =>
+      n + (it._groupId && groupSources[it._groupId] ? groupSources[it._groupId].length : 1),
+    0
+  )
+
+  // Flatten the source rows behind each selected item. If an item is itself a grouped row we
+  // substitute its original source rows (making nested-group→merge always produce flat sources).
+  const flattenSources = (items: APLineItem[]): APLineItem[] =>
+    items.flatMap(it =>
+      it._groupId && groupSources[it._groupId] ? groupSources[it._groupId] : [it]
+    )
+
+  // Group by description: merge the user-selected rows into named grouped rows.
+  // Items may span multiple tax profiles — each distinct (taxType, profile) becomes one row,
+  // all sharing the user-supplied description. Leaves non-selected rows untouched.
   const groupByDescription = (indices: number[], description: string): boolean => {
     const items = extraction.lineItems
-    if (indices.length < 2) return false
-    const sorted = [...indices].sort((a, b) => a - b)
+    // Drop duplicate / out-of-range indices: the modal can hand us stale indices captured against a
+    // longer list (a previous group shrank it), and a bad index would surface undefined rows.
+    const sorted = [...new Set(indices)]
+      .filter(i => i >= 0 && i < items.length)
+      .sort((a, b) => a - b)
+    if (sorted.length < 2) return false
     const selected = sorted.map(i => items[i])
-    if (!allSameProfile(selected)) {
-      showToast(t.groupSameProfile, 'error')
-      return false
-    }
     const desc = description.trim() || items[sorted[0]]?.description || 'Grouped items'
-    const merged = buildGroupedRow(selected, desc)
+    const buckets = groupSelected(selected, desc)
+
+    const newSources: Record<string, APLineItem[]> = {}
+    const absorbedIds = new Set(selected.map(it => it._groupId).filter(Boolean) as string[])
+    const mergedRows: APLineItem[] = buckets.map(({ row, bucket }) => {
+      const gid = `g_${++groupIdCounter.current}`
+      newSources[gid] = flattenSources(bucket)
+      return { ...row, _uid: crypto.randomUUID(), _groupId: gid }
+    })
+
+    setGroupSources(prev => {
+      const next = { ...prev }
+      absorbedIds.forEach(id => delete next[id])
+      Object.assign(next, newSources)
+      return next
+    })
+
     const drop = new Set(sorted)
+    const insertAt = sorted[0]
     const next: APLineItem[] = []
     items.forEach((it, i) => {
-      if (i === sorted[0]) next.push(merged)
-      else if (!drop.has(i)) next.push(it)
+      if (i === insertAt) mergedRows.forEach(r => next.push(r))
+      if (!drop.has(i)) next.push(it)
     })
-    if (!originalLineItems) setOriginalLineItems(items)
     extraction.setLineItems(next)
-    setIsGrouped(true)
     return true
   }
 
@@ -428,19 +449,19 @@ export function useAPInvoice() {
   }
 
   const ungroupItems = () => {
-    if (originalLineItems) {
-      extraction.setLineItems(originalLineItems)
-      setOriginalLineItems(null)
-    }
-    setIsGrouped(false)
+    extraction.setLineItems(prev =>
+      prev.flatMap(it =>
+        it._groupId && groupSources[it._groupId] ? groupSources[it._groupId] : [it]
+      )
+    )
+    setGroupSources({})
   }
 
   const handleReset = () => {
     extraction.resetExtraction()
     vendor.resetVendor()
     submission.resetGLLoaded()
-    setIsGrouped(false)
-    setOriginalLineItems(null)
+    setGroupSources({})
     setStep(1)
     setModal({ show: false })
   }
@@ -528,9 +549,8 @@ export function useAPInvoice() {
     confirmPageSelection: extraction.confirmPageSelection,
     cancelPageSelection: extraction.cancelPageSelection,
     isGrouped,
-    groupAllItems,
     groupByDescription,
     ungroupItems,
-    originalLineItemsCount: originalLineItems?.length ?? 0,
+    originalLineItemsCount,
   }
 }

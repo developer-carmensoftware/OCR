@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Layers } from 'lucide-react'
 import { fmt, parseNum } from '../../constants/apInvoice'
-import { effectiveTaxProfile, allSameProfile } from '../../lib/apGroup'
+import { effectiveTaxProfile } from '../../lib/apGroup'
 import type { APLineItem } from '../../hooks/ap-invoice/useAPExtraction'
 
 interface Props {
@@ -14,11 +14,10 @@ interface Props {
   onClose: () => void
 }
 
-// Group-by-description dialog. Flow is select -> review -> name: the user ticks the rows to merge,
-// the summary strip shows the running count, shared tax profile, and combined total, then they name
-// the grouped line. Selected rows must share one tax profile; the Group button stays disabled (with
-// inline conflict highlighting) until the selection is valid, and the hook re-checks as a backstop.
-// Enter/exit motion mirrors CustomModal so every dialog in the app settles the same way.
+// Group-by-description dialog. The user selects rows to merge (any mix of tax profiles is allowed),
+// names the group, and clicks Group. Rows with different tax profiles each become their own merged
+// row — all sharing the same description. The summary strip adapts: same-profile = total; mixed =
+// info message "→ N rows (split by tax profile)". Enter/exit motion mirrors CustomModal.
 export default function APGroupModal({ show, t, lineItems, groupByDescription, onClose }: Props) {
   const [desc, setDesc] = useState('')
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -44,15 +43,24 @@ export default function APGroupModal({ show, t, lineItems, groupByDescription, o
     return p === 'None' ? 'No VAT' : p || '—'
   }
 
-  const selectedItems = [...selected].map(i => lineItems[i])
-  const mixed = selected.size >= 2 && !allSameProfile(selectedItems)
-  const missingDesc = desc.trim().length === 0 && selected.size >= 2
-  const needMoreItems = selected.size === 1
-  const canGroup = desc.trim().length > 0 && selected.size >= 2 && !mixed
+  const profileKey = (it: APLineItem) => `${it.taxType || 'Exclude'}__${effectiveTaxProfile(it)}`
+
+  // Map selected indices to rows, dropping any that fall outside the current list. A group commit
+  // shrinks `lineItems` and closes the modal in the same render, so a still-mounted body can briefly
+  // see stale indices; filtering here keeps effectiveTaxProfile/parseNum from hitting `undefined`.
+  const selectedItems = [...selected]
+    .map(i => lineItems[i])
+    .filter((it): it is APLineItem => it != null)
+  const count = selectedItems.length
+  const profileCount = new Set(selectedItems.map(profileKey)).size
+  const multiRow = count >= 2 && profileCount > 1
+  const missingDesc = desc.trim().length === 0 && count >= 2
+  const needMoreItems = count === 1
+  const canGroup = desc.trim().length > 0 && count >= 2
 
   const combinedTotal = selectedItems.reduce((sum, it) => sum + parseNum(it.lineTotal), 0)
-  const sharedProfile = selected.size >= 1 && !mixed ? profileLabel(selectedItems[0]) : null
-  const allSelected = lineItems.length > 0 && selected.size === lineItems.length
+  const sharedProfile = count >= 1 && !multiRow ? profileLabel(selectedItems[0]) : null
+  const allSelected = lineItems.length > 0 && count === lineItems.length
 
   const toggle = (i: number) =>
     setSelected(prev => {
@@ -98,7 +106,7 @@ export default function APGroupModal({ show, t, lineItems, groupByDescription, o
               <div className="ap-group-modal-header-text">
                 <span className="ap-group-modal-title">Group by description</span>
                 <span className="ap-group-modal-subtitle">
-                  Combine line items that share one tax profile into a single line.
+                  Combine selected items into one row per tax profile, sharing one name.
                 </span>
               </div>
             </div>
@@ -119,12 +127,7 @@ export default function APGroupModal({ show, t, lineItems, groupByDescription, o
                 )}
                 {lineItems.map((item, i) => {
                   const isSelected = selected.has(i)
-                  const conflict = isSelected && mixed
-                  const cls = [
-                    'ap-group-modal-row',
-                    isSelected && 'is-selected',
-                    conflict && 'is-conflict',
-                  ]
+                  const cls = ['ap-group-modal-row', isSelected && 'is-selected']
                     .filter(Boolean)
                     .join(' ')
                   return (
@@ -147,21 +150,23 @@ export default function APGroupModal({ show, t, lineItems, groupByDescription, o
                 })}
               </div>
 
-              <div className="ap-group-modal-summary" data-state={mixed ? 'error' : 'ok'}>
-                {selected.size < 2 ? (
+              <div className="ap-group-modal-summary" data-state="ok">
+                {count < 2 ? (
                   <span className="ap-group-modal-summary-hint">
                     {needMoreItems ? t.warnSelectMore : 'Select at least two items.'}
-                  </span>
-                ) : mixed ? (
-                  <span className="ap-group-modal-summary-hint ap-group-modal-summary-hint--error">
-                    {t.groupSameProfile}
                   </span>
                 ) : (
                   <>
                     <span className="ap-group-modal-summary-meta">
-                      <strong>{selected.size}</strong> items
-                      {sharedProfile && (
-                        <span className="ap-group-modal-summary-profile">{sharedProfile}</span>
+                      <strong>{count}</strong> items
+                      {multiRow ? (
+                        <span className="ap-group-modal-summary-hint--info">
+                          → {profileCount} rows (split by tax profile)
+                        </span>
+                      ) : (
+                        sharedProfile && (
+                          <span className="ap-group-modal-summary-profile">{sharedProfile}</span>
+                        )
                       )}
                     </span>
                     <span className="ap-group-modal-summary-total">{fmt(combinedTotal)}</span>
@@ -197,7 +202,7 @@ export default function APGroupModal({ show, t, lineItems, groupByDescription, o
                 disabled={!canGroup}
                 onClick={handleGroup}
               >
-                Group{selected.size > 0 ? ` ${selected.size}` : ''}
+                Group{count > 0 ? ` ${count}` : ''}
               </button>
             </div>
           </motion.div>

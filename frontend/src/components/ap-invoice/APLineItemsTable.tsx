@@ -29,7 +29,6 @@ interface Props {
     idx: number,
     patch: { taxType?: TaxTypeValue; taxProfileCode1?: string; taxPct?: string }
   ) => void
-  groupAllItems: () => void
   groupByDescription: (indices: number[], description: string) => boolean
   ungroupItems: () => void
   removeItem: (idx: number) => void
@@ -52,7 +51,6 @@ export default function APLineItemsTable({
   updateItem,
   blurLineItem,
   applyLineTax,
-  groupAllItems,
   groupByDescription,
   ungroupItems,
   removeItem,
@@ -165,9 +163,6 @@ export default function APLineItemsTable({
                   disabled={lineItems.length < 2}
                 >
                   Group by description
-                </button>
-                <button type="button" className="btn btn-sm btn-outline" onClick={groupAllItems}>
-                  Group all
                 </button>
               </>
             )}

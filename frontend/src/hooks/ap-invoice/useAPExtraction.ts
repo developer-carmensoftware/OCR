@@ -29,9 +29,12 @@ export interface APLineItem {
   accountCode?: string
   _suggestDept?: string
   _suggestAcc?: string
-  // Transient: set when the user manually edits this row's Tax Profile / Tax% / Tax Type so the
-  // auto-match effect never clobbers the choice. Stored as a string ('1') to fit the index
-  // signature; never sent to Carmen (buildInvoicePayload uses an explicit key list).
+  // Transient flags — never sent to Carmen (buildInvoicePayload uses an explicit key list).
+  // _uid: stable per-row identity assigned at extraction; preserved through edits and undo.
+  // _groupId: present only on grouped rows; key into the groupSources map in useAPInvoice.
+  // _taxProfileTouched: set when the user manually edits Tax Profile/Tax%/Type so auto-match skips it.
+  _uid?: string
+  _groupId?: string
   _taxProfileTouched?: string
   [key: string]: string | undefined
 }
@@ -159,7 +162,12 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
 
           const rawItems = (data.items as Array<Record<string, unknown>>) || []
           const formattedItems: APLineItem[] = rawItems.map(item => {
-            const ni: APLineItem = { ...(item as APLineItem), deptCode: '', accountCode: '' }
+            const ni: APLineItem = {
+              ...(item as APLineItem),
+              deptCode: '',
+              accountCode: '',
+              _uid: crypto.randomUUID(),
+            }
             Object.keys(ni).forEach(k => {
               if (isNumFld(k) && ni[k] !== undefined && ni[k] !== '') ni[k] = fmt(ni[k])
             })

@@ -67,7 +67,6 @@ interface Ctrl {
   setStep: (step: number) => void
   goToAccount: () => void
   isGrouped: boolean
-  groupAllItems: () => void
   groupByDescription: (indices: number[], description: string) => boolean
   ungroupItems: () => void
   originalLineItemsCount: number
@@ -129,7 +128,6 @@ export default function APReviewStep({ ctrl }: Props) {
     setStep,
     goToAccount,
     isGrouped,
-    groupAllItems,
     groupByDescription,
     ungroupItems,
     originalLineItemsCount,
@@ -241,7 +239,6 @@ export default function APReviewStep({ ctrl }: Props) {
         updateItem={updateItem}
         blurLineItem={blurLineItem}
         applyLineTax={applyLineTax}
-        groupAllItems={groupAllItems}
         groupByDescription={groupByDescription}
         ungroupItems={ungroupItems}
         removeItem={removeItem}
