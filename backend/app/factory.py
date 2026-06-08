@@ -59,13 +59,13 @@ _EXCEPTION_STATUS: list[tuple] = [
 
 def create_app(lifespan=None) -> FastAPI:
     app = FastAPI(
-        title="AI OCR Bank Receipt Backend",
+        title="AI Bank Receipt Backend",
         description=(
-            "ระบบ AI OCR สำหรับอ่านใบเสร็จรับเงิน/ใบกำกับภาษีจากธนาคาร "
+            "ระบบ AI สำหรับอ่านใบเสร็จรับเงิน/ใบกำกับภาษีจากธนาคาร "
             "แล้วดึงข้อมูลออกมาเป็น Structured Data อัตโนมัติ\n\n"
             "**Features:**\n"
             "- อัปโหลดรูปใบเสร็จ (JPG/PNG/PDF)\n"
-            "- AI OCR ดึงข้อความจากรูป\n"
+            "- AI ดึงข้อความจากรูป\n"
             "- AI Extraction แยกข้อมูลเป็น Structured Fields\n"
             "- Export เป็น CSV\n"
         ),
