@@ -18,7 +18,7 @@ from tests.conftest import set_context
 def _monthly_quota(limit=30):
     return _CachedQuota(
         id="quota-1",
-        period=QuotaPeriod.MONTHLY,
+        period=QuotaPeriod.LIFETIME,
         limit_value=float(limit),
         soft_warn_pct=0.8,
         is_hard=True,
