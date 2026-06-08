@@ -17,6 +17,7 @@ import { Toaster } from 'sonner'
 import { AuthProvider } from './contexts/AuthContext'
 import { AdminAuthProvider } from './contexts/AdminAuthContext'
 import ProtectedRoute from './components/common/ProtectedRoute'
+import { ConsentGate } from './components/common/ConsentGate'
 import AdminProtectedRoute from './components/admin/AdminProtectedRoute'
 import ErrorBoundary from './components/common/ErrorBoundary'
 import PageSkeleton from './components/common/PageSkeleton'
@@ -160,7 +161,9 @@ root.render(
           richColors
           theme="light"
         />
-        <Router />
+        <ConsentGate>
+          <Router />
+        </ConsentGate>
       </AdminAuthProvider>
     </AuthProvider>
   </ErrorBoundary>

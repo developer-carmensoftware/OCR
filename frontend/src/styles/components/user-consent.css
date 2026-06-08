@@ -1,0 +1,471 @@
+/* ═══════════════════════════════════════════
+   USER CONSENT MODAL
+   ═══════════════════════════════════════════ */
+
+.uc-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: oklch(0.08 0.02 258.7 / 0.78);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 1rem;
+}
+
+.uc-dialog {
+  background: var(--card-bg);
+  border-radius: var(--radius-lg);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 2px 8px rgba(15, 25, 60, 0.08),
+    0 12px 40px rgba(15, 25, 60, 0.14),
+    0 40px 80px rgba(15, 25, 60, 0.1);
+  width: 100%;
+  max-width: 580px;
+  max-height: 90vh;
+  max-height: 90svh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+/* ── Header ── */
+.uc-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.875rem;
+  padding: 1.25rem 1.25rem 1.125rem;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--gray-50);
+}
+
+.uc-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--primary-light);
+  color: var(--primary);
+  flex-shrink: 0;
+  margin-top: 1px;
+  box-shadow: var(--shadow-sm);
+}
+
+.uc-title {
+  flex: 1;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--text);
+  text-wrap: balance;
+  margin: 0;
+  padding-top: 2px;
+}
+
+.uc-lang-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.uc-lang-btn {
+  padding: 0.25rem 0.625rem;
+  border-radius: calc(var(--radius-sm) - 2px);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border: none;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+  background: transparent;
+  color: var(--text-4);
+  line-height: 1;
+}
+
+.uc-lang-btn.active {
+  background: var(--primary);
+  color: #fff;
+  box-shadow: var(--shadow-xs);
+}
+
+/* ── Body ── */
+.uc-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.125rem;
+  overscroll-behavior: contain;
+}
+
+.uc-body::-webkit-scrollbar {
+  width: 4px;
+}
+.uc-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.uc-body::-webkit-scrollbar-thumb {
+  background: var(--border-hi);
+  border-radius: 2px;
+}
+
+.uc-intro {
+  font-size: 0.875rem;
+  line-height: 1.7;
+  color: var(--text-2);
+  margin: 0;
+  text-wrap: pretty;
+}
+
+.uc-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.uc-section-heading {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.uc-section-body {
+  font-size: 0.875rem;
+  line-height: 1.65;
+  color: var(--text-2);
+  margin: 0;
+  text-wrap: pretty;
+}
+
+/* ── Icon bullets ── */
+.uc-icon-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.uc-icon-bullet {
+  display: flex;
+  gap: 0.625rem;
+  align-items: flex-start;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.uc-ibullet-icon {
+  flex-shrink: 0;
+  margin-top: 0.175em;
+}
+
+.uc-ibullet-icon--emerald {
+  color: var(--emerald);
+}
+.uc-ibullet-icon--rose {
+  color: var(--rose);
+}
+.uc-ibullet-icon--primary {
+  color: var(--primary);
+}
+
+.uc-bullet-highlight {
+  color: var(--rose);
+  font-weight: 600;
+}
+
+/* ── Callout ── */
+.uc-callout {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  background: oklch(0.4714 0.1794 258.7 / 0.06);
+  border: 1px solid oklch(0.4714 0.1794 258.7 / 0.2);
+  border-radius: var(--radius-md);
+  padding: 0.875rem 1rem;
+}
+
+.uc-callout-icon {
+  color: var(--primary);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.uc-callout-text {
+  font-size: 0.8125rem;
+  line-height: 1.65;
+  color: var(--primary-dark);
+  margin: 0;
+}
+
+/* ── Footer ── */
+.uc-footer {
+  border-top: 1px solid var(--border);
+  padding: 1rem 1.25rem;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  background: var(--gray-50);
+}
+
+/* ── Check area ── */
+.uc-check-area {
+  border: 1.5px solid var(--border-hi);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 0.875rem;
+  background: var(--card-bg);
+  transition:
+    background var(--dur-base) var(--ease),
+    border-color var(--dur-base) var(--ease);
+}
+
+.uc-check-area:has(input:checked) {
+  background: var(--primary-light);
+  border-color: var(--primary-mid);
+}
+
+.uc-check-row {
+  display: flex;
+  gap: 0.625rem;
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.uc-check-row input[type='checkbox'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 17px;
+  height: 17px;
+  border: 1.5px solid var(--border-hi);
+  border-radius: 4px;
+  background: var(--card-bg);
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-top: 0.175em;
+  position: relative;
+  transition:
+    background var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+
+.uc-check-row input[type='checkbox']:checked {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.uc-check-row input[type='checkbox']:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1.5px;
+  width: 6px;
+  height: 9px;
+  border: 2px solid #fff;
+  border-top: none;
+  border-left: none;
+  transform: rotate(45deg);
+}
+
+.uc-check-row input[type='checkbox']:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.uc-check-label {
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--text-2);
+  user-select: none;
+  cursor: pointer;
+}
+
+.uc-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.uc-back-btn {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-3);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.375rem 0;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  transition: color var(--dur-fast) var(--ease);
+  line-height: 1.4;
+}
+
+.uc-back-btn:hover {
+  color: var(--text-2);
+}
+
+.uc-back-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+.uc-confirm-btn {
+  padding: 0.5rem 1.75rem;
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: var(--primary);
+  color: #fff;
+  min-width: 110px;
+  transition:
+    background var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease),
+    transform 100ms var(--ease);
+  box-shadow: var(--shadow-primary);
+  line-height: 1.4;
+}
+
+.uc-confirm-btn:not(:disabled):hover {
+  background: var(--primary-hover);
+  box-shadow:
+    var(--shadow-primary),
+    0 0 0 3px var(--primary-glow);
+}
+
+.uc-confirm-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.uc-confirm-btn:not(:disabled):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.uc-confirm-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+/* ── Mobile: full-screen ── */
+/* A consent wall has no exit — a partial sheet leaves dark void above.
+   Full-screen is the correct pattern for non-dismissible legal flows. */
+@media (max-width: 480px) {
+  .uc-overlay {
+    padding: 0;
+    align-items: stretch;
+    justify-content: stretch;
+    /* no blur needed — nothing visible behind a full-screen dialog */
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: oklch(0.08 0.02 258.7 / 0.92);
+  }
+
+  .uc-dialog {
+    width: 100%;
+    max-width: 100%;
+    height: 100vh;
+    height: 100svh;
+    max-height: 100vh;
+    max-height: 100svh;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+  }
+
+  /* Header: compact, no icon, full bleed */
+  .uc-header {
+    padding: 0.875rem 1rem 0.75rem;
+    /* top safe area for notch / status bar */
+    padding-top: calc(0.875rem + env(safe-area-inset-top, 0px));
+    gap: 0.5rem;
+  }
+
+  .uc-icon {
+    display: none;
+  }
+
+  .uc-title {
+    font-size: 0.875rem;
+    line-height: 1.4;
+  }
+
+  /* Body: fills all remaining space, scrolls freely */
+  .uc-body {
+    padding: 1rem;
+    gap: 0.875rem;
+  }
+
+  .uc-intro {
+    font-size: 0.8125rem;
+    line-height: 1.65;
+  }
+
+  .uc-section-body,
+  .uc-icon-bullet {
+    font-size: 0.8125rem;
+  }
+
+  .uc-callout-text {
+    font-size: 0.75rem;
+  }
+
+  /* Footer: pinned to bottom, safe area for home indicator */
+  .uc-footer {
+    padding: 0.875rem 1rem;
+    padding-bottom: calc(0.875rem + env(safe-area-inset-bottom, 0px));
+    gap: 0.625rem;
+  }
+
+  /* Actions: Confirm full-width, back link centered below */
+  .uc-actions {
+    flex-direction: column-reverse;
+    gap: 0.375rem;
+    align-items: stretch;
+  }
+
+  .uc-confirm-btn {
+    width: 100%;
+    min-width: 0;
+    padding: 0.6875rem 1rem;
+  }
+
+  .uc-back-btn {
+    justify-content: center;
+    padding: 0.25rem 0;
+    font-size: 0.75rem;
+  }
+}
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .uc-check-area,
+  .uc-check-row input[type='checkbox'],
+  .uc-confirm-btn {
+    transition: none !important;
+  }
+}
