@@ -69,8 +69,6 @@ function buildInvoicePayload(
       InvdPrice: netPrice.toFixed(2),
       InvdTaxA1: taxAmt.toFixed(2),
       InvdTaxC1: taxAmt.toFixed(2),
-      InvdTaxA2: '0.00',
-      InvdTaxC2: '0.00',
       NetAmt: netAmt.toFixed(2),
       NetBaseAmt: netAmt.toFixed(2),
       UnPaid: total.toFixed(2),
@@ -79,7 +77,6 @@ function buildInvoicePayload(
       InvdBTaxCr1: systemVendor.vatCrAccCode || '',
       InvdBTaxDr: item.accountCode || '',
       InvdT1Dr: systemVendor.vat1DrAccCode || '',
-      InvdT2Dr: '',
       InvdTaxT1:
         taxAmt === 0 || item.taxType === 'None'
           ? 'None'
@@ -87,17 +84,12 @@ function buildInvoicePayload(
             ? 'Include'
             : 'Add',
       InvdTaxR1: taxRate.toFixed(2),
-      InvdTaxT2: 'None',
-      InvdTaxR2: '0.00',
       DimList: {},
       LastModified: now,
       InvdBTaxCr1DeptCode: systemVendor.crDeptCode || '',
       InvdT1DrDeptCode: systemVendor.vat1DrDeptCode || '',
-      InvdT2DrDeptCode: '',
       TaxProfileCode1: resolvedProfile,
-      TaxProfileCode2: null,
       Tax1Overwrite: tax1Overwrite,
-      Tax2Overwrite: false,
     }
   })
 
