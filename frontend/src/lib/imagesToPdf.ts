@@ -1,5 +1,3 @@
-import { PDFDocument } from 'pdf-lib'
-
 export const MAX_MULTI_IMAGES = 5
 
 // Max image dimension before embedding — keeps payload small.
@@ -59,6 +57,7 @@ export async function imagesToPdf(files: File[]): Promise<File> {
     throw new Error(`Too many images — maximum ${MAX_MULTI_IMAGES}`)
   }
 
+  const { PDFDocument } = await import('pdf-lib')
   const pdfDoc = await PDFDocument.create()
 
   for (const file of files) {

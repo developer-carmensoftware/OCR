@@ -15,7 +15,10 @@ export default defineConfig({
                 manualChunks: {
                     'react-vendor': ['react', 'react-dom'],
                     'framer': ['framer-motion'],
-                    'ui': ['lucide-react', 'sonner'],
+                    'lucide': ['lucide-react'],
+                    'sonner': ['sonner'],
+                    'recharts': ['recharts'],
+                    'pdf-lib': ['pdf-lib'],
                 },
             },
         },
