@@ -230,6 +230,19 @@ export function useOcrExtraction({
             clearFiles()
           },
         })
+      } else if (e.status === 408) {
+        showModal({
+          title: 'Extraction Timed Out',
+          message:
+            'The server took too long to process this document. This may happen with large or complex documents — please try again.',
+          type: 'warning',
+          confirmText: 'Try Again',
+          onConfirm: () => {
+            closeModal()
+            setStep(1)
+            clearFiles()
+          },
+        })
       } else if (e.status === 429) {
         showModal({
           title: 'Too Many Requests',

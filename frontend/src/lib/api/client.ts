@@ -66,3 +66,16 @@ export const apiFetch = createApiClient({
   unauthorizedEvent: 'ocr:unauthorized',
   onUnauthorized: clearToken,
 })
+
+/**
+ * Wrap a fetch call with a hard timeout. Returns an AbortController so callers
+ * can cancel early; always call clearTimeout on the returned timer handle.
+ * Usage:
+ *   const { signal, clear } = fetchTimeout(150_000)
+ *   try { await apiFetch(url, { ..., signal }) } finally { clear() }
+ */
+export function fetchTimeout(ms: number): { signal: AbortSignal; clear: () => void } {
+  const controller = new AbortController()
+  const id = setTimeout(() => controller.abort(), ms)
+  return { signal: controller.signal, clear: () => clearTimeout(id) }
+}

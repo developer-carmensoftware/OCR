@@ -521,6 +521,8 @@ export function useAPInvoice() {
     invoiceSeq: submission.invoiceSeq,
     isDuplicate: extraction.isDuplicate,
     pdfInfoLoading: extraction.pdfInfoLoading,
+    imageMerging: extraction.imageMerging,
+    imageCount: extraction.imageCount,
     pdfSelector: extraction.pdfSelector,
     selectedPageThumbs: extraction.selectedPageThumbs,
     confirmPageSelection: extraction.confirmPageSelection,

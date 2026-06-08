@@ -23,8 +23,8 @@ _RETRYABLE = (APITimeoutError, APIConnectionError, RateLimitError)
 _MAX_ATTEMPTS = 3
 
 # Hard timeout per LLM call. Vision extractions typically finish in 2-10s;
-# 60s leaves headroom for slow models while preventing indefinite worker stall.
-_LLM_TIMEOUT_SECONDS = 60.0
+# 120s leaves headroom for multi-page documents while preventing indefinite worker stall.
+_LLM_TIMEOUT_SECONDS = 120.0
 
 # Global cap on in-flight LLM calls per process. Without this, a burst of
 # requests floods OpenRouter (triggering 429s + retry storms) and balloons

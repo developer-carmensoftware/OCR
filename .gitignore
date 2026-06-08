@@ -4,6 +4,8 @@
 
 # Local test fixtures
 test-fixtures/
+backend/gen_test_invoice.py
+backend/test_invoice_*.png
 
 # Python
 __pycache__/

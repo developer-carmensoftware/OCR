@@ -53,6 +53,8 @@ export default function CreditCardOCR() {
     resetAll,
     pdfSelector,
     pdfInfoLoading,
+    imageMerging,
+    imageCount,
     selectedPageThumbs,
     confirmPageSelection,
     cancelPageSelection,
@@ -145,9 +147,10 @@ export default function CreditCardOCR() {
               <UploadSection
                 onFileChange={handleFileChange}
                 fileInputRef={fileInputRef}
-                fileName={files.length > 1 ? `${files.length} files selected` : files[0]?.name}
-                multiple
+                fileName={files[0]?.name}
+                fileCount={imageCount || undefined}
                 pdfInfoLoading={pdfInfoLoading}
+                imageMerging={imageMerging}
               />
             )}
             {step === 1 && loading && (

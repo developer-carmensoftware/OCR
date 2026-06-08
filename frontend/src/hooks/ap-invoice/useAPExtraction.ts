@@ -1,13 +1,16 @@
 import { useState, useRef, useEffect } from 'react'
 import type React from 'react'
-import { apiFetch } from '../../lib/api/client'
+import { apiFetch, fetchTimeout } from '../../lib/api/client'
 import { getAPVendorMapping } from '../../lib/api/config'
 import { getPdfInfo, getFilePreview } from '../../lib/api/ocr'
+import { imagesToPdf, MAX_MULTI_IMAGES } from '../../lib/imagesToPdf'
 import { toast } from '../../lib/toast'
 import { fmt } from '../../lib/format'
 import { EMPTY_HEADER, DEFAULT_MAPPINGS } from '../../constants/apInvoice'
 import type { APInvoiceHeader, APColumnKey, APFieldKey } from '../../constants/apInvoice'
 import type { ModalState } from '../../types/modal'
+
+const EXTRACT_TIMEOUT_MS = 150_000
 
 export interface APLineItem {
   category?: string
@@ -70,6 +73,8 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
   const [elapsed, setElapsed] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [pdfInfoLoading, setPdfInfoLoading] = useState(false)
+  const [imageMerging, setImageMerging] = useState(false)
+  const [imageCount, setImageCount] = useState(0)
   const [pdfSelector, setPdfSelector] = useState<{
     thumbnails: string[]
     pendingFile: File
@@ -99,6 +104,7 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
   const [isDuplicate, setIsDuplicate] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const previewUrlRef = useRef<string | null>(null)
+  const imageThumbsRef = useRef<string[]>([])
 
   const runOCR = async (fileObj: File, selectedPages?: number[]) => {
     setLoading(true)
@@ -114,10 +120,24 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
           if (selectedPages && selectedPages.length > 0) {
             formData.append('selected_pages', JSON.stringify(selectedPages))
           }
-          const res = await apiFetch('/api/v1/ap-invoice/extract', {
-            method: 'POST',
-            body: formData,
-          })
+          const { signal, clear } = fetchTimeout(EXTRACT_TIMEOUT_MS)
+          let res: Response
+          try {
+            res = await apiFetch('/api/v1/ap-invoice/extract', {
+              method: 'POST',
+              body: formData,
+              signal,
+            })
+          } catch (fetchErr) {
+            const fe = fetchErr as Error
+            if (fe.name === 'AbortError') {
+              const timeoutErr = new Error('HTTP 408')
+              throw timeoutErr
+            }
+            throw fetchErr
+          } finally {
+            clear()
+          }
           if (!res.ok) throw new Error(`HTTP ${res.status}`)
           const data = (await res.json()) as Record<string, unknown>
 
@@ -224,6 +244,24 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
             })
             return
           }
+          if (e.message.includes('408')) {
+            toast.error('Extraction timed out')
+            setModal({
+              show: true,
+              type: 'warning',
+              title: 'Extraction Timed Out',
+              message:
+                'The server took too long to process this document. This may happen with large or complex documents — please try again.',
+              confirmText: 'Try Again',
+              onConfirm: () => {
+                setModal({ show: false })
+                setStep(1)
+                setFile(null)
+                setPreviewUrl(null)
+              },
+            })
+            return
+          }
           if (e.message.includes('429')) {
             toast.error('Too many requests')
             setModal({
@@ -266,13 +304,63 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement> | { target: { files: FileList | File[] | null } }
   ) => {
-    const f = e.target.files?.[0]
-    if (!f) return
+    const rawFiles = e.target.files
+    if (!rawFiles || rawFiles.length === 0) return
     // Ignore a new selection while we're still analysing a PDF or extracting.
-    if (pdfInfoLoading || loading) return
+    if (pdfInfoLoading || loading || imageMerging) return
+
+    const fileArray = Array.from(rawFiles) as File[]
+    const allImages = fileArray.every(
+      f => f.type.startsWith('image/') && !f.name.toLowerCase().endsWith('.pdf')
+    )
+
+    // Multiple images → merge into one PDF, skip page-selector
+    if (fileArray.length > 1 && allImages) {
+      if (fileArray.length > MAX_MULTI_IMAGES) {
+        toast.error(`Too many images — maximum ${MAX_MULTI_IMAGES} at once`)
+        return
+      }
+      // Revoke previous preview + thumb URLs
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
+      previewUrlRef.current = null
+      imageThumbsRef.current.forEach(u => URL.revokeObjectURL(u))
+
+      // Create object URLs for each image to use as thumbnails in DocumentPreview
+      const thumbUrls = fileArray.map(f => URL.createObjectURL(f))
+      imageThumbsRef.current = thumbUrls
+      setSelectedPageThumbs(
+        thumbUrls.map((thumb, i) => ({ thumb, pageNum: i + 1, label: `Image ${i + 1}` }))
+      )
+
+      setFile(fileArray[0])
+      setPreviewUrl(null) // no single-image preview; thumbnails take over
+      setPreviewType('image') // keep type so DocumentPreview knows context
+      setImageCount(fileArray.length)
+      setImageMerging(true)
+      imagesToPdf(fileArray)
+        .then(merged => {
+          setFile(merged)
+          runOCR(merged)
+        })
+        .catch(() => {
+          toast.error('Could not merge images — please try again')
+          imageThumbsRef.current.forEach(u => URL.revokeObjectURL(u))
+          imageThumbsRef.current = []
+          setSelectedPageThumbs(null)
+          setFile(null)
+          setPreviewUrl(null)
+          setPreviewType(null)
+          setImageCount(0)
+        })
+        .finally(() => setImageMerging(false))
+      return
+    }
+
+    const f = fileArray[0]
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
     previewUrlRef.current = null
     setFile(f)
+    setImageCount(0)
 
     const name = f.name.toLowerCase()
     const isPdf = name.endsWith('.pdf') || f.type === 'application/pdf'
@@ -326,6 +414,8 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
   const cancelPageSelection = () => {
     setPdfSelector(null)
     setSelectedPageThumbs(null)
+    imageThumbsRef.current.forEach(u => URL.revokeObjectURL(u))
+    imageThumbsRef.current = []
     if (previewUrlRef.current) {
       URL.revokeObjectURL(previewUrlRef.current)
       previewUrlRef.current = null
@@ -341,6 +431,8 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
       URL.revokeObjectURL(previewUrlRef.current)
       previewUrlRef.current = null
     }
+    imageThumbsRef.current.forEach(u => URL.revokeObjectURL(u))
+    imageThumbsRef.current = []
     setFile(null)
     setPreviewUrl(null)
     setPreviewType(null)
@@ -352,6 +444,8 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
     setStatus('')
     setError(null)
     setPdfInfoLoading(false)
+    setImageMerging(false)
+    setImageCount(0)
     setPdfSelector(null)
     setSelectedPageThumbs(null)
   }
@@ -397,6 +491,8 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
     apInvoiceId,
     isDuplicate,
     pdfInfoLoading,
+    imageMerging,
+    imageCount,
     pdfSelector,
     selectedPageThumbs,
     confirmPageSelection,

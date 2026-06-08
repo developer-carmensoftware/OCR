@@ -1,4 +1,8 @@
-import { apiFetch } from './client'
+import { apiFetch, fetchTimeout } from './client'
+
+// Backend LLM timeout is 120s × up to 3 attempts. We cap the client at 150s so
+// the user gets a clear error instead of waiting indefinitely.
+const EXTRACT_TIMEOUT_MS = 150_000
 
 export interface ExtractedRow {
   Transaction: string
@@ -72,8 +76,21 @@ export async function extractFromFile(
   }
 
   const url = bankType ? `/api/v1/ocr/extract?bank_type=${bankType}` : '/api/v1/ocr/extract'
-
-  const res = await apiFetch(url, { method: 'POST', body: formData })
+  const { signal, clear } = fetchTimeout(EXTRACT_TIMEOUT_MS)
+  let res: Response
+  try {
+    res = await apiFetch(url, { method: 'POST', body: formData, signal })
+  } catch (err) {
+    const e = err as Error
+    if (e.name === 'AbortError') {
+      const timeout: ApiError = new Error('Extraction timed out — please try again')
+      timeout.status = 408
+      throw timeout
+    }
+    throw err
+  } finally {
+    clear()
+  }
 
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { detail?: string }

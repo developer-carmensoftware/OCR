@@ -14,6 +14,7 @@ import {
 interface SelectedPageThumb {
   thumb: string
   pageNum: number
+  label?: string
 }
 
 interface Props {
@@ -93,9 +94,11 @@ export default function DocumentPreview({
     pinchRef.current = null
   }, [])
 
+  const showSelectedThumbs = !!selectedPageThumbs?.length
+
   useEffect(() => {
     const el = frameRef.current
-    if (!el || previewType !== 'image') return
+    if (!el || previewType !== 'image' || showSelectedThumbs) return
     el.addEventListener('wheel', handleWheel, { passive: false })
     el.addEventListener('touchstart', handleTouchStart, { passive: true })
     el.addEventListener('touchmove', handleTouchMove, { passive: false })
@@ -106,7 +109,14 @@ export default function DocumentPreview({
       el.removeEventListener('touchmove', handleTouchMove)
       el.removeEventListener('touchend', handleTouchEnd)
     }
-  }, [handleWheel, handleTouchStart, handleTouchMove, handleTouchEnd, previewType])
+  }, [
+    handleWheel,
+    handleTouchStart,
+    handleTouchMove,
+    handleTouchEnd,
+    previewType,
+    showSelectedThumbs,
+  ])
 
   const onMouseDown = (e: React.MouseEvent) => {
     if (zoom <= 1) return
@@ -134,9 +144,9 @@ export default function DocumentPreview({
 
   const isImage = previewType === 'image'
   const isPdf = previewType === 'pdf'
-  const showSelectedThumbs = isPdf && !!selectedPageThumbs?.length
-  const hasToolbar = isImage || (isPdf && !showSelectedThumbs)
-  const cursor = isImage ? (isDragging ? 'grabbing' : zoom > 1 ? 'grab' : 'zoom-in') : 'default'
+  const hasToolbar = !showSelectedThumbs && (isImage || isPdf)
+  const imageActive = isImage && !showSelectedThumbs
+  const cursor = imageActive ? (isDragging ? 'grabbing' : zoom > 1 ? 'grab' : 'zoom-in') : 'default'
 
   return (
     <div className="preview-column">
@@ -202,13 +212,13 @@ export default function DocumentPreview({
       <div
         ref={frameRef}
         className={`preview-frame${hasToolbar ? ' preview-frame--docked' : ''}`}
-        onMouseDown={isImage ? onMouseDown : undefined}
-        onMouseMove={isImage ? onMouseMove : undefined}
-        onMouseUp={isImage ? onMouseUp : undefined}
-        onMouseLeave={isImage ? onMouseUp : undefined}
+        onMouseDown={imageActive ? onMouseDown : undefined}
+        onMouseMove={imageActive ? onMouseMove : undefined}
+        onMouseUp={imageActive ? onMouseUp : undefined}
+        onMouseLeave={imageActive ? onMouseUp : undefined}
         style={{ cursor }}
       >
-        {isImage && previewUrl && (
+        {imageActive && previewUrl && (
           <div className="prev-img-wrap">
             <img
               src={previewUrl}
@@ -227,7 +237,7 @@ export default function DocumentPreview({
         )}
         {showSelectedThumbs && (
           <div className="prev-page-thumbs">
-            {selectedPageThumbs!.map(({ thumb, pageNum }) => (
+            {selectedPageThumbs!.map(({ thumb, pageNum, label }) => (
               <div key={pageNum} className="prev-page-thumb-item">
                 <img
                   src={thumb}
@@ -235,7 +245,7 @@ export default function DocumentPreview({
                   className="prev-page-thumb-img"
                   draggable={false}
                 />
-                <div className="prev-page-thumb-label">Page {pageNum}</div>
+                <div className="prev-page-thumb-label">{label ?? `Page ${pageNum}`}</div>
               </div>
             ))}
           </div>

@@ -5,8 +5,9 @@ interface Props {
   onFileChange: (e: React.ChangeEvent<HTMLInputElement> | { target: { files: FileList } }) => void
   fileInputRef: React.RefObject<HTMLInputElement | null>
   fileName?: string
-  multiple?: boolean
+  fileCount?: number
   pdfInfoLoading?: boolean
+  imageMerging?: boolean
 }
 
 const INSTRUCTIONS = [
@@ -20,17 +21,29 @@ export default function UploadSection({
   onFileChange,
   fileInputRef,
   fileName,
-  multiple,
+  fileCount,
   pdfInfoLoading,
+  imageMerging,
 }: Props) {
+  const busy = pdfInfoLoading || imageMerging
+
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
-    if (e.dataTransfer.files?.[0]) {
+    if (e.dataTransfer.files?.length) {
       const fakeEvent = { target: { files: e.dataTransfer.files } }
       onFileChange(fakeEvent)
       if (fileInputRef.current) fileInputRef.current.files = e.dataTransfer.files
     }
   }
+
+  const displayLabel =
+    fileCount && fileCount > 1
+      ? `${fileCount} images selected`
+      : fileName
+        ? fileName.length > 32
+          ? fileName.slice(0, 29) + '…'
+          : fileName
+        : 'Click or drag files here'
 
   return (
     <div style={{ maxWidth: 560, margin: '0 auto' }}>
@@ -38,10 +51,10 @@ export default function UploadSection({
         className="panel-card upload-drop"
         style={{
           minHeight: 260,
-          cursor: pdfInfoLoading ? 'default' : 'pointer',
-          pointerEvents: pdfInfoLoading ? 'none' : undefined,
+          cursor: busy ? 'default' : 'pointer',
+          pointerEvents: busy ? 'none' : undefined,
         }}
-        onClick={() => !pdfInfoLoading && fileInputRef.current?.click()}
+        onClick={() => !busy && fileInputRef.current?.click()}
         onDragOver={e => e.preventDefault()}
         onDrop={handleDrop}
       >
@@ -51,11 +64,23 @@ export default function UploadSection({
           aria-label="Upload document file"
           ref={fileInputRef}
           accept="image/*,application/pdf,.heic,.heif"
-          multiple={multiple}
+          multiple
           onChange={e => onFileChange(e)}
           style={{ display: 'none' }}
         />
-        {pdfInfoLoading ? (
+        {imageMerging ? (
+          <>
+            <div className="upload-icon" style={{ color: 'var(--primary)' }}>
+              <Loader2 size={40} className="animate-spin" />
+            </div>
+            <div className="upload-label" style={{ color: 'var(--primary)' }}>
+              Merging {fileCount} images…
+            </div>
+            <div className="upload-hint">
+              Creating PDF from images, this will only take a moment
+            </div>
+          </>
+        ) : pdfInfoLoading ? (
           <>
             <div className="upload-icon" style={{ color: 'var(--primary)' }}>
               <Loader2 size={40} className="animate-spin" />
@@ -70,14 +95,10 @@ export default function UploadSection({
             <div className="upload-icon">
               <UploadCloud size={40} />
             </div>
-            <div className="upload-label">
-              {fileName
-                ? fileName.length > 32
-                  ? fileName.slice(0, 29) + '…'
-                  : fileName
-                : 'Click or drag file here'}
+            <div className="upload-label">{displayLabel}</div>
+            <div className="upload-hint">
+              Supports JPG · PNG · PDF · HEIC · Multiple images · up to 20 MB
             </div>
-            <div className="upload-hint">Supports JPG · PNG · PDF · HEIC · up to 20 MB</div>
             <button
               type="button"
               className="btn btn-primary"

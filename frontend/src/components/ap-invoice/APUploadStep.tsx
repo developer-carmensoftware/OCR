@@ -7,6 +7,8 @@ interface Props {
   fileInputRef: React.RefObject<HTMLInputElement | null>
   onFileChange: (e: React.ChangeEvent<HTMLInputElement> | { target: { files: File[] } }) => void
   pdfInfoLoading?: boolean
+  imageMerging?: boolean
+  fileCount?: number
 }
 
 const INSTRUCTIONS = [
@@ -16,9 +18,18 @@ const INSTRUCTIONS = [
   { n: 4, c: 'teal', text: 'Map GL accounts for each item, then click Generate Invoice' },
 ]
 
-export default function APUploadStep({ t, fileInputRef, onFileChange, pdfInfoLoading }: Props) {
+export default function APUploadStep({
+  t,
+  fileInputRef,
+  onFileChange,
+  pdfInfoLoading,
+  imageMerging,
+  fileCount,
+}: Props) {
   const [isDragOver, setIsDragOver] = useState(false)
   const [isDropping, setIsDropping] = useState(false)
+
+  const busy = pdfInfoLoading || imageMerging
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
@@ -37,33 +48,46 @@ export default function APUploadStep({ t, fileInputRef, onFileChange, pdfInfoLoa
     setIsDropping(true)
     // Brief press-feedback before handing off — Emil's "received" beat
     window.setTimeout(() => setIsDropping(false), 140)
-    const f = e.dataTransfer.files[0]
-    if (f) onFileChange({ target: { files: [f] } })
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length) onFileChange({ target: { files } })
   }
 
   return (
     <div style={{ maxWidth: 560, margin: '0 auto' }}>
       <div
-        className={`panel-card upload-drop${!pdfInfoLoading && isDragOver ? ' dragover' : ''}${!pdfInfoLoading && isDropping ? ' dropping' : ''}`}
+        className={`panel-card upload-drop${!busy && isDragOver ? ' dragover' : ''}${!busy && isDropping ? ' dropping' : ''}`}
         style={{
           minHeight: 260,
-          cursor: pdfInfoLoading ? 'default' : 'pointer',
-          pointerEvents: pdfInfoLoading ? 'none' : undefined,
+          cursor: busy ? 'default' : 'pointer',
+          pointerEvents: busy ? 'none' : undefined,
         }}
-        onClick={() => !pdfInfoLoading && fileInputRef.current?.click()}
-        onDragOver={pdfInfoLoading ? undefined : handleDragOver}
-        onDragLeave={pdfInfoLoading ? undefined : handleDragLeave}
-        onDrop={pdfInfoLoading ? undefined : handleDrop}
+        onClick={() => !busy && fileInputRef.current?.click()}
+        onDragOver={busy ? undefined : handleDragOver}
+        onDragLeave={busy ? undefined : handleDragLeave}
+        onDrop={busy ? undefined : handleDrop}
       >
         <input
           type="file"
           aria-label="Upload invoice file"
           ref={fileInputRef}
           accept="image/*,application/pdf,.heic,.heif"
+          multiple
           onChange={e => onFileChange(e)}
           style={{ display: 'none' }}
         />
-        {pdfInfoLoading ? (
+        {imageMerging ? (
+          <>
+            <div className="upload-icon" style={{ color: 'var(--primary)' }}>
+              <Loader2 size={40} className="animate-spin" />
+            </div>
+            <div className="upload-label" style={{ color: 'var(--primary)' }}>
+              Merging {fileCount} images…
+            </div>
+            <div className="upload-hint">
+              Creating PDF from images, this will only take a moment
+            </div>
+          </>
+        ) : pdfInfoLoading ? (
           <>
             <div className="upload-icon" style={{ color: 'var(--primary)' }}>
               <Loader2 size={40} className="animate-spin" />

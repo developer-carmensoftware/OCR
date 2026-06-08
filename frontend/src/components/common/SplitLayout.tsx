@@ -5,6 +5,7 @@ import DocumentPreview from './DocumentPreview'
 interface SelectedPageThumb {
   thumb: string
   pageNum: number
+  label?: string
 }
 
 interface Props {
