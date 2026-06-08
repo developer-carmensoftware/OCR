@@ -2,9 +2,9 @@
 Credit Service — top-up credit balance, ledger, and document consumption.
 
 Billing model:
-  - Every tenant has a free monthly document quota (the MONTHLY/CALLS rule in
-    `quotas`, limit 30). It auto-resets each month via the quota period_key.
-  - When the free quota is exhausted, a document consumes one persistent top-up
+  - Every tenant has a free trial quota (the LIFETIME/CALLS rule in `quotas`,
+    limit 30). It never resets — used once, then gone.
+  - When the free trial is exhausted, a document consumes one persistent top-up
     credit (table `tenant_credits`). Credits never expire — they roll over.
 
   consume_document()   — free-quota-first, then credits; atomic; → InsufficientCredits
@@ -103,7 +103,7 @@ async def consume_document(increment: int = 1) -> None:
         return
     try:
         rules = await _get_cached_quota_rules(tenant_id)
-        monthly = next((q for q in rules if q.period == QuotaPeriod.MONTHLY), None)
+        monthly = next((q for q in rules if q.period == QuotaPeriod.LIFETIME), None)
         if monthly is None or monthly.limit_value <= 0:
             return  # no enforceable free quota → fail-open (legacy no-quota behavior)
 

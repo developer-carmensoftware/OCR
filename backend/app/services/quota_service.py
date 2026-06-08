@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import async_session
 from app.exceptions import RateLimitExceeded
 from app.models.enums import QuotaMetric, QuotaPeriod
-from app.models.orm import Plan, Quota, QuotaUsage
+from app.models.orm import Quota, QuotaUsage
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +57,8 @@ def _period_key(period: QuotaPeriod) -> str:
         return now.strftime("%Y-%m-%d")
     if period == QuotaPeriod.MONTHLY:
         return now.strftime("%Y-%m")
+    if period == QuotaPeriod.LIFETIME:
+        return "free_trial"
     return str(now.year)
 
 
@@ -97,21 +99,22 @@ async def _get_cached_quota_rules(tenant_id: str) -> list[_CachedQuota]:
         return cached[0] if cached else []
 
 
-async def upsert_tenant_quota(db: AsyncSession, tenant_id: str, plan_code: str) -> None:
+async def upsert_tenant_quota(db: AsyncSession, tenant_id: str, plan_code: str = "") -> None:
     """
-    Ensure the tenant has a monthly calls quota matching their plan.
-    Reads limit from the plans table — no hardcoded values.
-    Called on every login so plan changes take effect automatically.
+    Ensure the tenant has a lifetime free-trial calls quota (30 total, never resets).
+    Called on every login so the quota row is created on first login automatically.
+
+    # DISABLED: monthly reset path kept for reference — do not re-enable without a migration
+    # plan_row = (await db.execute(select(Plan).where(Plan.code == plan_code))).scalar_one_or_none()
+    # if plan_row is None: ...
+    # ... upsert MONTHLY quota from plan.monthly_call_limit ...
     """
     import uuid as _uuid
 
-    plan_row = (await db.execute(select(Plan).where(Plan.code == plan_code))).scalar_one_or_none()
-    if plan_row is None:
-        logger.warning("Plan '%s' not found in plans table — quota not set", plan_code)
-        return
-    limit = plan_row.monthly_call_limit
+    _FREE_TRIAL_LIMIT = 30
 
-    quota = (
+    # Soft-delete any active MONTHLY quota (disabled path) so it doesn't interfere
+    monthly = (
         await db.execute(
             select(Quota).where(
                 Quota.tenant_id == tenant_id,
@@ -121,32 +124,40 @@ async def upsert_tenant_quota(db: AsyncSession, tenant_id: str, plan_code: str) 
             )
         )
     ).scalar_one_or_none()
+    if monthly is not None:
+        monthly.deleted_at = _utcnow()  # type: ignore[assignment]
+        _QUOTA_RULES_CACHE.pop(tenant_id, None)
+        logger.info("Disabled monthly quota for tenant=%s (migrated to lifetime)", tenant_id)
 
-    if quota is None:
+    # Ensure a LIFETIME free-trial quota exists
+    lifetime = (
+        await db.execute(
+            select(Quota).where(
+                Quota.tenant_id == tenant_id,
+                Quota.period == QuotaPeriod.LIFETIME,
+                Quota.metric == QuotaMetric.CALLS,
+                Quota.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+
+    if lifetime is None:
         db.add(
             Quota(
                 id=str(_uuid.uuid4()),
                 tenant_id=tenant_id,
-                period=QuotaPeriod.MONTHLY,
+                period=QuotaPeriod.LIFETIME,
                 metric=QuotaMetric.CALLS,
-                limit_value=limit,
+                limit_value=_FREE_TRIAL_LIMIT,
                 soft_warn_pct=0.80,
                 is_hard=True,
                 is_custom=False,
             )
         )
         _QUOTA_RULES_CACHE.pop(tenant_id, None)
-        logger.info("Created quota: tenant=%s plan=%s limit=%d/month", tenant_id, plan_code, limit)
-    elif not quota.is_custom and float(cast(Decimal, quota.limit_value)) != limit:
-        quota.limit_value = Decimal(cast(int, limit))  # type: ignore[assignment]
-        _QUOTA_RULES_CACHE.pop(tenant_id, None)
-        logger.info(
-            "Updated quota: tenant=%s plan=%s → limit=%d/month", tenant_id, plan_code, limit
-        )
-    elif quota.is_custom:
-        logger.debug(
-            "Skipped quota sync: tenant=%s has custom limit=%s", tenant_id, quota.limit_value
-        )
+        logger.info("Created free-trial quota: tenant=%s limit=%d", tenant_id, _FREE_TRIAL_LIMIT)
+    else:
+        logger.debug("Free-trial quota already exists: tenant=%s", tenant_id)
 
 
 def _evaluate_quotas(

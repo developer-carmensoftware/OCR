@@ -88,7 +88,7 @@ export default function PaymentButton() {
                 ) : usage ? (
                   <div className="hm-plan-card">
                     <div className="hm-plan-row">
-                      <span className="hm-plan-row-label">Free used this month</span>
+                      <span className="hm-plan-row-label">Free trial used</span>
                       <span className="hm-plan-row-value">
                         {usage.monthly_calls} / {usage.max_monthly_calls}
                       </span>

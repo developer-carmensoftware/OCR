@@ -48,8 +48,9 @@ class PromptStatus(str, Enum):
 
 class QuotaPeriod(str, Enum):
     DAILY = "daily"
-    MONTHLY = "monthly"
+    MONTHLY = "monthly"  # kept (disabled) — monthly reset rows still in DB
     YEARLY = "yearly"
+    LIFETIME = "lifetime"  # free trial, never resets
 
 
 class QuotaMetric(str, Enum):

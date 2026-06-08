@@ -153,7 +153,7 @@ async def exchange_sso_token(request: Request, body: ExchangeRequest):
     _exchange_limiter.check(request)
 
     token = body.token.strip()
-    bu = body.bu.strip()
+    bu = body.bu.strip().lower()
 
     if not token or not bu:
         raise HTTPException(status_code=400, detail="token and bu are required")
@@ -252,7 +252,7 @@ async def get_usage(_session: SessionInfo = Depends(get_current_session)):
         (
             q
             for q in summary.get("quotas", [])
-            if q["period"] == "monthly" and q["metric"] == "calls"
+            if q["period"] == "lifetime" and q["metric"] == "calls"
         ),
         None,
     )

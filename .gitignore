@@ -6,6 +6,7 @@
 test-fixtures/
 backend/gen_test_invoice.py
 backend/test_invoice_*.png
+backend/topup_test.py
 
 # Python
 __pycache__/

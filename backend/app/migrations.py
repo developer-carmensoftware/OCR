@@ -352,6 +352,40 @@ async def _m214_drop_ap_vendor_field_config(conn: AsyncConnection) -> None:
     logger.info("  ~ dropped ap_vendor_field_config (engine reverted)")
 
 
+async def _m215_quota_monthly_to_free_trial(conn: AsyncConnection) -> None:
+    """
+    Switch from monthly-reset quota to a one-time lifetime free trial (30 calls).
+
+    The monthly quota auto-reset by returning a new period_key each month.
+    The new LIFETIME quota uses fixed period_key "free_trial" — it never resets.
+    Existing monthly usage is NOT carried over; every tenant starts with a fresh
+    30-call free trial.
+
+    Monthly quota rows are soft-deleted (not dropped) so historical data is preserved.
+    """
+    # Step 1: soft-delete all active monthly/calls quotas
+    await conn.execute(
+        text(
+            "UPDATE quotas SET deleted_at = NOW() "
+            "WHERE period = 'monthly' AND metric = 'calls' "
+            "AND is_custom = false AND deleted_at IS NULL"
+        )
+    )
+
+    # Step 2: insert a lifetime/calls quota for each tenant that had a monthly one
+    await conn.execute(
+        text(
+            "INSERT INTO quotas (id, tenant_id, period, metric, limit_value, "
+            "soft_warn_pct, is_hard, is_custom, created_at) "
+            "SELECT gen_random_uuid(), tenant_id, 'lifetime', 'calls', 30, 0.80, true, false, NOW() "
+            "FROM quotas "
+            "WHERE period = 'monthly' AND metric = 'calls' AND deleted_at IS NOT NULL "
+            "ON CONFLICT DO NOTHING"
+        )
+    )
+    logger.info("  ~ quota migrated: monthly → lifetime free trial (30 calls, no reset)")
+
+
 _MIGRATIONS: list[tuple[str, Callable[[AsyncConnection], Awaitable[None]] | None]] = [
     # ── Squashed history markers ──────────────────────────────────────────────
     ("001_squashed_initial_schema", None),
@@ -374,4 +408,5 @@ _MIGRATIONS: list[tuple[str, Callable[[AsyncConnection], Awaitable[None]] | None
     ("212_ap_vendor_field_config_indexes", None),
     ("213_widen_vendor_tax_id", None),
     ("214_drop_ap_vendor_field_config", _m214_drop_ap_vendor_field_config),
+    ("215_quota_monthly_to_free_trial", _m215_quota_monthly_to_free_trial),
 ]
