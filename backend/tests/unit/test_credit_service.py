@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.exceptions import InsufficientCredits, ValidationError
-from app.models.enums import QuotaPeriod
+from app.models.enums import CreditLedgerReason, QuotaPeriod
 from app.models.orm import CreditLedger
 from app.services import credit_service
 from app.services.quota_service import _CachedQuota
@@ -170,12 +170,12 @@ class TestGrantCredits:
         db = AsyncMock()
         db.add = MagicMock()
         db.execute.return_value = _result(scalar=100)
-        balance = await credit_service.grant_credits(db, "t-001", 100, "topup", pack_code="p100")
+        balance = await credit_service.grant_credits(db, "t-001", 100, CreditLedgerReason.TOPUP, pack_code="p100")
 
         assert balance == 100
         ledger = db.add.call_args[0][0]
         assert ledger.delta == 100
-        assert ledger.reason == "topup"
+        assert ledger.reason == CreditLedgerReason.TOPUP
         assert ledger.pack_code == "p100"
 
     async def test_negative_result_raises(self):
@@ -183,5 +183,5 @@ class TestGrantCredits:
         db.add = MagicMock()
         db.execute.return_value = _result(scalar=-5)  # adjustment overdrew the balance
         with pytest.raises(ValidationError):
-            await credit_service.grant_credits(db, "t-001", -50, "admin_adjust")
+            await credit_service.grant_credits(db, "t-001", -50, CreditLedgerReason.ADMIN_ADJUST)
         db.add.assert_not_called()
