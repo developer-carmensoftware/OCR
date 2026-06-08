@@ -1,6 +1,6 @@
 import type React from 'react'
 import { useState } from 'react'
-import { UploadCloud, FolderOpen, Info } from 'lucide-react'
+import { UploadCloud, FolderOpen, Info, Loader2 } from 'lucide-react'
 
 interface Props {
   t: Record<string, string>
@@ -44,12 +44,16 @@ export default function APUploadStep({ t, fileInputRef, onFileChange, pdfInfoLoa
   return (
     <div style={{ maxWidth: 560, margin: '0 auto' }}>
       <div
-        className={`panel-card upload-drop${isDragOver ? ' dragover' : ''}${isDropping ? ' dropping' : ''}`}
-        style={{ minHeight: 260, cursor: 'pointer' }}
-        onClick={() => fileInputRef.current?.click()}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
+        className={`panel-card upload-drop${!pdfInfoLoading && isDragOver ? ' dragover' : ''}${!pdfInfoLoading && isDropping ? ' dropping' : ''}`}
+        style={{
+          minHeight: 260,
+          cursor: pdfInfoLoading ? 'default' : 'pointer',
+          pointerEvents: pdfInfoLoading ? 'none' : undefined,
+        }}
+        onClick={() => !pdfInfoLoading && fileInputRef.current?.click()}
+        onDragOver={pdfInfoLoading ? undefined : handleDragOver}
+        onDragLeave={pdfInfoLoading ? undefined : handleDragLeave}
+        onDrop={pdfInfoLoading ? undefined : handleDrop}
       >
         <input
           type="file"
@@ -59,28 +63,36 @@ export default function APUploadStep({ t, fileInputRef, onFileChange, pdfInfoLoa
           onChange={e => onFileChange(e)}
           style={{ display: 'none' }}
         />
-        <div className="upload-icon">
-          <UploadCloud size={40} />
-        </div>
-        <div className="upload-label">{t.uploadTitle}</div>
         {pdfInfoLoading ? (
-          <div className="upload-hint" style={{ color: 'var(--primary, #3b82f6)' }}>
-            Analyzing PDF…
-          </div>
+          <>
+            <div className="upload-icon" style={{ color: 'var(--primary)' }}>
+              <Loader2 size={40} className="animate-spin" />
+            </div>
+            <div className="upload-label" style={{ color: 'var(--primary)' }}>
+              Reading PDF pages…
+            </div>
+            <div className="upload-hint">Detecting page count, this will only take a moment</div>
+          </>
         ) : (
-          <div className="upload-hint">{t.uploadDesc}</div>
+          <>
+            <div className="upload-icon">
+              <UploadCloud size={40} />
+            </div>
+            <div className="upload-label">{t.uploadTitle}</div>
+            <div className="upload-hint">{t.uploadDesc}</div>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ marginTop: '1.5rem' }}
+              onClick={e => {
+                e.stopPropagation()
+                fileInputRef.current?.click()
+              }}
+            >
+              <FolderOpen size={14} /> {t.uploadBtn}
+            </button>
+          </>
         )}
-        <button
-          type="button"
-          className="btn btn-primary"
-          style={{ marginTop: '1.5rem' }}
-          onClick={e => {
-            e.stopPropagation()
-            fileInputRef.current?.click()
-          }}
-        >
-          <FolderOpen size={14} /> {t.uploadBtn}
-        </button>
       </div>
       <div className="panel-card" style={{ marginTop: '1rem' }}>
         <div className="field-label">

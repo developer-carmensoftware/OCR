@@ -74,6 +74,9 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
     thumbnails: string[]
     pendingFile: File
   } | null>(null)
+  const [selectedPageThumbs, setSelectedPageThumbs] = useState<
+    { thumb: string; pageNum: number }[] | null
+  >(null)
 
   useEffect(() => {
     if (!loading) {
@@ -315,12 +318,14 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
   const confirmPageSelection = (selectedPages: number[]) => {
     const sel = pdfSelector
     if (!sel) return
+    setSelectedPageThumbs(selectedPages.map(p => ({ thumb: sel.thumbnails[p], pageNum: p + 1 })))
     setPdfSelector(null)
     runOCR(sel.pendingFile, selectedPages)
   }
 
   const cancelPageSelection = () => {
     setPdfSelector(null)
+    setSelectedPageThumbs(null)
     if (previewUrlRef.current) {
       URL.revokeObjectURL(previewUrlRef.current)
       previewUrlRef.current = null
@@ -348,6 +353,7 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
     setError(null)
     setPdfInfoLoading(false)
     setPdfSelector(null)
+    setSelectedPageThumbs(null)
   }
 
   const updateHeader = (key: string, val: string) => setHeaderData(p => ({ ...p, [key]: val }))
@@ -392,6 +398,7 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
     isDuplicate,
     pdfInfoLoading,
     pdfSelector,
+    selectedPageThumbs,
     confirmPageSelection,
     cancelPageSelection,
     handleFileChange,

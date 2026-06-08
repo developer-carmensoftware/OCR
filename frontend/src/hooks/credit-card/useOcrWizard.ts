@@ -33,6 +33,9 @@ export function useOcrWizard() {
   const [carmenJvId, setCarmenJvId] = useState<string | null>(null)
   const [pdfSelector, setPdfSelector] = useState<PdfSelectorState | null>(null)
   const [pdfInfoLoading, setPdfInfoLoading] = useState(false)
+  const [selectedPageThumbs, setSelectedPageThumbs] = useState<
+    { thumb: string; pageNum: number }[] | null
+  >(null)
   // Guards against a second upload firing while we're still analysing the first
   // (state is async, so a ref is the only reliable in-flight flag inside the closure).
   const uploadBusyRef = useRef(false)
@@ -96,6 +99,7 @@ export function useOcrWizard() {
 
     fileUpload.handleFileChange(e as React.ChangeEvent<HTMLInputElement>, async fileArray => {
       extraction.resetExtractionState()
+      setSelectedPageThumbs(null)
       setStep(1)
 
       const firstFile = fileArray[0]
@@ -127,6 +131,9 @@ export function useOcrWizard() {
 
   function confirmPageSelection(selectedPages: number[]) {
     if (!pdfSelector) return
+    setSelectedPageThumbs(
+      selectedPages.map(p => ({ thumb: pdfSelector.thumbnails[p], pageNum: p + 1 }))
+    )
     const files = pdfSelector.pendingFiles
     setPdfSelector(null)
     extraction.processFile(files, selectedPages)
@@ -134,6 +141,7 @@ export function useOcrWizard() {
 
   function cancelPageSelection() {
     setPdfSelector(null)
+    setSelectedPageThumbs(null)
     fileUpload.clearFiles()
   }
 
@@ -164,6 +172,7 @@ export function useOcrWizard() {
     extraction.resetExtractionState()
     setJvRows([])
     setCarmenJvId(null)
+    setSelectedPageThumbs(null)
     closeModal()
   }
 
@@ -193,6 +202,7 @@ export function useOcrWizard() {
     closeModal,
     pdfSelector,
     pdfInfoLoading,
+    selectedPageThumbs,
     confirmPageSelection,
     cancelPageSelection,
     handleFileChange,

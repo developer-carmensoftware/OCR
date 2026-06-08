@@ -522,6 +522,7 @@ export function useAPInvoice() {
     isDuplicate: extraction.isDuplicate,
     pdfInfoLoading: extraction.pdfInfoLoading,
     pdfSelector: extraction.pdfSelector,
+    selectedPageThumbs: extraction.selectedPageThumbs,
     confirmPageSelection: extraction.confirmPageSelection,
     cancelPageSelection: extraction.cancelPageSelection,
     isGrouped,

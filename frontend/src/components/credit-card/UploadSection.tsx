@@ -1,5 +1,5 @@
 import React from 'react'
-import { UploadCloud, FolderOpen, Info } from 'lucide-react'
+import { UploadCloud, FolderOpen, Info, Loader2 } from 'lucide-react'
 
 interface Props {
   onFileChange: (e: React.ChangeEvent<HTMLInputElement> | { target: { files: FileList } }) => void
@@ -36,8 +36,12 @@ export default function UploadSection({
     <div style={{ maxWidth: 560, margin: '0 auto' }}>
       <div
         className="panel-card upload-drop"
-        style={{ minHeight: 260, cursor: 'pointer' }}
-        onClick={() => fileInputRef.current?.click()}
+        style={{
+          minHeight: 260,
+          cursor: pdfInfoLoading ? 'default' : 'pointer',
+          pointerEvents: pdfInfoLoading ? 'none' : undefined,
+        }}
+        onClick={() => !pdfInfoLoading && fileInputRef.current?.click()}
         onDragOver={e => e.preventDefault()}
         onDrop={handleDrop}
       >
@@ -51,34 +55,42 @@ export default function UploadSection({
           onChange={e => onFileChange(e)}
           style={{ display: 'none' }}
         />
-        <div className="upload-icon">
-          <UploadCloud size={40} />
-        </div>
-        <div className="upload-label">
-          {fileName
-            ? fileName.length > 32
-              ? fileName.slice(0, 29) + '…'
-              : fileName
-            : 'Click or drag file here'}
-        </div>
         {pdfInfoLoading ? (
-          <div className="upload-hint" style={{ color: 'var(--primary, #3b82f6)' }}>
-            Analyzing PDF…
-          </div>
+          <>
+            <div className="upload-icon" style={{ color: 'var(--primary)' }}>
+              <Loader2 size={40} className="animate-spin" />
+            </div>
+            <div className="upload-label" style={{ color: 'var(--primary)' }}>
+              Reading PDF pages…
+            </div>
+            <div className="upload-hint">Detecting page count, this will only take a moment</div>
+          </>
         ) : (
-          <div className="upload-hint">Supports JPG · PNG · PDF · HEIC · up to 20 MB</div>
+          <>
+            <div className="upload-icon">
+              <UploadCloud size={40} />
+            </div>
+            <div className="upload-label">
+              {fileName
+                ? fileName.length > 32
+                  ? fileName.slice(0, 29) + '…'
+                  : fileName
+                : 'Click or drag file here'}
+            </div>
+            <div className="upload-hint">Supports JPG · PNG · PDF · HEIC · up to 20 MB</div>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ marginTop: '1.5rem' }}
+              onClick={e => {
+                e.stopPropagation()
+                fileInputRef.current?.click()
+              }}
+            >
+              <FolderOpen size={14} /> Browse File
+            </button>
+          </>
         )}
-        <button
-          type="button"
-          className="btn btn-primary"
-          style={{ marginTop: '1.5rem' }}
-          onClick={e => {
-            e.stopPropagation()
-            fileInputRef.current?.click()
-          }}
-        >
-          <FolderOpen size={14} /> Browse File
-        </button>
       </div>
 
       <div className="panel-card" style={{ marginTop: '1rem' }}>

@@ -67,6 +67,7 @@ export default function APInvoice() {
     isSubmitting,
     pdfInfoLoading,
     pdfSelector,
+    selectedPageThumbs,
     confirmPageSelection,
     cancelPageSelection,
   } = ctrl
@@ -197,6 +198,7 @@ export default function APInvoice() {
                 previewUrl={previewUrl}
                 previewType={previewType}
                 fileName={file?.name}
+                selectedPageThumbs={selectedPageThumbs}
               >
                 {step === 2 && (
                   <APFieldMappingStep

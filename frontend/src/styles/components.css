@@ -3237,3 +3237,60 @@ input[type='text'].detail-input:focus {
   background: var(--primary-light);
   color: var(--primary);
 }
+
+/* ─── DOCUMENT PREVIEW: selected-pages thumbnail stack ─── */
+.prev-page-thumbs {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.prev-page-thumb-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--muted);
+  flex-shrink: 0;
+}
+
+.prev-page-thumb-img {
+  width: 100%;
+  display: block;
+  user-select: none;
+}
+
+.prev-page-thumb-label {
+  padding: 4px 8px 5px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-3);
+  text-align: center;
+  background: var(--card-bg);
+  border-top: 1px solid var(--border);
+}
+
+/* ─── PDF PAGE SELECTOR ─── */
+.pdf-selector-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 480px) {
+  .pdf-selector-footer {
+    flex-direction: column-reverse;
+  }
+  .pdf-selector-footer .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

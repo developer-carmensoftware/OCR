@@ -53,6 +53,7 @@ export default function CreditCardOCR() {
     resetAll,
     pdfSelector,
     pdfInfoLoading,
+    selectedPageThumbs,
     confirmPageSelection,
     cancelPageSelection,
   } = useOcrWizard()
@@ -163,6 +164,7 @@ export default function CreditCardOCR() {
                 previewUrl={previewUrl}
                 previewType={previewType}
                 fileName={files[0]?.name}
+                selectedPageThumbs={selectedPageThumbs}
               >
                 <BankDetectionBanner bank={bank} loading={loading} onReExtract={handleReExtract} />
                 <HeaderCard
@@ -191,6 +193,7 @@ export default function CreditCardOCR() {
                 previewUrl={previewUrl}
                 previewType={previewType}
                 fileName={files[0]?.name}
+                selectedPageThumbs={selectedPageThumbs}
               >
                 <AccountingReview
                   details={details}

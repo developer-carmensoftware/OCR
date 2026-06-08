@@ -11,13 +11,24 @@ import {
   File,
 } from 'lucide-react'
 
+interface SelectedPageThumb {
+  thumb: string
+  pageNum: number
+}
+
 interface Props {
   previewUrl?: string | null
   previewType?: string | null
   fileName?: string
+  selectedPageThumbs?: SelectedPageThumb[] | null
 }
 
-export default function DocumentPreview({ previewUrl, previewType, fileName }: Props) {
+export default function DocumentPreview({
+  previewUrl,
+  previewType,
+  fileName,
+  selectedPageThumbs,
+}: Props) {
   const [zoom, setZoom] = useState(1)
   const [rotate, setRotate] = useState(0)
   const [pan, setPan] = useState({ x: 0, y: 0 })
@@ -123,7 +134,8 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }: P
 
   const isImage = previewType === 'image'
   const isPdf = previewType === 'pdf'
-  const hasToolbar = isImage || isPdf
+  const showSelectedThumbs = isPdf && !!selectedPageThumbs?.length
+  const hasToolbar = isImage || (isPdf && !showSelectedThumbs)
   const cursor = isImage ? (isDragging ? 'grabbing' : zoom > 1 ? 'grab' : 'zoom-in') : 'default'
 
   return (
@@ -167,7 +179,7 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }: P
               <div className="prev-tool-sep" />
             </>
           )}
-          {isPdf && (
+          {isPdf && !showSelectedThumbs && (
             <>
               <span className="prev-pdf-badge">
                 <FileText size={14} /> PDF
@@ -210,8 +222,23 @@ export default function DocumentPreview({ previewUrl, previewType, fileName }: P
             />
           </div>
         )}
-        {isPdf && previewUrl && (
+        {isPdf && previewUrl && !showSelectedThumbs && (
           <iframe src={previewUrl} title="PDF Preview" className="preview-pdf-iframe" />
+        )}
+        {showSelectedThumbs && (
+          <div className="prev-page-thumbs">
+            {selectedPageThumbs!.map(({ thumb, pageNum }) => (
+              <div key={pageNum} className="prev-page-thumb-item">
+                <img
+                  src={thumb}
+                  alt={`Page ${pageNum}`}
+                  className="prev-page-thumb-img"
+                  draggable={false}
+                />
+                <div className="prev-page-thumb-label">Page {pageNum}</div>
+              </div>
+            ))}
+          </div>
         )}
         {!previewType && (
           <div className="placeholder-text">

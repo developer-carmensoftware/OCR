@@ -1,5 +1,7 @@
-import { useState } from 'react'
-import { FileText, AlertTriangle } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
+import { motion } from 'framer-motion'
+import { FileText, AlertTriangle, Check } from 'lucide-react'
 
 interface Props {
   thumbnails: string[]
@@ -14,6 +16,15 @@ export default function PDFPageSelector({ thumbnails, onConfirm, onCancel }: Pro
   const [selected, setSelected] = useState<Set<number>>(
     () => new Set(thumbnails.map((_, i) => i).slice(0, MAX_PAGES))
   )
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel()
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [onCancel])
 
   function toggle(i: number) {
     setSelected(prev => {
@@ -24,8 +35,8 @@ export default function PDFPageSelector({ thumbnails, onConfirm, onCancel }: Pro
     })
   }
 
-  function selectAll() {
-    setSelected(new Set(thumbnails.map((_, i) => i)))
+  function selectFirst() {
+    setSelected(new Set(thumbnails.map((_, i) => i).slice(0, MAX_PAGES)))
   }
 
   function deselectAll() {
@@ -34,174 +45,284 @@ export default function PDFPageSelector({ thumbnails, onConfirm, onCancel }: Pro
 
   const sortedSelected = [...selected].sort((a, b) => a - b)
   const overLimit = sortedSelected.length > MAX_PAGES
-  // Backend caps at MAX_PAGES; cap here too so what we send matches what we say.
-  const effectiveSelection = sortedSelected.slice(0, MAX_PAGES)
+  const effectiveSet = new Set(sortedSelected.slice(0, MAX_PAGES))
+  const effectiveSelection = [...effectiveSet].sort((a, b) => a - b)
 
-  return (
-    <div
+  return createPortal(
+    <motion.div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="pdf-selector-title"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18 }}
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(0,0,0,0.55)',
+        background: 'oklch(0 0 0 / 0.55)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 1000,
+        zIndex: 400,
         padding: '1rem',
       }}
       onClick={onCancel}
     >
-      <div
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 14 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
         style={{
-          background: 'var(--card-bg, #fff)',
-          color: 'var(--text, #111827)',
-          borderRadius: 12,
-          boxShadow: '0 8px 40px rgba(0,0,0,0.25)',
+          background: 'var(--card-bg)',
+          color: 'var(--text)',
+          borderRadius: 'var(--radius-lg)',
+          boxShadow: 'var(--shadow-xl)',
           width: '100%',
-          maxWidth: 680,
+          maxWidth: 700,
           maxHeight: '90vh',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-          border: '1px solid var(--border, #e5e7eb)',
+          border: '1px solid var(--border)',
         }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div
-          style={{
-            padding: '1rem 1.25rem 0.75rem',
-            borderBottom: '1px solid var(--border, #e5e7eb)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <FileText size={18} color="var(--primary, #3b82f6)" />
-            <strong style={{ fontSize: '0.95rem', color: 'var(--text, #111827)' }}>
-              {thumbnails.length} pages detected — select the pages to OCR
-            </strong>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              style={{ fontSize: '0.75rem', padding: '2px 10px' }}
-              onClick={selectAll}
+        <div style={{ padding: '1rem 1.25rem 0.875rem', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <FileText size={16} color="var(--primary)" />
+            <span
+              id="pdf-selector-title"
+              style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text)' }}
             >
-              Select all
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              style={{ fontSize: '0.75rem', padding: '2px 10px' }}
-              onClick={deselectAll}
-            >
-              Clear all
-            </button>
+              Select pages to process
+            </span>
             <span
               style={{
                 marginLeft: 'auto',
                 fontSize: '0.78rem',
-                color: 'var(--text-3, #6b7280)',
+                color: 'var(--text-3)',
+                fontVariantNumeric: 'tabular-nums',
               }}
             >
-              {sortedSelected.length} / {thumbnails.length} selected
+              {overLimit
+                ? `${MAX_PAGES} of ${thumbnails.length}`
+                : `${sortedSelected.length} / ${thumbnails.length}`}
             </span>
           </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ fontSize: '0.75rem', padding: '3px 10px', height: 'auto', lineHeight: 1.5 }}
+              onClick={selectFirst}
+            >
+              Select first {Math.min(thumbnails.length, MAX_PAGES)}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ fontSize: '0.75rem', padding: '3px 10px', height: 'auto', lineHeight: 1.5 }}
+              onClick={deselectAll}
+            >
+              Clear all
+            </button>
+            {thumbnails.length > MAX_PAGES && (
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-4)' }}>
+                Max {MAX_PAGES} pages per scan
+              </span>
+            )}
+          </div>
+
           {overLimit && (
             <div
               style={{
                 marginTop: 8,
                 display: 'flex',
-                alignItems: 'center',
+                alignItems: 'flex-start',
                 gap: 6,
+                padding: '6px 10px',
+                borderRadius: 'var(--radius-sm)',
+                background: 'var(--amber-light)',
+                border: '1px solid var(--amber-mid)',
                 fontSize: '0.75rem',
-                color: 'var(--warning, #b45309)',
+                color: 'var(--amber-text)',
+                lineHeight: 1.45,
               }}
             >
-              <AlertTriangle size={14} />
-              Only the first {MAX_PAGES} selected pages will be processed.
+              <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+              <span>
+                {sortedSelected.length - MAX_PAGES} page
+                {sortedSelected.length - MAX_PAGES !== 1 ? 's' : ''} will be skipped — only the
+                first {MAX_PAGES} selected pages will be processed.
+              </span>
             </div>
           )}
         </div>
 
         {/* Thumbnail grid */}
         <div
+          role="group"
+          aria-label="PDF pages"
           style={{
             overflowY: 'auto',
             padding: '1rem',
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
             gap: '0.75rem',
             flex: 1,
           }}
         >
-          {thumbnails.map((thumb, i) => (
-            <div
-              key={i}
-              onClick={() => toggle(i)}
-              style={{
-                cursor: 'pointer',
-                borderRadius: 8,
-                border: selected.has(i)
-                  ? '2px solid var(--primary, #3b82f6)'
-                  : '2px solid var(--border, #e5e7eb)',
-                overflow: 'hidden',
-                position: 'relative',
-                background: 'var(--muted, #f9fafb)',
-                transition: 'border-color 0.15s',
-              }}
-            >
-              <img
-                src={thumb}
-                alt={`Page ${i + 1}`}
-                style={{ width: '100%', display: 'block', userSelect: 'none' }}
-                draggable={false}
-              />
-              {/* Checkbox overlay */}
+          {thumbnails.map((thumb, i) => {
+            const isSelected = selected.has(i)
+            const isEffective = effectiveSet.has(i)
+            const isOverflow = isSelected && !isEffective
+            const isHovered = hoveredIdx === i
+
+            const borderColor = isEffective
+              ? 'var(--primary)'
+              : isOverflow
+                ? 'var(--amber)'
+                : isHovered
+                  ? 'var(--border-hi)'
+                  : 'var(--border)'
+
+            return (
               <div
+                key={i}
+                role="checkbox"
+                aria-checked={isSelected}
+                aria-label={`Page ${i + 1}${isOverflow ? ' (will be skipped)' : ''}`}
+                tabIndex={0}
+                onClick={() => toggle(i)}
+                onKeyDown={e => {
+                  if (e.key === ' ' || e.key === 'Enter') {
+                    e.preventDefault()
+                    toggle(i)
+                  }
+                }}
+                onMouseEnter={() => setHoveredIdx(i)}
+                onMouseLeave={() => setHoveredIdx(null)}
                 style={{
-                  position: 'absolute',
-                  top: 6,
-                  right: 6,
-                  width: 20,
-                  height: 20,
-                  borderRadius: 4,
-                  border: '2px solid var(--primary, #3b82f6)',
-                  background: selected.has(i) ? 'var(--primary, #3b82f6)' : '#fff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#fff',
-                  fontSize: 12,
-                  fontWeight: 700,
+                  cursor: 'pointer',
+                  borderRadius: 'var(--radius-md)',
+                  border: `2px solid ${borderColor}`,
+                  overflow: 'hidden',
+                  position: 'relative',
+                  background: 'var(--muted)',
+                  transition:
+                    'border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease)',
+                  opacity: isOverflow ? 0.5 : 1,
+                  transform: isHovered && !isOverflow ? 'translateY(-1px)' : 'none',
+                  boxShadow: isEffective
+                    ? 'var(--shadow-primary)'
+                    : isHovered
+                      ? 'var(--shadow-md)'
+                      : 'none',
+                  outline: 'none',
                 }}
               >
-                {selected.has(i) && '✓'}
+                {/* Thumbnail image */}
+                <div style={{ aspectRatio: '3/4', overflow: 'hidden', position: 'relative' }}>
+                  <img
+                    src={thumb}
+                    alt={`Page ${i + 1}`}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      display: 'block',
+                      userSelect: 'none',
+                    }}
+                    draggable={false}
+                  />
+
+                  {/* Overflow tint */}
+                  {isOverflow && (
+                    <div
+                      aria-hidden="true"
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        background: 'oklch(0.78 0.15 75 / 0.18)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: '0.65rem',
+                          fontWeight: 600,
+                          color: 'var(--amber-text)',
+                          background: 'var(--amber-light)',
+                          border: '1px solid var(--amber-mid)',
+                          borderRadius: 4,
+                          padding: '2px 6px',
+                        }}
+                      >
+                        Skipped
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Checkbox badge */}
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      position: 'absolute',
+                      top: 6,
+                      right: 6,
+                      width: 18,
+                      height: 18,
+                      borderRadius: 4,
+                      border: `2px solid ${isEffective ? 'var(--primary)' : isOverflow ? 'var(--amber)' : 'var(--border-hi)'}`,
+                      background: isEffective
+                        ? 'var(--primary)'
+                        : isOverflow
+                          ? 'var(--amber-mid)'
+                          : 'var(--card-bg)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#fff',
+                      transition:
+                        'background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease)',
+                      boxShadow: isEffective
+                        ? '0 1px 4px oklch(0.4714 0.1794 258.7 / 0.35)'
+                        : 'var(--shadow-xs)',
+                    }}
+                  >
+                    {isEffective && <Check size={11} strokeWidth={3} />}
+                  </div>
+                </div>
+
+                {/* Page label */}
+                <div
+                  style={{
+                    padding: '4px 0 3px',
+                    textAlign: 'center',
+                    fontSize: '0.72rem',
+                    fontWeight: isSelected ? 500 : 400,
+                    color: isEffective
+                      ? 'var(--primary)'
+                      : isOverflow
+                        ? 'var(--amber-text)'
+                        : 'var(--text-3)',
+                    transition: 'color var(--dur-fast) var(--ease)',
+                  }}
+                >
+                  Page {i + 1}
+                </div>
               </div>
-              <div
-                style={{
-                  padding: '4px 0',
-                  textAlign: 'center',
-                  fontSize: '0.7rem',
-                  color: 'var(--text-3, #6b7280)',
-                }}
-              >
-                Page {i + 1}
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         {/* Footer */}
-        <div
-          style={{
-            padding: '0.75rem 1.25rem',
-            borderTop: '1px solid var(--border, #e5e7eb)',
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: 8,
-          }}
-        >
+        <div className="pdf-selector-footer">
           <button type="button" className="btn btn-secondary" onClick={onCancel}>
             Cancel
           </button>
@@ -211,11 +332,14 @@ export default function PDFPageSelector({ thumbnails, onConfirm, onCancel }: Pro
             disabled={effectiveSelection.length === 0}
             onClick={() => onConfirm(effectiveSelection)}
           >
-            Continue ({effectiveSelection.length}{' '}
-            {effectiveSelection.length === 1 ? 'page' : 'pages'})
+            Continue
+            <span style={{ opacity: 0.75, marginLeft: 4 }}>
+              ({effectiveSelection.length} {effectiveSelection.length === 1 ? 'page' : 'pages'})
+            </span>
           </button>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>,
+    document.body
   )
 }
