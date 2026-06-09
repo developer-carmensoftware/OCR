@@ -70,7 +70,7 @@ async function _fetchExtractWithRetry(
         })
       } catch (fetchErr) {
         if ((fetchErr as Error).name === 'AbortError')
-          throw new Error('HTTP 408', { cause: fetchErr })
+          throw Object.assign(new Error('HTTP 408'), { cause: fetchErr })
         throw fetchErr
       } finally {
         clear()

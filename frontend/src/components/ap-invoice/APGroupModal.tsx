@@ -182,7 +182,7 @@ export default function APGroupModal({ show, t, lineItems, groupByDescription, o
                   value={desc}
                   onChange={e => setDesc(e.target.value)}
                   placeholder="e.g. Maintenance services (combined)"
-                  autoComplete="off"
+                  autoComplete="new-password"
                 />
                 {missingDesc && (
                   <div className="ap-group-modal-warn">Enter a name for the combined line.</div>
