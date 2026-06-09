@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import SessionInfo
 from app.context import current_tenant_id
 from app.models.orm import CorrectionFeedback, CreditCard
-from app.models.schemas.feedback import CorrectionFeedbackRequest
+from app.models.schemas import CorrectionFeedbackRequest
 
 logger = logging.getLogger(__name__)
 
