@@ -61,7 +61,7 @@ async def load_admin_roles_and_perms(
       - if any grant has tenant_id == "" (global), tenant_scope = ""
       - else the first non-empty tenant_id wins (admins are typically scoped to one)
     """
-    now = datetime.now(UTC).replace(tzinfo=None)
+    now = datetime.now(UTC)
     rows = await db.execute(
         select(AdminUserRole).where(AdminUserRole.user_id == admin_id)  # type: ignore[arg-type]
     )
@@ -121,7 +121,7 @@ async def login(
     if not admin.is_active:  # type: ignore[truthy-function]
         raise AdminAuthError("Account disabled", status_code=403)
 
-    now = datetime.now(UTC).replace(tzinfo=None)
+    now = datetime.now(UTC)
     locked_until: datetime | None = admin.locked_until  # type: ignore[assignment]
     if locked_until and locked_until > now:
         remaining = int((locked_until - now).total_seconds())

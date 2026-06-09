@@ -68,9 +68,9 @@ async def topup(
         if order.status == CreditOrderStatus.PAID:
             raise HTTPException(status_code=409, detail="Order already fulfilled")
         order.status = CreditOrderStatus.PAID  # type: ignore[assignment]
-        order.paid_at = datetime.now(UTC).replace(tzinfo=None)  # type: ignore[assignment]
+        order.paid_at = datetime.now(UTC)  # type: ignore[assignment]
         order.approved_by = admin.email  # type: ignore[assignment]
-        order.approved_at = datetime.now(UTC).replace(tzinfo=None)  # type: ignore[assignment]
+        order.approved_at = datetime.now(UTC)  # type: ignore[assignment]
         order_ref = str(order.id)
 
     balance = await grant_credits(

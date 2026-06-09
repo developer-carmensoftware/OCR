@@ -99,9 +99,9 @@ async def user_usage(
     admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
 ):
     if not from_date:
-        from_date = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=30)
+        from_date = datetime.now(UTC) - timedelta(days=30)
     if not to_date:
-        to_date = datetime.now(UTC).replace(tzinfo=None)
+        to_date = datetime.now(UTC)
     tid = _resolve_tenant(admin, tenant_id)
     data = await svc.get_user_usage(db, tid, from_date, to_date, order_by, limit)
     return {

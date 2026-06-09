@@ -46,7 +46,7 @@ async def get_correction_hints(
     if cached and now - cached[1] < _HINTS_CACHE_TTL:
         return cached[0]
 
-    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=TTL_DAYS)
+    cutoff = datetime.now(UTC) - timedelta(days=TTL_DAYS)
 
     # Base filters for tenant scope
     card_filters = [

@@ -45,7 +45,7 @@ class OcrSession(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin):
     carmen_token_encrypted = Column(Text, nullable=False)
     carmen_uri = Column(String(500), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
-    last_used_at = Column(DateTime, nullable=True)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class OCRTask(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin):
@@ -66,7 +66,7 @@ class OCRTask(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin):
     )
     ocr_engine = Column(String(100), nullable=True)
     error_message = Column(Text, nullable=True)
-    completed_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
     carmen_user_id = Column(String(36), nullable=True, index=True)
 
     credit_card = relationship("CreditCard", back_populates="task", uselist=False)
@@ -91,7 +91,7 @@ class CreditCard(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMix
     doc_date = Column(Date, nullable=True, index=True)
     doc_no = Column(String(100), nullable=True, index=True)
     branch_no = Column(String(50), nullable=True)
-    submitted_at = Column(DateTime, nullable=True)
+    submitted_at = Column(DateTime(timezone=True), nullable=True)
     carmen_user_id = Column(String(36), nullable=True, index=True)
 
     task = relationship("OCRTask", back_populates="credit_card")
@@ -111,7 +111,7 @@ class APInvoice(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixi
     doc_no = Column(String(100), nullable=True)
     doc_date = Column(Date, nullable=True, index=True)
     original_filename = Column(String(255), nullable=True)
-    submitted_at = Column(DateTime, nullable=True)
+    submitted_at = Column(DateTime(timezone=True), nullable=True)
     carmen_user_id = Column(String(36), nullable=True, index=True)
 
     task = relationship("OCRTask", back_populates="ap_invoice")

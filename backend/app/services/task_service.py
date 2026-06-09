@@ -40,7 +40,7 @@ async def mark_completed(db: AsyncSession, task_id: str | uuid.UUID) -> None:
     task = result.scalar_one_or_none()
     if task:
         task.status = TaskStatus.COMPLETED  # type: ignore[assignment]
-        task.completed_at = datetime.now(UTC).replace(tzinfo=None)  # type: ignore[assignment]
+        task.completed_at = datetime.now(UTC)  # type: ignore[assignment]
         await db.commit()
 
 

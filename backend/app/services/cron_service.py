@@ -41,9 +41,7 @@ async def session_cleanup_loop() -> None:
 
     while True:
         try:
-            cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(
-                hours=settings.session_ttl_hours
-            )
+            cutoff = datetime.now(UTC) - timedelta(hours=settings.session_ttl_hours)
             async with async_session() as db:
                 result = await db.execute(
                     delete(OcrSession).where(

@@ -26,7 +26,7 @@ async def build_daily_summary(target_date: date | None = None) -> dict:
     if target_date is None:
         target_date = (datetime.now(UTC) - timedelta(days=1)).date()
 
-    day_start = datetime.combine(target_date, datetime.min.time())
+    day_start = datetime.combine(target_date, datetime.min.time(), tzinfo=UTC)
     day_end = day_start + timedelta(days=1)
 
     logger.info("[summary] Building daily summary for %s", target_date)
@@ -228,7 +228,7 @@ async def build_daily_model_cost(target_date: date | None = None) -> dict:
     if target_date is None:
         target_date = (datetime.now(UTC) - timedelta(days=1)).date()
 
-    day_start = datetime.combine(target_date, datetime.min.time())
+    day_start = datetime.combine(target_date, datetime.min.time(), tzinfo=UTC)
     day_end = day_start + timedelta(days=1)
 
     logger.info("[model_cost] Building model-cost breakdown for %s", target_date)

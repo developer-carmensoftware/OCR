@@ -108,7 +108,7 @@ async def proxy_gljv(
             )
             card = result.scalar_one_or_none()
             if card:
-                card.submitted_at = datetime.now(UTC).replace(tzinfo=None)  # type: ignore[assignment]
+                card.submitted_at = datetime.now(UTC)  # type: ignore[assignment]
                 if doc_no:
                     card.doc_no = doc_no  # type: ignore[assignment]
                 if company_name:

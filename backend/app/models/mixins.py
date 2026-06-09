@@ -12,14 +12,16 @@ from app.database import Base
 class TimestampMixin:
     """created_at (indexed) + updated_at. Applied to every table."""
 
-    created_at = Column(DateTime, server_default=func.now(), nullable=False, index=True)
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class SoftDeleteMixin:
     """Logical deletion. Business tables never physically remove rows."""
 
-    deleted_at = Column(DateTime, nullable=True, index=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     deleted_by = Column(String(100), nullable=True)
 
 

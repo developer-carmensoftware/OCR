@@ -45,8 +45,8 @@ class TenantModule(Base, TimestampMixin, WriterMixin):
     tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True)
     module_id = Column(String(50), ForeignKey("modules.id"), primary_key=True)
     enabled = Column(Boolean, default=True, nullable=False)
-    enabled_at = Column(DateTime, nullable=True)
-    disabled_at = Column(DateTime, nullable=True)
+    enabled_at = Column(DateTime(timezone=True), nullable=True)
+    disabled_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class Bank(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
@@ -91,7 +91,7 @@ class PromptTemplate(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     )
     content = Column(Text, nullable=False)
     notes = Column(Text, nullable=True)
-    published_at = Column(DateTime, nullable=True)
+    published_at = Column(DateTime(timezone=True), nullable=True)
     published_by = Column(PGUUID(as_uuid=True), ForeignKey("admin_users.id"), nullable=True)
 
     __table_args__ = (

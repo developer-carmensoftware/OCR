@@ -114,7 +114,9 @@ class QuotaUsage(Base, TimestampMixin):
     quota_id = Column(PGUUID(as_uuid=True), ForeignKey("quotas.id"), primary_key=True)
     period_key = Column(String(10), primary_key=True)
     used = Column(Numeric(18, 4), default=0, nullable=False)
-    last_updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    last_updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class LLMModelPricing(Base, TimestampMixin):
@@ -126,7 +128,7 @@ class LLMModelPricing(Base, TimestampMixin):
     input_price_per_1m = Column(Numeric(18, 9), default=0)
     output_price_per_1m = Column(Numeric(18, 9), default=0)
     source = Column(String(50), default="manual")
-    price_verified_at = Column(DateTime, nullable=True)
+    price_verified_at = Column(DateTime(timezone=True), nullable=True)
 
 
 # ── Top-up credits ────────────────────────────────────────────────────────────
@@ -203,9 +205,9 @@ class CreditOrder(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
         default=CreditOrderStatus.PENDING,
     )
     payment_ref = Column(String(128), nullable=True)
-    paid_at = Column(DateTime, nullable=True)
+    paid_at = Column(DateTime(timezone=True), nullable=True)
     approved_by = Column(String(100), nullable=True)
-    approved_at = Column(DateTime, nullable=True)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index(

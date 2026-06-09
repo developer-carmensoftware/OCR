@@ -352,6 +352,251 @@ async def _m214_drop_ap_vendor_field_config(conn: AsyncConnection) -> None:
     logger.info("  ~ dropped ap_vendor_field_config (engine reverted)")
 
 
+async def _m216_postgres_best_practices(conn: AsyncConnection) -> None:
+    """
+    Apply Postgres best-practice fixes in one shot:
+
+    1. Convert every timestamp column to timestamptz (USING ... AT TIME ZONE 'UTC').
+    2. Fix DailyUsageSummary.summary_date and APIKeyUsage.usage_date to DATE.
+    3. Add composite indexes on llm_usage_logs / performance_logs / audit_logs.
+    4. Add missing FK indexes on role_permissions.permission_id and
+       admin_user_roles.role_id.
+    5. Add partial unique index for credit-card duplicate check.
+    6. Add partial composite index for active session lookups.
+
+    All DDL statements are idempotent (IF NOT EXISTS / IF EXISTS where applicable).
+    """
+
+    # ── 1. timestamp → timestamptz ────────────────────────────────────────────
+    # Each USING clause re-interprets the stored value as UTC so no wall-clock
+    # data is lost (Supabase/Postgres always runs in UTC).
+    timestamp_columns: list[tuple[str, str]] = [
+        # mixins → every table via inheritance
+        ("ocr_sessions", "created_at"),
+        ("ocr_sessions", "updated_at"),
+        ("ocr_sessions", "deleted_at"),
+        ("ocr_sessions", "last_used_at"),
+        ("ocr_tasks", "created_at"),
+        ("ocr_tasks", "updated_at"),
+        ("ocr_tasks", "deleted_at"),
+        ("ocr_tasks", "completed_at"),
+        ("credit_cards", "created_at"),
+        ("credit_cards", "updated_at"),
+        ("credit_cards", "deleted_at"),
+        ("credit_cards", "submitted_at"),
+        ("ap_invoices", "created_at"),
+        ("ap_invoices", "updated_at"),
+        ("ap_invoices", "deleted_at"),
+        ("ap_invoices", "submitted_at"),
+        ("correction_feedback", "created_at"),
+        ("correction_feedback", "updated_at"),
+        ("correction_feedback", "deleted_at"),
+        ("bu_accounting_configs", "created_at"),
+        ("bu_accounting_configs", "updated_at"),
+        ("bu_accounting_configs", "deleted_at"),
+        ("bu_accounting_mapping_entries", "created_at"),
+        ("bu_accounting_mapping_entries", "updated_at"),
+        ("bu_accounting_mapping_entries", "deleted_at"),
+        ("ap_vendor_column_mappings", "created_at"),
+        ("ap_vendor_column_mappings", "updated_at"),
+        ("ap_vendor_column_mappings", "deleted_at"),
+        ("ap_vendor_field_mapping_entries", "created_at"),
+        ("ap_vendor_field_mapping_entries", "updated_at"),
+        ("ap_vendor_field_mapping_entries", "deleted_at"),
+        ("bug_reports", "created_at"),
+        ("bug_reports", "updated_at"),
+        ("bug_reports", "deleted_at"),
+        ("tenants", "created_at"),
+        ("tenants", "updated_at"),
+        ("tenants", "deleted_at"),
+        ("plans", "created_at"),
+        ("plans", "updated_at"),
+        ("admin_users", "created_at"),
+        ("admin_users", "updated_at"),
+        ("admin_users", "deleted_at"),
+        ("admin_users", "last_login_at"),
+        ("admin_users", "locked_until"),
+        ("admin_user_roles", "created_at"),
+        ("admin_user_roles", "updated_at"),
+        ("admin_user_roles", "expires_at"),
+        ("api_keys", "created_at"),
+        ("api_keys", "updated_at"),
+        ("api_keys", "expires_at"),
+        ("api_keys", "last_used_at"),
+        ("api_keys", "revoked_at"),
+        ("api_key_usage", "created_at"),
+        ("api_key_usage", "updated_at"),
+        ("modules", "created_at"),
+        ("modules", "updated_at"),
+        ("tenant_modules", "created_at"),
+        ("tenant_modules", "updated_at"),
+        ("tenant_modules", "enabled_at"),
+        ("tenant_modules", "disabled_at"),
+        ("banks", "created_at"),
+        ("banks", "updated_at"),
+        ("banks", "deleted_at"),
+        ("prompt_templates", "created_at"),
+        ("prompt_templates", "updated_at"),
+        ("prompt_templates", "deleted_at"),
+        ("prompt_templates", "published_at"),
+        ("system_configs", "created_at"),
+        ("system_configs", "updated_at"),
+        ("tenant_config_overrides", "created_at"),
+        ("tenant_config_overrides", "updated_at"),
+        ("feature_flags", "created_at"),
+        ("feature_flags", "updated_at"),
+        ("quotas", "created_at"),
+        ("quotas", "updated_at"),
+        ("quotas", "deleted_at"),
+        ("quota_usage", "created_at"),
+        ("quota_usage", "updated_at"),
+        ("quota_usage", "last_updated_at"),
+        ("model_pricing", "created_at"),
+        ("model_pricing", "updated_at"),
+        ("model_pricing", "price_verified_at"),
+        ("credit_packs", "created_at"),
+        ("credit_packs", "updated_at"),
+        ("tenant_credits", "created_at"),
+        ("tenant_credits", "updated_at"),
+        ("credit_ledger", "created_at"),
+        ("credit_ledger", "updated_at"),
+        ("credit_orders", "created_at"),
+        ("credit_orders", "updated_at"),
+        ("credit_orders", "deleted_at"),
+        ("credit_orders", "paid_at"),
+        ("credit_orders", "approved_at"),
+        ("llm_usage_logs", "created_at"),
+        ("llm_usage_logs", "updated_at"),
+        ("audit_logs", "created_at"),
+        ("audit_logs", "updated_at"),
+        ("performance_logs", "created_at"),
+        ("performance_logs", "updated_at"),
+        ("outbound_call_logs", "created_at"),
+        ("outbound_call_logs", "updated_at"),
+        ("daily_usage_summary", "created_at"),
+        ("daily_usage_summary", "updated_at"),
+        ("daily_model_cost", "created_at"),
+        ("daily_model_cost", "updated_at"),
+        ("monthly_usage_summary", "created_at"),
+        ("monthly_usage_summary", "updated_at"),
+        ("anomaly_alerts", "created_at"),
+        ("anomaly_alerts", "updated_at"),
+        ("anomaly_alerts", "resolved_at"),
+        ("job_runs", "created_at"),
+        ("job_runs", "updated_at"),
+        ("job_runs", "started_at"),
+        ("job_runs", "completed_at"),
+        ("schema_migrations", "applied_at"),
+        ("permissions", "created_at"),
+        ("permissions", "updated_at"),
+        ("roles", "created_at"),
+        ("roles", "updated_at"),
+        ("roles", "deleted_at"),
+    ]
+
+    for table, col in timestamp_columns:
+        await conn.execute(
+            text(f"""
+                DO $$
+                BEGIN
+                  IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = '{table}'
+                      AND column_name = '{col}'
+                      AND table_schema = current_schema()
+                      AND data_type = 'timestamp without time zone'
+                  ) THEN
+                    ALTER TABLE {table}
+                      ALTER COLUMN {col} TYPE TIMESTAMPTZ
+                      USING {col} AT TIME ZONE 'UTC';
+                  END IF;
+                END$$;
+            """)
+        )
+
+    # ── 2. Fix date-only columns stored as TIMESTAMP ──────────────────────────
+    for table, col in [
+        ("daily_usage_summary", "summary_date"),
+        ("api_key_usage", "usage_date"),
+    ]:
+        await conn.execute(
+            text(f"""
+                DO $$
+                BEGIN
+                  IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = '{table}'
+                      AND column_name = '{col}'
+                      AND table_schema = current_schema()
+                      AND data_type IN ('timestamp without time zone',
+                                        'timestamp with time zone')
+                  ) THEN
+                    ALTER TABLE {table}
+                      ALTER COLUMN {col} TYPE DATE
+                      USING {col}::DATE;
+                  END IF;
+                END$$;
+            """)
+        )
+
+    # ── 3. Composite indexes on high-traffic log tables ───────────────────────
+    await conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_llm_usage_tenant_created "
+            "ON llm_usage_logs (tenant_id, created_at)"
+        )
+    )
+    await conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_llm_usage_tenant_module_created "
+            "ON llm_usage_logs (tenant_id, module_id, created_at)"
+        )
+    )
+    await conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_perf_logs_tenant_created "
+            "ON performance_logs (tenant_id, created_at)"
+        )
+    )
+    await conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_audit_logs_tenant_created "
+            "ON audit_logs (tenant_id, created_at)"
+        )
+    )
+
+    # ── 4. Missing FK indexes on RBAC junction tables ─────────────────────────
+    await conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_role_permissions_permission_id "
+            "ON role_permissions (permission_id)"
+        )
+    )
+    await conn.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_admin_user_roles_role_id ON admin_user_roles (role_id)")
+    )
+
+    # ── 5. DB-level unique constraint for credit-card duplicate check ─────────
+    await conn.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_credit_card_no_dup "
+            "ON credit_cards (tenant_id, bank_code, doc_no) "
+            "WHERE submitted_at IS NOT NULL AND deleted_at IS NULL"
+        )
+    )
+
+    # ── 6. Partial composite index for active session hot path ────────────────
+    await conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_ocr_sessions_active "
+            "ON ocr_sessions (tenant_id, carmen_user_id) "
+            "WHERE is_active = true AND deleted_at IS NULL"
+        )
+    )
+
+    logger.info("  ~ migration 216: timestamptz, date fixes, composite/FK/partial indexes applied")
+
+
 async def _m215_quota_monthly_to_free_trial(conn: AsyncConnection) -> None:
     """
     Switch from monthly-reset quota to a one-time lifetime free trial (30 calls).
@@ -409,4 +654,5 @@ _MIGRATIONS: list[tuple[str, Callable[[AsyncConnection], Awaitable[None]] | None
     ("213_widen_vendor_tax_id", None),
     ("214_drop_ap_vendor_field_config", _m214_drop_ap_vendor_field_config),
     ("215_quota_monthly_to_free_trial", _m215_quota_monthly_to_free_trial),
+    ("216_postgres_best_practices", _m216_postgres_best_practices),
 ]

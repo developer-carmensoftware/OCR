@@ -7,6 +7,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Column,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -38,10 +39,10 @@ class AdminUser(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     full_name = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     mfa_secret = Column(String(64), nullable=True)
-    last_login_at = Column(DateTime, nullable=True)
+    last_login_at = Column(DateTime(timezone=True), nullable=True)
     last_login_ip = Column(String(45), nullable=True)
     failed_login_attempts = Column(Integer, default=0, nullable=False)
-    locked_until = Column(DateTime, nullable=True)
+    locked_until = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index(
@@ -99,7 +100,7 @@ class AdminUserRole(Base, TimestampMixin):
     role_id = Column(String(50), ForeignKey("roles.id"), primary_key=True)
     tenant_id = Column(String(36), primary_key=True, default="", nullable=False)
     granted_by = Column(String(36), nullable=True)
-    expires_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class APIKey(Base, TimestampMixin, WriterMixin):
@@ -118,10 +119,10 @@ class APIKey(Base, TimestampMixin, WriterMixin):
     tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True, index=True)
     scopes = Column(JSON, nullable=False)
     rate_limit_rpm = Column(Integer, default=60, nullable=False)
-    expires_at = Column(DateTime, nullable=True, index=True)
-    last_used_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
     last_used_ip = Column(String(45), nullable=True)
-    revoked_at = Column(DateTime, nullable=True, index=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True, index=True)
     revoked_by = Column(String(36), nullable=True)
     revoke_reason = Column(Text, nullable=True)
 
@@ -143,7 +144,7 @@ class APIKeyUsage(Base, TimestampMixin):
     __tablename__ = "api_key_usage"
 
     api_key_id = Column(PGUUID(as_uuid=True), ForeignKey("api_keys.id"), primary_key=True)
-    usage_date = Column(DateTime, primary_key=True)
+    usage_date = Column(Date, primary_key=True)
     calls = Column(Integer, default=0, nullable=False)
     errors = Column(Integer, default=0, nullable=False)
     tokens = Column(BigInteger, default=0, nullable=False)

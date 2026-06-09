@@ -51,7 +51,7 @@ def create_session_jwt(
     carmen_uri: str = "",
     bu: str = "",
 ) -> str:
-    now = datetime.now(UTC).replace(tzinfo=None)
+    now = datetime.now(UTC)
     payload = {
         "sid": session_id,
         "tid": tenant_id,

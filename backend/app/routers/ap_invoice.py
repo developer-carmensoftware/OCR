@@ -121,7 +121,7 @@ async def extract_ap_invoice(
             task_obj = task_res.scalar_one_or_none()
             if task_obj:
                 task_obj.status = TaskStatus.COMPLETED  # type: ignore[assignment]
-                task_obj.completed_at = datetime.now(UTC).replace(tzinfo=None)  # type: ignore[assignment]
+                task_obj.completed_at = datetime.now(UTC)  # type: ignore[assignment]
 
             await db.commit()
 

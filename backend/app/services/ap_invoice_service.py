@@ -343,6 +343,6 @@ async def mark_invoice_submitted(db: "AsyncSession", ap_invoice_id: str) -> None
     result = await db.execute(select(APInvoice).where(APInvoice.id == ap_invoice_id))
     inv = result.scalar_one_or_none()
     if inv:
-        inv.submitted_at = datetime.now(UTC).replace(tzinfo=None)  # type: ignore[assignment]
+        inv.submitted_at = datetime.now(UTC)  # type: ignore[assignment]
         await db.commit()
         logger.info("Marked AP Invoice %s as submitted", ap_invoice_id)

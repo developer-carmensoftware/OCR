@@ -93,7 +93,7 @@ async def resolve_alert(
             "resolved_at": alert.resolved_at.isoformat(),
         }
 
-    now = datetime.now(UTC).replace(tzinfo=None)
+    now = datetime.now(UTC)
     await db.execute(
         text("UPDATE anomaly_alerts SET resolved_at=:now WHERE id=:id"),
         {"now": now, "id": alert_id},

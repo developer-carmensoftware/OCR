@@ -119,7 +119,7 @@ class DailyUsageSummary(Base, TimestampMixin):
     id = Column(Integer, primary_key=True, autoincrement=True)
     tenant_id = Column(String(36), nullable=False, index=True)
     module_id = Column(String(50), nullable=True, index=True)
-    summary_date = Column(DateTime, nullable=False, index=True)
+    summary_date = Column(Date, nullable=False, index=True)
     total_documents = Column(Integer, default=0)
     total_submissions = Column(Integer, default=0)
     total_llm_calls = Column(Integer, default=0)
@@ -229,7 +229,7 @@ class AnomalyAlert(Base, TimestampMixin):
     threshold = Column(Numeric(14, 4), nullable=True)
     actual = Column(Numeric(14, 4), nullable=True)
     description = Column(Text, nullable=True)
-    resolved_at = Column(DateTime, nullable=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class JobRun(Base, TimestampMixin):
@@ -249,7 +249,7 @@ class JobRun(Base, TimestampMixin):
         default=JobStatus.RUNNING,
         nullable=False,
     )
-    started_at = Column(DateTime, nullable=False, index=True)
-    completed_at = Column(DateTime, nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
     rows_affected = Column(Integer, nullable=True)
     error_message = Column(Text, nullable=True)

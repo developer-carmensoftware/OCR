@@ -50,7 +50,7 @@ def _ctx() -> str:
 
 
 def _utcnow() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
+    return datetime.now(UTC)
 
 
 def _period_key(period: QuotaPeriod) -> str:

@@ -28,7 +28,7 @@ _PRICING_CACHE: dict[str, tuple[Decimal, Decimal] | None] = {}
 
 
 def _utcnow() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
+    return datetime.now(UTC)
 
 
 async def _get_pricing(model_name: str) -> tuple[Decimal, Decimal] | None:

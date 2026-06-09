@@ -23,7 +23,7 @@ _BATCH_SIZE = 5000
 
 async def purge_inactive_sessions() -> int:
     """Delete inactive ocr_sessions older than SESSION_INACTIVE_PURGE_DAYS days."""
-    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=SESSION_INACTIVE_PURGE_DAYS)
+    cutoff = datetime.now(UTC) - timedelta(days=SESSION_INACTIVE_PURGE_DAYS)
     deleted = 0
     async with async_session() as db:
         while True:

@@ -48,7 +48,7 @@ def create_admin_jwt(
     tenant_scope: str = "",
     mfa_passed: bool = True,
 ) -> str:
-    now = datetime.now(UTC).replace(tzinfo=None)
+    now = datetime.now(UTC)
     payload = {
         "aid": admin_id,
         "email": email,

@@ -61,7 +61,7 @@ async def finalize_extraction(
         task = task_res.scalar_one_or_none()
         if task:
             task.status = TaskStatus.COMPLETED  # type: ignore
-            task.completed_at = datetime.now(UTC).replace(tzinfo=None)  # type: ignore
+            task.completed_at = datetime.now(UTC)  # type: ignore
 
         await db.commit()
     return extracted

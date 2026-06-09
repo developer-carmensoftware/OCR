@@ -25,8 +25,8 @@ async def get_usage_summary(
     tenant_id: str | None,
     module_id: str | None,
 ) -> dict[str, Any]:
-    from_dt = datetime.combine(from_date, time_type.min)
-    to_dt = datetime.combine(to_date, time_type.max)
+    from_dt = datetime.combine(from_date, time_type.min, tzinfo=UTC)
+    to_dt = datetime.combine(to_date, time_type.max, tzinfo=UTC)
 
     q = (
         select(
@@ -152,8 +152,8 @@ async def get_usage_totals(
     to_date: date,
     tenant_id: str | None,
 ) -> dict[str, Any]:
-    from_dt = datetime.combine(from_date, time_type.min)
-    to_dt = datetime.combine(to_date, time_type.max)
+    from_dt = datetime.combine(from_date, time_type.min, tzinfo=UTC)
+    to_dt = datetime.combine(to_date, time_type.max, tzinfo=UTC)
 
     llm_q = select(
         func.count(LLMUsageLog.id).label("total_llm_calls"),
@@ -257,7 +257,7 @@ async def get_tenant_ranking(
     period_hours: int,
     limit: int,
 ) -> list[dict[str, Any]]:
-    since = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=period_hours)
+    since = datetime.now(UTC) - timedelta(hours=period_hours)
 
     if metric == "cost":
         q = (
@@ -371,7 +371,7 @@ async def get_error_breakdown(
     tenant_id: str | None,
     limit: int,
 ) -> list[dict[str, Any]]:
-    since = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=period_hours)
+    since = datetime.now(UTC) - timedelta(hours=period_hours)
 
     if group_by == "module":
         failed_count = func.sum(case((OCRTask.status == TaskStatus.FAILED, 1), else_=0))

@@ -71,7 +71,7 @@ async def _resolve_session_token(session_id: str) -> tuple[str | None, bool]:
 async def _touch_session_last_used(session_id: str) -> None:
     """Persist last_used_at and mark this session as recently touched in the cache."""
     now_monotonic = time.monotonic()
-    now_dt = datetime.now(UTC).replace(tzinfo=None)
+    now_dt = datetime.now(UTC)
     try:
         async with async_session() as db:
             await db.execute(
