@@ -501,6 +501,41 @@ describe('useAPSubmission', () => {
       expect(detail[1].InvdTaxT1).toBe('Add')
       expect(detail[2].InvdTaxT1).toBe('None')
     })
+
+    // A NONE line must clear the whole tax-1 field set so the tax profile follows the LINE,
+    // not the vendor. Leaving the vendor's tax-Dr account populated makes Carmen back-fill the
+    // vendor's default tax profile (e.g. VAT07) onto a line the user marked NONE.
+    it('blanks tax profile + tax-Dr account/dept on a None line', async () => {
+      submitAPInvoiceToCarmen.mockResolvedValue({ Code: 0, InternalMessage: 'JV-1' })
+      const props = makeProps({ lineItems: makeItems('None') })
+      const { result } = renderHook(() => useAPSubmission(props))
+      await act(async () => {
+        await result.current.handleGenerate()
+      })
+      const line = submitAPInvoiceToCarmen.mock.calls[0][0].Detail[0]
+      expect(line.TaxProfileCode1).toBeNull()
+      expect(line.InvdT1Dr).toBe('')
+      expect(line.InvdT1DrDeptCode).toBe('')
+      expect(line.InvdTaxR1).toBe('0.00')
+    })
+
+    // A taxable (Add) line still carries the vendor's tax-Dr account + the line's profile.
+    it('keeps tax profile + tax-Dr account/dept on a taxable line', async () => {
+      submitAPInvoiceToCarmen.mockResolvedValue({ Code: 0, InternalMessage: 'JV-1' })
+      const items = makeItems('Exclude').map(i => ({ ...i, taxProfileCode1: 'VAT07' }))
+      const props = makeProps({
+        lineItems: items,
+        taxProfiles: [{ code: 'VAT07', desc: 'VAT 7%', rate: 7 }],
+      })
+      const { result } = renderHook(() => useAPSubmission(props))
+      await act(async () => {
+        await result.current.handleGenerate()
+      })
+      const line = submitAPInvoiceToCarmen.mock.calls[0][0].Detail[0]
+      expect(line.TaxProfileCode1).toBe('VAT07')
+      expect(line.InvdT1Dr).toBe('1100')
+      expect(line.InvdT1DrDeptCode).toBe('ACC')
+    })
   })
 
   // ── F7: isSubmitting guard (P1 bug fix) ──────────────────────────────────────

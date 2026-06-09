@@ -28,11 +28,17 @@ export function buildInvoicePayload(
     const netAmt = parseNum(item.lineSubTotal)
     const taxAmt = parseNum(item.taxAmt)
     const total = parseNum(item.lineTotal)
-    // When the line has no VAT (taxAmt === 0), keep rate at 0 so Carmen does not
-    // recompute tax from the rate. The || 7 default only applies to non-zero-tax lines.
-    const taxRate = taxAmt === 0 ? 0 : parseNum(item.taxPct)
-    // None / non-VAT line: no profile, no rate. Otherwise use the line's own profile code.
-    const resolvedProfile = item.taxType === 'None' ? null : item.taxProfileCode1 || null
+    // A line carries VAT only when it has a non-zero tax amount AND is not explicitly None.
+    // For a no-VAT line the ENTIRE tax-1 field set must read "no tax": profile, rate, and the
+    // tax-Dr account/dept are all cleared below. The tax profile must follow the LINE, not the
+    // vendor — if we leave the vendor's tax-Dr account populated on a NONE line, Carmen
+    // back-fills the vendor's default tax profile (e.g. VAT07) onto a line the user marked NONE.
+    const noVat = taxAmt === 0 || item.taxType === 'None'
+    // When the line has no VAT, keep rate at 0 so Carmen does not recompute tax from the rate.
+    // The || 7 default only applies to non-zero-tax lines.
+    const taxRate = noVat ? 0 : parseNum(item.taxPct)
+    // No profile on a no-VAT line; otherwise use the line's own profile code.
+    const resolvedProfile = noVat ? null : item.taxProfileCode1 || null
     const profileRate = resolvedProfile
       ? (taxProfiles.find(p => p.code === resolvedProfile)?.rate ?? null)
       : null
@@ -65,18 +71,15 @@ export function buildInvoicePayload(
       DeptCode: item.deptCode || '',
       InvdBTaxCr1: systemVendor.vatCrAccCode || '',
       InvdBTaxDr: item.accountCode || '',
-      InvdT1Dr: systemVendor.vat1DrAccCode || '',
-      InvdTaxT1:
-        taxAmt === 0 || item.taxType === 'None'
-          ? 'None'
-          : item.taxType === 'Include'
-            ? 'Include'
-            : 'Add',
+      // Tax-1 Dr account/dept belong to the VAT entry — omit them on a no-VAT line so Carmen
+      // produces no tax line and does not attach the vendor's default tax profile.
+      InvdT1Dr: noVat ? '' : systemVendor.vat1DrAccCode || '',
+      InvdTaxT1: noVat ? 'None' : item.taxType === 'Include' ? 'Include' : 'Add',
       InvdTaxR1: taxRate.toFixed(2),
       DimList: {},
       LastModified: now,
       InvdBTaxCr1DeptCode: systemVendor.crDeptCode || '',
-      InvdT1DrDeptCode: systemVendor.vat1DrDeptCode || '',
+      InvdT1DrDeptCode: noVat ? '' : systemVendor.vat1DrDeptCode || '',
       TaxProfileCode1: resolvedProfile,
       Tax1Overwrite: tax1Overwrite,
     }
