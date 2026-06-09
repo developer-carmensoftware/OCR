@@ -11,35 +11,11 @@ import { fmt } from '../../lib/format'
 import { EMPTY_HEADER, DEFAULT_MAPPINGS } from '../../constants/apInvoice'
 import type { APInvoiceHeader, APColumnKey, APFieldKey } from '../../constants/apInvoice'
 import type { ModalState } from '../../types/modal'
+import type { APLineItem } from '../../types/ap'
+
+export type { APLineItem }
 
 const EXTRACT_TIMEOUT_MS = 150_000
-
-export interface APLineItem {
-  category?: string
-  description?: string
-  qty?: string
-  unitPrice?: string
-  discountPct?: string
-  discountAmt?: string
-  lineSubTotal?: string
-  taxPct?: string
-  taxType?: string
-  taxAmt?: string
-  lineTotal?: string
-  taxProfileCode1?: string
-  deptCode?: string
-  accountCode?: string
-  _suggestDept?: string
-  _suggestAcc?: string
-  // Transient flags — never sent to Carmen (buildInvoicePayload uses an explicit key list).
-  // _uid: stable per-row identity assigned at extraction; preserved through edits and undo.
-  // _groupId: present only on grouped rows; key into the groupSources map in useAPInvoice.
-  // _taxProfileTouched: set when the user manually edits Tax Profile/Tax%/Type so auto-match skips it.
-  _uid?: string
-  _groupId?: string
-  _taxProfileTouched?: string
-  [key: string]: string | undefined
-}
 
 interface APExtractionProps {
   t: Record<string, string>
@@ -68,6 +44,51 @@ const NUMERIC_FIELDS = [
   'lineTotal',
 ]
 const isNumFld = (f: string) => NUMERIC_FIELDS.includes(f)
+
+// Pure fetch+retry helper — no React state. Throws for terminal errors (402/408/429) and after
+// retry exhaustion so the caller (runOCR) handles modals and state in one place.
+async function _fetchExtractWithRetry(
+  fileObj: File,
+  selectedPages?: number[]
+): Promise<Record<string, unknown>> {
+  let retries = 3
+  let delay = 800
+  while (retries > 0) {
+    try {
+      const formData = new FormData()
+      formData.append('file', fileObj)
+      if (selectedPages && selectedPages.length > 0) {
+        formData.append('selected_pages', JSON.stringify(selectedPages))
+      }
+      const { signal, clear } = fetchTimeout(EXTRACT_TIMEOUT_MS)
+      let res: Response
+      try {
+        res = await apiFetch('/api/v1/ap-invoice/extract', {
+          method: 'POST',
+          body: formData,
+          signal,
+        })
+      } catch (fetchErr) {
+        if ((fetchErr as Error).name === 'AbortError')
+          throw new Error('HTTP 408', { cause: fetchErr })
+        throw fetchErr
+      } finally {
+        clear()
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return (await res.json()) as Record<string, unknown>
+    } catch (err) {
+      const msg = (err as Error).message
+      // Terminal errors — propagate immediately without retrying
+      if (msg.includes('402') || msg.includes('408') || msg.includes('429')) throw err
+      retries--
+      if (retries === 0) throw err
+      await new Promise(r => setTimeout(r, delay))
+      delay *= 2
+    }
+  }
+  throw new Error('Extraction failed after retries')
+}
 
 export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtractionProps) {
   const [file, setFile] = useState<File | null>(null)
@@ -111,200 +132,167 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
   const previewUrlRef = useRef<string | null>(null)
   const imageThumbsRef = useRef<string[]>([])
 
+  const revokePreviewUrls = () => {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current)
+      previewUrlRef.current = null
+    }
+    imageThumbsRef.current.forEach(u => URL.revokeObjectURL(u))
+    imageThumbsRef.current = []
+  }
+
   const runOCR = async (fileObj: File, selectedPages?: number[]) => {
     setLoading(true)
     setStatus('AI is extracting data from document...')
     setError(null)
     try {
-      let retries = 3,
-        delay = 800
-      while (retries > 0) {
-        try {
-          const formData = new FormData()
-          formData.append('file', fileObj)
-          if (selectedPages && selectedPages.length > 0) {
-            formData.append('selected_pages', JSON.stringify(selectedPages))
-          }
-          const { signal, clear } = fetchTimeout(EXTRACT_TIMEOUT_MS)
-          let res: Response
-          try {
-            res = await apiFetch('/api/v1/ap-invoice/extract', {
-              method: 'POST',
-              body: formData,
-              signal,
-            })
-          } catch (fetchErr) {
-            const fe = fetchErr as Error
-            if (fe.name === 'AbortError') {
-              const timeoutErr = new Error('HTTP 408')
-              throw timeoutErr
-            }
-            throw fetchErr
-          } finally {
-            clear()
-          }
-          if (!res.ok) throw new Error(`HTTP ${res.status}`)
-          const data = (await res.json()) as Record<string, unknown>
+      const data = await _fetchExtractWithRetry(fileObj, selectedPages)
 
-          setApInvoiceId((data.id as string) || null)
-          setHeaderData({
-            vendorName: (data.vendorName as string) || '',
-            vendorTaxId: (data.vendorTaxId as string) || '',
-            vendorBranch: (data.vendorBranch as string) || '',
-            documentName: (data.documentName as string) || '',
-            documentDate: (data.documentDate as string) || '',
-            documentNumber: (data.documentNumber as string) || '',
-            taxType: (data.taxType as string) || '',
-            invhDesc: '',
-            subTotal: fmt(data.subTotal),
-            taxAmount: fmt(data.taxAmount),
-            totalDiscount: fmt(data.totalDiscount),
-            grandTotal: fmt(data.grandTotal),
-          })
+      setApInvoiceId((data.id as string) || null)
+      setHeaderData({
+        vendorName: (data.vendorName as string) || '',
+        vendorTaxId: (data.vendorTaxId as string) || '',
+        vendorBranch: (data.vendorBranch as string) || '',
+        documentName: (data.documentName as string) || '',
+        documentDate: (data.documentDate as string) || '',
+        documentNumber: (data.documentNumber as string) || '',
+        taxType: (data.taxType as string) || '',
+        invhDesc: '',
+        subTotal: fmt(data.subTotal),
+        taxAmount: fmt(data.taxAmount),
+        totalDiscount: fmt(data.totalDiscount),
+        grandTotal: fmt(data.grandTotal),
+      })
 
-          const rawItems = (data.items as Array<Record<string, unknown>>) || []
-          const formattedItems: APLineItem[] = rawItems.map(item => {
-            const ni: APLineItem = {
-              ...(item as APLineItem),
-              deptCode: '',
-              accountCode: '',
-              _uid: crypto.randomUUID(),
-            }
-            Object.keys(ni).forEach(k => {
-              if (isNumFld(k) && ni[k] !== undefined && ni[k] !== '') ni[k] = fmt(ni[k])
-            })
-            return ni
-          })
-          setLineItems(formattedItems)
-
-          const taxId = data.vendorTaxId as string
-          if (taxId) {
-            getAPVendorMapping(taxId)
-              .then(res => {
-                const r = res as unknown as Record<string, unknown>
-                if (r.mapping) {
-                  setFieldMappings(r.mapping as Record<APColumnKey, APFieldKey | 'ignore'>)
-                } else throw new Error('no mapping')
-              })
-              .catch(() => {
-                try {
-                  const savedAll = JSON.parse(
-                    localStorage.getItem(appKey('ap_invoice_mapping')) || '{}'
-                  ) as Record<string, Record<APColumnKey, APFieldKey | 'ignore'>>
-                  if (savedAll[taxId]) setFieldMappings(savedAll[taxId])
-                } catch {
-                  /* ignore */
-                }
-              })
-          }
-
-          if (data.is_duplicate) {
-            setIsDuplicate(true)
-            setStatus('Duplicate document found')
-            toast.warning(
-              `Duplicate: ${(data.documentNumber as string) || 'document'} already in system`
-            )
-            setModal({
-              show: true,
-              type: 'warning',
-              title: 'Duplicate document found',
-              message: `Document No. ${(data.documentNumber as string) || '—'} for this vendor is already in the system.`,
-              confirmText: 'Proceed Anyway',
-              cancelText: 'Cancel',
-              onConfirm: () => {
-                setModal({ show: false })
-                setStep(2)
-                if (loadVendors) loadVendors()
-              },
-              onCancel: () => {
-                setModal({ show: false })
-                setFile(null)
-                setPreviewUrl(null)
-                setStep(1)
-              },
-            })
-            return
-          }
-
-          setStatus('Data extracted successfully ✓')
-          toast.success(
-            `Extracted ${formattedItems.length} line${formattedItems.length === 1 ? '' : 's'} — review and adjust`
-          )
-          setStep(2)
-          if (loadVendors) loadVendors()
-          return
-        } catch (err) {
-          const e = err as { message: string }
-          if (e.message.includes('402')) {
-            toast.error('Out of documents')
-            setModal({
-              show: true,
-              type: 'warning',
-              title: 'Out of Documents',
-              message:
-                "You've used all 30 documents in your one-time free trial and have no top-up credits left. Buy a credit pack to continue — credits never expire.",
-              confirmText: 'Buy Credits',
-              onConfirm: () => {
-                setModal({ show: false })
-                window.dispatchEvent(new Event('ocr:open-topup'))
-                setStep(1)
-                setFile(null)
-                setPreviewUrl(null)
-              },
-            })
-            return
-          }
-          if (e.message.includes('408')) {
-            toast.error('Extraction timed out')
-            setModal({
-              show: true,
-              type: 'warning',
-              title: 'Extraction Timed Out',
-              message:
-                'The server took too long to process this document. This may happen with large or complex documents — please try again.',
-              confirmText: 'Try Again',
-              onConfirm: () => {
-                setModal({ show: false })
-                setStep(1)
-                setFile(null)
-                setPreviewUrl(null)
-              },
-            })
-            return
-          }
-          if (e.message.includes('429')) {
-            toast.error('Too many requests')
-            setModal({
-              show: true,
-              type: 'warning',
-              title: 'Too Many Requests',
-              message:
-                'You are sending requests too quickly. Please slow down and try again shortly.',
-              confirmText: 'Acknowledge',
-              onConfirm: () => {
-                setModal({ show: false })
-                setStep(1)
-                setFile(null)
-                setPreviewUrl(null)
-              },
-            })
-            return
-          }
-          retries--
-          if (retries === 0) throw err
-          setStatus('Retrying...')
-          setStatus(`Retrying… (${3 - retries + 1}/3)`)
-          await new Promise(r => setTimeout(r, delay))
-          delay *= 2
+      const rawItems = (data.items as Array<Record<string, unknown>>) || []
+      const formattedItems: APLineItem[] = rawItems.map(item => {
+        const ni: APLineItem = {
+          ...(item as APLineItem),
+          deptCode: '',
+          accountCode: '',
+          _uid: crypto.randomUUID(),
         }
+        Object.keys(ni).forEach(k => {
+          if (isNumFld(k) && ni[k] !== undefined && ni[k] !== '') ni[k] = fmt(ni[k])
+        })
+        return ni
+      })
+      setLineItems(formattedItems)
+
+      const taxId = data.vendorTaxId as string
+      if (taxId) {
+        getAPVendorMapping(taxId)
+          .then(res => {
+            const r = res as unknown as Record<string, unknown>
+            if (r.mapping) setFieldMappings(r.mapping as Record<APColumnKey, APFieldKey | 'ignore'>)
+            else throw new Error('no mapping')
+          })
+          .catch(() => {
+            try {
+              const savedAll = JSON.parse(
+                localStorage.getItem(appKey('ap_invoice_mapping')) || '{}'
+              ) as Record<string, Record<APColumnKey, APFieldKey | 'ignore'>>
+              if (savedAll[taxId]) setFieldMappings(savedAll[taxId])
+            } catch {
+              /* ignore */
+            }
+          })
       }
+
+      if (data.is_duplicate) {
+        setIsDuplicate(true)
+        setStatus('Duplicate document found')
+        toast.warning(
+          `Duplicate: ${(data.documentNumber as string) || 'document'} already in system`
+        )
+        setModal({
+          show: true,
+          type: 'warning',
+          title: 'Duplicate document found',
+          message: `Document No. ${(data.documentNumber as string) || '—'} for this vendor is already in the system.`,
+          confirmText: 'Proceed Anyway',
+          cancelText: 'Cancel',
+          onConfirm: () => {
+            setModal({ show: false })
+            setStep(2)
+            if (loadVendors) loadVendors()
+          },
+          onCancel: () => {
+            setModal({ show: false })
+            setFile(null)
+            setPreviewUrl(null)
+            setStep(1)
+          },
+        })
+        return
+      }
+
+      setStatus('Data extracted successfully ✓')
+      toast.success(
+        `Extracted ${formattedItems.length} line${formattedItems.length === 1 ? '' : 's'} — review and adjust`
+      )
+      setStep(2)
+      if (loadVendors) loadVendors()
     } catch (err) {
       const e = err as { message: string }
+      if (e.message.includes('402')) {
+        toast.error('Out of documents')
+        setModal({
+          show: true,
+          type: 'warning',
+          title: 'Out of Documents',
+          message:
+            "You've used all 30 documents in your one-time free trial and have no top-up credits left. Buy a credit pack to continue — credits never expire.",
+          confirmText: 'Buy Credits',
+          onConfirm: () => {
+            setModal({ show: false })
+            window.dispatchEvent(new Event('ocr:open-topup'))
+            setStep(1)
+            setFile(null)
+            setPreviewUrl(null)
+          },
+        })
+        return
+      }
+      if (e.message.includes('408')) {
+        toast.error('Extraction timed out')
+        setModal({
+          show: true,
+          type: 'warning',
+          title: 'Extraction Timed Out',
+          message:
+            'The server took too long to process this document. This may happen with large or complex documents — please try again.',
+          confirmText: 'Try Again',
+          onConfirm: () => {
+            setModal({ show: false })
+            setStep(1)
+            setFile(null)
+            setPreviewUrl(null)
+          },
+        })
+        return
+      }
+      if (e.message.includes('429')) {
+        toast.error('Too many requests')
+        setModal({
+          show: true,
+          type: 'warning',
+          title: 'Too Many Requests',
+          message: 'You are sending requests too quickly. Please slow down and try again shortly.',
+          confirmText: 'Acknowledge',
+          onConfirm: () => {
+            setModal({ show: false })
+            setStep(1)
+            setFile(null)
+            setPreviewUrl(null)
+          },
+        })
+        return
+      }
       console.error(err)
       setStatus(e.message)
       setError(t.errProcess)
-      if (!e.message.includes('429'))
-        toast.error('Could not read this invoice — try a clearer scan')
+      toast.error('Could not read this invoice — try a clearer scan')
     } finally {
       setLoading(false)
       window.dispatchEvent(new Event('ocr:quota-refresh'))
@@ -335,10 +323,8 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
         toast.error(`Too many images — maximum ${MAX_MULTI_IMAGES} at once`)
         return
       }
-      // Revoke previous preview + thumb URLs
-      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
-      previewUrlRef.current = null
-      imageThumbsRef.current.forEach(u => URL.revokeObjectURL(u))
+      // Revoke previous preview + thumb URLs before replacing them
+      revokePreviewUrls()
 
       // Create object URLs for each image to use as thumbnails in DocumentPreview
       const thumbUrls = fileArray.map(f => URL.createObjectURL(f))
@@ -359,8 +345,7 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
         })
         .catch(() => {
           toast.error('Could not merge images — please try again')
-          imageThumbsRef.current.forEach(u => URL.revokeObjectURL(u))
-          imageThumbsRef.current = []
+          revokePreviewUrls()
           setSelectedPageThumbs(null)
           setFile(null)
           setPreviewUrl(null)
@@ -372,8 +357,7 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
     }
 
     const f = fileArray[0]
-    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
-    previewUrlRef.current = null
+    revokePreviewUrls()
     setFile(f)
     setImageCount(0)
 
@@ -429,12 +413,7 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
   const cancelPageSelection = () => {
     setPdfSelector(null)
     setSelectedPageThumbs(null)
-    imageThumbsRef.current.forEach(u => URL.revokeObjectURL(u))
-    imageThumbsRef.current = []
-    if (previewUrlRef.current) {
-      URL.revokeObjectURL(previewUrlRef.current)
-      previewUrlRef.current = null
-    }
+    revokePreviewUrls()
     setFile(null)
     setPreviewUrl(null)
     setPreviewType(null)
@@ -442,12 +421,7 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
   }
 
   const resetExtraction = () => {
-    if (previewUrlRef.current) {
-      URL.revokeObjectURL(previewUrlRef.current)
-      previewUrlRef.current = null
-    }
-    imageThumbsRef.current.forEach(u => URL.revokeObjectURL(u))
-    imageThumbsRef.current = []
+    revokePreviewUrls()
     setFile(null)
     setPreviewUrl(null)
     setPreviewType(null)

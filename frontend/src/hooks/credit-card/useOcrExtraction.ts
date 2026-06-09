@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import type React from 'react'
 import {
   EMPTY_DETAIL_ROW,
   detectBankFromCompanyName,
@@ -64,8 +65,6 @@ export interface OcrExtractionHook {
   applyExtractedData: (ext: Record<string, unknown>, _taskId?: string | null) => void
 }
 
-import type React from 'react'
-
 const EXTRACTION_STAGES = [
   { at: 0, text: 'Reading document…' },
   { at: 6, text: 'Analysing document structure…' },
@@ -78,6 +77,46 @@ const BANK_CODE_TO_NAME: Record<string, string> = {
   BBL: 'Bangkok Bank (BBL)',
   KBANK: 'Kasikornbank (KBANK)',
   SCB: 'Siam Commercial Bank (SCB)',
+}
+
+// Persists bank code + detail rows for the mapping step (ocr_wizard_state) and merges vendor
+// company/branch into accountingConfig so the GL-mapping step pre-fills correctly.
+// Kept outside the hook because it is a pure side effect with no React state dependency.
+function _persistOcrLocalStorage(ext: Record<string, unknown>, detailsList: DetailRow[]): void {
+  try {
+    const bankCode =
+      detectBankFromExtracted(ext as Record<string, string | null | undefined>) ||
+      detectBankFromCompanyName(ext.bank_company_name as string) ||
+      ''
+    localStorage.setItem(
+      appKey('ocr_wizard_state'),
+      JSON.stringify({ bank: bankCode, details: detailsList })
+    )
+  } catch {
+    /* ignore */
+  }
+
+  if (ext.bank_company_name || ext.branch_no) {
+    try {
+      const existing = JSON.parse(
+        localStorage.getItem(appKey('accountingConfig')) || '{}'
+      ) as Record<string, unknown>
+      const existingCompany = (existing.company as Record<string, string> | undefined) || {}
+      const updatedCompany: Record<string, unknown> = {
+        ...(existingCompany as Record<string, unknown>),
+      }
+      if (ext.bank_company_name) updatedCompany.name = ext.bank_company_name as string
+      if (ext.branch_no) updatedCompany.branch = ext.branch_no as string
+      existing.company = updatedCompany
+      const detectedBankCode = detectBankFromCompanyName(ext.bank_company_name as string)
+      if (detectedBankCode && BANK_CODE_TO_NAME[detectedBankCode]) {
+        existing.bank = BANK_CODE_TO_NAME[detectedBankCode]
+      }
+      localStorage.setItem(appKey('accountingConfig'), JSON.stringify(existing))
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 export function useOcrExtraction({
@@ -133,41 +172,7 @@ export function useOcrExtraction({
     setDetails(detailsList)
     setOriginalDetails(JSON.parse(JSON.stringify(detailsList)) as DetailRow[])
     setOriginalHeader(JSON.parse(JSON.stringify(header)) as Record<string, string>)
-
-    try {
-      const bankCode =
-        detectBankFromExtracted(ext as Record<string, string | null | undefined>) ||
-        detectBankFromCompanyName(ext.bank_company_name as string) ||
-        ''
-      localStorage.setItem(
-        appKey('ocr_wizard_state'),
-        JSON.stringify({ bank: bankCode, details: detailsList })
-      )
-    } catch {
-      /* ignore */
-    }
-
-    if (ext.bank_company_name || ext.branch_no) {
-      try {
-        const existing = JSON.parse(
-          localStorage.getItem(appKey('accountingConfig')) || '{}'
-        ) as Record<string, unknown>
-        const existingCompany = (existing.company as Record<string, string> | undefined) || {}
-        const updatedCompany: Record<string, unknown> = {
-          ...(existingCompany as Record<string, unknown>),
-        }
-        if (ext.bank_company_name) updatedCompany.name = ext.bank_company_name as string
-        if (ext.branch_no) updatedCompany.branch = ext.branch_no as string
-        existing.company = updatedCompany
-        const detectedBankCode = detectBankFromCompanyName(ext.bank_company_name as string)
-        if (detectedBankCode && BANK_CODE_TO_NAME[detectedBankCode]) {
-          existing.bank = BANK_CODE_TO_NAME[detectedBankCode]
-        }
-        localStorage.setItem(appKey('accountingConfig'), JSON.stringify(existing))
-      } catch {
-        /* ignore */
-      }
-    }
+    _persistOcrLocalStorage(ext, detailsList)
   }
 
   function showDuplicateModal(docNo: string) {

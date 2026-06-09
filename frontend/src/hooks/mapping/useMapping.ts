@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { saveAccountingConfig } from '../../lib/api/config'
 import { appKey } from '../../lib/storage'
+import { parseNum } from '../../lib/format'
 import { BANK_INFO, BANK_CODE_MAP, BANK_SOURCE_MAP } from '../../constants/banks'
 import { useBankConfig } from './useBankConfig'
 import { useMappingData } from './useMappingData'
@@ -100,12 +101,11 @@ export function useMapping() {
         let comm = false,
           tx = false,
           n = false
-        const toNum = (v: unknown) => parseFloat(String(v ?? '').replace(/,/g, '')) || 0
         ocrState.details.forEach(d => {
           if (d.Transaction) types.add(d.Transaction)
-          if (toNum(d.CommisAmt) > 0) comm = true
-          if (toNum(d.TaxAmt) > 0) tx = true
-          if (toNum(d.Total) > 0) n = true
+          if (parseNum(d.CommisAmt) > 0) comm = true
+          if (parseNum(d.TaxAmt) > 0) tx = true
+          if (parseNum(d.Total) > 0) n = true
         })
         setActiveScan({ paymentTypes: types, commission: comm, tax: tx, net: n })
       }

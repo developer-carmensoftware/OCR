@@ -3,6 +3,7 @@ import { List, Calculator } from 'lucide-react'
 import { DETAIL_COLUMNS, DETAIL_LABELS } from '../../constants'
 import type { DetailColumn } from '../../constants/fields'
 import NumericInput from '../common/NumericInput'
+import { fmt, parseNum } from '../../lib/format'
 
 export interface DetailRow {
   Transaction?: string
@@ -24,6 +25,8 @@ interface Props {
 
 const AMOUNT_FIELDS: DetailColumn[] = ['PayAmt', 'CommisAmt', 'TaxAmt', 'Total']
 
+// Returns empty string for blank/null inputs so the cell stays visually empty rather than showing
+// "0.00". For non-empty input delegates to fmt() from lib/format.
 function formatAmount(value: unknown): string {
   const str = String(value ?? '')
     .replace(/,/g, '')
@@ -31,14 +34,11 @@ function formatAmount(value: unknown): string {
   if (str === '') return ''
   const num = parseFloat(str)
   if (isNaN(num)) return str
-  return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return fmt(num)
 }
 
 function sumColumn(details: DetailRow[], col: string): number {
-  return details.reduce((sum, row) => {
-    const val = parseFloat(String(row[col] || 0).replace(/,/g, ''))
-    return sum + (isNaN(val) ? 0 : val)
-  }, 0)
+  return details.reduce((sum, row) => sum + parseNum(row[col]), 0)
 }
 
 export default function DetailTable({
@@ -127,12 +127,7 @@ export default function DetailTable({
               return (
                 <div key={col} className="total-summary-item">
                   <div className="total-summary-label">{label}</div>
-                  <div className="total-summary-value">
-                    {total.toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
-                  </div>
+                  <div className="total-summary-value">{fmt(total)}</div>
                 </div>
               )
             })}

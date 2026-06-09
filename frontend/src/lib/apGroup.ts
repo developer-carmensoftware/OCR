@@ -1,5 +1,5 @@
 import { parseNum, fmt } from './format'
-import type { APLineItem } from '../hooks/ap-invoice/useAPExtraction'
+import type { APLineItem } from '../types/ap'
 
 // The grouping identity of a line: None lines collapse to 'None'; taxable lines are keyed by their
 // own profile code. Used as the bucket key in groupSelected.
@@ -7,6 +7,12 @@ export function effectiveTaxProfile(item: APLineItem | undefined): string {
   if (!item) return ''
   if ((item.taxType || 'Exclude') === 'None') return 'None'
   return item.taxProfileCode1 || ''
+}
+
+// Stable bucket key used both in groupSelected and APGroupModal to identify unique tax profiles
+// within a selection. Format: "<taxType>__<profileCode|None>".
+export function apGroupKey(item: APLineItem): string {
+  return `${item.taxType || 'Exclude'}__${effectiveTaxProfile(item)}`
 }
 
 // Builds a single line that represents the sum of `items`, keeping the row internally consistent
@@ -53,8 +59,7 @@ export function groupSelected(
 ): { row: APLineItem; bucket: APLineItem[] }[] {
   const groups = new Map<string, APLineItem[]>()
   for (const item of selected) {
-    const taxType = item.taxType || 'Exclude'
-    const key = `${taxType}__${effectiveTaxProfile(item)}`
+    const key = apGroupKey(item)
     if (!groups.has(key)) groups.set(key, [])
     groups.get(key)!.push(item)
   }

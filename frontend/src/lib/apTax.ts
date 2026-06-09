@@ -1,5 +1,5 @@
 import { parseNum, fmt, round2 } from './format'
-import type { APLineItem } from '../hooks/ap-invoice/useAPExtraction'
+import type { APLineItem } from '../types/ap'
 import type { TaxProfileItem } from './api/carmen'
 
 export type APTaxType = 'Include' | 'Exclude' | 'None'

@@ -11,10 +11,13 @@ import time
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.dependencies import SessionInfo
 from app.context import current_tenant_id
 from app.models.orm import CorrectionFeedback, CreditCard
+from app.models.schemas.feedback import CorrectionFeedbackRequest
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +105,33 @@ async def get_correction_hints(
 
     _HINTS_CACHE[cache_key] = (hints, now)
     return hints
+
+
+def build_correction_upsert(feedback: CorrectionFeedbackRequest, session: SessionInfo):
+    """Return a Postgres INSERT … ON CONFLICT DO UPDATE statement for a single correction.
+
+    Unique constraint: uq_correction_scope_doc_field (tenant_id, doc_no, field_name).
+    Returns CorrectionFeedback.id via RETURNING so the caller can re-fetch the row.
+    """
+    stmt = pg_insert(CorrectionFeedback).values(
+        tenant_id=session.tenant_id,
+        doc_no=feedback.doc_no,
+        bank_code=feedback.bank_code,
+        field_name=feedback.field_name,
+        original_value=feedback.original_value,
+        corrected_value=feedback.corrected_value,
+        carmen_user_id=session.carmen_user_id or None,
+    )
+    return stmt.on_conflict_do_update(
+        constraint="uq_correction_scope_doc_field",
+        set_={
+            "bank_code": feedback.bank_code,
+            "original_value": feedback.original_value,
+            "corrected_value": feedback.corrected_value,
+            "carmen_user_id": session.carmen_user_id or None,
+            "updated_at": func.now(),
+        },
+    ).returning(CorrectionFeedback.id)
 
 
 def invalidate_hints_cache(tenant_id: str | None = None) -> None:

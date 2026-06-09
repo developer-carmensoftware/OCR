@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Layers } from 'lucide-react'
 import { fmt, parseNum } from '../../constants/apInvoice'
-import { effectiveTaxProfile } from '../../lib/apGroup'
+import { effectiveTaxProfile, apGroupKey } from '../../lib/apGroup'
 import type { APLineItem } from '../../hooks/ap-invoice/useAPExtraction'
 
 interface Props {
@@ -43,8 +43,6 @@ export default function APGroupModal({ show, t, lineItems, groupByDescription, o
     return p === 'None' ? 'No VAT' : p || '—'
   }
 
-  const profileKey = (it: APLineItem) => `${it.taxType || 'Exclude'}__${effectiveTaxProfile(it)}`
-
   // Map selected indices to rows, dropping any that fall outside the current list. A group commit
   // shrinks `lineItems` and closes the modal in the same render, so a still-mounted body can briefly
   // see stale indices; filtering here keeps effectiveTaxProfile/parseNum from hitting `undefined`.
@@ -52,7 +50,7 @@ export default function APGroupModal({ show, t, lineItems, groupByDescription, o
     .map(i => lineItems[i])
     .filter((it): it is APLineItem => it != null)
   const count = selectedItems.length
-  const profileCount = new Set(selectedItems.map(profileKey)).size
+  const profileCount = new Set(selectedItems.map(apGroupKey)).size
   const multiRow = count >= 2 && profileCount > 1
   const missingDesc = desc.trim().length === 0 && count >= 2
   const needMoreItems = count === 1
