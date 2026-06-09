@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react'
 import { storeToken, clearToken, getStoredToken } from '../lib/api/client'
 import { revokeSession } from '../lib/api/auth'
-import { setActiveTenant, clearAppStorage } from '../lib/storage'
+import { setActiveTenant, clearAppStorage, setCarmenUri } from '../lib/storage'
 import { getJwtExpMs } from '../lib/jwt'
 import { showToast } from '../lib/toast'
 
@@ -41,6 +41,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Restore the storage namespace synchronously, before any child hook
         // reads tenant-scoped localStorage on mount.
         setActiveTenant(restored.tenant_id)
+        // Re-seed the persistent Carmen URI from the restored session so the
+        // "Go to Carmen" link survives a refresh even when login() didn't run
+        // this page-load (e.g. deploy upgrade of an existing sessionStorage
+        // session that predates the localStorage-backed uri).
+        if (restored.uri) setCarmenUri(restored.tenant_id, restored.uri)
         return restored
       } catch {
         clearToken()
@@ -97,6 +102,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     storeToken(accessToken)
     sessionStorage.setItem('ocr_user', JSON.stringify(userInfo))
     sessionStorage.setItem('ocr_last_tenant', userInfo.tenant_id)
+    // Persist uri keyed by tenant so "Go to Carmen" survives session expiry and
+    // multi-tenant shared-device use without cross-tenant collision.
+    if (userInfo.uri) setCarmenUri(userInfo.tenant_id, userInfo.uri)
     setActiveTenant(userInfo.tenant_id)
     setUser(userInfo)
   }, [])

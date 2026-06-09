@@ -33,6 +33,30 @@ export function appKey(base: string): string {
   return `t:${activeTenantId || 'anon'}:${base}`
 }
 
+// Per-tenant Carmen host URI. Intentionally OUTSIDE clearAppStorage: it is not
+// sensitive business data and must survive logout / session expiry so the
+// "Go to Carmen" link keeps working. Keyed by tenant so different tenants on a
+// shared device never overwrite each other's host.
+const CARMEN_URI_PREFIX = 'ocr_carmen_uri:'
+
+/** Persist the Carmen host URI for a tenant. */
+export function setCarmenUri(tenantId: string, uri: string): void {
+  try {
+    localStorage.setItem(`${CARMEN_URI_PREFIX}${tenantId}`, uri)
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/** Recall the Carmen host URI for a tenant, or null if none stored. */
+export function getCarmenUri(tenantId: string): string | null {
+  try {
+    return localStorage.getItem(`${CARMEN_URI_PREFIX}${tenantId}`)
+  } catch {
+    return null
+  }
+}
+
 /** Remove every app-owned key (all tenants). Use on logout / tenant switch. */
 export function clearAppStorage(): void {
   try {
