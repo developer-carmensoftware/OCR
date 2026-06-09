@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { saveAccountingConfig } from '../../lib/api/config'
+import { appKey } from '../../lib/storage'
 import { BANK_INFO, BANK_CODE_MAP, BANK_SOURCE_MAP } from '../../constants/banks'
 import { useBankConfig } from './useBankConfig'
 import { useMappingData } from './useMappingData'
@@ -91,7 +92,7 @@ export function useMapping() {
 
   useEffect(() => {
     try {
-      const ocrState = JSON.parse(localStorage.getItem('ocr_wizard_state') || '{}') as {
+      const ocrState = JSON.parse(localStorage.getItem(appKey('ocr_wizard_state')) || '{}') as {
         details?: Array<Record<string, string>>
       }
       if (ocrState.details && Array.isArray(ocrState.details)) {
@@ -203,7 +204,7 @@ export function useMapping() {
         mappings,
         paymentAmount: paymentTypes.paymentAmount,
       }
-      localStorage.setItem('accountingConfig', JSON.stringify(config))
+      localStorage.setItem(appKey('accountingConfig'), JSON.stringify(config))
 
       const allMappings: Record<string, FieldMapping> = { ...mappings }
       Object.entries(paymentTypes.paymentAmount).forEach(([type, val]) => {
@@ -222,7 +223,7 @@ export function useMapping() {
           mappings: allMappings,
           custom_types: paymentTypes.customPaymentTypes,
         })
-        localStorage.setItem('accounting_config_updated', Date.now().toString())
+        localStorage.setItem(appKey('accounting_config_updated'), Date.now().toString())
       } catch {
         /* ignore — localStorage already saved */
       }

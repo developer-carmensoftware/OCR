@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { getAccountingConfig } from '../../lib/api/config'
+import { appKey } from '../../lib/storage'
 import type { FieldMapping } from '../../types/api'
 
 export interface AccountingConfig {
@@ -49,10 +50,10 @@ function splitMappings(raw: Record<string, FieldMapping>): {
 
 function readFromLocalStorage(): AccountingConfig | null {
   try {
-    const raw = localStorage.getItem('accountingConfig')
+    const raw = localStorage.getItem(appKey('accountingConfig'))
     if (!raw) return null
     const parsed = JSON.parse(raw) as AccountingConfig
-    const amountRaw = localStorage.getItem('accountMappingAmount')
+    const amountRaw = localStorage.getItem(appKey('accountMappingAmount'))
     if (amountRaw) {
       const { __customTypes: _ignored, ...paymentAmount } = JSON.parse(amountRaw) as Record<
         string,
@@ -78,7 +79,7 @@ export function useAccountingConfig(): AccountingConfigHook {
 
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
-      if (e.key === 'accounting_config_updated') refresh()
+      if (e.key === appKey('accounting_config_updated')) refresh()
     }
     window.addEventListener('storage', onStorage)
     return () => window.removeEventListener('storage', onStorage)
@@ -98,7 +99,7 @@ export function useAccountingConfig(): AccountingConfigHook {
         const { mappings, paymentAmount } = splitMappings(apiData.mappings || {})
         const lsCompany = (() => {
           try {
-            const raw = localStorage.getItem('accountingConfig')
+            const raw = localStorage.getItem(appKey('accountingConfig'))
             return raw ? ((JSON.parse(raw) as AccountingConfig).company ?? {}) : {}
           } catch {
             return {}

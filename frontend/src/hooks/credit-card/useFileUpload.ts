@@ -1,6 +1,8 @@
 import { useState, useRef } from 'react'
 import type React from 'react'
 import { getFilePreview } from '../../lib/api/ocr'
+import { checkFilesSize } from '../../lib/fileValidation'
+import { showToast } from '../../lib/toast'
 
 const HEIC_RE = /\.(heic|heif)$/i
 
@@ -58,6 +60,12 @@ export function useFileUpload(): FileUploadHook {
     const selectedFiles = e.target.files
     if (!selectedFiles || selectedFiles.length === 0) return
     const fileArray = Array.from(selectedFiles)
+    const sizeError = checkFilesSize(fileArray)
+    if (sizeError) {
+      showToast(sizeError, 'error')
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
     setFiles(fileArray)
     setPreview(fileArray[0])
     if (onFilesReady) onFilesReady(fileArray)

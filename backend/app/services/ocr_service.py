@@ -11,6 +11,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.context import current_tenant_id
+from app.exceptions import ValidationError
 from app.models.orm import OCRTask, TaskStatus
 from app.models.schemas import ExtractedCreditCardData
 from app.services.llm_service import extract_from_image
@@ -42,7 +43,15 @@ async def extract_stateless(
         page_count = await asyncio.get_running_loop().run_in_executor(
             None, get_pdf_page_count, file_bytes
         )
-        pages = selected_pages if selected_pages is not None else list(range(page_count))
+        if selected_pages is not None:
+            pages = [p for p in selected_pages if 0 <= p < page_count]
+            if not pages:
+                raise ValidationError(
+                    f"selected_pages {selected_pages} are out of range for a "
+                    f"{page_count}-page document."
+                )
+        else:
+            pages = list(range(page_count))
         # Cap to prevent token overflow
         if len(pages) > MAX_PAGES_PER_CALL:
             logger.warning(

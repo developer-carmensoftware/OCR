@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models.schemas import LoginRequest, LoginResponse, MFAVerifyRequest
 from app.routers.admin.deps import get_current_admin
 from app.services import admin_auth_service as svc
+from app.utils.client_ip import get_client_ip
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["Admin Auth"])
@@ -20,7 +21,7 @@ async def admin_login(
     request: Request,
     db=Depends(get_db),
 ):
-    ip = request.headers.get("X-Forwarded-For") or (request.client.host if request.client else None)
+    ip = get_client_ip(request)
     try:
         admin, token, roles, _perms, tenant_scope = await svc.login(
             db=db,

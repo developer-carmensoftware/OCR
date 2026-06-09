@@ -16,6 +16,7 @@ import httpx
 from openai import APIConnectionError, APITimeoutError, AsyncOpenAI, RateLimitError
 
 from app.config import settings
+from app.exceptions import LLMServiceError
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +41,13 @@ async def _with_retry(coro_factory, label: str):
             return await coro_factory()
         except _RETRYABLE as exc:
             if attempt == _MAX_ATTEMPTS:
-                raise RuntimeError(
-                    f"LLM call '{label}' failed after {_MAX_ATTEMPTS} attempts: {exc}"
-                ) from exc
+                # Re-raise the ORIGINAL exception type (not a wrapped RuntimeError) so
+                # call_vision_llm's `except (*_RETRYABLE, httpx.HTTPError)` handler can
+                # match it and return 503 (provider down → retryable) instead of 500.
+                logger.error(
+                    "LLM call '%s' failed after %d attempts: %s", label, _MAX_ATTEMPTS, exc
+                )
+                raise
             # Longer base + jitter on RateLimitError to avoid synchronized retry storms
             # when many concurrent callers hit OpenRouter's per-minute quota at once.
             if isinstance(exc, RateLimitError):
@@ -136,6 +141,11 @@ async def call_vision_llm(
                 ),
                 label="vision",
             )
+    except (*_RETRYABLE, httpx.HTTPError) as exc:
+        # Upstream LLM provider unavailable/slow after retries → 503 so the client
+        # knows to retry, rather than a generic 500 that looks like our bug.
+        status_code = 503
+        raise LLMServiceError(f"LLM provider unavailable: {exc}") from exc
     except Exception as exc:
         status_code = 500
         raise RuntimeError(f"LLM API call failed: {exc}") from exc

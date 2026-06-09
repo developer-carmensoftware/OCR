@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { appKey } from '../../lib/storage'
 import type { FieldMapping } from '../../types/api'
 
 export interface PaymentTypesHook {
@@ -50,7 +51,7 @@ export function usePaymentTypes(): PaymentTypesHook {
   }
 
   const loadPaymentAmountFromStorage = () => {
-    const amountState = localStorage.getItem('accountMappingAmount')
+    const amountState = localStorage.getItem(appKey('accountMappingAmount'))
     if (!amountState) return
     try {
       const parsed = JSON.parse(amountState) as Record<string, unknown>
@@ -118,7 +119,7 @@ export function usePaymentTypes(): PaymentTypesHook {
     paymentAmountSnapshot.current = null
     customPaymentTypesSnapshot.current = null
     localStorage.setItem(
-      'accountMappingAmount',
+      appKey('accountMappingAmount'),
       JSON.stringify({ ...paymentAmount, __customTypes: customPaymentTypes })
     )
     setIsAmountModalOpen(false)

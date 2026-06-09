@@ -5,6 +5,7 @@ import { getAccountingConfig } from '../../lib/api/config'
 import { getCarmenUrl } from '../../lib/url'
 import { normalizeYearToCE } from '../../lib/date'
 import { showToast } from '../../lib/toast'
+import { appKey } from '../../lib/storage'
 import type { ModalConfig } from '../useModal'
 
 /**
@@ -91,7 +92,7 @@ export function useOcrSubmission({
       try {
         const carmenConfig = await getAccountingConfig().catch(() => {
           try {
-            return JSON.parse(localStorage.getItem('accountingConfig') || '{}') as Record<
+            return JSON.parse(localStorage.getItem(appKey('accountingConfig')) || '{}') as Record<
               string,
               string
             >

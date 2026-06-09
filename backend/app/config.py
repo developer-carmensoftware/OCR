@@ -44,8 +44,15 @@ class Settings(BaseSettings):
     app_host: str = "0.0.0.0"
     app_port: int = 8010
     app_debug: bool = False
-    allowed_origin_regex: str = ".*"
+    # Empty default = no regex origin matching. NEVER default to ".*" — combined with
+    # allow_credentials it would let any site call the API with cookies/auth.
+    allowed_origin_regex: str = ""
     allowed_origins: str = "http://localhost:3010"
+
+    # Trust X-Forwarded-For for client IP (rate-limit / admin-lockout / audit).
+    # Only enable when deployed behind a trusted reverse proxy (nginx/Cloudflare).
+    # When False, the spoofable XFF header is ignored and request.client.host is used.
+    trust_proxy: bool = False
 
     # SSRF protection — comma-separated regex patterns for allowed Carmen hostnames.
     # Example: "erp\.company\.com,erp2\.company\.com"
@@ -143,6 +150,42 @@ if not settings.app_debug and settings.session_encryption_key == _WEAK_FERNET_KE
         "SESSION_ENCRYPTION_KEY is set to the placeholder value. "
         'Generate a real key: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
     )
+
+# ── Production deployment guards (warn loudly when prod config looks unset) ─────
+# These run only when app_debug=False (i.e. a real deployment). They do not crash
+# the app — a pilot may legitimately run without a proxy/Sentry — but a misconfigured
+# CORS surface is the kind of mistake that silently exposes the API, so we shout.
+if not settings.app_debug:
+    _origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
+    _cors_unset = not settings.allowed_origin_regex and (
+        not _origins or _origins == ["http://localhost:3010"]
+    )
+    if _cors_unset:
+        _config_logger.critical(
+            "CORS is not configured for production: ALLOWED_ORIGINS is still the localhost "
+            "default and ALLOWED_ORIGIN_REGEX is empty. Set them to your real frontend origin(s) "
+            "before exposing the API."
+        )
+    if "*" in _origins:
+        _config_logger.critical(
+            "ALLOWED_ORIGINS contains '*' — credentialed CORS is disabled and any origin is "
+            "allowed. Set explicit origins for production."
+        )
+    if not settings.carmen_allowed_host_regex:
+        _config_logger.warning(
+            "CARMEN_ALLOWED_HOST_REGEX is empty — the Carmen proxy will accept any HTTPS host "
+            "(SSRF risk). Restrict it to your known Carmen ERP hostname(s) before the pilot."
+        )
+    if not settings.sentry_dsn:
+        _config_logger.warning(
+            "SENTRY_DSN is empty — backend errors will not be reported to centralized error "
+            "tracking. Set it for the pilot so issues are visible beyond ephemeral server logs."
+        )
+    if not settings.admin_jwt_secret:
+        _config_logger.warning(
+            "ADMIN_JWT_SECRET is empty — admin JWTs fall back to OCR_JWT_SECRET (shared signing "
+            "key). Set a separate secret to prevent token-confusion between user and admin tokens."
+        )
 
 # ── Database URL normalization ────────────────────────────────────────────────
 # Neon (and most managed Postgres providers) hand out URLs as `postgres://...`

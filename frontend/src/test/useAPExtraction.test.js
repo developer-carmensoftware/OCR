@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useAPExtraction } from '../hooks/ap-invoice/useAPExtraction'
 
-vi.mock('../lib/api/client', () => ({ apiFetch: vi.fn() }))
+vi.mock('../lib/api/client', () => ({
+  apiFetch: vi.fn(),
+  // Real fetchTimeout returns { signal, clear }; the hook destructures both on
+  // every runOCR call, so the mock must too or it throws before apiFetch runs.
+  fetchTimeout: vi.fn(() => ({ signal: new AbortController().signal, clear: vi.fn() })),
+}))
 vi.mock('../lib/api/config', () => ({ getAPVendorMapping: vi.fn() }))
 vi.mock('../lib/toast', () => ({
   showToast: vi.fn(),

@@ -5,6 +5,8 @@ import { getAPVendorMapping } from '../../lib/api/config'
 import { getPdfInfo, getFilePreview } from '../../lib/api/ocr'
 import { imagesToPdf, MAX_MULTI_IMAGES } from '../../lib/imagesToPdf'
 import { toast } from '../../lib/toast'
+import { appKey } from '../../lib/storage'
+import { checkFilesSize } from '../../lib/fileValidation'
 import { fmt } from '../../lib/format'
 import { EMPTY_HEADER, DEFAULT_MAPPINGS } from '../../constants/apInvoice'
 import type { APInvoiceHeader, APColumnKey, APFieldKey } from '../../constants/apInvoice'
@@ -187,7 +189,7 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
               .catch(() => {
                 try {
                   const savedAll = JSON.parse(
-                    localStorage.getItem('ap_invoice_mapping') || '{}'
+                    localStorage.getItem(appKey('ap_invoice_mapping')) || '{}'
                   ) as Record<string, Record<APColumnKey, APFieldKey | 'ignore'>>
                   if (savedAll[taxId]) setFieldMappings(savedAll[taxId])
                 } catch {
@@ -240,7 +242,7 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
               type: 'warning',
               title: 'Out of Documents',
               message:
-                'Your free 30 documents this month are used up and you have no top-up credits left. Buy a credit pack to continue — credits never expire.',
+                "You've used all 30 documents in your one-time free trial and have no top-up credits left. Buy a credit pack to continue — credits never expire.",
               confirmText: 'Buy Credits',
               onConfirm: () => {
                 setModal({ show: false })
@@ -318,6 +320,11 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
     if (pdfInfoLoading || loading || imageMerging) return
 
     const fileArray = Array.from(rawFiles) as File[]
+    const sizeError = checkFilesSize(fileArray)
+    if (sizeError) {
+      toast.error(sizeError)
+      return
+    }
     const allImages = fileArray.every(
       f => f.type.startsWith('image/') && !f.name.toLowerCase().endsWith('.pdf')
     )

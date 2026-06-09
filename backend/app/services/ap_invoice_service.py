@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 
 from app.config import settings
 from app.constants import ExpenseAccounts, Module
+from app.exceptions import ValidationError
 from app.llm.client import _strip_code_fences, call_text_llm, call_vision_llm
 from app.llm.prompts.ap_invoice import PROMPT as AP_INVOICE_PROMPT
 from app.llm.prompts.mapping import build_ap_expense_prompt
@@ -127,6 +128,11 @@ async def extract_ap_invoice_data(
         # Honour an explicit selection (filtered to valid indices); else all pages.
         if selected_pages:
             pages = [p for p in selected_pages if 0 <= p < page_count]
+            if not pages:
+                raise ValidationError(
+                    f"selected_pages {selected_pages} are out of range for a "
+                    f"{page_count}-page document."
+                )
         else:
             pages = list(range(page_count))
         if len(pages) > MAX_PAGES_PER_CALL:

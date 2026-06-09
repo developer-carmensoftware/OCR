@@ -26,7 +26,9 @@ from app.models.orm import Quota, QuotaUsage
 
 logger = logging.getLogger(__name__)
 
-_QUOTA_TTL = 300.0  # seconds
+# Short TTL so an admin's quota/credit adjustment takes effect quickly (≤60s)
+# instead of a tenant hitting a stale limit for up to 5 minutes.
+_QUOTA_TTL = 60.0  # seconds
 
 
 @dataclass(frozen=True)

@@ -79,9 +79,13 @@ def _get_engine():
             db_url,
             echo=settings.app_debug,
             pool_pre_ping=True,
-            pool_size=10,
-            max_overflow=40,
-            pool_recycle=1800,  # Neon idle-suspends after ~5min; recycle stale conns.
+            # Supabase Supavisor session mode (port 5432) holds one Postgres backend per
+            # pooled connection, so this pool maps 1:1 to server-side connections. Keep it
+            # well under the project's connection limit. 8+8=16 is ample for a single app
+            # instance serving ~10-15 tenants; raise only if you observe pool waits.
+            pool_size=8,
+            max_overflow=8,
+            pool_recycle=1800,  # Recycle before Supabase/pooler idle timeout drops the conn.
             connect_args=connect_args,
         )
         _SESSION_FACTORY = async_sessionmaker(

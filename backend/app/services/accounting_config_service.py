@@ -169,9 +169,14 @@ async def save_ap_vendor_mapping(
 
 
 async def get_account_usage(
-    db: AsyncSession, acc_code: str | None, dept_code: str | None
+    db: AsyncSession, tenant_id: str, acc_code: str | None, dept_code: str | None
 ) -> list[dict[str, Any]]:
-    conditions: list[Any] = [BUAccountingMappingEntry.deleted_at.is_(None)]
+    # Tenant-scoped: only the caller's own GL mappings — never leak other tenants'
+    # accounting structure (this endpoint was previously cross-tenant by mistake).
+    conditions: list[Any] = [
+        BUAccountingMappingEntry.deleted_at.is_(None),
+        BUAccountingConfig.tenant_id == tenant_id,
+    ]
     if acc_code:
         conditions.append(BUAccountingMappingEntry.acc_code == acc_code)
     if dept_code:

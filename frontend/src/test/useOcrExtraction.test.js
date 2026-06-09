@@ -184,7 +184,8 @@ describe('useOcrExtraction', () => {
       await act(async () => {
         await result.current.processFile([MOCK_FILE])
       })
-      const saved = JSON.parse(localStorage.getItem('accountingConfig') || '{}')
+      // key is tenant-namespaced via appKey(); with no active tenant it resolves to 't:anon:'
+      const saved = JSON.parse(localStorage.getItem('t:anon:accountingConfig') || '{}')
       expect(saved.company?.name).toBe('KBANK')
     })
   })

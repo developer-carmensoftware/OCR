@@ -6,6 +6,7 @@ import { useOcrSubmission } from './useOcrSubmission'
 import { showToast } from '../../lib/toast'
 import { getPdfInfo } from '../../lib/api/ocr'
 import { imagesToPdf, MAX_MULTI_IMAGES } from '../../lib/imagesToPdf'
+import { appKey } from '../../lib/storage'
 import type { JvRow } from './useOcrSubmission'
 import type React from 'react'
 
@@ -78,7 +79,7 @@ export function useOcrWizard() {
 
   useEffect(() => {
     try {
-      const config = JSON.parse(localStorage.getItem('accountingConfig') || '{}') as {
+      const config = JSON.parse(localStorage.getItem(appKey('accountingConfig')) || '{}') as {
         filePrefix?: string
         fileSource?: string
         description?: string

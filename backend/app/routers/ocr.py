@@ -8,7 +8,6 @@ Business logic lives in:
 """
 
 import asyncio
-import json
 import logging
 from datetime import UTC, datetime
 
@@ -31,7 +30,9 @@ from app.services.credit_card_service import finalize_extraction, mark_task_fail
 from app.services.credit_service import consume_document
 from app.services.file_service import file_service
 from app.services.task_service import create_task
+from app.utils.client_ip import get_client_ip
 from app.utils.date_parsing import format_doc_date
+from app.utils.pages import parse_selected_pages
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/ocr", tags=["OCR"])
@@ -73,6 +74,13 @@ async def extract_card(
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded")
 
+    # Validate cheap input BEFORE consuming a credit / creating task rows, so a
+    # malformed request can't burn a document credit or leave orphaned PENDING tasks.
+    try:
+        parsed_pages = parse_selected_pages(selected_pages)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     filenames = file_service.get_filenames_string(files)
     current_document_ref.set(filenames)
     await audit_service.log_action(
@@ -80,7 +88,7 @@ async def extract_card(
         AuditAction.EXTRACT,
         resource="credit_card",
         resource_id=filenames,
-        ip_address=request.client.host if request.client else None,
+        ip_address=get_client_ip(request),
     )
 
     await consume_document()
@@ -104,15 +112,6 @@ async def extract_card(
                 carmen_user_id=session.carmen_user_id,
             )
             task_records.append((filename, file_bytes, str(task.id)))
-
-    parsed_pages: list[int] | None = None
-    if selected_pages:
-        try:
-            parsed_pages = json.loads(selected_pages)
-        except (json.JSONDecodeError, ValueError):
-            raise HTTPException(
-                status_code=400, detail="selected_pages must be a JSON array of integers"
-            )
 
     # Phase 3 & 4: process each file in parallel with task status tracking
     async def process_single_task(
@@ -234,16 +233,21 @@ async def health_check():
             llm_error = str(exc)
 
     healthy = llm_status == "ok"
+    # Public endpoint — do not leak model names / config (recon aid). Detailed
+    # model + error info is logged server-side and available on the authenticated
+    # admin surface instead.
+    if not healthy:
+        logger.warning(
+            "health degraded: openrouter=%s model=%s error=%s",
+            llm_status,
+            settings.openrouter_ocr_model,
+            llm_error,
+        )
     body = {
         "status": "healthy" if healthy else "degraded",
         "openrouter": llm_status,
-        "ocr_engine": settings.ocr_engine,
-        "openrouter_ocr_model": settings.openrouter_ocr_model,
-        "openrouter_suggestion_model": settings.openrouter_suggestion_model,
         "timestamp": datetime.now(UTC).isoformat(),
     }
-    if llm_error:
-        body["openrouter_error"] = llm_error
     return JSONResponse(status_code=200 if healthy else 503, content=body)
 
 

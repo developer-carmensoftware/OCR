@@ -6,6 +6,7 @@ import {
 } from '../../constants'
 import { extractFromFile } from '../../lib/api/ocr'
 import { showToast } from '../../lib/toast'
+import { appKey } from '../../lib/storage'
 import type { ModalConfig } from '../useModal'
 import type { BankCode } from '../../types/api'
 
@@ -139,7 +140,7 @@ export function useOcrExtraction({
         detectBankFromCompanyName(ext.bank_company_name as string) ||
         ''
       localStorage.setItem(
-        'ocr_wizard_state',
+        appKey('ocr_wizard_state'),
         JSON.stringify({ bank: bankCode, details: detailsList })
       )
     } catch {
@@ -148,10 +149,9 @@ export function useOcrExtraction({
 
     if (ext.bank_company_name || ext.branch_no) {
       try {
-        const existing = JSON.parse(localStorage.getItem('accountingConfig') || '{}') as Record<
-          string,
-          unknown
-        >
+        const existing = JSON.parse(
+          localStorage.getItem(appKey('accountingConfig')) || '{}'
+        ) as Record<string, unknown>
         const existingCompany = (existing.company as Record<string, string> | undefined) || {}
         const updatedCompany: Record<string, unknown> = {
           ...(existingCompany as Record<string, unknown>),
@@ -163,7 +163,7 @@ export function useOcrExtraction({
         if (detectedBankCode && BANK_CODE_TO_NAME[detectedBankCode]) {
           existing.bank = BANK_CODE_TO_NAME[detectedBankCode]
         }
-        localStorage.setItem('accountingConfig', JSON.stringify(existing))
+        localStorage.setItem(appKey('accountingConfig'), JSON.stringify(existing))
       } catch {
         /* ignore */
       }
@@ -220,7 +220,7 @@ export function useOcrExtraction({
         showModal({
           title: 'Out of Documents',
           message:
-            'Your free 30 documents this month are used up and you have no top-up credits left. Buy a credit pack to continue — credits never expire.',
+            "You've used all 30 documents in your one-time free trial and have no top-up credits left. Buy a credit pack to continue — credits never expire.",
           type: 'warning',
           confirmText: 'Buy Credits',
           onConfirm: () => {

@@ -67,10 +67,10 @@ async def get_account_usage(
     acc_code: str | None = Query(None, description="Filter by GL account code"),
     dept_code: str | None = Query(None, description="Filter by department code"),
     db: AsyncSession = Depends(get_db),
-    _session: SessionInfo = Depends(get_current_session),
+    session: SessionInfo = Depends(get_current_session),
 ):
     if not acc_code and not dept_code:
         return {"error": "Provide acc_code or dept_code query param", "results": []}
 
-    results = await svc.get_account_usage(db, acc_code, dept_code)
+    results = await svc.get_account_usage(db, session.tenant_id, acc_code, dept_code)
     return {"acc_code": acc_code, "dept_code": dept_code, "count": len(results), "results": results}

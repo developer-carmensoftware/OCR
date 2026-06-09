@@ -22,7 +22,7 @@ from sqlalchemy import (
 )
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
@@ -155,12 +155,14 @@ class BUAccountingConfig(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, W
 
     __tablename__ = "bu_accounting_configs"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    bank_code = Column(String(20), ForeignKey("banks.code"), nullable=True, index=True)
-    file_prefix = Column(String(20), nullable=True)
-    file_source = Column(String(20), nullable=True)
-    description = Column(String(255), nullable=True)
-    branch = Column(String(50), nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    bank_code: Mapped[str | None] = mapped_column(
+        String(20), ForeignKey("banks.code"), nullable=True, index=True
+    )
+    file_prefix: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    file_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    description: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    branch: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     entries = relationship(
         "BUAccountingMappingEntry",
@@ -259,12 +261,12 @@ class APVendorFieldMappingEntry(Base, TimestampMixin, SoftDeleteMixin):
 
     __tablename__ = "ap_vendor_field_mapping_entries"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    mapping_id = Column(
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    mapping_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("ap_vendor_column_mappings.id"), nullable=False, index=True
     )
-    column_name = Column(String(255), nullable=False)
-    field_name = Column(String(100), nullable=False, index=True)
+    column_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    field_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
 
     mapping = relationship("APVendorColumnMapping", back_populates="entries")
 

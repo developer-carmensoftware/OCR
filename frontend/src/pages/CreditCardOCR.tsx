@@ -13,6 +13,7 @@ import {
   AppHeader,
 } from '../components/common'
 import PDFPageSelector from '../components/common/PDFPageSelector'
+import { appKey } from '../lib/storage'
 import {
   UploadSection,
   BankDetectionBanner,
@@ -205,7 +206,10 @@ export default function CreditCardOCR() {
                   onSubmit={handleSubmitFinal}
                   onGoMapping={() => {
                     try {
-                      localStorage.setItem('ocr_wizard_state', JSON.stringify({ bank, details }))
+                      localStorage.setItem(
+                        appKey('ocr_wizard_state'),
+                        JSON.stringify({ bank, details })
+                      )
                     } catch {
                       /* ignore */
                     }

@@ -4,6 +4,7 @@ import { AP_I18N } from '../../constants/apInvoice'
 import { showToast } from '../../lib/toast'
 import { parseNum, fmt, round2 } from '../../lib/format'
 import { saveAPVendorMapping } from '../../lib/api/config'
+import { appKey } from '../../lib/storage'
 import { useAPExtraction } from './useAPExtraction'
 import type { APLineItem } from './useAPExtraction'
 import { useAPVendor } from './useAPVendor'
@@ -118,12 +119,11 @@ export function useAPInvoice() {
         extraction.fieldMappings as unknown as Parameters<typeof saveAPVendorMapping>[1]
       ).catch(() => {})
       try {
-        const savedAll = JSON.parse(localStorage.getItem('ap_invoice_mapping') || '{}') as Record<
-          string,
-          unknown
-        >
+        const savedAll = JSON.parse(
+          localStorage.getItem(appKey('ap_invoice_mapping')) || '{}'
+        ) as Record<string, unknown>
         savedAll[taxId] = extraction.fieldMappings
-        localStorage.setItem('ap_invoice_mapping', JSON.stringify(savedAll))
+        localStorage.setItem(appKey('ap_invoice_mapping'), JSON.stringify(savedAll))
       } catch {
         /* ignore */
       }

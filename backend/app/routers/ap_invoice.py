@@ -1,4 +1,3 @@
-import json
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -20,8 +19,10 @@ from app.services.carmen_service import CarmenAPIError, get_account_codes, get_d
 from app.services.credit_service import consume_document
 from app.services.file_service import file_service
 from app.services.task_service import create_task, mark_failed
+from app.utils.client_ip import get_client_ip
 from app.utils.date_parsing import parse_doc_date
 from app.utils.db_helpers import has_submitted_doc
+from app.utils.pages import parse_selected_pages
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/ap-invoice", tags=["AP Invoice"])
@@ -45,28 +46,26 @@ async def extract_ap_invoice(
         AuditAction.EXTRACT,
         resource=Module.AP_INVOICE,
         resource_id=file.filename,
-        ip_address=request.client.host if request.client else None,
+        ip_address=get_client_ip(request),
     )
 
-    await consume_document()
-
+    # Validate cheap config/input BEFORE consuming a credit, so a misconfigured
+    # server or a malformed request can't burn a document credit for nothing.
     if not settings.openrouter_api_key:
         raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY is not configured")
+
+    # Optional page selection (JSON-encoded 0-based list, e.g. "[0,1,3]"). Form data
+    # can't carry a list directly. None/empty → service processes all pages.
+    try:
+        parsed_pages = parse_selected_pages(selected_pages)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    await consume_document()
 
     file_bytes, filename = await file_service.validate_and_read(file)
     if not filename:
         filename = "invoice"
-
-    # Optional page selection (JSON-encoded 0-based list, e.g. "[0,1,3]"). Form data
-    # can't carry a list directly. None/empty → service processes all pages.
-    parsed_pages: list[int] | None = None
-    if selected_pages:
-        try:
-            parsed = json.loads(selected_pages)
-            if isinstance(parsed, list):
-                parsed_pages = [int(p) for p in parsed]
-        except (json.JSONDecodeError, ValueError, TypeError):
-            logger.warning("Invalid selected_pages payload: %r", selected_pages)
 
     # Short DB session: create the task row, then release the connection.
     async with async_session() as db:
@@ -147,7 +146,7 @@ async def suggest(
         session,
         AuditAction.SUGGEST_GL,
         resource=Module.AP_INVOICE,
-        ip_address=request.client.host if request.client else None,
+        ip_address=get_client_ip(request),
     )
 
     if not settings.openrouter_api_key:

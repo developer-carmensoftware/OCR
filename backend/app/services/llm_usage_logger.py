@@ -62,4 +62,6 @@ async def log_llm_usage(
             )
             await db.commit()
     except Exception as exc:
-        logger.warning("log_llm_usage failed: %s", exc, exc_info=True)
+        # Never disrupt the OCR flow, but surface as ERROR (not warning): silent loss
+        # here means cost/quota tracking drifts and we lose per-module accounting.
+        logger.error("log_llm_usage failed — usage/cost not recorded: %s", exc, exc_info=True)

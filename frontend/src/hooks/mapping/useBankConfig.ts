@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { getAccountingConfig } from '../../lib/api/config'
 import { detectBankFromCompanyName, BANK_INFO, BANK_SOURCE_MAP } from '../../constants/banks'
 import { normalizeConfigShape, codeToDisplayName } from '../../lib/bankTransforms'
+import { appKey } from '../../lib/storage'
 import type { BankDisplayName, FieldMapping } from '../../types/api'
 import type { CompanyData } from '../../lib/bankTransforms'
 
@@ -41,10 +42,9 @@ export function useBankConfig(): BankConfigHook {
   useEffect(() => {
     let ocrBank: BankDisplayName | '' = ''
     try {
-      const ocrState = JSON.parse(localStorage.getItem('ocr_wizard_state') || '{}') as Record<
-        string,
-        unknown
-      >
+      const ocrState = JSON.parse(
+        localStorage.getItem(appKey('ocr_wizard_state')) || '{}'
+      ) as Record<string, unknown>
       ocrBank = codeToDisplayName(ocrState.bank as string) || ''
     } catch {
       /* ignore */
@@ -73,7 +73,7 @@ export function useBankConfig(): BankConfigHook {
         }
       })
       .catch(() => {
-        const raw = localStorage.getItem('accountingConfig')
+        const raw = localStorage.getItem(appKey('accountingConfig'))
         if (raw) {
           try {
             applyConfig(JSON.parse(raw) as Record<string, unknown>)

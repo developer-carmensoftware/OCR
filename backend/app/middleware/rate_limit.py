@@ -22,6 +22,8 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
+from app.utils.client_ip import get_client_ip
+
 # (max_requests, window_seconds)
 _LIMITS: dict[str, tuple[int, int]] = {
     "auth": (20, 60),
@@ -42,10 +44,7 @@ def _endpoint_group(path: str) -> str:
 
 
 def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    return get_client_ip(request) or "unknown"
 
 
 # Periodically sweep dead keys (IPs that haven't been seen in a while) so the
