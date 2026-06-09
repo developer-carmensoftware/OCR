@@ -24,6 +24,22 @@ class Settings(BaseSettings):
 
     # OpenRouter API
     openrouter_api_key: str = ""
+    # Multi-key capacity pool — comma-separated list of OpenRouter keys. OpenRouter
+    # rate-limits per key (separate bucket each), so spreading load across several keys
+    # multiplies effective throughput. Empty → falls back to the single openrouter_api_key
+    # (zero behaviour change for existing single-key deployments). See openrouter_api_keys_list.
+    openrouter_api_keys: str = ""
+    # Per-key concurrency caps — vision (OCR extract) and text (GL suggestion) get
+    # SEPARATE semaphores so a burst of suggestions never starves OCR extractions.
+    # NOTE: in-memory per-process. Under `uvicorn --workers N` the real in-flight cap per
+    # key is N × these values — size them with worker count in mind to stay under the
+    # provider's true per-key RPM. Defaults suit 1-2 workers (load-test sweet spot ≈ 4-6/key).
+    llm_vision_concurrency_per_key: int = 6
+    llm_text_concurrency_per_key: int = 6
+    # Safety valve: max seconds a request waits for a free slot before the pool gives up
+    # and raises LLMCapacityError (→ 429 + Retry-After). 0 = wait indefinitely (legacy
+    # queue-and-wait behaviour, never returns 429 from the pool).
+    llm_max_queue_wait_seconds: float = 10.0
     openrouter_ocr_model: str = "google/gemini-2.0-flash-001"
     openrouter_ap_invoice_model: str = "google/gemini-2.0-flash-001"
     openrouter_suggestion_model: str = "google/gemini-2.0-flash-001"
@@ -102,6 +118,30 @@ class Settings(BaseSettings):
 
     # Graceful shutdown — seconds to wait before cancelling background tasks
     shutdown_grace_seconds: int = 5
+
+    @property
+    def openrouter_api_keys_list(self) -> list[str]:
+        """Resolved list of OpenRouter API keys for the capacity pool.
+
+        Prefers the comma-separated `openrouter_api_keys`; falls back to the single
+        `openrouter_api_key`. De-duplicates while preserving order and drops blanks.
+        Always returns at least one entry (possibly an empty string if nothing is set,
+        so the pool still constructs and surfaces auth errors at call time, not import).
+        """
+        raw = (
+            [k.strip() for k in self.openrouter_api_keys.split(",")]
+            if self.openrouter_api_keys
+            else []
+        )
+        keys = [k for k in raw if k]
+        if not keys and self.openrouter_api_key:
+            # Also parse comma-separated values from the singular key field so that
+            # OPENROUTER_API_KEY=key1,key2 works without setting OPENROUTER_API_KEYS.
+            keys = [k.strip() for k in self.openrouter_api_key.split(",") if k.strip()]
+        # De-dup, preserve order.
+        seen: set[str] = set()
+        deduped = [k for k in keys if not (k in seen or seen.add(k))]
+        return deduped or [self.openrouter_api_key]
 
     class Config:
         env_file = Path(__file__).parent.parent / ".env"

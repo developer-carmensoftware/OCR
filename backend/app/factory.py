@@ -15,6 +15,7 @@ from app.exceptions import (
     ExtractionError,
     FileTooLargeError,
     InsufficientCredits,
+    LLMCapacityError,
     LLMParseError,
     LLMServiceError,
     RateLimitExceeded,
@@ -53,6 +54,7 @@ _EXCEPTION_STATUS: list[tuple] = [
     (CarmenServiceError, 503),
     (RateLimitExceeded, 429),
     (RequestRateLimitExceeded, 429),
+    (LLMCapacityError, 429),
     (TenantContextMissing, 500),
 ]
 
@@ -107,7 +109,7 @@ def create_app(lifespan=None) -> FastAPI:
                 if settings.app_debug:
                     content["traceback"] = tb
                 headers: dict[str, str] | None = None
-                if isinstance(exc, RequestRateLimitExceeded):
+                if isinstance(exc, (RequestRateLimitExceeded, LLMCapacityError)):
                     headers = {"Retry-After": str(exc.retry_after)}
                 return JSONResponse(status_code=code, content=content, headers=headers)
 

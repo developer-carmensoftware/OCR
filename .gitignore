@@ -28,6 +28,10 @@ backend/logs/
 
 # Dev artifacts (refactor baselines, API schema export dumps)
 archives/
+
+# Uvicorn runtime logs (generated during load tests / debugging)
+backend/uvicorn_*.log
+backend/start_valve.bat
 swagger.json
 
 # Google Cloud credentials

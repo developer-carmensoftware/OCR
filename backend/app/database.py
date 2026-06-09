@@ -80,11 +80,11 @@ def _get_engine():
             echo=settings.app_debug,
             pool_pre_ping=True,
             # Supabase Supavisor session mode (port 5432) holds one Postgres backend per
-            # pooled connection, so this pool maps 1:1 to server-side connections. Keep it
-            # well under the project's connection limit. 8+8=16 is ample for a single app
-            # instance serving ~10-15 tenants; raise only if you observe pool waits.
-            pool_size=8,
-            max_overflow=8,
+            # pooled connection, so pool_size+max_overflow must stay under the project's
+            # Supavisor connection limit (15). 5+5=10 leaves 5 slack for load-test direct
+            # connections, background tasks, and admin sessions; prevents EMAXCONNSESSION.
+            pool_size=5,
+            max_overflow=5,
             pool_recycle=1800,  # Recycle before Supabase/pooler idle timeout drops the conn.
             connect_args=connect_args,
         )

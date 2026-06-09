@@ -10,13 +10,14 @@ import json
 import logging
 import random
 import time
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Literal
 
 import httpx
 from openai import APIConnectionError, APITimeoutError, AsyncOpenAI, RateLimitError
 
 from app.config import settings
-from app.exceptions import LLMServiceError
+from app.exceptions import LLMCapacityError, LLMServiceError
 
 logger = logging.getLogger(__name__)
 
@@ -27,19 +28,202 @@ _MAX_ATTEMPTS = 3
 # 120s leaves headroom for multi-page documents while preventing indefinite worker stall.
 _LLM_TIMEOUT_SECONDS = 120.0
 
-# Global cap on in-flight LLM calls per process. Without this, a burst of
-# requests floods OpenRouter (triggering 429s + retry storms) and balloons
-# memory (each call holds base64-encoded image bytes for its lifetime).
-_LLM_CONCURRENCY_LIMIT = 16
-_LLM_SEM = asyncio.Semaphore(_LLM_CONCURRENCY_LIMIT)
+_Kind = Literal["vision", "text"]
+
+
+# ── Multi-key capacity pool ───────────────────────────────────────────────────
+# Each OpenRouter key gets its OWN cached client + separate vision/text semaphores.
+# OpenRouter rate-limits per key, so spreading in-flight calls across N keys yields
+# ~N× headroom. Vision (OCR) and text (suggestion) have independent slot pools so a
+# burst of suggestions never starves OCR extractions (head-of-line blocking).
+#
+# In-memory, per-process — like middleware/rate_limit.py. Under `--workers N` the real
+# cap per key is N × the configured per-key concurrency. See config.py sizing note.
+
+
+@dataclass
+class _KeyState:
+    label: str
+    client: AsyncOpenAI
+    vision_sem: asyncio.Semaphore
+    text_sem: asyncio.Semaphore
+    vision_limit: int
+    text_limit: int
+    vision_inflight: int = 0
+    text_inflight: int = 0
+
+    def sem(self, kind: _Kind) -> asyncio.Semaphore:
+        return self.vision_sem if kind == "vision" else self.text_sem
+
+    def inflight(self, kind: _Kind) -> int:
+        return self.vision_inflight if kind == "vision" else self.text_inflight
+
+    def limit(self, kind: _Kind) -> int:
+        return self.vision_limit if kind == "vision" else self.text_limit
+
+    def incr(self, kind: _Kind) -> None:
+        if kind == "vision":
+            self.vision_inflight += 1
+        else:
+            self.text_inflight += 1
+
+    def decr(self, kind: _Kind) -> None:
+        if kind == "vision":
+            self.vision_inflight -= 1
+        else:
+            self.text_inflight -= 1
+
+
+_POOL: list[_KeyState] = []  # lazily populated by _get_pool() on first use
+
+
+def _build_client(api_key: str) -> AsyncOpenAI:
+    # Explicit per-call timeout — the OpenAI SDK default is 600s, which means a
+    # hung OpenRouter request would tie up an ASGI task + DB connection for 10 minutes.
+    return AsyncOpenAI(
+        api_key=api_key,
+        base_url=settings.openrouter_base_url,
+        timeout=httpx.Timeout(_LLM_TIMEOUT_SECONDS, connect=10.0),
+        max_retries=0,  # we handle retries via _with_retry + cross-key failover
+    )
+
+
+def _get_pool() -> list[_KeyState]:
+    """Lazily build the per-key pool from settings on first use."""
+    global _POOL
+    if _POOL:
+        return _POOL
+    v_limit = max(1, settings.llm_vision_concurrency_per_key)
+    t_limit = max(1, settings.llm_text_concurrency_per_key)
+    keys = settings.openrouter_api_keys_list
+    pool: list[_KeyState] = []
+    for i, key in enumerate(keys, start=1):
+        pool.append(
+            _KeyState(
+                label=f"key{i}",
+                client=_build_client(key),
+                vision_sem=asyncio.Semaphore(v_limit),
+                text_sem=asyncio.Semaphore(t_limit),
+                vision_limit=v_limit,
+                text_limit=t_limit,
+            )
+        )
+    _POOL = pool
+    logger.info(
+        "LLM key pool initialized: %d key(s), per-key vision=%d text=%d",
+        len(pool),
+        v_limit,
+        t_limit,
+    )
+    return _POOL
+
+
+async def _acquire(kind: _Kind, exclude: frozenset[str] = frozenset()) -> _KeyState:
+    """Reserve one in-flight slot on the least-loaded key, releasing the caller's
+    obligation to call _release() afterwards.
+
+    Fast path: if any (non-excluded) key has a free slot, take the least-loaded one
+    immediately. Slow path: all candidate keys are saturated — wait on the least-loaded
+    one for up to llm_max_queue_wait_seconds, then raise LLMCapacityError (→ 429).
+    A 0 wait means "wait indefinitely" (legacy queue-and-wait, never 429 from the pool).
+    """
+    pool = [ks for ks in _get_pool() if ks.label not in exclude]
+    if not pool:
+        raise LLMCapacityError()
+
+    # Fast path — a free slot exists. No await between the check and acquire(), so the
+    # event loop can't hand the slot to another coroutine in between; acquire() returns
+    # without suspending when the semaphore has capacity.
+    for ks in sorted(pool, key=lambda k: k.inflight(kind)):
+        if ks.inflight(kind) < ks.limit(kind):
+            await ks.sem(kind).acquire()
+            ks.incr(kind)
+            return ks
+
+    # Slow path — everything is full. Wait on the least-loaded key, bounded.
+    ks = min(pool, key=lambda k: k.inflight(kind))
+    max_wait = settings.llm_max_queue_wait_seconds
+    try:
+        if max_wait and max_wait > 0:
+            await asyncio.wait_for(ks.sem(kind).acquire(), timeout=max_wait)
+        else:
+            await ks.sem(kind).acquire()
+    except TimeoutError as exc:
+        raise LLMCapacityError() from exc
+    ks.incr(kind)
+    return ks
+
+
+def _release(ks: _KeyState, kind: _Kind) -> None:
+    ks.decr(kind)
+    ks.sem(kind).release()
+
+
+_NETWORK_RETRYABLE = (APITimeoutError, APIConnectionError)
+
+
+async def _call_with_pool(kind: _Kind, build_call, label: str):
+    """Run an LLM call through the key pool with cross-key failover + backoff rounds.
+
+    `build_call(client)` returns the awaitable for the chat completion.
+
+    Strategy per round: sweep every key once (least-loaded first). A RateLimitError on
+    one key triggers an IMMEDIATE failover to the next key — no same-key backoff, since
+    another key likely has headroom. Transient NETWORK errors are retried on the same
+    key by _with_retry. Only when ALL keys are throttled in a sweep do we back off and
+    sweep again (up to _MAX_ATTEMPTS rounds) — this mirrors the old single-key backoff.
+
+    Returns (response, key_label). Raises the last RateLimitError when every key stays
+    throttled across all rounds, or LLMCapacityError when no slot can be reserved in time.
+    """
+    n = len(_get_pool())
+    last_rate_exc: RateLimitError | None = None
+    for round_idx in range(_MAX_ATTEMPTS):
+        tried: set[str] = set()
+        while len(tried) < n:
+            ks = await _acquire(kind, exclude=frozenset(tried))
+            try:
+                response = await _with_retry(lambda cl=ks.client: build_call(cl), label=label)
+                return response, ks.label
+            except RateLimitError as exc:
+                last_rate_exc = exc
+                tried.add(ks.label)
+                logger.warning("LLM key %s rate-limited; failing over to next key", ks.label)
+            finally:
+                _release(ks, kind)
+        # Every key was throttled this sweep. Back off (3s, 6s) then sweep again, unless
+        # this was the final round — re-raise the original RateLimitError so the caller's
+        # `except (*_RETRYABLE, ...)` maps it to 503.
+        if round_idx == _MAX_ATTEMPTS - 1:
+            assert last_rate_exc is not None
+            logger.error("All %d LLM key(s) rate-limited after %d rounds", n, _MAX_ATTEMPTS)
+            raise last_rate_exc
+        base = 3 * (2**round_idx)  # 3s, 6s
+        wait = base + random.uniform(0, base * 0.5)
+        logger.warning(
+            "All %d LLM key(s) rate-limited; backing off %.1fs (round %d/%d)",
+            n,
+            wait,
+            round_idx + 1,
+            _MAX_ATTEMPTS,
+        )
+        await asyncio.sleep(wait)
+    # Unreachable (loop either returns or raises), but keeps type-checkers happy.
+    assert last_rate_exc is not None
+    raise last_rate_exc
 
 
 async def _with_retry(coro_factory, label: str):
-    """Call coro_factory() up to _MAX_ATTEMPTS times with exponential backoff + jitter."""
+    """Retry coro_factory() on transient NETWORK errors only (timeout/connection).
+
+    RateLimitError is intentionally NOT retried here — the key pool handles throttling
+    via cross-key failover + backoff rounds (see _call_with_pool). This keeps a single
+    rate-limited key from stalling a request that another key could serve immediately.
+    """
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         try:
             return await coro_factory()
-        except _RETRYABLE as exc:
+        except _NETWORK_RETRYABLE as exc:
             if attempt == _MAX_ATTEMPTS:
                 # Re-raise the ORIGINAL exception type (not a wrapped RuntimeError) so
                 # call_vision_llm's `except (*_RETRYABLE, httpx.HTTPError)` handler can
@@ -48,15 +232,10 @@ async def _with_retry(coro_factory, label: str):
                     "LLM call '%s' failed after %d attempts: %s", label, _MAX_ATTEMPTS, exc
                 )
                 raise
-            # Longer base + jitter on RateLimitError to avoid synchronized retry storms
-            # when many concurrent callers hit OpenRouter's per-minute quota at once.
-            if isinstance(exc, RateLimitError):
-                base = 3 * (2 ** (attempt - 1))  # 3s, 6s
-            else:
-                base = 2 ** (attempt - 1)  # 1s, 2s
+            base = 2 ** (attempt - 1)  # 1s, 2s
             wait = base + random.uniform(0, base * 0.5)
             logger.warning(
-                "LLM transient error (attempt %d/%d), retrying in %.1fs: %s",
+                "LLM transient network error (attempt %d/%d), retrying in %.1fs: %s",
                 attempt,
                 _MAX_ATTEMPTS,
                 wait,
@@ -69,14 +248,12 @@ _OPENROUTER_OUTBOUND_URL = f"{settings.openrouter_base_url}/chat/completions"
 
 
 def get_client() -> AsyncOpenAI:
-    # Explicit per-call timeout — the OpenAI SDK default is 600s, which means a
-    # hung OpenRouter request would tie up an ASGI task + DB connection for 10 minutes.
-    return AsyncOpenAI(
-        api_key=settings.openrouter_api_key,
-        base_url=settings.openrouter_base_url,
-        timeout=httpx.Timeout(_LLM_TIMEOUT_SECONDS, connect=10.0),
-        max_retries=0,  # we handle retries via _with_retry
-    )
+    """Backward-compatible accessor — returns the first pooled key's cached client.
+
+    Internal call paths use the per-key clients via the capacity pool; this remains for
+    external callers importing from app.llm. It no longer constructs a fresh client per call.
+    """
+    return _get_pool()[0].client
 
 
 def _strip_code_fences(text: str) -> str:
@@ -109,9 +286,9 @@ async def call_vision_llm(
     from app.services.outbound_log_service import log_outbound
     from app.services.usage_service import log_llm_usage
 
-    client = get_client()
     start = time.perf_counter()
     status_code = 200
+    key_label = "?"
     rid = current_request_id.get("")
     extra_headers = {"X-Request-ID": rid} if rid else {}
     if settings.app_debug:
@@ -127,20 +304,25 @@ async def call_vision_llm(
         )
 
     try:
-        async with _LLM_SEM:
-            response = await _with_retry(
-                lambda: client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_content},
-                    ],
-                    temperature=0.0,
-                    max_tokens=8192,
-                    extra_headers=extra_headers,
-                ),
-                label="vision",
-            )
+        response, key_label = await _call_with_pool(
+            "vision",
+            lambda client: client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content},
+                ],
+                temperature=0.0,
+                max_tokens=8192,
+                extra_headers=extra_headers,
+            ),
+            label="vision",
+        )
+    except LLMCapacityError:
+        # Pool saturated past the max queue wait → 429 (Retry-After). Propagate as-is so
+        # the global handler maps it; do NOT wrap into 503/500.
+        status_code = 429
+        raise
     except (*_RETRYABLE, httpx.HTTPError) as exc:
         # Upstream LLM provider unavailable/slow after retries → 503 so the client
         # knows to retry, rather than a generic 500 that looks like our bug.
@@ -152,7 +334,7 @@ async def call_vision_llm(
     finally:
         await log_outbound(
             service="openrouter",
-            url=_OPENROUTER_OUTBOUND_URL,
+            url=f"{_OPENROUTER_OUTBOUND_URL}#{key_label}",
             method="POST",
             status_code=status_code,
             duration_ms=(time.perf_counter() - start) * 1000,
@@ -211,11 +393,11 @@ async def call_text_llm(
     from app.services.outbound_log_service import log_outbound
     from app.services.usage_service import log_llm_usage
 
-    client = get_client()
     target_model = model or settings.openrouter_suggestion_model
 
     start = time.perf_counter()
     status_code = 200
+    key_label = "?"
     rid = current_request_id.get("")
     extra_headers = {"X-Request-ID": rid} if rid else {}
 
@@ -225,17 +407,23 @@ async def call_text_llm(
         )
 
     try:
-        async with _LLM_SEM:
-            response = await _with_retry(
-                lambda: client.chat.completions.create(
-                    model=target_model,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.0,
-                    max_tokens=max_tokens,
-                    extra_headers=extra_headers,
-                ),
-                label="text",
-            )
+        response, key_label = await _call_with_pool(
+            "text",
+            lambda client: client.chat.completions.create(
+                model=target_model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,
+                max_tokens=max_tokens,
+                extra_headers=extra_headers,
+            ),
+            label="text",
+        )
+    except LLMCapacityError as exc:
+        # Suggestion is best-effort — under pool saturation, degrade to "no suggestion"
+        # rather than surfacing a 429. The caller already handles None.
+        status_code = 429
+        logger.warning("Text LLM skipped — pool at capacity: %s", exc)
+        return None
     except Exception as exc:
         status_code = 500
         logger.exception("Text LLM call failed: %s", exc)
@@ -244,7 +432,7 @@ async def call_text_llm(
         duration_ms = (time.perf_counter() - start) * 1000
         await log_outbound(
             service="openrouter",
-            url=_OPENROUTER_OUTBOUND_URL,
+            url=f"{_OPENROUTER_OUTBOUND_URL}#{key_label}",
             method="POST",
             status_code=status_code,
             duration_ms=duration_ms,

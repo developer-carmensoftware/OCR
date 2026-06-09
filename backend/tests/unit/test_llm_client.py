@@ -3,9 +3,30 @@ Unit tests for llm/client.py
 Mocks AsyncOpenAI — no real API calls made.
 """
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+
+def _single_key_pool(mock_client):
+    """Build a one-key capacity pool whose only key wraps the given mock client.
+
+    Used to redirect call_vision_llm / call_text_llm (which now route through the
+    per-key pool instead of get_client()) onto the test's mock.
+    """
+    from app.llm.client import _KeyState
+
+    return [
+        _KeyState(
+            label="key1",
+            client=mock_client,
+            vision_sem=asyncio.Semaphore(6),
+            text_sem=asyncio.Semaphore(6),
+            vision_limit=6,
+            text_limit=6,
+        )
+    ]
 
 
 def _make_response(content, prompt_tokens=10, completion_tokens=5):
@@ -63,13 +84,15 @@ class TestStripCodeFences:
 class TestCallTextLlm:
     @pytest.fixture(autouse=True)
     def patch_deps(self):
+        self.mock_client = AsyncMock()
         with (
-            patch("app.llm.client.get_client") as mock_get_client,
+            patch(
+                "app.llm.client._get_pool",
+                return_value=_single_key_pool(self.mock_client),
+            ),
             patch("app.services.usage_service.log_llm_usage", new_callable=AsyncMock),
             patch("app.services.outbound_log_service.log_outbound", new_callable=AsyncMock),
         ):
-            self.mock_client = AsyncMock()
-            mock_get_client.return_value = self.mock_client
             yield
 
     async def test_B5_1_valid_json_parsed(self):
@@ -139,13 +162,15 @@ class TestCallTextLlm:
 class TestCallVisionLlm:
     @pytest.fixture(autouse=True)
     def patch_deps(self):
+        self.mock_client = AsyncMock()
         with (
-            patch("app.llm.client.get_client") as mock_get_client,
+            patch(
+                "app.llm.client._get_pool",
+                return_value=_single_key_pool(self.mock_client),
+            ),
             patch("app.services.usage_service.log_llm_usage", new_callable=AsyncMock),
             patch("app.services.outbound_log_service.log_outbound", new_callable=AsyncMock),
         ):
-            self.mock_client = AsyncMock()
-            mock_get_client.return_value = self.mock_client
             yield
 
     async def test_B5_5_api_error_raises_runtime_error(self):
@@ -200,3 +225,108 @@ class TestCallVisionLlm:
             mock_log.assert_called_once()
             kwargs = mock_log.call_args.kwargs
             assert kwargs["module_id"] == "credit_card_ocr"
+
+
+# ── Capacity pool: acquire / distribution / failover ──────────────────────────
+
+
+def _multi_key_pool(n, vision_limit=5, text_limit=5, clients=None):
+    from app.llm.client import _KeyState
+
+    pool = []
+    for i in range(1, n + 1):
+        pool.append(
+            _KeyState(
+                label=f"key{i}",
+                client=(clients[i - 1] if clients else AsyncMock()),
+                vision_sem=asyncio.Semaphore(vision_limit),
+                text_sem=asyncio.Semaphore(text_limit),
+                vision_limit=vision_limit,
+                text_limit=text_limit,
+            )
+        )
+    return pool
+
+
+def _rate_limit_error():
+    import httpx
+    from openai import RateLimitError
+
+    req = httpx.Request("POST", "http://x")
+    return RateLimitError("throttled", response=httpx.Response(429, request=req), body=None)
+
+
+class TestCapacityPool:
+    async def test_acquire_raises_capacity_error_when_saturated(self):
+        from app.exceptions import LLMCapacityError
+        from app.llm import client
+
+        pool = _multi_key_pool(1, vision_limit=1)
+        with (
+            patch.object(client, "_get_pool", return_value=pool),
+            patch.object(client.settings, "llm_max_queue_wait_seconds", 0.2),
+        ):
+            held = await client._acquire("vision")  # take the only slot
+            try:
+                with pytest.raises(LLMCapacityError):
+                    await client._acquire("vision")
+            finally:
+                client._release(held, "vision")
+
+    async def test_acquire_spreads_across_keys_least_loaded(self):
+        from app.llm import client
+
+        pool = _multi_key_pool(3, vision_limit=5)
+        with patch.object(client, "_get_pool", return_value=pool):
+            labels = []
+            held = []
+            for _ in range(6):
+                ks = await client._acquire("vision")
+                held.append(ks)
+                labels.append(ks.label)
+            for ks in held:
+                client._release(ks, "vision")
+        # Round-robin-ish: each of 3 keys used twice, none starved.
+        assert sorted(labels) == ["key1", "key1", "key2", "key2", "key3", "key3"]
+
+    async def test_vision_and_text_pools_are_independent(self):
+        from app.llm import client
+
+        pool = _multi_key_pool(1, vision_limit=1, text_limit=1)
+        with patch.object(client, "_get_pool", return_value=pool):
+            v = await client._acquire("vision")  # saturate vision
+            t = await client._acquire("text")  # text still free → must succeed
+            assert v.label == t.label == "key1"
+            client._release(v, "vision")
+            client._release(t, "text")
+
+    async def test_call_with_pool_fails_over_on_rate_limit(self):
+        from app.llm import client
+
+        c1, c2 = AsyncMock(), AsyncMock()
+        c1.chat.completions.create.side_effect = _rate_limit_error()
+        c2.chat.completions.create.return_value = _make_response("ok")
+        pool = _multi_key_pool(2, clients=[c1, c2])
+        with patch.object(client, "_get_pool", return_value=pool):
+            resp, used = await client._call_with_pool(
+                "vision", lambda cl: cl.chat.completions.create(), "vision"
+            )
+        assert used == "key2"
+
+    async def test_call_with_pool_all_throttled_raises_rate_limit(self):
+        from openai import RateLimitError
+
+        from app.llm import client
+
+        c1, c2 = AsyncMock(), AsyncMock()
+        c1.chat.completions.create.side_effect = _rate_limit_error()
+        c2.chat.completions.create.side_effect = _rate_limit_error()
+        pool = _multi_key_pool(2, clients=[c1, c2])
+        with (
+            patch.object(client, "_get_pool", return_value=pool),
+            patch.object(client.asyncio, "sleep", new_callable=AsyncMock),
+        ):
+            with pytest.raises(RateLimitError):
+                await client._call_with_pool(
+                    "vision", lambda cl: cl.chat.completions.create(), "vision"
+                )

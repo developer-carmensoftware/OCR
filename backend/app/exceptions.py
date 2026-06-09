@@ -77,6 +77,21 @@ class RequestRateLimitExceeded(RuntimeError):
         super().__init__(message)
 
 
+class LLMCapacityError(RuntimeError):
+    """All LLM key slots are saturated (in-flight) for longer than the configured
+    max queue wait. → 429 + Retry-After.
+
+    This is the safety valve at the very edge of the capacity envelope: under normal
+    load the key pool has free slots and this is never raised. Distinct from
+    RequestRateLimitExceeded (per-IP throttle) and RateLimitExceeded (tenant quota) —
+    this signals the LLM concurrency pool itself is momentarily full.
+    """
+
+    def __init__(self, retry_after: int = 5):
+        self.retry_after = retry_after
+        super().__init__("Service is at capacity — please retry shortly.")
+
+
 class FileTooLargeError(ValidationError):
     """Uploaded file exceeds the configured size limit. → 413"""
 
