@@ -54,11 +54,6 @@ class Settings(BaseSettings):
     # When False, the spoofable XFF header is ignored and request.client.host is used.
     trust_proxy: bool = False
 
-    # SSRF protection — comma-separated regex patterns for allowed Carmen hostnames.
-    # Example: "erp\.company\.com,erp2\.company\.com"
-    # Leave empty to allow any valid HTTPS hostname (development only).
-    carmen_allowed_host_regex: str = ""
-
     # Upload
     max_file_size_mb: int = 20
 
@@ -170,11 +165,6 @@ if not settings.app_debug:
         _config_logger.critical(
             "ALLOWED_ORIGINS contains '*' — credentialed CORS is disabled and any origin is "
             "allowed. Set explicit origins for production."
-        )
-    if not settings.carmen_allowed_host_regex:
-        _config_logger.warning(
-            "CARMEN_ALLOWED_HOST_REGEX is empty — the Carmen proxy will accept any HTTPS host "
-            "(SSRF risk). Restrict it to your known Carmen ERP hostname(s) before the pilot."
         )
     if not settings.sentry_dsn:
         _config_logger.warning(

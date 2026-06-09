@@ -283,10 +283,9 @@ GET  /extract/{task_id} → poll หรือ subscribe ผ่าน SSE/WebSock
 
 ### 8.2 Production Hardening ที่ควรทำก่อน Tier 2
 
-1. **ตั้ง `CARMEN_ALLOWED_HOST_REGEX`** ใน `.env` ([routers/auth.py:91-99](../backend/app/routers/auth.py#L91-L99)) — ปัจจุบัน warn อย่างเดียว
-2. **Sentry sample rate** — `SENTRY_TRACES_SAMPLE_RATE=0.1` พอเหมาะ แต่ที่ scale สูงควรลดเหลือ 0.01-0.05
-3. **Reverse proxy trust list** — ถ้ามี nginx/Cloudflare ต้อง set `X-Forwarded-For` validation อย่างชัดเจน (ปัจจุบัน middleware เชื่อ header นี้โดยไม่ตรวจ → spoofable เพื่อหลีกเลี่ยง rate limit)
-4. **DB pool monitoring** — ใช้ endpoint `/api/v1/admin/monitoring` ([routers/admin/monitoring.py:199-204](../backend/app/routers/admin/monitoring.py#L199-L204)) ที่มีอยู่แล้ว ดึงไป alert
+1. **Sentry sample rate** — `SENTRY_TRACES_SAMPLE_RATE=0.1` พอเหมาะ แต่ที่ scale สูงควรลดเหลือ 0.01-0.05
+2. **Reverse proxy trust list** — ถ้ามี nginx/Cloudflare ต้อง set `X-Forwarded-For` validation อย่างชัดเจน (ปัจจุบัน middleware เชื่อ header นี้โดยไม่ตรวจ → spoofable เพื่อหลีกเลี่ยง rate limit)
+3. **DB pool monitoring** — ใช้ endpoint `/api/v1/admin/monitoring` ([routers/admin/monitoring.py:199-204](../backend/app/routers/admin/monitoring.py#L199-L204)) ที่มีอยู่แล้ว ดึงไป alert
 
 ### 8.3 ข้อ Quota ที่ Affect Capacity
 

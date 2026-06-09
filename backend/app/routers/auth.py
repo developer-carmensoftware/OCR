@@ -52,11 +52,9 @@ def _validate_uri(uri: str) -> str:
     Validate and normalise the Carmen origin URI against SSRF.
     - HTTPS only
     - Blocks loopback/private/link-local IP ranges
-    - When CARMEN_ALLOWED_HOST_REGEX is set, hostname must match (whitelist)
     Returns normalised origin (scheme + host only).
     """
     import ipaddress as _ip
-    import re as _re
 
     if not uri:
         raise HTTPException(status_code=400, detail="uri is required")
@@ -83,19 +81,7 @@ def _validate_uri(uri: str) -> str:
         ):
             raise HTTPException(status_code=400, detail="uri hostname not allowed")
     except ValueError:
-        pass  # domain name — proceed to whitelist check below
-
-    # Whitelist check — enforced when CARMEN_ALLOWED_HOST_REGEX is configured.
-    # In debug mode without a whitelist, log a warning; in production it is required.
-    allowed_regex = settings.carmen_allowed_host_regex.strip()
-    if allowed_regex:
-        if not _re.fullmatch(allowed_regex, hostname):
-            raise HTTPException(status_code=400, detail="uri hostname not allowed")
-    elif not settings.app_debug:
-        logger.warning(
-            "CARMEN_ALLOWED_HOST_REGEX is not set — all HTTPS hostnames accepted. "
-            "Set this in .env to restrict Carmen URI to known hosts."
-        )
+        pass  # domain name
 
     port_part = f":{parsed.port}" if parsed.port else ""
     return f"https://{parsed.hostname}{port_part}"
