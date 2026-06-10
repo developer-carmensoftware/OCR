@@ -111,7 +111,7 @@ class TestIDORTenantScoping:
                 TestClient(app, raise_server_exceptions=True) as client,
             ):
                 resp = client.post(
-                    f"/api/v1/ocr/carmen/gljv?credit_card_id={card_id}",
+                    f"/api/v1/carmen/gljv?credit_card_id={card_id}",
                     json={"dummy": 1},
                 )
             assert resp.status_code == 200

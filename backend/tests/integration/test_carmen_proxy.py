@@ -1,5 +1,5 @@
 """
-Integration tests for /api/v1/ocr/carmen/* proxy endpoints.
+Integration tests for /api/v1/carmen/* proxy endpoints.
 Sync test functions using starlette TestClient.
 
 Covers:
@@ -15,7 +15,7 @@ import app.routers.carmen as _carmen_router
 from tests.conftest import make_mock_db
 from tests.integration.conftest import make_test_client
 
-BASE = "/api/v1/ocr/carmen"
+BASE = "/api/v1/carmen"
 AUTH = {"Authorization": "Bearer dummy"}
 
 

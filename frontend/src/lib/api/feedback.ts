@@ -1,4 +1,5 @@
 import { apiFetch } from './client'
+import { API } from './endpoints'
 
 const FIELD_NAME_MAP: Record<string, string> = {
   DateProcessed: 'date_processed',
@@ -33,7 +34,7 @@ export async function logCorrections(
 ): Promise<void> {
   if (!cardId || !bankCode || !corrections.length) return
 
-  const res = await apiFetch('/api/v1/feedback/corrections', {
+  const res = await apiFetch(API.feedback.corrections, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

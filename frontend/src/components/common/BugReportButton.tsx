@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import ReactDOM from 'react-dom'
 import { Bug, X, Send, CheckCircle2, Paperclip, ImageOff } from 'lucide-react'
 import { apiFetch } from '../../lib/api/client'
+import { API } from '../../lib/api/endpoints'
 import '../../styles/components/header-modals.css'
 
 interface Props {
@@ -73,7 +74,7 @@ export default function BugReportButton({ module }: Props) {
     setSending(true)
     setError('')
     try {
-      await apiFetch('/api/v1/feedback/bug-report', {
+      await apiFetch(API.feedback.bugReport, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

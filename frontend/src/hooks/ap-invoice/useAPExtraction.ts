@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import type React from 'react'
 import { apiFetch, fetchTimeout } from '../../lib/api/client'
+import { API } from '../../lib/api/endpoints'
 import { getAPVendorMapping } from '../../lib/api/config'
 import { getPdfInfo, getFilePreview } from '../../lib/api/ocr'
 import { imagesToPdf, MAX_MULTI_IMAGES } from '../../lib/imagesToPdf'
@@ -63,7 +64,7 @@ async function _fetchExtractWithRetry(
       const { signal, clear } = fetchTimeout(EXTRACT_TIMEOUT_MS)
       let res: Response
       try {
-        res = await apiFetch('/api/v1/ap-invoice/extract', {
+        res = await apiFetch(API.apInvoice.extract, {
           method: 'POST',
           body: formData,
           signal,

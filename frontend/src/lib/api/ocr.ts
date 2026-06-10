@@ -1,4 +1,5 @@
 import { apiFetch, fetchTimeout } from './client'
+import { API } from './endpoints'
 
 // Backend LLM timeout is 120s × up to 3 attempts. We cap the client at 150s so
 // the user gets a clear error instead of waiting indefinitely.
@@ -40,7 +41,7 @@ export interface PdfInfoResult {
 export async function getPdfInfo(file: File): Promise<PdfInfoResult> {
   const formData = new FormData()
   formData.append('file', file)
-  const res = await apiFetch('/api/v1/files/pdf-info', { method: 'POST', body: formData })
+  const res = await apiFetch(API.files.pdfInfo, { method: 'POST', body: formData })
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { detail?: string }
     throw new Error(err.detail || `PDF info failed (${res.status})`)
@@ -55,7 +56,7 @@ export async function getPdfInfo(file: File): Promise<PdfInfoResult> {
 export async function getFilePreview(file: File): Promise<string> {
   const formData = new FormData()
   formData.append('file', file)
-  const res = await apiFetch('/api/v1/files/preview', { method: 'POST', body: formData })
+  const res = await apiFetch(API.files.preview, { method: 'POST', body: formData })
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { detail?: string }
     throw new Error(err.detail || `Preview failed (${res.status})`)
@@ -75,7 +76,7 @@ export async function extractFromFile(
     formData.append('selected_pages', JSON.stringify(selectedPages))
   }
 
-  const url = bankType ? `/api/v1/ocr/extract?bank_type=${bankType}` : '/api/v1/ocr/extract'
+  const url = bankType ? `${API.creditCard.extract}?bank_type=${bankType}` : API.creditCard.extract
   const { signal, clear } = fetchTimeout(EXTRACT_TIMEOUT_MS)
   let res: Response
   try {
@@ -125,12 +126,5 @@ export async function extractFromFile(
     branch_no: (card.branch_no as string) || '',
     is_duplicate: (card.is_duplicate as boolean) || false,
     details,
-  }
-}
-
-export async function markSubmitted(cardId: string): Promise<void> {
-  const res = await apiFetch(`/api/v1/ocr/credit-cards/${cardId}/submit`, { method: 'PATCH' })
-  if (!res.ok) {
-    console.warn(`markSubmitted failed for ${cardId}: ${res.status}`)
   }
 }

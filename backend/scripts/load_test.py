@@ -1,5 +1,5 @@
 """
-Ramp-up load test for /api/v1/ocr/extract.
+Ramp-up load test for /api/v1/credit-card/extract.
 
 Strategy
 --------
@@ -33,7 +33,7 @@ from jose import jwt
 # ── Config ────────────────────────────────────────────────────────────────────
 
 BACKEND_URL = "http://127.0.0.1:8010"
-EXTRACT_PATH = "/api/v1/ocr/extract?bank_code=BBL"
+EXTRACT_PATH = "/api/v1/credit-card/extract?bank_code=BBL"
 IMAGE_PATH = Path(__file__).resolve().parent.parent / "example_field" / "BBLbank.png"
 
 RAMP_LEVELS = [1, 2, 4, 8, 16, 24, 32, 48, 64]

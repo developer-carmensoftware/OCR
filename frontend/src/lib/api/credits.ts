@@ -1,4 +1,5 @@
 import { apiFetch } from './client'
+import { API } from './endpoints'
 
 export interface CreditPack {
   code: string
@@ -17,14 +18,14 @@ export interface CreditOrder {
 
 /** Top-up pack catalog for the current tenant (cheapest first). */
 export async function getCreditPacks(): Promise<CreditPack[]> {
-  const res = await apiFetch('/api/v1/credits/packs')
+  const res = await apiFetch(API.credits.packs)
   if (!res.ok) throw new Error(`Failed to load credit packs (${res.status})`)
   return res.json() as Promise<CreditPack[]>
 }
 
 /** Create a pending top-up order (fulfilled offline by an admin in v1). */
 export async function createCreditOrder(packCode: string): Promise<CreditOrder> {
-  const res = await apiFetch('/api/v1/credits/orders', {
+  const res = await apiFetch(API.credits.orders, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pack_code: packCode }),

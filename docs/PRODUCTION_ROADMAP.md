@@ -49,7 +49,7 @@
 
 ### Day 3-4: Monitoring + Alerting
 
-- [x] สมัคร UptimeRobot (ฟรี) → จิ้ม `https://dev.carmen4.com/api/v1/ocr/health` ทุก 5 นาที + alert email
+- [x] สมัคร UptimeRobot (ฟรี) → จิ้ม `https://dev.carmen4.com/api/v1/health` ทุก 5 นาที + alert email
 - [x] เพิ่ม `sentry_sdk.capture_exception(exc)` ใน scheduler ทั้ง 4 จุด ([main.py](../backend/app/main.py))
 - [ ] เพิ่ม Sentry alert rules — notify เมื่อ error spike
 - [x] เขียน `scripts/disk_alert.ps1` → alert ถ้า disk เหลือ <20%
@@ -101,7 +101,7 @@
   - [ ] รัน `pytest` ทุก push — ถ้า fail ห้าม deploy
   - [ ] รัน `npm run build` สำหรับ frontend
   - [ ] Manual trigger deploy to production (ไม่ auto — ต้องกด approve)
-- [ ] เขียน smoke test script — รันหลัง deploy ทุกครั้ง (`/livez`, `/readyz`, `/api/v1/ocr/health`)
+- [ ] เขียน smoke test script — รันหลัง deploy ทุกครั้ง (`/livez`, `/readyz`, `/api/v1/health`)
 - [ ] ตั้ง Cloudflare (ฟรี) — DDoS protection + SSL + CDN ไม่ต้องเพิ่มงบ
 
 ### Week 5: Retention Policy ของ Business Data

@@ -1,4 +1,5 @@
 import { apiFetch } from './client'
+import { API } from './endpoints'
 import type { SuggestRequest, SuggestPaymentTypesRequest, FieldMapping } from '../../types/api'
 
 export interface SuggestResponse {
@@ -13,7 +14,7 @@ export interface SuggestPaymentTypesResponse {
 }
 
 export async function suggestMapping(payload: SuggestRequest): Promise<SuggestResponse> {
-  const res = await apiFetch('/api/v1/mapping/suggest', {
+  const res = await apiFetch(API.creditCard.mapping.suggest, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -29,7 +30,7 @@ export async function suggestMapping(payload: SuggestRequest): Promise<SuggestRe
 export async function suggestPaymentTypes(
   payload: SuggestPaymentTypesRequest
 ): Promise<SuggestPaymentTypesResponse> {
-  const res = await apiFetch('/api/v1/mapping/suggest-payment-types', {
+  const res = await apiFetch(API.creditCard.mapping.suggestPaymentTypes, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),

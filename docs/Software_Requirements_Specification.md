@@ -17,12 +17,13 @@
 | 1.4 | 02 Apr 2026 | Intern Team | Final Polish: Detailed API Specs, JSON Samples, and Non-Functional Requirements |
 | 1.5 | 08 Apr 2026 | Intern Team | Major update: AI Mapping Suggestion, 5-step wizard, Mapping Router, JournalVoucher, updated DB schema & env vars |
 | 1.6 | 08 Apr 2026 | Intern Team | Complete API inventory (add /export, /debug-llm, /health); detailed DB schema with all fields; environment variables section |
-| 1.7 | 08 Apr 2026 | Intern Team | Add GET /api/v1/ocr/carmen/gl-prefix endpoint for GL Prefix master data |
+| 1.7 | 08 Apr 2026 | Intern Team | Add GET /api/v1/carmen/gl-prefix endpoint for GL Prefix master data |
 | 1.8 | 09 Apr 2026 | Intern Team | Fix GL Prefix response field name (PrefixName); /extract now accepts multiple files; remove bank_name from /suggest requests; add missing localStorage keys (ocr_wizard_state, filePrefix, fileSource) |
 | 1.9 | 16 Apr 2026 | Intern Team | Major architecture restructure: LLM layer (app/llm/), Tool layer (app/tools/ + ToolResult + registry), Carmen router split, generic tools endpoint (/api/v1/tools/), frontend domain API split (lib/api/*), custom hooks (useToast, useModal) |
 | 2.0 | 17 Apr 2026 | Intern Team | Correction Learning System: feedback router (/api/v1/feedback/correction), correction_feedback table, correction_service (ratio-based hints), prompt injection at extract time, diffCorrections/logCorrections on frontend |
 | 2.1 | 20 Apr 2026 | Intern Team | Architecture refactor: backend models/ package split (enums/orm/schemas), useOcrWizard hook extracted from App.jsx, barrel files (index.js) per component domain, Home hub page; UI/UX redesign with IBM Plex Sans + indigo design system |
 | 2.2 | 24 Apr 2026 | Intern Team | LLM usage tracking: add `token_hash` (SHA-256) and `bu_name` columns to `llm_usage_logs`; update `mapping_history` unique constraint to include dept_code + acc_code; `usage_service.log_llm_usage()` accepts `admin_token` + `bu_name` |
+| 2.3 | 10 Jun 2026 | Intern Team | **API namespace refactor (multi-module coherence):** `/api/v1/ocr/*` → `/api/v1/credit-card/*`; Carmen lifted to top-level `/api/v1/carmen/*` (shared by both modules); `/api/v1/mapping/*` → `/api/v1/credit-card/mapping/*`; health/debug-llm moved to app-level; dead endpoints removed (`/ocr/submit`, `/ocr/receipts/{id}/submit`, `mapping/history`); DB migrated to PostgreSQL (Neon); frontend paths centralized in `src/lib/api/endpoints.ts` |
 
 ---
 
@@ -38,7 +39,7 @@
 2. **Inbound Interface - Master Data Sync**: แบคเอนด์ทำหน้าที่เป็น Proxy ดึงข้อมูลรหัสบัญชีและแผนกจาก Carmen Cloud เพื่อใช้ในการตั้งค่า Mapping
 3. **Inbound Interface - AI Accounting Mapping**: ระบบ AI แนะนำรหัสบัญชีอัตโนมัติ พร้อมการบันทึกประวัติการแมปแยกตามธนาคารและประเภทการชำระเงิน
 4. **Inbound Interface - Accounting Journal Review**: กระบวนการแสดง Journal Entry (Debit/Credit) และยืนยัน Journal Voucher ก่อน Submit
-5. **Inbound Interface - Data Submission**: ส่งข้อมูลชุดสมบูรณ์ที่ผ่านการตรวจสอบแล้วบันทึกลงในฐานข้อมูล MySQL/MariaDB พร้อมการตรวจสอบการซ้ำซ้อน
+5. **Inbound Interface - Data Submission**: ส่งข้อมูลชุดสมบูรณ์ที่ผ่านการตรวจสอบแล้วบันทึกลงในฐานข้อมูล PostgreSQL พร้อมการตรวจสอบการซ้ำซ้อน
 6. **Correction Learning System**: บันทึกการแก้ไขของผู้ใช้ที่ submit time เพื่อเรียนรู้ pattern ที่ LLM มักจะอ่านผิด และนำไปใช้เพิ่ม hint ใน prompt ของธนาคารนั้นๆ โดยอัตโนมัติ
 
 ---
@@ -62,15 +63,15 @@ flowchart LR
 
     subgraph Backend["🔧 Backend<br/>(FastAPI)"]
         direction TB
-        OCR_R["📤 OCR Router<br/>(extract, submit)"]
-        Map_R["🤖 Mapping Router<br/>(suggest, history)"]
-        Carmen_R["🔁 Carmen Router<br/>(proxy)"]
-        Tools_R["🛠️ Tools Router<br/>(agent invoke)"]
+        OCR_R["📤 Credit Card Router<br/>(extract, tasks)"]
+        Map_R["🤖 Mapping Router<br/>(suggest)"]
+        Carmen_R["🔁 Carmen Router<br/>(shared proxy)"]
+        AP_R["🧾 AP Invoice Router<br/>(extract, suggest)"]
         FB_R["📝 Feedback Router<br/>(correction)"]
         Tools_L["⚙️ Tools Layer<br/>(extract, submit, map_gl)"]
         LLM_L["🧠 LLM Layer<br/>(client + prompt registry)"]
         CorrSvc["🔄 Correction Service<br/>(hints + ratio)"]
-        DB["🗄️ MySQL/MariaDB<br/>(ocr_db)"]
+        DB["🗄️ PostgreSQL<br/>(Neon)"]
     end
 
     subgraph External["☁️ External APIs"]
@@ -84,10 +85,10 @@ flowchart LR
     OCR_R -->|delegate| Tools_L
     OCR_R -->|get hints| CorrSvc
     Map_R -->|delegate| Tools_L
-    Tools_R -->|invoke stateless tools| Tools_L
     Carmen_R -->|HTTP| Carmen
+    AP_R -->|delegate| Tools_L
     FB_R -->|upsert correction| DB
-    CorrSvc -->|query receipts + correction_feedback| DB
+    CorrSvc -->|query credit_cards + correction_feedback| DB
     Tools_L -->|call_text_llm / get_client| LLM_L
     LLM_L -->|LLM Call| OpenRouter
     Tools_L -->|read/write| DB
@@ -109,7 +110,7 @@ sequenceDiagram
     rect rgb(66, 135, 245)
         Note over User,DB: STEP 1: Upload & Extract
         User->>UI: Upload file + select bank
-        UI->>BE: POST /api/v1/ocr/extract
+        UI->>BE: POST /api/v1/credit-card/extract
         BE->>LLM: Send image for analysis
         LLM-->>BE: Extracted JSON
         BE-->>UI: Receipt header + details
@@ -118,8 +119,8 @@ sequenceDiagram
     rect rgb(56, 177, 136)
         Note over User,DB: STEP 2: Load Master Data
         UI->>UI: Go to Mapping page
-        UI->>BE: GET /api/v1/ocr/carmen/account-codes
-        UI->>BE: GET /api/v1/ocr/carmen/departments
+        UI->>BE: GET /api/v1/carmen/account-codes
+        UI->>BE: GET /api/v1/carmen/departments
         BE->>Carmen: Proxy request
         Carmen-->>BE: Account & Dept lists
         BE-->>UI: Cleaned master data
@@ -127,7 +128,7 @@ sequenceDiagram
 
     rect rgb(255, 153, 51)
         Note over User,DB: STEP 3: AI Suggest Mapping
-        UI->>BE: POST /api/v1/mapping/suggest
+        UI->>BE: POST /api/v1/credit-card/mapping/suggest
         BE->>LLM: Suggest for 3 fields
         LLM-->>BE: Suggestions (Commission, Tax, Net)
         BE-->>UI: Display suggestions
@@ -135,19 +136,18 @@ sequenceDiagram
     end
 
     rect rgb(218, 83, 83)
-        Note over User,DB: STEP 4: Submit & Save
-        UI->>BE: POST /api/v1/ocr/submit
-        BE->>DB: Check doc_no duplicate
-        BE->>DB: Save receipt + details
-        DB-->>BE: Confirmed
-        BE-->>UI: Success {receipt_id}
+        Note over User,DB: STEP 4: Submit to Carmen ERP
+        UI->>BE: POST /api/v1/carmen/gljv
+        BE->>Carmen: Submit Journal Voucher
+        Carmen-->>BE: Confirmed
+        BE-->>UI: Success
     end
 
     rect rgb(140, 90, 200)
         Note over User,DB: STEP 4 (post-submit): Log Corrections
         UI->>UI: diffCorrections(final vs original)
         UI->>BE: POST /api/v1/feedback/correction (per changed field)
-        BE->>DB: INSERT ... ON DUPLICATE KEY UPDATE correction_feedback
+        BE->>DB: INSERT ... ON CONFLICT DO UPDATE correction_feedback
     end
 ```
 
@@ -158,19 +158,19 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant User as User / Frontend (React)
-    participant Router as OCR Router (FastAPI)
+    participant Router as Credit Card Router (FastAPI)
     participant CorrSvc as correction_service
-    participant DB as MySQL/MariaDB
+    participant DB as PostgreSQL
     participant Tool as tools/extract
     participant Prompts as llm/prompts
     participant Client as llm/client
     participant LLM as OpenRouter (Vision LLM)
 
-    User->>Router: POST /api/v1/ocr/extract (files[], bank_type)
+    User->>Router: POST /api/v1/credit-card/extract (files[], bank_type)
     activate Router
 
     Router->>CorrSvc: get_correction_hints(bank_type, db)
-    CorrSvc->>DB: COUNT receipts submitted (bank, 90d)
+    CorrSvc->>DB: COUNT credit_cards submitted (bank, 90d)
     CorrSvc->>DB: COUNT corrections per field (bank, 90d)
     CorrSvc-->>Router: hints = {field: "rate"} if error_rate > 10%
 
@@ -186,9 +186,9 @@ sequenceDiagram
     activate LLM
     LLM-->>Tool: JSON Structured Data
     deactivate LLM
-    Tool-->>Router: ExtractedReceiptData
+    Tool-->>Router: ExtractedCreditCardData
     deactivate Tool
-    Router-->>User: 200 OK (array of ExtractedReceiptData)
+    Router-->>User: 200 OK (array of ExtractedCreditCardData)
     deactivate Router
 ```
 
@@ -200,7 +200,7 @@ sequenceDiagram
 sequenceDiagram
     participant User as User / Frontend (React)
     participant FB as Feedback Router
-    participant DB as MySQL/MariaDB
+    participant DB as PostgreSQL
 
     Note over User: User submits after editing fields in Step 3
     User->>User: diffCorrections(finalHeader, originalHeader, finalDetails, originalDetails)
@@ -208,7 +208,7 @@ sequenceDiagram
 
     loop for each changed field
         User->>FB: POST /api/v1/feedback/correction<br/>{receipt_id: doc_no, bank_type, field_name, original_value, corrected_value}
-        FB->>DB: INSERT ... ON DUPLICATE KEY UPDATE correction_feedback
+        FB->>DB: INSERT ... ON CONFLICT DO UPDATE correction_feedback
         Note right of DB: UPSERT on (receipt_id, field_name)<br/>1 document + 1 field = 1 record
         DB-->>FB: ok
         FB-->>User: {id, field_name, corrected_value, ...}
@@ -227,7 +227,7 @@ sequenceDiagram
     participant API as API Service (Proxy)
     participant Carmen as Carmen Cloud API
 
-    UI->>API: GET /api/v1/ocr/carmen/account-codes
+    UI->>API: GET /api/v1/carmen/account-codes
     activate API
     API->>Carmen: GET /api/interface/accountCode (Authorization header)
     Carmen-->>API: JSON Data (AccCode, Description, Nature, Description2)
@@ -245,7 +245,7 @@ sequenceDiagram
     participant API as API Service (Proxy)
     participant Carmen as Carmen Cloud API
 
-    UI->>API: GET /api/v1/ocr/carmen/departments
+    UI->>API: GET /api/v1/carmen/departments
     activate API
     API->>Carmen: GET /api/interface/department (Authorization header)
     Carmen-->>API: JSON Data (DeptCode, Description, Description2)
@@ -262,14 +262,11 @@ sequenceDiagram
     participant UI as Mapping Page
     participant API as Mapping Router
     participant LLM as OpenRouter (LLM)
-    participant DB as MySQL/MariaDB
+    participant Carmen as Carmen Cloud
 
-    UI->>API: GET /api/v1/mapping/history?bank_name=SCB
-    API->>DB: SELECT mapping_history WHERE bank_name='SCB'
-    DB-->>API: Saved mappings (field_type, dept, acc, confirmed_count)
-    API-->>UI: 200 OK (history map)
+    Note over UI,Carmen: GL mapping history is fetched from Carmen (spGetListJvBySource)<br/>No longer stored in local DB
 
-    UI->>API: POST /api/v1/mapping/suggest (accounts[], departments[])
+    UI->>API: POST /api/v1/credit-card/mapping/suggest (accounts[], departments[])
     activate API
     API->>+MapTool: map_gl.suggest_fixed_fields(accounts, departments)
     MapTool->>PromptBuilder: build_fixed_fields_prompt(dept_lines, acc_lines, ...)
@@ -280,7 +277,7 @@ sequenceDiagram
     API-->>UI: 200 OK (suggestions, source: 'ai')
     deactivate API
 
-    UI->>API: POST /api/v1/mapping/suggest-payment-types (payment_types[], accounts[], departments[])
+    UI->>API: POST /api/v1/credit-card/mapping/suggest-payment-types (payment_types[], accounts[], departments[])
     activate API
     API->>+MapTool: map_gl.suggest_payment_types(payment_types, accounts, departments)
     MapTool->>PromptBuilder: build_payment_types_prompt(types, dept_lines, acc_lines, ...)
@@ -290,38 +287,26 @@ sequenceDiagram
     MapTool-->>-API: ToolResult(suggestions)
     API-->>UI: 200 OK (suggestions per type, source: 'ai')
     deactivate API
-
-    UI->>API: POST /api/v1/mapping/history/save (bank_name, mappings)
-    API->>DB: UPSERT mapping_history (increment confirmed_count)
-    API-->>UI: 200 OK
 ```
 
-### 3.7 Sequence Diagram: API 5 - Submit Validated Data
+### 3.7 Sequence Diagram: API 5 - Submit to Carmen ERP
 
-ขั้นตอนการบันทึกข้อมูลที่ผ่านการตรวจสอบแล้ว พร้อมตรวจสอบการซ้ำซ้อน
+ขั้นตอนการส่ง Journal Voucher เข้าระบบ Carmen ERP (ผ่าน backend proxy)
 
 ```mermaid
 sequenceDiagram
     participant User as User / Frontend (React)
-    participant API as API Service (FastAPI)
-    participant DB as MySQL/MariaDB
+    participant API as Carmen Router (FastAPI)
+    participant DB as PostgreSQL
+    participant Carmen as Carmen Cloud
 
-    User->>API: POST /api/v1/ocr/submit (SubmitPayload + Overwrite flag)
+    User->>API: POST /api/v1/carmen/gljv (JV payload + accounting lines)
     activate API
-    API->>DB: Check Duplicate doc_no (submitted receipts only)
-    DB-->>API: Result (exists: bool)
-    alt No Duplicate
-        API->>DB: INSERT OCRTask (status=COMPLETED)
-        API->>DB: INSERT Receipt (submitted_at=NOW)
-        API->>DB: INSERT ReceiptDetail rows
-        API-->>User: 200 OK {ok: true, receipt_id, doc_no, submitted_at}
-    else Duplicate + Overwrite=false
-        API-->>User: 200 OK {ok: false, error: DUPLICATE_DOC_NO}
-    else Duplicate + Overwrite=true
-        API->>DB: DELETE old receipt + details + task
-        API->>DB: INSERT new OCRTask + Receipt + Details
-        API-->>User: 200 OK {ok: true, receipt_id, doc_no, submitted_at}
-    end
+    API->>Carmen: POST Carmen gljv endpoint
+    Carmen-->>API: Result
+    API->>DB: Write OCRTask + CreditCard + CreditCardTransaction rows
+    DB-->>API: Confirmed
+    API-->>User: 200 OK
     deactivate API
 ```
 
@@ -335,17 +320,17 @@ sequenceDiagram
 2. **Step 2 — Processing**: ระบบส่งไฟล์ให้ Vision LLM ประมวลผลและแสดงสถานะการอ่าน
 3. **Step 3 — Verification**: เจ้าหน้าที่ตรวจสอบและแก้ไขข้อมูล Header (ชื่อเอกสาร, วันที่, เลขที่เอกสาร ฯลฯ) และรายการย่อย (Details)
 4. **Step 4 — Accounting Review**: ระบบโหลด Account Mapping จาก localStorage และแสดง Journal Entry (Debit/Credit) พร้อมแจ้งเตือนหาก mapping ไม่ครบ (รวมถึง File Prefix)
-5. **Step 5 — Journal Voucher**: แสดง JV สรุปรายการบัญชีทั้งหมด เจ้าหน้าที่ยืนยันก่อนบันทึกลงระบบ
+5. **Step 5 — Journal Voucher**: แสดง JV สรุปรายการบัญชีทั้งหมด เจ้าหน้าที่ยืนยันก่อนส่งเข้า Carmen ERP
 
 ### 4.2 กระบวนการตั้งค่า Account Mapping
 
 1. เจ้าหน้าที่เข้าหน้า **Mapping** แล้วเลือกธนาคาร
-2. ระบบ auto-fetch Carmen Account Codes + Departments และโหลดประวัติการแมปจาก DB
+2. ระบบ auto-fetch Carmen Account Codes + Departments
 3. ระบบ auto-trigger AI Suggest เพื่อแนะนำรหัสบัญชีสำหรับ:
    - 3 fields หลัก: **Commission, Tax Amount, Net Amount**
    - ประเภทการชำระเงินทุกประเภทที่มีในสลิป (Visa, Mastercard, QR codes, ฯลฯ)
 4. เจ้าหน้าที่ยืนยันหรือปรับแก้ mapping แต่ละรายการ
-5. ระบบบันทึก mapping ลง DB (MappingHistory) และ localStorage
+5. ระบบบันทึก mapping ลง localStorage
 
 ---
 
@@ -355,7 +340,7 @@ sequenceDiagram
 
 **วัตถุประสงค์**: ประมวลผลรูปภาพด้วย Vision LLM และส่งข้อมูลกลับทันที ไม่บันทึกลงฐานข้อมูล
 
-**Method**: POST | **Endpoint**: `/api/v1/ocr/extract`
+**Method**: POST | **Endpoint**: `/api/v1/credit-card/extract`
 
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
@@ -395,7 +380,7 @@ sequenceDiagram
 
 **วัตถุประสงค์**: ดึงข้อมูลผังบัญชี (Chart of Accounts) สำหรับแสดงใน dropdown ของหน้า Mapping
 
-**Method**: GET | **Endpoint**: `/api/v1/ocr/carmen/account-codes`
+**Method**: GET | **Endpoint**: `/api/v1/carmen/account-codes`
 
 **JSON Response**:
 ```json
@@ -414,7 +399,7 @@ sequenceDiagram
 
 **วัตถุประสงค์**: ดึงข้อมูลรายชื่อแผนก สำหรับแสดงใน dropdown ของหน้า Mapping
 
-**Method**: GET | **Endpoint**: `/api/v1/ocr/carmen/departments`
+**Method**: GET | **Endpoint**: `/api/v1/carmen/departments`
 
 **JSON Response**:
 ```json
@@ -433,7 +418,7 @@ sequenceDiagram
 
 **วัตถุประสงค์**: ดึงข้อมูล GL Prefix (หลักเกณฑ์การตั้งชื่อบัญชี) จาก Carmen สำหรับสนับสนุน Account Code suggestion
 
-**Method**: GET | **Endpoint**: `/api/v1/ocr/carmen/gl-prefix`
+**Method**: GET | **Endpoint**: `/api/v1/carmen/gl-prefix`
 
 **JSON Response**:
 ```json
@@ -453,7 +438,7 @@ sequenceDiagram
 
 **วัตถุประสงค์**: ให้ AI แนะนำรหัสบัญชีสำหรับ Commission, Tax Amount, Net Amount โดยอ้างอิงรายการบัญชีจาก Carmen
 
-**Method**: POST | **Endpoint**: `/api/v1/mapping/suggest`
+**Method**: POST | **Endpoint**: `/api/v1/credit-card/mapping/suggest`
 
 **JSON Request**:
 ```json
@@ -481,7 +466,7 @@ sequenceDiagram
 
 **วัตถุประสงค์**: ให้ AI แนะนำรหัสบัญชีสำหรับแต่ละประเภทการชำระเงิน (Visa, Mastercard, QR, ฯลฯ)
 
-**Method**: POST | **Endpoint**: `/api/v1/mapping/suggest-payment-types`
+**Method**: POST | **Endpoint**: `/api/v1/credit-card/mapping/suggest-payment-types`
 
 **JSON Request**:
 ```json
@@ -507,91 +492,29 @@ sequenceDiagram
 
 ---
 
-### 5.6 API 4c: Load / Save Mapping History
+### 5.6 Mapping History
 
-**Load**: GET `/api/v1/mapping/history?bank_name=SCB`
-
-```json
-{
-  "bank_name": "SCB",
-  "history": {
-    "Commission":  { "dept": "100", "acc": "551100", "confirmed_count": 5 },
-    "Tax Amount":  { "dept": "100", "acc": "214100", "confirmed_count": 5 },
-    "Net Amount":  { "dept": "100", "acc": "113200", "confirmed_count": 5 }
-  }
-}
-```
-
-**Save**: POST `/api/v1/mapping/history/save`
-
-```json
-{
-  "bank_name": "SCB",
-  "mappings": {
-    "Commission": { "dept": "100", "acc": "551100" },
-    "Net Amount":  { "dept": "100", "acc": "113200" }
-  }
-}
-```
+> ⚠️ **Removed as of v2.3** — `GET /api/v1/mapping/history` และ `POST /api/v1/mapping/history/save` ถูกลบออกแล้ว ประวัติการโพส JV อ่านโดยตรงจาก Carmen ERP (`spGetListJvBySource`) แทนการเก็บไว้ใน local DB (`mapping_history` table ถูก drop ใน migration 207)
 
 ---
 
-### 5.7 API 5: Submit Final Data
+### 5.7 API 5: Submit Journal Voucher to Carmen ERP
 
-**วัตถุประสงค์**: บันทึกข้อมูลที่ผ่านการตรวจสอบแล้วลงฐานข้อมูล (OCRTask + Receipt + ReceiptDetails)
+**วัตถุประสงค์**: ส่ง Journal Voucher ที่ผ่านการตรวจสอบแล้วเข้า Carmen ERP โดยตรง (backend proxy)
 
-**Method**: POST | **Endpoint**: `/api/v1/ocr/submit`
+> หมายเหตุ: ไม่มี endpoint `/api/v1/credit-card/submit` หรือ `/api/v1/ocr/submit` — การ submit ผ่าน Carmen proxy เท่านั้น
 
-**JSON Request**:
-```json
-{
-  "BankType": "SCB",
-  "Header": {
-    "DocNo": "SCB-2026-00123",
-    "DocDate": "08/04/2026",
-    "BankName": "SCB",
-    "DocName": "รายงานสรุปยอดขาย",
-    "CompanyName": "บริษัท ตัวอย่าง จำกัด",
-    "CompanyTaxId": "0105555000001",
-    "MerchantName": "EXAMPLE CO LTD",
-    "MerchantId": "123456789",
-    "WhtRate": "1",
-    "WhtAmount": "100.00",
-    "NetAmount": "9900.00"
-  },
-  "Details": [
-    { "Transaction": "VISA", "PayAmt": 5000, "CommisAmt": 75, "TaxAmt": 5.25, "Total": 4919.75 }
-  ],
-  "Overwrite": false
-}
-```
+**Method**: POST | **Endpoint**: `/api/v1/carmen/gljv`
 
-**JSON Response (success)**:
-```json
-{
-  "ok": true,
-  "receipt_id": 42,
-  "doc_no": "SCB-2026-00123",
-  "submitted_at": "2026-04-08T10:30:00Z"
-}
-```
-
-**JSON Response (duplicate)**:
-```json
-{
-  "ok": false,
-  "error": "DUPLICATE_DOC_NO",
-  "message": "เลขที่เอกสาร SCB-2026-00123 มีอยู่แล้วในระบบ"
-}
-```
+ข้อมูล request/response เป็นไปตาม Carmen ERP API specification (backend เป็น thin proxy — ไม่แปลง payload)
 
 ---
 
-### 5.8 API 6: List OCR Tasks (Paginated)
+### 5.8 API 6: List Credit Card OCR Tasks (Paginated)
 
 **วัตถุประสงค์**: ดึงรายการ OCR tasks ทั้งหมดพร้อมข้อมูล pagination
 
-**Method**: GET | **Endpoint**: `/api/v1/ocr/tasks`
+**Method**: GET | **Endpoint**: `/api/v1/credit-card/tasks`
 
 **Query Parameters**:
 
@@ -621,9 +544,9 @@ sequenceDiagram
 
 ### 5.9 API 7: Get Single Task Detail
 
-**วัตถุประสงค์**: ดึงข้อมูลเอกสารแบบละเอียด (task + receipt + details)
+**วัตถุประสงค์**: ดึงข้อมูลเอกสารแบบละเอียด (task + credit_card + transactions)
 
-**Method**: GET | **Endpoint**: `/api/v1/ocr/tasks/{id}`
+**Method**: GET | **Endpoint**: `/api/v1/credit-card/tasks/{id}`
 
 **JSON Response**:
 ```json
@@ -631,12 +554,11 @@ sequenceDiagram
   "task_id": 42,
   "original_filename": "receipt_001.jpg",
   "status": "completed",
-  "receipt": {
+  "credit_card": {
     "id": 42,
-    "bank_name": "SCB",
-    "bank_type": "SCB",
+    "bank_code": "SCB",
     "doc_no": "SCB-2026-00123",
-    "doc_date": "2026-04-08",
+    "doc_date": "08/04/2026",
     "company_name": "บริษัท ตัวอย่าง จำกัด",
     "company_tax_id": "0105555000001",
     "merchant_name": "EXAMPLE CO LTD",
@@ -646,46 +568,34 @@ sequenceDiagram
     "net_amount": "9900.00",
     "submitted_at": "2026-04-08T10:30:00Z"
   },
-  "details": [
-    { "id": 1, "transaction": "VISA", "pay_amt": "5000.00", "commis_amt": "75.00", "tax_amt": "5.25", "total": "4919.75" }
+  "transactions": [
+    { "id": 1, "transaction": "VISA", "pay_amt": "5000.00", "commis_amt": "75.00", "tax_amt": "5.25", "total": "4919.75", "sort_order": 0 }
   ]
 }
 ```
 
 ---
 
-### 5.10 API 8: Mark Receipt as Submitted
+### ~~5.10 API 8: Mark Receipt as Submitted~~
 
-**วัตถุประสงค์**: อัปเดตสถานะของใบเสร็จเป็น "submitted" (ใช้ callback หรือ manual mark)
-
-**Method**: PATCH | **Endpoint**: `/api/v1/ocr/receipts/{id}/submit`
-
-**JSON Response**:
-```json
-{
-  "ok": true,
-  "receipt_id": 42,
-  "submitted_at": "2026-04-08T10:35:00Z"
-}
-```
+> ⚠️ **Removed as of v2.3** — endpoint `PATCH /api/v1/ocr/receipts/{id}/submit` (หรือ `PATCH /api/v1/credit-cards/{id}/submit`) ไม่เคยมีอยู่จริงใน codebase การ submit เกิดขึ้นเมื่อ user ยืนยัน JV ผ่าน `/api/v1/carmen/gljv` เท่านั้น
 
 ---
 
 ### 5.11 API 9: Debug LLM Response
 
-**วัตถุประสงค์**: ดู raw JSON response จากครั้งสุดท้ายที่เรียก Vision LLM (สำหรับ troubleshooting)
+**วัตถุประสงค์**: ดู raw JSON response จากครั้งสุดท้ายที่เรียก Vision LLM (สำหรับ troubleshooting) — ใช้ได้ทั้ง credit card และ AP invoice modules
 
-**Method**: GET | **Endpoint**: `/api/v1/ocr/debug-llm`
+**Method**: GET | **Endpoint**: `/api/v1/debug-llm`
+
+> ป้องกันด้วย `APP_DEBUG=true` — จะคืน HTTP 403 ใน production
 
 **JSON Response**:
 ```json
 {
-  "last_llm_response": {
-    "bank_name": "SCB",
-    "bank_companyname": "ธนาคารไทยพาณิชย์ จำกัด (มหาชน)",
-    "details": [...]
-  },
-  "timestamp": "2026-04-08T10:30:00Z"
+  "raw": "{...raw LLM response string...}",
+  "source": "credit_card_ocr",
+  "ts": "2026-04-08T10:30:00Z"
 }
 ```
 
@@ -786,15 +696,19 @@ sequenceDiagram
 
 **กรณี skip** (original == corrected): คืน `id: -1`, `created_at: null` — ไม่บันทึกลง DB
 
-**UPSERT behavior**: ใช้ `INSERT ... ON DUPLICATE KEY UPDATE` — unique constraint คือ `(receipt_id, field_name)` — 1 เอกสาร + 1 field = 1 record เสมอ
+**UPSERT behavior**: ใช้ `INSERT ... ON CONFLICT DO UPDATE` — unique constraint คือ `(receipt_id, field_name)` — 1 เอกสาร + 1 field = 1 record เสมอ
 
 ---
 
 ### 5.15 API 11: Health Check
 
-**วัตถุประสงค์**: ตรวจสอบสถานะ API และฐานข้อมูล
+**วัตถุประสงค์**: ตรวจสอบสถานะ API และฐานข้อมูล (app-level — ใช้โดย Render/IIS health probe)
 
-**Method**: GET | **Endpoint**: `/api/v1/ocr/health`
+**Method**: GET | **Endpoint**: `/api/v1/health`
+
+Liveness probe (ไม่ตรวจ DB): `GET /livez`
+
+Readiness probe (ตรวจ DB connection): `GET /readyz`
 
 **JSON Response (healthy)**:
 ```json
@@ -809,7 +723,7 @@ sequenceDiagram
 
 ## 6. โครงสร้างฐานข้อมูล (Database Schema)
 
-ระบบใช้ **MySQL/MariaDB** ผ่าน `aiomysql` (async) โดยมี 6 ตาราง:
+ระบบใช้ **PostgreSQL** (Neon managed) ผ่าน `asyncpg` (async) เชื่อมต่อผ่าน Supavisor connection pooler
 
 ### 6.1 Table: `ocr_tasks`
 
@@ -817,78 +731,66 @@ sequenceDiagram
 
 | Column | Type | Key | Null | Default | Description |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `id` | INT | PK | NO | AUTO_INCREMENT | Task ID |
+| `id` | UUID | PK | NO | gen_random_uuid() | Task ID |
+| `tenant_id` | UUID | FK | NO | | Reference ไปยัง tenants.id |
 | `original_filename` | VARCHAR(255) | | NO | | ชื่อไฟล์ที่อัปโหลด |
-| `status` | ENUM('pending','processing','completed','failed') | | NO | pending | สถานะการประมวลผล |
-| `created_at` | TIMESTAMP | | NO | CURRENT_TIMESTAMP | เวลาสร้าง |
+| `status` | VARCHAR(20) | | NO | pending | สถานะการประมวลผล |
+| `created_at` | TIMESTAMPTZ | | NO | now() | เวลาสร้าง |
 
 ---
 
-### 6.2 Table: `receipts`
+### 6.2 Table: `credit_cards`
 
-**ความหมาย**: ข้อมูล Header ของเอกสาร (1 รายการต่อ task)
+**ความหมาย**: ข้อมูล Header ของเอกสาร Credit Card Statement (1 รายการต่อ task)
 
 | Column | Type | Key | Null | Default | Description |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `id` | INT | PK | NO | AUTO_INCREMENT | Receipt ID |
-| `task_id` | INT | FK | YES | | Reference ไปยัง ocr_tasks |
-| `bank_name` | VARCHAR(50) | | NO | | ชื่อธนาคาร (BBL, KBANK, SCB) |
-| `bank_type` | VARCHAR(50) | | NO | | ประเภทธนาคาร |
-| `doc_no` | VARCHAR(100) | IDX | NO | | เลขที่เอกสาร (unique per submission) |
+| `id` | UUID | PK | NO | gen_random_uuid() | Record ID |
+| `tenant_id` | UUID | FK | NO | | Reference ไปยัง tenants.id |
+| `task_id` | UUID | FK | YES | | Reference ไปยัง ocr_tasks |
+| `bank_code` | VARCHAR(20) | FK | NO | | Reference ไปยัง banks.code |
+| `doc_no` | VARCHAR(100) | IDX | NO | | เลขที่เอกสาร |
 | `doc_date` | DATE | | NO | | วันที่เอกสาร |
 | `doc_name` | VARCHAR(255) | | YES | | ชื่อเอกสาร |
 | `company_name` | VARCHAR(255) | | YES | | ชื่อบริษัท |
 | `company_tax_id` | VARCHAR(50) | | YES | | เลขประจำตัวผู้เสียภาษี |
-| `company_address` | TEXT | | YES | | ที่อยู่บริษัท |
 | `merchant_name` | VARCHAR(255) | | YES | | ชื่อผู้ค้า |
 | `merchant_id` | VARCHAR(100) | | YES | | ID ผู้ค้า |
-| `account_no` | VARCHAR(100) | | YES | | เลขบัญชี |
-| `bank_companyname` | VARCHAR(255) | | YES | | ชื่อบริษัท (จากธนาคาร) |
-| `bank_tax_id` | VARCHAR(50) | | YES | | เลขประจำตัว (จากธนาคาร) |
-| `bank_address` | VARCHAR(255) | | YES | | ที่อยู่ (จากธนาคาร) |
-| `branch_no` | VARCHAR(50) | | YES | | หมายเลขสาขา |
-| `wht_rate` | DECIMAL(5,2) | | YES | 0 | อัตราหักภาษี ณ ที่จ่าย (%) |
-| `wht_amount` | DECIMAL(15,2) | | YES | 0 | จำนวนเงินหักภาษี |
-| `net_amount` | DECIMAL(15,2) | | YES | 0 | จำนวนเงินสุทธิ |
-| `submitted_at` | TIMESTAMP | IDX | YES | NULL | เวลา submit (NULL = ยังไม่ submit) |
-| `created_at` | TIMESTAMP | | NO | CURRENT_TIMESTAMP | เวลาสร้าง |
-| `updated_at` | TIMESTAMP | | NO | CURRENT_TIMESTAMP | เวลาแก้ไขล่าสุด |
+| `wht_rate` | NUMERIC(5,2) | | YES | 0 | อัตราหักภาษี ณ ที่จ่าย (%) |
+| `wht_amount` | NUMERIC(15,2) | | YES | 0 | จำนวนเงินหักภาษี |
+| `net_amount` | NUMERIC(15,2) | | YES | 0 | จำนวนเงินสุทธิ |
+| `submitted_at` | TIMESTAMPTZ | IDX | YES | NULL | เวลา submit (NULL = ยังไม่ submit) |
+| `deleted_at` | TIMESTAMPTZ | | YES | NULL | Soft delete |
+| `created_at` | TIMESTAMPTZ | | NO | now() | เวลาสร้าง |
+| `updated_at` | TIMESTAMPTZ | | NO | now() | เวลาแก้ไขล่าสุด |
+
+**Duplicate check**: `(tenant_id, bank_code, doc_no, submitted_at IS NOT NULL)`
 
 ---
 
-### 6.3 Table: `receipt_details`
+### 6.3 Table: `credit_card_transactions`
 
-**ความหมาย**: รายการย่อยของการชำระเงิน (หลายรายการต่อ receipt)
+**ความหมาย**: รายการย่อยของการชำระเงิน (หลายรายการต่อ credit_card)
 
 | Column | Type | Key | Null | Default | Description |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `id` | INT | PK | NO | AUTO_INCREMENT | Detail ID |
-| `receipt_id` | INT | FK | NO | | Reference ไปยัง receipts |
+| `id` | UUID | PK | NO | gen_random_uuid() | Transaction ID |
+| `tenant_id` | UUID | FK | NO | | Reference ไปยัง tenants.id |
+| `credit_card_id` | UUID | FK | NO | | Reference ไปยัง credit_cards |
 | `transaction` | VARCHAR(100) | | YES | | ประเภทการชำระเงิน (VISA, MCA, QR, ฯลฯ) |
-| `pay_amt` | DECIMAL(15,2) | | YES | 0 | จำนวนเงินชำระ |
-| `commis_amt` | DECIMAL(15,2) | | YES | 0 | จำนวนคณะกรรมการ |
-| `tax_amt` | DECIMAL(15,2) | | YES | 0 | จำนวนภาษี |
-| `wht_amount` | DECIMAL(15,2) | | YES | 0 | จำนวนเงินหักภาษี |
-| `total` | DECIMAL(15,2) | | YES | 0 | รวมทั้งสิ้น |
-| `created_at` | TIMESTAMP | | NO | CURRENT_TIMESTAMP | เวลาสร้าง |
+| `pay_amt` | NUMERIC(15,2) | | YES | 0 | จำนวนเงินชำระ |
+| `commis_amt` | NUMERIC(15,2) | | YES | 0 | ค่าธรรมเนียม |
+| `tax_amt` | NUMERIC(15,2) | | YES | 0 | จำนวนภาษี |
+| `wht_amount` | NUMERIC(15,2) | | YES | 0 | จำนวนเงินหักภาษี |
+| `total` | NUMERIC(15,2) | | YES | 0 | รวมทั้งสิ้น |
+| `sort_order` | INTEGER | | NO | 0 | ลำดับที่ LLM อ่านได้ (preserve output order) |
+| `created_at` | TIMESTAMPTZ | | NO | now() | เวลาสร้าง |
 
 ---
 
-### 6.4 Table: `mapping_history`
+### ~~6.4 Table: `mapping_history`~~
 
-**ความหมาย**: ประวัติการแมปรหัสบัญชีแยกตามธนาคารและประเภทฟิลด์
-
-| Column | Type | Key | Null | Default | Description |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `id` | INT | PK | NO | AUTO_INCREMENT | History ID |
-| `bank_name` | VARCHAR(50) | IDX | NO | | ชื่อธนาคาร |
-| `field_type` | VARCHAR(100) | | NO | | ประเภทฟิลด์ (Commission, Tax Amount, Net Amount, VSA-P, ฯลฯ) |
-| `dept_code` | VARCHAR(50) | | YES | | รหัสแผนก (Department Code) |
-| `acc_code` | VARCHAR(50) | | YES | | รหัสบัญชี (Account Code) |
-| `confirmed_count` | INT | | NO | 1 | จำนวนครั้งที่ยืนยัน (เพิ่มครั้งละ 1 เมื่อ save) |
-| `updated_at` | TIMESTAMP | | NO | CURRENT_TIMESTAMP | เวลาแก้ไขล่าสุด |
-
-**Unique Constraint**: `(bank_name, field_type, dept_code, acc_code)` — 1 bank + 1 field + 1 dept + 1 acc = 1 record (รองรับหลาย choice ต่อ field_type)
+> ⚠️ **Dropped as of migration 207** — ประวัติการ map GL อ่านจาก Carmen ERP โดยตรง (`spGetListJvBySource`) แทนการเก็บใน local DB
 
 ---
 
@@ -898,19 +800,20 @@ sequenceDiagram
 
 | Column | Type | Key | Null | Default | Description |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `id` | INT UNSIGNED | PK | NO | AUTO_INCREMENT | Correction ID |
+| `id` | UUID | PK | NO | gen_random_uuid() | Correction ID |
+| `tenant_id` | UUID | FK | NO | | Reference ไปยัง tenants.id |
 | `receipt_id` | VARCHAR(100) | IDX | NO | | เก็บ `doc_no` ของเอกสาร (ไม่ใช่ FK เพราะ log ที่ submit time) |
 | `bank_type` | VARCHAR(50) | IDX | NO | | รหัสธนาคาร (BBL/KBANK/SCB) |
 | `field_name` | VARCHAR(100) | IDX | NO | | ชื่อ field ที่ถูกแก้ (snake_case ตรงกับ LLM prompt) |
 | `original_value` | TEXT | | YES | | ค่าที่ LLM อ่านได้ (ก่อนแก้) |
 | `corrected_value` | TEXT | | YES | | ค่าที่ผู้ใช้แก้ไขเป็น |
-| `created_at` | DATETIME | IDX | NO | CURRENT_TIMESTAMP | เวลาที่บันทึก |
+| `created_at` | TIMESTAMPTZ | IDX | NO | now() | เวลาที่บันทึก |
 
 **Unique Constraint**: `(receipt_id, field_name)` — 1 เอกสาร + 1 field = 1 record เสมอ (UPSERT)
 
 **การใช้งาน** — `correction_service.get_correction_hints(bank_type)`:
 
-- นับ `submitted receipts` ของธนาคารนั้นใน 90 วัน → denominator
+- นับ `submitted credit_cards` ของธนาคารนั้นใน 90 วัน → denominator
 - นับ `corrections per field` ใน 90 วัน → numerator
 - `error_rate = corrections / receipts` → hint ถ้า > 10% และมี receipts >= 10 ใบ
 
@@ -918,31 +821,18 @@ sequenceDiagram
 
 ### 6.6 Table: `llm_usage_logs`
 
-**ความหมาย**: บันทึก token usage ของทุก LLM call สำหรับติดตามค่าใช้จ่ายและการใช้งานแยกตาม admin token และ Business Unit
+**ความหมาย**: บันทึก token usage ของทุก LLM call สำหรับติดตามค่าใช้จ่ายและการใช้งานแยกตาม module
 
 | Column | Type | Key | Null | Default | Description |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `id` | INT UNSIGNED | PK | NO | AUTO_INCREMENT | Log ID |
-| `task_id` | VARCHAR(36) | FK | YES | NULL | Reference ไปยัง ocr_tasks (NULL สำหรับ mapping/AP calls) |
-| `usage_type` | VARCHAR(50) | | YES | NULL | ประเภทการเรียก: `BANK_OCR`, `AP_INVOICE`, `MAPPING_SUGGESTION` |
+| `id` | UUID | PK | NO | gen_random_uuid() | Log ID |
+| `tenant_id` | VARCHAR(36) | IDX | YES | NULL | Tenant ID (VARCHAR ไม่มี FK — high-volume append-only) |
+| `module_id` | VARCHAR(50) | IDX | YES | NULL | ประเภทการเรียก: `credit_card_ocr`, `ap_invoice` |
 | `model` | VARCHAR(100) | | NO | | OpenRouter model ID |
 | `prompt_tokens` | INT | | NO | 0 | จำนวน prompt tokens |
 | `completion_tokens` | INT | | NO | 0 | จำนวน completion tokens |
 | `total_tokens` | INT | | NO | 0 | รวม tokens |
-| `token_hash` | VARCHAR(64) | IDX | YES | NULL | SHA-256 ของ adminToken — ใช้ติดตาม usage ต่อ token โดยไม่เก็บ credential ดิบ |
-| `bu_name` | VARCHAR(100) | IDX | YES | NULL | Business Unit name |
-| `created_at` | DATETIME | IDX | NO | CURRENT_TIMESTAMP | เวลาที่บันทึก |
-
-**หมายเหตุ**: `token_hash` คำนวณโดย `usage_service._hash_token(admin_token)` — caller ส่ง raw token มา, service hash ก่อนบันทึก
-
-**Query รายงาน usage ต่อ token/BU**:
-
-```sql
-SELECT token_hash, bu_name, COUNT(*) AS calls, SUM(total_tokens) AS total_tokens
-FROM llm_usage_logs
-GROUP BY token_hash, bu_name
-ORDER BY total_tokens DESC;
-```
+| `created_at` | TIMESTAMPTZ | IDX | NO | now() | เวลาที่บันทึก |
 
 ---
 
@@ -957,10 +847,15 @@ ORDER BY total_tokens DESC;
 OPENROUTER_API_KEY=sk-or-v1-...
 OPENROUTER_OCR_MODEL=google/gemini-2.5-flash-lite
 OPENROUTER_SUGGESTION_MODEL=google/gemini-2.0-flash-lite
+OPENROUTER_AP_INVOICE_MODEL=google/gemini-2.5-flash-lite
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 
-# Database Configuration
-DATABASE_URL=mysql+aiomysql://root:password@localhost:3306/ocr_db
+# Database Configuration (PostgreSQL via Neon)
+DATABASE_URL=postgresql+asyncpg://user:password@host/dbname?sslmode=require
+
+# Auth Secrets — NEVER put these in system_configs DB table
+OCR_JWT_SECRET=<strong-random-secret>
+SESSION_ENCRYPTION_KEY=<fernet-key>
 
 # File Upload Configuration
 MAX_FILE_SIZE_MB=20
@@ -968,36 +863,41 @@ MAX_FILE_SIZE_MB=20
 # API Configuration
 APP_PORT=8010
 
-# Carmen Cloud Integration
-CARMEN_AUTHORIZATION=Bearer <token>
-CARMEN_BASE_URL=https://carmen.example.com
+# Security (production required)
+ALLOWED_ORIGINS=https://your-frontend-domain.com
+TRUST_PROXY=true
+ALLOWED_CARMEN_HOSTS=carmen.example.com
 ```
 
 | Variable | Required | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `OPENROUTER_API_KEY` | Yes | - | API key สำหรับ OpenRouter Vision LLM |
-| `OPENROUTER_OCR_MODEL` | No | google/gemini-2.5-flash-lite | Model สำหรับ OCR extraction |
+| `OPENROUTER_OCR_MODEL` | No | google/gemini-2.5-flash-lite | Model สำหรับ Credit Card OCR extraction |
+| `OPENROUTER_AP_INVOICE_MODEL` | No | google/gemini-2.5-flash-lite | Model สำหรับ AP Invoice extraction |
 | `OPENROUTER_SUGGESTION_MODEL` | No | google/gemini-2.0-flash-lite | Model สำหรับ AI suggestion |
-| `OPENROUTER_BASE_URL` | No | [https://openrouter.ai/api/v1](https://openrouter.ai/api/v1) | Base URL ของ OpenRouter |
-| `DATABASE_URL` | Yes | - | Connection string ไปยัง MySQL/MariaDB |
+| `OPENROUTER_BASE_URL` | No | `https://openrouter.ai/api/v1` | Base URL ของ OpenRouter |
+| `DATABASE_URL` | Yes | - | PostgreSQL connection string (asyncpg) |
+| `OCR_JWT_SECRET` | Yes | - | Secret สำหรับ JWT signing |
+| `SESSION_ENCRYPTION_KEY` | Yes | - | Fernet key สำหรับ session encryption |
 | `MAX_FILE_SIZE_MB` | No | 20 | ขนาดไฟล์สูงสุด (MB) |
 | `APP_PORT` | No | 8010 | Port ของ FastAPI server |
-| `CARMEN_AUTHORIZATION` | Yes | - | Bearer token สำหรับ Carmen API |
-| `CARMEN_BASE_URL` | Yes | - | Base URL ของ Carmen Cloud |
+| `ALLOWED_ORIGINS` | Yes (prod) | - | CORS allowed origins (wildcard ใช้ได้บน dev เท่านั้น) |
+| `ALLOWED_CARMEN_HOSTS` | Yes (prod) | - | Whitelist hostname ของ Carmen ERP (SSRF protection) |
 
 ---
 
 ## 8. ข้อกำหนดอื่นๆ (Non-Functional Requirements)
 
 1. **Authentication**: การเชื่อมต่อ Carmen API ต้องผ่าน `Authorization` header ของแบคเอนด์เท่านั้น ห้าม frontend เรียกตรง
-2. **Duplicate Prevention**: ระบบต้องตรวจสอบ `doc_no` ซ้ำก่อน submit ทุกครั้ง โดยเปรียบเทียบเฉพาะ receipt ที่มี `submitted_at IS NOT NULL`
-3. **Overwrite Capability**: เมื่อ `Overwrite=true` ระบบต้องลบ record เดิมทั้งหมดก่อนสร้างใหม่ (hard delete)
+2. **Duplicate Prevention**: ระบบต้องตรวจสอบ `doc_no` ซ้ำก่อน submit ทุกครั้ง โดยเปรียบเทียบเฉพาะ credit_card ที่มี `submitted_at IS NOT NULL`
+3. **Soft Delete**: Business tables ใช้ soft delete (`deleted_at`) เสมอ ห้าม hard delete ยกเว้นมีเหตุผลพิเศษ
 4. **Data Mapping Cache**: ระบบเก็บ mapping config ใน localStorage (`accountingConfig`, `accountMappingAmount`) เพื่อให้ใช้ซ้ำได้โดยไม่ต้อง re-fetch ทุกครั้ง
 5. **Error Reporting**: กรณีเกิดข้อผิดพลาด (422) แบคเอนด์ต้องส่งรายละเอียดสาเหตุเพื่อแสดงผลใน `CustomModal`
 6. **Performance**: API Master Data (Carmen Proxy) ต้องตอบสนองไม่เกิน 3 วินาที; AI Suggest ไม่เกิน 10 วินาที
-7. **Safe Migration**: `migrate_db()` ต้องทำงาน idempotent — ไม่เกิด error เมื่อ column มีอยู่แล้ว
+7. **Idempotent Migrations**: `_MIGRATIONS` list ใน `database.py` ต้องทำงาน idempotent — append-only, ห้าม reorder หรือ rename applied entries
 8. **Color Image Processing**: ห้ามแปลงภาพเป็น grayscale ก่อนส่ง Vision LLM เพราะลดความแม่นยำในการอ่าน
-9. **File Size Limit**: ไฟล์ต้องมีขนาดไม่เกิน 20 MB ต่อไฟล์; รองรับ JPG, PNG, BMP, WebP, GIF, PDF
+9. **File Size Limit**: ไฟล์ต้องมีขนาดไม่เกิน 20 MB ต่อไฟล์; รองรับ JPG, PNG, WebP, PDF (อ่านเข้า memory เท่านั้น ไม่เขียนลง disk)
+10. **No File Storage**: ไฟล์ที่อัปโหลดอ่านเข้า memory → ส่ง LLM → ทิ้ง ห้ามสร้างโฟลเดอร์ `uploads/` หรือ `exports/`
 
 ---
 
@@ -1005,13 +905,13 @@ CARMEN_BASE_URL=https://carmen.example.com
 
 ### 9.1 ธนาคารที่รองรับ
 
-| Bank Code | Bank Name | BankType Enum |
+| Bank Code | Bank Name | Pre-seeded |
 | :--- | :--- | :--- |
-| `BBL` | ธนาคารกรุงเทพ | BBL |
-| `KBANK` | ธนาคารกสิกรไทย | KBANK |
-| `SCB` | ธนาคารไทยพาณิชย์ | SCB |
+| `BBL` | ธนาคารกรุงเทพ | ✓ |
+| `KBANK` | ธนาคารกสิกรไทย | ✓ |
+| `SCB` | ธนาคารไทยพาณิชย์ | ✓ |
 
-แต่ละธนาคารมี **bank-specific extraction prompts** ใน `backend/app/llm/prompts/<bank>.py` เพื่อปรับปรุงความแม่นยำ — เพิ่มธนาคารใหม่ได้โดยสร้างไฟล์ใหม่ + ลงทะเบียนใน `llm/prompts/__init__.py`
+แต่ละธนาคารมี **bank-specific extraction prompts** ใน `backend/app/llm/prompts/<bank>.py` เพื่อปรับปรุงความแม่นยำ — เพิ่มธนาคารใหม่ได้โดยสร้างไฟล์ใหม่ + ลงทะเบียนใน `llm/prompts/__init__.py` + INSERT ลง `banks` table
 
 ### 9.2 ประเภทไฟล์ที่รองรับ
 
@@ -1019,13 +919,11 @@ CARMEN_BASE_URL=https://carmen.example.com
 
 - JPEG (`.jpg`, `.jpeg`)
 - PNG (`.png`)
-- BMP (`.bmp`)
 - WebP (`.webp`)
-- GIF (`.gif`)
 
 **เอกสาร**:
 
-- PDF (`.pdf`) — แสดงผ่าน iframe preview
+- PDF (`.pdf`) — รองรับ multi-page; page selector เลือกได้สูงสุด 10 หน้า
 
 **ข้อจำกัด**:
 
@@ -1054,52 +952,45 @@ CARMEN_BASE_URL=https://carmen.example.com
 
 ### 10.1b Backend Models Package
 
-`backend/app/models.py` ถูก refactor เป็น `backend/app/models/` package เพื่อรองรับการขยาย:
+`backend/app/models/` package:
 
 | File | Contents |
 | :--- | :--- |
-| `app/models/__init__.py` | Re-exports ทุก symbol เพื่อ backward compatibility (`from app.models import X` ยังใช้ได้) |
-| `app/models/enums.py` | `TaskStatus`, `BankType` enums |
-| `app/models/orm.py` | SQLAlchemy ORM classes: `OCRTask`, `Receipt`, `ReceiptDetail`, `MappingHistory`, `CorrectionFeedback`, `LLMUsageLog` |
-| `app/models/schemas.py` | Pydantic schemas: `ExtractedReceiptData`, `OCRTaskResponse`, `ReceiptSchema`, ฯลฯ |
+| `app/models/__init__.py` | Re-exports ทุก symbol เพื่อ backward compatibility |
+| `app/models/enums.py` | `TaskStatus` enums |
+| `app/models/orm.py` | SQLAlchemy ORM classes (mixins: TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixin) |
+| `app/models/schemas/` | Pydantic schemas package — ห้ามนิยาม BaseModel ใน router files |
 
 ### 10.2 Key Frontend Files
 
-**API Layer** (`src/lib/api/`) — import directly from these files:
+**API Layer** (`src/lib/api/`) — ทุก path ถูก centralize ใน `endpoints.ts`:
 
 | File | Exported Functions |
 | :--- | :--- |
-| `src/lib/api/ocr.js` | `extractFromFile()`, `markSubmitted()` |
-| `src/lib/api/submit.js` | `submitToLocal()` |
-| `src/lib/api/carmen.js` | `fetchAccountCodes()`, `fetchDepartments()`, `fetchGLPrefixes()`, `submitToCarmen()` |
-| `src/lib/api/mapping.js` | `suggestMapping()`, `suggestPaymentTypes()`, `fetchMappingHistory()`, `saveMappingHistory()` |
+| `src/lib/api/endpoints.ts` | `API` — single source of truth สำหรับทุก `/api/v1/*` path |
+| `src/lib/api/ocr.ts` | `extractFromFile()` (→ `API.creditCard.extract`) |
+| `src/lib/api/carmen.ts` | `fetchAccountCodes()`, `fetchDepartments()`, `fetchGLPrefixes()`, `submitToCarmen()` (→ `API.carmen.*`) |
+| `src/lib/api/mapping.ts` | `suggestMapping()`, `suggestPaymentTypes()` (→ `API.creditCard.mapping.*`) |
 
-> `src/lib/ocrApi.js` และ `src/lib/carmenApi.js` ยังคงอยู่เป็น re-export wrapper เพื่อ backward compat — new code ควร import จาก `lib/api/*` โดยตรง
+> หมายเหตุ: `markSubmitted()` ถูกลบออกแล้ว (v2.3) — ไม่เคยมี endpoint จริง
 
 **Hooks** (`src/hooks/`):
 
 | File | Purpose |
 | :--- | :--- |
-| `src/hooks/useOcrWizard.js` | All wizard state + handlers extracted from App.jsx — exposes step, bank, files, headerData, details, jvRows, toasts, modal, and all handlers |
-| `src/hooks/useToast.js` | `useToast()` → `{ toasts, showToast(msg, type) }` — auto-dismiss 3.5s |
-| `src/hooks/useModal.js` | `useModal()` → `{ modal, showModal(config), closeModal() }` |
+| `src/hooks/credit-card/useOcrWizard.ts` | All wizard state + handlers |
+| `src/hooks/ap-invoice/useAPInvoice.ts` | AP invoice wizard state + handlers |
+| `src/hooks/useToast.ts` | `useToast()` → `{ toasts, showToast(msg, type) }` — auto-dismiss 3.5s |
+| `src/hooks/useModal.ts` | `useModal()` → `{ modal, showModal(config), closeModal() }` |
 
 **App & Pages**:
 
 | File | Role |
 | :--- | :--- |
-| `src/App.jsx` | Thin render shell (~115 lines) — imports `useOcrWizard`, renders step JSX only |
-| `src/pages/Home.jsx` | Landing hub page — links to OCR wizard and Mapping |
-| `src/constants/index.js` | `BANKS`, `BANK_THAI_NAMES`, `detectBankFromCompanyName()`, `DETAIL_COLUMNS`, `HEADER_LABELS`, `DETAIL_LABELS`, `EMPTY_DETAIL_ROW` |
-| `src/pages/Mapping.jsx` | Account mapping configuration page |
-
-**Component Barrel Files** (ใช้ grouped imports แทน per-file imports):
-
-| Barrel | Exports |
-| :--- | :--- |
-| `src/components/common/index.js` | `StepWizard`, `FormActions`, `CustomModal`, `CustomSearchSelect` |
-| `src/components/ocr/index.js` | `UploadSection`, `ActionBar`, `HeaderCard`, `DetailTable`, `DocumentPreview` |
-| `src/components/accounting/index.js` | `AccountingReview`, `JournalVoucher`, `InputTaxReconciliation` |
+| `src/App.tsx` | Thin render shell — imports hooks, renders step JSX only |
+| `src/pages/Home.tsx` | Landing hub page — links to OCR wizard and Mapping |
+| `src/constants/index.ts` | `BANKS`, `BANK_THAI_NAMES`, `detectBankFromCompanyName()`, `DETAIL_COLUMNS`, etc. |
+| `src/pages/Mapping.tsx` | Account mapping configuration page |
 
 ### 10.3 CSS Architecture & Design System
 
@@ -1130,7 +1021,7 @@ CARMEN_BASE_URL=https://carmen.example.com
   - `accountingConfig`: account code + department mappings — รวม field `filePrefix` (GL file prefix สำหรับ JV) และ `fileSource` (ชื่อแหล่งที่มา)
   - `accountMappingAmount`: mapping สำหรับแต่ละ payment type (Visa, MCA, QR, ฯลฯ)
   - `currentStep`: current wizard step (auto-recovery on refresh)
-  - `ocr_wizard_state`: state ของ OCR wizard — bank ที่เลือก, details ที่สแกนได้ (ใช้โดย Mapping page เพื่อตรวจสอบ active scan)
+  - `ocr_wizard_state`: state ของ OCR wizard — bank ที่เลือก, details ที่สแกนได้
 
 ---
 
@@ -1141,15 +1032,14 @@ CARMEN_BASE_URL=https://carmen.example.com
 | **Stateless extraction** | `/extract` returns JSON immediately without DB write — allows frontend review/edit before confirm |
 | **Single Vision LLM call** | Image + structured JSON in one call — faster, cheaper than multi-step OCR |
 | **Bank-specific prompts in registry** | `llm/prompts/__init__.py` holds a `_REGISTRY` dict; `get_ocr_prompt(bank_type)` returns the right prompt — adding a new bank requires only a new file + one registry entry |
-| **Shared prompt fragments** | `_shared.py` exports `ROW_RULES` / `OUTPUT_RULES`; all bank prompts append them — reduces duplication and ensures consistency |
 | **Shared LLM client** | `llm/client.py` is the single place that constructs `AsyncOpenAI` — never construct the client elsewhere |
-| **Tool-first architecture** | Business logic lives in `app/tools/`; routers are thin HTTP wrappers; every tool returns `ToolResult` for uniform handling |
-| **Generic tools endpoint** | `POST /api/v1/tools/{name}` lets an LLM agent call stateless tools by name — tools needing DB session or file bytes are blocked (`_REQUIRES_INJECTION`) |
+| **Module-coherent URL namespace** | `/api/v1/credit-card/*`, `/api/v1/ap-invoice/*`, `/api/v1/carmen/*` (shared) — each segment names its domain, not the implementation era |
+| **Carmen at top-level** | Carmen is a shared ERP proxy used by both credit card and AP invoice modules — nesting it under `/ocr/carmen` was wrong |
 | **Color images preserved** | Vision LLM reads color better than grayscale |
-| **Duplicate check on submitted only** | Allows editing before submit; duplicate check only applies to finalized (submitted_at NOT NULL) receipts |
-| **Overwrite support** | Hard delete old record + re-insert on Overwrite=true (atomic operation) |
-| **AI-first mapping** | Mapping page auto-triggers AI suggest on bank selection; history is loaded but AI always runs |
+| **Duplicate check on submitted only** | Allows editing before submit; duplicate check only applies to finalized (submitted_at NOT NULL) records |
+| **AI-first mapping** | Mapping page auto-triggers AI suggest on bank selection |
 | **localStorage caching** | Avoid re-fetching master data every step; user can modify offline |
-| **Carmen proxy in backend** | Separate `carmen.py` router + `carmen_service.py` — avoid frontend CORS issues, centralize authorization |
-| **Frontend domain API split** | `lib/api/*` separates OCR / Carmen / Mapping / Submit concerns — `ocrApi.js` and `carmenApi.js` kept as backward-compat re-exports |
-| **Safe migrations** | `migrate_db()` idempotent — runs on startup, adds missing columns safely |
+| **Carmen proxy in backend** | `carmen.py` router + `carmen_service.py` — avoid frontend CORS issues, centralize authorization, SSRF protection |
+| **Frontend path constants** | `src/lib/api/endpoints.ts` — all `/api/v1/*` paths in one place; adding a module = one new section, not scattered grep changes |
+| **Safe migrations** | `_MIGRATIONS` list in `database.py` is append-only and idempotent — runs on startup |
+| **Soft delete everywhere** | Business tables never hard-delete; always filter `WHERE deleted_at IS NULL` |

@@ -38,7 +38,7 @@ from app.utils.client_ip import get_client_ip
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/ocr/carmen", tags=["Carmen"])
+router = APIRouter(prefix="/api/v1/carmen", tags=["Carmen"])
 
 
 @asynccontextmanager

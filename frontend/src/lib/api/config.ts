@@ -1,4 +1,5 @@
 import { apiFetch } from './client'
+import { API } from './endpoints'
 import type { AccountingConfigRequest, AccountingConfigResponse } from '../../types/api'
 
 export interface APVendorMapping {
@@ -7,7 +8,7 @@ export interface APVendorMapping {
 }
 
 export async function getAccountingConfig(): Promise<AccountingConfigResponse> {
-  const res = await apiFetch('/api/v1/config/accounting')
+  const res = await apiFetch(API.config.accounting)
   if (!res.ok) throw new Error(`Config fetch failed (${res.status})`)
   return res.json() as Promise<AccountingConfigResponse>
 }
@@ -15,7 +16,7 @@ export async function getAccountingConfig(): Promise<AccountingConfigResponse> {
 export async function saveAccountingConfig(
   payload: AccountingConfigRequest
 ): Promise<AccountingConfigResponse> {
-  const res = await apiFetch('/api/v1/config/accounting', {
+  const res = await apiFetch(API.config.accounting, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -25,7 +26,7 @@ export async function saveAccountingConfig(
 }
 
 export async function getAPVendorMapping(vendorTaxId: string): Promise<APVendorMapping> {
-  const res = await apiFetch(`/api/v1/config/ap-mapping/${encodeURIComponent(vendorTaxId)}`)
+  const res = await apiFetch(API.config.apMapping(vendorTaxId))
   if (!res.ok) throw new Error(`AP mapping fetch failed (${res.status})`)
   return res.json() as Promise<APVendorMapping>
 }
@@ -34,7 +35,7 @@ export async function saveAPVendorMapping(
   vendorTaxId: string,
   mapping: APVendorMapping
 ): Promise<APVendorMapping> {
-  const res = await apiFetch(`/api/v1/config/ap-mapping/${encodeURIComponent(vendorTaxId)}`, {
+  const res = await apiFetch(API.config.apMapping(vendorTaxId), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(mapping),

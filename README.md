@@ -62,10 +62,11 @@ Base URL: `http://localhost:8010`
 | Method | Path | Description |
 | --- | --- | --- |
 | `POST` | `/api/v1/auth/exchange` | Carmen SSO → OCR session JWT |
-| `POST` | `/api/v1/ocr/extract` | Upload image → structured data |
-| `POST` | `/api/v1/ocr/submit` | Save confirmed data to DB |
+| `POST` | `/api/v1/credit-card/extract` | Upload image → structured data |
+| `POST` | `/api/v1/credit-card/mapping/suggest` | AI GL account suggestion |
 | `POST` | `/api/v1/ap-invoice/extract` | AP invoice extraction |
-| `POST` | `/api/v1/mapping/suggest` | AI GL account suggestion |
+| `POST` | `/api/v1/carmen/gljv` | Submit credit-card JV to Carmen ERP |
+| `POST` | `/api/v1/carmen/invoice` | Submit AP invoice to Carmen ERP |
 | `GET` | `/api/v1/config/accounting` | Load per-BU accounting config |
 | `GET` | `/livez` | Liveness probe |
 | `GET` | `/readyz` | Readiness probe (checks DB) |

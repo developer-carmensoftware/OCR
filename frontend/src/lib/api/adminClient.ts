@@ -4,6 +4,7 @@
  */
 
 import { createApiClient } from './client'
+import { API } from './endpoints'
 
 const ADMIN_TOKEN_KEY = 'ocr_admin_token'
 
@@ -50,7 +51,7 @@ export interface LoginResponse {
 }
 
 export async function adminLogin(email: string, password: string): Promise<LoginResponse> {
-  const res = await adminFetch('/api/v1/admin/auth/login', {
+  const res = await adminFetch(API.admin.login, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
@@ -63,13 +64,13 @@ export async function adminLogin(email: string, password: string): Promise<Login
 }
 
 export async function adminMe(): Promise<AdminUser> {
-  const res = await adminFetch('/api/v1/admin/auth/me')
+  const res = await adminFetch(API.admin.me)
   if (!res.ok) throw new Error('Failed to fetch admin profile')
   return res.json()
 }
 
 export async function adminLogout(): Promise<void> {
-  await adminFetch('/api/v1/admin/auth/logout', { method: 'POST' })
+  await adminFetch(API.admin.logout, { method: 'POST' })
   clearAdminToken()
 }
 
@@ -89,73 +90,73 @@ function buildQs(params: QueryParams): string {
 }
 
 export async function fetchUsageTotals(params: QueryParams = {}) {
-  const res = await adminFetch(`/api/v1/admin/usage-summary/totals${buildQs(params)}`)
+  const res = await adminFetch(`${API.admin.usageTotals}${buildQs(params)}`)
   if (!res.ok) throw new Error('Failed to fetch usage totals')
   return res.json()
 }
 
 export async function fetchUsageSummary(params: QueryParams = {}) {
-  const res = await adminFetch(`/api/v1/admin/usage-summary${buildQs(params)}`)
+  const res = await adminFetch(`${API.admin.usageSummary}${buildQs(params)}`)
   if (!res.ok) throw new Error('Failed to fetch usage summary')
   return res.json()
 }
 
 export async function fetchTenantRanking(params: QueryParams = {}) {
-  const res = await adminFetch(`/api/v1/admin/tenant-ranking${buildQs(params)}`)
+  const res = await adminFetch(`${API.admin.tenantRanking}${buildQs(params)}`)
   if (!res.ok) throw new Error('Failed to fetch tenant ranking')
   return res.json()
 }
 
 export async function fetchLLMLogs(params: QueryParams = {}) {
-  const res = await adminFetch(`/api/v1/admin/llm-usage${buildQs(params)}`)
+  const res = await adminFetch(`${API.admin.llmUsage}${buildQs(params)}`)
   if (!res.ok) throw new Error('Failed to fetch LLM logs')
   return res.json()
 }
 
 export async function fetchPerformanceLogs(params: QueryParams = {}) {
-  const res = await adminFetch(`/api/v1/admin/performance-logs${buildQs(params)}`)
+  const res = await adminFetch(`${API.admin.performanceLogs}${buildQs(params)}`)
   if (!res.ok) throw new Error('Failed to fetch performance logs')
   return res.json()
 }
 
 export async function fetchAlerts(params: QueryParams = {}) {
-  const res = await adminFetch(`/api/v1/admin/alerts${buildQs(params)}`)
+  const res = await adminFetch(`${API.admin.alerts}${buildQs(params)}`)
   if (!res.ok) throw new Error('Failed to fetch alerts')
   return res.json()
 }
 
 export async function resolveAlert(alertId: number) {
-  const res = await adminFetch(`/api/v1/admin/alerts/${alertId}/resolve`, { method: 'POST' })
+  const res = await adminFetch(API.admin.resolveAlert(alertId), { method: 'POST' })
   if (!res.ok) throw new Error('Failed to resolve alert')
   return res.json()
 }
 
 export async function fetchJobs(params: QueryParams = {}) {
-  const res = await adminFetch(`/api/v1/admin/jobs${buildQs(params)}`)
+  const res = await adminFetch(`${API.admin.jobs}${buildQs(params)}`)
   if (!res.ok) throw new Error('Failed to fetch jobs')
   return res.json()
 }
 
 export async function fetchSessions(params: QueryParams = {}) {
-  const res = await adminFetch(`/api/v1/admin/sessions${buildQs(params)}`)
+  const res = await adminFetch(`${API.admin.sessions}${buildQs(params)}`)
   if (!res.ok) throw new Error('Failed to fetch sessions')
   return res.json()
 }
 
 export async function revokeSession(sessionId: string) {
-  const res = await adminFetch(`/api/v1/admin/sessions/${sessionId}`, { method: 'DELETE' })
+  const res = await adminFetch(API.admin.session(sessionId), { method: 'DELETE' })
   if (!res.ok) throw new Error('Failed to revoke session')
   return res.json()
 }
 
 export async function fetchTenants(params: QueryParams = {}) {
-  const res = await adminFetch(`/api/v1/admin/tenants${buildQs(params)}`)
+  const res = await adminFetch(`${API.admin.tenants}${buildQs(params)}`)
   if (!res.ok) throw new Error('Failed to fetch tenants')
   return res.json()
 }
 
 export async function fetchErrorBreakdown(params: QueryParams = {}) {
-  const res = await adminFetch(`/api/v1/admin/error-breakdown${buildQs(params)}`)
+  const res = await adminFetch(`${API.admin.errorBreakdown}${buildQs(params)}`)
   if (!res.ok) throw new Error('Failed to fetch error breakdown')
   return res.json()
 }
@@ -179,19 +180,19 @@ export interface CreditLedgerEntry {
 }
 
 export async function fetchCreditBalance(tenantId: string): Promise<CreditBalance> {
-  const res = await adminFetch(`/api/v1/admin/tenants/${tenantId}/credits`)
+  const res = await adminFetch(API.admin.tenantCredits(tenantId))
   if (!res.ok) throw new Error('Failed to fetch credit balance')
   return res.json()
 }
 
 export async function fetchCreditLedger(tenantId: string): Promise<CreditLedgerEntry[]> {
-  const res = await adminFetch(`/api/v1/admin/tenants/${tenantId}/credits/ledger`)
+  const res = await adminFetch(API.admin.tenantCreditsLedger(tenantId))
   if (!res.ok) throw new Error('Failed to fetch credit ledger')
   return res.json()
 }
 
 export async function topupCredits(tenantId: string, packCode: string): Promise<CreditBalance> {
-  const res = await adminFetch(`/api/v1/admin/tenants/${tenantId}/credits/topup`, {
+  const res = await adminFetch(API.admin.tenantCreditsTopup(tenantId), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pack_code: packCode }),
@@ -208,7 +209,7 @@ export async function adjustCredits(
   delta: number,
   note?: string
 ): Promise<CreditBalance> {
-  const res = await adminFetch(`/api/v1/admin/tenants/${tenantId}/credits/adjust`, {
+  const res = await adminFetch(API.admin.tenantCreditsAdjust(tenantId), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ delta, note }),

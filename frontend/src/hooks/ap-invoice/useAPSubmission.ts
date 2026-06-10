@@ -3,6 +3,7 @@ import type React from 'react'
 import { fetchAccountCodes, fetchDepartments, submitAPInvoiceToCarmen } from '../../lib/api/carmen'
 import type { TaxProfileItem } from '../../lib/api/carmen'
 import { apiFetch } from '../../lib/api/client'
+import { API } from '../../lib/api/endpoints'
 import { showToast, toast } from '../../lib/toast'
 import { parseNum } from '../../lib/format'
 import type { ModalState } from '../../types/modal'
@@ -87,7 +88,7 @@ export function useAPSubmission({
     setSuggestLoading(true)
     showToast('AI is suggesting account codes...', 'info')
     try {
-      const res = await apiFetch('/api/v1/ap-invoice/suggest', {
+      const res = await apiFetch(API.apInvoice.suggest, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

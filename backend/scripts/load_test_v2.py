@@ -10,7 +10,7 @@ Modes
 -----
   health        Ping each OpenRouter key DIRECTLY (no backend) — confirm both keys
                 are usable before any comparison run.
-  ramp          Ramp-up concurrency against POST /api/v1/ocr/extract (the same
+  ramp          Ramp-up concurrency against POST /api/v1/credit-card/extract (the same
                 vision-only endpoint the old report used). The backend's pool
                 config (single vs multi key) is set via env at launch, not here.
   valve         Saturate a deliberately small pool to prove the 429 safety valve:
@@ -51,7 +51,7 @@ from jose import jwt
 # ── Config ────────────────────────────────────────────────────────────────────
 
 BACKEND_URL = "http://127.0.0.1:8010"
-EXTRACT_PATH = "/api/v1/ocr/extract?bank_code=BBL"
+EXTRACT_PATH = "/api/v1/credit-card/extract?bank_code=BBL"
 IMAGE_PATH = Path(__file__).resolve().parent.parent / "example_field" / "BBLbank.png"
 
 DEFAULT_RAMP = [1, 2, 4, 8, 12, 16, 24, 32]

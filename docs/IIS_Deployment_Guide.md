@@ -104,7 +104,7 @@
 ## 🚀 6. การทดสอบและการทำงานของระบบ
 
 - **เข้าใช้งานระบบ:** เปิดบราวเซอร์ไปที่ `https://dev.carmen4.com/ocr/` (หน้าเว็บ Frontend จะแสดงผล)
-- **การเชื่อมต่อ:** เมื่อคุณกดอัพโหลดใบเสร็จ Frontend จะส่งข้อมูลไปที่ `/api/v1/ocr/...` ซึ่งตัวบราวเซอร์จะวิ่งไปที่ `https://dev.carmen4.com/api/v1/...` อัตโนมัติ ทำให้ IIS โยนคำสั่งเข้าหาโฟลเดอร์ Backend อย่างสมบูรณ์แบบ
+- **การเชื่อมต่อ:** เมื่อคุณกดอัพโหลดใบเสร็จ Frontend จะส่งข้อมูลไปที่ `/api/v1/credit-card/...` ซึ่งตัวบราวเซอร์จะวิ่งไปที่ `https://dev.carmen4.com/api/v1/...` อัตโนมัติ ทำให้ IIS โยนคำสั่งเข้าหาโฟลเดอร์ Backend อย่างสมบูรณ์แบบ
 - **การแก้ไขปัญหา (Troubleshooting):**
   - **ขึ้น Error 503 Service Unavailable:** แปลว่า App Pool `OCR-Backend` หยุดทำงาน (Stopped) ให้ไปกด Start ใหม่ในหน้า Application Pools
   - **ขึ้น Error 500:** โค้ด Python อาจมีปัญหา ให้เข้าไปเปิดดูไฟล์ Log ภายในโฟลเดอร์ `D:\Carmen\www\Carmen.OCR.API\logs`

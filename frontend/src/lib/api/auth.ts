@@ -1,5 +1,6 @@
 import type { ExchangeResponse } from '../../types/api'
 import { resolveUrl } from './client'
+import { API } from './endpoints'
 
 export interface UsageData {
   bu: string
@@ -17,7 +18,7 @@ export async function exchangeSSOToken(
   user = '',
   uri = ''
 ): Promise<ExchangeResponse> {
-  const res = await fetch(resolveUrl('/api/v1/auth/exchange'), {
+  const res = await fetch(resolveUrl(API.auth.exchange), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token, bu, user, uri }),
@@ -32,7 +33,7 @@ export async function exchangeSSOToken(
 }
 
 export async function revokeSession(accessToken: string): Promise<void> {
-  await fetch(resolveUrl('/api/v1/auth/session'), {
+  await fetch(resolveUrl(API.auth.session), {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${accessToken}` },
   }).catch((err: unknown) => {
@@ -41,7 +42,7 @@ export async function revokeSession(accessToken: string): Promise<void> {
 }
 
 export async function getUsage(accessToken: string): Promise<UsageData> {
-  const res = await fetch(resolveUrl('/api/v1/auth/usage'), {
+  const res = await fetch(resolveUrl(API.auth.usage), {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
 

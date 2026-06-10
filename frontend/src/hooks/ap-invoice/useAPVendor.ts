@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { apiFetch } from '../../lib/api/client'
+import { API } from '../../lib/api/endpoints'
 import { showToast } from '../../lib/toast'
 
 export interface Vendor {
@@ -53,7 +54,7 @@ export function useAPVendor({ t, headerData }: APVendorProps) {
   const loadVendors = async (setRefreshing = false) => {
     if (setRefreshing) setVendorRefreshing(true)
     try {
-      const r = await apiFetch('/api/v1/ocr/carmen/vendors')
+      const r = await apiFetch(API.carmen.vendors)
       const data = (await r.json()) as { Data?: Array<Record<string, unknown>> }
       const list: Vendor[] = (data.Data || []).map(v => ({
         code: (v.VnCode as string) || '',

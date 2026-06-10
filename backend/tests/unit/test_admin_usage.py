@@ -564,7 +564,7 @@ class TestErrorBreakdown:
 
     async def test_A6_endpoint_grouping_returns_group_by_endpoint(self):
         row = _DictMapping(
-            {"group": "/api/v1/ocr/upload", "total": 50, "errors": 2, "avg_latency": 500}
+            {"group": "/api/v1/credit-card/extract", "total": 50, "errors": 2, "avg_latency": 500}
         )
         result_mock = MagicMock()
         result_mock.mappings.return_value.all.return_value = [row]

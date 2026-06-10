@@ -16,7 +16,7 @@ from tests.integration.conftest import FAKE_SESSION, make_test_client
 
 TENANT_ID = FAKE_SESSION.tenant_id
 AUTH_HEADERS = {"Authorization": "Bearer dummy"}
-BASE_URL = "/api/v1/mapping"
+BASE_URL = "/api/v1/credit-card/mapping"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

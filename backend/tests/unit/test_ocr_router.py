@@ -12,7 +12,7 @@ from app.models.orm import CreditCard, OCRTask
 from app.models.schemas import ExtractedCreditCardData
 from tests.integration.conftest import FAKE_SESSION, make_test_client
 
-BASE_URL = "/api/v1/ocr"
+BASE_URL = "/api/v1/credit-card"
 AUTH_HEADERS = {"Authorization": "Bearer dummy"}
 
 

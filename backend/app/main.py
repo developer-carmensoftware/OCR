@@ -123,3 +123,19 @@ async def version():
         "app_version": _cfg_early.app_version,
         "prompt_versions": _PROMPT_VERSIONS,
     }
+
+
+# ── Debug ──
+@app.get("/api/v1/debug-llm", tags=["Debug"], include_in_schema=False)
+async def debug_last_llm_response():
+    """Return the most recent raw LLM response (any module). Gated by APP_DEBUG."""
+    from fastapi import HTTPException
+
+    if not _cfg_early.app_debug:
+        raise HTTPException(status_code=403, detail="Debug mode is disabled")
+    from app.utils import debug_buffer
+
+    entry = debug_buffer.latest()
+    if entry is None:
+        return {"raw": "(no response saved yet)", "source": None, "ts": None}
+    return {"raw": entry["raw"], "source": entry["source"], "ts": entry["ts"]}

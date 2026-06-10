@@ -9,7 +9,6 @@ Business logic lives in:
 
 import asyncio
 import logging
-from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
@@ -18,7 +17,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.auth import SessionInfo, get_current_session
-from app.config import settings
 from app.constants import Module
 from app.context import current_document_ref
 from app.database import async_session, get_db
@@ -35,7 +33,7 @@ from app.utils.date_parsing import format_doc_date
 from app.utils.pages import parse_selected_pages
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/v1/ocr", tags=["OCR"])
+router = APIRouter(prefix="/api/v1/credit-card", tags=["Credit Card OCR"])
 
 
 def _task_to_dict(task: OCRTask) -> dict:
@@ -52,7 +50,7 @@ def _task_to_dict(task: OCRTask) -> dict:
 
 
 # ═══════════════════════════════════════════════════
-# POST /api/v1/ocr/extract
+# POST /api/v1/credit-card/extract
 # ═══════════════════════════════════════════════════
 
 
@@ -147,7 +145,7 @@ async def extract_card(
 
 
 # ═══════════════════════════════════════════════════
-# GET /api/v1/ocr/tasks
+# GET /api/v1/credit-card/tasks
 # ═══════════════════════════════════════════════════
 
 
@@ -164,7 +162,7 @@ async def list_tasks(
 
 
 # ═══════════════════════════════════════════════════
-# GET /api/v1/ocr/tasks/{task_id}
+# GET /api/v1/credit-card/tasks/{task_id}
 # ═══════════════════════════════════════════════════
 
 
@@ -204,60 +202,3 @@ async def get_task(
         }
 
     return JSONResponse(content={**_task_to_dict(task), "credit_card": card_data})
-
-
-# ═══════════════════════════════════════════════════
-# GET /api/v1/ocr/health  — public, no auth
-# ═══════════════════════════════════════════════════
-
-
-@router.api_route("/health", methods=["GET", "HEAD"])
-async def health_check():
-    import httpx
-
-    llm_status = "not_configured"
-    llm_error = None
-
-    if settings.openrouter_api_key:
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                r = await client.get(
-                    f"{settings.openrouter_base_url}/models",
-                    headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
-                )
-            llm_status = "ok" if r.status_code == 200 else "error"
-            if r.status_code != 200:
-                llm_error = f"HTTP {r.status_code}"
-        except Exception as exc:
-            llm_status = "error"
-            llm_error = str(exc)
-
-    healthy = llm_status == "ok"
-    # Public endpoint — do not leak model names / config (recon aid). Detailed
-    # model + error info is logged server-side and available on the authenticated
-    # admin surface instead.
-    if not healthy:
-        logger.warning(
-            "health degraded: openrouter=%s model=%s error=%s",
-            llm_status,
-            settings.openrouter_ocr_model,
-            llm_error,
-        )
-    body = {
-        "status": "healthy" if healthy else "degraded",
-        "openrouter": llm_status,
-        "timestamp": datetime.now(UTC).isoformat(),
-    }
-    return JSONResponse(status_code=200 if healthy else 503, content=body)
-
-
-@router.get("/debug-llm")
-async def debug_last_llm_response():
-    if not settings.app_debug:
-        raise HTTPException(status_code=403, detail="Debug mode is disabled")
-    from app.utils import debug_buffer
-
-    entry = debug_buffer.latest()
-    if entry is None:
-        return {"raw": "(no response saved yet)", "source": None, "ts": None}
-    return {"raw": entry["raw"], "source": entry["source"], "ts": entry["ts"]}

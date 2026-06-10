@@ -23,7 +23,7 @@ from app.services.mapping_history_service import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/v1/mapping", tags=["Mapping"])
+router = APIRouter(prefix="/api/v1/credit-card/mapping", tags=["Mapping"])
 
 
 async def _resolve_source(req_source: str | None, session: SessionInfo, db: AsyncSession) -> str:
