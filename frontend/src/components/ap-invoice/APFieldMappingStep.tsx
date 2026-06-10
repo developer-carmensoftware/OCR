@@ -1,4 +1,5 @@
 import { SlidersHorizontal, ArrowLeft, ArrowRight } from 'lucide-react'
+import Badge from '../common/Badge'
 import { isNumFld, fmt } from '../../constants/apInvoice'
 import type { APLineItem } from '../../hooks/ap-invoice/useAPExtraction'
 import type { APColumnKey, APFieldKey, FieldOption } from '../../constants/apInvoice'
@@ -45,7 +46,9 @@ export default function APFieldMappingStep({
                       <div className="col-label">
                         Column {index + 1}
                         {REQUIRED_FIELDS.includes(val) && (
-                          <span className="ap-required-badge">Required</span>
+                          <Badge variant="warning" className="ap-required-badge">
+                            Required
+                          </Badge>
                         )}
                       </div>
                       <select

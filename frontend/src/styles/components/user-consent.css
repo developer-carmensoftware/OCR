@@ -98,7 +98,7 @@
 
 .uc-lang-btn.active {
   background: var(--primary);
-  color: #fff;
+  color: white;
   box-shadow: var(--shadow-xs);
 }
 
@@ -278,7 +278,7 @@
   top: 1.5px;
   width: 6px;
   height: 9px;
-  border: 2px solid #fff;
+  border: 2px solid white;
   border-top: none;
   border-left: none;
   transform: rotate(45deg);
@@ -338,7 +338,7 @@
   font-size: 0.875rem;
   font-weight: 600;
   background: var(--primary);
-  color: #fff;
+  color: white;
   min-width: 110px;
   transition:
     background var(--dur-fast) var(--ease),

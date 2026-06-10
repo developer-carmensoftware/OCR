@@ -56,6 +56,7 @@
   --emerald: oklch(0.7515 0.1117 188.43);
   --emerald-light: oklch(0.96 0.025 188.43);
   --emerald-mid: oklch(0.88 0.06 188.43);
+  --emerald-end: oklch(0.78 0.14 162);
 
   /* ── Neutrals ── */
   --gray-50: oklch(0.985 0.003 258.7);
@@ -83,6 +84,7 @@
   --radius-md: 9px;
   --radius-sm: 6px;
   --radius-xs: 4px;
+  --radius-pill: 100px;
 
   /* ── Elevation (brand-blue tinted shadows) ── */
   --shadow-xs: 0 0.0625rem 0.125rem 0rem oklch(0.25 0.03 258.7 / 0.04);

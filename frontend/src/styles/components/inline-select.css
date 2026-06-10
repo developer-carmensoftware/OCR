@@ -49,18 +49,18 @@
 
 /* Warning state */
 .isel-trigger[data-warning='true'] {
-  color: var(--amber-text, #92400e);
+  color: var(--amber-text);
 }
 
 /* Accent text colors on trigger */
 .isel-trigger[data-accent='amber'] {
-  color: var(--amber-text, #92400e);
+  color: var(--amber-text);
 }
 .isel-trigger[data-accent='blue'] {
   color: var(--primary);
 }
 .isel-trigger[data-accent='green'] {
-  color: var(--success-foreground, #166534);
+  color: var(--success-foreground);
 }
 .isel-trigger[data-accent='muted'] {
   color: var(--text-3);
@@ -111,7 +111,7 @@
 /* ── Panel ── */
 
 .isel-panel {
-  background: var(--popover, #fff);
+  background: var(--popover);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
@@ -209,13 +209,13 @@
   background: var(--amber-light);
 }
 .isel-option[data-selected='true'][data-accent='amber'] .isel-opt-label {
-  color: var(--amber-text, #92400e);
+  color: var(--amber-text);
 }
 .isel-option[data-selected='true'][data-accent='green'] {
   background: var(--emerald-light);
 }
 .isel-option[data-selected='true'][data-accent='green'] .isel-opt-label {
-  color: var(--success-foreground, #166534);
+  color: var(--success-foreground);
 }
 .isel-option[data-selected='true'][data-accent='muted'] {
   background: var(--muted);
@@ -241,10 +241,10 @@
 }
 
 .isel-option[data-selected='true'][data-accent='amber'] .isel-opt-check {
-  color: var(--amber-text, #92400e);
+  color: var(--amber-text);
 }
 .isel-option[data-selected='true'][data-accent='green'] .isel-opt-check {
-  color: var(--success-foreground, #166534);
+  color: var(--success-foreground);
 }
 .isel-option[data-selected='true'][data-accent='muted'] .isel-opt-check {
   color: var(--text-3);

@@ -2,6 +2,7 @@ import React from 'react'
 import { Loader2, AlertTriangle, CheckCircle2, Info, Check, X, History } from 'lucide-react'
 import CustomSearchSelect from '../common/CustomSearchSelect'
 import AISuggestBar from '../common/AISuggestBar'
+import Badge from '../common/Badge'
 import type { FieldMapping } from '../../types/api'
 import type { MasterAccount, MasterDepartment } from '../../hooks/mapping/useMappingData'
 import type { MainMappings, ActiveScan } from '../../hooks/mapping/useMapping'
@@ -136,7 +137,9 @@ export default function AccountMappingTable({
                   <span>
                     <strong>{requiredMissingCount}</strong> pending mapping
                   </span>
-                  <span className="cc-required-badge">Required for this scan</span>
+                  <Badge variant="error" className="cc-required-badge">
+                    Required for this scan
+                  </Badge>
                 </>
               ) : (
                 <>

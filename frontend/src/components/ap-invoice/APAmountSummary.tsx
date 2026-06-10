@@ -98,6 +98,7 @@ export default function AmountSummary({
 
   return (
     <Card
+      className="ap-summary-card"
       icon={<Calculator size={16} />}
       title={t.summaryAccount}
       right={

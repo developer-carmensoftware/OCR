@@ -41,15 +41,15 @@
 .hm-dialog {
   position: relative;
   z-index: 1;
-  background: var(--card-bg, #fff);
+  background: var(--card-bg);
   width: 90%;
   max-width: 420px;
-  border-radius: var(--radius-lg, 10px);
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border);
-  box-shadow: var(--shadow-xl, 0 20px 60px rgba(0, 0, 0, 0.18));
+  box-shadow: var(--shadow-xl);
   display: flex;
   flex-direction: column;
-  animation: hm-slide-up 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: hm-slide-up var(--dur-base) var(--ease) both;
   overflow: hidden;
 }
 
@@ -173,7 +173,7 @@
   font-weight: 600;
   font-family: 'Inter', 'Sarabun', sans-serif;
   background: var(--primary);
-  color: #fff;
+  color: white;
   border: none;
   border-radius: var(--radius-sm, 6px);
   cursor: pointer;
@@ -197,7 +197,7 @@
 }
 
 .hm-btn-submit--success {
-  background: var(--teal, #0d9488);
+  background: var(--teal);
 }
 
 /* ─── Plan / Quota info (Payment modal) ─── */
@@ -324,7 +324,7 @@
   font-size: 0.76rem;
   font-weight: 600;
   font-family: 'Inter', 'Sarabun', sans-serif;
-  color: #fff;
+  color: white;
   background: var(--primary);
   border: none;
   border-radius: var(--radius-sm, 6px);
@@ -349,7 +349,7 @@
 }
 
 .hm-pack-btn--done {
-  background: var(--teal, #0d9488);
+  background: var(--teal);
 }
 
 /* ─── Buy section — blurred while pricing is not finalised ─── */

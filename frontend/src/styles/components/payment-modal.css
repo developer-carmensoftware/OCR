@@ -39,7 +39,7 @@
 .pm-dialog {
   position: relative;
   z-index: 1;
-  background: var(--data-card-bg, #fff);
+  background: var(--data-card-bg);
   width: 90%;
   max-width: 800px;
   border-radius: 8px;
@@ -71,11 +71,11 @@
 
 .pm-required-badge {
   font-size: 0.8rem;
-  color: var(--btn-err-text, #dc2626);
-  background: var(--btn-err-bg, #fff);
+  color: var(--btn-err-text);
+  background: var(--btn-err-bg);
   padding: 4px 12px;
   border-radius: 20px;
-  border: 1px solid var(--btn-err-border, #fca5a5);
+  border: 1px solid var(--btn-err-border);
   font-weight: 700;
   display: inline-flex;
   align-items: center;
@@ -115,13 +115,13 @@
 
 .pm-section-label {
   padding: 0.5rem;
-  background: var(--btn-err-bg, #fef2f2);
-  color: var(--btn-err-text, #991b1b);
+  background: var(--btn-err-bg);
+  color: var(--btn-err-text);
   font-size: 0.75rem;
   font-weight: 700;
   border-radius: 4px;
   margin-bottom: 0.75rem;
-  border: 1px solid var(--btn-err-border, #fecaca);
+  border: 1px solid var(--btn-err-border);
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -181,13 +181,13 @@
 }
 
 .pm-row--required-pending {
-  background: var(--btn-err-bg, #fff1f2);
-  border: 1px solid var(--btn-err-border, #fecaca);
+  background: var(--btn-err-bg);
+  border: 1px solid var(--btn-err-border);
 }
 
 .pm-row--required-ok {
-  background: var(--btn-ok-bg, #f0fdf4);
-  border: 1px solid var(--btn-ok-border, #bbf7d0);
+  background: var(--btn-ok-bg);
+  border: 1px solid var(--btn-ok-border);
 }
 
 .pm-row--custom {
@@ -219,18 +219,18 @@
 
 .pm-type-badge--pending {
   background: var(--rose);
-  color: #fff;
+  color: white;
 }
 
 .pm-type-badge--ok {
   background: var(--emerald);
-  color: #fff;
+  color: white;
 }
 
 .pm-type-badge--custom {
-  background: var(--btn-ok-bg, #f0fdf4);
-  color: var(--btn-ok-text, #16a34a);
-  border: 1px solid var(--btn-ok-border, #86efac);
+  background: var(--btn-ok-bg);
+  color: var(--btn-ok-text);
+  border: 1px solid var(--btn-ok-border);
 }
 
 .pm-type-badge--scan {
@@ -243,7 +243,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  color: #ef4444;
+  color: var(--rose);
   font-size: 0.9rem;
   padding: 0.2rem;
   line-height: 1;
@@ -258,9 +258,9 @@
 
 .pm-accept-btn {
   padding: 4px 10px;
-  background: var(--btn-ok-bg, #f0fdf4);
-  color: var(--btn-ok-text, #15803d);
-  border: 1px solid var(--btn-ok-border, #86efac);
+  background: var(--btn-ok-bg);
+  color: var(--btn-ok-text);
+  border: 1px solid var(--btn-ok-border);
   border-radius: 6px;
   cursor: pointer;
   font-size: 0.75rem;
@@ -272,9 +272,9 @@
 
 .pm-reject-btn {
   padding: 4px 10px;
-  background: var(--btn-err-bg, #fff1f2);
-  color: var(--btn-err-text, #dc2626);
-  border: 1px solid var(--btn-err-border, #fecaca);
+  background: var(--btn-err-bg);
+  color: var(--btn-err-text);
+  border: 1px solid var(--btn-err-border);
   border-radius: 6px;
   cursor: pointer;
   font-size: 0.75rem;
@@ -312,7 +312,7 @@
 
 .pm-add-btn {
   background: var(--primary);
-  color: #fff;
+  color: white;
   border: none;
   border-radius: 4px;
   padding: 0.4rem 0.7rem;

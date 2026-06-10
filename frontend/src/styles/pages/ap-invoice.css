@@ -2,13 +2,44 @@
    AP INVOICE — Page-specific styles
    ═══════════════════════════════════════════ */
 
+/* ─── AP-INVOICE LIGHT-MODE TOKENS ─── */
+:root {
+  /* Vendor pill (purple identity accent — light mode) */
+  --ap-vendor-bg: oklch(0.97 0.014 295);
+  --ap-vendor-border: oklch(0.84 0.06 295);
+  --ap-vendor-pill-border: oklch(0.89 0.05 295);
+  --ap-vendor-icon-bg: oklch(0.52 0.18 295);
+  --ap-vendor-text: oklch(0.2 0.06 295);
+  --ap-vendor-text-muted: oklch(0.42 0.14 295);
+
+  /* Tax type semantic (amber = include, teal = exclude, emerald = none) */
+  --amber-text-dark: var(--amber-text);
+  --blue-text-dark: var(--primary-hover);
+  --amber-border-light: var(--amber-mid);
+  --blue-border-light: var(--primary-mid);
+
+  /* AP error text */
+  --ap-error-text: oklch(0.42 0.18 24.11);
+
+  /* None (excluded from tax) bg */
+  --ap-none-bg: var(--emerald-light);
+
+  /* AP desc input */
+  --ap-inv-desc-bg: oklch(0.98 0.005 295);
+  --ap-inv-desc-border: oklch(0.84 0.06 295);
+  --ap-inv-desc-shadow: 0 0 0 3px oklch(from var(--ap-vendor-icon-bg) l c h / 0.15);
+
+  /* AP field error ring */
+  --ap-error-border: var(--rose-mid);
+}
+
 /* ─── LAYOUT ─── */
 .ap-split-layout {
   display: grid;
   grid-template-columns: 340px 1fr;
   gap: 1.5rem;
   align-items: start;
-  transition: grid-template-columns 0.3s var(--ease);
+  transition: grid-template-columns var(--dur-slow) var(--ease);
 }
 
 .ap-split-layout.full-width {
@@ -47,7 +78,7 @@
   font-size: 0.8rem;
   font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--dur-base);
   border: 1px solid var(--border-hi);
   background: white;
   color: var(--text-3);
@@ -87,7 +118,7 @@
   font-weight: 700;
   color: var(--primary);
   cursor: pointer;
-  transition: all 0.18s;
+  transition: all var(--dur-base);
   letter-spacing: 0.04em;
 }
 .lang-toggle:hover {
@@ -116,12 +147,12 @@
   border-radius: var(--radius-md);
   background: white;
   box-shadow: var(--shadow-xs);
-  transition: all 0.18s;
+  transition: all var(--dur-base);
 }
 
 .vendor-search-input-wrap:focus-within {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+  box-shadow: 0 0 0 3px oklch(from var(--primary) l c h / 0.1);
 }
 
 .vendor-search-input-wrap i {
@@ -146,13 +177,13 @@
 }
 
 .vendor-search-input.matched {
-  color: #065f46;
+  color: var(--btn-ok-text);
   font-weight: 600;
 }
 
 .vendor-search-input-wrap:has(.vendor-search-input.matched) {
   border-color: var(--emerald);
-  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
+  box-shadow: 0 0 0 3px oklch(from var(--emerald) l c h / 0.1);
 }
 
 .vendor-dropdown {
@@ -173,7 +204,7 @@
   padding: 0.75rem 1rem;
   cursor: pointer;
   border-bottom: 1px solid var(--gray-100);
-  transition: background 0.12s;
+  transition: background var(--dur-fast);
 }
 .vendor-dropdown-item:last-child {
   border-bottom: none;
@@ -221,7 +252,7 @@
 .vendor-badge.mapped {
   background: var(--emerald-light);
   color: var(--emerald);
-  border: 1px solid #6ee7b7;
+  border: 1px solid var(--emerald-mid);
 }
 .vendor-badge.unmapped {
   background: var(--amber-light);
@@ -281,7 +312,7 @@
   background: white;
   outline: none;
   cursor: pointer;
-  transition: border-color 0.15s;
+  transition: border-color var(--dur-fast);
 }
 
 .mapping-table th select:focus {
@@ -345,7 +376,7 @@
   vertical-align: middle;
 }
 .ap-review-table tbody tr:hover {
-  background: var(--gray-50);
+  background: var(--primary-light);
 }
 
 /* Group-by-description modal — backdrop + tokens mirror the app's .modal-overlay/.modal-box. */
@@ -378,7 +409,7 @@
   display: flex;
   align-items: flex-start;
   gap: 0.7rem;
-  padding: 1.1rem 1.25rem;
+  padding: 1.25rem;
   border-bottom: 1px solid var(--border);
 }
 .ap-group-modal-header-icon {
@@ -446,7 +477,7 @@
   color: var(--primary);
   cursor: pointer;
   border-radius: var(--radius-xs);
-  transition: background-color 0.12s var(--ease);
+  transition: background-color var(--dur-fast) var(--ease);
 }
 .ap-group-modal-selectall:hover {
   background: var(--primary-light);
@@ -481,8 +512,8 @@
   color: var(--text-2);
   background: var(--card-bg);
   transition:
-    background-color 0.12s var(--ease),
-    box-shadow 0.12s var(--ease);
+    background-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
 }
 .ap-group-modal-row:last-child {
   border-bottom: none;
@@ -626,8 +657,8 @@
   border-radius: var(--radius-md);
   font-size: 0.9rem;
   transition:
-    border-color 0.15s var(--ease),
-    box-shadow 0.15s var(--ease);
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
 }
 .ap-group-modal-input::placeholder {
   color: var(--text-4);
@@ -676,7 +707,7 @@
   font-size: 0.83rem;
   color: var(--text);
   outline: none;
-  transition: all 0.15s;
+  transition: all var(--dur-fast);
 }
 .ap-edit-input:hover {
   border-color: var(--border);
@@ -691,7 +722,7 @@
   font-family: 'IBM Plex Mono', monospace;
 }
 .ap-edit-input.category {
-  color: #4f46e5;
+  color: var(--primary);
   font-weight: 600;
 }
 
@@ -706,8 +737,8 @@
 /* Tax% whose rate has no matching Tax Profile.
    Amber outline flags it for review without blocking the user. */
 .ap-tax-unmatched {
-  border-color: #f59e0b !important;
-  color: #b45309;
+  border-color: var(--amber) !important;
+  color: var(--amber-text);
 }
 
 /* Amber variant of the validation card — amounts OK but warnings present */
@@ -760,15 +791,12 @@
 /* Required badge in field mapping step header cells */
 .ap-required-badge {
   margin-left: 0.35rem;
-  padding: 0.05rem 0.35rem;
-  background: var(--amber-mid);
-  color: var(--amber-text);
-  border-radius: 999px;
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
   vertical-align: middle;
+}
+
+/* ─── SUMMARY CARD — teal module accent ─── */
+.data-card.ap-summary-card {
+  border-top: 2px solid var(--teal);
 }
 
 /* ─── SUMMARY COMPARE CARD ─── */
@@ -818,7 +846,7 @@
   background: var(--gray-50);
   width: 110px;
   outline: none;
-  transition: all 0.15s;
+  transition: all var(--dur-fast);
   color: var(--text);
 }
 .ap-sum-from-doc:focus {
@@ -844,10 +872,22 @@
   color: white;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background var(--dur-fast);
 }
 .ap-adjust-btn:hover {
   background: var(--gray-700);
+}
+.ap-adjust-btn:focus-visible {
+  outline: 2.5px solid var(--primary);
+  outline-offset: 2px;
+}
+.ap-adjust-btn:active {
+  transform: scale(0.97);
+}
+.ap-adjust-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 /* Shown in the Grand-Total row when the document's own figures don't add up (sub + tax ≠ grand):
@@ -855,7 +895,7 @@
 .ap-doc-inconsistent {
   font-size: 0.68rem;
   font-weight: 600;
-  color: #b45309;
+  color: var(--amber-text);
   max-width: 16rem;
   text-align: right;
   line-height: 1.2;
@@ -879,9 +919,9 @@
   gap: 0.75rem;
   padding: 0.85rem 1rem;
   background: var(--emerald-light);
-  border: 1px solid #6ee7b7;
+  border: 1px solid var(--emerald-mid);
   border-radius: var(--radius-md);
-  color: #065f46;
+  color: var(--btn-ok-text);
   font-size: 0.85rem;
   font-weight: 600;
 }
@@ -987,7 +1027,7 @@
   vertical-align: middle;
 }
 .ap-acct-table tbody tr:hover {
-  background: var(--gray-50);
+  background: var(--primary-light);
 }
 .ap-acct-table .cat-badge {
   display: inline-flex;
@@ -1022,12 +1062,12 @@
   color: var(--text);
   background: white;
   outline: none;
-  transition: all 0.15s;
+  transition: all var(--dur-fast);
   box-shadow: var(--shadow-xs);
 }
 .ap-search-input-wrap input:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+  box-shadow: 0 0 0 3px oklch(from var(--primary) l c h / 0.1);
 }
 
 /* ─── SUCCESS SCREEN (Step 5) ─── */
@@ -1035,7 +1075,7 @@
   max-width: 640px;
   margin: 0 auto;
   background: white;
-  border: 1px solid #6ee7b7;
+  border: 1px solid var(--emerald-mid);
   border-radius: var(--radius-xl);
   padding: 3rem;
   text-align: center;
@@ -1051,7 +1091,7 @@
   left: 0;
   right: 0;
   height: 4px;
-  background: linear-gradient(90deg, var(--emerald) 0%, #34d399 100%);
+  background: linear-gradient(90deg, var(--emerald) 0%, var(--emerald-end) 100%);
 }
 
 .ap-success-icon {
@@ -1065,7 +1105,7 @@
   margin: 0 auto 1.5rem;
   font-size: 2.2rem;
   color: var(--emerald);
-  box-shadow: 0 0 0 12px rgba(5, 150, 105, 0.08);
+  box-shadow: 0 0 0 12px oklch(from var(--emerald) l c h / 0.08);
 }
 
 .ap-success-doc-no {
@@ -1161,7 +1201,7 @@
 }
 .ap-error-msg {
   font-size: 0.82rem;
-  color: #9f1239;
+  color: var(--ap-error-text);
 }
 
 /* ─── STEP NAV BAR ─── */
@@ -1259,7 +1299,7 @@
     width: 68px;
     height: 68px;
     font-size: 1.7rem;
-    box-shadow: 0 0 0 8px rgba(5, 150, 105, 0.08);
+    box-shadow: 0 0 0 8px oklch(from var(--emerald) l c h / 0.08);
   }
   .ap-step-nav {
     padding: 0.875rem 1rem;
@@ -1343,7 +1383,7 @@
 .ap-delete-item-btn {
   background: none;
   border: none;
-  color: var(--gray-400, #9ca3af);
+  color: var(--gray-400);
   cursor: pointer;
   padding: 4px;
   border-radius: 4px;
@@ -1356,8 +1396,8 @@
     background 0.15s;
 }
 .ap-delete-item-btn:hover:not(:disabled) {
-  color: #ef4444;
-  background: #fee2e2;
+  color: var(--rose);
+  background: var(--rose-light);
 }
 .ap-delete-item-btn:disabled {
   opacity: 0.25;
@@ -1415,19 +1455,19 @@
 
 /* Trigger colours driven by data-value attribute */
 .ttd-trigger[data-value='Include'] {
-  --ttd-color: var(--amber-700, #b45309);
-  --ttd-bg: var(--ap-include-bg, #fffbeb);
-  --ttd-border: var(--amber-300, #fcd34d);
+  --ttd-color: var(--amber-text);
+  --ttd-bg: var(--ap-include-bg);
+  --ttd-border: var(--amber-mid);
 }
 .ttd-trigger[data-value='Exclude'] {
-  --ttd-color: var(--blue-700, #1d4ed8);
-  --ttd-bg: var(--ap-exclude-bg, #eff6ff);
-  --ttd-border: var(--blue-300, #93c5fd);
+  --ttd-color: var(--primary-hover);
+  --ttd-bg: var(--ap-exclude-bg);
+  --ttd-border: var(--primary-mid);
 }
 .ttd-trigger[data-value='None'] {
-  --ttd-color: var(--emerald, #059669);
-  --ttd-bg: var(--ap-none-bg, #f0fdf4);
-  --ttd-border: var(--emerald-300, #6ee7b7);
+  --ttd-color: var(--emerald);
+  --ttd-bg: var(--ap-none-bg);
+  --ttd-border: var(--emerald-mid);
 }
 
 .ttd-trigger:hover {
@@ -1456,7 +1496,7 @@
   margin-left: 0.1rem;
   color: currentColor;
   opacity: 0.7;
-  transition: transform 200ms var(--ttd-ease-out);
+  transition: transform var(--dur-base) var(--ttd-ease-out);
   flex-shrink: 0;
   transform: rotate(0deg);
 }
@@ -1472,9 +1512,9 @@
   left: 0;
   z-index: 100;
   min-width: 230px;
-  background: var(--card-bg, #fff);
-  border: 1px solid var(--border-hi, #e5e7eb);
-  border-radius: var(--radius-lg, 10px);
+  background: var(--card-bg);
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius-lg);
   box-shadow:
     0 8px 24px rgba(0, 0, 0, 0.1),
     0 2px 6px rgba(0, 0, 0, 0.06);
@@ -1487,8 +1527,8 @@
   transform: scale(0.95) translateY(-4px);
   pointer-events: none;
   transition:
-    opacity 130ms var(--ttd-ease-in),
-    transform 130ms var(--ttd-ease-in);
+    opacity var(--dur-fast) var(--ttd-ease-in),
+    transform var(--dur-fast) var(--ttd-ease-in);
 }
 
 /* OPEN state — ease-out feels snappy and responsive */
@@ -1497,8 +1537,8 @@
   transform: scale(1) translateY(0);
   pointer-events: auto;
   transition:
-    opacity 180ms var(--ttd-ease-out),
-    transform 180ms var(--ttd-ease-out);
+    opacity var(--dur-base) var(--ttd-ease-out),
+    transform var(--dur-base) var(--ttd-ease-out);
 }
 
 /* ─── Individual options — stagger in on open ─── */
@@ -1513,7 +1553,7 @@
   background: transparent;
   cursor: pointer;
   text-align: left;
-  transition: background 100ms ease;
+  transition: background var(--dur-fast) var(--ease);
 
   /* Stagger delay set via --ttd-delay CSS var in JSX */
   opacity: 0;
@@ -1522,7 +1562,7 @@
 
 /* Options animate in when panel opens */
 .ttd-panel[data-open='true'] .ttd-option {
-  animation: ttdOptionIn 200ms var(--ttd-ease-out) both;
+  animation: ttdOptionIn var(--dur-base) var(--ttd-ease-out) both;
   animation-delay: var(--ttd-delay, 0ms);
 }
 
@@ -1538,18 +1578,18 @@
 }
 
 .ttd-option:hover {
-  background: var(--surface-hover, rgba(0, 0, 0, 0.04));
+  background: var(--gray-50);
 }
 
 /* Active (press) feedback */
 .ttd-option:active {
-  background: var(--surface-2, rgba(0, 0, 0, 0.07));
-  transform: scale(0.99);
+  background: var(--gray-100);
+  transform: scale(0.97);
 }
 
 /* Selected option — subtle highlight */
 .ttd-option[data-active='true'] {
-  background: var(--primary-light, rgba(79, 70, 229, 0.06));
+  background: var(--primary-light);
 }
 
 .ttd-option-dot {
@@ -1571,8 +1611,8 @@
   align-items: center;
   gap: 0.3rem;
   padding: 0.15rem 0.55rem;
-  border-radius: 99px;
-  font-size: 0.78rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.72rem;
   font-weight: 700;
   white-space: nowrap;
   flex-shrink: 0;
@@ -1580,42 +1620,42 @@
 
 /* Badge colours driven by data-value attribute */
 .ttd-option-badge[data-value='Include'] {
-  color: var(--amber-700, #b45309);
-  background: var(--ap-include-bg, #fffbeb);
-  border: 1px solid var(--amber-300, #fcd34d);
+  color: var(--amber-text);
+  background: var(--ap-include-bg);
+  border: 1px solid var(--amber-mid);
 }
 .ttd-option-badge[data-value='Exclude'] {
-  color: var(--blue-700, #1d4ed8);
-  background: var(--ap-exclude-bg, #eff6ff);
-  border: 1px solid var(--blue-300, #93c5fd);
+  color: var(--primary-hover);
+  background: var(--ap-exclude-bg);
+  border: 1px solid var(--primary-mid);
 }
 .ttd-option-badge[data-value='None'] {
-  color: var(--emerald, #059669);
-  background: var(--ap-none-bg, #f0fdf4);
-  border: 1px solid var(--emerald-300, #6ee7b7);
+  color: var(--emerald);
+  background: var(--ap-none-bg);
+  border: 1px solid var(--emerald-mid);
 }
 
 /* Option dot colours driven by data-value on the parent button */
 .ttd-option[data-value='Include'] .ttd-option-dot {
-  border: 2px solid var(--amber-700, #b45309);
+  border: 2px solid var(--amber-text);
   background: transparent;
 }
 .ttd-option[data-value='Include'][data-active='true'] .ttd-option-dot {
-  background: var(--amber-700, #b45309);
+  background: var(--amber-text);
 }
 .ttd-option[data-value='Exclude'] .ttd-option-dot {
-  border: 2px solid var(--blue-700, #1d4ed8);
+  border: 2px solid var(--primary-hover);
   background: transparent;
 }
 .ttd-option[data-value='Exclude'][data-active='true'] .ttd-option-dot {
-  background: var(--blue-700, #1d4ed8);
+  background: var(--primary-hover);
 }
 .ttd-option[data-value='None'] .ttd-option-dot {
-  border: 2px solid var(--emerald, #059669);
+  border: 2px solid var(--emerald);
   background: transparent;
 }
 .ttd-option[data-value='None'][data-active='true'] .ttd-option-dot {
-  background: var(--emerald, #059669);
+  background: var(--emerald);
 }
 
 /* Stagger animation delay via data-index attribute */
@@ -1631,7 +1671,7 @@
 
 .ttd-option-sub {
   font-size: 0.73rem;
-  color: var(--text-3, #9ca3af);
+  color: var(--text-3);
   font-weight: 400;
   white-space: nowrap;
 }
@@ -1652,11 +1692,11 @@
 /* ─── prefers-reduced-motion — keep opacity, remove movement ─── */
 @media (prefers-reduced-motion: reduce) {
   .ttd-panel {
-    transition: opacity 100ms ease;
+    transition: opacity var(--dur-fast) var(--ease);
     transform: none !important;
   }
   .ttd-panel[data-open='true'] {
-    transition: opacity 100ms ease;
+    transition: opacity var(--dur-fast) var(--ease);
   }
   .ttd-option {
     animation: none !important;
@@ -1716,7 +1756,7 @@
 
 .ap-vendor-warning {
   font-size: 0.75rem;
-  color: #b45309;
+  color: var(--amber-text);
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -1826,7 +1866,7 @@
   justify-content: center;
   gap: 0.15rem;
   padding: 0.55rem 1rem;
-  border-right: 1px solid var(--ap-vendor-pill-border, #ddd6fe);
+  border-right: 1px solid var(--ap-vendor-pill-border);
   flex: 1;
 }
 
@@ -1839,7 +1879,7 @@
   align-items: center;
   gap: 0.3rem;
   font-size: 0.68rem;
-  color: var(--ap-vendor-text-muted, #7c3aed);
+  color: var(--ap-vendor-text-muted);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1848,7 +1888,7 @@
 .ap-vendor-info-pill-value {
   font-size: 0.84rem;
   font-weight: 700;
-  color: var(--ap-vendor-text, #1e1b4b);
+  color: var(--ap-vendor-text);
 }
 
 .ap-account-card-title {
@@ -1898,8 +1938,8 @@
   align-items: stretch;
   flex-wrap: wrap;
   gap: 0;
-  background: var(--ap-vendor-bg, #f5f3ff);
-  border: 1.5px solid var(--ap-vendor-border, #c4b5fd);
+  background: var(--ap-vendor-bg);
+  border: 1.5px solid var(--ap-vendor-border);
   border-radius: 12px;
   padding: 0;
   overflow: hidden;
@@ -1911,7 +1951,7 @@
   align-items: center;
   gap: 0.6rem;
   padding: 0.7rem 1.1rem;
-  border-right: 1.5px solid var(--ap-vendor-border, #c4b5fd);
+  border-right: 1.5px solid var(--ap-vendor-border);
   flex-shrink: 0;
   min-width: 0;
 }
@@ -1920,7 +1960,7 @@
   width: 34px;
   height: 34px;
   border-radius: 8px;
-  background: var(--ap-vendor-icon-bg, #7c3aed);
+  background: var(--ap-vendor-icon-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1930,12 +1970,12 @@
 .ap-vendor-display-name {
   font-weight: 700;
   font-size: 0.92rem;
-  color: var(--ap-vendor-text, #3b0764);
+  color: var(--ap-vendor-text);
 }
 
 .ap-vendor-code {
   font-size: 0.75rem;
-  color: var(--ap-vendor-text-muted, #7c3aed);
+  color: var(--ap-vendor-text-muted);
   margin-top: 0.05rem;
   font-weight: 600;
 }
@@ -1957,7 +1997,7 @@
 .ap-invoice-desc-label {
   font-size: 0.72rem;
   font-weight: 700;
-  color: var(--ap-vendor-text-muted, #7c3aed);
+  color: var(--ap-vendor-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -1967,10 +2007,10 @@
   box-sizing: border-box;
   padding: 0.55rem 0.85rem;
   font-size: 0.88rem;
-  border: 1.5px solid var(--ap-inv-desc-border, #c4b5fd);
+  border: 1.5px solid var(--ap-inv-desc-border);
   border-radius: 8px;
-  background: var(--ap-inv-desc-bg, #faf5ff);
-  color: var(--ap-vendor-text, #1e1b4b);
+  background: var(--ap-inv-desc-bg);
+  color: var(--ap-vendor-text);
   outline: none;
   transition:
     border-color 0.2s,
@@ -1978,8 +2018,8 @@
 }
 
 .ap-invoice-desc-input:focus {
-  border-color: var(--ap-vendor-icon-bg, #7c3aed);
-  box-shadow: var(--ap-inv-desc-shadow, 0 0 0 3px #ede9fe);
+  border-color: var(--ap-vendor-icon-bg);
+  box-shadow: var(--ap-inv-desc-shadow);
 }
 
 .ap-fixed-gl-grid {
@@ -2016,11 +2056,11 @@
 }
 
 .ap-acct-table tbody tr.row-suggest {
-  background: var(--ap-suggest-bg, #f5f3ff);
+  background: var(--ap-suggest-bg);
 }
 
 .ap-acct-table tbody tr.row-error {
-  background: var(--ap-error-bg, #fff1f2);
+  background: var(--ap-error-bg);
 }
 
 .ap-acct-table td.ap-line-desc {
@@ -2046,7 +2086,7 @@
 /* AccountMappingTable — extracted inline styles */
 .ap-field-error-ring {
   border-radius: 7px;
-  outline: 2px solid var(--ap-error-border, #fca5a5);
+  outline: 2px solid var(--ap-error-border);
 }
 
 .ap-suggest-btn {
@@ -2061,15 +2101,15 @@
 }
 
 .ap-suggest-btn--ok {
-  background: var(--btn-ok-bg, #f0fdf4);
-  color: var(--btn-ok-text, #15803d);
-  border-color: var(--btn-ok-border, #86efac);
+  background: var(--btn-ok-bg);
+  color: var(--btn-ok-text);
+  border-color: var(--btn-ok-border);
 }
 
 .ap-suggest-btn--err {
-  background: var(--btn-err-bg, #fff1f2);
-  color: var(--btn-err-text, #dc2626);
-  border-color: var(--btn-err-border, #fca5a5);
+  background: var(--btn-err-bg);
+  color: var(--btn-err-text);
+  border-color: var(--btn-err-border);
 }
 
 .ap-suggest-actions {
@@ -2087,7 +2127,7 @@
 
 .ap-mapping-warning {
   font-size: 0.75rem;
-  color: #b45309;
+  color: var(--amber-text);
   font-weight: 600;
   display: flex;
   align-items: center;
