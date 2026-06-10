@@ -11,6 +11,7 @@ Flow:
      need no DB lookup for tenant resolution.
 """
 
+import ipaddress
 import logging
 import uuid
 from urllib.parse import urlparse
@@ -40,21 +41,37 @@ router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
 
 _VALIDATE_TIMEOUT = 10.0
 
-_exchange_limiter = InMemoryRateLimiter(max_calls=10, window_seconds=60.0)
+# Brute-force guard on the pre-auth SSO exchange. Now that get_client_ip resolves
+# the real client (trust_proxy), this is genuinely per-client — keep it tight.
+# NOTE: in-memory per-process; move to Redis if running multiple replicas.
+_exchange_limiter = InMemoryRateLimiter(max_calls=5, window_seconds=60.0)
 
 
 def _carmen_base(uri: str) -> str:
     return f"{uri.rstrip('/')}/Carmen.API/api/interface"
 
 
+def _is_internal_ip(addr: "ipaddress.IPv4Address | ipaddress.IPv6Address") -> bool:
+    return (
+        addr.is_private
+        or addr.is_loopback
+        or addr.is_link_local
+        or addr.is_reserved
+        or addr.is_multicast
+        or addr.is_unspecified
+    )
+
+
 def _validate_uri(uri: str) -> str:
     """
     Validate and normalise the Carmen origin URI against SSRF.
     - HTTPS only
-    - Blocks loopback/private/link-local IP ranges
+    - Host must be on ALLOWED_CARMEN_HOSTS when that allowlist is configured
+    - Blocks loopback/private/link-local IPs, whether given as a literal or
+      resolved from a hostname (defence against DNS-based SSRF)
     Returns normalised origin (scheme + host only).
     """
-    import ipaddress as _ip
+    import socket as _socket
 
     if not uri:
         raise HTTPException(status_code=400, detail="uri is required")
@@ -70,18 +87,39 @@ def _validate_uri(uri: str) -> str:
     if hostname in BlockedHosts.LOOPBACK:
         raise HTTPException(status_code=400, detail="uri hostname not allowed")
 
+    # Primary control: only permit explicitly allowlisted Carmen hosts (when set).
+    allowlist = settings.allowed_carmen_hosts_list
+    if allowlist and hostname not in allowlist:
+        logger.warning("Rejected Carmen uri host not on allowlist: %s", hostname)
+        raise HTTPException(status_code=400, detail="uri hostname not allowed")
+
     try:
-        addr = _ip.ip_address(hostname)
-        if (
-            addr.is_private
-            or addr.is_loopback
-            or addr.is_link_local
-            or addr.is_reserved
-            or addr.is_multicast
-        ):
-            raise HTTPException(status_code=400, detail="uri hostname not allowed")
+        addr = ipaddress.ip_address(hostname)
     except ValueError:
-        pass  # domain name
+        addr = None
+
+    if addr is not None:
+        # Literal IP in the URI — check it directly.
+        if _is_internal_ip(addr):
+            raise HTTPException(status_code=400, detail="uri hostname not allowed")
+    else:
+        # Hostname — resolve and reject if ANY resolved address is internal.
+        # (Defence-in-depth; the host allowlist above is the primary control.)
+        # Fail open on resolution errors: a name that can't be resolved here can't
+        # be connected to either, so the IP-literal check + allowlist still hold.
+        try:
+            infos = _socket.getaddrinfo(hostname, parsed.port or 443, proto=_socket.IPPROTO_TCP)
+        except OSError:
+            logger.warning("Could not resolve Carmen uri host %s for SSRF check", hostname)
+            infos = []
+        for info in infos:
+            ip_str = info[4][0]
+            try:
+                if _is_internal_ip(ipaddress.ip_address(ip_str)):
+                    logger.warning("Carmen uri %s resolves to internal IP %s", hostname, ip_str)
+                    raise HTTPException(status_code=400, detail="uri hostname not allowed")
+            except ValueError:
+                continue
 
     port_part = f":{parsed.port}" if parsed.port else ""
     return f"https://{parsed.hostname}{port_part}"

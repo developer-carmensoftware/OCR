@@ -1,5 +1,7 @@
 """Prompt builders for GL account mapping suggestions."""
 
+from app.utils.prompt_safety import sanitize_prompt_text
+
 
 def build_fixed_fields_prompt(
     dept_lines: str,
@@ -85,14 +87,18 @@ def build_ap_expense_prompt(
     invoice_desc: str = "",
     vendor_history_lines: str = "",
 ) -> str:
+    # category/description/invoice_desc are OCR-derived (untrusted) — sanitise to
+    # prevent prompt injection before interpolation.
     items_block = "\n".join(
-        f"  {i['index']}: {i['category']} — {i['description']} (unit price: {i.get('unit_price', 0):.2f})"
+        f"  {i['index']}: {sanitize_prompt_text(i['category'])} — "
+        f"{sanitize_prompt_text(i['description'])} (unit price: {i.get('unit_price', 0):.2f})"
         for i in items
     )
     keys = ", ".join(f'"{i["index"]}"' for i in items)
     template = ", ".join(f'"{i["index"]}":{{"dept":"","acc":""}}' for i in items)
+    _invoice_desc_clean = sanitize_prompt_text(invoice_desc)
     invoice_context = (
-        f"Invoice Description: {invoice_desc.strip()}\n\n" if invoice_desc.strip() else ""
+        f"Invoice Description: {_invoice_desc_clean}\n\n" if _invoice_desc_clean else ""
     )
     history_section = (
         f"Vendor history (this vendor's prior confirmed mappings — strongly prefer these when description is similar):\n{vendor_history_lines}\n\n"

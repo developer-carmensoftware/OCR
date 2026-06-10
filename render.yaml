@@ -55,19 +55,40 @@ services:
       # ── Auth ────────────────────────────────────────────────────────────────
       - key: OCR_JWT_SECRET
         generateValue: true
+      # Separate signing key for admin JWTs — MUST differ from OCR_JWT_SECRET
+      # (the app refuses to start in production if it is empty or equal to it).
+      - key: ADMIN_JWT_SECRET
+        generateValue: true
       - key: SESSION_ENCRYPTION_KEY
         sync: false
       - key: MASTER_API_KEY
         sync: false
 
       # ── CORS ────────────────────────────────────────────────────────────────
+      # Set ALLOWED_ORIGINS to the exact frontend origin(s) after the static site
+      # deploys, e.g. https://carmen-ocr-frontend.onrender.com (comma-separated for
+      # multiple). NEVER use a wildcard regex — the app hard-fails on ".*" in prod.
+      # ALLOWED_ORIGIN_REGEX is optional; use only a tightly-scoped pattern for
+      # preview deploys (e.g. ^https://carmen-ocr-frontend-[a-z0-9]+\.onrender\.com$).
+      - key: ALLOWED_ORIGINS
+        sync: false
       - key: ALLOWED_ORIGIN_REGEX
-        value: ".*"
+        sync: false
+
+      # ── SSRF allowlist ────────────────────────────────────────────────────────
+      # Comma-separated Carmen host(s) (no scheme) permitted at /auth/exchange.
+      # Pin your known Carmen ERP host(s), e.g. carmen.example.com
+      - key: ALLOWED_CARMEN_HOSTS
+        sync: false
 
       # ── App ─────────────────────────────────────────────────────────────────
       - key: MAX_FILE_SIZE_MB
         value: "20"
       - key: LOG_JSON
+        value: "true"
+      # Behind Render's load balancer — read the real client IP from the
+      # proxy-appended end of X-Forwarded-For (see TRUSTED_PROXY_HOPS).
+      - key: TRUST_PROXY
         value: "true"
 
       # ── Observability (optional) ────────────────────────────────────────────

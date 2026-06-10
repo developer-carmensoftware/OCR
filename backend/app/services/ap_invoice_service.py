@@ -25,7 +25,12 @@ from app.services.ap_vendor_history_service import (
 )
 from app.utils.gl_filter import score_and_pad
 from app.utils.mime import get_mime_type
-from app.utils.pdf_utils import MAX_PAGES_PER_CALL, get_pdf_page_count, render_pdf_pages
+from app.utils.pdf_utils import (
+    MAX_PAGES_PER_CALL,
+    PDF_RENDER_TIMEOUT_SECONDS,
+    get_pdf_page_count,
+    render_pdf_pages,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -143,9 +148,15 @@ async def extract_ap_invoice_data(
                 MAX_PAGES_PER_CALL,
             )
             pages = pages[:MAX_PAGES_PER_CALL]
-        page_images = await asyncio.get_running_loop().run_in_executor(
-            None, functools.partial(render_pdf_pages, file_bytes, pages)
-        )
+        try:
+            page_images = await asyncio.wait_for(
+                asyncio.get_running_loop().run_in_executor(
+                    None, functools.partial(render_pdf_pages, file_bytes, pages)
+                ),
+                timeout=PDF_RENDER_TIMEOUT_SECONDS,
+            )
+        except TimeoutError as exc:
+            raise ValidationError("PDF rendering timed out — the file may be malformed.") from exc
         image_items = [
             {
                 "type": "image_url",
@@ -332,15 +343,37 @@ async def suggest_for_items(
     return suggestions, True
 
 
-async def mark_invoice_submitted(db: "AsyncSession", ap_invoice_id: str) -> None:
-    """Mark an AP Invoice as submitted (set submitted_at = now)."""
+async def mark_invoice_submitted(db: "AsyncSession", ap_invoice_id: str, tenant_id: str) -> None:
+    """Mark an AP Invoice as submitted (set submitted_at = now).
+
+    The lookup is tenant-scoped: an invoice id belonging to another tenant must
+    never match, otherwise a caller could flip another tenant's submit state (IDOR).
+    """
+    import uuid
     from datetime import UTC, datetime
 
     from sqlalchemy import select
 
     from app.models.orm import APInvoice
 
-    result = await db.execute(select(APInvoice).where(APInvoice.id == ap_invoice_id))
+    try:
+        inv_uuid = uuid.UUID(ap_invoice_id)
+        tenant_uuid = uuid.UUID(tenant_id)
+    except (ValueError, AttributeError):
+        logger.warning(
+            "Skipping AP submit bookkeeping: bad ap_invoice_id=%r / tenant_id=%r",
+            ap_invoice_id,
+            tenant_id,
+        )
+        return
+
+    result = await db.execute(
+        select(APInvoice).where(
+            APInvoice.id == inv_uuid,
+            APInvoice.tenant_id == tenant_uuid,
+            APInvoice.deleted_at.is_(None),
+        )
+    )
     inv = result.scalar_one_or_none()
     if inv:
         inv.submitted_at = datetime.now(UTC)  # type: ignore[assignment]

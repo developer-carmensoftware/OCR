@@ -1,16 +1,16 @@
 # Graph Report - OCR  (2026-06-09)
 
 ## Corpus Check
-- 139 files · ~65,816 words
+- 142 files · ~66,836 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 401 nodes · 560 edges · 65 communities (61 shown, 4 thin omitted)
-- Extraction: 90% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · INFERRED: 57 edges (avg confidence: 0.8)
+- 414 nodes · 595 edges · 65 communities (62 shown, 3 thin omitted)
+- Extraction: 89% EXTRACTED · 11% INFERRED · 0% AMBIGUOUS · INFERRED: 64 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `381702bf`
+- Built from commit: `dea7bcd1`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -31,15 +31,15 @@
 - [[_COMMUNITY_Community 17|Community 17]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `parseNum()` - 13 edges
-2. `showToast()` - 13 edges
-3. `appKey()` - 12 edges
-4. `buildQs()` - 11 edges
-5. `useAuth()` - 9 edges
-6. `useAPValidation()` - 9 edges
-7. `fmt()` - 9 edges
-8. `getCarmenUrl()` - 9 edges
-9. `effectiveTaxProfile()` - 8 edges
+1. `parseNum()` - 18 edges
+2. `appKey()` - 13 edges
+3. `showToast()` - 13 edges
+4. `getCarmenUrl()` - 11 edges
+5. `buildQs()` - 11 edges
+6. `fmt()` - 10 edges
+7. `useAuth()` - 9 edges
+8. `useAPValidation()` - 9 edges
+9. `effectiveTaxProfile()` - 9 edges
 10. `normalizeYearToCE()` - 8 edges
 
 ## Surprising Connections (you probably didn't know these)
@@ -49,36 +49,40 @@
   components/admin/AdminProtectedRoute.tsx → contexts/AdminAuthContext.tsx
 - `profileLabel()` --calls--> `effectiveTaxProfile()`  [INFERRED]
   components/ap-invoice/APGroupModal.tsx → lib/apGroup.ts
-- `effectiveTaxProfile()` --calls--> `profileKey()`  [INFERRED]
-  lib/apGroup.ts → components/ap-invoice/APGroupModal.tsx
 - `UsageIndicator()` --calls--> `useAuth()`  [INFERRED]
   components/common/UsageIndicator.tsx → contexts/AuthContext.tsx
+- `handleOpenJv()` --calls--> `getCarmenUrl()`  [INFERRED]
+  components/credit-card/JournalVoucher.tsx → lib/url.ts
 
-## Communities (65 total, 4 thin omitted)
+## Communities (65 total, 3 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.06
 Nodes (29): handleResolve(), load(), handleAdjust(), handleTopup(), refresh(), handleRevoke(), load(), adjustCredits() (+21 more)
 
 ### Community 1 - "Community 1"
-Cohesion: 0.08
-Nodes (28): exchangeSSOToken(), getUsage(), revokeSession(), clearToken(), createApiClient(), getStoredToken(), resolveUrl(), storeToken() (+20 more)
+Cohesion: 0.09
+Nodes (25): profileKey(), profileLabel(), useAPExtraction(), useAPInvoice(), reconcileRows(), header(), masterReconcile(), sum() (+17 more)
 
 ### Community 2 - "Community 2"
-Cohesion: 0.07
-Nodes (18): useAPExtraction(), fetchTimeout(), getAPVendorMapping(), extractFromFile(), getFilePreview(), getPdfInfo(), useFileUpload(), useOcrExtraction() (+10 more)
+Cohesion: 0.08
+Nodes (29): exchangeSSOToken(), getUsage(), revokeSession(), clearToken(), createApiClient(), getStoredToken(), resolveUrl(), storeToken() (+21 more)
 
 ### Community 3 - "Community 3"
-Cohesion: 0.1
-Nodes (23): profileKey(), profileLabel(), useAPInvoice(), useAPSubmission(), reconcileRows(), header(), masterReconcile(), sum() (+15 more)
+Cohesion: 0.07
+Nodes (18): _fetchExtractWithRetry(), fetchTimeout(), getAPVendorMapping(), extractFromFile(), getFilePreview(), getPdfInfo(), useFileUpload(), useOcrExtraction() (+10 more)
 
 ### Community 4 - "Community 4"
-Cohesion: 0.1
-Nodes (16): addDays(), buildInvoicePayload(), fetchAccountCodes(), fetchDepartments(), fetchGLPrefixes(), fetchTaxProfiles(), _parseCarmenHttpError(), submitAPInvoiceToCarmen() (+8 more)
+Cohesion: 0.09
+Nodes (21): addDays(), buildInvoicePayload(), useAPSubmission(), fetchAccountCodes(), fetchDepartments(), fetchGLPrefixes(), fetchTaxProfiles(), _parseCarmenHttpError() (+13 more)
 
 ### Community 5 - "Community 5"
 Cohesion: 0.1
-Nodes (16): suggestMapping(), suggestPaymentTypes(), detectBankFromCompanyName(), detectBankFromExtracted(), readFromLocalStorage(), codeToDisplayName(), getBankInfo(), getGLSourceCode() (+8 more)
+Nodes (17): suggestMapping(), suggestPaymentTypes(), detectBankFromCompanyName(), detectBankFromExtracted(), readFromLocalStorage(), _persistOcrLocalStorage(), codeToDisplayName(), getBankInfo() (+9 more)
+
+### Community 6 - "Community 6"
+Cohesion: 0.15
+Nodes (3): handleOpenJv(), getCarmenUri(), getCarmenUrl()
 
 ### Community 7 - "Community 7"
 Cohesion: 0.27
@@ -97,22 +101,22 @@ Cohesion: 0.47
 Nodes (4): fileToBase64(), handleClose(), handleFileChange(), reset()
 
 ## Knowledge Gaps
-- **4 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **3 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `showToast()` connect `Community 2` to `Community 8`, `Community 1`, `Community 3`, `Community 4`?**
-  _High betweenness centrality (0.178) - this node is a cross-community bridge._
-- **Why does `createApiClient()` connect `Community 1` to `Community 0`?**
+- **Why does `showToast()` connect `Community 3` to `Community 8`, `Community 1`, `Community 2`, `Community 4`?**
+  _High betweenness centrality (0.180) - this node is a cross-community bridge._
+- **Why does `createApiClient()` connect `Community 2` to `Community 0`?**
   _High betweenness centrality (0.148) - this node is a cross-community bridge._
 - **Why does `appKey()` connect `Community 5` to `Community 8`, `Community 1`, `Community 2`, `Community 3`?**
-  _High betweenness centrality (0.108) - this node is a cross-community bridge._
-- **Are the 3 inferred relationships involving `parseNum()` (e.g. with `buildInvoicePayload()` and `buildGroupedRow()`) actually correct?**
-  _`parseNum()` has 3 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 4 inferred relationships involving `useAuth()` (e.g. with `ConsentGate()` and `ProtectedRoute()`) actually correct?**
-  _`useAuth()` has 4 INFERRED edges - model-reasoned connections that need verification._
+  _High betweenness centrality (0.101) - this node is a cross-community bridge._
+- **Are the 4 inferred relationships involving `parseNum()` (e.g. with `buildGroupedRow()` and `buildInvoicePayload()`) actually correct?**
+  _`parseNum()` has 4 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 2 inferred relationships involving `appKey()` (e.g. with `readFromLocalStorage()` and `_persistOcrLocalStorage()`) actually correct?**
+  _`appKey()` has 2 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 2 inferred relationships involving `getCarmenUrl()` (e.g. with `handleOpenJv()` and `getCarmenUri()`) actually correct?**
+  _`getCarmenUrl()` has 2 INFERRED edges - model-reasoned connections that need verification._
 - **Should `Community 0` be split into smaller, more focused modules?**
   _Cohesion score 0.06 - nodes in this community are weakly interconnected._
-- **Should `Community 1` be split into smaller, more focused modules?**
-  _Cohesion score 0.08 - nodes in this community are weakly interconnected._

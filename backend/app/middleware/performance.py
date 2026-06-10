@@ -19,7 +19,7 @@ from app.models.orm import PerformanceLog
 
 logger = logging.getLogger(__name__)
 
-_SKIP_PATHS = {"/", "/docs", "/openapi.json", "/redoc", "/api/v1/ocr/health", "/api/version"}
+_SKIP_PATHS = {"/", "/docs", "/openapi.json", "/redoc", "/api/v1/health", "/api/version"}
 _REF_PATTERN = re.compile(
     r"/(?:task|credit-card|correction|feedback|ap-invoice|tasks|credit-cards)/([a-zA-Z0-9_\-]+)"
 )

@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.config import settings
+from app.config import is_wildcard_origin_regex, settings
 from app.exceptions import (
     CarmenServiceError,
     DuplicateDocumentError,
@@ -80,7 +80,11 @@ def create_app(lifespan=None) -> FastAPI:
     app.add_middleware(PerformanceMiddleware)
 
     origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
-    _allow_credentials = "*" not in origins
+    # Never reflect credentials when the origin set is effectively open ("*" in the
+    # list, or a wildcard regex) — that combination lets any site make credentialed calls.
+    _allow_credentials = "*" not in origins and not is_wildcard_origin_regex(
+        settings.allowed_origin_regex
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,

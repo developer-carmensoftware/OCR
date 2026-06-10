@@ -12,7 +12,11 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from app.auth import SessionInfo, get_current_session
 from app.models.schemas.files import FilePreviewResponse, PdfInfoResponse
 from app.services.file_service import file_service
-from app.utils.pdf_utils import get_pdf_page_count, render_pdf_thumbnails
+from app.utils.pdf_utils import (
+    PDF_RENDER_TIMEOUT_SECONDS,
+    get_pdf_page_count,
+    render_pdf_thumbnails,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/files", tags=["Files"])
@@ -38,9 +42,15 @@ async def get_pdf_info(
 
     page_count = await loop.run_in_executor(None, get_pdf_page_count, file_bytes)
 
-    raw_thumbnails: list[bytes] = await loop.run_in_executor(
-        None, functools.partial(render_pdf_thumbnails, file_bytes)
-    )
+    try:
+        raw_thumbnails: list[bytes] = await asyncio.wait_for(
+            loop.run_in_executor(None, functools.partial(render_pdf_thumbnails, file_bytes)),
+            timeout=PDF_RENDER_TIMEOUT_SECONDS,
+        )
+    except TimeoutError as exc:
+        raise HTTPException(
+            status_code=422, detail="PDF rendering timed out — the file may be malformed."
+        ) from exc
 
     thumbnails = [f"data:image/png;base64,{base64.b64encode(t).decode()}" for t in raw_thumbnails]
 

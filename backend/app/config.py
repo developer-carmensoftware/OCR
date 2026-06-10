@@ -18,6 +18,17 @@ _WEAK_JWT_SECRETS = {
 }
 _WEAK_FERNET_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 
+# Patterns that match (nearly) every origin — catastrophic when combined with
+# credentialed CORS, so we refuse to start with one of these in production.
+_WILDCARD_REGEX_PATTERNS = {".*", ".+", "^.*$", "^.+$", "(.*)", ".*?"}
+
+
+def is_wildcard_origin_regex(pattern: str | None) -> bool:
+    """True if the CORS origin regex effectively matches any origin."""
+    if not pattern:
+        return False
+    return pattern.strip() in _WILDCARD_REGEX_PATTERNS
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables / .env file."""
@@ -66,9 +77,14 @@ class Settings(BaseSettings):
     allowed_origins: str = "http://localhost:3010"
 
     # Trust X-Forwarded-For for client IP (rate-limit / admin-lockout / audit).
-    # Only enable when deployed behind a trusted reverse proxy (nginx/Cloudflare).
+    # Only enable when deployed behind a trusted reverse proxy (Render/nginx/Cloudflare).
     # When False, the spoofable XFF header is ignored and request.client.host is used.
     trust_proxy: bool = False
+    # Number of trusted reverse-proxy hops in front of the app. With trust_proxy on,
+    # the real client IP is read this many entries from the RIGHT of X-Forwarded-For
+    # (the proxy-appended end), which is NOT client-spoofable. Render web services are a
+    # single hop (=1); set to 2 if you also front the app with Cloudflare.
+    trusted_proxy_hops: int = 1
 
     # Upload
     max_file_size_mb: int = 20
@@ -80,6 +96,11 @@ class Settings(BaseSettings):
 
     # Carmen API
     carmen_authorization: str = ""  # deprecated — kept for fallback only; prefer session token
+    # SSRF allowlist for the client-supplied Carmen origin at /auth/exchange.
+    # Comma-separated hostnames (no scheme), e.g. "carmen.example.com,erp.acme.co.th".
+    # When set, only these hosts may be used as the Carmen origin. Leave empty only
+    # in dev — production deployments should pin the known Carmen host(s).
+    allowed_carmen_hosts: str = ""
 
     # Application version — bump on every release
     app_version: str = "1.0.0"
@@ -118,6 +139,11 @@ class Settings(BaseSettings):
 
     # Graceful shutdown — seconds to wait before cancelling background tasks
     shutdown_grace_seconds: int = 5
+
+    @property
+    def allowed_carmen_hosts_list(self) -> list[str]:
+        """Lowercased Carmen host allowlist (empty list = not configured)."""
+        return [h.strip().lower() for h in self.allowed_carmen_hosts.split(",") if h.strip()]
 
     @property
     def openrouter_api_keys_list(self) -> list[str]:
@@ -192,6 +218,15 @@ if not settings.app_debug and settings.session_encryption_key == _WEAK_FERNET_KE
 # CORS surface is the kind of mistake that silently exposes the API, so we shout.
 if not settings.app_debug:
     _origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
+    # HARD FAIL: a wildcard origin regex effectively allows any site to call the API.
+    # This is the single most dangerous CORS mistake, so refuse to start rather than
+    # silently expose every endpoint to cross-origin reads.
+    if is_wildcard_origin_regex(settings.allowed_origin_regex):
+        raise RuntimeError(
+            f"ALLOWED_ORIGIN_REGEX={settings.allowed_origin_regex!r} matches any origin — "
+            "refusing to start in production. Set ALLOWED_ORIGINS to your exact frontend "
+            "origin(s), or a tightly-scoped regex (e.g. ^https://app\\.example\\.com$)."
+        )
     _cors_unset = not settings.allowed_origin_regex and (
         not _origins or _origins == ["http://localhost:3010"]
     )
@@ -211,10 +246,23 @@ if not settings.app_debug:
             "SENTRY_DSN is empty — backend errors will not be reported to centralized error "
             "tracking. Set it for the pilot so issues are visible beyond ephemeral server logs."
         )
+    if not settings.allowed_carmen_hosts_list:
+        _config_logger.critical(
+            "ALLOWED_CARMEN_HOSTS is empty — /auth/exchange will accept any external Carmen "
+            "host (SSRF risk, mitigated only by the DNS/private-IP check). Pin your known "
+            "Carmen host(s) before the pilot."
+        )
+    # HARD FAIL: admin tokens must not share a signing key with user tokens, otherwise
+    # a leak of OCR_JWT_SECRET would also let an attacker forge admin JWTs.
     if not settings.admin_jwt_secret:
-        _config_logger.warning(
-            "ADMIN_JWT_SECRET is empty — admin JWTs fall back to OCR_JWT_SECRET (shared signing "
-            "key). Set a separate secret to prevent token-confusion between user and admin tokens."
+        raise RuntimeError(
+            "ADMIN_JWT_SECRET is empty in production — admin JWTs would fall back to "
+            "OCR_JWT_SECRET (shared signing key). Set a separate strong secret."
+        )
+    if settings.admin_jwt_secret == settings.ocr_jwt_secret:
+        raise RuntimeError(
+            "ADMIN_JWT_SECRET must differ from OCR_JWT_SECRET to prevent token confusion "
+            "between user and admin tokens."
         )
 
 # ── Database URL normalization ────────────────────────────────────────────────

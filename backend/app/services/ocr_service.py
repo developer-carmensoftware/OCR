@@ -16,7 +16,12 @@ from app.models.orm import OCRTask, TaskStatus
 from app.models.schemas import ExtractedCreditCardData
 from app.services.llm_service import extract_from_image
 from app.utils.image_processing import resize_if_needed
-from app.utils.pdf_utils import MAX_PAGES_PER_CALL, get_pdf_page_count, render_pdf_pages
+from app.utils.pdf_utils import (
+    MAX_PAGES_PER_CALL,
+    PDF_RENDER_TIMEOUT_SECONDS,
+    get_pdf_page_count,
+    render_pdf_pages,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +67,15 @@ async def extract_stateless(
             )
             pages = pages[:MAX_PAGES_PER_CALL]
 
-        page_images = await asyncio.get_running_loop().run_in_executor(
-            None, functools.partial(render_pdf_pages, file_bytes, pages)
-        )
+        try:
+            page_images = await asyncio.wait_for(
+                asyncio.get_running_loop().run_in_executor(
+                    None, functools.partial(render_pdf_pages, file_bytes, pages)
+                ),
+                timeout=PDF_RENDER_TIMEOUT_SECONDS,
+            )
+        except TimeoutError as exc:
+            raise ValidationError("PDF rendering timed out — the file may be malformed.") from exc
         # Use first page PNG as primary bytes (for MIME/size logging)
         processed_bytes = page_images[0] if page_images else file_bytes
     else:

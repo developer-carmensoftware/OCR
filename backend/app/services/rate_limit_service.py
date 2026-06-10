@@ -5,6 +5,7 @@ from collections import defaultdict
 from fastapi import Request
 
 from app.exceptions import RequestRateLimitExceeded
+from app.utils.client_ip import get_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ class InMemoryRateLimiter:
 
     def check(self, request: Request) -> None:
         """Raise HTTP 429 if the caller has exceeded the rate limit."""
-        ip = request.client.host if request.client else "unknown"
+        ip = get_client_ip(request) or "unknown"
         now = time.monotonic()
 
         if now - self._last_prune > self._prune_interval:

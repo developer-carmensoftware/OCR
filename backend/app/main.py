@@ -117,9 +117,9 @@ async def version():
     """Returns app version and registered prompt versions for audit/traceability."""
     from app.llm.prompts import _PROMPT_VERSIONS
 
+    # Note: CORS config (allowed_origins / regex) is intentionally NOT exposed here —
+    # it is internal deployment detail and only aids reconnaissance for an attacker.
     return {
         "app_version": _cfg_early.app_version,
         "prompt_versions": _PROMPT_VERSIONS,
-        "allowed_origins": _cfg_early.allowed_origins,
-        "allowed_origin_regex": _cfg_early.allowed_origin_regex,
     }

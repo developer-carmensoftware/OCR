@@ -123,6 +123,9 @@ def _get_client() -> httpx.AsyncClient:
         _SHARED_CLIENT = httpx.AsyncClient(
             timeout=_TIMEOUT,
             limits=_HTTP_LIMITS,
+            # Never auto-follow redirects: a redirect could bounce a request (incl.
+            # the pre-auth /auth/exchange validation probe) to an internal target (SSRF).
+            follow_redirects=False,
             event_hooks={"request": [_on_request], "response": [_on_response]},
         )
     return _SHARED_CLIENT

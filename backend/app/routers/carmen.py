@@ -34,6 +34,7 @@ from app.services.carmen_service import (
     put_gljv,
     put_input_tax,
 )
+from app.utils.client_ip import get_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,7 @@ async def proxy_gljv(
             # malformed value should degrade gracefully rather than raise.
             try:
                 card_uuid = uuid.UUID(credit_card_id)
+                tenant_uuid = uuid.UUID(session.tenant_id)
             except (ValueError, AttributeError):
                 logger.warning(
                     "Skipping post-submit bookkeeping: credit_card_id %r is not a UUID",
@@ -101,9 +103,13 @@ async def proxy_gljv(
                 )
                 return res
 
+            # Tenant-scoped lookup — a card_id from another tenant must never match,
+            # otherwise a caller could flip another tenant's submit state / fields (IDOR).
             result = await db.execute(
                 select(CreditCard).where(
-                    CreditCard.id == card_uuid, CreditCard.deleted_at.is_(None)
+                    CreditCard.id == card_uuid,
+                    CreditCard.tenant_id == tenant_uuid,
+                    CreditCard.deleted_at.is_(None),
                 )
             )
             card = result.scalar_one_or_none()
@@ -128,7 +134,7 @@ async def proxy_gljv(
                     AuditAction.SUBMIT,
                     resource="credit_card",
                     resource_id=card_doc_no or str(card.id),
-                    ip_address=request.client.host if request.client else None,
+                    ip_address=get_client_ip(request),
                 )
         return res
 
@@ -189,12 +195,12 @@ async def proxy_create_invoice(
     async with _carmen_errors("Carmen Invoice ล้มเหลว"):
         res = await post_invoice(body, session.carmen_token)
         if res and res.get("Code", 0) >= 0 and ap_invoice_id:
-            await mark_invoice_submitted(db, ap_invoice_id)
+            await mark_invoice_submitted(db, ap_invoice_id, session.tenant_id)
             await audit_service.log_action(
                 session,
                 AuditAction.SUBMIT,
                 resource=Module.AP_INVOICE,
                 resource_id=ap_invoice_id,
-                ip_address=request.client.host if request.client else None,
+                ip_address=get_client_ip(request),
             )
         return res

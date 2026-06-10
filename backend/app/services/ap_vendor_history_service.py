@@ -13,6 +13,7 @@ import time
 
 from app.context import current_tenant_id
 from app.services.carmen_service import CarmenAPIError, get_vendor_invoices
+from app.utils.prompt_safety import sanitize_prompt_text
 
 logger = logging.getLogger(__name__)
 
@@ -250,7 +251,14 @@ def select_examples(
 
 
 def format_history_for_prompt(examples: list[dict]) -> str:
-    """Render selected aggregate entries as prompt lines."""
+    """Render selected aggregate entries as prompt lines.
+
+    `sample_desc` originates from Carmen records (external/untrusted), so it is
+    sanitised before interpolation to prevent prompt injection.
+    """
     if not examples:
         return ""
-    return "\n".join(f'  "{e["sample_desc"]}" → dept {e["dept"]}, acc {e["acc"]}' for e in examples)
+    return "\n".join(
+        f'  "{sanitize_prompt_text(e["sample_desc"])}" → dept {e["dept"]}, acc {e["acc"]}'
+        for e in examples
+    )

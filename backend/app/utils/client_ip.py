@@ -11,10 +11,19 @@ from app.config import settings
 
 
 def get_client_ip(request: Request) -> str | None:
-    """Best-effort client IP. Uses X-Forwarded-For only when trust_proxy is on."""
+    """Best-effort client IP. Uses X-Forwarded-For only when trust_proxy is on.
+
+    X-Forwarded-For is appended to by each proxy, so the *right-most* entries are
+    the ones added by our own trusted infrastructure and cannot be spoofed by the
+    client. We therefore read `trusted_proxy_hops` entries from the right rather
+    than the left-most entry (which a client can forge to evade rate limits).
+    """
     if settings.trust_proxy:
         forwarded = request.headers.get("X-Forwarded-For")
         if forwarded:
-            # Left-most entry is the original client when set by a trusted proxy.
-            return forwarded.split(",")[0].strip()
+            parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+            if parts:
+                hops = max(1, settings.trusted_proxy_hops)
+                idx = -min(hops, len(parts))
+                return parts[idx]
     return request.client.host if request.client else None
