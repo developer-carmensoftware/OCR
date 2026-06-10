@@ -4,10 +4,18 @@ import { isNumFld, fmt, parseNum } from '../../constants/apInvoice'
 import Card from '../common/Card'
 import NumericInput from '../common/NumericInput'
 import APGroupModal from './APGroupModal'
+import InlineSelect from '../common/InlineSelect'
+import type { InlineSelectOption } from '../common/InlineSelect'
 import type { TaxTypeValue } from './TaxTypeDropdown'
 import type { APColumnKey } from '../../constants/apInvoice'
 import type { TaxProfileItem } from '../../lib/api/carmen'
 import type { APLineItem } from '../../hooks/ap-invoice/useAPExtraction'
+
+const TAX_TYPE_OPTIONS: InlineSelectOption[] = [
+  { value: 'Include', label: 'Include', accent: 'amber' },
+  { value: 'Exclude', label: 'Exclude', accent: 'blue' },
+  { value: 'None', label: 'None', accent: 'muted' },
+]
 
 interface Props {
   t: Record<string, string>
@@ -80,22 +88,24 @@ export default function APLineItemsTable({
     const val = isNone ? 'NONE' : item.taxProfileCode1 || ''
     const hasNoneProfile = taxProfiles.some(p => p.code === 'NONE')
 
+    const profileOptions: InlineSelectOption[] = [
+      { value: '', label: '—' },
+      ...(!hasNoneProfile ? [{ value: 'NONE', label: 'NONE', accent: 'muted' as const }] : []),
+      ...taxProfiles.map(p => ({
+        value: p.code,
+        label: p.code,
+        description: p.desc,
+      })),
+    ]
+
     return (
       <td>
-        <select
+        <InlineSelect
           aria-label="Tax profile"
-          className="ap-taxtype-select"
           value={val}
-          onChange={e => applyLineTax(ri, { taxProfileCode1: e.target.value })}
-        >
-          <option value="">—</option>
-          {!hasNoneProfile && <option value="NONE">NONE</option>}
-          {taxProfiles.map(p => (
-            <option key={p.code} value={p.code}>
-              {p.code}
-            </option>
-          ))}
-        </select>
+          onChange={v => applyLineTax(ri, { taxProfileCode1: v })}
+          options={profileOptions}
+        />
       </td>
     )
   }
@@ -116,19 +126,17 @@ export default function APLineItemsTable({
             0%
           </span>
         ) : opts.length ? (
-          <select
+          <InlineSelect
             aria-label="taxPct"
-            className={`ap-taxtype-select${unmatched ? ' ap-tax-unmatched' : ''}`}
-            title={unmatched ? t.taxRateUnmatched : undefined}
             value={String(cur)}
-            onChange={e => applyLineTax(ri, { taxPct: e.target.value })}
-          >
-            {opts.map(r => (
-              <option key={r} value={String(r)}>
-                {r}%
-              </option>
-            ))}
-          </select>
+            onChange={v => applyLineTax(ri, { taxPct: v })}
+            warning={unmatched}
+            options={opts.map(r => ({
+              value: String(r),
+              label: `${r}%`,
+              warning: unmatched && r === cur,
+            }))}
+          />
         ) : (
           <NumericInput
             aria-label="taxPct"
@@ -237,16 +245,12 @@ export default function APLineItemsTable({
                         <Fragment key={c}>
                           {showFixedTaxProfile && showFixedTaxPct && taxProfileCell(ri, item)}
                           <td>
-                            <select
+                            <InlineSelect
                               aria-label="Tax type"
-                              className="ap-taxtype-select"
                               value={tv}
-                              onChange={e => changeLineTaxType(ri, e.target.value as TaxTypeValue)}
-                            >
-                              <option value="Include">Include</option>
-                              <option value="Exclude">Exclude</option>
-                              <option value="None">None</option>
-                            </select>
+                              onChange={v => changeLineTaxType(ri, v as TaxTypeValue)}
+                              options={TAX_TYPE_OPTIONS}
+                            />
                           </td>
                         </Fragment>
                       )
@@ -280,16 +284,12 @@ export default function APLineItemsTable({
                   {showFixedTaxPct && taxPctCell(ri, item)}
                   {showFixedTaxType && (
                     <td>
-                      <select
+                      <InlineSelect
                         aria-label="Tax type"
-                        className="ap-taxtype-select"
                         value={(item.taxType as TaxTypeValue | undefined) || 'Exclude'}
-                        onChange={e => changeLineTaxType(ri, e.target.value as TaxTypeValue)}
-                      >
-                        <option value="Include">Include</option>
-                        <option value="Exclude">Exclude</option>
-                        <option value="None">None</option>
-                      </select>
+                        onChange={v => changeLineTaxType(ri, v as TaxTypeValue)}
+                        options={TAX_TYPE_OPTIONS}
+                      />
                     </td>
                   )}
                   <td>
