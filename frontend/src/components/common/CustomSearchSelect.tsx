@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, CSSProperties } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 
 export interface SelectOption {
@@ -80,25 +80,28 @@ export default function CustomSearchSelect({
     }
   }, [value, isOpen])
 
-  useEffect(() => {
-    if (isOpen && wrapperRef.current) {
-      const rect = wrapperRef.current.getBoundingClientRect()
-      setDropdownStyle({
-        position: 'fixed',
-        top: rect.bottom + 4,
-        left: rect.left,
-        width: rect.width,
-        maxHeight: '240px',
-        overflowY: 'auto',
-        background: 'var(--gray-50)',
-        border: '1px solid var(--border)',
-        borderRadius: '6px',
-        boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
-        zIndex: 99999,
-        transformOrigin: 'top center',
-        animation: 'fadeDown 180ms var(--ease-out)',
-      })
-    }
+  useLayoutEffect(() => {
+    if (!isOpen || !wrapperRef.current) return
+    const rect = wrapperRef.current.getBoundingClientRect()
+    const PANEL_H = 240
+    const fitsBelow = window.innerHeight - rect.bottom >= PANEL_H
+    const fitsAbove = rect.top >= PANEL_H
+    const openAbove = !fitsBelow && fitsAbove
+    setDropdownStyle({
+      position: 'fixed',
+      ...(openAbove ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
+      left: rect.left,
+      width: rect.width,
+      maxHeight: '240px',
+      overflowY: 'auto',
+      background: 'var(--gray-50)',
+      border: '1px solid var(--border)',
+      borderRadius: '6px',
+      boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+      zIndex: 99999,
+      transformOrigin: openAbove ? 'bottom center' : 'top center',
+      animation: 'fadeDown 180ms var(--ease-out)',
+    })
   }, [isOpen])
 
   const q = searchTerm.toLowerCase()
