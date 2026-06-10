@@ -110,9 +110,9 @@
   /* ── Z-index scale ── */
   --z-sticky: 50;
   --z-modal-backdrop: 300;
-  --z-toast: 350;
-  --z-modal: 400;
-  --z-loading: 500;
+  --z-toast: 10200;
+  --z-modal: 10050;
+  --z-loading: 10100;
 
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);

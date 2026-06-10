@@ -43,3 +43,13 @@ export function formatDateToDDMMYYYY(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`
 }
+
+/** Normalize a date string formatted as "DD/MM/YYYY" (possibly with B.E. year) to C.E. */
+export function normalizeDateStringToCE(dateStr: string | null | undefined): string {
+  if (!dateStr) return ''
+  const parts = dateStr.split('/')
+  if (parts.length !== 3) return dateStr
+  const [dd, mm, yyyy] = parts.map(p => p.trim())
+  const normalizedYear = normalizeYearToCE(yyyy)
+  return `${dd.padStart(2, '0')}/${mm.padStart(2, '0')}/${normalizedYear}`
+}

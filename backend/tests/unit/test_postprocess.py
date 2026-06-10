@@ -508,3 +508,14 @@ class TestPostprocess:
         )
         result = postprocess(raw)
         assert result["totalDiscount"] == pytest.approx(20.0, abs=0.01)
+
+    def test_postprocess_normalizes_buddhist_era_date(self):
+        # 15/03/2567 BE should be normalized to 15/03/2024 CE
+        raw = self._raw(documentDate="15/03/2567")
+        result = postprocess(raw)
+        assert result["documentDate"] == "15/03/2024"
+
+        # 01/06/2569 BE should be normalized to 01/06/2026 CE
+        raw2 = self._raw(documentDate="01/06/2569")
+        result2 = postprocess(raw2)
+        assert result2["documentDate"] == "01/06/2026"

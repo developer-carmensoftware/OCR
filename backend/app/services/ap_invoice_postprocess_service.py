@@ -258,6 +258,8 @@ def postprocess(raw: dict | None) -> dict:
     docSubTotal, docDiscount, docTaxAmount, docGrandTotal,
     depositPct, depositLabel.
     """
+    from app.utils.date_parsing import format_doc_date, parse_doc_date
+
     raw = raw or {}
     items_raw = list(raw.get("items") or [])
     doc_sub = _num(raw.get("docSubTotal"))
@@ -300,7 +302,7 @@ def postprocess(raw: dict | None) -> dict:
         tax_amount = doc_tax
 
     # Penny-rounding reconciliation: if per-item rounding causes computed
-    # grand to differ from doc_grand by ≤0.02, absorb into the last regular
+    # grand to differ from doc_grand by <=0.02, absorb into the last regular
     # (non-deposit) item so that sum(lineTotal) == header.grandTotal and the
     # frontend validation passes.
     computed_grand = _r2(sum(_num(i["lineTotal"]) for i in items))
@@ -319,12 +321,16 @@ def postprocess(raw: dict | None) -> dict:
 
     deposit_amt = _r2(grand_total) if deposit_pct > 0 else 0.0
 
+    raw_date = raw.get("documentDate")
+    parsed_date = parse_doc_date(raw_date)
+    norm_date = format_doc_date(parsed_date) if parsed_date else raw_date
+
     return {
         "vendorName": raw.get("vendorName") or "",
         "vendorTaxId": raw.get("vendorTaxId") or "",
         "vendorBranch": raw.get("vendorBranch") or "",
         "documentName": raw.get("documentName") or "",
-        "documentDate": raw.get("documentDate") or "",
+        "documentDate": norm_date or "",
         "documentNumber": raw.get("documentNumber") or "",
         "taxType": tax_type,
         "depositPct": deposit_pct,

@@ -836,6 +836,14 @@
     border-color 0.25s var(--ease);
 }
 
+.data-card.overflow-visible {
+  overflow: visible;
+}
+
+.data-card.overflow-visible .card-title {
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
 .data-card:hover {
   box-shadow: var(--shadow-card-hover);
   border-color: rgba(255, 255, 255, 0.9);

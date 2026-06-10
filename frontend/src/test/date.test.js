@@ -4,6 +4,7 @@ import {
   parseDateToISO,
   parseDDMMYYYYToDate,
   formatDateToDDMMYYYY,
+  normalizeDateStringToCE,
 } from '../lib/date'
 
 // ── normalizeYearToCE ──────────────────────────────────────────────────────────
@@ -144,5 +145,31 @@ describe('formatDateToDDMMYYYY', () => {
 
   it('round-trips with parseDDMMYYYYToDate', () => {
     expect(formatDateToDDMMYYYY(parseDDMMYYYYToDate('15/05/2024'))).toBe('15/05/2024')
+  })
+})
+
+// ── normalizeDateStringToCE ──────────────────────────────────────────────────────
+
+describe('normalizeDateStringToCE', () => {
+  it('normalizes a B.E. date string to C.E.', () => {
+    expect(normalizeDateStringToCE('27/02/2569')).toBe('27/02/2026')
+  })
+
+  it('leaves a C.E. date string unchanged', () => {
+    expect(normalizeDateStringToCE('27/02/2026')).toBe('27/02/2026')
+  })
+
+  it('pads single digits appropriately', () => {
+    expect(normalizeDateStringToCE('1/2/2569')).toBe('01/02/2026')
+  })
+
+  it('returns empty string for null / undefined / empty values', () => {
+    expect(normalizeDateStringToCE(null)).toBe('')
+    expect(normalizeDateStringToCE(undefined)).toBe('')
+    expect(normalizeDateStringToCE('')).toBe('')
+  })
+
+  it('returns input as-is for malformed non-date strings', () => {
+    expect(normalizeDateStringToCE('not-a-date')).toBe('not-a-date')
   })
 })

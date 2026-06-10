@@ -39,6 +39,7 @@ async def finalize_extraction(
 
         if not extracted.is_duplicate:
             card_id = uuid.uuid4()
+            parsed_date = parse_doc_date(extracted.doc_date)
             card = CreditCard(
                 id=card_id,
                 task_id=uuid.UUID(task_id),
@@ -46,7 +47,7 @@ async def finalize_extraction(
                 bank_code=bank_code or None,
                 company_name=extracted.company_name,
                 bank_company_name=extracted.bank_company_name,
-                doc_date=parse_doc_date(extracted.doc_date),
+                doc_date=parsed_date,
                 doc_no=extracted.doc_no,
                 branch_no=extracted.branch_no,
                 submitted_at=None,
@@ -54,6 +55,10 @@ async def finalize_extraction(
             )
             db.add(card)
             extracted.id = str(card_id)
+            if parsed_date:
+                from app.utils.date_parsing import format_doc_date
+
+                extracted.doc_date = format_doc_date(parsed_date)
         else:
             extracted.id = None
 

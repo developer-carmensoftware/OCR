@@ -47,7 +47,7 @@ export default function InputTaxReconciliation({
   const taxPeriod = (() => {
     if (!headerData.DocDate) return ''
     const parts = headerData.DocDate.split('/')
-    return parts.length === 3 ? `${parts[1]}/${parts[2]}` : ''
+    return parts.length === 3 ? `${parts[1]}/${normalizeYearToCE(parts[2])}` : ''
   })()
 
   const description = (config as Record<string, unknown>)?.description

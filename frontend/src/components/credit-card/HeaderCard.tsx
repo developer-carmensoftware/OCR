@@ -12,7 +12,7 @@ const DATE_KEYS = new Set(['DocDate', 'DateProcessed'])
 
 export default function HeaderCard({ headerData, onUpdate, readOnly }: Props) {
   return (
-    <div className="data-card">
+    <div className="data-card overflow-visible">
       <div className="card-title">
         <div className="card-title-left">
           <IdCard size={16} /> Header Information

@@ -10,6 +10,7 @@ import { showToast } from '../../lib/toast'
 import { appKey } from '../../lib/storage'
 import type { ModalConfig } from '../useModal'
 import type { BankCode } from '../../types/api'
+import { normalizeDateStringToCE } from '../../lib/date'
 
 export interface HeaderData {
   DateProcessed: string
@@ -157,7 +158,7 @@ export function useOcrExtraction({
       BankName: (ext.bank_name as string) || '',
       DocName: (ext.doc_name as string) || '',
       CompanyName: (ext.company_name as string) || '',
-      DocDate: (ext.doc_date as string) || '',
+      DocDate: normalizeDateStringToCE((ext.doc_date as string) || ''),
       DocNo: (ext.doc_no as string) || '',
       MerchantName: (ext.merchant_name as string) || '',
       MerchantId: (ext.merchant_id as string) || '',

@@ -25,6 +25,10 @@ vi.mock('../lib/format', () => ({
 }))
 vi.mock('../lib/date', () => ({
   parseDateToISO: vi.fn(() => '2024-05-15T00:00:00.000Z'),
+  normalizeYearToCE: vi.fn(y => {
+    const val = parseInt(y, 10)
+    return val > 2400 ? val - 543 : val
+  }),
 }))
 
 import { fetchAccountCodes, fetchDepartments, submitAPInvoiceToCarmen } from '../lib/api/carmen'
@@ -615,6 +619,21 @@ describe('useAPSubmission', () => {
       const payload = submitAPInvoiceToCarmen.mock.calls[0][0]
       const price = parseFloat(payload.Detail[0].InvdPrice)
       expect(price).toBeGreaterThanOrEqual(0)
+    })
+  })
+
+  describe('F9: TaxPeriod normalization', () => {
+    it('normalizes Buddhist Era year in taxPeriod to CE', async () => {
+      submitAPInvoiceToCarmen.mockResolvedValue({ Code: 0, InternalMessage: 'JV-1' })
+      const props = makeProps({
+        headerData: { ...MOCK_HEADER, documentDate: '15/05/2567' },
+      })
+      const { result } = renderHook(() => useAPSubmission(props))
+      await act(async () => {
+        await result.current.handleGenerate()
+      })
+      const payload = submitAPInvoiceToCarmen.mock.calls[0][0]
+      expect(payload.TaxPeriod).toBe('05/2024')
     })
   })
 })

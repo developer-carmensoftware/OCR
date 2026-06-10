@@ -1,5 +1,5 @@
 import { parseNum } from './format'
-import { parseDateToISO } from './date'
+import { parseDateToISO, normalizeYearToCE } from './date'
 import type { APLineItem } from '../types/ap'
 import type { APInvoiceHeader } from '../constants/apInvoice'
 import type { TaxProfileItem } from './api/carmen'
@@ -22,7 +22,7 @@ export function buildInvoicePayload(
   const creditTerm = systemVendor.term ?? 0
   const dueDate = creditTerm > 0 ? addDays(invDate, creditTerm) : invDate
   const parts = (headerData.documentDate || '').split('/')
-  const taxPeriod = parts.length === 3 ? `${parts[1]}/${parts[2]}` : ''
+  const taxPeriod = parts.length === 3 ? `${parts[1]}/${normalizeYearToCE(parts[2])}` : ''
 
   const detail = lineItems.map(item => {
     const netAmt = parseNum(item.lineSubTotal)
