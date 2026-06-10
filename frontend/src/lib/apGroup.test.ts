@@ -41,7 +41,7 @@ describe('buildGroupedRow', () => {
       'Grouped'
     )
     expect(merged.description).toBe('Grouped')
-    expect(merged.qty).toBe('1')
+    expect(merged.qty).toBe('1.00')
     expect(parseNum(merged.lineSubTotal)).toBeCloseTo(300, 2)
     expect(parseNum(merged.taxAmt)).toBeCloseTo(21, 2)
     expect(parseNum(merged.lineTotal)).toBeCloseTo(321, 2)

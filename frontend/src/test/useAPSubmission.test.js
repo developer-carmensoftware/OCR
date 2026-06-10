@@ -88,6 +88,7 @@ function makeProps(overrides = {}) {
     lineItems,
     setLineItems,
     systemVendor: { ...MOCK_VENDOR },
+    taxProfiles: [],
     apInvoiceId: 'ap-uuid-001',
     updateHeader: vi.fn(),
     ...overrides,
