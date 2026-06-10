@@ -383,7 +383,7 @@
 .ap-group-modal-overlay {
   position: fixed;
   inset: 0;
-  z-index: 10000;
+  z-index: var(--z-modal-backdrop);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1851,6 +1851,12 @@
   font-weight: 800;
   color: var(--emerald);
   font-size: 1.05rem;
+}
+
+.ap-success-next-hint {
+  font-size: 0.8rem;
+  color: var(--muted-foreground);
+  margin-bottom: 0.5rem;
 }
 
 .ap-success-actions {

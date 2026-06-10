@@ -107,7 +107,6 @@ export default function Home() {
         </div>
       </div>
       <div className="home-modules">
-        <div className="home-modules-title">Select Module</div>
         <div className="module-grid">
           {MODULES.map(mod => {
             const isComingSoon = !mod.href

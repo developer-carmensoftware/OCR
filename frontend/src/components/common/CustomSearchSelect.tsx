@@ -98,7 +98,7 @@ export default function CustomSearchSelect({
       border: '1px solid var(--border)',
       borderRadius: '6px',
       boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
-      zIndex: 99999,
+      zIndex: 10300,
       transformOrigin: openAbove ? 'bottom center' : 'top center',
       animation: 'fadeDown 180ms var(--ease-out)',
     })

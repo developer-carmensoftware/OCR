@@ -111,10 +111,11 @@
 
   /* ── Z-index scale ── */
   --z-sticky: 50;
-  --z-modal-backdrop: 300;
-  --z-toast: 10200;
+  --z-dropdown: 200;
+  --z-modal-backdrop: 9999;
   --z-modal: 10050;
   --z-loading: 10100;
+  --z-toast: 10200;
 
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);

@@ -194,9 +194,21 @@ export default function AccountingReview({
               <tr>
                 <th scope="col" className="w-120">
                   Dept. Code
+                  <span
+                    className="gl-help-tip"
+                    title="Department code from Carmen — e.g. ACC, SALE, MKT"
+                  >
+                    ?
+                  </span>
                 </th>
                 <th scope="col" className="w-120">
                   Acc Code
+                  <span
+                    className="gl-help-tip"
+                    title="Account code from Carmen — e.g. 1101-01, 5100-00"
+                  >
+                    ?
+                  </span>
                 </th>
                 <th scope="col">Account Name</th>
                 <th scope="col">Description</th>

@@ -65,6 +65,7 @@ export default function APSuccessStep({ t, headerData, lineItems, invoiceSeq, on
           </div>
         </div>
 
+        <p className="ap-success-next-hint">Ready to process another document?</p>
         <div className="ap-success-actions">
           {invoiceSeq && (
             <a

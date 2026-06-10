@@ -46,6 +46,12 @@ export default function TopLevelConfigSection({
 
         <label style={!filePrefix ? { color: '#dc2626', fontWeight: 600 } : {}}>
           File Prefix {!filePrefix && <span style={{ color: '#dc2626' }}>*</span>}
+          <span
+            className="gl-help-tip"
+            title="Prefix for the journal voucher file name sent to Carmen (e.g. IC for invoice credit, AP for accounts payable)"
+          >
+            ?
+          </span>
         </label>
         <input
           type="text"
@@ -61,6 +67,12 @@ export default function TopLevelConfigSection({
 
         <label style={!fileSource ? { color: '#dc2626', fontWeight: 600 } : {}}>
           File Source {!fileSource && <span style={{ color: '#dc2626' }}>*</span>}
+          <span
+            className="gl-help-tip"
+            title="Carmen GL source code that identifies the originating bank or system — one code per bank (e.g. ACBB = Bangkok Bank, ACKB = Kasikornbank)"
+          >
+            ?
+          </span>
         </label>
         <input
           type="text"

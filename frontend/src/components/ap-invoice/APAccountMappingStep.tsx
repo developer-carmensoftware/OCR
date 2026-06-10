@@ -55,6 +55,7 @@ interface GLCardRow {
   value: string
   colSpan?: boolean
   highlight?: 'primary' | 'emerald'
+  hint?: string
 }
 
 interface GLCardProps {
@@ -94,14 +95,28 @@ function GLAccountCard({ title, iconColor, rows }: GLCardProps) {
         <div className="ap-account-body-grid">
           {firstRow && (
             <div>
-              <div className="field-label">{firstRow.label}</div>
+              <div className="field-label">
+                {firstRow.label}
+                {firstRow.hint && (
+                  <span className="gl-help-tip" title={firstRow.hint}>
+                    ?
+                  </span>
+                )}
+              </div>
               <div className="ap-static-field">{firstRow.value}</div>
             </div>
           )}
           <div className="ap-account-body-grid-pair">
-            {pairRows.map(({ label, value, highlight }) => (
+            {pairRows.map(({ label, value, highlight, hint }) => (
               <div key={label}>
-                <div className="field-label">{label}</div>
+                <div className="field-label">
+                  {label}
+                  {hint && (
+                    <span className="gl-help-tip" title={hint}>
+                      ?
+                    </span>
+                  )}
+                </div>
                 <div className={`ap-static-field ${highlight ? `highlight-${highlight}` : ''}`}>
                   {value}
                 </div>
@@ -195,18 +210,46 @@ export default function APAccountMappingStep({
           title={t.debitTax}
           iconColor="blue"
           rows={[
-            { label: t.taxProfile, value: taxProfile, colSpan: true },
-            { label: t.deptCode, value: debitDept },
-            { label: t.accountCode, value: debitAcc, highlight: 'primary' },
+            {
+              label: t.taxProfile,
+              value: taxProfile,
+              colSpan: true,
+              hint: 'Tax profile from Carmen linking this vendor to the correct input tax account',
+            },
+            {
+              label: t.deptCode,
+              value: debitDept,
+              hint: 'Department code from Carmen — e.g. ACC, SALE, MKT',
+            },
+            {
+              label: t.accountCode,
+              value: debitAcc,
+              highlight: 'primary',
+              hint: 'GL account code from Carmen chart of accounts — e.g. 1101-01, 5100-00',
+            },
           ]}
         />
         <GLAccountCard
           title={t.creditAp}
           iconColor="green"
           rows={[
-            { label: t.vendorGroup, value: vendorGroup, colSpan: true },
-            { label: t.deptCode, value: creditDept },
-            { label: t.accountCode, value: creditAcc, highlight: 'emerald' },
+            {
+              label: t.vendorGroup,
+              value: vendorGroup,
+              colSpan: true,
+              hint: 'Vendor category in Carmen — determines the default accounts payable posting account',
+            },
+            {
+              label: t.deptCode,
+              value: creditDept,
+              hint: 'Department code from Carmen — e.g. ACC, SALE, MKT',
+            },
+            {
+              label: t.accountCode,
+              value: creditAcc,
+              highlight: 'emerald',
+              hint: 'GL account code from Carmen chart of accounts — e.g. 1101-01, 5100-00',
+            },
           ]}
         />
       </div>

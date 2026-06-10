@@ -121,7 +121,7 @@
   min-width: 80px;
   max-width: 240px;
   padding: 3px;
-  z-index: 9000;
+  z-index: var(--z-dropdown);
   outline: none;
 }
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { AlertCircle, RotateCw } from 'lucide-react'
 import {
@@ -72,9 +72,23 @@ export default function APInvoice() {
     selectedPageThumbs,
     confirmPageSelection,
     cancelPageSelection,
+    goToAccount,
   } = ctrl
 
   const [showPreview, setShowPreview] = useState(false)
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key !== 'Enter') return
+      if (loading || isSubmitting) return
+      e.preventDefault()
+      if (step === 2) confirmMapping()
+      else if (step === 3) goToAccount()
+      else if (step === 4 && allMapped) handleGenerate()
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [step, loading, isSubmitting, allMapped, confirmMapping, handleGenerate, goToAccount])
   const [acceptAllModal, setAcceptAllModal] = useState(false)
 
   function handleStepClick(n: number) {
