@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
 import {
@@ -12,10 +12,12 @@ import {
   ArrowLeft,
   PlusCircle,
 } from 'lucide-react'
-import { submitInputTax } from '../../lib/api/carmen'
+import { submitInputTax, fetchTaxProfiles } from '../../lib/api/carmen'
+import type { TaxProfileItem } from '../../lib/api/carmen'
 import { normalizeYearToCE } from '../../lib/date'
 import { toNum, fmt } from '../../lib/format'
 import { useAccountingConfig } from '../../hooks/credit-card'
+import { resolveTaxProfileForRate } from '../../lib/apTax'
 import type { DetailRow } from './DetailTable'
 
 interface Props {
@@ -36,13 +38,24 @@ export default function InputTaxReconciliation({
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [taxProfiles, setTaxProfiles] = useState<TaxProfileItem[]>([])
+
+  useEffect(() => {
+    fetchTaxProfiles()
+      .then(setTaxProfiles)
+      .catch(() => {})
+  }, [])
 
   const company = (config?.company ?? {}) as Record<string, string>
   const netAmount = details.reduce((s, d) => s + toNum(d.CommisAmt), 0)
   const taxAmount = details.reduce((s, d) => s + toNum(d.TaxAmt), 0)
   const total = netAmount + taxAmount
   const taxRate = netAmount > 0 ? parseFloat(((taxAmount / netAmount) * 100).toFixed(2)) : 7.0
-  const taxProfile = `VAT0${Math.round(taxRate)} : VAT ${Math.round(taxRate)}%`
+  const resolvedProfileCode = resolveTaxProfileForRate(taxRate, taxProfiles)
+  const resolvedProfileItem = taxProfiles.find(p => p.code === resolvedProfileCode)
+  const taxProfile = resolvedProfileItem
+    ? `${resolvedProfileItem.code} : ${resolvedProfileItem.desc}`
+    : `VAT0${Math.round(taxRate)} : VAT ${Math.round(taxRate)}%`
 
   const taxPeriod = (() => {
     if (!headerData.DocDate) return ''
@@ -72,7 +85,6 @@ export default function InputTaxReconciliation({
       invhTInvDt = `${normalizeYearToCE(yy)}-${mo}-${dd}T00:00:00.000Z`
     }
 
-    const rateInt = Math.round(taxRate)
     const payload = {
       Prefix: prefix,
       Source: 'ACTX',
@@ -82,7 +94,7 @@ export default function InputTaxReconciliation({
       InvhTInvDt: invhTInvDt,
       InvhDesc: description || '',
       VnName: company.name || '',
-      TaxProfileCode: `VAT0${rateInt}`,
+      TaxProfileCode: resolvedProfileCode || `VAT0${Math.round(taxRate)}`,
       BfTaxAmt: String(netAmount),
       TaxRate: taxRate,
       TaxAmt: taxAmount,
@@ -91,7 +103,7 @@ export default function InputTaxReconciliation({
       BranchNo: company.branch || '',
       Address: company.address || '',
       UserModified: 'admin',
-      TaxProfileDesc: `VAT ${rateInt}%`,
+      TaxProfileDesc: resolvedProfileItem?.desc ?? `VAT ${Math.round(taxRate)}%`,
       VnCode: '',
     }
 
