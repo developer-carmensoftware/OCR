@@ -247,10 +247,14 @@ if not settings.app_debug:
             "tracking. Set it for the pilot so issues are visible beyond ephemeral server logs."
         )
     if not settings.allowed_carmen_hosts_list:
-        _config_logger.critical(
-            "ALLOWED_CARMEN_HOSTS is empty — /auth/exchange will accept any external Carmen "
-            "host (SSRF risk, mitigated only by the DNS/private-IP check). Pin your known "
-            "Carmen host(s) before the pilot."
+        # Intentionally empty in many deployments: tenants self-host Carmen on
+        # arbitrary domains with no common pattern, so a host allowlist isn't
+        # practical. SSRF is still contained by _validate_uri's DNS resolution +
+        # internal-IP block (private/loopback/link-local/metadata all rejected).
+        # Residual is blind SSRF to public hosts only (no response body returned).
+        _config_logger.warning(
+            "ALLOWED_CARMEN_HOSTS is empty — /auth/exchange accepts any *public* Carmen host; "
+            "internal/private targets are still blocked by the DNS-resolution check."
         )
     # HARD FAIL: admin tokens must not share a signing key with user tokens, otherwise
     # a leak of OCR_JWT_SECRET would also let an attacker forge admin JWTs.
