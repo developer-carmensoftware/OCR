@@ -12,8 +12,6 @@ export const fmt = (v: unknown): string =>
 
 export const round2 = (v: unknown): number => Math.round(parseNum(v) * 100) / 100
 
-/** Format quantity: integer when whole, up to 2 decimals otherwise (no trailing zeros). */
-export const fmtQty = (v: unknown): string => {
-  const n = parseNum(v)
-  return Number.isInteger(n) ? String(n) : n.toLocaleString('en-US', { maximumFractionDigits: 2 })
-}
+/** Format quantity: always 2 decimal places. */
+export const fmtQty = (v: unknown): string =>
+  parseNum(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
