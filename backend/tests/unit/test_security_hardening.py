@@ -19,6 +19,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from cryptography.fernet import Fernet
 from fastapi import HTTPException
 
 from tests.conftest import make_mock_db
@@ -244,9 +245,21 @@ class TestCORSHardening:
 
 
 class TestProductionStartupGuards:
+    # Baseline that clears every production startup guard, so each test trips
+    # only the guard its override targets. Without this the subprocess inherits
+    # the CI environment (no real .env), and the SESSION_ENCRYPTION_KEY guard
+    # fires first — masking the CORS/admin guards under test.
+    _GUARD_BASELINE = {
+        "OCR_JWT_SECRET": "unit-test-ocr-secret-" + "a" * 32,
+        "ADMIN_JWT_SECRET": "unit-test-admin-secret-" + "b" * 32,
+        "SESSION_ENCRYPTION_KEY": Fernet.generate_key().decode(),
+        "ALLOWED_ORIGIN_REGEX": "",
+    }
+
     def _import_config(self, **env_overrides) -> subprocess.CompletedProcess:
         env = dict(os.environ)
         env["APP_DEBUG"] = "false"
+        env.update(self._GUARD_BASELINE)
         env.update(env_overrides)
         return subprocess.run(
             [sys.executable, "-c", "import app.config"],
