@@ -1,4 +1,4 @@
-import { Calculator, RotateCw } from 'lucide-react'
+import { Calculator, RotateCw, Wrench, AlertTriangle } from 'lucide-react'
 import Badge from '../common/Badge'
 import Card from '../common/Card'
 import NumericInput from '../common/NumericInput'
@@ -33,12 +33,16 @@ interface Props {
   updateHeader: (key: string, val: string) => void
   blurHeader: (key: string, val: string) => void
   adjustField: (tgt: unknown, sumCur: unknown, itemKey: string) => void
+  onFixDoc: () => void
 }
 
 interface SummaryRowProps {
   t: Record<string, string>
   label: string
   isDiff: boolean
+  // While the document is internally inconsistent, a per-field Adjust would drag the (corroborated)
+  // table value onto the misread document value — the exact trap. Hide it and steer to the repair.
+  hideAdjust?: boolean
   tableVal: string
   tableClassName?: string
   docVal: string
@@ -51,6 +55,7 @@ function SummaryRow({
   t,
   label,
   isDiff,
+  hideAdjust,
   tableVal,
   tableClassName,
   docVal,
@@ -62,7 +67,7 @@ function SummaryRow({
     <div className="ap-summary-row">
       <span className="ap-summary-label">{label}</span>
       <div className="ap-summary-values">
-        {isDiff && (
+        {isDiff && !hideAdjust && (
           <button type="button" className="ap-adjust-btn" onClick={onAdjust}>
             <RotateCw size={14} /> {t.adjust}
           </button>
@@ -91,6 +96,7 @@ export default function AmountSummary({
   updateHeader,
   blurHeader,
   adjustField,
+  onFixDoc,
 }: Props) {
   const { lineSubTotal, discount, tax, lineTotal } = sums
   const { subTotal: tgtSub, discount: tgtDisc, tax: tgtTax } = targets
@@ -113,10 +119,23 @@ export default function AmountSummary({
       }
     >
       <div className="card-body">
+        {isDocInconsistent && (
+          // The document's own figures don't add up — the signature of a misread digit. Offer a
+          // one-click repair here (before the per-field Adjust buttons can drag the corroborated
+          // table value to the misread document value).
+          <div className="ap-doc-fix-banner">
+            <AlertTriangle size={15} className="ap-doc-fix-icon" />
+            <span className="ap-doc-fix-text">{t.docInconsistentHint}</span>
+            <button type="button" className="ap-doc-fix-btn" onClick={onFixDoc}>
+              <Wrench size={13} /> {t.fixDocFigures}
+            </button>
+          </div>
+        )}
         <SummaryRow
           t={t}
           label={t.subTotal}
           isDiff={isSubDiff}
+          hideAdjust={isDocInconsistent}
           tableVal={fmt(lineSubTotal)}
           docVal={headerData.subTotal}
           onAdjust={() => adjustField(tgtSub, lineSubTotal, 'lineSubTotal')}
@@ -138,6 +157,7 @@ export default function AmountSummary({
           t={t}
           label={t.tax}
           isDiff={isTaxDiff}
+          hideAdjust={isDocInconsistent}
           tableVal={fmt(tax)}
           docVal={headerData.taxAmount}
           onAdjust={() => adjustField(tgtTax, tax, 'taxAmt')}
@@ -148,11 +168,16 @@ export default function AmountSummary({
           <span className="ap-grand-total-label">{t.grandTotal}</span>
           <div className="ap-summary-values">
             {isGrandDiff && isDocInconsistent ? (
-              // The document's own figures don't add up (sub + tax ≠ grand): reconciling line
-              // items can never clear this, so warn instead of offering an Adjust that would loop.
-              <span className="ap-doc-inconsistent" title={t.docInconsistent}>
-                {t.docInconsistent}
-              </span>
+              // The document's own figures don't add up (sub + tax ≠ grand): reconciling line items
+              // can never clear this, so offer the document repair instead of an Adjust that loops.
+              <button
+                type="button"
+                className="ap-adjust-btn"
+                title={t.docInconsistent}
+                onClick={onFixDoc}
+              >
+                <Wrench size={14} /> {t.fixDocFigures}
+              </button>
             ) : (
               isGrandDiff && (
                 <button

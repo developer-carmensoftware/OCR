@@ -24,6 +24,59 @@ export function reconcileRows(items: APLineItem[]): APLineItem[] {
   )
 }
 
+// The document over-specifies its totals: grand ≡ sub + tax, so three printed figures carry only
+// two degrees of freedom. When they don't add up, the LLM misread one digit. Identify which figure
+// is the outlier using the line-item sums (the detailed truth) as a tiebreaker, then recompute it
+// from the identity. Returns null when the document is already self-consistent.
+//   • sub corroborated by table, tax is not → tax  := grand − sub
+//   • tax corroborated by table, sub is not → sub  := grand − tax
+//   • both sub & tax corroborated           → grand := sub + tax
+//   • both disagree (ambiguous)             → fix the field with the larger table error; on a tie
+//                                             fix tax (sub & grand are the bold printed figures).
+//
+// `confident` flags the repairs safe to apply automatically (no user click): the outlier is NOT
+// ambiguous (exactly one of sub/tax is corroborated by the table, or both are) AND the gap is small
+// (≤ AUTO_FIX_MAX_GAP, i.e. a rounding / last-digit slip). Ambiguous or large gaps stay manual —
+// the system can't be sure which printed figure is wrong, so it asks the user instead of silently
+// rewriting a tax/total that goes to the ERP.
+export const AUTO_FIX_MAX_GAP = 1.0 // baht; |sub + tax − grand| beyond this needs a human look
+export interface DocRepair {
+  field: 'subTotal' | 'taxAmount' | 'grandTotal'
+  value: number
+  confident: boolean
+}
+export function repairDocFigure(args: {
+  tgtSubTotal: number
+  tgtTax: number
+  tgtGrand: number
+  sumSub: number
+  sumTax: number
+}): DocRepair | null {
+  const { tgtSubTotal, tgtTax, tgtGrand, sumSub, sumTax } = args
+  const cents = (n: number) => Math.round(n * 100)
+  const gapCents = cents(tgtSubTotal) + cents(tgtTax) - cents(tgtGrand)
+  if (gapCents === 0) return null
+
+  // Compare in integer cents so float noise (|100.01 − 100| ≠ |7.01 − 7|) never decides the outlier.
+  const errSub = Math.abs(cents(tgtSubTotal) - cents(sumSub))
+  const errTax = Math.abs(cents(tgtTax) - cents(sumTax))
+  const subOk = errSub === 0
+  const taxOk = errTax === 0
+  const ambiguous = !subOk && !taxOk
+  const smallGap = Math.abs(gapCents) <= Math.round(AUTO_FIX_MAX_GAP * 100)
+  const confident = !ambiguous && smallGap
+
+  if (subOk && !taxOk)
+    return { field: 'taxAmount', value: round2(tgtGrand - tgtSubTotal), confident }
+  if (taxOk && !subOk) return { field: 'subTotal', value: round2(tgtGrand - tgtTax), confident }
+  if (subOk && taxOk) return { field: 'grandTotal', value: round2(tgtSubTotal + tgtTax), confident }
+
+  // Ambiguous: both disagree with the table. Fix whichever is further off; tie → fix tax.
+  return errSub > errTax
+    ? { field: 'subTotal', value: round2(tgtGrand - tgtTax), confident }
+    : { field: 'taxAmount', value: round2(tgtGrand - tgtSubTotal), confident }
+}
+
 export function useAPValidation({ headerData, lineItems, fieldMappings, t }: APValidationProps) {
   const sumLineSubTotal =
     lineItems.reduce((s, i) => s + Math.round(parseNum(i.lineSubTotal) * 100), 0) / 100
