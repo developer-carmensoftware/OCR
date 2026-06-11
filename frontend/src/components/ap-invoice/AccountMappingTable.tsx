@@ -79,7 +79,9 @@ export default function AccountMappingTable({
                   ?
                 </span>
               </th>
-              {hasSuggestions && <th scope="col" className="col-actions"></th>}
+              {hasSuggestions && (
+                <th scope="col" className="col-actions" aria-label="Suggestion actions" />
+              )}
             </tr>
           </thead>
           <tbody>

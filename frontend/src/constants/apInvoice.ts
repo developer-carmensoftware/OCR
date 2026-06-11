@@ -114,7 +114,7 @@ export type APTranslations = Record<string, string>
 
 export const AP_I18N: APTranslations = {
   appTitle: 'Carmen Cloud',
-  appSub: 'AP Invoice OCR',
+  appSub: 'AI AP Invoice Automation',
   uploadTitle: 'Upload Invoice Document',
   uploadDesc: 'Supports JPG, PNG, and PDF files (max 20 MB)',
   uploadBtn: 'Select Document',

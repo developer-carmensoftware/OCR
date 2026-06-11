@@ -2034,6 +2034,130 @@
   gap: 1.25rem;
 }
 
+/* ─── AI SUGGEST BAR ─── */
+.ai-suggest-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ai-suggest-bar__accept-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  background: var(--btn-ok-bg);
+  color: var(--btn-ok-text);
+  border: 1px solid var(--btn-ok-border);
+  border-radius: var(--radius-sm);
+  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+.ai-suggest-bar__accept-btn:hover {
+  background: var(--emerald);
+  color: oklch(1 0 0);
+  border-color: var(--emerald);
+  box-shadow: 0 2px 8px oklch(from var(--emerald) l c h / 0.25);
+}
+.ai-suggest-bar__accept-btn:focus-visible {
+  outline: 2.5px solid var(--primary);
+  outline-offset: 2px;
+}
+.ai-suggest-bar__accept-btn:active {
+  transform: scale(0.97);
+  box-shadow: none;
+}
+
+.ai-suggest-bar__suggest-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  background: var(--primary);
+  color: oklch(1 0 0);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow-primary);
+  transition:
+    background var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+.ai-suggest-bar__suggest-btn:hover:not(:disabled) {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px oklch(from var(--primary) l c h / 0.3);
+}
+.ai-suggest-bar__suggest-btn:focus-visible {
+  outline: 2.5px solid var(--primary);
+  outline-offset: 2px;
+}
+.ai-suggest-bar__suggest-btn:active:not(:disabled) {
+  transform: scale(0.97);
+  box-shadow: none;
+}
+.ai-suggest-bar__suggest-btn:disabled {
+  background: var(--gray-100);
+  color: var(--text-4);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.ai-suggest-bar__refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  background: var(--card-bg);
+  color: var(--text-2);
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius-sm);
+  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+.ai-suggest-bar__refresh-btn:hover:not(:disabled) {
+  background: var(--gray-50);
+  border-color: var(--border);
+  color: var(--text);
+}
+.ai-suggest-bar__refresh-btn:focus-visible {
+  outline: 2.5px solid var(--primary);
+  outline-offset: 2px;
+}
+.ai-suggest-bar__refresh-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.ai-suggest-bar__refresh-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-suggest-bar__accept-btn,
+  .ai-suggest-bar__suggest-btn,
+  .ai-suggest-bar__refresh-btn {
+    transition: none;
+  }
+}
+
 .ap-card-title-right {
   display: flex;
   align-items: center;
@@ -2104,6 +2228,20 @@
   align-items: center;
   border-width: 1px;
   border-style: solid;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+.ap-suggest-btn:focus-visible {
+  outline: 2.5px solid var(--primary);
+  outline-offset: 2px;
+}
+.ap-suggest-btn:active {
+  transform: scale(0.95);
+  box-shadow: none;
 }
 
 .ap-suggest-btn--ok {
@@ -2111,11 +2249,29 @@
   color: var(--btn-ok-text);
   border-color: var(--btn-ok-border);
 }
+.ap-suggest-btn--ok:hover {
+  background: var(--emerald);
+  color: oklch(1 0 0);
+  border-color: var(--emerald);
+  box-shadow: 0 1px 6px oklch(from var(--emerald) l c h / 0.3);
+}
 
 .ap-suggest-btn--err {
   background: var(--btn-err-bg);
   color: var(--btn-err-text);
   border-color: var(--btn-err-border);
+}
+.ap-suggest-btn--err:hover {
+  background: var(--rose);
+  color: oklch(1 0 0);
+  border-color: var(--rose);
+  box-shadow: 0 1px 6px oklch(from var(--rose) l c h / 0.3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ap-suggest-btn {
+    transition: none;
+  }
 }
 
 .ap-suggest-actions {

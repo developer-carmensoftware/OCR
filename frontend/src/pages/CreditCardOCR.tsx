@@ -125,8 +125,8 @@ export default function CreditCardOCR() {
       <div className="app-container">
         <AppHeader
           module="credit-card"
-          moduleName="Credit Card Report OCR"
-          eyebrow="Carmen Cloud · Journal Voucher"
+          moduleName="AI Credit Card Commission Automation"
+          eyebrow="Carmen Cloud · Credit Card"
           backPath="/glJv"
         >
           <UsageIndicator />

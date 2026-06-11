@@ -26,7 +26,7 @@ const MODULES: Module[] = [
   {
     id: 'credit-card-ocr',
     href: '#/CreditCardOCR',
-    name: 'Credit Card Report OCR',
+    name: 'AI Credit Card Automation',
     description:
       'AI extracts credit card statements from BBL, KBANK, SCB and posts entries directly to Carmen GL',
     Icon: FileText,
