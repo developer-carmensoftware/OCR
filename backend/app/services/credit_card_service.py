@@ -13,6 +13,7 @@ from sqlalchemy import select
 from app.database import async_session
 from app.models.orm import CreditCard, OCRTask, TaskStatus
 from app.models.schemas import ExtractedCreditCardData
+from app.utils.bank_detect import detect_bank_code
 from app.utils.date_parsing import parse_doc_date
 from app.utils.db_helpers import has_submitted_doc
 
@@ -27,13 +28,26 @@ async def finalize_extraction(
     carmen_user_id: str | None,
 ) -> ExtractedCreditCardData:
     """Duplicate check, persist CreditCard row, mark task COMPLETED. Returns updated extracted."""
+    # bank_code is unknown at extract time (the frontend never passes one), so the
+    # duplicate key would otherwise always compare NULL against a submitted row's
+    # real bank_code and never match. Resolve it from the extracted fields — the
+    # same detection the frontend uses — so the stored draft and the submit step
+    # carry a consistent bank_code.
+    resolved_bank_code = bank_code or detect_bank_code(
+        bank_company_name=extracted.bank_company_name,
+        bank_name=extracted.bank_name,
+        company_name=extracted.company_name,
+        doc_name=extracted.doc_name,
+        raw_text=extracted.raw_text,
+    )
+
     async with async_session() as db:
         if extracted.doc_no:
             extracted.is_duplicate = await has_submitted_doc(
                 db,
                 CreditCard,
                 tenant_id=tenant_id,
-                bank_code=bank_code,
+                bank_code=resolved_bank_code,
                 doc_no=extracted.doc_no,
             )
 
@@ -44,7 +58,7 @@ async def finalize_extraction(
                 id=card_id,
                 task_id=uuid.UUID(task_id),
                 tenant_id=tenant_id,
-                bank_code=bank_code or None,
+                bank_code=resolved_bank_code or None,
                 company_name=extracted.company_name,
                 bank_company_name=extracted.bank_company_name,
                 doc_date=parsed_date,

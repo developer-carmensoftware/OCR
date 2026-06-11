@@ -76,7 +76,7 @@ export async function extractFromFile(
     formData.append('selected_pages', JSON.stringify(selectedPages))
   }
 
-  const url = bankType ? `${API.creditCard.extract}?bank_type=${bankType}` : API.creditCard.extract
+  const url = bankType ? `${API.creditCard.extract}?bank_code=${bankType}` : API.creditCard.extract
   const { signal, clear } = fetchTimeout(EXTRACT_TIMEOUT_MS)
   let res: Response
   try {
