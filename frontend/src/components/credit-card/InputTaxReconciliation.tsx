@@ -12,6 +12,7 @@ import {
   ArrowLeft,
   PlusCircle,
 } from 'lucide-react'
+import { SkeletonRow } from '../common/Skeleton'
 import { submitInputTax, fetchTaxProfiles } from '../../lib/api/carmen'
 import type { TaxProfileItem } from '../../lib/api/carmen'
 import { normalizeYearToCE } from '../../lib/date'
@@ -33,17 +34,20 @@ export default function InputTaxReconciliation({
   onBack: _onBack,
   onFinish,
 }: Props) {
-  const { config } = useAccountingConfig()
+  const { config, loading: configLoading } = useAccountingConfig()
   const [showConfirm, setShowConfirm] = useState(false)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [taxProfiles, setTaxProfiles] = useState<TaxProfileItem[]>([])
+  const [profilesLoading, setProfilesLoading] = useState(true)
 
   useEffect(() => {
+    setProfilesLoading(true)
     fetchTaxProfiles()
       .then(setTaxProfiles)
       .catch(() => {})
+      .finally(() => setProfilesLoading(false))
   }, [])
 
   const company = (config?.company ?? {}) as Record<string, string>
@@ -68,6 +72,9 @@ export default function InputTaxReconciliation({
     : ''
 
   const hasData = netAmount > 0 || taxAmount > 0
+  // Company / tax-profile cells are populated from the accounting config and the
+  // tax-profile list — show a skeleton until both resolve instead of flashing "—".
+  const isLoading = configLoading || profilesLoading
 
   async function handleAddInputTax() {
     setSubmitting(true)
@@ -167,7 +174,9 @@ export default function InputTaxReconciliation({
                 </tr>
               </thead>
               <tbody>
-                {!hasData ? (
+                {isLoading ? (
+                  <SkeletonRow cols={12} />
+                ) : !hasData ? (
                   <tr>
                     <td colSpan={12} className="cc-empty-row-text">
                       No Credit card commission / Input Tax data available
@@ -222,7 +231,7 @@ export default function InputTaxReconciliation({
               setSubmitError(null)
               setShowConfirm(true)
             }}
-            disabled={!hasData}
+            disabled={!hasData || isLoading}
           >
             <PlusCircle size={14} /> Add Input Tax
           </button>

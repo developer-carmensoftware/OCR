@@ -108,6 +108,10 @@ export default function AccountingReview({
   const getAccName = (acc: string) => accNameMap[acc] || ''
   const rawConfig = config as Record<string, unknown> | null
   const rows = rawConfig ? buildRows(details, rawConfig) : []
+  // Rows depend on BOTH the accounting config and the account-name map. Account
+  // names are module-cached, so on repeat visits accLoading is already false
+  // while the config is still loading — gate on both to avoid a "No data" flash.
+  const isLoading = configLoading || accLoading
   const totalDr = rows.reduce((s, r) => s + r.debit, 0)
   const totalCr = rows.reduce((s, r) => s + r.credit, 0)
 
@@ -145,7 +149,7 @@ export default function AccountingReview({
         </span>
       </div>
 
-      {hasMissing && (
+      {!isLoading && hasMissing && rawConfig && (
         <div className="mapping-alert">
           <AlertTriangle size={16} />
           <span className="cc-alert-text">
@@ -156,7 +160,7 @@ export default function AccountingReview({
           </button>
         </div>
       )}
-      {!rawConfig && (
+      {!isLoading && !rawConfig && (
         <div className="mapping-alert">
           <Info size={16} />
           <span className="cc-alert-text">No Account Mapping configured</span>
@@ -194,21 +198,9 @@ export default function AccountingReview({
               <tr>
                 <th scope="col" className="w-120">
                   Dept. Code
-                  <span
-                    className="gl-help-tip"
-                    title="Department code from Carmen — e.g. ACC, SALE, MKT"
-                  >
-                    ?
-                  </span>
                 </th>
                 <th scope="col" className="w-120">
                   Acc Code
-                  <span
-                    className="gl-help-tip"
-                    title="Account code from Carmen — e.g. 1101-01, 5100-00"
-                  >
-                    ?
-                  </span>
                 </th>
                 <th scope="col">Account Name</th>
                 <th scope="col">Description</th>
@@ -228,9 +220,9 @@ export default function AccountingReview({
             </thead>
             <tbody>
               {rows.length === 0 &&
-                accLoading &&
+                isLoading &&
                 Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} cols={8} />)}
-              {rows.length === 0 && !accLoading && (
+              {rows.length === 0 && !isLoading && (
                 <tr>
                   <td colSpan={8} className="cc-empty-row-text">
                     No data — Please configure Account Mapping first
