@@ -15,6 +15,8 @@ export interface ExtractedRow {
 }
 
 export interface ExtractResult {
+  id: string
+  task_id: string
   bank_name: string
   bank_type: string
   doc_name: string
@@ -114,6 +116,8 @@ export async function extractFromFile(
   }))
 
   return {
+    id: (card.id as string) || '',
+    task_id: (card.task_id as string) || '',
     bank_name: (card.bank_name as string) || '',
     bank_type: bankType || '',
     doc_name: (card.doc_name as string) || '',

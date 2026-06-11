@@ -82,6 +82,19 @@ describe('useOcrExtraction', () => {
       expect(showToast).toHaveBeenCalledWith(expect.stringContaining('extracted'), 'success')
     })
 
+    it('sets cardId from ext.id so submit can carry credit_card_id (duplicate guard)', async () => {
+      // Regression: extractFromFile previously dropped `id`, leaving cardId=null,
+      // so the Carmen submit never sent credit_card_id and submitted_at was never
+      // set — breaking the duplicate check. Guard that the draft id is threaded.
+      extractFromFile.mockResolvedValue({ ...MOCK_EXTRACTED, id: 'draft-card-uuid' })
+      const props = makeProps()
+      const { result } = renderHook(() => useOcrExtraction(props))
+      await act(async () => {
+        await result.current.processFile([MOCK_FILE])
+      })
+      expect(result.current.cardId).toBe('draft-card-uuid')
+    })
+
     it('uses EMPTY_DETAIL_ROW when API returns empty details', async () => {
       extractFromFile.mockResolvedValue({ ...MOCK_EXTRACTED, details: [] })
       const props = makeProps()
