@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { getCarmenUrl } from './url'
 import { setCarmenUri } from './storage'
 
@@ -84,5 +84,34 @@ describe('getCarmenUrl', () => {
     sessionStorage.setItem('ocr_user', '{not valid json')
 
     expect(getCarmenUrl('/')).toBe(`${window.location.protocol}//${window.location.hostname}/#/`)
+  })
+})
+
+describe('getCarmenUrl in a production build (PROD)', () => {
+  beforeEach(() => {
+    vi.stubEnv('PROD', true)
+    localStorage.clear()
+    sessionStorage.clear()
+  })
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('inserts /carmen before the hash', () => {
+    sessionStorage.setItem('ocr_last_tenant', TENANT_A)
+    setCarmenUri(TENANT_A, URI_A)
+    expect(getCarmenUrl('/apInvoice/1/show')).toBe(`${URI_A}/carmen/#/apInvoice/1/show`)
+  })
+
+  it('handles uri that already has a trailing slash', () => {
+    sessionStorage.setItem('ocr_last_tenant', TENANT_A)
+    setCarmenUri(TENANT_A, `${URI_A}/`)
+    expect(getCarmenUrl('/')).toBe(`${URI_A}/carmen/#/`)
+  })
+
+  it('works with no argument (defaults to root path)', () => {
+    sessionStorage.setItem('ocr_last_tenant', TENANT_A)
+    setCarmenUri(TENANT_A, URI_A)
+    expect(getCarmenUrl()).toBe(`${URI_A}/carmen/#/`)
   })
 })

@@ -24,6 +24,7 @@ export function getCarmenUrl(path = ''): string {
     base = `${window.location.protocol}//${window.location.hostname}`
   }
 
+  const carmenSubpath = import.meta.env.PROD ? '/carmen' : ''
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
-  return `${base.replace(/\/$/, '')}/#${normalizedPath}`
+  return `${base.replace(/\/$/, '')}${carmenSubpath}/#${normalizedPath}`
 }
