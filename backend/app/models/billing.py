@@ -21,7 +21,13 @@ from sqlalchemy.sql import func
 
 from app.database import Base
 
-from .enums import CreditLedgerReason, CreditOrderStatus, QuotaMetric, QuotaPeriod
+from .enums import (
+    BillingDocumentType,
+    CreditLedgerReason,
+    CreditOrderStatus,
+    QuotaMetric,
+    QuotaPeriod,
+)
 from .mixins import SoftDeleteMixin, TimestampMixin, WriterMixin
 
 
@@ -147,7 +153,9 @@ class CreditPack(Base, TimestampMixin, WriterMixin):
 
     __tablename__ = "credit_packs"
 
-    code = Column(String(20), primary_key=True)  # 'p100', 'p500', 'p1000', 'p5000'
+    code = Column(String(20), primary_key=True)  # 'sub_standard', 'pack_small', ...
+    # 'subscription' = monthly document tier; 'topup' = one-time non-expiring credits.
+    kind = Column(String(20), nullable=False, default="topup")
     credits = Column(Integer, nullable=False)
     price_thb = Column(Numeric(10, 2), nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
@@ -208,6 +216,10 @@ class CreditOrder(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     paid_at = Column(DateTime(timezone=True), nullable=True)
     approved_by = Column(String(100), nullable=True)
     approved_at = Column(DateTime(timezone=True), nullable=True)
+    # Slip upload (added migration 218)
+    slip_object_key = Column(String(512), nullable=True)
+    slip_uploaded_at = Column(DateTime(timezone=True), nullable=True)
+    rejected_reason = Column(Text, nullable=True)
 
     __table_args__ = (
         Index(
@@ -216,11 +228,82 @@ class CreditOrder(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
             "status",
             postgresql_where=text("deleted_at IS NULL"),
         ),
+        # Blocks duplicate open orders for the same pack per tenant.
+        # Covers both pending (QR shown) and awaiting_review (slip uploaded).
         Index(
-            "uq_credit_orders_one_pending_per_pack",
+            "uq_credit_orders_one_open_per_pack",
             "tenant_id",
             "pack_code",
             unique=True,
-            postgresql_where=text("status = 'pending' AND deleted_at IS NULL"),
+            postgresql_where=text(
+                "status IN ('pending', 'awaiting_review') AND deleted_at IS NULL"
+            ),
         ),
     )
+
+
+class BillingDocument(Base, TimestampMixin, SoftDeleteMixin):
+    """
+    Immutable snapshot of a proforma or tax invoice for a credit order.
+    Issued at order creation (proforma) and admin approval (tax_invoice).
+    Frontend renders and prints this as HTML — no server-side PDF.
+    """
+
+    __tablename__ = "billing_documents"
+
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    order_id = Column(PGUUID(as_uuid=True), ForeignKey("credit_orders.id"), nullable=False)
+    doc_type: Column = Column(
+        SAEnum(BillingDocumentType, values_callable=lambda o: [e.value for e in o]),
+        nullable=False,
+    )
+    number = Column(String(50), nullable=False)  # e.g. PF-202606-0001 / IV-202606-0001
+    issue_date = Column(DateTime(timezone=True), nullable=False)
+
+    # Seller snapshot (from system_configs at issue time)
+    seller_name = Column(String(255), nullable=True)
+    seller_tax_id = Column(String(20), nullable=True)
+    seller_address = Column(Text, nullable=True)
+    seller_branch = Column(String(100), nullable=True)
+
+    # Buyer snapshot (from Carmen-or-form at issue time)
+    buyer_name = Column(String(255), nullable=True)
+    buyer_tax_id = Column(String(20), nullable=True)
+    buyer_address = Column(Text, nullable=True)
+    buyer_branch = Column(String(100), nullable=True)
+
+    # Single line item = the pack purchased
+    pack_code = Column(String(20), nullable=False)
+    description = Column(Text, nullable=True)
+    credits = Column(Integer, nullable=False)
+    subtotal = Column(Numeric(12, 2), nullable=False)  # ex-VAT
+    vat_rate = Column(Numeric(4, 2), nullable=False, default=7.00)
+    vat_amount = Column(Numeric(12, 2), nullable=False)
+    total = Column(Numeric(12, 2), nullable=False)  # gross (VAT-inclusive)
+    currency = Column(String(3), nullable=False, default="THB")
+
+    __table_args__ = (
+        Index(
+            "uq_billing_documents_number_active",
+            "number",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+        Index("ix_billing_documents_tenant_type", "tenant_id", "doc_type", "created_at"),
+    )
+
+
+class DocumentSequence(Base):
+    """
+    Gapless document number counter per (scope, period_key).
+    Atomic upsert: INSERT ... ON CONFLICT DO UPDATE SET last_no = last_no + 1 RETURNING last_no.
+    scope = 'proforma' | 'tax_invoice', period_key = 'YYYYMM'.
+    Formatted: PF-{YYYYMM}-{last_no:04d} / IV-{YYYYMM}-{last_no:04d}.
+    """
+
+    __tablename__ = "document_sequences"
+
+    scope = Column(String(20), primary_key=True)
+    period_key = Column(String(6), primary_key=True)
+    last_no = Column(Integer, nullable=False, default=0)

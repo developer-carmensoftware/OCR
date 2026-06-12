@@ -140,6 +140,12 @@ class Settings(BaseSettings):
     # Graceful shutdown — seconds to wait before cancelling background tasks
     shutdown_grace_seconds: int = 5
 
+    # ── Supabase Storage (slip upload) — SECRETS, never put in system_configs ──
+    # Required for slip upload/download. Leave empty to disable slip storage (dev).
+    supabase_url: str = ""
+    supabase_service_key: str = ""  # service_role key (bypasses RLS)
+    slip_bucket: str = "payment-slips"
+
     @property
     def allowed_carmen_hosts_list(self) -> list[str]:
         """Lowercased Carmen host allowlist (empty list = not configured)."""

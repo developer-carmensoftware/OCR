@@ -1,5 +1,8 @@
 """Pydantic schemas for the top-up credit system."""
 
+from datetime import datetime
+from decimal import Decimal
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -9,13 +12,10 @@ class CreditPackResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     code: str
+    kind: str = "topup"  # 'subscription' (monthly tier) | 'topup' (one-time credits)
     credits: int
     price_thb: float
     sort_order: int = 0
-
-
-class CreateOrderRequest(BaseModel):
-    pack_code: str
 
 
 class CreditOrderResponse(BaseModel):
@@ -73,3 +73,93 @@ class CreditLedgerEntry(BaseModel):
     @classmethod
     def _coerce_created_at(cls, v: object) -> object:
         return v.isoformat() if hasattr(v, "isoformat") else v
+
+
+# ── Billing / QR payment ─────────────────────────────────────────────────────
+
+
+class BuyerInfoInput(BaseModel):
+    """Optional buyer company info supplied or edited by the user at order time."""
+
+    name: str = ""
+    tax_id: str = ""
+    address: str = ""
+    branch: str = ""
+
+
+class CreateOrderRequest(BaseModel):
+    pack_code: str
+    buyer: BuyerInfoInput | None = None  # overrides Carmen prefill when provided
+
+
+class QrPayloadResponse(BaseModel):
+    """PromptPay dynamic QR payload string — render client-side as a QR image."""
+
+    payload: str
+    amount_thb: float
+    promptpay_id: str
+
+
+class BillingDocumentResponse(BaseModel):
+    """Snapshot of a proforma or tax invoice for rendering/printing."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    doc_type: str
+    number: str
+    issue_date: datetime
+    # Seller
+    seller_name: str | None = None
+    seller_tax_id: str | None = None
+    seller_address: str | None = None
+    seller_branch: str | None = None
+    # Buyer
+    buyer_name: str | None = None
+    buyer_tax_id: str | None = None
+    buyer_address: str | None = None
+    buyer_branch: str | None = None
+    # Line item
+    pack_code: str
+    description: str | None = None
+    credits: int
+    subtotal: Decimal
+    vat_rate: Decimal
+    vat_amount: Decimal
+    total: Decimal
+    currency: str = "THB"
+    created_at: datetime | None = None
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def _coerce_id(cls, v: object) -> str:
+        return str(v)
+
+
+class CreateOrderResponse(BaseModel):
+    """Full response for POST /credits/orders — order + QR + proforma."""
+
+    order: "CreditOrderResponse"
+    qr: QrPayloadResponse
+    proforma: BillingDocumentResponse
+
+
+class CompanyProfileResponse(BaseModel):
+    """Prefilled buyer info from Carmen (or last-invoice fallback)."""
+
+    name: str = ""
+    tax_id: str = ""
+    address: str = ""
+    branch: str = ""
+    source: str = "form"  # 'carmen' | 'last_invoice' | 'form'
+
+
+class SlipUploadResponse(BaseModel):
+    """Returned after a successful slip upload."""
+
+    order_id: str
+    status: str  # 'awaiting_review'
+
+
+class RejectRequest(BaseModel):
+    reason: str = Field(..., min_length=1, description="Reason shown to the tenant")

@@ -90,6 +90,15 @@ class CreditLedgerReason(str, Enum):
 
 
 class CreditOrderStatus(str, Enum):
-    PENDING = "pending"
-    PAID = "paid"
+    PENDING = "pending"  # created, QR shown, awaiting payment + slip
+    AWAITING_REVIEW = "awaiting_review"  # slip uploaded, waiting for admin verification
+    PAID = "paid"  # admin approved → credits granted
+    REJECTED = "rejected"  # admin rejected the slip
     CANCELLED = "cancelled"
+
+
+class BillingDocumentType(str, Enum):
+    """Discriminator for billing_documents rows."""
+
+    PROFORMA = "proforma"  # issued at order creation (request for payment)
+    TAX_INVOICE = "tax_invoice"  # issued after admin approves payment (receipt / tax invoice)

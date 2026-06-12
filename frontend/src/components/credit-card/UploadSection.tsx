@@ -14,7 +14,7 @@ const INSTRUCTIONS = [
   { n: 1, c: 'gold', text: 'Upload the bank receipt file (JPG, PNG, PDF)' },
   { n: 2, c: 'gold', text: 'AI will detect the bank and extract data automatically' },
   { n: 3, c: 'teal', text: 'Review and edit the extracted data' },
-  { n: 4, c: 'teal', text: 'Confirm accounting entries and submit to Carmen GL JV' },
+  { n: 4, c: 'teal', text: 'Confirm accounting entries and submit to Carmen Cloud JV' },
 ]
 
 export default function UploadSection({

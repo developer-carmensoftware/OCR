@@ -179,7 +179,7 @@ async def get_gl_prefix(carmen_token: str) -> Any:
             return {"Data": [], "Status": f"upstream_{resp.status_code}"}
         return resp.json()
     except RequestError as e:
-        logger.warning("Carmen glPrefix unreachable: %s", e)
+        logger.warning("Carmen CloudPrefix unreachable: %s", e)
         return {"Data": [], "Status": "upstream_unreachable"}
 
 
@@ -355,3 +355,34 @@ async def post_invoice(body: dict, carmen_token: str) -> Any:
         raise
     except RequestError as e:
         raise _wrap_network_error(e) from e
+
+
+async def get_company_profile(carmen_token: str, db_cfg: dict[str, str] | None = None) -> dict:
+    """
+    Fetch the buyer's company profile from Carmen for billing document prefill.
+
+    Path is stored in system_configs key `billing.carmen_company_path`.
+    Returns normalized {name, tax_id, address, branch} or {} when unset/error.
+    db_cfg: pre-fetched billing config dict to avoid an extra DB round-trip.
+    """
+    path = (db_cfg or {}).get("billing.carmen_company_path", "").strip()
+    if not path:
+        return {}
+
+    try:
+        resp = await _get_client().get(
+            f"{_base_url()}/{path.lstrip('/')}", headers=_headers(carmen_token)
+        )
+        if resp.status_code != 200:
+            return {}
+        data = resp.json()
+        if isinstance(data, dict):
+            return {
+                "name": data.get("companyName") or data.get("name") or "",
+                "tax_id": data.get("taxId") or data.get("tax_id") or "",
+                "address": data.get("address") or "",
+                "branch": data.get("branch") or data.get("branchName") or "",
+            }
+        return {}
+    except Exception:
+        return {}

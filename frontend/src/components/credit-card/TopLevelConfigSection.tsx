@@ -69,7 +69,7 @@ export default function TopLevelConfigSection({
           File Source {!fileSource && <span style={{ color: '#dc2626' }}>*</span>}
           <span
             className="gl-help-tip"
-            title="Carmen GL source code that identifies the originating bank or system — one code per bank (e.g. ACBB = Bangkok Bank, ACKB = Kasikornbank)"
+            title="Carmen Cloud source code that identifies the originating bank or system — one code per bank (e.g. ACBB = Bangkok Bank, ACKB = Kasikornbank)"
           >
             ?
           </span>

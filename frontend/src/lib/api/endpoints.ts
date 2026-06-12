@@ -56,7 +56,11 @@ export const API = {
 
   credits: {
     packs: `${V1}/credits/packs`,
+    companyProfile: `${V1}/credits/company-profile`,
     orders: `${V1}/credits/orders`,
+    order: (orderId: string) => `${V1}/credits/orders/${orderId}`,
+    orderSlip: (orderId: string) => `${V1}/credits/orders/${orderId}/slip`,
+    orderDocuments: (orderId: string) => `${V1}/credits/orders/${orderId}/documents`,
   },
 
   feedback: {

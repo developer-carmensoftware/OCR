@@ -631,6 +631,224 @@ async def _m215_quota_monthly_to_free_trial(conn: AsyncConnection) -> None:
     logger.info("  ~ quota migrated: monthly → lifetime free trial (30 calls, no reset)")
 
 
+async def _m217_order_status_values(conn: AsyncConnection) -> None:
+    """
+    Add 'awaiting_review' and 'rejected' to the creditorderstatus Postgres enum.
+    Must be a separate migration from any DDL that references the new values
+    (Postgres can't use freshly-added enum values in the same transaction).
+    """
+    await conn.execute(
+        text("ALTER TYPE creditorderstatus ADD VALUE IF NOT EXISTS 'awaiting_review'")
+    )
+    await conn.execute(text("ALTER TYPE creditorderstatus ADD VALUE IF NOT EXISTS 'rejected'"))
+    logger.info("  ~ migration 217: creditorderstatus +awaiting_review, +rejected")
+
+
+async def _m218_billing_documents_and_slip(conn: AsyncConnection) -> None:
+    """
+    1. Add slip upload + rejection columns to credit_orders.
+    2. Replace the partial unique index (now covers pending + awaiting_review).
+    3. Create billing_documents and document_sequences tables.
+    4. Seed system_configs billing.* keys.
+    5. Seed starter credit_packs if the table is empty.
+    """
+    # ── 1. credit_orders new columns ─────────────────────────────────────────
+    await conn.execute(
+        text(
+            "ALTER TABLE credit_orders "
+            "ADD COLUMN IF NOT EXISTS slip_object_key VARCHAR(512), "
+            "ADD COLUMN IF NOT EXISTS slip_uploaded_at TIMESTAMPTZ, "
+            "ADD COLUMN IF NOT EXISTS rejected_reason TEXT"
+        )
+    )
+
+    # ── 2. Replace partial unique index ──────────────────────────────────────
+    await conn.execute(text("DROP INDEX IF EXISTS uq_credit_orders_one_pending_per_pack"))
+    await conn.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_credit_orders_one_open_per_pack "
+            "ON credit_orders (tenant_id, pack_code) "
+            "WHERE status IN ('pending', 'awaiting_review') AND deleted_at IS NULL"
+        )
+    )
+
+    # ── 3a. billing_documents ─────────────────────────────────────────────────
+    await conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS billing_documents (
+                id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                tenant_id       UUID NOT NULL REFERENCES tenants(id),
+                order_id        UUID NOT NULL REFERENCES credit_orders(id),
+                doc_type        VARCHAR(20) NOT NULL,
+                number          VARCHAR(50) NOT NULL,
+                issue_date      TIMESTAMPTZ NOT NULL,
+                seller_name     VARCHAR(255),
+                seller_tax_id   VARCHAR(20),
+                seller_address  TEXT,
+                seller_branch   VARCHAR(100),
+                buyer_name      VARCHAR(255),
+                buyer_tax_id    VARCHAR(20),
+                buyer_address   TEXT,
+                buyer_branch    VARCHAR(100),
+                pack_code       VARCHAR(20) NOT NULL,
+                description     TEXT,
+                credits         INTEGER NOT NULL,
+                subtotal        NUMERIC(12,2) NOT NULL,
+                vat_rate        NUMERIC(4,2)  NOT NULL DEFAULT 7.00,
+                vat_amount      NUMERIC(12,2) NOT NULL,
+                total           NUMERIC(12,2) NOT NULL,
+                currency        VARCHAR(3)    NOT NULL DEFAULT 'THB',
+                created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+                updated_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+                deleted_at      TIMESTAMPTZ
+            )
+            """
+        )
+    )
+    await conn.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_billing_documents_number_active "
+            "ON billing_documents (number) WHERE deleted_at IS NULL"
+        )
+    )
+    await conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_billing_documents_tenant_type "
+            "ON billing_documents (tenant_id, doc_type, created_at)"
+        )
+    )
+
+    # ── 3b. document_sequences ────────────────────────────────────────────────
+    await conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS document_sequences (
+                scope       VARCHAR(20) NOT NULL,
+                period_key  VARCHAR(6)  NOT NULL,
+                last_no     INTEGER     NOT NULL DEFAULT 0,
+                PRIMARY KEY (scope, period_key)
+            )
+            """
+        )
+    )
+
+    # ── 4. Seed billing system_configs ────────────────────────────────────────
+    billing_seeds = [
+        (
+            "billing.promptpay_id",
+            "",
+            "string",
+            "PromptPay ID (mobile or tax ID) that customers scan to pay",
+        ),
+        ("billing.seller_name", "", "string", "Company name printed on invoices"),
+        ("billing.seller_tax_id", "", "string", "13-digit tax ID printed on invoices"),
+        ("billing.seller_address", "", "string", "Full address printed on invoices"),
+        ("billing.seller_branch", "สำนักงานใหญ่", "string", "Branch name (e.g. สำนักงานใหญ่)"),
+        ("billing.vat_rate", "7", "string", "VAT rate % (default 7)"),
+        (
+            "billing.carmen_company_path",
+            "",
+            "string",
+            "Optional Carmen API path to fetch buyer company profile",
+        ),
+    ]
+    for key_name, value, value_type, description in billing_seeds:
+        await conn.execute(
+            text(
+                "INSERT INTO system_configs (key_name, value, value_type, category, description, "
+                "is_secret, requires_restart, created_at, updated_at) "
+                "VALUES (:k, CAST(:v AS jsonb), :vt, 'billing', :desc, false, false, NOW(), NOW()) "
+                "ON CONFLICT (key_name) DO NOTHING"
+            ),
+            {"k": key_name, "v": f'"{value}"', "vt": value_type, "desc": description},
+        )
+
+    # ── 5. Seed starter credit_packs if empty ────────────────────────────────
+    existing = (await conn.execute(text("SELECT COUNT(*) FROM credit_packs"))).scalar()
+    if not existing:
+        packs = [
+            ("starter", 500, 990.00, 1),
+            ("pro", 2000, 2990.00, 2),
+            ("enterprise", 5000, 5990.00, 3),
+        ]
+        for code, credits, price, sort in packs:
+            await conn.execute(
+                text(
+                    "INSERT INTO credit_packs (code, credits, price_thb, is_active, sort_order, "
+                    "created_at, updated_at) "
+                    "VALUES (:code, :credits, :price, true, :sort, NOW(), NOW()) "
+                    "ON CONFLICT (code) DO NOTHING"
+                ),
+                {"code": code, "credits": credits, "price": price, "sort": sort},
+            )
+
+    logger.info(
+        "  ~ migration 218: billing_documents, document_sequences, slip cols, seeds applied"
+    )
+
+
+async def _m219_pricing_catalog_v2(conn: AsyncConnection) -> None:
+    """
+    Replace the placeholder pack catalog with the real published pricing and add
+    a `kind` column so the catalog can carry both monthly subscription tiers and
+    one-time top-up packs (gateway-ready: real recurring billing can later key off
+    `kind = 'subscription'` without a schema change).
+
+    - `kind` distinguishes 'subscription' tiers from 'topup' packs (default 'topup').
+    - Legacy codes (p100/p500/p1000/p5000 from _m208, starter/pro/enterprise from
+      _m218) are deactivated, NOT deleted — credit_orders / credit_ledger may hold
+      FK references to them.
+    - 6 active rows are upserted (idempotent; re-running corrects price/credits).
+    - 'contract_sale' (Unlimited / contact-sales) is NOT a row — it is a frontend
+      contact card, never self-checkout.
+    Idempotent.
+    """
+    # 1. Add the kind discriminator (defaults existing rows to 'topup').
+    await conn.execute(
+        text(
+            "ALTER TABLE credit_packs "
+            "ADD COLUMN IF NOT EXISTS kind VARCHAR(20) NOT NULL DEFAULT 'topup'"
+        )
+    )
+
+    # 2. Retire the placeholder catalog (keep rows for FK integrity).
+    await conn.execute(
+        text(
+            "UPDATE credit_packs SET is_active = false "
+            "WHERE code IN ('p100','p500','p1000','p5000','starter','pro','enterprise')"
+        )
+    )
+
+    # 3. Seed the published catalog. (code, kind, credits, price_thb, sort_order)
+    #    Subscriptions: monthly document allowance. Top-ups: non-expiring credits.
+    catalog = [
+        ("sub_starter", "subscription", 200, 490.00, 1),
+        ("sub_standard", "subscription", 500, 990.00, 2),
+        ("sub_pro", "subscription", 1500, 2490.00, 3),
+        ("pack_small", "topup", 500, 1200.00, 11),
+        ("pack_medium", "topup", 2500, 5000.00, 12),
+        ("pack_large", "topup", 10000, 15000.00, 13),
+    ]
+    for code, kind, credits, price, order in catalog:
+        await conn.execute(
+            text("""
+                INSERT INTO credit_packs
+                    (code, kind, credits, price_thb, is_active, sort_order, created_at)
+                VALUES (:code, :kind, :credits, :price, true, :order, NOW())
+                ON CONFLICT (code) DO UPDATE SET
+                    kind = EXCLUDED.kind,
+                    credits = EXCLUDED.credits,
+                    price_thb = EXCLUDED.price_thb,
+                    is_active = true,
+                    sort_order = EXCLUDED.sort_order
+            """),
+            {"code": code, "kind": kind, "credits": credits, "price": price, "order": order},
+        )
+
+    logger.info("  ~ migration 219: pricing catalog v2 (kind column + subscription/topup seed)")
+
+
 _MIGRATIONS: list[tuple[str, Callable[[AsyncConnection], Awaitable[None]] | None]] = [
     # ── Squashed history markers ──────────────────────────────────────────────
     ("001_squashed_initial_schema", None),
@@ -655,4 +873,7 @@ _MIGRATIONS: list[tuple[str, Callable[[AsyncConnection], Awaitable[None]] | None
     ("214_drop_ap_vendor_field_config", _m214_drop_ap_vendor_field_config),
     ("215_quota_monthly_to_free_trial", _m215_quota_monthly_to_free_trial),
     ("216_postgres_best_practices", _m216_postgres_best_practices),
+    ("217_order_status_values", _m217_order_status_values),
+    ("218_billing_documents_and_slip", _m218_billing_documents_and_slip),
+    ("219_pricing_catalog_v2", _m219_pricing_catalog_v2),
 ]

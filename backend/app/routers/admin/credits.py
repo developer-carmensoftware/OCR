@@ -1,7 +1,8 @@
-"""Admin top-up credit management — balance, top-up, manual adjust, ledger."""
+"""Admin top-up credit management — balance, top-up, manual adjust, ledger, slip review."""
 
 import logging
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -9,15 +10,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
-from app.models.enums import CreditLedgerReason, CreditOrderStatus
-from app.models.orm import CreditLedger, CreditOrder, CreditPack
+from app.models.enums import BillingDocumentType, CreditLedgerReason, CreditOrderStatus
+from app.models.orm import BillingDocument, CreditLedger, CreditOrder, CreditPack
 from app.models.schemas import (
     AdjustRequest,
+    BillingDocumentResponse,
     CreditBalanceResponse,
     CreditLedgerEntry,
+    CreditOrderResponse,
+    RejectRequest,
     TopupRequest,
 )
+from app.services import billing_document_service as bds
+from app.services import storage_service
 from app.services.credit_service import get_credit_balance, grant_credits
+from app.services.storage_service import StorageError
 
 from .deps import require_permission
 
@@ -27,8 +34,11 @@ router = APIRouter()
 
 def _assert_scope(admin: AdminPrincipal, tenant_id: str) -> None:
     """Scoped admins may only act on their own tenant."""
-    if not admin.is_global and str(admin.tenant_scope) != str(tenant_id):
+    if not admin.is_global and admin.tenant_scope != tenant_id:
         raise HTTPException(status_code=403, detail="Tenant out of scope")
+
+
+# ── Balance / topup / adjust / ledger (existing) ─────────────────────────────
 
 
 @router.get("/tenants/{tenant_id}/credits", response_model=CreditBalanceResponse)
@@ -63,7 +73,7 @@ async def topup(
         order = (
             await db.execute(select(CreditOrder).where(CreditOrder.id == body.order_id))
         ).scalar_one_or_none()
-        if order is None or str(order.tenant_id) != str(tenant_id):
+        if order is None or order.tenant_id != tenant_id:
             raise HTTPException(status_code=404, detail="Order not found")
         if order.status == CreditOrderStatus.PAID:
             raise HTTPException(status_code=409, detail="Order already fulfilled")
@@ -126,3 +136,233 @@ async def ledger(
         .all()
     )
     return [CreditLedgerEntry.model_validate(r) for r in rows]
+
+
+# ── Slip review queue ─────────────────────────────────────────────────────────
+
+
+@router.get("/credit-orders", response_model=list[CreditOrderResponse])
+async def list_credit_orders(
+    status: str | None = Query(None, description="Filter by status, e.g. awaiting_review"),
+    limit: int = Query(50, le=200),
+    db: AsyncSession = Depends(get_db),
+    admin: AdminPrincipal = Depends(require_permission("quotas", "read")),
+):
+    """
+    List credit orders across all tenants (global admin) or own tenant (scoped admin).
+    Default view is the slip-review queue: status=awaiting_review.
+    """
+    query = select(CreditOrder).where(CreditOrder.deleted_at.is_(None))
+
+    if not admin.is_global and admin.tenant_scope:
+        query = query.where(CreditOrder.tenant_id == admin.tenant_scope)
+
+    if status:
+        query = query.where(CreditOrder.status == status)
+    else:
+        query = query.where(CreditOrder.status == CreditOrderStatus.AWAITING_REVIEW)
+
+    query = query.order_by(CreditOrder.created_at.asc()).limit(limit)
+    rows = (await db.execute(query)).scalars().all()
+    return [CreditOrderResponse.model_validate(r) for r in rows]
+
+
+@router.get("/credit-orders/{order_id}/slip-url")
+async def get_slip_signed_url(
+    order_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminPrincipal = Depends(require_permission("quotas", "read")),
+):
+    """Return a short-lived signed URL for the admin to view the uploaded slip."""
+    order = (
+        await db.execute(
+            select(CreditOrder).where(
+                CreditOrder.id == order_id,
+                CreditOrder.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    _assert_scope(admin, str(order.tenant_id))
+
+    if not order.slip_object_key:
+        raise HTTPException(status_code=404, detail="No slip uploaded for this order")
+
+    try:
+        url = await storage_service.signed_url(order.slip_object_key, ttl_seconds=300)  # type: ignore[arg-type]
+    except StorageError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    return {"signed_url": url, "expires_in": 300}
+
+
+@router.post("/credit-orders/{order_id}/approve", response_model=CreditOrderResponse)
+async def approve_order(
+    order_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
+):
+    """
+    Approve a slip: grant credits, issue tax invoice, mark order paid.
+    Only valid when status=awaiting_review.
+    """
+    order = (
+        await db.execute(
+            select(CreditOrder).where(
+                CreditOrder.id == order_id,
+                CreditOrder.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    _assert_scope(admin, str(order.tenant_id))
+
+    if order.status != CreditOrderStatus.AWAITING_REVIEW:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Order is in status '{order.status}', expected 'awaiting_review'",
+        )
+
+    # Fetch proforma buyer info for the tax invoice snapshot
+    proforma = (
+        await db.execute(
+            select(BillingDocument).where(
+                BillingDocument.order_id == order_id,
+                BillingDocument.doc_type == BillingDocumentType.PROFORMA,
+                BillingDocument.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+
+    buyer = bds.BuyerInfo(
+        name=str(proforma.buyer_name or "") if proforma else "",
+        tax_id=str(proforma.buyer_tax_id or "") if proforma else "",
+        address=str(proforma.buyer_address or "") if proforma else "",
+        branch=str(proforma.buyer_branch or "") if proforma else "",
+    )
+
+    await bds.issue_document(
+        db,
+        tenant_id=str(order.tenant_id),
+        order_id=order_id,
+        doc_type=BillingDocumentType.TAX_INVOICE,
+        pack_code=order.pack_code,  # type: ignore[arg-type]
+        pack_description=f"{order.credits} credits",
+        credits=order.credits,  # type: ignore[arg-type]
+        amount_thb=Decimal(str(order.amount_thb)),
+        buyer=buyer,
+    )
+
+    balance = await grant_credits(
+        db,
+        str(order.tenant_id),
+        order.credits,  # type: ignore[arg-type]
+        reason=CreditLedgerReason.TOPUP,
+        pack_code=order.pack_code,  # type: ignore[arg-type]
+        ref=order_id,
+    )
+
+    order.status = CreditOrderStatus.PAID  # type: ignore[assignment]
+    order.paid_at = datetime.now(UTC)  # type: ignore[assignment]
+    order.approved_by = admin.email  # type: ignore[assignment]
+    order.approved_at = datetime.now(UTC)  # type: ignore[assignment]
+
+    await db.commit()
+    await db.refresh(order)
+
+    logger.info(
+        "order approved: id=%s tenant=%s credits=%s balance_after=%d by=%s",
+        order_id,
+        order.tenant_id,
+        order.credits,
+        balance,
+        admin.email,
+    )
+    return CreditOrderResponse.model_validate(order)
+
+
+@router.post("/credit-orders/{order_id}/reject", response_model=CreditOrderResponse)
+async def reject_order(
+    order_id: str,
+    body: RejectRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
+):
+    """
+    Reject a slip: mark order rejected with a reason.
+    The tenant may create a new order for the same pack after rejection.
+    """
+    order = (
+        await db.execute(
+            select(CreditOrder).where(
+                CreditOrder.id == order_id,
+                CreditOrder.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    _assert_scope(admin, str(order.tenant_id))
+
+    if order.status != CreditOrderStatus.AWAITING_REVIEW:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Order is in status '{order.status}', expected 'awaiting_review'",
+        )
+
+    order.status = CreditOrderStatus.REJECTED  # type: ignore[assignment]
+    order.rejected_reason = body.reason  # type: ignore[assignment]
+
+    await db.commit()
+    await db.refresh(order)
+
+    logger.info(
+        "order rejected: id=%s tenant=%s reason=%r by=%s",
+        order_id,
+        order.tenant_id,
+        body.reason,
+        admin.email,
+    )
+    return CreditOrderResponse.model_validate(order)
+
+
+@router.get("/credit-orders/{order_id}/documents", response_model=list[BillingDocumentResponse])
+async def list_order_documents(
+    order_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminPrincipal = Depends(require_permission("quotas", "read")),
+):
+    """Return all billing documents for an order (proforma + tax invoice)."""
+    order = (
+        await db.execute(
+            select(CreditOrder).where(
+                CreditOrder.id == order_id,
+                CreditOrder.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    _assert_scope(admin, str(order.tenant_id))
+
+    docs = (
+        (
+            await db.execute(
+                select(BillingDocument)
+                .where(
+                    BillingDocument.order_id == order_id,
+                    BillingDocument.deleted_at.is_(None),
+                )
+                .order_by(BillingDocument.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [BillingDocumentResponse.model_validate(d) for d in docs]

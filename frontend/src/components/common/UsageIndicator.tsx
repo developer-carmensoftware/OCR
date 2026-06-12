@@ -15,7 +15,7 @@ export default function UsageIndicator() {
   const [usage, setUsage] = useState<UsageData['usage'] | null>(null)
   const [loading, setLoading] = useState(true)
   const { isAuthenticated } = useAuth() as { isAuthenticated: boolean }
-  const quotaRef = useRef<HTMLDivElement>(null)
+  const quotaRef = useRef<HTMLAnchorElement>(null)
 
   const fetchUsage = async () => {
     try {
@@ -90,17 +90,18 @@ export default function UsageIndicator() {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
       >
-        <div
+        <a
           ref={quotaRef}
-          role="status"
-          aria-label={`OCR quota: ${stats.remaining_calls} documents remaining`}
-          className={`ui-quota${stats.isLow ? ' is-low' : ''}`}
+          href="#/pricing"
+          title="View plans and top up credits"
+          aria-label={`OCR quota: ${stats.remaining_calls} documents remaining — open pricing`}
+          className={`ui-quota ui-quota--link${stats.isLow ? ' is-low' : ''}`}
         >
           <div className="ui-quota-col col-remain">
             <span className="ui-quota-label">Remain</span>
             <span className="ui-quota-value">{stats.remaining_calls}</span>
           </div>
-        </div>
+        </a>
       </motion.div>
     </AnimatePresence>
   )

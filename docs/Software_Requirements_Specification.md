@@ -302,7 +302,7 @@ sequenceDiagram
 
     User->>API: POST /api/v1/carmen/gljv (JV payload + accounting lines)
     activate API
-    API->>Carmen: POST Carmen gljv endpoint
+    API->>Carmen: POST Carmen Cloudjv endpoint
     Carmen-->>API: Result
     API->>DB: Write OCRTask + CreditCard + CreditCardTransaction rows
     DB-->>API: Confirmed
@@ -348,6 +348,7 @@ sequenceDiagram
 | `bank_type` | String (query) | Yes | รหัสธนาคาร: `BBL`, `KBANK`, `SCB` |
 
 **JSON Response** (Array — หนึ่ง object ต่อไฟล์):
+
 ```json
 [
   {
@@ -383,6 +384,7 @@ sequenceDiagram
 **Method**: GET | **Endpoint**: `/api/v1/carmen/account-codes`
 
 **JSON Response**:
+
 ```json
 {
   "status": "success",
@@ -402,6 +404,7 @@ sequenceDiagram
 **Method**: GET | **Endpoint**: `/api/v1/carmen/departments`
 
 **JSON Response**:
+
 ```json
 {
   "status": "success",
@@ -421,6 +424,7 @@ sequenceDiagram
 **Method**: GET | **Endpoint**: `/api/v1/carmen/gl-prefix`
 
 **JSON Response**:
+
 ```json
 {
   "status": "success",
@@ -441,6 +445,7 @@ sequenceDiagram
 **Method**: POST | **Endpoint**: `/api/v1/credit-card/mapping/suggest`
 
 **JSON Request**:
+
 ```json
 {
   "accounts": [{ "code": "113200", "name": "BANK RECEIVABLE", "type": "DEBIT" }],
@@ -449,6 +454,7 @@ sequenceDiagram
 ```
 
 **JSON Response**:
+
 ```json
 {
   "suggestions": {
@@ -469,6 +475,7 @@ sequenceDiagram
 **Method**: POST | **Endpoint**: `/api/v1/credit-card/mapping/suggest-payment-types`
 
 **JSON Request**:
+
 ```json
 {
   "payment_types": ["VSA-DCC-P", "MCA-INT-P", "QR-VSA", "QR-MCA"],
@@ -478,6 +485,7 @@ sequenceDiagram
 ```
 
 **JSON Response**:
+
 ```json
 {
   "suggestions": {
@@ -524,6 +532,7 @@ sequenceDiagram
 | `limit` | Integer | 50 | จำนวน records ที่ต้องการ |
 
 **JSON Response**:
+
 ```json
 {
   "items": [
@@ -549,6 +558,7 @@ sequenceDiagram
 **Method**: GET | **Endpoint**: `/api/v1/credit-card/tasks/{id}`
 
 **JSON Response**:
+
 ```json
 {
   "task_id": 42,
@@ -591,6 +601,7 @@ sequenceDiagram
 > ป้องกันด้วย `APP_DEBUG=true` — จะคืน HTTP 403 ใน production
 
 **JSON Response**:
+
 ```json
 {
   "raw": "{...raw LLM response string...}",
@@ -610,6 +621,7 @@ sequenceDiagram
 **Method**: GET | **Endpoint**: `/api/v1/tools`
 
 **JSON Response**:
+
 ```json
 {
   "tools": [
@@ -639,6 +651,7 @@ sequenceDiagram
 **Method**: POST | **Endpoint**: `/api/v1/tools/{name}`
 
 **JSON Request** (keys must match `input_schema`):
+
 ```json
 {
   "accounts": [{ "code": "113200", "name": "BANK RECEIVABLE", "type": "DEBIT" }],
@@ -647,6 +660,7 @@ sequenceDiagram
 ```
 
 **JSON Response** (ToolResult):
+
 ```json
 {
   "success": true,
@@ -669,6 +683,7 @@ sequenceDiagram
 **Method**: POST | **Endpoint**: `/api/v1/feedback/correction`
 
 **JSON Request**:
+
 ```json
 {
   "receipt_id": "SCB-2026-00123",
@@ -682,6 +697,7 @@ sequenceDiagram
 > `field_name` ใช้ชื่อ snake_case ตรงกับ LLM prompt field (เช่น `merchant_name`, `doc_no`, `pay_amt`) — frontend จะ map จาก PascalCase ผ่าน `FIELD_NAME_MAP` ใน `feedback.js`
 
 **JSON Response**:
+
 ```json
 {
   "id": 42,
@@ -711,6 +727,7 @@ Liveness probe (ไม่ตรวจ DB): `GET /livez`
 Readiness probe (ตรวจ DB connection): `GET /readyz`
 
 **JSON Response (healthy)**:
+
 ```json
 {
   "status": "ok",

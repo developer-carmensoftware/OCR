@@ -6,7 +6,8 @@ New code should import directly from the domain modules:
   app.models.identity     — Plan, Tenant
   app.models.admin        — AdminUser, Role, Permission, RolePermission, AdminUserRole, APIKey, APIKeyUsage
   app.models.catalog      — Module, TenantModule, Bank, PromptTemplate
-  app.models.billing      — SystemConfig, TenantConfigOverride, FeatureFlag, Quota, QuotaUsage, LLMModelPricing
+  app.models.billing      — SystemConfig, TenantConfigOverride, FeatureFlag, Quota, QuotaUsage, LLMModelPricing,
+                            CreditPack, TenantCredit, CreditLedger, CreditOrder, BillingDocument, DocumentSequence
   app.models.business     — OcrSession, OCRTask, CreditCard, APInvoice,
                             CorrectionFeedback, BUAccountingConfig,
                             BUAccountingMappingEntry, APVendorColumnMapping, APVendorFieldMappingEntry
@@ -16,9 +17,11 @@ New code should import directly from the domain modules:
 
 from .admin import AdminUser, AdminUserRole, APIKey, APIKeyUsage, Permission, Role, RolePermission
 from .billing import (
+    BillingDocument,
     CreditLedger,
     CreditOrder,
     CreditPack,
+    DocumentSequence,
     FeatureFlag,
     LLMModelPricing,
     Quota,
@@ -103,6 +106,8 @@ __all__ = [
     "TenantCredit",
     "CreditLedger",
     "CreditOrder",
+    "BillingDocument",
+    "DocumentSequence",
     # Business
     "OcrSession",
     "OCRTask",

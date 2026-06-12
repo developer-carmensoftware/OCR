@@ -142,17 +142,17 @@ export function useOcrSubmission({
           carmenRejected = true
           carmenError =
             (carmenRes?.UserMessage as string) || `Carmen error (Code: ${carmenRes?.Code})`
-          showToast(`Carmen GL JV: ${carmenError}`, 'warning')
+          showToast(`Carmen Cloud JV: ${carmenError}`, 'warning')
         } else {
           if (carmenRes?.InternalMessage) {
             jvId = carmenRes.InternalMessage as string
             setCarmenJvId(jvId)
           }
-          showToast('Successfully sent data to Carmen GL JV', 'success')
+          showToast('Successfully sent data to Carmen Cloud JV', 'success')
         }
       } catch (err) {
         carmenError = (err as Error).message
-        showToast(`Carmen GL JV: ${carmenError}`, 'error')
+        showToast(`Carmen Cloud JV: ${carmenError}`, 'error')
       }
 
       if (carmenRejected) {
@@ -170,8 +170,8 @@ export function useOcrSubmission({
         showModal({
           title: carmenError ? 'Saved Successfully (Carmen issue)' : 'JV Saved Successfully!',
           message: carmenError
-            ? `Document number ${docNo} has been saved to the database.\n\nHowever, sending to Carmen GL JV failed:\n${carmenError}`
-            : `Document number ${docNo} has been successfully saved and sent to Carmen GL JV.`,
+            ? `Document number ${docNo} has been saved to the database.\n\nHowever, sending to Carmen Cloud JV failed:\n${carmenError}`
+            : `Document number ${docNo} has been successfully saved and sent to Carmen Cloud JV.`,
           type: carmenError ? 'warning' : 'success',
           confirmText: 'Proceed to Input Tax Reconciliation',
           cancelText: jvId ? 'View JV' : undefined,

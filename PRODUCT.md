@@ -6,7 +6,7 @@ product
 
 ## Users
 
-Thai accounting staff at companies using Carmen Cloud ERP. They open this tool during their normal work shift to process a backlog of credit card statements and vendor invoices — documents that used to require manual keying into Carmen GL. They are not power users exploring the product; they are task-focused workers who want to finish the upload, confirm the data looks right, and move on. Occasional Thai-language content (vendor names, GL labels, invoice text) is the norm, not the exception.
+Thai accounting staff at companies using Carmen Cloud ERP. They open this tool during their normal work shift to process a backlog of credit card statements and vendor invoices — documents that used to require manual keying into Carmen Cloud. They are not power users exploring the product; they are task-focused workers who want to finish the upload, confirm the data looks right, and move on. Occasional Thai-language content (vendor names, GL labels, invoice text) is the norm, not the exception.
 
 ## Product Purpose
 

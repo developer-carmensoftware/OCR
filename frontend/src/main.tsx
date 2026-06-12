@@ -46,6 +46,8 @@ const Home = lazy(() => import('./pages/Home'))
 const CreditCardOCR = lazy(() => import('./pages/CreditCardOCR'))
 const Mapping = lazy(() => import('./pages/Mapping'))
 const APInvoice = lazy(() => import('./pages/APInvoice'))
+const Pricing = lazy(() => import('./pages/Pricing'))
+const OrderHistory = lazy(() => import('./pages/OrderHistory'))
 
 // Admin pages
 const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'))
@@ -120,6 +122,15 @@ function Router() {
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [])
 
+  // Out-of-credits (HTTP 402) anywhere in the app → send the user to pricing.
+  useEffect(() => {
+    const toPricing = () => {
+      window.location.hash = '#/pricing'
+    }
+    window.addEventListener('ocr:open-topup', toPricing)
+    return () => window.removeEventListener('ocr:open-topup', toPricing)
+  }, [])
+
   // Admin section — has its own auth, separate from Carmen
   if (route.startsWith('admin')) {
     return (
@@ -135,6 +146,10 @@ function Router() {
     Page = sub === 'mapping' ? <Mapping /> : <CreditCardOCR />
   } else if (route.startsWith('apinvoice')) {
     Page = <APInvoice />
+  } else if (route === 'pricing/orders') {
+    Page = <OrderHistory />
+  } else if (route.startsWith('pricing')) {
+    Page = <Pricing />
   } else {
     Page = <Home />
   }

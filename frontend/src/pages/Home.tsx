@@ -2,7 +2,7 @@ import type React from 'react'
 import { Receipt, FileText, Landmark, CheckCircle2, Clock, Lock, ArrowRight } from 'lucide-react'
 import '../styles/pages/home.css'
 import logo from '../assets/logo.png'
-import { DarkModeToggle, UsageIndicator } from '../components/common'
+import { DarkModeToggle, UsageIndicator, PaymentButton } from '../components/common'
 
 interface TagConfig {
   label: string
@@ -28,7 +28,7 @@ const MODULES: Module[] = [
     href: '#/CreditCardOCR',
     name: 'AI Credit Card Automation',
     description:
-      'AI extracts credit card statements from BBL, KBANK, SCB and posts entries directly to Carmen GL',
+      'AI extracts credit card statements from BBL, KBANK, SCB and posts entries directly to Carmen Cloud',
     Icon: FileText,
     useLogo: true,
     accent: 'oklch(0.4714 0.1794 258.7)',
@@ -38,7 +38,7 @@ const MODULES: Module[] = [
       color: 'oklch(0.30 0.08 188.43)',
       border: 'oklch(0.88 0.06 188.43)',
     },
-    features: ['OCR AI', 'Carmen GL', 'Input Tax'],
+    features: ['OCR AI', 'Carmen Cloud', 'Input Tax'],
   },
   {
     id: 'ap-invoice',
@@ -83,6 +83,7 @@ export default function Home() {
         style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}
       >
         <UsageIndicator />
+        <PaymentButton />
         <DarkModeToggle />
       </div>
       <div className="home-hero">
