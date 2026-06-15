@@ -18,7 +18,6 @@ export function storeAdminToken(token: string): void {
 
 export function clearAdminToken(): void {
   sessionStorage.removeItem(ADMIN_TOKEN_KEY)
-  sessionStorage.removeItem('ocr_admin_user')
 }
 
 export const adminFetch = createApiClient({

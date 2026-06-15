@@ -140,6 +140,12 @@ class Settings(BaseSettings):
     # Graceful shutdown — seconds to wait before cancelling background tasks
     shutdown_grace_seconds: int = 5
 
+    # Internal job token — presented by pg_net cron jobs as Bearer in Authorization.
+    # Must match the vault.secrets value 'internal_job_token' set in Supabase Vault.
+    # Generate: python -c "import secrets; print(secrets.token_hex(32))"
+    # NEVER put the real value in system_configs DB table — secrets in .env only.
+    internal_job_token: str = ""
+
     # ── Supabase Storage (slip upload) — SECRETS, never put in system_configs ──
     # Required for slip upload/download. Leave empty to disable slip storage (dev).
     supabase_url: str = ""

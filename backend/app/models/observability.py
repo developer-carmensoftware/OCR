@@ -2,13 +2,11 @@
 Observability — Log tables, Analytics, Alerts, Job tracking.
 
 Log tables (llm_usage_logs, audit_logs, performance_logs, outbound_call_logs) are
-plain flat tables. No partitioning — simple, low-overhead, easy to query and export.
-Retention is managed by an export script when needed.
+PARTITIONED BY RANGE (created_at) — see migration 20260615000001_partition_log_tables.sql.
+Partition key (created_at) is part of the composite PK: (id, created_at).
 
-FK constraints are NOT used on log tables: keeping them as plain VARCHAR(36)
-indexes is pragmatic — write throughput matters more than referential integrity
-on append-only logs. Integrity is enforced at the application layer via auth
-middleware (sets context vars; services read from context).
+FK constraints are NOT used on log tables: VARCHAR(36) tenant_id with no FK is
+intentional — write throughput > referential integrity on append-only high-volume logs.
 """
 
 from sqlalchemy import (
@@ -18,11 +16,13 @@ from sqlalchemy import (
     Date,
     DateTime,
     Float,
+    Identity,
     Integer,
     Numeric,
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy import Enum as SAEnum
 
@@ -32,17 +32,23 @@ from .enums import AlertSeverity, JobStatus
 from .mixins import TimestampMixin
 
 
-class LLMUsageLog(Base, TimestampMixin):
-    """One row per LLM API call. Append-only."""
+class LLMUsageLog(Base):
+    """One row per LLM API call. Append-only. Partitioned by created_at (monthly)."""
 
     __tablename__ = "llm_usage_logs"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    tenant_id = Column(String(36), nullable=False, index=True)
-    task_id = Column(String(36), nullable=True, index=True)
-    module_id = Column(String(50), nullable=True, index=True)
-    carmen_session_id = Column(String(36), nullable=True, index=True)
-    carmen_user_id = Column(String(36), nullable=True, index=True)
+    # Composite PK required by the partitioned table (partition key must be in PK).
+    id = Column(BigInteger, Identity(always=True), primary_key=True)
+    created_at = Column(
+        DateTime(timezone=True), primary_key=True, nullable=False, default=func.now()
+    )
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
+
+    tenant_id = Column(String(36), nullable=False)
+    task_id = Column(String(36), nullable=True)
+    module_id = Column(String(50), nullable=True)
+    carmen_session_id = Column(String(36), nullable=True)
+    carmen_user_id = Column(String(36), nullable=True)
     model = Column(String(100), nullable=False)
     prompt_tokens = Column(Integer, default=0)
     completion_tokens = Column(Integer, default=0)
@@ -51,59 +57,74 @@ class LLMUsageLog(Base, TimestampMixin):
     cost_usd = Column(Numeric(10, 6), nullable=True)
 
 
-class AuditLog(Base, TimestampMixin):
+class AuditLog(Base):
     """
-    Immutable event log. Append-only.
+    Immutable event log. Append-only. Partitioned by created_at (monthly, 24-month retention).
     Either admin_user_id OR carmen_user_id is set (never both, never neither).
     """
 
     __tablename__ = "audit_logs"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    tenant_id = Column(String(36), nullable=True, index=True)
-    admin_user_id = Column(String(36), nullable=True, index=True)
-    carmen_user_id = Column(String(36), nullable=True, index=True)
+    id = Column(BigInteger, Identity(always=True), primary_key=True)
+    created_at = Column(
+        DateTime(timezone=True), primary_key=True, nullable=False, default=func.now()
+    )
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
+
+    tenant_id = Column(String(36), nullable=True)
+    admin_user_id = Column(String(36), nullable=True)
+    carmen_user_id = Column(String(36), nullable=True)
     username = Column(String(100), nullable=True)
-    session_id = Column(String(36), nullable=True, index=True)
+    session_id = Column(String(36), nullable=True)
     ip_address = Column(String(45), nullable=True)
-    action = Column(String(50), nullable=False, index=True)
-    resource = Column(String(50), nullable=True, index=True)
-    resource_id = Column(String(255), nullable=True, index=True)
-    target_type = Column(String(50), nullable=True, index=True)
+    action = Column(String(50), nullable=False)
+    resource = Column(String(50), nullable=True)
+    resource_id = Column(String(255), nullable=True)
+    target_type = Column(String(50), nullable=True)
     target_id = Column(String(100), nullable=True)
     before_value = Column(JSON, nullable=True)
     after_value = Column(JSON, nullable=True)
 
 
-class PerformanceLog(Base, TimestampMixin):
-    """HTTP request latency — one row per request via PerformanceMiddleware."""
+class PerformanceLog(Base):
+    """HTTP request latency — one row per request via PerformanceMiddleware. Partitioned monthly."""
 
     __tablename__ = "performance_logs"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    tenant_id = Column(String(36), nullable=True, index=True)
-    endpoint = Column(String(200), nullable=False, index=True)
+    id = Column(BigInteger, Identity(always=True), primary_key=True)
+    created_at = Column(
+        DateTime(timezone=True), primary_key=True, nullable=False, default=func.now()
+    )
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
+
+    tenant_id = Column(String(36), nullable=True)
+    endpoint = Column(String(200), nullable=False)
     method = Column(String(10), nullable=True)
     duration_ms = Column(Float, nullable=False)
     status_code = Column(Integer, nullable=True)
-    carmen_user_id = Column(String(36), nullable=True, index=True)
+    carmen_user_id = Column(String(36), nullable=True)
     resource_id = Column(String(255), nullable=True)
 
 
-class OutboundCallLog(Base, TimestampMixin):
-    """Every HTTP call made to external services (Carmen ERP, OpenRouter, etc.)."""
+class OutboundCallLog(Base):
+    """Every HTTP call to external services (Carmen ERP, OpenRouter). Partitioned monthly."""
 
     __tablename__ = "outbound_call_logs"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    tenant_id = Column(String(36), nullable=True, index=True)
-    service = Column(String(50), nullable=False, index=True)
+    id = Column(BigInteger, Identity(always=True), primary_key=True)
+    created_at = Column(
+        DateTime(timezone=True), primary_key=True, nullable=False, default=func.now()
+    )
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
+
+    tenant_id = Column(String(36), nullable=True)
+    service = Column(String(50), nullable=False)
     url = Column(String(500), nullable=False)
     method = Column(String(10), nullable=True)
     status_code = Column(Integer, nullable=True)
     duration_ms = Column(Float, nullable=True)
     request_size_bytes = Column(Integer, nullable=True)
-    session_id = Column(String(36), nullable=True, index=True)
+    session_id = Column(String(36), nullable=True)
     carmen_user_id = Column(String(36), nullable=True)
 
 

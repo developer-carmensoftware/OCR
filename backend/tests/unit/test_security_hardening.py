@@ -101,8 +101,6 @@ class TestIDORTenantScoping:
                 patch(
                     "app.services.usage_service.fetch_openrouter_pricing", new_callable=AsyncMock
                 ),
-                patch("app.services.cron_service.session_cleanup_loop", new_callable=AsyncMock),
-                patch("app.services.cron_service.pricing_sync_loop", new_callable=AsyncMock),
                 patch("app.lifecycle._perf_flush_loop", new_callable=AsyncMock),
                 patch("app.lifecycle.asyncio.sleep", new_callable=AsyncMock),
                 patch(
