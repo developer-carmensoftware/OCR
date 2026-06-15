@@ -483,3 +483,66 @@ class TestRevokeSessionEndpoint:
             result = await revoke_session(authorization=f"Bearer {token}", db=MagicMock())
 
         assert result == {"ok": True}
+
+
+# ── _upsert_tenant (race-safe create) ─────────────────────────────────────────
+
+
+class TestUpsertTenant:
+    """_upsert_tenant returns an existing tenant or creates one via INSERT … ON
+    CONFLICT DO NOTHING, then re-selects so concurrent first-logins can't duplicate
+    or 500 the /exchange."""
+
+    async def test_existing_tenant_returns_without_insert(self):
+        from app.routers.auth import _upsert_tenant
+
+        existing = MagicMock()
+        sel = MagicMock()
+        sel.scalar_one_or_none.return_value = existing
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=sel)
+
+        result = await _upsert_tenant(db, "host.example.com", "BU01")
+
+        assert result is existing
+        db.execute.assert_called_once()  # SELECT only — no INSERT path
+
+    async def test_new_tenant_inserts_then_reselects(self):
+        from app.routers.auth import _upsert_tenant
+
+        created = MagicMock()  # the tenant returned by the post-insert re-SELECT
+        sel_miss = MagicMock()
+        sel_miss.scalar_one_or_none.return_value = None
+        ins = MagicMock()
+        ins.first.return_value = ("00000000-0000-0000-0000-000000000001",)
+        sel_hit = MagicMock()
+        sel_hit.scalar_one.return_value = created
+
+        db = AsyncMock()
+        db.execute = AsyncMock(side_effect=[sel_miss, ins, sel_hit])
+
+        result = await _upsert_tenant(db, "new.example.com", "BU02")
+
+        assert result is created
+        assert db.execute.call_count == 3  # SELECT(miss) → INSERT → SELECT(re-fetch)
+
+    async def test_concurrent_insert_conflict_still_resolves_to_one_row(self):
+        from app.routers.auth import _upsert_tenant
+
+        # A concurrent txn won the race: our INSERT hits ON CONFLICT (no RETURNING row),
+        # but the re-SELECT still returns the single committed tenant.
+        winner = MagicMock()
+        sel_miss = MagicMock()
+        sel_miss.scalar_one_or_none.return_value = None
+        ins_conflict = MagicMock()
+        ins_conflict.first.return_value = None
+        sel_hit = MagicMock()
+        sel_hit.scalar_one.return_value = winner
+
+        db = AsyncMock()
+        db.execute = AsyncMock(side_effect=[sel_miss, ins_conflict, sel_hit])
+
+        result = await _upsert_tenant(db, "race.example.com", "BU03")
+
+        assert result is winner
+        assert db.execute.call_count == 3

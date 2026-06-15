@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import cast
 
-from sqlalchemy import select, tuple_
+from sqlalchemy import select, text, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -104,58 +104,39 @@ async def _get_cached_quota_rules(tenant_id: str) -> list[_CachedQuota]:
 async def upsert_tenant_quota(db: AsyncSession, tenant_id: str, plan_code: str = "") -> None:
     """
     Ensure the tenant has a lifetime free-trial calls quota (30 total, never resets).
-    Called on every login so the quota row is created on first login automatically.
 
-    # DISABLED: monthly reset path kept for reference — do not re-enable without a migration
-    # plan_row = (await db.execute(select(Plan).where(Plan.code == plan_code))).scalar_one_or_none()
-    # if plan_row is None: ...
-    # ... upsert MONTHLY quota from plan.monthly_call_limit ...
+    Called on every login. The INSERT is idempotent and race-safe — ON CONFLICT DO
+    NOTHING against the partial unique index uq_quota_tenant_period_metric_active means
+    concurrent first-logins resolve to a single quota row instead of one creating a
+    duplicate or failing the whole /exchange with an IntegrityError.
+
+    # The monthly-reset path was retired in migration 215 (monthly → lifetime free trial)
+    # and is no longer created here. Migration 217 sweeps up any stray active monthly row.
     """
     import uuid as _uuid
 
     _FREE_TRIAL_LIMIT = 30
 
-    # Soft-delete any active MONTHLY quota (disabled path) so it doesn't interfere
-    monthly = (
-        await db.execute(
-            select(Quota).where(
-                Quota.tenant_id == tenant_id,
-                Quota.period == QuotaPeriod.MONTHLY,
-                Quota.metric == QuotaMetric.CALLS,
-                Quota.deleted_at.is_(None),
-            )
+    stmt = (
+        pg_insert(Quota)
+        .values(
+            id=str(_uuid.uuid4()),
+            tenant_id=tenant_id,
+            period=QuotaPeriod.LIFETIME,
+            metric=QuotaMetric.CALLS,
+            limit_value=_FREE_TRIAL_LIMIT,
+            soft_warn_pct=0.80,
+            is_hard=True,
+            is_custom=False,
         )
-    ).scalar_one_or_none()
-    if monthly is not None:
-        monthly.deleted_at = _utcnow()  # type: ignore[assignment]
-        _QUOTA_RULES_CACHE.pop(tenant_id, None)
-        logger.info("Disabled monthly quota for tenant=%s (migrated to lifetime)", tenant_id)
-
-    # Ensure a LIFETIME free-trial quota exists
-    lifetime = (
-        await db.execute(
-            select(Quota).where(
-                Quota.tenant_id == tenant_id,
-                Quota.period == QuotaPeriod.LIFETIME,
-                Quota.metric == QuotaMetric.CALLS,
-                Quota.deleted_at.is_(None),
-            )
+        .on_conflict_do_nothing(
+            index_elements=["tenant_id", "period", "metric"],
+            index_where=text("deleted_at IS NULL"),
         )
-    ).scalar_one_or_none()
-
-    if lifetime is None:
-        db.add(
-            Quota(
-                id=str(_uuid.uuid4()),
-                tenant_id=tenant_id,
-                period=QuotaPeriod.LIFETIME,
-                metric=QuotaMetric.CALLS,
-                limit_value=_FREE_TRIAL_LIMIT,
-                soft_warn_pct=0.80,
-                is_hard=True,
-                is_custom=False,
-            )
-        )
+        .returning(Quota.id)
+    )
+    inserted = (await db.execute(stmt)).first()
+    if inserted is not None:
         _QUOTA_RULES_CACHE.pop(tenant_id, None)
         logger.info("Created free-trial quota: tenant=%s limit=%d", tenant_id, _FREE_TRIAL_LIMIT)
     else:
