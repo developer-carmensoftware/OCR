@@ -1,10 +1,16 @@
 import { useState } from 'react'
-import { History, Receipt, X, MessageCircle, Phone, Mail, Check } from 'lucide-react'
+import { History, X, MessageCircle, Phone, Mail } from 'lucide-react'
 import AppHeader from '../components/common/AppHeader'
 import DarkModeToggle from '../components/common/DarkModeToggle'
-import { PlanCard, EnterpriseBand, PackList, CheckoutFlow } from '../components/pricing'
+import {
+  PlanCard,
+  FreePlanCard,
+  EnterpriseBand,
+  PackList,
+  CheckoutFlow,
+} from '../components/pricing'
 import { usePricingCatalog, loadPersistedCheckout, type CheckoutSession } from '../hooks/credits'
-import { PLAN_META, PLAN_INCLUDES, SALES_CONTACT } from '../constants/billing'
+import { PLAN_META, SALES_CONTACT } from '../constants/billing'
 import type { CreditPack } from '../lib/api/credits'
 import '../styles/pages/pricing.css'
 
@@ -67,7 +73,7 @@ export default function Pricing() {
 
   return (
     <div className="pricing-page">
-      <AppHeader moduleName="Plans & Credits" eyebrow="Carmen Cloud · OCR Module">
+      <AppHeader moduleName="Plans & Credits" eyebrow="Carmen Cloud · AI Automation">
         <a className="pricing-history-link" href="#/pricing/orders">
           <History size={15} /> <span>Order history</span>
         </a>
@@ -85,60 +91,43 @@ export default function Pricing() {
         />
       ) : (
         <main className="pricing-main">
+          <header className="pricing-hero">
+            <h2 className="pricing-title">Start free with 30 documents</h2>
+            <p className="pricing-subtitle">Pick the plan that fits your business.</p>
+          </header>
           {error ? (
             <div className="pricing-error">Failed to load plans: {error}</div>
           ) : loading ? (
-            <div className="pricing-skeleton-grid pricing-skeleton-grid--3" aria-hidden="true">
-              {Array.from({ length: 3 }).map((_, i) => (
+            <div className="pricing-skeleton-grid pricing-skeleton-grid--4" aria-hidden="true">
+              {Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="pricing-skeleton-card" />
               ))}
             </div>
           ) : (
             <>
-              <section className="pricing-section" aria-labelledby="plans-heading">
-                <div className="pricing-section-head">
-                  <h2 id="plans-heading" className="pricing-section-title">
-                    Monthly plans
-                  </h2>
-                  <p className="pricing-section-sub">
-                    Same features across every tier — pick the monthly document quota you need. New
-                    accounts start with a 30-document trial.
-                  </p>
-                </div>
-                <div className="plan-grid plan-grid--3">
+              <section className="pricing-section" aria-label="Plans">
+                <div className="plan-grid plan-grid--4">
+                  <FreePlanCard />
                   {plans.map(pack => (
                     <PlanCard
                       key={pack.code}
                       pack={pack}
-                      meta={PLAN_META[pack.code] ?? { name: pack.code, tagline: '' }}
+                      meta={PLAN_META[pack.code] ?? { name: pack.code }}
                       onSelect={startCheckout}
                     />
                   ))}
-                </div>
-
-                <div className="plan-includes">
-                  <span className="plan-includes-label">Every plan includes</span>
-                  <ul className="plan-includes-list">
-                    {PLAN_INCLUDES.map(f => (
-                      <li key={f}>
-                        <Check size={14} className="plan-feature-check" />
-                        <span>{f}</span>
-                      </li>
-                    ))}
-                  </ul>
                 </div>
 
                 <EnterpriseBand onContact={() => setShowContact(true)} />
               </section>
 
               <section className="pricing-section" aria-labelledby="packs-heading">
-                <div className="pricing-section-head">
+                <div className="pricing-section-head pricing-section-head--center">
                   <h2 id="packs-heading" className="pricing-section-title">
-                    <Receipt size={18} className="pricing-section-icon" /> Top-up credits (one-time)
+                    Top-up credits
                   </h2>
-                  <p className="pricing-section-sub">
-                    Used once your monthly quota runs out. Credits never expire.
-                  </p>
+                  <p className="pricing-section-sub">Works with any plan. Credits never expire.</p>
+                  <p className="pricing-note">1 credit = 1 document</p>
                 </div>
                 <PackList packs={packs} onSelect={startCheckout} />
               </section>

@@ -1,4 +1,4 @@
-import { Coins, Plus } from 'lucide-react'
+import { Coins } from 'lucide-react'
 import { formatThb, formatRate } from '../../lib/money'
 import { PACK_META, perDoc } from '../../constants/billing'
 import type { CreditPack } from '../../lib/api/credits'
@@ -9,44 +9,40 @@ interface Props {
 }
 
 /**
- * Top-up packs as a compact comparison list — deliberately NOT the same card
- * grid as the plans, so "buy once, never expires" reads differently from
- * "subscribe monthly".
+ * Top-up packs as compact clickable cards — deliberately NOT the tier card
+ * grid, so "buy once" reads differently from "subscribe monthly". The credit
+ * count leads; the whole card starts checkout.
  */
 export default function PackList({ packs, onSelect }: Props) {
   return (
-    <ul className="pack-list">
+    <div className="pack-grid">
       {packs.map(pack => {
         const meta = PACK_META[pack.code]
         const rate = perDoc(pack.price_thb, pack.credits)
         return (
-          <li key={pack.code} className="pack-row">
-            <div className="pack-row-lead">
-              <span className="pack-row-icon">
-                <Coins size={18} />
+          <button
+            type="button"
+            key={pack.code}
+            className="pack-card"
+            onClick={() => onSelect(pack)}
+          >
+            <span className="pack-card-icon">
+              <Coins size={18} />
+            </span>
+            <span className="pack-card-id">
+              <span className="pack-card-credits text-mono">{pack.credits.toLocaleString()}</span>
+              <span className="pack-card-unit">
+                credits
+                {meta?.badge && <span className="pack-card-badge">{meta.badge}</span>}
               </span>
-              <div className="pack-row-id">
-                <span className="pack-row-name">
-                  {meta?.name ?? pack.code}
-                  {meta?.badge && <span className="pack-row-badge">{meta.badge}</span>}
-                </span>
-                <span className="pack-row-credits text-mono">
-                  {pack.credits.toLocaleString()} credits
-                </span>
-              </div>
-            </div>
-            <span className="pack-row-rate text-mono">฿{formatRate(rate)}/doc</span>
-            <span className="pack-row-price text-mono">฿{formatThb(pack.price_thb)}</span>
-            <button
-              type="button"
-              className="btn btn-outline pack-row-btn"
-              onClick={() => onSelect(pack)}
-            >
-              <Plus size={14} /> Top up
-            </button>
-          </li>
+            </span>
+            <span className="pack-card-price">
+              <span className="pack-card-amount text-mono">฿{formatThb(pack.price_thb)}</span>
+              <span className="pack-card-rate text-mono">฿{formatRate(rate)}/doc</span>
+            </span>
+          </button>
         )
       })}
-    </ul>
+    </div>
   )
 }

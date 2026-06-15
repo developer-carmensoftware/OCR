@@ -111,7 +111,7 @@ export default function OrderHistory() {
 
   return (
     <div className="pricing-page">
-      <AppHeader moduleName="Order History" eyebrow="Carmen Cloud · OCR Module" />
+      <AppHeader moduleName="Order History" eyebrow="Carmen Cloud · AI Automation" />
 
       <main className="orders-main">
         <div className="orders-head">

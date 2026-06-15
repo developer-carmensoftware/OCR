@@ -11,8 +11,8 @@
 export interface PackPresentation {
   /** Display name, e.g. 'Standard'. */
   name: string
-  /** One-line audience/value statement under the name. */
-  tagline: string
+  /** Optional one-liner. The catalog cards intentionally render no taglines. */
+  tagline?: string
   /** Optional ribbon, e.g. 'Popular'. */
   badge?: string
   /** Visually elevate this card as the recommended choice. */
@@ -22,40 +22,54 @@ export interface PackPresentation {
 /**
  * Subscription tiers — billed per month, document allowance resets monthly.
  * The ONLY thing that differs between tiers is the monthly quota (and the
- * resulting per-document price). The shared capabilities live in PLAN_INCLUDES
- * so they're stated once, not duplicated as fake per-tier differentiators.
+ * resulting per-document price). PLAN_INCLUDES renders identically inside
+ * every card so "same features, different quota" is explicit, not implied.
+ * Exactly one tier carries a badge + highlight: the anchor we want chosen.
  */
 export const PLAN_META: Record<string, PackPresentation> = {
   sub_starter: {
     name: 'Starter',
-    tagline: 'For small teams getting started',
   },
   sub_standard: {
     name: 'Standard',
-    tagline: 'Best value for monthly bookkeeping',
     badge: 'Popular',
     highlight: true,
   },
   sub_pro: {
     name: 'Professional',
-    tagline: 'For high-volume accounting firms',
-    badge: 'Recommended',
   },
 }
 
-/** Capabilities every paid plan (and top-up) includes — stated once, below the grid. */
+/**
+ * Capabilities every paid plan (and top-up) includes — rendered inside each
+ * plan card. Deliberately module-agnostic (no module names: new modules must
+ * not require copy edits here) and OCR-free ("AI scan" is the product term).
+ */
 export const PLAN_INCLUDES = [
-  'Credit-card & AP invoice OCR',
-  'Auto-post to Carmen Cloud',
-  'Multi-page PDF support',
-  'Email support',
+  'AI document scan',
+  'AI account mapping',
+  'Auto-post to Carmen',
+  'Thai & English documents',
 ]
+
+/**
+ * The free trial presented as a catalog card. Not a purchasable pack — the
+ * 30-document trial is granted automatically to new accounts; this card just
+ * makes "start free" concrete next to the paid tiers.
+ */
+export const FREE_PLAN = {
+  name: 'Free',
+  credits: 30,
+  quotaUnit: 'documents',
+  features: ['All features included', 'No payment needed', 'Upgrade anytime'],
+  ctaLabel: 'Start scanning',
+}
 
 /** One-time top-up packs — credits never expire, used after the monthly quota. */
 export const PACK_META: Record<string, PackPresentation> = {
-  pack_small: { name: 'Small', tagline: 'Top up when your quota runs low' },
-  pack_medium: { name: 'Medium', tagline: 'For busier months', badge: 'Best value' },
-  pack_large: { name: 'Large', tagline: 'Lowest price per document' },
+  pack_small: { name: 'Small' },
+  pack_medium: { name: 'Medium', badge: 'Best value' },
+  pack_large: { name: 'Large' },
 }
 
 /**
@@ -68,7 +82,6 @@ export const ENTERPRISE = {
   tagline: 'For large firms & accounting offices',
   features: [
     'Everything in Professional',
-    'On-premise / local deployment',
     'SLA, onboarding & dedicated support',
     'Monthly invoicing',
   ],

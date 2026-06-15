@@ -41,10 +41,10 @@
 .pricing-hero {
   text-align: center;
   max-width: 660px;
-  margin: 0 auto 2.5rem;
+  margin: 0 auto 3rem;
 }
 .pricing-title {
-  font-size: clamp(1.5rem, 3.5vw, 2rem);
+  font-size: clamp(1.7rem, 4vw, 2.2rem);
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1.2;
@@ -55,7 +55,8 @@
   margin-top: 0.75rem;
   font-size: 0.95rem;
   line-height: 1.65;
-  color: var(--text-3);
+  /* --text-2, not -3: this sits on the page body (L 0.9), where -3 fails AA. */
+  color: var(--text-2);
   text-wrap: pretty;
 }
 
@@ -128,27 +129,40 @@
 
 /* ─── Sections ─── */
 .pricing-section {
-  margin-bottom: 2.75rem;
+  margin-bottom: 3.5rem;
 }
 .pricing-section-head {
   margin-bottom: 1.25rem;
 }
 .pricing-section-title {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
   font-size: 1.15rem;
   font-weight: 700;
   letter-spacing: -0.015em;
   color: var(--text);
 }
-.pricing-section-icon {
-  color: var(--text-3);
-}
 .pricing-section-sub {
   margin-top: 0.25rem;
   font-size: 0.85rem;
-  color: var(--text-3);
+  color: var(--text-2);
+}
+/* Centered marketing variant — used by the top-up section. */
+.pricing-section-head--center {
+  text-align: center;
+  margin-bottom: 1.75rem;
+}
+.pricing-section-head--center .pricing-section-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.pricing-section-head--center .pricing-section-sub {
+  margin-top: 0.35rem;
+  font-size: 0.95rem;
+}
+.pricing-note {
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--text-2);
 }
 
 /* ─── Plan cards ─── */
@@ -158,14 +172,19 @@
   gap: 1rem;
   align-items: stretch;
 }
-/* 3 tiers read best as a centered trio, not stretched edge-to-edge. */
-.plan-grid--3 {
-  grid-template-columns: repeat(3, 1fr);
-  max-width: 860px;
-  margin: 0 auto;
+/* Free + 3 paid tiers: 4-up on desktop, 2x2 on tablet, stacked on mobile. */
+.plan-grid--4 {
+  grid-template-columns: repeat(4, 1fr);
 }
-@media (max-width: 720px) {
-  .plan-grid--3 {
+@media (max-width: 1000px) {
+  .plan-grid--4 {
+    grid-template-columns: 1fr 1fr;
+    max-width: 640px;
+    margin: 0 auto;
+  }
+}
+@media (max-width: 640px) {
+  .plan-grid--4 {
     grid-template-columns: 1fr;
     max-width: 380px;
   }
@@ -179,7 +198,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
-  text-align: center;
+  text-align: left;
   transition:
     transform var(--dur-base) var(--ease),
     box-shadow var(--dur-base) var(--ease),
@@ -206,8 +225,30 @@
   border-radius: var(--radius-pill);
   box-shadow: var(--shadow-primary);
 }
-.plan-card-head {
-  min-height: 3.4rem;
+/* Tinted icon chip — the one playful element per card. */
+.plan-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  margin-bottom: 0.85rem;
+}
+.plan-icon--free {
+  background: var(--muted);
+  color: var(--text-2);
+}
+.plan-icon--starter {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+.plan-icon--standard {
+  background: var(--teal-light);
+  color: var(--teal);
+}
+.plan-icon--pro {
+  background: var(--amber-light);
+  color: var(--amber-text);
 }
 .plan-name {
   font-size: 1.15rem;
@@ -215,79 +256,20 @@
   letter-spacing: -0.015em;
   color: var(--text);
 }
-.plan-tagline {
-  margin-top: 0.2rem;
-  font-size: 0.8rem;
-  line-height: 1.5;
-  color: var(--text-3);
-  text-wrap: pretty;
-}
-.plan-quota {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.1rem;
-  margin-top: 1.25rem;
-  padding: 0.9rem;
-  background: var(--muted);
-  border-radius: var(--radius-md);
-}
-.plan-quota-value {
-  font-size: 1.7rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
-  color: var(--text);
-}
-.is-highlight .plan-quota {
-  background: var(--primary-light);
-}
-.is-highlight .plan-quota-value {
-  color: var(--primary);
-}
-.plan-quota-unit {
-  font-size: 0.72rem;
+.plan-quota-line {
+  margin-top: 0.45rem;
+  font-size: 0.92rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-3);
-}
-.plan-price {
-  display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 0.35rem;
-  margin-top: 1.1rem;
-}
-.plan-price-amount {
-  font-size: 1.8rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--text);
-}
-.plan-price-period {
-  font-size: 0.85rem;
-  color: var(--text-3);
-}
-.plan-price-custom {
-  font-size: 1.15rem;
-  font-weight: 700;
   color: var(--text-2);
-}
-.plan-rate {
-  margin-top: 0.3rem;
-  font-size: 0.78rem;
-  color: var(--text-3);
 }
 .plan-features {
   list-style: none;
-  margin: 1.15rem 0;
-  padding: 1.1rem 0 0;
+  margin: 1rem 0 0;
+  padding: 1rem 0 0;
   border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
-  flex: 1;
 }
 .plan-features li {
   display: flex;
@@ -297,14 +279,44 @@
   line-height: 1.45;
   color: var(--text-2);
 }
-.plan-feature-check {
+/* Filled-circle check bullet (shared with the enterprise band). */
+.plan-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
   margin-top: 1px;
-  color: var(--emerald);
+  border-radius: 50%;
+  background: var(--emerald);
+  color: #fff;
 }
-.plan-spacer {
-  flex: 1;
-  min-height: 1.25rem;
+/* Price anchors the bottom of the card, big, right above the CTA. */
+.plan-price {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 0.35rem;
+  margin-top: auto;
+  padding-top: 1.25rem;
+}
+.plan-price-amount {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--text);
+}
+.plan-price-period {
+  font-size: 0.85rem;
+  color: var(--text-3);
+}
+.plan-rate {
+  margin-top: 0.3rem;
+  margin-bottom: 1rem;
+  font-size: 0.78rem;
+  color: var(--text-3);
 }
 .plan-cta {
   width: 100%;
@@ -312,49 +324,16 @@
   text-decoration: none;
 }
 
-/* ─── Shared "every plan includes" strip ─── */
-.plan-includes {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 1.5rem;
-  margin-top: 1.25rem;
-  padding: 1rem 1.35rem;
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-}
-.plan-includes-label {
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-3);
-}
-.plan-includes-list {
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 1.5rem;
-}
-.plan-includes-list li {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.82rem;
-  color: var(--text-2);
-}
-
-/* ─── Enterprise band (full-width) ─── */
+/* ─── Enterprise band (full-width, deliberately quieter than the plans) ─── */
 .enterprise-band {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 2rem;
-  margin-top: 1rem;
-  padding: 1.5rem 1.75rem;
-  background: var(--primary-light);
-  border: 1px solid var(--primary-mid);
+  margin-top: 1.5rem;
+  padding: 1.25rem 1.5rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
 }
 .enterprise-head {
@@ -372,9 +351,9 @@
   padding: 0.22rem 0.7rem;
   font-size: 0.7rem;
   font-weight: 600;
-  color: var(--primary);
-  background: var(--card-bg);
-  border: 1px solid var(--primary-mid);
+  color: var(--text-2);
+  background: var(--muted);
+  border: 1px solid var(--border);
   border-radius: var(--radius-pill);
 }
 .enterprise-tagline {
@@ -387,7 +366,7 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.4rem 1.5rem;
-  margin-top: 1rem;
+  margin-top: 0.75rem;
 }
 .enterprise-features li {
   display: flex;
@@ -412,36 +391,44 @@
   white-space: nowrap;
 }
 
-/* ─── Pack list (top-up) ─── */
-.pack-list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-}
-.pack-row {
+/* ─── Top-up packs: compact clickable cards ─── */
+.pack-grid {
   display: grid;
-  grid-template-columns: 1fr auto auto auto;
-  align-items: center;
-  gap: 1.25rem;
-  padding: 0.9rem 1.25rem;
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  transition:
-    border-color var(--dur-base) var(--ease),
-    box-shadow var(--dur-base) var(--ease);
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
 }
-.pack-row:hover {
-  border-color: var(--border-hi);
-  box-shadow: var(--shadow-sm);
+@media (max-width: 860px) {
+  .pack-grid {
+    grid-template-columns: 1fr;
+    max-width: 420px;
+    margin: 0 auto;
+  }
 }
-.pack-row-lead {
+.pack-card {
   display: flex;
   align-items: center;
   gap: 0.85rem;
+  padding: 1rem 1.15rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform var(--dur-base) var(--ease),
+    border-color var(--dur-base) var(--ease),
+    box-shadow var(--dur-base) var(--ease);
 }
-.pack-row-icon {
+.pack-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--primary);
+  box-shadow: var(--shadow-md);
+}
+.pack-card:active {
+  transform: scale(0.98);
+}
+.pack-card-icon {
   display: grid;
   place-items: center;
   width: 38px;
@@ -451,20 +438,26 @@
   color: var(--amber-text);
   flex-shrink: 0;
 }
-.pack-row-id {
+.pack-card-id {
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
 }
-.pack-row-name {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.92rem;
-  font-weight: 600;
+.pack-card-credits {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
   color: var(--text);
 }
-.pack-row-badge {
+.pack-card-unit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  color: var(--text-3);
+}
+.pack-card-badge {
   padding: 0.1rem 0.5rem;
   font-size: 0.64rem;
   font-weight: 700;
@@ -473,23 +466,41 @@
   background: var(--emerald-light);
   border-radius: var(--radius-pill);
 }
-.pack-row-credits {
-  font-size: 0.78rem;
-  color: var(--text-3);
+.pack-card-price {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+  margin-left: auto;
 }
-.pack-row-rate {
-  font-size: 0.78rem;
-  color: var(--text-3);
-}
-.pack-row-price {
-  font-size: 1.05rem;
+.pack-card-amount {
+  font-size: 1rem;
   font-weight: 700;
   color: var(--text);
-  min-width: 80px;
-  text-align: right;
 }
-.pack-row-btn {
-  white-space: nowrap;
+.pack-card-rate {
+  font-size: 0.7rem;
+  color: var(--text-3);
+}
+
+/* ─── Trust strip (quiet reassurance, closes the page) ─── */
+.pricing-trust {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem 1.75rem;
+  margin-top: 1rem;
+}
+.pricing-trust-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+.pricing-trust-item svg {
+  color: var(--text-3);
+  flex-shrink: 0;
 }
 
 /* ─── Skeleton / error ─── */
@@ -498,8 +509,24 @@
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 1rem;
 }
+.pricing-skeleton-grid--4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+@media (max-width: 1000px) {
+  .pricing-skeleton-grid--4 {
+    grid-template-columns: 1fr 1fr;
+    max-width: 640px;
+    margin: 0 auto;
+  }
+}
+@media (max-width: 640px) {
+  .pricing-skeleton-grid--4 {
+    grid-template-columns: 1fr;
+    max-width: 380px;
+  }
+}
 .pricing-skeleton-card {
-  height: 320px;
+  height: 430px;
   border-radius: var(--radius-lg);
   background: linear-gradient(100deg, var(--muted) 30%, var(--gray-100) 50%, var(--muted) 70%);
   background-size: 200% 100%;
@@ -1266,26 +1293,6 @@
   .checkout-fields,
   .checkout-form-skeleton {
     grid-template-columns: 1fr;
-  }
-  .pack-row {
-    grid-template-columns: 1fr auto;
-    grid-template-areas:
-      'lead price'
-      'rate btn';
-    gap: 0.6rem 1rem;
-  }
-  .pack-row-lead {
-    grid-area: lead;
-  }
-  .pack-row-price {
-    grid-area: price;
-  }
-  .pack-row-rate {
-    grid-area: rate;
-  }
-  .pack-row-btn {
-    grid-area: btn;
-    justify-self: end;
   }
   .pf-parties {
     grid-template-columns: 1fr;

@@ -1,4 +1,8 @@
 /* ─── USAGE / QUOTA WIDGET ─── */
+.ui-quota--link {
+  text-decoration: none;
+}
+
 .ui-quota {
   display: flex;
   align-items: stretch;
