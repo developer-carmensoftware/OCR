@@ -3,7 +3,7 @@
 **Database:** PostgreSQL 17.6 via Supabase (region: ap-southeast-1, project: ycykjisvvrrbgeiirqre)
 **Driver:** `asyncpg` (via SQLAlchemy 2.x async) — Supavisor session-mode pooler port 5432, `statement_cache_size=0`
 **ORM:** SQLAlchemy 2.x async (`backend/app/models/`)
-**Migrations:** Supabase CLI — `supabase/migrations/*.sql` (7 files). Apply with `supabase db push`.
+**Migrations:** Supabase CLI — `supabase/migrations/*.sql` (8 files). Apply with `supabase db push`.
 **Schema reset:** `DROP SCHEMA public CASCADE` in Supabase SQL Editor, then `supabase db push`
 
 ---
@@ -30,9 +30,9 @@
 │  DATA PLANE  — OCR / AP processes write here                        │
 │                                                                     │
 │  ocr_sessions · ocr_tasks                                           │
-│  credit_cards · credit_card_transactions                            │
+│  credit_cards (header only — line items not persisted)              │
 │  ap_invoices                                                        │
-│  mapping_history · correction_feedback                              │
+│  correction_feedback                                               │
 └─────────────────────────────────────────────────────────────────────┘
                            │
                            ▼
@@ -180,20 +180,11 @@ Extracted header data from a credit card bank statement.
 
 **Duplicate check:** `WHERE tenant_id=X AND bank_code=Z AND doc_no=N AND submitted_at IS NOT NULL AND deleted_at IS NULL`
 
-Relationship: `→ credit_card_transactions` (1:N, ordered by `sort_order`)
+**1:1 with `ocr_tasks`** enforced by partial unique index `uq_credit_cards_task (task_id) WHERE deleted_at IS NULL`.
 
----
-
-### `credit_card_transactions`
-
-One row per line item from a bank statement. Replaces the old `credit_cards.transactions` JSON blob.
-
-| Key columns | Notes |
-|---|---|
-| `credit_card_id` FK → credit_cards | |
-| `tx_date` | `DATE` — parsed via `utils.date_parsing.parse_doc_date` |
-| `description`, `amount`, `tx_type` | |
-| `sort_order` | Preserves LLM output order |
+**Line items are NOT persisted** — like AP invoices, credit-card transactions follow the
+extract-display-only pattern (Carmen ERP is source of truth). They are returned transiently
+in the API response (`CreditCardTransactionSchema`) and never written to the DB.
 
 ---
 
@@ -209,6 +200,8 @@ Metadata of an AP Invoice OCR job. **Line items are NOT stored** — Carmen ERP 
 | `submitted_at` | NULL = draft |
 | `carmen_user_id` | |
 
+**1:1 with `ocr_tasks`** enforced by partial unique index `uq_ap_invoices_task (task_id) WHERE deleted_at IS NULL`.
+
 ---
 
 ### `correction_feedback`
@@ -223,7 +216,7 @@ User corrections of LLM-extracted fields → drives `correction_service.py` whic
 | `value_embedding` | `extensions.vector(1536)` — HNSW cosine index for nearest-neighbour prompt hints (NULL until embedded) |
 | `carmen_user_id` | who corrected |
 
-Partial unique index (active only): `(tenant_id, doc_no, field_name) WHERE deleted_at IS NULL`
+Partial unique index (active only): `(tenant_id, bank_code, doc_no, field_name) WHERE deleted_at IS NULL` — `bank_code` is in scope because `doc_no` is not unique across banks. The upsert in `correction_service.py` matches this index via index inference (not `ON CONSTRAINT`, which cannot target a partial unique index).
 HNSW index: `(value_embedding extensions.vector_cosine_ops) WHERE value_embedding IS NOT NULL`
 
 **Error rate formula** (`correction_service.py`):
@@ -493,33 +486,29 @@ Real-time counter, incremented by `usage_service.increment_quota()`.
 
 ## 9. Migration System
 
-**Append-only list** in `database.py → _MIGRATIONS`. Never reorder, never rename applied entries.
+Schema is owned by **Supabase CLI** migrations in `supabase/migrations/*.sql`, applied with
+`supabase db push`. The old Python `_MIGRATIONS` runner (`backend/app/migrations.py`) was
+deleted in the Supabase-native cutover. Migration files are timestamp-prefixed and applied
+in lexical order; never edit or reorder an already-applied file.
 
-```python
-_MIGRATIONS = [
-    # Squashed history markers (no-op — kept for DBs that already recorded them)
-    ("001_squashed_initial_schema", None),
-    ("199_pg_baseline",             None),    # PostgreSQL migration baseline
-    # Live migrations (200+)
-    ("200_pg_seed_control_plane",   fn),      # seed roles, permissions, modules, banks, plans
-    ("201_uuid_native_type",        None),    # PGUUID columns — applied via create_all()
-    ("202_partial_unique_indexes",  None),    # partial indexes — applied via create_all()
-    ("203_partition_log_tables",    None),    # marker only — partitioning removed
-    ("204_analytics_tables",        None),    # daily_model_cost + monthly_usage_summary
-]
-```
+Current files (greenfield — squashed into one authoritative baseline):
 
-**Fresh install procedure:**
-```bash
-cd backend
-python reset_db.py   # DROP/CREATE SCHEMA public → create_all() → migrations → seed
+```text
+20260615000000_v1_baseline.sql          -- all plain tables (identity → analytics)
+20260615000001_partition_log_tables.sql -- 4 log tables, pg_partman monthly partitioning
+20260615000002_seed_control_plane.sql   -- roles, permissions, modules, banks, plans
+20260615000003_seed_billing_config.sql  -- credit packs + billing system_configs
+20260615000004_cron_jobs.sql            -- pg_cron jobs + pg_net + SQL aggregate fns
+20260615000005_rls_deny_all.sql         -- RLS deny-all defense-in-depth
+20260615000006_pgvector_corrections.sql -- value_embedding column + HNSW index
+20260615000007_integrity_hardening.sql  -- CHECK constraints, 1:1 task_id, correction scope
 ```
 
 **Adding a new migration:**
-1. Write `async def _m<N>_<description>(conn: AsyncConnection) -> None:`
-2. Append `("N_description", _m<N>_<description>)` to `_MIGRATIONS`
-3. Use `try/except` for DDL that may already exist (idempotent)
-4. **Never** modify or reorder existing entries
+1. `supabase migration new <description>` → creates a new timestamp-prefixed file
+2. Write idempotent DDL (`IF NOT EXISTS`; for constraints use the `DO $$ … pg_constraint $$` guard)
+3. `supabase db push` to apply
+4. **Never** modify or reorder an already-applied file
 
 ---
 
@@ -557,7 +546,7 @@ All jobs recorded in `job_runs` table. Scheduler runs inside FastAPI event loop 
 ```
 1. INSERT INTO modules (id, display_name, ...) VALUES ('my_module', ...)
 2. Create ORM models inheriting TenantFKMixin + TimestampMixin + SoftDeleteMixin
-3. Add migrations (append to _MIGRATIONS)
+3. Add migrations (`supabase migration new <name>` → DDL → `supabase db push`)
 4. Add module_id to OCRTask creation in the new router
 5. Add check_quota("my_module") at start of extract endpoint
 6. Add quota tracking in log_llm_usage calls

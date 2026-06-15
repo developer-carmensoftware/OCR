@@ -10,7 +10,7 @@ import logging
 import time
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -110,7 +110,9 @@ async def get_correction_hints(
 def build_correction_upsert(feedback: CorrectionFeedbackRequest, session: SessionInfo):
     """Return a Postgres INSERT … ON CONFLICT DO UPDATE statement for a single correction.
 
-    Unique constraint: uq_correction_scope_doc_field (tenant_id, doc_no, field_name).
+    Conflict target: partial unique index uq_correction_scope_active
+    (tenant_id, bank_code, doc_no, field_name) WHERE deleted_at IS NULL. A partial
+    unique index can only be matched via index inference, not ON CONSTRAINT.
     Returns CorrectionFeedback.id via RETURNING so the caller can re-fetch the row.
     """
     stmt = pg_insert(CorrectionFeedback).values(
@@ -123,7 +125,8 @@ def build_correction_upsert(feedback: CorrectionFeedbackRequest, session: Sessio
         carmen_user_id=session.carmen_user_id or None,
     )
     return stmt.on_conflict_do_update(
-        constraint="uq_correction_scope_doc_field",
+        index_elements=["tenant_id", "bank_code", "doc_no", "field_name"],
+        index_where=text("deleted_at IS NULL"),
         set_={
             "bank_code": feedback.bank_code,
             "original_value": feedback.original_value,
