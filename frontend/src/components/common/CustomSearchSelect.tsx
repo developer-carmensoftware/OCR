@@ -143,7 +143,7 @@ export default function CustomSearchSelect({
     ? [selectedOption.name, selectedOption.name2].filter(Boolean).join(' · ')
     : null
 
-  const isAISuggested = !isOpen && !!suggestedValue
+  const isAISuggested = !isOpen && !!suggestedValue && !value
   const displayValue = isOpen ? searchTerm : isAISuggested ? (suggestedValue ?? '') : value || ''
 
   const suggestedOption = suggestedValue ? options.find(o => o.code === suggestedValue) : null

@@ -14,7 +14,7 @@ Billing model:
 
 import logging
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -89,10 +89,14 @@ async def _consume_credits(db: AsyncSession, tenant_id: str, increment: int) -> 
     )
 
 
-async def consume_document(increment: int = 1) -> None:
+async def consume_document(increment: int = 1) -> str | None:
     """
     Charge one document against the current tenant: free monthly quota first,
     then top-up credits. Raises InsufficientCredits (→ 402) when both are spent.
+
+    Returns what was charged — "free", "credit", or None (nothing charged:
+    fail-open / no enforceable quota). Pass the return value to
+    refund_document() to reverse the charge if the extraction later fails.
 
     Fail-open on missing quota / infra errors (mirrors consume_quota) so a
     transient DB issue never blocks extraction — only an explicit out-of-credits
@@ -100,12 +104,12 @@ async def consume_document(increment: int = 1) -> None:
     """
     tenant_id = _ctx()
     if not tenant_id:
-        return
+        return None
     try:
         rules = await _get_cached_quota_rules(tenant_id)
         monthly = next((q for q in rules if q.period == QuotaPeriod.LIFETIME), None)
         if monthly is None or monthly.limit_value <= 0:
-            return  # no enforceable free quota → fail-open (legacy no-quota behavior)
+            return None  # no enforceable free quota → fail-open (legacy no-quota behavior)
 
         async with async_session() as db:
             async with db.begin():
@@ -115,12 +119,67 @@ async def consume_document(increment: int = 1) -> None:
                         tenant_id,
                         monthly.limit_value,
                     )
-                    return
+                    return "free"
                 await _consume_credits(db, tenant_id, increment)
+                return "credit"
     except InsufficientCredits:
         raise
     except Exception as exc:
         logger.exception("consume_document failed: %s", exc)
+        return None
+
+
+async def _refund_free(db: AsyncSession, tenant_id: str, increment: int) -> None:
+    """Give back a free slot consumed this period (floored at 0)."""
+    rules = await _get_cached_quota_rules(tenant_id)
+    monthly = next((q for q in rules if q.period == QuotaPeriod.LIFETIME), None)
+    if monthly is None:
+        return
+    await db.execute(
+        update(QuotaUsage)
+        .where(
+            QuotaUsage.quota_id == monthly.id, QuotaUsage.period_key == _period_key(monthly.period)
+        )
+        .values(used=func.greatest(QuotaUsage.used - increment, 0), last_updated_at=_utcnow())
+    )
+
+
+async def refund_document(charged: str | None, increment: int = 1) -> None:
+    """Reverse a consume_document() charge after a downstream failure (e.g. the LLM
+    call errored/timed out), so a failed extraction never burns the user's document.
+
+    `charged` is the value returned by consume_document(). No-op for None.
+    Fail-open: a refund failure is logged, never raised — it must not mask the
+    original error that triggered the refund.
+    """
+    if charged is None:
+        return
+    tenant_id = _ctx()
+    if not tenant_id:
+        return
+    try:
+        async with async_session() as db:
+            async with db.begin():
+                if charged == "free":
+                    await _refund_free(db, tenant_id, increment)
+                elif charged == "credit":
+                    await grant_credits(
+                        db,
+                        tenant_id,
+                        increment,
+                        CreditLedgerReason.REFUND,
+                        ref=current_document_ref.get() or None,
+                        note="extraction failed",
+                    )
+                else:
+                    logger.warning(
+                        "refund_document: unexpected charged value %r — skipped", charged
+                    )
+        logger.info(
+            "document refunded: tenant=%s charged=%s amount=%d", tenant_id, charged, increment
+        )
+    except Exception as exc:
+        logger.exception("refund_document failed: %s", exc)
 
 
 async def grant_credits(

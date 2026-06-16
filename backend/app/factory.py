@@ -95,6 +95,58 @@ def create_app(lifespan=None) -> FastAPI:
     )
     app.add_middleware(CORSLogMiddleware)
 
+    def _error_response(exc: Exception, status: int) -> JSONResponse:
+        content: dict[str, Any] = {"detail": str(exc)}
+        error_code = getattr(exc, "code", None)
+        if error_code:
+            content["code"] = error_code
+        if settings.app_debug:
+            content["traceback"] = traceback.format_exc()
+        headers: dict[str, str] | None = None
+        if isinstance(exc, (RequestRateLimitExceeded, LLMCapacityError)):
+            headers = {"Retry-After": str(exc.retry_after)}
+        return JSONResponse(status_code=status, content=content, headers=headers)
+
+    def _make_handler(status: int | None):
+        async def handler(request: Request, exc: Exception):
+            # HTTPException carries its own status; typed exceptions use the map.
+            code = getattr(exc, "status_code", None) if status is None else status
+            code = code or 500
+            # Expected client errors (4xx) are routine — log quietly, no stack trace.
+            # Server-side faults (5xx) keep full traceback + Sentry capture.
+            if code >= 500:
+                logger.error(
+                    "Handled %s: %s %s\n%s",
+                    type(exc).__name__,
+                    request.method,
+                    request.url,
+                    traceback.format_exc(),
+                )
+                capture(exc)
+            else:
+                logger.info(
+                    "Client error %s (%s): %s %s",
+                    code,
+                    type(exc).__name__,
+                    request.method,
+                    request.url,
+                )
+            return _error_response(exc, code)
+
+        return handler
+
+    # Register a specific handler per typed exception so it is resolved by the
+    # inner ExceptionMiddleware (matched by MRO — subclasses fall through to the
+    # nearest registered ancestor, e.g. PdfPasswordRequired → ValidationError).
+    # This keeps the exception from propagating through the BaseHTTPMiddleware
+    # stack and being re-raised/duplicated in the server log.
+    for exc_type, status in _EXCEPTION_STATUS:
+        if exc_type is HTTPException:
+            # Let FastAPI's built-in handler format HTTPException (bare detail +
+            # its own headers); str(HTTPException) would leak "<code>: <detail>".
+            continue
+        app.add_exception_handler(exc_type, _make_handler(status))
+
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):
         tb = traceback.format_exc()
@@ -102,22 +154,8 @@ def create_app(lifespan=None) -> FastAPI:
             logger.error("Unhandled exception: %s %s\n%s", request.method, request.url, tb)
         except Exception:
             pass
-
-        if isinstance(exc, TenantContextMissing):
-            capture(exc)
-
-        for exc_type, status in _EXCEPTION_STATUS:
-            if isinstance(exc, exc_type):
-                code = exc.status_code if status is None else status
-                content: dict[str, Any] = {"detail": str(exc)}
-                if settings.app_debug:
-                    content["traceback"] = tb
-                headers: dict[str, str] | None = None
-                if isinstance(exc, (RequestRateLimitExceeded, LLMCapacityError)):
-                    headers = {"Retry-After": str(exc.retry_after)}
-                return JSONResponse(status_code=code, content=content, headers=headers)
-
-        content = {"detail": "Internal server error"}
+        capture(exc)
+        content: dict[str, Any] = {"detail": "Internal server error"}
         if settings.app_debug:
             content["traceback"] = tb
         return JSONResponse(status_code=500, content=content)

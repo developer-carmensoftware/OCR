@@ -7,7 +7,7 @@ import base64
 import functools
 import logging
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from app.auth import SessionInfo, get_current_session
 from app.models.schemas.files import FilePreviewResponse, PdfInfoResponse
@@ -25,6 +25,7 @@ router = APIRouter(prefix="/api/v1/files", tags=["Files"])
 @router.post("/pdf-info", response_model=PdfInfoResponse)
 async def get_pdf_info(
     file: UploadFile = File(...),
+    pdf_password: str | None = Form(None, description="Password for an encrypted PDF"),
     _session: SessionInfo = Depends(get_current_session),
 ) -> PdfInfoResponse:
     """Return page count + low-resolution thumbnails for a PDF.
@@ -40,11 +41,15 @@ async def get_pdf_info(
 
     loop = asyncio.get_running_loop()
 
-    page_count = await loop.run_in_executor(None, get_pdf_page_count, file_bytes)
+    page_count = await loop.run_in_executor(
+        None, functools.partial(get_pdf_page_count, file_bytes, pdf_password)
+    )
 
     try:
         raw_thumbnails: list[bytes] = await asyncio.wait_for(
-            loop.run_in_executor(None, functools.partial(render_pdf_thumbnails, file_bytes)),
+            loop.run_in_executor(
+                None, functools.partial(render_pdf_thumbnails, file_bytes, password=pdf_password)
+            ),
             timeout=PDF_RENDER_TIMEOUT_SECONDS,
         )
     except TimeoutError as exc:

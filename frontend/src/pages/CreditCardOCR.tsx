@@ -119,6 +119,12 @@ export default function CreditCardOCR() {
         confirmText={modal.confirmText as string}
         cancelText={modal.cancelText as string | undefined}
         cancelStyle={modal.cancelStyle as React.CSSProperties | undefined}
+        inputLabel={modal.inputLabel as string | undefined}
+        inputType={modal.inputType as 'text' | 'password' | undefined}
+        inputPlaceholder={modal.inputPlaceholder as string | undefined}
+        busy={modal.busy as boolean | undefined}
+        errorNonce={modal.errorNonce as number | undefined}
+        onInputChange={modal.onInputChange as ((v: string) => void) | undefined}
         onConfirm={modal.onConfirm as () => void}
         onCancel={modal.onCancel as (() => void) | undefined}
       />
@@ -126,7 +132,7 @@ export default function CreditCardOCR() {
       <div className="app-container">
         <AppHeader
           module="credit-card"
-          moduleName="AI Credit Card Commission Automation"
+          moduleName="AI JV Automation"
           eyebrow="Carmen Cloud · Credit Card"
           backPath="/glJv"
         >

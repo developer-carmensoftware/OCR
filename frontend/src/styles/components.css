@@ -1197,6 +1197,12 @@ input[type='text'].detail-input:focus {
   transform: scale(0.97);
 }
 
+.btn:disabled {
+  opacity: 0.65;
+  cursor: default;
+  pointer-events: none;
+}
+
 .btn-sm {
   padding: 0.45rem 0.85rem;
   font-size: 0.75rem;
@@ -2542,6 +2548,66 @@ input[type='text'].detail-input:focus {
 .modal-input:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+.modal-input--error,
+.modal-input--error:focus {
+  border-color: var(--rose);
+  background: var(--rose-light);
+  box-shadow: 0 0 0 3px var(--rose-light);
+}
+
+.modal-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.modal-input--with-reveal {
+  padding-right: 2.6rem;
+}
+
+/* Hide the browser's built-in password reveal/clear control (Edge/IE on Windows)
+   so it doesn't duplicate our own reveal button. */
+.modal-input::-ms-reveal,
+.modal-input::-ms-clear {
+  display: none;
+}
+
+.modal-input-reveal {
+  position: absolute;
+  right: 0.4rem;
+  /* Center vertically with auto margins, not translateY — the global
+     `button:active { transform: scale() }` would otherwise drop the offset
+     and make the button slide on press. */
+  top: 0;
+  bottom: 0;
+  margin: auto 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-3);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+
+.modal-input-reveal:hover {
+  color: var(--text);
+  background: var(--gray-100);
+}
+
+.modal-input-reveal:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 .modal-info .modal-icon-wrapper {

@@ -114,6 +114,16 @@ async def extract_from_image(
         except ValueError:
             return False
 
-    extracted.details = [r for r in extracted.details if not _is_zero(r.pay_amt)]
+    _WHT_KEYWORDS = frozenset({"wht", "withholding", "ภาษีเงินได้หัก", "หัก ณ ที่จ่าย", "ภาษีถูกหัก"})
+
+    def _is_wht_row(r) -> bool:
+        if not r.transaction:
+            return False
+        t = r.transaction.lower()
+        return any(k in t for k in _WHT_KEYWORDS)
+
+    extracted.details = [
+        r for r in extracted.details if not _is_zero(r.pay_amt) and not _is_wht_row(r)
+    ]
 
     return raw_text, extracted

@@ -138,6 +138,11 @@ export function useMapping() {
     suggestions.rejectMainSuggestion(type)
   }
 
+  const handlePaymentMappingChange = (type: string, field: keyof FieldMapping, value: string) => {
+    paymentTypes.handlePaymentMappingChange(type, field, value)
+    suggestions.rejectPaymentSuggestion(type)
+  }
+
   const handleAcceptAll = () => {
     setMappings(prev => {
       const next = { ...prev }
@@ -279,7 +284,7 @@ export function useMapping() {
     customPaymentTypes: paymentTypes.customPaymentTypes,
     newCustomType: paymentTypes.newCustomType,
     setNewCustomType: paymentTypes.setNewCustomType,
-    handlePaymentMappingChange: paymentTypes.handlePaymentMappingChange,
+    handlePaymentMappingChange,
     handleAddCustomType: (activeScanPT?: Set<string>) =>
       paymentTypes.handleAddCustomType(activeScanPT || activeScan.paymentTypes, types =>
         masterData.masterAccounts.length && masterData.masterDepartments.length

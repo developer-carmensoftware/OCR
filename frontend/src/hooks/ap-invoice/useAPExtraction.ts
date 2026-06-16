@@ -3,8 +3,16 @@ import type React from 'react'
 import { apiFetch, fetchTimeout } from '../../lib/api/client'
 import { API } from '../../lib/api/endpoints'
 import { getAPVendorMapping } from '../../lib/api/config'
-import { getPdfInfo, getFilePreview } from '../../lib/api/ocr'
+import {
+  getPdfInfo,
+  getFilePreview,
+  PDF_PASSWORD_REQUIRED,
+  type ApiError,
+  type PdfInfoResult,
+} from '../../lib/api/ocr'
+import { usePdfPasswordPrompt } from '../usePdfPasswordPrompt'
 import { imagesToPdf, MAX_MULTI_IMAGES } from '../../lib/imagesToPdf'
+import { selectedPagesToPdfUrl } from '../../lib/pdfPages'
 import { toast } from '../../lib/toast'
 import { appKey } from '../../lib/storage'
 import { checkFilesSize } from '../../lib/fileValidation'
@@ -46,11 +54,12 @@ const NUMERIC_FIELDS = [
 ]
 const isNumFld = (f: string) => NUMERIC_FIELDS.includes(f)
 
-// Pure fetch+retry helper — no React state. Throws for terminal errors (402/408/429) and after
+// Pure fetch+retry helper — no React state. Throws for terminal errors (401/402/408/429) and after
 // retry exhaustion so the caller (runOCR) handles modals and state in one place.
 async function _fetchExtractWithRetry(
   fileObj: File,
-  selectedPages?: number[]
+  selectedPages?: number[],
+  pdfPassword?: string
 ): Promise<Record<string, unknown>> {
   let retries = 3
   let delay = 800
@@ -61,6 +70,7 @@ async function _fetchExtractWithRetry(
       if (selectedPages && selectedPages.length > 0) {
         formData.append('selected_pages', JSON.stringify(selectedPages))
       }
+      if (pdfPassword) formData.append('pdf_password', pdfPassword)
       const { signal, clear } = fetchTimeout(EXTRACT_TIMEOUT_MS)
       let res: Response
       try {
@@ -76,12 +86,28 @@ async function _fetchExtractWithRetry(
       } finally {
         clear()
       }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (!res.ok) {
+        // PdfPasswordRequired maps to 400 — only that status carries the code marker.
+        if (res.status === 400) {
+          const body = (await res.json?.().catch(() => ({}))) as { code?: string }
+          if (body?.code === PDF_PASSWORD_REQUIRED) {
+            throw Object.assign(new Error('pdf_password_required'), { code: PDF_PASSWORD_REQUIRED })
+          }
+        }
+        throw new Error(`HTTP ${res.status}`)
+      }
       return (await res.json()) as Record<string, unknown>
     } catch (err) {
       const msg = (err as Error).message
       // Terminal errors — propagate immediately without retrying
-      if (msg.includes('402') || msg.includes('408') || msg.includes('429')) throw err
+      if (
+        (err as ApiError).code === PDF_PASSWORD_REQUIRED ||
+        msg.includes('401') ||
+        msg.includes('402') ||
+        msg.includes('408') ||
+        msg.includes('429')
+      )
+        throw err
       retries--
       if (retries === 0) throw err
       await new Promise(r => setTimeout(r, delay))
@@ -109,6 +135,11 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
   const [selectedPageThumbs, setSelectedPageThumbs] = useState<
     { thumb: string; pageNum: number }[] | null
   >(null)
+  const pwPrompt = usePdfPasswordPrompt({
+    openModal: p => setModal({ show: true, ...p }),
+    closeModal: () => setModal({ show: false }),
+    onCancel: () => cancelPageSelection(),
+  })
 
   useEffect(() => {
     if (!loading) {
@@ -142,12 +173,16 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
     imageThumbsRef.current = []
   }
 
-  const runOCR = async (fileObj: File, selectedPages?: number[]) => {
+  const runOCR = async (fileObj: File, selectedPages?: number[], password?: string) => {
     setLoading(true)
     setStatus('AI is extracting data from document...')
     setError(null)
     try {
-      const data = await _fetchExtractWithRetry(fileObj, selectedPages)
+      const data = await _fetchExtractWithRetry(
+        fileObj,
+        selectedPages,
+        password ?? pwPrompt.pdfPassword
+      )
 
       setApInvoiceId((data.id as string) || null)
       setHeaderData({
@@ -236,6 +271,30 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
       if (loadVendors) loadVendors()
     } catch (err) {
       const e = err as { message: string }
+      if (e.message.includes('401')) {
+        // AuthContext handles the "session expired" toast + state reset via ocr:unauthorized.
+        setStep(1)
+        setFile(null)
+        setPreviewUrl(null)
+        return
+      }
+      if (e.message === 'Failed to fetch') {
+        toast.error('Connection error')
+        setModal({
+          show: true,
+          type: 'warning',
+          title: 'Connection Error',
+          message: 'Could not reach the server — please check your network and try again.',
+          confirmText: 'Close',
+          onConfirm: () => {
+            setModal({ show: false })
+            setStep(1)
+            setFile(null)
+            setPreviewUrl(null)
+          },
+        })
+        return
+      }
       if (e.message.includes('402')) {
         toast.error('Out of documents')
         setModal({
@@ -288,6 +347,10 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
             setPreviewUrl(null)
           },
         })
+        return
+      }
+      if ((err as ApiError).code === PDF_PASSWORD_REQUIRED) {
+        promptForPassword(fileObj, selectedPages)
         return
       }
       console.error(err)
@@ -382,6 +445,7 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
     }
 
     if (isPdf) {
+      pwPrompt.reset()
       // Multi-page → let the user choose pages; single page → extract straight away.
       setPdfInfoLoading(true)
       getPdfInfo(f)
@@ -392,7 +456,12 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
             runOCR(f)
           }
         })
-        .catch(() => {
+        .catch(err => {
+          if ((err as ApiError).code === PDF_PASSWORD_REQUIRED) {
+            // Encrypted PDF — prompt for the password instead of failing.
+            promptForPassword(f)
+            return
+          }
           // Can't read pages — don't block the user, process the whole document.
           toast.info('Could not read PDF pages — processing the whole document')
           runOCR(f)
@@ -403,17 +472,56 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
     }
   }
 
+  // Encrypted PDF: the shared prompt owns the verify/retry/shake UX; we just route
+  // the validated password. `selectedPages` is set when re-asking after an extract
+  // that came back password-required (pages were already chosen).
+  const promptForPassword = (file: File, selectedPages?: number[]) => {
+    pwPrompt.open({
+      verify: password => getPdfInfo(file, password),
+      onVerified: (password, result) => {
+        if (selectedPages) {
+          runOCR(file, selectedPages, password)
+          return
+        }
+        const info = result as PdfInfoResult
+        if (info.page_count > 1) {
+          setPdfSelector({ thumbnails: info.thumbnails, pendingFile: file })
+        } else {
+          runOCR(file, undefined, password)
+        }
+      },
+      onError: (password, err) => {
+        console.error('[pdf-info] failed after password, processing all pages:', err)
+        toast.info('Could not read PDF pages — processing the whole document')
+        runOCR(file, selectedPages, password)
+      },
+    })
+  }
+
   const confirmPageSelection = (selectedPages: number[]) => {
     const sel = pdfSelector
     if (!sel) return
     setSelectedPageThumbs(selectedPages.map(p => ({ thumb: sel.thumbnails[p], pageNum: p + 1 })))
     setPdfSelector(null)
+    // Preview only the selected pages: swap in a native PDF subset (zoomable/readable).
+    // Falls back to the full document if the PDF cannot be parsed client-side.
+    void selectedPagesToPdfUrl(sel.pendingFile, selectedPages)
+      .then(url => {
+        revokePreviewUrls()
+        previewUrlRef.current = url
+        setPreviewUrl(url)
+        setPreviewType('pdf')
+      })
+      .catch(() => {
+        /* keep the full-document preview */
+      })
     runOCR(sel.pendingFile, selectedPages)
   }
 
   const cancelPageSelection = () => {
     setPdfSelector(null)
     setSelectedPageThumbs(null)
+    pwPrompt.reset()
     revokePreviewUrls()
     setFile(null)
     setPreviewUrl(null)
@@ -438,6 +546,7 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
     setImageCount(0)
     setPdfSelector(null)
     setSelectedPageThumbs(null)
+    pwPrompt.reset()
   }
 
   const updateHeader = (key: string, val: string) => setHeaderData(p => ({ ...p, [key]: val }))

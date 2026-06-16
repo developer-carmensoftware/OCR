@@ -94,7 +94,15 @@ export default function DocumentPreview({
     pinchRef.current = null
   }, [])
 
-  const showSelectedThumbs = !!selectedPageThumbs?.length
+  // Selected-page thumbnails only stand in for the preview when there is no usable
+  // inline document — i.e. several images merged into one PDF. For a real PDF we keep
+  // the full, zoomable iframe; the low-res 300px thumbnails were unreadable and had
+  // replaced the usable document preview.
+  const showSelectedThumbs = !!selectedPageThumbs?.length && previewType !== 'pdf'
+  const selectedPdfPages =
+    previewType === 'pdf' && selectedPageThumbs?.length
+      ? selectedPageThumbs.map(t => t.pageNum).join(', ')
+      : null
 
   useEffect(() => {
     const el = frameRef.current
@@ -194,7 +202,11 @@ export default function DocumentPreview({
               <span className="prev-pdf-badge">
                 <FileText size={14} /> PDF
               </span>
-              <span className="prev-tool-hint">Scroll and zoom within the document</span>
+              <span className="prev-tool-hint">
+                {selectedPdfPages
+                  ? `Extracting page${selectedPageThumbs!.length > 1 ? 's' : ''} ${selectedPdfPages}`
+                  : 'Scroll and zoom within the document'}
+              </span>
               <div className="prev-tool-sep" />
             </>
           )}

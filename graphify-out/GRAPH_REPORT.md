@@ -55,6 +55,8 @@
   components/common/UsageIndicator.tsx → contexts/AuthContext.tsx
 - `handleOpenJv()` --calls--> `getCarmenUrl()`  [INFERRED]
   components/credit-card/JournalVoucher.tsx → lib/url.ts
+- `handleOpenJv()` --calls--> `getCarmenUrl()`  [INFERRED]
+  components/credit-card/JournalVoucher.tsx → lib/url.ts
 
 ## Communities (73 total, 4 thin omitted)
 
@@ -77,16 +79,30 @@ Nodes (26): profileKey(), profileLabel(), useAPExtraction(), useAPInvoice(), rec
 ### Community 4 - "Community 4"
 Cohesion: 0.09
 Nodes (22): addDays(), buildInvoicePayload(), useAPSubmission(), fetchAccountCodes(), fetchDepartments(), fetchGLPrefixes(), fetchTaxProfiles(), _parseCarmenHttpError() (+14 more)
+Cohesion: 0.09
+Nodes (22): addDays(), buildInvoicePayload(), useAPSubmission(), fetchAccountCodes(), fetchDepartments(), fetchGLPrefixes(), fetchTaxProfiles(), _parseCarmenHttpError() (+14 more)
 
 ### Community 5 - "Community 5"
+Cohesion: 0.1
+Nodes (17): suggestMapping(), suggestPaymentTypes(), detectBankFromCompanyName(), detectBankFromExtracted(), readFromLocalStorage(), _persistOcrLocalStorage(), codeToDisplayName(), getBankInfo() (+9 more)
 Cohesion: 0.1
 Nodes (17): suggestMapping(), suggestPaymentTypes(), detectBankFromCompanyName(), detectBankFromExtracted(), readFromLocalStorage(), _persistOcrLocalStorage(), codeToDisplayName(), getBankInfo() (+9 more)
 
 ### Community 6 - "Community 6"
 Cohesion: 0.12
 Nodes (7): catalogName(), perDoc(), formatDate(), formatRate(), formatThb(), PlanCard(), PromptPayQR()
+Cohesion: 0.12
+Nodes (7): catalogName(), perDoc(), formatDate(), formatRate(), formatThb(), PlanCard(), PromptPayQR()
 
 ### Community 7 - "Community 7"
+Cohesion: 0.15
+Nodes (13): createOrder(), detail(), getCompanyProfile(), getOrderDocuments(), listOrders(), OpenOrderError, uploadSlip(), clearPersistedCheckout() (+5 more)
+
+### Community 8 - "Community 8"
+Cohesion: 0.15
+Nodes (3): handleOpenJv(), getCarmenUri(), getCarmenUrl()
+
+### Community 9 - "Community 9"
 Cohesion: 0.15
 Nodes (13): createOrder(), detail(), getCompanyProfile(), getOrderDocuments(), listOrders(), OpenOrderError, uploadSlip(), clearPersistedCheckout() (+5 more)
 
@@ -108,6 +124,7 @@ Nodes (4): fileToBase64(), handleClose(), handleFileChange(), reset()
 
 ## Knowledge Gaps
 - **4 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **4 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
@@ -124,5 +141,7 @@ _Questions this graph is uniquely positioned to answer:_
   _`normalizeYearToCE()` has 3 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 2 inferred relationships involving `getCarmenUrl()` (e.g. with `handleOpenJv()` and `getCarmenUri()`) actually correct?**
   _`getCarmenUrl()` has 2 INFERRED edges - model-reasoned connections that need verification._
+- **Should `Community 0` be split into smaller, more focused modules?**
+  _Cohesion score 0.06 - nodes in this community are weakly interconnected._
 - **Should `Community 0` be split into smaller, more focused modules?**
   _Cohesion score 0.06 - nodes in this community are weakly interconnected._

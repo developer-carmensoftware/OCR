@@ -26,10 +26,10 @@ from app.services.ap_vendor_history_service import (
 from app.utils.gl_filter import score_and_pad
 from app.utils.mime import get_mime_type
 from app.utils.pdf_utils import (
-    MAX_PAGES_PER_CALL,
     PDF_RENDER_TIMEOUT_SECONDS,
+    extract_pages_as_pdf,
     get_pdf_page_count,
-    render_pdf_pages,
+    normalize_pdf_for_llm,
 )
 
 logger = logging.getLogger(__name__)
@@ -116,57 +116,66 @@ async def extract_ap_invoice_data(
     filename: str,
     task_id: str,
     selected_pages: list[int] | None = None,
+    pdf_password: str | None = None,
 ) -> dict[str, Any]:
     """Extract AP Invoice details using Vision LLM.
 
     For multi-page PDFs, the rendered pages are sent in a single LLM call so the
     model can correlate header/footer/line data across pages. ``selected_pages``
     (0-based) restricts which pages are sent; None → all pages.
+    ``pdf_password`` unlocks an encrypted PDF (None = not encrypted).
     """
     ap_model = settings.openrouter_ap_invoice_model or settings.openrouter_ocr_model
     ext = os.path.splitext(filename)[1].lower()
 
     if ext == ".pdf":
-        page_count = await asyncio.get_running_loop().run_in_executor(
-            None, get_pdf_page_count, file_bytes
-        )
-        # Honour an explicit selection (filtered to valid indices); else all pages.
+        # Page selection sends a native PDF subset (full vector/text fidelity); no
+        # selection sends the whole PDF natively. Rasterising to PNG degraded dense
+        # tables and broke extraction, so we keep the document in PDF form.
         if selected_pages:
-            pages = [p for p in selected_pages if 0 <= p < page_count]
-            if not pages:
+            page_count = await asyncio.get_running_loop().run_in_executor(
+                None, functools.partial(get_pdf_page_count, file_bytes, pdf_password)
+            )
+            valid_pages = [p for p in selected_pages if 0 <= p < page_count]
+            if not valid_pages:
                 raise ValidationError(
                     f"selected_pages {selected_pages} are out of range for a "
                     f"{page_count}-page document."
                 )
+            try:
+                pdf_bytes = await asyncio.wait_for(
+                    asyncio.get_running_loop().run_in_executor(
+                        None,
+                        functools.partial(
+                            extract_pages_as_pdf, file_bytes, valid_pages, pdf_password
+                        ),
+                    ),
+                    timeout=PDF_RENDER_TIMEOUT_SECONDS,
+                )
+            except TimeoutError as exc:
+                raise ValidationError(
+                    "PDF processing timed out — the file may be malformed."
+                ) from exc
         else:
-            pages = list(range(page_count))
-        if len(pages) > MAX_PAGES_PER_CALL:
-            logger.warning(
-                "AP Invoice PDF %s: %d pages selected; capping at %d",
-                filename,
-                len(pages),
-                MAX_PAGES_PER_CALL,
+            # No selection → whole PDF natively; decrypt first if encrypted so the
+            # provider doesn't reject it as "The document has no pages."
+            pdf_bytes = await asyncio.get_running_loop().run_in_executor(
+                None, functools.partial(normalize_pdf_for_llm, file_bytes, pdf_password)
             )
-            pages = pages[:MAX_PAGES_PER_CALL]
-        try:
-            page_images = await asyncio.wait_for(
-                asyncio.get_running_loop().run_in_executor(
-                    None, functools.partial(render_pdf_pages, file_bytes, pages)
-                ),
-                timeout=PDF_RENDER_TIMEOUT_SECONDS,
-            )
-        except TimeoutError as exc:
-            raise ValidationError("PDF rendering timed out — the file may be malformed.") from exc
         image_items = [
             {
                 "type": "image_url",
-                "image_url": {"url": f"data:image/png;base64,{base64.b64encode(p).decode()}"},
+                "image_url": {
+                    "url": f"data:application/pdf;base64,{base64.b64encode(pdf_bytes).decode()}"
+                },
             }
-            for p in page_images
         ]
-        total_bytes = sum(len(p) for p in page_images)
+        total_bytes = len(pdf_bytes)
         logger.info(
-            "Extracting AP Invoice: %s (model: %s, pages: %d)", filename, ap_model, len(page_images)
+            "Extracting AP Invoice: %s (model: %s, selected_pages: %s)",
+            filename,
+            ap_model,
+            selected_pages,
         )
     else:
         mime_type = get_mime_type(filename)
