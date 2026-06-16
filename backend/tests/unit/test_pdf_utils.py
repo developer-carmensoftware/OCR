@@ -19,7 +19,12 @@ import fitz
 import pytest
 
 from app.exceptions import ExtractionError, PdfPasswordRequired
-from app.utils.pdf_utils import ensure_pdf_openable, get_pdf_page_count, open_pdf
+from app.utils.pdf_utils import (
+    ensure_pdf_openable,
+    extract_pages_as_pdf,
+    get_pdf_page_count,
+    open_pdf,
+)
 
 _ENC = fitz.PDF_ENCRYPT_AES_256
 
@@ -32,6 +37,25 @@ def _make_pdf(pages: int = 1, user_pw: str = "secret", owner_pw: str = "owner") 
     buf = doc.tobytes(encryption=_ENC, owner_pw=owner_pw, user_pw=user_pw)
     doc.close()
     return buf
+
+
+def _make_text_pdf(n: int = 4) -> bytes:
+    """An unencrypted `n`-page PDF whose pages carry identifiable text."""
+    doc = fitz.open()
+    for i in range(n):
+        page = doc.new_page()
+        page.insert_text((72, 72), f"PAGE {i} content")
+    buf = doc.tobytes()
+    doc.close()
+    return buf
+
+
+def _page_texts(pdf_bytes: bytes) -> list[str]:
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        return [doc[i].get_text().strip() for i in range(doc.page_count)]
+    finally:
+        doc.close()
 
 
 # ── open_pdf / get_pdf_page_count ─────────────────────────────────────────────
@@ -91,3 +115,38 @@ def test_ensure_pdf_openable_raises_for_locked_pdf():
 def test_ensure_pdf_openable_passes_with_correct_password():
     # Resolves (no raise) → the router proceeds to consume a credit.
     asyncio.run(ensure_pdf_openable(_make_pdf(), "statement.PDF", password="secret"))
+
+
+# ── extract_pages_as_pdf (native page-subset for the high-quality preview/LLM path) ──
+
+
+def test_extract_pages_as_pdf_selects_single_page_and_keeps_text():
+    out = extract_pages_as_pdf(_make_text_pdf(4), [1])
+    assert out[:4] == b"%PDF"
+    assert get_pdf_page_count(out) == 1
+    # Native subset, NOT rasterised → the text layer survives.
+    assert _page_texts(out) == ["PAGE 1 content"]
+
+
+def test_extract_pages_as_pdf_preserves_order_dedupes_and_drops_out_of_range():
+    out = extract_pages_as_pdf(_make_text_pdf(4), [2, 2, 9, 0])
+    assert _page_texts(out) == ["PAGE 2 content", "PAGE 0 content"]
+
+
+def test_extract_pages_as_pdf_empty_selection_returns_all_pages():
+    out = extract_pages_as_pdf(_make_text_pdf(3), [])
+    assert get_pdf_page_count(out) == 3
+
+
+def test_extract_pages_as_pdf_caps_at_max_pages():
+    from app.utils.pdf_utils import MAX_PAGES_PER_CALL
+
+    out = extract_pages_as_pdf(
+        _make_text_pdf(MAX_PAGES_PER_CALL + 5), list(range(MAX_PAGES_PER_CALL + 5))
+    )
+    assert get_pdf_page_count(out) == MAX_PAGES_PER_CALL
+
+
+def test_extract_pages_as_pdf_with_password():
+    out = extract_pages_as_pdf(_make_pdf(pages=3), [2], password="secret")
+    assert get_pdf_page_count(out) == 1

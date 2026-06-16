@@ -11,6 +11,7 @@ import {
   type PdfInfoResult,
 } from '../../lib/api/ocr'
 import { imagesToPdf, MAX_MULTI_IMAGES } from '../../lib/imagesToPdf'
+import { selectedPagesToPdfUrl } from '../../lib/pdfPages'
 import { usePdfPasswordPrompt } from '../usePdfPasswordPrompt'
 import { appKey } from '../../lib/storage'
 import type { JvRow } from './useOcrSubmission'
@@ -235,6 +236,18 @@ export function useOcrWizard() {
     )
     const files = pdfSelector.pendingFiles
     setPdfSelector(null)
+    // Preview only the selected pages: build a native PDF subset and swap it into the
+    // preview iframe (zoomable/readable). Falls back to the full document on failure
+    // (e.g. a user-password-encrypted PDF that pdf-lib cannot parse).
+    void selectedPagesToPdfUrl(files[0], selectedPages)
+      .then(url => {
+        if (fileUpload.previewUrl) URL.revokeObjectURL(fileUpload.previewUrl.split('#')[0])
+        fileUpload.setPreviewUrl(url + '#view=FitH')
+        fileUpload.setPreviewType('pdf')
+      })
+      .catch(() => {
+        /* keep the full-document preview */
+      })
     extraction.processFile(files, selectedPages, pwPrompt.pdfPassword || undefined)
   }
 

@@ -96,6 +96,39 @@ def render_pdf_pages(
         doc.close()
 
 
+def extract_pages_as_pdf(
+    pdf_bytes: bytes,
+    page_indices: list[int],
+    password: str | None = None,
+) -> bytes:
+    """
+    Build a new PDF containing only the given 0-based pages, preserving the
+    source's native vector/text fidelity (NO rasterisation).
+
+    This is the high-quality path for page selection: the vision LLM receives a
+    real PDF (application/pdf) — identical in fidelity to sending the original
+    document — instead of a rasterised PNG that degrades dense tables. Pages are
+    kept in the requested order, de-duplicated, bounds-checked, and capped at
+    MAX_PAGES_PER_CALL. Encrypted PDFs are unlocked then saved decrypted.
+    """
+    src = open_pdf(pdf_bytes, password)
+    try:
+        seen: set[int] = set()
+        keep: list[int] = []
+        for idx in page_indices:
+            if 0 <= idx < src.page_count and idx not in seen:
+                seen.add(idx)
+                keep.append(idx)
+            if len(keep) >= MAX_PAGES_PER_CALL:
+                break
+        if not keep:
+            keep = list(range(min(src.page_count, MAX_PAGES_PER_CALL)))
+        src.select(keep)
+        return src.tobytes(garbage=3, deflate=True)
+    finally:
+        src.close()
+
+
 def render_pdf_thumbnails(
     pdf_bytes: bytes,
     max_width: int = 300,

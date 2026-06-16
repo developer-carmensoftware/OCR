@@ -5,6 +5,7 @@ Rules for extracting details[] rows:
 1. Include every card/payment type row that has a non-zero pay_amt.
 2. SKIP rows labeled: จำนวนเงินรวม, TOTAL, รวม, GRAND TOTAL, NET AMOUNT, จำนวนเงินค่าธรรมเนียม — summary rows only.
 3. SKIP rows where pay_amt is 0.00 or blank.
+4. SKIP Withholding Tax deduction rows — any row whose label contains: ภาษีเงินได้หัก ณ ที่จ่าย, WHT, Withholding Tax, ภาษีถูกหัก, หัก ณ ที่จ่าย. These are bank tax deductions, NOT card transaction rows.
 """
 
 OUTPUT_RULES = """

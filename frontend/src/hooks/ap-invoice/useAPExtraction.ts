@@ -12,6 +12,7 @@ import {
 } from '../../lib/api/ocr'
 import { usePdfPasswordPrompt } from '../usePdfPasswordPrompt'
 import { imagesToPdf, MAX_MULTI_IMAGES } from '../../lib/imagesToPdf'
+import { selectedPagesToPdfUrl } from '../../lib/pdfPages'
 import { toast } from '../../lib/toast'
 import { appKey } from '../../lib/storage'
 import { checkFilesSize } from '../../lib/fileValidation'
@@ -477,6 +478,18 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
     if (!sel) return
     setSelectedPageThumbs(selectedPages.map(p => ({ thumb: sel.thumbnails[p], pageNum: p + 1 })))
     setPdfSelector(null)
+    // Preview only the selected pages: swap in a native PDF subset (zoomable/readable).
+    // Falls back to the full document if the PDF cannot be parsed client-side.
+    void selectedPagesToPdfUrl(sel.pendingFile, selectedPages)
+      .then(url => {
+        revokePreviewUrls()
+        previewUrlRef.current = url
+        setPreviewUrl(url)
+        setPreviewType('pdf')
+      })
+      .catch(() => {
+        /* keep the full-document preview */
+      })
     runOCR(sel.pendingFile, selectedPages)
   }
 
