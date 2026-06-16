@@ -161,6 +161,80 @@ class TestConsumeDocument:
             with pytest.raises(InsufficientCredits):
                 await credit_service.consume_document()
 
+    async def test_returns_free_token_on_free_path(self):
+        set_context("t-001")
+        db = AsyncMock()
+        db.begin = MagicMock(return_value=_begin_ctx())
+        with (
+            patch.object(
+                credit_service,
+                "_get_cached_quota_rules",
+                AsyncMock(return_value=[_monthly_quota()]),
+            ),
+            patch.object(credit_service, "async_session", return_value=_session_ctx(db)),
+            patch.object(credit_service, "_try_consume_free", AsyncMock(return_value=True)),
+        ):
+            assert await credit_service.consume_document() == "free"
+
+    async def test_returns_credit_token_on_credit_path(self):
+        set_context("t-001")
+        db = AsyncMock()
+        db.begin = MagicMock(return_value=_begin_ctx())
+        with (
+            patch.object(
+                credit_service,
+                "_get_cached_quota_rules",
+                AsyncMock(return_value=[_monthly_quota()]),
+            ),
+            patch.object(credit_service, "async_session", return_value=_session_ctx(db)),
+            patch.object(credit_service, "_try_consume_free", AsyncMock(return_value=False)),
+            patch.object(credit_service, "_consume_credits", AsyncMock()),
+        ):
+            assert await credit_service.consume_document() == "credit"
+
+
+# ── refund_document ───────────────────────────────────────────────────────────
+
+
+class TestRefundDocument:
+    async def test_none_is_noop(self):
+        with patch.object(credit_service, "async_session") as sess:
+            await credit_service.refund_document(None)
+            sess.assert_not_called()
+
+    async def test_credit_refund_grants_back(self):
+        set_context("t-001")
+        db = AsyncMock()
+        db.begin = MagicMock(return_value=_begin_ctx())
+        with (
+            patch.object(credit_service, "async_session", return_value=_session_ctx(db)),
+            patch.object(credit_service, "grant_credits", AsyncMock()) as gc,
+            patch.object(credit_service, "_refund_free", AsyncMock()) as rf,
+        ):
+            await credit_service.refund_document("credit")
+            gc.assert_awaited_once()
+            assert gc.call_args[0][2] == 1  # increment
+            assert gc.call_args[0][3] == CreditLedgerReason.REFUND
+            rf.assert_not_called()
+
+    async def test_free_refund_restores_slot(self):
+        set_context("t-001")
+        db = AsyncMock()
+        db.begin = MagicMock(return_value=_begin_ctx())
+        with (
+            patch.object(credit_service, "async_session", return_value=_session_ctx(db)),
+            patch.object(credit_service, "grant_credits", AsyncMock()) as gc,
+            patch.object(credit_service, "_refund_free", AsyncMock()) as rf,
+        ):
+            await credit_service.refund_document("free")
+            rf.assert_awaited_once()
+            gc.assert_not_called()
+
+    async def test_refund_failure_is_swallowed(self):
+        set_context("t-001")
+        with patch.object(credit_service, "async_session", side_effect=RuntimeError("db down")):
+            await credit_service.refund_document("credit")  # must not raise
+
 
 # ── grant_credits ─────────────────────────────────────────────────────────────
 

@@ -23,6 +23,7 @@ from app.utils.pdf_utils import (
     ensure_pdf_openable,
     extract_pages_as_pdf,
     get_pdf_page_count,
+    normalize_pdf_for_llm,
     open_pdf,
 )
 
@@ -150,3 +151,39 @@ def test_extract_pages_as_pdf_caps_at_max_pages():
 def test_extract_pages_as_pdf_with_password():
     out = extract_pages_as_pdf(_make_pdf(pages=3), [2], password="secret")
     assert get_pdf_page_count(out) == 1
+
+
+# ── normalize_pdf_for_llm (strip encryption before the provider rejects it) ──────
+
+
+def _fitz_is_encrypted(pdf_bytes: bytes) -> bool:
+    """True if fitz reports is_encrypted *before* any authenticate call."""
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        return doc.is_encrypted
+    finally:
+        doc.close()
+
+
+def test_normalize_decrypts_user_password_pdf():
+    # The exact bug: a user-password PDF sent raw to Gemini → "The document has no pages."
+    enc = _make_pdf(pages=2)
+    assert _fitz_is_encrypted(enc)  # confirm fixture is actually encrypted
+    out = normalize_pdf_for_llm(enc, password="secret")
+    assert not _fitz_is_encrypted(out)
+    assert get_pdf_page_count(out) == 2
+
+
+def test_normalize_owner_only_pdf_is_passthrough():
+    # Owner-only PDFs (user_pw="") are auto-authenticated by PyMuPDF so
+    # is_encrypted is False on open — Gemini can read them as-is.
+    buf = _make_pdf(pages=1, user_pw="", owner_pw="owneronly")
+    assert not _fitz_is_encrypted(buf)  # PyMuPDF clears this on auto-auth
+    out = normalize_pdf_for_llm(buf)
+    assert out is buf  # untouched passthrough
+
+
+def test_normalize_passes_plain_pdf_through_untouched():
+    plain = _make_text_pdf(2)
+    out = normalize_pdf_for_llm(plain)
+    assert out is plain  # native passthrough, no re-save

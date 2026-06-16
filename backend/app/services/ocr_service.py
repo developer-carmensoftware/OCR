@@ -20,6 +20,7 @@ from app.utils.pdf_utils import (
     PDF_RENDER_TIMEOUT_SECONDS,
     extract_pages_as_pdf,
     get_pdf_page_count,
+    normalize_pdf_for_llm,
 )
 
 logger = logging.getLogger(__name__)
@@ -73,8 +74,11 @@ async def extract_stateless(
                     "PDF processing timed out — the file may be malformed."
                 ) from exc
         else:
-            # No selection → send the whole PDF natively (proven high-quality path).
-            processed_bytes = file_bytes
+            # No selection → send the whole PDF natively (proven high-quality path),
+            # decrypting first if encrypted so Gemini doesn't reject it as "no pages".
+            processed_bytes = await asyncio.get_running_loop().run_in_executor(
+                None, functools.partial(normalize_pdf_for_llm, file_bytes, pdf_password)
+            )
     else:
         processed_bytes = await asyncio.get_running_loop().run_in_executor(
             None, functools.partial(resize_if_needed, file_bytes)

@@ -16,7 +16,7 @@ from app.services import audit_service
 from app.services.ap_invoice_service import extract_ap_invoice_data, suggest_for_items
 from app.services.audit_service import AuditAction
 from app.services.carmen_service import CarmenAPIError, get_account_codes, get_departments
-from app.services.credit_service import consume_document
+from app.services.credit_service import consume_document, refund_document
 from app.services.file_service import file_service
 from app.services.task_service import create_task, mark_failed
 from app.utils.client_ip import get_client_ip
@@ -71,20 +71,23 @@ async def extract_ap_invoice(
     # (PdfPasswordRequired → 400 / ExtractionError → 422) without burning a credit.
     await ensure_pdf_openable(file_bytes, filename, pdf_password)
 
-    await consume_document()
+    charged = await consume_document()
 
-    # Short DB session: create the task row, then release the connection.
-    async with async_session() as db:
-        task = await create_task(
-            db,
-            tenant_id=session.tenant_id,
-            module_id=Module.AP_INVOICE,
-            original_filename=filename,
-            carmen_user_id=session.carmen_user_id,
-        )
-        task_id = str(task.id)
-
+    # Past this point the credit is charged; refund it if anything below fails so a
+    # failed document (LLM error/timeout) never costs the user.
+    task_id: str | None = None
     try:
+        # Short DB session: create the task row, then release the connection.
+        async with async_session() as db:
+            task = await create_task(
+                db,
+                tenant_id=session.tenant_id,
+                module_id=Module.AP_INVOICE,
+                original_filename=filename,
+                carmen_user_id=session.carmen_user_id,
+            )
+            task_id = str(task.id)
+
         # LLM extraction — no DB connection held during this call.
         data = await extract_ap_invoice_data(
             file_bytes, filename, task_id, selected_pages=parsed_pages, pdf_password=pdf_password
@@ -136,8 +139,10 @@ async def extract_ap_invoice(
 
     except Exception as exc:
         logger.error("Failed to process AP Invoice OCR task %s: %s", task_id, exc)
-        async with async_session() as db:
-            await mark_failed(db, task_id, str(exc))
+        await refund_document(charged)
+        if task_id is not None:
+            async with async_session() as db:
+                await mark_failed(db, task_id, str(exc))
         raise
 
 

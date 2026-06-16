@@ -29,6 +29,7 @@ from app.utils.pdf_utils import (
     PDF_RENDER_TIMEOUT_SECONDS,
     extract_pages_as_pdf,
     get_pdf_page_count,
+    normalize_pdf_for_llm,
 )
 
 logger = logging.getLogger(__name__)
@@ -156,7 +157,11 @@ async def extract_ap_invoice_data(
                     "PDF processing timed out — the file may be malformed."
                 ) from exc
         else:
-            pdf_bytes = file_bytes
+            # No selection → whole PDF natively; decrypt first if encrypted so the
+            # provider doesn't reject it as "The document has no pages."
+            pdf_bytes = await asyncio.get_running_loop().run_in_executor(
+                None, functools.partial(normalize_pdf_for_llm, file_bytes, pdf_password)
+            )
         image_items = [
             {
                 "type": "image_url",

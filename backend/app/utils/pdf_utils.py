@@ -129,6 +129,25 @@ def extract_pages_as_pdf(
         src.close()
 
 
+def normalize_pdf_for_llm(pdf_bytes: bytes, password: str | None = None) -> bytes:
+    """Return PDF bytes safe to send to the vision LLM, decrypting only if needed.
+
+    Gemini's PDF parser rejects encrypted documents with "The document has no pages."
+    PyMuPDF clears ``is_encrypted`` *after* a successful ``authenticate()``, so we
+    must sample the flag before authenticating. Unencrypted PDFs return the original
+    object untouched to preserve the proven native-fidelity passthrough.
+    """
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        if not doc.is_encrypted:  # ponytail: fast-path, no re-save needed
+            return pdf_bytes
+        if not doc.authenticate(password or ""):
+            raise PdfPasswordRequired()
+        return doc.tobytes(garbage=3, deflate=True)
+    finally:
+        doc.close()
+
+
 def render_pdf_thumbnails(
     pdf_bytes: bytes,
     max_width: int = 300,
