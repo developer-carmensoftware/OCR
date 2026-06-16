@@ -31,6 +31,7 @@ from app.services.task_service import create_task
 from app.utils.client_ip import get_client_ip
 from app.utils.date_parsing import format_doc_date
 from app.utils.pages import parse_selected_pages
+from app.utils.pdf_utils import ensure_pdf_openable
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/credit-card", tags=["Credit Card OCR"])
@@ -62,6 +63,7 @@ async def extract_card(
     selected_pages: str | None = Form(
         None, description="JSON-encoded 0-based page indices for PDF, e.g. '[0,1,2]'"
     ),
+    pdf_password: str | None = Form(None, description="Password for an encrypted PDF"),
     session: SessionInfo = Depends(get_current_session),
 ):
     """Stateless extraction — reads files, calls LLM, returns JSON. Does NOT write to DB.
@@ -89,13 +91,16 @@ async def extract_card(
         ip_address=get_client_ip(request),
     )
 
-    await consume_document()
-
-    # Phase 1: validate + read all files into memory (no DB held)
+    # Phase 1: validate + read all files into memory (no DB / credit held). PDFs are
+    # opened here so an encrypted/corrupt PDF fails BEFORE consume_document() — a
+    # locked file must not burn a document credit (see app/exceptions.py mapping).
     file_data: list[tuple[str, bytes]] = []
     for upload_file in files:
         file_bytes, effective_name = await file_service.validate_and_read(upload_file)
+        await ensure_pdf_openable(file_bytes, effective_name, pdf_password)
         file_data.append((effective_name, file_bytes))
+
+    await consume_document()
 
     # Phase 2: short-lived DB session — fetch hints + create task rows, then release.
     task_records: list[tuple[str, bytes, str]] = []
@@ -123,6 +128,7 @@ async def extract_card(
                 hints=hints or None,
                 task_id=task_id,
                 selected_pages=parsed_pages,
+                pdf_password=pdf_password,
             )
             extracted.task_id = task_id
             return await finalize_extraction(

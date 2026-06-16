@@ -23,6 +23,7 @@ from app.utils.client_ip import get_client_ip
 from app.utils.date_parsing import parse_doc_date
 from app.utils.db_helpers import has_submitted_doc
 from app.utils.pages import parse_selected_pages
+from app.utils.pdf_utils import ensure_pdf_openable
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/ap-invoice", tags=["AP Invoice"])
@@ -33,6 +34,7 @@ async def extract_ap_invoice(
     request: Request,
     file: UploadFile = File(...),
     selected_pages: str | None = Form(None),
+    pdf_password: str | None = Form(None),
     session: SessionInfo = Depends(get_current_session),
 ):
     """Stateless AP Invoice OCR extraction using Vision LLM.
@@ -61,11 +63,15 @@ async def extract_ap_invoice(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    await consume_document()
-
     file_bytes, filename = await file_service.validate_and_read(file)
     if not filename:
         filename = "invoice"
+
+    # Open the PDF before consuming a credit so an encrypted/corrupt PDF fails first
+    # (PdfPasswordRequired → 400 / ExtractionError → 422) without burning a credit.
+    await ensure_pdf_openable(file_bytes, filename, pdf_password)
+
+    await consume_document()
 
     # Short DB session: create the task row, then release the connection.
     async with async_session() as db:
@@ -81,7 +87,7 @@ async def extract_ap_invoice(
     try:
         # LLM extraction — no DB connection held during this call.
         data = await extract_ap_invoice_data(
-            file_bytes, filename, task_id, selected_pages=parsed_pages
+            file_bytes, filename, task_id, selected_pages=parsed_pages, pdf_password=pdf_password
         )
 
         doc_no = data.get("documentNumber")

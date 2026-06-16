@@ -96,6 +96,19 @@ class FileTooLargeError(ValidationError):
     """Uploaded file exceeds the configured size limit. → 413"""
 
 
+class PdfPasswordRequired(ValidationError):
+    """PDF is encrypted and no correct password was supplied. → 400
+
+    Carries a machine-readable ``code`` so the frontend can distinguish this
+    from other validation errors and prompt the user for the PDF password.
+    """
+
+    code = "pdf_password_required"
+
+    def __init__(self, message: str = "This PDF is password-protected. Please enter its password."):
+        super().__init__(message)
+
+
 class TenantContextMissing(RuntimeError):
     """Programmer error — service called without tenant context being set.
 

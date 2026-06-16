@@ -33,6 +33,7 @@ async def extract_stateless(
     hints: dict | None = None,
     task_id: str | None = None,
     selected_pages: list[int] | None = None,
+    pdf_password: str | None = None,
 ) -> ExtractedCreditCardData:
     """
     Stateless OCR extraction: resize → Vision LLM → return structured data.
@@ -40,13 +41,14 @@ async def extract_stateless(
     bank_code: 'BBL' | 'KBANK' | 'SCB' — selects bank-specific prompt.
     hints: correction hints from correction_service (injected into prompt).
     selected_pages: 0-based page indices for PDF files (None = all pages).
+    pdf_password: password for an encrypted PDF (None = not encrypted).
     """
     ext = os.path.splitext(original_filename)[1].lower()
 
     page_images: list[bytes] | None = None
     if ext == ".pdf":
         page_count = await asyncio.get_running_loop().run_in_executor(
-            None, get_pdf_page_count, file_bytes
+            None, functools.partial(get_pdf_page_count, file_bytes, pdf_password)
         )
         if selected_pages is not None:
             pages = [p for p in selected_pages if 0 <= p < page_count]
@@ -70,7 +72,8 @@ async def extract_stateless(
         try:
             page_images = await asyncio.wait_for(
                 asyncio.get_running_loop().run_in_executor(
-                    None, functools.partial(render_pdf_pages, file_bytes, pages)
+                    None,
+                    functools.partial(render_pdf_pages, file_bytes, pages, password=pdf_password),
                 ),
                 timeout=PDF_RENDER_TIMEOUT_SECONDS,
             )

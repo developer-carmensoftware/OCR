@@ -7,6 +7,7 @@ test-fixtures/
 backend/gen_test_invoice.py
 backend/test_invoice_*.png
 backend/topup_test.py
+backend/scripts/reset_quota.py
 
 # Python
 __pycache__/
@@ -80,3 +81,6 @@ cron_service/cron
 cron_service/cron.exe
 .vercel
 .bin/
+
+# Generated test fixtures (encrypted sample PDFs) — regenerate via scripts/make_test_pdfs.py
+backend/scripts/test_pdfs/

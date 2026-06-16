@@ -233,7 +233,7 @@ describe('useOcrExtraction', () => {
       await act(async () => {
         await result.current.reExtract([MOCK_FILE], 'BBL')
       })
-      expect(extractFromFile).toHaveBeenCalledWith(MOCK_FILE, 'BBL', undefined)
+      expect(extractFromFile).toHaveBeenCalledWith(MOCK_FILE, 'BBL', undefined, undefined)
     })
 
     it('shows Re-extract Failed modal on API error', async () => {

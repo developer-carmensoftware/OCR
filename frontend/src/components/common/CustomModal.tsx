@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle2, AlertTriangle, XCircle, Info } from 'lucide-react'
+import { motion, AnimatePresence, useAnimationControls, useReducedMotion } from 'framer-motion'
+import { CheckCircle2, AlertTriangle, XCircle, Info, Loader2, Eye, EyeOff } from 'lucide-react'
 
 type ModalType = 'info' | 'success' | 'warning' | 'error' | 'loading'
 
@@ -26,6 +26,11 @@ interface Props {
   inputValue?: string
   onInputChange?: (v: string) => void
   inputPlaceholder?: string
+  inputType?: 'text' | 'password'
+  /** Async-in-progress state: disables the input + actions and shows a spinner on confirm. */
+  busy?: boolean
+  /** Bump this to a new value to flag the input as invalid: shakes it and turns it red. */
+  errorNonce?: number
 }
 
 export default function CustomModal({
@@ -42,18 +47,49 @@ export default function CustomModal({
   inputValue,
   onInputChange,
   inputPlaceholder,
+  inputType = 'text',
+  busy = false,
+  errorNonce = 0,
 }: Props) {
   const confirmRef = useRef<HTMLButtonElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const [inputVal, setInputVal] = useState('')
+  const [inputErrored, setInputErrored] = useState(false)
+  const [revealed, setRevealed] = useState(false)
+  const shakeControls = useAnimationControls()
+  const reduceMotion = useReducedMotion()
+  const isPassword = inputType === 'password'
 
   useEffect(() => {
     if (show) setInputVal(inputValue || '')
   }, [show, inputLabel, inputValue])
 
+  // Reset the invalid + reveal state whenever the dialog (re)opens.
+  useEffect(() => {
+    if (show) {
+      setInputErrored(false)
+      setRevealed(false)
+    }
+  }, [show])
+
+  // A new errorNonce means "this attempt was wrong" — flag red and shake the field.
+  // Re-runs on every bump so consecutive wrong tries each get their own shake.
+  useEffect(() => {
+    if (!errorNonce) return
+    setInputErrored(true)
+    if (!reduceMotion) {
+      shakeControls.start({
+        x: [0, -8, 8, -6, 6, -3, 3, 0],
+        transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] },
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [errorNonce])
+
   const handleInputChange = (v: string) => {
     setInputVal(v)
+    if (inputErrored) setInputErrored(false)
     onInputChange?.(v)
   }
 
@@ -64,6 +100,7 @@ export default function CustomModal({
       else confirmRef.current?.focus()
     }, 50)
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (busy) return
       if (e.key === 'Escape') {
         if (onCancel) onCancel()
         else if (onConfirm) onConfirm()
@@ -93,7 +130,7 @@ export default function CustomModal({
       clearTimeout(timer)
       document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [show, onCancel, onConfirm, inputLabel])
+  }, [show, onCancel, onConfirm, inputLabel, busy])
 
   if (type === 'loading') {
     return show
@@ -144,18 +181,43 @@ export default function CustomModal({
             </p>
 
             {inputLabel && (
-              <div className="modal-input-group">
+              <motion.div className="modal-input-group" animate={shakeControls}>
                 <label className="modal-input-label">{inputLabel}</label>
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={inputVal}
-                  onChange={e => handleInputChange(e.target.value)}
-                  placeholder={inputPlaceholder || ''}
-                  aria-label={inputLabel}
-                  className="modal-input"
-                />
-              </div>
+                <div className="modal-input-wrap">
+                  <input
+                    ref={inputRef}
+                    type={isPassword && !revealed ? 'password' : 'text'}
+                    value={inputVal}
+                    disabled={busy}
+                    aria-invalid={inputErrored || undefined}
+                    onChange={e => handleInputChange(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && !busy) {
+                        e.preventDefault()
+                        onConfirm?.()
+                      }
+                    }}
+                    placeholder={inputPlaceholder || ''}
+                    aria-label={inputLabel}
+                    className={`modal-input${isPassword ? ' modal-input--with-reveal' : ''}${
+                      inputErrored ? ' modal-input--error' : ''
+                    }`}
+                  />
+                  {isPassword && (
+                    <button
+                      type="button"
+                      className="modal-input-reveal"
+                      onClick={() => setRevealed(r => !r)}
+                      disabled={busy}
+                      tabIndex={-1}
+                      aria-label={revealed ? 'Hide password' : 'Show password'}
+                      title={revealed ? 'Hide password' : 'Show password'}
+                    >
+                      {revealed ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  )}
+                </div>
+              </motion.div>
             )}
 
             <div className="modal-actions">
@@ -166,6 +228,7 @@ export default function CustomModal({
                   className="btn btn-outline"
                   style={cancelStyle}
                   onClick={onCancel}
+                  disabled={busy}
                 >
                   {cancelText}
                 </button>
@@ -175,7 +238,9 @@ export default function CustomModal({
                 type="button"
                 className="btn btn-confirm"
                 onClick={onConfirm}
+                disabled={busy}
               >
+                {busy && <Loader2 size={15} className="animate-spin" aria-hidden="true" />}
                 {confirmText}
               </button>
             </div>

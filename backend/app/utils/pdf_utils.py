@@ -8,7 +8,12 @@ clamped, and the number of pages rendered per call is capped, so a crafted PDF
 should additionally wrap the (blocking) render in an asyncio timeout.
 """
 
+import asyncio
+import functools
+
 import fitz  # PyMuPDF
+
+from app.exceptions import ExtractionError, PdfPasswordRequired
 
 MAX_PAGES_PER_CALL = 10
 # Upper bounds for rasterisation. A malicious PDF can declare an enormous page
@@ -22,9 +27,31 @@ MAX_THUMBNAIL_PAGES = 30
 PDF_RENDER_TIMEOUT_SECONDS = 30.0
 
 
-def get_pdf_page_count(pdf_bytes: bytes) -> int:
+def open_pdf(pdf_bytes: bytes, password: str | None = None) -> "fitz.Document":
+    """Open a PDF, raising typed exceptions instead of leaking PyMuPDF errors.
+
+    - Corrupted / unreadable bytes → ExtractionError (→ 422).
+    - Encrypted PDF without the correct password → PdfPasswordRequired (→ 400).
+      PyMuPDF auto-authenticates an empty password on open, so PDFs carrying only
+      an owner password (restrict editing/printing, but open freely) are read
+      transparently; only a real user password triggers the prompt.
+
+    The caller owns the returned document and must close() it.
+    """
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    except Exception as exc:
+        raise ExtractionError("Unable to read PDF — the file may be corrupted.") from exc
+    if doc.needs_pass:
+        if not doc.authenticate(password or ""):
+            doc.close()
+            raise PdfPasswordRequired()
+    return doc
+
+
+def get_pdf_page_count(pdf_bytes: bytes, password: str | None = None) -> int:
     """Return the number of pages in the PDF."""
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    doc = open_pdf(pdf_bytes, password)
     try:
         return doc.page_count
     finally:
@@ -48,13 +75,14 @@ def render_pdf_pages(
     pdf_bytes: bytes,
     page_indices: list[int],
     dpi: int = 200,
+    password: str | None = None,
 ) -> list[bytes]:
     """
     Render specified pages (0-based indices) of a PDF to PNG bytes.
     Returns a list of PNG bytes in the same order as page_indices.
     At most MAX_PAGES_PER_CALL pages are rendered regardless of input length.
     """
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    doc = open_pdf(pdf_bytes, password)
     try:
         results: list[bytes] = []
         for idx in page_indices[:MAX_PAGES_PER_CALL]:
@@ -71,13 +99,14 @@ def render_pdf_pages(
 def render_pdf_thumbnails(
     pdf_bytes: bytes,
     max_width: int = 300,
+    password: str | None = None,
 ) -> list[bytes]:
     """
     Render pages of a PDF at low resolution for UI thumbnail display.
     Returns list of PNG bytes (one per page), capped at MAX_THUMBNAIL_PAGES.
     """
     max_width = max(1, min(max_width, MAX_PIXMAP_DIM))
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    doc = open_pdf(pdf_bytes, password)
     try:
         thumbnails: list[bytes] = []
         for page in doc:
@@ -90,3 +119,16 @@ def render_pdf_thumbnails(
         return thumbnails
     finally:
         doc.close()
+
+
+async def ensure_pdf_openable(
+    file_bytes: bytes, filename: str, password: str | None = None
+) -> None:
+    """For a PDF file, open it once off-thread so an encrypted/corrupt PDF raises
+    PdfPasswordRequired / ExtractionError *before* the caller commits side effects
+    (e.g. consuming a document credit). No-op for non-PDF files."""
+    if not filename.lower().endswith(".pdf"):
+        return
+    await asyncio.get_running_loop().run_in_executor(
+        None, functools.partial(get_pdf_page_count, file_bytes, password)
+    )

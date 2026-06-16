@@ -134,6 +134,9 @@ export default function APInvoice() {
         inputValue={modal.show ? modal.inputValue : undefined}
         onInputChange={modal.show ? modal.onInputChange : undefined}
         inputPlaceholder={modal.show ? modal.inputPlaceholder : undefined}
+        inputType={modal.show ? modal.inputType : undefined}
+        busy={modal.show ? modal.busy : undefined}
+        errorNonce={modal.show ? modal.errorNonce : undefined}
       />
 
       <CustomModal

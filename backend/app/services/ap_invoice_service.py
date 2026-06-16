@@ -116,19 +116,21 @@ async def extract_ap_invoice_data(
     filename: str,
     task_id: str,
     selected_pages: list[int] | None = None,
+    pdf_password: str | None = None,
 ) -> dict[str, Any]:
     """Extract AP Invoice details using Vision LLM.
 
     For multi-page PDFs, the rendered pages are sent in a single LLM call so the
     model can correlate header/footer/line data across pages. ``selected_pages``
     (0-based) restricts which pages are sent; None → all pages.
+    ``pdf_password`` unlocks an encrypted PDF (None = not encrypted).
     """
     ap_model = settings.openrouter_ap_invoice_model or settings.openrouter_ocr_model
     ext = os.path.splitext(filename)[1].lower()
 
     if ext == ".pdf":
         page_count = await asyncio.get_running_loop().run_in_executor(
-            None, get_pdf_page_count, file_bytes
+            None, functools.partial(get_pdf_page_count, file_bytes, pdf_password)
         )
         # Honour an explicit selection (filtered to valid indices); else all pages.
         if selected_pages:
@@ -151,7 +153,8 @@ async def extract_ap_invoice_data(
         try:
             page_images = await asyncio.wait_for(
                 asyncio.get_running_loop().run_in_executor(
-                    None, functools.partial(render_pdf_pages, file_bytes, pages)
+                    None,
+                    functools.partial(render_pdf_pages, file_bytes, pages, password=pdf_password),
                 ),
                 timeout=PDF_RENDER_TIMEOUT_SECONDS,
             )

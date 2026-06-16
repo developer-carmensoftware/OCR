@@ -110,6 +110,9 @@ def create_app(lifespan=None) -> FastAPI:
             if isinstance(exc, exc_type):
                 code = exc.status_code if status is None else status
                 content: dict[str, Any] = {"detail": str(exc)}
+                error_code = getattr(exc, "code", None)
+                if error_code:
+                    content["code"] = error_code
                 if settings.app_debug:
                     content["traceback"] = tb
                 headers: dict[str, str] | None = None
