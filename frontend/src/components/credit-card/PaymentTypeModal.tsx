@@ -295,29 +295,6 @@ export default function PaymentTypeModal({
                   })}
               </>
             )}
-
-            <div className="pm-add-row">
-              <div className="pm-add-input-wrap">
-                <input
-                  type="text"
-                  className="pm-add-input"
-                  value={newCustomType}
-                  onChange={e => setNewCustomType(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleAddCustomType()}
-                  placeholder="Custom type..."
-                  aria-label="New custom payment type"
-                />
-                <button
-                  type="button"
-                  className="pm-add-btn"
-                  onClick={handleAddCustomType}
-                  title="Add"
-                >
-                  <Plus size={13} /> Add
-                </button>
-              </div>
-              <div className="pm-add-hint">Add custom Payment Type</div>
-            </div>
           </div>
         </div>
 
