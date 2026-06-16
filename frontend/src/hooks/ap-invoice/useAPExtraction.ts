@@ -54,7 +54,7 @@ const NUMERIC_FIELDS = [
 ]
 const isNumFld = (f: string) => NUMERIC_FIELDS.includes(f)
 
-// Pure fetch+retry helper — no React state. Throws for terminal errors (402/408/429) and after
+// Pure fetch+retry helper — no React state. Throws for terminal errors (401/402/408/429) and after
 // retry exhaustion so the caller (runOCR) handles modals and state in one place.
 async function _fetchExtractWithRetry(
   fileObj: File,
@@ -102,6 +102,7 @@ async function _fetchExtractWithRetry(
       // Terminal errors — propagate immediately without retrying
       if (
         (err as ApiError).code === PDF_PASSWORD_REQUIRED ||
+        msg.includes('401') ||
         msg.includes('402') ||
         msg.includes('408') ||
         msg.includes('429')
@@ -270,6 +271,30 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
       if (loadVendors) loadVendors()
     } catch (err) {
       const e = err as { message: string }
+      if (e.message.includes('401')) {
+        // AuthContext handles the "session expired" toast + state reset via ocr:unauthorized.
+        setStep(1)
+        setFile(null)
+        setPreviewUrl(null)
+        return
+      }
+      if (e.message === 'Failed to fetch') {
+        toast.error('Connection error')
+        setModal({
+          show: true,
+          type: 'warning',
+          title: 'Connection Error',
+          message: 'Could not reach the server — please check your network and try again.',
+          confirmText: 'Close',
+          onConfirm: () => {
+            setModal({ show: false })
+            setStep(1)
+            setFile(null)
+            setPreviewUrl(null)
+          },
+        })
+        return
+      }
       if (e.message.includes('402')) {
         toast.error('Out of documents')
         setModal({

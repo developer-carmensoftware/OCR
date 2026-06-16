@@ -274,6 +274,20 @@ export function useOcrExtraction({
             clearFiles()
           },
         })
+      } else if (e.status === 401) {
+        // AuthContext handles the "session expired" toast + state reset via ocr:unauthorized.
+        clearFiles()
+      } else if (!e.status && (e as unknown as Error).message === 'Failed to fetch') {
+        showModal({
+          title: 'Connection Error',
+          message: 'Could not reach the server — please check your network and try again.',
+          type: 'warning',
+          confirmText: 'Close',
+          onConfirm: () => {
+            closeModal()
+            clearFiles()
+          },
+        })
       } else {
         setStatus(e.message)
         showModal({
