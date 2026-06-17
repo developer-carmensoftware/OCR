@@ -20,11 +20,11 @@
   justify-content: center;
   min-width: max-content;
   width: 100%;
-  padding: 0.65rem 1.5rem;
-  background: var(--card-bg);
+  padding: 4px;
+  background: var(--muted);
   border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-xs);
   position: relative;
 }
 
@@ -50,10 +50,9 @@
 
 /* Active step: white text on primary pill (pill is Framer Motion span) */
 .step.active {
-  color: white;
+  color: var(--primary);
   font-weight: 700;
   border: none;
-  box-shadow: var(--shadow-primary);
 }
 
 .step.done {
@@ -94,10 +93,10 @@
     box-shadow var(--dur-base) var(--ease);
 }
 
-/* Active step-num: white ring */
+/* Active step-num: primary ring */
 .step.active .step-num {
-  border-color: rgba(255, 255, 255, 0.6);
-  color: white;
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 /* Done step-num: solid gradient fill */
@@ -115,6 +114,23 @@
   background: var(--border);
   border-radius: var(--radius-pill);
   transition: background var(--dur-slow) var(--ease);
+}
+
+/* Responsive adjustments for Step Wizard on mobile */
+@media (max-width: 640px) {
+  .step-wizard-wrap {
+    margin-bottom: 1.25rem;
+  }
+  .step {
+    padding: 0.45rem 0.75rem;
+    gap: 0.4rem;
+  }
+  .step-sub-label {
+    display: none !important;
+  }
+  .step-sep {
+    max-width: 16px;
+  }
 }
 
 /* ─── STEP GUIDANCE STATES ─── */
@@ -221,7 +237,7 @@
 
 .panel-card {
   background: var(--card-bg);
-  border: 1px solid rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 1.5rem;
   box-shadow: var(--shadow-card);
@@ -234,7 +250,7 @@
 @media (hover: hover) and (pointer: fine) {
   .panel-card:hover {
     box-shadow: var(--shadow-card-hover);
-    border-color: rgba(255, 255, 255, 0.9);
+    border-color: var(--border-hi);
     transform: translateY(-2px);
   }
 }
@@ -268,7 +284,7 @@
   gap: 0.65rem;
   padding: 0.65rem 0.9rem;
   border-radius: var(--radius-md);
-  border: 1.5px solid var(--border);
+  border: 1px solid var(--border);
   cursor: pointer;
   transition:
     background-color var(--dur-fast) var(--ease),
@@ -280,7 +296,7 @@
 }
 
 .bank-option:active {
-  transform: scale(0.97);
+  transform: scale(0.98);
 }
 
 .bank-option:hover {
@@ -291,7 +307,7 @@
 .bank-option.selected {
   border-color: var(--primary);
   background: var(--primary-light);
-  box-shadow: 0 0 0 3px var(--primary-glow);
+  box-shadow: 0 0 0 2px var(--primary-glow);
 }
 
 .bank-option input[type='radio'] {
@@ -535,7 +551,7 @@
 }
 
 #btnProcess:active {
-  transform: scale(0.97);
+  transform: scale(0.98);
 }
 
 #btnProcess:disabled {
@@ -983,8 +999,8 @@
 .data-table tbody tr {
   border-bottom: 1px solid var(--gray-100);
   transition:
-    background 0.12s,
-    box-shadow 0.12s;
+    background-color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
 }
 
 .data-table tbody tr:nth-child(even) {
@@ -996,7 +1012,17 @@
 }
 
 .data-table tbody tr:hover {
-  background: var(--primary-light);
+  background: var(--gray-100);
+}
+
+.data-table tbody tr:hover td:first-child {
+  border-top-left-radius: var(--radius-sm);
+  border-bottom-left-radius: var(--radius-sm);
+}
+
+.data-table tbody tr:hover td:last-child {
+  border-top-right-radius: var(--radius-sm);
+  border-bottom-right-radius: var(--radius-sm);
 }
 
 .data-table td {
@@ -1015,7 +1041,9 @@ input[type='text'].detail-input {
   width: 100%;
   min-width: 90px;
   outline: none;
-  transition: all var(--dur-base);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
 }
 
 input[type='text'].detail-input:hover {
@@ -1107,12 +1135,13 @@ input[type='text'].detail-input:focus {
   align-items: center;
   gap: 0.45rem;
   padding: 0.65rem 1.25rem;
-  background: white;
-  border: 1px solid var(--border-hi);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   color: var(--text-3);
   font-size: 0.85rem;
   font-weight: 500;
+  box-shadow: var(--shadow-xs);
   transition:
     background-color var(--dur-fast) var(--ease),
     color var(--dur-fast) var(--ease),
@@ -1122,7 +1151,7 @@ input[type='text'].detail-input:focus {
 }
 
 .btn-cancel:hover {
-  border-color: var(--gray-400);
+  border-color: var(--border-hi);
   color: var(--text-2);
   background: var(--gray-50);
 }
@@ -1137,11 +1166,12 @@ input[type='text'].detail-input:focus {
   gap: 0.45rem;
   padding: 0.65rem 1.5rem;
   background: var(--primary);
+  border: 1px solid var(--primary-dark);
   border-radius: var(--radius-md);
   color: white;
   font-size: 0.85rem;
   font-weight: 600;
-  box-shadow: var(--shadow-primary);
+  box-shadow: var(--shadow-sm);
   transition:
     background-color var(--dur-fast) var(--ease),
     box-shadow var(--dur-base) var(--ease),
@@ -1152,8 +1182,7 @@ input[type='text'].detail-input:focus {
 @media (hover: hover) and (pointer: fine) {
   .btn-submit:hover {
     background: var(--primary-hover);
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-primary);
+    box-shadow: var(--shadow-sm);
   }
 }
 
@@ -1185,7 +1214,7 @@ input[type='text'].detail-input:focus {
     color var(--dur-fast) var(--ease),
     border-color var(--dur-fast) var(--ease),
     box-shadow var(--dur-base) var(--ease),
-    transform var(--dur-fast) var(--ease);
+    transform 150ms var(--ease-spring-premium);
   text-decoration: none;
   line-height: 1;
   -webkit-user-select: none;
@@ -1211,14 +1240,14 @@ input[type='text'].detail-input:focus {
 .btn-primary {
   background: var(--primary);
   color: white;
-  box-shadow: var(--shadow-primary);
+  border: 1px solid var(--primary-dark);
+  box-shadow: var(--shadow-sm);
 }
 
 @media (hover: hover) and (pointer: fine) {
   .btn-primary:hover {
     background: var(--primary-hover);
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-primary);
+    box-shadow: var(--shadow-sm);
   }
 }
 
@@ -1227,14 +1256,15 @@ input[type='text'].detail-input:focus {
 }
 
 .btn-secondary {
-  background: var(--gray-100);
+  background: var(--card-bg);
   color: var(--text-2);
-  border-color: var(--border);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-xs);
 }
 
 .btn-secondary:hover {
-  background: var(--gray-200);
-  border-color: var(--gray-300);
+  background: var(--gray-50);
+  border-color: var(--border-hi);
 }
 
 .btn-secondary:active {
@@ -1242,16 +1272,16 @@ input[type='text'].detail-input:focus {
 }
 
 .btn-success {
-  background: var(--teal);
+  background: var(--emerald);
   color: white;
-  box-shadow: var(--shadow-teal);
+  border: 1px solid var(--emerald-mid);
+  box-shadow: var(--shadow-sm);
 }
 
 @media (hover: hover) and (pointer: fine) {
   .btn-success:hover {
-    background: var(--teal-hover);
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-teal);
+    background: var(--emerald-mid);
+    box-shadow: var(--shadow-sm);
   }
 }
 
@@ -1260,9 +1290,10 @@ input[type='text'].detail-input:focus {
 }
 
 .btn-outline {
-  background: var(--card-bg);
-  border: 1px solid var(--border-hi);
+  background: transparent;
+  border: 1px solid var(--border);
   color: var(--text-2);
+  box-shadow: var(--shadow-xs);
 }
 
 .btn-outline:hover {
@@ -1307,7 +1338,7 @@ input[type='text'].detail-input:focus {
 }
 
 .btn-overwrite:active {
-  transform: scale(0.97);
+  transform: scale(0.98);
 }
 
 .btn-danger {
@@ -1340,7 +1371,7 @@ input[type='text'].detail-input:focus {
 }
 
 .btn-danger:active {
-  transform: scale(0.97);
+  transform: scale(0.98);
 }
 
 .btn-icon {
@@ -1372,7 +1403,7 @@ input[type='text'].detail-input:focus {
 }
 
 .btn-icon:active {
-  transform: scale(0.93);
+  transform: scale(0.97);
 }
 
 .btn-icon:disabled {
@@ -3378,4 +3409,118 @@ input[type='text'].detail-input:focus {
     width: 100%;
     justify-content: center;
   }
+}
+
+/* ─── iOS SEGMENTED CONTROL ─── */
+.segmented-control {
+  display: inline-flex;
+  position: relative;
+  background: var(--muted);
+  padding: 2px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  user-select: none;
+  width: 100%;
+  max-width: 300px;
+  margin: 0 auto 2rem;
+}
+
+.segmented-btn {
+  flex: 1;
+  position: relative;
+  z-index: 2;
+  background: transparent;
+  border: none;
+  padding: 0.45rem 1rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-3);
+  border-radius: var(--radius-pill);
+  transition: color 150ms var(--ease-out-premium);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  cursor: pointer;
+}
+
+.segmented-btn:hover {
+  color: var(--text-2);
+}
+
+.segmented-btn.active {
+  color: var(--text);
+}
+
+.segmented-indicator {
+  position: absolute;
+  inset: 2px auto 2px 2px;
+  z-index: 1;
+  background: var(--card-bg);
+  border-radius: var(--radius-pill);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.08),
+    0 1px 1px rgba(0, 0, 0, 0.04);
+  border: 0.5px solid oklch(0.16 0.02 258.7 / 0.04);
+}
+
+/* ─── iOS BOTTOM SHEET / DRAWER ─── */
+/* enter/exit driven by framer-motion AnimatePresence in Pricing.tsx */
+.ios-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(8px);
+  z-index: var(--z-modal-backdrop);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.ios-sheet {
+  width: 100%;
+  max-width: 500px;
+  background: var(--card-bg);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  box-shadow: var(--shadow-xl);
+  padding: 1.5rem 1.5rem 3rem;
+  position: relative;
+}
+
+/* Drag handle indicator at the top of the sheet */
+.ios-sheet-handle {
+  width: 36px;
+  height: 5px;
+  background: var(--gray-300);
+  border-radius: var(--radius-pill);
+  margin: -0.5rem auto 1.25rem;
+  opacity: 0.7;
+}
+
+.ios-sheet-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--gray-100);
+  border: none;
+  color: var(--text-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.ios-sheet-close:hover {
+  background: var(--gray-200);
+  color: var(--text);
+}
+
+.ios-sheet-close:active {
+  transform: scale(0.97);
 }

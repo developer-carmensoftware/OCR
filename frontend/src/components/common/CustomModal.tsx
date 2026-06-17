@@ -168,7 +168,12 @@ export default function CustomModal({
             initial={{ opacity: 0, scale: 0.92, y: 16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 8 }}
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            transition={{
+              type: 'spring',
+              stiffness: 320,
+              damping: 28,
+              opacity: { duration: 0.15 },
+            }}
           >
             <div className="modal-icon-wrapper">
               <cfg.Icon size={26} strokeWidth={1.75} />

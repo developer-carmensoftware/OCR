@@ -1,5 +1,4 @@
 import {
-  Check,
   ArrowRight,
   MessageCircle,
   Gift,
@@ -9,13 +8,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { formatThb, formatRate } from '../../lib/money'
-import {
-  ENTERPRISE,
-  FREE_PLAN,
-  PLAN_INCLUDES,
-  perDoc,
-  type PackPresentation,
-} from '../../constants/billing'
+import { ENTERPRISE, FREE_PLAN, perDoc, type PackPresentation } from '../../constants/billing'
 import type { CreditPack } from '../../lib/api/credits'
 
 interface PlanCardProps {
@@ -31,15 +24,6 @@ const TIER_ICONS: Record<string, { Icon: LucideIcon; tint: string }> = {
   sub_pro: { Icon: Building2, tint: 'plan-icon--pro' },
 }
 
-/** Filled-circle check bullet shared by plan cards and the enterprise band. */
-function PlanCheck() {
-  return (
-    <span className="plan-check" aria-hidden="true">
-      <Check size={10} strokeWidth={3.5} />
-    </span>
-  )
-}
-
 /**
  * A subscription tier card. Reference-style anatomy: icon chip, name, bold
  * quota line, divider, short check bullets, then the price as the big number
@@ -50,7 +34,7 @@ export function PlanCard({ pack, meta, onSelect }: PlanCardProps) {
   const rate = perDoc(pack.price_thb, pack.credits)
   const icon = TIER_ICONS[pack.code]
   return (
-    <div className={`plan-card${meta.highlight ? ' is-highlight' : ''}`}>
+    <div className={`plan-card${meta.highlight ? ' is-highlight' : ''}`} data-tier={pack.code}>
       {meta.badge && <span className="plan-badge">{meta.badge}</span>}
       {icon && (
         <span className={`plan-icon ${icon.tint}`}>
@@ -61,15 +45,6 @@ export function PlanCard({ pack, meta, onSelect }: PlanCardProps) {
       <p className="plan-quota-line">
         <span className="text-mono">{pack.credits.toLocaleString()}</span> documents / month
       </p>
-
-      <ul className="plan-features">
-        {PLAN_INCLUDES.map(f => (
-          <li key={f}>
-            <PlanCheck />
-            <span>{f}</span>
-          </li>
-        ))}
-      </ul>
 
       <div className="plan-price">
         <span className="plan-price-amount text-mono">฿{formatThb(pack.price_thb)}</span>
@@ -96,7 +71,7 @@ export function PlanCard({ pack, meta, onSelect }: PlanCardProps) {
  */
 export function FreePlanCard() {
   return (
-    <div className="plan-card">
+    <div className="plan-card" data-tier="free">
       <span className="plan-icon plan-icon--free">
         <Gift size={20} strokeWidth={1.9} />
       </span>
@@ -104,15 +79,6 @@ export function FreePlanCard() {
       <p className="plan-quota-line">
         <span className="text-mono">{FREE_PLAN.credits}</span> {FREE_PLAN.quotaUnit}
       </p>
-
-      <ul className="plan-features">
-        {FREE_PLAN.features.map(f => (
-          <li key={f}>
-            <PlanCheck />
-            <span>{f}</span>
-          </li>
-        ))}
-      </ul>
 
       <div className="plan-price">
         <span className="plan-price-amount text-mono">฿0</span>
@@ -132,31 +98,24 @@ export function FreePlanCard() {
   )
 }
 
-/** Enterprise — full-width contact band below the tier row. */
-export function EnterpriseBand({ onContact }: { onContact: () => void }) {
+/** Enterprise — a contact-sales tier, same card anatomy as the priced tiers. */
+export function EnterpriseCard({ onContact }: { onContact: () => void }) {
   return (
-    <div className="enterprise-band">
-      <div className="enterprise-main">
-        <div className="enterprise-head">
-          <h3 className="enterprise-name">{ENTERPRISE.name}</h3>
-          <span className="enterprise-badge">{ENTERPRISE.badge}</span>
-        </div>
-        <p className="enterprise-tagline">{ENTERPRISE.tagline}</p>
-        <ul className="enterprise-features">
-          {ENTERPRISE.features.map(f => (
-            <li key={f}>
-              <PlanCheck />
-              <span>{f}</span>
-            </li>
-          ))}
-        </ul>
+    <div className="plan-card" data-tier="enterprise">
+      <span className="plan-icon plan-icon--enterprise">
+        <Building2 size={20} strokeWidth={1.9} />
+      </span>
+      <h3 className="plan-name">{ENTERPRISE.name}</h3>
+      <p className="plan-quota-line">{ENTERPRISE.tagline}</p>
+
+      <div className="plan-price">
+        <span className="plan-price-amount">Custom</span>
       </div>
-      <div className="enterprise-cta">
-        <span className="enterprise-price-note">{ENTERPRISE.priceNote}</span>
-        <button type="button" className="btn btn-outline enterprise-btn" onClick={onContact}>
-          <MessageCircle size={14} /> Contact sales
-        </button>
-      </div>
+      <p className="plan-rate">{ENTERPRISE.priceNote}</p>
+
+      <button type="button" className="btn btn-outline plan-cta" onClick={onContact}>
+        <MessageCircle size={14} /> Contact sales
+      </button>
     </div>
   )
 }

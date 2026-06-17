@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronDown, ShoppingBag, ArrowRight, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import AppHeader from '../components/common/AppHeader'
+import DarkModeToggle from '../components/common/DarkModeToggle'
 import { OrderStatusBadge, ProformaDocument, SlipUpload } from '../components/pricing'
 import { useOrderHistory } from '../hooks/credits'
 import {
@@ -111,7 +112,36 @@ export default function OrderHistory() {
 
   return (
     <div className="pricing-page">
-      <AppHeader moduleName="Order History" eyebrow="Carmen Cloud · AI Automation" />
+      <AppHeader moduleName="Plans & Credits" eyebrow="Carmen Cloud · AI Automation">
+        <div className="segmented-control" style={{ margin: 0, maxHeight: 36, maxWidth: 200 }}>
+          <button
+            type="button"
+            className="segmented-btn"
+            onClick={() => {
+              window.location.hash = '#/pricing'
+            }}
+          >
+            Plans
+          </button>
+          <button
+            type="button"
+            className="segmented-btn active"
+            onClick={() => {
+              window.location.hash = '#/pricing/orders'
+            }}
+          >
+            History
+          </button>
+          <span
+            className="segmented-indicator"
+            style={{
+              width: 'calc(50% - 4px)',
+              left: 'calc(50% + 2px)',
+            }}
+          />
+        </div>
+        <DarkModeToggle />
+      </AppHeader>
 
       <main className="orders-main">
         <div className="orders-head">

@@ -337,9 +337,26 @@
   vertical-align: middle;
 }
 
-.mapping-table tbody tr:hover {
-  background: var(--gray-50);
+.mapping-table tbody tr {
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
 }
+
+.mapping-table tbody tr:hover {
+  background: var(--gray-100);
+}
+
+.mapping-table tbody tr:hover td:first-child {
+  border-top-left-radius: var(--radius-sm);
+  border-bottom-left-radius: var(--radius-sm);
+}
+
+.mapping-table tbody tr:hover td:last-child {
+  border-top-right-radius: var(--radius-sm);
+  border-bottom-right-radius: var(--radius-sm);
+}
+
 .mapping-table td.is-numeric {
   text-align: right;
   font-family: 'IBM Plex Mono', monospace;
@@ -375,8 +392,24 @@
   border-bottom: 1px solid var(--gray-100);
   vertical-align: middle;
 }
+.ap-review-table tbody tr {
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+
 .ap-review-table tbody tr:hover {
-  background: var(--primary-light);
+  background: var(--gray-100);
+}
+
+.ap-review-table tbody tr:hover td:first-child {
+  border-top-left-radius: var(--radius-sm);
+  border-bottom-left-radius: var(--radius-sm);
+}
+
+.ap-review-table tbody tr:hover td:last-child {
+  border-top-right-radius: var(--radius-sm);
+  border-bottom-right-radius: var(--radius-sm);
 }
 
 /* Group-by-description modal — backdrop + tokens mirror the app's .modal-overlay/.modal-box. */
@@ -1155,6 +1188,28 @@
   font-size: 2.2rem;
   color: var(--emerald);
   box-shadow: 0 0 0 12px oklch(from var(--emerald) l c h / 0.08);
+  /* single spring-pop on a real completion — the brand's one earned moment */
+  animation: success-pop 480ms var(--ease-spring-premium) both;
+}
+
+@keyframes success-pop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ap-success-icon {
+    animation: none;
+  }
 }
 
 .ap-success-doc-no {

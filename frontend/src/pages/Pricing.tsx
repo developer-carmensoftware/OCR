@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { History, X, MessageCircle, Phone, Mail } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { X, MessageCircle, Phone, Mail } from 'lucide-react'
 import AppHeader from '../components/common/AppHeader'
 import DarkModeToggle from '../components/common/DarkModeToggle'
 import {
   PlanCard,
   FreePlanCard,
-  EnterpriseBand,
+  EnterpriseCard,
   PackList,
   FeatureFlows,
   CheckoutFlow,
@@ -13,17 +14,36 @@ import {
 import { usePricingCatalog, loadPersistedCheckout, type CheckoutSession } from '../hooks/credits'
 import { PLAN_META, SALES_CONTACT } from '../constants/billing'
 import type { CreditPack } from '../lib/api/credits'
+import { useEntrance } from '../lib/useEntrance'
 import '../styles/pages/pricing.css'
 
 function ContactDialog({ onClose }: { onClose: () => void }) {
   return (
-    <div className="contact-overlay" role="dialog" aria-modal="true" aria-label="Contact sales">
-      <div className="contact-backdrop" onClick={onClose} />
-      <div className="contact-dialog">
-        <button type="button" className="contact-close" onClick={onClose} aria-label="Close">
+    <motion.div
+      className="ios-sheet-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Contact sales"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+    >
+      <div style={{ position: 'absolute', inset: 0 }} onClick={onClose} />
+      <motion.div
+        className="ios-sheet"
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ type: 'spring', stiffness: 360, damping: 36 }}
+      >
+        <div className="ios-sheet-handle" />
+        <button type="button" className="ios-sheet-close" onClick={onClose} aria-label="Close">
           <X size={16} />
         </button>
-        <h3 className="contact-title">Contact sales</h3>
+        <h3 className="contact-title" style={{ marginTop: '0.5rem' }}>
+          Contact sales
+        </h3>
         <p className="contact-sub">
           Talk to our team to tailor an Enterprise plan to your organization's volume.
         </p>
@@ -49,9 +69,32 @@ function ContactDialog({ onClose }: { onClose: () => void }) {
             <span className="contact-channel-value text-mono">{SALES_CONTACT.email}</span>
           </a>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   )
+}
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.05,
+    },
+  },
+}
+
+const cardVariants = {
+  hidden: { opacity: 0, y: 12 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      type: 'spring' as const,
+      stiffness: 120,
+      damping: 14,
+    },
+  },
 }
 
 export default function Pricing() {
@@ -60,6 +103,7 @@ export default function Pricing() {
   const [view, setView] = useState<'catalog' | 'checkout'>(resume ? 'checkout' : 'catalog')
   const [selected, setSelected] = useState<CreditPack | null>(null)
   const [showContact, setShowContact] = useState(false)
+  const enter = useEntrance('pricing')
 
   const startCheckout = (pack: CreditPack) => {
     setSelected(pack)
@@ -75,9 +119,33 @@ export default function Pricing() {
   return (
     <div className="pricing-page">
       <AppHeader moduleName="Plans & Credits" eyebrow="Carmen Cloud · AI Automation">
-        <a className="pricing-history-link" href="#/pricing/orders">
-          <History size={15} /> <span>Order history</span>
-        </a>
+        <div className="segmented-control" style={{ margin: 0, maxHeight: 36, maxWidth: 200 }}>
+          <button
+            type="button"
+            className="segmented-btn active"
+            onClick={() => {
+              window.location.hash = '#/pricing'
+            }}
+          >
+            Plans
+          </button>
+          <button
+            type="button"
+            className="segmented-btn"
+            onClick={() => {
+              window.location.hash = '#/pricing/orders'
+            }}
+          >
+            History
+          </button>
+          <span
+            className="segmented-indicator"
+            style={{
+              width: 'calc(50% - 4px)',
+              left: 2,
+            }}
+          />
+        </div>
         <DarkModeToggle />
       </AppHeader>
 
@@ -92,10 +160,15 @@ export default function Pricing() {
         />
       ) : (
         <main className="pricing-main">
-          <header className="pricing-hero">
+          <motion.header
+            className="pricing-hero"
+            initial={enter ? { opacity: 0, y: 12 } : false}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ type: 'spring', stiffness: 100, damping: 15 }}
+          >
             <h2 className="pricing-title">Start free with 30 documents</h2>
             <p className="pricing-subtitle">Pick the plan that fits your business.</p>
-          </header>
+          </motion.header>
           {error ? (
             <div className="pricing-error">Failed to load plans: {error}</div>
           ) : loading ? (
@@ -107,19 +180,28 @@ export default function Pricing() {
           ) : (
             <>
               <section className="pricing-section" aria-label="Plans">
-                <div className="plan-grid plan-grid--4">
-                  <FreePlanCard />
+                <motion.div
+                  className="plan-grid plan-grid--5"
+                  variants={containerVariants}
+                  initial={enter ? 'hidden' : false}
+                  animate="show"
+                >
+                  <motion.div variants={cardVariants} style={{ display: 'flex' }}>
+                    <FreePlanCard />
+                  </motion.div>
                   {plans.map(pack => (
-                    <PlanCard
-                      key={pack.code}
-                      pack={pack}
-                      meta={PLAN_META[pack.code] ?? { name: pack.code }}
-                      onSelect={startCheckout}
-                    />
+                    <motion.div key={pack.code} variants={cardVariants} style={{ display: 'flex' }}>
+                      <PlanCard
+                        pack={pack}
+                        meta={PLAN_META[pack.code] ?? { name: pack.code }}
+                        onSelect={startCheckout}
+                      />
+                    </motion.div>
                   ))}
-                </div>
-
-                <EnterpriseBand onContact={() => setShowContact(true)} />
+                  <motion.div variants={cardVariants} style={{ display: 'flex' }}>
+                    <EnterpriseCard onContact={() => setShowContact(true)} />
+                  </motion.div>
+                </motion.div>
               </section>
 
               <section className="pricing-section" aria-labelledby="packs-heading">
@@ -147,7 +229,9 @@ export default function Pricing() {
         </main>
       )}
 
-      {showContact && <ContactDialog onClose={() => setShowContact(false)} />}
+      <AnimatePresence>
+        {showContact && <ContactDialog onClose={() => setShowContact(false)} />}
+      </AnimatePresence>
     </div>
   )
 }
