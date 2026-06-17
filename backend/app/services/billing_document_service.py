@@ -158,6 +158,7 @@ async def issue_document(
         buyer_tax_id=buyer.get("tax_id") or None,
         buyer_address=buyer.get("address") or None,
         buyer_branch=buyer.get("branch") or None,
+        buyer_email=buyer.get("email") or None,
         # Line item
         pack_code=pack_code,
         description=pack_description,
