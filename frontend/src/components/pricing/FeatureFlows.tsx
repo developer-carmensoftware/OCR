@@ -125,7 +125,7 @@ function CreditCardFlow() {
     <article ref={ref} className="flow-card accent-blue">
       <Head
         Icon={CreditCard}
-        title="ค่าธรรมเนียมบัตรเครดิต อัตโนมัติ"
+        title="Credit Card Commission Automation"
         sub="จากเอกสารใบเดียว ระบบสร้างบันทึกบัญชีและรายงานภาษีซื้อให้ครบ"
       />
       <div className="flow-body flow-row">
@@ -207,7 +207,7 @@ function ApInvoiceFlow() {
     <article ref={ref} className="flow-card accent-emerald">
       <Head
         Icon={ReceiptText}
-        title="บันทึกใบแจ้งหนี้ อัตโนมัติ"
+        title="AP Invoice Automation"
         sub="สแกนบิล ระบบอ่านและสร้างใบแจ้งหนี้ในระบบให้ ลดงานคีย์มือ 60%"
       />
       <div className="flow-body flow-stepper">
@@ -320,7 +320,7 @@ function GlSuggestionFlow() {
     <article ref={ref} className="flow-card accent-teal">
       <Head
         Icon={Lightbulb}
-        title="แนะนำรหัสบัญชี อัตโนมัติ"
+        title="Account Code Suggestion"
         sub="ระบบดูจากประวัติการลงบัญชี แล้วแนะนำรหัสที่น่าจะใช่ให้เลือก"
       />
       <div className="flow-body flow-row">

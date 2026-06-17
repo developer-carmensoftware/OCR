@@ -1,12 +1,12 @@
+import { ArrowRight, MessageCircle } from 'lucide-react'
 import {
-  ArrowRight,
-  MessageCircle,
-  Gift,
-  Zap,
-  Briefcase,
-  Building2,
-  type LucideIcon,
-} from 'lucide-react'
+  Sparkle,
+  RocketLaunch,
+  Diamond,
+  Crown,
+  Buildings,
+  type Icon as PhosphorIcon,
+} from '@phosphor-icons/react'
 import { formatThb, formatRate } from '../../lib/money'
 import { ENTERPRISE, FREE_PLAN, perDoc, type PackPresentation } from '../../constants/billing'
 import type { CreditPack } from '../../lib/api/credits'
@@ -17,11 +17,10 @@ interface PlanCardProps {
   onSelect: (pack: CreditPack) => void
 }
 
-/** Per-tier icon + tint class. Presentation-only, so it lives here, not in constants. */
-const TIER_ICONS: Record<string, { Icon: LucideIcon; tint: string }> = {
-  sub_starter: { Icon: Zap, tint: 'plan-icon--starter' },
-  sub_standard: { Icon: Briefcase, tint: 'plan-icon--standard' },
-  sub_pro: { Icon: Building2, tint: 'plan-icon--pro' },
+const TIER_ICONS: Record<string, { Icon: PhosphorIcon; tint: string }> = {
+  sub_starter: { Icon: RocketLaunch, tint: 'plan-icon--starter' },
+  sub_standard: { Icon: Diamond, tint: 'plan-icon--standard' },
+  sub_pro: { Icon: Crown, tint: 'plan-icon--pro' },
 }
 
 /**
@@ -38,7 +37,7 @@ export function PlanCard({ pack, meta, onSelect }: PlanCardProps) {
       {meta.badge && <span className="plan-badge">{meta.badge}</span>}
       {icon && (
         <span className={`plan-icon ${icon.tint}`}>
-          <icon.Icon size={20} strokeWidth={1.9} />
+          <icon.Icon size={20} weight="duotone" />
         </span>
       )}
       <h3 className="plan-name">{meta.name}</h3>
@@ -73,7 +72,7 @@ export function FreePlanCard() {
   return (
     <div className="plan-card" data-tier="free">
       <span className="plan-icon plan-icon--free">
-        <Gift size={20} strokeWidth={1.9} />
+        <Sparkle size={20} weight="duotone" />
       </span>
       <h3 className="plan-name">{FREE_PLAN.name}</h3>
       <p className="plan-quota-line">
@@ -103,7 +102,7 @@ export function EnterpriseCard({ onContact }: { onContact: () => void }) {
   return (
     <div className="plan-card" data-tier="enterprise">
       <span className="plan-icon plan-icon--enterprise">
-        <Building2 size={20} strokeWidth={1.9} />
+        <Buildings size={20} weight="duotone" />
       </span>
       <h3 className="plan-name">{ENTERPRISE.name}</h3>
       <p className="plan-quota-line">{ENTERPRISE.tagline}</p>
