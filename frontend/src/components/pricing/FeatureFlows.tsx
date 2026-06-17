@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import {
   CreditCard,
   ReceiptText,
@@ -14,58 +14,35 @@ import {
   Sparkles,
   Hash,
   ArrowRight,
+  ChevronDown,
   type LucideIcon,
 } from 'lucide-react'
 
-/**
- * /pricing AI-feature showcase — the three input→process→output infographics
- * from the design mock, refined onto the light "showcase layer" (DESIGN.md §7):
- * light accent-wash headers (no dark banners), showcase elevation, and a staged
- * reveal that auto-plays when the card scrolls into view. All-light, AA, tokens.
- */
+/* ── Shared helpers ── */
 
-/**
- * Drives a phase counter from an IntersectionObserver: phase 0 = out of view,
- * 1 = entered, then advances per `timeline` (absolute ms). Resets on exit so it
- * replays on re-entry. Reduced-motion / no-IO jumps straight to the final phase.
- */
-function useInViewSequence(timeline: readonly number[]) {
+function useInViewSequence(timeline: readonly number[], active: boolean) {
   const ref = useRef<HTMLElement>(null)
   const [phase, setPhase] = useState(0)
   useEffect(() => {
+    if (!active) {
+      setPhase(0)
+      return
+    }
     const el = ref.current
     if (!el) return
     const final = timeline.length + 1
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-    if (typeof IntersectionObserver === 'undefined') {
+    if (reduce) {
       setPhase(final)
       return
     }
     const timers: number[] = []
-    const clear = () => {
-      timers.forEach(clearTimeout)
-      timers.length = 0
-    }
-    const io = new IntersectionObserver(
-      ([entry]) => {
-        clear()
-        if (!entry.isIntersecting) {
-          setPhase(0)
-        } else if (reduce) {
-          setPhase(final)
-        } else {
-          setPhase(1)
-          timeline.forEach((t, i) => timers.push(window.setTimeout(() => setPhase(i + 2), t)))
-        }
-      },
-      { threshold: 0.15 }
-    )
-    io.observe(el)
+    setPhase(1)
+    timeline.forEach((t, i) => timers.push(window.setTimeout(() => setPhase(i + 2), t)))
     return () => {
-      io.disconnect()
-      clear()
+      timers.forEach(clearTimeout)
     }
-  }, [timeline])
+  }, [timeline, active])
   return { ref, phase }
 }
 
@@ -115,12 +92,38 @@ function HArrow({ on }: { on: boolean }) {
   )
 }
 
-/* ════════════════ 1. CREDIT CARD ════════════════ */
+/* ── Feature definitions ── */
+
+const FEATURES = [
+  {
+    key: 'cc',
+    Icon: CreditCard,
+    title: 'Credit Card Commission Automation',
+    accent: 'accent-blue',
+    desc: 'ระบบช่วยเปลี่ยนเอกสาร 1 ใบ ให้เป็นเรื่องง่าย โดยสร้าง Journal Voucher เพื่อบันทึกบัญชีอัตโนมัติ และทำ Input Tax Reconciliation บันทึกภาษีซื้อเพื่อออกรายงานนำส่งสรรพากร ลดขั้นตอนการทำงานแบบเดิม ๆ ได้อย่างแม่นยำ',
+  },
+  {
+    key: 'ap',
+    Icon: ReceiptText,
+    title: 'AP Invoice Automation',
+    accent: 'accent-emerald',
+    desc: 'บอกลาการคีย์ข้อมูลด้วยตนเอง สำหรับรายการสั่งซื้อที่ไม่มี PR/PO หรือรายการค่าบริการต่าง ๆ เพียงแค่สแกนเอกสารเข้าสู่ระบบ ระบบจะจัดการสร้างเอกสารให้อัตโนมัติ ช่วยประหยัดเวลาการทำงานลงได้มากถึง 60%',
+  },
+  {
+    key: 'gl',
+    Icon: Lightbulb,
+    title: 'Account Code Suggestion',
+    accent: 'accent-teal',
+    desc: 'เพิ่มความรวดเร็วในการทำงานด้วยระบบแนะนำการลงบัญชีอัตโนมัติ โดย AI จะช่วยตรวจสอบและวิเคราะห์ข้อมูลการบันทึกบัญชีในอดีต เพื่อให้คำแนะนำที่ถูกต้อง และระบบจะเรียนรู้เพื่อเพิ่มความแม่นยำขึ้นเรื่อย ๆ อย่างต่อเนื่อง',
+  },
+] as const
+
+/* ── Flow detail panels ── */
 
 const CC_TIMELINE = [850, 2050] as const
 
-function CreditCardFlow() {
-  const { ref, phase } = useInViewSequence(CC_TIMELINE)
+function CreditCardDetail({ active }: { active: boolean }) {
+  const { ref, phase } = useInViewSequence(CC_TIMELINE, active)
   return (
     <article ref={ref} className="flow-card accent-blue">
       <Head
@@ -197,12 +200,10 @@ function CreditCardFlow() {
   )
 }
 
-/* ════════════════ 2. AP INVOICE ════════════════ */
-
 const AP_TIMELINE = [800, 1750, 2700, 3650, 4600] as const
 
-function ApInvoiceFlow() {
-  const { ref, phase } = useInViewSequence(AP_TIMELINE)
+function ApInvoiceDetail({ active }: { active: boolean }) {
+  const { ref, phase } = useInViewSequence(AP_TIMELINE, active)
   return (
     <article ref={ref} className="flow-card accent-emerald">
       <Head
@@ -220,11 +221,9 @@ function ApInvoiceFlow() {
             on={phase >= 1}
           />
         </div>
-
         <span className={`flow-down${phase >= 2 ? ' is-on' : ''}`} aria-hidden="true">
           <ArrowRight size={18} />
         </span>
-
         <div className={`flow-stage${phase >= 2 ? ' is-on' : ''}`}>
           <span className="flow-stage-no">2</span>
           <div className="flow-substages">
@@ -250,11 +249,9 @@ function ApInvoiceFlow() {
             />
           </div>
         </div>
-
         <span className={`flow-down${phase >= 5 ? ' is-on' : ''}`} aria-hidden="true">
           <ArrowRight size={18} />
         </span>
-
         <div className={`flow-stage${phase >= 5 ? ' is-on' : ''}`}>
           <span className="flow-stage-no">3</span>
           <div className="flow-out-list">
@@ -267,7 +264,6 @@ function ApInvoiceFlow() {
           </div>
         </div>
       </div>
-
       <div className={`flow-benefits${phase >= 6 ? ' is-on' : ''}`}>
         <div className="flow-benefit">
           <b>60%</b>
@@ -285,8 +281,6 @@ function ApInvoiceFlow() {
     </article>
   )
 }
-
-/* ════════════════ 3. GL SUGGESTION ════════════════ */
 
 const GL_TIMELINE = [850, 2050] as const
 
@@ -311,8 +305,8 @@ const GL_SAMPLES = [
   },
 ] as const
 
-function GlSuggestionFlow() {
-  const { ref, phase } = useInViewSequence(GL_TIMELINE)
+function GlSuggestionDetail({ active }: { active: boolean }) {
+  const { ref, phase } = useInViewSequence(GL_TIMELINE, active)
   const [selected, setSelected] = useState(0)
   const sample = GL_SAMPLES[selected]
   const done = phase >= 3
@@ -362,12 +356,51 @@ function GlSuggestionFlow() {
   )
 }
 
+const FLOW_PANELS = [CreditCardDetail, ApInvoiceDetail, GlSuggestionDetail] as const
+
+/* ── Main export: tab selector + expandable detail ── */
+
 export default function FeatureFlows() {
+  const [activeIdx, setActiveIdx] = useState<number | null>(null)
+
+  const toggle = useCallback((i: number) => {
+    setActiveIdx(prev => (prev === i ? null : i))
+  }, [])
+
   return (
-    <div className="flow-list">
-      <CreditCardFlow />
-      <ApInvoiceFlow />
-      <GlSuggestionFlow />
+    <div className="flow-showcase">
+      <div className="flow-tabs" role="tablist">
+        {FEATURES.map((f, i) => {
+          const isActive = activeIdx === i
+          return (
+            <button
+              key={f.key}
+              role="tab"
+              aria-selected={isActive}
+              className={`flow-tab ${f.accent}${isActive ? ' is-active' : ''}`}
+              onClick={() => toggle(i)}
+            >
+              <span className="flow-tab-icon" aria-hidden="true">
+                <f.Icon size={20} strokeWidth={1.9} />
+              </span>
+              <span className="flow-tab-title">{f.title}</span>
+              <span className="flow-tab-desc">{f.desc}</span>
+              <ChevronDown size={16} className={`flow-tab-chevron${isActive ? ' is-open' : ''}`} />
+            </button>
+          )
+        })}
+      </div>
+
+      {FLOW_PANELS.map((Panel, i) => {
+        const open = activeIdx === i
+        return (
+          <div key={i} className={`flow-detail${open ? ' is-open' : ''}`}>
+            <div className="flow-detail-inner">
+              <Panel active={open} />
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

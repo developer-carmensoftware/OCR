@@ -245,6 +245,7 @@
   left: 0;
   right: 0;
   height: 3px;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   background: var(--plan-accent);
   opacity: 0.5;
 }
@@ -258,24 +259,20 @@
 }
 /* Recommended tier carries real weight: tinted surface, accent ring, lift. */
 .plan-card.is-highlight {
+  border-width: 2px;
   border-color: var(--plan-accent);
   background: linear-gradient(
     to bottom,
     color-mix(in oklch, var(--plan-accent) 7%, var(--card-bg)) 0%,
     var(--card-bg) 26%
   );
-  box-shadow:
-    0 0 0 1px var(--plan-accent),
-    var(--shadow-lg);
+  box-shadow: var(--shadow-lg);
 }
 .plan-card.is-highlight::before {
-  height: 4px;
-  opacity: 1;
+  display: none;
 }
 .plan-card.is-highlight:hover {
-  box-shadow:
-    0 0 0 1px var(--plan-accent),
-    var(--shadow-xl);
+  box-shadow: var(--shadow-xl);
 }
 @media (min-width: 1001px) {
   .plan-card.is-highlight {
@@ -373,6 +370,8 @@
   width: 100%;
   justify-content: center;
   text-decoration: none;
+  white-space: nowrap;
+  font-size: 0.82rem;
 }
 
 /* ═══ AI FEATURE SHOWCASE — three infographics (light showcase layer) ═══════
@@ -381,6 +380,101 @@
    dark banners), showcase elevation, staged reveal driven by `is-on` classes
    that the component toggles as the card scrolls into view. `--flow` = light
    pastel role; `--flow-strong` = AA, theme-aware foreground. */
+/* ── Tab selector + expandable detail layout ── */
+.flow-showcase {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.flow-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+.flow-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.25rem 1rem 1rem;
+  text-align: center;
+  border-radius: var(--showcase-radius);
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-base) var(--ease),
+    box-shadow var(--dur-base) var(--ease),
+    background var(--dur-base) var(--ease);
+}
+.flow-tab:hover {
+  border-color: color-mix(in srgb, var(--flow) 35%, var(--border));
+  box-shadow: var(--shadow-sm);
+}
+.flow-tab.is-active {
+  border-color: color-mix(in srgb, var(--flow) 50%, var(--border));
+  background: color-mix(in srgb, var(--flow) 5%, var(--card-bg));
+  box-shadow: var(--shadow-md);
+}
+.flow-tab-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--flow) 14%, var(--card-bg));
+  color: var(--flow-strong);
+}
+.flow-tab-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+.flow-tab-desc {
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--text-3);
+  text-wrap: pretty;
+}
+.flow-tab-chevron {
+  color: var(--text-4);
+  transition: transform var(--dur-base) var(--ease);
+  margin-top: auto;
+}
+.flow-tab-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+/* ── Expanded detail panel (grid-row collapse for smooth height) ── */
+.flow-detail {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 0.4s var(--ease),
+    opacity 0.3s var(--ease);
+}
+.flow-detail.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.flow-detail-inner {
+  overflow: hidden;
+}
+
+@media (max-width: 860px) {
+  .flow-tabs {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 560px) {
+  .flow-tabs {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ponytail: kept .flow-list for compat but new layout uses .flow-showcase */
 .flow-list {
   display: flex;
   flex-direction: column;
@@ -883,6 +977,11 @@
 }
 @media (max-width: 860px) {
   .pack-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 560px) {
+  .pack-grid {
     grid-template-columns: 1fr;
     max-width: 420px;
     margin: 0 auto;
@@ -1376,7 +1475,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
   margin-bottom: 0.85rem;
 }
 .pf-toolbar-label {
@@ -1389,6 +1489,9 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   color: var(--text);
+  /* Contain any wide inner content so it can't widen the page and break the
+     sticky app-header (sticky can't cover a horizontally-scrolling page). */
+  overflow-x: auto;
 }
 .pf-head {
   display: flex;
@@ -1764,6 +1867,19 @@
   }
   .pf-parties {
     grid-template-columns: 1fr;
+  }
+  .proforma-doc {
+    padding: 1.25rem 1rem;
+  }
+  .pf-head {
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .pf-head-meta {
+    text-align: left;
+  }
+  .pf-meta-row {
+    justify-content: flex-start;
   }
   .order-row-head {
     grid-template-columns: 1fr auto;
