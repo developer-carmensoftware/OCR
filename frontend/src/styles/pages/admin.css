@@ -30,7 +30,7 @@ body:has(.admin-login-page) {
     ),
     oklch(0.97 0.005 258.7);
   color: var(--text);
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
 }
 
 [data-theme='dark'] .admin-shell {
@@ -967,7 +967,7 @@ body:has(.admin-login-page) {
       transparent 60%
     ),
     oklch(0.96 0.008 258.7);
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
 }
 
 [data-theme='dark'] .admin-login-page {

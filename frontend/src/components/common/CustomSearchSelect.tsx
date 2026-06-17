@@ -238,7 +238,9 @@ export default function CustomSearchSelect({
                       }}
                     >
                       {topChoice.code}{' '}
-                      <span style={{ fontWeight: 500, fontFamily: "'Sarabun', sans-serif" }}>
+                      <span
+                        style={{ fontWeight: 500, fontFamily: "'IBM Plex Sans Thai', sans-serif" }}
+                      >
                         - {topChoice.name}
                       </span>
                     </div>
@@ -249,7 +251,7 @@ export default function CustomSearchSelect({
                           color: topBadge.color,
                           opacity: 0.75,
                           marginTop: '2px',
-                          fontFamily: "'Sarabun', sans-serif",
+                          fontFamily: "'IBM Plex Sans Thai', sans-serif",
                         }}
                       >
                         {topChoice.name2}
@@ -307,7 +309,7 @@ export default function CustomSearchSelect({
                     style={{
                       color: 'var(--text-3)',
                       fontWeight: 500,
-                      fontFamily: "'Sarabun', sans-serif",
+                      fontFamily: "'IBM Plex Sans Thai', sans-serif",
                     }}
                   >
                     {' '}
@@ -320,7 +322,7 @@ export default function CustomSearchSelect({
                       fontSize: '0.75rem',
                       color: 'var(--text-4)',
                       marginTop: '3px',
-                      fontFamily: "'Sarabun', sans-serif",
+                      fontFamily: "'IBM Plex Sans Thai', sans-serif",
                     }}
                   >
                     {opt.name2}

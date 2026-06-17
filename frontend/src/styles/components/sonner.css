@@ -24,7 +24,7 @@
   --info-border: var(--teal);
   --info-text: var(--info-foreground);
 
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
 }
 
 [data-sonner-toast] {

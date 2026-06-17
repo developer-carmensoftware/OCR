@@ -446,19 +446,7 @@
   transform: rotate(180deg);
 }
 
-/* ── Expanded detail panel (grid-row collapse for smooth height) ── */
-.flow-detail {
-  display: grid;
-  grid-template-rows: 0fr;
-  opacity: 0;
-  transition:
-    grid-template-rows 0.4s var(--ease),
-    opacity 0.3s var(--ease);
-}
-.flow-detail.is-open {
-  grid-template-rows: 1fr;
-  opacity: 1;
-}
+/* ── Expanded detail panel (height animated by framer-motion) ── */
 .flow-detail-inner {
   overflow: hidden;
 }

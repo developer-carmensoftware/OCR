@@ -16,6 +16,7 @@ import ReactDOM from 'react-dom/client'
 import { Toaster } from 'sonner'
 import { AuthProvider } from './contexts/AuthContext'
 import { AdminAuthProvider } from './contexts/AdminAuthContext'
+import { LanguageProvider } from './i18n/LanguageContext'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import { ConsentGate } from './components/common/ConsentGate'
 import AdminProtectedRoute from './components/admin/AdminProtectedRoute'
@@ -176,9 +177,11 @@ root.render(
           richColors
           theme="light"
         />
-        <ConsentGate>
-          <Router />
-        </ConsentGate>
+        <LanguageProvider>
+          <ConsentGate>
+            <Router />
+          </ConsentGate>
+        </LanguageProvider>
       </AdminAuthProvider>
     </AuthProvider>
   </ErrorBoundary>

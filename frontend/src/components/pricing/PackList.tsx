@@ -1,6 +1,7 @@
 import { Coins } from 'lucide-react'
 import { formatThb, formatRate } from '../../lib/money'
 import { PACK_META, perDoc } from '../../constants/billing'
+import { useT } from '../../i18n/LanguageContext'
 import type { CreditPack } from '../../lib/api/credits'
 
 interface Props {
@@ -14,6 +15,7 @@ interface Props {
  * count leads; the whole card starts checkout.
  */
 export default function PackList({ packs, onSelect }: Props) {
+  const { t } = useT()
   return (
     <div className="pack-grid">
       {packs.map(pack => {
@@ -32,13 +34,16 @@ export default function PackList({ packs, onSelect }: Props) {
             <span className="pack-card-id">
               <span className="pack-card-credits text-mono">{pack.credits.toLocaleString()}</span>
               <span className="pack-card-unit">
-                credits
-                {meta?.badge && <span className="pack-card-badge">{meta.badge}</span>}
+                {t('pack.creditsUnit')}
+                {meta?.badge && <span className="pack-card-badge">{t('pack.badgeBestValue')}</span>}
               </span>
             </span>
             <span className="pack-card-price">
               <span className="pack-card-amount text-mono">฿{formatThb(pack.price_thb)}</span>
-              <span className="pack-card-rate text-mono">฿{formatRate(rate)}/doc</span>
+              <span className="pack-card-rate text-mono">
+                ฿{formatRate(rate)}
+                {t('pack.perDoc')}
+              </span>
             </span>
           </button>
         )

@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useT } from '../../i18n/LanguageContext'
+import type { TKey } from '../../i18n/dict'
 import {
   CreditCard,
   ReceiptText,
@@ -100,42 +103,45 @@ const FEATURES = [
     Icon: CreditCard,
     title: 'Credit Card Commission Automation',
     accent: 'accent-blue',
-    desc: 'ระบบช่วยเปลี่ยนเอกสาร 1 ใบ ให้เป็นเรื่องง่าย โดยสร้าง Journal Voucher เพื่อบันทึกบัญชีอัตโนมัติ และทำ Input Tax Reconciliation บันทึกภาษีซื้อเพื่อออกรายงานนำส่งสรรพากร ลดขั้นตอนการทำงานแบบเดิม ๆ ได้อย่างแม่นยำ',
+    descKey: 'flows.cc.desc',
   },
   {
     key: 'ap',
     Icon: ReceiptText,
     title: 'AP Invoice Automation',
     accent: 'accent-emerald',
-    desc: 'บอกลาการคีย์ข้อมูลด้วยตนเอง สำหรับรายการสั่งซื้อที่ไม่มี PR/PO หรือรายการค่าบริการต่าง ๆ เพียงแค่สแกนเอกสารเข้าสู่ระบบ ระบบจะจัดการสร้างเอกสารให้อัตโนมัติ ช่วยประหยัดเวลาการทำงานลงได้มากถึง 60%',
+    descKey: 'flows.ap.desc',
   },
   {
     key: 'gl',
     Icon: Lightbulb,
     title: 'Account Code Suggestion',
     accent: 'accent-teal',
-    desc: 'เพิ่มความรวดเร็วในการทำงานด้วยระบบแนะนำการลงบัญชีอัตโนมัติ โดย AI จะช่วยตรวจสอบและวิเคราะห์ข้อมูลการบันทึกบัญชีในอดีต เพื่อให้คำแนะนำที่ถูกต้อง และระบบจะเรียนรู้เพื่อเพิ่มความแม่นยำขึ้นเรื่อย ๆ อย่างต่อเนื่อง',
+    descKey: 'flows.gl.desc',
   },
-] as const
+] as const satisfies ReadonlyArray<{
+  key: string
+  Icon: LucideIcon
+  title: string
+  accent: string
+  descKey: TKey
+}>
 
 /* ── Flow detail panels ── */
 
 const CC_TIMELINE = [850, 2050] as const
 
 function CreditCardDetail({ active }: { active: boolean }) {
+  const { t } = useT()
   const { ref, phase } = useInViewSequence(CC_TIMELINE, active)
   return (
     <article ref={ref} className="flow-card accent-blue">
-      <Head
-        Icon={CreditCard}
-        title="Credit Card Commission Automation"
-        sub="จากเอกสารใบเดียว ระบบสร้างบันทึกบัญชีและรายงานภาษีซื้อให้ครบ"
-      />
+      <Head Icon={CreditCard} title="Credit Card Commission Automation" sub={t('flows.cc.sub')} />
       <div className="flow-body flow-row">
         <Node
           Icon={FileText}
-          label="รับเอกสาร"
-          caption="ใบแจ้งค่าธรรมเนียมจากธนาคาร"
+          label={t('flows.cc.n1.label')}
+          caption={t('flows.cc.n1.cap')}
           on={phase >= 1}
         />
         <HArrow on={phase >= 2} />
@@ -146,11 +152,11 @@ function CreditCardDetail({ active }: { active: boolean }) {
           >
             <Settings2 size={22} strokeWidth={1.8} />
           </span>
-          <span className="flow-node-label">ระบบจับคู่บัญชีและภาษี</span>
+          <span className="flow-node-label">{t('flows.cc.match.label')}</span>
           <ul className="flow-checklist">
-            <li>อ่านและดึงข้อมูล</li>
-            <li>จับคู่ผังบัญชี / ภาษี</li>
-            <li>สร้างเอกสารปลายทาง</li>
+            <li>{t('flows.cc.chk1')}</li>
+            <li>{t('flows.cc.chk2')}</li>
+            <li>{t('flows.cc.chk3')}</li>
           </ul>
         </div>
         <span className={`flow-branch${phase >= 3 ? ' is-on' : ''}`} aria-hidden="true">
@@ -175,8 +181,8 @@ function CreditCardDetail({ active }: { active: boolean }) {
               <FileCheck2 size={18} />
             </span>
             <div>
-              <h4>บันทึกบัญชี (JV)</h4>
-              <p>ลงบัญชีอัตโนมัติ ไม่ต้องคีย์มือ</p>
+              <h4>{t('flows.cc.out1.h')}</h4>
+              <p>{t('flows.cc.out1.p')}</p>
             </div>
           </div>
           <div className={`flow-out${phase >= 3 ? ' is-on' : ''}`}>
@@ -184,8 +190,8 @@ function CreditCardDetail({ active }: { active: boolean }) {
               <Receipt size={18} />
             </span>
             <div>
-              <h4>รายงานภาษีซื้อ</h4>
-              <p>พร้อมนำส่งสรรพากร</p>
+              <h4>{t('flows.cc.out2.h')}</h4>
+              <p>{t('flows.cc.out2.p')}</p>
             </div>
           </div>
         </div>
@@ -194,7 +200,7 @@ function CreditCardDetail({ active }: { active: boolean }) {
         <span className="flow-result-mark" aria-hidden="true">
           ✓
         </span>
-        <p>จากเอกสาร 1 ใบ ได้งาน 2 อย่างอัตโนมัติ ลดงานซ้ำซ้อนและข้อผิดพลาด</p>
+        <p>{t('flows.cc.result')}</p>
       </div>
     </article>
   )
@@ -203,21 +209,18 @@ function CreditCardDetail({ active }: { active: boolean }) {
 const AP_TIMELINE = [800, 1750, 2700, 3650, 4600] as const
 
 function ApInvoiceDetail({ active }: { active: boolean }) {
+  const { t } = useT()
   const { ref, phase } = useInViewSequence(AP_TIMELINE, active)
   return (
     <article ref={ref} className="flow-card accent-emerald">
-      <Head
-        Icon={ReceiptText}
-        title="AP Invoice Automation"
-        sub="สแกนบิล ระบบอ่านและสร้างใบแจ้งหนี้ในระบบให้ ลดงานคีย์มือ 60%"
-      />
+      <Head Icon={ReceiptText} title="AP Invoice Automation" sub={t('flows.ap.sub')} />
       <div className="flow-body flow-stepper">
         <div className={`flow-stage${phase >= 1 ? ' is-on' : ''}`}>
           <span className="flow-stage-no">1</span>
           <Node
             Icon={ScanLine}
-            label="สแกนบิล"
-            caption="ใบแจ้งหนี้ หรือใบกำกับภาษี"
+            label={t('flows.ap.s1.label')}
+            caption={t('flows.ap.s1.cap')}
             on={phase >= 1}
           />
         </div>
@@ -229,22 +232,22 @@ function ApInvoiceDetail({ active }: { active: boolean }) {
           <div className="flow-substages">
             <Node
               Icon={FileText}
-              label="ดึงข้อมูล"
-              caption="เลขที่ ยอดเงิน ภาษี ผู้ขาย"
+              label={t('flows.ap.s2a.label')}
+              caption={t('flows.ap.s2a.cap')}
               on={phase >= 2}
             />
             <HArrow on={phase >= 3} />
             <Node
               Icon={ShieldCheck}
-              label="ตรวจความถูกต้อง"
-              caption="รูปแบบ + เทียบฐานผู้ขาย"
+              label={t('flows.ap.s2b.label')}
+              caption={t('flows.ap.s2b.cap')}
               on={phase >= 3}
             />
             <HArrow on={phase >= 4} />
             <Node
               Icon={Database}
-              label="สร้างใบแจ้งหนี้"
-              caption="บันทึกเข้าระบบ + รหัสบัญชี"
+              label={t('flows.ap.s2c.label')}
+              caption={t('flows.ap.s2c.cap')}
               on={phase >= 4}
             />
           </div>
@@ -255,11 +258,11 @@ function ApInvoiceDetail({ active }: { active: boolean }) {
         <div className={`flow-stage${phase >= 5 ? ' is-on' : ''}`}>
           <span className="flow-stage-no">3</span>
           <div className="flow-out-list">
-            <h4>พร้อมใช้งานต่อในระบบ</h4>
+            <h4>{t('flows.ap.out.h')}</h4>
             <ul>
-              <li>บันทึก AP Invoice สำเร็จ</li>
-              <li>พร้อมบันทึกบัญชี (JV) และทำจ่าย</li>
-              <li>รายงานเจ้าหนี้ / ภาษีซื้อ</li>
+              <li>{t('flows.ap.out1')}</li>
+              <li>{t('flows.ap.out2')}</li>
+              <li>{t('flows.ap.out3')}</li>
             </ul>
           </div>
         </div>
@@ -267,15 +270,15 @@ function ApInvoiceDetail({ active }: { active: boolean }) {
       <div className={`flow-benefits${phase >= 6 ? ' is-on' : ''}`}>
         <div className="flow-benefit">
           <b>60%</b>
-          <span>ลดเวลาคีย์มือ</span>
+          <span>{t('flows.ap.b1.label')}</span>
         </div>
         <div className="flow-benefit">
-          <span>ลดข้อผิดพลาด</span>
-          <small>จากการบันทึกด้วยมือ</small>
+          <span>{t('flows.ap.b2.label')}</span>
+          <small>{t('flows.ap.b2.sub')}</small>
         </div>
         <div className="flow-benefit">
-          <span>ข้อมูลครบถ้วน</span>
-          <small>ตรวจสอบย้อนได้</small>
+          <span>{t('flows.ap.b3.label')}</span>
+          <small>{t('flows.ap.b3.sub')}</small>
         </div>
       </div>
     </article>
@@ -306,20 +309,17 @@ const GL_SAMPLES = [
 ] as const
 
 function GlSuggestionDetail({ active }: { active: boolean }) {
+  const { t } = useT()
   const { ref, phase } = useInViewSequence(GL_TIMELINE, active)
   const [selected, setSelected] = useState(0)
   const sample = GL_SAMPLES[selected]
   const done = phase >= 3
   return (
     <article ref={ref} className="flow-card accent-teal">
-      <Head
-        Icon={Lightbulb}
-        title="Account Code Suggestion"
-        sub="ระบบดูจากประวัติการลงบัญชี แล้วแนะนำรหัสที่น่าจะใช่ให้เลือก"
-      />
+      <Head Icon={Lightbulb} title="Account Code Suggestion" sub={t('flows.gl.sub')} />
       <div className="flow-body flow-row">
         <div className={`flow-node flow-node--wide${phase >= 1 ? ' is-on' : ''}`}>
-          <span className="flow-node-label">เลือกตัวอย่างรายการ</span>
+          <span className="flow-node-label">{t('flows.gl.pick')}</span>
           <div className="gl-pills">
             {GL_SAMPLES.map((s, i) => (
               <button
@@ -336,8 +336,8 @@ function GlSuggestionDetail({ active }: { active: boolean }) {
         <HArrow on={phase >= 2} />
         <Node
           Icon={Sparkles}
-          label="เทียบประวัติ"
-          caption={phase >= 2 ? 'พบรายการคล้ายกัน (95%+)' : 'ดูการลงบัญชีย้อนหลัง'}
+          label={t('flows.gl.compare.label')}
+          caption={phase >= 2 ? t('flows.gl.compare.capOn') : t('flows.gl.compare.capOff')}
           on={phase >= 2}
         />
         <HArrow on={done} />
@@ -345,10 +345,10 @@ function GlSuggestionDetail({ active }: { active: boolean }) {
           <span className="flow-node-icon" aria-hidden="true">
             <Hash size={22} strokeWidth={1.8} />
           </span>
-          <span className="flow-node-label">รหัสที่แนะนำ</span>
-          <span className="gl-code">{done ? sample.code : 'กำลังวิเคราะห์…'}</span>
+          <span className="flow-node-label">{t('flows.gl.out.label')}</span>
+          <span className="gl-code">{done ? sample.code : t('flows.gl.analyzing')}</span>
           <span className="gl-confidence">
-            <Tag size={12} /> ความแม่นยำ {done ? sample.confidence : '--%'}
+            <Tag size={12} /> {t('flows.gl.accuracy')} {done ? sample.confidence : '--%'}
           </span>
         </div>
       </div>
@@ -361,6 +361,7 @@ const FLOW_PANELS = [CreditCardDetail, ApInvoiceDetail, GlSuggestionDetail] as c
 /* ── Main export: tab selector + expandable detail ── */
 
 export default function FeatureFlows() {
+  const { t } = useT()
   const [activeIdx, setActiveIdx] = useState<number | null>(null)
 
   const toggle = useCallback((i: number) => {
@@ -384,23 +385,32 @@ export default function FeatureFlows() {
                 <f.Icon size={20} strokeWidth={1.9} />
               </span>
               <span className="flow-tab-title">{f.title}</span>
-              <span className="flow-tab-desc">{f.desc}</span>
+              <span className="flow-tab-desc">{t(f.descKey)}</span>
               <ChevronDown size={16} className={`flow-tab-chevron${isActive ? ' is-open' : ''}`} />
             </button>
           )
         })}
       </div>
 
-      {FLOW_PANELS.map((Panel, i) => {
-        const open = activeIdx === i
-        return (
-          <div key={i} className={`flow-detail${open ? ' is-open' : ''}`}>
-            <div className="flow-detail-inner">
-              <Panel active={open} />
-            </div>
-          </div>
-        )
-      })}
+      <AnimatePresence initial={false}>
+        {activeIdx !== null &&
+          (() => {
+            const Panel = FLOW_PANELS[activeIdx]
+            return (
+              <motion.div
+                key={activeIdx}
+                className="flow-detail-inner"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+                style={{ overflow: 'hidden' }}
+              >
+                <Panel active />
+              </motion.div>
+            )
+          })()}
+      </AnimatePresence>
     </div>
   )
 }

@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, MessageCircle, Phone, Mail } from 'lucide-react'
 import AppHeader from '../components/common/AppHeader'
-import DarkModeToggle from '../components/common/DarkModeToggle'
+import LanguageToggle from '../components/common/LanguageToggle'
+import { useT } from '../i18n/LanguageContext'
 import {
   PlanCard,
   FreePlanCard,
@@ -18,12 +19,13 @@ import { useEntrance } from '../lib/useEntrance'
 import '../styles/pages/pricing.css'
 
 function ContactDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useT()
   return (
     <motion.div
       className="ios-sheet-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label="Contact sales"
+      aria-label={t('plan.contactSales')}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -38,15 +40,18 @@ function ContactDialog({ onClose }: { onClose: () => void }) {
         transition={{ type: 'spring', stiffness: 360, damping: 36 }}
       >
         <div className="ios-sheet-handle" />
-        <button type="button" className="ios-sheet-close" onClick={onClose} aria-label="Close">
+        <button
+          type="button"
+          className="ios-sheet-close"
+          onClick={onClose}
+          aria-label={t('contact.close')}
+        >
           <X size={16} />
         </button>
         <h3 className="contact-title" style={{ marginTop: '0.5rem' }}>
-          Contact sales
+          {t('plan.contactSales')}
         </h3>
-        <p className="contact-sub">
-          Talk to our team to tailor an Enterprise plan to your organization's volume.
-        </p>
+        <p className="contact-sub">{t('contact.sub')}</p>
         <div className="contact-channels">
           <a
             className="contact-channel"
@@ -60,12 +65,12 @@ function ContactDialog({ onClose }: { onClose: () => void }) {
           </a>
           <a className="contact-channel" href={`tel:${SALES_CONTACT.phone}`}>
             <Phone size={18} />
-            <span className="contact-channel-label">Phone</span>
+            <span className="contact-channel-label">{t('contact.phone')}</span>
             <span className="contact-channel-value text-mono">{SALES_CONTACT.phone}</span>
           </a>
           <a className="contact-channel" href={`mailto:${SALES_CONTACT.email}`}>
             <Mail size={18} />
-            <span className="contact-channel-label">Email</span>
+            <span className="contact-channel-label">{t('contact.email')}</span>
             <span className="contact-channel-value text-mono">{SALES_CONTACT.email}</span>
           </a>
         </div>
@@ -98,6 +103,7 @@ const cardVariants = {
 }
 
 export default function Pricing() {
+  const { t } = useT()
   const { plans, packs, loading, error } = usePricingCatalog()
   const [resume] = useState<CheckoutSession | null>(() => loadPersistedCheckout())
   const [view, setView] = useState<'catalog' | 'checkout'>(resume ? 'checkout' : 'catalog')
@@ -118,8 +124,8 @@ export default function Pricing() {
 
   return (
     <div className="pricing-page">
-      <AppHeader moduleName="Plans & Credits" eyebrow="Carmen Cloud · AI Automation">
-        <div className="segmented-control" style={{ margin: 0, maxHeight: 36, maxWidth: 200 }}>
+      <AppHeader moduleName={t('nav.plansCredits')} eyebrow="Carmen Cloud · AI Automation">
+        <div className="segmented-control" style={{ margin: 0, maxHeight: 36, width: 'auto' }}>
           <button
             type="button"
             className="segmented-btn active"
@@ -127,7 +133,7 @@ export default function Pricing() {
               window.location.hash = '#/pricing'
             }}
           >
-            Plans
+            {t('nav.plans')}
           </button>
           <button
             type="button"
@@ -136,7 +142,7 @@ export default function Pricing() {
               window.location.hash = '#/pricing/orders'
             }}
           >
-            History
+            {t('nav.history')}
           </button>
           <span
             className="segmented-indicator"
@@ -146,7 +152,7 @@ export default function Pricing() {
             }}
           />
         </div>
-        <DarkModeToggle />
+        <LanguageToggle />
       </AppHeader>
 
       {view === 'checkout' ? (
@@ -166,11 +172,11 @@ export default function Pricing() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ type: 'spring', stiffness: 100, damping: 15 }}
           >
-            <h2 className="pricing-title">Start free with 30 documents</h2>
-            <p className="pricing-subtitle">Pick the plan that fits your business.</p>
+            <h2 className="pricing-title">{t('pricing.title')}</h2>
+            <p className="pricing-subtitle">{t('pricing.subtitle')}</p>
           </motion.header>
           {error ? (
-            <div className="pricing-error">Failed to load plans: {error}</div>
+            <div className="pricing-error">{t('pricing.loadError', { error })}</div>
           ) : loading ? (
             <div className="pricing-skeleton-grid pricing-skeleton-grid--4" aria-hidden="true">
               {Array.from({ length: 4 }).map((_, i) => (
@@ -207,10 +213,10 @@ export default function Pricing() {
               <section className="pricing-section" aria-labelledby="packs-heading">
                 <div className="pricing-section-head pricing-section-head--center">
                   <h2 id="packs-heading" className="pricing-section-title">
-                    Top-up credits
+                    {t('pricing.topupTitle')}
                   </h2>
-                  <p className="pricing-section-sub">Works with any plan. Credits never expire.</p>
-                  <p className="pricing-note">1 credit = 1 document</p>
+                  <p className="pricing-section-sub">{t('pricing.topupSub')}</p>
+                  <p className="pricing-note">{t('pricing.topupNote')}</p>
                 </div>
                 <PackList packs={packs} onSelect={startCheckout} />
               </section>
@@ -218,9 +224,9 @@ export default function Pricing() {
               <section className="pricing-section" aria-labelledby="flows-heading">
                 <div className="pricing-section-head pricing-section-head--center">
                   <h2 id="flows-heading" className="pricing-section-title">
-                    ระบบ AI ช่วยงานบัญชีของคุณยังไง
+                    {t('flows.heading')}
                   </h2>
-                  <p className="pricing-section-sub">เลือกฟีเจอร์เพื่อดูขั้นตอนการทำงาน</p>
+                  <p className="pricing-section-sub">{t('flows.sub')}</p>
                 </div>
                 <FeatureFlows />
               </section>

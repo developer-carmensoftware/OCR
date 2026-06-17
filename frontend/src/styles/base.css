@@ -2,7 +2,14 @@
    BASE — Variables, Resets, Typography, Animations
    ═══════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=Sarabun:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap');
+
+/* Language-switch crossfade (View Transitions API — see i18n/LanguageContext) */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.22s;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
 
 :root {
   /* ── Design tokens (shadcn/ui oklch system) ── */
@@ -172,7 +179,7 @@ html {
 body {
   font-family:
     'Inter',
-    'Sarabun',
+    'IBM Plex Sans Thai',
     -apple-system,
     sans-serif;
   background-color: var(--body-bg-fallback);
@@ -201,7 +208,7 @@ body {
 }
 
 button {
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
   cursor: pointer;
   border: none;
   transition: transform var(--dur-fast) var(--ease-out);

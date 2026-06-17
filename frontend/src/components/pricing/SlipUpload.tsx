@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react'
 import { UploadCloud, Loader2, FileCheck2, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { useT } from '../../i18n/LanguageContext'
 
 const ACCEPTED = ['image/jpeg', 'image/png', 'application/pdf']
 const MAX_BYTES = 20 * 1024 * 1024
@@ -12,6 +13,7 @@ interface Props {
 
 /** Payment-slip drop zone — reuses the signature upload-drop visual language. */
 export default function SlipUpload({ onUpload, uploading }: Props) {
+  const { t } = useT()
   const inputRef = useRef<HTMLInputElement>(null)
   const [file, setFile] = useState<File | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -19,11 +21,11 @@ export default function SlipUpload({ onUpload, uploading }: Props) {
   const accept = (f: File | undefined) => {
     if (!f) return
     if (!ACCEPTED.includes(f.type)) {
-      toast.error('Only JPG, PNG, or PDF files are supported')
+      toast.error(t('slip.errType'))
       return
     }
     if (f.size > MAX_BYTES) {
-      toast.error('File exceeds 20 MB')
+      toast.error(t('slip.errSize'))
       return
     }
     setFile(f)
@@ -55,7 +57,7 @@ export default function SlipUpload({ onUpload, uploading }: Props) {
               type="button"
               className="slip-chosen-clear"
               onClick={() => setFile(null)}
-              aria-label="Choose a different file"
+              aria-label={t('slip.chooseDifferent')}
             >
               <X size={14} />
             </button>
@@ -69,10 +71,10 @@ export default function SlipUpload({ onUpload, uploading }: Props) {
         >
           {uploading ? (
             <>
-              <Loader2 size={14} className="animate-spin" /> Submitting…
+              <Loader2 size={14} className="animate-spin" /> {t('slip.submitting')}
             </>
           ) : (
-            'Confirm payment'
+            t('checkout.confirmPayment')
           )}
         </button>
       </div>
@@ -99,13 +101,13 @@ export default function SlipUpload({ onUpload, uploading }: Props) {
         accept="image/jpeg,image/png,application/pdf"
         onChange={e => accept(e.target.files?.[0])}
         style={{ display: 'none' }}
-        aria-label="Upload payment slip"
+        aria-label={t('slip.uploadLabel')}
       />
       <div className="upload-icon">
         <UploadCloud size={34} />
       </div>
-      <div className="upload-label">Upload payment slip</div>
-      <div className="upload-hint">Click or drag a file here · JPG · PNG · PDF · up to 20 MB</div>
+      <div className="upload-label">{t('slip.uploadLabel')}</div>
+      <div className="upload-hint">{t('slip.uploadHint')}</div>
     </div>
   )
 }

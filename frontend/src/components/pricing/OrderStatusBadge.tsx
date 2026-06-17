@@ -1,18 +1,21 @@
 import Badge from '../common/Badge'
+import { useT } from '../../i18n/LanguageContext'
+import type { TKey } from '../../i18n/dict'
 import type { OrderStatus } from '../../lib/api/credits'
 
 const MAP: Record<
   OrderStatus,
-  { variant: 'info' | 'warning' | 'success' | 'error' | 'gray'; label: string }
+  { variant: 'info' | 'warning' | 'success' | 'error' | 'gray'; key: TKey }
 > = {
-  pending: { variant: 'info', label: 'Awaiting payment' },
-  awaiting_review: { variant: 'warning', label: 'Reviewing slip' },
-  paid: { variant: 'success', label: 'Credited' },
-  rejected: { variant: 'error', label: 'Slip rejected' },
-  cancelled: { variant: 'gray', label: 'Cancelled' },
+  pending: { variant: 'info', key: 'order.statusPending' },
+  awaiting_review: { variant: 'warning', key: 'order.statusReviewing' },
+  paid: { variant: 'success', key: 'order.statusPaid' },
+  rejected: { variant: 'error', key: 'order.statusRejected' },
+  cancelled: { variant: 'gray', key: 'order.statusCancelled' },
 }
 
 export default function OrderStatusBadge({ status }: { status: OrderStatus }) {
-  const { variant, label } = MAP[status] ?? MAP.pending
-  return <Badge variant={variant}>{label}</Badge>
+  const { t } = useT()
+  const { variant, key } = MAP[status] ?? MAP.pending
+  return <Badge variant={variant}>{t(key)}</Badge>
 }

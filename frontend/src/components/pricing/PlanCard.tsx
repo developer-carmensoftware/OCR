@@ -9,6 +9,7 @@ import {
 } from '@phosphor-icons/react'
 import { formatThb, formatRate } from '../../lib/money'
 import { ENTERPRISE, FREE_PLAN, perDoc, type PackPresentation } from '../../constants/billing'
+import { useT } from '../../i18n/LanguageContext'
 import type { CreditPack } from '../../lib/api/credits'
 
 interface PlanCardProps {
@@ -30,11 +31,12 @@ const TIER_ICONS: Record<string, { Icon: PhosphorIcon; tint: string }> = {
  * primary CTA.
  */
 export function PlanCard({ pack, meta, onSelect }: PlanCardProps) {
+  const { t } = useT()
   const rate = perDoc(pack.price_thb, pack.credits)
   const icon = TIER_ICONS[pack.code]
   return (
     <div className={`plan-card${meta.highlight ? ' is-highlight' : ''}`} data-tier={pack.code}>
-      {meta.badge && <span className="plan-badge">{meta.badge}</span>}
+      {meta.badge && <span className="plan-badge">{t('plan.badgePopular')}</span>}
       {icon && (
         <span className={`plan-icon ${icon.tint}`}>
           <icon.Icon size={20} weight="duotone" />
@@ -42,15 +44,16 @@ export function PlanCard({ pack, meta, onSelect }: PlanCardProps) {
       )}
       <h3 className="plan-name">{meta.name}</h3>
       <p className="plan-quota-line">
-        <span className="text-mono">{pack.credits.toLocaleString()}</span> documents / month
+        <span className="text-mono">{pack.credits.toLocaleString()}</span>{' '}
+        {t('plan.docsPerMonthSuffix')}
       </p>
 
       <div className="plan-price">
         <span className="plan-price-amount text-mono">฿{formatThb(pack.price_thb)}</span>
-        <span className="plan-price-period">/ month</span>
+        <span className="plan-price-period">{t('plan.perMonth')}</span>
       </div>
       <p className="plan-rate">
-        ≈ <span className="text-mono">฿{formatRate(rate)}</span> / doc
+        ≈ <span className="text-mono">฿{formatRate(rate)}</span> {t('plan.perDoc')}
       </p>
 
       <button
@@ -58,7 +61,7 @@ export function PlanCard({ pack, meta, onSelect }: PlanCardProps) {
         className={`btn ${meta.highlight ? 'btn-primary' : 'btn-outline'} plan-cta`}
         onClick={() => onSelect(pack)}
       >
-        Choose {meta.name} <ArrowRight size={14} />
+        {t('plan.choose', { name: meta.name })} <ArrowRight size={14} />
       </button>
     </div>
   )
@@ -69,6 +72,7 @@ export function PlanCard({ pack, meta, onSelect }: PlanCardProps) {
  * have it — so the CTA simply returns to the app.
  */
 export function FreePlanCard() {
+  const { t } = useT()
   return (
     <div className="plan-card" data-tier="free">
       <span className="plan-icon plan-icon--free">
@@ -76,13 +80,13 @@ export function FreePlanCard() {
       </span>
       <h3 className="plan-name">{FREE_PLAN.name}</h3>
       <p className="plan-quota-line">
-        <span className="text-mono">{FREE_PLAN.credits}</span> {FREE_PLAN.quotaUnit}
+        <span className="text-mono">{FREE_PLAN.credits}</span> {t('plan.docsUnit')}
       </p>
 
       <div className="plan-price">
         <span className="plan-price-amount text-mono">฿0</span>
       </div>
-      <p className="plan-rate">One-time trial</p>
+      <p className="plan-rate">{t('plan.oneTimeTrial')}</p>
 
       <button
         type="button"
@@ -91,7 +95,7 @@ export function FreePlanCard() {
           window.location.hash = '#/'
         }}
       >
-        {FREE_PLAN.ctaLabel} <ArrowRight size={14} />
+        {t('plan.startScanning')} <ArrowRight size={14} />
       </button>
     </div>
   )
@@ -99,21 +103,22 @@ export function FreePlanCard() {
 
 /** Enterprise — a contact-sales tier, same card anatomy as the priced tiers. */
 export function EnterpriseCard({ onContact }: { onContact: () => void }) {
+  const { t } = useT()
   return (
     <div className="plan-card" data-tier="enterprise">
       <span className="plan-icon plan-icon--enterprise">
         <Buildings size={20} weight="duotone" />
       </span>
       <h3 className="plan-name">{ENTERPRISE.name}</h3>
-      <p className="plan-quota-line">{ENTERPRISE.tagline}</p>
+      <p className="plan-quota-line">{t('plan.enterpriseTagline')}</p>
 
       <div className="plan-price">
-        <span className="plan-price-amount">Custom</span>
+        <span className="plan-price-amount">{t('plan.custom')}</span>
       </div>
-      <p className="plan-rate">{ENTERPRISE.priceNote}</p>
+      <p className="plan-rate">{t('plan.customPricing')}</p>
 
       <button type="button" className="btn btn-outline plan-cta" onClick={onContact}>
-        <MessageCircle size={14} /> Contact sales
+        <MessageCircle size={14} /> {t('plan.contactSales')}
       </button>
     </div>
   )

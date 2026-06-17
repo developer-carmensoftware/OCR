@@ -1,5 +1,6 @@
 import { Printer } from 'lucide-react'
 import { formatThb, formatDate } from '../../lib/money'
+import { useT } from '../../i18n/LanguageContext'
 import type { BillingDocument } from '../../lib/api/credits'
 
 const TITLE: Record<string, { main: string; sub: string }> = {
@@ -41,20 +42,21 @@ function Party({
 }
 
 export default function ProformaDocument({ doc }: { doc: BillingDocument }) {
+  const { t } = useT()
   const title = TITLE[doc.doc_type] ?? TITLE.proforma
 
   return (
     <div className="pf-wrap">
       <div className="pf-toolbar">
         <span className="pf-toolbar-label">
-          Document no. <span className="text-mono">{doc.number}</span>
+          {t('proforma.docNo')} <span className="text-mono">{doc.number}</span>
         </span>
         <button
           type="button"
           className="btn btn-outline pf-print-btn"
           onClick={() => window.print()}
         >
-          <Printer size={14} /> Print / Save PDF
+          <Printer size={14} /> {t('proforma.print')}
         </button>
       </div>
 

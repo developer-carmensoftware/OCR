@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { ChevronDown, ShoppingBag, ArrowRight, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import AppHeader from '../components/common/AppHeader'
-import DarkModeToggle from '../components/common/DarkModeToggle'
+import LanguageToggle from '../components/common/LanguageToggle'
+import { useT } from '../i18n/LanguageContext'
 import { OrderStatusBadge, ProformaDocument, SlipUpload } from '../components/pricing'
 import { useOrderHistory } from '../hooks/credits'
 import {
@@ -16,6 +17,7 @@ import { formatThb } from '../lib/money'
 import '../styles/pages/pricing.css'
 
 function OrderRow({ order, onChanged }: { order: CreditOrder; onChanged: () => void }) {
+  const { t } = useT()
   const [open, setOpen] = useState(false)
   const [docs, setDocs] = useState<BillingDocument[] | null>(null)
   const [loadingDocs, setLoadingDocs] = useState(false)
@@ -37,7 +39,7 @@ function OrderRow({ order, onChanged }: { order: CreditOrder; onChanged: () => v
     setUploading(true)
     try {
       await uploadSlip(order.id, file)
-      toast.success('Slip submitted — our team will review it shortly')
+      toast.success(t('checkout.slipSubmittedToast'))
       onChanged()
     } catch (e) {
       toast.error((e as Error).message)
@@ -53,7 +55,7 @@ function OrderRow({ order, onChanged }: { order: CreditOrder; onChanged: () => v
         <div className="order-row-id">
           <span className="order-row-name">{catalogName(order.pack_code)}</span>
           <span className="order-row-credits text-mono">
-            {order.credits.toLocaleString()} credits
+            {order.credits.toLocaleString()} {t('pack.creditsUnit')}
           </span>
         </div>
         <span className="order-row-amount text-mono">฿{formatThb(order.amount_thb)}</span>
@@ -69,28 +71,23 @@ function OrderRow({ order, onChanged }: { order: CreditOrder; onChanged: () => v
         <div className="order-row-body">
           {order.status === 'pending' && (
             <div className="order-resume">
-              <p className="order-resume-note">
-                No slip uploaded yet. If you've already paid, upload the slip for our team to
-                review.
-              </p>
+              <p className="order-resume-note">{t('order.pendingNote')}</p>
               <SlipUpload onUpload={handleSlip} uploading={uploading} />
             </div>
           )}
 
           {order.status === 'rejected' && (
             <div className="order-rejected">
-              <p className="order-rejected-note">
-                This slip didn't pass review. Please place a new order.
-              </p>
+              <p className="order-rejected-note">{t('order.rejectedNote')}</p>
               <a className="btn btn-primary order-rebuy" href="#/pricing">
-                Order again <ArrowRight size={14} />
+                {t('order.orderAgain')} <ArrowRight size={14} />
               </a>
             </div>
           )}
 
           {loadingDocs ? (
             <div className="order-docs-loading">
-              <Loader2 size={16} className="animate-spin" /> Loading documents…
+              <Loader2 size={16} className="animate-spin" /> {t('order.loadingDocs')}
             </div>
           ) : docs && docs.length > 0 ? (
             <div className="order-docs">
@@ -99,7 +96,7 @@ function OrderRow({ order, onChanged }: { order: CreditOrder; onChanged: () => v
               ))}
             </div>
           ) : docs && docs.length === 0 ? (
-            <p className="order-docs-empty">No documents for this order yet</p>
+            <p className="order-docs-empty">{t('order.noDocs')}</p>
           ) : null}
         </div>
       )}
@@ -108,12 +105,13 @@ function OrderRow({ order, onChanged }: { order: CreditOrder; onChanged: () => v
 }
 
 export default function OrderHistory() {
+  const { t } = useT()
   const { orders, loading, error, reload } = useOrderHistory()
 
   return (
     <div className="pricing-page">
-      <AppHeader moduleName="Plans & Credits" eyebrow="Carmen Cloud · AI Automation">
-        <div className="segmented-control" style={{ margin: 0, maxHeight: 36, maxWidth: 200 }}>
+      <AppHeader moduleName={t('nav.plansCredits')} eyebrow="Carmen Cloud · AI Automation">
+        <div className="segmented-control" style={{ margin: 0, maxHeight: 36, width: 'auto' }}>
           <button
             type="button"
             className="segmented-btn"
@@ -121,7 +119,7 @@ export default function OrderHistory() {
               window.location.hash = '#/pricing'
             }}
           >
-            Plans
+            {t('nav.plans')}
           </button>
           <button
             type="button"
@@ -130,7 +128,7 @@ export default function OrderHistory() {
               window.location.hash = '#/pricing/orders'
             }}
           >
-            History
+            {t('nav.history')}
           </button>
           <span
             className="segmented-indicator"
@@ -140,19 +138,19 @@ export default function OrderHistory() {
             }}
           />
         </div>
-        <DarkModeToggle />
+        <LanguageToggle />
       </AppHeader>
 
       <main className="orders-main">
         <div className="orders-head">
-          <h1 className="orders-title">Order history</h1>
+          <h1 className="orders-title">{t('order.title')}</h1>
           <a className="btn btn-outline orders-buy-link" href="#/pricing">
-            Buy a plan <ArrowRight size={14} />
+            {t('order.buyPlan')} <ArrowRight size={14} />
           </a>
         </div>
 
         {error ? (
-          <div className="pricing-error">Failed to load history: {error}</div>
+          <div className="pricing-error">{t('order.loadError', { error })}</div>
         ) : loading ? (
           <div className="orders-skeleton" aria-hidden="true">
             {Array.from({ length: 3 }).map((_, i) => (
@@ -164,12 +162,10 @@ export default function OrderHistory() {
             <div className="orders-empty-icon">
               <ShoppingBag size={40} strokeWidth={1.5} />
             </div>
-            <h2 className="orders-empty-title">No orders yet</h2>
-            <p className="orders-empty-sub">
-              Pick a monthly plan or top up credits to keep working past your free quota.
-            </p>
+            <h2 className="orders-empty-title">{t('order.empty')}</h2>
+            <p className="orders-empty-sub">{t('order.emptySub')}</p>
             <a className="btn btn-primary" href="#/pricing">
-              View all plans
+              {t('order.viewAllPlans')}
             </a>
           </div>
         ) : (

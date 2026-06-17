@@ -38,7 +38,7 @@
     transparent 100%
   );
   padding: 2rem 1rem;
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
 }
 
 [data-theme='dark'] .auth-page {

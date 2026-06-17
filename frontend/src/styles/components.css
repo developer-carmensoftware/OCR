@@ -947,7 +947,7 @@
   border-bottom: 1.5px solid var(--border);
   border-radius: 0;
   padding: 0.45rem 0;
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
   font-size: 0.9rem;
   font-weight: 500;
   color: var(--text);
@@ -1358,7 +1358,7 @@ input[type='text'].detail-input:focus {
     border-color var(--dur-fast) var(--ease),
     transform var(--dur-fast) var(--ease);
   cursor: pointer;
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -1393,7 +1393,7 @@ input[type='text'].detail-input:focus {
     color var(--dur-fast) var(--ease),
     border-color var(--dur-fast) var(--ease),
     transform var(--dur-fast) var(--ease);
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
 }
 
 .btn-icon:hover {
@@ -3135,7 +3135,7 @@ input[type='text'].detail-input:focus {
   border-bottom: 1.5px solid var(--border);
   border-radius: 0;
   padding: 0.45rem 0;
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
   font-size: 0.9rem;
   font-weight: 500;
   color: var(--text);
@@ -3192,9 +3192,9 @@ input[type='text'].detail-input:focus {
   --rdp-selected-border: none;
   --rdp-today-color: var(--primary);
   --rdp-outside-opacity: 0.35;
-  --rdp-font-family: 'Inter', 'Sarabun', sans-serif;
+  --rdp-font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
   --rdp-weekday-opacity: 1;
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
   font-size: 0.85rem;
   color: var(--text-2);
 }
@@ -3442,6 +3442,31 @@ input[type='text'].detail-input:focus {
   justify-content: center;
   gap: 0.35rem;
   cursor: pointer;
+  white-space: nowrap;
+}
+
+/* Compact single-button language switch (header action) */
+.lang-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  height: 36px;
+  padding: 0 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--text-2);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition:
+    color 150ms var(--ease-out-premium),
+    background 150ms var(--ease-out-premium);
+}
+.lang-toggle:hover {
+  color: var(--text);
+  background: var(--muted);
 }
 
 .segmented-btn:hover {

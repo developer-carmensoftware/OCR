@@ -63,7 +63,7 @@
   min-width: 0;
   padding: 0.45rem 0.6rem;
   font-size: 0.82rem;
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
   background: var(--input-bg, var(--muted));
   border: 1px solid var(--border);
   border-radius: var(--radius-sm, 6px);

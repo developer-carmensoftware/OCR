@@ -3,6 +3,7 @@ import { QRCodeSVG } from 'qrcode.react'
 import { Download } from 'lucide-react'
 import { formatThb } from '../../lib/money'
 import promptpayMark from '../../assets/logo.png'
+import { useT } from '../../i18n/LanguageContext'
 import type { QrPayload } from '../../lib/api/credits'
 
 /**
@@ -10,6 +11,7 @@ import type { QrPayload } from '../../lib/api/credits'
  * and destination shown in mono so the user can verify before paying.
  */
 export default function PromptPayQR({ qr }: { qr: QrPayload }) {
+  const { t } = useT()
   const holderRef = useRef<HTMLDivElement>(null)
 
   const handleDownload = () => {
@@ -53,11 +55,11 @@ export default function PromptPayQR({ qr }: { qr: QrPayload }) {
       <div className="pp-qr-meta">
         <span className="pp-qr-amount text-mono">฿{formatThb(qr.amount_thb, true)}</span>
         <span className="pp-qr-dest">
-          PromptPay <span className="text-mono">{qr.promptpay_id}</span>
+          {t('qr.promptpay')} <span className="text-mono">{qr.promptpay_id}</span>
         </span>
       </div>
       <button type="button" className="btn btn-outline pp-qr-save" onClick={handleDownload}>
-        <Download size={14} /> Save QR
+        <Download size={14} /> {t('qr.saveQr')}
       </button>
     </div>
   )

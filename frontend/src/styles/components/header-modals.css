@@ -129,7 +129,7 @@
   width: 100%;
   padding: 0.5rem 0.625rem;
   font-size: 0.82rem;
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
   background: var(--input-bg, var(--muted));
   border: 1px solid var(--border);
   border-radius: var(--radius-sm, 6px);
@@ -171,7 +171,7 @@
   padding: 0.55rem 1rem;
   font-size: 0.82rem;
   font-weight: 600;
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
   background: var(--primary);
   color: white;
   border: none;
@@ -323,7 +323,7 @@
   padding: 0.35rem 0.7rem;
   font-size: 0.76rem;
   font-weight: 600;
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
   color: white;
   background: var(--primary);
   border: none;
@@ -409,7 +409,7 @@
   gap: 0.35rem;
   padding: 0.4rem 0.75rem;
   font-size: 0.78rem;
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
   font-weight: 500;
   color: var(--text-3);
   background: var(--muted);
