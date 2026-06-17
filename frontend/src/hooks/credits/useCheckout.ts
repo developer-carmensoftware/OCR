@@ -23,7 +23,7 @@ export interface CheckoutSession {
 
 const STORAGE_KEY = 'credits_active_checkout'
 
-const EMPTY_BUYER: BuyerInfo = { name: '', tax_id: '', address: '', branch: '' }
+const EMPTY_BUYER: BuyerInfo = { name: '', tax_id: '', address: '', branch: '', email: '' }
 
 function readPersisted(): CheckoutSession | null {
   try {
@@ -85,7 +85,13 @@ export function useCheckout(pack: CreditPack | null, resume?: CheckoutSession | 
     getCompanyProfile()
       .then(p => {
         if (!alive) return
-        setBuyer({ name: p.name, tax_id: p.tax_id, address: p.address, branch: p.branch })
+        setBuyer({
+          name: p.name,
+          tax_id: p.tax_id,
+          address: p.address,
+          branch: p.branch,
+          email: p.email,
+        })
         setProfileSource(p.source)
       })
       .catch(() => alive && setProfileSource('form'))

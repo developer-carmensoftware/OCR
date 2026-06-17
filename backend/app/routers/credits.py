@@ -5,7 +5,7 @@ Tenant-facing top-up credit endpoints.
   GET  /api/v1/credits/company-profile     — prefill buyer info (Carmen or last-invoice)
   POST /api/v1/credits/orders              — create order + PromptPay QR + proforma
   POST /api/v1/credits/orders/{id}/slip    — upload payment slip → awaiting_review
-  GET  /api/v1/credits/orders              — list tenant's own orders
+  GET  a              — list tenant's own orders
   GET  /api/v1/credits/orders/{id}         — single order detail
 """
 
@@ -122,6 +122,7 @@ async def create_order(
             tax_id=buyer_override.tax_id,
             address=buyer_override.address,
             branch=buyer_override.branch,
+            email=buyer_override.email,
         )
     else:
         cfg = await bds._fetch_billing_configs(db)

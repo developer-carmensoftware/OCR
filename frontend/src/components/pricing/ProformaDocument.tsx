@@ -13,18 +13,21 @@ function Party({
   taxId,
   address,
   branch,
+  email,
 }: {
   label: string
   name: string | null
   taxId: string | null
   address: string | null
   branch: string | null
+  email?: string | null
 }) {
   return (
     <div className="pf-party">
       <span className="pf-party-label">{label}</span>
       <span className="pf-party-name">{name || '—'}</span>
       {address && <span className="pf-party-line">{address}</span>}
+      {email && <span className="pf-party-line">{email}</span>}
       <div className="pf-party-ids">
         {taxId && (
           <span>
@@ -87,6 +90,7 @@ export default function ProformaDocument({ doc }: { doc: BillingDocument }) {
             taxId={doc.buyer_tax_id}
             address={doc.buyer_address}
             branch={doc.buyer_branch}
+            email={doc.buyer_email}
           />
         </section>
 

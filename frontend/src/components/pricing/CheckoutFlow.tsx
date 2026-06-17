@@ -90,7 +90,7 @@ export default function CheckoutFlow({ pack, resume, onCancel, onViewHistory }: 
 
               {c.loadingProfile ? (
                 <div className="checkout-form-skeleton" aria-hidden="true">
-                  {Array.from({ length: 4 }).map((_, i) => (
+                  {Array.from({ length: 5 }).map((_, i) => (
                     <div key={i} className="checkout-skel-field" />
                   ))}
                 </div>
@@ -131,6 +131,16 @@ export default function CheckoutFlow({ pack, resume, onCancel, onViewHistory }: 
                       value={c.buyer.branch}
                       onChange={e => updateBuyer({ branch: e.target.value })}
                       placeholder="Head office"
+                    />
+                  </label>
+                  <label className="checkout-field">
+                    <span className="checkout-field-label">Email</span>
+                    <input
+                      className="checkout-input"
+                      type="email"
+                      value={c.buyer.email}
+                      onChange={e => updateBuyer({ email: e.target.value })}
+                      placeholder="billing@example.com"
                     />
                   </label>
                 </div>

@@ -85,6 +85,7 @@ class BuyerInfoInput(BaseModel):
     tax_id: str = ""
     address: str = ""
     branch: str = ""
+    email: str = ""
 
 
 class CreateOrderRequest(BaseModel):
@@ -119,6 +120,7 @@ class BillingDocumentResponse(BaseModel):
     buyer_tax_id: str | None = None
     buyer_address: str | None = None
     buyer_branch: str | None = None
+    buyer_email: str | None = None
     # Line item
     pack_code: str
     description: str | None = None
@@ -151,6 +153,7 @@ class CompanyProfileResponse(BaseModel):
     tax_id: str = ""
     address: str = ""
     branch: str = ""
+    email: str = ""
     source: str = "form"  # 'carmen' | 'last_invoice' | 'form'
 
 

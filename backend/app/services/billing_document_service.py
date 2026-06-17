@@ -38,6 +38,7 @@ class BuyerInfo(TypedDict, total=False):
     tax_id: str
     address: str
     branch: str
+    email: str
 
 
 class SellerSnapshot(TypedDict, total=False):

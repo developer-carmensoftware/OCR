@@ -370,19 +370,27 @@ async def get_company_profile(carmen_token: str, db_cfg: dict[str, str] | None =
         return {}
 
     try:
-        resp = await _get_client().get(
-            f"{_base_url()}/{path.lstrip('/')}", headers=_headers(carmen_token)
-        )
+        url = f"{_base_url()}/{path.lstrip('/')}"
+        logger.info("get_company_profile: GET %s", url)
+        resp = await _get_client().get(url, headers=_headers(carmen_token))
+        logger.info("get_company_profile: status=%s body=%s", resp.status_code, resp.text[:500])
         if resp.status_code != 200:
             return {}
         data = resp.json()
+        # Carmen rptGetCompany returns an array — take first element
+        if isinstance(data, list) and data:
+            data = data[0]
         if isinstance(data, dict):
+            addr_parts = [data.get(k) or "" for k in ("RegAdd1", "RegAdd2", "RegAdd3")]
+            address = " ".join(p for p in addr_parts if p).strip()
             return {
-                "name": data.get("companyName") or data.get("name") or "",
-                "tax_id": data.get("taxId") or data.get("tax_id") or "",
-                "address": data.get("address") or "",
-                "branch": data.get("branch") or data.get("branchName") or "",
+                "name": data.get("RegName") or data.get("companyName") or "",
+                "tax_id": data.get("RegTaxId") or data.get("taxId") or "",
+                "address": address or data.get("address") or "",
+                "branch": data.get("BranchNo") or data.get("branch") or "",
+                "email": data.get("RegEmail") or data.get("email") or "",
             }
         return {}
-    except Exception:
+    except Exception as exc:
+        logger.warning("get_company_profile failed: %s", exc)
         return {}
