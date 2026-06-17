@@ -7,6 +7,7 @@ import {
   FreePlanCard,
   EnterpriseBand,
   PackList,
+  FeatureFlows,
   CheckoutFlow,
 } from '../components/pricing'
 import { usePricingCatalog, loadPersistedCheckout, type CheckoutSession } from '../hooks/credits'
@@ -130,6 +131,16 @@ export default function Pricing() {
                   <p className="pricing-note">1 credit = 1 document</p>
                 </div>
                 <PackList packs={packs} onSelect={startCheckout} />
+              </section>
+
+              <section className="pricing-section" aria-labelledby="flows-heading">
+                <div className="pricing-section-head pricing-section-head--center">
+                  <h2 id="flows-heading" className="pricing-section-title">
+                    ระบบ AI ช่วยงานบัญชีของคุณยังไง
+                  </h2>
+                  <p className="pricing-section-sub">เลือกฟีเจอร์เพื่อดูขั้นตอนการทำงาน</p>
+                </div>
+                <FeatureFlows />
               </section>
             </>
           )}

@@ -1,6 +1,7 @@
 export { default as UsageSummaryStrip } from './UsageSummaryStrip'
 export { PlanCard, FreePlanCard, EnterpriseBand } from './PlanCard'
 export { default as PackList } from './PackList'
+export { default as FeatureFlows } from './FeatureFlows'
 export { default as CheckoutFlow } from './CheckoutFlow'
 export { default as PromptPayQR } from './PromptPayQR'
 export { default as ProformaDocument } from './ProformaDocument'

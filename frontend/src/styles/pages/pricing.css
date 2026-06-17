@@ -324,6 +324,506 @@
   text-decoration: none;
 }
 
+/* ═══ AI FEATURE SHOWCASE — three infographics (light showcase layer) ═══════
+   Faithful to the design mock (input→process→output, fan-out, AP stepper, GL),
+   refined onto the light showcase layer (DESIGN.md §7): accent-wash headers (no
+   dark banners), showcase elevation, staged reveal driven by `is-on` classes
+   that the component toggles as the card scrolls into view. `--flow` = light
+   pastel role; `--flow-strong` = AA, theme-aware foreground. */
+.flow-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.accent-blue {
+  --flow: var(--primary);
+  --flow-strong: oklch(0.42 0.18 258.7);
+}
+.accent-emerald {
+  --flow: var(--emerald);
+  --flow-strong: oklch(0.42 0.1 188.43);
+}
+.accent-teal {
+  --flow: var(--teal);
+  --flow-strong: oklch(0.42 0.16 253.27);
+}
+[data-theme='dark'] .accent-blue {
+  --flow-strong: oklch(0.72 0.15 253.27);
+}
+[data-theme='dark'] .accent-emerald {
+  --flow-strong: oklch(0.8 0.11 188.43);
+}
+[data-theme='dark'] .accent-teal {
+  --flow-strong: oklch(0.78 0.13 253.27);
+}
+
+.flow-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--showcase-radius);
+  /* Match the plan/data card elevation so the section sits in the same family. */
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+/* ── Light accent-wash header (replaces the mock's dark banner) ── */
+.flow-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.3rem 1.5rem;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--flow) 9%, var(--card-bg)),
+    var(--card-bg) 70%
+  );
+  border-bottom: 1px solid color-mix(in srgb, var(--flow) 12%, var(--border));
+}
+.flow-head-icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--flow) 20%, var(--card-bg));
+  color: var(--flow-strong);
+}
+.flow-head-text h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.flow-head-text p {
+  margin-top: 0.2rem;
+  font-size: 0.83rem;
+  line-height: 1.5;
+  color: var(--text-2);
+  text-wrap: pretty;
+}
+
+.flow-body {
+  padding: 1.5rem;
+}
+.flow-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.6rem;
+}
+
+/* ── Pipeline node (dims until its phase turns it on) ── */
+.flow-node {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.5rem;
+  padding: 1.15rem 0.9rem;
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  opacity: 0.5;
+  transform: translateY(6px);
+  transition:
+    opacity var(--showcase-dur) var(--ease),
+    transform var(--showcase-dur) var(--ease),
+    border-color var(--showcase-dur) var(--ease),
+    box-shadow var(--showcase-dur) var(--ease);
+}
+.flow-node.is-on {
+  opacity: 1;
+  transform: none;
+  border-color: color-mix(in srgb, var(--flow) 28%, var(--border));
+  box-shadow: var(--shadow-md);
+}
+.flow-node--wide {
+  flex: 1.6;
+}
+.flow-node-icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--flow) 14%, transparent);
+  color: var(--flow-strong);
+  transition: filter var(--showcase-dur) var(--ease);
+}
+.flow-node-icon svg {
+  width: 22px;
+  height: 22px;
+}
+/* Color "arrives" on activation: gray while waiting, full accent + a one-shot
+   ripple the moment the step lights up — the clearest read of the sequence. */
+.flow-node:not(.is-on) .flow-node-icon {
+  filter: grayscale(0.4);
+}
+.flow-node.is-on .flow-node-icon {
+  animation: flowActivate 0.5s var(--ease);
+}
+.flow-node-icon--spin svg {
+  animation: spin 2.4s var(--ease);
+}
+@keyframes flowActivate {
+  from {
+    transform: scale(0.9);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--flow-strong) 30%, transparent);
+  }
+  to {
+    transform: scale(1);
+    box-shadow: 0 0 0 9px transparent;
+  }
+}
+.flow-node-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.flow-node-caption {
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--text-3);
+  text-wrap: pretty;
+}
+.flow-checklist {
+  list-style: none;
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.76rem;
+  color: var(--text-2);
+}
+.flow-checklist li {
+  position: relative;
+  padding-left: 1.05rem;
+}
+.flow-checklist li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: var(--flow-strong);
+  font-weight: 700;
+}
+
+/* ── Connectors ── */
+.flow-arrow {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--text-4);
+  opacity: 0.5;
+  transition:
+    color var(--showcase-dur) var(--ease),
+    opacity var(--showcase-dur) var(--ease);
+}
+.flow-arrow svg {
+  width: 20px;
+  height: 20px;
+}
+.flow-arrow.is-on {
+  color: var(--flow-strong);
+  opacity: 1;
+}
+.flow-branch {
+  display: flex;
+  align-items: center;
+  width: 42px;
+  flex-shrink: 0;
+}
+.flow-branch svg {
+  width: 100%;
+  height: 88px;
+}
+.flow-branch path {
+  stroke: var(--border-hi);
+  transition: stroke var(--showcase-dur) var(--ease);
+}
+.flow-branch.is-on path {
+  stroke: var(--flow-strong);
+  stroke-dasharray: 5;
+  animation: flowDash 1s linear infinite;
+}
+@keyframes flowDash {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+
+/* ── Credit-card outputs (fan-out) ── */
+.flow-out-col {
+  flex: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.flow-out {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  opacity: 0.5;
+  transform: translateY(6px);
+  transition:
+    opacity var(--showcase-dur) var(--ease),
+    transform var(--showcase-dur) var(--ease),
+    border-color var(--showcase-dur) var(--ease),
+    box-shadow var(--showcase-dur) var(--ease);
+}
+.flow-out.is-on {
+  opacity: 1;
+  transform: none;
+  border-color: color-mix(in srgb, var(--flow) 28%, var(--border));
+  box-shadow: var(--shadow-md);
+}
+.flow-out-tag {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--flow) 14%, transparent);
+  color: var(--flow-strong);
+  transition: filter var(--showcase-dur) var(--ease);
+}
+.flow-out:not(.is-on) .flow-out-tag {
+  filter: grayscale(0.4);
+}
+.flow-out.is-on .flow-out-tag {
+  animation: flowActivate 0.5s var(--ease);
+}
+.flow-out h4 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.flow-out p {
+  margin-top: 0.1rem;
+  font-size: 0.74rem;
+  color: var(--text-3);
+}
+
+/* ── Result strip ── */
+.flow-result {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 1.5rem 1.5rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--flow) 7%, var(--card-bg));
+  border: 1px solid color-mix(in srgb, var(--flow) 16%, var(--border));
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+.flow-result-mark {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: oklch(0.46 0.12 188.43);
+  color: #fff;
+  font-size: 0.7rem;
+}
+
+/* ── AP vertical stepper ── */
+.flow-stepper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.flow-stage {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  padding: 0.9rem;
+  border-radius: var(--radius-md);
+  opacity: 0.5;
+  transition:
+    opacity var(--showcase-dur) var(--ease),
+    background var(--showcase-dur) var(--ease);
+}
+.flow-stage.is-on {
+  opacity: 1;
+  background: color-mix(in srgb, var(--flow) 6%, transparent);
+}
+.flow-stage-no {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--flow) 16%, var(--card-bg));
+  color: var(--flow-strong);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+/* Single node in a stage follows the stage's dim, not its own. */
+.flow-stage > .flow-node {
+  opacity: 1;
+}
+.flow-substages {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+.flow-out-list {
+  flex: 1;
+  padding-top: 0.15rem;
+}
+.flow-out-list h4 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 0.4rem;
+}
+.flow-out-list ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+.flow-out-list li {
+  position: relative;
+  padding-left: 1rem;
+}
+.flow-out-list li::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: var(--flow-strong);
+}
+.flow-down {
+  display: flex;
+  justify-content: center;
+  color: var(--text-4);
+  transition: color var(--showcase-dur) var(--ease);
+}
+.flow-down svg {
+  width: 18px;
+  height: 18px;
+  transform: rotate(90deg);
+}
+.flow-down.is-on {
+  color: var(--flow-strong);
+}
+
+/* ── AP benefits row ── */
+.flow-benefits {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+  margin: 0 1.5rem 1.5rem;
+  opacity: 0.5;
+  transition: opacity var(--showcase-dur) var(--ease);
+}
+.flow-benefits.is-on {
+  opacity: 1;
+}
+.flow-benefit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.85rem;
+  text-align: center;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--flow) 6%, var(--card-bg));
+  border: 1px solid color-mix(in srgb, var(--flow) 14%, var(--border));
+}
+.flow-benefit b {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--flow-strong);
+}
+.flow-benefit span {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.flow-benefit small {
+  font-size: 0.68rem;
+  color: var(--text-3);
+}
+
+/* ── GL pills + output ── */
+.gl-pills {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+}
+.gl-pill {
+  padding: 0.5rem 0.65rem;
+  text-align: left;
+  border-radius: var(--radius-sm);
+  background: var(--muted);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 0.76rem;
+  font-weight: 600;
+  transition:
+    border-color var(--dur-base) var(--ease),
+    background var(--dur-base) var(--ease);
+}
+.gl-pill:hover {
+  border-color: color-mix(in srgb, var(--flow) 40%, var(--border));
+}
+.gl-pill.is-selected {
+  border-color: color-mix(in srgb, var(--flow) 45%, var(--border));
+  background: color-mix(in srgb, var(--flow) 12%, transparent);
+  color: var(--flow-strong);
+}
+.gl-output .gl-code {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text);
+  text-wrap: pretty;
+}
+.gl-confidence {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  color: var(--text-2);
+}
+
+/* ── Responsive ── */
+@media (max-width: 860px) {
+  .flow-row {
+    flex-direction: column;
+  }
+  .flow-arrow {
+    align-self: center;
+    transform: rotate(90deg);
+  }
+  .flow-branch {
+    display: none;
+  }
+  .flow-substages {
+    flex-direction: column;
+  }
+  .flow-benefits {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ─── Enterprise band (full-width, deliberately quieter than the plans) ─── */
 .enterprise-band {
   display: flex;

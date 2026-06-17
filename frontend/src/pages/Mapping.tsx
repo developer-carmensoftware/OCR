@@ -207,9 +207,6 @@ export default function Mapping() {
         confirmPaymentSuggestion={mappingCtrl.confirmPaymentSuggestion}
         rejectPaymentSuggestion={mappingCtrl.rejectPaymentSuggestion}
         customPaymentTypes={mappingCtrl.customPaymentTypes}
-        newCustomType={mappingCtrl.newCustomType}
-        setNewCustomType={mappingCtrl.setNewCustomType}
-        handleAddCustomType={mappingCtrl.handleAddCustomType}
         handleRemoveCustomType={mappingCtrl.handleRemoveCustomType}
         saveAmountSelection={mappingCtrl.saveAmountSelection}
         cancelAmountSelection={mappingCtrl.cancelAmountSelection}

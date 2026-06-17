@@ -7,7 +7,6 @@ import {
   Check,
   X,
   XCircle,
-  Plus,
   ChevronDown,
   ChevronUp,
 } from 'lucide-react'
@@ -35,9 +34,6 @@ interface Props {
   confirmPaymentSuggestion: (type: string) => void
   rejectPaymentSuggestion: (type: string) => void
   customPaymentTypes: string[]
-  newCustomType: string
-  setNewCustomType: (v: string) => void
-  handleAddCustomType: () => void
   handleRemoveCustomType: (type: string) => void
   saveAmountSelection: () => void
   cancelAmountSelection: () => void
@@ -60,9 +56,6 @@ export default function PaymentTypeModal({
   confirmPaymentSuggestion,
   rejectPaymentSuggestion,
   customPaymentTypes,
-  newCustomType,
-  setNewCustomType,
-  handleAddCustomType,
   handleRemoveCustomType,
   saveAmountSelection,
   cancelAmountSelection,
