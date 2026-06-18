@@ -7,6 +7,7 @@ import type { CreditPack } from '../../lib/api/credits'
 interface Props {
   packs: CreditPack[]
   onSelect: (pack: CreditPack) => void
+  disabled?: boolean
 }
 
 /**
@@ -14,7 +15,7 @@ interface Props {
  * grid, so "buy once" reads differently from "subscribe monthly". The credit
  * count leads; the whole card starts checkout.
  */
-export default function PackList({ packs, onSelect }: Props) {
+export default function PackList({ packs, onSelect, disabled }: Props) {
   const { t } = useT()
   return (
     <div className="pack-grid">
@@ -27,6 +28,7 @@ export default function PackList({ packs, onSelect }: Props) {
             key={pack.code}
             className="pack-card"
             onClick={() => onSelect(pack)}
+            disabled={disabled}
           >
             <span className="pack-card-icon">
               <Coins size={18} />

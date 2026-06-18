@@ -100,7 +100,7 @@ export const SALES_CONTACT = {
 }
 
 /** VAT note shown beside every price — amounts are inclusive of 7% VAT. */
-export const VAT_NOTE = 'Prices include 7% VAT'
+export const VAT_NOTE = 'Prices exclude 7% VAT'
 
 /** Derived per-document baht, e.g. for "≈ ฿1.98 / doc". */
 export function perDoc(priceThb: number, docs: number): number {

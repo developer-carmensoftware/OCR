@@ -15,6 +15,7 @@ class CreditPackResponse(BaseModel):
     kind: str = "topup"  # 'subscription' (monthly tier) | 'topup' (one-time credits)
     credits: int
     price_thb: float
+    description: str | None = None
     sort_order: int = 0
 
 
@@ -144,6 +145,19 @@ class CreateOrderResponse(BaseModel):
     order: "CreditOrderResponse"
     qr: QrPayloadResponse
     proforma: BillingDocumentResponse
+
+
+class PaymentInfoResponse(BaseModel):
+    """Company-level pay-to details for the proforma (bank transfer + cheque)."""
+
+    bank_name: str = ""
+    bank_account_no: str = ""
+    bank_account_name: str = ""
+    bank_account_type: str = ""
+    bank_branch: str = ""
+    cheque_payee: str = ""
+    seller_name_en: str = ""
+    seller_phone: str = ""
 
 
 class CompanyProfileResponse(BaseModel):

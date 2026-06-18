@@ -1,27 +1,27 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ChevronDown, ShoppingBag, ArrowRight, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import AppHeader from '../components/common/AppHeader'
 import LanguageToggle from '../components/common/LanguageToggle'
 import { useT } from '../i18n/LanguageContext'
-import { OrderStatusBadge, ProformaDocument, SlipUpload } from '../components/pricing'
+import { OrderStatusBadge, PendingOrderBanner, ProformaDocument } from '../components/pricing'
 import { useOrderHistory } from '../hooks/credits'
 import {
   getOrderDocuments,
-  uploadSlip,
+  getPaymentInfo,
   type BillingDocument,
   type CreditOrder,
+  type PaymentInfo,
 } from '../lib/api/credits'
 import { catalogName } from '../constants/billing'
 import { formatThb } from '../lib/money'
 import '../styles/pages/pricing.css'
 
-function OrderRow({ order, onChanged }: { order: CreditOrder; onChanged: () => void }) {
+function OrderRow({ order, paymentInfo }: { order: CreditOrder; paymentInfo: PaymentInfo | null }) {
   const { t } = useT()
   const [open, setOpen] = useState(false)
   const [docs, setDocs] = useState<BillingDocument[] | null>(null)
   const [loadingDocs, setLoadingDocs] = useState(false)
-  const [uploading, setUploading] = useState(false)
 
   const toggle = () => {
     const next = !open
@@ -32,20 +32,6 @@ function OrderRow({ order, onChanged }: { order: CreditOrder; onChanged: () => v
         .then(setDocs)
         .catch((e: Error) => toast.error(e.message))
         .finally(() => setLoadingDocs(false))
-    }
-  }
-
-  const handleSlip = async (file: File) => {
-    setUploading(true)
-    try {
-      await uploadSlip(order.id, file)
-      toast.success(t('checkout.slipSubmittedToast'))
-      onChanged()
-    } catch (e) {
-      toast.error((e as Error).message)
-      throw e
-    } finally {
-      setUploading(false)
     }
   }
 
@@ -69,13 +55,6 @@ function OrderRow({ order, onChanged }: { order: CreditOrder; onChanged: () => v
 
       {open && (
         <div className="order-row-body">
-          {order.status === 'pending' && (
-            <div className="order-resume">
-              <p className="order-resume-note">{t('order.pendingNote')}</p>
-              <SlipUpload onUpload={handleSlip} uploading={uploading} />
-            </div>
-          )}
-
           {order.status === 'rejected' && (
             <div className="order-rejected">
               <p className="order-rejected-note">{t('order.rejectedNote')}</p>
@@ -92,7 +71,7 @@ function OrderRow({ order, onChanged }: { order: CreditOrder; onChanged: () => v
           ) : docs && docs.length > 0 ? (
             <div className="order-docs">
               {docs.map(doc => (
-                <ProformaDocument key={doc.id} doc={doc} />
+                <ProformaDocument key={doc.id} doc={doc} paymentInfo={paymentInfo} />
               ))}
             </div>
           ) : docs && docs.length === 0 ? (
@@ -107,6 +86,17 @@ function OrderRow({ order, onChanged }: { order: CreditOrder; onChanged: () => v
 export default function OrderHistory() {
   const { t } = useT()
   const { orders, loading, error, reload } = useOrderHistory()
+  const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
+
+  // Open orders (pending + awaiting_review) go in the action banner; the rest in the history list.
+  const openOrders = orders.filter(o => o.status === 'pending' || o.status === 'awaiting_review')
+  const history = orders.filter(o => o.status !== 'pending' && o.status !== 'awaiting_review')
+
+  useEffect(() => {
+    getPaymentInfo()
+      .then(setPaymentInfo)
+      .catch(() => setPaymentInfo(null))
+  }, [])
 
   return (
     <div className="pricing-page">
@@ -149,6 +139,8 @@ export default function OrderHistory() {
           </a>
         </div>
 
+        <PendingOrderBanner orders={openOrders} onChanged={reload} paymentInfo={paymentInfo} />
+
         {error ? (
           <div className="pricing-error">{t('order.loadError', { error })}</div>
         ) : loading ? (
@@ -157,21 +149,23 @@ export default function OrderHistory() {
               <div key={i} className="orders-skeleton-row" />
             ))}
           </div>
-        ) : orders.length === 0 ? (
-          <div className="orders-empty">
-            <div className="orders-empty-icon">
-              <ShoppingBag size={40} strokeWidth={1.5} />
+        ) : history.length === 0 ? (
+          openOrders.length === 0 && (
+            <div className="orders-empty">
+              <div className="orders-empty-icon">
+                <ShoppingBag size={40} strokeWidth={1.5} />
+              </div>
+              <h2 className="orders-empty-title">{t('order.empty')}</h2>
+              <p className="orders-empty-sub">{t('order.emptySub')}</p>
+              <a className="btn btn-primary" href="#/pricing">
+                {t('order.viewAllPlans')}
+              </a>
             </div>
-            <h2 className="orders-empty-title">{t('order.empty')}</h2>
-            <p className="orders-empty-sub">{t('order.emptySub')}</p>
-            <a className="btn btn-primary" href="#/pricing">
-              {t('order.viewAllPlans')}
-            </a>
-          </div>
+          )
         ) : (
           <ul className="order-list">
-            {orders.map(order => (
-              <OrderRow key={order.id} order={order} onChanged={reload} />
+            {history.map(order => (
+              <OrderRow key={order.id} order={order} paymentInfo={paymentInfo} />
             ))}
           </ul>
         )}

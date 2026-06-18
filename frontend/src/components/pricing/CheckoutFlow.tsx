@@ -1,9 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowLeft, ChevronDown, CheckCircle2, ShieldCheck, Loader2, ScanLine } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, ShieldCheck, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import StepWizard from '../common/StepWizard'
-import PromptPayQR from './PromptPayQR'
 import ProformaDocument from './ProformaDocument'
 import SlipUpload from './SlipUpload'
 import { useCheckout, type CheckoutSession } from '../../hooks/credits'
@@ -11,7 +10,12 @@ import { PLAN_META, PACK_META } from '../../constants/billing'
 import { formatThb } from '../../lib/money'
 import { useT } from '../../i18n/LanguageContext'
 import type { TKey } from '../../i18n/dict'
-import type { BuyerInfo, CreditPack } from '../../lib/api/credits'
+import {
+  getPaymentInfo,
+  type BuyerInfo,
+  type CreditPack,
+  type PaymentInfo,
+} from '../../lib/api/credits'
 
 function itemName(code: string): string {
   return PLAN_META[code]?.name ?? PACK_META[code]?.name ?? code
@@ -33,7 +37,13 @@ const SOURCE_KEY: Record<string, TKey | ''> = {
 export default function CheckoutFlow({ pack, resume, onCancel, onViewHistory }: Props) {
   const { t } = useT()
   const c = useCheckout(pack, resume)
-  const [showDoc, setShowDoc] = useState(false)
+  const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
+
+  useEffect(() => {
+    getPaymentInfo()
+      .then(setPaymentInfo)
+      .catch(e => console.warn('payment-info fetch failed, bank block hidden:', e))
+  }, [])
 
   const STEPS = [
     { n: 1, label: t('checkout.step1') },
@@ -68,6 +78,7 @@ export default function CheckoutFlow({ pack, resume, onCancel, onViewHistory }: 
         <ArrowLeft size={15} /> {t('checkout.backToPlans')}
       </button>
 
+      {/* No onStepClick: back-nav is locked once an order is created. */}
       <StepWizard step={stepNum} steps={STEPS} />
 
       <motion.div
@@ -178,8 +189,10 @@ export default function CheckoutFlow({ pack, resume, onCancel, onViewHistory }: 
                   t('checkout.continueToPayment')
                 )}
               </button>
-              {!c.buyer.name.trim() && !c.loadingProfile && (
+              {!c.buyer.name.trim() && !c.loadingProfile ? (
                 <p className="checkout-hint">{t('checkout.enterNameHint')}</p>
+              ) : (
+                <p className="checkout-hint">{t('checkout.verifyHint')}</p>
               )}
             </aside>
           </div>
@@ -187,38 +200,12 @@ export default function CheckoutFlow({ pack, resume, onCancel, onViewHistory }: 
 
         {c.phase === 'pay' && c.session && (
           <div className="checkout-pay">
-            <div className="panel-card checkout-pay-card">
-              <div className="checkout-pay-head">
-                <ScanLine size={18} className="checkout-pay-head-icon" />
-                <div>
-                  <h3 className="checkout-section-title">{t('checkout.scanToPay')}</h3>
-                  <p className="checkout-pay-sub">{t('checkout.scanSub')}</p>
-                </div>
-              </div>
-              <PromptPayQR qr={c.session.qr} />
-            </div>
+            <ProformaDocument doc={c.session.proforma} paymentInfo={paymentInfo} />
 
-            <div className="panel-card checkout-slip-card">
+            <div className="panel-card checkout-slip-card no-print">
               <h3 className="checkout-section-title">{t('checkout.confirmPayment')}</h3>
               <p className="checkout-pay-sub">{t('checkout.confirmSub')}</p>
               <SlipUpload onUpload={handleSlip} uploading={c.uploading} />
-
-              <button
-                type="button"
-                className="checkout-doc-toggle"
-                onClick={() => setShowDoc(v => !v)}
-                aria-expanded={showDoc}
-              >
-                <ChevronDown
-                  size={15}
-                  style={{
-                    transform: showDoc ? 'rotate(180deg)' : 'none',
-                    transition: 'transform .2s',
-                  }}
-                />
-                {showDoc ? t('checkout.hideInvoice') : t('checkout.viewInvoice')}
-              </button>
-              {showDoc && <ProformaDocument doc={c.session.proforma} />}
             </div>
           </div>
         )}

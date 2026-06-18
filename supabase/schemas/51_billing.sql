@@ -92,9 +92,9 @@ create index if not exists ix_credit_orders_tenant_status
     on credit_orders (tenant_id, status)
     where deleted_at is null;
 
--- Block duplicate open orders: only one pending/awaiting_review per pack per tenant.
-create unique index if not exists uq_credit_orders_one_open_per_pack
-    on credit_orders (tenant_id, pack_code)
+-- One open order per tenant: only one pending/awaiting_review order at a time.
+create unique index if not exists uq_credit_orders_one_open_per_tenant
+    on credit_orders (tenant_id)
     where status in ('pending', 'awaiting_review') and deleted_at is null;
 
 

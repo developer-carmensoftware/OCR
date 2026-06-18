@@ -44,6 +44,18 @@ export interface QrPayload {
   promptpay_id: string
 }
 
+/** Company-level pay-to details printed on the proforma (bank transfer + cheque). */
+export interface PaymentInfo {
+  bank_name: string
+  bank_account_no: string
+  bank_account_name: string
+  bank_account_type: string
+  bank_branch: string
+  cheque_payee: string
+  seller_name_en: string
+  seller_phone: string
+}
+
 export interface BillingDocument {
   id: string
   doc_type: 'proforma' | 'tax_invoice'
@@ -102,6 +114,13 @@ export async function getCompanyProfile(): Promise<CompanyProfile> {
   return res.json() as Promise<CompanyProfile>
 }
 
+/** Company pay-to details (bank transfer + cheque) printed on the proforma. */
+export async function getPaymentInfo(): Promise<PaymentInfo> {
+  const res = await apiFetch(API.credits.paymentInfo)
+  if (!res.ok) throw new Error(`Failed to load payment info (${res.status})`)
+  return res.json() as Promise<PaymentInfo>
+}
+
 /** Create a pending order → returns the PromptPay QR payload + proforma invoice. */
 export async function createOrder(
   packCode: string,
@@ -126,6 +145,13 @@ export async function uploadSlip(orderId: string, file: File): Promise<{ status:
   if (!res.ok) throw new Error(await detail(res, `Failed to upload the slip (${res.status})`))
   const body = (await res.json()) as { order_id: string; status: OrderStatus }
   return { status: body.status }
+}
+
+/** Discard a still-pending order → frees the open-order lock so the pack can be re-ordered. */
+export async function cancelOrder(orderId: string): Promise<CreditOrder> {
+  const res = await apiFetch(API.credits.orderCancel(orderId), { method: 'POST' })
+  if (!res.ok) throw new Error(await detail(res, `Failed to cancel the order (${res.status})`))
+  return res.json() as Promise<CreditOrder>
 }
 
 /** This tenant's orders, newest first. */

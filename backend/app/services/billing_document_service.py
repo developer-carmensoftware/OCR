@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.billing import BillingDocument, DocumentSequence, SystemConfig
 from app.models.enums import BillingDocumentType
-from app.utils.tax import split_inclusive
+from app.utils.tax import vat_on_top
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +82,21 @@ async def get_seller_snapshot(db: AsyncSession) -> SellerSnapshot:
     )
 
 
+async def get_payment_info(db: AsyncSession) -> dict[str, str]:
+    """Company-level pay-to details (bank transfer + cheque) read from system_configs."""
+    cfg = await _fetch_billing_configs(db)
+    return {
+        "bank_name": cfg.get("billing.bank_name", ""),
+        "bank_account_no": cfg.get("billing.bank_account_no", ""),
+        "bank_account_name": cfg.get("billing.bank_account_name", ""),
+        "bank_account_type": cfg.get("billing.bank_account_type", ""),
+        "bank_branch": cfg.get("billing.bank_branch", ""),
+        "cheque_payee": cfg.get("billing.cheque_payee", ""),
+        "seller_name_en": cfg.get("billing.seller_name_en", ""),
+        "seller_phone": cfg.get("billing.seller_phone", ""),
+    }
+
+
 async def get_promptpay_id(db: AsyncSession) -> str:
     """Return the configured PromptPay ID, or '' if not set."""
     cfg = await _fetch_billing_configs(db)
@@ -94,7 +109,8 @@ async def _next_document_number(db: AsyncSession, doc_type: BillingDocumentType)
     Uses INSERT ... ON CONFLICT DO UPDATE so the counter is gapless under concurrency.
     """
     scope = doc_type.value  # 'proforma' or 'tax_invoice'
-    period_key = datetime.now(UTC).strftime("%Y%m")
+    now = datetime.now(UTC)
+    period_key = now.strftime("%Y%m%d")
 
     stmt = (
         pg_insert(DocumentSequence)
@@ -106,8 +122,8 @@ async def _next_document_number(db: AsyncSession, doc_type: BillingDocumentType)
         .returning(DocumentSequence.last_no)
     )
     last_no: int = (await db.execute(stmt)).scalar_one()
-    prefix = _DOC_PREFIX[doc_type]
-    return f"{prefix}-{period_key}-{last_no:04d}"
+    date_part = now.strftime("%Y%m%d")
+    return f"AI-{date_part}-{last_no:04d}"
 
 
 async def issue_document(
@@ -134,12 +150,12 @@ async def issue_document(
         pack_code: Pack identifier (e.g. 'starter').
         pack_description: Human-readable label for the line item.
         credits: Number of credits in this pack.
-        amount_thb: VAT-inclusive gross (Decimal).
+        amount_thb: Price before VAT (Decimal).
         buyer: Dict with name/tax_id/address/branch (all optional).
     """
     seller = await get_seller_snapshot(db)
     vat_rate = Decimal(seller.get("vat_rate") or "7") / 100
-    subtotal, vat_amount = split_inclusive(amount_thb, vat_rate)
+    subtotal, vat_amount, total = vat_on_top(amount_thb, vat_rate)
     number = await _next_document_number(db, doc_type)
 
     doc = BillingDocument(
@@ -166,7 +182,7 @@ async def issue_document(
         subtotal=subtotal,
         vat_rate=Decimal(seller.get("vat_rate") or "7"),
         vat_amount=vat_amount,
-        total=amount_thb,
+        total=total,
         currency="THB",
     )
     db.add(doc)

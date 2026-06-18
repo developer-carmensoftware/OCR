@@ -149,6 +149,21 @@ export default function CustomModal({
 
   const cfg = TYPE_CONFIG[type as keyof typeof TYPE_CONFIG] ?? TYPE_CONFIG.info
 
+  // Smooth ease-out (no spring overshoot). Reduced-motion users get a plain fade.
+  const boxMotion = reduceMotion
+    ? {
+        initial: { opacity: 0 },
+        animate: { opacity: 1 },
+        exit: { opacity: 0 },
+        transition: { duration: 0.15 },
+      }
+    : {
+        initial: { opacity: 0, scale: 0.96, y: 10 },
+        animate: { opacity: 1, scale: 1, y: 0 },
+        exit: { opacity: 0, scale: 0.98, y: 6 },
+        transition: { duration: 0.24, ease: [0.16, 1, 0.3, 1] as const },
+      }
+
   return createPortal(
     <AnimatePresence>
       {show && (
@@ -163,18 +178,7 @@ export default function CustomModal({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.18 }}
         >
-          <motion.div
-            className={`modal-box modal-${type}`}
-            initial={{ opacity: 0, scale: 0.92, y: 16 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 8 }}
-            transition={{
-              type: 'spring',
-              stiffness: 320,
-              damping: 28,
-              opacity: { duration: 0.15 },
-            }}
-          >
+          <motion.div className={`modal-box modal-${type}`} {...boxMotion}>
             <div className="modal-icon-wrapper">
               <cfg.Icon size={26} strokeWidth={1.75} />
             </div>

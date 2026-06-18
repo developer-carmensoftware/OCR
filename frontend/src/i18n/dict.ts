@@ -75,10 +75,12 @@ const en = {
   'checkout.kindMonthly': 'Monthly plan',
   'checkout.kindTopup': 'Top-up credits (never expire)',
   'checkout.totalDue': 'Total due',
-  'checkout.vatNote': 'Prices include 7% VAT',
+  'checkout.vatNote': 'Prices exclude 7% VAT',
   'checkout.creatingOrder': 'Creating order…',
   'checkout.continueToPayment': 'Continue to payment',
   'checkout.enterNameHint': 'Enter the buyer name to continue',
+  'checkout.verifyHint':
+    'Please verify your billing details — they will appear on the proforma invoice.',
   'checkout.scanToPay': 'Scan to pay with PromptPay',
   'checkout.scanSub':
     'Open your banking app, scan the QR, transfer the exact amount, then upload the slip below.',
@@ -119,6 +121,18 @@ const en = {
   'order.viewAllPlans': 'View all plans',
   'order.pendingNote':
     "No slip uploaded yet. If you've already paid, upload the slip for our team to review.",
+  'order.pendingBanner.title': 'You have an unfinished order',
+  'order.pendingBanner.body':
+    "It won't appear in your history until you upload the payment slip. Finish it below, or cancel it.",
+  'order.viewInvoice': 'View invoice',
+  'order.cancel': 'Cancel order',
+  'order.cancelConfirm': 'Cancel this order? You can place it again afterwards.',
+  'order.cancelledToast': 'Order cancelled',
+  'order.cancelReviewConfirm':
+    "Your slip is under review. If you've already transferred money, please contact our team. Cancel this order?",
+  'order.reviewingBanner.title': 'Your order is under review',
+  'order.reviewingBanner.body':
+    "We're verifying your payment slip. Credits will be added once approved.",
   'order.rejectedNote': "This slip didn't pass review. Please place a new order.",
   'order.orderAgain': 'Order again',
   'order.noDocs': 'No documents for this order yet',
@@ -182,6 +196,13 @@ const en = {
   'flows.gl.out.label': 'Suggested code',
   'flows.gl.analyzing': 'Analyzing…',
   'flows.gl.accuracy': 'Accuracy',
+  'flows.gl.s.water': 'Water supply — main building (MWA)',
+  'flows.gl.s.water.code': '5301-01 · Water & utilities',
+  'flows.gl.s.laundry': 'Laundry — blankets & linens',
+  'flows.gl.s.laundry.code': '5405-02 · Laundry & cleaning services',
+  'flows.gl.s.salmon': 'Purchase — frozen salmon',
+  'flows.gl.s.salmon.code': '1401-03 · F&B inventory',
+  'modal.cancel': 'Cancel',
 } as const
 
 export type TKey = keyof typeof en
@@ -249,10 +270,12 @@ const th: Record<TKey, string> = {
   'checkout.kindMonthly': 'แพ็กเกจรายเดือน',
   'checkout.kindTopup': 'เครดิตเติม (ไม่มีวันหมดอายุ)',
   'checkout.totalDue': 'ยอดชำระทั้งหมด',
-  'checkout.vatNote': 'ราคารวมภาษีมูลค่าเพิ่ม 7% แล้ว',
+  'checkout.vatNote': 'ราคายังไม่รวมภาษีมูลค่าเพิ่ม 7%',
   'checkout.creatingOrder': 'กำลังสร้างคำสั่งซื้อ…',
   'checkout.continueToPayment': 'ดำเนินการชำระเงิน',
   'checkout.enterNameHint': 'กรอกชื่อผู้ซื้อเพื่อดำเนินการต่อ',
+  'checkout.verifyHint':
+    'กรุณาตรวจสอบข้อมูลสำหรับออกบิลให้ถูกต้องก่อนดำเนินการ — ข้อมูลนี้จะปรากฏบนใบแจ้งหนี้',
   'checkout.scanToPay': 'สแกนเพื่อจ่ายด้วยพร้อมเพย์',
   'checkout.scanSub': 'เปิดแอปธนาคาร สแกน QR โอนยอดให้ตรงจำนวน แล้วอัปโหลดสลิปด้านล่าง',
   'checkout.confirmPayment': 'ยืนยันการชำระเงิน',
@@ -290,6 +313,18 @@ const th: Record<TKey, string> = {
   'order.emptySub': 'เลือกแพ็กเกจรายเดือนหรือเติมเครดิตเพื่อใช้งานต่อหลังหมดโควตาฟรี',
   'order.viewAllPlans': 'ดูแพ็กเกจทั้งหมด',
   'order.pendingNote': 'ยังไม่ได้อัปโหลดสลิป หากชำระเงินแล้ว กรุณาอัปโหลดสลิปให้ทีมงานตรวจสอบ',
+  'order.pendingBanner.title': 'คุณมีคำสั่งซื้อที่ยังไม่เสร็จ',
+  'order.pendingBanner.body':
+    'คำสั่งซื้อจะยังไม่แสดงในประวัติจนกว่าจะอัปโหลดสลิปการชำระเงิน กรุณาดำเนินการให้เสร็จด้านล่าง หรือยกเลิกคำสั่งซื้อ',
+  'order.viewInvoice': 'ดูใบแจ้งหนี้',
+  'order.cancel': 'ยกเลิกคำสั่งซื้อ',
+  'order.cancelConfirm': 'ยกเลิกคำสั่งซื้อนี้ใช่ไหม? คุณสามารถสั่งซื้อใหม่ได้ภายหลัง',
+  'order.cancelledToast': 'ยกเลิกคำสั่งซื้อแล้ว',
+  'order.cancelReviewConfirm':
+    'สลิปของคุณอยู่ระหว่างตรวจสอบ หากโอนเงินแล้ว กรุณาติดต่อทีมงาน ต้องการยกเลิกคำสั่งซื้อนี้ไหม?',
+  'order.reviewingBanner.title': 'คำสั่งซื้อของคุณอยู่ระหว่างตรวจสอบ',
+  'order.reviewingBanner.body':
+    'ทีมงานกำลังตรวจสอบสลิปการชำระเงิน เครดิตจะถูกเพิ่มเมื่อได้รับการอนุมัติ',
   'order.rejectedNote': 'สลิปนี้ไม่ผ่านการตรวจสอบ กรุณาสั่งซื้อใหม่อีกครั้ง',
   'order.orderAgain': 'สั่งซื้อใหม่',
   'order.noDocs': 'ยังไม่มีเอกสารสำหรับคำสั่งซื้อนี้',
@@ -350,6 +385,13 @@ const th: Record<TKey, string> = {
   'flows.gl.out.label': 'รหัสที่แนะนำ',
   'flows.gl.analyzing': 'กำลังวิเคราะห์…',
   'flows.gl.accuracy': 'ความแม่นยำ',
+  'flows.gl.s.water': 'ค่าน้ำประปาอาคารหลัก MWA',
+  'flows.gl.s.water.code': '5301-01 · ค่าน้ำประปาและสาธารณูปโภค',
+  'flows.gl.s.laundry': 'ค่าซักรีดผ้าห่มและเครื่องนอน',
+  'flows.gl.s.laundry.code': '5405-02 · ค่าจ้างซักรีดและทำความสะอาด',
+  'flows.gl.s.salmon': 'จัดซื้อปลาแซลมอนสดแช่แข็ง',
+  'flows.gl.s.salmon.code': '1401-03 · สินค้าคลังเครื่องดื่มและอาหาร',
+  'modal.cancel': 'ยกเลิก',
 }
 
 export const DICT: Record<Lang, Record<TKey, string>> = { en, th }

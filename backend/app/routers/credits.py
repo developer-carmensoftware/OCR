@@ -28,6 +28,7 @@ from app.models.schemas import (
     CreateOrderResponse,
     CreditOrderResponse,
     CreditPackResponse,
+    PaymentInfoResponse,
     QrPayloadResponse,
     SlipUploadResponse,
 )
@@ -35,6 +36,7 @@ from app.services import billing_document_service as bds
 from app.services import carmen_service, promptpay_service, storage_service
 from app.services.file_service import FileService
 from app.services.storage_service import StorageError
+from app.utils.tax import vat_on_top
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/credits", tags=["Credits"])
@@ -81,6 +83,15 @@ async def get_company_profile(
     return CompanyProfileResponse(source="form")
 
 
+@router.get("/payment-info", response_model=PaymentInfoResponse)
+async def get_payment_info(
+    _session: SessionInfo = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """Company pay-to details (bank transfer + cheque) printed on the proforma."""
+    return PaymentInfoResponse(**await bds.get_payment_info(db))
+
+
 @router.post("/orders", response_model=CreateOrderResponse)
 async def create_order(
     body: CreateOrderRequest,
@@ -91,27 +102,51 @@ async def create_order(
     Create a pending top-up order. Returns the PromptPay QR payload and a proforma invoice.
     Credits are NOT granted here — an admin approves the slip to fulfill.
     """
+    # Block if tenant already has any open order (pending or under review)
+    has_open = (
+        await db.execute(
+            select(CreditOrder.id)
+            .where(
+                CreditOrder.tenant_id == session.tenant_id,
+                CreditOrder.status.in_(
+                    [CreditOrderStatus.PENDING, CreditOrderStatus.AWAITING_REVIEW]
+                ),
+                CreditOrder.deleted_at.is_(None),
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if has_open:
+        raise HTTPException(
+            status_code=409,
+            detail="You have an active order. Complete or cancel it first.",
+        )
+
     pack = (
         await db.execute(select(CreditPack).where(CreditPack.code == body.pack_code))
     ).scalar_one_or_none()
     if pack is None or not pack.is_active:
         raise HTTPException(status_code=404, detail="Credit pack not found")
 
+    net = Decimal(str(pack.price_thb))
+    _sub, _vat, gross = vat_on_top(net)
     order = CreditOrder(
         tenant_id=session.tenant_id,
         pack_code=pack.code,
         credits=pack.credits,
-        amount_thb=pack.price_thb,
+        amount_thb=gross,
         status=CreditOrderStatus.PENDING,
     )
     try:
         db.add(order)
         await db.flush()  # get order.id before issuing the document
     except IntegrityError:
+        # Lost a race against a concurrent create — the per-tenant open-order
+        # unique index caught it. Same outcome as the pre-check above.
         await db.rollback()
         raise HTTPException(
             status_code=409,
-            detail="An open order for this pack already exists. Cancel it or upload a slip.",
+            detail="You have an active order. Complete or cancel it first.",
         )
 
     # Buyer info: body override → Carmen → last invoice → empty
@@ -138,7 +173,7 @@ async def create_order(
         order_id=str(order.id),
         doc_type=BillingDocumentType.PROFORMA,
         pack_code=pack.code,  # type: ignore[arg-type]
-        pack_description=f"{pack.credits} credits",
+        pack_description=str(pack.description) if pack.description else f"{pack.credits} credits",
         credits=pack.credits,  # type: ignore[arg-type]
         amount_thb=Decimal(str(pack.price_thb)),
         buyer=buyer,
@@ -148,8 +183,8 @@ async def create_order(
     if not promptpay_id:
         logger.warning("billing.promptpay_id not configured — QR payload will be empty")
 
-    price = float(pack.price_thb)  # type: ignore[arg-type]
-    qr_payload = promptpay_service.build_payload(promptpay_id, price) if promptpay_id else ""
+    total_incl = float(gross)
+    qr_payload = promptpay_service.build_payload(promptpay_id, total_incl) if promptpay_id else ""
 
     await db.commit()
     await db.refresh(order)
@@ -159,7 +194,7 @@ async def create_order(
         order=CreditOrderResponse.model_validate(order),
         qr=QrPayloadResponse(
             payload=qr_payload,
-            amount_thb=price,
+            amount_thb=total_incl,
             promptpay_id=promptpay_id,
         ),
         proforma=BillingDocumentResponse.model_validate(proforma),
@@ -222,6 +257,47 @@ async def upload_slip(
     await db.commit()
 
     return SlipUploadResponse(order_id=order_id, status=order.status.value)
+
+
+@router.post("/orders/{order_id}/cancel", response_model=CreditOrderResponse)
+async def cancel_order(
+    order_id: str,
+    session: SessionInfo = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Discard a pending or awaiting-review order. Uses FOR UPDATE to prevent
+    race conditions with admin approve/reject.
+    """
+    order = (
+        await db.execute(
+            select(CreditOrder)
+            .where(
+                CreditOrder.id == order_id,
+                CreditOrder.tenant_id == session.tenant_id,
+                CreditOrder.deleted_at.is_(None),
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    _cancellable = {CreditOrderStatus.PENDING, CreditOrderStatus.AWAITING_REVIEW}
+    if order.status not in _cancellable:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot cancel an order in status '{order.status}'",
+        )
+
+    from datetime import UTC, datetime
+
+    order.status = CreditOrderStatus.CANCELLED  # type: ignore[assignment]
+    order.deleted_at = datetime.now(UTC)  # type: ignore[assignment]
+    await db.commit()
+    await db.refresh(order)
+
+    return CreditOrderResponse.model_validate(order)
 
 
 @router.get("/orders", response_model=list[CreditOrderResponse])

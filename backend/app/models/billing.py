@@ -158,6 +158,7 @@ class CreditPack(Base, TimestampMixin, WriterMixin):
     kind = Column(String(20), nullable=False, default="topup")
     credits = Column(Integer, nullable=False)
     price_thb = Column(Numeric(10, 2), nullable=False)
+    description = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     sort_order = Column(Integer, default=0, nullable=False)
 
@@ -228,12 +229,11 @@ class CreditOrder(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
             "status",
             postgresql_where=text("deleted_at IS NULL"),
         ),
-        # Blocks duplicate open orders for the same pack per tenant.
-        # Covers both pending (QR shown) and awaiting_review (slip uploaded).
+        # One open order per tenant — blocks a second purchase while any order
+        # is pending (QR shown) or awaiting_review (slip uploaded).
         Index(
-            "uq_credit_orders_one_open_per_pack",
+            "uq_credit_orders_one_open_per_tenant",
             "tenant_id",
-            "pack_code",
             unique=True,
             postgresql_where=text(
                 "status IN ('pending', 'awaiting_review') AND deleted_at IS NULL"

@@ -16,6 +16,7 @@ interface PlanCardProps {
   pack: CreditPack
   meta: PackPresentation
   onSelect: (pack: CreditPack) => void
+  disabled?: boolean
 }
 
 const TIER_ICONS: Record<string, { Icon: PhosphorIcon; tint: string }> = {
@@ -30,7 +31,7 @@ const TIER_ICONS: Record<string, { Icon: PhosphorIcon; tint: string }> = {
  * anchored at the bottom next to the CTA. Only the highlighted tier gets the
  * primary CTA.
  */
-export function PlanCard({ pack, meta, onSelect }: PlanCardProps) {
+export function PlanCard({ pack, meta, onSelect, disabled }: PlanCardProps) {
   const { t } = useT()
   const rate = perDoc(pack.price_thb, pack.credits)
   const icon = TIER_ICONS[pack.code]
@@ -60,6 +61,7 @@ export function PlanCard({ pack, meta, onSelect }: PlanCardProps) {
         type="button"
         className={`btn ${meta.highlight ? 'btn-primary' : 'btn-outline'} plan-cta`}
         onClick={() => onSelect(pack)}
+        disabled={disabled}
       >
         {t('plan.choose', { name: meta.name })} <ArrowRight size={14} />
       </button>

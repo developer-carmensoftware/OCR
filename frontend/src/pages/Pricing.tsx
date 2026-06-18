@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, MessageCircle, Phone, Mail } from 'lucide-react'
 import AppHeader from '../components/common/AppHeader'
@@ -11,10 +11,17 @@ import {
   PackList,
   FeatureFlows,
   CheckoutFlow,
+  PendingOrderBanner,
 } from '../components/pricing'
-import { usePricingCatalog, loadPersistedCheckout, type CheckoutSession } from '../hooks/credits'
+import {
+  usePricingCatalog,
+  useOrderHistory,
+  loadPersistedCheckout,
+  clearPersistedCheckout,
+  type CheckoutSession,
+} from '../hooks/credits'
 import { PLAN_META, SALES_CONTACT } from '../constants/billing'
-import type { CreditPack } from '../lib/api/credits'
+import { getPaymentInfo, type CreditPack, type PaymentInfo } from '../lib/api/credits'
 import { useEntrance } from '../lib/useEntrance'
 import '../styles/pages/pricing.css'
 
@@ -105,11 +112,21 @@ const cardVariants = {
 export default function Pricing() {
   const { t } = useT()
   const { plans, packs, loading, error } = usePricingCatalog()
-  const [resume] = useState<CheckoutSession | null>(() => loadPersistedCheckout())
+  const { orders, reload } = useOrderHistory()
+  const openOrders = orders.filter(o => o.status === 'pending' || o.status === 'awaiting_review')
+  const hasOpenOrder = openOrders.length > 0
+  const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
+  const [resume, setResume] = useState<CheckoutSession | null>(() => loadPersistedCheckout())
   const [view, setView] = useState<'catalog' | 'checkout'>(resume ? 'checkout' : 'catalog')
   const [selected, setSelected] = useState<CreditPack | null>(null)
   const [showContact, setShowContact] = useState(false)
   const enter = useEntrance('pricing')
+
+  useEffect(() => {
+    getPaymentInfo()
+      .then(setPaymentInfo)
+      .catch(() => setPaymentInfo(null))
+  }, [])
 
   const startCheckout = (pack: CreditPack) => {
     setSelected(pack)
@@ -118,6 +135,8 @@ export default function Pricing() {
   }
 
   const backToCatalog = () => {
+    clearPersistedCheckout()
+    setResume(null)
     setSelected(null)
     setView('catalog')
   }
@@ -155,85 +174,108 @@ export default function Pricing() {
         <LanguageToggle />
       </AppHeader>
 
-      {view === 'checkout' ? (
-        <CheckoutFlow
-          pack={selected}
-          resume={resume}
-          onCancel={backToCatalog}
-          onViewHistory={() => {
-            window.location.hash = '#/pricing/orders'
-          }}
-        />
-      ) : (
-        <main className="pricing-main">
-          <motion.header
-            className="pricing-hero"
-            initial={enter ? { opacity: 0, y: 12 } : false}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ type: 'spring', stiffness: 100, damping: 15 }}
+      <AnimatePresence mode="wait">
+        {view === 'checkout' ? (
+          <motion.div
+            key="checkout"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
           >
-            <h2 className="pricing-title">{t('pricing.title')}</h2>
-            <p className="pricing-subtitle">{t('pricing.subtitle')}</p>
-          </motion.header>
-          {error ? (
-            <div className="pricing-error">{t('pricing.loadError', { error })}</div>
-          ) : loading ? (
-            <div className="pricing-skeleton-grid pricing-skeleton-grid--4" aria-hidden="true">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="pricing-skeleton-card" />
-              ))}
-            </div>
-          ) : (
-            <>
-              <section className="pricing-section" aria-label="Plans">
-                <motion.div
-                  className="plan-grid plan-grid--5"
-                  variants={containerVariants}
-                  initial={enter ? 'hidden' : false}
-                  animate="show"
-                >
-                  <motion.div variants={cardVariants} style={{ display: 'flex' }}>
-                    <FreePlanCard />
-                  </motion.div>
-                  {plans.map(pack => (
-                    <motion.div key={pack.code} variants={cardVariants} style={{ display: 'flex' }}>
-                      <PlanCard
-                        pack={pack}
-                        meta={PLAN_META[pack.code] ?? { name: pack.code }}
-                        onSelect={startCheckout}
-                      />
+            <CheckoutFlow
+              pack={selected}
+              resume={resume}
+              onCancel={backToCatalog}
+              onViewHistory={() => {
+                window.location.hash = '#/pricing/orders'
+              }}
+            />
+          </motion.div>
+        ) : (
+          <motion.main
+            key="catalog"
+            className="pricing-main"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+          >
+            <PendingOrderBanner orders={openOrders} onChanged={reload} paymentInfo={paymentInfo} />
+            <motion.header
+              className="pricing-hero"
+              initial={enter ? { opacity: 0, y: 12 } : false}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ type: 'spring', stiffness: 100, damping: 15 }}
+            >
+              <h2 className="pricing-title">{t('pricing.title')}</h2>
+              <p className="pricing-subtitle">{t('pricing.subtitle')}</p>
+            </motion.header>
+            {error ? (
+              <div className="pricing-error">{t('pricing.loadError', { error })}</div>
+            ) : loading ? (
+              <div className="pricing-skeleton-grid pricing-skeleton-grid--4" aria-hidden="true">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="pricing-skeleton-card" />
+                ))}
+              </div>
+            ) : (
+              <>
+                <section className="pricing-section" aria-label="Plans">
+                  <motion.div
+                    className="plan-grid plan-grid--5"
+                    variants={containerVariants}
+                    initial={enter ? 'hidden' : false}
+                    animate="show"
+                  >
+                    <motion.div variants={cardVariants} style={{ display: 'flex' }}>
+                      <FreePlanCard />
                     </motion.div>
-                  ))}
-                  <motion.div variants={cardVariants} style={{ display: 'flex' }}>
-                    <EnterpriseCard onContact={() => setShowContact(true)} />
+                    {plans.map(pack => (
+                      <motion.div
+                        key={pack.code}
+                        variants={cardVariants}
+                        style={{ display: 'flex' }}
+                      >
+                        <PlanCard
+                          pack={pack}
+                          meta={PLAN_META[pack.code] ?? { name: pack.code }}
+                          onSelect={startCheckout}
+                          disabled={hasOpenOrder}
+                        />
+                      </motion.div>
+                    ))}
+                    <motion.div variants={cardVariants} style={{ display: 'flex' }}>
+                      <EnterpriseCard onContact={() => setShowContact(true)} />
+                    </motion.div>
                   </motion.div>
-                </motion.div>
-              </section>
+                </section>
 
-              <section className="pricing-section" aria-labelledby="packs-heading">
-                <div className="pricing-section-head pricing-section-head--center">
-                  <h2 id="packs-heading" className="pricing-section-title">
-                    {t('pricing.topupTitle')}
-                  </h2>
-                  <p className="pricing-section-sub">{t('pricing.topupSub')}</p>
-                  <p className="pricing-note">{t('pricing.topupNote')}</p>
-                </div>
-                <PackList packs={packs} onSelect={startCheckout} />
-              </section>
+                <section className="pricing-section" aria-labelledby="packs-heading">
+                  <div className="pricing-section-head pricing-section-head--center">
+                    <h2 id="packs-heading" className="pricing-section-title">
+                      {t('pricing.topupTitle')}
+                    </h2>
+                    <p className="pricing-section-sub">{t('pricing.topupSub')}</p>
+                    <p className="pricing-note">{t('pricing.topupNote')}</p>
+                  </div>
+                  <PackList packs={packs} onSelect={startCheckout} disabled={hasOpenOrder} />
+                </section>
 
-              <section className="pricing-section" aria-labelledby="flows-heading">
-                <div className="pricing-section-head pricing-section-head--center">
-                  <h2 id="flows-heading" className="pricing-section-title">
-                    {t('flows.heading')}
-                  </h2>
-                  <p className="pricing-section-sub">{t('flows.sub')}</p>
-                </div>
-                <FeatureFlows />
-              </section>
-            </>
-          )}
-        </main>
-      )}
+                <section className="pricing-section" aria-labelledby="flows-heading">
+                  <div className="pricing-section-head pricing-section-head--center">
+                    <h2 id="flows-heading" className="pricing-section-title">
+                      {t('flows.heading')}
+                    </h2>
+                    <p className="pricing-section-sub">{t('flows.sub')}</p>
+                  </div>
+                  <FeatureFlows />
+                </section>
+              </>
+            )}
+          </motion.main>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {showContact && <ContactDialog onClose={() => setShowContact(false)} />}

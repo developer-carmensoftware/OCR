@@ -324,6 +324,42 @@ def test_upload_slip_unsupported_content_type_returns_422():
     assert resp.status_code == 422
 
 
+# ── POST /credits/orders/{id}/cancel ──────────────────────────────────────────
+
+
+def test_cancel_pending_order_returns_cancelled():
+    order = _order(status="pending")
+    mock_db = make_mock_db()
+    mock_db.execute.return_value = _scalar(order)
+
+    with make_test_client(mock_db) as client:
+        resp = client.post(f"{BASE}/orders/{order.id}/cancel", headers=AUTH)
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "cancelled"
+
+
+def test_cancel_order_not_found_returns_404():
+    mock_db = make_mock_db()
+    mock_db.execute.return_value = _scalar(None)
+
+    with make_test_client(mock_db) as client:
+        resp = client.post(f"{BASE}/orders/nonexistent-id/cancel", headers=AUTH)
+
+    assert resp.status_code == 404
+
+
+def test_cancel_non_pending_order_returns_409():
+    order = _order(status="awaiting_review")
+    mock_db = make_mock_db()
+    mock_db.execute.return_value = _scalar(order)
+
+    with make_test_client(mock_db) as client:
+        resp = client.post(f"{BASE}/orders/{order.id}/cancel", headers=AUTH)
+
+    assert resp.status_code == 409
+
+
 # ── GET /credits/orders ───────────────────────────────────────────────────────
 
 

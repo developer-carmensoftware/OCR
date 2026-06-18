@@ -290,23 +290,28 @@ const GL_TIMELINE = [850, 2050] as const
 const GL_SAMPLES = [
   {
     key: 'water',
-    label: 'ค่าน้ำประปาอาคารหลัก MWA',
-    code: '5301-01 · ค่าน้ำประปาและสาธารณูปโภค',
+    labelKey: 'flows.gl.s.water',
+    codeKey: 'flows.gl.s.water.code',
     confidence: '98%',
   },
   {
     key: 'laundry',
-    label: 'ค่าซักรีดผ้าห่มและเครื่องนอน',
-    code: '5405-02 · ค่าจ้างซักรีดและทำความสะอาด',
+    labelKey: 'flows.gl.s.laundry',
+    codeKey: 'flows.gl.s.laundry.code',
     confidence: '95%',
   },
   {
     key: 'salmon',
-    label: 'จัดซื้อปลาแซลมอนสดแช่แข็ง',
-    code: '1401-03 · สินค้าคลังเครื่องดื่มและอาหาร',
+    labelKey: 'flows.gl.s.salmon',
+    codeKey: 'flows.gl.s.salmon.code',
     confidence: '92%',
   },
-] as const
+] as const satisfies ReadonlyArray<{
+  key: string
+  labelKey: TKey
+  codeKey: TKey
+  confidence: string
+}>
 
 function GlSuggestionDetail({ active }: { active: boolean }) {
   const { t } = useT()
@@ -328,7 +333,7 @@ function GlSuggestionDetail({ active }: { active: boolean }) {
                 className={`gl-pill${selected === i ? ' is-selected' : ''}`}
                 onClick={() => setSelected(i)}
               >
-                {s.label}
+                {t(s.labelKey)}
               </button>
             ))}
           </div>
@@ -346,7 +351,7 @@ function GlSuggestionDetail({ active }: { active: boolean }) {
             <Hash size={22} strokeWidth={1.8} />
           </span>
           <span className="flow-node-label">{t('flows.gl.out.label')}</span>
-          <span className="gl-code">{done ? sample.code : t('flows.gl.analyzing')}</span>
+          <span className="gl-code">{done ? t(sample.codeKey) : t('flows.gl.analyzing')}</span>
           <span className="gl-confidence">
             <Tag size={12} /> {t('flows.gl.accuracy')} {done ? sample.confidence : '--%'}
           </span>
