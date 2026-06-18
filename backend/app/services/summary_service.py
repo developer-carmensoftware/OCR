@@ -79,7 +79,10 @@ async def _aggregate_all(db, params: dict) -> list[dict]:
     """),
         params,
     )
-    doc_rows = {(r.tenant_id, r.module_id): r.cnt for r in doc_result.mappings().fetchall()}
+    doc_rows = {
+        (str(r.tenant_id) if r.tenant_id else "", r.module_id): r.cnt
+        for r in doc_result.mappings().fetchall()
+    }
 
     # Submissions — credit cards
     cc_result = await db.execute(
@@ -107,7 +110,7 @@ async def _aggregate_all(db, params: dict) -> list[dict]:
     )
     sub_map: dict = {}
     for r in list(cc_result.mappings()) + list(ap_result.mappings()):
-        sub_map[(r["tenant_id"], r["module_id"])] = r["cnt"]
+        sub_map[(str(r["tenant_id"]) if r["tenant_id"] else "", r["module_id"])] = r["cnt"]
 
     # LLM usage per tenant × module
     llm_result = await db.execute(
@@ -124,7 +127,10 @@ async def _aggregate_all(db, params: dict) -> list[dict]:
     """),
         params,
     )
-    llm_map = {(r["tenant_id"], r["module_id"]): r for r in llm_result.mappings().fetchall()}
+    llm_map = {
+        (str(r["tenant_id"]) if r["tenant_id"] else "", r["module_id"]): r
+        for r in llm_result.mappings().fetchall()
+    }
 
     # API performance per tenant (no module dimension)
     perf_result = await db.execute(
@@ -140,7 +146,10 @@ async def _aggregate_all(db, params: dict) -> list[dict]:
     """),
         params,
     )
-    perf_map = {r["tenant_id"]: r for r in perf_result.mappings().fetchall()}
+    perf_map = {
+        (str(r["tenant_id"]) if r["tenant_id"] else ""): r
+        for r in perf_result.mappings().fetchall()
+    }
 
     # P95 latency per tenant — single CTE replaces per-tenant queries (N+1 fix)
     p95_result = await db.execute(
@@ -150,7 +159,7 @@ async def _aggregate_all(db, params: dict) -> list[dict]:
                    PERCENT_RANK() OVER (
                        PARTITION BY tenant_id
                        ORDER BY duration_ms
-                   ) AS pct_rank
+                       ) AS pct_rank
             FROM performance_logs
             WHERE created_at >= :start AND created_at < :end
         )
@@ -162,7 +171,8 @@ async def _aggregate_all(db, params: dict) -> list[dict]:
         params,
     )
     p95_map = {
-        r["tenant_id"]: round(float(r["p95_ms"]), 2) for r in p95_result.mappings().fetchall()
+        (str(r["tenant_id"]) if r["tenant_id"] else ""): round(float(r["p95_ms"]), 2)
+        for r in p95_result.mappings().fetchall()
     }
 
     # Corrections per tenant
@@ -176,7 +186,10 @@ async def _aggregate_all(db, params: dict) -> list[dict]:
     """),
         params,
     )
-    corr_map = {r["tenant_id"]: r["cnt"] for r in corr_result.mappings().fetchall()}
+    corr_map = {
+        (str(r["tenant_id"]) if r["tenant_id"] else ""): r["cnt"]
+        for r in corr_result.mappings().fetchall()
+    }
 
     # Outbound calls per tenant
     out_result = await db.execute(
@@ -188,7 +201,10 @@ async def _aggregate_all(db, params: dict) -> list[dict]:
     """),
         params,
     )
-    out_map = {r["tenant_id"]: r["cnt"] for r in out_result.mappings().fetchall()}
+    out_map = {
+        (str(r["tenant_id"]) if r["tenant_id"] else ""): r["cnt"]
+        for r in out_result.mappings().fetchall()
+    }
 
     # Merge all dimensions into result rows
     all_keys: set = set(doc_rows.keys()) | set(llm_map.keys())
