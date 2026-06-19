@@ -4,13 +4,11 @@ import type { AuthUser } from '../contexts/AuthContext'
 const CONSENT_VERSION = 'v1'
 
 function consentKey(user: AuthUser): string {
-  // Key on the stable human identity. `carmen_user_id` is parsed out of the Carmen
-  // SSO token (<hash>|<uuid>) and is only stable when that token carries the uuid
-  // suffix — when it doesn't, the parser falls back to the whole rotating session
-  // hash, producing a new id every login and re-prompting consent each time.
-  // `username` (Carmen's `user` param) is the reliable per-user identifier.
-  const userId = user.username || user.carmen_user_id
-  return `ocr_consent_${CONSENT_VERSION}_${user.tenant_id}_${userId}`
+  // Org-level consent: the modal is an authorized-rep acknowledgement on behalf
+  // of the whole tenant, so key on tenant_id only. The old per-user key degraded
+  // to a per-login rotating session hash (when Carmen omitted the `user` param
+  // and the token lacked a |uuid suffix), re-prompting consent on every login.
+  return `ocr_consent_${CONSENT_VERSION}_${user.tenant_id}`
 }
 
 function readConsent(user: AuthUser | null): boolean {
