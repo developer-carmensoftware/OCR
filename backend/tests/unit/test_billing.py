@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.models.enums import BillingDocumentType
 from app.services import promptpay_service
 from app.utils.tax import split_inclusive
 
@@ -91,7 +90,8 @@ def test_crc_is_deterministic():
 
 
 @pytest.mark.asyncio
-async def test_next_document_number_proforma_format():
+async def test_next_document_number_format():
+    # Single shared sequence across all doc types: AI-YYYYMMDD-NNNN.
     from app.services.billing_document_service import _next_document_number
 
     db = AsyncMock()
@@ -99,13 +99,14 @@ async def test_next_document_number_proforma_format():
     result_mock.scalar_one.return_value = 1
     db.execute = AsyncMock(return_value=result_mock)
 
-    number = await _next_document_number(db, BillingDocumentType.PROFORMA)
-    assert number.startswith("PF-")
-    assert len(number) == len("PF-202606-0001")
+    number = await _next_document_number(db)
+    assert number.startswith("AI-")
+    assert len(number) == len("AI-20260619-0001")
+    assert number.endswith("-0001")
 
 
 @pytest.mark.asyncio
-async def test_next_document_number_tax_invoice_format():
+async def test_next_document_number_higher_counter():
     from app.services.billing_document_service import _next_document_number
 
     db = AsyncMock()
@@ -113,8 +114,8 @@ async def test_next_document_number_tax_invoice_format():
     result_mock.scalar_one.return_value = 42
     db.execute = AsyncMock(return_value=result_mock)
 
-    number = await _next_document_number(db, BillingDocumentType.TAX_INVOICE)
-    assert number.startswith("IV-")
+    number = await _next_document_number(db)
+    assert number.startswith("AI-")
     assert number.endswith("-0042")
 
 
@@ -141,5 +142,5 @@ async def test_next_document_number_zero_padded():
     result_mock.scalar_one.return_value = 999
     db.execute = AsyncMock(return_value=result_mock)
 
-    number = await _next_document_number(db, BillingDocumentType.PROFORMA)
+    number = await _next_document_number(db)
     assert number.endswith("-0999")

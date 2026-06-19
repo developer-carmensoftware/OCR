@@ -141,9 +141,10 @@ async def test_issue_document_proforma_vat_math():
             buyer=BuyerInfo(name="Buyer Co"),
         )
 
-    assert doc.subtotal == Decimal("925.23")
-    assert doc.vat_amount == Decimal("64.77")
-    assert doc.total == Decimal("990")
+    # Catalog prices are ex-VAT (checkout: "Prices exclude 7% VAT") → VAT on top.
+    assert doc.subtotal == Decimal("990")
+    assert doc.vat_amount == Decimal("69.30")
+    assert doc.total == Decimal("1059.30")
     assert doc.doc_type == BillingDocumentType.PROFORMA
     assert doc.number == "PF-202606-0001"
     assert db.add.called
