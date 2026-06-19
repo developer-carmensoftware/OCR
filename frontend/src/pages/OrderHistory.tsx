@@ -14,7 +14,7 @@ import {
   type PaymentInfo,
 } from '../lib/api/credits'
 import { catalogName } from '../constants/billing'
-import { formatThb } from '../lib/money'
+import { formatThb, formatDate } from '../lib/money'
 import '../styles/pages/pricing.css'
 
 function OrderRow({ order, paymentInfo }: { order: CreditOrder; paymentInfo: PaymentInfo | null }) {
@@ -29,7 +29,9 @@ function OrderRow({ order, paymentInfo }: { order: CreditOrder; paymentInfo: Pay
     if (next && docs === null) {
       setLoadingDocs(true)
       getOrderDocuments(order.id)
-        .then(setDocs)
+        // ponytail: accounting issues the real tax invoice; customers only see the proforma.
+        // Filtering on display (not dropping the API field) keeps admin/audit views intact.
+        .then(all => setDocs(all.filter(d => d.doc_type === 'proforma')))
         .catch((e: Error) => toast.error(e.message))
         .finally(() => setLoadingDocs(false))
     }
@@ -44,6 +46,19 @@ function OrderRow({ order, paymentInfo }: { order: CreditOrder; paymentInfo: Pay
             {order.credits.toLocaleString()} {t('pack.creditsUnit')}
           </span>
         </div>
+        <span className="order-timeline">
+          {[
+            { label: t('order.requestedAt'), date: order.created_at },
+            { label: t('order.slipUploadedAt'), date: order.slip_uploaded_at },
+            { label: t('order.approvedAt'), date: order.approved_at },
+          ].map(step => (
+            <span key={step.label} className={`ot-step${step.date ? ' ot-done' : ''}`}>
+              <span className="ot-dot" />
+              <span className="ot-label">{step.label}</span>
+              <span className="ot-date text-mono">{step.date ? formatDate(step.date) : '—'}</span>
+            </span>
+          ))}
+        </span>
         <span className="order-row-amount text-mono">฿{formatThb(order.amount_thb)}</span>
         <OrderStatusBadge status={order.status} />
         <ChevronDown

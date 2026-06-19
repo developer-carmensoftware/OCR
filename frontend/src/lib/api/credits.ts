@@ -23,6 +23,9 @@ export interface CreditOrder {
   credits: number
   amount_thb: number
   status: OrderStatus
+  created_at?: string | null // request date
+  slip_uploaded_at?: string | null // slip upload date
+  approved_at?: string | null // admin approval date
   expires_at?: string | null // proforma valid-until (pending orders)
 }
 

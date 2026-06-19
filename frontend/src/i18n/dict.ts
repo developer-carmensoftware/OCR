@@ -138,6 +138,9 @@ const en = {
   'order.rejectedNote': "This slip didn't pass review. Please place a new order.",
   'order.orderAgain': 'Order again',
   'order.noDocs': 'No documents for this order yet',
+  'order.requestedAt': 'Requested',
+  'order.slipUploadedAt': 'Slip uploaded',
+  'order.approvedAt': 'Approved',
 
   // — Proforma doc UI controls (the printed body stays bilingual as-is) —
   'proforma.docNo': 'Document no.',
@@ -335,6 +338,9 @@ const th: Record<TKey, string> = {
   'order.rejectedNote': 'สลิปนี้ไม่ผ่านการตรวจสอบ กรุณาสั่งซื้อใหม่อีกครั้ง',
   'order.orderAgain': 'สั่งซื้อใหม่',
   'order.noDocs': 'ยังไม่มีเอกสารสำหรับคำสั่งซื้อนี้',
+  'order.requestedAt': 'วันที่สั่งซื้อ',
+  'order.slipUploadedAt': 'วันที่อัปโหลดสลิป',
+  'order.approvedAt': 'วันที่อนุมัติ',
 
   // — Proforma doc UI controls —
   'proforma.docNo': 'เลขที่เอกสาร',

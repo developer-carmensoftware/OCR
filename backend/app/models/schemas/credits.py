@@ -32,6 +32,7 @@ class CreditOrderResponse(BaseModel):
     tenant_name: str | None = None  # populated by the admin queue join only
     created_at: datetime | None = None
     slip_uploaded_at: datetime | None = None
+    approved_at: datetime | None = None  # admin payment-approval timestamp
     expires_at: datetime | None = None  # proforma valid-until (pending orders)
 
     @field_validator("id", "tenant_id", mode="before")
