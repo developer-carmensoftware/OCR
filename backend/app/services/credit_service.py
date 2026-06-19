@@ -14,15 +14,15 @@ Billing model:
 
 import logging
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.context import current_document_ref
 from app.database import async_session
 from app.exceptions import InsufficientCredits, ValidationError
-from app.models.enums import CreditLedgerReason, QuotaPeriod
-from app.models.orm import CreditLedger, QuotaUsage, TenantCredit
+from app.models.enums import CreditLedgerReason, QuotaPeriod, SubscriptionStatus
+from app.models.orm import CreditLedger, QuotaUsage, TenantCredit, TenantSubscription
 from app.services.quota_service import (
     _CachedQuota,
     _ctx,
@@ -54,6 +54,45 @@ async def _try_consume_free(db: AsyncSession, quota: _CachedQuota, increment: in
     )
     result = await db.execute(stmt)
     return result.first() is not None
+
+
+async def _try_consume_subscription(db: AsyncSession, tenant_id: str, increment: int) -> bool:
+    """
+    Atomically charge one document against the tenant's active, in-window
+    subscription allowance. Returns True if charged, False if there is no active
+    subscription, the window has ended, or the monthly allowance is exhausted
+    (use-it-or-lose-it). When the window has passed the WHERE simply fails — this
+    is the lazy lapse enforcement; the daily cron only fixes display status.
+    """
+    stmt = (
+        update(TenantSubscription)
+        .where(
+            TenantSubscription.tenant_id == tenant_id,
+            TenantSubscription.status == SubscriptionStatus.ACTIVE,
+            TenantSubscription.period_start <= func.now(),
+            TenantSubscription.period_end > func.now(),
+            TenantSubscription.docs_used + increment <= TenantSubscription.doc_allowance,
+        )
+        .values(docs_used=TenantSubscription.docs_used + increment, updated_at=func.now())
+        .returning(TenantSubscription.docs_used)
+    )
+    return (await db.execute(stmt)).first() is not None
+
+
+async def _refund_subscription(db: AsyncSession, tenant_id: str, increment: int) -> None:
+    """Give back a subscription document consumed this window (floored at 0)."""
+    await db.execute(
+        update(TenantSubscription)
+        .where(
+            TenantSubscription.tenant_id == tenant_id,
+            TenantSubscription.status == SubscriptionStatus.ACTIVE,
+            TenantSubscription.period_end > func.now(),
+        )
+        .values(
+            docs_used=func.greatest(TenantSubscription.docs_used - increment, 0),
+            updated_at=func.now(),
+        )
+    )
 
 
 async def _consume_credits(db: AsyncSession, tenant_id: str, increment: int) -> None:
@@ -91,11 +130,12 @@ async def _consume_credits(db: AsyncSession, tenant_id: str, increment: int) -> 
 
 async def consume_document(increment: int = 1) -> str | None:
     """
-    Charge one document against the current tenant: free monthly quota first,
-    then top-up credits. Raises InsufficientCredits (→ 402) when both are spent.
+    Charge one document against the current tenant, in priority order:
+    active subscription allowance → free trial quota → top-up credits. Raises
+    InsufficientCredits (→ 402) when all three are spent.
 
-    Returns what was charged — "free", "credit", or None (nothing charged:
-    fail-open / no enforceable quota). Pass the return value to
+    Returns what was charged — "subscription", "free", "credit", or None
+    (nothing charged: fail-open / no enforceable quota). Pass the return value to
     refund_document() to reverse the charge if the extraction later fails.
 
     Fail-open on missing quota / infra errors (mirrors consume_quota) so a
@@ -113,6 +153,9 @@ async def consume_document(increment: int = 1) -> str | None:
 
         async with async_session() as db:
             async with db.begin():
+                if await _try_consume_subscription(db, tenant_id, increment):
+                    logger.info("subscription doc consumed: tenant=%s", tenant_id)
+                    return "subscription"
                 if await _try_consume_free(db, monthly, increment):
                     logger.info(
                         "free slot consumed: tenant=%s limit=%.0f",
@@ -160,7 +203,9 @@ async def refund_document(charged: str | None, increment: int = 1) -> None:
     try:
         async with async_session() as db:
             async with db.begin():
-                if charged == "free":
+                if charged == "subscription":
+                    await _refund_subscription(db, tenant_id, increment)
+                elif charged == "free":
                     await _refund_free(db, tenant_id, increment)
                 elif charged == "credit":
                     await grant_credits(
@@ -251,3 +296,84 @@ async def get_credit_balance(tenant_id: str) -> int:
     except Exception as exc:
         logger.error("get_credit_balance failed: %s", exc)
         return 0
+
+
+# ── Subscriptions ─────────────────────────────────────────────────────────────
+
+
+async def active_subscription(db: AsyncSession, tenant_id: str) -> TenantSubscription | None:
+    """
+    The tenant's current in-window active subscription, or None.
+
+    Single source of truth for "does this tenant have a live plan?" — used both
+    by the purchase guard (Option A blocks a new subscription while one is active)
+    and the /usage display. Window-based on purpose: a future-dated/queued row
+    (Option B) is correctly ignored until its window opens.
+    """
+    return (
+        await db.execute(
+            select(TenantSubscription)
+            .where(
+                TenantSubscription.tenant_id == tenant_id,
+                TenantSubscription.status == SubscriptionStatus.ACTIVE,
+                TenantSubscription.period_start <= func.now(),
+                TenantSubscription.period_end > func.now(),
+            )
+            .order_by(TenantSubscription.period_end.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+async def get_active_subscription(tenant_id: str) -> TenantSubscription | None:
+    """active_subscription() with its own session — for read-only callers (/usage)."""
+    if not tenant_id:
+        return None
+    try:
+        async with async_session() as db:
+            return await active_subscription(db, tenant_id)
+    except Exception as exc:
+        logger.error("get_active_subscription failed: %s", exc)
+        return None
+
+
+async def activate_subscription(
+    db: AsyncSession,
+    tenant_id: str,
+    plan_code: str,
+    doc_allowance: int,
+    source_order_id: str,
+) -> None:
+    """
+    Open a fresh one-month subscription window for the tenant (caller owns txn).
+
+    ponytail: period is anchored at now() → same day next month (Postgres
+    `+ interval '1 month'` clamps Jan 31 → Feb 28). This is the only place period
+    math lives — Option C (extend from the current period_end) changes just the
+    period_start/period_end expressions here; Option B (queued renewal) adds a
+    'scheduled' status and a promote cron and relaxes the purchase guard.
+
+    Supersedes any existing active row first. With the Option-A purchase guard
+    there should be none, but doing it unconditionally keeps the unique index
+    safe if the guard is ever relaxed.
+    """
+    await db.execute(
+        update(TenantSubscription)
+        .where(
+            TenantSubscription.tenant_id == tenant_id,
+            TenantSubscription.status == SubscriptionStatus.ACTIVE,
+        )
+        .values(status=SubscriptionStatus.SUPERSEDED, updated_at=func.now())
+    )
+    await db.execute(
+        pg_insert(TenantSubscription).values(
+            tenant_id=tenant_id,
+            plan_code=plan_code,
+            doc_allowance=doc_allowance,
+            docs_used=0,
+            period_start=func.now(),
+            period_end=text("now() + interval '1 month'"),
+            status=SubscriptionStatus.ACTIVE,
+            source_order_id=source_order_id,
+        )
+    )

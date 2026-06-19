@@ -14,7 +14,7 @@ import {
   type PaymentInfo,
 } from '../../lib/api/credits'
 import { catalogName } from '../../constants/billing'
-import { formatThb } from '../../lib/money'
+import { formatThb, formatDate } from '../../lib/money'
 
 function OrderRow({
   order,
@@ -97,6 +97,12 @@ function OrderRow({
 
       <p className="order-resume-note">
         {isReviewing ? t('order.reviewingBanner.body') : t('order.pendingNote')}
+        {!isReviewing && order.expires_at && (
+          <span className="order-expiry-note">
+            {' · '}
+            {t('order.expires')} {formatDate(order.expires_at)}
+          </span>
+        )}
       </p>
 
       {open &&

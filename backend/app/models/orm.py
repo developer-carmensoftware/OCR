@@ -29,6 +29,7 @@ from .billing import (
     SystemConfig,
     TenantConfigOverride,
     TenantCredit,
+    TenantSubscription,
 )
 from .business import (
     APInvoice,
@@ -108,6 +109,7 @@ __all__ = [
     "CreditOrder",
     "BillingDocument",
     "DocumentSequence",
+    "TenantSubscription",
     # Business
     "OcrSession",
     "OCRTask",

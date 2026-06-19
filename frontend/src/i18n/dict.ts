@@ -147,6 +147,9 @@ const en = {
   'usage.freeLeft': 'Free quota left',
   'usage.topupCredits': 'Top-up credits',
   'usage.runningLow': 'Running low — pick a plan below to keep going',
+  'usage.planLeft': 'Plan docs left',
+  'usage.activeUntil': 'Active until',
+  'order.expires': 'Expires',
 
   // — Feature flows (marketing showcase) —
   'flows.heading': 'How AI helps with your accounting work',
@@ -341,6 +344,9 @@ const th: Record<TKey, string> = {
   'usage.freeLeft': 'โควตาฟรีคงเหลือ',
   'usage.topupCredits': 'เครดิตเติม',
   'usage.runningLow': 'เครดิตใกล้หมด — เลือกแพ็กเกจด้านล่างเพื่อใช้งานต่อ',
+  'usage.planLeft': 'เอกสารในแพ็กเกจคงเหลือ',
+  'usage.activeUntil': 'ใช้งานถึง',
+  'order.expires': 'หมดอายุ',
 
   // — Feature flows (marketing showcase) —
   'flows.heading': 'ระบบ AI ช่วยงานบัญชีของคุณยังไง',

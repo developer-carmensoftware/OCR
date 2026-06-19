@@ -61,6 +61,21 @@ class TestTryConsumeFree:
         assert await credit_service._try_consume_free(db, _monthly_quota(), 1) is False
 
 
+# ── _try_consume_subscription ─────────────────────────────────────────────────
+
+
+class TestTryConsumeSubscription:
+    async def test_true_when_active_window_has_allowance(self):
+        db = AsyncMock()
+        db.execute.return_value = _result(first=(5,))  # RETURNING docs_used
+        assert await credit_service._try_consume_subscription(db, "t-001", 1) is True
+
+    async def test_false_when_no_match(self):
+        db = AsyncMock()
+        db.execute.return_value = _result(first=None)  # lapsed / exhausted / none
+        assert await credit_service._try_consume_subscription(db, "t-001", 1) is False
+
+
 # ── _consume_credits ────────────────────────────────────────────────────────
 
 
@@ -106,6 +121,26 @@ class TestConsumeDocument:
             await credit_service.consume_document()  # must not raise
             sess.assert_not_called()  # never opens a txn
 
+    async def test_subscription_consumed_first_skips_free_and_credits(self):
+        """Priority: an active subscription is charged before free or credits."""
+        set_context("t-001")
+        db = AsyncMock()
+        db.begin = MagicMock(return_value=_begin_ctx())
+        with (
+            patch.object(
+                credit_service,
+                "_get_cached_quota_rules",
+                AsyncMock(return_value=[_monthly_quota()]),
+            ),
+            patch.object(credit_service, "async_session", return_value=_session_ctx(db)),
+            patch.object(credit_service, "_try_consume_subscription", AsyncMock(return_value=True)),
+            patch.object(credit_service, "_try_consume_free", AsyncMock()) as tf,
+            patch.object(credit_service, "_consume_credits", AsyncMock()) as cc,
+        ):
+            assert await credit_service.consume_document() == "subscription"
+            tf.assert_not_called()
+            cc.assert_not_called()
+
     async def test_free_path_does_not_touch_credits(self):
         set_context("t-001")
         db = AsyncMock()
@@ -117,6 +152,9 @@ class TestConsumeDocument:
                 AsyncMock(return_value=[_monthly_quota()]),
             ),
             patch.object(credit_service, "async_session", return_value=_session_ctx(db)),
+            patch.object(
+                credit_service, "_try_consume_subscription", AsyncMock(return_value=False)
+            ),
             patch.object(credit_service, "_try_consume_free", AsyncMock(return_value=True)),
             patch.object(credit_service, "_consume_credits", AsyncMock()) as cc,
         ):
@@ -134,6 +172,9 @@ class TestConsumeDocument:
                 AsyncMock(return_value=[_monthly_quota()]),
             ),
             patch.object(credit_service, "async_session", return_value=_session_ctx(db)),
+            patch.object(
+                credit_service, "_try_consume_subscription", AsyncMock(return_value=False)
+            ),
             patch.object(credit_service, "_try_consume_free", AsyncMock(return_value=False)),
             patch.object(credit_service, "_consume_credits", AsyncMock()) as cc,
         ):
@@ -151,6 +192,9 @@ class TestConsumeDocument:
                 AsyncMock(return_value=[_monthly_quota()]),
             ),
             patch.object(credit_service, "async_session", return_value=_session_ctx(db)),
+            patch.object(
+                credit_service, "_try_consume_subscription", AsyncMock(return_value=False)
+            ),
             patch.object(credit_service, "_try_consume_free", AsyncMock(return_value=False)),
             patch.object(
                 credit_service,
@@ -172,6 +216,9 @@ class TestConsumeDocument:
                 AsyncMock(return_value=[_monthly_quota()]),
             ),
             patch.object(credit_service, "async_session", return_value=_session_ctx(db)),
+            patch.object(
+                credit_service, "_try_consume_subscription", AsyncMock(return_value=False)
+            ),
             patch.object(credit_service, "_try_consume_free", AsyncMock(return_value=True)),
         ):
             assert await credit_service.consume_document() == "free"
@@ -187,6 +234,9 @@ class TestConsumeDocument:
                 AsyncMock(return_value=[_monthly_quota()]),
             ),
             patch.object(credit_service, "async_session", return_value=_session_ctx(db)),
+            patch.object(
+                credit_service, "_try_consume_subscription", AsyncMock(return_value=False)
+            ),
             patch.object(credit_service, "_try_consume_free", AsyncMock(return_value=False)),
             patch.object(credit_service, "_consume_credits", AsyncMock()),
         ):
@@ -229,6 +279,21 @@ class TestRefundDocument:
             await credit_service.refund_document("free")
             rf.assert_awaited_once()
             gc.assert_not_called()
+
+    async def test_subscription_refund_decrements_docs_used(self):
+        set_context("t-001")
+        db = AsyncMock()
+        db.begin = MagicMock(return_value=_begin_ctx())
+        with (
+            patch.object(credit_service, "async_session", return_value=_session_ctx(db)),
+            patch.object(credit_service, "_refund_subscription", AsyncMock()) as rs,
+            patch.object(credit_service, "grant_credits", AsyncMock()) as gc,
+            patch.object(credit_service, "_refund_free", AsyncMock()) as rf,
+        ):
+            await credit_service.refund_document("subscription")
+            rs.assert_awaited_once()
+            gc.assert_not_called()
+            rf.assert_not_called()
 
     async def test_refund_failure_is_swallowed(self):
         set_context("t-001")

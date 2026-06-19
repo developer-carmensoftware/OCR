@@ -24,7 +24,7 @@ from app.models.schemas import (
 )
 from app.services import billing_document_service as bds
 from app.services import storage_service
-from app.services.credit_service import get_credit_balance, grant_credits
+from app.services.credit_service import activate_subscription, get_credit_balance, grant_credits
 from app.services.storage_service import StorageError
 
 from .deps import require_permission
@@ -277,14 +277,30 @@ async def approve_order(
         buyer=buyer,
     )
 
-    balance = await grant_credits(
-        db,
-        str(order.tenant_id),
-        order.credits,  # type: ignore[arg-type]
-        reason=CreditLedgerReason.TOPUP,
-        pack_code=order.pack_code,  # type: ignore[arg-type]
-        ref=order_id,
-    )
+    # Subscription packs open a one-month use-it-or-lose-it window; top-up packs
+    # grant non-expiring credits. Both still issue the tax invoice + mark PAID.
+    pack = (
+        await db.execute(select(CreditPack).where(CreditPack.code == order.pack_code))
+    ).scalar_one_or_none()
+    if pack is not None and pack.kind == "subscription":
+        await activate_subscription(
+            db,
+            str(order.tenant_id),
+            str(order.pack_code),
+            int(order.credits),  # type: ignore[arg-type]
+            order_id,
+        )
+        fulfilled = f"subscription:{order.pack_code}"
+    else:
+        balance = await grant_credits(
+            db,
+            str(order.tenant_id),
+            order.credits,  # type: ignore[arg-type]
+            reason=CreditLedgerReason.TOPUP,
+            pack_code=order.pack_code,  # type: ignore[arg-type]
+            ref=order_id,
+        )
+        fulfilled = f"credit balance_after={balance}"
 
     order.status = CreditOrderStatus.PAID  # type: ignore[assignment]
     order.paid_at = datetime.now(UTC)  # type: ignore[assignment]
@@ -295,11 +311,11 @@ async def approve_order(
     await db.refresh(order)
 
     logger.info(
-        "order approved: id=%s tenant=%s credits=%s balance_after=%d by=%s",
+        "order approved: id=%s tenant=%s credits=%s fulfilled=%s by=%s",
         order_id,
         order.tenant_id,
         order.credits,
-        balance,
+        fulfilled,
         admin.email,
     )
     return CreditOrderResponse.model_validate(order)

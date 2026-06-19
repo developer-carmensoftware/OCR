@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Coins, FileText, AlertTriangle } from 'lucide-react'
+import { Coins, FileText, AlertTriangle, CalendarClock } from 'lucide-react'
 import { getUsage, type UsageData } from '../../lib/api/auth'
 import { getStoredToken } from '../../lib/api/client'
 import { useT } from '../../i18n/LanguageContext'
+import { catalogName } from '../../constants/billing'
+import { formatDate } from '../../lib/money'
 
 /** Compact "where you stand" strip: free quota remaining + top-up credit balance. */
 export default function UsageSummaryStrip() {
@@ -28,10 +30,29 @@ export default function UsageSummaryStrip() {
   if (!usage) return null
 
   const freeLeft = usage.remaining_calls
-  const isLow = freeLeft + usage.credit_balance <= 5
+  const sub = usage.subscription ?? null
+  const planLeft = sub ? sub.docs_remaining : 0
+  // With an active plan, the plan allowance is the primary balance; otherwise free + credits.
+  const isLow = sub ? planLeft + usage.credit_balance <= 5 : freeLeft + usage.credit_balance <= 5
 
   return (
     <div className={`usage-strip${isLow ? ' is-low' : ''}`} role="status">
+      {sub && (
+        <>
+          <div className="usage-stat">
+            <CalendarClock size={15} className="usage-stat-icon" />
+            <span className="usage-stat-label">{catalogName(sub.plan_code)}</span>
+            <span className="usage-stat-value text-mono">{planLeft}</span>
+            <span className="usage-stat-unit">/ {sub.doc_allowance}</span>
+            {sub.period_end && (
+              <span className="usage-stat-unit">
+                · {t('usage.activeUntil')} {formatDate(sub.period_end)}
+              </span>
+            )}
+          </div>
+          <div className="usage-divider" aria-hidden="true" />
+        </>
+      )}
       <div className="usage-stat">
         <FileText size={15} className="usage-stat-icon" />
         <span className="usage-stat-label">{t('usage.freeLeft')}</span>

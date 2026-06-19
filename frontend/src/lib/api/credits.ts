@@ -23,6 +23,7 @@ export interface CreditOrder {
   credits: number
   amount_thb: number
   status: OrderStatus
+  expires_at?: string | null // proforma valid-until (pending orders)
 }
 
 export interface BuyerInfo {

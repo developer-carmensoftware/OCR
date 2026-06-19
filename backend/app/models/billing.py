@@ -27,6 +27,7 @@ from .enums import (
     CreditOrderStatus,
     QuotaMetric,
     QuotaPeriod,
+    SubscriptionStatus,
 )
 from .mixins import SoftDeleteMixin, TimestampMixin, WriterMixin
 
@@ -217,6 +218,8 @@ class CreditOrder(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     paid_at = Column(DateTime(timezone=True), nullable=True)
     approved_by = Column(String(100), nullable=True)
     approved_at = Column(DateTime(timezone=True), nullable=True)
+    # Proforma valid-until — server-enforced 14-day window (auto-cancel if unpaid).
+    expires_at = Column(DateTime(timezone=True), nullable=True)
     # Slip upload (added migration 218)
     slip_object_key = Column(String(512), nullable=True)
     slip_uploaded_at = Column(DateTime(timezone=True), nullable=True)
@@ -294,6 +297,43 @@ class BillingDocument(Base, TimestampMixin, SoftDeleteMixin):
             postgresql_where=text("deleted_at IS NULL"),
         ),
         Index("ix_billing_documents_tenant_type", "tenant_id", "doc_type", "created_at"),
+    )
+
+
+class TenantSubscription(Base, TimestampMixin):
+    """
+    A tenant's monthly document subscription window (use-it-or-lose-it).
+
+    Created when an admin approves a `kind='subscription'` order. One active row
+    per tenant (Option A: renew only after the current cycle lapses). Consumption
+    and "current plan" lookups are window-based (period_start <= now < period_end),
+    so a future-dated/queued row (Option B) would Just Work without code changes.
+    """
+
+    __tablename__ = "tenant_subscriptions"
+
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
+    plan_code = Column(String(20), ForeignKey("credit_packs.code"), nullable=False)
+    doc_allowance = Column(Integer, nullable=False)
+    docs_used = Column(Integer, nullable=False, default=0)
+    period_start = Column(DateTime(timezone=True), nullable=False)
+    period_end = Column(DateTime(timezone=True), nullable=False)
+    status: Column = Column(
+        SAEnum(SubscriptionStatus, values_callable=lambda o: [e.value for e in o]),
+        nullable=False,
+        default=SubscriptionStatus.ACTIVE,
+    )
+    source_order_id = Column(PGUUID(as_uuid=True), ForeignKey("credit_orders.id"), nullable=True)
+
+    __table_args__ = (
+        Index("ix_tenant_subscriptions_window", "tenant_id", "status", "period_end"),
+        Index(
+            "uq_tenant_subscriptions_one_active",
+            "tenant_id",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
     )
 
 

@@ -176,19 +176,21 @@ def test_approve_order_marks_paid_and_grants_credits():
     order = _order(order_id=order_id, status="awaiting_review")
     proforma = _proforma(order_id=order_id)
 
+    # A top-up pack fulfils via grant_credits (subscription packs take the
+    # activate_subscription branch instead).
+    pack = MagicMock()
+    pack.code = order.pack_code
+    pack.kind = "topup"
+
     mock_db = make_mock_db()
-    mock_db.execute.side_effect = [
-        _scalar(order),  # select CreditOrder
-        _scalar(proforma),  # select BillingDocument (proforma)
-        _scalar(500),  # grant_credits: pg_insert returning balance (scalar_one)
-    ]
     # grant_credits calls scalar_one() directly on the execute result
     grant_result = MagicMock()
     grant_result.scalar_one.return_value = 500
     mock_db.execute.side_effect = [
-        _scalar(order),
-        _scalar(proforma),
-        grant_result,
+        _scalar(order),  # select CreditOrder
+        _scalar(proforma),  # select BillingDocument (proforma)
+        _scalar(pack),  # select CreditPack (kind branch)
+        grant_result,  # grant_credits: pg_insert returning balance
     ]
 
     with (

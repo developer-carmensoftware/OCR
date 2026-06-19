@@ -10,6 +10,7 @@ Tenant-facing top-up credit endpoints.
 """
 
 import logging
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
@@ -34,6 +35,7 @@ from app.models.schemas import (
 )
 from app.services import billing_document_service as bds
 from app.services import carmen_service, promptpay_service, storage_service
+from app.services.credit_service import active_subscription
 from app.services.file_service import FileService
 from app.services.storage_service import StorageError
 from app.utils.tax import vat_on_top
@@ -128,6 +130,18 @@ async def create_order(
     if pack is None or not pack.is_active:
         raise HTTPException(status_code=404, detail="Credit pack not found")
 
+    # Subscription purchase guard (Option A): one active plan at a time — renew
+    # only after the current cycle lapses. Top-ups bypass this. Switching to a
+    # renew-while-active policy (B/C) is a localized change to this block + the
+    # period math in credit_service.activate_subscription().
+    if pack.kind == "subscription":
+        current = await active_subscription(db, session.tenant_id)
+        if current is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="You already have an active plan. You can renew after it ends.",
+            )
+
     net = Decimal(str(pack.price_thb))
     _sub, _vat, gross = vat_on_top(net)
     order = CreditOrder(
@@ -136,6 +150,7 @@ async def create_order(
         credits=pack.credits,
         amount_thb=gross,
         status=CreditOrderStatus.PENDING,
+        expires_at=datetime.now(UTC) + timedelta(days=14),
     )
     try:
         db.add(order)
@@ -249,8 +264,6 @@ async def upload_slip(
     except StorageError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
-    from datetime import UTC, datetime
-
     order.slip_object_key = key  # type: ignore[assignment]
     order.slip_uploaded_at = datetime.now(UTC)  # type: ignore[assignment]
     order.status = CreditOrderStatus.AWAITING_REVIEW  # type: ignore[assignment]
@@ -289,8 +302,6 @@ async def cancel_order(
             status_code=409,
             detail=f"Cannot cancel an order in status '{order.status}'",
         )
-
-    from datetime import UTC, datetime
 
     order.status = CreditOrderStatus.CANCELLED  # type: ignore[assignment]
     order.deleted_at = datetime.now(UTC)  # type: ignore[assignment]

@@ -9,7 +9,12 @@ const TITLE: Record<string, { main: string; sub: string }> = {
   tax_invoice: { main: 'Tax Invoice / Receipt', sub: 'ใบกำกับภาษี / ใบเสร็จรับเงิน' },
 }
 
-/** issue_date + 14 days, as a DD/MM/YYYY string (proforma validity). */
+/**
+ * issue_date + 14 days, as a DD/MM/YYYY string (proforma validity).
+ * ponytail: mirrors the server's `credit_orders.expires_at = created_at + 14d`
+ * (issue_date == created_at), so the printed value matches the auto-cancel
+ * deadline without threading expires_at through every proforma call site.
+ */
 function expiryDate(issue: string): string {
   const d = new Date(issue)
   if (Number.isNaN(d.getTime())) return '—'
