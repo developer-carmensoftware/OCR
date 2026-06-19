@@ -60,6 +60,9 @@ export default function InputTaxReconciliation({
   const taxProfile = resolvedProfileItem
     ? `${resolvedProfileItem.code} : ${resolvedProfileItem.desc}`
     : `VAT0${Math.round(taxRate)} : VAT ${Math.round(taxRate)}%`
+  // Display/charge the profile's canonical rate, not the raw ratio — slightly-off extracted
+  // amounts (e.g. tax 70.10 / net 1000 = 7.01) must not contradict the "VAT 7%" badge.
+  const displayRate = resolvedProfileItem?.rate ?? Math.round(taxRate)
 
   const taxPeriod = (() => {
     if (!headerData.DocDate) return ''
@@ -103,7 +106,7 @@ export default function InputTaxReconciliation({
       VnName: company.name || '',
       TaxProfileCode: resolvedProfileCode || `VAT0${Math.round(taxRate)}`,
       BfTaxAmt: String(netAmount),
-      TaxRate: taxRate,
+      TaxRate: displayRate,
       TaxAmt: taxAmount,
       TotalAmt: String(total),
       TaxId: company.taxId || '',
@@ -196,7 +199,7 @@ export default function InputTaxReconciliation({
                     <td>
                       <span className="cc-badge-primary-nowrap">{taxProfile}</span>
                     </td>
-                    <td className="text-right cc-mono-only">{fmt(taxRate)}</td>
+                    <td className="text-right cc-mono-only">{fmt(displayRate)}</td>
                     <td className="text-right cc-mono-semi-bold">{fmt(netAmount)}</td>
                     <td className="text-right cc-mono-semi-bold">{fmt(taxAmount)}</td>
                     <td className="text-right cc-mono-bold-teal">{fmt(total)}</td>
