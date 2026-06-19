@@ -63,7 +63,7 @@ def build_payload(target: str, amount: float) -> str:
 
 
 def main() -> None:
-    target = sys.argv[1] if len(sys.argv) > 1 else "0918592274"
+    target = sys.argv[1] if len(sys.argv) > 1 else "055665692274"
     amount = float(sys.argv[2]) if len(sys.argv) > 2 else 1.0
 
     payload = build_payload(target, amount)

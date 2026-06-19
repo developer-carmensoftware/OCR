@@ -81,8 +81,8 @@ def test_payload_national_id_proxy_tag():
 
 
 def test_crc_is_deterministic():
-    p1 = promptpay_service.build_payload("0918592274", 990.0)
-    p2 = promptpay_service.build_payload("0918592274", 990.0)
+    p1 = promptpay_service.build_payload("0815659547", 990.0)
+    p2 = promptpay_service.build_payload("0815659547", 990.0)
     assert p1 == p2
 
 

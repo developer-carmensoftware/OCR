@@ -100,10 +100,10 @@ async def test_get_seller_snapshot_defaults_when_empty():
 
 @pytest.mark.asyncio
 async def test_get_promptpay_id_returns_configured_value():
-    rows = [("billing.promptpay_id", '"0918592274"')]
+    rows = [("billing.promptpay_id", '"0815659547"')]
     db = _make_db(all_rows=rows)
     pid = await get_promptpay_id(db)
-    assert pid == "0918592274"
+    assert pid == "0815659547"
 
 
 @pytest.mark.asyncio
