@@ -5,9 +5,9 @@ Each order gets:
   • A PROFORMA at order creation (request for payment).
   • A TAX_INVOICE after admin approval (official VAT receipt).
 
-Document numbers are gapless via the document_sequences table:
-  PF-YYYYMM-0001  (proforma)
-  IV-YYYYMM-0001  (tax invoice)
+Document numbers are gapless via the document_sequences table — a single shared
+sequence across all doc types:
+  AI-YYYYMMDD-0001
 
 Caller owns the DB transaction — this service never commits.
 """
@@ -26,11 +26,6 @@ from app.models.enums import BillingDocumentType
 from app.utils.tax import vat_on_top
 
 logger = logging.getLogger(__name__)
-
-_DOC_PREFIX = {
-    BillingDocumentType.PROFORMA: "PF",
-    BillingDocumentType.TAX_INVOICE: "IV",
-}
 
 
 class BuyerInfo(TypedDict, total=False):
