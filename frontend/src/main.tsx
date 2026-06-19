@@ -63,6 +63,7 @@ const AnomaliesPage = lazy(() => import('./pages/admin/AnomaliesPage'))
 const JobsPage = lazy(() => import('./pages/admin/JobsPage'))
 const SessionsPage = lazy(() => import('./pages/admin/SessionsPage'))
 const CreditsPage = lazy(() => import('./pages/admin/CreditsPage'))
+const CreditOrdersPage = lazy(() => import('./pages/admin/CreditOrdersPage'))
 
 function getRoute(): string {
   const hash = window.location.hash.split('?')[0]
@@ -103,6 +104,8 @@ function AdminRouter() {
     AdminPage = <SessionsPage />
   } else if (route === 'admin/credits') {
     AdminPage = <CreditsPage />
+  } else if (route === 'admin/credit-orders') {
+    AdminPage = <CreditOrdersPage />
   } else {
     AdminPage = <Overview />
   }

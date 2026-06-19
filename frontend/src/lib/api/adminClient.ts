@@ -219,3 +219,73 @@ export async function adjustCredits(
   }
   return res.json()
 }
+
+// ── Slip review queue ───────────────────────────────────────────────────────
+
+export type AdminOrderStatus = 'pending' | 'awaiting_review' | 'paid' | 'rejected' | 'cancelled'
+
+export interface AdminCreditOrder {
+  id: string
+  pack_code: string
+  credits: number
+  amount_thb: number
+  status: AdminOrderStatus
+  tenant_id: string | null
+  tenant_name: string | null
+  created_at: string | null
+  slip_uploaded_at: string | null
+}
+
+/** Reuse the public billing-document shape — the admin endpoint returns the same. */
+export type { BillingDocument, PaymentInfo } from './credits'
+
+export async function fetchAdminPaymentInfo(): Promise<import('./credits').PaymentInfo> {
+  const res = await adminFetch(API.admin.paymentInfo)
+  if (!res.ok) throw new Error('Failed to load payment info')
+  return res.json()
+}
+
+async function unwrapDetail(res: Response, fallback: string): Promise<string> {
+  const err = (await res.json().catch(() => ({}))) as { detail?: string }
+  return err.detail || fallback
+}
+
+/** Slip-review queue across tenants (scoped admins see only their own). */
+export async function listCreditOrders(
+  status: AdminOrderStatus = 'awaiting_review'
+): Promise<AdminCreditOrder[]> {
+  const res = await adminFetch(`${API.admin.creditOrders}${buildQs({ status })}`)
+  if (!res.ok) throw new Error('Failed to load credit orders')
+  return res.json()
+}
+
+/** Short-lived (300s) signed URL for the uploaded payment slip. */
+export async function getOrderSlipUrl(id: string): Promise<{ signed_url: string }> {
+  const res = await adminFetch(API.admin.creditOrderSlipUrl(id))
+  if (!res.ok) throw new Error(await unwrapDetail(res, 'Failed to load slip'))
+  return res.json()
+}
+
+export async function approveOrder(id: string): Promise<AdminCreditOrder> {
+  const res = await adminFetch(API.admin.creditOrderApprove(id), { method: 'POST' })
+  if (!res.ok) throw new Error(await unwrapDetail(res, 'Approve failed'))
+  return res.json()
+}
+
+export async function rejectOrder(id: string, reason: string): Promise<AdminCreditOrder> {
+  const res = await adminFetch(API.admin.creditOrderReject(id), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  })
+  if (!res.ok) throw new Error(await unwrapDetail(res, 'Reject failed'))
+  return res.json()
+}
+
+export async function fetchAdminOrderDocuments(
+  id: string
+): Promise<import('./credits').BillingDocument[]> {
+  const res = await adminFetch(API.admin.creditOrderDocuments(id))
+  if (!res.ok) throw new Error('Failed to load order documents')
+  return res.json()
+}

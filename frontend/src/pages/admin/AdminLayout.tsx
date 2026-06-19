@@ -7,6 +7,7 @@ import {
   Coins,
   LayoutDashboard,
   LogOut,
+  ReceiptText,
   Settings,
   Shield,
   Trophy,
@@ -46,6 +47,11 @@ const NAV: NavItem[] = [
   { label: 'Jobs', hash: '/admin/jobs', icon: <Settings size={ICON_SIZE} strokeWidth={2} /> },
   { label: 'Sessions', hash: '/admin/sessions', icon: <Users size={ICON_SIZE} strokeWidth={2} /> },
   { label: 'Credits', hash: '/admin/credits', icon: <Coins size={ICON_SIZE} strokeWidth={2} /> },
+  {
+    label: 'Slip Review',
+    hash: '/admin/credit-orders',
+    icon: <ReceiptText size={ICON_SIZE} strokeWidth={2} />,
+  },
 ]
 
 function getActiveHash(): string {

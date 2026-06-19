@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 
 export interface Column<T> {
   key: keyof T | string
@@ -8,12 +8,14 @@ export interface Column<T> {
   align?: 'left' | 'right' | 'center'
 }
 
-interface DataTableProps<T = Record<string, unknown>> {
+export interface DataTableProps<T = Record<string, unknown>> {
   columns: Column<T>[]
   rows: T[]
   pageSize?: number
   emptyText?: string
   loading?: boolean
+  expandedRowId?: string | null
+  renderExpandedRow?: (row: T) => React.ReactNode
 }
 
 function getCell(row: unknown, key: string): unknown {
@@ -29,6 +31,8 @@ export default function DataTable<T = Record<string, unknown>>({
   pageSize = 50,
   emptyText = 'No data',
   loading = false,
+  expandedRowId,
+  renderExpandedRow,
 }: DataTableProps<T>) {
   const [page, setPage] = useState(0)
   const [sortKey, setSortKey] = useState<string | null>(null)
@@ -140,18 +144,33 @@ export default function DataTable<T = Record<string, unknown>>({
               </td>
             </tr>
           ) : (
-            paginated.map((row, i) => (
-              <tr key={i} className="admin-tr">
-                {columns.map(col => (
-                  <td
-                    key={String(col.key)}
-                    className={`admin-td${col.align === 'right' ? ' text-right' : ''}`}
-                  >
-                    {col.render ? col.render(row) : String(getCell(row, String(col.key)) ?? '—')}
-                  </td>
-                ))}
-              </tr>
-            ))
+            paginated.map((row, i) => {
+              const rowId = (row as { id?: string }).id
+              const isExpanded = expandedRowId != null && rowId === expandedRowId
+              return (
+                <Fragment key={rowId ?? i}>
+                  <tr className={`admin-tr${isExpanded ? ' admin-tr--expanded' : ''}`}>
+                    {columns.map(col => (
+                      <td
+                        key={String(col.key)}
+                        className={`admin-td${col.align === 'right' ? ' text-right' : ''}`}
+                      >
+                        {col.render
+                          ? col.render(row)
+                          : String(getCell(row, String(col.key)) ?? '—')}
+                      </td>
+                    ))}
+                  </tr>
+                  {isExpanded && renderExpandedRow && (
+                    <tr className="admin-tr-expanded">
+                      <td colSpan={columns.length} className="admin-td-expanded">
+                        {renderExpandedRow(row)}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })
           )}
         </tbody>
       </table>

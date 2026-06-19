@@ -103,18 +103,18 @@ async def get_promptpay_id(db: AsyncSession) -> str:
     return cfg.get("billing.promptpay_id", "")
 
 
-async def _next_document_number(db: AsyncSession, doc_type: BillingDocumentType) -> str:
+async def _next_document_number(db: AsyncSession) -> str:
     """
     Atomically increment the sequence for (scope, YYYYMM) and return the formatted number.
     Uses INSERT ... ON CONFLICT DO UPDATE so the counter is gapless under concurrency.
     """
-    scope = doc_type.value  # 'proforma' or 'tax_invoice'
     now = datetime.now(UTC)
     period_key = now.strftime("%Y%m%d")
 
+    # Single shared sequence across all doc types so AI-YYYYMMDD-NNNN never collides.
     stmt = (
         pg_insert(DocumentSequence)
-        .values(scope=scope, period_key=period_key, last_no=1)
+        .values(scope="billing", period_key=period_key, last_no=1)
         .on_conflict_do_update(
             index_elements=["scope", "period_key"],
             set_={"last_no": DocumentSequence.last_no + 1},
@@ -156,7 +156,7 @@ async def issue_document(
     seller = await get_seller_snapshot(db)
     vat_rate = Decimal(seller.get("vat_rate") or "7") / 100
     subtotal, vat_amount, total = vat_on_top(amount_thb, vat_rate)
-    number = await _next_document_number(db, doc_type)
+    number = await _next_document_number(db)
 
     doc = BillingDocument(
         tenant_id=tenant_id,

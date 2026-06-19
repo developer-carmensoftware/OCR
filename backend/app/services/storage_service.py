@@ -96,7 +96,7 @@ async def signed_url(key: str, ttl_seconds: int = 300) -> str:
 
     url = f"{_base_url()}/object/sign/{settings.slip_bucket}/{key}"
 
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             url,
             json={"expiresIn": ttl_seconds},
@@ -108,10 +108,13 @@ async def signed_url(key: str, ttl_seconds: int = 300) -> str:
         raise StorageError(f"Could not generate signed URL ({resp.status_code})")
 
     signed_path: str = resp.json()["signedURL"]
-    # signedURL is a relative path like /storage/v1/object/sign/...?token=...
-    if signed_path.startswith("/"):
+    # Supabase returns a relative path like "/object/sign/<bucket>/...?token=...".
+    # The browser-facing URL needs the "/storage/v1" API prefix the response omits.
+    if not signed_path.startswith("/"):
+        return signed_path
+    if signed_path.startswith("/storage/v1"):
         return f"{settings.supabase_url.rstrip('/')}{signed_path}"
-    return signed_path
+    return f"{_base_url()}{signed_path}"
 
 
 class StorageError(Exception):

@@ -11,13 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
 from app.models.enums import BillingDocumentType, CreditLedgerReason, CreditOrderStatus
-from app.models.orm import BillingDocument, CreditLedger, CreditOrder, CreditPack
+from app.models.orm import BillingDocument, CreditLedger, CreditOrder, CreditPack, Tenant
 from app.models.schemas import (
     AdjustRequest,
     BillingDocumentResponse,
     CreditBalanceResponse,
     CreditLedgerEntry,
     CreditOrderResponse,
+    PaymentInfoResponse,
     RejectRequest,
     TopupRequest,
 )
@@ -152,7 +153,11 @@ async def list_credit_orders(
     List credit orders across all tenants (global admin) or own tenant (scoped admin).
     Default view is the slip-review queue: status=awaiting_review.
     """
-    query = select(CreditOrder).where(CreditOrder.deleted_at.is_(None))
+    query = (
+        select(CreditOrder, Tenant.name)
+        .join(Tenant, Tenant.id == CreditOrder.tenant_id)
+        .where(CreditOrder.deleted_at.is_(None))
+    )
 
     if not admin.is_global and admin.tenant_scope:
         query = query.where(CreditOrder.tenant_id == admin.tenant_scope)
@@ -163,8 +168,23 @@ async def list_credit_orders(
         query = query.where(CreditOrder.status == CreditOrderStatus.AWAITING_REVIEW)
 
     query = query.order_by(CreditOrder.created_at.asc()).limit(limit)
-    rows = (await db.execute(query)).scalars().all()
-    return [CreditOrderResponse.model_validate(r) for r in rows]
+    rows = (await db.execute(query)).all()
+
+    out: list[CreditOrderResponse] = []
+    for order, tenant_name in rows:
+        resp = CreditOrderResponse.model_validate(order)
+        resp.tenant_name = tenant_name
+        out.append(resp)
+    return out
+
+
+@router.get("/payment-info", response_model=PaymentInfoResponse)
+async def get_payment_info(
+    db: AsyncSession = Depends(get_db),
+    _admin: AdminPrincipal = Depends(require_permission("quotas", "read")),
+):
+    """Company pay-to details for proforma preview in the review modal."""
+    return PaymentInfoResponse(**await bds.get_payment_info(db))
 
 
 @router.get("/credit-orders/{order_id}/slip-url")

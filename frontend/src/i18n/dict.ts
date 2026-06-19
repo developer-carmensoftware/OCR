@@ -128,6 +128,8 @@ const en = {
   'order.cancel': 'Cancel order',
   'order.cancelConfirm': 'Cancel this order? You can place it again afterwards.',
   'order.cancelledToast': 'Order cancelled',
+  'order.approvedToast': 'Order approved — credits added to your balance',
+  'order.rejectedToast': 'Your order was rejected — check the details',
   'order.cancelReviewConfirm':
     "Your slip is under review. If you've already transferred money, please contact our team. Cancel this order?",
   'order.reviewingBanner.title': 'Your order is under review',
@@ -320,6 +322,8 @@ const th: Record<TKey, string> = {
   'order.cancel': 'ยกเลิกคำสั่งซื้อ',
   'order.cancelConfirm': 'ยกเลิกคำสั่งซื้อนี้ใช่ไหม? คุณสามารถสั่งซื้อใหม่ได้ภายหลัง',
   'order.cancelledToast': 'ยกเลิกคำสั่งซื้อแล้ว',
+  'order.approvedToast': 'คำสั่งซื้อได้รับการอนุมัติ — เพิ่มเครดิตเข้ายอดแล้ว',
+  'order.rejectedToast': 'คำสั่งซื้อถูกปฏิเสธ — โปรดตรวจสอบรายละเอียด',
   'order.cancelReviewConfirm':
     'สลิปของคุณอยู่ระหว่างตรวจสอบ หากโอนเงินแล้ว กรุณาติดต่อทีมงาน ต้องการยกเลิกคำสั่งซื้อนี้ไหม?',
   'order.reviewingBanner.title': 'คำสั่งซื้อของคุณอยู่ระหว่างตรวจสอบ',

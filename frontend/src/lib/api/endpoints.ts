@@ -95,5 +95,11 @@ export const API = {
     tenantCreditsLedger: (tenantId: string) => `${V1}/admin/tenants/${tenantId}/credits/ledger`,
     tenantCreditsTopup: (tenantId: string) => `${V1}/admin/tenants/${tenantId}/credits/topup`,
     tenantCreditsAdjust: (tenantId: string) => `${V1}/admin/tenants/${tenantId}/credits/adjust`,
+    paymentInfo: `${V1}/admin/payment-info`,
+    creditOrders: `${V1}/admin/credit-orders`,
+    creditOrderSlipUrl: (id: string) => `${V1}/admin/credit-orders/${id}/slip-url`,
+    creditOrderApprove: (id: string) => `${V1}/admin/credit-orders/${id}/approve`,
+    creditOrderReject: (id: string) => `${V1}/admin/credit-orders/${id}/reject`,
+    creditOrderDocuments: (id: string) => `${V1}/admin/credit-orders/${id}/documents`,
   },
 } as const

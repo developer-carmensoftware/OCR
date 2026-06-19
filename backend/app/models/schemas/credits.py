@@ -27,11 +27,16 @@ class CreditOrderResponse(BaseModel):
     credits: int
     amount_thb: float
     status: str
+    # Surfaced for the admin slip-review queue; harmless on the tenant's own list.
+    tenant_id: str | None = None
+    tenant_name: str | None = None  # populated by the admin queue join only
+    created_at: datetime | None = None
+    slip_uploaded_at: datetime | None = None
 
-    @field_validator("id", mode="before")
+    @field_validator("id", "tenant_id", mode="before")
     @classmethod
-    def _coerce_id(cls, v: object) -> str:
-        return str(v)
+    def _coerce_id(cls, v: object) -> object:
+        return str(v) if v is not None else None
 
 
 class TopupRequest(BaseModel):

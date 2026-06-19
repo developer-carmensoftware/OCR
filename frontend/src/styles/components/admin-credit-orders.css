@@ -1,0 +1,149 @@
+/* Admin slip-review — inline expandable panel */
+
+.aco-review-btn {
+  padding: 0.3rem 0.85rem;
+  font-size: 0.8rem;
+}
+
+/* Expanded row styling */
+.admin-tr--expanded > td {
+  border-bottom: none;
+}
+
+.admin-td-expanded {
+  padding: 0 !important;
+  background: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Panel inside the expanded row */
+.aco-panel {
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Two-column grid */
+.aco-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  align-items: stretch;
+}
+
+@media (max-width: 820px) {
+  .aco-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+.aco-col--doc {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: #fff;
+  overflow: auto;
+  max-height: 65vh;
+}
+
+.aco-col--slip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+}
+
+.aco-slip-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+}
+
+.aco-slip-img,
+.aco-slip-frame {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: #fff;
+}
+
+.aco-slip-img {
+  flex: 1 1 0;
+  min-height: 200px;
+  max-height: 65vh;
+  object-fit: contain;
+}
+
+.aco-slip-frame {
+  flex: 1 1 0;
+  min-height: 200px;
+}
+
+.aco-slip-fallback {
+  display: grid;
+  place-items: center;
+  min-height: 120px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-3);
+  font-size: 0.85rem;
+  padding: 1rem;
+  text-align: center;
+}
+
+.aco-slip-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.aco-slip-link:hover {
+  text-decoration: underline;
+}
+
+/* Actions row */
+.aco-actions {
+  display: flex;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+}
+
+/* Reject form */
+.aco-reject-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-2);
+  margin-bottom: 0.4rem;
+}
+
+.aco-reason-input {
+  width: 100%;
+  max-width: 480px;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-size: 0.88rem;
+  resize: vertical;
+  margin-bottom: 0.75rem;
+}
+
+.aco-reason-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.aco-danger {
+  color: var(--rose);
+}
+
+.btn.btn-confirm.aco-danger {
+  background: var(--rose);
+  color: #fff;
+  border-color: var(--rose);
+}
