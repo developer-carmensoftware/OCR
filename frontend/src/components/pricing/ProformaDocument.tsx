@@ -82,9 +82,14 @@ export default function ProformaDocument({
             <div className="pf-card-body">
               <div className="pf-buyer-name">{doc.buyer_name || '—'}</div>
               {doc.buyer_address && <div>{doc.buyer_address}</div>}
-              {doc.buyer_email && <div>{doc.buyer_email}</div>}
-              {doc.buyer_tax_id && <div>Tax ID {doc.buyer_tax_id}</div>}
-              {doc.buyer_branch && <div>Branch {doc.buyer_branch}</div>}
+              <div className="pf-buyer-row">
+                {doc.buyer_tax_id && <span>Tax ID {doc.buyer_tax_id}</span>}
+                {doc.buyer_branch && <span>Branch {doc.buyer_branch}</span>}
+              </div>
+              <div className="pf-buyer-row">
+                {doc.buyer_contact_name && <span>{doc.buyer_contact_name}</span>}
+                {doc.buyer_email && <span>{doc.buyer_email}</span>}
+              </div>
             </div>
           </div>
 

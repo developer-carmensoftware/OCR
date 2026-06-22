@@ -263,6 +263,7 @@ async def approve_order(
         tax_id=str(proforma.buyer_tax_id or "") if proforma else "",
         address=str(proforma.buyer_address or "") if proforma else "",
         branch=str(proforma.buyer_branch or "") if proforma else "",
+        contact_name=str(proforma.buyer_contact_name or "") if proforma else "",
     )
 
     await bds.issue_document(

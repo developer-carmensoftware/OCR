@@ -1345,12 +1345,24 @@
   grid-column: 1 / -1;
 }
 
+.checkout-row-3 {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1rem;
+}
+
 .checkout-field-label {
   font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-3);
+}
+
+.checkout-field-label::after {
+  content: ' *';
+  color: var(--danger, #e53e3e);
 }
 
 .checkout-input {
@@ -1798,6 +1810,11 @@
 .pf-buyer-name {
   font-weight: 700;
   color: var(--pf-ink);
+}
+
+.pf-buyer-row {
+  display: flex;
+  gap: 1.5rem;
 }
 
 .pf-kv {
@@ -2483,6 +2500,10 @@
 @media (max-width: 560px) {
   .checkout-fields,
   .checkout-form-skeleton {
+    grid-template-columns: 1fr;
+  }
+
+  .checkout-row-3 {
     grid-template-columns: 1fr;
   }
 

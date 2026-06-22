@@ -58,6 +58,7 @@ export default function CheckoutFlow({ pack, resume, onCancel, onViewHistory }: 
   const isSubscription = !!PLAN_META[code]
 
   const updateBuyer = (patch: Partial<BuyerInfo>) => c.setBuyer({ ...c.buyer, ...patch })
+  const buyerComplete = Object.values(c.buyer).every(v => v.trim())
 
   const handleConfirm = async () => {
     try {
@@ -102,53 +103,70 @@ export default function CheckoutFlow({ pack, resume, onCancel, onViewHistory }: 
 
               {c.loadingProfile ? (
                 <div className="checkout-form-skeleton" aria-hidden="true">
-                  {Array.from({ length: 5 }).map((_, i) => (
+                  {Array.from({ length: 6 }).map((_, i) => (
                     <div key={i} className="checkout-skel-field" />
                   ))}
                 </div>
               ) : (
                 <div className="checkout-fields">
-                  <label className="checkout-field">
-                    <span className="checkout-field-label">{t('checkout.fieldName')}</span>
-                    <input
-                      className="checkout-input"
-                      value={c.buyer.name}
-                      onChange={e => updateBuyer({ name: e.target.value })}
-                      placeholder={t('checkout.phName')}
-                    />
-                  </label>
-                  <label className="checkout-field">
-                    <span className="checkout-field-label">{t('checkout.fieldTaxId')}</span>
-                    <input
-                      className="checkout-input text-mono"
-                      value={c.buyer.tax_id}
-                      onChange={e => updateBuyer({ tax_id: e.target.value })}
-                      placeholder={t('checkout.phTaxId')}
-                      inputMode="numeric"
-                    />
-                  </label>
+                  <div className="checkout-row-3">
+                    <label className="checkout-field">
+                      <span className="checkout-field-label">{t('checkout.fieldName')}</span>
+                      <input
+                        className="checkout-input"
+                        required
+                        value={c.buyer.name}
+                        onChange={e => updateBuyer({ name: e.target.value })}
+                        placeholder={t('checkout.phName')}
+                      />
+                    </label>
+                    <label className="checkout-field">
+                      <span className="checkout-field-label">{t('checkout.fieldTaxId')}</span>
+                      <input
+                        className="checkout-input text-mono"
+                        required
+                        value={c.buyer.tax_id}
+                        onChange={e => updateBuyer({ tax_id: e.target.value })}
+                        placeholder={t('checkout.phTaxId')}
+                        inputMode="numeric"
+                      />
+                    </label>
+                    <label className="checkout-field">
+                      <span className="checkout-field-label">{t('checkout.fieldBranch')}</span>
+                      <input
+                        className="checkout-input"
+                        required
+                        value={c.buyer.branch}
+                        onChange={e => updateBuyer({ branch: e.target.value })}
+                        placeholder={t('checkout.phBranch')}
+                      />
+                    </label>
+                  </div>
                   <label className="checkout-field checkout-field--wide">
                     <span className="checkout-field-label">{t('checkout.fieldAddress')}</span>
                     <input
                       className="checkout-input"
+                      required
                       value={c.buyer.address}
                       onChange={e => updateBuyer({ address: e.target.value })}
                       placeholder={t('checkout.phAddress')}
                     />
                   </label>
                   <label className="checkout-field">
-                    <span className="checkout-field-label">{t('checkout.fieldBranch')}</span>
+                    <span className="checkout-field-label">{t('checkout.fieldContactName')}</span>
                     <input
                       className="checkout-input"
-                      value={c.buyer.branch}
-                      onChange={e => updateBuyer({ branch: e.target.value })}
-                      placeholder={t('checkout.phBranch')}
+                      required
+                      value={c.buyer.contact_name}
+                      onChange={e => updateBuyer({ contact_name: e.target.value })}
+                      placeholder={t('checkout.phContactName')}
                     />
                   </label>
                   <label className="checkout-field">
                     <span className="checkout-field-label">{t('checkout.fieldEmail')}</span>
                     <input
                       className="checkout-input"
+                      required
                       type="email"
                       value={c.buyer.email}
                       onChange={e => updateBuyer({ email: e.target.value })}
@@ -179,7 +197,7 @@ export default function CheckoutFlow({ pack, resume, onCancel, onViewHistory }: 
                 type="button"
                 className="btn btn-primary checkout-confirm"
                 onClick={handleConfirm}
-                disabled={c.creating || c.loadingProfile || !c.buyer.name.trim()}
+                disabled={c.creating || c.loadingProfile || !buyerComplete}
               >
                 {c.creating ? (
                   <>
@@ -189,8 +207,8 @@ export default function CheckoutFlow({ pack, resume, onCancel, onViewHistory }: 
                   t('checkout.continueToPayment')
                 )}
               </button>
-              {!c.buyer.name.trim() && !c.loadingProfile ? (
-                <p className="checkout-hint">{t('checkout.enterNameHint')}</p>
+              {!buyerComplete && !c.loadingProfile ? (
+                <p className="checkout-hint">{t('checkout.fillAllFieldsHint')}</p>
               ) : (
                 <p className="checkout-hint">{t('checkout.verifyHint')}</p>
               )}

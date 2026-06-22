@@ -71,6 +71,8 @@ const en = {
   'checkout.phBranch': 'Head office',
   'checkout.fieldEmail': 'Email',
   'checkout.phEmail': 'billing@example.com',
+  'checkout.fieldContactName': 'Purchaser name',
+  'checkout.phContactName': 'Contact person name',
   'checkout.summaryTitle': 'Order summary',
   'checkout.kindMonthly': 'Monthly plan',
   'checkout.kindTopup': 'Top-up credits (never expire)',
@@ -79,6 +81,7 @@ const en = {
   'checkout.creatingOrder': 'Creating order…',
   'checkout.continueToPayment': 'Continue to payment',
   'checkout.enterNameHint': 'Enter the buyer name to continue',
+  'checkout.fillAllFieldsHint': 'Please fill in all fields to continue',
   'checkout.verifyHint':
     'Please verify your billing details — they will appear on the proforma invoice.',
   'checkout.scanToPay': 'Scan to pay with PromptPay',
@@ -274,6 +277,8 @@ const th: Record<TKey, string> = {
   'checkout.phBranch': 'สำนักงานใหญ่',
   'checkout.fieldEmail': 'อีเมล',
   'checkout.phEmail': 'billing@example.com',
+  'checkout.fieldContactName': 'ชื่อผู้สั่งซื้อ',
+  'checkout.phContactName': 'ชื่อผู้ติดต่อ',
   'checkout.summaryTitle': 'สรุปคำสั่งซื้อ',
   'checkout.kindMonthly': 'แพ็กเกจรายเดือน',
   'checkout.kindTopup': 'เครดิตเติม (ไม่มีวันหมดอายุ)',
@@ -282,6 +287,7 @@ const th: Record<TKey, string> = {
   'checkout.creatingOrder': 'กำลังสร้างคำสั่งซื้อ…',
   'checkout.continueToPayment': 'ดำเนินการชำระเงิน',
   'checkout.enterNameHint': 'กรอกชื่อผู้ซื้อเพื่อดำเนินการต่อ',
+  'checkout.fillAllFieldsHint': 'กรุณากรอกข้อมูลให้ครบทุกช่อง',
   'checkout.verifyHint':
     'กรุณาตรวจสอบข้อมูลสำหรับออกบิลให้ถูกต้องก่อนดำเนินการ — ข้อมูลนี้จะปรากฏบนใบแจ้งหนี้',
   'checkout.scanToPay': 'สแกนเพื่อจ่ายด้วยพร้อมเพย์',

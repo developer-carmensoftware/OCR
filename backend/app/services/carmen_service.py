@@ -389,6 +389,7 @@ async def get_company_profile(carmen_token: str, db_cfg: dict[str, str] | None =
                 "address": address or data.get("address") or "",
                 "branch": data.get("BranchNo") or data.get("branch") or "",
                 "email": data.get("RegEmail") or data.get("email") or "",
+                "contact_name": data.get("RegContact") or "",
             }
         return {}
     except Exception as exc:

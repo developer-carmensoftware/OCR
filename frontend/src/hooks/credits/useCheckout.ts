@@ -23,7 +23,14 @@ export interface CheckoutSession {
 
 const STORAGE_KEY = 'credits_active_checkout'
 
-const EMPTY_BUYER: BuyerInfo = { name: '', tax_id: '', address: '', branch: '', email: '' }
+const EMPTY_BUYER: BuyerInfo = {
+  name: '',
+  tax_id: '',
+  address: '',
+  branch: '',
+  email: '',
+  contact_name: '',
+}
 
 function readPersisted(): CheckoutSession | null {
   try {
@@ -91,6 +98,7 @@ export function useCheckout(pack: CreditPack | null, resume?: CheckoutSession | 
           address: p.address,
           branch: p.branch,
           email: p.email,
+          contact_name: p.contact_name ?? '',
         })
         setProfileSource(p.source)
       })

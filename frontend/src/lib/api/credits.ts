@@ -35,6 +35,7 @@ export interface BuyerInfo {
   address: string
   branch: string
   email: string
+  contact_name: string
 }
 
 export interface CompanyProfile extends BuyerInfo {
@@ -74,6 +75,7 @@ export interface BillingDocument {
   buyer_address: string | null
   buyer_branch: string | null
   buyer_email: string | null
+  buyer_contact_name: string | null
   pack_code: string
   description: string | null
   credits: number

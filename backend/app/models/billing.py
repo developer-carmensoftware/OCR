@@ -276,8 +276,7 @@ class BillingDocument(Base, TimestampMixin, SoftDeleteMixin):
     buyer_address = Column(Text, nullable=True)
     buyer_branch = Column(String(100), nullable=True)
     buyer_email = Column(String(255), nullable=True)
-    # buyer_email: add after `supabase db push` applies migration 20260617000000
-    # buyer_email = Column(String(255), nullable=True)
+    buyer_contact_name = Column(String(255), nullable=True)
 
     # Single line item = the pack purchased
     pack_code = Column(String(20), nullable=False)
