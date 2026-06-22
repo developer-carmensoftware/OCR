@@ -80,7 +80,6 @@ const en = {
   'checkout.vatNote': 'Prices exclude 7% VAT',
   'checkout.creatingOrder': 'Creating order…',
   'checkout.continueToPayment': 'Continue to payment',
-  'checkout.enterNameHint': 'Enter the buyer name to continue',
   'checkout.fillAllFieldsHint': 'Please fill in all fields to continue',
   'checkout.verifyHint':
     'Please verify your billing details — they will appear on the proforma invoice.',
@@ -286,7 +285,6 @@ const th: Record<TKey, string> = {
   'checkout.vatNote': 'ราคายังไม่รวมภาษีมูลค่าเพิ่ม 7%',
   'checkout.creatingOrder': 'กำลังสร้างคำสั่งซื้อ…',
   'checkout.continueToPayment': 'ดำเนินการชำระเงิน',
-  'checkout.enterNameHint': 'กรอกชื่อผู้ซื้อเพื่อดำเนินการต่อ',
   'checkout.fillAllFieldsHint': 'กรุณากรอกข้อมูลให้ครบทุกช่อง',
   'checkout.verifyHint':
     'กรุณาตรวจสอบข้อมูลสำหรับออกบิลให้ถูกต้องก่อนดำเนินการ — ข้อมูลนี้จะปรากฏบนใบแจ้งหนี้',
