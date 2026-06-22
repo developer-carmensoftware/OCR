@@ -1,5 +1,5 @@
 import { Printer } from 'lucide-react'
-import { formatThb, formatDate, bahtToEnglishWords } from '../../lib/money'
+import { formatThb, formatDate, bahtToEnglishWords, bahtToThaiWords } from '../../lib/money'
 import { useT } from '../../i18n/LanguageContext'
 import logo from '../../assets/logo_carmen.png'
 import type { BillingDocument, PaymentInfo } from '../../lib/api/credits'
@@ -201,6 +201,7 @@ export default function ProformaDocument({
               <span className="text-mono">฿{formatThb(num(doc.total), true)}</span>
             </div>
             <div className="pf-amount-words">({bahtToEnglishWords(num(doc.total))})</div>
+            <div className="pf-amount-words">({bahtToThaiWords(num(doc.total))})</div>
           </div>
         </section>
 
