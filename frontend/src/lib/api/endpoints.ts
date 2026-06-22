@@ -100,6 +100,8 @@ export const API = {
     creditOrderSlipUrl: (id: string) => `${V1}/admin/credit-orders/${id}/slip-url`,
     creditOrderApprove: (id: string) => `${V1}/admin/credit-orders/${id}/approve`,
     creditOrderReject: (id: string) => `${V1}/admin/credit-orders/${id}/reject`,
+    creditOrderHold: (id: string) => `${V1}/admin/credit-orders/${id}/hold`,
+    creditOrderCancel: (id: string) => `${V1}/admin/credit-orders/${id}/cancel`,
     creditOrderDocuments: (id: string) => `${V1}/admin/credit-orders/${id}/documents`,
   },
 } as const

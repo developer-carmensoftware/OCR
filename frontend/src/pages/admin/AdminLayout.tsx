@@ -7,7 +7,6 @@ import {
   Coins,
   LayoutDashboard,
   LogOut,
-  ReceiptText,
   Settings,
   Shield,
   Trophy,
@@ -15,6 +14,8 @@ import {
   Zap,
 } from 'lucide-react'
 import { useAdminAuth } from '../../contexts/AdminAuthContext'
+import DarkModeToggle from '../../components/common/DarkModeToggle'
+import LanguageToggle from '../../components/common/LanguageToggle'
 
 interface NavItem {
   label: string
@@ -47,11 +48,6 @@ const NAV: NavItem[] = [
   { label: 'Jobs', hash: '/admin/jobs', icon: <Settings size={ICON_SIZE} strokeWidth={2} /> },
   { label: 'Sessions', hash: '/admin/sessions', icon: <Users size={ICON_SIZE} strokeWidth={2} /> },
   { label: 'Credits', hash: '/admin/credits', icon: <Coins size={ICON_SIZE} strokeWidth={2} /> },
-  {
-    label: 'Slip Review',
-    hash: '/admin/credit-orders',
-    icon: <ReceiptText size={ICON_SIZE} strokeWidth={2} />,
-  },
 ]
 
 function getActiveHash(): string {
@@ -102,6 +98,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="admin-sidebar-footer">
+          <div className="admin-sidebar-toggles">
+            <LanguageToggle />
+            <DarkModeToggle />
+          </div>
           <div className="admin-user-info">
             <span className="admin-user-email" title={admin?.email}>
               {admin?.email}

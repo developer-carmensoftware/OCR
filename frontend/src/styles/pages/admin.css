@@ -191,12 +191,23 @@ body:has(.admin-login-page) {
 .admin-sidebar-footer {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.6rem;
   padding: 0.85rem 1rem;
   margin: 0.5rem;
   background: var(--gray-50);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+}
+
+.admin-sidebar-toggles {
+  display: flex;
+  width: 100%;
+  gap: 0.4rem;
+}
+.admin-sidebar-toggles .lang-toggle,
+.admin-sidebar-toggles .theme-toggle {
+  height: 32px;
 }
 
 .admin-user-info {

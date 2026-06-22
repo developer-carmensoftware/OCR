@@ -17,7 +17,9 @@ export default function AdminLogin() {
     try {
       const res = await adminLogin(email, password)
       await login(res.access_token)
-      window.location.hash = '/admin'
+      const back = sessionStorage.getItem('admin_return_to')
+      sessionStorage.removeItem('admin_return_to')
+      window.location.hash = back || '/admin'
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Login failed')
     } finally {

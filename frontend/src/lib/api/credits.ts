@@ -15,7 +15,13 @@ export interface CreditPack {
 
 // ── Orders & documents ────────────────────────────────────────────────────────
 
-export type OrderStatus = 'pending' | 'awaiting_review' | 'paid' | 'rejected' | 'cancelled'
+export type OrderStatus =
+  | 'pending'
+  | 'awaiting_review'
+  | 'on_hold'
+  | 'paid'
+  | 'rejected'
+  | 'cancelled'
 
 export interface CreditOrder {
   id: string
@@ -27,6 +33,7 @@ export interface CreditOrder {
   slip_uploaded_at?: string | null // slip upload date
   approved_at?: string | null // admin approval date
   expires_at?: string | null // proforma valid-until (pending orders)
+  rejected_reason?: string | null // reason the admin gave on rejection (shown to buyer)
 }
 
 export interface BuyerInfo {

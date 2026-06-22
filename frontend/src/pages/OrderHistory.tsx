@@ -72,7 +72,13 @@ function OrderRow({ order, paymentInfo }: { order: CreditOrder; paymentInfo: Pay
         <div className="order-row-body">
           {order.status === 'rejected' && (
             <div className="order-rejected">
-              <p className="order-rejected-note">{t('order.rejectedNote')}</p>
+              {order.rejected_reason ? (
+                <p className="order-rejected-note">
+                  <strong>{t('order.rejectedReasonLabel')}</strong> {order.rejected_reason}
+                </p>
+              ) : (
+                <p className="order-rejected-note">{t('order.rejectedNote')}</p>
+              )}
               <a className="btn btn-primary order-rebuy" href="#/pricing">
                 {t('order.orderAgain')} <ArrowRight size={14} />
               </a>
@@ -103,9 +109,10 @@ export default function OrderHistory() {
   const { orders, loading, error, reload } = useOrderHistory()
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
 
-  // Open orders (pending + awaiting_review) go in the action banner; the rest in the history list.
-  const openOrders = orders.filter(o => o.status === 'pending' || o.status === 'awaiting_review')
-  const history = orders.filter(o => o.status !== 'pending' && o.status !== 'awaiting_review')
+  // Open orders (pending / under review / on hold) go in the action banner; the rest in history.
+  const OPEN = new Set(['pending', 'awaiting_review', 'on_hold'])
+  const openOrders = orders.filter(o => OPEN.has(o.status))
+  const history = orders.filter(o => !OPEN.has(o.status))
 
   useEffect(() => {
     getPaymentInfo()

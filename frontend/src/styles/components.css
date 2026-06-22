@@ -3469,6 +3469,26 @@ input[type='text'].detail-input:focus {
   background: var(--muted);
 }
 
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  color: var(--text-2);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition:
+    color 150ms var(--ease-out-premium),
+    background 150ms var(--ease-out-premium);
+}
+.theme-toggle:hover {
+  color: var(--text);
+  background: var(--muted);
+}
+
 .segmented-btn:hover {
   color: var(--text-2);
 }

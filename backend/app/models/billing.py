@@ -224,6 +224,9 @@ class CreditOrder(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     slip_object_key = Column(String(512), nullable=True)
     slip_uploaded_at = Column(DateTime(timezone=True), nullable=True)
     rejected_reason = Column(Text, nullable=True)
+    # Admin-only memo (e.g. "emailed buyer 22/6, awaiting corrected slip"); set
+    # when an order is put on_hold. Never shown to the buyer.
+    admin_note = Column(Text, nullable=True)
 
     __table_args__ = (
         Index(

@@ -14,6 +14,7 @@ from app.models.schemas.credits import (
     CreditLedgerEntry,
     CreditOrderResponse,
     CreditPackResponse,
+    HoldRequest,
     PaymentInfoResponse,
     QrPayloadResponse,
     RejectRequest,
@@ -67,6 +68,7 @@ __all__ = [
     "PaymentInfoResponse",
     "SlipUploadResponse",
     "RejectRequest",
+    "HoldRequest",
     # ap_invoice
     "SuggestGLItem",
     "SuggestGLRequest",

@@ -9,6 +9,7 @@ const MAP: Record<
 > = {
   pending: { variant: 'info', key: 'order.statusPending' },
   awaiting_review: { variant: 'warning', key: 'order.statusReviewing' },
+  on_hold: { variant: 'warning', key: 'order.statusReviewing' },
   paid: { variant: 'success', key: 'order.statusPaid' },
   rejected: { variant: 'error', key: 'order.statusRejected' },
   cancelled: { variant: 'gray', key: 'order.statusCancelled' },

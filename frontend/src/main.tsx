@@ -1,7 +1,8 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react'
 import * as Sentry from '@sentry/react'
 
-document.documentElement.dataset.theme = 'light'
+// Apply persisted theme before first paint (avoids a light→dark flash).
+document.documentElement.dataset.theme = localStorage.getItem('theme') === 'dark' ? 'dark' : 'light'
 
 if (import.meta.env.VITE_SENTRY_DSN) {
   Sentry.init({
@@ -63,7 +64,9 @@ const AnomaliesPage = lazy(() => import('./pages/admin/AnomaliesPage'))
 const JobsPage = lazy(() => import('./pages/admin/JobsPage'))
 const SessionsPage = lazy(() => import('./pages/admin/SessionsPage'))
 const CreditsPage = lazy(() => import('./pages/admin/CreditsPage'))
-const CreditOrdersPage = lazy(() => import('./pages/admin/CreditOrdersPage'))
+
+// Order Review — standalone page (own shell, reuses admin auth)
+const OrderReviewShell = lazy(() => import('./pages/order-review/OrderReviewShell'))
 
 function getRoute(): string {
   const hash = window.location.hash.split('?')[0]
@@ -104,8 +107,6 @@ function AdminRouter() {
     AdminPage = <SessionsPage />
   } else if (route === 'admin/credits') {
     AdminPage = <CreditsPage />
-  } else if (route === 'admin/credit-orders') {
-    AdminPage = <CreditOrdersPage />
   } else {
     AdminPage = <Overview />
   }
@@ -134,6 +135,17 @@ function Router() {
     window.addEventListener('ocr:open-topup', toPricing)
     return () => window.removeEventListener('ocr:open-topup', toPricing)
   }, [])
+
+  // Order Review — standalone page, its own shell, reuses admin auth.
+  if (route === 'order-review') {
+    return (
+      <Suspense fallback={<PageSkeleton />}>
+        <AdminProtectedRoute>
+          <OrderReviewShell />
+        </AdminProtectedRoute>
+      </Suspense>
+    )
+  }
 
   // Admin section — has its own auth, separate from Carmen
   if (route.startsWith('admin')) {

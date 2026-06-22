@@ -33,7 +33,10 @@ class CreditOrderResponse(BaseModel):
     created_at: datetime | None = None
     slip_uploaded_at: datetime | None = None
     approved_at: datetime | None = None  # admin payment-approval timestamp
+    approved_by: str | None = None  # admin email that approved (admin queue only)
     expires_at: datetime | None = None  # proforma valid-until (pending orders)
+    rejected_reason: str | None = None  # reason shown to the buyer on rejection
+    admin_note: str | None = None  # admin-only memo (set when put on hold)
 
     @field_validator("id", "tenant_id", mode="before")
     @classmethod
@@ -190,3 +193,10 @@ class SlipUploadResponse(BaseModel):
 
 class RejectRequest(BaseModel):
     reason: str = Field(..., min_length=1, description="Reason shown to the tenant")
+
+
+class HoldRequest(BaseModel):
+    """Park an order pending the buyer's reply, or resume it back to review."""
+
+    hold: bool = True  # True → on_hold, False → back to awaiting_review
+    note: str | None = None  # admin-only memo (e.g. "emailed buyer, awaiting reply")

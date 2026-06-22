@@ -222,7 +222,13 @@ export async function adjustCredits(
 
 // ── Slip review queue ───────────────────────────────────────────────────────
 
-export type AdminOrderStatus = 'pending' | 'awaiting_review' | 'paid' | 'rejected' | 'cancelled'
+export type AdminOrderStatus =
+  | 'pending'
+  | 'awaiting_review'
+  | 'on_hold'
+  | 'paid'
+  | 'rejected'
+  | 'cancelled'
 
 export interface AdminCreditOrder {
   id: string
@@ -234,6 +240,11 @@ export interface AdminCreditOrder {
   tenant_name: string | null
   created_at: string | null
   slip_uploaded_at: string | null
+  approved_at: string | null
+  approved_by: string | null
+  expires_at: string | null
+  rejected_reason: string | null
+  admin_note: string | null
 }
 
 /** Reuse the public billing-document shape — the admin endpoint returns the same. */
@@ -250,11 +261,17 @@ async function unwrapDetail(res: Response, fallback: string): Promise<string> {
   return err.detail || fallback
 }
 
-/** Slip-review queue across tenants (scoped admins see only their own). */
+/**
+ * Order queue across companies (scoped admins see only their own).
+ * `status='all'` returns every status; `tenantId` narrows to one company's history.
+ */
 export async function listCreditOrders(
-  status: AdminOrderStatus = 'awaiting_review'
+  status: AdminOrderStatus | 'all' = 'awaiting_review',
+  tenantId?: string
 ): Promise<AdminCreditOrder[]> {
-  const res = await adminFetch(`${API.admin.creditOrders}${buildQs({ status })}`)
+  const res = await adminFetch(
+    `${API.admin.creditOrders}${buildQs({ status, tenant_id: tenantId })}`
+  )
   if (!res.ok) throw new Error('Failed to load credit orders')
   return res.json()
 }
@@ -279,6 +296,28 @@ export async function rejectOrder(id: string, reason: string): Promise<AdminCred
     body: JSON.stringify({ reason }),
   })
   if (!res.ok) throw new Error(await unwrapDetail(res, 'Reject failed'))
+  return res.json()
+}
+
+/** Park an order pending the buyer's reply (`hold=true`), or resume it (`hold=false`). */
+export async function holdOrder(
+  id: string,
+  hold: boolean,
+  note?: string
+): Promise<AdminCreditOrder> {
+  const res = await adminFetch(API.admin.creditOrderHold(id), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hold, note }),
+  })
+  if (!res.ok) throw new Error(await unwrapDetail(res, hold ? 'Hold failed' : 'Resume failed'))
+  return res.json()
+}
+
+/** Cancel (soft-delete) a still-pending order with no slip uploaded yet. */
+export async function cancelOrder(id: string): Promise<AdminCreditOrder> {
+  const res = await adminFetch(API.admin.creditOrderCancel(id), { method: 'POST' })
+  if (!res.ok) throw new Error(await unwrapDetail(res, 'Cancel failed'))
   return res.json()
 }
 

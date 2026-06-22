@@ -18,6 +18,7 @@ from app.models.schemas import (
     CreditBalanceResponse,
     CreditLedgerEntry,
     CreditOrderResponse,
+    HoldRequest,
     PaymentInfoResponse,
     RejectRequest,
     TopupRequest,
@@ -31,6 +32,10 @@ from .deps import require_permission
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# An order can be approved/rejected from either the review queue or while parked
+# on hold (admin contacted the buyer and is confirming).
+_DECIDABLE = {CreditOrderStatus.AWAITING_REVIEW, CreditOrderStatus.ON_HOLD}
 
 
 def _assert_scope(admin: AdminPrincipal, tenant_id: str) -> None:
@@ -144,14 +149,18 @@ async def ledger(
 
 @router.get("/credit-orders", response_model=list[CreditOrderResponse])
 async def list_credit_orders(
-    status: str | None = Query(None, description="Filter by status, e.g. awaiting_review"),
+    status: str | None = Query(
+        None, description="Status filter; omit → awaiting_review queue, 'all' → every status"
+    ),
+    tenant_id: str | None = Query(None, description="Limit to one company's orders (history)"),
     limit: int = Query(50, le=200),
     db: AsyncSession = Depends(get_db),
     admin: AdminPrincipal = Depends(require_permission("quotas", "read")),
 ):
     """
     List credit orders across all tenants (global admin) or own tenant (scoped admin).
-    Default view is the slip-review queue: status=awaiting_review.
+    Default view is the slip-review queue (awaiting_review); `status=all` returns
+    every status; `tenant_id` narrows to one company's order history.
     """
     query = (
         select(CreditOrder, Tenant.name)
@@ -161,8 +170,13 @@ async def list_credit_orders(
 
     if not admin.is_global and admin.tenant_scope:
         query = query.where(CreditOrder.tenant_id == admin.tenant_scope)
+    elif tenant_id:
+        _assert_scope(admin, tenant_id)
+        query = query.where(CreditOrder.tenant_id == tenant_id)
 
-    if status:
+    if status == "all":
+        pass  # no status filter
+    elif status:
         query = query.where(CreditOrder.status == status)
     else:
         query = query.where(CreditOrder.status == CreditOrderStatus.AWAITING_REVIEW)
@@ -241,10 +255,10 @@ async def approve_order(
 
     _assert_scope(admin, str(order.tenant_id))
 
-    if order.status != CreditOrderStatus.AWAITING_REVIEW:
+    if order.status not in _DECIDABLE:
         raise HTTPException(
             status_code=409,
-            detail=f"Order is in status '{order.status}', expected 'awaiting_review'",
+            detail=f"Order is in status '{order.status}', expected awaiting_review or on_hold",
         )
 
     # Fetch proforma buyer info for the tax invoice snapshot
@@ -346,10 +360,10 @@ async def reject_order(
 
     _assert_scope(admin, str(order.tenant_id))
 
-    if order.status != CreditOrderStatus.AWAITING_REVIEW:
+    if order.status not in _DECIDABLE:
         raise HTTPException(
             status_code=409,
-            detail=f"Order is in status '{order.status}', expected 'awaiting_review'",
+            detail=f"Order is in status '{order.status}', expected awaiting_review or on_hold",
         )
 
     order.status = CreditOrderStatus.REJECTED  # type: ignore[assignment]
@@ -365,6 +379,91 @@ async def reject_order(
         body.reason,
         admin.email,
     )
+    return CreditOrderResponse.model_validate(order)
+
+
+@router.post("/credit-orders/{order_id}/hold", response_model=CreditOrderResponse)
+async def hold_order(
+    order_id: str,
+    body: HoldRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
+):
+    """
+    Park an order pending the buyer's reply (`hold=True`), or resume it back to the
+    review queue (`hold=False`). Lets the admin confirm a questionable slip with the
+    buyer instead of rejecting it outright. The optional note is admin-only.
+    """
+    order = (
+        await db.execute(
+            select(CreditOrder)
+            .where(CreditOrder.id == order_id, CreditOrder.deleted_at.is_(None))
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    _assert_scope(admin, str(order.tenant_id))
+
+    if body.hold:
+        if order.status != CreditOrderStatus.AWAITING_REVIEW:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Can only hold an awaiting_review order, not '{order.status}'",
+            )
+        order.status = CreditOrderStatus.ON_HOLD  # type: ignore[assignment]
+        if body.note is not None:
+            order.admin_note = body.note.strip() or None  # type: ignore[assignment]
+    else:
+        if order.status != CreditOrderStatus.ON_HOLD:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Can only resume an on_hold order, not '{order.status}'",
+            )
+        order.status = CreditOrderStatus.AWAITING_REVIEW  # type: ignore[assignment]
+
+    await db.commit()
+    await db.refresh(order)
+    logger.info(
+        "order hold=%s: id=%s tenant=%s by=%s", body.hold, order_id, order.tenant_id, admin.email
+    )
+    return CreditOrderResponse.model_validate(order)
+
+
+@router.post("/credit-orders/{order_id}/cancel", response_model=CreditOrderResponse)
+async def cancel_order(
+    order_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
+):
+    """
+    Cancel (soft-delete) a still-pending order — one with no slip uploaded yet.
+    Orders that already carry a slip go through Reject so the buyer sees a reason.
+    """
+    order = (
+        await db.execute(
+            select(CreditOrder)
+            .where(CreditOrder.id == order_id, CreditOrder.deleted_at.is_(None))
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    _assert_scope(admin, str(order.tenant_id))
+
+    if order.status != CreditOrderStatus.PENDING:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Can only cancel a pending order, not '{order.status}'",
+        )
+
+    order.status = CreditOrderStatus.CANCELLED  # type: ignore[assignment]
+    order.deleted_at = datetime.now(UTC)  # type: ignore[assignment]
+    await db.commit()
+    await db.refresh(order)
+    logger.info("order cancelled: id=%s tenant=%s by=%s", order_id, order.tenant_id, admin.email)
     return CreditOrderResponse.model_validate(order)
 
 

@@ -42,6 +42,15 @@ def _order(
     row.deleted_at = None
     row.slip_object_key = f"{tenant_id}/slip.jpg"
     row.slip_uploaded_at = datetime.now(UTC)
+    # Remaining CreditOrderResponse fields — set so model_validate(row) succeeds
+    # (a bare MagicMock attribute is a child mock, not a valid str/datetime).
+    row.tenant_name = None
+    row.created_at = None
+    row.approved_at = None
+    row.approved_by = None
+    row.expires_at = None
+    row.rejected_reason = None
+    row.admin_note = None
     return row
 
 
@@ -101,30 +110,31 @@ def make_admin_test_client(mock_db, perms=None, tenant_scope=""):
 # ── GET /admin/credit-orders ──────────────────────────────────────────────────
 
 
+def _list_result(orders):
+    """The list endpoint reads (order, tenant_name) tuples via `.all()`."""
+    execute_result = MagicMock()
+    execute_result.all.return_value = [(o, "Acme Co") for o in orders]
+    return execute_result
+
+
 def test_list_credit_orders_returns_awaiting_review_by_default():
     orders = [_order(status="awaiting_review"), _order(status="awaiting_review")]
-    scalars_result = MagicMock()
-    scalars_result.all.return_value = orders
-    execute_result = MagicMock()
-    execute_result.scalars.return_value = scalars_result
     mock_db = make_mock_db()
-    mock_db.execute = AsyncMock(return_value=execute_result)
+    mock_db.execute = AsyncMock(return_value=_list_result(orders))
 
     with make_admin_test_client(mock_db) as client:
         resp = client.get(f"{BASE}/credit-orders", headers=AUTH)
 
     assert resp.status_code == 200
-    assert len(resp.json()) == 2
+    body = resp.json()
+    assert len(body) == 2
+    assert body[0]["tenant_name"] == "Acme Co"
 
 
 def test_list_credit_orders_with_explicit_status_filter():
     orders = [_order(status="pending")]
-    scalars_result = MagicMock()
-    scalars_result.all.return_value = orders
-    execute_result = MagicMock()
-    execute_result.scalars.return_value = scalars_result
     mock_db = make_mock_db()
-    mock_db.execute = AsyncMock(return_value=execute_result)
+    mock_db.execute = AsyncMock(return_value=_list_result(orders))
 
     with make_admin_test_client(mock_db) as client:
         resp = client.get(f"{BASE}/credit-orders?status=pending", headers=AUTH)
@@ -248,6 +258,112 @@ def test_reject_order_wrong_status_returns_409():
             json={"reason": "Already paid"},
             headers=AUTH,
         )
+
+    assert resp.status_code == 409
+
+
+# ── POST /admin/credit-orders/{id}/hold ───────────────────────────────────────
+
+
+def test_hold_order_parks_awaiting_review():
+    order = _order(status="awaiting_review")
+    mock_db = make_mock_db()
+    mock_db.execute.return_value = _scalar(order)
+
+    with make_admin_test_client(mock_db) as client:
+        resp = client.post(
+            f"{BASE}/credit-orders/{order.id}/hold",
+            json={"hold": True, "note": "emailed buyer to confirm amount"},
+            headers=AUTH,
+        )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "on_hold"
+    assert body["admin_note"] == "emailed buyer to confirm amount"
+
+
+def test_resume_order_returns_to_awaiting_review():
+    order = _order(status="on_hold")
+    mock_db = make_mock_db()
+    mock_db.execute.return_value = _scalar(order)
+
+    with make_admin_test_client(mock_db) as client:
+        resp = client.post(
+            f"{BASE}/credit-orders/{order.id}/hold", json={"hold": False}, headers=AUTH
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "awaiting_review"
+
+
+def test_hold_order_wrong_status_returns_409():
+    order = _order(status="paid")
+    mock_db = make_mock_db()
+    mock_db.execute.return_value = _scalar(order)
+
+    with make_admin_test_client(mock_db) as client:
+        resp = client.post(
+            f"{BASE}/credit-orders/{order.id}/hold", json={"hold": True}, headers=AUTH
+        )
+
+    assert resp.status_code == 409
+
+
+def test_approve_works_on_on_hold_order():
+    """An on_hold order is still decidable — approve must succeed."""
+    order_id = str(uuid.uuid4())
+    order = _order(order_id=order_id, status="on_hold")
+    proforma = _proforma(order_id=order_id)
+    pack = MagicMock()
+    pack.code = order.pack_code
+    pack.kind = "topup"
+
+    mock_db = make_mock_db()
+    grant_result = MagicMock()
+    grant_result.scalar_one.return_value = 500
+    mock_db.execute.side_effect = [
+        _scalar(order),
+        _scalar(proforma),
+        _scalar(pack),
+        grant_result,
+    ]
+
+    with (
+        patch(
+            "app.routers.admin.credits.bds.issue_document",
+            new=AsyncMock(return_value=MagicMock()),
+        ),
+        make_admin_test_client(mock_db) as client,
+    ):
+        resp = client.post(f"{BASE}/credit-orders/{order_id}/approve", headers=AUTH)
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "paid"
+
+
+# ── POST /admin/credit-orders/{id}/cancel ─────────────────────────────────────
+
+
+def test_cancel_pending_order():
+    order = _order(status="pending")
+    mock_db = make_mock_db()
+    mock_db.execute.return_value = _scalar(order)
+
+    with make_admin_test_client(mock_db) as client:
+        resp = client.post(f"{BASE}/credit-orders/{order.id}/cancel", headers=AUTH)
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "cancelled"
+
+
+def test_cancel_non_pending_returns_409():
+    order = _order(status="awaiting_review")
+    mock_db = make_mock_db()
+    mock_db.execute.return_value = _scalar(order)
+
+    with make_admin_test_client(mock_db) as client:
+        resp = client.post(f"{BASE}/credit-orders/{order.id}/cancel", headers=AUTH)
 
     assert resp.status_code == 409
 
