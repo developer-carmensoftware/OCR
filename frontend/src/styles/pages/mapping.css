@@ -1,11 +1,6 @@
 /* ── Skeleton loader ─────────────────────────────────────────────────── */
 .skeleton {
-  background: linear-gradient(
-    90deg,
-    var(--muted) 25%,
-    oklch(0.92 0.006 258.7) 50%,
-    var(--muted) 75%
-  );
+  background: linear-gradient(90deg, var(--gray-100) 25%, var(--gray-200) 50%, var(--gray-100) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.6s ease infinite;
 }
@@ -443,15 +438,14 @@ input[type='text']:focus {
 }
 
 /* ─── DARK MODE ─── */
-[data-theme='dark'] .container,
 [data-theme='dark'] .search-select-dropdown,
 [data-theme='dark'] .mapping-modal-content {
-  background: var(--gray-800);
+  background: var(--card-bg);
   border-color: var(--border);
   color: var(--text);
 }
 [data-theme='dark'] .search-input {
-  background: var(--gray-800);
+  background: var(--muted);
   border-color: var(--border);
   color: var(--text);
 }

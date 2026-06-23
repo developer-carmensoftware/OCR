@@ -508,7 +508,7 @@
 
 [data-theme='dark'] .hm-select,
 [data-theme='dark'] .hm-textarea {
-  background: oklch(0.22 0.02 258.7);
+  background: var(--card-bg);
   border-color: var(--border);
   color: var(--text);
   color-scheme: dark;

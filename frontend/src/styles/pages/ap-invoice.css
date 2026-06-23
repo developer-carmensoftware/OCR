@@ -2421,3 +2421,14 @@
   font-size: 0.95rem;
   font-weight: 800;
 }
+
+/* ─── DARK MODE OVERRIDES ─── */
+[data-theme='dark'] .ap-adjust-btn,
+[data-theme='dark'] .ap-doc-fix-btn {
+  background: var(--gray-200);
+  color: var(--text);
+}
+[data-theme='dark'] .ap-adjust-btn:hover,
+[data-theme='dark'] .ap-doc-fix-btn:hover {
+  background: var(--gray-300);
+}

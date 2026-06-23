@@ -1471,7 +1471,7 @@ input[type='text'].detail-input:focus {
 
 .toast.success {
   border-color: var(--emerald-mid);
-  background: oklch(0.96 0.025 188.43 / 0.92);
+  background: color-mix(in oklch, var(--emerald) 8%, var(--card-bg));
 }
 
 .toast.success i {
@@ -1480,7 +1480,7 @@ input[type='text'].detail-input:focus {
 
 .toast.error {
   border-color: var(--rose-mid);
-  background: oklch(0.97 0.02 24.11 / 0.92);
+  background: color-mix(in oklch, var(--rose) 8%, var(--card-bg));
 }
 
 .toast.error i {
@@ -1489,7 +1489,7 @@ input[type='text'].detail-input:focus {
 
 .toast.info {
   border-color: var(--primary-mid);
-  background: oklch(0.97 0.012 258.7 / 0.92);
+  background: color-mix(in oklch, var(--primary) 8%, var(--card-bg));
 }
 
 .toast.info i {
@@ -1498,7 +1498,7 @@ input[type='text'].detail-input:focus {
 
 .toast.warning {
   border-color: var(--amber-mid);
-  background: oklch(0.97 0.025 75 / 0.92);
+  background: color-mix(in oklch, var(--amber) 8%, var(--card-bg));
 }
 
 .toast.warning i {
@@ -2321,10 +2321,10 @@ input[type='text'].detail-input:focus {
 }
 
 [data-theme='dark'] .mapping-modal-content {
-  background: var(--gray-100);
+  background: var(--card-bg);
 }
 [data-theme='dark'] .mapping-modal-header {
-  background: var(--gray-50);
+  background: var(--muted);
 }
 
 /* ═══════════════════════════════════════════
@@ -3506,7 +3506,7 @@ input[type='text'].detail-input:focus {
   box-shadow:
     0 1px 3px rgba(0, 0, 0, 0.08),
     0 1px 1px rgba(0, 0, 0, 0.04);
-  border: 0.5px solid oklch(0.16 0.02 258.7 / 0.04);
+  border: 0.5px solid var(--border);
 }
 
 /* ─── iOS BOTTOM SHEET / DRAWER ─── */

@@ -541,12 +541,12 @@
 
 .accent-emerald {
   --flow: var(--emerald);
-  --flow-strong: oklch(0.42 0.1 188.43);
+  --flow-strong: oklch(0.42 0.1 145);
 }
 
 .accent-teal {
   --flow: var(--teal);
-  --flow-strong: oklch(0.42 0.16 253.27);
+  --flow-strong: oklch(0.42 0.12 195);
 }
 
 [data-theme='dark'] .accent-blue {
@@ -558,7 +558,7 @@
 }
 
 [data-theme='dark'] .accent-teal {
-  --flow-strong: oklch(0.78 0.13 253.27);
+  --flow-strong: oklch(0.72 0.08 188.43);
 }
 
 .flow-card {
@@ -2067,7 +2067,7 @@
 .contact-backdrop {
   position: absolute;
   inset: 0;
-  background: oklch(0.15 0.02 258.7 / 0.45);
+  background: oklch(0.15 0.003 var(--neutral-h, 258.7) / 0.45);
   backdrop-filter: blur(4px);
 }
 
