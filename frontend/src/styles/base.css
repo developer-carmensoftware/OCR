@@ -148,6 +148,13 @@
   --glass-bg: oklch(1 0 0 / 0.92);
   --glass-border: oklch(0.16 0.02 258.7 / 0.06);
 
+  /* ── Aliases (bridge shadcn-style names to our tokens) ── */
+  --card: var(--card-bg);
+  --primary-foreground: oklch(1 0 0);
+  --success-subtle: var(--emerald-light);
+  --warning-fg: var(--amber-text);
+  --font-mono: 'IBM Plex Mono', monospace;
+
   /* ── Background definitions ── */
   --body-bg-fallback: hsl(220, 15%, 97%);
   --body-bg-oklch: oklch(0.972 0.004 258.7);
@@ -441,6 +448,7 @@ textarea:focus-visible {
   --background: oklch(0.205 0.004 var(--neutral-h));
   --foreground: oklch(0.9 0.003 var(--neutral-h));
   --card-bg: oklch(0.225 0.005 var(--neutral-h));
+  --card-foreground: var(--foreground);
   --muted: oklch(0.25 0.005 var(--neutral-h));
   --muted-foreground: oklch(0.62 0.006 var(--neutral-h));
   --accent: oklch(0.29 0.006 var(--neutral-h));
