@@ -446,31 +446,31 @@ textarea:focus-visible {
   --accent: oklch(0.29 0.006 var(--neutral-h));
 
   /* ponytail: --primary-fill is the saturated version for filled buttons;
-     --primary is the desaturated version used everywhere else (text, border) */
+     --primary is the toned-down version used everywhere else (text, border) */
   --primary-fill: oklch(0.58 0.14 253.27);
-  --primary: oklch(0.62 0.05 253.27);
-  --primary-light: oklch(0.29 0.006 var(--neutral-h));
-  --primary-mid: oklch(0.34 0.008 var(--neutral-h));
-  --primary-hover: oklch(0.66 0.04 253.27);
-  --primary-glow: oklch(0.58 0.05 253.27 / 0.15);
+  --primary: oklch(0.65 0.12 253.27);
+  --primary-light: oklch(0.29 0.02 253.27);
+  --primary-mid: oklch(0.34 0.03 253.27);
+  --primary-hover: oklch(0.7 0.1 253.27);
+  --primary-glow: oklch(0.58 0.12 253.27 / 0.18);
   --primary-dark: oklch(0.225 0.005 var(--neutral-h));
 
-  --teal: oklch(0.72 0.04 188.43);
-  --teal-light: oklch(0.26 0.01 188.43);
-  --teal-mid: oklch(0.4 0.025 188.43);
-  --teal-hover: oklch(0.65 0.035 188.43);
+  --teal: oklch(0.72 0.1 188.43);
+  --teal-light: oklch(0.26 0.025 188.43);
+  --teal-mid: oklch(0.4 0.06 188.43);
+  --teal-hover: oklch(0.65 0.09 188.43);
 
-  --rose: oklch(0.68 0.06 24.11);
-  --rose-light: oklch(0.28 0.015 24.11);
-  --rose-mid: oklch(0.4 0.03 24.11);
+  --rose: oklch(0.68 0.12 24.11);
+  --rose-light: oklch(0.28 0.03 24.11);
+  --rose-mid: oklch(0.4 0.06 24.11);
 
-  --amber: oklch(0.8 0.04 75);
-  --amber-light: oklch(0.28 0.015 75);
-  --amber-mid: oklch(0.42 0.03 75);
-  --amber-text: oklch(0.82 0.03 75);
+  --amber: oklch(0.8 0.1 75);
+  --amber-light: oklch(0.28 0.03 75);
+  --amber-mid: oklch(0.42 0.06 75);
+  --amber-text: oklch(0.82 0.09 75);
 
-  --emerald: oklch(0.72 0.04 188.43);
-  --emerald-light: oklch(0.26 0.012 188.43);
+  --emerald: oklch(0.72 0.1 188.43);
+  --emerald-light: oklch(0.26 0.025 188.43);
 
   --text: oklch(0.9 0.003 var(--neutral-h));
   --text-2: oklch(0.78 0.004 var(--neutral-h));
@@ -485,8 +485,8 @@ textarea:focus-visible {
   --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.08), 0 6px 16px rgba(0, 0, 0, 0.18);
   --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.12), 0 12px 28px rgba(0, 0, 0, 0.2);
   --shadow-xl: 0 8px 16px rgba(0, 0, 0, 0.15), 0 24px 48px rgba(0, 0, 0, 0.28);
-  --shadow-primary: 0 4px 14px oklch(0.58 0.05 253.27 / 0.1);
-  --shadow-teal: 0 4px 12px oklch(0.72 0.04 188.43 / 0.08);
+  --shadow-primary: 0 4px 14px oklch(0.58 0.12 253.27 / 0.15);
+  --shadow-teal: 0 4px 12px oklch(0.72 0.1 188.43 / 0.12);
   --shadow-card:
     0 0 0 1px oklch(0.9 0.003 var(--neutral-h) / 0.12), 0 1px 2px rgba(0, 0, 0, 0.1),
     0 4px 12px rgba(0, 0, 0, 0.12);
@@ -507,18 +507,18 @@ textarea:focus-visible {
 
   --data-card-bg: oklch(0.225 0.005 var(--neutral-h));
 
-  --btn-ok-bg: oklch(0.26 0.02 145);
-  --btn-ok-text: oklch(0.78 0.03 145);
-  --btn-ok-border: oklch(0.34 0.03 145);
+  --btn-ok-bg: oklch(0.26 0.04 145);
+  --btn-ok-text: oklch(0.78 0.08 145);
+  --btn-ok-border: oklch(0.34 0.06 145);
 
-  --btn-err-bg: oklch(0.26 0.02 25);
-  --btn-err-text: oklch(0.72 0.04 25);
-  --btn-err-border: oklch(0.34 0.035 25);
+  --btn-err-bg: oklch(0.26 0.04 25);
+  --btn-err-text: oklch(0.72 0.1 25);
+  --btn-err-border: oklch(0.34 0.06 25);
 
-  --ap-suggest-bg: oklch(0.26 0.015 260);
-  --ap-error-bg: oklch(0.26 0.02 25);
-  --ap-include-bg: oklch(0.26 0.02 78);
-  --ap-exclude-bg: oklch(0.26 0.015 195);
+  --ap-suggest-bg: oklch(0.26 0.03 260);
+  --ap-error-bg: oklch(0.26 0.035 25);
+  --ap-include-bg: oklch(0.26 0.035 78);
+  --ap-exclude-bg: oklch(0.26 0.03 195);
 
   --glass-bg: oklch(0.225 0.005 var(--neutral-h) / 0.92);
   --glass-border: oklch(0.9 0.003 var(--neutral-h) / 0.12);
