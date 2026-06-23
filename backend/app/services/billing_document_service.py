@@ -7,7 +7,7 @@ Each order gets:
 
 Document numbers are gapless via the document_sequences table — a single shared
 sequence across all doc types:
-  AI-YYYYMMDD-0001
+  AI-YYYYMM-0001
 
 Caller owns the DB transaction — this service never commits.
 """
@@ -105,9 +105,9 @@ async def _next_document_number(db: AsyncSession) -> str:
     Uses INSERT ... ON CONFLICT DO UPDATE so the counter is gapless under concurrency.
     """
     now = datetime.now(UTC)
-    period_key = now.strftime("%Y%m%d")
+    period_key = now.strftime("%Y%m")
 
-    # Single shared sequence across all doc types so AI-YYYYMMDD-NNNN never collides.
+    # Single shared sequence across all doc types so AI-YYYYMM-NNNN never collides.
     stmt = (
         pg_insert(DocumentSequence)
         .values(scope="billing", period_key=period_key, last_no=1)

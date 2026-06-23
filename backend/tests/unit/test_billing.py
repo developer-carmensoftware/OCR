@@ -91,7 +91,7 @@ def test_crc_is_deterministic():
 
 @pytest.mark.asyncio
 async def test_next_document_number_format():
-    # Single shared sequence across all doc types: AI-YYYYMMDD-NNNN.
+    # Single shared sequence across all doc types: AI-YYYYMM-NNNN.
     from app.services.billing_document_service import _next_document_number
 
     db = AsyncMock()
@@ -101,7 +101,7 @@ async def test_next_document_number_format():
 
     number = await _next_document_number(db)
     assert number.startswith("AI-")
-    assert len(number) == len("AI-20260619-0001")
+    assert len(number) == len("AI-202606-0001")
     assert number.endswith("-0001")
 
 
