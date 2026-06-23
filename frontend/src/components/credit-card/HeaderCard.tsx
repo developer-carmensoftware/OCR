@@ -1,6 +1,7 @@
 import { IdCard } from 'lucide-react'
 import { HEADER_LABELS } from '../../constants'
 import DateInput from '../common/DateInput'
+import { useT } from '../../i18n/LanguageContext'
 
 interface Props {
   headerData: Record<string, string>
@@ -11,11 +12,12 @@ interface Props {
 const DATE_KEYS = new Set(['DocDate', 'DateProcessed'])
 
 export default function HeaderCard({ headerData, onUpdate, readOnly }: Props) {
+  const { t } = useT()
   return (
     <div className="data-card overflow-visible">
       <div className="card-title">
         <div className="card-title-left">
-          <IdCard size={16} /> Header Information
+          <IdCard size={16} /> {t('cc.headerInfo')}
         </div>
       </div>
       <div className="card-body">

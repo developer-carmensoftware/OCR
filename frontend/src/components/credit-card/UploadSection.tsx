@@ -1,5 +1,7 @@
 import React from 'react'
 import { UploadCloud, FolderOpen, Info, Loader2 } from 'lucide-react'
+import { useT } from '../../i18n/LanguageContext'
+import type { TKey } from '../../i18n/dict'
 
 interface Props {
   onFileChange: (e: React.ChangeEvent<HTMLInputElement> | { target: { files: FileList } }) => void
@@ -10,11 +12,11 @@ interface Props {
   imageMerging?: boolean
 }
 
-const INSTRUCTIONS = [
-  { n: 1, c: 'gold', text: 'Upload the bank receipt file (JPG, PNG, PDF)' },
-  { n: 2, c: 'gold', text: 'AI will detect the bank and extract data automatically' },
-  { n: 3, c: 'teal', text: 'Review and edit the extracted data' },
-  { n: 4, c: 'teal', text: 'Confirm accounting entries and submit to Carmen Cloud JV' },
+const INSTRUCTIONS: { n: number; c: string; key: TKey }[] = [
+  { n: 1, c: 'gold', key: 'cc.howTo1' },
+  { n: 2, c: 'gold', key: 'cc.howTo2' },
+  { n: 3, c: 'teal', key: 'cc.howTo3' },
+  { n: 4, c: 'teal', key: 'cc.howTo4' },
 ]
 
 export default function UploadSection({
@@ -25,6 +27,7 @@ export default function UploadSection({
   pdfInfoLoading,
   imageMerging,
 }: Props) {
+  const { t } = useT()
   const busy = pdfInfoLoading || imageMerging
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -38,12 +41,12 @@ export default function UploadSection({
 
   const displayLabel =
     fileCount && fileCount > 1
-      ? `${fileCount} images selected`
+      ? t('cc.imagesSelected', { n: fileCount })
       : fileName
         ? fileName.length > 32
           ? fileName.slice(0, 29) + '…'
           : fileName
-        : 'Click or drag files here'
+        : t('cc.dropHint')
 
   return (
     <div style={{ maxWidth: 560, margin: '0 auto' }}>
@@ -74,11 +77,9 @@ export default function UploadSection({
               <Loader2 size={40} className="animate-spin" />
             </div>
             <div className="upload-label" style={{ color: 'var(--primary)' }}>
-              Merging {fileCount} images…
+              {t('cc.merging', { n: fileCount ?? 0 })}
             </div>
-            <div className="upload-hint">
-              Creating PDF from images, this will only take a moment
-            </div>
+            <div className="upload-hint">{t('cc.mergingHint')}</div>
           </>
         ) : pdfInfoLoading ? (
           <>
@@ -86,9 +87,9 @@ export default function UploadSection({
               <Loader2 size={40} className="animate-spin" />
             </div>
             <div className="upload-label" style={{ color: 'var(--primary)' }}>
-              Reading PDF pages…
+              {t('cc.readingPdf')}
             </div>
-            <div className="upload-hint">Detecting page count, this will only take a moment</div>
+            <div className="upload-hint">{t('cc.readingPdfHint')}</div>
           </>
         ) : (
           <>
@@ -96,9 +97,7 @@ export default function UploadSection({
               <UploadCloud size={40} />
             </div>
             <div className="upload-label">{displayLabel}</div>
-            <div className="upload-hint">
-              Supports JPG · PNG · PDF · HEIC · Multiple images · up to 20 MB
-            </div>
+            <div className="upload-hint">{t('cc.uploadSupports')}</div>
             <button
               type="button"
               className="btn btn-primary"
@@ -108,7 +107,7 @@ export default function UploadSection({
                 fileInputRef.current?.click()
               }}
             >
-              <FolderOpen size={14} /> Browse File
+              <FolderOpen size={14} /> {t('cc.browseFile')}
             </button>
           </>
         )}
@@ -116,13 +115,13 @@ export default function UploadSection({
 
       <div className="panel-card" style={{ marginTop: '1rem' }}>
         <div className="field-label">
-          <Info size={16} /> How to use
+          <Info size={16} /> {t('cc.howTo')}
         </div>
         <div className="how-to-list">
-          {INSTRUCTIONS.map(({ n, c, text }) => (
+          {INSTRUCTIONS.map(({ n, c, key }) => (
             <div key={n} className="how-to-item">
               <div className={`how-step-num ${c}`}>{n}</div>
-              <span>{text}</span>
+              <span>{t(key)}</span>
             </div>
           ))}
         </div>

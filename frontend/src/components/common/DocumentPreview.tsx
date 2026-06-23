@@ -10,6 +10,7 @@ import {
   FileImage,
   File,
 } from 'lucide-react'
+import { useT } from '../../i18n/LanguageContext'
 
 interface SelectedPageThumb {
   thumb: string
@@ -156,10 +157,11 @@ export default function DocumentPreview({
   const imageActive = isImage && !showSelectedThumbs
   const cursor = imageActive ? (isDragging ? 'grabbing' : zoom > 1 ? 'grab' : 'zoom-in') : 'default'
 
+  const { t } = useT()
   return (
     <div className="preview-column">
       <h2 className="section-title">
-        <Eye size={16} /> Document Preview
+        <Eye size={16} /> {t('common.docPreview')}
       </h2>
 
       {hasToolbar && (
@@ -204,8 +206,13 @@ export default function DocumentPreview({
               </span>
               <span className="prev-tool-hint">
                 {selectedPdfPages
-                  ? `Extracting page${selectedPageThumbs!.length > 1 ? 's' : ''} ${selectedPdfPages}`
-                  : 'Scroll and zoom within the document'}
+                  ? t(
+                      selectedPageThumbs!.length > 1
+                        ? 'common.extractingPages'
+                        : 'common.extractingPage',
+                      { pages: selectedPdfPages }
+                    )
+                  : t('common.scrollZoom')}
               </span>
               <div className="prev-tool-sep" />
             </>
@@ -214,7 +221,7 @@ export default function DocumentPreview({
             type="button"
             className="prev-tool-btn"
             onClick={openNewTab}
-            title="Open in new tab"
+            title={t('common.openNewTab')}
           >
             <ExternalLink size={14} />
           </button>
@@ -268,9 +275,9 @@ export default function DocumentPreview({
               <FileImage size={32} />
             </div>
             <p>
-              No Preview File
+              {t('common.noPreview')}
               <br />
-              <span style={{ fontSize: '.75rem', opacity: 0.5 }}>Preview will appear here</span>
+              <span style={{ fontSize: '.75rem', opacity: 0.5 }}>{t('common.previewHint')}</span>
             </p>
           </div>
         )}
@@ -283,7 +290,7 @@ export default function DocumentPreview({
               {previewType} File
               <br />
               <span style={{ fontSize: '.75rem', opacity: 0.5 }}>
-                Preview not supported for this type
+                {t('common.previewUnsupported')}
               </span>
             </p>
           </div>
@@ -299,9 +306,9 @@ export default function DocumentPreview({
               type="button"
               className="btn-zoom-action"
               onClick={openNewTab}
-              title="Open in new tab"
+              title={t('common.openNewTab')}
             >
-              <ExternalLink size={14} /> Open in new tab
+              <ExternalLink size={14} /> {t('common.openNewTab')}
             </button>
           )}
         </div>

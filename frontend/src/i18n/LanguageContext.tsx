@@ -2,12 +2,21 @@ import { createContext, useContext, useState, useCallback, useEffect, type React
 import { flushSync } from 'react-dom'
 import { translate, type Lang, type TKey } from './dict'
 
+// ponytail: the real provider wraps the whole app at the root (main.tsx), so the
+// only consumers without one are unit tests that render a hook/component in
+// isolation. Fall back to a static English context there instead of throwing.
+const FALLBACK_CTX: LanguageCtx = {
+  lang: 'en',
+  setLang: () => {},
+  t: (key, vars) => translate('en', key, vars),
+}
+
 const STORAGE_KEY = 'lang'
 
-/** Default to Thai for this Thai-facing purchase flow; persisted override wins. */
+/** English is the default UI language app-wide; persisted override wins. */
 function readLang(): Lang {
   const v = localStorage.getItem(STORAGE_KEY)
-  return v === 'en' ? 'en' : 'th'
+  return v === 'th' ? 'th' : 'en'
 }
 
 type Vars = Record<string, string | number>
@@ -48,7 +57,5 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 }
 
 export function useT(): LanguageCtx {
-  const ctx = useContext(Ctx)
-  if (!ctx) throw new Error('useT must be used within a LanguageProvider')
-  return ctx
+  return useContext(Ctx) ?? FALLBACK_CTX
 }

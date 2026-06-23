@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence, useAnimationControls, useReducedMotion } from 'framer-motion'
 import { CheckCircle2, AlertTriangle, XCircle, Info, Loader2, Eye, EyeOff } from 'lucide-react'
+import { useT } from '../../i18n/LanguageContext'
 
 type ModalType = 'info' | 'success' | 'warning' | 'error' | 'loading'
 
@@ -40,8 +41,8 @@ export default function CustomModal({
   type = 'info',
   onConfirm,
   onCancel,
-  confirmText = 'OK',
-  cancelText = 'Cancel',
+  confirmText,
+  cancelText,
   cancelStyle,
   inputLabel,
   inputValue,
@@ -59,7 +60,10 @@ export default function CustomModal({
   const [revealed, setRevealed] = useState(false)
   const shakeControls = useAnimationControls()
   const reduceMotion = useReducedMotion()
+  const { t } = useT()
   const isPassword = inputType === 'password'
+  const confirmLabel = confirmText ?? t('modal.ok')
+  const cancelLabel = cancelText ?? t('modal.cancel')
 
   useEffect(() => {
     if (show) setInputVal(inputValue || '')
@@ -239,7 +243,7 @@ export default function CustomModal({
                   onClick={onCancel}
                   disabled={busy}
                 >
-                  {cancelText}
+                  {cancelLabel}
                 </button>
               )}
               <button
@@ -250,7 +254,7 @@ export default function CustomModal({
                 disabled={busy}
               >
                 {busy && <Loader2 size={15} className="animate-spin" aria-hidden="true" />}
-                {confirmText}
+                {confirmLabel}
               </button>
             </div>
           </motion.div>

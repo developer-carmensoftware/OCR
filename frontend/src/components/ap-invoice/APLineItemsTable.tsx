@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState } from 'react'
 import { LayoutList, Trash2 } from 'lucide-react'
 import { isNumFld, fmt, parseNum } from '../../constants/apInvoice'
+import { useT } from '../../i18n/LanguageContext'
 import Card from '../common/Card'
 import NumericInput from '../common/NumericInput'
 import APGroupModal from './APGroupModal'
@@ -18,7 +19,6 @@ const TAX_TYPE_OPTIONS: InlineSelectOption[] = [
 ]
 
 interface Props {
-  t: Record<string, string>
   lineItems: Array<Record<string, string | undefined>>
   fieldMappings: Record<APColumnKey, string>
   activeCols: number[]
@@ -43,7 +43,6 @@ interface Props {
 }
 
 export default function APLineItemsTable({
-  t,
   lineItems,
   fieldMappings,
   activeCols,
@@ -63,6 +62,7 @@ export default function APLineItemsTable({
   ungroupItems,
   removeItem,
 }: Props) {
+  const { t } = useT()
   // "Group by description" opens a modal where the user sets the description and picks rows.
   const [showGroupModal, setShowGroupModal] = useState(false)
   const mappedFieldValues = Object.values(fieldMappings)
@@ -154,14 +154,14 @@ export default function APLineItemsTable({
     <>
       <Card
         icon={<LayoutList size={16} />}
-        title={t.reviewTitle}
+        title={t('ap.reviewTitle')}
         right={
           <div className="ap-card-header-actions">
             {(lineItems.length > 1 || isGrouped) && (
               <>
                 {isGrouped && (
                   <button type="button" className="btn btn-sm btn-outline" onClick={ungroupItems}>
-                    Ungroup ({originalLineItemsCount} items)
+                    {t('ap.ungroup', { n: originalLineItemsCount })}
                   </button>
                 )}
                 <button
@@ -170,12 +170,12 @@ export default function APLineItemsTable({
                   onClick={() => setShowGroupModal(true)}
                   disabled={lineItems.length < 2}
                 >
-                  Group by description
+                  {t('ap.groupTitle')}
                 </button>
               </>
             )}
             <span className="row-count">
-              {lineItems.length} {t.items}
+              {lineItems.length} {t('ap.items')}
             </span>
           </div>
         }
@@ -191,7 +191,7 @@ export default function APLineItemsTable({
                     return (
                       <Fragment key={c}>
                         {!showFixedTaxType && showFixedTaxProfile && (
-                          <th scope="col">{t.taxProfile}</th>
+                          <th scope="col">{t('ap.taxProfile')}</th>
                         )}
                         <th scope="col">{label}</th>
                       </Fragment>
@@ -201,7 +201,7 @@ export default function APLineItemsTable({
                     return (
                       <Fragment key={c}>
                         {showFixedTaxProfile && showFixedTaxPct && (
-                          <th scope="col">{t.taxProfile}</th>
+                          <th scope="col">{t('ap.taxProfile')}</th>
                         )}
                         <th scope="col">{label}</th>
                       </Fragment>
@@ -213,9 +213,11 @@ export default function APLineItemsTable({
                     </th>
                   )
                 })}
-                {showFixedTaxType && showFixedTaxProfile && <th scope="col">{t.taxProfile}</th>}
-                {showFixedTaxPct && <th scope="col">{t.taxPct}</th>}
-                {showFixedTaxType && <th scope="col">{t.taxType}</th>}
+                {showFixedTaxType && showFixedTaxProfile && (
+                  <th scope="col">{t('ap.taxProfile')}</th>
+                )}
+                {showFixedTaxPct && <th scope="col">{t('ap.taxPct')}</th>}
+                {showFixedTaxType && <th scope="col">{t('ap.taxType')}</th>}
                 <th scope="col" aria-label="Actions" />
               </tr>
             </thead>
@@ -313,7 +315,7 @@ export default function APLineItemsTable({
                   if (i === 0)
                     return (
                       <td key="lbl" className="ap-total-label">
-                        {t.tableTotal}
+                        {t('ap.tableTotal')}
                       </td>
                     )
                   if (fld === 'lineSubTotal')
@@ -368,7 +370,6 @@ export default function APLineItemsTable({
       </Card>
       <APGroupModal
         show={showGroupModal}
-        t={t}
         lineItems={lineItems as APLineItem[]}
         groupByDescription={groupByDescription}
         onClose={() => setShowGroupModal(false)}

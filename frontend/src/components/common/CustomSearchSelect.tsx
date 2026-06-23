@@ -1,5 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef, CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
+import { useT } from '../../i18n/LanguageContext'
 
 export interface SelectOption {
   code: string
@@ -30,6 +31,7 @@ export default function CustomSearchSelect({
   suggestedValue,
   hasError = false,
 }: Props) {
+  const { t } = useT()
   const [isOpen, setIsOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [dropdownStyle, setDropdownStyle] = useState<CSSProperties>({})
@@ -126,13 +128,13 @@ export default function CustomSearchSelect({
   const topBadge =
     topChoice?.source === 'history'
       ? {
-          label: 'History',
+          label: t('common.history'),
           bg: 'var(--btn-ok-bg, #f0fdf4)',
           color: 'var(--btn-ok-text, #16a34a)',
           border: 'var(--btn-ok-border, #86efac)',
         }
       : {
-          label: 'AI Suggested',
+          label: t('common.aiSuggested'),
           bg: 'var(--ap-suggest-bg, #f5f3ff)',
           color: 'var(--primary, #7c3aed)',
           border: 'var(--primary-mid, #c4b5fd)',
@@ -168,7 +170,7 @@ export default function CustomSearchSelect({
         onChange={e => setSearchTerm(e.target.value)}
         title={
           isAISuggested
-            ? `AI Suggested: ${suggestedValue}${suggestedDesc ? ` — ${suggestedDesc}` : ''}`
+            ? `${t('common.aiSuggested')}: ${suggestedValue}${suggestedDesc ? ` — ${suggestedDesc}` : ''}`
             : value && selectedDesc
               ? `${value} — ${selectedDesc}`
               : ''

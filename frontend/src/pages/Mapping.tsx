@@ -2,6 +2,7 @@ import React from 'react'
 import { Network, Loader2, CheckCircle2 } from 'lucide-react'
 import CustomModal from '../components/common/CustomModal'
 import '../styles/pages/mapping.css'
+import { useT } from '../i18n/LanguageContext'
 import { useMapping } from '../hooks/mapping'
 import TopLevelConfigSection from '../components/credit-card/TopLevelConfigSection'
 import CompanyInfoSection from '../components/credit-card/CompanyInfoSection'
@@ -79,6 +80,7 @@ function MappingSkeleton() {
 }
 
 export default function Mapping() {
+  const { t } = useT()
   const mappingCtrl = useMapping()
 
   if (mappingCtrl.configLoading) return <MappingSkeleton />
@@ -105,18 +107,18 @@ export default function Mapping() {
       />
       <CustomModal
         show={mappingCtrl.acceptAllModal}
-        title="Confirm Accept All"
-        message="AI might suggest incorrect account codes. Have you reviewed all items?"
+        title={t('cc.acceptAllTitle')}
+        message={t('cc.acceptAllMsg')}
         type="warning"
-        confirmText="Confirm Accept All"
-        cancelText="Cancel"
+        confirmText={t('cc.acceptAllConfirm')}
+        cancelText={t('modal.cancel')}
         onConfirm={mappingCtrl.handleAcceptAll}
         onCancel={() => mappingCtrl.setAcceptAllModal(false)}
       />
 
       <div className="container" style={{ margin: '2rem auto', maxWidth: '800px' }}>
         <h1>
-          <Network size={20} /> Account Mapping Configuration
+          <Network size={20} /> {t('cc.mappingTitle')}
         </h1>
 
         <TopLevelConfigSection
@@ -186,7 +188,7 @@ export default function Mapping() {
             ) : (
               <CheckCircle2 size={18} />
             )}
-            {mappingCtrl.saving ? 'Saving...' : 'Save & Close'}
+            {mappingCtrl.saving ? t('cc.saving') : t('cc.saveClose')}
           </button>
         </div>
       </div>

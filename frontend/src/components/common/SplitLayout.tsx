@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { ChevronLeft, FileText } from 'lucide-react'
 import DocumentPreview from './DocumentPreview'
+import { useT } from '../../i18n/LanguageContext'
 
 interface SelectedPageThumb {
   thumb: string
@@ -27,6 +28,7 @@ export default function SplitLayout({
   selectedPageThumbs,
   children,
 }: Props) {
+  const { t } = useT()
   return (
     <div className={`ap-split-layout ${!showPreview ? 'full-width' : ''}`}>
       {showPreview && (
@@ -38,13 +40,13 @@ export default function SplitLayout({
             selectedPageThumbs={selectedPageThumbs}
           />
           <button type="button" className="preview-toggle-btn hide" onClick={() => onToggle(false)}>
-            <ChevronLeft size={14} /> Hide Document
+            <ChevronLeft size={14} /> {t('common.hideDoc')}
           </button>
         </div>
       )}
       {!showPreview && (
         <button type="button" className="preview-toggle-btn show" onClick={() => onToggle(true)}>
-          <FileText size={14} /> View Document
+          <FileText size={14} /> {t('common.viewDoc')}
         </button>
       )}
       <div className="ap-work-area">{children}</div>

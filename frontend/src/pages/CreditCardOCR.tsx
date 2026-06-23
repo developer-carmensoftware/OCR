@@ -14,6 +14,8 @@ import {
   AppHeader,
 } from '../components/common'
 import PDFPageSelector from '../components/common/PDFPageSelector'
+import LanguageToggle from '../components/common/LanguageToggle'
+import { useT } from '../i18n/LanguageContext'
 import { appKey } from '../lib/storage'
 import {
   UploadSection,
@@ -27,6 +29,7 @@ import { BANK_THAI_NAMES } from '../constants'
 import type { BankCode } from '../types/api'
 
 export default function CreditCardOCR() {
+  const { t } = useT()
   const {
     step,
     files,
@@ -67,13 +70,14 @@ export default function CreditCardOCR() {
   function handleReExtract(bankType: BankCode | null) {
     const bankDisplay = bankType
       ? `${BANK_THAI_NAMES[bankType] || bankType} (${bankType})`
-      : 'Auto-detect'
+      : t('cc.autoDetect')
+    const method = bankType ? t('cc.methodPrompt', { bank: bankDisplay }) : t('cc.methodAuto')
     showModal({
-      title: 'Re-extract Document?',
-      message: `Re-extracting with ${bankDisplay} will use 1 additional quota.\n\nThe system will use ${bankType ? `the ${bankDisplay} prompt` : 'auto-detection'} as the primary extraction method.`,
+      title: t('cc.reExtractTitle'),
+      message: t('cc.reExtractMsg', { bank: bankDisplay, method }),
       type: 'warning',
-      confirmText: 'Re-extract',
-      cancelText: 'Cancel',
+      confirmText: t('cc.reExtract'),
+      cancelText: t('modal.cancel'),
       onConfirm: () => {
         closeModal()
         reExtract(bankType ?? undefined)
@@ -85,12 +89,11 @@ export default function CreditCardOCR() {
   function handleStepClick(n: number) {
     if (n === 1 && step > 1) {
       showModal({
-        title: 'Return to Upload?',
-        message:
-          'Going back will clear all extracted data.\nYou will need to re-upload and re-extract the document, which will use 1 additional quota.',
+        title: t('cc.returnTitle'),
+        message: t('cc.returnMsg'),
         type: 'warning',
-        confirmText: 'Go Back',
-        cancelText: 'Stay Here',
+        confirmText: t('cc.goBack'),
+        cancelText: t('cc.stayHere'),
         onConfirm: () => {
           closeModal()
           resetAll()
@@ -138,6 +141,7 @@ export default function CreditCardOCR() {
         >
           <UsageIndicator />
           <PaymentButton />
+          <LanguageToggle />
           <DarkModeToggle />
         </AppHeader>
 
@@ -191,7 +195,7 @@ export default function CreditCardOCR() {
                 <FormActions
                   onCancel={handleCancel}
                   onSubmit={() => setStep(3)}
-                  submitLabel="Next (Review Accounting)"
+                  submitLabel={t('cc.nextReview')}
                   showBack={false}
                 />
               </SplitLayout>
@@ -220,7 +224,7 @@ export default function CreditCardOCR() {
                     } catch {
                       /* ignore */
                     }
-                    toast.info('Opened new tab for Mapping settings')
+                    toast.info(t('cc.openedMapping'))
                     window.open('#/CreditCardOCR/mapping', '_blank')
                   }}
                   submitting={submitting}

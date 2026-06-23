@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
-import { AP_I18N } from '../../constants/apInvoice'
+import { useT } from '../../i18n/LanguageContext'
 import { showToast } from '../../lib/toast'
 import { parseNum, fmt, fmtQty, round2 } from '../../lib/format'
 import { saveAPVendorMapping } from '../../lib/api/config'
@@ -17,7 +17,7 @@ import type { TaxProfileItem } from '../../lib/api/carmen'
 import type { ModalState } from '../../types/modal'
 
 export function useAPInvoice() {
-  const t = AP_I18N
+  const { t } = useT()
 
   const [step, setStep] = useState(1)
   const [modal, setModal] = useState<ModalState>({ show: false })
@@ -27,15 +27,15 @@ export function useAPInvoice() {
   const groupIdCounter = useRef(0)
   const [taxProfiles, setTaxProfiles] = useState<TaxProfileItem[]>([])
 
-  const extraction = useAPExtraction({ t, setStep, setModal })
+  const extraction = useAPExtraction({ setStep, setModal })
 
-  const vendor = useAPVendor({ t, headerData: extraction.headerData })
+  const vendor = useAPVendor({ headerData: extraction.headerData })
 
   const validation = useAPValidation({
-    t,
     headerData: extraction.headerData,
     lineItems: extraction.lineItems,
     fieldMappings: extraction.fieldMappings,
+    t,
   })
 
   const submission = useAPSubmission({
@@ -109,7 +109,7 @@ export function useAPInvoice() {
   const confirmMapping = () => {
     const mappedValues = Object.values(extraction.fieldMappings)
     if (!mappedValues.includes('description') || !mappedValues.includes('lineTotal')) {
-      showToast(t.warnMissingMapping, 'warning')
+      showToast(t('ap.warnMissingMapping'), 'warning')
       return
     }
     const taxId = extraction.headerData.vendorTaxId
@@ -128,23 +128,23 @@ export function useAPInvoice() {
         /* ignore */
       }
     }
-    showToast('Column settings saved', 'success')
+    showToast(t('ap.colSaved'), 'success')
     setStep(3)
   }
 
   const goToAccount = () => {
     if (!vendor.systemVendor.code) {
-      showToast(t.warnSelectVendor, 'warning')
+      showToast(t('ap.warnSelectVendor'), 'warning')
       return
     }
     if (!validation.isValid) {
       setModal({
         show: true,
         type: 'warning',
-        title: t.mismatchTitle,
-        message: t.warnMismatch,
-        confirmText: t.proceed,
-        cancelText: t.backEdit,
+        title: t('ap.mismatchTitle'),
+        message: t('ap.warnMismatch'),
+        confirmText: t('ap.proceed'),
+        cancelText: t('ap.backEdit'),
         onConfirm: () => {
           setModal({ show: false })
           setStep(4)
@@ -219,8 +219,12 @@ export function useAPInvoice() {
     const taxTarget = repair.field === 'taxAmount' ? repair.value : validation.tgtTax
     reconcileTableToDoc(subTarget, taxTarget)
     const label =
-      repair.field === 'taxAmount' ? t.tax : repair.field === 'subTotal' ? t.subTotal : t.grandTotal
-    showToast(`${auto ? t.docAutoFixedToast : t.docFixedToast} ${label}`, 'success')
+      repair.field === 'taxAmount'
+        ? t('ap.tax')
+        : repair.field === 'subTotal'
+          ? t('ap.subTotal')
+          : t('ap.grandTotal')
+    showToast(`${auto ? t('ap.docAutoFixedToast') : t('ap.docFixedToast')} ${label}`, 'success')
   }
 
   const fixDocFigures = () =>
@@ -460,7 +464,7 @@ export function useAPInvoice() {
       .sort((a, b) => a - b)
     if (sorted.length < 2) return false
     const selected = sorted.map(i => items[i])
-    const desc = description.trim() || items[sorted[0]]?.description || 'Grouped items'
+    const desc = description.trim() || items[sorted[0]]?.description || t('ap.groupedItems')
     const buckets = groupSelected(selected, desc)
 
     const newSources: Record<string, APLineItem[]> = {}
@@ -494,10 +498,10 @@ export function useAPInvoice() {
     if (!item) return
     extraction.removeItem(idx)
     toast.dismiss()
-    toast('Item deleted', {
+    toast(t('ap.itemDeleted'), {
       duration: 5000,
       action: {
-        label: 'Undo',
+        label: t('ap.undo'),
         onClick: () => {
           extraction.setLineItems(prev => {
             const next = [...prev]
@@ -528,7 +532,6 @@ export function useAPInvoice() {
   }
 
   return {
-    t,
     step,
     setStep,
     file: extraction.file,

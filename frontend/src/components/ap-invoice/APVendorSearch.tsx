@@ -2,11 +2,11 @@ import { User, CheckCircle2, AlertTriangle, Plus, RotateCw, Search, Info } from 
 import Badge from '../common/Badge'
 import Tooltip from '../common/Tooltip'
 import { getCarmenUrl } from '../../lib/url'
+import { useT } from '../../i18n/LanguageContext'
 import type { Vendor } from '../../hooks/ap-invoice/useAPVendor'
 import type React from 'react'
 
 interface Props {
-  t: Record<string, string>
   systemVendor: Vendor
   setSystemVendor: React.Dispatch<React.SetStateAction<Vendor>>
   vendorSearch: string
@@ -19,7 +19,6 @@ interface Props {
 }
 
 export default function VendorSearch({
-  t,
   systemVendor,
   setSystemVendor,
   vendorSearch,
@@ -30,6 +29,7 @@ export default function VendorSearch({
   onRefresh,
   refreshing,
 }: Props) {
+  const { t } = useT()
   return (
     <div className="vendor-search-wrap">
       <div
@@ -50,15 +50,15 @@ export default function VendorSearch({
             position: 'relative',
           }}
         >
-          <User size={15} /> {t.systemVendor}
-          <Tooltip text='Choose vendor or click "+ New Vendor" if not found.' position="top-right">
+          <User size={15} /> {t('ap.systemVendor')}
+          <Tooltip text={t('common.vendorTooltip')} position="top-right">
             <Info size={14} style={{ color: 'var(--text-4)', cursor: 'help' }} />
           </Tooltip>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <Badge variant={systemVendor.code ? 'success' : 'warning'}>
             {systemVendor.code ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}
-            {systemVendor.code ? 'Mapped' : 'Unmapped'}
+            {systemVendor.code ? t('common.mapped') : t('common.unmapped')}
           </Badge>
           <a
             href={getCarmenUrl('/apVendor/create')}
@@ -79,13 +79,13 @@ export default function VendorSearch({
               whiteSpace: 'nowrap',
             }}
           >
-            <Plus size={11} /> New Vendor
+            <Plus size={11} /> {t('common.newVendor')}
           </a>
           <button
             type="button"
             onClick={onRefresh}
             disabled={refreshing}
-            title="Refresh vendor list"
+            title={t('common.refreshVendor')}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -110,7 +110,7 @@ export default function VendorSearch({
         <input
           type="text"
           className={`vendor-search-input ${systemVendor.code ? 'matched' : ''}`}
-          placeholder={t.searchVendor}
+          placeholder={t('ap.searchVendor')}
           value={vendorSearch}
           onChange={e => {
             setVendorSearch(e.target.value)
@@ -168,7 +168,7 @@ export default function VendorSearch({
                           padding: '0 4px',
                         }}
                       >
-                        Inactive
+                        {t('common.inactive')}
                       </span>
                     )}
                   </div>
@@ -190,7 +190,7 @@ export default function VendorSearch({
                 textAlign: 'center',
               }}
             >
-              No vendor found
+              {t('common.noVendorFound')}
             </div>
           )}
         </div>

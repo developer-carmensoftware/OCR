@@ -15,6 +15,8 @@ import VendorSearch from './APVendorSearch'
 import AmountSummary from './APAmountSummary'
 import APLineItemsTable from './APLineItemsTable'
 import { parseNum } from '../../constants/apInvoice'
+import { useT } from '../../i18n/LanguageContext'
+import type { TKey } from '../../i18n/dict'
 import type { TaxTypeValue } from './TaxTypeDropdown'
 import type { APColumnKey } from '../../constants/apInvoice'
 import type { Vendor } from '../../hooks/ap-invoice/useAPVendor'
@@ -22,7 +24,6 @@ import type { APInvoiceHeader } from '../../constants/apInvoice'
 import type { TaxProfileItem } from '../../lib/api/carmen'
 
 interface Ctrl {
-  t: Record<string, string>
   headerData: APInvoiceHeader
   lineItems: Array<Record<string, string | undefined>>
   fieldMappings: Record<APColumnKey, string>
@@ -78,18 +79,18 @@ interface Props {
   ctrl: Ctrl
 }
 
-const HEADER_FIELDS = (t: Record<string, string>) => [
-  { key: 'vendorName', label: t.vendorName },
-  { key: 'vendorTaxId', label: t.vendorTaxId },
-  { key: 'vendorBranch', label: t.vendorBranch },
-  { key: 'documentName', label: t.docName },
-  { key: 'documentNumber', label: t.docNo },
-  { key: 'documentDate', label: t.docDate },
+const HEADER_FIELDS = (t: (key: TKey) => string) => [
+  { key: 'vendorName', label: t('ap.vendorName') },
+  { key: 'vendorTaxId', label: t('ap.vendorTaxId') },
+  { key: 'vendorBranch', label: t('ap.vendorBranch') },
+  { key: 'documentName', label: t('ap.docName') },
+  { key: 'documentNumber', label: t('ap.docNo') },
+  { key: 'documentDate', label: t('ap.docDate') },
 ]
 
 export default function APReviewStep({ ctrl }: Props) {
+  const { t } = useT()
   const {
-    t,
     headerData,
     lineItems,
     fieldMappings,
@@ -169,23 +170,23 @@ export default function APReviewStep({ ctrl }: Props) {
   const checks: CheckItem[] = [
     {
       ok: isValid,
-      label: isValid ? t.validOk : `${t.validErrPrefix} ${validationErrors.join(', ')}`,
+      label: isValid ? t('ap.validOk') : `${t('ap.validErrPrefix')} ${validationErrors.join(', ')}`,
     },
     {
       ok: unmatchedCount === 0,
-      label: unmatchedCount > 0 ? `${unmatchedCount} ${t.warnTaxUnmatched}` : 'Tax rates OK',
+      label:
+        unmatchedCount > 0 ? `${unmatchedCount} ${t('ap.warnTaxUnmatched')}` : t('ap.taxRatesOk'),
     },
     {
       ok: emptyDescCount === 0,
       label:
-        emptyDescCount > 0 ? `${emptyDescCount} ${t.warnEmptyDesc}` : 'All descriptions filled',
+        emptyDescCount > 0 ? `${emptyDescCount} ${t('ap.warnEmptyDesc')}` : t('ap.allDescFilled'),
     },
   ]
 
   return (
     <>
       <VendorSearch
-        t={t}
         systemVendor={systemVendor}
         setSystemVendor={setSystemVendor}
         vendorSearch={vendorSearch}
@@ -197,7 +198,7 @@ export default function APReviewStep({ ctrl }: Props) {
         refreshing={vendorRefreshing}
       />
 
-      <Card icon={<Building size={16} />} title={t.headerTitle} className="card-vendor">
+      <Card icon={<Building size={16} />} title={t('ap.headerTitle')} className="card-vendor">
         <div className="card-body">
           <div className="header-form">
             {HEADER_FIELDS(t).map(({ key, label }) => (
@@ -225,7 +226,6 @@ export default function APReviewStep({ ctrl }: Props) {
       </Card>
 
       <APLineItemsTable
-        t={t}
         lineItems={lineItems}
         fieldMappings={fieldMappings}
         activeCols={activeCols}
@@ -265,10 +265,10 @@ export default function APReviewStep({ ctrl }: Props) {
           )}
           <div>
             <div className="ap-valid-title">
-              {allClear ? t.validOk : !isValid ? t.validErr : 'Review warnings'}
+              {allClear ? t('ap.validOk') : !isValid ? t('ap.validErr') : t('ap.reviewWarnings')}
             </div>
             {allClear ? (
-              <div className="ap-valid-desc">{t.validOkDesc}</div>
+              <div className="ap-valid-desc">{t('ap.validOkDesc')}</div>
             ) : (
               <ul className="ap-valid-check-list">
                 {checks.map((c, i) => (
@@ -282,7 +282,6 @@ export default function APReviewStep({ ctrl }: Props) {
           </div>
         </div>
         <AmountSummary
-          t={t}
           sums={{
             lineSubTotal: sumLineSubTotal,
             discount: sumDiscount,
@@ -301,19 +300,19 @@ export default function APReviewStep({ ctrl }: Props) {
 
       <div className="ap-step-nav">
         <button type="button" className="btn btn-outline" onClick={() => setStep(2)}>
-          <ArrowLeft size={14} /> {t.backMap}
+          <ArrowLeft size={14} /> {t('ap.backMap')}
         </button>
         <div className="ap-nav-right">
           {missingHeader && (
             <span className="ap-vendor-warning">
               <AlertTriangle size={13} />
-              {t.warnMissingHeader}
+              {t('ap.warnMissingHeader')}
             </span>
           )}
           {!vendorMapped && (
             <span className="ap-vendor-warning">
               <AlertTriangle size={13} />
-              {t.warnSelectVendor}
+              {t('ap.warnSelectVendor')}
             </span>
           )}
           <button
@@ -322,7 +321,7 @@ export default function APReviewStep({ ctrl }: Props) {
             onClick={vendorMapped ? goToAccount : undefined}
             disabled={!vendorMapped}
           >
-            {isValid ? t.proceed : t.proceedAnyway}
+            {isValid ? t('ap.proceed') : t('ap.proceedAnyway')}
             <ArrowRight size={14} />
           </button>
         </div>

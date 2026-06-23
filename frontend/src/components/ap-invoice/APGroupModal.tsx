@@ -4,11 +4,11 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Layers } from 'lucide-react'
 import { fmt, parseNum } from '../../constants/apInvoice'
 import { effectiveTaxProfile, apGroupKey } from '../../lib/apGroup'
+import { useT } from '../../i18n/LanguageContext'
 import type { APLineItem } from '../../hooks/ap-invoice/useAPExtraction'
 
 interface Props {
   show: boolean
-  t: Record<string, string>
   lineItems: APLineItem[]
   groupByDescription: (indices: number[], description: string) => boolean
   onClose: () => void
@@ -18,7 +18,8 @@ interface Props {
 // names the group, and clicks Group. Rows with different tax profiles each become their own merged
 // row — all sharing the same description. The summary strip adapts: same-profile = total; mixed =
 // info message "→ N rows (split by tax profile)". Enter/exit motion mirrors CustomModal.
-export default function APGroupModal({ show, t, lineItems, groupByDescription, onClose }: Props) {
+export default function APGroupModal({ show, lineItems, groupByDescription, onClose }: Props) {
+  const { t } = useT()
   const [desc, setDesc] = useState('')
   const [selected, setSelected] = useState<Set<number>>(new Set())
 
@@ -90,7 +91,7 @@ export default function APGroupModal({ show, t, lineItems, groupByDescription, o
             className="ap-group-modal"
             role="dialog"
             aria-modal="true"
-            aria-label="Group by description"
+            aria-label={t('ap.groupTitle')}
             onClick={e => e.stopPropagation()}
             initial={{ opacity: 0, scale: 0.95, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -102,26 +103,24 @@ export default function APGroupModal({ show, t, lineItems, groupByDescription, o
                 <Layers size={15} strokeWidth={2.25} />
               </span>
               <div className="ap-group-modal-header-text">
-                <span className="ap-group-modal-title">Group by description</span>
-                <span className="ap-group-modal-subtitle">
-                  Combine selected items into one row per tax profile, sharing one name.
-                </span>
+                <span className="ap-group-modal-title">{t('ap.groupTitle')}</span>
+                <span className="ap-group-modal-subtitle">{t('ap.groupSubtitle')}</span>
               </div>
             </div>
 
             <div className="ap-group-modal-body">
               <div className="ap-group-modal-list-head">
-                <span className="ap-group-modal-list-head-label">Select items to combine</span>
+                <span className="ap-group-modal-list-head-label">{t('ap.groupSelect')}</span>
                 {lineItems.length > 0 && (
                   <button type="button" className="ap-group-modal-selectall" onClick={toggleAll}>
-                    {allSelected ? 'Clear all' : 'Select all'}
+                    {allSelected ? t('ap.clearAll') : t('ap.selectAll')}
                   </button>
                 )}
               </div>
 
               <div className="ap-group-modal-list" role="group" aria-label="Line items">
                 {lineItems.length === 0 && (
-                  <div className="ap-group-modal-empty">No line items to group.</div>
+                  <div className="ap-group-modal-empty">{t('ap.groupEmpty')}</div>
                 )}
                 {lineItems.map((item, i) => {
                   const isSelected = selected.has(i)
@@ -151,15 +150,15 @@ export default function APGroupModal({ show, t, lineItems, groupByDescription, o
               <div className="ap-group-modal-summary" data-state="ok">
                 {count < 2 ? (
                   <span className="ap-group-modal-summary-hint">
-                    {needMoreItems ? t.warnSelectMore : 'Select at least two items.'}
+                    {needMoreItems ? t('ap.warnSelectMore') : t('ap.groupSelectTwo')}
                   </span>
                 ) : (
                   <>
                     <span className="ap-group-modal-summary-meta">
-                      <strong>{count}</strong> items
+                      <strong>{count}</strong> {t('ap.items')}
                       {multiRow ? (
                         <span className="ap-group-modal-summary-hint--info">
-                          → {profileCount} rows (split by tax profile)
+                          {t('ap.groupSplit', { n: profileCount })}
                         </span>
                       ) : (
                         sharedProfile && (
@@ -174,25 +173,23 @@ export default function APGroupModal({ show, t, lineItems, groupByDescription, o
 
               <div className="ap-group-modal-field">
                 <label className="ap-group-modal-label" htmlFor="ap-group-desc">
-                  Name the grouped line
+                  {t('ap.groupNameLabel')}
                 </label>
                 <input
                   id="ap-group-desc"
                   className={`ap-group-modal-input${missingDesc ? ' ap-group-modal-input--error' : ''}`}
                   value={desc}
                   onChange={e => setDesc(e.target.value)}
-                  placeholder="e.g. Maintenance services (combined)"
+                  placeholder={t('ap.groupNamePh')}
                   autoComplete="new-password"
                 />
-                {missingDesc && (
-                  <div className="ap-group-modal-warn">Enter a name for the combined line.</div>
-                )}
+                {missingDesc && <div className="ap-group-modal-warn">{t('ap.groupNameWarn')}</div>}
               </div>
             </div>
 
             <div className="ap-group-modal-footer">
               <button type="button" className="btn btn-sm btn-outline" onClick={onClose}>
-                Cancel
+                {t('modal.cancel')}
               </button>
               <button
                 type="button"
@@ -200,7 +197,8 @@ export default function APGroupModal({ show, t, lineItems, groupByDescription, o
                 disabled={!canGroup}
                 onClick={handleGroup}
               >
-                Group{count > 0 ? ` ${count}` : ''}
+                {t('ap.group')}
+                {count > 0 ? ` ${count}` : ''}
               </button>
             </div>
           </motion.div>

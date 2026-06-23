@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import type React from 'react'
+import { useT } from '../../i18n/LanguageContext'
 import { apiFetch, fetchTimeout } from '../../lib/api/client'
 import { API } from '../../lib/api/endpoints'
 import { getAPVendorMapping } from '../../lib/api/config'
@@ -27,7 +28,6 @@ export type { APLineItem }
 const EXTRACT_TIMEOUT_MS = 150_000
 
 interface APExtractionProps {
-  t: Record<string, string>
   setStep: (step: number) => void
   setModal: (state: ModalState) => void
   loadVendors?: (() => void) | null
@@ -117,7 +117,8 @@ async function _fetchExtractWithRetry(
   throw new Error('Extraction failed after retries')
 }
 
-export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtractionProps) {
+export function useAPExtraction({ setStep, setModal, loadVendors }: APExtractionProps) {
+  const { t } = useT()
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [previewType, setPreviewType] = useState<string | null>(null)
@@ -355,7 +356,7 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
       }
       console.error(err)
       setStatus(e.message)
-      setError(t.errProcess)
+      setError(t('ap.errProcess'))
       toast.error('Could not read this invoice — try a clearer scan')
     } finally {
       setLoading(false)

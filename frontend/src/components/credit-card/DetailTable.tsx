@@ -3,6 +3,7 @@ import { List, Calculator } from 'lucide-react'
 import { DETAIL_COLUMNS, DETAIL_LABELS } from '../../constants'
 import type { DetailColumn } from '../../constants/fields'
 import NumericInput from '../common/NumericInput'
+import { useT } from '../../i18n/LanguageContext'
 import { fmt, parseNum } from '../../lib/format'
 
 export interface DetailRow {
@@ -48,6 +49,7 @@ export default function DetailTable({
   onDeleteRow: _onDeleteRow,
   readOnly,
 }: Props) {
+  const { t } = useT()
   const [focusedCell, setFocusedCell] = useState<{ row: number; col: string } | null>(null)
 
   return (
@@ -55,9 +57,11 @@ export default function DetailTable({
       <div className="data-card">
         <div className="card-title">
           <div className="card-title-left">
-            <List size={16} /> Details
+            <List size={16} /> {t('cc.details')}
           </div>
-          <span className="row-count">{details.length} items</span>
+          <span className="row-count">
+            {details.length} {t('cc.items')}
+          </span>
         </div>
         <div className="card-body-flush table-wrapper">
           <table className="data-table">
@@ -116,7 +120,7 @@ export default function DetailTable({
       <div className="data-card total-summary-card">
         <div className="card-title">
           <div className="card-title-left">
-            <Calculator size={16} /> Total Summary
+            <Calculator size={16} /> {t('cc.totalSummary')}
           </div>
         </div>
         <div className="card-body">

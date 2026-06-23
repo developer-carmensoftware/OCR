@@ -1,9 +1,10 @@
 import type React from 'react'
 import { useState } from 'react'
 import { UploadCloud, FolderOpen, Info, Loader2 } from 'lucide-react'
+import { useT } from '../../i18n/LanguageContext'
+import type { TKey } from '../../i18n/dict'
 
 interface Props {
-  t: Record<string, string>
   fileInputRef: React.RefObject<HTMLInputElement | null>
   onFileChange: (e: React.ChangeEvent<HTMLInputElement> | { target: { files: File[] } }) => void
   pdfInfoLoading?: boolean
@@ -11,21 +12,21 @@ interface Props {
   fileCount?: number
 }
 
-const INSTRUCTIONS = [
-  { n: 1, c: 'gold', text: 'Upload invoice file (JPG, PNG, PDF)' },
-  { n: 2, c: 'gold', text: 'Verify Field Mapping against the document table' },
-  { n: 3, c: 'teal', text: 'Review Header data and amounts' },
-  { n: 4, c: 'teal', text: 'Map GL accounts for each item, then click Generate Invoice' },
+const INSTRUCTIONS: { n: number; c: string; key: TKey }[] = [
+  { n: 1, c: 'gold', key: 'ap.howTo1' },
+  { n: 2, c: 'gold', key: 'ap.howTo2' },
+  { n: 3, c: 'teal', key: 'ap.howTo3' },
+  { n: 4, c: 'teal', key: 'ap.howTo4' },
 ]
 
 export default function APUploadStep({
-  t,
   fileInputRef,
   onFileChange,
   pdfInfoLoading,
   imageMerging,
   fileCount,
 }: Props) {
+  const { t } = useT()
   const [isDragOver, setIsDragOver] = useState(false)
   const [isDropping, setIsDropping] = useState(false)
 
@@ -81,11 +82,9 @@ export default function APUploadStep({
               <Loader2 size={40} className="animate-spin" />
             </div>
             <div className="upload-label" style={{ color: 'var(--primary)' }}>
-              Merging {fileCount} images…
+              {t('ap.merging', { n: fileCount ?? 0 })}
             </div>
-            <div className="upload-hint">
-              Creating PDF from images, this will only take a moment
-            </div>
+            <div className="upload-hint">{t('ap.mergingHint')}</div>
           </>
         ) : pdfInfoLoading ? (
           <>
@@ -93,17 +92,17 @@ export default function APUploadStep({
               <Loader2 size={40} className="animate-spin" />
             </div>
             <div className="upload-label" style={{ color: 'var(--primary)' }}>
-              Reading PDF pages…
+              {t('ap.readingPdf')}
             </div>
-            <div className="upload-hint">Detecting page count, this will only take a moment</div>
+            <div className="upload-hint">{t('ap.readingPdfHint')}</div>
           </>
         ) : (
           <>
             <div className="upload-icon">
               <UploadCloud size={40} />
             </div>
-            <div className="upload-label">{t.uploadTitle}</div>
-            <div className="upload-hint">{t.uploadDesc}</div>
+            <div className="upload-label">{t('ap.uploadTitle')}</div>
+            <div className="upload-hint">{t('ap.uploadDesc')}</div>
             <button
               type="button"
               className="btn btn-primary"
@@ -113,20 +112,20 @@ export default function APUploadStep({
                 fileInputRef.current?.click()
               }}
             >
-              <FolderOpen size={14} /> {t.uploadBtn}
+              <FolderOpen size={14} /> {t('ap.uploadBtn')}
             </button>
           </>
         )}
       </div>
       <div className="panel-card" style={{ marginTop: '1rem' }}>
         <div className="field-label">
-          <Info size={16} /> How to use AP Invoice OCR
+          <Info size={16} /> {t('ap.howTo')}
         </div>
         <div className="how-to-list">
-          {INSTRUCTIONS.map(({ n, c, text }) => (
+          {INSTRUCTIONS.map(({ n, c, key }) => (
             <div key={n} className="how-to-item">
               <div className={`how-step-num ${c}`}>{n}</div>
-              <span>{text}</span>
+              <span>{t(key)}</span>
             </div>
           ))}
         </div>

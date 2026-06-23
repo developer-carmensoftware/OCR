@@ -2,12 +2,15 @@ import { parseNum, round2, fmt } from '../../lib/format'
 import { getAvailableFields } from '../../constants/apInvoice'
 import type { APLineItem } from './useAPExtraction'
 import type { APInvoiceHeader } from '../../constants/apInvoice'
+import type { TKey } from '../../i18n/dict'
 
 interface APValidationProps {
   headerData: APInvoiceHeader
   lineItems: APLineItem[]
   fieldMappings: Record<string, string>
-  t?: Record<string, string>
+  // Injected by the caller (which holds the LanguageContext) so this stays a pure
+  // function — it is unit-tested by calling it directly, outside any React render.
+  t?: (key: TKey) => string
 }
 
 // adjustField writes a single field onto the target row(s). reconcileRows re-derives the
@@ -104,15 +107,15 @@ export function useAPValidation({ headerData, lineItems, fieldMappings, t }: APV
   const isDocInconsistent = tgtGrand > 0 && Math.abs(tgtSubTotal + tgtTax - tgtGrand) > 0.005
 
   const validationErrors: string[] = [
-    isSubDiff && t?.subTotal,
-    isDiscDiff && t?.discount,
-    isTaxDiff && t?.tax,
-    isGrandDiff && t?.grandTotal,
+    isSubDiff && t?.('ap.subTotal'),
+    isDiscDiff && t?.('ap.discount'),
+    isTaxDiff && t?.('ap.tax'),
+    isGrandDiff && t?.('ap.grandTotal'),
   ].filter((v): v is string => Boolean(v))
 
   const isValid = validationErrors.length === 0
 
-  const availableFields = getAvailableFields(t || {})
+  const availableFields = t ? getAvailableFields(t) : []
   const activeCols = Object.keys(fieldMappings || {})
     .map(k => parseInt(k.replace('col', ''), 10))
     .filter(c => fieldMappings[`col${c}`] !== 'ignore' && fieldMappings[`col${c}`] !== 'category')

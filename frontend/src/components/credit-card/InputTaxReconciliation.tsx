@@ -17,6 +17,7 @@ import { submitInputTax, fetchTaxProfiles } from '../../lib/api/carmen'
 import type { TaxProfileItem } from '../../lib/api/carmen'
 import { normalizeYearToCE } from '../../lib/date'
 import { toNum, fmt } from '../../lib/format'
+import { useT } from '../../i18n/LanguageContext'
 import { useAccountingConfig } from '../../hooks/credit-card'
 import { resolveTaxProfileForRate } from '../../lib/apTax'
 import type { DetailRow } from './DetailTable'
@@ -34,6 +35,7 @@ export default function InputTaxReconciliation({
   onBack: _onBack,
   onFinish,
 }: Props) {
+  const { t } = useT()
   const { config, loading: configLoading } = useAccountingConfig()
   const [showConfirm, setShowConfirm] = useState(false)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
@@ -120,12 +122,12 @@ export default function InputTaxReconciliation({
     try {
       await submitInputTax(payload)
       setShowConfirm(false)
-      toast.success('Input Tax Reconciliation added successfully')
+      toast.success(t('cc.inputTaxAdded'))
       onFinish()
     } catch (err) {
       const msg = (err as Error).message || 'An error occurred'
       setSubmitError(msg)
-      toast.error(`Failed to add Input Tax: ${msg}`)
+      toast.error(t('cc.inputTaxFailed', { msg }))
     } finally {
       setSubmitting(false)
     }
@@ -135,14 +137,14 @@ export default function InputTaxReconciliation({
     <div>
       <div className="section-header">
         <span className="cc-step-title">
-          <FileText size={16} /> Step 6: Input Tax Reconciliation
+          <FileText size={16} /> {t('cc.step6Title')}
         </span>
       </div>
 
       <div className="data-card">
         <div className="card-title">
           <div className="card-title-left">
-            <Scale size={16} /> Input Tax Reconciliation
+            <Scale size={16} /> {t('cc.inputTaxRecon')}
           </div>
           <div className="card-title-badges">
             <span className="cc-badge-primary">Source: ACTX</span>
@@ -182,7 +184,7 @@ export default function InputTaxReconciliation({
                 ) : !hasData ? (
                   <tr>
                     <td colSpan={12} className="cc-empty-row-text">
-                      No Credit card commission / Input Tax data available
+                      {t('cc.noTaxData')}
                     </td>
                   </tr>
                 ) : (
@@ -224,7 +226,7 @@ export default function InputTaxReconciliation({
 
         <div className="form-actions">
           <button type="button" className="btn-danger" onClick={() => setShowDiscardConfirm(true)}>
-            <X size={14} /> Discard
+            <X size={14} /> {t('cc.discard')}
           </button>
           <div className="form-actions-sep" />
           <button
@@ -236,7 +238,7 @@ export default function InputTaxReconciliation({
             }}
             disabled={!hasData || isLoading}
           >
-            <PlusCircle size={14} /> Add Input Tax
+            <PlusCircle size={14} /> {t('cc.addInputTax')}
           </button>
         </div>
       </div>
@@ -248,19 +250,11 @@ export default function InputTaxReconciliation({
               <div className="cc-modal-icon-teal">
                 <FileText size={36} />
               </div>
-              <div className="cc-modal-title">Add Input Tax Reconciliation</div>
-              <p className="cc-modal-body-text">
-                This item will be automatically added to the system as an
-                <br />
-                <strong>Input Tax Reconciliation</strong>.<br />
-                Do you want to proceed?
-              </p>
+              <div className="cc-modal-title">{t('cc.addInputTaxTitle')}</div>
+              <p className="cc-modal-body-text">{t('cc.addInputTaxBody')}</p>
               <div className="cc-modal-info-box-teal">
                 <Flag size={14} className="cc-info-icon-flag" />
-                <span>
-                  After confirmation, the system will <strong>complete the entire process</strong>{' '}
-                  and return to the start page automatically.
-                </span>
+                <span>{t('cc.addInputTaxInfo')}</span>
               </div>
               {submitError && (
                 <div className="cc-modal-error-box">
@@ -274,7 +268,7 @@ export default function InputTaxReconciliation({
                   onClick={() => setShowConfirm(false)}
                   disabled={submitting}
                 >
-                  Cancel
+                  {t('modal.cancel')}
                 </button>
                 <button
                   type="button"
@@ -284,11 +278,11 @@ export default function InputTaxReconciliation({
                 >
                   {submitting ? (
                     <>
-                      <Loader2 size={14} className="animate-spin" /> Sending...
+                      <Loader2 size={14} className="animate-spin" /> {t('cc.sending')}
                     </>
                   ) : (
                     <>
-                      <Check size={14} /> Confirm
+                      <Check size={14} /> {t('cc.confirm')}
                     </>
                   )}
                 </button>
@@ -305,16 +299,11 @@ export default function InputTaxReconciliation({
               <div className="cc-modal-icon-rose">
                 <Flag size={36} />
               </div>
-              <div className="cc-modal-title">Skip Input Tax step?</div>
-              <p className="cc-modal-body-text">
-                You chose <strong>not to add Input Tax</strong> to the system.
-              </p>
+              <div className="cc-modal-title">{t('cc.skipTitle')}</div>
+              <p className="cc-modal-body-text">{t('cc.skipBody')}</p>
               <div className="cc-modal-info-box-rose">
                 <Flag size={14} className="cc-info-icon-flag" />
-                <span>
-                  This action will <strong>complete the entire process</strong> and return to the
-                  start page.
-                </span>
+                <span>{t('cc.skipInfo')}</span>
               </div>
               <div className="modal-actions">
                 <button
@@ -322,18 +311,18 @@ export default function InputTaxReconciliation({
                   className="btn-cancel"
                   onClick={() => setShowDiscardConfirm(false)}
                 >
-                  <ArrowLeft size={14} /> Back to review
+                  <ArrowLeft size={14} /> {t('cc.backToReview')}
                 </button>
                 <button
                   type="button"
                   className="btn-danger cc-btn-danger-rose"
                   onClick={() => {
                     setShowDiscardConfirm(false)
-                    toast.info('Process completed without adding Input Tax')
+                    toast.info(t('cc.processedNoTax'))
                     onFinish()
                   }}
                 >
-                  <X size={14} /> Confirm Discard
+                  <X size={14} /> {t('cc.confirmDiscard')}
                 </button>
               </div>
             </div>
