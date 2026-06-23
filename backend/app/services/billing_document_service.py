@@ -118,7 +118,7 @@ async def _next_document_number(db: AsyncSession) -> str:
         .returning(DocumentSequence.last_no)
     )
     last_no: int = (await db.execute(stmt)).scalar_one()
-    date_part = now.strftime("%Y%m%d")
+    date_part = now.strftime("%Y%m")
     return f"AI-{date_part}-{last_no:04d}"
 
 
