@@ -5,7 +5,7 @@ do $$ begin
 exception when duplicate_object then null; end $$;
 
 do $$ begin
-    create type creditorderstatus as enum ('pending', 'awaiting_review', 'paid', 'rejected', 'cancelled');
+    create type creditorderstatus as enum ('in_progress', 'paid', 'complete', 'void');
 exception when duplicate_object then null; end $$;
 
 do $$ begin
@@ -67,14 +67,18 @@ create table if not exists credit_orders (
     pack_code        varchar(20)        not null references credit_packs (code),
     credits          integer            not null,
     amount_thb       numeric(10, 2)     not null,
-    status           creditorderstatus  not null default 'pending',
+    status           creditorderstatus  not null default 'in_progress',
     payment_ref      varchar(128),
     paid_at          timestamptz,
     approved_by      varchar(100),
     approved_at      timestamptz,
+    expires_at       timestamptz,
     slip_object_key  varchar(512),
     slip_uploaded_at timestamptz,
     rejected_reason  text,
+    admin_note       text,
+    carmen_ar_posted_at timestamptz,
+    carmen_ar_ref    varchar(255),
     created_at       timestamptz        not null default now(),
     updated_at       timestamptz                 default now(),
     deleted_at       timestamptz,
@@ -92,10 +96,32 @@ create index if not exists ix_credit_orders_tenant_status
     on credit_orders (tenant_id, status)
     where deleted_at is null;
 
--- One open order per tenant: only one pending/awaiting_review order at a time.
+-- One open order per tenant: only one in_progress order at a time.
 create unique index if not exists uq_credit_orders_one_open_per_tenant
     on credit_orders (tenant_id)
-    where status in ('pending', 'awaiting_review') and deleted_at is null;
+    where status = 'in_progress' and deleted_at is null;
+
+
+-- AR customer profiles: unique buyer companies mapped to Carmen AR codes.
+create table if not exists ar_customer_profiles (
+    id             uuid         primary key default gen_random_uuid(),
+    buyer_name     varchar(255) not null,
+    buyer_tax_id   varchar(20)  not null default '',
+    buyer_branch   varchar(100) not null default '',
+    carmen_ar_code varchar(50),
+    created_at     timestamptz  not null default now(),
+    updated_at     timestamptz  not null default now(),
+    deleted_at     timestamptz,
+    deleted_by     varchar(100)
+);
+
+create unique index if not exists uq_ar_profiles_taxid_branch
+    on ar_customer_profiles (buyer_tax_id, buyer_branch)
+    where deleted_at is null and buyer_tax_id != '';
+
+create index if not exists ix_ar_profiles_name
+    on ar_customer_profiles (buyer_name)
+    where deleted_at is null;
 
 
 create table if not exists billing_documents (

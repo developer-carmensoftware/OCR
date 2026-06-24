@@ -17,6 +17,7 @@ New code should import directly from the domain modules:
 
 from .admin import AdminUser, AdminUserRole, APIKey, APIKeyUsage, Permission, Role, RolePermission
 from .billing import (
+    ArCustomerProfile,
     BillingDocument,
     CreditLedger,
     CreditOrder,
@@ -107,6 +108,7 @@ __all__ = [
     "TenantCredit",
     "CreditLedger",
     "CreditOrder",
+    "ArCustomerProfile",
     "BillingDocument",
     "DocumentSequence",
     "TenantSubscription",

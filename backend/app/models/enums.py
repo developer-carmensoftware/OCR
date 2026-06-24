@@ -90,12 +90,10 @@ class CreditLedgerReason(str, Enum):
 
 
 class CreditOrderStatus(str, Enum):
-    PENDING = "pending"  # created, QR shown, awaiting payment + slip
-    AWAITING_REVIEW = "awaiting_review"  # slip uploaded, waiting for admin verification
-    ON_HOLD = "on_hold"  # admin contacted the buyer; parked pending their reply
-    PAID = "paid"  # admin approved → credits granted
-    REJECTED = "rejected"  # admin rejected the slip
-    CANCELLED = "cancelled"
+    IN_PROGRESS = "in_progress"
+    PAID = "paid"
+    COMPLETE = "complete"
+    VOID = "void"
 
 
 class BillingDocumentType(str, Enum):

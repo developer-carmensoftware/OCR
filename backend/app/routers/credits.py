@@ -110,9 +110,7 @@ async def create_order(
             select(CreditOrder.id)
             .where(
                 CreditOrder.tenant_id == session.tenant_id,
-                CreditOrder.status.in_(
-                    [CreditOrderStatus.PENDING, CreditOrderStatus.AWAITING_REVIEW]
-                ),
+                CreditOrder.status == CreditOrderStatus.IN_PROGRESS,
                 CreditOrder.deleted_at.is_(None),
             )
             .limit(1)
@@ -149,7 +147,7 @@ async def create_order(
         pack_code=pack.code,
         credits=pack.credits,
         amount_thb=gross,
-        status=CreditOrderStatus.PENDING,
+        status=CreditOrderStatus.IN_PROGRESS,
         expires_at=datetime.now(UTC) + timedelta(days=14),
     )
     try:
@@ -240,7 +238,7 @@ async def upload_slip(
 
     if order is None:
         raise HTTPException(status_code=404, detail="Order not found")
-    if order.status != CreditOrderStatus.PENDING:
+    if order.status != CreditOrderStatus.IN_PROGRESS:
         raise HTTPException(
             status_code=409,
             detail=f"Cannot upload slip for an order in status '{order.status}'",
@@ -267,10 +265,10 @@ async def upload_slip(
 
     order.slip_object_key = key  # type: ignore[assignment]
     order.slip_uploaded_at = datetime.now(UTC)  # type: ignore[assignment]
-    order.status = CreditOrderStatus.AWAITING_REVIEW  # type: ignore[assignment]
+    # Status stays in_progress (slip uploaded but still needs admin review)
     await db.commit()
 
-    return SlipUploadResponse(order_id=order_id, status=order.status.value)
+    return SlipUploadResponse(order_id=order_id, status=CreditOrderStatus.IN_PROGRESS.value)
 
 
 @router.post("/orders/{order_id}/cancel", response_model=CreditOrderResponse)
@@ -297,14 +295,13 @@ async def cancel_order(
 
     if order is None:
         raise HTTPException(status_code=404, detail="Order not found")
-    _cancellable = {CreditOrderStatus.PENDING, CreditOrderStatus.AWAITING_REVIEW}
-    if order.status not in _cancellable:
+    if order.status != CreditOrderStatus.IN_PROGRESS:
         raise HTTPException(
             status_code=409,
             detail=f"Cannot cancel an order in status '{order.status}'",
         )
 
-    order.status = CreditOrderStatus.CANCELLED  # type: ignore[assignment]
+    order.status = CreditOrderStatus.VOID  # type: ignore[assignment]
     order.deleted_at = datetime.now(UTC)  # type: ignore[assignment]
     await db.commit()
     await db.refresh(order)

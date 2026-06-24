@@ -212,7 +212,7 @@ class CreditOrder(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     status: Column = Column(
         SAEnum(CreditOrderStatus, values_callable=lambda o: [e.value for e in o]),
         nullable=False,
-        default=CreditOrderStatus.PENDING,
+        default=CreditOrderStatus.IN_PROGRESS,
     )
     payment_ref = Column(String(128), nullable=True)
     paid_at = Column(DateTime(timezone=True), nullable=True)
@@ -224,9 +224,10 @@ class CreditOrder(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     slip_object_key = Column(String(512), nullable=True)
     slip_uploaded_at = Column(DateTime(timezone=True), nullable=True)
     rejected_reason = Column(Text, nullable=True)
-    # Admin-only memo (e.g. "emailed buyer 22/6, awaiting corrected slip"); set
-    # when an order is put on_hold. Never shown to the buyer.
     admin_note = Column(Text, nullable=True)
+    # Carmen AR posting (set when order is posted to Carmen ERP)
+    carmen_ar_posted_at = Column(DateTime(timezone=True), nullable=True)
+    carmen_ar_ref = Column(String(255), nullable=True)
 
     __table_args__ = (
         Index(
@@ -235,15 +236,11 @@ class CreditOrder(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
             "status",
             postgresql_where=text("deleted_at IS NULL"),
         ),
-        # One open order per tenant — blocks a second purchase while any order
-        # is pending (QR shown) or awaiting_review (slip uploaded).
         Index(
             "uq_credit_orders_one_open_per_tenant",
             "tenant_id",
             unique=True,
-            postgresql_where=text(
-                "status IN ('pending', 'awaiting_review') AND deleted_at IS NULL"
-            ),
+            postgresql_where=text("status = 'in_progress' AND deleted_at IS NULL"),
         ),
     )
 
@@ -335,6 +332,33 @@ class TenantSubscription(Base, TimestampMixin):
             "tenant_id",
             unique=True,
             postgresql_where=text("status = 'active'"),
+        ),
+    )
+
+
+class ArCustomerProfile(Base, TimestampMixin, SoftDeleteMixin):
+    """Unique buyer companies for Carmen AR code mapping."""
+
+    __tablename__ = "ar_customer_profiles"
+
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    buyer_name = Column(String(255), nullable=False)
+    buyer_tax_id = Column(String(20), nullable=False, default="")
+    buyer_branch = Column(String(100), nullable=False, default="")
+    carmen_ar_code = Column(String(50), nullable=True)
+
+    __table_args__ = (
+        Index(
+            "uq_ar_profiles_taxid_branch",
+            "buyer_tax_id",
+            "buyer_branch",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL AND buyer_tax_id != ''"),
+        ),
+        Index(
+            "ix_ar_profiles_name",
+            "buyer_name",
+            postgresql_where=text("deleted_at IS NULL"),
         ),
     )
 
