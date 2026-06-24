@@ -113,7 +113,7 @@ export default function Pricing() {
   const { t } = useT()
   const { plans, packs, loading, error } = usePricingCatalog()
   const { orders, reload } = useOrderHistory()
-  const openOrders = orders.filter(o => o.status === 'pending' || o.status === 'awaiting_review')
+  const openOrders = orders.filter(o => o.status === 'in_progress')
   const hasOpenOrder = openOrders.length > 0
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
   const [resume, setResume] = useState<CheckoutSession | null>(() => loadPersistedCheckout())

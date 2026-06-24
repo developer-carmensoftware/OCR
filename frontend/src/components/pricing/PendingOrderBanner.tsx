@@ -26,8 +26,7 @@ function OrderRow({
   paymentInfo: PaymentInfo | null
 }) {
   const { t } = useT()
-  // on_hold reads as "under review" to the buyer — admin reaches out by email separately.
-  const isReviewing = order.status === 'awaiting_review' || order.status === 'on_hold'
+  const isReviewing = !!order.slip_uploaded_at
   const [open, setOpen] = useState(false)
   const [docs, setDocs] = useState<BillingDocument[] | null>(null)
   const [loadingDocs, setLoadingDocs] = useState(false)
@@ -161,7 +160,7 @@ export default function PendingOrderBanner({
   const { t } = useT()
   if (orders.length === 0) return null
 
-  const hasReviewing = orders.some(o => o.status === 'awaiting_review' || o.status === 'on_hold')
+  const hasReviewing = orders.some(o => !!o.slip_uploaded_at)
   const BannerIcon = hasReviewing ? Clock : AlertTriangle
 
   return (

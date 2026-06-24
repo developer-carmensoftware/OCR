@@ -11,7 +11,7 @@ interface OrderHistoryState {
 }
 
 const POLL_MS = 20_000
-const OPEN_STATUSES = new Set(['pending', 'awaiting_review'])
+const OPEN_STATUSES = new Set(['in_progress'])
 
 /**
  * Loads this tenant's credit orders (newest first). Refetches when the tab
@@ -36,9 +36,9 @@ export function useOrderHistory(): OrderHistoryState {
           if (prev) {
             for (const o of next) {
               const was = prev.get(o.id)
-              if (was === 'awaiting_review' && o.status === 'paid') {
+              if (was === 'in_progress' && o.status === 'paid') {
                 toast.success(t('order.approvedToast'))
-              } else if (was === 'awaiting_review' && o.status === 'rejected') {
+              } else if (was === 'in_progress' && o.status === 'void') {
                 toast.error(t('order.rejectedToast'))
               }
             }

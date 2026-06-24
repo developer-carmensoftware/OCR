@@ -70,7 +70,7 @@ function OrderRow({ order, paymentInfo }: { order: CreditOrder; paymentInfo: Pay
 
       {open && (
         <div className="order-row-body">
-          {order.status === 'rejected' && (
+          {order.status === 'void' && (
             <div className="order-rejected">
               {order.rejected_reason ? (
                 <p className="order-rejected-note">
@@ -109,10 +109,8 @@ export default function OrderHistory() {
   const { orders, loading, error, reload } = useOrderHistory()
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
 
-  // Open orders (pending / under review / on hold) go in the action banner; the rest in history.
-  const OPEN = new Set(['pending', 'awaiting_review', 'on_hold'])
-  const openOrders = orders.filter(o => OPEN.has(o.status))
-  const history = orders.filter(o => !OPEN.has(o.status))
+  const openOrders = orders.filter(o => o.status === 'in_progress')
+  const history = orders.filter(o => o.status !== 'in_progress')
 
   useEffect(() => {
     getPaymentInfo()

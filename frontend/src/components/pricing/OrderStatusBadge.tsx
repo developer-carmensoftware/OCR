@@ -7,16 +7,14 @@ const MAP: Record<
   OrderStatus,
   { variant: 'info' | 'warning' | 'success' | 'error' | 'gray'; key: TKey }
 > = {
-  pending: { variant: 'info', key: 'order.statusPending' },
-  awaiting_review: { variant: 'warning', key: 'order.statusReviewing' },
-  on_hold: { variant: 'warning', key: 'order.statusReviewing' },
+  in_progress: { variant: 'info', key: 'order.statusInProgress' },
   paid: { variant: 'success', key: 'order.statusPaid' },
-  rejected: { variant: 'error', key: 'order.statusRejected' },
-  cancelled: { variant: 'gray', key: 'order.statusCancelled' },
+  complete: { variant: 'success', key: 'order.statusComplete' },
+  void: { variant: 'error', key: 'order.statusVoid' },
 }
 
 export default function OrderStatusBadge({ status }: { status: OrderStatus }) {
   const { t } = useT()
-  const { variant, key } = MAP[status] ?? MAP.pending
+  const { variant, key } = MAP[status] ?? MAP.in_progress
   return <Badge variant={variant}>{t(key)}</Badge>
 }

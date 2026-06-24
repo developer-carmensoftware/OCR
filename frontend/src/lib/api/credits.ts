@@ -15,13 +15,7 @@ export interface CreditPack {
 
 // ── Orders & documents ────────────────────────────────────────────────────────
 
-export type OrderStatus =
-  | 'pending'
-  | 'awaiting_review'
-  | 'on_hold'
-  | 'paid'
-  | 'rejected'
-  | 'cancelled'
+export type OrderStatus = 'in_progress' | 'paid' | 'complete' | 'void'
 
 export interface CreditOrder {
   id: string
