@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   AlertTriangle,
-  Ban,
   Check,
   Coins,
   Copy,
@@ -11,27 +10,26 @@ import {
   Mail,
   Maximize2,
   Pause,
-  Play,
   RotateCw,
+  Send,
   X,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react'
 import ProformaDocument from '../pricing/ProformaDocument'
 import DataTable, { type Column } from './DataTable'
-import { STATUS_KEY, STATUS_TONE, timeAgo } from './OrderQueue'
+import { STAGE_KEY, STAGE_TONE, timeAgo } from './OrderQueue'
 import {
-  adjustCredits,
   approveOrder,
-  cancelOrder,
   fetchAdminOrderDocuments,
   fetchCreditBalance,
   fetchCreditLedger,
   getOrderSlipUrl,
-  holdOrder,
+  orderStage,
+  updateOrderNote,
   listCreditOrders,
+  postArBatch,
   rejectOrder,
-  topupCredits,
   type AdminCreditOrder,
   type CreditLedgerEntry,
 } from '../../lib/api/adminClient'
@@ -49,13 +47,6 @@ const REJECT_PRESETS = [
 ]
 const REJECT_OTHER = 'อื่น ๆ (ระบุเหตุผล)'
 
-// Mirrors the active top-up credit_packs catalog (see migration 219).
-const PACKS = [
-  { code: 'pack_small', label: '500 credits — ฿1,200' },
-  { code: 'pack_medium', label: '2,500 credits — ฿5,000' },
-  { code: 'pack_large', label: '10,000 credits — ฿15,000' },
-]
-
 function fmtDateTime(s: string | null): string {
   return s ? new Date(s).toLocaleString() : '—'
 }
@@ -70,7 +61,11 @@ function slipIsPdf(url: string): boolean {
 
 /** Keep the company name when a mutation endpoint returns it null (no Tenant join). */
 function withName(updated: AdminCreditOrder, prev: AdminCreditOrder): AdminCreditOrder {
-  return { ...updated, tenant_name: updated.tenant_name ?? prev.tenant_name }
+  return {
+    ...updated,
+    tenant_name: updated.tenant_name ?? prev.tenant_name,
+    buyer_name: updated.buyer_name ?? prev.buyer_name,
+  }
 }
 
 // ── Slip viewer (zoom / pan / rotate for images; native iframe for PDFs) ───────
@@ -299,11 +294,6 @@ function CompanyPanel({
   const [loaded, setLoaded] = useState(false)
   const [balance, setBalance] = useState<number | null>(null)
   const [ledger, setLedger] = useState<CreditLedgerEntry[]>([])
-  const [busy, setBusy] = useState(false)
-  const [pack, setPack] = useState(PACKS[0].code)
-  const [delta, setDelta] = useState('')
-  const [note, setNote] = useState('')
-
   const ledgerCols: Column<CreditLedgerEntry>[] = [
     {
       key: 'created_at',
@@ -331,38 +321,6 @@ function CompanyPanel({
       .catch(e => toast.error((e as Error).message))
   }
 
-  const doTopup = async () => {
-    setBusy(true)
-    try {
-      const b = await topupCredits(tenantId, pack)
-      setBalance(b.balance)
-      toast.success(t('orev.toast.toppedUp', { n: b.balance }))
-      load()
-    } catch (e) {
-      toast.error((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const doAdjust = async () => {
-    const d = parseInt(delta, 10)
-    if (!Number.isFinite(d) || d === 0) return toast.error(t('orev.err.nonZero'))
-    setBusy(true)
-    try {
-      const b = await adjustCredits(tenantId, d, note || undefined)
-      setBalance(b.balance)
-      setDelta('')
-      setNote('')
-      toast.success(t('orev.toast.adjusted', { n: b.balance }))
-      load()
-    } catch (e) {
-      toast.error((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
   const past = history.filter(o => o.id !== currentId)
 
   return (
@@ -383,54 +341,6 @@ function CompanyPanel({
       </summary>
 
       <div className="orev-company-body">
-        <div className="orev-credit-actions">
-          <div className="orev-credit-row">
-            <select
-              value={pack}
-              onChange={e => setPack(e.target.value)}
-              aria-label={t('orev.company.grant')}
-            >
-              {PACKS.map(p => (
-                <option key={p.code} value={p.code}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              className="btn btn-outline orev-mini"
-              disabled={busy}
-              onClick={doTopup}
-            >
-              {t('orev.company.grant')}
-            </button>
-          </div>
-          <div className="orev-credit-row">
-            <input
-              type="number"
-              placeholder={t('orev.company.adjustPh')}
-              value={delta}
-              onChange={e => setDelta(e.target.value)}
-              aria-label={t('orev.company.adjust')}
-            />
-            <input
-              type="text"
-              placeholder={t('orev.company.notePh')}
-              value={note}
-              onChange={e => setNote(e.target.value)}
-              aria-label={t('orev.company.notePh')}
-            />
-            <button
-              type="button"
-              className="btn btn-outline orev-mini"
-              disabled={busy}
-              onClick={doAdjust}
-            >
-              {t('orev.company.adjust')}
-            </button>
-          </div>
-        </div>
-
         <h4 className="orev-subhead">{t('orev.company.history')}</h4>
         {past.length === 0 ? (
           <p className="orev-muted">{t('orev.company.noHistory')}</p>
@@ -438,10 +348,10 @@ function CompanyPanel({
           <ul className="orev-history">
             {past.map(o => (
               <li key={o.id}>
-                <span className={`orev-dot is-${STATUS_TONE[o.status]}`} aria-hidden="true" />
+                <span className={`orev-dot is-${STAGE_TONE[orderStage(o)]}`} aria-hidden="true" />
                 <span className="mono">฿{formatThb(o.amount_thb)}</span>
                 <span className="orev-muted">{o.pack_code}</span>
-                <span className="orev-history-status">{t(STATUS_KEY[o.status])}</span>
+                <span className="orev-history-status">{t(STAGE_KEY[orderStage(o)])}</span>
                 <span className="orev-muted">{timeAgo(o.created_at, t)}</span>
               </li>
             ))}
@@ -463,23 +373,23 @@ function OrderActions({
   onApprove,
   onReject,
   onHold,
-  onResume,
-  onCancel,
+  onPostAr,
+  onMapAr,
 }: {
   order: AdminCreditOrder
   busy: boolean
   onApprove: () => void
   onReject: (reason: string) => void
   onHold: (note: string) => void
-  onResume: () => void
-  onCancel: () => void
+  onPostAr: () => void
+  onMapAr: () => void
 }) {
   const { t } = useT()
   const [mode, setMode] = useState<'idle' | 'reject' | 'hold'>('idle')
   const [preset, setPreset] = useState(REJECT_PRESETS[0])
   const [reason, setReason] = useState(REJECT_PRESETS[0])
   const [holdNote, setHoldNote] = useState('')
-  const [confirm, setConfirm] = useState<'approve' | 'cancel' | null>(null)
+  const [confirm, setConfirm] = useState<'approve' | null>(null)
   const confirmTimer = useRef<number | undefined>(undefined)
 
   useEffect(() => {
@@ -490,7 +400,7 @@ function OrderActions({
     setHoldNote('')
   }, [order.id])
 
-  const arm = (which: 'approve' | 'cancel', run: () => void) => {
+  const arm = (which: 'approve', run: () => void) => {
     if (confirm === which) {
       window.clearTimeout(confirmTimer.current)
       setConfirm(null)
@@ -507,55 +417,61 @@ function OrderActions({
     setReason(p === REJECT_OTHER ? '' : p)
   }
 
-  // Read-only terminal states.
-  if (order.status === 'paid' || order.status === 'rejected' || order.status === 'cancelled') {
+  // Terminal: complete or void — read-only.
+  if (order.status === 'complete' || order.status === 'void') {
     return (
       <div className="orev-actions orev-actions--readonly">
-        {order.status === 'paid' && (
+        {order.status === 'complete' && (
           <span className="orev-outcome is-ok">
-            <Check size={15} />{' '}
-            {order.approved_by
-              ? t('orev.outcome.approvedBy', {
-                  who: order.approved_by,
-                  when: fmtDateTime(order.approved_at),
-                })
-              : t('orev.outcome.approved', { when: fmtDateTime(order.approved_at) })}
+            <Check size={15} /> {t('orev.outcome.complete', { ref: order.carmen_ar_ref || '—' })}
           </span>
         )}
-        {order.status === 'rejected' && (
+        {order.status === 'void' && (
           <span className="orev-outcome is-bad">
             <X size={15} />{' '}
-            {t('orev.outcome.rejected', {
+            {t('orev.outcome.void', {
               reason: order.rejected_reason || t('orev.outcome.noReason'),
             })}
           </span>
         )}
-        {order.status === 'cancelled' && (
-          <span className="orev-outcome">{t('orev.outcome.cancelled')}</span>
+      </div>
+    )
+  }
+
+  // Paid: approved — now post to Carmen AR (needs a mapped AR code).
+  if (order.status === 'paid') {
+    const mapped = !!order.carmen_ar_code
+    return (
+      <div className="orev-actions">
+        <span className="orev-outcome is-ok">
+          <Check size={15} />{' '}
+          {order.approved_by
+            ? t('orev.outcome.approvedBy', {
+                who: order.approved_by,
+                when: fmtDateTime(order.approved_at),
+              })
+            : t('orev.outcome.approved', { when: fmtDateTime(order.approved_at) })}
+        </span>
+        {mapped ? (
+          <button
+            type="button"
+            className="btn btn-confirm orev-approve"
+            disabled={busy}
+            onClick={onPostAr}
+          >
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}{' '}
+            {t('orev.act.postAr')} · {order.carmen_ar_code}
+          </button>
+        ) : (
+          <button type="button" className="btn btn-outline" onClick={onMapAr}>
+            <AlertTriangle size={14} /> {t('orev.inv.mapToAr')}
+          </button>
         )}
       </div>
     )
   }
 
-  // Pending: no slip yet — cancel only.
-  if (order.status === 'pending') {
-    return (
-      <div className="orev-actions">
-        <span className="orev-actions-note">{t('orev.act.pendingNote')}</span>
-        <button
-          type="button"
-          className={`btn ${confirm === 'cancel' ? 'btn-overwrite' : 'btn-outline'} orev-danger`}
-          disabled={busy}
-          onClick={() => arm('cancel', onCancel)}
-        >
-          {busy ? <Loader2 size={14} className="animate-spin" /> : <Ban size={14} />}{' '}
-          {confirm === 'cancel' ? t('orev.act.confirmCancel') : t('orev.act.cancelOrder')}
-        </button>
-      </div>
-    )
-  }
-
-  // awaiting_review or on_hold — full decision bar.
+  // In-progress: full decision bar (approve / void / cancel).
   if (mode === 'reject') {
     return (
       <div className="orev-actions orev-actions--form">
@@ -598,7 +514,7 @@ function OrderActions({
             onClick={() => onReject(reason.trim())}
           >
             {busy ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}{' '}
-            {t('orev.act.confirmReject')}
+            {t('orev.act.confirmVoid')}
           </button>
         </div>
       </div>
@@ -609,13 +525,13 @@ function OrderActions({
     return (
       <div className="orev-actions orev-actions--form">
         <label className="orev-field">
-          <span className="orev-verify-eyebrow">{t('orev.hold.legend')}</span>
+          <span className="orev-verify-eyebrow">{t('orev.note.legend')}</span>
           <textarea
             className="orev-textarea"
             value={holdNote}
             onChange={e => setHoldNote(e.target.value)}
             rows={2}
-            placeholder={t('orev.hold.ph')}
+            placeholder={t('orev.note.ph')}
             autoFocus
           />
         </label>
@@ -635,7 +551,7 @@ function OrderActions({
             onClick={() => onHold(holdNote.trim())}
           >
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Pause size={14} />}{' '}
-            {t('orev.act.hold')}
+            {t('orev.note.save')}
           </button>
         </div>
       </div>
@@ -650,22 +566,16 @@ function OrderActions({
         disabled={busy}
         onClick={() => setMode('reject')}
       >
-        <X size={14} /> {t('orev.act.reject')}
+        <X size={14} /> {t('orev.act.void')}
       </button>
-      {order.status === 'on_hold' ? (
-        <button type="button" className="btn btn-outline" disabled={busy} onClick={onResume}>
-          <Play size={14} /> {t('orev.act.resume')}
-        </button>
-      ) : (
-        <button
-          type="button"
-          className="btn btn-outline"
-          disabled={busy}
-          onClick={() => setMode('hold')}
-        >
-          <Pause size={14} /> {t('orev.act.hold')}
-        </button>
-      )}
+      <button
+        type="button"
+        className="btn btn-outline"
+        disabled={busy}
+        onClick={() => setMode('hold')}
+      >
+        <Pause size={14} /> {t('orev.note.legend')}
+      </button>
       <button
         type="button"
         className={`btn btn-confirm orev-approve${confirm === 'approve' ? ' is-confirming' : ''}`}
@@ -685,10 +595,12 @@ export default function OrderWorkspace({
   order,
   paymentInfo,
   onChanged,
+  onMapAr,
 }: {
   order: AdminCreditOrder
   paymentInfo: PaymentInfo | null
   onChanged: (updated: AdminCreditOrder) => void
+  onMapAr: () => void
 }) {
   const { t } = useT()
   const [slipUrl, setSlipUrl] = useState<string | null>(null)
@@ -739,10 +651,9 @@ export default function OrderWorkspace({
     }
   }
 
-  const company = order.tenant_name ?? order.tenant_id?.slice(0, 8) ?? '—'
-  const priorReject = history.some(o => o.id !== order.id && o.status === 'rejected')
-  const hasSlip =
-    order.status === 'awaiting_review' || order.status === 'on_hold' || order.status === 'paid'
+  const company = order.buyer_name || order.tenant_name || '—'
+  const priorReject = history.some(o => o.id !== order.id && o.status === 'void')
+  const hasSlip = !!order.slip_uploaded_at
   const shownDoc = docView === 'tax_invoice' && taxInvoice ? taxInvoice : proforma
 
   return (
@@ -756,8 +667,8 @@ export default function OrderWorkspace({
           </span>
         </div>
         <div className="orev-head-meta">
-          <span className={`orev-badge is-${STATUS_TONE[order.status]}`}>
-            {t(STATUS_KEY[order.status])}
+          <span className={`orev-badge is-${STAGE_TONE[orderStage(order)]}`}>
+            {t(STAGE_KEY[orderStage(order)])}
           </span>
           {priorReject && (
             <span className="orev-badge is-bad" title={t('orev.priorRejectTitle')}>
@@ -835,31 +746,27 @@ export default function OrderWorkspace({
           onReject={reason =>
             act(async () => {
               const u = await rejectOrder(order.id, reason)
-              toast.success(t('orev.toast.rejected'))
+              toast.success(t('orev.toast.voided'))
               return u
             })
           }
           onHold={note =>
             act(async () => {
-              const u = await holdOrder(order.id, true, note || undefined)
-              toast.success(t('orev.toast.onHold'))
+              const u = await updateOrderNote(order.id, note || undefined)
+              toast.success(t('orev.toast.noteSaved'))
               return u
             })
           }
-          onResume={() =>
+          onPostAr={() =>
             act(async () => {
-              const u = await holdOrder(order.id, false)
-              toast.success(t('orev.toast.resumed'))
-              return u
+              const { results } = await postArBatch([order.id])
+              const r = results[0]
+              if (!r?.success) throw new Error(r?.error || 'AR posting failed')
+              toast.success(t('orev.toast.posted'))
+              return { ...order, status: 'complete', carmen_ar_ref: r.carmen_ar_ref }
             })
           }
-          onCancel={() =>
-            act(async () => {
-              const u = await cancelOrder(order.id)
-              toast.success(t('orev.toast.cancelled'))
-              return u
-            })
-          }
+          onMapAr={onMapAr}
         />
       </div>
     </section>

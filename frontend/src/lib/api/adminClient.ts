@@ -222,13 +222,7 @@ export async function adjustCredits(
 
 // ── Slip review queue ───────────────────────────────────────────────────────
 
-export type AdminOrderStatus =
-  | 'pending'
-  | 'awaiting_review'
-  | 'on_hold'
-  | 'paid'
-  | 'rejected'
-  | 'cancelled'
+export type AdminOrderStatus = 'in_progress' | 'paid' | 'complete' | 'void'
 
 export interface AdminCreditOrder {
   id: string
@@ -245,6 +239,63 @@ export interface AdminCreditOrder {
   expires_at: string | null
   rejected_reason: string | null
   admin_note: string | null
+  carmen_ar_posted_at: string | null
+  carmen_ar_ref: string | null
+  proforma_number: string | null
+  buyer_name: string | null
+  carmen_ar_code: string | null
+}
+
+/**
+ * Workflow stage = what the admin must DO, derived from (status + slip).
+ * Backend keeps in_progress for both pre- and post-slip, so the slip flag splits it.
+ */
+export type OrderStage = 'awaiting_payment' | 'to_review' | 'to_post' | 'posted' | 'rejected'
+
+export function orderStage(o: AdminCreditOrder): OrderStage {
+  switch (o.status) {
+    case 'in_progress':
+      return o.slip_uploaded_at ? 'to_review' : 'awaiting_payment'
+    case 'paid':
+      return 'to_post'
+    case 'complete':
+      return 'posted'
+    case 'void':
+      return 'rejected'
+  }
+}
+
+export interface ArCustomerProfile {
+  id: string
+  buyer_name: string
+  buyer_tax_id: string
+  buyer_branch: string
+  carmen_ar_code: string | null
+}
+
+export interface KpiSummary {
+  unmapped_count: number
+  to_review_count: number
+  to_post_count: number
+  // Funnel amounts (THB): total = awaiting + to_review + to_post + posted (excl. void).
+  total_amount: number
+  awaiting_amount: number
+  to_review_amount: number
+  to_post_amount: number
+  posted_amount: number
+  rejected_amount: number
+  status_counts: Record<string, number>
+}
+
+export interface PostArResultItem {
+  order_id: string
+  success: boolean
+  carmen_ar_ref: string | null
+  error: string | null
+}
+
+export interface PostArResponse {
+  results: PostArResultItem[]
 }
 
 /** Reuse the public billing-document shape — the admin endpoint returns the same. */
@@ -266,11 +317,12 @@ async function unwrapDetail(res: Response, fallback: string): Promise<string> {
  * `status='all'` returns every status; `tenantId` narrows to one company's history.
  */
 export async function listCreditOrders(
-  status: AdminOrderStatus | 'all' = 'awaiting_review',
-  tenantId?: string
+  status: AdminOrderStatus | 'all' = 'in_progress',
+  tenantId?: string,
+  hasSlip?: boolean
 ): Promise<AdminCreditOrder[]> {
   const res = await adminFetch(
-    `${API.admin.creditOrders}${buildQs({ status, tenant_id: tenantId })}`
+    `${API.admin.creditOrders}${buildQs({ status, tenant_id: tenantId, has_slip: hasSlip })}`
   )
   if (!res.ok) throw new Error('Failed to load credit orders')
   return res.json()
@@ -299,18 +351,14 @@ export async function rejectOrder(id: string, reason: string): Promise<AdminCred
   return res.json()
 }
 
-/** Park an order pending the buyer's reply (`hold=true`), or resume it (`hold=false`). */
-export async function holdOrder(
-  id: string,
-  hold: boolean,
-  note?: string
-): Promise<AdminCreditOrder> {
-  const res = await adminFetch(API.admin.creditOrderHold(id), {
+/** Update the admin-only note on an in-progress order. */
+export async function updateOrderNote(id: string, note?: string): Promise<AdminCreditOrder> {
+  const res = await adminFetch(API.admin.creditOrderNote(id), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ hold, note }),
+    body: JSON.stringify({ note }),
   })
-  if (!res.ok) throw new Error(await unwrapDetail(res, hold ? 'Hold failed' : 'Resume failed'))
+  if (!res.ok) throw new Error(await unwrapDetail(res, 'Update failed'))
   return res.json()
 }
 
@@ -326,5 +374,54 @@ export async function fetchAdminOrderDocuments(
 ): Promise<import('./credits').BillingDocument[]> {
   const res = await adminFetch(API.admin.creditOrderDocuments(id))
   if (!res.ok) throw new Error('Failed to load order documents')
+  return res.json()
+}
+
+// ── AR Customer Profiles ──────────────────────────────────────────────────
+
+export async function listArProfiles(
+  search?: string,
+  unmappedOnly?: boolean
+): Promise<ArCustomerProfile[]> {
+  const params = new URLSearchParams()
+  if (search) params.set('search', search)
+  if (unmappedOnly) params.set('unmapped_only', 'true')
+  const qs = params.toString() ? `?${params}` : ''
+  const res = await adminFetch(`${API.admin.arProfiles}${qs}`)
+  if (!res.ok) throw new Error('Failed to load AR profiles')
+  return res.json()
+}
+
+export async function updateArProfile(id: string, arCode: string): Promise<ArCustomerProfile> {
+  const res = await adminFetch(API.admin.arProfile(id), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ carmen_ar_code: arCode }),
+  })
+  if (!res.ok) throw new Error(await unwrapDetail(res, 'Update AR code failed'))
+  return res.json()
+}
+
+export async function syncArProfiles(): Promise<{ inserted: number; scanned: number }> {
+  const res = await adminFetch(API.admin.arProfilesSync, { method: 'POST' })
+  if (!res.ok) throw new Error('Sync failed')
+  return res.json()
+}
+
+// ── Carmen AR Posting ─────────────────────────────────────────────────────
+
+export async function postArBatch(orderIds: string[]): Promise<PostArResponse> {
+  const res = await adminFetch(API.admin.creditOrdersPostAr, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ order_ids: orderIds }),
+  })
+  if (!res.ok) throw new Error(await unwrapDetail(res, 'AR posting failed'))
+  return res.json()
+}
+
+export async function fetchKpi(): Promise<KpiSummary> {
+  const res = await adminFetch(API.admin.creditOrdersKpi)
+  if (!res.ok) throw new Error('Failed to load KPI')
   return res.json()
 }

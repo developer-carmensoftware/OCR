@@ -190,21 +190,12 @@ body:has(.orev-app) {
   color: var(--primary);
 }
 
-.orev-tab-badge {
-  min-width: 1.1rem;
-  padding: 0 0.3rem;
-  border-radius: 100px;
-  background: var(--primary);
-  color: oklch(1 0 0);
-  font-size: 0.66rem;
-  font-weight: 700;
-  text-align: center;
-  line-height: 1.25rem;
-}
-
-.orev-tab:not(.is-active) .orev-tab-badge {
-  background: oklch(from var(--primary) l c h / 0.18);
-  color: var(--primary);
+/* One-line "what is this tab for" hint under the tabs. */
+.orev-tab-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--text-3);
 }
 
 .orev-search {
@@ -316,6 +307,79 @@ body:has(.orev-app) {
   font-size: 0.8rem;
   font-weight: 500;
   color: var(--text-2);
+}
+
+/* Inner clickable row (wrapper .orev-item now also holds the batch checkbox). */
+.orev-item-btn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.orev-item-check {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+/* AR-code chip shown in each queue row (and reused elsewhere). */
+.orev-ar-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.orev-ar-chip.is-ok {
+  color: var(--success, #059669);
+}
+.orev-ar-chip.is-warn {
+  color: var(--warning-fg, #b45309);
+}
+
+/* Per-status count badge on queue tabs. */
+.orev-tab-count {
+  margin-left: 4px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  font-feature-settings: 'tnum';
+  padding: 0 5px;
+  border-radius: 999px;
+  background: oklch(from var(--primary) l c h / 0.15);
+  color: var(--primary);
+}
+
+/* Batch "Post Batch (N)" button in the queue header (Paid tab). */
+.orev-post-batch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  color: var(--primary-foreground, #fff);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.orev-post-batch:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .orev-list-empty {
@@ -716,6 +780,15 @@ body:has(.orev-app) {
 .orev-company-summary::-webkit-details-marker {
   display: none;
 }
+.orev-company-summary::before {
+  content: '▸';
+  font-size: 0.75rem;
+  color: var(--text-4);
+  transition: transform 0.15s var(--ease);
+}
+.orev-company[open] > .orev-company-summary::before {
+  transform: rotate(90deg);
+}
 
 .orev-company-bal {
   margin-left: auto;
@@ -979,6 +1052,28 @@ body:has(.orev-app) {
   }
 }
 
+/* Phone: collapse cramped 2-col facts, trim stacked viewer heights, drop the
+   header email (it overflowed the brand + toggles + logout row). */
+@media (max-width: 560px) {
+  .orev-app-email {
+    display: none;
+  }
+  .orev-app-header {
+    padding: 0 1rem;
+  }
+  .orev-verify-grid {
+    grid-template-columns: 1fr;
+  }
+  .orev-slip-stage,
+  .orev-slip-frame,
+  .orev-slip-fallback {
+    height: 55vh;
+  }
+  .orev-doc-scroll {
+    max-height: 55vh;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .orev-console {
     animation: none;
@@ -986,4 +1081,312 @@ body:has(.orev-app) {
   .orev-slip-img {
     transition: none;
   }
+}
+
+/* ── Page layout (replaces console as top-level) ──────────────── */
+.orev-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* ── KPI Cards (4 cards) ──────────────────────────────────────── */
+.orev-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.orev-kpi-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius, 0.625rem);
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--card-foreground);
+}
+.orev-kpi-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted-foreground);
+}
+.orev-kpi-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.orev-kpi-amt {
+  font-size: 1rem;
+  font-weight: 700;
+  font-feature-settings: 'tnum';
+}
+.orev-kpi-amt--lg {
+  font-size: 1.35rem;
+}
+.orev-kpi-amt--ok {
+  color: var(--emerald);
+}
+.orev-kpi-amt--warn {
+  color: var(--amber);
+}
+.orev-kpi-desc {
+  font-size: 0.72rem;
+  color: var(--muted-foreground);
+  font-feature-settings: 'tnum';
+}
+@media (max-width: 880px) {
+  .orev-kpi-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 560px) {
+  .orev-kpi-row {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 480px) {
+  .orev-kpi-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Main tabs (AR Mapping | Invoice Verifier) ─────────────────── */
+.orev-main-tabs {
+  display: flex;
+  gap: 0;
+  padding: 0.25rem;
+  border-radius: var(--radius, 0.625rem);
+  background: var(--muted);
+  border: 1px solid var(--border);
+}
+.orev-main-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  border: none;
+  border-radius: calc(var(--radius, 0.625rem) - 2px);
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.orev-main-tab:hover {
+  color: var(--foreground);
+}
+.orev-main-tab.active {
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border);
+}
+.orev-tab-badge {
+  font-size: 0.625rem;
+  font-weight: 700;
+  font-feature-settings: 'tnum';
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+/* ── AR Customer Profiles panel ────────────────────────────────── */
+.orev-ar-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 0.625rem);
+  background: var(--card);
+  overflow: hidden;
+}
+.orev-ar-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--muted);
+}
+.orev-ar-heading {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  margin: 0;
+}
+.orev-ar-sub {
+  font-size: 0.7rem;
+  color: var(--muted-foreground);
+  margin: 0.125rem 0 0;
+}
+.orev-ar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.orev-search-wrap {
+  position: relative;
+}
+.orev-search-icon {
+  position: absolute;
+  left: 0.625rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted-foreground);
+}
+.orev-search-wrap input {
+  padding: 0.375rem 0.75rem 0.375rem 2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 0.625rem);
+  font-size: 0.75rem;
+  background: var(--card);
+  color: var(--foreground);
+  min-width: 14rem;
+}
+.orev-ar-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 0.625rem);
+  background: var(--card);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.orev-ar-table-wrap {
+  overflow-x: auto;
+}
+.orev-ar-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+.orev-ar-table thead tr {
+  border-bottom: 1px solid var(--border);
+  background: var(--muted);
+}
+.orev-ar-table th {
+  padding: 0.625rem 1rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: left;
+}
+.orev-ar-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.orev-ar-table tbody tr:hover {
+  background: var(--accent);
+}
+.orev-ar-name {
+  font-weight: 700;
+}
+.orev-ar-code {
+  font-family: var(--font-mono, monospace);
+  font-weight: 700;
+  padding: 0.125rem 0.5rem;
+  background: var(--success-subtle, oklch(0.95 0.04 173));
+  color: var(--success, #059669);
+  border-radius: 0.25rem;
+  font-size: 0.7rem;
+}
+.orev-ar-missing {
+  font-weight: 600;
+  color: var(--destructive, #ef4444);
+  font-size: 0.7rem;
+}
+.orev-ar-input {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--primary);
+  border-radius: 0.375rem;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  background: var(--card);
+  color: var(--foreground);
+  text-transform: uppercase;
+  width: 10rem;
+}
+.orev-ar-act-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.orev-ar-btn-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  border-radius: 0.375rem;
+}
+.orev-ar-btn-edit:hover {
+  background: var(--accent);
+}
+.orev-ar-btn-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border: none;
+  background: var(--success, #059669);
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 700;
+  cursor: pointer;
+  border-radius: 0.375rem;
+  transition: filter 0.15s var(--ease);
+}
+.orev-ar-btn-save:hover {
+  filter: brightness(0.9);
+}
+.orev-ar-btn-save:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+[data-theme='dark'] .orev-ar-btn-save {
+  color: oklch(0.15 0 0);
+}
+.orev-ar-btn-cancel {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem;
+  border: none;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  cursor: pointer;
+  border-radius: 0.375rem;
+}
+.orev-ar-empty {
+  text-align: center;
+  padding: 2rem;
+  color: var(--muted-foreground);
+  font-weight: 600;
+}
+.orev-ar-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--border);
+  background: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
 }

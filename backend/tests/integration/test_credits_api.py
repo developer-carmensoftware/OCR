@@ -32,6 +32,7 @@ def _pack(code="starter", credits=500, price_thb=990.0, sort_order=0, is_active=
     row.price_thb = Decimal(str(price_thb))
     row.sort_order = sort_order
     row.is_active = is_active
+    row.description = f"{credits} credits"
     return row
 
 
@@ -40,7 +41,7 @@ def _order(
     pack_code="starter",
     credits=500,
     amount_thb=990.0,
-    status="pending",
+    status="in_progress",
     tenant_id="t-test",
 ):
     row = MagicMock()
@@ -53,6 +54,19 @@ def _order(
     row.deleted_at = None
     row.slip_object_key = None
     row.slip_uploaded_at = None
+    # Full CreditOrderResponse surface so model_validate(row) succeeds.
+    row.tenant_name = None
+    row.created_at = None
+    row.approved_at = None
+    row.approved_by = None
+    row.expires_at = None
+    row.rejected_reason = None
+    row.admin_note = None
+    row.carmen_ar_posted_at = None
+    row.carmen_ar_ref = None
+    row.proforma_number = None
+    row.buyer_name = None
+    row.carmen_ar_code = None
     return row
 
 
@@ -75,6 +89,8 @@ def _billing_doc(
     doc.buyer_tax_id = None
     doc.buyer_address = None
     doc.buyer_branch = None
+    doc.buyer_email = None
+    doc.buyer_contact_name = None
     doc.pack_code = pack_code
     doc.description = f"{credits} credits"
     doc.credits = credits
@@ -173,7 +189,20 @@ def test_company_profile_returns_form_source_when_no_data():
 def test_create_order_returns_qr_and_proforma():
     pack = _pack("starter", 500, 990.0)
     mock_db = make_mock_db()
-    mock_db.execute.return_value = _scalar(pack)
+    # 1st execute = one-open-order pre-check (none), 2nd = pack lookup.
+    mock_db.execute.side_effect = [_scalar(None), _scalar(pack)]
+
+    # The router builds a CreditOrder and relies on flush to populate the
+    # uuid default; mirror that here so CreditOrderResponse.id validates.
+    added = {}
+    mock_db.add.side_effect = lambda obj: added.setdefault("order", obj)
+
+    async def _flush():
+        order = added.get("order")
+        if order is not None and getattr(order, "id", None) is None:
+            order.id = uuid.uuid4()
+
+    mock_db.flush.side_effect = _flush
 
     mock_doc = _billing_doc()
 
@@ -216,7 +245,8 @@ def test_create_order_pack_not_found_returns_404():
 def test_create_order_inactive_pack_returns_404():
     pack = _pack("starter", 500, 990.0, is_active=False)
     mock_db = make_mock_db()
-    mock_db.execute.return_value = _scalar(pack)
+    # 1st execute = one-open-order pre-check (none), 2nd = inactive pack lookup.
+    mock_db.execute.side_effect = [_scalar(None), _scalar(pack)]
 
     with make_test_client(mock_db) as client:
         resp = client.post(
@@ -247,9 +277,9 @@ def test_create_order_duplicate_open_order_returns_409():
 # ── POST /credits/orders/{id}/slip ────────────────────────────────────────────
 
 
-def test_upload_slip_moves_order_to_awaiting_review():
+def test_upload_slip_keeps_order_in_progress():
     order_id = str(uuid.uuid4())
-    order = _order(order_id=order_id, status="pending")
+    order = _order(order_id=order_id, status="in_progress")
     mock_db = make_mock_db()
     mock_db.execute.return_value = _scalar(order)
 
@@ -271,7 +301,8 @@ def test_upload_slip_moves_order_to_awaiting_review():
         )
 
     assert resp.status_code == 200
-    assert resp.json()["status"] == "awaiting_review"
+    # Slip recorded but order stays in_progress (admin still must review).
+    assert resp.json()["status"] == "in_progress"
 
 
 def test_upload_slip_order_not_found_returns_404():
@@ -289,7 +320,7 @@ def test_upload_slip_order_not_found_returns_404():
 
 
 def test_upload_slip_wrong_status_returns_409():
-    order = _order(status="awaiting_review")
+    order = _order(status="paid")
     mock_db = make_mock_db()
     mock_db.execute.return_value = _scalar(order)
 
@@ -304,7 +335,7 @@ def test_upload_slip_wrong_status_returns_409():
 
 
 def test_upload_slip_unsupported_content_type_returns_422():
-    order = _order(status="pending")
+    order = _order(status="in_progress")
     mock_db = make_mock_db()
     mock_db.execute.return_value = _scalar(order)
 
@@ -327,8 +358,8 @@ def test_upload_slip_unsupported_content_type_returns_422():
 # ── POST /credits/orders/{id}/cancel ──────────────────────────────────────────
 
 
-def test_cancel_pending_order_returns_cancelled():
-    order = _order(status="pending")
+def test_cancel_in_progress_order_returns_void():
+    order = _order(status="in_progress")
     mock_db = make_mock_db()
     mock_db.execute.return_value = _scalar(order)
 
@@ -336,7 +367,7 @@ def test_cancel_pending_order_returns_cancelled():
         resp = client.post(f"{BASE}/orders/{order.id}/cancel", headers=AUTH)
 
     assert resp.status_code == 200
-    assert resp.json()["status"] == "cancelled"
+    assert resp.json()["status"] == "void"
 
 
 def test_cancel_order_not_found_returns_404():
@@ -349,8 +380,8 @@ def test_cancel_order_not_found_returns_404():
     assert resp.status_code == 404
 
 
-def test_cancel_non_pending_order_returns_409():
-    order = _order(status="awaiting_review")
+def test_cancel_non_in_progress_order_returns_409():
+    order = _order(status="paid")
     mock_db = make_mock_db()
     mock_db.execute.return_value = _scalar(order)
 
@@ -364,7 +395,7 @@ def test_cancel_non_pending_order_returns_409():
 
 
 def test_list_orders_returns_tenants_orders():
-    orders = [_order(status="pending"), _order(status="awaiting_review")]
+    orders = [_order(status="in_progress"), _order(status="paid")]
     scalars_result = MagicMock()
     scalars_result.all.return_value = orders
     execute_result = MagicMock()

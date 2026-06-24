@@ -36,7 +36,13 @@ class CreditOrderResponse(BaseModel):
     approved_by: str | None = None  # admin email that approved (admin queue only)
     expires_at: datetime | None = None  # proforma valid-until (pending orders)
     rejected_reason: str | None = None  # reason shown to the buyer on rejection
-    admin_note: str | None = None  # admin-only memo (set when put on hold)
+    admin_note: str | None = None
+    carmen_ar_posted_at: datetime | None = None
+    carmen_ar_ref: str | None = None
+    # Populated by the admin queue join only (proforma data + resolved AR code).
+    proforma_number: str | None = None
+    buyer_name: str | None = None
+    carmen_ar_code: str | None = None
 
     @field_validator("id", "tenant_id", mode="before")
     @classmethod
@@ -188,7 +194,7 @@ class SlipUploadResponse(BaseModel):
     """Returned after a successful slip upload."""
 
     order_id: str
-    status: str  # 'awaiting_review'
+    status: str  # 'in_progress'
 
 
 class RejectRequest(BaseModel):
@@ -196,7 +202,58 @@ class RejectRequest(BaseModel):
 
 
 class HoldRequest(BaseModel):
-    """Park an order pending the buyer's reply, or resume it back to review."""
+    """Update admin note on an in-progress order."""
 
-    hold: bool = True  # True → on_hold, False → back to awaiting_review
-    note: str | None = None  # admin-only memo (e.g. "emailed buyer, awaiting reply")
+    note: str | None = None
+
+
+# ── AR Customer Profiles ────────────────────────────────────────────────────
+
+
+class ArCustomerProfileResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    buyer_name: str
+    buyer_tax_id: str
+    buyer_branch: str
+    carmen_ar_code: str | None = None
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def _coerce_id(cls, v: object) -> str:
+        return str(v)
+
+
+class ArCustomerProfileUpdate(BaseModel):
+    # ponytail: app-validated to 15 alphanumeric/hyphen (FRD); column stays VARCHAR(50), widen-safe.
+    carmen_ar_code: str = Field(..., max_length=15, pattern=r"^[A-Za-z0-9-]*$")
+
+
+class PostArRequest(BaseModel):
+    order_ids: list[str] = Field(..., min_length=1)
+
+
+class PostArResultItem(BaseModel):
+    order_id: str
+    success: bool
+    carmen_ar_ref: str | None = None
+    error: str | None = None
+
+
+class PostArResponse(BaseModel):
+    results: list[PostArResultItem]
+
+
+class KpiSummaryResponse(BaseModel):
+    unmapped_count: int  # mapping tab badge
+    to_review_count: int  # verify tab badge
+    to_post_count: int  # post tab badge
+    # Funnel amounts (THB) — total_active = awaiting + to_review + to_post + posted (excl. void).
+    total_amount: float
+    awaiting_amount: float
+    to_review_amount: float
+    to_post_amount: float
+    posted_amount: float
+    rejected_amount: float
+    status_counts: dict[str, int] = {}  # per-stage order counts for queue pills

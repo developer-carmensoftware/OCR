@@ -1,30 +1,38 @@
-"""Admin top-up credit management — balance, top-up, manual adjust, ledger, slip review."""
+"""Admin credit management — balance, top-up, adjust, ledger, slip review, AR posting."""
 
 import logging
 from datetime import UTC, datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import and_, select, text
+from sqlalchemy import func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
+from app.models.billing import ArCustomerProfile
 from app.models.enums import BillingDocumentType, CreditLedgerReason, CreditOrderStatus
 from app.models.orm import BillingDocument, CreditLedger, CreditOrder, CreditPack, Tenant
 from app.models.schemas import (
     AdjustRequest,
+    ArCustomerProfileResponse,
+    ArCustomerProfileUpdate,
     BillingDocumentResponse,
     CreditBalanceResponse,
     CreditLedgerEntry,
     CreditOrderResponse,
     HoldRequest,
+    KpiSummaryResponse,
     PaymentInfoResponse,
+    PostArRequest,
+    PostArResponse,
     RejectRequest,
     TopupRequest,
 )
+from app.models.schemas.credits import PostArResultItem
+from app.services import ar_posting_service, storage_service
 from app.services import billing_document_service as bds
-from app.services import storage_service
 from app.services.credit_service import activate_subscription, get_credit_balance, grant_credits
 from app.services.storage_service import StorageError
 
@@ -32,10 +40,6 @@ from .deps import require_permission
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-# An order can be approved/rejected from either the review queue or while parked
-# on hold (admin contacted the buyer and is confirming).
-_DECIDABLE = {CreditOrderStatus.AWAITING_REVIEW, CreditOrderStatus.ON_HOLD}
 
 
 def _assert_scope(admin: AdminPrincipal, tenant_id: str) -> None:
@@ -152,6 +156,10 @@ async def list_credit_orders(
     status: str | None = Query(
         None, description="Status filter; omit → awaiting_review queue, 'all' → every status"
     ),
+    has_slip: bool | None = Query(
+        None,
+        description="Split in_progress by slip: true → To Review queue, false → Awaiting Payment",
+    ),
     tenant_id: str | None = Query(None, description="Limit to one company's orders (history)"),
     limit: int = Query(50, le=200),
     db: AsyncSession = Depends(get_db),
@@ -162,9 +170,34 @@ async def list_credit_orders(
     Default view is the slip-review queue (awaiting_review); `status=all` returns
     every status; `tenant_id` narrows to one company's order history.
     """
+    # Enrich each row with its proforma number and the AR code resolved from the
+    # buyer's (tax_id, branch) — so the queue shows post-readiness at a glance.
     query = (
-        select(CreditOrder, Tenant.name)
+        select(
+            CreditOrder,
+            Tenant.name,
+            BillingDocument.number,
+            BillingDocument.buyer_name,
+            ArCustomerProfile.carmen_ar_code,
+        )
         .join(Tenant, Tenant.id == CreditOrder.tenant_id)
+        .outerjoin(
+            BillingDocument,
+            and_(
+                BillingDocument.order_id == CreditOrder.id,
+                BillingDocument.doc_type == BillingDocumentType.PROFORMA,
+                BillingDocument.deleted_at.is_(None),
+            ),
+        )
+        .outerjoin(
+            ArCustomerProfile,
+            and_(
+                ArCustomerProfile.buyer_tax_id == BillingDocument.buyer_tax_id,
+                ArCustomerProfile.buyer_branch
+                == sa_func.coalesce(BillingDocument.buyer_branch, ""),
+                ArCustomerProfile.deleted_at.is_(None),
+            ),
+        )
         .where(CreditOrder.deleted_at.is_(None))
     )
 
@@ -179,15 +212,24 @@ async def list_credit_orders(
     elif status:
         query = query.where(CreditOrder.status == status)
     else:
-        query = query.where(CreditOrder.status == CreditOrderStatus.AWAITING_REVIEW)
+        query = query.where(CreditOrder.status == CreditOrderStatus.IN_PROGRESS)
+
+    # Split in_progress into To Review (slip uploaded) vs Awaiting Payment (no slip).
+    if has_slip is True:
+        query = query.where(CreditOrder.slip_uploaded_at.is_not(None))
+    elif has_slip is False:
+        query = query.where(CreditOrder.slip_uploaded_at.is_(None))
 
     query = query.order_by(CreditOrder.created_at.asc()).limit(limit)
     rows = (await db.execute(query)).all()
 
     out: list[CreditOrderResponse] = []
-    for order, tenant_name in rows:
+    for order, tenant_name, proforma_number, buyer_name, ar_code in rows:
         resp = CreditOrderResponse.model_validate(order)
         resp.tenant_name = tenant_name
+        resp.proforma_number = proforma_number
+        resp.buyer_name = buyer_name
+        resp.carmen_ar_code = ar_code
         out.append(resp)
     return out
 
@@ -238,16 +280,15 @@ async def approve_order(
     db: AsyncSession = Depends(get_db),
     admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
 ):
-    """
-    Approve a slip: grant credits, issue tax invoice, mark order paid.
-    Only valid when status=awaiting_review.
-    """
+    """Approve a slip: grant credits, issue tax invoice, mark order paid."""
     order = (
         await db.execute(
-            select(CreditOrder).where(
+            select(CreditOrder)
+            .where(
                 CreditOrder.id == order_id,
                 CreditOrder.deleted_at.is_(None),
             )
+            .with_for_update()
         )
     ).scalar_one_or_none()
     if order is None:
@@ -255,10 +296,10 @@ async def approve_order(
 
     _assert_scope(admin, str(order.tenant_id))
 
-    if order.status not in _DECIDABLE:
+    if order.status != CreditOrderStatus.IN_PROGRESS:
         raise HTTPException(
             status_code=409,
-            detail=f"Order is in status '{order.status}', expected awaiting_review or on_hold",
+            detail=f"Order is '{order.status}', expected in_progress",
         )
 
     # Fetch proforma buyer info for the tax invoice snapshot
@@ -343,16 +384,15 @@ async def reject_order(
     db: AsyncSession = Depends(get_db),
     admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
 ):
-    """
-    Reject a slip: mark order rejected with a reason.
-    The tenant may create a new order for the same pack after rejection.
-    """
+    """Reject a slip: mark order void with a reason."""
     order = (
         await db.execute(
-            select(CreditOrder).where(
+            select(CreditOrder)
+            .where(
                 CreditOrder.id == order_id,
                 CreditOrder.deleted_at.is_(None),
             )
+            .with_for_update()
         )
     ).scalar_one_or_none()
     if order is None:
@@ -360,13 +400,13 @@ async def reject_order(
 
     _assert_scope(admin, str(order.tenant_id))
 
-    if order.status not in _DECIDABLE:
+    if order.status != CreditOrderStatus.IN_PROGRESS:
         raise HTTPException(
             status_code=409,
-            detail=f"Order is in status '{order.status}', expected awaiting_review or on_hold",
+            detail=f"Order is '{order.status}', expected in_progress",
         )
 
-    order.status = CreditOrderStatus.REJECTED  # type: ignore[assignment]
+    order.status = CreditOrderStatus.VOID  # type: ignore[assignment]
     order.rejected_reason = body.reason  # type: ignore[assignment]
 
     await db.commit()
@@ -389,11 +429,7 @@ async def hold_order(
     db: AsyncSession = Depends(get_db),
     admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
 ):
-    """
-    Park an order pending the buyer's reply (`hold=True`), or resume it back to the
-    review queue (`hold=False`). Lets the admin confirm a questionable slip with the
-    buyer instead of rejecting it outright. The optional note is admin-only.
-    """
+    """Update the admin note on an in-progress order."""
     order = (
         await db.execute(
             select(CreditOrder)
@@ -406,28 +442,17 @@ async def hold_order(
 
     _assert_scope(admin, str(order.tenant_id))
 
-    if body.hold:
-        if order.status != CreditOrderStatus.AWAITING_REVIEW:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Can only hold an awaiting_review order, not '{order.status}'",
-            )
-        order.status = CreditOrderStatus.ON_HOLD  # type: ignore[assignment]
-        if body.note is not None:
-            order.admin_note = body.note.strip() or None  # type: ignore[assignment]
-    else:
-        if order.status != CreditOrderStatus.ON_HOLD:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Can only resume an on_hold order, not '{order.status}'",
-            )
-        order.status = CreditOrderStatus.AWAITING_REVIEW  # type: ignore[assignment]
+    if order.status != CreditOrderStatus.IN_PROGRESS:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Can only add notes to in_progress orders, not '{order.status}'",
+        )
+
+    order.admin_note = (body.note or "").strip() or None  # type: ignore[assignment]
 
     await db.commit()
     await db.refresh(order)
-    logger.info(
-        "order hold=%s: id=%s tenant=%s by=%s", body.hold, order_id, order.tenant_id, admin.email
-    )
+    logger.info("order note updated: id=%s by=%s", order_id, admin.email)
     return CreditOrderResponse.model_validate(order)
 
 
@@ -437,10 +462,7 @@ async def cancel_order(
     db: AsyncSession = Depends(get_db),
     admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
 ):
-    """
-    Cancel (soft-delete) a still-pending order — one with no slip uploaded yet.
-    Orders that already carry a slip go through Reject so the buyer sees a reason.
-    """
+    """Cancel (void + soft-delete) an in-progress order."""
     order = (
         await db.execute(
             select(CreditOrder)
@@ -453,13 +475,13 @@ async def cancel_order(
 
     _assert_scope(admin, str(order.tenant_id))
 
-    if order.status != CreditOrderStatus.PENDING:
+    if order.status != CreditOrderStatus.IN_PROGRESS:
         raise HTTPException(
             status_code=409,
-            detail=f"Can only cancel a pending order, not '{order.status}'",
+            detail=f"Can only cancel an in_progress order, not '{order.status}'",
         )
 
-    order.status = CreditOrderStatus.CANCELLED  # type: ignore[assignment]
+    order.status = CreditOrderStatus.VOID  # type: ignore[assignment]
     order.deleted_at = datetime.now(UTC)  # type: ignore[assignment]
     await db.commit()
     await db.refresh(order)
@@ -502,3 +524,295 @@ async def list_order_documents(
         .all()
     )
     return [BillingDocumentResponse.model_validate(d) for d in docs]
+
+
+# ── AR Customer Profiles ─────────────────────────────────────────────────────
+
+
+@router.get("/ar-customer-profiles", response_model=list[ArCustomerProfileResponse])
+async def list_ar_profiles(
+    search: str | None = Query(None),
+    unmapped_only: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+    _admin: AdminPrincipal = Depends(require_permission("quotas", "read")),
+):
+    """List AR customer profiles for Carmen AR code mapping."""
+    q = select(ArCustomerProfile).where(ArCustomerProfile.deleted_at.is_(None))
+    if unmapped_only:
+        q = q.where(ArCustomerProfile.carmen_ar_code.is_(None))
+    if search:
+        like = f"%{search}%"
+        q = q.where(
+            ArCustomerProfile.buyer_name.ilike(like) | ArCustomerProfile.buyer_tax_id.ilike(like)
+        )
+    q = q.order_by(ArCustomerProfile.buyer_name)
+    rows = (await db.execute(q)).scalars().all()
+    return [ArCustomerProfileResponse.model_validate(r) for r in rows]
+
+
+@router.patch("/ar-customer-profiles/{profile_id}", response_model=ArCustomerProfileResponse)
+async def update_ar_profile(
+    profile_id: str,
+    body: ArCustomerProfileUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
+):
+    """Set or update the Carmen AR code for a customer profile."""
+    profile = (
+        await db.execute(
+            select(ArCustomerProfile).where(
+                ArCustomerProfile.id == profile_id,
+                ArCustomerProfile.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    profile.carmen_ar_code = body.carmen_ar_code.strip().upper() or None  # type: ignore[assignment]
+    profile.updated_at = datetime.now(UTC)  # type: ignore[assignment]
+    await db.commit()
+    await db.refresh(profile)
+    logger.info(
+        "AR profile updated: id=%s ar_code=%s by=%s",
+        profile_id,
+        profile.carmen_ar_code,
+        admin.email,
+    )
+    return ArCustomerProfileResponse.model_validate(profile)
+
+
+@router.post("/ar-customer-profiles/sync")
+async def sync_ar_profiles(
+    db: AsyncSession = Depends(get_db),
+    _admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
+):
+    """Re-scan billing_documents for new unique buyers and upsert into ar_customer_profiles."""
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    sub = (
+        select(
+            BillingDocument.buyer_name,
+            BillingDocument.buyer_tax_id,
+            BillingDocument.buyer_branch,
+        )
+        .where(
+            BillingDocument.deleted_at.is_(None),
+            BillingDocument.buyer_name.isnot(None),
+            BillingDocument.buyer_name != "",
+        )
+        .distinct()
+    )
+    rows = (await db.execute(sub)).all()
+
+    # Empty-tax-id buyers aren't covered by the (tax_id, branch) unique index, so
+    # dedupe them in-app by (name, branch) to avoid piling up duplicates each sync.
+    existing_empty = {
+        (n, b)
+        for n, b in (
+            await db.execute(
+                select(ArCustomerProfile.buyer_name, ArCustomerProfile.buyer_branch).where(
+                    ArCustomerProfile.deleted_at.is_(None),
+                    ArCustomerProfile.buyer_tax_id == "",
+                )
+            )
+        ).all()
+    }
+
+    inserted = 0
+    for name, tax_id, branch in rows:
+        tax_id = tax_id or ""
+        branch = branch or ""
+        if not tax_id:
+            if (name, branch) in existing_empty:
+                continue
+            existing_empty.add((name, branch))
+            db.add(ArCustomerProfile(buyer_name=name, buyer_tax_id="", buyer_branch=branch))
+            inserted += 1
+            continue
+        stmt = (
+            pg_insert(ArCustomerProfile)
+            .values(buyer_name=name, buyer_tax_id=tax_id, buyer_branch=branch)
+            .on_conflict_do_nothing(
+                index_elements=["buyer_tax_id", "buyer_branch"],
+                index_where=text("deleted_at IS NULL AND buyer_tax_id != ''"),
+            )
+        )
+        result = await db.execute(stmt)
+        if result.rowcount:
+            inserted += 1
+
+    await db.commit()
+    return {"inserted": inserted, "scanned": len(rows)}
+
+
+# ── Carmen AR Posting ────────────────────────────────────────────────────────
+
+
+@router.post("/credit-orders/post-ar", response_model=PostArResponse)
+async def post_ar_batch(
+    body: PostArRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
+):
+    """Batch-post paid orders to Carmen ERP as AR entries."""
+    results: list[PostArResultItem] = []
+
+    for oid in body.order_ids:
+        order = (
+            await db.execute(
+                select(CreditOrder)
+                .where(CreditOrder.id == oid, CreditOrder.deleted_at.is_(None))
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+
+        if order is None:
+            results.append(PostArResultItem(order_id=oid, success=False, error="Not found"))
+            continue
+
+        _assert_scope(admin, str(order.tenant_id))
+
+        if order.status != CreditOrderStatus.PAID:
+            results.append(
+                PostArResultItem(
+                    order_id=oid, success=False, error=f"Status is '{order.status}', expected paid"
+                )
+            )
+            continue
+
+        # Look up AR code from the order's buyer (via proforma snapshot)
+        proforma = (
+            await db.execute(
+                select(BillingDocument).where(
+                    BillingDocument.order_id == oid,
+                    BillingDocument.doc_type == BillingDocumentType.PROFORMA,
+                    BillingDocument.deleted_at.is_(None),
+                )
+            )
+        ).scalar_one_or_none()
+
+        ar_code = None
+        if proforma and proforma.buyer_tax_id:
+            profile = (
+                await db.execute(
+                    select(ArCustomerProfile).where(
+                        ArCustomerProfile.buyer_tax_id == proforma.buyer_tax_id,
+                        ArCustomerProfile.buyer_branch == (proforma.buyer_branch or ""),
+                        ArCustomerProfile.deleted_at.is_(None),
+                    )
+                )
+            ).scalar_one_or_none()
+            if profile:
+                ar_code = profile.carmen_ar_code
+
+        if not ar_code:
+            results.append(
+                PostArResultItem(
+                    order_id=oid, success=False, error="No AR code mapped for this buyer"
+                )
+            )
+            continue
+
+        try:
+            resp = await ar_posting_service.post_ar_entry(
+                str(order.id), str(ar_code), float(order.amount_thb)
+            )
+            order.status = CreditOrderStatus.COMPLETE  # type: ignore[assignment]
+            order.carmen_ar_posted_at = datetime.now(UTC)  # type: ignore[assignment]
+            order.carmen_ar_ref = resp["carmen_ar_ref"]  # type: ignore[assignment]
+            results.append(
+                PostArResultItem(order_id=oid, success=True, carmen_ar_ref=resp["carmen_ar_ref"])
+            )
+        except Exception as exc:
+            logger.exception("AR posting failed for order %s", oid)
+            results.append(PostArResultItem(order_id=oid, success=False, error=str(exc)))
+
+    await db.commit()
+    return PostArResponse(results=results)
+
+
+# ── KPI Summary ──────────────────────────────────────────────────────────────
+
+
+@router.get("/credit-orders/kpi", response_model=KpiSummaryResponse)
+async def get_kpi(
+    db: AsyncSession = Depends(get_db),
+    admin: AdminPrincipal = Depends(require_permission("quotas", "read")),
+):
+    """KPI summary for the order-review dashboard."""
+    unmapped = (
+        await db.execute(
+            select(sa_func.count())
+            .select_from(ArCustomerProfile)
+            .where(
+                ArCustomerProfile.deleted_at.is_(None),
+                ArCustomerProfile.carmen_ar_code.is_(None),
+            )
+        )
+    ).scalar() or 0
+
+    # Shared scope filter — applied consistently to every order-based metric.
+    scope: list = [CreditOrder.deleted_at.is_(None)]
+    if not admin.is_global and admin.tenant_scope:
+        scope.append(CreditOrder.tenant_id == admin.tenant_scope)
+
+    # One grouped pass over (status, slip?) → sum + count. Every order sits in
+    # exactly one stage, so the stage amounts form a funnel that reconciles to
+    # total. in_progress splits by slip into awaiting_payment / to_review.
+    has_slip = CreditOrder.slip_uploaded_at.is_not(None)
+    rows = (
+        await db.execute(
+            select(
+                CreditOrder.status,
+                has_slip.label("has_slip"),
+                sa_func.coalesce(sa_func.sum(CreditOrder.amount_thb), 0),
+                sa_func.count(),
+            )
+            .where(*scope)
+            .group_by(CreditOrder.status, has_slip)
+        )
+    ).all()
+
+    amounts = {k: Decimal(0) for k in ("awaiting", "to_review", "to_post", "posted", "rejected")}
+    counts = {k: 0 for k in amounts}
+    for status, slip, amt, cnt in rows:
+        s = str(getattr(status, "value", status))
+        amt = Decimal(str(amt or 0))
+        cnt = int(cnt or 0)
+        if s == CreditOrderStatus.IN_PROGRESS.value:
+            key = "to_review" if slip else "awaiting"
+        elif s == CreditOrderStatus.PAID.value:
+            key = "to_post"
+        elif s == CreditOrderStatus.COMPLETE.value:
+            key = "posted"
+        else:  # VOID
+            key = "rejected"
+        amounts[key] += amt
+        counts[key] += cnt
+
+    # Total excludes rejected/void — only live requests still in the pipeline.
+    total_amount = (
+        amounts["awaiting"] + amounts["to_review"] + amounts["to_post"] + amounts["posted"]
+    )
+
+    status_counts = {
+        "awaiting_payment": counts["awaiting"],
+        "to_review": counts["to_review"],
+        "to_post": counts["to_post"],
+        "posted": counts["posted"],
+        "rejected": counts["rejected"],
+    }
+
+    return KpiSummaryResponse(
+        unmapped_count=unmapped,
+        to_review_count=counts["to_review"],
+        to_post_count=counts["to_post"],
+        total_amount=float(total_amount),
+        awaiting_amount=float(amounts["awaiting"]),
+        to_review_amount=float(amounts["to_review"]),
+        to_post_amount=float(amounts["to_post"]),
+        posted_amount=float(amounts["posted"]),
+        rejected_amount=float(amounts["rejected"]),
+        status_counts=status_counts,
+    )
