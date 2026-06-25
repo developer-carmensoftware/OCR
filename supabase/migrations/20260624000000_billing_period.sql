@@ -16,8 +16,20 @@
 alter table credit_orders
     add column if not exists billing_period varchar(10) not null default 'monthly';
 
+alter table credit_orders
+    drop constraint if exists chk_credit_orders_billing_period;
+alter table credit_orders
+    add constraint chk_credit_orders_billing_period
+    check (billing_period in ('monthly', 'annual'));
+
 alter table tenant_subscriptions
     add column if not exists billing_period varchar(10) not null default 'monthly';
+
+alter table tenant_subscriptions
+    drop constraint if exists chk_tenant_subs_billing_period;
+alter table tenant_subscriptions
+    add constraint chk_tenant_subs_billing_period
+    check (billing_period in ('monthly', 'annual'));
 
 alter table tenant_subscriptions
     add column if not exists cycle_start timestamptz;

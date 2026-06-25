@@ -67,6 +67,7 @@ create table if not exists credit_orders (
     pack_code        varchar(20)        not null references credit_packs (code),
     credits          integer            not null,
     amount_thb       numeric(10, 2)     not null,
+    billing_period   varchar(10)        not null default 'monthly',
     status           creditorderstatus  not null default 'in_progress',
     payment_ref      varchar(128),
     paid_at          timestamptz,
