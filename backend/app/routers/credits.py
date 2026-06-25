@@ -35,7 +35,12 @@ from app.models.schemas import (
 )
 from app.services import billing_document_service as bds
 from app.services import carmen_service, promptpay_service, storage_service
-from app.services.credit_service import active_subscription
+from app.services.credit_service import (
+    active_subscription,
+    annual_price,
+    proration_credit,
+    purchase_block_reason,
+)
 from app.services.file_service import FileService
 from app.services.storage_service import StorageError
 from app.utils.tax import vat_on_top
@@ -61,7 +66,13 @@ async def list_packs(
         .scalars()
         .all()
     )
-    return [CreditPackResponse.model_validate(p) for p in rows]
+    out: list[CreditPackResponse] = []
+    for p in rows:
+        resp = CreditPackResponse.model_validate(p)
+        if p.kind == "subscription":
+            resp.price_annual_thb = float(annual_price(str(p.price_thb)))
+        out.append(resp)
+    return out
 
 
 @router.get("/company-profile", response_model=CompanyProfileResponse)
@@ -128,25 +139,41 @@ async def create_order(
     if pack is None or not pack.is_active:
         raise HTTPException(status_code=404, detail="Credit pack not found")
 
-    # Subscription purchase guard (Option A): one active plan at a time — renew
-    # only after the current cycle lapses. Top-ups bypass this. Switching to a
-    # renew-while-active policy (B/C) is a localized change to this block + the
-    # period math in credit_service.activate_subscription().
+    # Upgrade guard: upgrade / renew allowed mid-plan; downgrade blocked.
+    credit = Decimal("0")
     if pack.kind == "subscription":
         current = await active_subscription(db, session.tenant_id)
         if current is not None:
-            raise HTTPException(
-                status_code=409,
-                detail="You already have an active plan. You can renew after it ends.",
+            cur_pack = (
+                await db.execute(select(CreditPack).where(CreditPack.code == current.plan_code))
+            ).scalar_one()
+            reason = purchase_block_reason(
+                current.billing_period, cur_pack.credits, body.billing_period, pack.credits
+            )
+            if reason:
+                raise HTTPException(status_code=409, detail=reason)
+            cur_net = (
+                annual_price(str(cur_pack.price_thb))
+                if current.billing_period == "annual"
+                else Decimal(str(cur_pack.price_thb))
+            )
+            credit = proration_credit(
+                cur_net, current.period_start, current.period_end, datetime.now(UTC)
             )
 
-    net = Decimal(str(pack.price_thb))
+    # Annual = 12 months at a 10% discount; subscriptions only (top-ups never expire).
+    is_annual = body.billing_period == "annual" and pack.kind == "subscription"
+    billing_period = "annual" if is_annual else "monthly"
+    net = annual_price(str(pack.price_thb)) if is_annual else Decimal(str(pack.price_thb))
+    net = max(net - credit, Decimal("0.00"))
     _sub, _vat, gross = vat_on_top(net)
     order = CreditOrder(
         tenant_id=session.tenant_id,
         pack_code=pack.code,
         credits=pack.credits,
         amount_thb=gross,
+        billing_period=billing_period,
+        proration_credit_thb=credit,
         status=CreditOrderStatus.IN_PROGRESS,
         expires_at=datetime.now(UTC) + timedelta(days=14),
     )
@@ -187,9 +214,11 @@ async def create_order(
         order_id=str(order.id),
         doc_type=BillingDocumentType.PROFORMA,
         pack_code=pack.code,  # type: ignore[arg-type]
-        pack_description=str(pack.description) if pack.description else f"{pack.credits} credits",
+        pack_description=(str(pack.description) if pack.description else f"{pack.credits} credits")
+        + (" (Annual — 12 months)" if is_annual else "")
+        + (f" (−฿{credit:,.2f} credit from current plan)" if credit > 0 else ""),
         credits=pack.credits,  # type: ignore[arg-type]
-        amount_thb=Decimal(str(pack.price_thb)),
+        amount_thb=net,
         buyer=buyer,
     )
 

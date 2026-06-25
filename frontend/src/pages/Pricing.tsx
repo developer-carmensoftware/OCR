@@ -21,7 +21,14 @@ import {
   type CheckoutSession,
 } from '../hooks/credits'
 import { PLAN_META, SALES_CONTACT } from '../constants/billing'
-import { getPaymentInfo, type CreditPack, type PaymentInfo } from '../lib/api/credits'
+import {
+  getPaymentInfo,
+  type BillingPeriod,
+  type CreditPack,
+  type PaymentInfo,
+} from '../lib/api/credits'
+import { getUsage, type ActiveSubscription } from '../lib/api/auth'
+import { getStoredToken } from '../lib/api/client'
 import { useEntrance } from '../lib/useEntrance'
 import '../styles/pages/pricing.css'
 
@@ -133,21 +140,43 @@ export default function Pricing() {
   const { orders, reload } = useOrderHistory()
   const openOrders = orders.filter(o => o.status === 'in_progress')
   const hasOpenOrder = openOrders.length > 0
+  // Savings % for the toggle badge — derived from the catalog (same for every tier).
+  const annualSavePct = (() => {
+    const p = plans.find(pl => pl.price_annual_thb != null && pl.price_thb)
+    if (!p?.price_annual_thb) return null
+    return Math.round((1 - p.price_annual_thb / 12 / p.price_thb) * 100)
+  })()
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
   const [resume, setResume] = useState<CheckoutSession | null>(() => loadPersistedCheckout())
   const [view, setView] = useState<'catalog' | 'checkout'>(resume ? 'checkout' : 'catalog')
   const [selected, setSelected] = useState<CreditPack | null>(null)
+  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly')
+  const [selectedPeriod, setSelectedPeriod] = useState<BillingPeriod>('monthly')
   const [showContact, setShowContact] = useState(false)
+  const [activeSub, setActiveSub] = useState<ActiveSubscription | null>(null)
   const enter = useEntrance('pricing')
+  // Annual subscribers can only buy annual mid-term (monthly would forfeit prepaid value).
+  const annualLocked = activeSub?.billing_period === 'annual'
 
   useEffect(() => {
     getPaymentInfo()
       .then(setPaymentInfo)
       .catch(() => setPaymentInfo(null))
+    const token = getStoredToken()
+    if (token) {
+      getUsage(token)
+        .then(d => setActiveSub(d.usage.subscription ?? null))
+        .catch(() => setActiveSub(null))
+    }
   }, [])
 
-  const startCheckout = (pack: CreditPack) => {
+  useEffect(() => {
+    if (annualLocked) setBillingPeriod('annual')
+  }, [annualLocked])
+
+  const startCheckout = (pack: CreditPack, period: BillingPeriod = 'monthly') => {
     setSelected(pack)
+    setSelectedPeriod(period)
     setView('checkout')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -203,6 +232,7 @@ export default function Pricing() {
           >
             <CheckoutFlow
               pack={selected}
+              period={selectedPeriod}
               resume={resume}
               onCancel={backToCatalog}
               onViewHistory={() => {
@@ -240,6 +270,56 @@ export default function Pricing() {
             ) : (
               <>
                 <section className="pricing-section" aria-label="Plans">
+                  <div
+                    className="billing-period-toggle"
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'center',
+                      marginBottom: '1.5rem',
+                    }}
+                  >
+                    {/* Definite width → flex:1 yields a TRUE 50/50 split (no
+                        min-width:auto flooring), so the hardcoded-50% indicator
+                        lines up and each centered label sits dead-center. */}
+                    <div
+                      className="segmented-control"
+                      style={{ margin: 0, width: '22rem', maxWidth: '100%' }}
+                    >
+                      <button
+                        type="button"
+                        className={`segmented-btn${billingPeriod === 'annual' ? ' active' : ''}`}
+                        onClick={() => setBillingPeriod('annual')}
+                      >
+                        {t('plan.billingAnnual')}
+                        {annualSavePct != null && (
+                          <span className="seg-save-pill">
+                            {t('plan.saveAnnualPct', { pct: annualSavePct })}
+                          </span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        className={`segmented-btn${billingPeriod === 'monthly' ? ' active' : ''}`}
+                        onClick={() => setBillingPeriod('monthly')}
+                        disabled={annualLocked}
+                        title={annualLocked ? t('plan.monthlyLockedNote') : undefined}
+                      >
+                        {t('plan.billingMonthly')}
+                      </button>
+                      <span
+                        className="segmented-indicator"
+                        style={{
+                          width: 'calc(50% - 4px)',
+                          left: billingPeriod === 'annual' ? 2 : 'calc(50% + 2px)',
+                        }}
+                      />
+                    </div>
+                    {annualLocked && (
+                      <p className="pricing-note" style={{ marginTop: '0.5rem' }}>
+                        {t('plan.monthlyLockedNote')}
+                      </p>
+                    )}
+                  </div>
                   <m.div
                     className="plan-grid plan-grid--5"
                     variants={containerVariants}
@@ -254,8 +334,11 @@ export default function Pricing() {
                         <PlanCard
                           pack={pack}
                           meta={PLAN_META[pack.code] ?? { name: pack.code }}
-                          onSelect={startCheckout}
+                          period={billingPeriod}
+                          onSelect={p => startCheckout(p, billingPeriod)}
                           disabled={hasOpenOrder}
+                          activePlanCode={activeSub?.plan_code}
+                          activePlanCredits={activeSub?.doc_allowance}
                         />
                       </m.div>
                     ))}

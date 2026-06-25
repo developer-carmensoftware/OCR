@@ -402,7 +402,7 @@
 }
 
 .plan-price-amount {
-  font-size: 2rem;
+  font-size: clamp(1.5rem, 2.8vw, 2rem);
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.1;
@@ -419,6 +419,54 @@
   margin-bottom: 1rem;
   font-size: 0.78rem;
   color: var(--text-3);
+}
+
+/* Annual mode: original monthly price struck through, sitting just above the
+   discounted per-month hero (which keeps .plan-price's bottom anchor). */
+.plan-price-was {
+  display: block;
+  margin-top: auto;
+  padding-top: 1.25rem;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-4);
+  text-decoration: line-through;
+}
+
+.plan-price-was + .plan-price {
+  margin-top: 0;
+  padding-top: 0.15rem;
+}
+
+.plan-save {
+  color: var(--teal);
+  font-weight: 700;
+}
+
+/* Slide the active-segment indicator when toggling Annual ↔ Monthly. Scoped to
+   this toggle — the shared nav segmented controls navigate (remount), no slide. */
+.billing-period-toggle .segmented-indicator {
+  transition: left var(--dur-base) var(--ease-out-premium);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .billing-period-toggle .segmented-indicator {
+    transition: none;
+  }
+}
+
+/* Green "save N%" pill inside the annual segment of the billing-period toggle. */
+.seg-save-pill {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--teal) 16%, transparent);
+  color: var(--teal);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.5;
 }
 
 .plan-cta {
@@ -2172,6 +2220,12 @@
   font-weight: 700;
   letter-spacing: -0.015em;
   color: var(--text);
+}
+
+/* Plan-status readout on the order history page: same usage-strip pill as the catalog,
+   left-aligned and tucked under the page title instead of carrying the catalog's top margin. */
+.plan-strip {
+  margin: 0 0 1.25rem;
 }
 
 .order-list {

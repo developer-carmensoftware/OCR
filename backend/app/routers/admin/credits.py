@@ -343,10 +343,11 @@ async def approve_order(
             db,
             str(order.tenant_id),
             str(order.pack_code),
-            int(order.credits),  # type: ignore[arg-type]
+            int(order.credits),  # type: ignore[arg-type]  # per-month allowance (both periods)
             order_id,
+            billing_period=str(order.billing_period),
         )
-        fulfilled = f"subscription:{order.pack_code}"
+        fulfilled = f"subscription:{order.pack_code}:{order.billing_period}"
     else:
         balance = await grant_credits(
             db,

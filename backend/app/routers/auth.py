@@ -293,6 +293,7 @@ async def get_usage(_session: SessionInfo = Depends(get_current_session)):
             "docs_remaining": max(0, sub.doc_allowance - sub.docs_used),
             "period_start": sub.period_start.isoformat() if sub.period_start else None,
             "period_end": sub.period_end.isoformat() if sub.period_end else None,
+            "billing_period": sub.billing_period,
             "status": sub.status.value if hasattr(sub.status, "value") else sub.status,
         }
         if sub is not None

@@ -10,13 +10,18 @@ import {
 import { formatThb, formatRate } from '../../lib/money'
 import { ENTERPRISE, FREE_PLAN, perDoc, type PackPresentation } from '../../constants/billing'
 import { useT } from '../../i18n/LanguageContext'
-import type { CreditPack } from '../../lib/api/credits'
+import type { BillingPeriod, CreditPack } from '../../lib/api/credits'
 
 interface PlanCardProps {
   pack: CreditPack
   meta: PackPresentation
+  period?: BillingPeriod
   onSelect: (pack: CreditPack) => void
   disabled?: boolean
+  /** Current active plan code, if any — drives upgrade/renew/downgrade labels. */
+  activePlanCode?: string | null
+  /** Doc allowance of the current active plan — used to determine tier rank. */
+  activePlanCredits?: number
 }
 
 const TIER_ICONS: Record<string, { Icon: PhosphorIcon; tint: string }> = {
@@ -31,8 +36,29 @@ const TIER_ICONS: Record<string, { Icon: PhosphorIcon; tint: string }> = {
  * anchored at the bottom next to the CTA. Only the highlighted tier gets the
  * primary CTA.
  */
-export function PlanCard({ pack, meta, onSelect, disabled }: PlanCardProps) {
+export function PlanCard({
+  pack,
+  meta,
+  period = 'monthly',
+  onSelect,
+  disabled,
+  activePlanCode,
+  activePlanCredits,
+}: PlanCardProps) {
   const { t } = useT()
+  const isCurrentPlan = activePlanCode === pack.code
+  const isDowngrade = activePlanCredits != null && pack.credits < activePlanCredits
+  const ctaLabel = isCurrentPlan
+    ? t('plan.renew', { name: meta.name })
+    : activePlanCode
+      ? t('plan.upgrade', { name: meta.name })
+      : t('plan.choose', { name: meta.name })
+  // Annual: pay for fewer months up front (2 free); the doc allowance is still
+  // per month, so the hero stays the per-month price — just the discounted one.
+  const annual = period === 'annual' && pack.price_annual_thb != null
+  const annualTotal = pack.price_annual_thb ?? pack.price_thb * 12
+  const monthlyEquivalent = annual ? annualTotal / 12 : pack.price_thb
+  const savePct = annual ? Math.round((1 - monthlyEquivalent / pack.price_thb) * 100) : 0
   const rate = perDoc(pack.price_thb, pack.credits)
   const icon = TIER_ICONS[pack.code]
   return (
@@ -49,21 +75,36 @@ export function PlanCard({ pack, meta, onSelect, disabled }: PlanCardProps) {
         {t('plan.docsPerMonthSuffix')}
       </p>
 
+      <span
+        className="plan-price-was text-mono"
+        style={annual ? undefined : { visibility: 'hidden' }}
+      >
+        ฿{formatThb(pack.price_thb)}
+      </span>
       <div className="plan-price">
-        <span className="plan-price-amount text-mono">฿{formatThb(pack.price_thb)}</span>
+        <span className="plan-price-amount text-mono">
+          ฿{formatThb(annual ? monthlyEquivalent : pack.price_thb)}
+        </span>
         <span className="plan-price-period">{t('plan.perMonth')}</span>
       </div>
-      <p className="plan-rate">
-        ≈ <span className="text-mono">฿{formatRate(rate)}</span> {t('plan.perDoc')}
-      </p>
+      {annual ? (
+        <p className="plan-rate">
+          {t('plan.billedYearly', { total: formatThb(annualTotal) })}{' '}
+          <span className="plan-save">{t('plan.saveAnnualPct', { pct: savePct })}</span>
+        </p>
+      ) : (
+        <p className="plan-rate">
+          ≈ <span className="text-mono">฿{formatRate(rate)}</span> {t('plan.perDoc')}
+        </p>
+      )}
 
       <button
         type="button"
         className={`btn ${meta.highlight ? 'btn-primary' : 'btn-outline'} plan-cta`}
         onClick={() => onSelect(pack)}
-        disabled={disabled}
+        disabled={disabled || isDowngrade}
       >
-        {t('plan.choose', { name: meta.name })} <ArrowRight size={14} />
+        {ctaLabel} <ArrowRight size={14} />
       </button>
     </div>
   )

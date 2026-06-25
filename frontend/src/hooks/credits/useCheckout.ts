@@ -4,6 +4,7 @@ import {
   getCompanyProfile,
   uploadSlip,
   type BillingDocument,
+  type BillingPeriod,
   type BuyerInfo,
   type CreateOrderResponse,
   type CreditPack,
@@ -16,6 +17,7 @@ export interface CheckoutSession {
   pack_code: string
   credits: number
   amount_thb: number
+  billing_period: BillingPeriod
   order_id: string
   qr: QrPayload
   proforma: BillingDocument
@@ -74,7 +76,11 @@ interface UseCheckout {
  * `resume` (from sessionStorage) jumps straight to the pay step so a refresh
  * mid-payment keeps the same server-side order rather than creating a duplicate.
  */
-export function useCheckout(pack: CreditPack | null, resume?: CheckoutSession | null): UseCheckout {
+export function useCheckout(
+  pack: CreditPack | null,
+  resume?: CheckoutSession | null,
+  period: BillingPeriod = 'monthly'
+): UseCheckout {
   const [phase, setPhase] = useState<CheckoutPhase>(resume ? 'pay' : 'buyer')
   const [session, setSession] = useState<CheckoutSession | null>(resume ?? null)
   const [buyer, setBuyer] = useState<BuyerInfo>(EMPTY_BUYER)
@@ -114,11 +120,18 @@ export function useCheckout(pack: CreditPack | null, resume?: CheckoutSession | 
     setCreating(true)
     setError(null)
     try {
-      const res: CreateOrderResponse = await createOrder(pack.code, buyer)
+      // Annual applies to subscription tiers only; top-ups stay monthly-priced.
+      const isAnnual = period === 'annual' && pack.price_annual_thb != null
+      const res: CreateOrderResponse = await createOrder(
+        pack.code,
+        buyer,
+        isAnnual ? 'annual' : 'monthly'
+      )
       const next: CheckoutSession = {
         pack_code: pack.code,
         credits: pack.credits,
-        amount_thb: pack.price_thb,
+        amount_thb: isAnnual ? (pack.price_annual_thb as number) : pack.price_thb,
+        billing_period: isAnnual ? 'annual' : 'monthly',
         order_id: res.order.id,
         qr: res.qr,
         proforma: res.proforma,
@@ -132,7 +145,7 @@ export function useCheckout(pack: CreditPack | null, resume?: CheckoutSession | 
     } finally {
       setCreating(false)
     }
-  }, [pack, buyer])
+  }, [pack, buyer, period])
 
   const submitSlip = useCallback(
     async (file: File) => {

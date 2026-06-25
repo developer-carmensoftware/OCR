@@ -42,6 +42,7 @@ def _order(
     row.pack_code = pack_code
     row.credits = credits
     row.amount_thb = Decimal(str(amount_thb))
+    row.billing_period = "monthly"
     row.status = status
     row.tenant_id = tenant_id
     row.deleted_at = None
@@ -235,6 +236,40 @@ def test_approve_order_marks_paid_and_grants_credits():
 
     assert resp.status_code == 200
     assert resp.json()["status"] == "paid"
+
+
+def test_approve_subscription_order_activates_plan():
+    """A subscription order takes the activate_subscription branch (annual here)."""
+    order_id = str(uuid.uuid4())
+    order = _order(order_id=order_id, status="in_progress", pack_code="sub_pro", credits=1500)
+    order.billing_period = "annual"
+    proforma = _proforma(order_id=order_id)
+
+    pack = MagicMock()
+    pack.code = order.pack_code
+    pack.kind = "subscription"
+
+    mock_db = make_mock_db()
+    mock_db.execute.side_effect = [
+        _scalar(order),  # select CreditOrder
+        _scalar(proforma),  # select BillingDocument (proforma)
+        _scalar(pack),  # select CreditPack (kind branch)
+        MagicMock(),  # activate_subscription: supersede UPDATE
+        MagicMock(),  # activate_subscription: pg_insert new window
+    ]
+
+    with (
+        patch(
+            "app.routers.admin.credits.bds.issue_document",
+            new=AsyncMock(return_value=MagicMock()),
+        ),
+        make_admin_test_client(mock_db) as client,
+    ):
+        resp = client.post(f"{BASE}/credit-orders/{order_id}/approve", headers=AUTH)
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "paid"
+    assert resp.json()["billing_period"] == "annual"
 
 
 def test_approve_order_wrong_status_returns_409():

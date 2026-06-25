@@ -5,11 +5,15 @@ import { API } from './endpoints'
 
 export type PackKind = 'subscription' | 'topup'
 
+export type BillingPeriod = 'monthly' | 'annual'
+
 export interface CreditPack {
   code: string
   kind: PackKind
   credits: number
   price_thb: number
+  /** Annual list price (12 months − 10%); present for subscription tiers only. */
+  price_annual_thb?: number | null
   sort_order: number
 }
 
@@ -22,6 +26,7 @@ export interface CreditOrder {
   pack_code: string
   credits: number
   amount_thb: number
+  billing_period?: BillingPeriod // 'monthly' | 'annual'
   status: OrderStatus
   created_at?: string | null // request date
   slip_uploaded_at?: string | null // slip upload date
@@ -131,12 +136,17 @@ export async function getPaymentInfo(): Promise<PaymentInfo> {
 /** Create a pending order → returns the PromptPay QR payload + proforma invoice. */
 export async function createOrder(
   packCode: string,
-  buyer?: Partial<BuyerInfo>
+  buyer?: Partial<BuyerInfo>,
+  billingPeriod: BillingPeriod = 'monthly'
 ): Promise<CreateOrderResponse> {
   const res = await apiFetch(API.credits.orders, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pack_code: packCode, buyer: buyer ?? null }),
+    body: JSON.stringify({
+      pack_code: packCode,
+      billing_period: billingPeriod,
+      buyer: buyer ?? null,
+    }),
   })
   if (res.status === 409)
     throw new OpenOrderError(await detail(res, 'You already have an open order'))

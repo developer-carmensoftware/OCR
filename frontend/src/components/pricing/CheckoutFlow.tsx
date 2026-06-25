@@ -12,6 +12,7 @@ import { useT } from '../../i18n/LanguageContext'
 import type { TKey } from '../../i18n/dict'
 import {
   getPaymentInfo,
+  type BillingPeriod,
   type BuyerInfo,
   type CreditPack,
   type PaymentInfo,
@@ -23,6 +24,7 @@ function itemName(code: string): string {
 
 interface Props {
   pack: CreditPack | null
+  period?: BillingPeriod
   resume?: CheckoutSession | null
   onCancel: () => void
   onViewHistory: () => void
@@ -34,9 +36,15 @@ const SOURCE_KEY: Record<string, TKey | ''> = {
   form: '',
 }
 
-export default function CheckoutFlow({ pack, resume, onCancel, onViewHistory }: Props) {
+export default function CheckoutFlow({
+  pack,
+  period = 'monthly',
+  resume,
+  onCancel,
+  onViewHistory,
+}: Props) {
   const { t } = useT()
-  const c = useCheckout(pack, resume)
+  const c = useCheckout(pack, resume, period)
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
 
   useEffect(() => {
@@ -54,8 +62,20 @@ export default function CheckoutFlow({ pack, resume, onCancel, onViewHistory }: 
   const stepNum = c.phase === 'buyer' ? 1 : c.phase === 'pay' ? 2 : 3
   const code = pack?.code ?? c.session?.pack_code ?? ''
   const credits = pack?.credits ?? c.session?.credits ?? 0
-  const amount = pack?.price_thb ?? c.session?.amount_thb ?? 0
   const isSubscription = !!PLAN_META[code]
+  // On resume there is no `pack` — fall back to the period/amount stored in the session.
+  const effectivePeriod: BillingPeriod = pack ? period : (c.session?.billing_period ?? 'monthly')
+  const isAnnual = isSubscription && effectivePeriod === 'annual'
+  const amount = pack
+    ? isAnnual
+      ? (pack.price_annual_thb ?? pack.price_thb)
+      : pack.price_thb
+    : (c.session?.amount_thb ?? 0)
+  const kindLabel = isSubscription
+    ? isAnnual
+      ? t('checkout.kindAnnual')
+      : t('checkout.kindMonthly')
+    : t('checkout.kindTopup')
 
   const updateBuyer = (patch: Partial<BuyerInfo>) => c.setBuyer({ ...c.buyer, ...patch })
   const buyerComplete = Object.values(c.buyer).every(v => v.trim())
@@ -186,7 +206,7 @@ export default function CheckoutFlow({ pack, resume, onCancel, onViewHistory }: 
                 </span>
               </div>
               <div className="checkout-summary-row checkout-summary-kind">
-                <span>{isSubscription ? t('checkout.kindMonthly') : t('checkout.kindTopup')}</span>
+                <span>{kindLabel}</span>
               </div>
               <div className="checkout-summary-total">
                 <span>{t('checkout.totalDue')}</span>

@@ -9,6 +9,7 @@ export interface ActiveSubscription {
   docs_remaining: number
   period_start: string | null
   period_end: string | null
+  billing_period?: string // 'monthly' | 'annual'
   status: string
 }
 

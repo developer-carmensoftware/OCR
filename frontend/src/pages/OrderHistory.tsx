@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, ShoppingBag, ArrowRight, Loader2 } from 'lucide-react'
+import { ChevronDown, ShoppingBag, ArrowRight, Loader2, CalendarClock } from 'lucide-react'
 import { toast } from 'sonner'
 import AppHeader from '../components/common/AppHeader'
 import LanguageToggle from '../components/common/LanguageToggle'
 import { useT } from '../i18n/LanguageContext'
 import { OrderStatusBadge, PendingOrderBanner, ProformaDocument } from '../components/pricing'
+import { getUsage, type ActiveSubscription } from '../lib/api/auth'
+import { getStoredToken } from '../lib/api/client'
 import { useOrderHistory } from '../hooks/credits'
 import {
   getOrderDocuments,
@@ -104,10 +106,37 @@ function OrderRow({ order, paymentInfo }: { order: CreditOrder; paymentInfo: Pay
   )
 }
 
+// The active subscription's license window — answers "when does my plan expire?".
+// Reuses the catalog page's usage-strip readout vocabulary (icon + label + mono value)
+// so it reads as native; the expiry date is the focal mono stat. period_end comes from
+// /usage; top-up-only tenants have no subscription, so nothing renders (credits never expire).
+function ActivePlanBanner({ sub }: { sub: ActiveSubscription }) {
+  const { t } = useT()
+  if (!sub.period_end) return null
+  const period = t(sub.billing_period === 'annual' ? 'plan.billingAnnual' : 'plan.billingMonthly')
+  return (
+    <div className="usage-strip plan-strip" role="status">
+      <div className="usage-stat">
+        <CalendarClock size={15} className="usage-stat-icon" />
+        <span className="usage-stat-value">{catalogName(sub.plan_code)}</span>
+        <span className="usage-stat-unit">
+          {period} · {sub.doc_allowance.toLocaleString()} {t('plan.docsPerMonthSuffix')}
+        </span>
+      </div>
+      <div className="usage-divider" aria-hidden="true" />
+      <div className="usage-stat">
+        <span className="usage-stat-label">{t('usage.activeUntil')}</span>
+        <span className="usage-stat-value text-mono">{formatDate(sub.period_end)}</span>
+      </div>
+    </div>
+  )
+}
+
 export default function OrderHistory() {
   const { t } = useT()
   const { orders, loading, error, reload } = useOrderHistory()
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
+  const [sub, setSub] = useState<ActiveSubscription | null>(null)
 
   const openOrders = orders.filter(o => o.status === 'in_progress')
   const history = orders.filter(o => o.status !== 'in_progress')
@@ -116,6 +145,12 @@ export default function OrderHistory() {
     getPaymentInfo()
       .then(setPaymentInfo)
       .catch(() => setPaymentInfo(null))
+    const token = getStoredToken()
+    if (token) {
+      getUsage(token)
+        .then(d => setSub(d.usage.subscription ?? null))
+        .catch(() => setSub(null))
+    }
   }, [])
 
   return (
@@ -158,6 +193,8 @@ export default function OrderHistory() {
             {t('order.buyPlan')} <ArrowRight size={14} />
           </a>
         </div>
+
+        {sub && <ActivePlanBanner sub={sub} />}
 
         <PendingOrderBanner orders={openOrders} onChanged={reload} paymentInfo={paymentInfo} />
 
