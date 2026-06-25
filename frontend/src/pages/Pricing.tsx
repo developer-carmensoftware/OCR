@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { X, MessageCircle, Phone, Mail } from 'lucide-react'
 import AppHeader from '../components/common/AppHeader'
 import LanguageToggle from '../components/common/LanguageToggle'
@@ -21,14 +21,19 @@ import {
   type CheckoutSession,
 } from '../hooks/credits'
 import { PLAN_META, SALES_CONTACT } from '../constants/billing'
-import { getPaymentInfo, type CreditPack, type PaymentInfo } from '../lib/api/credits'
+import {
+  getPaymentInfo,
+  type BillingPeriod,
+  type CreditPack,
+  type PaymentInfo,
+} from '../lib/api/credits'
 import { useEntrance } from '../lib/useEntrance'
 import '../styles/pages/pricing.css'
 
 function ContactDialog({ onClose }: { onClose: () => void }) {
   const { t } = useT()
   return (
-    <motion.div
+    <m.div
       className="ios-sheet-overlay"
       role="dialog"
       aria-modal="true"
@@ -39,7 +44,7 @@ function ContactDialog({ onClose }: { onClose: () => void }) {
       transition={{ duration: 0.2 }}
     >
       <div style={{ position: 'absolute', inset: 0 }} onClick={onClose} />
-      <motion.div
+      <m.div
         className="ios-sheet"
         initial={{ y: '100%' }}
         animate={{ y: 0 }}
@@ -81,8 +86,8 @@ function ContactDialog({ onClose }: { onClose: () => void }) {
             <span className="contact-channel-value text-mono">{SALES_CONTACT.email}</span>
           </a>
         </div>
-      </motion.div>
-    </motion.div>
+      </m.div>
+    </m.div>
   )
 }
 
@@ -115,10 +120,18 @@ export default function Pricing() {
   const { orders, reload } = useOrderHistory()
   const openOrders = orders.filter(o => o.status === 'in_progress')
   const hasOpenOrder = openOrders.length > 0
+  // Savings % for the toggle badge — derived from the catalog (same for every tier).
+  const annualSavePct = (() => {
+    const p = plans.find(pl => pl.price_annual_thb != null && pl.price_thb)
+    if (!p?.price_annual_thb) return null
+    return Math.round((1 - p.price_annual_thb / 12 / p.price_thb) * 100)
+  })()
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
   const [resume, setResume] = useState<CheckoutSession | null>(() => loadPersistedCheckout())
   const [view, setView] = useState<'catalog' | 'checkout'>(resume ? 'checkout' : 'catalog')
   const [selected, setSelected] = useState<CreditPack | null>(null)
+  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly')
+  const [selectedPeriod, setSelectedPeriod] = useState<BillingPeriod>('monthly')
   const [showContact, setShowContact] = useState(false)
   const enter = useEntrance('pricing')
 
@@ -128,8 +141,9 @@ export default function Pricing() {
       .catch(() => setPaymentInfo(null))
   }, [])
 
-  const startCheckout = (pack: CreditPack) => {
+  const startCheckout = (pack: CreditPack, period: BillingPeriod = 'monthly') => {
     setSelected(pack)
+    setSelectedPeriod(period)
     setView('checkout')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -176,7 +190,7 @@ export default function Pricing() {
 
       <AnimatePresence mode="wait">
         {view === 'checkout' ? (
-          <motion.div
+          <m.div
             key="checkout"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -185,15 +199,16 @@ export default function Pricing() {
           >
             <CheckoutFlow
               pack={selected}
+              period={selectedPeriod}
               resume={resume}
               onCancel={backToCatalog}
               onViewHistory={() => {
                 window.location.hash = '#/pricing/orders'
               }}
             />
-          </motion.div>
+          </m.div>
         ) : (
-          <motion.main
+          <m.main
             key="catalog"
             className="pricing-main"
             initial={{ opacity: 0 }}
@@ -202,7 +217,7 @@ export default function Pricing() {
             transition={{ duration: 0.18 }}
           >
             <PendingOrderBanner orders={openOrders} onChanged={reload} paymentInfo={paymentInfo} />
-            <motion.header
+            <m.header
               className="pricing-hero"
               initial={enter ? { opacity: 0, y: 12 } : false}
               animate={{ opacity: 1, y: 0 }}
@@ -210,7 +225,7 @@ export default function Pricing() {
             >
               <h2 className="pricing-title">{t('pricing.title')}</h2>
               <p className="pricing-subtitle">{t('pricing.subtitle')}</p>
-            </motion.header>
+            </m.header>
             {error ? (
               <div className="pricing-error">{t('pricing.loadError', { error })}</div>
             ) : loading ? (
@@ -222,33 +237,73 @@ export default function Pricing() {
             ) : (
               <>
                 <section className="pricing-section" aria-label="Plans">
-                  <motion.div
+                  <div
+                    className="billing-period-toggle"
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'center',
+                      marginBottom: '1.5rem',
+                    }}
+                  >
+                    {/* Definite width → flex:1 yields a TRUE 50/50 split (no
+                        min-width:auto flooring), so the hardcoded-50% indicator
+                        lines up and each centered label sits dead-center. */}
+                    <div
+                      className="segmented-control"
+                      style={{ margin: 0, width: '22rem', maxWidth: '100%' }}
+                    >
+                      <button
+                        type="button"
+                        className={`segmented-btn${billingPeriod === 'annual' ? ' active' : ''}`}
+                        onClick={() => setBillingPeriod('annual')}
+                      >
+                        {t('plan.billingAnnual')}
+                        {annualSavePct != null && (
+                          <span className="seg-save-pill">
+                            {t('plan.saveAnnualPct', { pct: annualSavePct })}
+                          </span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        className={`segmented-btn${billingPeriod === 'monthly' ? ' active' : ''}`}
+                        onClick={() => setBillingPeriod('monthly')}
+                      >
+                        {t('plan.billingMonthly')}
+                      </button>
+                      <span
+                        className="segmented-indicator"
+                        style={{
+                          width: 'calc(50% - 4px)',
+                          left: billingPeriod === 'annual' ? 2 : 'calc(50% + 2px)',
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <m.div
                     className="plan-grid plan-grid--5"
                     variants={containerVariants}
                     initial={enter ? 'hidden' : false}
                     animate="show"
                   >
-                    <motion.div variants={cardVariants} style={{ display: 'flex' }}>
+                    <m.div variants={cardVariants} style={{ display: 'flex' }}>
                       <FreePlanCard />
-                    </motion.div>
+                    </m.div>
                     {plans.map(pack => (
-                      <motion.div
-                        key={pack.code}
-                        variants={cardVariants}
-                        style={{ display: 'flex' }}
-                      >
+                      <m.div key={pack.code} variants={cardVariants} style={{ display: 'flex' }}>
                         <PlanCard
                           pack={pack}
                           meta={PLAN_META[pack.code] ?? { name: pack.code }}
-                          onSelect={startCheckout}
+                          period={billingPeriod}
+                          onSelect={p => startCheckout(p, billingPeriod)}
                           disabled={hasOpenOrder}
                         />
-                      </motion.div>
+                      </m.div>
                     ))}
-                    <motion.div variants={cardVariants} style={{ display: 'flex' }}>
+                    <m.div variants={cardVariants} style={{ display: 'flex' }}>
                       <EnterpriseCard onContact={() => setShowContact(true)} />
-                    </motion.div>
-                  </motion.div>
+                    </m.div>
+                  </m.div>
                 </section>
 
                 <section className="pricing-section" aria-labelledby="packs-heading">
@@ -273,7 +328,7 @@ export default function Pricing() {
                 </section>
               </>
             )}
-          </motion.main>
+          </m.main>
         )}
       </AnimatePresence>
 

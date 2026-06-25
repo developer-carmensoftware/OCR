@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { useT } from '../../i18n/LanguageContext'
 import type { TKey } from '../../i18n/dict'
 import {
@@ -402,7 +402,7 @@ export default function FeatureFlows() {
           (() => {
             const Panel = FLOW_PANELS[activeIdx]
             return (
-              <motion.div
+              <m.div
                 key={activeIdx}
                 className="flow-detail-inner"
                 initial={{ height: 0, opacity: 0 }}
@@ -412,7 +412,7 @@ export default function FeatureFlows() {
                 style={{ overflow: 'hidden' }}
               >
                 <Panel active />
-              </motion.div>
+              </m.div>
             )
           })()}
       </AnimatePresence>

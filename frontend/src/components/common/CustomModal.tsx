@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { motion, AnimatePresence, useAnimationControls, useReducedMotion } from 'framer-motion'
+import { m, AnimatePresence, useAnimationControls, useReducedMotion } from 'framer-motion'
 import { CheckCircle2, AlertTriangle, XCircle, Info, Loader2, Eye, EyeOff } from 'lucide-react'
 import { useT } from '../../i18n/LanguageContext'
 
@@ -88,8 +88,7 @@ export default function CustomModal({
         transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] },
       })
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [errorNonce])
+  }, [errorNonce, reduceMotion, shakeControls])
 
   const handleInputChange = (v: string) => {
     setInputVal(v)
@@ -171,7 +170,7 @@ export default function CustomModal({
   return createPortal(
     <AnimatePresence>
       {show && (
-        <motion.div
+        <m.div
           className="modal-overlay"
           role="dialog"
           aria-modal="true"
@@ -182,7 +181,7 @@ export default function CustomModal({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.18 }}
         >
-          <motion.div className={`modal-box modal-${type}`} {...boxMotion}>
+          <m.div className={`modal-box modal-${type}`} {...boxMotion}>
             <div className="modal-icon-wrapper">
               <cfg.Icon size={26} strokeWidth={1.75} />
             </div>
@@ -194,7 +193,7 @@ export default function CustomModal({
             </p>
 
             {inputLabel && (
-              <motion.div className="modal-input-group" animate={shakeControls}>
+              <m.div className="modal-input-group" animate={shakeControls}>
                 <label className="modal-input-label">{inputLabel}</label>
                 <div className="modal-input-wrap">
                   <input
@@ -230,7 +229,7 @@ export default function CustomModal({
                     </button>
                   )}
                 </div>
-              </motion.div>
+              </m.div>
             )}
 
             <div className="modal-actions">
@@ -257,8 +256,8 @@ export default function CustomModal({
                 {confirmLabel}
               </button>
             </div>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>,
     document.body

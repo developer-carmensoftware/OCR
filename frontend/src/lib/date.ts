@@ -53,3 +53,18 @@ export function normalizeDateStringToCE(dateStr: string | null | undefined): str
   const normalizedYear = normalizeYearToCE(yyyy)
   return `${dd.padStart(2, '0')}/${mm.padStart(2, '0')}/${normalizedYear}`
 }
+
+export function timeAgo(
+  iso: string | null,
+  t: (key: any, vars?: Record<string, string | number>) => string
+): string {
+  if (!iso) return '—'
+  const ms = Date.now() - new Date(iso).getTime()
+  if (Number.isNaN(ms)) return '—'
+  const m = Math.floor(ms / 60000)
+  if (m < 1) return t('orev.time.justNow')
+  if (m < 60) return t('orev.time.mAgo', { n: m })
+  const h = Math.floor(m / 60)
+  if (h < 24) return t('orev.time.hAgo', { n: h })
+  return t('orev.time.dAgo', { n: Math.floor(h / 24) })
+}

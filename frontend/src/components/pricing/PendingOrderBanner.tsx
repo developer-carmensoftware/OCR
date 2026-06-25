@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useReducer } from 'react'
 import { AlertTriangle, Clock, ChevronDown, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useT } from '../../i18n/LanguageContext'
@@ -16,6 +16,64 @@ import {
 import { catalogName } from '../../constants/billing'
 import { formatThb, formatDate } from '../../lib/money'
 
+// ── OrderRow state ────────────────────────────────────────────────────────────
+
+interface RowState {
+  open: boolean
+  docs: BillingDocument[] | null
+  loadingDocs: boolean
+  uploading: boolean
+  cancelling: boolean
+  showCancelModal: boolean
+}
+
+type RowAction =
+  | { type: 'TOGGLE_OPEN' }
+  | { type: 'LOAD_DOCS_START' }
+  | { type: 'LOAD_DOCS_DONE'; docs: BillingDocument[] }
+  | { type: 'LOAD_DOCS_ERROR' }
+  | { type: 'UPLOAD_START' }
+  | { type: 'UPLOAD_DONE' }
+  | { type: 'CANCEL_START' }
+  | { type: 'CANCEL_DONE' }
+  | { type: 'SHOW_CANCEL_MODAL'; show: boolean }
+
+const rowInitial: RowState = {
+  open: false,
+  docs: null,
+  loadingDocs: false,
+  uploading: false,
+  cancelling: false,
+  showCancelModal: false,
+}
+
+function rowReducer(state: RowState, action: RowAction): RowState {
+  switch (action.type) {
+    case 'TOGGLE_OPEN':
+      return { ...state, open: !state.open }
+    case 'LOAD_DOCS_START':
+      return { ...state, loadingDocs: true }
+    case 'LOAD_DOCS_DONE':
+      return { ...state, loadingDocs: false, docs: action.docs }
+    case 'LOAD_DOCS_ERROR':
+      return { ...state, loadingDocs: false }
+    case 'UPLOAD_START':
+      return { ...state, uploading: true }
+    case 'UPLOAD_DONE':
+      return { ...state, uploading: false }
+    case 'CANCEL_START':
+      return { ...state, showCancelModal: false, cancelling: true }
+    case 'CANCEL_DONE':
+      return { ...state, cancelling: false }
+    case 'SHOW_CANCEL_MODAL':
+      return { ...state, showCancelModal: action.show }
+    default:
+      return state
+  }
+}
+
+// ── OrderRow component ────────────────────────────────────────────────────────
+
 function OrderRow({
   order,
   onChanged,
@@ -27,27 +85,25 @@ function OrderRow({
 }) {
   const { t } = useT()
   const isReviewing = !!order.slip_uploaded_at
-  const [open, setOpen] = useState(false)
-  const [docs, setDocs] = useState<BillingDocument[] | null>(null)
-  const [loadingDocs, setLoadingDocs] = useState(false)
-  const [uploading, setUploading] = useState(false)
-  const [cancelling, setCancelling] = useState(false)
-  const [showCancelModal, setShowCancelModal] = useState(false)
+  const [state, dispatch] = useReducer(rowReducer, rowInitial)
+  const { open, docs, loadingDocs, uploading, cancelling, showCancelModal } = state
 
   const toggle = () => {
     const next = !open
-    setOpen(next)
+    dispatch({ type: 'TOGGLE_OPEN' })
     if (next && docs === null) {
-      setLoadingDocs(true)
+      dispatch({ type: 'LOAD_DOCS_START' })
       getOrderDocuments(order.id)
-        .then(setDocs)
-        .catch((e: Error) => toast.error(e.message))
-        .finally(() => setLoadingDocs(false))
+        .then(docs => dispatch({ type: 'LOAD_DOCS_DONE', docs }))
+        .catch((e: Error) => {
+          toast.error(e.message)
+          dispatch({ type: 'LOAD_DOCS_ERROR' })
+        })
     }
   }
 
   const handleSlip = async (file: File) => {
-    setUploading(true)
+    dispatch({ type: 'UPLOAD_START' })
     try {
       await uploadSlip(order.id, file)
       toast.success(t('checkout.slipSubmittedToast'))
@@ -56,13 +112,12 @@ function OrderRow({
       toast.error((e as Error).message)
       throw e
     } finally {
-      setUploading(false)
+      dispatch({ type: 'UPLOAD_DONE' })
     }
   }
 
   const doCancel = async () => {
-    setShowCancelModal(false)
-    setCancelling(true)
+    dispatch({ type: 'CANCEL_START' })
     try {
       await cancelOrder(order.id)
       toast.success(t('order.cancelledToast'))
@@ -70,7 +125,7 @@ function OrderRow({
     } catch (e) {
       toast.error((e as Error).message)
     } finally {
-      setCancelling(false)
+      dispatch({ type: 'CANCEL_DONE' })
     }
   }
 
@@ -123,7 +178,7 @@ function OrderRow({
         <button
           type="button"
           className="btn btn-outline pending-order-cancel"
-          onClick={() => setShowCancelModal(true)}
+          onClick={() => dispatch({ type: 'SHOW_CANCEL_MODAL', show: true })}
           disabled={cancelling}
         >
           {cancelling && <Loader2 size={14} className="animate-spin" />} {t('order.cancel')}
@@ -138,7 +193,7 @@ function OrderRow({
         confirmText={t('order.cancel')}
         cancelText={t('modal.cancel')}
         onConfirm={doCancel}
-        onCancel={() => setShowCancelModal(false)}
+        onCancel={() => dispatch({ type: 'SHOW_CANCEL_MODAL', show: false })}
       />
     </div>
   )

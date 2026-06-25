@@ -14,6 +14,7 @@ if (import.meta.env.VITE_SENTRY_DSN) {
 }
 
 import ReactDOM from 'react-dom/client'
+import { LazyMotion, domMax } from 'framer-motion'
 import { Toaster } from 'sonner'
 import { AuthProvider } from './contexts/AuthContext'
 import { AdminAuthProvider } from './contexts/AdminAuthContext'
@@ -193,9 +194,11 @@ root.render(
           theme="light"
         />
         <LanguageProvider>
-          <ConsentGate>
-            <Router />
-          </ConsentGate>
+          <LazyMotion features={domMax}>
+            <ConsentGate>
+              <Router />
+            </ConsentGate>
+          </LazyMotion>
         </LanguageProvider>
       </AdminAuthProvider>
     </AuthProvider>
