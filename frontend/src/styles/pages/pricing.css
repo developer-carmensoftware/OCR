@@ -197,7 +197,8 @@
 
 /* Free + 3 paid tiers: 4-up on desktop, 2x2 on tablet, stacked on mobile. */
 .plan-grid--4 {
-  grid-template-columns: repeat(4, 1fr);
+  /* minmax(0, 1fr) keeps all columns exactly equal — see note on --5 below. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 @media (max-width: 1000px) {
@@ -217,7 +218,11 @@
 
 /* Free + 3 paid + Enterprise: 5-up on desktop, 2-up on tablet, stacked on mobile. */
 .plan-grid--5 {
-  grid-template-columns: repeat(5, 1fr);
+  /* minmax(0, 1fr), not 1fr: plain 1fr is minmax(auto, 1fr), so a card with
+     wider content (longer price / "Save 10%" pill) stretches its own column and
+     the 5 columns end up unequal — pushing the centered Standard card off true
+     center. minmax(0, …) forces all 5 columns to an exact equal width. */
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.85rem;
 }
 
