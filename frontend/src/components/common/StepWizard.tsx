@@ -1,5 +1,5 @@
 import type React from 'react'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { Check } from 'lucide-react'
 
 interface Step {
@@ -54,7 +54,7 @@ export default function StepWizard({ step, steps, onStepClick }: Props) {
                 {...interactiveProps}
               >
                 {isActive && (
-                  <motion.span
+                  <m.span
                     layoutId="step-active-pill"
                     style={{
                       position: 'absolute',
@@ -69,14 +69,14 @@ export default function StepWizard({ step, steps, onStepClick }: Props) {
                 )}
                 <div className="step-num" style={{ position: 'relative', zIndex: 1 }}>
                   {isDone ? (
-                    <motion.span
+                    <m.span
                       initial={{ scale: 0, opacity: 0 }}
                       animate={{ scale: 1, opacity: 1 }}
                       transition={{ type: 'spring', stiffness: 300, damping: 20 }}
                       style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                     >
                       <Check size={11} strokeWidth={3} />
-                    </motion.span>
+                    </m.span>
                   ) : (
                     String(s.n).padStart(2, '0')
                   )}

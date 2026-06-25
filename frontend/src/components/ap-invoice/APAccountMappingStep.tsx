@@ -129,14 +129,17 @@ function GLAccountCard({ title, iconColor, rows }: GLCardProps) {
   )
 }
 
+const DEFAULT_EMPTY_OBJECT = {}
+const DEFAULT_EMPTY_ARRAY: any[] = []
+
 export default function APAccountMappingStep({
   lineItems,
   updateItem,
-  systemVendor = {},
-  headerData = {},
+  systemVendor = DEFAULT_EMPTY_OBJECT,
+  headerData = DEFAULT_EMPTY_OBJECT,
   updateHeader,
-  masterAccounts = [],
-  masterDepts = [],
+  masterAccounts = DEFAULT_EMPTY_ARRAY,
+  masterDepts = DEFAULT_EMPTY_ARRAY,
   onBack,
   onGenerate,
   onAISuggest,

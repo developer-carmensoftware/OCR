@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeUsageStats } from './UsageIndicator'
+import { computeUsageStats } from './usageHelpers'
 import type { UsageData } from '../../lib/api/auth'
 
 type Usage = UsageData['usage']

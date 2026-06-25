@@ -263,7 +263,15 @@ input[type='text']:focus {
   box-shadow: 0 8px 24px oklch(from var(--primary) l c h / 0.3);
 }
 
-.mapping-label.clickable {
+.mapping-label.clickable,
+button.mapping-label.clickable {
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  font-family: inherit;
+  font-size: inherit;
+  outline: none;
   cursor: pointer;
   color: var(--primary);
   text-decoration: underline;
@@ -271,7 +279,8 @@ input[type='text']:focus {
   transition: color 0.2s;
 }
 
-.mapping-label.clickable:hover {
+.mapping-label.clickable:hover,
+button.mapping-label.clickable:hover {
   color: var(--primary-hover);
 }
 
@@ -448,4 +457,22 @@ input[type='text']:focus {
   background: var(--muted);
   border-color: var(--border);
   color: var(--text);
+}
+
+.btn-save-mapping {
+  width: 100%;
+  padding: 1.2rem;
+  color: #fff;
+  border-radius: 12px;
+  font-weight: bold;
+  font-size: 1.1rem;
+  border: none;
+  box-shadow: 0 4px 15px rgba(13, 148, 136, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  transition:
+    background-color 150ms ease,
+    cursor 150ms ease;
 }

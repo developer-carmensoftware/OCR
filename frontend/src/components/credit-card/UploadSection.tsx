@@ -30,7 +30,7 @@ export default function UploadSection({
   const { t } = useT()
   const busy = pdfInfoLoading || imageMerging
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = (e: React.DragEvent<HTMLButtonElement>) => {
     e.preventDefault()
     if (e.dataTransfer.files?.length) {
       const fakeEvent = { target: { files: e.dataTransfer.files } }
@@ -50,14 +50,22 @@ export default function UploadSection({
 
   return (
     <div style={{ maxWidth: 560, margin: '0 auto' }}>
-      <div
+      <button
+        type="button"
         className="panel-card upload-drop"
         style={{
           minHeight: 260,
           cursor: busy ? 'default' : 'pointer',
           pointerEvents: busy ? 'none' : undefined,
         }}
+        disabled={busy}
         onClick={() => !busy && fileInputRef.current?.click()}
+        onKeyDown={e => {
+          if (!busy && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault()
+            fileInputRef.current?.click()
+          }
+        }}
         onDragOver={e => e.preventDefault()}
         onDrop={handleDrop}
       >
@@ -98,20 +106,20 @@ export default function UploadSection({
             </div>
             <div className="upload-label">{displayLabel}</div>
             <div className="upload-hint">{t('cc.uploadSupports')}</div>
-            <button
-              type="button"
+            <span
               className="btn btn-primary"
-              style={{ marginTop: '1.5rem' }}
-              onClick={e => {
-                e.stopPropagation()
-                fileInputRef.current?.click()
+              style={{
+                marginTop: '1.5rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
               }}
             >
               <FolderOpen size={14} /> {t('cc.browseFile')}
-            </button>
+            </span>
           </>
         )}
-      </div>
+      </button>
 
       <div className="panel-card" style={{ marginTop: '1rem' }}>
         <div className="field-label">

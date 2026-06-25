@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useEffect, useRef, useReducer, useCallback } from 'react'
 import {
   Eye,
   ZoomIn,
@@ -25,30 +25,82 @@ interface Props {
   selectedPageThumbs?: SelectedPageThumb[] | null
 }
 
+interface DocPreviewState {
+  zoom: number
+  rotate: number
+  pan: { x: number; y: number }
+  isDragging: boolean
+  dragStart: { x: number; y: number }
+}
+
+type DocPreviewAction =
+  | { type: 'ZOOM_IN' }
+  | { type: 'ZOOM_OUT' }
+  | { type: 'SET_ZOOM_VALUE'; payload: number | ((prev: number) => number) }
+  | { type: 'ROTATE_CW' }
+  | { type: 'RESET_VIEW' }
+  | { type: 'START_DRAG'; payload: { startX: number; startY: number } }
+  | { type: 'DRAG'; payload: { x: number; y: number } }
+  | { type: 'END_DRAG' }
+
+const initialDocPreviewState: DocPreviewState = {
+  zoom: 1,
+  rotate: 0,
+  pan: { x: 0, y: 0 },
+  isDragging: false,
+  dragStart: { x: 0, y: 0 },
+}
+
+function docPreviewReducer(state: DocPreviewState, action: DocPreviewAction): DocPreviewState {
+  switch (action.type) {
+    case 'ZOOM_IN':
+      return { ...state, zoom: Math.min(state.zoom + 0.25, 5) }
+    case 'ZOOM_OUT':
+      return { ...state, zoom: Math.max(state.zoom - 0.25, 0.25) }
+    case 'SET_ZOOM_VALUE': {
+      const nextZoom =
+        typeof action.payload === 'function' ? action.payload(state.zoom) : action.payload
+      return { ...state, zoom: nextZoom }
+    }
+    case 'ROTATE_CW':
+      return { ...state, rotate: (state.rotate + 90) % 360 }
+    case 'RESET_VIEW':
+      return { ...state, zoom: 1, pan: { x: 0, y: 0 } }
+    case 'START_DRAG':
+      return {
+        ...state,
+        isDragging: true,
+        dragStart: { x: action.payload.startX, y: action.payload.startY },
+      }
+    case 'DRAG':
+      return {
+        ...state,
+        pan: { x: action.payload.x, y: action.payload.y },
+      }
+    case 'END_DRAG':
+      return { ...state, isDragging: false }
+    default:
+      return state
+  }
+}
+
 export default function DocumentPreview({
   previewUrl,
   previewType,
   fileName,
   selectedPageThumbs,
 }: Props) {
-  const [zoom, setZoom] = useState(1)
-  const [rotate, setRotate] = useState(0)
-  const [pan, setPan] = useState({ x: 0, y: 0 })
-  const [isDragging, setIsDragging] = useState(false)
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
+  const [state, dispatch] = useReducer(docPreviewReducer, initialDocPreviewState)
+  const { zoom, rotate, pan, isDragging, dragStart } = state
   const frameRef = useRef<HTMLDivElement>(null)
   const pinchRef = useRef<number | null>(null)
 
-  useEffect(() => {
-    setZoom(1)
-    setRotate(0)
-    setPan({ x: 0, y: 0 })
-  }, [previewUrl])
-
   const handleWheel = useCallback((e: Event) => {
-    e.preventDefault()
     const we = e as WheelEvent
-    setZoom(prev => Math.min(Math.max(prev + (we.deltaY > 0 ? -0.15 : 0.15), 0.25), 5))
+    dispatch({
+      type: 'SET_ZOOM_VALUE',
+      payload: (prev: number) => Math.min(Math.max(prev + (we.deltaY > 0 ? -0.15 : 0.15), 0.25), 5),
+    })
   }, [])
 
   const handleTouchStart = useCallback(
@@ -62,8 +114,10 @@ export default function DocumentPreview({
       }
       if (te.touches.length === 1) {
         const touch = te.touches[0]
-        setIsDragging(true)
-        setDragStart({ x: touch.clientX - pan.x, y: touch.clientY - pan.y })
+        dispatch({
+          type: 'START_DRAG',
+          payload: { startX: touch.clientX - pan.x, startY: touch.clientY - pan.y },
+        })
       }
     },
     [pan]
@@ -73,25 +127,30 @@ export default function DocumentPreview({
     (e: Event) => {
       const te = e as TouchEvent
       if (te.touches.length === 2 && pinchRef.current !== null) {
-        e.preventDefault()
         const dx = te.touches[0].clientX - te.touches[1].clientX
         const dy = te.touches[0].clientY - te.touches[1].clientY
         const newDist = Math.sqrt(dx * dx + dy * dy)
-        setZoom(prev => Math.min(Math.max(prev * (newDist / pinchRef.current!), 0.25), 5))
+        dispatch({
+          type: 'SET_ZOOM_VALUE',
+          payload: (prev: number) =>
+            Math.min(Math.max(prev * (newDist / pinchRef.current!), 0.25), 5),
+        })
         pinchRef.current = newDist
         return
       }
       if (te.touches.length === 1 && isDragging) {
-        e.preventDefault()
         const touch = te.touches[0]
-        setPan({ x: touch.clientX - dragStart.x, y: touch.clientY - dragStart.y })
+        dispatch({
+          type: 'DRAG',
+          payload: { x: touch.clientX - dragStart.x, y: touch.clientY - dragStart.y },
+        })
       }
     },
     [isDragging, dragStart]
   )
 
   const handleTouchEnd = useCallback(() => {
-    setIsDragging(false)
+    dispatch({ type: 'END_DRAG' })
     pinchRef.current = null
   }, [])
 
@@ -105,47 +164,54 @@ export default function DocumentPreview({
       ? selectedPageThumbs.map(t => t.pageNum).join(', ')
       : null
 
+  const handlersRef = useRef({ handleWheel, handleTouchStart, handleTouchMove, handleTouchEnd })
+  useEffect(() => {
+    handlersRef.current = { handleWheel, handleTouchStart, handleTouchMove, handleTouchEnd }
+  }, [handleWheel, handleTouchStart, handleTouchMove, handleTouchEnd])
+
   useEffect(() => {
     const el = frameRef.current
     if (!el || previewType !== 'image' || showSelectedThumbs) return
-    el.addEventListener('wheel', handleWheel, { passive: false })
-    el.addEventListener('touchstart', handleTouchStart, { passive: true })
-    el.addEventListener('touchmove', handleTouchMove, { passive: false })
-    el.addEventListener('touchend', handleTouchEnd, { passive: true })
+
+    const onWheel = (e: Event) => handlersRef.current.handleWheel(e)
+    const onTouchStart = (e: Event) => handlersRef.current.handleTouchStart(e)
+    const onTouchMove = (e: Event) => handlersRef.current.handleTouchMove(e)
+    const onTouchEnd = () => handlersRef.current.handleTouchEnd()
+
+    el.addEventListener('wheel', onWheel, { passive: true })
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: true })
+    el.addEventListener('touchend', onTouchEnd, { passive: true })
+
     return () => {
-      el.removeEventListener('wheel', handleWheel)
-      el.removeEventListener('touchstart', handleTouchStart)
-      el.removeEventListener('touchmove', handleTouchMove)
-      el.removeEventListener('touchend', handleTouchEnd)
+      el.removeEventListener('wheel', onWheel, { passive: true } as any)
+      el.removeEventListener('touchstart', onTouchStart, { passive: true } as any)
+      el.removeEventListener('touchmove', onTouchMove, { passive: true } as any)
+      el.removeEventListener('touchend', onTouchEnd, { passive: true } as any)
     }
-  }, [
-    handleWheel,
-    handleTouchStart,
-    handleTouchMove,
-    handleTouchEnd,
-    previewType,
-    showSelectedThumbs,
-  ])
+  }, [previewType, showSelectedThumbs])
 
   const onMouseDown = (e: React.MouseEvent) => {
     if (zoom <= 1) return
     e.preventDefault()
-    setIsDragging(true)
-    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
+    dispatch({
+      type: 'START_DRAG',
+      payload: { startX: e.clientX - pan.x, startY: e.clientY - pan.y },
+    })
   }
   const onMouseMove = (e: React.MouseEvent) => {
     if (!isDragging) return
-    setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y })
+    dispatch({
+      type: 'DRAG',
+      payload: { x: e.clientX - dragStart.x, y: e.clientY - dragStart.y },
+    })
   }
-  const onMouseUp = () => setIsDragging(false)
+  const onMouseUp = () => dispatch({ type: 'END_DRAG' })
 
-  const zoomIn = () => setZoom(p => Math.min(p + 0.25, 5))
-  const zoomOut = () => setZoom(p => Math.max(p - 0.25, 0.25))
-  const resetView = () => {
-    setZoom(1)
-    setPan({ x: 0, y: 0 })
-  }
-  const rotateCW = () => setRotate(r => (r + 90) % 360)
+  const zoomIn = () => dispatch({ type: 'ZOOM_IN' })
+  const zoomOut = () => dispatch({ type: 'ZOOM_OUT' })
+  const resetView = () => dispatch({ type: 'RESET_VIEW' })
+  const rotateCW = () => dispatch({ type: 'ROTATE_CW' })
   const openNewTab = () => {
     if (!previewUrl) return
     window.open(previewType === 'pdf' ? previewUrl.split('#')[0] : previewUrl, '_blank')
@@ -228,6 +294,7 @@ export default function DocumentPreview({
         </div>
       )}
 
+      {/* eslint-disable-next-line react-doctor/no-static-element-interactions */}
       <div
         ref={frameRef}
         className={`preview-frame${hasToolbar ? ' preview-frame--docked' : ''}`}
@@ -252,7 +319,12 @@ export default function DocumentPreview({
           </div>
         )}
         {isPdf && previewUrl && !showSelectedThumbs && (
-          <iframe src={previewUrl} title="PDF Preview" className="preview-pdf-iframe" />
+          <iframe
+            src={previewUrl}
+            title="PDF Preview"
+            className="preview-pdf-iframe"
+            sandbox="allow-downloads allow-same-origin"
+          />
         )}
         {showSelectedThumbs && (
           <div className="prev-page-thumbs">

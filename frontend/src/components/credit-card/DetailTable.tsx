@@ -42,6 +42,24 @@ function sumColumn(details: DetailRow[], col: string): number {
   return details.reduce((sum, row) => sum + parseNum(row[col]), 0)
 }
 
+function RenderLabel({ label }: { label: string }) {
+  if (label.includes('<br>')) {
+    const parts = label.split('<br>')
+    const primary = parts[0]
+    const secondaryRaw = parts[1] || ''
+    const match = secondaryRaw.match(/<span[^>]*>(.*?)<\/span>/)
+    const secondary = match ? match[1] : secondaryRaw
+    return (
+      <>
+        {primary}
+        <br />
+        <span style={{ fontSize: '0.8em', color: '#666' }}>{secondary}</span>
+      </>
+    )
+  }
+  return <>{label}</>
+}
+
 export default function DetailTable({
   details,
   onUpdate,
@@ -70,7 +88,9 @@ export default function DetailTable({
                 {DETAIL_COLUMNS.map(col => {
                   const labelHtml = DETAIL_LABELS[col] || col
                   return (
-                    <th key={col} scope="col" dangerouslySetInnerHTML={{ __html: labelHtml }} />
+                    <th key={col} scope="col" aria-label={labelHtml.replace(/<[^>]*>/g, '')}>
+                      <RenderLabel label={labelHtml} />
+                    </th>
                   )
                 })}
               </tr>

@@ -12,6 +12,8 @@ const EXPIRY_WARNING_MS = 5 * 60 * 1000
 // the expiry warning the instant the user logs in.
 const MAX_TIMEOUT_MS = 2_147_483_647
 
+const STORAGE_KEY = 'ocr_user:v1'
+
 export interface AuthUser {
   carmen_user_id: string
   username: string
@@ -34,7 +36,7 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(() => {
     const token = getStoredToken()
-    const stored = sessionStorage.getItem('ocr_user')
+    const stored = sessionStorage.getItem(STORAGE_KEY)
     if (token && stored) {
       try {
         const restored = JSON.parse(stored) as AuthUser
@@ -49,7 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return restored
       } catch {
         clearToken()
-        sessionStorage.removeItem('ocr_user')
+        sessionStorage.removeItem(STORAGE_KEY)
       }
     }
     return null
@@ -64,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearAppStorage()
       setActiveTenant(null)
       setUser(null)
-      sessionStorage.removeItem('ocr_user')
+      sessionStorage.removeItem(STORAGE_KEY)
       showToast(
         'Your session has expired — please reopen this page from Carmen to continue.',
         'error'
@@ -100,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const prevTenant = sessionStorage.getItem('ocr_last_tenant')
     if (prevTenant && prevTenant !== userInfo.tenant_id) clearAppStorage()
     storeToken(accessToken)
-    sessionStorage.setItem('ocr_user', JSON.stringify(userInfo))
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(userInfo))
     sessionStorage.setItem('ocr_last_tenant', userInfo.tenant_id)
     // Persist uri keyed by tenant so "Go to Carmen" survives session expiry and
     // multi-tenant shared-device use without cross-tenant collision.
@@ -115,7 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearAppStorage()
     setActiveTenant(null)
     clearToken()
-    sessionStorage.removeItem('ocr_user')
+    sessionStorage.removeItem(STORAGE_KEY)
     setUser(null)
   }, [])
 

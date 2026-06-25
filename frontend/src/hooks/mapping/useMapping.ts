@@ -21,6 +21,13 @@ export interface ActiveScan {
   net: boolean
 }
 
+const COMPANY_REQUIRED_FIELDS: Array<{ key: keyof CompanyData; label: string }> = [
+  { key: 'name', label: 'Company Name' },
+  { key: 'taxId', label: 'Tax ID' },
+  { key: 'branch', label: 'Branch No' },
+  { key: 'address', label: 'Address' },
+]
+
 export function useMapping() {
   const bankConfig = useBankConfig()
 
@@ -88,8 +95,13 @@ export function useMapping() {
     if (Object.keys(mainMappings).length > 0) {
       setMappings(prev => ({ ...prev, ...mainMappings }))
     }
-    paymentTypes.initFromData(paymentMappings, bankConfig.savedCustomTypes)
-  }, [bankConfig.configLoading, bankConfig.bank]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [
+    bankConfig.configLoading,
+    bankConfig.bank,
+    bankConfig.savedMappings,
+    bankConfig.savedCustomTypes,
+    paymentTypes.initFromData,
+  ])
 
   useEffect(() => {
     try {
@@ -169,13 +181,7 @@ export function useMapping() {
     setAcceptAllModal(false)
   }
 
-  const companyRequiredFields: Array<{ key: keyof CompanyData; label: string }> = [
-    { key: 'name', label: 'Company Name' },
-    { key: 'taxId', label: 'Tax ID' },
-    { key: 'branch', label: 'Branch No' },
-    { key: 'address', label: 'Address' },
-  ]
-  const missingCompanyFields = companyRequiredFields.filter(
+  const missingCompanyFields = COMPANY_REQUIRED_FIELDS.filter(
     f => !bankConfig.company[f.key as keyof typeof bankConfig.company]?.trim()
   )
   const topLevelRequired = [
@@ -270,7 +276,7 @@ export function useMapping() {
     company: bankConfig.company,
     setCompany: bankConfig.setCompany,
     handleCompanyChange,
-    companyRequiredFields,
+    companyRequiredFields: COMPANY_REQUIRED_FIELDS,
     missingCompanyFields,
     mappings,
     setMappings,

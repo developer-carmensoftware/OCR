@@ -1,22 +1,15 @@
-import { Fragment, useMemo, useState } from 'react'
-import { LayoutList, Trash2 } from 'lucide-react'
-import { isNumFld, fmt, parseNum } from '../../constants/apInvoice'
+import { useMemo, useState } from 'react'
+import { LayoutList } from 'lucide-react'
 import { useT } from '../../i18n/LanguageContext'
 import Card from '../common/Card'
-import NumericInput from '../common/NumericInput'
 import APGroupModal from './APGroupModal'
-import InlineSelect from '../common/InlineSelect'
-import type { InlineSelectOption } from '../common/InlineSelect'
+import APTableHeader from './APTableHeader'
+import APTableRow from './APTableRow'
+import APTableFooter from './APTableFooter'
 import type { TaxTypeValue } from './TaxTypeDropdown'
 import type { APColumnKey } from '../../constants/apInvoice'
 import type { TaxProfileItem } from '../../lib/api/carmen'
 import type { APLineItem } from '../../hooks/ap-invoice/useAPExtraction'
-
-const TAX_TYPE_OPTIONS: InlineSelectOption[] = [
-  { value: 'Include', label: 'Include', accent: 'amber' },
-  { value: 'Exclude', label: 'Exclude', accent: 'blue' },
-  { value: 'None', label: 'None', accent: 'muted' },
-]
 
 interface Props {
   lineItems: Array<Record<string, string | undefined>>
@@ -63,14 +56,13 @@ export default function APLineItemsTable({
   removeItem,
 }: Props) {
   const { t } = useT()
-  // "Group by description" opens a modal where the user sets the description and picks rows.
   const [showGroupModal, setShowGroupModal] = useState(false)
   const mappedFieldValues = Object.values(fieldMappings)
   const showFixedTaxPct = !mappedFieldValues.includes('taxPct')
   const showFixedTaxType = !mappedFieldValues.includes('taxType')
   const showFixedTaxProfile = !mappedFieldValues.includes('taxProfileCode1')
 
-  // Distinct, sorted tax rates from the Carmen profile list — the only values Tax% may take.
+  // Distinct, sorted tax rates from the Carmen profile list.
   const rateOptions = useMemo(
     () =>
       Array.from(new Set(taxProfiles.filter(p => p.rate != null).map(p => p.rate as number))).sort(
@@ -79,75 +71,13 @@ export default function APLineItemsTable({
     [taxProfiles]
   )
 
-  // Tax Profile select. NONE means non-VAT (the explicit no-VAT choice); the empty option (—) means
-  // taxable with no specific profile (keeps the line's current rate, no vendor-default fallback);
-  // picking a real profile drives the rate. All routing goes through applyLineTax which keeps
-  // Profile/Tax%/Tax Type interlocked and recalcs the row. None lines show NONE.
-  const taxProfileCell = (ri: number, item: Record<string, string | undefined>) => {
-    const isNone = item.taxType === 'None'
-    const val = isNone ? 'NONE' : item.taxProfileCode1 || ''
-    const hasNoneProfile = taxProfiles.some(p => p.code === 'NONE')
-
-    const profileOptions: InlineSelectOption[] = [
-      { value: '', label: '—' },
-      ...(!hasNoneProfile ? [{ value: 'NONE', label: 'NONE', accent: 'muted' as const }] : []),
-      ...taxProfiles.map(p => ({
-        value: p.code,
-        label: p.code,
-        description: p.desc,
-      })),
-    ]
-
-    return (
-      <td>
-        <InlineSelect
-          aria-label="Tax profile"
-          value={val}
-          onChange={v => applyLineTax(ri, { taxProfileCode1: v })}
-          options={profileOptions}
-        />
-      </td>
-    )
-  }
-
-  // Tax% select — options are the configured profile rates, plus the row's own rate when no profile
-  // defines it (so the dropdown always shows the true extracted value, e.g. 10%, and warns instead
-  // of silently snapping to 7%). None lines show a locked —. Falls back to a free NumericInput only
-  // if no profiles loaded (so the cell is never empty).
-  const taxPctCell = (ri: number, item: Record<string, string | undefined>) => {
-    const cur = parseNum(item.taxPct)
-    const unmatched =
-      item.taxType !== 'None' && cur > 0 && !rateOptions.some(r => Math.abs(r - cur) < 0.01)
-    const opts = unmatched ? [...rateOptions, cur].sort((a, b) => a - b) : rateOptions
-    return (
-      <td>
-        {item.taxType === 'None' ? (
-          <span className="ap-edit-input numeric ap-tax-na" aria-label="taxPct">
-            0%
-          </span>
-        ) : opts.length ? (
-          <InlineSelect
-            aria-label="taxPct"
-            value={String(cur)}
-            onChange={v => applyLineTax(ri, { taxPct: v })}
-            warning={unmatched}
-            options={opts.map(r => ({
-              value: String(r),
-              label: `${r}%`,
-              warning: unmatched && r === cur,
-            }))}
-          />
-        ) : (
-          <NumericInput
-            aria-label="taxPct"
-            className="ap-edit-input numeric"
-            value={item.taxPct || ''}
-            onChange={v => updateItem(ri, 'taxPct', v)}
-            onBlur={v => blurLineItem(ri, 'taxPct', v)}
-          />
-        )}
-      </td>
-    )
+  const fixedTaxSettings = { showFixedTaxType, showFixedTaxPct, showFixedTaxProfile }
+  const sharedColProps = {
+    activeCols,
+    fieldMappings,
+    showFixedTaxType,
+    showFixedTaxPct,
+    showFixedTaxProfile,
   }
 
   return (
@@ -182,193 +112,39 @@ export default function APLineItemsTable({
       >
         <div className="table-wrapper">
           <table className="ap-review-table">
-            <thead>
-              <tr>
-                {activeCols.map(c => {
-                  const fld = fieldMappings[`col${c}` as APColumnKey]
-                  const label = availableFields.find(f => f.value === fld)?.label
-                  if (fld === 'taxPct') {
-                    return (
-                      <Fragment key={c}>
-                        {!showFixedTaxType && showFixedTaxProfile && (
-                          <th scope="col">{t('ap.taxProfile')}</th>
-                        )}
-                        <th scope="col">{label}</th>
-                      </Fragment>
-                    )
-                  }
-                  if (fld === 'taxType') {
-                    return (
-                      <Fragment key={c}>
-                        {showFixedTaxProfile && showFixedTaxPct && (
-                          <th scope="col">{t('ap.taxProfile')}</th>
-                        )}
-                        <th scope="col">{label}</th>
-                      </Fragment>
-                    )
-                  }
-                  return (
-                    <th key={c} scope="col">
-                      {label}
-                    </th>
-                  )
-                })}
-                {showFixedTaxType && showFixedTaxProfile && (
-                  <th scope="col">{t('ap.taxProfile')}</th>
-                )}
-                {showFixedTaxPct && <th scope="col">{t('ap.taxPct')}</th>}
-                {showFixedTaxType && <th scope="col">{t('ap.taxType')}</th>}
-                <th scope="col" aria-label="Actions" />
-              </tr>
-            </thead>
+            <APTableHeader {...sharedColProps} availableFields={availableFields} />
             <tbody className="stagger-rows" key={lineItems.length}>
               {lineItems.map((item, ri) => (
-                <tr key={ri}>
-                  {activeCols.map(c => {
-                    const fld = fieldMappings[`col${c}` as APColumnKey]
-                    const numeric = isNumFld(fld)
-
-                    if (fld === 'taxProfileCode1') {
-                      return <Fragment key={c}>{taxProfileCell(ri, item)}</Fragment>
-                    }
-
-                    if (fld === 'taxPct') {
-                      return (
-                        <Fragment key={c}>
-                          {!showFixedTaxType && showFixedTaxProfile && taxProfileCell(ri, item)}
-                          {taxPctCell(ri, item)}
-                        </Fragment>
-                      )
-                    }
-
-                    if (fld === 'taxType') {
-                      const tv = (item.taxType as TaxTypeValue | undefined) || 'Exclude'
-                      return (
-                        <Fragment key={c}>
-                          {showFixedTaxProfile && showFixedTaxPct && taxProfileCell(ri, item)}
-                          <td>
-                            <InlineSelect
-                              aria-label="Tax type"
-                              value={tv}
-                              onChange={v => changeLineTaxType(ri, v as TaxTypeValue)}
-                              options={TAX_TYPE_OPTIONS}
-                            />
-                          </td>
-                        </Fragment>
-                      )
-                    }
-
-                    const cellClass = `ap-edit-input ${numeric ? 'numeric' : ''} ${fld === 'category' ? 'category' : ''}`
-                    const isMissingDesc = fld === 'description' && !item[fld]?.trim()
-                    return (
-                      <td key={c} className={isMissingDesc ? 'ap-cell-missing' : undefined}>
-                        {numeric ? (
-                          <NumericInput
-                            aria-label={fld}
-                            className={cellClass}
-                            value={item[fld] || ''}
-                            onChange={v => updateItem(ri, fld, v)}
-                            onBlur={v => blurLineItem(ri, fld, v)}
-                          />
-                        ) : (
-                          <input
-                            type="text"
-                            aria-label={fld}
-                            className={cellClass}
-                            value={item[fld] || ''}
-                            onChange={e => updateItem(ri, fld, e.target.value)}
-                          />
-                        )}
-                      </td>
-                    )
-                  })}
-                  {showFixedTaxType && showFixedTaxProfile && taxProfileCell(ri, item)}
-                  {showFixedTaxPct && taxPctCell(ri, item)}
-                  {showFixedTaxType && (
-                    <td>
-                      <InlineSelect
-                        aria-label="Tax type"
-                        value={(item.taxType as TaxTypeValue | undefined) || 'Exclude'}
-                        onChange={v => changeLineTaxType(ri, v as TaxTypeValue)}
-                        options={TAX_TYPE_OPTIONS}
-                      />
-                    </td>
-                  )}
-                  <td>
-                    <button
-                      type="button"
-                      className="ap-delete-item-btn"
-                      aria-label="Delete row"
-                      disabled={lineItems.length <= 1}
-                      onClick={() => removeItem(ri)}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </td>
-                </tr>
+                <APTableRow
+                  key={(item as APLineItem)._uid ?? ri}
+                  item={item}
+                  ri={ri}
+                  activeCols={activeCols}
+                  fieldMappings={fieldMappings}
+                  taxProfiles={taxProfiles}
+                  rateOptions={rateOptions}
+                  fixedTaxSettings={fixedTaxSettings}
+                  isOnlyRow={lineItems.length <= 1}
+                  changeLineTaxType={changeLineTaxType}
+                  updateItem={updateItem}
+                  blurLineItem={blurLineItem}
+                  applyLineTax={applyLineTax}
+                  removeItem={removeItem}
+                />
               ))}
             </tbody>
-            <tfoot>
-              <tr>
-                {activeCols.map((c, i) => {
-                  const fld = fieldMappings[`col${c}` as APColumnKey]
-                  if (i === 0)
-                    return (
-                      <td key="lbl" className="ap-total-label">
-                        {t('ap.tableTotal')}
-                      </td>
-                    )
-                  if (fld === 'lineSubTotal')
-                    return (
-                      <td key="st" className="ap-total-val-emerald">
-                        {fmt(sumLineSubTotal)}
-                      </td>
-                    )
-                  if (fld === 'lineTotal')
-                    return (
-                      <td key="lt" className="ap-total-val-rose-bold">
-                        {fmt(sumLineTotal)}
-                      </td>
-                    )
-                  if (fld === 'discountAmt')
-                    return (
-                      <td key="da" className="text-right">
-                        {fmt(sumDiscount)}
-                      </td>
-                    )
-                  if (fld === 'taxAmt')
-                    return (
-                      <td key="ta" className="text-right">
-                        {fmt(sumTax)}
-                      </td>
-                    )
-                  if (fld === 'taxPct') {
-                    return (
-                      <Fragment key={c}>
-                        {!showFixedTaxType && showFixedTaxProfile && <td />}
-                        <td />
-                      </Fragment>
-                    )
-                  }
-                  if (fld === 'taxType')
-                    return (
-                      <Fragment key={c}>
-                        {showFixedTaxProfile && showFixedTaxPct && <td />}
-                        <td />
-                      </Fragment>
-                    )
-                  return <td key={`e${c}`} />
-                })}
-                {showFixedTaxType && showFixedTaxProfile && <td />}
-                {showFixedTaxPct && <td />}
-                {showFixedTaxType && <td />}
-                <td />
-              </tr>
-            </tfoot>
+            <APTableFooter
+              {...sharedColProps}
+              sumLineSubTotal={sumLineSubTotal}
+              sumLineTotal={sumLineTotal}
+              sumDiscount={sumDiscount}
+              sumTax={sumTax}
+            />
           </table>
         </div>
       </Card>
       <APGroupModal
+        key={showGroupModal ? 'open' : 'closed'}
         show={showGroupModal}
         lineItems={lineItems as APLineItem[]}
         groupByDescription={groupByDescription}

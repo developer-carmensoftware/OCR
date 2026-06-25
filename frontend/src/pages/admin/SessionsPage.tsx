@@ -65,7 +65,7 @@ export default function SessionsPage() {
               <th className="admin-th">Status</th>
               <th className="admin-th">Last Used</th>
               <th className="admin-th">Created</th>
-              <th className="admin-th"></th>
+              <th className="admin-th" aria-label="Actions"></th>
             </tr>
           </thead>
           <tbody>
@@ -102,7 +102,11 @@ export default function SessionsPage() {
                   </td>
                   <td className="admin-td">
                     {r.is_active && (
-                      <button className="admin-btn-danger-sm" onClick={() => handleRevoke(r.id)}>
+                      <button
+                        type="button"
+                        className="admin-btn-danger-sm"
+                        onClick={() => handleRevoke(r.id)}
+                      >
                         Revoke
                       </button>
                     )}

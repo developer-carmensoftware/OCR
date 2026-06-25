@@ -180,8 +180,8 @@ export function useOcrExtraction({
       rawDetails.length ? rawDetails : [{ ...EMPTY_DETAIL_ROW }]
     ).map(row => ({ ...EMPTY_DETAIL_ROW, ...row, _uid: crypto.randomUUID() }))
     setDetails(detailsList)
-    setOriginalDetails(JSON.parse(JSON.stringify(detailsList)) as DetailRow[])
-    setOriginalHeader(JSON.parse(JSON.stringify(header)) as Record<string, string>)
+    setOriginalDetails(structuredClone(detailsList))
+    setOriginalHeader(structuredClone(header))
     _persistOcrLocalStorage(ext, detailsList)
   }
 

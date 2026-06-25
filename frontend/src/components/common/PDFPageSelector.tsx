@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { FileText, AlertTriangle, Check } from 'lucide-react'
 
 interface Props {
@@ -49,7 +49,7 @@ export default function PDFPageSelector({ thumbnails, onConfirm, onCancel }: Pro
   const effectiveSelection = [...effectiveSet].sort((a, b) => a - b)
 
   return createPortal(
-    <motion.div
+    <m.div
       role="dialog"
       aria-modal="true"
       aria-labelledby="pdf-selector-title"
@@ -57,35 +57,14 @@ export default function PDFPageSelector({ thumbnails, onConfirm, onCancel }: Pro
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.18 }}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'oklch(0 0 0 / 0.55)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 400,
-        padding: '1rem',
-      }}
+      className="pdf-selector-overlay"
       onClick={onCancel}
     >
-      <motion.div
+      <m.div
         initial={{ opacity: 0, scale: 0.95, y: 14 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-        style={{
-          background: 'var(--card-bg)',
-          color: 'var(--text)',
-          borderRadius: 'var(--radius-lg)',
-          boxShadow: 'var(--shadow-xl)',
-          width: '100%',
-          maxWidth: 700,
-          maxHeight: '90vh',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          border: '1px solid var(--border)',
-        }}
+        className="pdf-selector-dialog"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -130,28 +109,14 @@ export default function PDFPageSelector({ thumbnails, onConfirm, onCancel }: Pro
               Clear all
             </button>
             {thumbnails.length > MAX_PAGES && (
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-4)' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-4)' }}>
                 Max {MAX_PAGES} pages per scan
               </span>
             )}
           </div>
 
           {overLimit && (
-            <div
-              style={{
-                marginTop: 8,
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: 6,
-                padding: '6px 10px',
-                borderRadius: 'var(--radius-sm)',
-                background: 'var(--amber-light)',
-                border: '1px solid var(--amber-mid)',
-                fontSize: '0.75rem',
-                color: 'var(--amber-text)',
-                lineHeight: 1.45,
-              }}
-            >
+            <div className="pdf-selector-alert">
               <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
               <span>
                 {sortedSelected.length - MAX_PAGES} page
@@ -163,8 +128,7 @@ export default function PDFPageSelector({ thumbnails, onConfirm, onCancel }: Pro
         </div>
 
         {/* Thumbnail grid */}
-        <div
-          role="group"
+        <section
           aria-label="PDF pages"
           style={{
             overflowY: 'auto',
@@ -190,42 +154,31 @@ export default function PDFPageSelector({ thumbnails, onConfirm, onCancel }: Pro
                   : 'var(--border)'
 
             return (
-              <div
-                key={i}
-                role="checkbox"
-                aria-checked={isSelected}
+              <button
+                key={thumb}
+                type="button"
+                aria-pressed={isSelected}
                 aria-label={`Page ${i + 1}${isOverflow ? ' (will be skipped)' : ''}`}
-                tabIndex={0}
-                onClick={() => toggle(i)}
-                onKeyDown={e => {
-                  if (e.key === ' ' || e.key === 'Enter') {
-                    e.preventDefault()
-                    toggle(i)
-                  }
-                }}
                 onMouseEnter={() => setHoveredIdx(i)}
                 onMouseLeave={() => setHoveredIdx(null)}
+                onClick={() => toggle(i)}
+                className="pdf-selector-thumbnail-btn"
                 style={{
-                  cursor: 'pointer',
-                  borderRadius: 'var(--radius-md)',
-                  border: `2px solid ${borderColor}`,
-                  overflow: 'hidden',
-                  position: 'relative',
-                  background: 'var(--muted)',
-                  transition:
-                    'border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease)',
-                  opacity: isOverflow ? 0.5 : 1,
-                  transform: isHovered && !isOverflow ? 'translateY(-1px)' : 'none',
-                  boxShadow: isEffective
-                    ? 'var(--shadow-primary)'
-                    : isHovered
-                      ? 'var(--shadow-md)'
-                      : 'none',
-                  outline: 'none',
+                  borderColor,
+                  boxShadow: isHovered ? 'var(--shadow-md)' : 'var(--shadow-sm)',
                 }}
               >
-                {/* Thumbnail image */}
-                <div style={{ aspectRatio: '3/4', overflow: 'hidden', position: 'relative' }}>
+                {/* Image container */}
+                <div
+                  style={{
+                    position: 'relative',
+                    aspectRatio: '1 / 1.414',
+                    width: '100%',
+                    borderRadius: 'var(--radius-sm) var(--radius-sm) 0 0',
+                    overflow: 'hidden',
+                    background: 'oklch(0.96 0 0)',
+                  }}
+                >
                   <img
                     src={thumb}
                     alt={`Page ${i + 1}`}
@@ -254,7 +207,7 @@ export default function PDFPageSelector({ thumbnails, onConfirm, onCancel }: Pro
                     >
                       <span
                         style={{
-                          fontSize: '0.65rem',
+                          fontSize: '0.75rem',
                           fontWeight: 600,
                           color: 'var(--amber-text)',
                           background: 'var(--amber-light)',
@@ -271,25 +224,14 @@ export default function PDFPageSelector({ thumbnails, onConfirm, onCancel }: Pro
                   {/* Checkbox badge */}
                   <div
                     aria-hidden="true"
+                    className="pdf-selector-checkbox"
                     style={{
-                      position: 'absolute',
-                      top: 6,
-                      right: 6,
-                      width: 18,
-                      height: 18,
-                      borderRadius: 4,
                       border: `2px solid ${isEffective ? 'var(--primary)' : isOverflow ? 'var(--amber)' : 'var(--border-hi)'}`,
                       background: isEffective
                         ? 'var(--primary)'
                         : isOverflow
                           ? 'var(--amber-mid)'
                           : 'var(--card-bg)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: '#fff',
-                      transition:
-                        'background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease)',
                       boxShadow: isEffective
                         ? '0 1px 4px oklch(0.4714 0.1794 258.7 / 0.35)'
                         : 'var(--shadow-xs)',
@@ -302,9 +244,10 @@ export default function PDFPageSelector({ thumbnails, onConfirm, onCancel }: Pro
                 {/* Page label */}
                 <div
                   style={{
+                    width: '100%',
                     padding: '4px 0 3px',
                     textAlign: 'center',
-                    fontSize: '0.72rem',
+                    fontSize: '0.75rem',
                     fontWeight: isSelected ? 500 : 400,
                     color: isEffective
                       ? 'var(--primary)'
@@ -316,10 +259,10 @@ export default function PDFPageSelector({ thumbnails, onConfirm, onCancel }: Pro
                 >
                   Page {i + 1}
                 </div>
-              </div>
+              </button>
             )
           })}
-        </div>
+        </section>
 
         {/* Footer */}
         <div className="pdf-selector-footer">
@@ -338,8 +281,8 @@ export default function PDFPageSelector({ thumbnails, onConfirm, onCancel }: Pro
             </span>
           </button>
         </div>
-      </motion.div>
-    </motion.div>,
+      </m.div>
+    </m.div>,
     document.body
   )
 }

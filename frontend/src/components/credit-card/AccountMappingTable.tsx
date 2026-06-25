@@ -109,12 +109,19 @@ export default function AccountMappingTable({
 
           {/* Credit row — Account Receivable */}
           <div className="mapping-type type-credit cc-mapping-type-credit">Credit</div>
-          <div
+          <button
+            type="button"
             className="mapping-label clickable cc-mapping-label-clickable"
             onClick={openAmountModal}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                openAmountModal()
+              }
+            }}
           >
             Account Receivable (Click to Map)
-          </div>
+          </button>
           <div className="cc-grid-span-3">
             <div
               id="amountMappingStatus"

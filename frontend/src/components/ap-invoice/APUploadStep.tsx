@@ -32,18 +32,18 @@ export default function APUploadStep({
 
   const busy = pdfInfoLoading || imageMerging
 
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDragOver = (e: React.DragEvent<HTMLButtonElement>) => {
     e.preventDefault()
     if (!isDragOver) setIsDragOver(true)
   }
 
-  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDragLeave = (e: React.DragEvent<HTMLButtonElement>) => {
     // Only clear when leaving the drop zone itself, not children
     if (e.currentTarget.contains(e.relatedTarget as Node)) return
     setIsDragOver(false)
   }
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = (e: React.DragEvent<HTMLButtonElement>) => {
     e.preventDefault()
     setIsDragOver(false)
     setIsDropping(true)
@@ -55,14 +55,22 @@ export default function APUploadStep({
 
   return (
     <div style={{ maxWidth: 560, margin: '0 auto' }}>
-      <div
+      <button
+        type="button"
         className={`panel-card upload-drop${!busy && isDragOver ? ' dragover' : ''}${!busy && isDropping ? ' dropping' : ''}`}
         style={{
           minHeight: 260,
           cursor: busy ? 'default' : 'pointer',
           pointerEvents: busy ? 'none' : undefined,
         }}
+        disabled={busy}
         onClick={() => !busy && fileInputRef.current?.click()}
+        onKeyDown={e => {
+          if (!busy && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault()
+            fileInputRef.current?.click()
+          }
+        }}
         onDragOver={busy ? undefined : handleDragOver}
         onDragLeave={busy ? undefined : handleDragLeave}
         onDrop={busy ? undefined : handleDrop}
@@ -103,20 +111,20 @@ export default function APUploadStep({
             </div>
             <div className="upload-label">{t('ap.uploadTitle')}</div>
             <div className="upload-hint">{t('ap.uploadDesc')}</div>
-            <button
-              type="button"
+            <span
               className="btn btn-primary"
-              style={{ marginTop: '1.5rem' }}
-              onClick={e => {
-                e.stopPropagation()
-                fileInputRef.current?.click()
+              style={{
+                marginTop: '1.5rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
               }}
             >
               <FolderOpen size={14} /> {t('ap.uploadBtn')}
-            </button>
+            </span>
           </>
         )}
-      </div>
+      </button>
       <div className="panel-card" style={{ marginTop: '1rem' }}>
         <div className="field-label">
           <Info size={16} /> {t('ap.howTo')}

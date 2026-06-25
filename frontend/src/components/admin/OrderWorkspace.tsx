@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useReducer } from 'react'
 import { toast } from 'sonner'
 import {
   AlertTriangle,
@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import ProformaDocument from '../pricing/ProformaDocument'
 import DataTable, { type Column } from './DataTable'
-import { STAGE_KEY, STAGE_TONE, timeAgo } from './OrderQueue'
+import { STAGE_KEY, STAGE_TONE, timeAgo } from './orderHelpers'
 import {
   approveOrder,
   fetchAdminOrderDocuments,
@@ -94,7 +94,12 @@ function SlipViewer({ url, error }: { url: string | null; error: boolean }) {
   if (slipIsPdf(url)) {
     return (
       <div className="orev-slip">
-        <iframe src={url} className="orev-slip-frame" title={t('orev.slip.heading')} />
+        <iframe
+          src={url}
+          className="orev-slip-frame"
+          title={t('orev.slip.heading')}
+          sandbox="allow-downloads allow-same-origin"
+        />
         <a className="orev-slip-link" href={url} target="_blank" rel="noreferrer">
           <ExternalLink size={13} /> {t('orev.slip.openTab')}
         </a>
@@ -291,7 +296,7 @@ function CompanyPanel({
 }) {
   const { t } = useT()
   const [open, setOpen] = useState(false)
-  const [loaded, setLoaded] = useState(false)
+  const loaded = useRef(false)
   const [balance, setBalance] = useState<number | null>(null)
   const [ledger, setLedger] = useState<CreditLedgerEntry[]>([])
   const ledgerCols: Column<CreditLedgerEntry>[] = [
@@ -312,7 +317,7 @@ function CompanyPanel({
   ]
 
   const load = () => {
-    setLoaded(true)
+    loaded.current = true
     Promise.all([fetchCreditBalance(tenantId), fetchCreditLedger(tenantId)])
       .then(([b, l]) => {
         setBalance(b.balance)
@@ -330,7 +335,7 @@ function CompanyPanel({
       onToggle={e => {
         const o = (e.target as HTMLDetailsElement).open
         setOpen(o)
-        if (o && !loaded) load()
+        if (o && !loaded.current) load()
       }}
     >
       <summary className="orev-company-summary">
@@ -367,6 +372,52 @@ function CompanyPanel({
 
 // ── Action bar (status-aware) ─────────────────────────────────────────────────
 
+interface OrderActionsState {
+  mode: 'idle' | 'reject' | 'hold'
+  preset: string
+  reason: string
+  holdNote: string
+  confirm: 'approve' | null
+}
+
+type OrderActionsAction =
+  | { type: 'SET_MODE'; payload: 'idle' | 'reject' | 'hold' }
+  | { type: 'SET_PRESET'; payload: string }
+  | { type: 'SET_REASON'; payload: string }
+  | { type: 'SET_HOLD_NOTE'; payload: string }
+  | { type: 'SET_CONFIRM'; payload: 'approve' | null }
+  | { type: 'CHOOSE_PRESET'; payload: { preset: string; reason: string } }
+
+function orderActionsReducer(
+  state: OrderActionsState,
+  action: OrderActionsAction
+): OrderActionsState {
+  switch (action.type) {
+    case 'SET_MODE':
+      return { ...state, mode: action.payload }
+    case 'SET_PRESET':
+      return { ...state, preset: action.payload }
+    case 'SET_REASON':
+      return { ...state, reason: action.payload }
+    case 'SET_HOLD_NOTE':
+      return { ...state, holdNote: action.payload }
+    case 'SET_CONFIRM':
+      return { ...state, confirm: action.payload }
+    case 'CHOOSE_PRESET':
+      return { ...state, preset: action.payload.preset, reason: action.payload.reason }
+    default:
+      return state
+  }
+}
+
+const getInitialOrderActionsState = (): OrderActionsState => ({
+  mode: 'idle',
+  preset: REJECT_PRESETS[0],
+  reason: REJECT_PRESETS[0],
+  holdNote: '',
+  confirm: null,
+})
+
 function OrderActions({
   order,
   busy,
@@ -385,36 +436,28 @@ function OrderActions({
   onMapAr: () => void
 }) {
   const { t } = useT()
-  const [mode, setMode] = useState<'idle' | 'reject' | 'hold'>('idle')
-  const [preset, setPreset] = useState(REJECT_PRESETS[0])
-  const [reason, setReason] = useState(REJECT_PRESETS[0])
-  const [holdNote, setHoldNote] = useState('')
-  const [confirm, setConfirm] = useState<'approve' | null>(null)
+  const [state, dispatch] = useReducer(orderActionsReducer, null, getInitialOrderActionsState)
+  const { mode, preset, reason, holdNote, confirm } = state
   const confirmTimer = useRef<number | undefined>(undefined)
-
-  useEffect(() => {
-    setMode('idle')
-    setConfirm(null)
-    setReason(REJECT_PRESETS[0])
-    setPreset(REJECT_PRESETS[0])
-    setHoldNote('')
-  }, [order.id])
 
   const arm = (which: 'approve', run: () => void) => {
     if (confirm === which) {
       window.clearTimeout(confirmTimer.current)
-      setConfirm(null)
+      dispatch({ type: 'SET_CONFIRM', payload: null })
       run()
       return
     }
-    setConfirm(which)
+    dispatch({ type: 'SET_CONFIRM', payload: which })
     window.clearTimeout(confirmTimer.current)
-    confirmTimer.current = window.setTimeout(() => setConfirm(null), 4000)
+    confirmTimer.current = window.setTimeout(
+      () => dispatch({ type: 'SET_CONFIRM', payload: null }),
+      4000
+    )
   }
 
   const choosePreset = (p: string) => {
-    setPreset(p)
-    setReason(p === REJECT_OTHER ? '' : p)
+    dispatch({ type: 'SET_PRESET', payload: p })
+    dispatch({ type: 'SET_REASON', payload: p === REJECT_OTHER ? '' : p })
   }
 
   // Terminal: complete or void — read-only.
@@ -493,9 +536,10 @@ function OrderActions({
           <textarea
             className="orev-textarea"
             value={reason}
-            onChange={e => setReason(e.target.value)}
+            onChange={e => dispatch({ type: 'SET_REASON', payload: e.target.value })}
             rows={2}
             placeholder={t('orev.reject.detailPh')}
+            aria-label={t('orev.reject.detailPh')}
           />
         </fieldset>
         <div className="orev-actions-bar">
@@ -503,7 +547,7 @@ function OrderActions({
             type="button"
             className="btn btn-outline"
             disabled={busy}
-            onClick={() => setMode('idle')}
+            onClick={() => dispatch({ type: 'SET_MODE', payload: 'idle' })}
           >
             {t('orev.act.back')}
           </button>
@@ -529,10 +573,10 @@ function OrderActions({
           <textarea
             className="orev-textarea"
             value={holdNote}
-            onChange={e => setHoldNote(e.target.value)}
+            onChange={e => dispatch({ type: 'SET_HOLD_NOTE', payload: e.target.value })}
             rows={2}
             placeholder={t('orev.note.ph')}
-            autoFocus
+            aria-label={t('orev.note.legend')}
           />
         </label>
         <div className="orev-actions-bar">
@@ -540,7 +584,7 @@ function OrderActions({
             type="button"
             className="btn btn-outline"
             disabled={busy}
-            onClick={() => setMode('idle')}
+            onClick={() => dispatch({ type: 'SET_MODE', payload: 'idle' })}
           >
             {t('orev.act.back')}
           </button>
@@ -564,7 +608,7 @@ function OrderActions({
         type="button"
         className="btn btn-outline orev-danger"
         disabled={busy}
-        onClick={() => setMode('reject')}
+        onClick={() => dispatch({ type: 'SET_MODE', payload: 'reject' })}
       >
         <X size={14} /> {t('orev.act.void')}
       </button>
@@ -572,7 +616,7 @@ function OrderActions({
         type="button"
         className="btn btn-outline"
         disabled={busy}
-        onClick={() => setMode('hold')}
+        onClick={() => dispatch({ type: 'SET_MODE', payload: 'hold' })}
       >
         <Pause size={14} /> {t('orev.note.legend')}
       </button>
@@ -591,6 +635,69 @@ function OrderActions({
 
 // ── Workspace orchestrator ────────────────────────────────────────────────────
 
+interface OrderWorkspaceState {
+  slipUrl: string | null
+  slipErr: boolean
+  proforma: BillingDocument | null
+  taxInvoice: BillingDocument | null
+  docView: 'proforma' | 'tax_invoice'
+  history: AdminCreditOrder[]
+  busy: boolean
+}
+
+type OrderWorkspaceAction =
+  | { type: 'RESET'; payload: { orderId: string } }
+  | { type: 'SET_SLIP_URL'; payload: string | null }
+  | { type: 'SET_SLIP_ERR'; payload: boolean }
+  | {
+      type: 'SET_DOCUMENTS'
+      payload: { proforma: BillingDocument | null; taxInvoice: BillingDocument | null }
+    }
+  | { type: 'SET_DOC_VIEW'; payload: 'proforma' | 'tax_invoice' }
+  | { type: 'SET_HISTORY'; payload: AdminCreditOrder[] }
+  | { type: 'SET_BUSY'; payload: boolean }
+
+const initialOrderWorkspaceState: OrderWorkspaceState = {
+  slipUrl: null,
+  slipErr: false,
+  proforma: null,
+  taxInvoice: null,
+  docView: 'proforma',
+  history: [],
+  busy: false,
+}
+
+function orderWorkspaceReducer(
+  state: OrderWorkspaceState,
+  action: OrderWorkspaceAction
+): OrderWorkspaceState {
+  switch (action.type) {
+    case 'RESET':
+      return {
+        ...state,
+        slipUrl: null,
+        slipErr: false,
+        proforma: null,
+        taxInvoice: null,
+        docView: 'proforma',
+      }
+    case 'SET_SLIP_URL':
+      return { ...state, slipUrl: action.payload }
+    case 'SET_SLIP_ERR':
+      return { ...state, slipErr: action.payload }
+    case 'SET_DOCUMENTS':
+      return { ...state, proforma: action.payload.proforma, taxInvoice: action.payload.taxInvoice }
+    case 'SET_DOC_VIEW':
+      return { ...state, docView: action.payload }
+    case 'SET_HISTORY':
+      return { ...state, history: action.payload }
+    case 'SET_BUSY':
+      return { ...state, busy: action.payload }
+    default:
+      return state
+  }
+}
+
 export default function OrderWorkspace({
   order,
   paymentInfo,
@@ -603,35 +710,31 @@ export default function OrderWorkspace({
   onMapAr: () => void
 }) {
   const { t } = useT()
-  const [slipUrl, setSlipUrl] = useState<string | null>(null)
-  const [slipErr, setSlipErr] = useState(false)
-  const [proforma, setProforma] = useState<BillingDocument | null>(null)
-  const [taxInvoice, setTaxInvoice] = useState<BillingDocument | null>(null)
-  const [docView, setDocView] = useState<'proforma' | 'tax_invoice'>('proforma')
-  const [history, setHistory] = useState<AdminCreditOrder[]>([])
-  const [busy, setBusy] = useState(false)
+  const [state, dispatch] = useReducer(orderWorkspaceReducer, initialOrderWorkspaceState)
+  const { slipUrl, slipErr, proforma, taxInvoice, docView, history, busy } = state
 
   useEffect(() => {
-    setSlipUrl(null)
-    setSlipErr(false)
-    setProforma(null)
-    setTaxInvoice(null)
-    setDocView('proforma')
+    dispatch({ type: 'RESET', payload: { orderId: order.id } })
 
     let alive = true
     getOrderSlipUrl(order.id)
-      .then(r => alive && setSlipUrl(r.signed_url))
-      .catch(() => alive && setSlipErr(true))
+      .then(r => alive && dispatch({ type: 'SET_SLIP_URL', payload: r.signed_url }))
+      .catch(() => alive && dispatch({ type: 'SET_SLIP_ERR', payload: true }))
     fetchAdminOrderDocuments(order.id)
       .then(docs => {
         if (!alive) return
-        setProforma(docs.find(d => d.doc_type === 'proforma') ?? null)
-        setTaxInvoice(docs.find(d => d.doc_type === 'tax_invoice') ?? null)
+        dispatch({
+          type: 'SET_DOCUMENTS',
+          payload: {
+            proforma: docs.find(d => d.doc_type === 'proforma') ?? null,
+            taxInvoice: docs.find(d => d.doc_type === 'tax_invoice') ?? null,
+          },
+        })
       })
       .catch(() => {})
     if (order.tenant_id) {
       listCreditOrders('all', order.tenant_id)
-        .then(rows => alive && setHistory(rows))
+        .then(rows => alive && dispatch({ type: 'SET_HISTORY', payload: rows }))
         .catch(() => {})
     }
     return () => {
@@ -640,14 +743,14 @@ export default function OrderWorkspace({
   }, [order.id, order.tenant_id, order.status])
 
   const act = async (fn: () => Promise<AdminCreditOrder>) => {
-    setBusy(true)
+    dispatch({ type: 'SET_BUSY', payload: true })
     try {
       const updated = withName(await fn(), order)
       onChanged(updated)
     } catch (e) {
       toast.error((e as Error).message)
     } finally {
-      setBusy(false)
+      dispatch({ type: 'SET_BUSY', payload: false })
     }
   }
 
@@ -704,14 +807,14 @@ export default function OrderWorkspace({
                 <button
                   type="button"
                   className={docView === 'proforma' ? 'is-on' : ''}
-                  onClick={() => setDocView('proforma')}
+                  onClick={() => dispatch({ type: 'SET_DOC_VIEW', payload: 'proforma' })}
                 >
                   {t('orev.doc.proforma')}
                 </button>
                 <button
                   type="button"
                   className={docView === 'tax_invoice' ? 'is-on' : ''}
-                  onClick={() => setDocView('tax_invoice')}
+                  onClick={() => dispatch({ type: 'SET_DOC_VIEW', payload: 'tax_invoice' })}
                 >
                   {t('orev.doc.taxInvoice')}
                 </button>
@@ -734,6 +837,7 @@ export default function OrderWorkspace({
 
       <div className="orev-actionbar">
         <OrderActions
+          key={order.id}
           order={order}
           busy={busy}
           onApprove={() =>

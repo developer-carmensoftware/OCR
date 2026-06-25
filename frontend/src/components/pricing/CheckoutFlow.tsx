@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { ArrowLeft, CheckCircle2, ShieldCheck, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import StepWizard from '../common/StepWizard'
@@ -82,7 +82,7 @@ export default function CheckoutFlow({ pack, resume, onCancel, onViewHistory }: 
       {/* No onStepClick: back-nav is locked once an order is created. */}
       <StepWizard step={stepNum} steps={STEPS} />
 
-      <motion.div
+      <m.div
         key={c.phase}
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -245,7 +245,7 @@ export default function CheckoutFlow({ pack, resume, onCancel, onViewHistory }: 
             </div>
           </div>
         )}
-      </motion.div>
+      </m.div>
     </div>
   )
 }

@@ -20,7 +20,7 @@ export function clearAdminToken(): void {
   sessionStorage.removeItem(ADMIN_TOKEN_KEY)
 }
 
-export const adminFetch = createApiClient({
+const adminFetch = createApiClient({
   tokenProvider: getAdminToken,
   unauthorizedEvent: 'admin:unauthorized',
   onUnauthorized: clearAdminToken,
@@ -359,13 +359,6 @@ export async function updateOrderNote(id: string, note?: string): Promise<AdminC
     body: JSON.stringify({ note }),
   })
   if (!res.ok) throw new Error(await unwrapDetail(res, 'Update failed'))
-  return res.json()
-}
-
-/** Cancel (soft-delete) a still-pending order with no slip uploaded yet. */
-export async function cancelOrder(id: string): Promise<AdminCreditOrder> {
-  const res = await adminFetch(API.admin.creditOrderCancel(id), { method: 'POST' })
-  if (!res.ok) throw new Error(await unwrapDetail(res, 'Cancel failed'))
   return res.json()
 }
 

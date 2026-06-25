@@ -39,7 +39,7 @@ export default function InlineSelect({
   const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({})
 
   const triggerRef = useRef<HTMLButtonElement>(null)
-  const panelRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDataListElement>(null)
 
   const selected = options.find(o => o.value === value) ?? null
 
@@ -67,6 +67,11 @@ export default function InlineSelect({
     })
   }, [open, options.length])
 
+  const closeRef = useRef(close)
+  useEffect(() => {
+    closeRef.current = close
+  }, [close])
+
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent | TouchEvent) => {
@@ -74,22 +79,24 @@ export default function InlineSelect({
         !triggerRef.current?.contains(e.target as Node) &&
         !panelRef.current?.contains(e.target as Node)
       )
-        close()
+        closeRef.current()
     }
     const onScroll = (e: Event) => {
-      if (!panelRef.current?.contains(e.target as Node)) close()
+      if (!panelRef.current?.contains(e.target as Node)) closeRef.current()
     }
+    const handleClose = () => closeRef.current()
+
     document.addEventListener('mousedown', onDown)
-    document.addEventListener('touchstart', onDown)
-    window.addEventListener('scroll', onScroll, true)
-    window.addEventListener('resize', close)
+    document.addEventListener('touchstart', onDown, { passive: true })
+    window.addEventListener('scroll', onScroll, { capture: true, passive: true })
+    window.addEventListener('resize', handleClose)
     return () => {
       document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('touchstart', onDown)
-      window.removeEventListener('scroll', onScroll, true)
-      window.removeEventListener('resize', close)
+      document.removeEventListener('touchstart', onDown, { passive: true } as any)
+      window.removeEventListener('scroll', onScroll, { capture: true, passive: true } as any)
+      window.removeEventListener('resize', handleClose)
     }
-  }, [open, close])
+  }, [open])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (disabled) return
@@ -164,12 +171,11 @@ export default function InlineSelect({
 
       {open &&
         createPortal(
-          <div
+          <datalist
             ref={panelRef}
             className="isel-panel"
             style={panelStyle}
             data-placement={placement}
-            role="listbox"
             tabIndex={-1}
             onKeyDown={handleKeyDown}
           >
@@ -201,7 +207,7 @@ export default function InlineSelect({
                 )}
               </button>
             ))}
-          </div>,
+          </datalist>,
           document.body
         )}
     </div>

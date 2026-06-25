@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { X, MessageCircle, Phone, Mail } from 'lucide-react'
 import AppHeader from '../components/common/AppHeader'
 import LanguageToggle from '../components/common/LanguageToggle'
@@ -28,7 +28,7 @@ import '../styles/pages/pricing.css'
 function ContactDialog({ onClose }: { onClose: () => void }) {
   const { t } = useT()
   return (
-    <motion.div
+    <m.div
       className="ios-sheet-overlay"
       role="dialog"
       aria-modal="true"
@@ -38,8 +38,26 @@ function ContactDialog({ onClose }: { onClose: () => void }) {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
     >
-      <div style={{ position: 'absolute', inset: 0 }} onClick={onClose} />
-      <motion.div
+      <button
+        type="button"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          border: 'none',
+          background: 'transparent',
+          padding: 0,
+          cursor: 'default',
+        }}
+        aria-label="Close contact sheet"
+        onClick={onClose}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') {
+            e.preventDefault()
+            onClose()
+          }
+        }}
+      />
+      <m.div
         className="ios-sheet"
         initial={{ y: '100%' }}
         animate={{ y: 0 }}
@@ -81,8 +99,8 @@ function ContactDialog({ onClose }: { onClose: () => void }) {
             <span className="contact-channel-value text-mono">{SALES_CONTACT.email}</span>
           </a>
         </div>
-      </motion.div>
-    </motion.div>
+      </m.div>
+    </m.div>
   )
 }
 
@@ -176,7 +194,7 @@ export default function Pricing() {
 
       <AnimatePresence mode="wait">
         {view === 'checkout' ? (
-          <motion.div
+          <m.div
             key="checkout"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -191,9 +209,9 @@ export default function Pricing() {
                 window.location.hash = '#/pricing/orders'
               }}
             />
-          </motion.div>
+          </m.div>
         ) : (
-          <motion.main
+          <m.main
             key="catalog"
             className="pricing-main"
             initial={{ opacity: 0 }}
@@ -202,7 +220,7 @@ export default function Pricing() {
             transition={{ duration: 0.18 }}
           >
             <PendingOrderBanner orders={openOrders} onChanged={reload} paymentInfo={paymentInfo} />
-            <motion.header
+            <m.header
               className="pricing-hero"
               initial={enter ? { opacity: 0, y: 12 } : false}
               animate={{ opacity: 1, y: 0 }}
@@ -210,7 +228,7 @@ export default function Pricing() {
             >
               <h2 className="pricing-title">{t('pricing.title')}</h2>
               <p className="pricing-subtitle">{t('pricing.subtitle')}</p>
-            </motion.header>
+            </m.header>
             {error ? (
               <div className="pricing-error">{t('pricing.loadError', { error })}</div>
             ) : loading ? (
@@ -222,33 +240,29 @@ export default function Pricing() {
             ) : (
               <>
                 <section className="pricing-section" aria-label="Plans">
-                  <motion.div
+                  <m.div
                     className="plan-grid plan-grid--5"
                     variants={containerVariants}
                     initial={enter ? 'hidden' : false}
                     animate="show"
                   >
-                    <motion.div variants={cardVariants} style={{ display: 'flex' }}>
+                    <m.div variants={cardVariants} style={{ display: 'flex' }}>
                       <FreePlanCard />
-                    </motion.div>
+                    </m.div>
                     {plans.map(pack => (
-                      <motion.div
-                        key={pack.code}
-                        variants={cardVariants}
-                        style={{ display: 'flex' }}
-                      >
+                      <m.div key={pack.code} variants={cardVariants} style={{ display: 'flex' }}>
                         <PlanCard
                           pack={pack}
                           meta={PLAN_META[pack.code] ?? { name: pack.code }}
                           onSelect={startCheckout}
                           disabled={hasOpenOrder}
                         />
-                      </motion.div>
+                      </m.div>
                     ))}
-                    <motion.div variants={cardVariants} style={{ display: 'flex' }}>
+                    <m.div variants={cardVariants} style={{ display: 'flex' }}>
                       <EnterpriseCard onContact={() => setShowContact(true)} />
-                    </motion.div>
-                  </motion.div>
+                    </m.div>
+                  </m.div>
                 </section>
 
                 <section className="pricing-section" aria-labelledby="packs-heading">
@@ -273,7 +287,7 @@ export default function Pricing() {
                 </section>
               </>
             )}
-          </motion.main>
+          </m.main>
         )}
       </AnimatePresence>
 

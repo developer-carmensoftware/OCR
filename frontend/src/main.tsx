@@ -1,5 +1,6 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react'
 import * as Sentry from '@sentry/react'
+import { LazyMotion, domAnimation } from 'framer-motion'
 
 // Apply persisted theme before first paint (avoids a light→dark flash).
 document.documentElement.dataset.theme = localStorage.getItem('theme') === 'dark' ? 'dark' : 'light'
@@ -181,24 +182,26 @@ function Router() {
 const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement)
 root.render(
   <ErrorBoundary>
-    <AuthProvider>
-      <AdminAuthProvider>
-        <Toaster
-          position="bottom-center"
-          duration={3500}
-          visibleToasts={4}
-          expand={false}
-          closeButton
-          richColors
-          theme="light"
-        />
-        <LanguageProvider>
-          <ConsentGate>
-            <Router />
-          </ConsentGate>
-        </LanguageProvider>
-      </AdminAuthProvider>
-    </AuthProvider>
+    <LazyMotion features={domAnimation}>
+      <AuthProvider>
+        <AdminAuthProvider>
+          <Toaster
+            position="bottom-center"
+            duration={3500}
+            visibleToasts={4}
+            expand={false}
+            closeButton
+            richColors
+            theme="light"
+          />
+          <LanguageProvider>
+            <ConsentGate>
+              <Router />
+            </ConsentGate>
+          </LanguageProvider>
+        </AdminAuthProvider>
+      </AuthProvider>
+    </LazyMotion>
   </ErrorBoundary>
 )
 

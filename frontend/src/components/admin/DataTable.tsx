@@ -18,12 +18,32 @@ export interface DataTableProps<T = Record<string, unknown>> {
   renderExpandedRow?: (row: T) => React.ReactNode
 }
 
+interface ExpandedRowWrapperProps<T> {
+  row: T
+  renderExpandedRow: (row: T) => React.ReactNode
+}
+
+function ExpandedRowWrapper<T>({ row, renderExpandedRow: renderer }: ExpandedRowWrapperProps<T>) {
+  return <>{renderer(row)}</>
+}
+
 function getCell(row: unknown, key: string): unknown {
   return key.split('.').reduce<unknown>((obj, k) => {
     if (obj && typeof obj === 'object') return (obj as Record<string, unknown>)[k]
     return undefined
   }, row)
 }
+
+const WIDTHS = [
+  'sk-w-72',
+  'sk-w-55',
+  'sk-w-85',
+  'sk-w-60',
+  'sk-w-78',
+  'sk-w-50',
+  'sk-w-68',
+  'sk-w-80',
+]
 
 export default function DataTable<T = Record<string, unknown>>({
   columns,
@@ -70,16 +90,6 @@ export default function DataTable<T = Record<string, unknown>>({
   }
 
   if (loading) {
-    const WIDTHS = [
-      'sk-w-72',
-      'sk-w-55',
-      'sk-w-85',
-      'sk-w-60',
-      'sk-w-78',
-      'sk-w-50',
-      'sk-w-68',
-      'sk-w-80',
-    ]
     return (
       <div className="admin-table-wrap">
         <table className="admin-table">
@@ -107,6 +117,7 @@ export default function DataTable<T = Record<string, unknown>>({
                       className={`skeleton skeleton-cell ${WIDTHS[(i + j) % WIDTHS.length]}`}
                       aria-hidden="true"
                     />
+                    {null}
                   </td>
                 ))}
               </tr>
@@ -164,7 +175,7 @@ export default function DataTable<T = Record<string, unknown>>({
                   {isExpanded && renderExpandedRow && (
                     <tr className="admin-tr-expanded">
                       <td colSpan={columns.length} className="admin-td-expanded">
-                        {renderExpandedRow(row)}
+                        <ExpandedRowWrapper row={row} renderExpandedRow={renderExpandedRow} />
                       </td>
                     </tr>
                   )}

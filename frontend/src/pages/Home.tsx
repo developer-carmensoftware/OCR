@@ -1,5 +1,5 @@
 import type React from 'react'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { Receipt, FileText, Landmark, CheckCircle2, Clock, Lock, ArrowRight } from 'lucide-react'
 import '../styles/pages/home.css'
 import logo from '../assets/logo.png'
@@ -108,7 +108,7 @@ export default function Home() {
         <LanguageToggle />
         <DarkModeToggle />
       </div>
-      <motion.div
+      <m.div
         className="home-hero"
         initial={enter ? { opacity: 0, y: 12 } : false}
         animate={{ opacity: 1, y: 0 }}
@@ -130,9 +130,9 @@ export default function Home() {
         <div className="home-version">
           <span className="dot" /> System Online — Beta v1.0.1
         </div>
-      </motion.div>
+      </m.div>
       <div className="home-modules">
-        <motion.div
+        <m.div
           className="module-grid"
           variants={containerVariants}
           initial={enter ? 'hidden' : false}
@@ -142,7 +142,7 @@ export default function Home() {
             const isComingSoon = !mod.href
             const Tag = (isComingSoon ? 'div' : 'a') as React.ElementType
             return (
-              <motion.div key={mod.id} variants={itemVariants} style={{ display: 'flex' }}>
+              <m.div key={mod.id} variants={itemVariants} style={{ display: 'flex' }}>
                 <Tag
                   href={isComingSoon ? undefined : mod.href}
                   className={`module-card ${isComingSoon ? 'coming-soon' : ''}`}
@@ -198,10 +198,10 @@ export default function Home() {
                     </div>
                   </div>
                 </Tag>
-              </motion.div>
+              </m.div>
             )
           })}
-        </motion.div>
+        </m.div>
       </div>
       <div className="home-footer">Carmen Cloud AI Automation Platform</div>
     </div>

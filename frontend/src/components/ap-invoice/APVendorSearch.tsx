@@ -64,20 +64,7 @@ export default function VendorSearch({
             href={getCarmenUrl('/apVendor/create')}
             target="_blank"
             rel="noopener noreferrer"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.3rem',
-              padding: '0.25rem 0.65rem',
-              fontSize: '0.75rem',
-              fontWeight: 600,
-              color: 'var(--primary)',
-              background: 'var(--ap-exclude-bg, #eff6ff)',
-              border: '1px solid var(--primary)',
-              borderRadius: '999px',
-              textDecoration: 'none',
-              whiteSpace: 'nowrap',
-            }}
+            className="vendor-new-btn"
           >
             <Plus size={11} /> {t('common.newVendor')}
           </a>
@@ -86,17 +73,9 @@ export default function VendorSearch({
             onClick={onRefresh}
             disabled={refreshing}
             title={t('common.refreshVendor')}
+            className="vendor-refresh-btn"
             style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '1.75rem',
-              height: '1.75rem',
-              background: 'var(--gray-50)',
-              border: '1px solid var(--border)',
-              borderRadius: '999px',
               cursor: refreshing ? 'not-allowed' : 'pointer',
-              color: 'var(--text-3)',
               opacity: refreshing ? 0.6 : 1,
             }}
           >
@@ -111,6 +90,7 @@ export default function VendorSearch({
           type="text"
           className={`vendor-search-input ${systemVendor.code ? 'matched' : ''}`}
           placeholder={t('ap.searchVendor')}
+          aria-label={t('ap.searchVendor')}
           value={vendorSearch}
           onChange={e => {
             setVendorSearch(e.target.value)
@@ -139,6 +119,8 @@ export default function VendorSearch({
                       ? { opacity: 0.45, cursor: 'not-allowed', pointerEvents: 'none' }
                       : undefined
                   }
+                  role="button"
+                  tabIndex={isInactive ? -1 : 0}
                   onMouseDown={
                     isInactive
                       ? undefined
@@ -148,6 +130,20 @@ export default function VendorSearch({
                             `${v.code} — ${v.name} | TaxID : ${v.taxId || '—'} | Branch No. : ${String(v.branchNo ?? '—').padStart(5, '0')}`
                           )
                           setShowVendorDrop(false)
+                        }
+                  }
+                  onKeyDown={
+                    isInactive
+                      ? undefined
+                      : e => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            setSystemVendor(v)
+                            setVendorSearch(
+                              `${v.code} — ${v.name} | TaxID : ${v.taxId || '—'} | Branch No. : ${String(v.branchNo ?? '—').padStart(5, '0')}`
+                            )
+                            setShowVendorDrop(false)
+                          }
                         }
                   }
                 >
@@ -160,7 +156,7 @@ export default function VendorSearch({
                       <span
                         style={{
                           marginLeft: '0.4rem',
-                          fontSize: '0.7rem',
+                          fontSize: '0.75rem',
                           fontWeight: 600,
                           color: 'var(--rose)',
                           background: 'var(--btn-err-bg, #fee2e2)',

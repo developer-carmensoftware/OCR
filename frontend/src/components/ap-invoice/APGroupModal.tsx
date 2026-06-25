@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { Layers } from 'lucide-react'
 import { fmt, parseNum } from '../../constants/apInvoice'
 import { effectiveTaxProfile, apGroupKey } from '../../lib/apGroup'
@@ -14,6 +14,11 @@ interface Props {
   onClose: () => void
 }
 
+function profileLabel(item: APLineItem) {
+  const p = effectiveTaxProfile(item)
+  return p === 'None' ? 'No VAT' : p || '—'
+}
+
 // Group-by-description dialog. The user selects rows to merge (any mix of tax profiles is allowed),
 // names the group, and clicks Group. Rows with different tax profiles each become their own merged
 // row — all sharing the same description. The summary strip adapts: same-profile = total; mixed =
@@ -24,13 +29,6 @@ export default function APGroupModal({ show, lineItems, groupByDescription, onCl
   const [selected, setSelected] = useState<Set<number>>(new Set())
 
   useEffect(() => {
-    if (show) {
-      setDesc('')
-      setSelected(new Set())
-    }
-  }, [show])
-
-  useEffect(() => {
     if (!show) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
@@ -38,11 +36,6 @@ export default function APGroupModal({ show, lineItems, groupByDescription, onCl
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [show, onClose])
-
-  const profileLabel = (item: APLineItem) => {
-    const p = effectiveTaxProfile(item)
-    return p === 'None' ? 'No VAT' : p || '—'
-  }
 
   // Map selected indices to rows, dropping any that fall outside the current list. A group commit
   // shrinks `lineItems` and closes the modal in the same render, so a still-mounted body can briefly
@@ -79,7 +72,7 @@ export default function APGroupModal({ show, lineItems, groupByDescription, onCl
   return createPortal(
     <AnimatePresence>
       {show && (
-        <motion.div
+        <m.div
           className="ap-group-modal-overlay"
           onClick={onClose}
           initial={{ opacity: 0 }}
@@ -87,7 +80,7 @@ export default function APGroupModal({ show, lineItems, groupByDescription, onCl
           exit={{ opacity: 0 }}
           transition={{ duration: 0.18 }}
         >
-          <motion.div
+          <m.div
             className="ap-group-modal"
             role="dialog"
             aria-modal="true"
@@ -118,7 +111,7 @@ export default function APGroupModal({ show, lineItems, groupByDescription, onCl
                 )}
               </div>
 
-              <div className="ap-group-modal-list" role="group" aria-label="Line items">
+              <section className="ap-group-modal-list" aria-label="Line items">
                 {lineItems.length === 0 && (
                   <div className="ap-group-modal-empty">{t('ap.groupEmpty')}</div>
                 )}
@@ -128,7 +121,7 @@ export default function APGroupModal({ show, lineItems, groupByDescription, onCl
                     .filter(Boolean)
                     .join(' ')
                   return (
-                    <label key={i} className={cls}>
+                    <label key={item._uid ?? i} className={cls}>
                       <input
                         type="checkbox"
                         className="ap-group-modal-check"
@@ -145,7 +138,7 @@ export default function APGroupModal({ show, lineItems, groupByDescription, onCl
                     </label>
                   )
                 })}
-              </div>
+              </section>
 
               <div className="ap-group-modal-summary" data-state="ok">
                 {count < 2 ? (
@@ -201,8 +194,8 @@ export default function APGroupModal({ show, lineItems, groupByDescription, onCl
                 {count > 0 ? ` ${count}` : ''}
               </button>
             </div>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>,
     document.body

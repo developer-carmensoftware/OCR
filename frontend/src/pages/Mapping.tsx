@@ -163,24 +163,12 @@ export default function Mapping() {
         <div style={{ marginTop: '2.5rem' }}>
           <button
             type="button"
-            className="btn-save"
+            className="btn-save-mapping"
             onClick={() => void mappingCtrl.saveAllSettings(true)}
             disabled={mappingCtrl.saving}
             style={{
-              width: '100%',
-              padding: '1.2rem',
               background: mappingCtrl.saving ? '#5eaca3' : 'var(--teal)',
-              color: '#fff',
-              borderRadius: '12px',
               cursor: mappingCtrl.saving ? 'not-allowed' : 'pointer',
-              fontWeight: 'bold',
-              fontSize: '1.1rem',
-              border: 'none',
-              boxShadow: '0 4px 15px rgba(13,148,136,0.3)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.75rem',
             }}
           >
             {mappingCtrl.saving ? (

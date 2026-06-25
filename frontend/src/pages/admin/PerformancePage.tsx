@@ -79,6 +79,7 @@ export default function PerformancePage() {
             type="number"
             className="admin-form-input"
             placeholder="Min ms (e.g. 1000)"
+            aria-label="Minimum duration in milliseconds"
             value={minMs}
             onChange={e => setMinMs(e.target.value)}
             style={{ width: 160 }}
