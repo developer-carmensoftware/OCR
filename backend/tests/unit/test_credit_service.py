@@ -493,3 +493,37 @@ class TestProrationCredit:
         t = datetime(2026, 6, 1, 0, 0, tzinfo=UTC)
         result = credit_service.proration_credit(Decimal("100.00"), t, t, t)
         assert result == Decimal("0.00")
+
+
+# ── purchase_block_reason ─────────────────────────────────────────────────────
+
+
+class TestPurchaseBlockReason:
+    # tiers by doc allowance: starter 200 < standard 500 < pro 1500
+    def test_downgrade_blocked(self):
+        r = credit_service.purchase_block_reason("monthly", 1500, "monthly", 200)
+        assert r is not None and "Downgrade" in r
+
+    def test_annual_to_monthly_same_tier_blocked(self):
+        r = credit_service.purchase_block_reason("annual", 200, "monthly", 200)
+        assert r is not None and "annual" in r.lower()
+
+    def test_annual_to_monthly_higher_tier_blocked(self):
+        # the forfeiture case: annual starter → monthly pro
+        r = credit_service.purchase_block_reason("annual", 200, "monthly", 1500)
+        assert r is not None and "annual" in r.lower()
+
+    def test_annual_to_annual_upgrade_allowed(self):
+        assert credit_service.purchase_block_reason("annual", 200, "annual", 1500) is None
+
+    def test_annual_to_annual_renew_allowed(self):
+        assert credit_service.purchase_block_reason("annual", 500, "annual", 500) is None
+
+    def test_monthly_to_monthly_upgrade_allowed(self):
+        assert credit_service.purchase_block_reason("monthly", 200, "monthly", 1500) is None
+
+    def test_monthly_to_annual_allowed(self):
+        assert credit_service.purchase_block_reason("monthly", 200, "annual", 200) is None
+
+    def test_monthly_renew_allowed(self):
+        assert credit_service.purchase_block_reason("monthly", 500, "monthly", 500) is None

@@ -35,7 +35,12 @@ from app.models.schemas import (
 )
 from app.services import billing_document_service as bds
 from app.services import carmen_service, promptpay_service, storage_service
-from app.services.credit_service import active_subscription, annual_price, proration_credit
+from app.services.credit_service import (
+    active_subscription,
+    annual_price,
+    proration_credit,
+    purchase_block_reason,
+)
 from app.services.file_service import FileService
 from app.services.storage_service import StorageError
 from app.utils.tax import vat_on_top
@@ -142,8 +147,11 @@ async def create_order(
             cur_pack = (
                 await db.execute(select(CreditPack).where(CreditPack.code == current.plan_code))
             ).scalar_one()
-            if pack.credits < cur_pack.credits:
-                raise HTTPException(status_code=409, detail="Downgrade is not supported.")
+            reason = purchase_block_reason(
+                current.billing_period, cur_pack.credits, body.billing_period, pack.credits
+            )
+            if reason:
+                raise HTTPException(status_code=409, detail=reason)
             cur_net = (
                 annual_price(str(cur_pack.price_thb))
                 if current.billing_period == "annual"

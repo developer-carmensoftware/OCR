@@ -137,6 +137,8 @@ export default function Pricing() {
   const [showContact, setShowContact] = useState(false)
   const [activeSub, setActiveSub] = useState<ActiveSubscription | null>(null)
   const enter = useEntrance('pricing')
+  // Annual subscribers can only buy annual mid-term (monthly would forfeit prepaid value).
+  const annualLocked = activeSub?.billing_period === 'annual'
 
   useEffect(() => {
     getPaymentInfo()
@@ -149,6 +151,10 @@ export default function Pricing() {
         .catch(() => setActiveSub(null))
     }
   }, [])
+
+  useEffect(() => {
+    if (annualLocked) setBillingPeriod('annual')
+  }, [annualLocked])
 
   const startCheckout = (pack: CreditPack, period: BillingPeriod = 'monthly') => {
     setSelected(pack)
@@ -277,6 +283,8 @@ export default function Pricing() {
                         type="button"
                         className={`segmented-btn${billingPeriod === 'monthly' ? ' active' : ''}`}
                         onClick={() => setBillingPeriod('monthly')}
+                        disabled={annualLocked}
+                        title={annualLocked ? t('plan.monthlyLockedNote') : undefined}
                       >
                         {t('plan.billingMonthly')}
                       </button>
@@ -288,6 +296,11 @@ export default function Pricing() {
                         }}
                       />
                     </div>
+                    {annualLocked && (
+                      <p className="pricing-note" style={{ marginTop: '0.5rem' }}>
+                        {t('plan.monthlyLockedNote')}
+                      </p>
+                    )}
                   </div>
                   <m.div
                     className="plan-grid plan-grid--5"

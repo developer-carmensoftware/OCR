@@ -64,6 +64,26 @@ def proration_credit(
     return (plan_net * Decimal(str(frac))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
+def purchase_block_reason(
+    cur_period: Any, cur_credits: Any, new_period: str, new_credits: int
+) -> str | None:
+    """Why a tenant with an active plan can't buy this one — or None if allowed.
+
+    Downgrade (fewer docs) is never allowed. An annual subscriber can only move
+    to another annual plan: switching to monthly mid-term would forfeit prepaid
+    value (the smallest annual price > the largest monthly price), so it's blocked
+    until the annual term lapses.
+    """
+    if new_credits < cur_credits:
+        return "Downgrade is not supported."
+    if cur_period == "annual" and new_period != "annual":
+        return (
+            "Your annual plan can't switch to monthly billing mid-term. "
+            "Choose an annual plan or wait until it expires."
+        )
+    return None
+
+
 async def _try_consume_free(db: AsyncSession, quota: _CachedQuota, increment: int) -> bool:
     """
     Atomically increment the monthly free-quota usage, but only while it stays
