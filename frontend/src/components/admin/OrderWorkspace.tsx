@@ -637,8 +637,6 @@ interface WsState {
   slipUrl: string | null
   slipErr: boolean
   proforma: BillingDocument | null
-  taxInvoice: BillingDocument | null
-  docView: 'proforma' | 'tax_invoice'
   history: AdminCreditOrder[]
   busy: boolean
 }
@@ -647,8 +645,7 @@ type WsAction =
   | { type: 'RESET' }
   | { type: 'SET_SLIP_URL'; url: string }
   | { type: 'SET_SLIP_ERR' }
-  | { type: 'SET_DOCS'; proforma: BillingDocument | null; taxInvoice: BillingDocument | null }
-  | { type: 'SET_DOC_VIEW'; view: 'proforma' | 'tax_invoice' }
+  | { type: 'SET_DOCS'; proforma: BillingDocument | null }
   | { type: 'SET_HISTORY'; history: AdminCreditOrder[] }
   | { type: 'SET_BUSY'; busy: boolean }
 
@@ -656,8 +653,6 @@ const wsInitial: WsState = {
   slipUrl: null,
   slipErr: false,
   proforma: null,
-  taxInvoice: null,
-  docView: 'proforma',
   history: [],
   busy: false,
 }
@@ -671,9 +666,7 @@ function wsReducer(state: WsState, action: WsAction): WsState {
     case 'SET_SLIP_ERR':
       return { ...state, slipErr: true }
     case 'SET_DOCS':
-      return { ...state, proforma: action.proforma, taxInvoice: action.taxInvoice }
-    case 'SET_DOC_VIEW':
-      return { ...state, docView: action.view }
+      return { ...state, proforma: action.proforma }
     case 'SET_HISTORY':
       return { ...state, history: action.history }
     case 'SET_BUSY':
@@ -696,7 +689,7 @@ export default function OrderWorkspace({
 }) {
   const { t } = useT()
   const [state, dispatch] = useReducer(wsReducer, wsInitial)
-  const { slipUrl, slipErr, proforma, taxInvoice, docView, history, busy } = state
+  const { slipUrl, slipErr, proforma, history, busy } = state
 
   useEffect(() => {
     dispatch({ type: 'RESET' })
@@ -711,7 +704,6 @@ export default function OrderWorkspace({
         dispatch({
           type: 'SET_DOCS',
           proforma: docs.find(d => d.doc_type === 'proforma') ?? null,
-          taxInvoice: docs.find(d => d.doc_type === 'tax_invoice') ?? null,
         })
       })
       .catch(() => {})
@@ -740,7 +732,6 @@ export default function OrderWorkspace({
   const company = order.buyer_name || order.tenant_name || '—'
   const priorReject = history.some(o => o.id !== order.id && o.status === 'void')
   const hasSlip = !!order.slip_uploaded_at
-  const shownDoc = docView === 'tax_invoice' && taxInvoice ? taxInvoice : proforma
 
   return (
     <section className="orev-workspace" aria-label={t('orev.title')}>
@@ -785,28 +776,10 @@ export default function OrderWorkspace({
         <div className="orev-compare-col">
           <div className="orev-col-head">
             <span>{t('orev.doc.heading')}</span>
-            {taxInvoice && (
-              <div className="orev-doc-toggle">
-                <button
-                  type="button"
-                  className={docView === 'proforma' ? 'is-on' : ''}
-                  onClick={() => dispatch({ type: 'SET_DOC_VIEW', view: 'proforma' })}
-                >
-                  {t('orev.doc.proforma')}
-                </button>
-                <button
-                  type="button"
-                  className={docView === 'tax_invoice' ? 'is-on' : ''}
-                  onClick={() => dispatch({ type: 'SET_DOC_VIEW', view: 'tax_invoice' })}
-                >
-                  {t('orev.doc.taxInvoice')}
-                </button>
-              </div>
-            )}
           </div>
           <div className="orev-doc-scroll">
-            {shownDoc ? (
-              <ProformaDocument doc={shownDoc} paymentInfo={paymentInfo} />
+            {proforma ? (
+              <ProformaDocument doc={proforma} paymentInfo={paymentInfo} />
             ) : (
               <div className="orev-slip-fallback">{t('orev.doc.loading')}</div>
             )}
