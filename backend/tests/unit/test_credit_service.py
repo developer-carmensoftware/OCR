@@ -3,13 +3,14 @@ Unit tests for services/credit_service.py — free-quota-first then top-up credi
 Mocks DB session, transaction, and context vars.
 """
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.exceptions import InsufficientCredits, ValidationError
-from app.models.enums import CreditLedgerReason, QuotaPeriod
-from app.models.orm import CreditLedger
+from app.models.enums import CreditLedgerReason, QuotaPeriod, SubscriptionStatus
+from app.models.orm import CreditLedger, TenantSubscription
 from app.services import credit_service
 from app.services.quota_service import _CachedQuota
 from tests.conftest import set_context
@@ -28,7 +29,9 @@ def _monthly_quota(limit=30):
 def _result(first=None, scalar=None):
     r = MagicMock()
     r.first.return_value = first
+    r.scalar.return_value = scalar
     r.scalar_one.return_value = scalar
+    r.scalar_one_or_none.return_value = scalar
     return r
 
 
@@ -326,3 +329,118 @@ class TestGrantCredits:
         with pytest.raises(ValidationError):
             await credit_service.grant_credits(db, "t-001", -50, CreditLedgerReason.ADMIN_ADJUST)
         db.add.assert_not_called()
+
+
+# ── get_active_subscription — display-reset on cycle roll ────────────────────
+
+
+def _make_sub(*, period_start, period_end, cycle_start, docs_used=42, billing_period="annual"):
+    sub = TenantSubscription()
+    sub.id = "sub-1"
+    sub.tenant_id = "t-001"
+    sub.plan_code = "sub_pro"
+    sub.doc_allowance = 1500
+    sub.docs_used = docs_used
+    sub.period_start = period_start
+    sub.period_end = period_end
+    sub.billing_period = billing_period
+    sub.cycle_start = cycle_start
+    sub.status = SubscriptionStatus.ACTIVE
+    return sub
+
+
+class TestGetActiveSubscriptionDisplayReset:
+    """get_active_subscription should show docs_used=0 when the cycle has rolled."""
+
+    async def test_cycle_rolled_resets_docs_used_to_zero(self):
+        start = datetime(2026, 6, 24, 0, 0, tzinfo=UTC)
+        end = datetime(2027, 6, 23, 23, 59, tzinfo=UTC)
+        old_cycle = datetime(2026, 6, 24, 0, 0, tzinfo=UTC)
+        new_cycle_target = datetime(2026, 7, 24, 0, 0, tzinfo=UTC)
+
+        sub = _make_sub(
+            period_start=start,
+            period_end=end,
+            cycle_start=old_cycle,
+            docs_used=500,
+        )
+
+        mock_db = AsyncMock()
+        # Only the fn_cycle_start query goes through db.execute here;
+        # active_subscription is patched out.
+        mock_db.execute = AsyncMock(return_value=_result(scalar=new_cycle_target))
+        mock_db.expunge = MagicMock()
+
+        with (
+            patch.object(credit_service, "async_session", return_value=_session_ctx(mock_db)),
+            patch.object(credit_service, "active_subscription", AsyncMock(return_value=sub)),
+        ):
+            result = await credit_service.get_active_subscription("t-001")
+
+        assert result is not None
+        assert result.docs_used == 0
+
+    async def test_same_cycle_keeps_docs_used(self):
+        start = datetime(2026, 6, 24, 0, 0, tzinfo=UTC)
+        end = datetime(2027, 6, 23, 23, 59, tzinfo=UTC)
+        same_cycle = datetime(2026, 6, 24, 0, 0, tzinfo=UTC)
+
+        sub = _make_sub(
+            period_start=start,
+            period_end=end,
+            cycle_start=same_cycle,
+            docs_used=123,
+        )
+
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(return_value=_result(scalar=same_cycle))
+        mock_db.expunge = MagicMock()
+
+        with (
+            patch.object(credit_service, "async_session", return_value=_session_ctx(mock_db)),
+            patch.object(credit_service, "active_subscription", AsyncMock(return_value=sub)),
+        ):
+            result = await credit_service.get_active_subscription("t-001")
+
+        assert result is not None
+        assert result.docs_used == 123
+
+    async def test_monthly_sub_never_resets_within_window(self):
+        start = datetime(2026, 6, 24, 0, 0, tzinfo=UTC)
+        end = datetime(2026, 7, 23, 23, 59, tzinfo=UTC)
+
+        sub = _make_sub(
+            period_start=start,
+            period_end=end,
+            cycle_start=start,
+            docs_used=80,
+            billing_period="monthly",
+        )
+
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(return_value=_result(scalar=start))
+        mock_db.expunge = MagicMock()
+
+        with (
+            patch.object(credit_service, "async_session", return_value=_session_ctx(mock_db)),
+            patch.object(credit_service, "active_subscription", AsyncMock(return_value=sub)),
+        ):
+            result = await credit_service.get_active_subscription("t-001")
+
+        assert result is not None
+        assert result.docs_used == 80
+
+    async def test_no_subscription_returns_none(self):
+        mock_db = AsyncMock()
+
+        with (
+            patch.object(credit_service, "async_session", return_value=_session_ctx(mock_db)),
+            patch.object(credit_service, "active_subscription", AsyncMock(return_value=None)),
+        ):
+            result = await credit_service.get_active_subscription("t-001")
+
+        assert result is None
+
+    async def test_empty_tenant_returns_none(self):
+        result = await credit_service.get_active_subscription("")
+        assert result is None

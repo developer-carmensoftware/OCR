@@ -30,6 +30,7 @@ def _pack(code="starter", credits=500, price_thb=990.0, sort_order=0, is_active=
     row.kind = kind
     row.credits = credits
     row.price_thb = Decimal(str(price_thb))
+    row.price_annual_thb = None  # /packs fills this for subscriptions
     row.sort_order = sort_order
     row.is_active = is_active
     row.description = f"{credits} credits"
@@ -49,6 +50,7 @@ def _order(
     row.pack_code = pack_code
     row.credits = credits
     row.amount_thb = Decimal(str(amount_thb))
+    row.billing_period = "monthly"
     row.status = status
     row.tenant_id = tenant_id
     row.deleted_at = None
@@ -142,6 +144,30 @@ def test_list_packs_returns_active_packs():
     assert body[1]["code"] == "pro"
 
 
+def test_list_packs_adds_annual_price_for_subscriptions():
+    """Subscription packs get a computed annual price (12mo − 10%); top-ups don't."""
+    packs = [
+        _pack("sub_pro", 1500, 2490.0, 0, kind="subscription"),
+        _pack("pack_small", 500, 1200.0, 1, kind="topup"),
+    ]
+    scalars_result = MagicMock()
+    scalars_result.all.return_value = packs
+    execute_result = MagicMock()
+    execute_result.scalars.return_value = scalars_result
+    mock_db = make_mock_db()
+    mock_db.execute = AsyncMock(return_value=execute_result)
+
+    with make_test_client(mock_db) as client:
+        resp = client.get(f"{BASE}/packs", headers=AUTH)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    sub = next(p for p in body if p["code"] == "sub_pro")
+    topup = next(p for p in body if p["code"] == "pack_small")
+    assert sub["price_annual_thb"] == 26892.0  # 2490 × 12 × 0.9
+    assert topup["price_annual_thb"] is None
+
+
 def test_list_packs_empty_returns_empty_list():
     scalars_result = MagicMock()
     scalars_result.all.return_value = []
@@ -226,6 +252,70 @@ def test_create_order_returns_qr_and_proforma():
     assert body["qr"]["payload"].startswith("000201")
     assert body["qr"]["promptpay_id"] == "0812345678"
     assert body["proforma"]["number"] == "PF-202606-0001"
+
+
+def test_create_order_annual_subscription_uses_discounted_price():
+    """Annual subscription order is priced at 12 months − 10%, with VAT on top."""
+    from app.services.credit_service import annual_price
+    from app.utils.tax import vat_on_top
+
+    pack = _pack("sub_pro", 1500, 2490.0, kind="subscription")
+    mock_db = make_mock_db()
+    # pre-check (no open order), pack lookup, active-subscription guard (none).
+    mock_db.execute.side_effect = [_scalar(None), _scalar(pack), _scalar(None)]
+
+    added = {}
+    mock_db.add.side_effect = lambda obj: added.setdefault("order", obj)
+
+    async def _flush():
+        order = added.get("order")
+        if order is not None and getattr(order, "id", None) is None:
+            order.id = uuid.uuid4()
+
+    mock_db.flush.side_effect = _flush
+
+    with (
+        patch(
+            "app.routers.credits.bds.issue_document",
+            new=AsyncMock(return_value=_billing_doc(pack_code="sub_pro", credits=1500)),
+        ),
+        patch("app.routers.credits.bds.get_promptpay_id", new=AsyncMock(return_value="0812345678")),
+        make_test_client(mock_db) as client,
+    ):
+        resp = client.post(
+            f"{BASE}/orders",
+            json={
+                "pack_code": "sub_pro",
+                "billing_period": "annual",
+                "buyer": {"name": "Test Co", "tax_id": "", "address": "", "branch": ""},
+            },
+            headers=AUTH,
+        )
+
+    assert resp.status_code == 200
+    order = resp.json()["order"]
+    assert order["billing_period"] == "annual"
+    _net, _vat, gross = vat_on_top(annual_price(Decimal("2490")))
+    assert order["amount_thb"] == float(gross)  # annual net + VAT, not monthly
+
+
+def test_create_order_rejects_unknown_billing_period():
+    with make_test_client(make_mock_db()) as client:
+        resp = client.post(
+            f"{BASE}/orders",
+            json={"pack_code": "sub_pro", "billing_period": "weekly"},
+            headers=AUTH,
+        )
+    assert resp.status_code == 422
+
+
+def test_annual_price_is_ten_percent_off():
+    """Annual = monthly × 12 × 0.9 — the one money-path check that must hold."""
+    from app.services.credit_service import annual_price
+
+    assert annual_price(Decimal("490")) == Decimal("5292.00")
+    assert annual_price(Decimal("990")) == Decimal("10692.00")
+    assert annual_price(Decimal("2490")) == Decimal("26892.00")
 
 
 def test_create_order_pack_not_found_returns_404():

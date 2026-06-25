@@ -15,6 +15,8 @@ class CreditPackResponse(BaseModel):
     kind: str = "topup"  # 'subscription' (monthly tier) | 'topup' (one-time credits)
     credits: int
     price_thb: float
+    # Annual list price (12 months - 10%) for subscription tiers; None for top-ups.
+    price_annual_thb: float | None = None
     description: str | None = None
     sort_order: int = 0
 
@@ -26,6 +28,7 @@ class CreditOrderResponse(BaseModel):
     pack_code: str
     credits: int
     amount_thb: float
+    billing_period: str = "monthly"  # 'monthly' | 'annual'
     status: str
     # Surfaced for the admin slip-review queue; harmless on the tenant's own list.
     tenant_id: str | None = None
@@ -108,7 +111,16 @@ class BuyerInfoInput(BaseModel):
 
 class CreateOrderRequest(BaseModel):
     pack_code: str
+    # 'monthly' | 'annual' — annual applies to subscriptions only (forced monthly for top-ups).
+    billing_period: str = "monthly"
     buyer: BuyerInfoInput | None = None  # overrides Carmen prefill when provided
+
+    @field_validator("billing_period")
+    @classmethod
+    def _check_period(cls, v: str) -> str:
+        if v not in ("monthly", "annual"):
+            raise ValueError("billing_period must be 'monthly' or 'annual'")
+        return v
 
 
 class QrPayloadResponse(BaseModel):

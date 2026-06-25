@@ -35,7 +35,7 @@ from app.models.schemas import (
 )
 from app.services import billing_document_service as bds
 from app.services import carmen_service, promptpay_service, storage_service
-from app.services.credit_service import active_subscription
+from app.services.credit_service import active_subscription, annual_price
 from app.services.file_service import FileService
 from app.services.storage_service import StorageError
 from app.utils.tax import vat_on_top
@@ -61,7 +61,13 @@ async def list_packs(
         .scalars()
         .all()
     )
-    return [CreditPackResponse.model_validate(p) for p in rows]
+    out: list[CreditPackResponse] = []
+    for p in rows:
+        resp = CreditPackResponse.model_validate(p)
+        if p.kind == "subscription":
+            resp.price_annual_thb = float(annual_price(str(p.price_thb)))
+        out.append(resp)
+    return out
 
 
 @router.get("/company-profile", response_model=CompanyProfileResponse)
@@ -140,13 +146,17 @@ async def create_order(
                 detail="You already have an active plan. You can renew after it ends.",
             )
 
-    net = Decimal(str(pack.price_thb))
+    # Annual = 12 months at a 10% discount; subscriptions only (top-ups never expire).
+    is_annual = body.billing_period == "annual" and pack.kind == "subscription"
+    billing_period = "annual" if is_annual else "monthly"
+    net = annual_price(str(pack.price_thb)) if is_annual else Decimal(str(pack.price_thb))
     _sub, _vat, gross = vat_on_top(net)
     order = CreditOrder(
         tenant_id=session.tenant_id,
         pack_code=pack.code,
         credits=pack.credits,
         amount_thb=gross,
+        billing_period=billing_period,
         status=CreditOrderStatus.IN_PROGRESS,
         expires_at=datetime.now(UTC) + timedelta(days=14),
     )
@@ -187,9 +197,10 @@ async def create_order(
         order_id=str(order.id),
         doc_type=BillingDocumentType.PROFORMA,
         pack_code=pack.code,  # type: ignore[arg-type]
-        pack_description=str(pack.description) if pack.description else f"{pack.credits} credits",
+        pack_description=(str(pack.description) if pack.description else f"{pack.credits} credits")
+        + (" (Annual — 12 months)" if is_annual else ""),
         credits=pack.credits,  # type: ignore[arg-type]
-        amount_thb=Decimal(str(pack.price_thb)),
+        amount_thb=net,
         buyer=buyer,
     )
 

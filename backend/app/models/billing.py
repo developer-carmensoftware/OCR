@@ -209,6 +209,8 @@ class CreditOrder(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     pack_code = Column(String(20), ForeignKey("credit_packs.code"), nullable=False)
     credits = Column(Integer, nullable=False)
     amount_thb = Column(Numeric(10, 2), nullable=False)
+    # 'monthly' | 'annual' — chosen at checkout; drives price + the license window.
+    billing_period = Column(String(10), nullable=False, default="monthly")
     status: Column = Column(
         SAEnum(CreditOrderStatus, values_callable=lambda o: [e.value for e in o]),
         nullable=False,
@@ -314,10 +316,14 @@ class TenantSubscription(Base, TimestampMixin):
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
     plan_code = Column(String(20), ForeignKey("credit_packs.code"), nullable=False)
-    doc_allowance = Column(Integer, nullable=False)
-    docs_used = Column(Integer, nullable=False, default=0)
+    doc_allowance = Column(Integer, nullable=False)  # per-month allowance, both periods
+    docs_used = Column(Integer, nullable=False, default=0)  # used in the current month-cycle
     period_start = Column(DateTime(timezone=True), nullable=False)
     period_end = Column(DateTime(timezone=True), nullable=False)
+    # 'monthly' (window == one cycle) | 'annual' (year-long window, docs_used resets
+    # each month). cycle_start tracks the month-cycle docs_used currently belongs to.
+    billing_period = Column(String(10), nullable=False, default="monthly")
+    cycle_start = Column(DateTime(timezone=True), nullable=True)
     status: Column = Column(
         SAEnum(SubscriptionStatus, values_callable=lambda o: [e.value for e in o]),
         nullable=False,
