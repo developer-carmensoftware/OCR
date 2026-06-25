@@ -18,6 +18,10 @@ interface PlanCardProps {
   period?: BillingPeriod
   onSelect: (pack: CreditPack) => void
   disabled?: boolean
+  /** Current active plan code, if any — drives upgrade/renew/downgrade labels. */
+  activePlanCode?: string | null
+  /** Doc allowance of the current active plan — used to determine tier rank. */
+  activePlanCredits?: number
 }
 
 const TIER_ICONS: Record<string, { Icon: PhosphorIcon; tint: string }> = {
@@ -32,8 +36,23 @@ const TIER_ICONS: Record<string, { Icon: PhosphorIcon; tint: string }> = {
  * anchored at the bottom next to the CTA. Only the highlighted tier gets the
  * primary CTA.
  */
-export function PlanCard({ pack, meta, period = 'monthly', onSelect, disabled }: PlanCardProps) {
+export function PlanCard({
+  pack,
+  meta,
+  period = 'monthly',
+  onSelect,
+  disabled,
+  activePlanCode,
+  activePlanCredits,
+}: PlanCardProps) {
   const { t } = useT()
+  const isCurrentPlan = activePlanCode === pack.code
+  const isDowngrade = activePlanCredits != null && pack.credits < activePlanCredits
+  const ctaLabel = isCurrentPlan
+    ? t('plan.renew', { name: meta.name })
+    : activePlanCode
+      ? t('plan.upgrade', { name: meta.name })
+      : t('plan.choose', { name: meta.name })
   // Annual: pay for fewer months up front (2 free); the doc allowance is still
   // per month, so the hero stays the per-month price — just the discounted one.
   const annual = period === 'annual' && pack.price_annual_thb != null
@@ -83,9 +102,9 @@ export function PlanCard({ pack, meta, period = 'monthly', onSelect, disabled }:
         type="button"
         className={`btn ${meta.highlight ? 'btn-primary' : 'btn-outline'} plan-cta`}
         onClick={() => onSelect(pack)}
-        disabled={disabled}
+        disabled={disabled || isDowngrade}
       >
-        {t('plan.choose', { name: meta.name })} <ArrowRight size={14} />
+        {ctaLabel} <ArrowRight size={14} />
       </button>
     </div>
   )

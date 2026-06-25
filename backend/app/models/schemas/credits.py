@@ -40,6 +40,7 @@ class CreditOrderResponse(BaseModel):
     expires_at: datetime | None = None  # proforma valid-until (pending orders)
     rejected_reason: str | None = None  # reason shown to the buyer on rejection
     admin_note: str | None = None
+    proration_credit_thb: float = 0
     carmen_ar_posted_at: datetime | None = None
     carmen_ar_ref: str | None = None
     # Populated by the admin queue join only (proforma data + resolved AR code).

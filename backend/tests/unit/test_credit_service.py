@@ -336,16 +336,16 @@ class TestGrantCredits:
 
 def _make_sub(*, period_start, period_end, cycle_start, docs_used=42, billing_period="annual"):
     sub = TenantSubscription()
-    sub.id = "sub-1"
-    sub.tenant_id = "t-001"
-    sub.plan_code = "sub_pro"
-    sub.doc_allowance = 1500
-    sub.docs_used = docs_used
+    sub.id = "sub-1"  # type: ignore[assignment]
+    sub.tenant_id = "t-001"  # type: ignore[assignment]
+    sub.plan_code = "sub_pro"  # type: ignore[assignment]
+    sub.doc_allowance = 1500  # type: ignore[assignment]
+    sub.docs_used = docs_used  # type: ignore[assignment]
     sub.period_start = period_start
     sub.period_end = period_end
-    sub.billing_period = billing_period
+    sub.billing_period = billing_period  # type: ignore[assignment]
     sub.cycle_start = cycle_start
-    sub.status = SubscriptionStatus.ACTIVE
+    sub.status = SubscriptionStatus.ACTIVE  # type: ignore[assignment]
     return sub
 
 
@@ -444,3 +444,52 @@ class TestGetActiveSubscriptionDisplayReset:
     async def test_empty_tenant_returns_none(self):
         result = await credit_service.get_active_subscription("")
         assert result is None
+
+
+# ── proration_credit ─────────────────────────────────────────────────────────
+
+
+class TestProrationCredit:
+    def test_full_period_remaining(self):
+        from decimal import Decimal
+
+        start = datetime(2026, 6, 1, 0, 0, tzinfo=UTC)
+        end = datetime(2026, 6, 30, 23, 59, 59, tzinfo=UTC)
+        now = start
+        result = credit_service.proration_credit(Decimal("490.00"), start, end, now)
+        assert result == Decimal("490.00")
+
+    def test_expired_returns_zero(self):
+        from decimal import Decimal
+
+        start = datetime(2026, 6, 1, 0, 0, tzinfo=UTC)
+        end = datetime(2026, 6, 30, 23, 59, 59, tzinfo=UTC)
+        now = datetime(2026, 7, 5, 0, 0, tzinfo=UTC)
+        result = credit_service.proration_credit(Decimal("490.00"), start, end, now)
+        assert result == Decimal("0.00")
+
+    def test_half_period(self):
+        from decimal import Decimal
+
+        start = datetime(2026, 6, 1, 0, 0, tzinfo=UTC)
+        end = datetime(2026, 7, 1, 0, 0, tzinfo=UTC)
+        mid = datetime(2026, 6, 16, 0, 0, tzinfo=UTC)
+        result = credit_service.proration_credit(Decimal("300.00"), start, end, mid)
+        assert result == Decimal("150.00")
+
+    def test_annual_plan_midway(self):
+        from decimal import Decimal
+
+        start = datetime(2026, 1, 1, 0, 0, tzinfo=UTC)
+        end = datetime(2026, 12, 31, 0, 0, tzinfo=UTC)
+        now = datetime(2026, 7, 2, 12, 0, tzinfo=UTC)  # ~half year
+        net = credit_service.annual_price(Decimal("490"))  # 5292.00
+        result = credit_service.proration_credit(net, start, end, now)
+        assert Decimal("2500") < result < Decimal("2700")
+
+    def test_zero_length_period(self):
+        from decimal import Decimal
+
+        t = datetime(2026, 6, 1, 0, 0, tzinfo=UTC)
+        result = credit_service.proration_credit(Decimal("100.00"), t, t, t)
+        assert result == Decimal("0.00")

@@ -13,7 +13,9 @@ Billing model:
 """
 
 import logging
+from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
 
 from sqlalchemy import case, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -44,6 +46,22 @@ def annual_price(monthly: Decimal | float | str) -> Decimal:
     return (Decimal(str(monthly)) * 12 * (1 - ANNUAL_DISCOUNT)).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
+
+
+def proration_credit(
+    plan_net: Decimal,
+    period_start: Any,
+    period_end: Any,
+    now: datetime,
+) -> Decimal:
+    """Remaining value of the current plan = list net × fraction of days left, to 2dp."""
+    total = (period_end - period_start).total_seconds()
+    if total <= 0:
+        return Decimal("0.00")
+    remaining = max(0.0, (period_end - now).total_seconds())
+    frac = min(1.0, remaining / total)
+    # ponytail: list price base, not paid amount — switch to source order subtotal if exact accounting needed
+    return (plan_net * Decimal(str(frac))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 async def _try_consume_free(db: AsyncSession, quota: _CachedQuota, increment: int) -> bool:
@@ -292,7 +310,7 @@ async def grant_credits(
         )
         .returning(TenantCredit.balance)
     )
-    new_balance = int((await db.execute(stmt)).scalar_one())
+    new_balance = int((await db.execute(stmt)).scalar_one())  # Numeric → int
     if new_balance < 0:
         raise ValidationError("Adjustment would make the credit balance negative.")
     db.add(
@@ -320,7 +338,7 @@ async def get_credit_balance(tenant_id: str) -> int:
                     select(TenantCredit.balance).where(TenantCredit.tenant_id == tenant_id)
                 )
             ).scalar_one_or_none()
-            return int(bal) if bal is not None else 0
+            return int(bal) if bal is not None else 0  # Numeric → int
     except Exception as exc:
         logger.error("get_credit_balance failed: %s", exc)
         return 0

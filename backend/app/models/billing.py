@@ -227,6 +227,7 @@ class CreditOrder(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     slip_uploaded_at = Column(DateTime(timezone=True), nullable=True)
     rejected_reason = Column(Text, nullable=True)
     admin_note = Column(Text, nullable=True)
+    proration_credit_thb = Column(Numeric(10, 2), nullable=False, default=0, server_default="0")
     # Carmen AR posting (set when order is posted to Carmen ERP)
     carmen_ar_posted_at = Column(DateTime(timezone=True), nullable=True)
     carmen_ar_ref = Column(String(255), nullable=True)

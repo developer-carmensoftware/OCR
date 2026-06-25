@@ -27,6 +27,8 @@ import {
   type CreditPack,
   type PaymentInfo,
 } from '../lib/api/credits'
+import { getUsage, type ActiveSubscription } from '../lib/api/auth'
+import { getStoredToken } from '../lib/api/client'
 import { useEntrance } from '../lib/useEntrance'
 import '../styles/pages/pricing.css'
 
@@ -133,12 +135,19 @@ export default function Pricing() {
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly')
   const [selectedPeriod, setSelectedPeriod] = useState<BillingPeriod>('monthly')
   const [showContact, setShowContact] = useState(false)
+  const [activeSub, setActiveSub] = useState<ActiveSubscription | null>(null)
   const enter = useEntrance('pricing')
 
   useEffect(() => {
     getPaymentInfo()
       .then(setPaymentInfo)
       .catch(() => setPaymentInfo(null))
+    const token = getStoredToken()
+    if (token) {
+      getUsage(token)
+        .then(d => setActiveSub(d.usage.subscription ?? null))
+        .catch(() => setActiveSub(null))
+    }
   }, [])
 
   const startCheckout = (pack: CreditPack, period: BillingPeriod = 'monthly') => {
@@ -297,6 +306,8 @@ export default function Pricing() {
                           period={billingPeriod}
                           onSelect={p => startCheckout(p, billingPeriod)}
                           disabled={hasOpenOrder}
+                          activePlanCode={activeSub?.plan_code}
+                          activePlanCredits={activeSub?.doc_allowance}
                         />
                       </m.div>
                     ))}
