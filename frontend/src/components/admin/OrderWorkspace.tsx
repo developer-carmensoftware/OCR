@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   AlertTriangle,
@@ -18,7 +18,8 @@ import {
 } from 'lucide-react'
 import ProformaDocument from '../pricing/ProformaDocument'
 import DataTable, { type Column } from './DataTable'
-import { STAGE_KEY, STAGE_TONE, timeAgo } from './OrderQueue'
+import { STAGE_KEY, STAGE_TONE } from './orderConstants'
+import { timeAgo } from '../../lib/date'
 import {
   approveOrder,
   fetchAdminOrderDocuments,
@@ -94,7 +95,7 @@ function SlipViewer({ url, error }: { url: string | null; error: boolean }) {
   if (slipIsPdf(url)) {
     return (
       <div className="orev-slip">
-        <iframe src={url} className="orev-slip-frame" title={t('orev.slip.heading')} />
+        <iframe src={url} className="orev-slip-frame" title={t('orev.slip.heading')} sandbox="" />
         <a className="orev-slip-link" href={url} target="_blank" rel="noreferrer">
           <ExternalLink size={13} /> {t('orev.slip.openTab')}
         </a>
@@ -291,7 +292,7 @@ function CompanyPanel({
 }) {
   const { t } = useT()
   const [open, setOpen] = useState(false)
-  const [loaded, setLoaded] = useState(false)
+  const loadedRef = useRef(false)
   const [balance, setBalance] = useState<number | null>(null)
   const [ledger, setLedger] = useState<CreditLedgerEntry[]>([])
   const ledgerCols: Column<CreditLedgerEntry>[] = [
@@ -312,7 +313,7 @@ function CompanyPanel({
   ]
 
   const load = () => {
-    setLoaded(true)
+    loadedRef.current = true
     Promise.all([fetchCreditBalance(tenantId), fetchCreditLedger(tenantId)])
       .then(([b, l]) => {
         setBalance(b.balance)
@@ -330,7 +331,7 @@ function CompanyPanel({
       onToggle={e => {
         const o = (e.target as HTMLDetailsElement).open
         setOpen(o)
-        if (o && !loaded) load()
+        if (o && !loadedRef.current) load()
       }}
     >
       <summary className="orev-company-summary">
@@ -367,6 +368,56 @@ function CompanyPanel({
 
 // ── Action bar (status-aware) ─────────────────────────────────────────────────
 
+interface ActionsState {
+  mode: 'idle' | 'reject' | 'hold'
+  preset: string
+  reason: string
+  holdNote: string
+  confirm: 'approve' | null
+}
+
+type ActionsAction =
+  | { type: 'RESET' }
+  | { type: 'SET_MODE'; mode: 'idle' | 'reject' | 'hold' }
+  | { type: 'SET_PRESET'; preset: string }
+  | { type: 'SET_REASON'; reason: string }
+  | { type: 'SET_HOLD_NOTE'; note: string }
+  | { type: 'SET_CONFIRM'; confirm: 'approve' | null }
+  | { type: 'CHOOSE_PRESET'; preset: string }
+
+const actionsInitial: ActionsState = {
+  mode: 'idle',
+  preset: REJECT_PRESETS[0],
+  reason: REJECT_PRESETS[0],
+  holdNote: '',
+  confirm: null,
+}
+
+function actionsReducer(state: ActionsState, action: ActionsAction): ActionsState {
+  switch (action.type) {
+    case 'RESET':
+      return actionsInitial
+    case 'SET_MODE':
+      return { ...state, mode: action.mode }
+    case 'SET_PRESET':
+      return { ...state, preset: action.preset }
+    case 'SET_REASON':
+      return { ...state, reason: action.reason }
+    case 'SET_HOLD_NOTE':
+      return { ...state, holdNote: action.note }
+    case 'SET_CONFIRM':
+      return { ...state, confirm: action.confirm }
+    case 'CHOOSE_PRESET':
+      return {
+        ...state,
+        preset: action.preset,
+        reason: action.preset === REJECT_OTHER ? '' : action.preset,
+      }
+    default:
+      return state
+  }
+}
+
 function OrderActions({
   order,
   busy,
@@ -385,36 +436,27 @@ function OrderActions({
   onMapAr: () => void
 }) {
   const { t } = useT()
-  const [mode, setMode] = useState<'idle' | 'reject' | 'hold'>('idle')
-  const [preset, setPreset] = useState(REJECT_PRESETS[0])
-  const [reason, setReason] = useState(REJECT_PRESETS[0])
-  const [holdNote, setHoldNote] = useState('')
-  const [confirm, setConfirm] = useState<'approve' | null>(null)
+  const [state, dispatch] = useReducer(actionsReducer, actionsInitial)
+  const { mode, preset, reason, holdNote, confirm } = state
   const confirmTimer = useRef<number | undefined>(undefined)
 
   useEffect(() => {
-    setMode('idle')
-    setConfirm(null)
-    setReason(REJECT_PRESETS[0])
-    setPreset(REJECT_PRESETS[0])
-    setHoldNote('')
+    dispatch({ type: 'RESET' })
   }, [order.id])
 
   const arm = (which: 'approve', run: () => void) => {
     if (confirm === which) {
       window.clearTimeout(confirmTimer.current)
-      setConfirm(null)
+      dispatch({ type: 'SET_CONFIRM', confirm: null })
       run()
       return
     }
-    setConfirm(which)
+    dispatch({ type: 'SET_CONFIRM', confirm: which })
     window.clearTimeout(confirmTimer.current)
-    confirmTimer.current = window.setTimeout(() => setConfirm(null), 4000)
-  }
-
-  const choosePreset = (p: string) => {
-    setPreset(p)
-    setReason(p === REJECT_OTHER ? '' : p)
+    confirmTimer.current = window.setTimeout(
+      () => dispatch({ type: 'SET_CONFIRM', confirm: null }),
+      4000
+    )
   }
 
   // Terminal: complete or void — read-only.
@@ -484,7 +526,7 @@ function OrderActions({
                   type="radio"
                   name="reject-preset"
                   checked={preset === p}
-                  onChange={() => choosePreset(p)}
+                  onChange={() => dispatch({ type: 'CHOOSE_PRESET', preset: p })}
                 />
                 {p}
               </label>
@@ -492,8 +534,9 @@ function OrderActions({
           </div>
           <textarea
             className="orev-textarea"
+            aria-label={t('orev.reject.detailPh')}
             value={reason}
-            onChange={e => setReason(e.target.value)}
+            onChange={e => dispatch({ type: 'SET_REASON', reason: e.target.value })}
             rows={2}
             placeholder={t('orev.reject.detailPh')}
           />
@@ -503,7 +546,7 @@ function OrderActions({
             type="button"
             className="btn btn-outline"
             disabled={busy}
-            onClick={() => setMode('idle')}
+            onClick={() => dispatch({ type: 'SET_MODE', mode: 'idle' })}
           >
             {t('orev.act.back')}
           </button>
@@ -529,10 +572,9 @@ function OrderActions({
           <textarea
             className="orev-textarea"
             value={holdNote}
-            onChange={e => setHoldNote(e.target.value)}
+            onChange={e => dispatch({ type: 'SET_HOLD_NOTE', note: e.target.value })}
             rows={2}
             placeholder={t('orev.note.ph')}
-            autoFocus
           />
         </label>
         <div className="orev-actions-bar">
@@ -540,7 +582,7 @@ function OrderActions({
             type="button"
             className="btn btn-outline"
             disabled={busy}
-            onClick={() => setMode('idle')}
+            onClick={() => dispatch({ type: 'SET_MODE', mode: 'idle' })}
           >
             {t('orev.act.back')}
           </button>
@@ -564,7 +606,7 @@ function OrderActions({
         type="button"
         className="btn btn-outline orev-danger"
         disabled={busy}
-        onClick={() => setMode('reject')}
+        onClick={() => dispatch({ type: 'SET_MODE', mode: 'reject' })}
       >
         <X size={14} /> {t('orev.act.void')}
       </button>
@@ -572,7 +614,7 @@ function OrderActions({
         type="button"
         className="btn btn-outline"
         disabled={busy}
-        onClick={() => setMode('hold')}
+        onClick={() => dispatch({ type: 'SET_MODE', mode: 'hold' })}
       >
         <Pause size={14} /> {t('orev.note.legend')}
       </button>
@@ -591,6 +633,56 @@ function OrderActions({
 
 // ── Workspace orchestrator ────────────────────────────────────────────────────
 
+interface WsState {
+  slipUrl: string | null
+  slipErr: boolean
+  proforma: BillingDocument | null
+  taxInvoice: BillingDocument | null
+  docView: 'proforma' | 'tax_invoice'
+  history: AdminCreditOrder[]
+  busy: boolean
+}
+
+type WsAction =
+  | { type: 'RESET' }
+  | { type: 'SET_SLIP_URL'; url: string }
+  | { type: 'SET_SLIP_ERR' }
+  | { type: 'SET_DOCS'; proforma: BillingDocument | null; taxInvoice: BillingDocument | null }
+  | { type: 'SET_DOC_VIEW'; view: 'proforma' | 'tax_invoice' }
+  | { type: 'SET_HISTORY'; history: AdminCreditOrder[] }
+  | { type: 'SET_BUSY'; busy: boolean }
+
+const wsInitial: WsState = {
+  slipUrl: null,
+  slipErr: false,
+  proforma: null,
+  taxInvoice: null,
+  docView: 'proforma',
+  history: [],
+  busy: false,
+}
+
+function wsReducer(state: WsState, action: WsAction): WsState {
+  switch (action.type) {
+    case 'RESET':
+      return { ...wsInitial, busy: state.busy }
+    case 'SET_SLIP_URL':
+      return { ...state, slipUrl: action.url }
+    case 'SET_SLIP_ERR':
+      return { ...state, slipErr: true }
+    case 'SET_DOCS':
+      return { ...state, proforma: action.proforma, taxInvoice: action.taxInvoice }
+    case 'SET_DOC_VIEW':
+      return { ...state, docView: action.view }
+    case 'SET_HISTORY':
+      return { ...state, history: action.history }
+    case 'SET_BUSY':
+      return { ...state, busy: action.busy }
+    default:
+      return state
+  }
+}
+
 export default function OrderWorkspace({
   order,
   paymentInfo,
@@ -603,35 +695,29 @@ export default function OrderWorkspace({
   onMapAr: () => void
 }) {
   const { t } = useT()
-  const [slipUrl, setSlipUrl] = useState<string | null>(null)
-  const [slipErr, setSlipErr] = useState(false)
-  const [proforma, setProforma] = useState<BillingDocument | null>(null)
-  const [taxInvoice, setTaxInvoice] = useState<BillingDocument | null>(null)
-  const [docView, setDocView] = useState<'proforma' | 'tax_invoice'>('proforma')
-  const [history, setHistory] = useState<AdminCreditOrder[]>([])
-  const [busy, setBusy] = useState(false)
+  const [state, dispatch] = useReducer(wsReducer, wsInitial)
+  const { slipUrl, slipErr, proforma, taxInvoice, docView, history, busy } = state
 
   useEffect(() => {
-    setSlipUrl(null)
-    setSlipErr(false)
-    setProforma(null)
-    setTaxInvoice(null)
-    setDocView('proforma')
+    dispatch({ type: 'RESET' })
 
     let alive = true
     getOrderSlipUrl(order.id)
-      .then(r => alive && setSlipUrl(r.signed_url))
-      .catch(() => alive && setSlipErr(true))
+      .then(r => alive && dispatch({ type: 'SET_SLIP_URL', url: r.signed_url }))
+      .catch(() => alive && dispatch({ type: 'SET_SLIP_ERR' }))
     fetchAdminOrderDocuments(order.id)
       .then(docs => {
         if (!alive) return
-        setProforma(docs.find(d => d.doc_type === 'proforma') ?? null)
-        setTaxInvoice(docs.find(d => d.doc_type === 'tax_invoice') ?? null)
+        dispatch({
+          type: 'SET_DOCS',
+          proforma: docs.find(d => d.doc_type === 'proforma') ?? null,
+          taxInvoice: docs.find(d => d.doc_type === 'tax_invoice') ?? null,
+        })
       })
       .catch(() => {})
     if (order.tenant_id) {
       listCreditOrders('all', order.tenant_id)
-        .then(rows => alive && setHistory(rows))
+        .then(rows => alive && dispatch({ type: 'SET_HISTORY', history: rows }))
         .catch(() => {})
     }
     return () => {
@@ -640,14 +726,14 @@ export default function OrderWorkspace({
   }, [order.id, order.tenant_id, order.status])
 
   const act = async (fn: () => Promise<AdminCreditOrder>) => {
-    setBusy(true)
+    dispatch({ type: 'SET_BUSY', busy: true })
     try {
       const updated = withName(await fn(), order)
       onChanged(updated)
     } catch (e) {
       toast.error((e as Error).message)
     } finally {
-      setBusy(false)
+      dispatch({ type: 'SET_BUSY', busy: false })
     }
   }
 
@@ -704,14 +790,14 @@ export default function OrderWorkspace({
                 <button
                   type="button"
                   className={docView === 'proforma' ? 'is-on' : ''}
-                  onClick={() => setDocView('proforma')}
+                  onClick={() => dispatch({ type: 'SET_DOC_VIEW', view: 'proforma' })}
                 >
                   {t('orev.doc.proforma')}
                 </button>
                 <button
                   type="button"
                   className={docView === 'tax_invoice' ? 'is-on' : ''}
-                  onClick={() => setDocView('tax_invoice')}
+                  onClick={() => dispatch({ type: 'SET_DOC_VIEW', view: 'tax_invoice' })}
                 >
                   {t('orev.doc.taxInvoice')}
                 </button>

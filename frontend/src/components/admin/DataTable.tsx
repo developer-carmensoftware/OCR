@@ -25,6 +25,15 @@ function getCell(row: unknown, key: string): unknown {
   }, row)
 }
 
+interface ExpandedRowContentProps<T> {
+  row: T
+  render: (row: T) => React.ReactNode
+}
+
+function ExpandedRowContent<T>({ row, render }: ExpandedRowContentProps<T>) {
+  return <>{render(row)}</>
+}
+
 export default function DataTable<T = Record<string, unknown>>({
   columns,
   rows,
@@ -164,7 +173,7 @@ export default function DataTable<T = Record<string, unknown>>({
                   {isExpanded && renderExpandedRow && (
                     <tr className="admin-tr-expanded">
                       <td colSpan={columns.length} className="admin-td-expanded">
-                        {renderExpandedRow(row)}
+                        <ExpandedRowContent row={row} render={renderExpandedRow} />
                       </td>
                     </tr>
                   )}

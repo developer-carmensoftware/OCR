@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useReducer, useCallback } from 'react'
 import { toast } from 'sonner'
 import { Check, Pencil, RefreshCw, Search, X } from 'lucide-react'
 import { useT } from '../../i18n/LanguageContext'
@@ -9,45 +9,106 @@ import {
   type ArCustomerProfile,
 } from '../../lib/api/adminClient'
 
+// ── State & reducer ───────────────────────────────────────────────────────────
+
+interface ArState {
+  profiles: ArCustomerProfile[]
+  search: string
+  unmappedOnly: boolean
+  loading: boolean
+  editing: Record<string, string>
+  syncing: boolean
+}
+
+type ArAction =
+  | { type: 'SET_SEARCH'; value: string }
+  | { type: 'SET_UNMAPPED_ONLY'; value: boolean }
+  | { type: 'FETCH_START' }
+  | { type: 'FETCH_DONE'; profiles: ArCustomerProfile[] }
+  | { type: 'FETCH_ERROR' }
+  | { type: 'START_EDIT'; id: string; code: string }
+  | { type: 'UPDATE_EDIT'; id: string; value: string }
+  | { type: 'CANCEL_EDIT'; id: string }
+  | { type: 'SAVE_DONE'; id: string; updated: ArCustomerProfile }
+  | { type: 'SYNC_START' }
+  | { type: 'SYNC_DONE' }
+
+const initialState: ArState = {
+  profiles: [],
+  search: '',
+  unmappedOnly: false,
+  loading: true,
+  editing: {},
+  syncing: false,
+}
+
+function reducer(state: ArState, action: ArAction): ArState {
+  switch (action.type) {
+    case 'SET_SEARCH':
+      return { ...state, search: action.value }
+    case 'SET_UNMAPPED_ONLY':
+      return { ...state, unmappedOnly: action.value }
+    case 'FETCH_START':
+      return { ...state, loading: true }
+    case 'FETCH_DONE':
+      return { ...state, loading: false, profiles: action.profiles }
+    case 'FETCH_ERROR':
+      return { ...state, loading: false }
+    case 'START_EDIT':
+      return { ...state, editing: { ...state.editing, [action.id]: action.code } }
+    case 'UPDATE_EDIT':
+      return { ...state, editing: { ...state.editing, [action.id]: action.value } }
+    case 'CANCEL_EDIT': {
+      const editing = { ...state.editing }
+      delete editing[action.id]
+      return { ...state, editing }
+    }
+    case 'SAVE_DONE': {
+      const editing = { ...state.editing }
+      delete editing[action.id]
+      return {
+        ...state,
+        editing,
+        profiles: state.profiles.map(p => (p.id === action.id ? action.updated : p)),
+      }
+    }
+    case 'SYNC_START':
+      return { ...state, syncing: true }
+    case 'SYNC_DONE':
+      return { ...state, syncing: false }
+    default:
+      return state
+  }
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export default function ArCustomerProfiles({ onMapped }: { onMapped?: () => void }) {
   const { t } = useT()
-  const [profiles, setProfiles] = useState<ArCustomerProfile[]>([])
-  const [search, setSearch] = useState('')
-  const [unmappedOnly, setUnmappedOnly] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [editing, setEditing] = useState<Record<string, string>>({})
-  const [syncing, setSyncing] = useState(false)
+  const [state, dispatch] = useReducer(reducer, initialState)
+  const { profiles, search, unmappedOnly, loading, editing, syncing } = state
 
-  const load = () => {
-    setLoading(true)
+  const load = useCallback(() => {
+    dispatch({ type: 'FETCH_START' })
     listArProfiles(search || undefined, unmappedOnly)
-      .then(setProfiles)
-      .catch(e => toast.error((e as Error).message))
-      .finally(() => setLoading(false))
-  }
+      .then(profiles => dispatch({ type: 'FETCH_DONE', profiles }))
+      .catch(e => {
+        toast.error((e as Error).message)
+        dispatch({ type: 'FETCH_ERROR' })
+      })
+  }, [search, unmappedOnly])
 
   useEffect(() => {
     const id = setTimeout(load, search ? 300 : 0)
     return () => clearTimeout(id)
-  }, [search, unmappedOnly])
-
-  const startEdit = (p: ArCustomerProfile) =>
-    setEditing(prev => ({ ...prev, [p.id]: p.carmen_ar_code ?? '' }))
-
-  const cancelEdit = (id: string) =>
-    setEditing(prev => {
-      const n = { ...prev }
-      delete n[id]
-      return n
-    })
+  }, [load, search])
 
   const saveEdit = async (id: string) => {
     const val = editing[id]
     if (val === undefined) return
     try {
       const updated = await updateArProfile(id, val)
-      setProfiles(ps => ps.map(p => (p.id === id ? updated : p)))
-      cancelEdit(id)
+      dispatch({ type: 'SAVE_DONE', id, updated })
       toast.success(t('orev.ar.saved'))
       onMapped?.() // refresh parent KPI (unmapped_count badge)
     } catch (e) {
@@ -56,7 +117,7 @@ export default function ArCustomerProfiles({ onMapped }: { onMapped?: () => void
   }
 
   const doSync = async () => {
-    setSyncing(true)
+    dispatch({ type: 'SYNC_START' })
     try {
       const res = await syncArProfiles()
       toast.success(t('orev.ar.synced', { n: res.inserted }))
@@ -65,7 +126,7 @@ export default function ArCustomerProfiles({ onMapped }: { onMapped?: () => void
     } catch (e) {
       toast.error((e as Error).message)
     } finally {
-      setSyncing(false)
+      dispatch({ type: 'SYNC_DONE' })
     }
   }
 
@@ -83,15 +144,16 @@ export default function ArCustomerProfiles({ onMapped }: { onMapped?: () => void
               type="text"
               className="orev-search"
               placeholder={t('orev.ar.search')}
+              aria-label={t('orev.ar.search')}
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={e => dispatch({ type: 'SET_SEARCH', value: e.target.value })}
             />
           </div>
           <label className="orev-ar-filter">
             <input
               type="checkbox"
               checked={unmappedOnly}
-              onChange={e => setUnmappedOnly(e.target.checked)}
+              onChange={e => dispatch({ type: 'SET_UNMAPPED_ONLY', value: e.target.checked })}
             />
             <span>{t('orev.ar.unmappedOnly')}</span>
           </label>
@@ -144,12 +206,16 @@ export default function ArCustomerProfiles({ onMapped }: { onMapped?: () => void
                         <input
                           type="text"
                           className="orev-ar-input"
+                          aria-label={t('orev.ar.arCode')}
                           value={editing[p.id]}
                           onChange={e =>
-                            setEditing(prev => ({ ...prev, [p.id]: e.target.value.toUpperCase() }))
+                            dispatch({
+                              type: 'UPDATE_EDIT',
+                              id: p.id,
+                              value: e.target.value.toUpperCase(),
+                            })
                           }
                           maxLength={50}
-                          autoFocus
                         />
                       ) : p.carmen_ar_code ? (
                         <span className="orev-ar-code">{p.carmen_ar_code}</span>
@@ -170,7 +236,7 @@ export default function ArCustomerProfiles({ onMapped }: { onMapped?: () => void
                           <button
                             type="button"
                             className="orev-ar-btn-cancel"
-                            onClick={() => cancelEdit(p.id)}
+                            onClick={() => dispatch({ type: 'CANCEL_EDIT', id: p.id })}
                           >
                             <X size={14} />
                           </button>
@@ -179,7 +245,9 @@ export default function ArCustomerProfiles({ onMapped }: { onMapped?: () => void
                         <button
                           type="button"
                           className="orev-ar-btn-edit"
-                          onClick={() => startEdit(p)}
+                          onClick={() =>
+                            dispatch({ type: 'START_EDIT', id: p.id, code: p.carmen_ar_code ?? '' })
+                          }
                         >
                           <Pencil size={12} /> {t('orev.ar.edit')}
                         </button>
