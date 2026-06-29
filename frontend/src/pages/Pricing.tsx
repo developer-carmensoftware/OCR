@@ -250,8 +250,14 @@ export default function Pricing() {
               </div>
             ) : (
               <>
-                <section className="pricing-section" aria-label="Plans">
-                  <p className="pricing-plans-hint">{t('pricing.plansHint')}</p>
+                <section className="pricing-section" aria-labelledby="plans-heading">
+                  <div className="pricing-section-head pricing-section-head--center">
+                    <h2 id="plans-heading" className="pricing-section-title">
+                      {t('pricing.plansTitle')}
+                    </h2>
+                    <p className="pricing-section-sub">{t('pricing.plansHint')}</p>
+                    <p className="pricing-note">{t('pricing.freeNote')}</p>
+                  </div>
                   <div
                     className="billing-period-toggle"
                     style={{

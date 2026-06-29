@@ -143,8 +143,11 @@
 }
 
 /* ─── Sections ─── */
+/* Single shared content column so plans, top-up, and the feature showcase line
+   up vertically down the page instead of pinching to 860 then snapping wide. */
 .pricing-section {
-  margin-bottom: 3.5rem;
+  max-width: 860px;
+  margin: 0 auto 3.5rem;
 }
 
 .pricing-section-head {
@@ -160,7 +163,7 @@
 
 .pricing-section-sub {
   margin-top: 0.25rem;
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   color: var(--text-2);
 }
 
@@ -195,34 +198,25 @@
   align-items: stretch;
 }
 
-/* 3 paid tiers: 3-up centered on desktop, stacked on mobile. */
+/* 3 paid tiers: 3-up on desktop, stacked on mobile (section caps the width). */
 .plan-grid--3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  max-width: 860px;
-  margin-inline: auto;
 }
 
 @media (max-width: 860px) {
   .plan-grid--3 {
     grid-template-columns: 1fr;
     max-width: 380px;
+    margin-inline: auto;
   }
 }
 
-.pricing-plans-hint {
-  text-align: center;
-  color: var(--text-2);
-  font-size: 0.95rem;
-  margin: 0 0 1rem;
-}
-
-/* Enterprise — contact band below plan grid, same max-width */
+/* Enterprise — contact band below the plan grid */
 .enterprise-band {
   display: flex;
   align-items: center;
   gap: 1rem;
-  max-width: 860px;
-  margin: 1rem auto 0;
+  margin-top: 1rem;
   padding: 1rem 1.5rem;
   background: var(--card-bg);
   border: 1px solid var(--border);
@@ -256,7 +250,7 @@
 }
 
 .enterprise-band-tagline {
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   color: var(--text-2);
 }
 
@@ -375,7 +369,7 @@
   padding: 0.2rem 0.7rem;
   background: var(--plan-accent);
   color: #fff;
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.03em;
   border-radius: var(--radius-pill);
@@ -429,7 +423,7 @@
   margin-top: 0.45rem;
   padding-bottom: 1.1rem;
   border-bottom: 1px solid var(--border);
-  font-size: 0.92rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--text-2);
 }
@@ -453,15 +447,16 @@
 }
 
 .plan-price-period {
-  font-size: 0.85rem;
-  color: var(--text-3);
+  font-size: 0.875rem;
+  /* --text-2, not -3: at this size -3 is ~4.4:1, under AA on the card surface. */
+  color: var(--text-2);
 }
 
 .plan-rate {
   margin-top: 0.3rem;
   margin-bottom: 1rem;
   font-size: 0.78rem;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 
 /* Annual mode: original monthly price struck through, sitting just above the
@@ -507,7 +502,7 @@
   border-radius: 99px;
   background: color-mix(in srgb, var(--teal) 16%, transparent);
   color: var(--teal);
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   font-weight: 700;
   line-height: 1.5;
 }
@@ -517,7 +512,7 @@
   justify-content: center;
   text-decoration: none;
   white-space: nowrap;
-  font-size: 0.82rem;
+  font-size: 0.875rem;
 }
 
 /* ═══ AI FEATURE SHOWCASE — three infographics (light showcase layer) ═══════
@@ -578,7 +573,7 @@
 }
 
 .flow-tab-title {
-  font-size: 0.88rem;
+  font-size: 0.875rem;
   font-weight: 700;
   color: var(--text);
   letter-spacing: -0.01em;
@@ -695,7 +690,7 @@
 
 .flow-head-text p {
   margin-top: 0.2rem;
-  font-size: 0.83rem;
+  font-size: 0.875rem;
   line-height: 1.5;
   color: var(--text-2);
   text-wrap: pretty;
@@ -786,13 +781,13 @@
 }
 
 .flow-node-label {
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--text);
 }
 
 .flow-node-caption {
-  font-size: 0.74rem;
+  font-size: 0.78rem;
   line-height: 1.45;
   color: var(--text-3);
   text-wrap: pretty;
@@ -805,7 +800,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  font-size: 0.76rem;
+  font-size: 0.78rem;
   color: var(--text-2);
 }
 
@@ -927,14 +922,14 @@
 }
 
 .flow-out h4 {
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--text);
 }
 
 .flow-out p {
   margin-top: 0.1rem;
-  font-size: 0.74rem;
+  font-size: 0.78rem;
   color: var(--text-3);
 }
 
@@ -1008,7 +1003,7 @@
 }
 
 .flow-out-list h4 {
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--text);
   margin-bottom: 0.4rem;
@@ -1092,7 +1087,7 @@
 }
 
 .flow-benefit small {
-  font-size: 0.68rem;
+  font-size: 0.78rem;
   color: var(--text-3);
 }
 
@@ -1111,7 +1106,7 @@
   background: var(--muted);
   border: 1px solid var(--border);
   color: var(--text-2);
-  font-size: 0.76rem;
+  font-size: 0.78rem;
   font-weight: 600;
   transition:
     border-color var(--dur-base) var(--ease),
@@ -1139,7 +1134,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   color: var(--text-2);
 }
 
@@ -1172,8 +1167,6 @@
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 1rem;
-  max-width: 860px;
-  margin-inline: auto;
 }
 
 @media (max-width: 860px) {
@@ -1252,15 +1245,17 @@
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  font-size: 0.72rem;
-  color: var(--text-3);
+  font-size: 0.78rem;
+  color: var(--text-2);
 }
 
 .pack-card-badge {
+  flex-shrink: 0;
   padding: 0.1rem 0.5rem;
-  font-size: 0.64rem;
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.03em;
+  white-space: nowrap;
   color: var(--emerald);
   background: var(--emerald-light);
   border-radius: var(--radius-pill);
@@ -1281,8 +1276,8 @@
 }
 
 .pack-card-rate {
-  font-size: 0.7rem;
-  color: var(--text-3);
+  font-size: 0.78rem;
+  color: var(--text-2);
 }
 
 /* ─── Trust strip (quiet reassurance, closes the page) ─── */

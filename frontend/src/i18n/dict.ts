@@ -21,7 +21,9 @@ const en = {
   // — Pricing hero + top-up section —
   'pricing.title': 'Automate your accounting entries',
   'pricing.subtitle': 'Free for your first 30 documents',
+  'pricing.plansTitle': 'Monthly Plans',
   'pricing.plansHint': 'Choose by how many documents you post each month.',
+  'pricing.freeNote': 'Every account starts with 30 free documents, no card required.',
   'pricing.topupTitle': 'Top-Up Credits',
   'pricing.topupSub': 'For documents beyond your monthly quota',
   'pricing.topupSub2': 'Any plan. Never expire.',
@@ -639,7 +641,9 @@ const th: Record<TKey, string> = {
   // — Pricing hero + top-up section —
   'pricing.title': 'เริ่มใช้ AI ลงบัญชีอัตโนมัติฟรี',
   'pricing.subtitle': 'ทดลอง 30 เอกสารแรก',
+  'pricing.plansTitle': 'แพ็กเกจรายเดือน',
   'pricing.plansHint': 'เลือกแพ็กเกจตามจำนวนเอกสารที่ลงบัญชีต่อเดือน',
+  'pricing.freeNote': 'ทุกบัญชีเริ่มต้นด้วย 30 เอกสารฟรี ไม่ต้องผูกบัตร',
   'pricing.topupTitle': 'เติมเครดิต',
   'pricing.topupSub': 'สำหรับเอกสารที่เกินโควตารายเดือน',
   'pricing.topupSub2': 'ใช้ได้ทุกแพ็กเกจ ไม่มีวันหมดอายุ',
