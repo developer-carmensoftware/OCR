@@ -1,12 +1,12 @@
 import { Printer } from 'lucide-react'
-import { formatThb, formatDate, bahtToEnglishWords, bahtToThaiWords } from '../../lib/money'
+import { formatThb, formatDate, bahtToEnglishWords } from '../../lib/money'
 import { useT } from '../../i18n/LanguageContext'
 import logo from '../../assets/logo_carmen.png'
 import type { BillingDocument, PaymentInfo } from '../../lib/api/credits'
 
-const TITLE: Record<string, { main: string; sub: string }> = {
-  proforma: { main: 'Proforma Invoice', sub: 'ใบแจ้งหนี้ / ใบเสนอราคา' },
-  tax_invoice: { main: 'Tax Invoice / Receipt', sub: 'ใบกำกับภาษี / ใบเสร็จรับเงิน' },
+const TITLE: Record<string, string> = {
+  proforma: 'Proforma Invoice',
+  tax_invoice: 'Tax Invoice / Receipt',
 }
 
 /**
@@ -54,7 +54,7 @@ export default function ProformaDocument({
         </button>
       </div>
 
-      <article className="proforma-doc" aria-label={`${title.main} ${doc.number}`}>
+      <article className="proforma-doc" aria-label={`${title} ${doc.number}`}>
         {/* Header — logo + seller identity */}
         <header className="pf-head">
           <img src={logo} alt="Carmen" className="pf-logo" />
@@ -72,8 +72,7 @@ export default function ProformaDocument({
           </div>
         </header>
 
-        <div className="pf-banner">{title.main.toUpperCase()}</div>
-        <div className="pf-banner-sub">{title.sub}</div>
+        <div className="pf-banner">{title.toUpperCase()}</div>
 
         {/* Buyer + document meta */}
         <section className="pf-meta-grid">
@@ -141,7 +140,7 @@ export default function ProformaDocument({
               <div className="pf-card-title">PAYMENT INFORMATION</div>
               {pi.bank_account_no && (
                 <div className="pf-pay-option">
-                  <div className="pf-pay-opt-head">Option 1 · Bank Transfer (โอนเงิน)</div>
+                  <div className="pf-pay-opt-head">Bank Transfer</div>
                   <div className="pf-pay-rows">
                     {pi.bank_name && (
                       <div>
@@ -174,16 +173,6 @@ export default function ProformaDocument({
                   </div>
                 </div>
               )}
-              {pi.cheque_payee && (
-                <div className="pf-pay-option">
-                  <div className="pf-pay-opt-head">Option 2 · Crossed Cheque (เช็คขีดคร่อม)</div>
-                  <div className="pf-pay-cheque">
-                    Please issue a crossed cheque payable to:
-                    <br />
-                    <b>{pi.cheque_payee}</b>
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
@@ -201,47 +190,33 @@ export default function ProformaDocument({
               <span className="text-mono">฿{formatThb(num(doc.total), true)}</span>
             </div>
             <div className="pf-amount-words">({bahtToEnglishWords(num(doc.total))})</div>
-            <div className="pf-amount-words">({bahtToThaiWords(num(doc.total))})</div>
           </div>
         </section>
 
         {isProforma && (
           <>
             <section className="pf-terms">
-              <div className="pf-card-title">ข้อตกลงและเงื่อนไข (Terms &amp; Conditions)</div>
+              <div className="pf-card-title">Terms &amp; Conditions</div>
               <ol>
                 <li>
-                  กรุณาดำเนินการชำระเงินและ <b>อัปโหลดหลักฐานการโอนเงิน (Payslip) เข้ามาในระบบ</b>
+                  Please complete payment and{' '}
+                  <b>upload your transfer slip (Payslip) in the system</b>.
                 </li>
                 <li>
                   <b>
-                    การชำระเงินจะถือว่าเสร็จสมบูรณ์เมื่ออัปโหลดหลักฐาน (Payslip)
-                    และผ่านการอนุมัติแล้วเท่านั้น
+                    Payment is considered complete only after the uploaded slip has been verified
+                    and approved.
                   </b>
                 </li>
                 <li>
-                  ระบบจะเปิดใช้งานหรือต่ออายุโดยอัตโนมัติภายใน 24
-                  ชั่วโมงหลังจากยืนยันสถานะการอัปโหลดหลักฐาน
+                  Your service will be activated or renewed automatically within 24 hours after slip
+                  verification.
                 </li>
                 <li>
-                  เอกสารฉบับนี้ไม่ใช่ใบกำกับภาษีเต็มรูปแบบ
-                  ฝ่ายบัญชีจะจัดส่งใบกำกับภาษีอิเล็กทรอนิกส์ให้ทาง
-                  <b>อีเมล (Email)</b> ที่ท่านระบุไว้
+                  This document is not a full tax invoice. Our accounting team will send an official
+                  e-Tax Invoice to the <b>email address</b> you provided.
                 </li>
               </ol>
-            </section>
-
-            <section className="pf-signatures">
-              <div className="pf-sign">
-                <div className="pf-sign-line" />
-                <div className="pf-sign-role">Prepared By</div>
-                <div className="pf-sign-org">Carmen Software Co., Ltd.</div>
-              </div>
-              <div className="pf-sign">
-                <div className="pf-sign-line" />
-                <div className="pf-sign-role">Approved By Customer</div>
-                <div className="pf-sign-org">Authorized Signature &amp; Company Stamp</div>
-              </div>
             </section>
           </>
         )}
