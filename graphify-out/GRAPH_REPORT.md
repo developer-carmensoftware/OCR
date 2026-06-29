@@ -25,11 +25,18 @@
 - [[_COMMUNITY_Community 7|Community 7]]
 - [[_COMMUNITY_Community 8|Community 8]]
 - [[_COMMUNITY_Community 9|Community 9]]
+- [[_COMMUNITY_Community 9|Community 9]]
 - [[_COMMUNITY_Community 10|Community 10]]
 - [[_COMMUNITY_Community 12|Community 12]]
 - [[_COMMUNITY_Community 13|Community 13]]
 - [[_COMMUNITY_Community 14|Community 14]]
+- [[_COMMUNITY_Community 12|Community 12]]
+- [[_COMMUNITY_Community 13|Community 13]]
+- [[_COMMUNITY_Community 14|Community 14]]
 - [[_COMMUNITY_Community 17|Community 17]]
+- [[_COMMUNITY_Community 19|Community 19]]
+- [[_COMMUNITY_Community 21|Community 21]]
+- [[_COMMUNITY_Community 22|Community 22]]
 - [[_COMMUNITY_Community 19|Community 19]]
 - [[_COMMUNITY_Community 21|Community 21]]
 - [[_COMMUNITY_Community 22|Community 22]]
@@ -57,6 +64,8 @@
   components/common/UsageIndicator.tsx → contexts/AuthContext.tsx
 - `handleOpenJv()` --calls--> `getCarmenUrl()`  [INFERRED]
   components/credit-card/JournalVoucher.tsx → lib/url.ts
+- `handleOpenJv()` --calls--> `getCarmenUrl()`  [INFERRED]
+  components/credit-card/JournalVoucher.tsx → lib/url.ts
 
 ## Communities (76 total, 4 thin omitted)
 
@@ -71,6 +80,7 @@ Nodes (26): profileKey(), profileLabel(), useAPExtraction(), useAPInvoice(), rec
 ### Community 2 - "Community 2"
 Cohesion: 0.08
 Nodes (25): exchangeSSOToken(), getUsage(), revokeSession(), clearToken(), createApiClient(), getStoredToken(), resolveUrl(), storeToken() (+17 more)
+Nodes (25): exchangeSSOToken(), getUsage(), revokeSession(), clearToken(), createApiClient(), getStoredToken(), resolveUrl(), storeToken() (+17 more)
 
 ### Community 3 - "Community 3"
 Cohesion: 0.07
@@ -83,8 +93,12 @@ Nodes (22): addDays(), buildInvoicePayload(), useAPSubmission(), fetchAccountCod
 ### Community 5 - "Community 5"
 Cohesion: 0.1
 Nodes (17): suggestMapping(), suggestPaymentTypes(), detectBankFromCompanyName(), detectBankFromExtracted(), readFromLocalStorage(), _persistOcrLocalStorage(), codeToDisplayName(), getBankInfo() (+9 more)
+Cohesion: 0.1
+Nodes (17): suggestMapping(), suggestPaymentTypes(), detectBankFromCompanyName(), detectBankFromExtracted(), readFromLocalStorage(), _persistOcrLocalStorage(), codeToDisplayName(), getBankInfo() (+9 more)
 
 ### Community 6 - "Community 6"
+Cohesion: 0.12
+Nodes (7): catalogName(), perDoc(), formatDate(), formatRate(), formatThb(), PlanCard(), PromptPayQR()
 Cohesion: 0.12
 Nodes (7): catalogName(), perDoc(), formatDate(), formatRate(), formatThb(), PlanCard(), PromptPayQR()
 
@@ -118,6 +132,7 @@ Nodes (4): fileToBase64(), handleClose(), handleFileChange(), reset()
 
 ## Knowledge Gaps
 - **4 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **4 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
@@ -134,5 +149,7 @@ _Questions this graph is uniquely positioned to answer:_
   _`normalizeYearToCE()` has 3 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 2 inferred relationships involving `getCarmenUrl()` (e.g. with `handleOpenJv()` and `getCarmenUri()`) actually correct?**
   _`getCarmenUrl()` has 2 INFERRED edges - model-reasoned connections that need verification._
+- **Should `Community 0` be split into smaller, more focused modules?**
+  _Cohesion score 0.06 - nodes in this community are weakly interconnected._
 - **Should `Community 0` be split into smaller, more focused modules?**
   _Cohesion score 0.06 - nodes in this community are weakly interconnected._

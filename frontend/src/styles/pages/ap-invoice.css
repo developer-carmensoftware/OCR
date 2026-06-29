@@ -901,6 +901,55 @@
   line-height: 1.2;
 }
 
+/* Banner shown at the top of the Account Summary whenever the document's own figures don't add up
+   (a misread digit). Offers a one-click repair before the per-field Adjust buttons can drag the
+   corroborated table value onto the misread document value. */
+.ap-doc-fix-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  margin: 0 0 0.5rem;
+  background: var(--amber-light);
+  border: 1px solid var(--amber-mid);
+  border-radius: var(--radius-sm);
+}
+.ap-doc-fix-icon {
+  flex-shrink: 0;
+  color: var(--amber-text);
+}
+.ap-doc-fix-text {
+  flex: 1;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--amber-text);
+  line-height: 1.25;
+}
+.ap-doc-fix-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: var(--gray-800);
+  color: white;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--dur-fast);
+}
+.ap-doc-fix-btn:hover {
+  background: var(--gray-700);
+}
+.ap-doc-fix-btn:focus-visible {
+  outline: 2.5px solid var(--primary);
+  outline-offset: 2px;
+}
+.ap-doc-fix-btn:active {
+  transform: scale(0.97);
+}
+
 .ap-grand-total-row {
   display: flex;
   justify-content: space-between;

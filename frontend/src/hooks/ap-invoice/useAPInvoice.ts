@@ -8,7 +8,7 @@ import { appKey } from '../../lib/storage'
 import { useAPExtraction } from './useAPExtraction'
 import type { APLineItem } from './useAPExtraction'
 import { useAPVendor } from './useAPVendor'
-import { useAPValidation, reconcileRows } from './useAPValidation'
+import { useAPValidation, reconcileRows, repairDocFigure } from './useAPValidation'
 import { recalcRow, syncLineTotals, resolveTaxProfileForRate } from '../../lib/apTax'
 import { groupSelected } from '../../lib/apGroup'
 import { useAPSubmission } from './useAPSubmission'
@@ -165,6 +165,23 @@ export function useAPInvoice() {
   //   • lineTotal (Grand)  → MASTER RECONCILE: land Σsub on docSub AND Σtax on docTax in one pass,
   //                          so grand = docSub + docTax follows and every diff clears in one click.
   //   • discountAmt        → informational; keeps the single-field write + reconcileRows path.
+  // Master reconcile: land Σsub on subTarget AND Σtax on taxTarget in one pass, so grand =
+  // subTarget + taxTarget follows and every summary diff clears at once. Shared by the Grand-total
+  // Adjust button and fixDocFigures.
+  const reconcileTableToDoc = (subTarget: number, taxTarget: number) => {
+    const items = extraction.lineItems
+    if (!items.length) return
+    let updated = validation.adjustField(
+      subTarget,
+      validation.sumLineSubTotal,
+      'lineSubTotal',
+      items
+    )
+    // The sub step writes only lineSubTotal, so Σtax is still validation.sumTax for the tax step.
+    updated = validation.adjustField(taxTarget, validation.sumTax, 'taxAmt', updated)
+    extraction.setLineItems(syncLineTotals(updated))
+  }
+
   const adjustField = (tgt: unknown, sumCur: unknown, itemKey: string) => {
     const items = extraction.lineItems
     if (!items.length) return
@@ -176,26 +193,70 @@ export function useAPInvoice() {
     }
 
     if (itemKey === 'lineTotal') {
-      // The sub step writes only lineSubTotal, so Σtax is still validation.sumTax for the tax step.
-      let updated = validation.adjustField(
+      reconcileTableToDoc(
         round2(extraction.headerData.subTotal),
-        validation.sumLineSubTotal,
-        'lineSubTotal',
-        items
+        round2(extraction.headerData.taxAmount)
       )
-      updated = validation.adjustField(
-        round2(extraction.headerData.taxAmount),
-        validation.sumTax,
-        'taxAmt',
-        updated
-      )
-      extraction.setLineItems(syncLineTotals(updated))
       return
     }
 
     const updated = validation.adjustField(tgt, sumCur, itemKey, items)
     extraction.setLineItems(reconcileRows(updated))
   }
+
+  // The document's printed totals don't add up (grand ≠ sub + tax) — the signature of a misread
+  // digit. Repair the outlier figure (chosen via the line-item sums) so the document becomes
+  // self-consistent again, keep it as the trusted "From Document" anchor, then reconcile the table
+  // to it. One click takes the user from the dead-end to fully matched. `auto` only changes the
+  // toast wording (system did it vs user clicked).
+  const applyDocRepair = (repair: ReturnType<typeof repairDocFigure>, auto: boolean) => {
+    if (!repair) return
+    // Write the corrected figure to the immutable "From Document" header value.
+    extraction.blurHeader(repair.field, fmt(repair.value))
+    // Reconcile the table against the now-consistent document. blurHeader's state update is async,
+    // so derive the post-repair sub/tax targets locally instead of reading headerData back.
+    const subTarget = repair.field === 'subTotal' ? repair.value : validation.tgtSubTotal
+    const taxTarget = repair.field === 'taxAmount' ? repair.value : validation.tgtTax
+    reconcileTableToDoc(subTarget, taxTarget)
+    const label =
+      repair.field === 'taxAmount' ? t.tax : repair.field === 'subTotal' ? t.subTotal : t.grandTotal
+    showToast(`${auto ? t.docAutoFixedToast : t.docFixedToast} ${label}`, 'success')
+  }
+
+  const fixDocFigures = () =>
+    applyDocRepair(
+      repairDocFigure({
+        tgtSubTotal: validation.tgtSubTotal,
+        tgtTax: validation.tgtTax,
+        tgtGrand: validation.tgtGrand,
+        sumSub: validation.sumLineSubTotal,
+        sumTax: validation.sumTax,
+      }),
+      false
+    )
+
+  // Hybrid auto-fix: when entering the Review step, silently repair the document ONLY for
+  // high-confidence cases (unambiguous outlier + a small rounding/last-digit gap). Ambiguous or
+  // large gaps stay manual (the banner + button). Bound to `step` so it fires once on entry and
+  // never fights the user editing the From-Document boxes afterwards (those keep the manual banner).
+  const autoFixedRef = useRef(false)
+  useEffect(() => {
+    if (step !== 3) {
+      if (step < 3) autoFixedRef.current = false // re-arm when the user goes back to upload/mapping
+      return
+    }
+    if (autoFixedRef.current) return
+    autoFixedRef.current = true
+    const repair = repairDocFigure({
+      tgtSubTotal: validation.tgtSubTotal,
+      tgtTax: validation.tgtTax,
+      tgtGrand: validation.tgtGrand,
+      sumSub: validation.sumLineSubTotal,
+      sumTax: validation.sumTax,
+    })
+    if (repair?.confident) applyDocRepair(repair, true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step])
 
   // Wraps extraction.blurHeader so that editing header taxAmount also propagates
   // to line items. When the user sets tax to 0, all lines are zeroed. When non-zero,
@@ -536,6 +597,7 @@ export function useAPInvoice() {
     isSubmitting: submission.isSubmitting,
     handleReset,
     adjustField,
+    fixDocFigures,
     blurLineItem,
     changeLineTaxType,
     applyLineTax,

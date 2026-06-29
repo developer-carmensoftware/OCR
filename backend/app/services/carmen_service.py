@@ -266,7 +266,8 @@ async def get_vendor_invoices(vn_code: str, carmen_token: str) -> Any:
             return []
         if resp.status_code != 200:
             raise CarmenAPIError(resp.status_code, resp.text)
-        return resp.json()
+        # ponytail: Carmen occasionally returns 200 with empty body
+        return resp.json() if resp.content else []
     except RequestError as e:
         raise _wrap_network_error(e) from e
 
@@ -285,7 +286,7 @@ async def get_jv_by_source(source: str, carmen_token: str) -> Any:
             return []
         if resp.status_code != 200:
             raise CarmenAPIError(resp.status_code, resp.text)
-        return resp.json()
+        return resp.json() if resp.content else []
     except RequestError as e:
         raise _wrap_network_error(e) from e
 

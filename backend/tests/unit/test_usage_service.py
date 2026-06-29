@@ -268,3 +268,55 @@ class TestIncrementQuota:
 
         with patch.object(quota_service, "async_session", return_value=ctx):
             await quota_service.increment_quota()  # must not raise
+
+
+class TestUpsertTenantQuota:
+    """upsert_tenant_quota uses an atomic INSERT … ON CONFLICT DO NOTHING (race-safe).
+
+    db.execute returns a result whose .first() is the RETURNING row: a tuple when the
+    lifetime quota was newly inserted, or None when an active row already existed.
+    """
+
+    def _db(self, returning_row):
+        db = AsyncMock()
+        result = MagicMock()
+        result.first.return_value = returning_row
+        db.execute = AsyncMock(return_value=result)
+        return db
+
+    async def test_created_pops_cache_and_runs_single_insert(self):
+        from app.services import quota_service
+
+        quota_service._QUOTA_RULES_CACHE["t-new"] = ([], 123.0)
+        db = self._db(("quota-id",))  # RETURNING yielded a row → inserted
+
+        await quota_service.upsert_tenant_quota(db, "t-new")
+
+        db.execute.assert_called_once()  # no SELECT-then-INSERT; one atomic statement
+        assert "t-new" not in quota_service._QUOTA_RULES_CACHE
+
+    async def test_existing_is_noop_no_cache_change(self):
+        from app.services import quota_service
+
+        quota_service._QUOTA_RULES_CACHE["t-old"] = ([], 123.0)
+        db = self._db(None)  # ON CONFLICT DO NOTHING → no RETURNING row
+
+        await quota_service.upsert_tenant_quota(db, "t-old")
+
+        db.execute.assert_called_once()
+        assert "t-old" in quota_service._QUOTA_RULES_CACHE  # cache left intact
+
+    async def test_idempotent_second_call_does_not_recreate(self):
+        from app.services import quota_service
+
+        # 1st login: inserted; 2nd login: conflict → None. Never more than one insert path.
+        db = AsyncMock()
+        created, conflict = MagicMock(), MagicMock()
+        created.first.return_value = ("quota-id",)
+        conflict.first.return_value = None
+        db.execute = AsyncMock(side_effect=[created, conflict])
+
+        await quota_service.upsert_tenant_quota(db, "t-x")
+        await quota_service.upsert_tenant_quota(db, "t-x")
+
+        assert db.execute.call_count == 2  # one statement per call, both ON CONFLICT-safe

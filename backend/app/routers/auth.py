@@ -17,7 +17,8 @@ import uuid
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import SessionInfo, get_current_session
@@ -125,18 +126,29 @@ def _validate_uri(uri: str) -> str:
     return f"https://{parsed.hostname}{port_part}"
 
 
-async def _upsert_tenant(db: AsyncSession, host: str, bu_code: str) -> Tenant:
-    """Return existing Tenant for this (host, bu_code), or create one on first encounter."""
-    result = await db.execute(
-        select(Tenant).where(
-            Tenant.host == host,
-            Tenant.bu_code == bu_code,
-            Tenant.deleted_at.is_(None),
-        )
+def _active_tenant_query(host: str, bu_code: str):
+    return select(Tenant).where(
+        Tenant.host == host,
+        Tenant.bu_code == bu_code,
+        Tenant.deleted_at.is_(None),
     )
-    tenant = result.scalar_one_or_none()
-    if not tenant:
-        tenant = Tenant(
+
+
+async def _upsert_tenant(db: AsyncSession, host: str, bu_code: str) -> Tenant:
+    """Return existing Tenant for this (host, bu_code), or create one on first encounter.
+
+    The create path is race-safe: a Core INSERT ... ON CONFLICT DO NOTHING against the
+    partial unique index uq_tenants_host_bu_active means two concurrent first-logins for
+    the same (host, bu_code) both resolve to a single tenant row, instead of one of them
+    failing the whole /exchange with an IntegrityError.
+    """
+    tenant = (await db.execute(_active_tenant_query(host, bu_code))).scalar_one_or_none()
+    if tenant:
+        return tenant
+
+    ins = (
+        pg_insert(Tenant)
+        .values(
             id=uuid.uuid4(),
             host=host,
             bu_code=bu_code,
@@ -144,10 +156,19 @@ async def _upsert_tenant(db: AsyncSession, host: str, bu_code: str) -> Tenant:
             plan="free",
             is_active=True,
         )
-        db.add(tenant)
-        await db.flush()
-        logger.info("Auto-registered new tenant: host=%s bu=%s id=%s", host, bu_code, tenant.id)
-    return tenant
+        .on_conflict_do_nothing(
+            index_elements=["host", "bu_code"],
+            index_where=text("deleted_at IS NULL"),
+        )
+        .returning(Tenant.id)
+    )
+    created = (await db.execute(ins)).first()
+    if created is not None:
+        logger.info("Auto-registered new tenant: host=%s bu=%s id=%s", host, bu_code, created[0])
+
+    # Re-select so we return a session-managed ORM Tenant — this covers both the row we
+    # just inserted and a row a concurrent transaction may have committed first.
+    return (await db.execute(_active_tenant_query(host, bu_code))).scalar_one()
 
 
 async def _validate_token(token: str, carmen_uri: str) -> None:

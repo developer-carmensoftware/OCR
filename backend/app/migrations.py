@@ -631,6 +631,25 @@ async def _m215_quota_monthly_to_free_trial(conn: AsyncConnection) -> None:
     logger.info("  ~ quota migrated: monthly → lifetime free trial (30 calls, no reset)")
 
 
+async def _m217_soft_delete_stray_monthly_quota(conn: AsyncConnection) -> None:
+    """
+    Retire any remaining ACTIVE monthly/calls quota rows.
+
+    Migration 215 switched quotas from monthly-reset to a lifetime free trial, and the
+    login path (upsert_tenant_quota) no longer creates — nor soft-deletes — monthly rows.
+    This one-time sweep soft-deletes any stray active monthly/calls quota left over from
+    the rolling deploy, so a tenant can never end up with both an active monthly and an
+    active lifetime CALLS quota (which would double-count usage).
+    """
+    await conn.execute(
+        text(
+            "UPDATE quotas SET deleted_at = NOW() "
+            "WHERE period = 'monthly' AND metric = 'calls' AND deleted_at IS NULL"
+        )
+    )
+    logger.info("  ~ stray active monthly/calls quotas soft-deleted")
+
+
 _MIGRATIONS: list[tuple[str, Callable[[AsyncConnection], Awaitable[None]] | None]] = [
     # ── Squashed history markers ──────────────────────────────────────────────
     ("001_squashed_initial_schema", None),
@@ -655,4 +674,5 @@ _MIGRATIONS: list[tuple[str, Callable[[AsyncConnection], Awaitable[None]] | None
     ("214_drop_ap_vendor_field_config", _m214_drop_ap_vendor_field_config),
     ("215_quota_monthly_to_free_trial", _m215_quota_monthly_to_free_trial),
     ("216_postgres_best_practices", _m216_postgres_best_practices),
+    ("217_soft_delete_stray_monthly_quota", _m217_soft_delete_stray_monthly_quota),
 ]

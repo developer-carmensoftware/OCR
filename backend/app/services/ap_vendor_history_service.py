@@ -97,6 +97,9 @@ async def fetch_vendor_history(vn_code: str, carmen_token: str) -> list[dict]:
     except CarmenAPIError as e:
         logger.warning("Carmen vendor history failed for %s: %s", vn_code, e.detail)
         return []
+    except Exception as e:
+        logger.warning("Carmen vendor history unexpected error for %s: %s", vn_code, e)
+        return []
 
     if isinstance(raw, dict):
         rows = raw.get("Data") or []

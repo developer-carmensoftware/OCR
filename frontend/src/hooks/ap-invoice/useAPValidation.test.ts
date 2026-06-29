@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { reconcileRows, useAPValidation } from './useAPValidation'
+import { reconcileRows, repairDocFigure, useAPValidation } from './useAPValidation'
 import { syncLineTotals } from '../../lib/apTax'
 import type { APLineItem } from './useAPExtraction'
 import type { APInvoiceHeader } from '../../constants/apInvoice'
@@ -69,6 +69,94 @@ describe('reconcileRows', () => {
     expect(rows[0].description).toBe('A')
     expect(rows[1].description).toBe('B')
     expect(rows[1].lineSubTotal).toBe('10.00')
+  })
+})
+
+// repairDocFigure identifies which printed total the LLM misread (grand ≠ sub + tax) using the
+// line-item sums as the tiebreaker, then recomputes it from the identity. Null when consistent.
+describe('repairDocFigure', () => {
+  it('returns null when the document already adds up', () => {
+    expect(
+      repairDocFigure({
+        tgtSubTotal: 17691.1,
+        tgtTax: 1238.38,
+        tgtGrand: 18929.48,
+        sumSub: 17691.1,
+        sumTax: 1238.38,
+      })
+    ).toBeNull()
+  })
+
+  it('reported case: misread VAT (sub matches table, tax does not) → repair tax = grand − sub', () => {
+    // Document VAT was read as 1,238.37 but the table sums to 1,238.38; sub & grand are correct.
+    const r = repairDocFigure({
+      tgtSubTotal: 17691.1,
+      tgtTax: 1238.37,
+      tgtGrand: 18929.48,
+      sumSub: 17691.1,
+      sumTax: 1238.38,
+    })
+    // Unambiguous + 1-satang gap → safe to auto-apply.
+    expect(r).toEqual({ field: 'taxAmount', value: 1238.38, confident: true })
+  })
+
+  it('misread subtotal (tax matches table, sub does not) → repair sub = grand − tax', () => {
+    const r = repairDocFigure({
+      tgtSubTotal: 100.0,
+      tgtTax: 7.0,
+      tgtGrand: 107.01,
+      sumSub: 100.01,
+      sumTax: 7.0,
+    })
+    expect(r).toEqual({ field: 'subTotal', value: 100.01, confident: true })
+  })
+
+  it('misread grand (sub & tax both match the table) → repair grand = sub + tax', () => {
+    const r = repairDocFigure({
+      tgtSubTotal: 100.0,
+      tgtTax: 7.0,
+      tgtGrand: 107.01,
+      sumSub: 100.0,
+      sumTax: 7.0,
+    })
+    expect(r).toEqual({ field: 'grandTotal', value: 107.0, confident: true })
+  })
+
+  it('unambiguous but LARGE gap → not confident (needs a human look)', () => {
+    // VAT misread by a whole 100 baht (1,238 → 1,338). Outlier is clear (sub corroborated), but the
+    // gap is too big to silently rewrite a tax that goes to the ERP.
+    const r = repairDocFigure({
+      tgtSubTotal: 17691.1,
+      tgtTax: 1338.38,
+      tgtGrand: 18929.48,
+      sumSub: 17691.1,
+      sumTax: 1238.38,
+    })
+    expect(r).toEqual({ field: 'taxAmount', value: 1238.38, confident: false })
+  })
+
+  it('ambiguous (both disagree, equal error) → fixes tax on a tie, never confident', () => {
+    // sub off by 0.01 and tax off by 0.01 vs the table; tie breaks to tax = grand − sub.
+    const r = repairDocFigure({
+      tgtSubTotal: 100.01,
+      tgtTax: 7.01,
+      tgtGrand: 107.0,
+      sumSub: 100.0,
+      sumTax: 7.0,
+    })
+    expect(r).toEqual({ field: 'taxAmount', value: 6.99, confident: false }) // 107.00 − 100.01
+  })
+
+  it('ambiguous (both disagree) → fixes the field with the larger table error, never confident', () => {
+    // sub off by 0.50, tax off by 0.01 → sub is the worse outlier.
+    const r = repairDocFigure({
+      tgtSubTotal: 100.5,
+      tgtTax: 7.01,
+      tgtGrand: 107.0,
+      sumSub: 100.0,
+      sumTax: 7.0,
+    })
+    expect(r).toEqual({ field: 'subTotal', value: 99.99, confident: false }) // 107.00 − 7.01
   })
 })
 

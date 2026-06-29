@@ -64,6 +64,7 @@ interface Ctrl {
     patch: { taxType?: TaxTypeValue; taxProfileCode1?: string; taxPct?: string }
   ) => void
   adjustField: (tgt: unknown, sumCur: unknown, key: string) => void
+  fixDocFigures: () => void
   setStep: (step: number) => void
   goToAccount: () => void
   isGrouped: boolean
@@ -125,6 +126,7 @@ export default function APReviewStep({ ctrl }: Props) {
     blurLineItem,
     applyLineTax,
     adjustField,
+    fixDocFigures,
     setStep,
     goToAccount,
     isGrouped,
@@ -293,6 +295,7 @@ export default function APReviewStep({ ctrl }: Props) {
           updateHeader={updateHeader}
           blurHeader={blurHeader}
           adjustField={adjustField}
+          onFixDoc={fixDocFigures}
         />
       </div>
 
