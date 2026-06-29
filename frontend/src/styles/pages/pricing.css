@@ -195,49 +195,82 @@
   align-items: stretch;
 }
 
-/* Free + 3 paid tiers: 4-up on desktop, 2x2 on tablet, stacked on mobile. */
-.plan-grid--4 {
-  /* minmax(0, 1fr) keeps all columns exactly equal — see note on --5 below. */
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+/* 3 paid tiers: 3-up centered on desktop, stacked on mobile. */
+.plan-grid--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-width: 860px;
+  margin-inline: auto;
 }
 
-@media (max-width: 1000px) {
-  .plan-grid--4 {
-    grid-template-columns: 1fr 1fr;
-    max-width: 640px;
-    margin: 0 auto;
-  }
-}
-
-@media (max-width: 640px) {
-  .plan-grid--4 {
+@media (max-width: 860px) {
+  .plan-grid--3 {
     grid-template-columns: 1fr;
     max-width: 380px;
   }
 }
 
-/* Free + 3 paid + Enterprise: 5-up on desktop, 2-up on tablet, stacked on mobile. */
-.plan-grid--5 {
-  /* minmax(0, 1fr), not 1fr: plain 1fr is minmax(auto, 1fr), so a card with
-     wider content (longer price / "Save 10%" pill) stretches its own column and
-     the 5 columns end up unequal — pushing the centered Standard card off true
-     center. minmax(0, …) forces all 5 columns to an exact equal width. */
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 0.85rem;
+.pricing-plans-hint {
+  text-align: center;
+  color: var(--text-2);
+  font-size: 0.95rem;
+  margin: 0 0 1rem;
 }
 
-@media (max-width: 1100px) {
-  .plan-grid--5 {
-    grid-template-columns: 1fr 1fr;
-    max-width: 640px;
-    margin: 0 auto;
-  }
+/* Enterprise — contact band below plan grid, same max-width */
+.enterprise-band {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  max-width: 860px;
+  margin: 1rem auto 0;
+  padding: 1rem 1.5rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.enterprise-band-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: color-mix(in oklch, var(--text-2) 12%, transparent);
+  color: var(--text-2);
+  flex-shrink: 0;
+}
+
+.enterprise-band-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.enterprise-band-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.enterprise-band-tagline {
+  font-size: 0.85rem;
+  color: var(--text-2);
+}
+
+.enterprise-band-cta {
+  flex-shrink: 0;
 }
 
 @media (max-width: 640px) {
-  .plan-grid--5 {
-    grid-template-columns: 1fr;
-    max-width: 380px;
+  .enterprise-band {
+    flex-direction: column;
+    text-align: center;
+  }
+  .enterprise-band-cta {
+    width: 100%;
   }
 }
 
@@ -246,12 +279,14 @@
   position: relative;
   display: flex;
   flex-direction: column;
+  align-items: center;
+  width: 100%;
   padding: 1.5rem 1.35rem;
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card);
-  text-align: left;
+  text-align: center;
   overflow: hidden;
   transition:
     transform var(--dur-base) var(--ease-out-premium),
@@ -264,6 +299,8 @@
   --plan-accent: var(--primary);
 }
 
+/* ponytail: both selectors until DB migration renames sub_standard → sub_growth */
+.plan-card[data-tier='sub_growth'],
 .plan-card[data-tier='sub_standard'] {
   --plan-accent: var(--teal);
 }
@@ -388,6 +425,7 @@
 }
 
 .plan-quota-line {
+  width: 100%;
   margin-top: 0.45rem;
   padding-bottom: 1.1rem;
   border-bottom: 1px solid var(--border);
@@ -400,7 +438,7 @@
 .plan-price {
   display: flex;
   align-items: baseline;
-  justify-content: flex-start;
+  justify-content: center;
   gap: 0.35rem;
   margin-top: auto;
   padding-top: 1.25rem;
@@ -935,9 +973,10 @@
 
 .flow-stage {
   display: flex;
-  align-items: flex-start;
-  gap: 0.85rem;
-  padding: 0.9rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.9rem 0;
   border-radius: var(--radius-md);
   opacity: 0.5;
   transition:
@@ -950,34 +989,21 @@
   background: color-mix(in srgb, var(--flow) 6%, transparent);
 }
 
-.flow-stage-no {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--flow) 16%, var(--card-bg));
-  color: var(--flow-strong);
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-
 /* Single node in a stage follows the stage's dim, not its own. */
 .flow-stage > .flow-node {
   opacity: 1;
+  width: 100%;
 }
 
 .flow-substages {
-  flex: 1;
+  width: 100%;
   display: flex;
   align-items: stretch;
   gap: 0.5rem;
 }
 
 .flow-out-list {
-  flex: 1;
+  width: 100%;
   padding-top: 0.15rem;
 }
 
@@ -1031,7 +1057,8 @@
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 0.6rem;
-  margin: 0 1.5rem 1.5rem;
+  margin: 0;
+  padding: 0 1.5rem 1.5rem;
   opacity: 0.5;
   transition: opacity var(--showcase-dur) var(--ease);
 }
@@ -1145,6 +1172,8 @@
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 1rem;
+  max-width: 860px;
+  margin-inline: auto;
 }
 
 @media (max-width: 860px) {
@@ -1285,22 +1314,15 @@
   gap: 1rem;
 }
 
-.pricing-skeleton-grid--4 {
-  grid-template-columns: repeat(4, 1fr);
+.pricing-skeleton-grid--3 {
+  grid-template-columns: repeat(3, 1fr);
 }
 
-@media (max-width: 1000px) {
-  .pricing-skeleton-grid--4 {
-    grid-template-columns: 1fr 1fr;
-    max-width: 640px;
-    margin: 0 auto;
-  }
-}
-
-@media (max-width: 640px) {
-  .pricing-skeleton-grid--4 {
+@media (max-width: 860px) {
+  .pricing-skeleton-grid--3 {
     grid-template-columns: 1fr;
     max-width: 380px;
+    margin: 0 auto;
   }
 }
 

@@ -1,6 +1,5 @@
 import { ArrowRight, MessageCircle } from 'lucide-react'
 import {
-  Sparkle,
   RocketLaunch,
   Diamond,
   Crown,
@@ -8,7 +7,7 @@ import {
   type Icon as PhosphorIcon,
 } from '@phosphor-icons/react'
 import { formatThb, formatRate } from '../../lib/money'
-import { ENTERPRISE, FREE_PLAN, perDoc, type PackPresentation } from '../../constants/billing'
+import { ENTERPRISE, perDoc, type PackPresentation } from '../../constants/billing'
 import { useT } from '../../i18n/LanguageContext'
 import type { BillingPeriod, CreditPack } from '../../lib/api/credits'
 
@@ -24,9 +23,13 @@ interface PlanCardProps {
   activePlanCredits?: number
 }
 
+// ponytail: sub_standard alias kept until DB migration renames → sub_growth
+const _growthIcon = { Icon: Diamond, tint: 'plan-icon--standard' }
+
 const TIER_ICONS: Record<string, { Icon: PhosphorIcon; tint: string }> = {
   sub_starter: { Icon: RocketLaunch, tint: 'plan-icon--starter' },
-  sub_standard: { Icon: Diamond, tint: 'plan-icon--standard' },
+  sub_growth: _growthIcon,
+  sub_standard: _growthIcon,
   sub_pro: { Icon: Crown, tint: 'plan-icon--pro' },
 }
 
@@ -110,57 +113,21 @@ export function PlanCard({
   )
 }
 
-/**
- * The free trial as a catalog card. Not purchasable — new accounts already
- * have it — so the CTA simply returns to the app.
- */
-export function FreePlanCard() {
-  const { t } = useT()
-  return (
-    <div className="plan-card" data-tier="free">
-      <span className="plan-icon plan-icon--free">
-        <Sparkle size={20} weight="duotone" />
-      </span>
-      <h3 className="plan-name">{FREE_PLAN.name}</h3>
-      <p className="plan-quota-line">
-        <span className="text-mono">{FREE_PLAN.credits}</span> {t('plan.docsUnit')}
-      </p>
-
-      <div className="plan-price">
-        <span className="plan-price-amount text-mono">฿0</span>
-      </div>
-      <p className="plan-rate">{t('plan.oneTimeTrial')}</p>
-
-      <button
-        type="button"
-        className="btn btn-outline plan-cta"
-        onClick={() => {
-          window.location.hash = '#/'
-        }}
-      >
-        {t('plan.startScanning')} <ArrowRight size={14} />
-      </button>
-    </div>
-  )
-}
-
-/** Enterprise — a contact-sales tier, same card anatomy as the priced tiers. */
+/** Enterprise — a full-width contact band below the plan grid. */
 export function EnterpriseCard({ onContact }: { onContact: () => void }) {
   const { t } = useT()
   return (
-    <div className="plan-card" data-tier="enterprise">
-      <span className="plan-icon plan-icon--enterprise">
-        <Buildings size={20} weight="duotone" />
+    <div className="enterprise-band" data-tier="enterprise">
+      <span className="enterprise-band-icon">
+        <Buildings size={22} weight="duotone" />
       </span>
-      <h3 className="plan-name">{ENTERPRISE.name}</h3>
-      <p className="plan-quota-line">{t('plan.enterpriseTagline')}</p>
-
-      <div className="plan-price">
-        <span className="plan-price-amount">{t('plan.custom')}</span>
+      <div className="enterprise-band-copy">
+        <strong className="enterprise-band-name">{ENTERPRISE.name}</strong>
+        <span className="enterprise-band-tagline">
+          {t('plan.enterpriseTagline')} · {t('plan.customPricing')}
+        </span>
       </div>
-      <p className="plan-rate">{t('plan.customPricing')}</p>
-
-      <button type="button" className="btn btn-outline plan-cta" onClick={onContact}>
+      <button type="button" className="btn btn-outline enterprise-band-cta" onClick={onContact}>
         <MessageCircle size={14} /> {t('plan.contactSales')}
       </button>
     </div>

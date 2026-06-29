@@ -154,7 +154,7 @@ class CreditPack(Base, TimestampMixin, WriterMixin):
 
     __tablename__ = "credit_packs"
 
-    code = Column(String(20), primary_key=True)  # 'sub_standard', 'pack_small', ...
+    code = Column(String(20), primary_key=True)  # 'sub_growth', 'pack_small', ...
     # 'subscription' = monthly document tier; 'topup' = one-time non-expiring credits.
     kind = Column(String(20), nullable=False, default="topup")
     credits = Column(Integer, nullable=False)

@@ -216,7 +216,6 @@ function ApInvoiceDetail({ active }: { active: boolean }) {
       <Head Icon={ReceiptText} title="AP Invoice Automation" sub={t('flows.ap.sub')} />
       <div className="flow-body flow-stepper">
         <div className={`flow-stage${phase >= 1 ? ' is-on' : ''}`}>
-          <span className="flow-stage-no">1</span>
           <Node
             Icon={ScanLine}
             label={t('flows.ap.s1.label')}
@@ -228,7 +227,6 @@ function ApInvoiceDetail({ active }: { active: boolean }) {
           <ArrowRight size={18} />
         </span>
         <div className={`flow-stage${phase >= 2 ? ' is-on' : ''}`}>
-          <span className="flow-stage-no">2</span>
           <div className="flow-substages">
             <Node
               Icon={FileText}
@@ -256,7 +254,6 @@ function ApInvoiceDetail({ active }: { active: boolean }) {
           <ArrowRight size={18} />
         </span>
         <div className={`flow-stage${phase >= 5 ? ' is-on' : ''}`}>
-          <span className="flow-stage-no">3</span>
           <div className="flow-out-list">
             <h4>{t('flows.ap.out.h')}</h4>
             <ul>

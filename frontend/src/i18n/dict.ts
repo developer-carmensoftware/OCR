@@ -19,11 +19,13 @@ const en = {
   'nav.history': 'History',
 
   // — Pricing hero + top-up section —
-  'pricing.title': 'Start free with 30 documents',
-  'pricing.subtitle': 'Pick the plan that fits your business.',
-  'pricing.topupTitle': 'Top-up credits',
-  'pricing.topupSub': 'Works with any plan. Credits never expire.',
-  'pricing.topupNote': '1 credit = 1 document',
+  'pricing.title': 'Automate your accounting entries',
+  'pricing.subtitle': 'Free for your first 30 documents',
+  'pricing.plansHint': 'Choose by how many documents you post each month.',
+  'pricing.topupTitle': 'Top-Up Credits',
+  'pricing.topupSub': 'For documents beyond your monthly quota',
+  'pricing.topupSub2': 'Any plan. Never expire.',
+  'pricing.topupNote': '1 credit = 1 document page',
   'pricing.loadError': 'Failed to load plans: {error}',
 
   // — Plan cards —
@@ -38,13 +40,10 @@ const en = {
   'plan.upgrade': 'Upgrade to {name}',
   'plan.renew': 'Renew {name}',
   'plan.monthlyLockedNote': 'Monthly billing is available when your annual plan ends.',
-  'plan.oneTimeTrial': 'One-time trial',
-  'plan.docsUnit': 'documents',
-  'plan.startScanning': 'Start scanning',
   'plan.custom': 'Custom',
   'plan.contactSales': 'Contact sales',
-  'plan.enterpriseTagline': 'For large firms & accounting offices',
-  'plan.customPricing': 'Custom pricing',
+  'plan.enterpriseTagline': 'For hotel groups',
+  'plan.customPricing': 'usage-based pricing',
   'plan.badgePopular': 'Popular',
 
   // — Top-up packs —
@@ -165,29 +164,26 @@ const en = {
   'order.expires': 'Expires',
 
   // — Feature flows (marketing showcase) —
-  'flows.heading': 'How AI helps with your accounting work',
+  'flows.heading': 'See how AI automates accounting work',
   'flows.sub': 'Pick a feature to see how it works',
   'flows.cc.desc':
-    'Turn a single document into finished work: the system creates the Journal Voucher to post the entry automatically and runs Input Tax Reconciliation to record purchase VAT for your tax filing — replacing the old manual steps, accurately.',
-  'flows.ap.desc':
-    'Say goodbye to manual data entry. For purchases with no PR/PO or for service charges, just scan the document — the system builds the record automatically, cutting work time by up to 60%.',
+    'Turn a single document into a ready-to-use Journal Voucher (JV) and Input VAT report automatically',
+  'flows.ap.desc': 'Turn non-PO invoices into AP records automatically — up to 60% less keying.',
   'flows.gl.desc':
-    'Work faster with automatic account-code suggestions. AI reviews and analyzes your past entries to recommend the right code, and keeps learning to get more accurate over time.',
-  'flows.cc.sub':
-    'From one document, the system produces the full accounting entry and purchase-VAT report.',
+    'AI suggests account codes from your own posting history — faster and consistent across the team.',
+  'flows.cc.sub': 'One document → JV + Input VAT report, automatically.',
   'flows.cc.n1.label': 'Receive document',
   'flows.cc.n1.cap': 'Bank fee statement',
-  'flows.cc.match.label': 'Match accounts & tax',
-  'flows.cc.chk1': 'Read & extract data',
-  'flows.cc.chk2': 'Match chart of accounts / tax',
-  'flows.cc.chk3': 'Create the target document',
+  'flows.cc.match.label': 'AI reads & codes the document',
+  'flows.cc.chk1': 'Extract data automatically',
+  'flows.cc.chk2': 'Match account codes & VAT',
+  'flows.cc.chk3': 'Prepare accounting outputs',
   'flows.cc.out1.h': 'Accounting entry (JV)',
   'flows.cc.out1.p': 'Posted automatically, no manual keying',
   'flows.cc.out2.h': 'Purchase VAT report',
   'flows.cc.out2.p': 'Ready to file with the Revenue Department',
   'flows.cc.result': 'One document, two outputs automatically — less rework and fewer errors.',
-  'flows.ap.sub':
-    'Scan a bill; the system reads it and creates the invoice record for you — 60% less manual keying.',
+  'flows.ap.sub': 'Scan a non-PO bill; AP record created for you — 60% less keying.',
   'flows.ap.s1.label': 'Scan bill',
   'flows.ap.s1.cap': 'Invoice or tax invoice',
   'flows.ap.s2a.label': 'Extract data',
@@ -205,8 +201,7 @@ const en = {
   'flows.ap.b2.sub': 'from manual entry',
   'flows.ap.b3.label': 'Complete data',
   'flows.ap.b3.sub': 'fully traceable',
-  'flows.gl.sub':
-    'The system looks at your posting history and suggests the code most likely to fit.',
+  'flows.gl.sub': 'Codes suggested from your own posting history.',
   'flows.gl.pick': 'Pick a sample item',
   'flows.gl.compare.label': 'Compare history',
   'flows.gl.compare.capOn': 'Found similar entries (95%+)',
@@ -642,11 +637,13 @@ const th: Record<TKey, string> = {
   'nav.history': 'ประวัติ',
 
   // — Pricing hero + top-up section —
-  'pricing.title': 'เริ่มต้นใช้งานฟรี 30 เอกสาร',
-  'pricing.subtitle': 'เลือกแพ็กเกจที่เหมาะกับธุรกิจของคุณ',
+  'pricing.title': 'เริ่มใช้ AI ลงบัญชีอัตโนมัติฟรี',
+  'pricing.subtitle': 'ทดลอง 30 เอกสารแรก',
+  'pricing.plansHint': 'เลือกแพ็กเกจตามจำนวนเอกสารที่ลงบัญชีต่อเดือน',
   'pricing.topupTitle': 'เติมเครดิต',
-  'pricing.topupSub': 'ใช้ได้กับทุกแพ็กเกจ เครดิตไม่มีวันหมดอายุ',
-  'pricing.topupNote': '1 เครดิต = 1 เอกสาร',
+  'pricing.topupSub': 'สำหรับเอกสารที่เกินโควตารายเดือน',
+  'pricing.topupSub2': 'ใช้ได้ทุกแพ็กเกจ ไม่มีวันหมดอายุ',
+  'pricing.topupNote': '1 เครดิต = 1 หน้าเอกสาร',
   'pricing.loadError': 'โหลดแพ็กเกจไม่สำเร็จ: {error}',
 
   // — Plan cards —
@@ -661,13 +658,10 @@ const th: Record<TKey, string> = {
   'plan.upgrade': 'อัปเกรดเป็น {name}',
   'plan.renew': 'ต่ออายุ {name}',
   'plan.monthlyLockedNote': 'การชำระแบบรายเดือนจะเลือกได้เมื่อแพ็กเกจรายปีของคุณหมดอายุ',
-  'plan.oneTimeTrial': 'ทดลองใช้ครั้งเดียว',
-  'plan.docsUnit': 'เอกสาร',
-  'plan.startScanning': 'เริ่มสแกนเอกสาร',
   'plan.custom': 'กำหนดเอง',
   'plan.contactSales': 'ติดต่อฝ่ายขาย',
-  'plan.enterpriseTagline': 'สำหรับองค์กรขนาดใหญ่และสำนักงานบัญชี',
-  'plan.customPricing': 'ราคาตามการใช้งาน',
+  'plan.enterpriseTagline': 'สำหรับเครือโรงแรม',
+  'plan.customPricing': 'คิดตามการใช้งาน',
   'plan.badgePopular': 'ยอดนิยม',
 
   // — Top-up packs —
@@ -785,27 +779,25 @@ const th: Record<TKey, string> = {
   'order.expires': 'หมดอายุ',
 
   // — Feature flows (marketing showcase) —
-  'flows.heading': 'ระบบ AI ช่วยงานบัญชีของคุณยังไง',
+  'flows.heading': 'ดูว่า AI ลดงานบัญชีได้อย่างไร',
   'flows.sub': 'เลือกฟีเจอร์เพื่อดูขั้นตอนการทำงาน',
   'flows.cc.desc':
-    'ระบบช่วยเปลี่ยนเอกสาร 1 ใบ ให้เป็นเรื่องง่าย โดยสร้าง Journal Voucher เพื่อบันทึกบัญชีอัตโนมัติ และทำ Input Tax Reconciliation บันทึกภาษีซื้อเพื่อออกรายงานนำส่งสรรพากร ลดขั้นตอนการทำงานแบบเดิม ๆ ได้อย่างแม่นยำ',
-  'flows.ap.desc':
-    'บอกลาการคีย์ข้อมูลด้วยตนเอง สำหรับรายการสั่งซื้อที่ไม่มี PR/PO หรือรายการค่าบริการต่าง ๆ เพียงแค่สแกนเอกสารเข้าสู่ระบบ ระบบจะจัดการสร้างเอกสารให้อัตโนมัติ ช่วยประหยัดเวลาการทำงานลงได้มากถึง 60%',
-  'flows.gl.desc':
-    'เพิ่มความรวดเร็วในการทำงานด้วยระบบแนะนำการลงบัญชีอัตโนมัติ โดย AI จะช่วยตรวจสอบและวิเคราะห์ข้อมูลการบันทึกบัญชีในอดีต เพื่อให้คำแนะนำที่ถูกต้อง และระบบจะเรียนรู้เพื่อเพิ่มความแม่นยำขึ้นเรื่อย ๆ อย่างต่อเนื่อง',
-  'flows.cc.sub': 'จากเอกสารใบเดียว ระบบสร้างบันทึกบัญชีและรายงานภาษีซื้อให้ครบ',
+    'จากเอกสาร 1 ใบ สู่ Journal Voucher (JV) และรายงานภาษีซื้อ พร้อมใช้งานโดยอัตโนมัติ',
+  'flows.ap.desc': 'จากใบแจ้งหนี้ที่ไม่มี PR/PO เป็น AP Invoice อัตโนมัติ ลดเวลาทำงานได้สูงสุด 60%',
+  'flows.gl.desc': 'ให้ AI แนะนำรหัสบัญชีจากประวัติการลงของคุณเอง — ลงเร็วและสม่ำเสมอทั้งทีม',
+  'flows.cc.sub': 'เอกสารใบเดียว → JV และรายงานภาษีซื้อ โดยอัตโนมัติ',
   'flows.cc.n1.label': 'รับเอกสาร',
   'flows.cc.n1.cap': 'ใบแจ้งค่าธรรมเนียมจากธนาคาร',
-  'flows.cc.match.label': 'ระบบจับคู่บัญชีและภาษี',
-  'flows.cc.chk1': 'อ่านและดึงข้อมูล',
-  'flows.cc.chk2': 'จับคู่ผังบัญชี / ภาษี',
-  'flows.cc.chk3': 'สร้างเอกสารปลายทาง',
+  'flows.cc.match.label': 'AI อ่านและจับคู่บัญชีอัตโนมัติ',
+  'flows.cc.chk1': 'อ่านข้อมูลจากเอกสาร',
+  'flows.cc.chk2': 'จับคู่รหัสบัญชีและภาษี',
+  'flows.cc.chk3': 'สร้างเอกสารบัญชี',
   'flows.cc.out1.h': 'บันทึกบัญชี (JV)',
   'flows.cc.out1.p': 'ลงบัญชีอัตโนมัติ ไม่ต้องคีย์มือ',
   'flows.cc.out2.h': 'รายงานภาษีซื้อ',
   'flows.cc.out2.p': 'พร้อมนำส่งสรรพากร',
   'flows.cc.result': 'จากเอกสาร 1 ใบ ได้งาน 2 อย่างอัตโนมัติ ลดงานซ้ำซ้อนและข้อผิดพลาด',
-  'flows.ap.sub': 'สแกนบิล ระบบอ่านและสร้างใบแจ้งหนี้ในระบบให้ ลดงานคีย์มือ 60%',
+  'flows.ap.sub': 'สแกนบิลที่ไม่มี PR/PO ระบบสร้าง AP ให้ — ลดคีย์มือ 60%',
   'flows.ap.s1.label': 'สแกนบิล',
   'flows.ap.s1.cap': 'ใบแจ้งหนี้ หรือใบกำกับภาษี',
   'flows.ap.s2a.label': 'ดึงข้อมูล',
@@ -823,7 +815,7 @@ const th: Record<TKey, string> = {
   'flows.ap.b2.sub': 'จากการบันทึกด้วยมือ',
   'flows.ap.b3.label': 'ข้อมูลครบถ้วน',
   'flows.ap.b3.sub': 'ตรวจสอบย้อนได้',
-  'flows.gl.sub': 'ระบบดูจากประวัติการลงบัญชี แล้วแนะนำรหัสที่น่าจะใช่ให้เลือก',
+  'flows.gl.sub': 'แนะนำรหัสจากประวัติการลงบัญชีของคุณเอง',
   'flows.gl.pick': 'เลือกตัวอย่างรายการ',
   'flows.gl.compare.label': 'เทียบประวัติ',
   'flows.gl.compare.capOn': 'พบรายการคล้ายกัน (95%+)',

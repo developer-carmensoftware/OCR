@@ -26,18 +26,14 @@ export interface PackPresentation {
  * every card so "same features, different quota" is explicit, not implied.
  * Exactly one tier carries a badge + highlight: the anchor we want chosen.
  */
+// ponytail: sub_standard alias kept until DB migration renames → sub_growth
+const _growth: PackPresentation = { name: 'Growth', badge: 'Popular', highlight: true }
+
 export const PLAN_META: Record<string, PackPresentation> = {
-  sub_starter: {
-    name: 'Starter',
-  },
-  sub_standard: {
-    name: 'Standard',
-    badge: 'Popular',
-    highlight: true,
-  },
-  sub_pro: {
-    name: 'Professional',
-  },
+  sub_starter: { name: 'Starter' },
+  sub_growth: _growth,
+  sub_standard: _growth,
+  sub_pro: { name: 'Professional' },
 }
 
 /**
@@ -51,19 +47,6 @@ export const PLAN_INCLUDES = [
   'Auto-post to Carmen',
   'Thai & English documents',
 ]
-
-/**
- * The free trial presented as a catalog card. Not a purchasable pack — the
- * 30-document trial is granted automatically to new accounts; this card just
- * makes "start free" concrete next to the paid tiers.
- */
-export const FREE_PLAN = {
-  name: 'Free',
-  credits: 30,
-  quotaUnit: 'documents',
-  features: ['All features included', 'No payment needed', 'Upgrade anytime'],
-  ctaLabel: 'Start scanning',
-}
 
 /** One-time top-up packs — credits never expire, used after the monthly quota. */
 export const PACK_META: Record<string, PackPresentation> = {
@@ -79,7 +62,7 @@ export const PACK_META: Record<string, PackPresentation> = {
 export const ENTERPRISE = {
   name: 'Enterprise',
   badge: 'Unlimited volume',
-  tagline: 'For large firms & accounting offices',
+  tagline: 'For hotel groups',
   features: [
     'Everything in Professional',
     'SLA, onboarding & dedicated support',

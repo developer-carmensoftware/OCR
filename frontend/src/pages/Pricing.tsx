@@ -6,7 +6,6 @@ import LanguageToggle from '../components/common/LanguageToggle'
 import { useT } from '../i18n/LanguageContext'
 import {
   PlanCard,
-  FreePlanCard,
   EnterpriseCard,
   PackList,
   FeatureFlows,
@@ -244,14 +243,15 @@ export default function Pricing() {
             {error ? (
               <div className="pricing-error">{t('pricing.loadError', { error })}</div>
             ) : loading ? (
-              <div className="pricing-skeleton-grid pricing-skeleton-grid--4" aria-hidden="true">
-                {Array.from({ length: 4 }).map((_, i) => (
+              <div className="pricing-skeleton-grid pricing-skeleton-grid--3" aria-hidden="true">
+                {Array.from({ length: 3 }).map((_, i) => (
                   <div key={i} className="pricing-skeleton-card" />
                 ))}
               </div>
             ) : (
               <>
                 <section className="pricing-section" aria-label="Plans">
+                  <p className="pricing-plans-hint">{t('pricing.plansHint')}</p>
                   <div
                     className="billing-period-toggle"
                     style={{
@@ -306,14 +306,11 @@ export default function Pricing() {
                     </p>
                   )}
                   <m.div
-                    className="plan-grid plan-grid--5"
+                    className="plan-grid plan-grid--3"
                     variants={containerVariants}
                     initial={enter ? 'hidden' : false}
                     animate="show"
                   >
-                    <m.div variants={cardVariants} style={{ display: 'flex' }}>
-                      <FreePlanCard />
-                    </m.div>
                     {plans.map(pack => (
                       <m.div key={pack.code} variants={cardVariants} style={{ display: 'flex' }}>
                         <PlanCard
@@ -327,10 +324,8 @@ export default function Pricing() {
                         />
                       </m.div>
                     ))}
-                    <m.div variants={cardVariants} style={{ display: 'flex' }}>
-                      <EnterpriseCard onContact={() => setShowContact(true)} />
-                    </m.div>
                   </m.div>
+                  <EnterpriseCard onContact={() => setShowContact(true)} />
                 </section>
 
                 <section className="pricing-section" aria-labelledby="packs-heading">
@@ -339,6 +334,7 @@ export default function Pricing() {
                       {t('pricing.topupTitle')}
                     </h2>
                     <p className="pricing-section-sub">{t('pricing.topupSub')}</p>
+                    <p className="pricing-section-sub">{t('pricing.topupSub2')}</p>
                     <p className="pricing-note">{t('pricing.topupNote')}</p>
                   </div>
                   <PackList packs={packs} onSelect={startCheckout} disabled={hasOpenOrder} />
