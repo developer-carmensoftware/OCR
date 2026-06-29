@@ -184,6 +184,10 @@ export default function CreditOrdersPage() {
         <ArCustomerProfiles
           onMapped={() => {
             refreshKpi()
+            // Mapping changes each order's resolved carmen_ar_code. Reload the
+            // current stage so the post-to-AR tab reflects mapped→post-ready
+            // without a full refresh (returning to an unchanged tab won't refire).
+            loadList(workflowTab, selected?.id)
           }}
         />
       ) : (

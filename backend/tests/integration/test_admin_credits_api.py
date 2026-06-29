@@ -381,6 +381,16 @@ def test_cancel_non_in_progress_returns_409():
 # ── POST /admin/credit-orders/post-ar ─────────────────────────────────────────
 
 
+def _tax_invoice(total="1059.30", subtotal="990.00", vat="69.30"):
+    doc = MagicMock()
+    doc.number = "AI-202606-0007"
+    doc.total = Decimal(total)
+    doc.subtotal = Decimal(subtotal)
+    doc.vat_amount = Decimal(vat)
+    doc.deleted_at = None
+    return doc
+
+
 def test_post_ar_marks_complete_with_ref():
     order_id = str(uuid.uuid4())
     order = _order(order_id=order_id, status="paid")
@@ -392,19 +402,28 @@ def test_post_ar_marks_complete_with_ref():
         _scalar(order),  # select CreditOrder
         _scalar(proforma),  # select BillingDocument (proforma)
         _scalar(profile),  # select ArCustomerProfile
+        _scalar(_tax_invoice()),  # select BillingDocument (tax invoice)
     ]
 
-    with make_admin_test_client(mock_db) as client:
-        resp = client.post(
-            f"{BASE}/credit-orders/post-ar", json={"order_ids": [order_id]}, headers=AUTH
-        )
+    posted = AsyncMock(return_value={"success": True, "carmen_ar_ref": "AR-REF-1"})
+    with patch("app.routers.admin.credits.ar_posting_service.post_ar_entry", posted):
+        with make_admin_test_client(mock_db) as client:
+            resp = client.post(
+                f"{BASE}/credit-orders/post-ar", json={"order_ids": [order_id]}, headers=AUTH
+            )
 
     assert resp.status_code == 200
     results = resp.json()["results"]
     assert len(results) == 1
     assert results[0]["success"] is True
-    assert results[0]["carmen_ar_ref"]
+    assert results[0]["carmen_ar_ref"] == "AR-REF-1"
     assert order.status == "complete"
+    # Exact figures come from the tax invoice, not order.amount_thb.
+    kwargs = posted.call_args.kwargs
+    assert kwargs["total"] == 1059.30
+    assert kwargs["net"] == 990.00
+    assert kwargs["vat"] == 69.30
+    assert kwargs["ar_code"] == "AR-TEST001"
 
 
 def test_post_ar_rejects_when_no_ar_code():

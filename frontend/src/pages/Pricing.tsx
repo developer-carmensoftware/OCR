@@ -296,12 +296,15 @@ export default function Pricing() {
                         }}
                       />
                     </div>
-                    {annualLocked && (
-                      <p className="pricing-note" style={{ marginTop: '0.5rem' }}>
-                        {t('plan.monthlyLockedNote')}
-                      </p>
-                    )}
                   </div>
+                  {annualLocked && (
+                    <p
+                      className="pricing-note"
+                      style={{ textAlign: 'center', margin: '-0.75rem 0 1rem' }}
+                    >
+                      {t('plan.monthlyLockedNote')}
+                    </p>
+                  )}
                   <m.div
                     className="plan-grid plan-grid--5"
                     variants={containerVariants}

@@ -715,9 +715,34 @@ async def post_ar_batch(
             )
             continue
 
+        # Authoritative amounts come from the issued tax invoice, not order.amount_thb
+        # (which is ambiguous net/gross) — AR figures must match what the customer owes.
+        tax_inv = (
+            await db.execute(
+                select(BillingDocument).where(
+                    BillingDocument.order_id == oid,
+                    BillingDocument.doc_type == BillingDocumentType.TAX_INVOICE,
+                    BillingDocument.deleted_at.is_(None),
+                )
+            )
+        ).scalar_one_or_none()
+        if tax_inv is None:
+            results.append(
+                PostArResultItem(
+                    order_id=oid, success=False, error="No tax invoice issued for this order"
+                )
+            )
+            continue
+
         try:
             resp = await ar_posting_service.post_ar_entry(
-                str(order.id), str(ar_code), float(order.amount_thb)
+                deal_id=str(order.id),
+                ar_code=str(ar_code),
+                account_name=str(proforma.buyer_name or "") if proforma else "",
+                total=float(str(tax_inv.total)),
+                net=float(str(tax_inv.subtotal)),
+                vat=float(str(tax_inv.vat_amount)),
+                description=f"{order.pack_code} — {tax_inv.number}",
             )
             order.status = CreditOrderStatus.COMPLETE  # type: ignore[assignment]
             order.carmen_ar_posted_at = datetime.now(UTC)  # type: ignore[assignment]

@@ -102,6 +102,14 @@ class Settings(BaseSettings):
     # in dev — production deployments should pin the known Carmen host(s).
     allowed_carmen_hosts: str = ""
 
+    # ── Carmen AR posting (admin order-review) — SECRETS, never in system_configs ──
+    # Seller's own Carmen ERP endpoint for posting paid orders as AR entries.
+    # Admin context has no per-session Carmen token, so a service credential is used.
+    # carmen_ar_url = full endpoint, e.g. https://erp.example.com/Carmen.API/api/interfacePostAR/CarmenAI
+    # Leave empty to disable AR posting (post-ar returns a clear "not configured" error).
+    carmen_ar_url: str = ""
+    carmen_ar_token: str = ""  # value for the Authorization header
+
     # Application version — bump on every release
     app_version: str = "1.0.0"
 
