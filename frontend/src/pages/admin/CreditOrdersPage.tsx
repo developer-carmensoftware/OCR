@@ -58,13 +58,16 @@ export default function CreditOrdersPage() {
 
   // Reload the list; keep `selected` in sync with the fresh (enriched) row so the
   // workspace always has proforma_number / carmen_ar_code.
-  const loadList = (wt: WorkflowTab, keepId?: string) => {
+  const loadList = (wt: WorkflowTab, preferIds: (string | undefined)[] = []) => {
     setLoading(true)
     const q = STAGE_QUERY[wt]
     listCreditOrders(q.status, undefined, q.hasSlip)
       .then(rows => {
         setOrders(rows)
-        if (keepId) setSelected(rows.find(o => o.id === keepId) ?? null)
+        if (preferIds.length) {
+          const pick = preferIds.map(id => rows.find(o => o.id === id)).find(Boolean)
+          setSelected(pick ?? null)
+        }
       })
       .catch(e => toast.error((e as Error).message))
       .finally(() => setLoading(false))
@@ -87,12 +90,14 @@ export default function CreditOrdersPage() {
       .catch(() => {})
   }, [])
 
-  const onChanged = (_updated: AdminCreditOrder) => {
-    // After approve/reject/post the order moves to a different stage and leaves
-    // the current tab. Clear selection immediately so the UI doesn't flash the
-    // old workspace while reloading.
+  const onChanged = () => {
+    // After approve/reject/post the order leaves the stage, so advance to its
+    // next sibling; after a note save it stays, so we keep it selected. Prefer
+    // [current, sibling]: current wins when still present, sibling wins when gone.
+    const idx = orders.findIndex(o => o.id === selected?.id)
+    const sibling = orders[idx + 1] ?? orders[idx - 1]
     setSelected(null)
-    loadList(workflowTab)
+    loadList(workflowTab, [selected?.id, sibling?.id])
     refreshKpi()
   }
 
@@ -187,7 +192,7 @@ export default function CreditOrdersPage() {
             // Mapping changes each order's resolved carmen_ar_code. Reload the
             // current stage so the post-to-AR tab reflects mapped→post-ready
             // without a full refresh (returning to an unchanged tab won't refire).
-            loadList(workflowTab, selected?.id)
+            loadList(workflowTab, [selected?.id])
           }}
         />
       ) : (

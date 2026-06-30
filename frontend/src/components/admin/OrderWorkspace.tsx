@@ -84,11 +84,8 @@ function SlipViewer({ url, error }: { url: string | null; error: boolean }) {
   }
 
   if (!url) {
-    return (
-      <div className="orev-slip-fallback">
-        {error ? t('orev.slip.errFallback') : t('orev.slip.loading')}
-      </div>
-    )
+    if (error) return <div className="orev-slip-fallback">{t('orev.slip.errFallback')}</div>
+    return <div className="orev-slip-skeleton skeleton" aria-hidden="true" />
   }
 
   if (slipIsPdf(url)) {
@@ -783,7 +780,11 @@ export default function OrderWorkspace({
             {proforma ? (
               <ProformaDocument doc={proforma} paymentInfo={paymentInfo} />
             ) : (
-              <div className="orev-slip-fallback">{t('orev.doc.loading')}</div>
+              <div className="orev-doc-skeleton" aria-hidden="true">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <span key={i} className="skeleton orev-sk-line" />
+                ))}
+              </div>
             )}
           </div>
         </div>
