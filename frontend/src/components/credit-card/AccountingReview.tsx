@@ -17,6 +17,7 @@ import Card from '../common/Card'
 import Badge from '../common/Badge'
 import { fetchAccountCodes } from '../../lib/api/carmen'
 import { toNum, fmt } from '../../lib/format'
+import { useT } from '../../i18n/LanguageContext'
 import { useAccountingConfig } from '../../hooks/credit-card'
 import type { DetailRow } from './DetailTable'
 import type { JvRow } from '../../hooks/credit-card/useOcrSubmission'
@@ -76,14 +77,17 @@ function buildRows(details: DetailRow[], config: Record<string, unknown>): Built
   return rows
 }
 
+const DEFAULT_EMPTY_OBJECT = {}
+
 export default function AccountingReview({
   details,
-  headerData = {},
+  headerData = DEFAULT_EMPTY_OBJECT,
   onBack,
   onSubmit,
   onGoMapping,
   submitting = false,
 }: Props) {
+  const { t } = useT()
   const { config, loading: configLoading, refresh: loadConfig } = useAccountingConfig()
   const [warningModal, setWarningModal] = useState(false)
   const [accNameMap, setAccNameMap] = useState<Record<string, string>>(_accCache || {})
@@ -123,7 +127,9 @@ export default function AccountingReview({
     if (!m.tax?.acc) unmappedFields.push('Input Tax')
     if (!m.net?.acc) unmappedFields.push('Bank Account')
     const pa = (rawConfig.paymentAmount || {}) as Record<string, { acc?: string }>
-    const detailTypes = [...new Set(details.map(d => d.Transaction).filter(Boolean))] as string[]
+    const detailTypes = [
+      ...new Set(details.flatMap(d => (d.Transaction ? [d.Transaction] : []))),
+    ] as string[]
     detailTypes.forEach(pt => {
       if (!pa[pt]?.acc) unmappedFields.push(pt)
     })
@@ -145,7 +151,7 @@ export default function AccountingReview({
     <div>
       <div className="section-header">
         <span className="cc-step-title">
-          <CheckCheck size={16} /> Step 4: Accounting Review (Journal Concept)
+          <CheckCheck size={16} /> {t('cc.step4Title')}
         </span>
       </div>
 
@@ -153,19 +159,19 @@ export default function AccountingReview({
         <div className="mapping-alert">
           <AlertTriangle size={16} />
           <span className="cc-alert-text">
-            Missing account mapping for: <strong>{unmappedFields.join(', ')}</strong>
+            {t('cc.missingMappingFor')} <strong>{unmappedFields.join(', ')}</strong>
           </span>
           <button type="button" className="btn btn-sm btn-danger" onClick={onGoMapping}>
-            Edit Mapping
+            {t('cc.editMapping')}
           </button>
         </div>
       )}
       {!isLoading && !rawConfig && (
         <div className="mapping-alert">
           <Info size={16} />
-          <span className="cc-alert-text">No Account Mapping configured</span>
+          <span className="cc-alert-text">{t('cc.noMapping')}</span>
           <button type="button" className="btn btn-sm btn-primary" onClick={onGoMapping}>
-            Go to Mapping Settings
+            {t('cc.goMappingSettings')}
           </button>
         </div>
       )}
@@ -174,10 +180,10 @@ export default function AccountingReview({
         icon={<FileText size={16} />}
         title={
           <>
-            Journal Details
+            {t('cc.journalDetails')}
             {accLoading && (
               <span className="cc-loader-text">
-                <Loader2 size={12} className="animate-spin" /> Loading account names...
+                <Loader2 size={12} className="animate-spin" /> {t('cc.loadingAccNames')}
               </span>
             )}
           </>
@@ -225,12 +231,12 @@ export default function AccountingReview({
               {rows.length === 0 && !isLoading && (
                 <tr>
                   <td colSpan={8} className="cc-empty-row-text">
-                    No data — Please configure Account Mapping first
+                    {t('cc.noData')}
                   </td>
                 </tr>
               )}
               {rows.map((r, i) => (
-                <tr key={i}>
+                <tr key={`${r.dept}-${r.acc}-${r.desc}-${i}`}>
                   <td className={!r.dept ? 'missing-cell animate-pulse' : ''}>
                     {r.dept || (
                       <span className="cc-missing-cell-text">
@@ -270,15 +276,15 @@ export default function AccountingReview({
 
         <div className="form-actions">
           <button type="button" className="btn-cancel" onClick={onBack}>
-            <ArrowLeft size={14} /> Back
+            <ArrowLeft size={14} /> {t('cc.back')}
           </button>
           <button type="button" className="btn-cancel cc-mr-auto" onClick={onGoMapping}>
-            <Settings size={14} /> Mapping Settings
+            <Settings size={14} /> {t('cc.mappingSettings')}
           </button>
           <button
             type="button"
             className="btn-icon"
-            title="Refresh Mapping Data"
+            title={t('cc.refreshMapping')}
             onClick={loadConfig}
             disabled={configLoading}
           >
@@ -296,7 +302,7 @@ export default function AccountingReview({
             ) : (
               <UploadCloud size={14} />
             )}
-            {submitting ? 'Submitting...' : 'Confirm and Submit'}
+            {submitting ? t('cc.submitting') : t('cc.confirmSubmit')}
           </button>
         </div>
       </Card>
@@ -304,10 +310,10 @@ export default function AccountingReview({
       <CustomModal
         show={warningModal}
         type="warning"
-        title="Incomplete Account Mapping"
-        message={`Please complete the account mapping before confirming:\n${unmappedFields.join(', ')}`}
-        confirmText="Go to Mapping Settings"
-        cancelText="Close"
+        title={t('cc.incompleteMapping')}
+        message={t('cc.incompleteMappingMsg', { fields: unmappedFields.join(', ') })}
+        confirmText={t('cc.goMappingSettings')}
+        cancelText={t('cc.close')}
         onConfirm={() => {
           setWarningModal(false)
           onGoMapping()

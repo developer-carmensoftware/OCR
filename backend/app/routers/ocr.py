@@ -25,12 +25,13 @@ from app.services import audit_service, ocr_service
 from app.services.audit_service import AuditAction
 from app.services.correction_service import get_correction_hints
 from app.services.credit_card_service import finalize_extraction, mark_task_failed
-from app.services.credit_service import consume_document
+from app.services.credit_service import consume_document, refund_document
 from app.services.file_service import file_service
 from app.services.task_service import create_task
 from app.utils.client_ip import get_client_ip
 from app.utils.date_parsing import format_doc_date
 from app.utils.pages import parse_selected_pages
+from app.utils.pdf_utils import ensure_pdf_openable
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/credit-card", tags=["Credit Card OCR"])
@@ -62,6 +63,7 @@ async def extract_card(
     selected_pages: str | None = Form(
         None, description="JSON-encoded 0-based page indices for PDF, e.g. '[0,1,2]'"
     ),
+    pdf_password: str | None = Form(None, description="Password for an encrypted PDF"),
     session: SessionInfo = Depends(get_current_session),
 ):
     """Stateless extraction — reads files, calls LLM, returns JSON. Does NOT write to DB.
@@ -89,29 +91,39 @@ async def extract_card(
         ip_address=get_client_ip(request),
     )
 
-    await consume_document()
-
-    # Phase 1: validate + read all files into memory (no DB held)
+    # Phase 1: validate + read all files into memory (no DB / credit held). PDFs are
+    # opened here so an encrypted/corrupt PDF fails BEFORE consume_document() — a
+    # locked file must not burn a document credit (see app/exceptions.py mapping).
     file_data: list[tuple[str, bytes]] = []
     for upload_file in files:
         file_bytes, effective_name = await file_service.validate_and_read(upload_file)
+        await ensure_pdf_openable(file_bytes, effective_name, pdf_password)
         file_data.append((effective_name, file_bytes))
 
-    # Phase 2: short-lived DB session — fetch hints + create task rows, then release.
-    task_records: list[tuple[str, bytes, str]] = []
-    async with async_session() as db:
-        hints = await get_correction_hints(bank_code, db) if bank_code else {}
-        for filename, file_bytes in file_data:
-            task = await create_task(
-                db,
-                tenant_id=session.tenant_id,
-                module_id=Module.CREDIT_CARD_OCR,
-                original_filename=filename,
-                carmen_user_id=session.carmen_user_id,
-            )
-            task_records.append((filename, file_bytes, str(task.id)))
+    charged = await consume_document()
 
-    # Phase 3 & 4: process each file in parallel with task status tracking
+    # Phase 2: short-lived DB session — fetch hints + create task rows, then release.
+    # If this fails, nothing succeeded yet → always refund.
+    try:
+        task_records: list[tuple[str, bytes, str]] = []
+        async with async_session() as db:
+            hints = await get_correction_hints(bank_code, db) if bank_code else {}
+            for filename, file_bytes in file_data:
+                task = await create_task(
+                    db,
+                    tenant_id=session.tenant_id,
+                    module_id=Module.CREDIT_CARD_OCR,
+                    original_filename=filename,
+                    carmen_user_id=session.carmen_user_id,
+                )
+                task_records.append((filename, file_bytes, str(task.id)))
+    except Exception:
+        await refund_document(charged)
+        raise
+
+    # Phase 3 & 4: process each file in parallel with task status tracking.
+    # Use return_exceptions so partial success is visible — refund only when
+    # every file failed (partial success = user got value, credit is earned).
     async def process_single_task(
         filename: str, file_bytes: bytes, task_id: str
     ) -> ExtractedCreditCardData:
@@ -123,6 +135,7 @@ async def extract_card(
                 hints=hints or None,
                 task_id=task_id,
                 selected_pages=parsed_pages,
+                pdf_password=pdf_password,
             )
             extracted.task_id = task_id
             return await finalize_extraction(
@@ -132,16 +145,20 @@ async def extract_card(
             await mark_task_failed(task_id, exc)
             raise
 
-    results: list[ExtractedCreditCardData] = list(
-        await asyncio.gather(
-            *[
-                process_single_task(filename, file_bytes, task_id)
-                for filename, file_bytes, task_id in task_records
-            ]
-        )
+    raw = await asyncio.gather(
+        *[
+            process_single_task(filename, file_bytes, task_id)
+            for filename, file_bytes, task_id in task_records
+        ],
+        return_exceptions=True,
     )
+    errors = [r for r in raw if isinstance(r, BaseException)]
+    if errors:
+        if len(errors) == len(task_records):
+            await refund_document(charged)
+        raise errors[0]
 
-    return results
+    return [r for r in raw if not isinstance(r, BaseException)]
 
 
 # ═══════════════════════════════════════════════════

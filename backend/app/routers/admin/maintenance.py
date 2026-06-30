@@ -10,7 +10,7 @@ from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
 from app.services.usage_service import list_model_pricing
 
-from .deps import require_permission
+from .deps import require_maintenance_auth, require_permission
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -18,7 +18,7 @@ router = APIRouter()
 
 @router.post("/retention/run")
 async def trigger_retention(
-    _admin: AdminPrincipal = Depends(require_permission("configs", "write")),
+    _auth: AdminPrincipal | None = Depends(require_maintenance_auth),
 ):
     from app.services.retention_service import purge_inactive_sessions
 
@@ -29,7 +29,7 @@ async def trigger_retention(
 @router.post("/summary/rebuild")
 async def trigger_summary_rebuild(
     target_date: date | None = Query(None, alias="date"),
-    _admin: AdminPrincipal = Depends(require_permission("configs", "write")),
+    _auth: AdminPrincipal | None = Depends(require_maintenance_auth),
 ):
     from app.services.summary_service import build_daily_summary
 
@@ -40,7 +40,7 @@ async def trigger_summary_rebuild(
 @router.post("/summary/model-cost")
 async def trigger_model_cost(
     target_date: date | None = Query(None, alias="date"),
-    _admin: AdminPrincipal = Depends(require_permission("configs", "write")),
+    _auth: AdminPrincipal | None = Depends(require_maintenance_auth),
 ):
     from app.services.summary_service import build_daily_model_cost
 
@@ -51,7 +51,7 @@ async def trigger_model_cost(
 @router.post("/summary/monthly")
 async def trigger_monthly_summary(
     target_date: date | None = Query(None, alias="date"),
-    _admin: AdminPrincipal = Depends(require_permission("configs", "write")),
+    _auth: AdminPrincipal | None = Depends(require_maintenance_auth),
 ):
     from app.services.summary_service import build_monthly_summary
 
@@ -61,7 +61,7 @@ async def trigger_monthly_summary(
 
 @router.post("/anomaly/run")
 async def trigger_anomaly_detection(
-    _admin: AdminPrincipal = Depends(require_permission("configs", "write")),
+    _auth: AdminPrincipal | None = Depends(require_maintenance_auth),
 ):
     from app.services.anomaly_service import detect_anomalies
 
@@ -71,7 +71,7 @@ async def trigger_anomaly_detection(
 
 @router.post("/pricing/sync")
 async def trigger_pricing_sync(
-    _admin: AdminPrincipal = Depends(require_permission("configs", "write")),
+    _auth: AdminPrincipal | None = Depends(require_maintenance_auth),
 ):
     from app.services.usage_service import fetch_openrouter_pricing
 

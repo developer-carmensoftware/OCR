@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { FileText, Info, CheckCircle2, XCircle, Lock, ArrowLeft } from 'lucide-react'
 import { getCarmenUrl } from '../../lib/url'
 import '../../styles/components/user-consent.css'
@@ -84,14 +84,6 @@ export default function UserConsentModal({ show, onConfirm }: Props) {
 
   const c = COPY[lang]
 
-  // Reset state when modal re-opens
-  useEffect(() => {
-    if (show) {
-      setChecked(false)
-      setLang('en')
-    }
-  }, [show])
-
   // Focus trap: Tab wraps within the dialog; Escape is blocked
   useEffect(() => {
     if (!show) return
@@ -130,14 +122,14 @@ export default function UserConsentModal({ show, onConfirm }: Props) {
   return createPortal(
     <AnimatePresence>
       {show && (
-        <motion.div
+        <m.div
           className="uc-overlay"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.18 }}
         >
-          <motion.div
+          <m.div
             ref={dialogRef}
             className="uc-dialog"
             role="dialog"
@@ -156,7 +148,7 @@ export default function UserConsentModal({ show, onConfirm }: Props) {
               <h2 className="uc-title" id="uc-title">
                 {c.title}
               </h2>
-              <div className="uc-lang-toggle" role="group" aria-label="Language">
+              <section className="uc-lang-toggle" aria-label="Language">
                 <button
                   type="button"
                   className={`uc-lang-btn${lang === 'th' ? ' active' : ''}`}
@@ -173,7 +165,7 @@ export default function UserConsentModal({ show, onConfirm }: Props) {
                 >
                   EN
                 </button>
-              </div>
+              </section>
             </div>
 
             {/* Body */}
@@ -255,8 +247,8 @@ export default function UserConsentModal({ show, onConfirm }: Props) {
                 </button>
               </div>
             </div>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>,
     document.body

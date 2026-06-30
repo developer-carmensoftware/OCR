@@ -48,7 +48,10 @@ import { showToast, toast } from '../lib/toast'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-const MOCK_T = { errProcess: 'Error processing document' }
+// useAPExtraction now pulls copy from the i18n dict via useT(); on error it sets
+// the localized `ap.errProcess` string (English default in tests). Keep this in
+// sync with dict.ts.
+const MOCK_T = { errProcess: 'OCR processing error. Please try again.' }
 
 function makeProps(overrides = {}) {
   return {

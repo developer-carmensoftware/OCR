@@ -102,6 +102,14 @@ class Settings(BaseSettings):
     # in dev — production deployments should pin the known Carmen host(s).
     allowed_carmen_hosts: str = ""
 
+    # ── Carmen AR posting (admin order-review) — SECRETS, never in system_configs ──
+    # Seller's own Carmen ERP endpoint for posting paid orders as AR entries.
+    # Admin context has no per-session Carmen token, so a service credential is used.
+    # carmen_ar_url = full endpoint, e.g. https://erp.example.com/Carmen.API/api/interfacePostAR/CarmenAI
+    # Leave empty to disable AR posting (post-ar returns a clear "not configured" error).
+    carmen_ar_url: str = ""
+    carmen_ar_token: str = ""  # value for the Authorization header
+
     # Application version — bump on every release
     app_version: str = "1.0.0"
 
@@ -139,6 +147,18 @@ class Settings(BaseSettings):
 
     # Graceful shutdown — seconds to wait before cancelling background tasks
     shutdown_grace_seconds: int = 5
+
+    # Internal job token — presented by pg_net cron jobs as Bearer in Authorization.
+    # Must match the vault.secrets value 'internal_job_token' set in Supabase Vault.
+    # Generate: python -c "import secrets; print(secrets.token_hex(32))"
+    # NEVER put the real value in system_configs DB table — secrets in .env only.
+    internal_job_token: str = ""
+
+    # ── Supabase Storage (slip upload) — SECRETS, never put in system_configs ──
+    # Required for slip upload/download. Leave empty to disable slip storage (dev).
+    supabase_url: str = ""
+    supabase_service_key: str = ""  # service_role key (bypasses RLS)
+    slip_bucket: str = "payment-slips"
 
     @property
     def allowed_carmen_hosts_list(self) -> list[str]:

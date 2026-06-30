@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useRef, useReducer, useCallback } from 'react'
 import ReactDOM from 'react-dom'
 import { Bug, X, Send, CheckCircle2, Paperclip, ImageOff } from 'lucide-react'
 import { apiFetch } from '../../lib/api/client'
@@ -28,51 +28,99 @@ function fileToBase64(file: File): Promise<string> {
   })
 }
 
+interface BugReportState {
+  open: boolean
+  category: string
+  description: string
+  screenshot: { b64: string; mime: string; name: string } | null
+  screenshotError: string
+  sending: boolean
+  sent: boolean
+  error: string
+}
+
+type BugReportAction =
+  | { type: 'SET_OPEN'; payload: boolean }
+  | { type: 'SET_CATEGORY'; payload: string }
+  | { type: 'SET_DESCRIPTION'; payload: string }
+  | { type: 'SET_SCREENSHOT'; payload: { b64: string; mime: string; name: string } | null }
+  | { type: 'SET_SCREENSHOT_ERROR'; payload: string }
+  | { type: 'SET_SENDING'; payload: boolean }
+  | { type: 'SET_SENT'; payload: boolean }
+  | { type: 'SET_ERROR'; payload: string }
+  | { type: 'RESET' }
+
+const initialBugReportState: BugReportState = {
+  open: false,
+  category: 'ui',
+  description: '',
+  screenshot: null,
+  screenshotError: '',
+  sending: false,
+  sent: false,
+  error: '',
+}
+
+function bugReportReducer(state: BugReportState, action: BugReportAction): BugReportState {
+  switch (action.type) {
+    case 'SET_OPEN':
+      return { ...state, open: action.payload }
+    case 'SET_CATEGORY':
+      return { ...state, category: action.payload }
+    case 'SET_DESCRIPTION':
+      return { ...state, description: action.payload }
+    case 'SET_SCREENSHOT':
+      return { ...state, screenshot: action.payload, screenshotError: '' }
+    case 'SET_SCREENSHOT_ERROR':
+      return { ...state, screenshotError: action.payload, screenshot: null }
+    case 'SET_SENDING':
+      return { ...state, sending: action.payload }
+    case 'SET_SENT':
+      return { ...state, sent: action.payload }
+    case 'SET_ERROR':
+      return { ...state, error: action.payload }
+    case 'RESET':
+      return {
+        ...state,
+        category: 'ui',
+        description: '',
+        screenshot: null,
+        screenshotError: '',
+        error: '',
+        sent: false,
+      }
+    default:
+      return state
+  }
+}
+
 export default function BugReportButton({ module }: Props) {
-  const [open, setOpen] = useState(false)
-  const [category, setCategory] = useState('ui')
-  const [description, setDescription] = useState('')
-  const [screenshot, setScreenshot] = useState<{ b64: string; mime: string; name: string } | null>(
-    null
-  )
-  const [screenshotError, setScreenshotError] = useState('')
-  const [sending, setSending] = useState(false)
-  const [sent, setSent] = useState(false)
-  const [error, setError] = useState('')
+  const [state, dispatch] = useReducer(bugReportReducer, initialBugReportState)
+  const { open, category, description, screenshot, screenshotError, sending, sent, error } = state
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const reset = () => {
-    setCategory('ui')
-    setDescription('')
-    setScreenshot(null)
-    setScreenshotError('')
-    setError('')
-    setSent(false)
-  }
-
-  const handleClose = () => {
-    setOpen(false)
-    reset()
-  }
+  const handleClose = useCallback(() => {
+    dispatch({ type: 'SET_OPEN', payload: false })
+    dispatch({ type: 'RESET' })
+  }, [])
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
     if (file.size > MAX_BYTES) {
-      setScreenshotError('Image too large — max 1 MB.')
+      dispatch({ type: 'SET_SCREENSHOT_ERROR', payload: 'Image too large — max 1 MB.' })
       return
     }
-    setScreenshotError('')
     const b64 = await fileToBase64(file)
-    setScreenshot({ b64, mime: file.type, name: file.name })
+    dispatch({ type: 'SET_SCREENSHOT', payload: { b64, mime: file.type, name: file.name } })
   }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!description.trim()) return
-    setSending(true)
-    setError('')
+    dispatch({ type: 'SET_SENDING', payload: true })
+    dispatch({ type: 'SET_ERROR', payload: '' })
     try {
       await apiFetch(API.feedback.bugReport, {
         method: 'POST',
@@ -85,12 +133,12 @@ export default function BugReportButton({ module }: Props) {
           screenshot_mime: screenshot?.mime ?? null,
         }),
       })
-      setSent(true)
+      dispatch({ type: 'SET_SENT', payload: true })
       setTimeout(handleClose, 1800)
     } catch {
-      setError('Failed to send. Please try again.')
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to send. Please try again.' })
     } finally {
-      setSending(false)
+      dispatch({ type: 'SET_SENDING', payload: false })
     }
   }
 
@@ -110,8 +158,24 @@ export default function BugReportButton({ module }: Props) {
 
       {open &&
         ReactDOM.createPortal(
-          <div className="hm-overlay" role="dialog" aria-modal="true" aria-label="Bug Report">
-            <div className="hm-backdrop" onClick={handleClose} />
+          <dialog
+            className="hm-overlay hm-dialog-reset"
+            aria-modal="true"
+            aria-label="Bug Report"
+            open
+          >
+            <button
+              type="button"
+              className="hm-backdrop"
+              aria-label="Close bug report"
+              onClick={handleClose}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') {
+                  e.preventDefault()
+                  handleClose()
+                }
+              }}
+            />
             <div className="hm-dialog">
               <div className="hm-header">
                 <Bug size={15} className="hm-header-icon" strokeWidth={2} />
@@ -130,7 +194,7 @@ export default function BugReportButton({ module }: Props) {
                     id="br-category"
                     className="hm-select"
                     value={category}
-                    onChange={e => setCategory(e.target.value)}
+                    onChange={e => dispatch({ type: 'SET_CATEGORY', payload: e.target.value })}
                     disabled={disabled}
                   >
                     {CATEGORIES.map(c => (
@@ -149,11 +213,12 @@ export default function BugReportButton({ module }: Props) {
                     id="br-description"
                     className="hm-textarea"
                     value={description}
-                    onChange={e => setDescription(e.target.value)}
+                    onChange={e => dispatch({ type: 'SET_DESCRIPTION', payload: e.target.value })}
                     placeholder="Describe what happened and how to reproduce it…"
                     rows={4}
                     required
                     disabled={disabled}
+                    aria-label="Description"
                   />
                 </div>
 
@@ -172,7 +237,7 @@ export default function BugReportButton({ module }: Props) {
                         <button
                           type="button"
                           className="hm-screenshot-remove"
-                          onClick={() => setScreenshot(null)}
+                          onClick={() => dispatch({ type: 'SET_SCREENSHOT', payload: null })}
                           aria-label="Remove screenshot"
                         >
                           <X size={12} />
@@ -228,7 +293,7 @@ export default function BugReportButton({ module }: Props) {
                 </button>
               </form>
             </div>
-          </div>,
+          </dialog>,
           document.body
         )}
     </>

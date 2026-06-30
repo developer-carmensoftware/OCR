@@ -1,29 +1,49 @@
 """
 Tenant-facing top-up credit endpoints.
 
-  GET  /api/v1/credits/packs   — purchasable pack catalog (for the top-up UI)
-  POST /api/v1/credits/orders  — create a pending order (payment-gateway groundwork)
-
-Fulfillment in v1 is manual: an admin marks the order paid and grants the
-credits (see app/routers/admin/credits.py). No payment gateway is wired yet.
+  GET  /api/v1/credits/packs               — purchasable pack catalog
+  GET  /api/v1/credits/company-profile     — prefill buyer info (Carmen or last-invoice)
+  POST /api/v1/credits/orders              — create order + PromptPay QR + proforma
+  POST /api/v1/credits/orders/{id}/slip    — upload payment slip → awaiting_review
+  GET  a              — list tenant's own orders
+  GET  /api/v1/credits/orders/{id}         — single order detail
 """
 
 import logging
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import SessionInfo, get_current_session
 from app.database import get_db
-from app.models.enums import CreditOrderStatus
-from app.models.orm import CreditOrder, CreditPack
+from app.models.enums import BillingDocumentType, CreditOrderStatus
+from app.models.orm import BillingDocument, CreditOrder, CreditPack
 from app.models.schemas import (
+    BillingDocumentResponse,
+    CompanyProfileResponse,
     CreateOrderRequest,
+    CreateOrderResponse,
     CreditOrderResponse,
     CreditPackResponse,
+    PaymentInfoResponse,
+    QrPayloadResponse,
+    SlipUploadResponse,
 )
+from app.services import billing_document_service as bds
+from app.services import carmen_service, promptpay_service, storage_service
+from app.services.credit_service import (
+    active_subscription,
+    annual_price,
+    proration_credit,
+    purchase_block_reason,
+)
+from app.services.file_service import FileService
+from app.services.storage_service import StorageError
+from app.utils.tax import vat_on_top
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/credits", tags=["Credits"])
@@ -46,38 +66,354 @@ async def list_packs(
         .scalars()
         .all()
     )
-    return [CreditPackResponse.model_validate(p) for p in rows]
+    out: list[CreditPackResponse] = []
+    for p in rows:
+        resp = CreditPackResponse.model_validate(p)
+        if p.kind == "subscription":
+            resp.price_annual_thb = float(annual_price(str(p.price_thb)))
+        out.append(resp)
+    return out
 
 
-@router.post("/orders", response_model=CreditOrderResponse)
+@router.get("/company-profile", response_model=CompanyProfileResponse)
+async def get_company_profile(
+    session: SessionInfo = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Return prefilled buyer company info for the order form.
+    Tries Carmen first (if configured), then falls back to the last invoice snapshot.
+    """
+    cfg = await bds._fetch_billing_configs(db)
+    carmen_data = await carmen_service.get_company_profile(session.carmen_token, db_cfg=cfg)
+    if carmen_data.get("name"):
+        return CompanyProfileResponse(**carmen_data, source="carmen")
+
+    last = await bds.get_last_buyer_info(db, session.tenant_id)
+    if last.get("name"):
+        return CompanyProfileResponse(**last, source="last_invoice")
+
+    return CompanyProfileResponse(source="form")
+
+
+@router.get("/payment-info", response_model=PaymentInfoResponse)
+async def get_payment_info(
+    _session: SessionInfo = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """Company pay-to details (bank transfer + cheque) printed on the proforma."""
+    return PaymentInfoResponse(**await bds.get_payment_info(db))
+
+
+@router.post("/orders", response_model=CreateOrderResponse)
 async def create_order(
     body: CreateOrderRequest,
     session: SessionInfo = Depends(get_current_session),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Create a pending top-up order for the current tenant. Credits are NOT granted
-    here — an admin (or a future payment webhook) marks the order paid to fulfill.
+    Create a pending top-up order. Returns the PromptPay QR payload and a proforma invoice.
+    Credits are NOT granted here — an admin approves the slip to fulfill.
     """
+    # Block if tenant already has any open order (pending or under review)
+    has_open = (
+        await db.execute(
+            select(CreditOrder.id)
+            .where(
+                CreditOrder.tenant_id == session.tenant_id,
+                CreditOrder.status == CreditOrderStatus.IN_PROGRESS,
+                CreditOrder.deleted_at.is_(None),
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if has_open:
+        raise HTTPException(
+            status_code=409,
+            detail="You have an active order. Complete or cancel it first.",
+        )
+
     pack = (
         await db.execute(select(CreditPack).where(CreditPack.code == body.pack_code))
     ).scalar_one_or_none()
     if pack is None or not pack.is_active:
         raise HTTPException(status_code=404, detail="Credit pack not found")
 
+    # Upgrade guard: upgrade / renew allowed mid-plan; downgrade blocked.
+    credit = Decimal("0")
+    if pack.kind == "subscription":
+        current = await active_subscription(db, session.tenant_id)
+        if current is not None:
+            cur_pack = (
+                await db.execute(select(CreditPack).where(CreditPack.code == current.plan_code))
+            ).scalar_one()
+            reason = purchase_block_reason(
+                current.billing_period, cur_pack.credits, body.billing_period, pack.credits
+            )
+            if reason:
+                raise HTTPException(status_code=409, detail=reason)
+            cur_net = (
+                annual_price(str(cur_pack.price_thb))
+                if current.billing_period == "annual"
+                else Decimal(str(cur_pack.price_thb))
+            )
+            credit = proration_credit(
+                cur_net, current.period_start, current.period_end, datetime.now(UTC)
+            )
+
+    # Annual = 12 months at a 10% discount; subscriptions only (top-ups never expire).
+    is_annual = body.billing_period == "annual" and pack.kind == "subscription"
+    billing_period = "annual" if is_annual else "monthly"
+    net = annual_price(str(pack.price_thb)) if is_annual else Decimal(str(pack.price_thb))
+    net = max(net - credit, Decimal("0.00"))
+    _sub, _vat, gross = vat_on_top(net)
     order = CreditOrder(
         tenant_id=session.tenant_id,
         pack_code=pack.code,
         credits=pack.credits,
-        amount_thb=pack.price_thb,
-        status=CreditOrderStatus.PENDING,
+        amount_thb=gross,
+        billing_period=billing_period,
+        proration_credit_thb=credit,
+        status=CreditOrderStatus.IN_PROGRESS,
+        expires_at=datetime.now(UTC) + timedelta(days=14),
     )
     try:
         db.add(order)
-        await db.commit()
-        await db.refresh(order)
+        await db.flush()  # get order.id before issuing the document
     except IntegrityError:
+        # Lost a race against a concurrent create — the per-tenant open-order
+        # unique index caught it. Same outcome as the pre-check above.
         await db.rollback()
-        raise HTTPException(status_code=409, detail="A pending order for this pack already exists")
+        raise HTTPException(
+            status_code=409,
+            detail="You have an active order. Complete or cancel it first.",
+        )
+
+    # Buyer info: body override → Carmen → last invoice → empty
+    buyer_override = body.buyer
+    if buyer_override and buyer_override.name:
+        buyer = bds.BuyerInfo(
+            name=buyer_override.name,
+            tax_id=buyer_override.tax_id,
+            address=buyer_override.address,
+            branch=buyer_override.branch,
+            email=buyer_override.email,
+            contact_name=buyer_override.contact_name,
+        )
+    else:
+        cfg = await bds._fetch_billing_configs(db)
+        carmen_data = await carmen_service.get_company_profile(session.carmen_token, db_cfg=cfg)
+        if carmen_data.get("name"):
+            buyer = bds.BuyerInfo(**carmen_data)
+        else:
+            buyer = await bds.get_last_buyer_info(db, session.tenant_id)
+
+    proforma = await bds.issue_document(
+        db,
+        tenant_id=session.tenant_id,
+        order_id=str(order.id),
+        doc_type=BillingDocumentType.PROFORMA,
+        pack_code=pack.code,  # type: ignore[arg-type]
+        pack_description=(str(pack.description) if pack.description else f"{pack.credits} credits")
+        + (" (Annual — 12 months)" if is_annual else "")
+        + (f" (−฿{credit:,.2f} credit from current plan)" if credit > 0 else ""),
+        credits=pack.credits,  # type: ignore[arg-type]
+        amount_thb=net,
+        buyer=buyer,
+    )
+
+    promptpay_id = await bds.get_promptpay_id(db)
+    if not promptpay_id:
+        logger.warning("billing.promptpay_id not configured — QR payload will be empty")
+
+    total_incl = float(gross)
+    qr_payload = promptpay_service.build_payload(promptpay_id, total_incl) if promptpay_id else ""
+
+    await db.commit()
+    await db.refresh(order)
+    await db.refresh(proforma)
+
+    return CreateOrderResponse(
+        order=CreditOrderResponse.model_validate(order),
+        qr=QrPayloadResponse(
+            payload=qr_payload,
+            amount_thb=total_incl,
+            promptpay_id=promptpay_id,
+        ),
+        proforma=BillingDocumentResponse.model_validate(proforma),
+    )
+
+
+@router.post("/orders/{order_id}/slip", response_model=SlipUploadResponse)
+async def upload_slip(
+    order_id: str,
+    file: UploadFile,
+    session: SessionInfo = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Upload a payment slip for a pending order. Moves status to awaiting_review.
+    Accepted: JPG, PNG, PDF (max MAX_FILE_SIZE_MB).
+    """
+    order = (
+        await db.execute(
+            select(CreditOrder).where(
+                CreditOrder.id == order_id,
+                CreditOrder.tenant_id == session.tenant_id,
+                CreditOrder.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.status != CreditOrderStatus.IN_PROGRESS:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot upload slip for an order in status '{order.status}'",
+        )
+
+    # Validate file type and size (reuse existing file_service logic)
+    # validate_and_read returns (bytes, filename); content_type comes from the upload header
+    data, _ = await FileService.validate_and_read(file)
+    content_type = file.content_type or "application/octet-stream"
+
+    allowed = {"image/jpeg", "image/png", "application/pdf"}
+    if content_type not in allowed:
+        raise HTTPException(status_code=422, detail=f"Unsupported file type: {content_type}")
+
+    try:
+        key = await storage_service.upload_slip(
+            tenant_id=session.tenant_id,
+            order_id=order_id,
+            data=data,
+            content_type=content_type,
+        )
+    except StorageError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    order.slip_object_key = key  # type: ignore[assignment]
+    order.slip_uploaded_at = datetime.now(UTC)  # type: ignore[assignment]
+    # Status stays in_progress (slip uploaded but still needs admin review)
+    await db.commit()
+
+    return SlipUploadResponse(order_id=order_id, status=CreditOrderStatus.IN_PROGRESS.value)
+
+
+@router.post("/orders/{order_id}/cancel", response_model=CreditOrderResponse)
+async def cancel_order(
+    order_id: str,
+    session: SessionInfo = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Discard a pending or awaiting-review order. Uses FOR UPDATE to prevent
+    race conditions with admin approve/reject.
+    """
+    order = (
+        await db.execute(
+            select(CreditOrder)
+            .where(
+                CreditOrder.id == order_id,
+                CreditOrder.tenant_id == session.tenant_id,
+                CreditOrder.deleted_at.is_(None),
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.status != CreditOrderStatus.IN_PROGRESS:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot cancel an order in status '{order.status}'",
+        )
+
+    order.status = CreditOrderStatus.VOID  # type: ignore[assignment]
+    order.deleted_at = datetime.now(UTC)  # type: ignore[assignment]
+    await db.commit()
+    await db.refresh(order)
 
     return CreditOrderResponse.model_validate(order)
+
+
+@router.get("/orders", response_model=list[CreditOrderResponse])
+async def list_orders(
+    session: SessionInfo = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """List this tenant's credit orders, newest first."""
+    rows = (
+        (
+            await db.execute(
+                select(CreditOrder)
+                .where(
+                    CreditOrder.tenant_id == session.tenant_id,
+                    CreditOrder.deleted_at.is_(None),
+                )
+                .order_by(CreditOrder.created_at.desc())
+                .limit(100)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [CreditOrderResponse.model_validate(r) for r in rows]
+
+
+@router.get("/orders/{order_id}", response_model=CreditOrderResponse)
+async def get_order(
+    order_id: str,
+    session: SessionInfo = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    order = (
+        await db.execute(
+            select(CreditOrder).where(
+                CreditOrder.id == order_id,
+                CreditOrder.tenant_id == session.tenant_id,
+                CreditOrder.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return CreditOrderResponse.model_validate(order)
+
+
+@router.get("/orders/{order_id}/documents", response_model=list[BillingDocumentResponse])
+async def list_order_documents(
+    order_id: str,
+    session: SessionInfo = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return all billing documents (proforma + tax invoice) for an order."""
+    # Verify ownership
+    order = (
+        await db.execute(
+            select(CreditOrder).where(
+                CreditOrder.id == order_id,
+                CreditOrder.tenant_id == session.tenant_id,
+                CreditOrder.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    docs = (
+        (
+            await db.execute(
+                select(BillingDocument)
+                .where(
+                    BillingDocument.order_id == order_id,
+                    BillingDocument.deleted_at.is_(None),
+                )
+                .order_by(BillingDocument.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [BillingDocumentResponse.model_validate(d) for d in docs]

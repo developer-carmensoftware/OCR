@@ -108,8 +108,8 @@ export default function ErrorsPage() {
                 </td>
               </tr>
             ) : (
-              rows.map((r, i) => (
-                <tr key={i} className="admin-tr">
+              rows.map(r => (
+                <tr key={r.group} className="admin-tr">
                   <td className="admin-td">{r.group ?? '—'}</td>
                   <td className="admin-td text-right">{r.total_tasks ?? r.total_requests ?? 0}</td>
                   <td className="admin-td text-right">

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { useOcrWizard } from '../hooks/credit-card'
 import {
   StepWizard,
@@ -10,9 +10,12 @@ import {
   ExtractionSkeleton,
   SplitLayout,
   UsageIndicator,
+  PaymentButton,
   AppHeader,
 } from '../components/common'
 import PDFPageSelector from '../components/common/PDFPageSelector'
+import LanguageToggle from '../components/common/LanguageToggle'
+import { useT } from '../i18n/LanguageContext'
 import { appKey } from '../lib/storage'
 import {
   UploadSection,
@@ -26,6 +29,7 @@ import { BANK_THAI_NAMES } from '../constants'
 import type { BankCode } from '../types/api'
 
 export default function CreditCardOCR() {
+  const { t } = useT()
   const {
     step,
     files,
@@ -66,13 +70,14 @@ export default function CreditCardOCR() {
   function handleReExtract(bankType: BankCode | null) {
     const bankDisplay = bankType
       ? `${BANK_THAI_NAMES[bankType] || bankType} (${bankType})`
-      : 'Auto-detect'
+      : t('cc.autoDetect')
+    const method = bankType ? t('cc.methodPrompt', { bank: bankDisplay }) : t('cc.methodAuto')
     showModal({
-      title: 'Re-extract Document?',
-      message: `Re-extracting with ${bankDisplay} will use 1 additional quota.\n\nThe system will use ${bankType ? `the ${bankDisplay} prompt` : 'auto-detection'} as the primary extraction method.`,
+      title: t('cc.reExtractTitle'),
+      message: t('cc.reExtractMsg', { bank: bankDisplay, method }),
       type: 'warning',
-      confirmText: 'Re-extract',
-      cancelText: 'Cancel',
+      confirmText: t('cc.reExtract'),
+      cancelText: t('modal.cancel'),
       onConfirm: () => {
         closeModal()
         reExtract(bankType ?? undefined)
@@ -84,12 +89,11 @@ export default function CreditCardOCR() {
   function handleStepClick(n: number) {
     if (n === 1 && step > 1) {
       showModal({
-        title: 'Return to Upload?',
-        message:
-          'Going back will clear all extracted data.\nYou will need to re-upload and re-extract the document, which will use 1 additional quota.',
+        title: t('cc.returnTitle'),
+        message: t('cc.returnMsg'),
         type: 'warning',
-        confirmText: 'Go Back',
-        cancelText: 'Stay Here',
+        confirmText: t('cc.goBack'),
+        cancelText: t('cc.stayHere'),
         onConfirm: () => {
           closeModal()
           resetAll()
@@ -118,6 +122,12 @@ export default function CreditCardOCR() {
         confirmText={modal.confirmText as string}
         cancelText={modal.cancelText as string | undefined}
         cancelStyle={modal.cancelStyle as React.CSSProperties | undefined}
+        inputLabel={modal.inputLabel as string | undefined}
+        inputType={modal.inputType as 'text' | 'password' | undefined}
+        inputPlaceholder={modal.inputPlaceholder as string | undefined}
+        busy={modal.busy as boolean | undefined}
+        errorNonce={modal.errorNonce as number | undefined}
+        onInputChange={modal.onInputChange as ((v: string) => void) | undefined}
         onConfirm={modal.onConfirm as () => void}
         onCancel={modal.onCancel as (() => void) | undefined}
       />
@@ -125,19 +135,20 @@ export default function CreditCardOCR() {
       <div className="app-container">
         <AppHeader
           module="credit-card"
-          moduleName="AI Credit Card Commission Automation"
+          moduleName="AI JV Automation"
           eyebrow="Carmen Cloud · Credit Card"
           backPath="/glJv"
         >
           <UsageIndicator />
-          {/* Plan & Credits + Bug Report hidden for now — pending finalisation */}
+          <PaymentButton />
+          <LanguageToggle />
           <DarkModeToggle />
         </AppHeader>
 
         <StepWizard step={step} onStepClick={n => !loading && !submitting && handleStepClick(n)} />
 
         <AnimatePresence mode="wait">
-          <motion.div
+          <m.div
             key={loading ? 'loading' : step}
             initial={{ opacity: 0, transform: 'translateY(10px)' }}
             animate={{ opacity: 1, transform: 'translateY(0px)' }}
@@ -184,7 +195,7 @@ export default function CreditCardOCR() {
                 <FormActions
                   onCancel={handleCancel}
                   onSubmit={() => setStep(3)}
-                  submitLabel="Next (Review Accounting)"
+                  submitLabel={t('cc.nextReview')}
                   showBack={false}
                 />
               </SplitLayout>
@@ -213,7 +224,7 @@ export default function CreditCardOCR() {
                     } catch {
                       /* ignore */
                     }
-                    toast.info('Opened new tab for Mapping settings')
+                    toast.info(t('cc.openedMapping'))
                     window.open('#/CreditCardOCR/mapping', '_blank')
                   }}
                   submitting={submitting}
@@ -229,7 +240,7 @@ export default function CreditCardOCR() {
                 onFinish={resetAll}
               />
             )}
-          </motion.div>
+          </m.div>
         </AnimatePresence>
       </div>
     </>

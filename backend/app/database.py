@@ -3,7 +3,7 @@ Database setup — single shared PostgreSQL database: carmen_ai (Neon-compatible
 
 Architecture: Single Database, Multi-Tenant via Foreign Keys
   All tenants share one database.
-  Data plane tables reference tenants.id + business_units.id (FK).
+  Data plane tables reference tenants.id (FK) — business_units table was dropped.
   Control plane tables are global.
 
 Fresh start requirement:
@@ -132,30 +132,17 @@ _DB_INITIALIZED = False
 
 async def ensure_db() -> None:
     """
-    Verify connectivity, create/verify all tables, run migrations.
+    Verify DB connectivity at startup. Schema is managed by Supabase CLI migrations —
+    this function no longer creates tables or runs migrations.
     Runs once at startup; subsequent calls are no-ops.
-
-    NOTE: Unlike the previous MariaDB implementation, this does NOT create the
-    database itself — Neon (and most managed Postgres providers) require the
-    database to be provisioned via their console/API.
     """
     global _DB_INITIALIZED
     if _DB_INITIALIZED:
         return
 
-    # Force all ORM models to register with Base before create_all().
-    import app.models.orm  # noqa: F401
-
     engine = _get_engine()
-
-    # Sanity ping — fail fast with a clear error if Neon URL is wrong.
     async with engine.connect() as conn:
         await conn.execute(text("SELECT 1"))
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    await migrate_db()
 
     _DB_INITIALIZED = True
 
@@ -184,55 +171,3 @@ async def get_all_tenants() -> list[str]:
     except Exception as exc:
         logger.exception("get_all_tenants failed: %s", exc)
         return []
-
-
-async def migrate_all_tenants() -> None:
-    await migrate_db()
-
-
-# ── Migration runner ──────────────────────────────────────────────────────────
-
-
-async def migrate_db(_tenant: str = "") -> None:
-    """Run pending migrations on carmen_ai. _tenant param kept for backward compat."""
-    from app.migrations import _MIGRATIONS
-
-    engine = _get_engine()
-    async with engine.begin() as conn:
-        await conn.execute(
-            text("""
-            CREATE TABLE IF NOT EXISTS schema_migrations (
-                name       VARCHAR(100) PRIMARY KEY,
-                applied_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        )
-        rows = await conn.execute(text("SELECT name FROM schema_migrations"))
-        applied = {row[0] for row in rows.fetchall()}
-
-        for name, fn in _MIGRATIONS:
-            if name in applied:
-                continue
-            if fn is None:
-                await conn.execute(
-                    text(
-                        "INSERT INTO schema_migrations (name) VALUES (:name)"
-                        " ON CONFLICT (name) DO NOTHING"
-                    ),
-                    {"name": name},
-                )
-                continue
-            logger.info("Applying migration: %s", name)
-            try:
-                await fn(conn)
-                await conn.execute(
-                    text(
-                        "INSERT INTO schema_migrations (name) VALUES (:name)"
-                        " ON CONFLICT (name) DO NOTHING"
-                    ),
-                    {"name": name},
-                )
-                logger.info("Migration %s applied.", name)
-            except Exception as exc:
-                logger.error("Migration %s FAILED: %s", name, exc)
-                raise

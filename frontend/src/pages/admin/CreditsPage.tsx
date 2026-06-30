@@ -12,12 +12,11 @@ import {
 } from '../../lib/api/adminClient'
 import '../../styles/components/admin-credits.css'
 
-// Mirrors the seeded credit_packs catalog (see migration 208).
+// Mirrors the active top-up credit_packs catalog (see migration 219).
 const PACKS = [
-  { code: 'p100', label: '100 credits — ฿290' },
-  { code: 'p500', label: '500 credits — ฿1,250' },
-  { code: 'p1000', label: '1,000 credits — ฿2,000' },
-  { code: 'p5000', label: '5,000 credits — ฿7,500' },
+  { code: 'pack_small', label: '500 credits — ฿1,200' },
+  { code: 'pack_medium', label: '2,500 credits — ฿5,000' },
+  { code: 'pack_large', label: '10,000 credits — ฿15,000' },
 ]
 
 const COLS: Column<CreditLedgerEntry>[] = [

@@ -96,6 +96,16 @@ class CreditCard(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMix
 
     task = relationship("OCRTask", back_populates="credit_card")
 
+    __table_args__ = (
+        # 1:1 with ocr_tasks — partial so a soft-deleted row can be superseded.
+        Index(
+            "uq_credit_cards_task",
+            "task_id",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
+
 
 class APInvoice(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixin):
     """
@@ -116,12 +126,22 @@ class APInvoice(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixi
 
     task = relationship("OCRTask", back_populates="ap_invoice")
 
+    __table_args__ = (
+        # 1:1 with ocr_tasks — partial so a soft-deleted row can be superseded.
+        Index(
+            "uq_ap_invoices_task",
+            "task_id",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
+
 
 class CorrectionFeedback(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixin):
     """
     User correction of an LLM-extracted field.
     Used by correction_service to compute per-field error rates and inject prompt hints.
-    Unique per (scope, doc_no, field_name) — latest correction wins.
+    Unique per (tenant, bank_code, doc_no, field_name) — latest correction wins.
     """
 
     __tablename__ = "correction_feedback"
@@ -135,9 +155,11 @@ class CorrectionFeedback(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, W
     carmen_user_id = Column(String(36), nullable=True, index=True)
 
     __table_args__ = (
+        # bank_code is part of the scope: doc_no is not unique across banks.
         Index(
             "uq_correction_scope_active",
             "tenant_id",
+            "bank_code",
             "doc_no",
             "field_name",
             unique=True,

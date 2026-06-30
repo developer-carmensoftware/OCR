@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useT } from '../../i18n/LanguageContext'
 import { apiFetch } from '../../lib/api/client'
 import { API } from '../../lib/api/endpoints'
 import { showToast } from '../../lib/toast'
@@ -25,11 +26,11 @@ export interface Vendor {
 }
 
 interface APVendorProps {
-  t?: Record<string, string>
   headerData: { vendorTaxId?: string; vendorBranch?: string }
 }
 
-export function useAPVendor({ t, headerData }: APVendorProps) {
+export function useAPVendor({ headerData }: APVendorProps) {
+  const { t } = useT()
   const [vendors, setVendors] = useState<Vendor[]>([])
   const [systemVendor, setSystemVendor] = useState<Vendor>({ code: '', name: '' })
   const [vendorSearch, setVendorSearch] = useState('')
@@ -77,9 +78,9 @@ export function useAPVendor({ t, headerData }: APVendorProps) {
         term: (v.VnTerm as number) ?? 0,
       }))
       setVendors(list)
-      if (setRefreshing) showToast('Vendor list updated', 'success')
+      if (setRefreshing) showToast(t('ap.vendorUpdated'), 'success')
     } catch {
-      if (setRefreshing) showToast('Failed to load vendor list', 'error')
+      if (setRefreshing) showToast(t('ap.vendorLoadFail'), 'error')
     } finally {
       if (setRefreshing) setVendorRefreshing(false)
     }
@@ -101,7 +102,7 @@ export function useAPVendor({ t, headerData }: APVendorProps) {
         return found
       } else if (raw.length >= 10) {
         setVendorSearch('')
-        return { code: '', name: t?.vendorNotFound || 'Not found in system' }
+        return { code: '', name: t('ap.vendorNotFound') }
       }
       setVendorSearch('')
       return { code: '', name: '' }

@@ -1,5 +1,7 @@
 # Production Deployment Checklist
-## Frontend → Vercel | Backend → Render | Database → Neon (PostgreSQL)
+## Frontend → Vercel | Backend → Render | Database → Supabase (PostgreSQL 17.6)
+
+> **⚠️ Database section superseded (2026-06-15):** Database migrated from Neon to Supabase (project `ycykjisvvrrbgeiirqre`, region ap-southeast-1). Schema is now managed by Supabase CLI migrations in `supabase/migrations/` — not `reset_db.py` / `create_all()`. Log tables are partitioned monthly (pg_partman). Background jobs (summary, session-purge, pricing-sync) run as pg_cron jobs inside the DB — the 3 Python asyncio loops described below no longer exist.
 
 > **Context:** ยก Carmen OCR ขึ้น production แบบ managed services
 > **Decisions (อนุมัติแล้ว):** Full migrate ไป PostgreSQL · Fresh deploy ไม่มี data เก่า · Render Free tier · default `*.onrender.com` domain

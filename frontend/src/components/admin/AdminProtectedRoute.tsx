@@ -9,6 +9,12 @@ export default function AdminProtectedRoute({ children }: { children: ReactNode 
   }
 
   if (!isAuthenticated) {
+    // Remember where the user was headed so login can return them there
+    // (e.g. the standalone /order-review page, not the admin dashboard).
+    const here = window.location.hash.replace(/^#/, '')
+    if (here && !here.startsWith('/admin/login')) {
+      sessionStorage.setItem('admin_return_to', here)
+    }
     window.location.hash = '/admin/login'
     return null
   }

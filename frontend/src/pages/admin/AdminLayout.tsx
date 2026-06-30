@@ -14,6 +14,8 @@ import {
   Zap,
 } from 'lucide-react'
 import { useAdminAuth } from '../../contexts/AdminAuthContext'
+import DarkModeToggle from '../../components/common/DarkModeToggle'
+import LanguageToggle from '../../components/common/LanguageToggle'
 
 interface NavItem {
   label: string
@@ -96,6 +98,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="admin-sidebar-footer">
+          <div className="admin-sidebar-toggles">
+            <LanguageToggle />
+            <DarkModeToggle />
+          </div>
           <div className="admin-user-info">
             <span className="admin-user-email" title={admin?.email}>
               {admin?.email}

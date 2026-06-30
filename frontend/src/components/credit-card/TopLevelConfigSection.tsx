@@ -24,10 +24,11 @@ export default function TopLevelConfigSection({
   return (
     <div className="section">
       <div className="form-grid">
-        <label style={!bank ? { color: '#dc2626', fontWeight: 600 } : {}}>
+        <label htmlFor="bankSelect" style={!bank ? { color: '#dc2626', fontWeight: 600 } : {}}>
           Bank {!bank && <span style={{ color: '#dc2626' }}>*</span>}
         </label>
         <select
+          id="bankSelect"
           value={bank}
           onChange={e => handleBankChange(e.target.value as BankDisplayName | '')}
           className="search-select-trigger"
@@ -44,7 +45,10 @@ export default function TopLevelConfigSection({
           <option value="Siam Commercial Bank (SCB)">Siam Commercial Bank (SCB)</option>
         </select>
 
-        <label style={!filePrefix ? { color: '#dc2626', fontWeight: 600 } : {}}>
+        <label
+          htmlFor="filePrefix"
+          style={!filePrefix ? { color: '#dc2626', fontWeight: 600 } : {}}
+        >
           File Prefix {!filePrefix && <span style={{ color: '#dc2626' }}>*</span>}
           <span
             className="gl-help-tip"
@@ -54,7 +58,9 @@ export default function TopLevelConfigSection({
           </span>
         </label>
         <input
+          id="filePrefix"
           type="text"
+          aria-label="File Prefix"
           placeholder="IC"
           value={filePrefix}
           onChange={e => setFilePrefix(e.target.value.toUpperCase())}
@@ -65,17 +71,22 @@ export default function TopLevelConfigSection({
           }
         />
 
-        <label style={!fileSource ? { color: '#dc2626', fontWeight: 600 } : {}}>
+        <label
+          htmlFor="fileSource"
+          style={!fileSource ? { color: '#dc2626', fontWeight: 600 } : {}}
+        >
           File Source {!fileSource && <span style={{ color: '#dc2626' }}>*</span>}
           <span
             className="gl-help-tip"
-            title="Carmen GL source code that identifies the originating bank or system — one code per bank (e.g. ACBB = Bangkok Bank, ACKB = Kasikornbank)"
+            title="Carmen Cloud source code that identifies the originating bank or system — one code per bank (e.g. ACBB = Bangkok Bank, ACKB = Kasikornbank)"
           >
             ?
           </span>
         </label>
         <input
+          id="fileSource"
           type="text"
+          aria-label="File Source"
           placeholder="e.g. ACBB, ACKB, ACSC"
           value={fileSource}
           onChange={e => setFileSource(e.target.value)}
@@ -86,9 +97,11 @@ export default function TopLevelConfigSection({
           }
         />
 
-        <label>Description</label>
+        <label htmlFor="description">Description</label>
         <input
+          id="description"
           type="text"
+          aria-label="Description"
           placeholder="Additional details"
           value={description}
           onChange={e => setDescription(e.target.value)}

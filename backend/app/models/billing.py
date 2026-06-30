@@ -21,7 +21,14 @@ from sqlalchemy.sql import func
 
 from app.database import Base
 
-from .enums import CreditLedgerReason, CreditOrderStatus, QuotaMetric, QuotaPeriod
+from .enums import (
+    BillingDocumentType,
+    CreditLedgerReason,
+    CreditOrderStatus,
+    QuotaMetric,
+    QuotaPeriod,
+    SubscriptionStatus,
+)
 from .mixins import SoftDeleteMixin, TimestampMixin, WriterMixin
 
 
@@ -147,9 +154,12 @@ class CreditPack(Base, TimestampMixin, WriterMixin):
 
     __tablename__ = "credit_packs"
 
-    code = Column(String(20), primary_key=True)  # 'p100', 'p500', 'p1000', 'p5000'
+    code = Column(String(20), primary_key=True)  # 'sub_growth', 'pack_small', ...
+    # 'subscription' = monthly document tier; 'topup' = one-time non-expiring credits.
+    kind = Column(String(20), nullable=False, default="topup")
     credits = Column(Integer, nullable=False)
     price_thb = Column(Numeric(10, 2), nullable=False)
+    description = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     sort_order = Column(Integer, default=0, nullable=False)
 
@@ -199,15 +209,28 @@ class CreditOrder(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     pack_code = Column(String(20), ForeignKey("credit_packs.code"), nullable=False)
     credits = Column(Integer, nullable=False)
     amount_thb = Column(Numeric(10, 2), nullable=False)
+    # 'monthly' | 'annual' — chosen at checkout; drives price + the license window.
+    billing_period = Column(String(10), nullable=False, default="monthly")
     status: Column = Column(
         SAEnum(CreditOrderStatus, values_callable=lambda o: [e.value for e in o]),
         nullable=False,
-        default=CreditOrderStatus.PENDING,
+        default=CreditOrderStatus.IN_PROGRESS,
     )
     payment_ref = Column(String(128), nullable=True)
     paid_at = Column(DateTime(timezone=True), nullable=True)
     approved_by = Column(String(100), nullable=True)
     approved_at = Column(DateTime(timezone=True), nullable=True)
+    # Proforma valid-until — server-enforced 14-day window (auto-cancel if unpaid).
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    # Slip upload (added migration 218)
+    slip_object_key = Column(String(512), nullable=True)
+    slip_uploaded_at = Column(DateTime(timezone=True), nullable=True)
+    rejected_reason = Column(Text, nullable=True)
+    admin_note = Column(Text, nullable=True)
+    proration_credit_thb = Column(Numeric(10, 2), nullable=False, default=0, server_default="0")
+    # Carmen AR posting (set when order is posted to Carmen ERP)
+    carmen_ar_posted_at = Column(DateTime(timezone=True), nullable=True)
+    carmen_ar_ref = Column(String(255), nullable=True)
 
     __table_args__ = (
         Index(
@@ -217,10 +240,146 @@ class CreditOrder(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
             postgresql_where=text("deleted_at IS NULL"),
         ),
         Index(
-            "uq_credit_orders_one_pending_per_pack",
+            "uq_credit_orders_one_open_per_tenant",
             "tenant_id",
-            "pack_code",
             unique=True,
-            postgresql_where=text("status = 'pending' AND deleted_at IS NULL"),
+            postgresql_where=text("status = 'in_progress' AND deleted_at IS NULL"),
         ),
     )
+
+
+class BillingDocument(Base, TimestampMixin, SoftDeleteMixin):
+    """
+    Immutable snapshot of a proforma or tax invoice for a credit order.
+    Issued at order creation (proforma) and admin approval (tax_invoice).
+    Frontend renders and prints this as HTML — no server-side PDF.
+    """
+
+    __tablename__ = "billing_documents"
+
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    order_id = Column(PGUUID(as_uuid=True), ForeignKey("credit_orders.id"), nullable=False)
+    doc_type: Column = Column(
+        SAEnum(BillingDocumentType, values_callable=lambda o: [e.value for e in o]),
+        nullable=False,
+    )
+    number = Column(String(50), nullable=False)  # e.g. PF-202606-0001 / IV-202606-0001
+    issue_date = Column(DateTime(timezone=True), nullable=False)
+
+    # Seller snapshot (from system_configs at issue time)
+    seller_name = Column(String(255), nullable=True)
+    seller_tax_id = Column(String(20), nullable=True)
+    seller_address = Column(Text, nullable=True)
+    seller_branch = Column(String(100), nullable=True)
+
+    # Buyer snapshot (from Carmen-or-form at issue time)
+    buyer_name = Column(String(255), nullable=True)
+    buyer_tax_id = Column(String(20), nullable=True)
+    buyer_address = Column(Text, nullable=True)
+    buyer_branch = Column(String(100), nullable=True)
+    buyer_email = Column(String(255), nullable=True)
+    buyer_contact_name = Column(String(255), nullable=True)
+
+    # Single line item = the pack purchased
+    pack_code = Column(String(20), nullable=False)
+    description = Column(Text, nullable=True)
+    credits = Column(Integer, nullable=False)
+    subtotal = Column(Numeric(12, 2), nullable=False)  # ex-VAT
+    vat_rate = Column(Numeric(4, 2), nullable=False, default=7.00)
+    vat_amount = Column(Numeric(12, 2), nullable=False)
+    total = Column(Numeric(12, 2), nullable=False)  # gross (VAT-inclusive)
+    currency = Column(String(3), nullable=False, default="THB")
+
+    __table_args__ = (
+        Index(
+            "uq_billing_documents_number_active",
+            "number",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+        Index("ix_billing_documents_tenant_type", "tenant_id", "doc_type", "created_at"),
+    )
+
+
+class TenantSubscription(Base, TimestampMixin):
+    """
+    A tenant's monthly document subscription window (use-it-or-lose-it).
+
+    Created when an admin approves a `kind='subscription'` order. One active row
+    per tenant (Option A: renew only after the current cycle lapses). Consumption
+    and "current plan" lookups are window-based (period_start <= now < period_end),
+    so a future-dated/queued row (Option B) would Just Work without code changes.
+    """
+
+    __tablename__ = "tenant_subscriptions"
+
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
+    plan_code = Column(String(20), ForeignKey("credit_packs.code"), nullable=False)
+    doc_allowance = Column(Integer, nullable=False)  # per-month allowance, both periods
+    docs_used = Column(Integer, nullable=False, default=0)  # used in the current month-cycle
+    period_start = Column(DateTime(timezone=True), nullable=False)
+    period_end = Column(DateTime(timezone=True), nullable=False)
+    # 'monthly' (window == one cycle) | 'annual' (year-long window, docs_used resets
+    # each month). cycle_start tracks the month-cycle docs_used currently belongs to.
+    billing_period = Column(String(10), nullable=False, default="monthly")
+    cycle_start = Column(DateTime(timezone=True), nullable=True)
+    status: Column = Column(
+        SAEnum(SubscriptionStatus, values_callable=lambda o: [e.value for e in o]),
+        nullable=False,
+        default=SubscriptionStatus.ACTIVE,
+    )
+    source_order_id = Column(PGUUID(as_uuid=True), ForeignKey("credit_orders.id"), nullable=True)
+
+    __table_args__ = (
+        Index("ix_tenant_subscriptions_window", "tenant_id", "status", "period_end"),
+        Index(
+            "uq_tenant_subscriptions_one_active",
+            "tenant_id",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
+    )
+
+
+class ArCustomerProfile(Base, TimestampMixin, SoftDeleteMixin):
+    """Unique buyer companies for Carmen AR code mapping."""
+
+    __tablename__ = "ar_customer_profiles"
+
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    buyer_name = Column(String(255), nullable=False)
+    buyer_tax_id = Column(String(20), nullable=False, default="")
+    buyer_branch = Column(String(100), nullable=False, default="")
+    carmen_ar_code = Column(String(50), nullable=True)
+
+    __table_args__ = (
+        Index(
+            "uq_ar_profiles_taxid_branch",
+            "buyer_tax_id",
+            "buyer_branch",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL AND buyer_tax_id != ''"),
+        ),
+        Index(
+            "ix_ar_profiles_name",
+            "buyer_name",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
+
+
+class DocumentSequence(Base):
+    """
+    Gapless document number counter per (scope, period_key).
+    Atomic upsert: INSERT ... ON CONFLICT DO UPDATE SET last_no = last_no + 1 RETURNING last_no.
+    scope = 'proforma' | 'tax_invoice', period_key = 'YYYYMM'.
+    Formatted: PF-{YYYYMM}-{last_no:04d} / IV-{YYYYMM}-{last_no:04d}.
+    """
+
+    __tablename__ = "document_sequences"
+
+    scope = Column(String(20), primary_key=True)
+    period_key = Column(String(6), primary_key=True)
+    last_no = Column(Integer, nullable=False, default=0)

@@ -24,7 +24,7 @@
   --info-border: var(--teal);
   --info-text: var(--info-foreground);
 
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
 }
 
 [data-sonner-toast] {
@@ -43,8 +43,8 @@
 }
 
 [data-theme='dark'] [data-sonner-toaster] {
-  --success-bg: oklch(0.26 0.04 188.43);
-  --error-bg: oklch(0.28 0.06 24.11);
-  --warning-bg: oklch(0.28 0.05 75);
-  --info-bg: oklch(0.26 0.035 253.27);
+  --success-bg: oklch(0.25 0.02 188.43);
+  --error-bg: oklch(0.26 0.03 24.11);
+  --warning-bg: oklch(0.26 0.025 75);
+  --info-bg: oklch(0.25 0.02 253.27);
 }

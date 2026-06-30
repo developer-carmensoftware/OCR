@@ -2,6 +2,7 @@ import { Check, X, Database } from 'lucide-react'
 import { SkeletonRow } from '../common/Skeleton'
 import CustomSearchSelect from '../common/CustomSearchSelect'
 import AISuggestBar from '../common/AISuggestBar'
+import { useT } from '../../i18n/LanguageContext'
 import type { APLineItem } from '../../hooks/ap-invoice/useAPExtraction'
 
 interface GLAccount {
@@ -10,7 +11,6 @@ interface GLAccount {
 }
 
 interface Props {
-  t: Record<string, string>
   lineItems: APLineItem[]
   masterAccounts: GLAccount[]
   masterDepts: GLAccount[]
@@ -24,7 +24,6 @@ interface Props {
 }
 
 export default function AccountMappingTable({
-  t,
   lineItems,
   masterAccounts,
   masterDepts,
@@ -36,15 +35,16 @@ export default function AccountMappingTable({
   onConfirmSuggest,
   onRejectSuggest,
 }: Props) {
+  const { t } = useT()
   return (
     <div className="data-card card-acct">
       <div className="card-title">
         <div className="card-title-left">
           <Database size={15} color="var(--primary)" />
-          {t.debitExpense}
+          {t('ap.debitExpense')}
         </div>
         <div className="ap-card-title-right">
-          <span className="ap-card-title-sub">{t.expenseDesc}</span>
+          <span className="ap-card-title-sub">{t('ap.expenseDesc')}</span>
           <AISuggestBar
             onSuggest={onAISuggest}
             onAcceptAll={onAcceptAll}
@@ -59,10 +59,10 @@ export default function AccountMappingTable({
           <thead>
             <tr>
               <th scope="col" className="col-description">
-                {t.description}
+                {t('ap.description')}
               </th>
               <th scope="col" className="col-dept">
-                {t.deptCode}
+                {t('ap.deptCode')}
                 <span
                   className="gl-help-tip"
                   title="Department code from Carmen Cloud — e.g. ACC, SALE, MKT"
@@ -71,7 +71,7 @@ export default function AccountMappingTable({
                 </span>
               </th>
               <th scope="col" className="col-acc">
-                {t.accountCode}
+                {t('ap.accountCode')}
                 <span
                   className="gl-help-tip"
                   title="Account code from Carmen Cloud — e.g. 1101-01, 5100-00"
@@ -119,7 +119,7 @@ export default function AccountMappingTable({
                       <CustomSearchSelect
                         value={item.deptCode || ''}
                         options={masterDepts}
-                        placeholder={t.searchDept}
+                        placeholder={t('ap.searchDept')}
                         topChoice={deptChoice}
                         onChange={val => updateItem(ri, 'deptCode', val)}
                         hasError={missingDept}
@@ -129,7 +129,7 @@ export default function AccountMappingTable({
                       <CustomSearchSelect
                         value={item.accountCode || ''}
                         options={masterAccounts}
-                        placeholder={t.searchAcc}
+                        placeholder={t('ap.searchAcc')}
                         topChoice={accChoice}
                         onChange={val => updateItem(ri, 'accountCode', val)}
                         hasError={missingAcc}

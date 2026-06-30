@@ -179,7 +179,7 @@ async def get_gl_prefix(carmen_token: str) -> Any:
             return {"Data": [], "Status": f"upstream_{resp.status_code}"}
         return resp.json()
     except RequestError as e:
-        logger.warning("Carmen glPrefix unreachable: %s", e)
+        logger.warning("Carmen CloudPrefix unreachable: %s", e)
         return {"Data": [], "Status": "upstream_unreachable"}
 
 
@@ -356,3 +356,43 @@ async def post_invoice(body: dict, carmen_token: str) -> Any:
         raise
     except RequestError as e:
         raise _wrap_network_error(e) from e
+
+
+async def get_company_profile(carmen_token: str, db_cfg: dict[str, str] | None = None) -> dict:
+    """
+    Fetch the buyer's company profile from Carmen for billing document prefill.
+
+    Path is stored in system_configs key `billing.carmen_company_path`.
+    Returns normalized {name, tax_id, address, branch} or {} when unset/error.
+    db_cfg: pre-fetched billing config dict to avoid an extra DB round-trip.
+    """
+    path = (db_cfg or {}).get("billing.carmen_company_path", "").strip()
+    if not path:
+        return {}
+
+    try:
+        url = f"{_base_url()}/{path.lstrip('/')}"
+        logger.info("get_company_profile: GET %s", url)
+        resp = await _get_client().get(url, headers=_headers(carmen_token))
+        logger.info("get_company_profile: status=%s body=%s", resp.status_code, resp.text[:500])
+        if resp.status_code != 200:
+            return {}
+        data = resp.json()
+        # Carmen rptGetCompany returns an array — take first element
+        if isinstance(data, list) and data:
+            data = data[0]
+        if isinstance(data, dict):
+            addr_parts = [data.get(k) or "" for k in ("RegAdd1", "RegAdd2", "RegAdd3")]
+            address = " ".join(p for p in addr_parts if p).strip()
+            return {
+                "name": data.get("RegName") or data.get("companyName") or "",
+                "tax_id": data.get("RegTaxId") or data.get("taxId") or "",
+                "address": address or data.get("address") or "",
+                "branch": data.get("BranchNo") or data.get("branch") or "",
+                "email": data.get("RegEmail") or data.get("email") or "",
+                "contact_name": data.get("RegContact") or "",
+            }
+        return {}
+    except Exception as exc:
+        logger.warning("get_company_profile failed: %s", exc)
+        return {}

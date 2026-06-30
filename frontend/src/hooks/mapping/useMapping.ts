@@ -14,6 +14,13 @@ import type { MainMappingKey } from './useMappingSuggestions'
 
 export type MainMappings = Record<MainMappingKey, FieldMapping>
 
+const COMPANY_REQUIRED_FIELDS: Array<{ key: keyof CompanyData; label: string }> = [
+  { key: 'name', label: 'Company Name' },
+  { key: 'taxId', label: 'Tax ID' },
+  { key: 'branch', label: 'Branch No' },
+  { key: 'address', label: 'Address' },
+]
+
 export interface ActiveScan {
   paymentTypes: Set<string>
   commission: boolean
@@ -88,8 +95,13 @@ export function useMapping() {
     if (Object.keys(mainMappings).length > 0) {
       setMappings(prev => ({ ...prev, ...mainMappings }))
     }
-    paymentTypes.initFromData(paymentMappings, bankConfig.savedCustomTypes)
-  }, [bankConfig.configLoading, bankConfig.bank]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [
+    bankConfig.configLoading,
+    bankConfig.bank,
+    bankConfig.savedMappings,
+    bankConfig.savedCustomTypes,
+    paymentTypes.initFromData,
+  ])
 
   useEffect(() => {
     try {
@@ -138,6 +150,11 @@ export function useMapping() {
     suggestions.rejectMainSuggestion(type)
   }
 
+  const handlePaymentMappingChange = (type: string, field: keyof FieldMapping, value: string) => {
+    paymentTypes.handlePaymentMappingChange(type, field, value)
+    suggestions.rejectPaymentSuggestion(type)
+  }
+
   const handleAcceptAll = () => {
     setMappings(prev => {
       const next = { ...prev }
@@ -164,13 +181,7 @@ export function useMapping() {
     setAcceptAllModal(false)
   }
 
-  const companyRequiredFields: Array<{ key: keyof CompanyData; label: string }> = [
-    { key: 'name', label: 'Company Name' },
-    { key: 'taxId', label: 'Tax ID' },
-    { key: 'branch', label: 'Branch No' },
-    { key: 'address', label: 'Address' },
-  ]
-  const missingCompanyFields = companyRequiredFields.filter(
+  const missingCompanyFields = COMPANY_REQUIRED_FIELDS.filter(
     f => !bankConfig.company[f.key as keyof typeof bankConfig.company]?.trim()
   )
   const topLevelRequired = [
@@ -265,7 +276,7 @@ export function useMapping() {
     company: bankConfig.company,
     setCompany: bankConfig.setCompany,
     handleCompanyChange,
-    companyRequiredFields,
+    companyRequiredFields: COMPANY_REQUIRED_FIELDS,
     missingCompanyFields,
     mappings,
     setMappings,
@@ -279,7 +290,7 @@ export function useMapping() {
     customPaymentTypes: paymentTypes.customPaymentTypes,
     newCustomType: paymentTypes.newCustomType,
     setNewCustomType: paymentTypes.setNewCustomType,
-    handlePaymentMappingChange: paymentTypes.handlePaymentMappingChange,
+    handlePaymentMappingChange,
     handleAddCustomType: (activeScanPT?: Set<string>) =>
       paymentTypes.handleAddCustomType(activeScanPT || activeScan.paymentTypes, types =>
         masterData.masterAccounts.length && masterData.masterDepartments.length

@@ -18,7 +18,7 @@ export interface CompanyData {
   address: string
 }
 
-export function isApiShape(source: Record<string, unknown>): boolean {
+function isApiShape(source: Record<string, unknown>): boolean {
   return 'bank_code' in source || 'file_prefix' in source
 }
 
@@ -31,11 +31,11 @@ export function displayNameToCode(displayName: string): BankCode | null {
   return BANK_CODE_MAP[displayName as BankDisplayName] || null
 }
 
-export function getGLSourceCode(displayName: string): string {
+function getGLSourceCode(displayName: string): string {
   return BANK_SOURCE_MAP[displayName as BankDisplayName] || ''
 }
 
-export function getBankInfo(displayName: string): BankInfo | null {
+function getBankInfo(displayName: string): BankInfo | null {
   return BANK_INFO[displayName as BankDisplayName] || null
 }
 

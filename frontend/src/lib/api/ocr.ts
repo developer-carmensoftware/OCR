@@ -33,20 +33,28 @@ export interface ExtractResult {
 
 export interface ApiError extends Error {
   status?: number
+  code?: string
 }
+
+/** Machine-readable code returned by the backend when an encrypted PDF needs a password. */
+export const PDF_PASSWORD_REQUIRED = 'pdf_password_required'
 
 export interface PdfInfoResult {
   page_count: number
   thumbnails: string[]
 }
 
-export async function getPdfInfo(file: File): Promise<PdfInfoResult> {
+export async function getPdfInfo(file: File, pdfPassword?: string): Promise<PdfInfoResult> {
   const formData = new FormData()
   formData.append('file', file)
+  if (pdfPassword) formData.append('pdf_password', pdfPassword)
   const res = await apiFetch(API.files.pdfInfo, { method: 'POST', body: formData })
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { detail?: string }
-    throw new Error(err.detail || `PDF info failed (${res.status})`)
+    const err = (await res.json().catch(() => ({}))) as { detail?: string; code?: string }
+    const error: ApiError = new Error(err.detail || `PDF info failed (${res.status})`)
+    error.status = res.status
+    error.code = err.code
+    throw error
   }
   return res.json() as Promise<PdfInfoResult>
 }
@@ -70,13 +78,15 @@ export async function getFilePreview(file: File): Promise<string> {
 export async function extractFromFile(
   file: File,
   bankType?: string,
-  selectedPages?: number[]
+  selectedPages?: number[],
+  pdfPassword?: string
 ): Promise<ExtractResult> {
   const formData = new FormData()
   formData.append('files', file)
   if (selectedPages && selectedPages.length > 0) {
     formData.append('selected_pages', JSON.stringify(selectedPages))
   }
+  if (pdfPassword) formData.append('pdf_password', pdfPassword)
 
   const url = bankType ? `${API.creditCard.extract}?bank_code=${bankType}` : API.creditCard.extract
   const { signal, clear } = fetchTimeout(EXTRACT_TIMEOUT_MS)
@@ -96,9 +106,10 @@ export async function extractFromFile(
   }
 
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { detail?: string }
+    const err = (await res.json().catch(() => ({}))) as { detail?: string; code?: string }
     const error: ApiError = new Error(err.detail || `Upload failed (${res.status})`)
     error.status = res.status
+    error.code = err.code
     throw error
   }
 

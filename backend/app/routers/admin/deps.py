@@ -1,5 +1,7 @@
 """Shared dependencies for all admin endpoints."""
 
+import hmac
+
 from fastapi import Depends, Header, HTTPException
 
 from app.auth.admin_session import AdminPrincipal, decode_admin_jwt
@@ -67,6 +69,54 @@ def require_permission(resource: str, action: str):
         return admin
 
     return _check
+
+
+# ── Machine-auth dependency (maintenance endpoints callable by pg_net) ────────
+
+
+def require_maintenance_auth(
+    authorization: str | None = Header(None, alias="Authorization"),
+) -> AdminPrincipal | None:
+    """
+    Accept either an admin JWT (configs:write) or the internal job token.
+    Used by maintenance POST endpoints that pg_net cron jobs need to call.
+    Constant-time compare on the token prevents timing-based token oracle.
+    Returns None for machine-auth callers (no AdminPrincipal needed).
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization required")
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authorization must be 'Bearer <token>'")
+
+    token = authorization[7:]
+
+    # Internal job token path (pg_net machine auth)
+    if settings.internal_job_token and hmac.compare_digest(
+        token.encode(), settings.internal_job_token.encode()
+    ):
+        return None
+
+    # Admin JWT path
+    try:
+        payload = decode_admin_jwt(token, get_admin_jwt_secret())
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    aid = payload.get("aid", "")
+    if not aid:
+        raise HTTPException(status_code=401, detail="Malformed token")
+
+    admin = AdminPrincipal(
+        admin_id=str(aid),
+        email=str(payload.get("email", "")),
+        roles=list(payload.get("roles") or []),
+        perms=set(payload.get("perms") or []),
+        tenant_scope=str(payload.get("tenant_scope", "")),
+        mfa_passed=bool(payload.get("mfa_passed", True)),
+    )
+    if not admin.has_perm("configs:write"):
+        raise HTTPException(status_code=403, detail="Permission denied: configs:write")
+    return admin
 
 
 # ── Backward-compat alias (used by maintenance.py which has no session dep) ──

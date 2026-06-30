@@ -90,6 +90,23 @@ class CreditLedgerReason(str, Enum):
 
 
 class CreditOrderStatus(str, Enum):
-    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
     PAID = "paid"
-    CANCELLED = "cancelled"
+    COMPLETE = "complete"
+    VOID = "void"
+
+
+class BillingDocumentType(str, Enum):
+    """Discriminator for billing_documents rows."""
+
+    PROFORMA = "proforma"  # issued at order creation (request for payment)
+    TAX_INVOICE = "tax_invoice"  # issued after admin approves payment (receipt / tax invoice)
+
+
+class SubscriptionStatus(str, Enum):
+    """Lifecycle of a tenant's monthly subscription window."""
+
+    ACTIVE = "active"  # in-window, allowance consumable
+    LAPSED = "lapsed"  # period ended (use-it-or-lose-it expired)
+    SUPERSEDED = "superseded"  # replaced by a newer subscription
+    # 'scheduled' (queued renewal, Option B) reserved — add via `alter type` when needed.

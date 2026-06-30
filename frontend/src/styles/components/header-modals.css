@@ -30,12 +30,34 @@
   animation: hm-fade-in 0.15s ease-out both;
 }
 
+.hm-dialog-reset {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  max-height: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .hm-backdrop {
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.45);
   -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
+}
+
+button.hm-backdrop {
+  border: none;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  cursor: default;
 }
 
 .hm-dialog {
@@ -129,7 +151,7 @@
   width: 100%;
   padding: 0.5rem 0.625rem;
   font-size: 0.82rem;
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
   background: var(--input-bg, var(--muted));
   border: 1px solid var(--border);
   border-radius: var(--radius-sm, 6px);
@@ -171,7 +193,7 @@
   padding: 0.55rem 1rem;
   font-size: 0.82rem;
   font-weight: 600;
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
   background: var(--primary);
   color: white;
   border: none;
@@ -323,7 +345,7 @@
   padding: 0.35rem 0.7rem;
   font-size: 0.76rem;
   font-weight: 600;
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
   color: white;
   background: var(--primary);
   border: none;
@@ -409,7 +431,7 @@
   gap: 0.35rem;
   padding: 0.4rem 0.75rem;
   font-size: 0.78rem;
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
   font-weight: 500;
   color: var(--text-3);
   background: var(--muted);
@@ -508,7 +530,7 @@
 
 [data-theme='dark'] .hm-select,
 [data-theme='dark'] .hm-textarea {
-  background: oklch(0.22 0.02 258.7);
+  background: var(--card-bg);
   border-color: var(--border);
   color: var(--text);
   color-scheme: dark;

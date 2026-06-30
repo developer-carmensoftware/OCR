@@ -97,10 +97,7 @@ export function usePaymentTypes(): PaymentTypesHook {
   }
 
   const openAmountModal = () => {
-    paymentAmountSnapshot.current = JSON.parse(JSON.stringify(paymentAmount)) as Record<
-      string,
-      FieldMapping
-    >
+    paymentAmountSnapshot.current = structuredClone(paymentAmount)
     customPaymentTypesSnapshot.current = [...customPaymentTypes]
     setIsAmountModalOpen(true)
   }

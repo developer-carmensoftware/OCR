@@ -5,6 +5,7 @@ Unit tests for app/routers/ap_invoice.py (AP Invoice Router).
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import fitz
 import pytest
 
 from app.models.enums import TaskStatus
@@ -14,6 +15,19 @@ from tests.integration.conftest import FAKE_SESSION, make_test_client
 
 BASE_URL = "/api/v1/ap-invoice"
 AUTH_HEADERS = {"Authorization": "Bearer dummy"}
+
+
+def _valid_pdf_bytes() -> bytes:
+    """A real 1-page PDF — the /extract pre-check opens the file before consuming a
+    credit, so the fixture must be a genuinely openable PDF (not just a %PDF header)."""
+    doc = fitz.open()
+    doc.new_page()
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
+VALID_PDF = _valid_pdf_bytes()
 
 
 @pytest.fixture
@@ -79,7 +93,7 @@ class TestExtractAPInvoice:
             patch("app.routers.ap_invoice.async_session", return_value=ctx_mock),
             make_test_client(db_mock) as client,
         ):
-            files = [("file", ("invoice.pdf", b"%PDF-1.5" + b"\x00" * 20, "application/pdf"))]
+            files = [("file", ("invoice.pdf", VALID_PDF, "application/pdf"))]
             resp = client.post(
                 f"{BASE_URL}/extract",
                 files=files,
@@ -134,7 +148,7 @@ class TestExtractAPInvoice:
             patch("app.routers.ap_invoice.async_session", return_value=ctx_mock),
             make_test_client(db_mock) as client,
         ):
-            files = [("file", ("invoice.pdf", b"%PDF-1.5" + b"\x00" * 20, "application/pdf"))]
+            files = [("file", ("invoice.pdf", VALID_PDF, "application/pdf"))]
             resp = client.post(
                 f"{BASE_URL}/extract",
                 files=files,
@@ -180,7 +194,7 @@ class TestExtractAPInvoice:
             patch("app.routers.ap_invoice.async_session", return_value=ctx_mock),
             make_test_client(db_mock) as client,
         ):
-            files = [("file", ("invoice.pdf", b"%PDF-1.5" + b"\x00" * 20, "application/pdf"))]
+            files = [("file", ("invoice.pdf", VALID_PDF, "application/pdf"))]
             with pytest.raises(RuntimeError):
                 client.post(
                     f"{BASE_URL}/extract",

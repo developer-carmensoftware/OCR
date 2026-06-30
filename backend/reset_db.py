@@ -1,12 +1,16 @@
-"""One-shot script: wipe carmen_ai's public schema, then run ensure_db() to recreate.
+"""One-shot script: wipe carmen_ai's public schema (drop + recreate empty).
+
+Schema is owned by Supabase CLI migrations (supabase/migrations/), so this script
+does NOT recreate tables — after running it you must re-apply the schema:
+
+    supabase db push
 
 PostgreSQL note:
   Managed providers (Neon, Render Postgres, Supabase) do not let you DROP/CREATE
   the database itself from a connection — that's a console/API operation. This
-  script instead drops and recreates the `public` schema, which has the same
-  effect on the data + schema-migrations bookkeeping.
+  script instead drops and recreates the `public` schema, leaving it empty.
 
-  Reads DATABASE_URL from app.config (i.e. your .env). Run with caution.
+  Reads DATABASE_URL from app.config (i.e. your .env). DESTRUCTIVE — run with caution.
 """
 
 import asyncio
@@ -34,17 +38,10 @@ async def reset() -> None:
         await conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
         print("Dropped schema public")
         await conn.execute(text("CREATE SCHEMA public"))
-        print("Created schema public")
+        print("Created empty schema public")
     await engine.dispose()
 
-    # Force a fresh engine + run full startup to create tables + run migrations.
-    import app.database as _db
-
-    _db._ENGINE = None
-    _db._SESSION_FACTORY = None
-
-    await _db.ensure_db()
-    print("Schema created + migrations applied + seed data inserted.")
+    print("\nSchema is empty. Re-apply tables + seed with:\n    supabase db push")
 
 
 if __name__ == "__main__":

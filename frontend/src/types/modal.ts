@@ -13,4 +13,7 @@ export type ModalState =
       inputValue?: string
       onInputChange?: (v: string) => void
       inputPlaceholder?: string
+      inputType?: 'text' | 'password'
+      busy?: boolean
+      errorNonce?: number
     }

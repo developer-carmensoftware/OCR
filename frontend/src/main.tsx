@@ -1,7 +1,9 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react'
 import * as Sentry from '@sentry/react'
+import { LazyMotion, domAnimation } from 'framer-motion'
 
-document.documentElement.dataset.theme = 'light'
+// Apply persisted theme before first paint (avoids a light→dark flash).
+document.documentElement.dataset.theme = localStorage.getItem('theme') === 'dark' ? 'dark' : 'light'
 
 if (import.meta.env.VITE_SENTRY_DSN) {
   Sentry.init({
@@ -16,6 +18,7 @@ import ReactDOM from 'react-dom/client'
 import { Toaster } from 'sonner'
 import { AuthProvider } from './contexts/AuthContext'
 import { AdminAuthProvider } from './contexts/AdminAuthContext'
+import { LanguageProvider } from './i18n/LanguageContext'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import { ConsentGate } from './components/common/ConsentGate'
 import AdminProtectedRoute from './components/admin/AdminProtectedRoute'
@@ -46,6 +49,8 @@ const Home = lazy(() => import('./pages/Home'))
 const CreditCardOCR = lazy(() => import('./pages/CreditCardOCR'))
 const Mapping = lazy(() => import('./pages/Mapping'))
 const APInvoice = lazy(() => import('./pages/APInvoice'))
+const Pricing = lazy(() => import('./pages/Pricing'))
+const OrderHistory = lazy(() => import('./pages/OrderHistory'))
 
 // Admin pages
 const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'))
@@ -60,6 +65,9 @@ const AnomaliesPage = lazy(() => import('./pages/admin/AnomaliesPage'))
 const JobsPage = lazy(() => import('./pages/admin/JobsPage'))
 const SessionsPage = lazy(() => import('./pages/admin/SessionsPage'))
 const CreditsPage = lazy(() => import('./pages/admin/CreditsPage'))
+
+// Order Review — standalone page (own shell, reuses admin auth)
+const OrderReviewShell = lazy(() => import('./pages/order-review/OrderReviewShell'))
 
 function getRoute(): string {
   const hash = window.location.hash.split('?')[0]
@@ -120,6 +128,26 @@ function Router() {
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [])
 
+  // Out-of-credits (HTTP 402) anywhere in the app → send the user to pricing.
+  useEffect(() => {
+    const toPricing = () => {
+      window.location.hash = '#/pricing'
+    }
+    window.addEventListener('ocr:open-topup', toPricing)
+    return () => window.removeEventListener('ocr:open-topup', toPricing)
+  }, [])
+
+  // Order Review — standalone page, its own shell, reuses admin auth.
+  if (route === 'order-review') {
+    return (
+      <Suspense fallback={<PageSkeleton />}>
+        <AdminProtectedRoute>
+          <OrderReviewShell />
+        </AdminProtectedRoute>
+      </Suspense>
+    )
+  }
+
   // Admin section — has its own auth, separate from Carmen
   if (route.startsWith('admin')) {
     return (
@@ -135,6 +163,10 @@ function Router() {
     Page = sub === 'mapping' ? <Mapping /> : <CreditCardOCR />
   } else if (route.startsWith('apinvoice')) {
     Page = <APInvoice />
+  } else if (route === 'pricing/orders') {
+    Page = <OrderHistory />
+  } else if (route.startsWith('pricing')) {
+    Page = <Pricing />
   } else {
     Page = <Home />
   }
@@ -150,22 +182,26 @@ function Router() {
 const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement)
 root.render(
   <ErrorBoundary>
-    <AuthProvider>
-      <AdminAuthProvider>
-        <Toaster
-          position="bottom-center"
-          duration={3500}
-          visibleToasts={4}
-          expand={false}
-          closeButton
-          richColors
-          theme="light"
-        />
-        <ConsentGate>
-          <Router />
-        </ConsentGate>
-      </AdminAuthProvider>
-    </AuthProvider>
+    <LazyMotion features={domAnimation}>
+      <AuthProvider>
+        <AdminAuthProvider>
+          <Toaster
+            position="bottom-center"
+            duration={3500}
+            visibleToasts={4}
+            expand={false}
+            closeButton
+            richColors
+            theme="light"
+          />
+          <LanguageProvider>
+            <ConsentGate>
+              <Router />
+            </ConsentGate>
+          </LanguageProvider>
+        </AdminAuthProvider>
+      </AuthProvider>
+    </LazyMotion>
   </ErrorBoundary>
 )
 

@@ -56,8 +56,17 @@ export interface OcrExtractionHook {
   details: DetailRow[]
   originalDetails: DetailRow[]
   originalHeader: HeaderData | Record<string, string>
-  processFile: (filesToProcess: File[], selectedPages?: number[]) => Promise<void>
-  reExtract: (files: File[], bankType?: string) => Promise<void>
+  processFile: (
+    filesToProcess: File[],
+    selectedPages?: number[],
+    pdfPassword?: string
+  ) => Promise<void>
+  reExtract: (
+    files: File[],
+    bankType?: string,
+    selectedPages?: number[],
+    pdfPassword?: string
+  ) => Promise<void>
   updateHeader: (key: string, value: string) => void
   updateDetail: (rowIndex: number, col: string, value: string) => void
   addRow: () => void
@@ -171,8 +180,8 @@ export function useOcrExtraction({
       rawDetails.length ? rawDetails : [{ ...EMPTY_DETAIL_ROW }]
     ).map(row => ({ ...EMPTY_DETAIL_ROW, ...row, _uid: crypto.randomUUID() }))
     setDetails(detailsList)
-    setOriginalDetails(JSON.parse(JSON.stringify(detailsList)) as DetailRow[])
-    setOriginalHeader(JSON.parse(JSON.stringify(header)) as Record<string, string>)
+    setOriginalDetails(structuredClone(detailsList))
+    setOriginalHeader(structuredClone(header))
     _persistOcrLocalStorage(ext, detailsList)
   }
 
@@ -190,7 +199,11 @@ export function useOcrExtraction({
     })
   }
 
-  async function processFile(filesToProcess: File[], selectedPages?: number[]) {
+  async function processFile(
+    filesToProcess: File[],
+    selectedPages?: number[],
+    pdfPassword?: string
+  ) {
     if (!filesToProcess || filesToProcess.length === 0) {
       showModal({
         title: 'No Document File Found',
@@ -204,7 +217,7 @@ export function useOcrExtraction({
     setLoading(true)
     setStatus('AI is extracting data from document...')
     try {
-      const ext = await extractFromFile(filesToProcess[0], undefined, selectedPages)
+      const ext = await extractFromFile(filesToProcess[0], undefined, selectedPages, pdfPassword)
       if (ext.is_duplicate) {
         setStatus('Duplicate document found')
         showDuplicateModal(ext.doc_no)
@@ -261,6 +274,20 @@ export function useOcrExtraction({
             clearFiles()
           },
         })
+      } else if (e.status === 401) {
+        // AuthContext handles the "session expired" toast + state reset via ocr:unauthorized.
+        clearFiles()
+      } else if (!e.status && (e as unknown as Error).message === 'Failed to fetch') {
+        showModal({
+          title: 'Connection Error',
+          message: 'Could not reach the server — please check your network and try again.',
+          type: 'warning',
+          confirmText: 'Close',
+          onConfirm: () => {
+            closeModal()
+            clearFiles()
+          },
+        })
       } else {
         setStatus(e.message)
         showModal({
@@ -278,12 +305,17 @@ export function useOcrExtraction({
     }
   }
 
-  async function reExtract(files: File[], bankType?: string, selectedPages?: number[]) {
+  async function reExtract(
+    files: File[],
+    bankType?: string,
+    selectedPages?: number[],
+    pdfPassword?: string
+  ) {
     if (!files || files.length === 0) return
     setLoading(true)
     setStatus(`Re-extracting with ${bankType || 'auto-detect'}...`)
     try {
-      const ext = await extractFromFile(files[0], bankType || undefined, selectedPages)
+      const ext = await extractFromFile(files[0], bankType || undefined, selectedPages, pdfPassword)
       applyExtractedData(ext as unknown as Record<string, unknown>)
       setBank(
         (bankType || detectBankFromExtracted(ext as unknown as Record<string, string>) || '') as

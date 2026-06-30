@@ -4,8 +4,15 @@ import { useFileUpload } from './useFileUpload'
 import { useOcrExtraction } from './useOcrExtraction'
 import { useOcrSubmission } from './useOcrSubmission'
 import { showToast } from '../../lib/toast'
-import { getPdfInfo } from '../../lib/api/ocr'
+import {
+  getPdfInfo,
+  PDF_PASSWORD_REQUIRED,
+  type ApiError,
+  type PdfInfoResult,
+} from '../../lib/api/ocr'
 import { imagesToPdf, MAX_MULTI_IMAGES } from '../../lib/imagesToPdf'
+import { selectedPagesToPdfUrl } from '../../lib/pdfPages'
+import { usePdfPasswordPrompt } from '../usePdfPasswordPrompt'
 import { appKey } from '../../lib/storage'
 import type { JvRow } from './useOcrSubmission'
 import type React from 'react'
@@ -17,12 +24,14 @@ export interface PdfSelectorState {
 
 // pdf-info can fail transiently when the backend is busy with a prior /extract.
 // One retry turns most of those intermittent misses into a shown selector.
-async function getPdfInfoWithRetry(file: File) {
+// A password-required error is deterministic, so it is rethrown without retry.
+async function getPdfInfoWithRetry(file: File, password?: string) {
   try {
-    return await getPdfInfo(file)
-  } catch {
+    return await getPdfInfo(file, password)
+  } catch (err) {
+    if ((err as ApiError).code === PDF_PASSWORD_REQUIRED) throw err
     await new Promise(r => setTimeout(r, 600))
-    return getPdfInfo(file)
+    return getPdfInfo(file, password)
   }
 }
 
@@ -48,6 +57,12 @@ export function useOcrWizard() {
   const { modal, showModal, closeModal } = useModal()
 
   const fileUpload = useFileUpload()
+
+  const pwPrompt = usePdfPasswordPrompt({
+    openModal: showModal,
+    closeModal,
+    onCancel: fileUpload.clearFiles,
+  })
 
   const extraction = useOcrExtraction({
     showModal,
@@ -106,6 +121,7 @@ export function useOcrWizard() {
       extraction.resetExtractionState()
       setSelectedPageThumbs(null)
       setImageCount(0)
+      pwPrompt.reset()
       setStep(1)
 
       const firstFile = fileArray[0]
@@ -162,6 +178,13 @@ export function useOcrWizard() {
           }
           // Single-page PDF — fall through to normal extraction
         } catch (err) {
+          if ((err as ApiError).code === PDF_PASSWORD_REQUIRED) {
+            // Encrypted PDF — prompt for the password instead of failing.
+            setPdfInfoLoading(false)
+            uploadBusyRef.current = false
+            promptForPassword(fileArray)
+            return
+          }
           // Don't silently extract: tell the user the selector was skipped.
           console.error('[pdf-info] failed, processing all pages:', err)
           showToast('Could not read PDF pages — processing the whole document', 'info')
@@ -175,6 +198,37 @@ export function useOcrWizard() {
     })
   }
 
+  // Kick off extraction of an encrypted PDF once unlocked (single-page / fallback).
+  function runEncryptedExtraction(files: File[], password: string) {
+    uploadBusyRef.current = true
+    setPdfInfoLoading(true)
+    void extraction.processFile(files, undefined, password).finally(() => {
+      setPdfInfoLoading(false)
+      uploadBusyRef.current = false
+    })
+  }
+
+  // Encrypted PDF: the shared prompt owns the verify/retry/shake UX; we just route
+  // the validated password (multi-page → selector, single-page/fallback → extract).
+  function promptForPassword(files: File[]) {
+    pwPrompt.open({
+      verify: password => getPdfInfoWithRetry(files[0], password),
+      onVerified: (password, result) => {
+        const info = result as PdfInfoResult
+        if (info.page_count > 1) {
+          setPdfSelector({ thumbnails: info.thumbnails, pendingFiles: files })
+        } else {
+          runEncryptedExtraction(files, password)
+        }
+      },
+      onError: (password, err) => {
+        console.error('[pdf-info] failed after password, processing all pages:', err)
+        showToast('Could not read PDF pages — processing the whole document', 'info')
+        runEncryptedExtraction(files, password)
+      },
+    })
+  }
+
   function confirmPageSelection(selectedPages: number[]) {
     if (!pdfSelector) return
     setSelectedPageThumbs(
@@ -182,7 +236,19 @@ export function useOcrWizard() {
     )
     const files = pdfSelector.pendingFiles
     setPdfSelector(null)
-    extraction.processFile(files, selectedPages)
+    // Preview only the selected pages: build a native PDF subset and swap it into the
+    // preview iframe (zoomable/readable). Falls back to the full document on failure
+    // (e.g. a user-password-encrypted PDF that pdf-lib cannot parse).
+    void selectedPagesToPdfUrl(files[0], selectedPages)
+      .then(url => {
+        if (fileUpload.previewUrl) URL.revokeObjectURL(fileUpload.previewUrl.split('#')[0])
+        fileUpload.setPreviewUrl(url + '#view=FitH')
+        fileUpload.setPreviewType('pdf')
+      })
+      .catch(() => {
+        /* keep the full-document preview */
+      })
+    extraction.processFile(files, selectedPages, pwPrompt.pdfPassword || undefined)
   }
 
   function cancelPageSelection() {
@@ -190,11 +256,17 @@ export function useOcrWizard() {
     imageThumbsRef.current.forEach(u => URL.revokeObjectURL(u))
     imageThumbsRef.current = []
     setSelectedPageThumbs(null)
+    pwPrompt.reset()
     fileUpload.clearFiles()
   }
 
   function reExtract(bankType?: string) {
-    return extraction.reExtract(fileUpload.files, bankType)
+    return extraction.reExtract(
+      fileUpload.files,
+      bankType,
+      undefined,
+      pwPrompt.pdfPassword || undefined
+    )
   }
 
   function handleCancel() {
@@ -224,6 +296,7 @@ export function useOcrWizard() {
     imageThumbsRef.current = []
     setSelectedPageThumbs(null)
     setImageCount(0)
+    pwPrompt.reset()
     closeModal()
   }
 

@@ -84,7 +84,7 @@ async def proxy_gljv(
     session: SessionInfo = Depends(get_current_session),
 ):
     body = await request.json()
-    async with _carmen_errors("Carmen GL JV ล้มเหลว"):
+    async with _carmen_errors("Carmen Cloud JV ล้มเหลว"):
         res = await post_gljv(body, session.carmen_token)
         if res and res.get("Code", -1) >= 0 and credit_card_id:
             import uuid
@@ -144,7 +144,7 @@ async def proxy_update_gljv(
     jvh_seq: int, request: Request, session: SessionInfo = Depends(get_current_session)
 ):
     body = await request.json()
-    async with _carmen_errors("Carmen GL JV update ล้มเหลว"):
+    async with _carmen_errors("Carmen Cloud JV update ล้มเหลว"):
         return await put_gljv(jvh_seq, body, session.carmen_token)
 
 

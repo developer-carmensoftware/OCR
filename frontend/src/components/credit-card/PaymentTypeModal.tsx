@@ -7,7 +7,6 @@ import {
   Check,
   X,
   XCircle,
-  Plus,
   ChevronDown,
   ChevronUp,
 } from 'lucide-react'
@@ -35,9 +34,6 @@ interface Props {
   confirmPaymentSuggestion: (type: string) => void
   rejectPaymentSuggestion: (type: string) => void
   customPaymentTypes: string[]
-  newCustomType: string
-  setNewCustomType: (v: string) => void
-  handleAddCustomType: () => void
   handleRemoveCustomType: (type: string) => void
   saveAmountSelection: () => void
   cancelAmountSelection: () => void
@@ -60,9 +56,6 @@ export default function PaymentTypeModal({
   confirmPaymentSuggestion,
   rejectPaymentSuggestion,
   customPaymentTypes,
-  newCustomType,
-  setNewCustomType,
-  handleAddCustomType,
   handleRemoveCustomType,
   saveAmountSelection,
   cancelAmountSelection,
@@ -75,8 +68,19 @@ export default function PaymentTypeModal({
   const additionalTypes = allPaymentTypes.filter(t => !activeScan.paymentTypes.has(t))
 
   return ReactDOM.createPortal(
-    <div className="pm-overlay mapping-modal" onClick={cancelAmountSelection}>
-      <div className="pm-backdrop mapping-modal-overlay" />
+    <div className="pm-overlay mapping-modal">
+      <button
+        type="button"
+        className="pm-backdrop mapping-modal-overlay"
+        aria-label="Close payment type modal"
+        onClick={cancelAmountSelection}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') {
+            e.preventDefault()
+            cancelAmountSelection()
+          }
+        }}
+      />
       <div className="pm-dialog mapping-modal-content" onClick={e => e.stopPropagation()}>
         <div className="pm-header mapping-modal-header">
           <div className="pm-header-top">
@@ -295,29 +299,6 @@ export default function PaymentTypeModal({
                   })}
               </>
             )}
-
-            <div className="pm-add-row">
-              <div className="pm-add-input-wrap">
-                <input
-                  type="text"
-                  className="pm-add-input"
-                  value={newCustomType}
-                  onChange={e => setNewCustomType(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleAddCustomType()}
-                  placeholder="Custom type..."
-                  aria-label="New custom payment type"
-                />
-                <button
-                  type="button"
-                  className="pm-add-btn"
-                  onClick={handleAddCustomType}
-                  title="Add"
-                >
-                  <Plus size={13} /> Add
-                </button>
-              </div>
-              <div className="pm-add-hint">Add custom Payment Type</div>
-            </div>
           </div>
         </div>
 
