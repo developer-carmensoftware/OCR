@@ -319,12 +319,11 @@ export default function DocumentPreview({
           </div>
         )}
         {isPdf && previewUrl && !showSelectedThumbs && (
-          <iframe
-            src={previewUrl}
-            title="PDF Preview"
-            className="preview-pdf-iframe"
-            sandbox="allow-downloads allow-same-origin"
-          />
+          // ponytail: no sandbox — Edge/Chrome block their built-in PDF viewer inside a
+          // sandboxed iframe ("blocked by Microsoft Edge"). src is our own trusted PDF
+          // (blob / short-lived signed URL), not arbitrary HTML, so sandbox adds no real
+          // security here. Do not re-add sandbox (that reintroduces the blank/blocked bug).
+          <iframe src={previewUrl} title="PDF Preview" className="preview-pdf-iframe" />
         )}
         {showSelectedThumbs && (
           <div className="prev-page-thumbs">

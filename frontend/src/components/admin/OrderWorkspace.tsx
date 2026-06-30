@@ -94,7 +94,10 @@ function SlipViewer({ url, error }: { url: string | null; error: boolean }) {
   if (slipIsPdf(url)) {
     return (
       <div className="orev-slip">
-        <iframe src={url} className="orev-slip-frame" title={t('orev.slip.heading')} sandbox="" />
+        {/* ponytail: no sandbox — Edge/Chrome block their built-in PDF viewer inside a
+            sandboxed iframe. src is a short-lived Supabase signed URL to our own slip,
+            not arbitrary HTML. Do not re-add sandbox (reintroduces the blocked-PDF bug). */}
+        <iframe src={url} className="orev-slip-frame" title={t('orev.slip.heading')} />
         <a className="orev-slip-link" href={url} target="_blank" rel="noreferrer">
           <ExternalLink size={13} /> {t('orev.slip.openTab')}
         </a>
