@@ -262,19 +262,45 @@ body:has(.orev-app) {
   border-color: oklch(from var(--primary) l c h / 0.25);
 }
 
+/* Queue row skeleton — mirrors the real row: dot · [company / sub] · amount. */
 .orev-item.is-skeleton {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.4rem;
+  align-items: center;
   pointer-events: none;
 }
 
-.orev-sk-line {
-  height: 0.7rem;
+.orev-sk-bar {
+  display: block;
   border-radius: 4px;
 }
-.orev-sk-line--sm {
-  width: 55%;
+
+.orev-sk-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.orev-sk-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.orev-sk-bar--company {
+  height: 0.8rem;
+  width: 70%;
+}
+.orev-sk-bar--sub {
+  height: 0.62rem;
+  width: 45%;
+}
+
+.orev-sk-amt {
+  flex-shrink: 0;
+  width: 3.5rem;
+  height: 0.8rem;
 }
 
 .orev-dot {
@@ -744,19 +770,177 @@ body:has(.orev-app) {
   text-align: center;
 }
 
-/* Loading placeholders for the slip + proforma panes (match the queue skeleton). */
-.orev-slip-skeleton {
-  height: 70vh;
-}
-
-.orev-doc-skeleton {
+/* Slip viewer skeleton — tools strip over the image stage. */
+.orev-slip-sk {
   display: flex;
   flex-direction: column;
-  gap: 0.7rem;
+}
+.orev-slip-sk-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.orev-slip-sk-tool {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+}
+.orev-slip-sk-zoom {
+  margin-left: auto;
+  width: 2.5rem;
+  height: 0.8rem;
+  border-radius: 4px;
+}
+.orev-slip-sk-stage {
+  height: calc(70vh - 48px);
+  border-radius: 0;
+}
+
+/* Proforma document skeleton — header / banner / two cards / table / totals. */
+.orev-docsk {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
   padding: 1rem;
 }
-.orev-doc-skeleton .orev-sk-line:nth-child(3n) {
+.orev-docsk-head {
+  display: flex;
+  gap: 1rem;
+}
+.orev-docsk-logo {
+  flex-shrink: 0;
+  width: 90px;
+  height: 48px;
+  border-radius: 6px;
+}
+.orev-docsk-seller {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.orev-docsk-line {
+  display: block;
+  height: 0.62rem;
+  width: 100%;
+  border-radius: 4px;
+}
+.orev-docsk-seller .orev-docsk-line:nth-child(1) {
+  width: 55%;
+}
+.orev-docsk-seller .orev-docsk-line:nth-child(2) {
+  width: 70%;
+}
+.orev-docsk-seller .orev-docsk-line:nth-child(3) {
+  width: 40%;
+}
+.orev-docsk-seller .orev-docsk-line:nth-child(4) {
+  width: 50%;
+}
+.orev-docsk-banner {
+  display: block;
+  height: 1.6rem;
+  width: 100%;
+  border-radius: 4px;
+}
+.orev-docsk-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+.orev-docsk-card {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.orev-docsk-cardtitle {
+  display: block;
+  height: 0.6rem;
+  width: 40%;
+  border-radius: 4px;
+}
+.orev-docsk-card .orev-docsk-line:nth-child(2) {
+  width: 80%;
+}
+.orev-docsk-card .orev-docsk-line:nth-child(3) {
   width: 60%;
+}
+.orev-docsk-card .orev-docsk-line:nth-child(4) {
+  width: 70%;
+}
+.orev-docsk-table {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.orev-docsk-thead {
+  display: block;
+  height: 1.1rem;
+  width: 100%;
+  border-radius: 4px;
+}
+.orev-docsk-trow {
+  display: block;
+  height: 0.85rem;
+  width: 100%;
+  border-radius: 4px;
+}
+.orev-docsk-totals {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+  margin-top: 0.25rem;
+}
+.orev-docsk-totalrow {
+  display: block;
+  height: 0.8rem;
+  border-radius: 4px;
+}
+.orev-docsk-totals .orev-docsk-totalrow:nth-child(1) {
+  width: 9rem;
+}
+.orev-docsk-totals .orev-docsk-totalrow:nth-child(2) {
+  width: 8rem;
+}
+.orev-docsk-totals .orev-docsk-totalrow:nth-child(3) {
+  width: 11rem;
+  height: 1.1rem;
+}
+
+/* Contact card skeleton (proforma still loading). */
+.orev-contact-sk {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.orev-contact-sk-name {
+  display: block;
+  height: 0.95rem;
+  width: 45%;
+  border-radius: 4px;
+}
+.orev-contact-sk-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.orev-contact-sk-email {
+  height: 0.85rem;
+  width: 9rem;
+  border-radius: 4px;
+}
+.orev-contact-sk-btn {
+  height: 1.7rem;
+  width: 4.5rem;
+  border-radius: var(--radius-sm);
 }
 
 /* ─── Company panel (collapsible) ──────────────────────────────── */
@@ -1032,9 +1216,11 @@ body:has(.orev-app) {
   }
   .orev-slip-stage,
   .orev-slip-frame,
-  .orev-slip-fallback,
-  .orev-slip-skeleton {
+  .orev-slip-fallback {
     height: 55vh;
+  }
+  .orev-slip-sk-stage {
+    height: calc(55vh - 48px);
   }
   .orev-doc-scroll {
     max-height: 55vh;
@@ -1120,6 +1306,30 @@ body:has(.orev-app) {
   font-size: 0.72rem;
   color: var(--text-3);
   font-feature-settings: 'tnum';
+}
+/* KPI skeleton bars — sized to the real header/amount/desc rows. */
+.orev-kpi-sk {
+  display: block;
+  border-radius: 5px;
+}
+.orev-kpi-sk--icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+}
+.orev-kpi-sk--title {
+  height: 0.8rem;
+  width: 50%;
+}
+.orev-kpi-sk--amt {
+  height: 1.5rem;
+  width: 70%;
+  margin: 0.15rem 0;
+}
+.orev-kpi-sk--desc {
+  height: 0.7rem;
+  width: 40%;
 }
 @media (max-width: 880px) {
   .orev-kpi-row {
@@ -1362,6 +1572,19 @@ body:has(.orev-app) {
   padding: 2rem;
   color: var(--text-3);
   font-weight: 600;
+}
+/* Skeleton bars for the AR-profiles table while it loads. */
+.orev-ar-sk {
+  display: block;
+  height: 0.9rem;
+  width: 80%;
+  border-radius: 4px;
+}
+.orev-ar-sk--sm {
+  width: 55%;
+}
+.orev-ar-sk--xs {
+  width: 35%;
 }
 .orev-ar-footer {
   display: flex;

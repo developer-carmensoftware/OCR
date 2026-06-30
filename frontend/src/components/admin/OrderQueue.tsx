@@ -122,8 +122,12 @@ export default function OrderQueue({
         {loading ? (
           Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="orev-item is-skeleton" aria-hidden="true">
-              <span className="skeleton orev-sk-line" />
-              <span className="skeleton orev-sk-line orev-sk-line--sm" />
+              <span className="skeleton orev-sk-dot" />
+              <span className="orev-sk-main">
+                <span className="skeleton orev-sk-bar orev-sk-bar--company" />
+                <span className="skeleton orev-sk-bar orev-sk-bar--sub" />
+              </span>
+              <span className="skeleton orev-sk-bar orev-sk-amt" />
             </div>
           ))
         ) : visible.length === 0 ? (

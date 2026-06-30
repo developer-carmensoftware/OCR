@@ -5,7 +5,24 @@ import type { KpiSummary } from '../../lib/api/adminClient'
 
 export default function OrderKpiCards({ kpi }: { kpi: KpiSummary | null }) {
   const { t } = useT()
-  if (!kpi) return null
+  // Skeleton while the summary loads — keeps the row's height so the page doesn't
+  // jump when the real figures arrive.
+  if (!kpi) {
+    return (
+      <div className="orev-kpi-row" aria-hidden="true">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="orev-kpi-card">
+            <div className="orev-kpi-header">
+              <span className="skeleton orev-kpi-sk--icon" />
+              <span className="skeleton orev-kpi-sk orev-kpi-sk--title" />
+            </div>
+            <span className="skeleton orev-kpi-sk orev-kpi-sk--amt" />
+            <span className="skeleton orev-kpi-sk orev-kpi-sk--desc" />
+          </div>
+        ))}
+      </div>
+    )
+  }
 
   const cnt = (k: string) => kpi.status_counts[k] ?? 0
   const unpaidAmt = kpi.awaiting_amount + kpi.to_review_amount

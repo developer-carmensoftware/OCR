@@ -68,6 +68,58 @@ function withName(updated: AdminCreditOrder, prev: AdminCreditOrder): AdminCredi
   }
 }
 
+// ── Loading skeletons (mirror the real slip viewer + proforma document) ────────
+
+function SlipSkeleton() {
+  return (
+    <div className="orev-slip-sk" aria-hidden="true">
+      <div className="orev-slip-sk-tools">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <span key={i} className="skeleton orev-slip-sk-tool" />
+        ))}
+        <span className="skeleton orev-slip-sk-zoom" />
+      </div>
+      <div className="skeleton orev-slip-sk-stage" />
+    </div>
+  )
+}
+
+function DocSkeleton() {
+  return (
+    <div className="orev-docsk" aria-hidden="true">
+      <div className="orev-docsk-head">
+        <span className="skeleton orev-docsk-logo" />
+        <div className="orev-docsk-seller">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <span key={i} className="skeleton orev-docsk-line" />
+          ))}
+        </div>
+      </div>
+      <span className="skeleton orev-docsk-banner" />
+      <div className="orev-docsk-grid">
+        {Array.from({ length: 2 }).map((_, c) => (
+          <div key={c} className="orev-docsk-card">
+            <span className="skeleton orev-docsk-cardtitle" />
+            {Array.from({ length: 3 }).map((_, i) => (
+              <span key={i} className="skeleton orev-docsk-line" />
+            ))}
+          </div>
+        ))}
+      </div>
+      <div className="orev-docsk-table">
+        <span className="skeleton orev-docsk-thead" />
+        <span className="skeleton orev-docsk-trow" />
+        <span className="skeleton orev-docsk-trow" />
+      </div>
+      <div className="orev-docsk-totals">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <span key={i} className="skeleton orev-docsk-totalrow" />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Slip viewer (zoom / pan / rotate for images; native iframe for PDFs) ───────
 
 function SlipViewer({ url, error }: { url: string | null; error: boolean }) {
@@ -85,7 +137,7 @@ function SlipViewer({ url, error }: { url: string | null; error: boolean }) {
 
   if (!url) {
     if (error) return <div className="orev-slip-fallback">{t('orev.slip.errFallback')}</div>
-    return <div className="orev-slip-skeleton skeleton" aria-hidden="true" />
+    return <SlipSkeleton />
   }
 
   if (slipIsPdf(url)) {
@@ -248,26 +300,39 @@ function ContactBuyer({
   return (
     <div className="orev-contact">
       <span className="orev-verify-eyebrow">{t('orev.contact.eyebrow')}</span>
-      <div className="orev-contact-row">
-        <span className="orev-contact-name">{proforma?.buyer_name || '—'}</span>
-        {proforma?.buyer_contact_name && (
-          <span className="orev-contact-person">
-            {t('orev.contact.purchaser', { name: proforma.buyer_contact_name })}
-          </span>
-        )}
-      </div>
-      {email ? (
-        <div className="orev-contact-actions">
-          <span className="orev-contact-email mono">{email}</span>
-          <a className="btn btn-outline orev-mini" href={`mailto:${email}`}>
-            <Mail size={13} /> {t('orev.contact.email')}
-          </a>
-          <button type="button" className="btn btn-outline orev-mini" onClick={copy}>
-            <Copy size={13} /> {t('orev.contact.copy')}
-          </button>
+      {!proforma ? (
+        <div className="orev-contact-sk" aria-hidden="true">
+          <span className="skeleton orev-contact-sk-name" />
+          <div className="orev-contact-sk-actions">
+            <span className="skeleton orev-contact-sk-email" />
+            <span className="skeleton orev-contact-sk-btn" />
+            <span className="skeleton orev-contact-sk-btn" />
+          </div>
         </div>
       ) : (
-        <p className="orev-contact-noemail">{t('orev.contact.noEmail')}</p>
+        <>
+          <div className="orev-contact-row">
+            <span className="orev-contact-name">{proforma.buyer_name || '—'}</span>
+            {proforma.buyer_contact_name && (
+              <span className="orev-contact-person">
+                {t('orev.contact.purchaser', { name: proforma.buyer_contact_name })}
+              </span>
+            )}
+          </div>
+          {email ? (
+            <div className="orev-contact-actions">
+              <span className="orev-contact-email mono">{email}</span>
+              <a className="btn btn-outline orev-mini" href={`mailto:${email}`}>
+                <Mail size={13} /> {t('orev.contact.email')}
+              </a>
+              <button type="button" className="btn btn-outline orev-mini" onClick={copy}>
+                <Copy size={13} /> {t('orev.contact.copy')}
+              </button>
+            </div>
+          ) : (
+            <p className="orev-contact-noemail">{t('orev.contact.noEmail')}</p>
+          )}
+        </>
       )}
       {adminNote && (
         <p className="orev-note">
@@ -780,11 +845,7 @@ export default function OrderWorkspace({
             {proforma ? (
               <ProformaDocument doc={proforma} paymentInfo={paymentInfo} />
             ) : (
-              <div className="orev-doc-skeleton" aria-hidden="true">
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <span key={i} className="skeleton orev-sk-line" />
-                ))}
-              </div>
+              <DocSkeleton />
             )}
           </div>
         </div>

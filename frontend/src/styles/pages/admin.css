@@ -888,6 +888,12 @@ body:has(.admin-login-page) {
   );
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after {
+    animation: none;
+  }
+}
+
 .skeleton-label {
   height: 0.6rem;
   width: 48%;

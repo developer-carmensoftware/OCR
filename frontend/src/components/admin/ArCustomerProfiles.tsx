@@ -187,11 +187,25 @@ export default function ArCustomerProfiles({ onMapped }: { onMapped?: () => void
           </thead>
           <tbody>
             {loading ? (
-              <tr>
-                <td colSpan={5} className="orev-ar-empty">
-                  Loading…
-                </td>
-              </tr>
+              Array.from({ length: 6 }).map((_, i) => (
+                <tr key={`sk-${i}`} aria-hidden="true">
+                  <td>
+                    <span className="skeleton orev-ar-sk" />
+                  </td>
+                  <td>
+                    <span className="skeleton orev-ar-sk orev-ar-sk--sm" />
+                  </td>
+                  <td>
+                    <span className="skeleton orev-ar-sk orev-ar-sk--sm" />
+                  </td>
+                  <td>
+                    <span className="skeleton orev-ar-sk orev-ar-sk--sm" />
+                  </td>
+                  <td>
+                    <span className="skeleton orev-ar-sk orev-ar-sk--xs" />
+                  </td>
+                </tr>
+              ))
             ) : profiles.length === 0 ? (
               <tr>
                 <td colSpan={5} className="orev-ar-empty">
