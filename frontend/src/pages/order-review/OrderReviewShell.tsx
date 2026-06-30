@@ -1,4 +1,5 @@
-import { LogOut, ReceiptText } from 'lucide-react'
+import { LogOut } from 'lucide-react'
+import logo from '../../assets/logo.png'
 import { useAdminAuth } from '../../contexts/AdminAuthContext'
 import { useT } from '../../i18n/LanguageContext'
 import DarkModeToggle from '../../components/common/DarkModeToggle'
@@ -25,7 +26,7 @@ export default function OrderReviewShell() {
       <header className="orev-app-header">
         <div className="orev-app-brand">
           <span className="orev-app-logo" aria-hidden="true">
-            <ReceiptText size={18} strokeWidth={2.25} />
+            <img src={logo} alt="" className="orev-app-logo-img" />
           </span>
           <span className="orev-app-title">{t('orev.title')}</span>
         </div>

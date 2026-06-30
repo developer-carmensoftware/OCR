@@ -154,8 +154,8 @@
 }
 
 .app-header .logo-box .logo-img {
-  width: 20px;
-  height: 20px;
+  width: 28px;
+  height: 28px;
   object-fit: contain;
   filter: brightness(0) invert(1);
   opacity: 0.96;
