@@ -378,6 +378,7 @@
   align-items: center;
   justify-content: center;
   text-align: center;
+  width: 100%; /* it's a <button> now (a11y) — buttons don't stretch like the old <div> did */
   min-height: 160px;
   border: 2px dashed var(--border-hi);
   cursor: pointer;
