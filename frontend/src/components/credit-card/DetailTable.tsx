@@ -69,8 +69,14 @@ export default function DetailTable({
               <tr>
                 {DETAIL_COLUMNS.map(col => {
                   const labelHtml = DETAIL_LABELS[col] || col
+                  const labelText = labelHtml.replace(/<[^>]*>/g, ' ').trim()
                   return (
-                    <th key={col} scope="col" dangerouslySetInnerHTML={{ __html: labelHtml }} />
+                    <th
+                      key={col}
+                      scope="col"
+                      aria-label={labelText}
+                      dangerouslySetInnerHTML={{ __html: labelHtml }}
+                    />
                   )
                 })}
               </tr>

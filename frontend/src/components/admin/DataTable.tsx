@@ -1,5 +1,16 @@
 import { Fragment, useState } from 'react'
 
+const SKELETON_WIDTHS = [
+  'sk-w-72',
+  'sk-w-55',
+  'sk-w-85',
+  'sk-w-60',
+  'sk-w-78',
+  'sk-w-50',
+  'sk-w-68',
+  'sk-w-80',
+]
+
 export interface Column<T> {
   key: keyof T | string
   label: string
@@ -79,16 +90,6 @@ export default function DataTable<T = Record<string, unknown>>({
   }
 
   if (loading) {
-    const WIDTHS = [
-      'sk-w-72',
-      'sk-w-55',
-      'sk-w-85',
-      'sk-w-60',
-      'sk-w-78',
-      'sk-w-50',
-      'sk-w-68',
-      'sk-w-80',
-    ]
     return (
       <div className="admin-table-wrap">
         <table className="admin-table">
@@ -106,15 +107,15 @@ export default function DataTable<T = Record<string, unknown>>({
           </thead>
           <tbody>
             {Array.from({ length: 7 }).map((_, i) => (
-              <tr key={i} className="admin-tr skeleton-row">
+              <tr key={i} className="admin-tr skeleton-row" role="presentation">
                 {columns.map((col, j) => (
                   <td
                     key={String(col.key)}
                     className={`admin-td${col.align === 'right' ? ' text-right' : ''}`}
+                    role="presentation"
                   >
                     <span
-                      className={`skeleton skeleton-cell ${WIDTHS[(i + j) % WIDTHS.length]}`}
-                      aria-hidden="true"
+                      className={`skeleton skeleton-cell ${SKELETON_WIDTHS[(i + j) % SKELETON_WIDTHS.length]}`}
                     />
                   </td>
                 ))}

@@ -36,7 +36,7 @@ export default function UsageSummaryStrip() {
   const isLow = sub ? planLeft + usage.credit_balance <= 5 : freeLeft + usage.credit_balance <= 5
 
   return (
-    <div className={`usage-strip${isLow ? ' is-low' : ''}`} role="status">
+    <output className={`usage-strip${isLow ? ' is-low' : ''}`}>
       {sub && (
         <>
           <div className="usage-stat">
@@ -70,6 +70,6 @@ export default function UsageSummaryStrip() {
           <AlertTriangle size={13} /> {t('usage.runningLow')}
         </div>
       )}
-    </div>
+    </output>
   )
 }

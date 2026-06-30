@@ -110,6 +110,7 @@ export default function VendorSearch({
         <input
           type="text"
           className={`vendor-search-input ${systemVendor.code ? 'matched' : ''}`}
+          aria-label={t('ap.searchVendor')}
           placeholder={t('ap.searchVendor')}
           value={vendorSearch}
           onChange={e => {

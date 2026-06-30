@@ -1,28 +1,14 @@
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
+import { useEffect, useState } from 'react'
 
-type ChartType = 'line' | 'bar' | 'stacked-bar' | 'pie'
+export type ChartType = 'line' | 'bar' | 'stacked-bar' | 'pie'
 
-interface Series {
+export interface Series {
   key: string
   label: string
   color: string
 }
 
-interface MetricChartProps {
+export interface MetricChartProps {
   type: ChartType
   data: Record<string, unknown>[]
   series: Series[]
@@ -34,6 +20,13 @@ interface MetricChartProps {
 
 const FALLBACK_COLORS = ['#6366f1', '#22d3ee', '#f59e0b', '#10b981', '#f43f5e', '#a78bfa']
 
+// recharts (+ d3) is heavy, so we never import it statically — it would ship in
+// the main bundle to every user, including those who never open a chart. Instead
+// we load it on demand the first time a chart renders; until the chunk arrives we
+// show the loading skeleton. `typeof import(...)` is an inline type query, not a
+// static import, so no recharts code is pulled in eagerly.
+type Recharts = Awaited<typeof import('recharts')>
+
 export default function MetricChart({
   type,
   data,
@@ -43,15 +36,45 @@ export default function MetricChart({
   yFormatter,
   loading = false,
 }: MetricChartProps) {
+  const [RC, setRC] = useState<Recharts | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    import('recharts').then(m => {
+      if (alive) setRC(m)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
   const fmt = (v: unknown) => (yFormatter ? yFormatter(Number(v)) : String(v ?? ''))
 
-  if (loading) {
-    return <div className="skeleton skeleton-chart" role="status" aria-label="Loading chart…" />
+  if (loading || !RC) {
+    return (
+      <output className="skeleton skeleton-chart" aria-label="Loading chart…" style={{ height }} />
+    )
   }
 
   if (!data || data.length === 0) {
     return <div className="chart-empty">No data for selected period</div>
   }
+
+  const {
+    Bar,
+    BarChart,
+    CartesianGrid,
+    Cell,
+    Legend,
+    Line,
+    LineChart,
+    Pie,
+    PieChart,
+    ResponsiveContainer,
+    Tooltip,
+    XAxis,
+    YAxis,
+  } = RC
 
   if (type === 'pie') {
     const pieData = series.map(s => ({

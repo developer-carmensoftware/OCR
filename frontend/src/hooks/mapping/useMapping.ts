@@ -14,6 +14,13 @@ import type { MainMappingKey } from './useMappingSuggestions'
 
 export type MainMappings = Record<MainMappingKey, FieldMapping>
 
+const COMPANY_REQUIRED_FIELDS: Array<{ key: keyof CompanyData; label: string }> = [
+  { key: 'name', label: 'Company Name' },
+  { key: 'taxId', label: 'Tax ID' },
+  { key: 'branch', label: 'Branch No' },
+  { key: 'address', label: 'Address' },
+]
+
 export interface ActiveScan {
   paymentTypes: Set<string>
   commission: boolean
@@ -169,13 +176,7 @@ export function useMapping() {
     setAcceptAllModal(false)
   }
 
-  const companyRequiredFields: Array<{ key: keyof CompanyData; label: string }> = [
-    { key: 'name', label: 'Company Name' },
-    { key: 'taxId', label: 'Tax ID' },
-    { key: 'branch', label: 'Branch No' },
-    { key: 'address', label: 'Address' },
-  ]
-  const missingCompanyFields = companyRequiredFields.filter(
+  const missingCompanyFields = COMPANY_REQUIRED_FIELDS.filter(
     f => !bankConfig.company[f.key as keyof typeof bankConfig.company]?.trim()
   )
   const topLevelRequired = [
@@ -270,7 +271,7 @@ export function useMapping() {
     company: bankConfig.company,
     setCompany: bankConfig.setCompany,
     handleCompanyChange,
-    companyRequiredFields,
+    companyRequiredFields: COMPANY_REQUIRED_FIELDS,
     missingCompanyFields,
     mappings,
     setMappings,

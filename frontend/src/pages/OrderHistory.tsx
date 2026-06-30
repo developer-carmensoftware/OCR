@@ -115,7 +115,7 @@ function ActivePlanBanner({ sub }: { sub: ActiveSubscription }) {
   if (!sub.period_end) return null
   const period = t(sub.billing_period === 'annual' ? 'plan.billingAnnual' : 'plan.billingMonthly')
   return (
-    <div className="usage-strip plan-strip" role="status">
+    <output className="usage-strip plan-strip">
       <div className="usage-stat">
         <CalendarClock size={15} className="usage-stat-icon" />
         <span className="usage-stat-value">{catalogName(sub.plan_code)}</span>
@@ -128,7 +128,7 @@ function ActivePlanBanner({ sub }: { sub: ActiveSubscription }) {
         <span className="usage-stat-label">{t('usage.activeUntil')}</span>
         <span className="usage-stat-value text-mono">{formatDate(sub.period_end)}</span>
       </div>
-    </div>
+    </output>
   )
 }
 

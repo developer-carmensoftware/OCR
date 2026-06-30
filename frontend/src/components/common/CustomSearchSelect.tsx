@@ -158,6 +158,7 @@ export default function CustomSearchSelect({
       <input
         type="text"
         placeholder={placeholder}
+        aria-label={placeholder || 'Search and select'}
         value={displayValue}
         onFocus={() => {
           setIsOpen(true)

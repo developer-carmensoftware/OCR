@@ -63,6 +63,7 @@ export default function CompanyInfoSection({
               <input
                 key={`inp-${key}`}
                 type="text"
+                aria-label={label}
                 placeholder={PLACEHOLDER_MAP[key]}
                 value={company[key]}
                 onChange={e => handleCompanyChange(e, key)}

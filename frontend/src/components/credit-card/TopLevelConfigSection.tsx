@@ -55,6 +55,7 @@ export default function TopLevelConfigSection({
         </label>
         <input
           type="text"
+          aria-label="File Prefix"
           placeholder="IC"
           value={filePrefix}
           onChange={e => setFilePrefix(e.target.value.toUpperCase())}
@@ -76,6 +77,7 @@ export default function TopLevelConfigSection({
         </label>
         <input
           type="text"
+          aria-label="File Source"
           placeholder="e.g. ACBB, ACKB, ACSC"
           value={fileSource}
           onChange={e => setFileSource(e.target.value)}
@@ -89,6 +91,7 @@ export default function TopLevelConfigSection({
         <label>Description</label>
         <input
           type="text"
+          aria-label="Description"
           placeholder="Additional details"
           value={description}
           onChange={e => setDescription(e.target.value)}

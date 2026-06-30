@@ -345,24 +345,24 @@ export default function APLineItemsTable({
                   if (fld === 'taxPct') {
                     return (
                       <Fragment key={c}>
-                        {!showFixedTaxType && showFixedTaxProfile && <td />}
-                        <td />
+                        {!showFixedTaxType && showFixedTaxProfile && <td role="presentation" />}
+                        <td role="presentation" />
                       </Fragment>
                     )
                   }
                   if (fld === 'taxType')
                     return (
                       <Fragment key={c}>
-                        {showFixedTaxProfile && showFixedTaxPct && <td />}
-                        <td />
+                        {showFixedTaxProfile && showFixedTaxPct && <td role="presentation" />}
+                        <td role="presentation" />
                       </Fragment>
                     )
-                  return <td key={`e${c}`} />
+                  return <td key={`e${c}`} role="presentation" />
                 })}
-                {showFixedTaxType && showFixedTaxProfile && <td />}
-                {showFixedTaxPct && <td />}
-                {showFixedTaxType && <td />}
-                <td />
+                {showFixedTaxType && showFixedTaxProfile && <td role="presentation" />}
+                {showFixedTaxPct && <td role="presentation" />}
+                {showFixedTaxType && <td role="presentation" />}
+                <td role="presentation" />
               </tr>
             </tfoot>
           </table>

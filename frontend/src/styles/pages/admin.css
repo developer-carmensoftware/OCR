@@ -905,6 +905,7 @@ body:has(.admin-login-page) {
   display: inline-block;
 }
 .skeleton-chart {
+  display: block; /* <output> defaults to inline → height would be ignored */
   height: 260px;
   border-radius: var(--radius-md);
 }
