@@ -25,10 +25,12 @@ async def post_ar_entry(
     deal_id: str,
     ar_code: str,
     account_name: str,
+    closing_date: str,
     total: float,
     net: float,
     vat: float,
     description: str,
+    remark: str,
 ) -> dict:
     """Post one order to Carmen as an AR entry.
 
@@ -46,13 +48,15 @@ async def post_ar_entry(
         "DealId": deal_id,
         "ArNo": ar_code,
         "AccountName": account_name,
-        "ClosingDate": datetime.now(UTC).isoformat(),
-        "Description": description,
+        "ClosingDate": closing_date or datetime.now(UTC).isoformat(),
+        # Carmen's API property is misspelled "Desciption" (no 'r'); the correctly
+        # spelled key does NOT bind and the value is silently dropped. Keep the typo.
+        "Desciption": description,
         "TotalAmount": round(total, 2),
         "Amount": round(net, 2),
         "ServiceAmount": 0,
         "TaxAmount": round(vat, 2),
-        "Remark": description,
+        "Remark": remark,
     }
 
     try:

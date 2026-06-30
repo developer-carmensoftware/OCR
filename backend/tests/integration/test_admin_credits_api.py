@@ -68,7 +68,11 @@ def _order(
 def _proforma(order_id=None, tax_id="1234567890123", branch="HQ"):
     doc = MagicMock()
     doc.id = str(uuid.uuid4())
+    doc.number = "PI-202606-0001"  # AR DealId maps to this, NOT order.id (else FolioNo overflows)
+    doc.issue_date = datetime(2026, 6, 15, tzinfo=UTC)
+    doc.description = "Starter pack"
     doc.buyer_name = "Test Co"
+    doc.buyer_contact_name = "Khun Somchai"
     doc.buyer_tax_id = tax_id
     doc.buyer_address = "Bangkok"
     doc.buyer_branch = branch
@@ -424,6 +428,13 @@ def test_post_ar_marks_complete_with_ref():
     assert kwargs["net"] == 990.00
     assert kwargs["vat"] == 69.30
     assert kwargs["ar_code"] == "AR-TEST001"
+    # Carmen field mapping: DealId = Proforma Invoice No (the FolioNo-overflow fix —
+    # must NOT be the order UUID), ClosingDate = Proforma Date, Remark = Contact Name.
+    assert kwargs["deal_id"] == "PI-202606-0001"
+    assert kwargs["deal_id"] != order_id
+    assert kwargs["closing_date"] == "2026-06-15T00:00:00+00:00"
+    assert kwargs["remark"] == "Contact Name : Khun Somchai"
+    assert kwargs["description"].startswith("Package :")
 
 
 def test_post_ar_rejects_when_no_ar_code():

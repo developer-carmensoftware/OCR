@@ -734,15 +734,22 @@ async def post_ar_batch(
             )
             continue
 
+        # proforma is guaranteed non-None here — ar_code above was derived from it.
+        assert proforma is not None
         try:
             resp = await ar_posting_service.post_ar_entry(
-                deal_id=str(order.id),
+                # Carmen field mapping (interfacePostAR/CarmenAI):
+                #   DealId=Proforma Invoice No, ClosingDate=Proforma Date,
+                #   Description=Package+price, Remark=Contact Name.
+                deal_id=str(proforma.number),
                 ar_code=str(ar_code),
-                account_name=str(proforma.buyer_name or "") if proforma else "",
+                account_name=str(proforma.buyer_name or ""),
+                closing_date=proforma.issue_date.isoformat() if proforma.issue_date else "",
                 total=float(str(tax_inv.total)),
                 net=float(str(tax_inv.subtotal)),
                 vat=float(str(tax_inv.vat_amount)),
-                description=f"{order.pack_code} — {tax_inv.number}",
+                description=f"Package : {proforma.description or order.pack_code} — {tax_inv.total} THB",
+                remark=f"Contact Name : {proforma.buyer_contact_name or '-'}",
             )
             order.status = CreditOrderStatus.COMPLETE  # type: ignore[assignment]
             order.carmen_ar_posted_at = datetime.now(UTC)  # type: ignore[assignment]

@@ -9,13 +9,15 @@ from app.services import ar_posting_service
 
 def _kwargs():
     return dict(
-        deal_id="order-123",
+        deal_id="PF-202606-0007",
         ar_code="AR-ACME01",
         account_name="Acme Co.,Ltd.",
+        closing_date="2026-06-15T00:00:00+00:00",
         total=1059.30,
         net=990.00,
         vat=69.30,
-        description="starter — AI-202606-0007",
+        description="Package : starter — 1059.30 THB",
+        remark="Contact Name : Somchai",
     )
 
 
@@ -42,12 +44,14 @@ async def test_code_zero_succeeds_and_maps_payload():
 
     assert out == {"success": True, "carmen_ar_ref": "AR000123"}
     payload = client.post.call_args.kwargs["json"]
+    assert payload["DealId"] == "PF-202606-0007"  # Proforma Invoice No, not the order UUID
     assert payload["ArNo"] == "AR-ACME01"
     assert payload["TotalAmount"] == 1059.30
     assert payload["Amount"] == 990.00
     assert payload["TaxAmount"] == 69.30
     assert payload["ServiceAmount"] == 0
-    assert "ClosingDate" in payload
+    assert payload["ClosingDate"] == "2026-06-15T00:00:00+00:00"  # Proforma Date, not now()
+    assert payload["Remark"] == "Contact Name : Somchai"
 
 
 @patch.object(ar_posting_service.settings, "carmen_ar_url", "https://erp.test/CarmenAI")
