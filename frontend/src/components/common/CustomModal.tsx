@@ -58,6 +58,31 @@ export default function CustomModal({
   const [inputVal, setInputVal] = useState('')
   const [inputErrored, setInputErrored] = useState(false)
   const [revealed, setRevealed] = useState(false)
+
+  // Track previous props to sync/reset state during render (avoids useEffect cascading renders)
+  const [prevShow, setPrevShow] = useState(show)
+  const [prevInputValue, setPrevInputValue] = useState(inputValue)
+  const [prevInputLabel, setPrevInputLabel] = useState(inputLabel)
+  const [prevErrorNonce, setPrevErrorNonce] = useState(errorNonce)
+
+  if (show !== prevShow || inputValue !== prevInputValue || inputLabel !== prevInputLabel) {
+    setPrevShow(show)
+    setPrevInputValue(inputValue)
+    setPrevInputLabel(inputLabel)
+    if (show) {
+      setInputVal(inputValue || '')
+      setInputErrored(false)
+      setRevealed(false)
+    }
+  }
+
+  if (errorNonce !== prevErrorNonce) {
+    setPrevErrorNonce(errorNonce)
+    if (errorNonce) {
+      setInputErrored(true)
+    }
+  }
+
   const shakeControls = useAnimationControls()
   const reduceMotion = useReducedMotion()
   const { t } = useT()
@@ -65,23 +90,10 @@ export default function CustomModal({
   const confirmLabel = confirmText ?? t('modal.ok')
   const cancelLabel = cancelText ?? t('modal.cancel')
 
-  useEffect(() => {
-    if (show) setInputVal(inputValue || '')
-  }, [show, inputLabel, inputValue])
-
-  // Reset the invalid + reveal state whenever the dialog (re)opens.
-  useEffect(() => {
-    if (show) {
-      setInputErrored(false)
-      setRevealed(false)
-    }
-  }, [show])
-
-  // A new errorNonce means "this attempt was wrong" — flag red and shake the field.
+  // A new errorNonce means "this attempt was wrong" — shake the field.
   // Re-runs on every bump so consecutive wrong tries each get their own shake.
   useEffect(() => {
     if (!errorNonce) return
-    setInputErrored(true)
     if (!reduceMotion) {
       shakeControls.start({
         x: [0, -8, 8, -6, 6, -3, 3, 0],

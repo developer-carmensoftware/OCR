@@ -56,12 +56,14 @@ export default function CompanyInfoSection({
             <React.Fragment key={`frag-${key}`}>
               <label
                 key={`lbl-${key}`}
+                htmlFor={`inp-${key}`}
                 style={missing ? { color: '#dc2626', fontWeight: 600 } : {}}
               >
                 {label} {missing && <span style={{ color: '#dc2626' }}>*</span>}
               </label>
               <input
                 key={`inp-${key}`}
+                id={`inp-${key}`}
                 type="text"
                 aria-label={label}
                 placeholder={PLACEHOLDER_MAP[key]}

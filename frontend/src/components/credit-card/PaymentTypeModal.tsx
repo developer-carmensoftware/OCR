@@ -68,8 +68,19 @@ export default function PaymentTypeModal({
   const additionalTypes = allPaymentTypes.filter(t => !activeScan.paymentTypes.has(t))
 
   return ReactDOM.createPortal(
-    <div className="pm-overlay mapping-modal" onClick={cancelAmountSelection}>
-      <div className="pm-backdrop mapping-modal-overlay" />
+    <div className="pm-overlay mapping-modal">
+      <button
+        type="button"
+        className="pm-backdrop mapping-modal-overlay"
+        aria-label="Close payment type modal"
+        onClick={cancelAmountSelection}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') {
+            e.preventDefault()
+            cancelAmountSelection()
+          }
+        }}
+      />
       <div className="pm-dialog mapping-modal-content" onClick={e => e.stopPropagation()}>
         <div className="pm-header mapping-modal-header">
           <div className="pm-header-top">

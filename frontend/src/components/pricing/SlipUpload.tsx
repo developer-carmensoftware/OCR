@@ -31,7 +31,7 @@ export default function SlipUpload({ onUpload, uploading }: Props) {
     setFile(f)
   }
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = (e: React.DragEvent<HTMLButtonElement>) => {
     e.preventDefault()
     setDragging(false)
     accept(e.dataTransfer.files?.[0])
@@ -82,7 +82,8 @@ export default function SlipUpload({ onUpload, uploading }: Props) {
   }
 
   return (
-    <div
+    <button
+      type="button"
       className={`panel-card upload-drop slip-drop${dragging ? ' is-dragging' : ''}`}
       onClick={() => inputRef.current?.click()}
       onDragOver={e => {
@@ -91,9 +92,15 @@ export default function SlipUpload({ onUpload, uploading }: Props) {
       }}
       onDragLeave={() => setDragging(false)}
       onDrop={handleDrop}
-      role="button"
-      tabIndex={0}
-      onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && inputRef.current?.click()}
+      style={{
+        display: 'block',
+        width: '100%',
+        border: 'none',
+        background: 'none',
+        textAlign: 'left',
+        padding: 0,
+        cursor: 'pointer',
+      }}
     >
       <input
         ref={inputRef}
@@ -108,6 +115,6 @@ export default function SlipUpload({ onUpload, uploading }: Props) {
       </div>
       <div className="upload-label">{t('slip.uploadLabel')}</div>
       <div className="upload-hint">{t('slip.uploadHint')}</div>
-    </div>
+    </button>
   )
 }

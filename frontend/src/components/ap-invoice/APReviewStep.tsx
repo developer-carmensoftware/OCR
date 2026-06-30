@@ -271,8 +271,8 @@ export default function APReviewStep({ ctrl }: Props) {
               <div className="ap-valid-desc">{t('ap.validOkDesc')}</div>
             ) : (
               <ul className="ap-valid-check-list">
-                {checks.map((c, i) => (
-                  <li key={i} className={c.ok ? 'ap-check-ok' : 'ap-check-fail'}>
+                {checks.map(c => (
+                  <li key={c.label} className={c.ok ? 'ap-check-ok' : 'ap-check-fail'}>
                     {c.ok ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
                     <span>{c.label}</span>
                   </li>

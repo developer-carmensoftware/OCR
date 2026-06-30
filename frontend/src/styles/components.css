@@ -3569,3 +3569,184 @@ input[type='text'].detail-input:focus {
 .ios-sheet-close:active {
   transform: scale(0.97);
 }
+
+/* ─── CUSTOM SEARCH SELECT ─── */
+.custom-search-select-input {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  outline: none;
+  transition:
+    border-color 180ms var(--ease-out),
+    background-color 180ms var(--ease-out),
+    color 180ms var(--ease-out);
+  font-family: 'DM Mono', monospace;
+}
+
+.custom-search-select-top {
+  padding: 0.6rem 0.8rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  transition: background 0.1s;
+}
+
+/* ─── ERROR BOUNDARY ─── */
+.error-boundary-wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: var(--bg-1, #f8f9fc);
+  font-family: var(--font-sans, system-ui, sans-serif);
+}
+
+.error-boundary-card {
+  max-width: 480px;
+  width: 100%;
+  background: var(--bg-2, white);
+  border-radius: 1rem;
+  border: 1px solid var(--border, #e2e8f0);
+  padding: 2.5rem;
+  text-align: center;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+}
+
+.error-boundary-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1.25rem;
+  font-size: 1.75rem;
+}
+
+.error-boundary-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text-1, #111);
+}
+
+.error-boundary-pre {
+  margin: 0.75rem 0 1.25rem;
+  padding: 0.75rem;
+  background: var(--bg-3, #f1f5f9);
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  text-align: left;
+  color: var(--text-2, #374151);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.error-boundary-btn-primary {
+  padding: 0.5rem 1.25rem;
+  background: var(--purple, #7c3aed);
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.error-boundary-btn-secondary {
+  padding: 0.5rem 1.25rem;
+  background: transparent;
+  color: var(--text-2, #374151);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+/* ─── PDF PAGE SELECTOR ─── */
+.pdf-selector-overlay {
+  position: fixed;
+  inset: 0;
+  background: oklch(0 0 0 / 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 400;
+  padding: 1rem;
+}
+
+.pdf-selector-dialog {
+  background: var(--card-bg);
+  color: var(--text);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  width: 100%;
+  max-width: 700px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.pdf-selector-alert {
+  margin-top: 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--amber-light);
+  border: 1px solid var(--amber-mid);
+  font-size: 0.75rem;
+  color: var(--amber-text);
+  line-height: 1.45;
+}
+
+.pdf-selector-thumbnail-grid {
+  overflow-y: auto;
+  padding: 1rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 0.75rem;
+  flex: 1;
+}
+
+.pdf-selector-thumbnail-btn {
+  display: flex;
+  flex-direction: column;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  outline: none;
+  position: relative;
+  border-width: 2px;
+  border-style: solid;
+  transition: border-color var(--dur-fast) var(--ease);
+  background-color: var(--card-bg);
+}
+
+.pdf-selector-checkbox {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  transition: all 120ms ease;
+  box-shadow: var(--shadow-sm);
+}

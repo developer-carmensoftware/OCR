@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { useOcrWizard } from '../hooks/credit-card'
 import {
   StepWizard,
@@ -148,7 +148,7 @@ export default function CreditCardOCR() {
         <StepWizard step={step} onStepClick={n => !loading && !submitting && handleStepClick(n)} />
 
         <AnimatePresence mode="wait">
-          <motion.div
+          <m.div
             key={loading ? 'loading' : step}
             initial={{ opacity: 0, transform: 'translateY(10px)' }}
             animate={{ opacity: 1, transform: 'translateY(0px)' }}
@@ -240,7 +240,7 @@ export default function CreditCardOCR() {
                 onFinish={resetAll}
               />
             )}
-          </motion.div>
+          </m.div>
         </AnimatePresence>
       </div>
     </>

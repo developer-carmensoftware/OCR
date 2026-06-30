@@ -29,20 +29,20 @@ export interface DataTableProps<T = Record<string, unknown>> {
   renderExpandedRow?: (row: T) => React.ReactNode
 }
 
+interface ExpandedRowWrapperProps<T> {
+  row: T
+  renderExpandedRow: (row: T) => React.ReactNode
+}
+
+function ExpandedRowWrapper<T>({ row, renderExpandedRow: renderer }: ExpandedRowWrapperProps<T>) {
+  return <>{renderer(row)}</>
+}
+
 function getCell(row: unknown, key: string): unknown {
   return key.split('.').reduce<unknown>((obj, k) => {
     if (obj && typeof obj === 'object') return (obj as Record<string, unknown>)[k]
     return undefined
   }, row)
-}
-
-interface ExpandedRowContentProps<T> {
-  row: T
-  render: (row: T) => React.ReactNode
-}
-
-function ExpandedRowContent<T>({ row, render }: ExpandedRowContentProps<T>) {
-  return <>{render(row)}</>
 }
 
 export default function DataTable<T = Record<string, unknown>>({
@@ -117,6 +117,7 @@ export default function DataTable<T = Record<string, unknown>>({
                     <span
                       className={`skeleton skeleton-cell ${SKELETON_WIDTHS[(i + j) % SKELETON_WIDTHS.length]}`}
                     />
+                    {null}
                   </td>
                 ))}
               </tr>
@@ -174,7 +175,7 @@ export default function DataTable<T = Record<string, unknown>>({
                   {isExpanded && renderExpandedRow && (
                     <tr className="admin-tr-expanded">
                       <td colSpan={columns.length} className="admin-td-expanded">
-                        <ExpandedRowContent row={row} render={renderExpandedRow} />
+                        <ExpandedRowWrapper row={row} renderExpandedRow={renderExpandedRow} />
                       </td>
                     </tr>
                   )}

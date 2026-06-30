@@ -8,8 +8,8 @@
 // Throws if the PDF cannot be parsed (e.g. a user-password-encrypted file) — the
 // caller should fall back to previewing the whole document.
 export async function selectedPagesToPdfUrl(file: File, pages: number[]): Promise<string> {
-  const { PDFDocument } = await import('pdf-lib')
-  const srcBytes = await file.arrayBuffer()
+  const [pdfLib, srcBytes] = await Promise.all([import('pdf-lib'), file.arrayBuffer()])
+  const { PDFDocument } = pdfLib
   const src = await PDFDocument.load(srcBytes, { ignoreEncryption: true })
 
   const total = src.getPageCount()

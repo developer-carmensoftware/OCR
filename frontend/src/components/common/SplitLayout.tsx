@@ -34,6 +34,7 @@ export default function SplitLayout({
       {showPreview && (
         <div className="ap-preview-side">
           <DocumentPreview
+            key={previewUrl || 'empty'}
             previewUrl={previewUrl}
             previewType={previewType}
             fileName={fileName}

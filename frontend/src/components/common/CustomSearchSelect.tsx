@@ -20,6 +20,7 @@ interface Props {
   topChoice?: TopChoice | null
   suggestedValue?: string | null
   hasError?: boolean
+  'aria-label'?: string
 }
 
 export default function CustomSearchSelect({
@@ -30,6 +31,7 @@ export default function CustomSearchSelect({
   topChoice,
   suggestedValue,
   hasError = false,
+  'aria-label': ariaLabel,
 }: Props) {
   const { t } = useT()
   const [isOpen, setIsOpen] = useState(false)
@@ -69,15 +71,15 @@ export default function CustomSearchSelect({
     }
 
     document.addEventListener('mousedown', handleClickOutside)
-    document.addEventListener('touchstart', handleClickOutside)
+    document.addEventListener('touchstart', handleClickOutside, { passive: true })
     if (isOpen) {
-      window.addEventListener('scroll', handleScroll, true)
+      window.addEventListener('scroll', handleScroll, { capture: true, passive: true })
       window.addEventListener('resize', handleScroll)
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
-      document.removeEventListener('touchstart', handleClickOutside)
-      window.removeEventListener('scroll', handleScroll, true)
+      document.removeEventListener('touchstart', handleClickOutside, { passive: true } as any)
+      window.removeEventListener('scroll', handleScroll, { capture: true, passive: true } as any)
       window.removeEventListener('resize', handleScroll)
     }
   }, [value, isOpen])
@@ -158,7 +160,7 @@ export default function CustomSearchSelect({
       <input
         type="text"
         placeholder={placeholder}
-        aria-label={placeholder || 'Search and select'}
+        aria-label={ariaLabel || placeholder}
         value={displayValue}
         onFocus={() => {
           setIsOpen(true)
@@ -176,10 +178,8 @@ export default function CustomSearchSelect({
               ? `${value} — ${selectedDesc}`
               : ''
         }
-        className="search-select-input"
+        className="search-select-input custom-search-select-input"
         style={{
-          width: '100%',
-          padding: '0.5rem 0.65rem',
           border: `1px solid ${isAISuggested ? 'var(--primary-mid)' : hasError ? 'var(--rose)' : 'var(--border)'}`,
           borderBottomColor: isOpen
             ? 'var(--primary)'
@@ -188,12 +188,6 @@ export default function CustomSearchSelect({
               : hasError
                 ? 'var(--rose)'
                 : 'var(--border)',
-          borderRadius: '6px',
-          fontSize: '0.85rem',
-          outline: 'none',
-          transition:
-            'border-color 180ms var(--ease-out), background-color 180ms var(--ease-out), color 180ms var(--ease-out)',
-          fontFamily: "'DM Mono', monospace",
           background: isAISuggested
             ? 'var(--primary-light)'
             : hasError
@@ -208,10 +202,19 @@ export default function CustomSearchSelect({
             {showTopChoice && topChoice && (
               <>
                 <div
+                  role="button"
+                  tabIndex={0}
                   onMouseDown={e => {
                     e.preventDefault()
                     onChange(topChoice.code)
                     setIsOpen(false)
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      onChange(topChoice.code)
+                      setIsOpen(false)
+                    }
                   }}
                   onMouseEnter={e => {
                     ;(e.currentTarget as HTMLElement).style.background = 'var(--primary-light)'
@@ -219,16 +222,10 @@ export default function CustomSearchSelect({
                   onMouseLeave={e => {
                     ;(e.currentTarget as HTMLElement).style.background = topBadge.bg
                   }}
+                  className="custom-search-select-top"
                   style={{
-                    padding: '0.6rem 0.8rem',
                     background: topBadge.bg,
                     borderBottom: `1px solid ${topBadge.border}`,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '0.5rem',
-                    transition: 'background 0.1s',
                   }}
                 >
                   <div>
@@ -250,7 +247,7 @@ export default function CustomSearchSelect({
                     {topChoice.name2 && (
                       <div
                         style={{
-                          fontSize: '0.72rem',
+                          fontSize: '0.75rem',
                           color: topBadge.color,
                           opacity: 0.75,
                           marginTop: '2px',
@@ -266,7 +263,7 @@ export default function CustomSearchSelect({
                   <div
                     style={{
                       padding: '0.2rem 0.8rem',
-                      fontSize: '0.7rem',
+                      fontSize: '0.75rem',
                       color: 'var(--text-4)',
                       background: 'var(--gray-50)',
                       borderBottom: '1px solid var(--gray-100)',
@@ -278,9 +275,11 @@ export default function CustomSearchSelect({
               </>
             )}
 
-            {filteredWithoutTop.map((opt, i) => (
+            {filteredWithoutTop.map(opt => (
               <div
-                key={i}
+                key={opt.code}
+                role="button"
+                tabIndex={0}
                 style={{
                   padding: '0.6rem 0.8rem',
                   borderBottom: '1px solid var(--gray-100)',
@@ -291,6 +290,13 @@ export default function CustomSearchSelect({
                   e.preventDefault()
                   onChange(opt.code)
                   setIsOpen(false)
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    onChange(opt.code)
+                    setIsOpen(false)
+                  }
                 }}
                 onMouseEnter={e => {
                   ;(e.currentTarget as HTMLElement).style.background = 'var(--primary-light)'

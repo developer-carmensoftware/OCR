@@ -44,7 +44,25 @@ function ContactDialog({ onClose }: { onClose: () => void }) {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
     >
-      <div style={{ position: 'absolute', inset: 0 }} onClick={onClose} />
+      <button
+        type="button"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          border: 'none',
+          background: 'transparent',
+          padding: 0,
+          cursor: 'default',
+        }}
+        aria-label="Close contact sheet"
+        onClick={onClose}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') {
+            e.preventDefault()
+            onClose()
+          }
+        }}
+      />
       <m.div
         className="ios-sheet"
         initial={{ y: '100%' }}

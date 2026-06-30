@@ -378,6 +378,7 @@ export default function FeatureFlows() {
           return (
             <button
               key={f.key}
+              type="button"
               role="tab"
               aria-selected={isActive}
               className={`flow-tab ${f.accent}${isActive ? ' is-active' : ''}`}

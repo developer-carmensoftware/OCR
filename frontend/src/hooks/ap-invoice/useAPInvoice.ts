@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { toast } from 'sonner'
 import { useT } from '../../i18n/LanguageContext'
 import { showToast } from '../../lib/toast'
@@ -55,19 +55,17 @@ export function useAPInvoice() {
     fetchTaxProfiles()
       .then(setTaxProfiles)
       .catch(() => {})
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [vendor.loadVendors])
 
   useEffect(() => {
     if (vendor.showVendorDrop) return
     vendor.autoMatchVendor(false)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [extraction.headerData.vendorTaxId, vendor.vendorDbByTax])
-
-  useEffect(() => {
-    if (step === 4) submission.loadGLData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step])
+  }, [
+    extraction.headerData.vendorTaxId,
+    vendor.vendorDbByTax,
+    vendor.showVendorDrop,
+    vendor.autoMatchVendor,
+  ])
 
   // Auto-match each taxable line's Tax Profile to its extracted rate, preferring the vendor's
   // default profile among same-rate profiles (resolveTaxProfileForRate). When NO profile defines
@@ -78,6 +76,7 @@ export function useAPInvoice() {
   // resolves (its default profile lands) and upgrades untouched lines from the arbitrary
   // first-match to the vendor's profile. The `changed` flag prevents a render loop.
   const vendorTaxProfile = vendor.systemVendor.taxProfileCode1
+  // eslint-disable-next-line react-doctor/no-event-handler
   useEffect(() => {
     if (!taxProfiles.length) return
 
@@ -94,6 +93,7 @@ export function useAPInvoice() {
           return it
         }
         const rate = parseNum(it.taxPct)
+        // eslint-disable-next-line react-doctor/no-event-handler
         const desired = resolveTaxProfileForRate(rate, taxProfiles, vendorTaxProfile)
         if (it.taxProfileCode1 !== desired) {
           changed = true
@@ -103,8 +103,7 @@ export function useAPInvoice() {
       })
       return changed ? next : prev
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taxProfiles, extraction.lineItems.length, vendorTaxProfile])
+  }, [taxProfiles, extraction.lineItems.length, vendorTaxProfile, extraction.setLineItems])
 
   const confirmMapping = () => {
     const mappedValues = Object.values(extraction.fieldMappings)
@@ -129,6 +128,14 @@ export function useAPInvoice() {
       }
     }
     showToast(t('ap.colSaved'), 'success')
+    const repair = repairDocFigure({
+      tgtSubTotal: validation.tgtSubTotal,
+      tgtTax: validation.tgtTax,
+      tgtGrand: validation.tgtGrand,
+      sumSub: validation.sumLineSubTotal,
+      sumTax: validation.sumTax,
+    })
+    if (repair?.confident) applyDocRepair(repair, true)
     setStep(3)
   }
 
@@ -148,11 +155,13 @@ export function useAPInvoice() {
         onConfirm: () => {
           setModal({ show: false })
           setStep(4)
+          submission.loadGLData()
         },
         onCancel: () => setModal({ show: false }),
       })
     } else {
       setStep(4)
+      submission.loadGLData()
     }
   }
 
@@ -168,19 +177,28 @@ export function useAPInvoice() {
   // Master reconcile: land Σsub on subTarget AND Σtax on taxTarget in one pass, so grand =
   // subTarget + taxTarget follows and every summary diff clears at once. Shared by the Grand-total
   // Adjust button and fixDocFigures.
-  const reconcileTableToDoc = (subTarget: number, taxTarget: number) => {
-    const items = extraction.lineItems
-    if (!items.length) return
-    let updated = validation.adjustField(
-      subTarget,
+  const reconcileTableToDoc = useCallback(
+    (subTarget: number, taxTarget: number) => {
+      const items = extraction.lineItems
+      if (!items.length) return
+      let updated = validation.adjustField(
+        subTarget,
+        validation.sumLineSubTotal,
+        'lineSubTotal',
+        items
+      )
+      // The sub step writes only lineSubTotal, so Σtax is still validation.sumTax for the tax step.
+      updated = validation.adjustField(taxTarget, validation.sumTax, 'taxAmt', updated)
+      extraction.setLineItems(syncLineTotals(updated))
+    },
+    [
+      extraction.lineItems,
+      validation.adjustField,
       validation.sumLineSubTotal,
-      'lineSubTotal',
-      items
-    )
-    // The sub step writes only lineSubTotal, so Σtax is still validation.sumTax for the tax step.
-    updated = validation.adjustField(taxTarget, validation.sumTax, 'taxAmt', updated)
-    extraction.setLineItems(syncLineTotals(updated))
-  }
+      validation.sumTax,
+      extraction.setLineItems,
+    ]
+  )
 
   const adjustField = (tgt: unknown, sumCur: unknown, itemKey: string) => {
     const items = extraction.lineItems
@@ -209,23 +227,26 @@ export function useAPInvoice() {
   // self-consistent again, keep it as the trusted "From Document" anchor, then reconcile the table
   // to it. One click takes the user from the dead-end to fully matched. `auto` only changes the
   // toast wording (system did it vs user clicked).
-  const applyDocRepair = (repair: ReturnType<typeof repairDocFigure>, auto: boolean) => {
-    if (!repair) return
-    // Write the corrected figure to the immutable "From Document" header value.
-    extraction.blurHeader(repair.field, fmt(repair.value))
-    // Reconcile the table against the now-consistent document. blurHeader's state update is async,
-    // so derive the post-repair sub/tax targets locally instead of reading headerData back.
-    const subTarget = repair.field === 'subTotal' ? repair.value : validation.tgtSubTotal
-    const taxTarget = repair.field === 'taxAmount' ? repair.value : validation.tgtTax
-    reconcileTableToDoc(subTarget, taxTarget)
-    const label =
-      repair.field === 'taxAmount'
-        ? t('ap.tax')
-        : repair.field === 'subTotal'
-          ? t('ap.subTotal')
-          : t('ap.grandTotal')
-    showToast(`${auto ? t('ap.docAutoFixedToast') : t('ap.docFixedToast')} ${label}`, 'success')
-  }
+  const applyDocRepair = useCallback(
+    (repair: ReturnType<typeof repairDocFigure>, auto: boolean) => {
+      if (!repair) return
+      // Write the corrected figure to the immutable "From Document" header value.
+      extraction.blurHeader(repair.field, fmt(repair.value))
+      // Reconcile the table against the now-consistent document. blurHeader's state update is async,
+      // so derive the post-repair sub/tax targets locally instead of reading headerData back.
+      const subTarget = repair.field === 'subTotal' ? repair.value : validation.tgtSubTotal
+      const taxTarget = repair.field === 'taxAmount' ? repair.value : validation.tgtTax
+      reconcileTableToDoc(subTarget, taxTarget)
+      const label =
+        repair.field === 'taxAmount'
+          ? t('ap.tax')
+          : repair.field === 'subTotal'
+            ? t('ap.subTotal')
+            : t('ap.grandTotal')
+      showToast(`${auto ? t('ap.docAutoFixedToast') : t('ap.docFixedToast')} ${label}`, 'success')
+    },
+    [extraction.blurHeader, validation.tgtSubTotal, validation.tgtTax, reconcileTableToDoc, t]
+  )
 
   const fixDocFigures = () =>
     applyDocRepair(
@@ -241,26 +262,7 @@ export function useAPInvoice() {
 
   // Hybrid auto-fix: when entering the Review step, silently repair the document ONLY for
   // high-confidence cases (unambiguous outlier + a small rounding/last-digit gap). Ambiguous or
-  // large gaps stay manual (the banner + button). Bound to `step` so it fires once on entry and
-  // never fights the user editing the From-Document boxes afterwards (those keep the manual banner).
-  const autoFixedRef = useRef(false)
-  useEffect(() => {
-    if (step !== 3) {
-      if (step < 3) autoFixedRef.current = false // re-arm when the user goes back to upload/mapping
-      return
-    }
-    if (autoFixedRef.current) return
-    autoFixedRef.current = true
-    const repair = repairDocFigure({
-      tgtSubTotal: validation.tgtSubTotal,
-      tgtTax: validation.tgtTax,
-      tgtGrand: validation.tgtGrand,
-      sumSub: validation.sumLineSubTotal,
-      sumTax: validation.sumTax,
-    })
-    if (repair?.confident) applyDocRepair(repair, true)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step])
+  // large gaps stay manual (the banner + button). Done during transition to step 3 in confirmMapping.
 
   // Wraps extraction.blurHeader so that editing header taxAmount also propagates
   // to line items. When the user sets tax to 0, all lines are zeroed. When non-zero,
@@ -468,7 +470,9 @@ export function useAPInvoice() {
     const buckets = groupSelected(selected, desc)
 
     const newSources: Record<string, APLineItem[]> = {}
-    const absorbedIds = new Set(selected.map(it => it._groupId).filter(Boolean) as string[])
+    const absorbedIds = new Set(
+      selected.flatMap(it => (it._groupId ? [it._groupId] : [])) as string[]
+    )
     const mergedRows: APLineItem[] = buckets.map(({ row, bucket }) => {
       const gid = `g_${++groupIdCounter.current}`
       newSources[gid] = flattenSources(bucket)

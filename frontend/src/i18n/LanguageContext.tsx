@@ -1,5 +1,12 @@
-import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
-import { flushSync } from 'react-dom'
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useEffect,
+  startTransition,
+  type ReactNode,
+} from 'react'
 import { translate, type Lang, type TKey } from './dict'
 
 // ponytail: the real provider wraps the whole app at the root (main.tsx), so the
@@ -45,7 +52,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       .startViewTransition
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     if (startVT && !reduce) {
-      startVT.call(document, () => flushSync(() => setLangState(l)))
+      startVT.call(document, () => startTransition(() => setLangState(l)))
     } else {
       setLangState(l)
     }

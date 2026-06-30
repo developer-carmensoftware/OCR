@@ -102,7 +102,11 @@ export default function SessionsPage() {
                   </td>
                   <td className="admin-td">
                     {r.is_active && (
-                      <button className="admin-btn-danger-sm" onClick={() => handleRevoke(r.id)}>
+                      <button
+                        type="button"
+                        className="admin-btn-danger-sm"
+                        onClick={() => handleRevoke(r.id)}
+                      >
                         Revoke
                       </button>
                     )}

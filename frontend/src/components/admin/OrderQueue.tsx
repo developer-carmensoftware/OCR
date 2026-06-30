@@ -3,7 +3,7 @@ import { orderStage, type AdminCreditOrder, type OrderStage } from '../../lib/ap
 import { formatThb } from '../../lib/money'
 import { useT } from '../../i18n/LanguageContext'
 import type { TKey } from '../../i18n/dict'
-import { STAGE_TONE } from './orderConstants'
+import { STAGE_TONE } from './orderHelpers'
 
 export type TabKey = OrderStage
 

@@ -18,8 +18,7 @@ import {
 } from 'lucide-react'
 import ProformaDocument from '../pricing/ProformaDocument'
 import DataTable, { type Column } from './DataTable'
-import { STAGE_KEY, STAGE_TONE } from './orderConstants'
-import { timeAgo } from '../../lib/date'
+import { STAGE_KEY, STAGE_TONE, timeAgo } from './orderHelpers'
 import {
   approveOrder,
   fetchAdminOrderDocuments,

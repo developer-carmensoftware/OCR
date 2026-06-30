@@ -100,7 +100,7 @@ export interface CreateOrderResponse {
 }
 
 /** Raised on a 409 — the tenant already has an open order for this pack. */
-export class OpenOrderError extends Error {
+class OpenOrderError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'OpenOrderError'

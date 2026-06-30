@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { getUsage } from '../../lib/api/auth'
 import { getStoredToken } from '../../lib/api/client'
 import { useAuth } from '../../contexts/AuthContext'
 import type { UsageData } from '../../lib/api/auth'
-import { computeUsageStats } from '../../lib/usage'
+import { computeUsageStats } from './usageHelpers'
 
 export default function UsageIndicator() {
   const [usage, setUsage] = useState<UsageData['usage'] | null>(null)
@@ -61,7 +61,7 @@ export default function UsageIndicator() {
 
   return (
     <AnimatePresence>
-      <motion.div
+      <m.div
         initial={{ opacity: 0, scale: 0.95, y: 4 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
@@ -69,14 +69,8 @@ export default function UsageIndicator() {
         <a
           ref={quotaRef}
           href="#/pricing"
-          title={
-            stats.planValidUntil
-              ? `Plan valid until ${stats.planValidUntil} — view plans and top up credits`
-              : 'View plans and top up credits'
-          }
-          aria-label={`OCR quota: ${stats.remaining_calls} documents remaining${
-            stats.planValidUntil ? `, plan valid until ${stats.planValidUntil}` : ''
-          } — open pricing`}
+          title="View plans and top up credits"
+          aria-label={`OCR quota: ${stats.remaining_calls} documents remaining — open pricing`}
           className={`ui-quota ui-quota--link${stats.isLow ? ' is-low' : ''}`}
         >
           <div className="ui-quota-col col-remain">
@@ -84,7 +78,7 @@ export default function UsageIndicator() {
             <span className="ui-quota-value">{stats.remaining_calls}</span>
           </div>
         </a>
-      </motion.div>
+      </m.div>
     </AnimatePresence>
   )
 }

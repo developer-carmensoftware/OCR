@@ -163,6 +163,8 @@ const en = {
   'usage.runningLow': 'Running low — pick a plan below to keep going',
   'usage.planLeft': 'Plan docs left',
   'usage.activeUntil': 'Active until',
+  'usage.renews': 'renews',
+  'usage.freeTrial': 'Free trial',
   'order.expires': 'Expires',
 
   // — Feature flows (marketing showcase) —
@@ -780,6 +782,8 @@ const th: Record<TKey, string> = {
   'usage.runningLow': 'เครดิตใกล้หมด — เลือกแพ็กเกจด้านล่างเพื่อใช้งานต่อ',
   'usage.planLeft': 'เอกสารในแพ็กเกจคงเหลือ',
   'usage.activeUntil': 'ใช้งานถึง',
+  'usage.renews': 'ต่ออายุ',
+  'usage.freeTrial': 'ทดลองใช้งานฟรี',
   'order.expires': 'หมดอายุ',
 
   // — Feature flows (marketing showcase) —

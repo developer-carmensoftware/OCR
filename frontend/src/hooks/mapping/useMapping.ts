@@ -95,8 +95,13 @@ export function useMapping() {
     if (Object.keys(mainMappings).length > 0) {
       setMappings(prev => ({ ...prev, ...mainMappings }))
     }
-    paymentTypes.initFromData(paymentMappings, bankConfig.savedCustomTypes)
-  }, [bankConfig.configLoading, bankConfig.bank]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [
+    bankConfig.configLoading,
+    bankConfig.bank,
+    bankConfig.savedMappings,
+    bankConfig.savedCustomTypes,
+    paymentTypes.initFromData,
+  ])
 
   useEffect(() => {
     try {

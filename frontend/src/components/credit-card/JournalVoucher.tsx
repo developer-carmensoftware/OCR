@@ -129,7 +129,7 @@ export default function JournalVoucher({
               </thead>
               <tbody>
                 {jvRows.map((r, i) => (
-                  <tr key={i}>
+                  <tr key={`${r.dept}-${r.acc}-${r.desc}-${i}`}>
                     <td className="text-center">{r.dept}</td>
                     <td className="text-center text-mono">{r.acc}</td>
                     <td>{getAccName(r.acc)}</td>

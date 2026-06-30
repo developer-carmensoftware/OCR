@@ -1,17 +1,9 @@
-import type { UsageData } from './api/auth'
+import type { UsageData } from '../../lib/api/auth'
 
 export type UsageStats = UsageData['usage'] & {
   usedPercentage: number
   color: string
   isLow: boolean
-  /** Active plan's license end date (DD/MM/YYYY), or null when there's no plan. */
-  planValidUntil: string | null
-}
-
-function formatDate(iso: string | null | undefined): string | null {
-  if (!iso) return null
-  const d = new Date(iso)
-  return isNaN(d.getTime()) ? null : d.toLocaleDateString('en-GB')
 }
 
 /**
@@ -41,6 +33,5 @@ export function computeUsageStats(usage: UsageData['usage'] | null): UsageStats 
     usedPercentage,
     color,
     isLow: totalRemaining <= 5,
-    planValidUntil: formatDate(subscription?.period_end),
   }
 }

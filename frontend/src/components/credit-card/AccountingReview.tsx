@@ -77,9 +77,11 @@ function buildRows(details: DetailRow[], config: Record<string, unknown>): Built
   return rows
 }
 
+const DEFAULT_EMPTY_OBJECT = {}
+
 export default function AccountingReview({
   details,
-  headerData = {},
+  headerData = DEFAULT_EMPTY_OBJECT,
   onBack,
   onSubmit,
   onGoMapping,
@@ -125,7 +127,9 @@ export default function AccountingReview({
     if (!m.tax?.acc) unmappedFields.push('Input Tax')
     if (!m.net?.acc) unmappedFields.push('Bank Account')
     const pa = (rawConfig.paymentAmount || {}) as Record<string, { acc?: string }>
-    const detailTypes = [...new Set(details.map(d => d.Transaction).filter(Boolean))] as string[]
+    const detailTypes = [
+      ...new Set(details.flatMap(d => (d.Transaction ? [d.Transaction] : []))),
+    ] as string[]
     detailTypes.forEach(pt => {
       if (!pa[pt]?.acc) unmappedFields.push(pt)
     })
@@ -232,7 +236,7 @@ export default function AccountingReview({
                 </tr>
               )}
               {rows.map((r, i) => (
-                <tr key={i}>
+                <tr key={`${r.dept}-${r.acc}-${r.desc}-${i}`}>
                   <td className={!r.dept ? 'missing-cell animate-pulse' : ''}>
                     {r.dept || (
                       <span className="cc-missing-cell-text">

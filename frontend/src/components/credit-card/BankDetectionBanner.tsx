@@ -63,6 +63,7 @@ export default function BankDetectionBanner({ bank, loading, onReExtract }: Prop
 
       <div ref={containerRef} style={{ position: 'relative' }}>
         <button
+          type="button"
           className={`btn btn-sm btn-outline bank-reextract-btn ${open ? 'is-open' : ''}`}
           onClick={() => setOpen(v => !v)}
           disabled={loading}
@@ -80,6 +81,7 @@ export default function BankDetectionBanner({ bank, loading, onReExtract }: Prop
           {OPTIONS.map((opt, i) => (
             <button
               key={opt.value ?? 'auto'}
+              type="button"
               className={`bank-reextract-option ${bank === opt.value ? 'is-current' : ''}`}
               style={{ '--i': i } as React.CSSProperties}
               onClick={() => handleSelect(opt.value)}

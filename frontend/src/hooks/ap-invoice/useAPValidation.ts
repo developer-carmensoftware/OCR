@@ -42,7 +42,7 @@ export function reconcileRows(items: APLineItem[]): APLineItem[] {
 // (≤ AUTO_FIX_MAX_GAP, i.e. a rounding / last-digit slip). Ambiguous or large gaps stay manual —
 // the system can't be sure which printed figure is wrong, so it asks the user instead of silently
 // rewriting a tax/total that goes to the ERP.
-export const AUTO_FIX_MAX_GAP = 1.0 // baht; |sub + tax − grand| beyond this needs a human look
+const AUTO_FIX_MAX_GAP = 1.0 // baht; |sub + tax − grand| beyond this needs a human look
 export interface DocRepair {
   field: 'subTotal' | 'taxAmount' | 'grandTotal'
   value: number
@@ -121,72 +121,6 @@ export function useAPValidation({ headerData, lineItems, fieldMappings, t }: APV
     .filter(c => fieldMappings[`col${c}`] !== 'ignore' && fieldMappings[`col${c}`] !== 'category')
     .sort((a, b) => a - b)
 
-  const adjustField = (
-    tgt: unknown,
-    sumCur: unknown,
-    itemKey: string,
-    items: APLineItem[]
-  ): APLineItem[] => {
-    if (!items.length) return items
-    const diff = (Math.round(parseNum(tgt) * 100) - Math.round(parseNum(sumCur) * 100)) / 100
-    if (diff === 0) return items
-    const updated = [...items]
-
-    // taxAmt with large diff (>1 THB): distribute proportionally across taxable
-    // items by lineSubTotal so no single item gets an inflated tax amount.
-    // Small diff (≤1 THB) stays on last taxable item (penny rounding).
-    if (itemKey === 'taxAmt' && Math.abs(diff) > 1) {
-      const taxableIdxs = updated
-        .map((item, i) => ({ item, i }))
-        .filter(({ item }) => parseNum(item.taxPct) > 0)
-      if (taxableIdxs.length > 0) {
-        const totalSub = taxableIdxs.reduce((s, { item }) => s + parseNum(item.lineSubTotal), 0)
-        let remaining = Math.round(diff * 100)
-        taxableIdxs.forEach(({ item, i }, pos) => {
-          const isLast = pos === taxableIdxs.length - 1
-          // When totalSub === 0, fall back to equal distribution so the diff doesn't
-          // dump entirely onto the last row.
-          const share = isLast
-            ? remaining
-            : totalSub === 0
-              ? Math.round((diff * 100) / taxableIdxs.length)
-              : Math.round(diff * (parseNum(item.lineSubTotal) / totalSub) * 100)
-          remaining -= share
-          const shareDec = share / 100
-          updated[i] = {
-            ...updated[i],
-            taxAmt: fmt(
-              (Math.round(round2(updated[i].taxAmt) * 100) + Math.round(shareDec * 100)) / 100
-            ),
-          }
-        })
-        return updated
-      }
-    }
-
-    // Default: absorb diff into last taxable item for taxAmt (small diff / fallback),
-    // or last item for other fields.
-    let targetIdx = updated.length - 1
-    if (itemKey === 'taxAmt') {
-      const taxables = [...updated]
-        .map((item, i) => ({ item, i }))
-        .filter(({ item }) => parseNum(item.taxPct) > 0)
-      const lastTaxable = taxables.length ? taxables[taxables.length - 1] : undefined
-      if (lastTaxable) targetIdx = lastTaxable.i
-    }
-
-    // Writes only `itemKey`. The caller (useAPInvoice.adjustField / blurHeader) runs a
-    // per-row reconcile afterwards to re-derive the dependent field by taxType, so the
-    // touched row stays internally consistent (lineSubTotal + taxAmt == lineTotal).
-    updated[targetIdx] = {
-      ...updated[targetIdx],
-      [itemKey]: fmt(
-        (Math.round(round2(updated[targetIdx][itemKey]) * 100) + Math.round(diff * 100)) / 100
-      ),
-    }
-    return updated
-  }
-
   return {
     sumLineSubTotal,
     sumLineTotal,
@@ -207,6 +141,74 @@ export function useAPValidation({ headerData, lineItems, fieldMappings, t }: APV
     isValid,
     availableFields,
     activeCols,
-    adjustField,
+    adjustField: (tgt: unknown, sumCur: unknown, itemKey: string, items: APLineItem[]) =>
+      adjustField(tgt, sumCur, itemKey, items),
   }
+}
+
+function adjustField(
+  tgt: unknown,
+  sumCur: unknown,
+  itemKey: string,
+  items: APLineItem[]
+): APLineItem[] {
+  if (!items.length) return items
+  const diff = (Math.round(parseNum(tgt) * 100) - Math.round(parseNum(sumCur) * 100)) / 100
+  if (diff === 0) return items
+  const updated = [...items]
+
+  // taxAmt with large diff (>1 THB): distribute proportionally across taxable
+  // items by lineSubTotal so no single item gets an inflated tax amount.
+  // Small diff (≤1 THB) stays on last taxable item (penny rounding).
+  if (itemKey === 'taxAmt' && Math.abs(diff) > 1) {
+    const taxableIdxs = updated
+      .map((item, i) => ({ item, i }))
+      .filter(({ item }) => parseNum(item.taxPct) > 0)
+    if (taxableIdxs.length > 0) {
+      const totalSub = taxableIdxs.reduce((s, { item }) => s + parseNum(item.lineSubTotal), 0)
+      let remaining = Math.round(diff * 100)
+      taxableIdxs.forEach(({ item, i }, pos) => {
+        const isLast = pos === taxableIdxs.length - 1
+        // When totalSub === 0, fall back to equal distribution so the diff doesn't
+        // dump entirely onto the last row.
+        const share = isLast
+          ? remaining
+          : totalSub === 0
+            ? Math.round((diff * 100) / taxableIdxs.length)
+            : Math.round(diff * (parseNum(item.lineSubTotal) / totalSub) * 100)
+        remaining -= share
+        const shareDec = share / 100
+        updated[i] = {
+          ...updated[i],
+          taxAmt: fmt(
+            (Math.round(round2(updated[i].taxAmt) * 100) + Math.round(shareDec * 100)) / 100
+          ),
+        }
+      })
+
+      return updated
+    }
+  }
+
+  // Default: absorb diff into last taxable item for taxAmt (small diff / fallback),
+  // or last item for other fields.
+  let targetIdx = updated.length - 1
+  if (itemKey === 'taxAmt') {
+    const taxables = [...updated]
+      .map((item, i) => ({ item, i }))
+      .filter(({ item }) => parseNum(item.taxPct) > 0)
+    const lastTaxable = taxables.length ? taxables[taxables.length - 1] : undefined
+    if (lastTaxable) targetIdx = lastTaxable.i
+  }
+
+  // Writes only `itemKey`. The caller (useAPInvoice.adjustField / blurHeader) runs a
+  // per-row reconcile afterwards to re-derive the dependent field by taxType, so the
+  // touched row stays internally consistent (lineSubTotal + taxAmt == lineTotal).
+  updated[targetIdx] = {
+    ...updated[targetIdx],
+    [itemKey]: fmt(
+      (Math.round(round2(updated[targetIdx][itemKey]) * 100) + Math.round(diff * 100)) / 100
+    ),
+  }
+  return updated
 }

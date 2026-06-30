@@ -9,7 +9,7 @@ interface Props {
 export default function ActionBar({ loading, status, onProcess }: Props) {
   return (
     <div className="action-bar">
-      <button id="btnProcess" onClick={onProcess} disabled={loading}>
+      <button type="button" id="btnProcess" onClick={onProcess} disabled={loading}>
         <Bot size={14} /> Extract Data (AI OCR)
       </button>
       {loading && <div className="loader" />}

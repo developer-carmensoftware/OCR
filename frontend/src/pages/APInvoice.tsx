@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { AlertCircle, RotateCw } from 'lucide-react'
 import {
   DocumentPreview,
@@ -175,7 +175,7 @@ export default function APInvoice() {
         />
 
         <AnimatePresence mode="wait">
-          <motion.div
+          <m.div
             key={loading ? `${step}-loading` : error ? `${step}-error` : step}
             initial={{ opacity: 0, transform: 'translateY(10px)' }}
             animate={{ opacity: 1, transform: 'translateY(0px)' }}
@@ -277,7 +277,7 @@ export default function APInvoice() {
                 onReset={handleReset}
               />
             )}
-          </motion.div>
+          </m.div>
         </AnimatePresence>
       </div>
     </>
