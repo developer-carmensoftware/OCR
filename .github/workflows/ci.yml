@@ -138,6 +138,8 @@ jobs:
           supabase db reset
 
   # ── Secret scanning ───────────────────────────────────────────────────────────
+  # Run the gitleaks binary directly. The gitleaks-action wrapper requires a paid
+  # license for GitHub organizations; the binary itself is free/open-source.
   gitleaks:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
@@ -145,9 +147,12 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0   # full history so PR commits are scanned
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install gitleaks
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+      - name: Scan
+        run: gitleaks detect --source . --config .gitleaks.toml --redact --no-banner -v
 
   # ── Changelog hygiene ─────────────────────────────────────────────────────────
   # Per CLAUDE.md every meaningful change is logged in changelog/. Fail PRs that
