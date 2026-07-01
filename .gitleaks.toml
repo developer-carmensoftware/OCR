@@ -10,6 +10,8 @@ paths = [
   '''frontend/\.env\.production$''',
   '''render\.yaml$''',       # generateValue/sync:false placeholders only
   '''\.github/workflows/ci\.yml$''',  # dummy test-only secrets
+  '''backend/tests/''',      # unit-test fixtures use fake tokens/UUIDs, not real secrets
+  '''.*\.test\.(ts|tsx|js|jsx)$''',   # frontend test fixtures
 ]
 regexes = [
   '''AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=''',  # dummy Fernet key in CI
