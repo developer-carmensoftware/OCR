@@ -5,7 +5,7 @@ do $$ begin
 exception when duplicate_object then null; end $$;
 
 do $$ begin
-    create type creditorderstatus as enum ('in_progress', 'paid', 'complete', 'void');
+    create type creditorderstatus as enum ('in_progress', 'paid', 'complete', 'void', 'on_hold');
 exception when duplicate_object then null; end $$;
 
 do $$ begin
@@ -97,10 +97,10 @@ create index if not exists ix_credit_orders_tenant_status
     on credit_orders (tenant_id, status)
     where deleted_at is null;
 
--- One open order per tenant: only one in_progress order at a time.
+-- One open order per tenant: in_progress or on_hold (held for buyer contact).
 create unique index if not exists uq_credit_orders_one_open_per_tenant
     on credit_orders (tenant_id)
-    where status = 'in_progress' and deleted_at is null;
+    where status in ('in_progress', 'on_hold') and deleted_at is null;
 
 
 -- AR customer profiles: unique buyer companies mapped to Carmen AR codes.

@@ -8,6 +8,7 @@ const MAP: Record<
   { variant: 'info' | 'warning' | 'success' | 'error' | 'gray'; key: TKey }
 > = {
   in_progress: { variant: 'info', key: 'order.statusInProgress' },
+  on_hold: { variant: 'warning', key: 'order.statusOnHold' },
   paid: { variant: 'success', key: 'order.statusPaid' },
   complete: { variant: 'success', key: 'order.statusComplete' },
   void: { variant: 'error', key: 'order.statusVoid' },

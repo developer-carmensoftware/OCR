@@ -63,6 +63,7 @@ interface UseCheckout {
   buyer: BuyerInfo
   setBuyer: (b: BuyerInfo) => void
   profileSource: 'carmen' | 'last_invoice' | 'form' | null
+  profileLoadError: boolean
   loadingProfile: boolean
   creating: boolean
   uploading: boolean
@@ -85,6 +86,7 @@ export function useCheckout(
   const [session, setSession] = useState<CheckoutSession | null>(resume ?? null)
   const [buyer, setBuyer] = useState<BuyerInfo>(EMPTY_BUYER)
   const [profileSource, setProfileSource] = useState<UseCheckout['profileSource']>(null)
+  const [profileLoadError, setProfileLoadError] = useState(false)
   const [loadingProfile, setLoadingProfile] = useState(false)
   const [creating, setCreating] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -108,7 +110,11 @@ export function useCheckout(
         })
         setProfileSource(p.source)
       })
-      .catch(() => alive && setProfileSource('form'))
+      .catch(() => {
+        if (!alive) return
+        setProfileSource('form')
+        setProfileLoadError(true)
+      })
       .finally(() => alive && setLoadingProfile(false))
     return () => {
       alive = false
@@ -130,7 +136,9 @@ export function useCheckout(
       const next: CheckoutSession = {
         pack_code: pack.code,
         credits: pack.credits,
-        amount_thb: isAnnual ? (pack.price_annual_thb as number) : pack.price_thb,
+        // Authoritative gross from the server (VAT-inclusive) — never recompute
+        // pricing on the client, so this always matches the proforma + QR.
+        amount_thb: res.order.amount_thb,
         billing_period: isAnnual ? 'annual' : 'monthly',
         order_id: res.order.id,
         qr: res.qr,
@@ -172,6 +180,7 @@ export function useCheckout(
     buyer,
     setBuyer,
     profileSource,
+    profileLoadError,
     loadingProfile,
     creating,
     uploading,

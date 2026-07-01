@@ -26,7 +26,7 @@ type WorkflowTab = OrderStage
 
 // Stage pills shown per main tab + the stage it opens on.
 const TAB_STAGES: Record<'verify' | 'post', WorkflowTab[]> = {
-  verify: ['to_review', 'awaiting_payment', 'rejected'],
+  verify: ['to_review', 'awaiting_payment', 'on_hold', 'rejected'],
   post: ['to_post', 'posted'],
 }
 const DEFAULT_STAGE: Record<'verify' | 'post', WorkflowTab> = {
@@ -38,6 +38,7 @@ const DEFAULT_STAGE: Record<'verify' | 'post', WorkflowTab> = {
 const STAGE_QUERY: Record<WorkflowTab, { status: AdminOrderStatus | 'all'; hasSlip?: boolean }> = {
   awaiting_payment: { status: 'in_progress', hasSlip: false },
   to_review: { status: 'in_progress', hasSlip: true },
+  on_hold: { status: 'on_hold' },
   to_post: { status: 'paid' },
   posted: { status: 'complete' },
   rejected: { status: 'void' },

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { listOrders, type CreditOrder } from '../../lib/api/credits'
+import { listOrders, OPEN_ORDER_STATUSES, type CreditOrder } from '../../lib/api/credits'
 import { useT } from '../../i18n/LanguageContext'
 
 interface OrderHistoryState {
@@ -11,7 +11,8 @@ interface OrderHistoryState {
 }
 
 const POLL_MS = 20_000
-const OPEN_STATUSES = new Set(['in_progress'])
+// Widened to Set<string>: compared against plain-string map values below (`was`).
+const OPEN_STATUSES: Set<string> = new Set(OPEN_ORDER_STATUSES)
 
 /**
  * Loads this tenant's credit orders (newest first). Refetches when the tab
@@ -36,9 +37,13 @@ export function useOrderHistory(): OrderHistoryState {
           if (prev) {
             for (const o of next) {
               const was = prev.get(o.id)
-              if (was === 'in_progress' && o.status === 'paid') {
+              // Compare against the open-status set (not a single string) so a
+              // decision reached while on_hold — or a fast in_progress→complete
+              // jump between two 20s polls — still surfaces its toast.
+              const wasOpen = !!was && OPEN_STATUSES.has(was)
+              if (wasOpen && (o.status === 'paid' || o.status === 'complete')) {
                 toast.success(t('order.approvedToast'))
-              } else if (was === 'in_progress' && o.status === 'void') {
+              } else if (wasOpen && o.status === 'void') {
                 toast.error(t('order.rejectedToast'))
               }
             }

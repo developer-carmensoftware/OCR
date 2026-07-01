@@ -222,7 +222,7 @@ export async function adjustCredits(
 
 // ── Slip review queue ───────────────────────────────────────────────────────
 
-export type AdminOrderStatus = 'in_progress' | 'paid' | 'complete' | 'void'
+export type AdminOrderStatus = 'in_progress' | 'paid' | 'complete' | 'void' | 'on_hold'
 
 export interface AdminCreditOrder {
   id: string
@@ -250,12 +250,20 @@ export interface AdminCreditOrder {
  * Workflow stage = what the admin must DO, derived from (status + slip).
  * Backend keeps in_progress for both pre- and post-slip, so the slip flag splits it.
  */
-export type OrderStage = 'awaiting_payment' | 'to_review' | 'to_post' | 'posted' | 'rejected'
+export type OrderStage =
+  | 'awaiting_payment'
+  | 'to_review'
+  | 'on_hold'
+  | 'to_post'
+  | 'posted'
+  | 'rejected'
 
 export function orderStage(o: AdminCreditOrder): OrderStage {
   switch (o.status) {
     case 'in_progress':
       return o.slip_uploaded_at ? 'to_review' : 'awaiting_payment'
+    case 'on_hold':
+      return 'on_hold'
     case 'paid':
       return 'to_post'
     case 'complete':
@@ -277,10 +285,11 @@ export interface KpiSummary {
   unmapped_count: number
   to_review_count: number
   to_post_count: number
-  // Funnel amounts (THB): total = awaiting + to_review + to_post + posted (excl. void).
+  // Funnel amounts (THB): total = awaiting + to_review + on_hold + to_post + posted (excl. void).
   total_amount: number
   awaiting_amount: number
   to_review_amount: number
+  on_hold_amount: number
   to_post_amount: number
   posted_amount: number
   rejected_amount: number

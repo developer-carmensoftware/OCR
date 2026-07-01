@@ -1,9 +1,13 @@
 """Pydantic schemas for the top-up credit system."""
 
+import re
 from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+_NON_DIGIT_RE = re.compile(r"\D")
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 class CreditPackResponse(BaseModel):
@@ -100,7 +104,13 @@ class CreditLedgerEntry(BaseModel):
 
 
 class BuyerInfoInput(BaseModel):
-    """Optional buyer company info supplied or edited by the user at order time."""
+    """Optional buyer company info supplied or edited by the user at order time.
+
+    This prints on the tax invoice and keys Carmen AR posting, so it's validated
+    at the trust boundary — but stays lenient (empty allowed; Carmen/last-invoice
+    fills gaps) and only rejects malformed non-empty input.
+    # ponytail: field_validator, not a validation framework.
+    """
 
     name: str = ""
     tax_id: str = ""
@@ -108,6 +118,45 @@ class BuyerInfoInput(BaseModel):
     branch: str = ""
     email: str = ""
     contact_name: str = ""
+
+    @field_validator("tax_id")
+    @classmethod
+    def _check_tax_id(cls, v: str) -> str:
+        digits = _NON_DIGIT_RE.sub("", v)
+        if not digits:
+            return ""
+        if len(digits) != 13:
+            raise ValueError("Tax ID must be 13 digits")
+        return digits
+
+    @field_validator("email")
+    @classmethod
+    def _check_email(cls, v: str) -> str:
+        v = v.strip()
+        if v and not _EMAIL_RE.match(v):
+            raise ValueError("Invalid email address")
+        return v
+
+    @field_validator("name", "contact_name")
+    @classmethod
+    def _check_short_len(cls, v: str) -> str:
+        if len(v) > 255:
+            raise ValueError("Must be 255 characters or fewer")
+        return v
+
+    @field_validator("branch")
+    @classmethod
+    def _check_branch_len(cls, v: str) -> str:
+        if len(v) > 100:
+            raise ValueError("Must be 100 characters or fewer")
+        return v
+
+    @field_validator("address")
+    @classmethod
+    def _check_address_len(cls, v: str) -> str:
+        if len(v) > 2000:
+            raise ValueError("Must be 2000 characters or fewer")
+        return v
 
 
 class CreateOrderRequest(BaseModel):
@@ -262,10 +311,11 @@ class KpiSummaryResponse(BaseModel):
     unmapped_count: int  # mapping tab badge
     to_review_count: int  # verify tab badge
     to_post_count: int  # post tab badge
-    # Funnel amounts (THB) — total_active = awaiting + to_review + to_post + posted (excl. void).
+    # Funnel amounts (THB) — total_active = awaiting + to_review + on_hold + to_post + posted (excl. void).
     total_amount: float
     awaiting_amount: float
     to_review_amount: float
+    on_hold_amount: float = 0
     to_post_amount: float
     posted_amount: float
     rejected_amount: float

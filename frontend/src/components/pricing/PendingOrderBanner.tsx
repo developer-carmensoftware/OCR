@@ -84,6 +84,7 @@ function OrderRow({
   paymentInfo: PaymentInfo | null
 }) {
   const { t } = useT()
+  const isOnHold = order.status === 'on_hold'
   const isReviewing = !!order.slip_uploaded_at
   const [state, dispatch] = useReducer(rowReducer, rowInitial)
   const { open, docs, loadingDocs, uploading, cancelling, showCancelModal } = state
@@ -151,8 +152,12 @@ function OrderRow({
       </div>
 
       <p className="order-resume-note">
-        {isReviewing ? t('order.reviewingBanner.body') : t('order.pendingNote')}
-        {!isReviewing && order.expires_at && (
+        {isOnHold
+          ? t('order.onHoldNote')
+          : isReviewing
+            ? t('order.reviewingBanner.body')
+            : t('order.pendingNote')}
+        {!isReviewing && !isOnHold && order.expires_at && (
           <span className="order-expiry-note">
             {' · '}
             {t('order.expires')} {formatDate(order.expires_at)}
@@ -200,8 +205,9 @@ function OrderRow({
 }
 
 /**
- * Surfaces open orders (pending + awaiting_review) on the catalog page.
+ * Surfaces open orders (pending / awaiting_review / on_hold) on the catalog page.
  * Pending: upload slip or cancel. Reviewing: view invoice or cancel (with warning).
+ * On hold: past its payment window, needs the admin to contact the buyer.
  */
 export default function PendingOrderBanner({
   orders,
@@ -215,20 +221,28 @@ export default function PendingOrderBanner({
   const { t } = useT()
   if (orders.length === 0) return null
 
+  // on_hold needs the buyer's attention most, so it wins the shared banner head.
+  const hasOnHold = orders.some(o => o.status === 'on_hold')
   const hasReviewing = orders.some(o => !!o.slip_uploaded_at)
-  const BannerIcon = hasReviewing ? Clock : AlertTriangle
+  const BannerIcon = hasOnHold || hasReviewing ? Clock : AlertTriangle
+  const titleKey = hasOnHold
+    ? 'order.onHoldBanner.title'
+    : hasReviewing
+      ? 'order.reviewingBanner.title'
+      : 'order.pendingBanner.title'
+  const bodyKey = hasOnHold
+    ? 'order.onHoldBanner.body'
+    : hasReviewing
+      ? 'order.reviewingBanner.body'
+      : 'order.pendingBanner.body'
 
   return (
     <div className="order-pending-banner" role="alert">
       <div className="order-pending-banner-head">
         <BannerIcon size={18} className="order-pending-banner-icon" />
         <div>
-          <h2 className="order-pending-banner-title">
-            {hasReviewing ? t('order.reviewingBanner.title') : t('order.pendingBanner.title')}
-          </h2>
-          <p className="order-pending-banner-body">
-            {hasReviewing ? t('order.reviewingBanner.body') : t('order.pendingBanner.body')}
-          </p>
+          <h2 className="order-pending-banner-title">{t(titleKey)}</h2>
+          <p className="order-pending-banner-body">{t(bodyKey)}</p>
         </div>
       </div>
       <div className="pending-order-list">

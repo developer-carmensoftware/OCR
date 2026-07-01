@@ -54,7 +54,12 @@ def proration_credit(
     period_end: Any,
     now: datetime,
 ) -> Decimal:
-    """Remaining value of the current plan = list net × fraction of days left, to 2dp."""
+    """Remaining value of the current plan = list net × fraction of days left, to 2dp.
+
+    ponytail: not called from create_order — provider wants full price on every
+    purchase (no upgrade discount). Kept so re-enabling is a one-line change;
+    credit_orders.proration_credit_thb stays in the schema (always 0 for now).
+    """
     total = (period_end - period_start).total_seconds()
     if total <= 0:
         return Decimal("0.00")

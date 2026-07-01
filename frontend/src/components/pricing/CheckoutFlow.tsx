@@ -120,6 +120,9 @@ export default function CheckoutFlow({
                   </span>
                 )}
               </div>
+              {c.profileLoadError && !c.loadingProfile && (
+                <p className="checkout-hint">{t('checkout.profileLoadError')}</p>
+              )}
 
               {c.loadingProfile ? (
                 <div className="checkout-form-skeleton" aria-hidden="true">
@@ -213,6 +216,7 @@ export default function CheckoutFlow({
                 <span className="text-mono">฿{formatThb(amount, true)}</span>
               </div>
               <p className="checkout-vat-note">{t('checkout.vatNote')}</p>
+              <p className="checkout-vat-note">{t('checkout.finalTotalNote')}</p>
               <button
                 type="button"
                 className="btn btn-primary checkout-confirm"
