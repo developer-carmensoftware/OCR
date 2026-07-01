@@ -25,8 +25,8 @@ export default function OrderKpiCards({ kpi }: { kpi: KpiSummary | null }) {
   }
 
   const cnt = (k: string) => kpi.status_counts[k] ?? 0
-  const unpaidAmt = kpi.awaiting_amount + kpi.to_review_amount
-  const unpaidCnt = cnt('awaiting_payment') + cnt('to_review')
+  const unpaidAmt = kpi.awaiting_amount + kpi.to_review_amount + kpi.on_hold_amount
+  const unpaidCnt = cnt('awaiting_payment') + cnt('to_review') + cnt('on_hold')
   const paidAmt = kpi.to_post_amount + kpi.posted_amount
   const paidCnt = cnt('to_post') + cnt('posted')
   const rejectedCnt = cnt('rejected')

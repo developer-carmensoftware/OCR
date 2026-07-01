@@ -19,7 +19,10 @@ export interface CreditPack {
 
 // ── Orders & documents ────────────────────────────────────────────────────────
 
-export type OrderStatus = 'in_progress' | 'paid' | 'complete' | 'void'
+export type OrderStatus = 'in_progress' | 'paid' | 'complete' | 'void' | 'on_hold'
+
+/** Orders still open: block a new purchase, show in the pending banner, keep polling. */
+export const OPEN_ORDER_STATUSES: OrderStatus[] = ['in_progress', 'on_hold']
 
 export interface CreditOrder {
   id: string

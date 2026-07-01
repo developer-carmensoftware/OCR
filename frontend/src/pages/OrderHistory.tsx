@@ -11,6 +11,7 @@ import { useOrderHistory } from '../hooks/credits'
 import {
   getOrderDocuments,
   getPaymentInfo,
+  OPEN_ORDER_STATUSES,
   type BillingDocument,
   type CreditOrder,
   type PaymentInfo,
@@ -138,8 +139,8 @@ export default function OrderHistory() {
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
   const [sub, setSub] = useState<ActiveSubscription | null>(null)
 
-  const openOrders = orders.filter(o => o.status === 'in_progress')
-  const history = orders.filter(o => o.status !== 'in_progress')
+  const openOrders = orders.filter(o => OPEN_ORDER_STATUSES.includes(o.status))
+  const history = orders.filter(o => !OPEN_ORDER_STATUSES.includes(o.status))
 
   useEffect(() => {
     getPaymentInfo()

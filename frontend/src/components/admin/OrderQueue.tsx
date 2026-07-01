@@ -12,6 +12,7 @@ export type TabKey = OrderStage
 const TAB_LABEL: Record<TabKey, TKey> = {
   awaiting_payment: 'orev.tab.awaitingPayment',
   to_review: 'orev.tab.toReview',
+  on_hold: 'orev.tab.onHold',
   to_post: 'orev.tab.toPost',
   posted: 'orev.tab.posted',
   rejected: 'orev.tab.rejected',
@@ -21,13 +22,14 @@ const TAB_LABEL: Record<TabKey, TKey> = {
 const HINT_KEY: Record<TabKey, TKey> = {
   awaiting_payment: 'orev.hint.awaitingPayment',
   to_review: 'orev.hint.toReview',
+  on_hold: 'orev.hint.onHold',
   to_post: 'orev.hint.toPost',
   posted: 'orev.hint.posted',
   rejected: 'orev.hint.rejected',
 }
 
-// Only the two action queues carry a count badge — the rest are informational.
-const BADGE_TABS: ReadonlySet<TabKey> = new Set<TabKey>(['to_review', 'to_post'])
+// Action queues carry a count badge — the rest are informational.
+const BADGE_TABS: ReadonlySet<TabKey> = new Set<TabKey>(['to_review', 'on_hold', 'to_post'])
 
 function companyOf(o: AdminCreditOrder): string {
   return o.buyer_name || o.tenant_name || '—'

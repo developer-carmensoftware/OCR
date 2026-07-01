@@ -94,6 +94,11 @@ class CreditOrderStatus(str, Enum):
     PAID = "paid"
     COMPLETE = "complete"
     VOID = "void"
+    # Auto-set by the hourly expiry sweep (fn_hold_expired_orders) when an
+    # in_progress order's 14-day proforma window passes with no admin decision
+    # yet — parks it for the quota admin to contact the buyer instead of
+    # force-voiding it (buyer-side approval chains can outlast 14 days).
+    ON_HOLD = "on_hold"
 
 
 class BillingDocumentType(str, Enum):

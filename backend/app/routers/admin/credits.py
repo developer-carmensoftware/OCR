@@ -48,6 +48,11 @@ def _assert_scope(admin: AdminPrincipal, tenant_id: str) -> None:
         raise HTTPException(status_code=403, detail="Tenant out of scope")
 
 
+# Orders still open for an admin decision — in_progress (routine) or on_hold
+# (auto-parked past its 14-day expiry, awaiting buyer contact).
+_DECIDABLE = (CreditOrderStatus.IN_PROGRESS, CreditOrderStatus.ON_HOLD)
+
+
 # ── Balance / topup / adjust / ledger (existing) ─────────────────────────────
 
 
@@ -296,10 +301,10 @@ async def approve_order(
 
     _assert_scope(admin, str(order.tenant_id))
 
-    if order.status != CreditOrderStatus.IN_PROGRESS:
+    if order.status not in _DECIDABLE:
         raise HTTPException(
             status_code=409,
-            detail=f"Order is '{order.status}', expected in_progress",
+            detail=f"Order is '{order.status}', expected in_progress or on_hold",
         )
 
     # Fetch proforma buyer info for the tax invoice snapshot
@@ -401,10 +406,10 @@ async def reject_order(
 
     _assert_scope(admin, str(order.tenant_id))
 
-    if order.status != CreditOrderStatus.IN_PROGRESS:
+    if order.status not in _DECIDABLE:
         raise HTTPException(
             status_code=409,
-            detail=f"Order is '{order.status}', expected in_progress",
+            detail=f"Order is '{order.status}', expected in_progress or on_hold",
         )
 
     order.status = CreditOrderStatus.VOID  # type: ignore[assignment]
@@ -430,7 +435,7 @@ async def hold_order(
     db: AsyncSession = Depends(get_db),
     admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
 ):
-    """Update the admin note on an in-progress order."""
+    """Update the admin note on an order still awaiting a decision."""
     order = (
         await db.execute(
             select(CreditOrder)
@@ -443,10 +448,10 @@ async def hold_order(
 
     _assert_scope(admin, str(order.tenant_id))
 
-    if order.status != CreditOrderStatus.IN_PROGRESS:
+    if order.status not in _DECIDABLE:
         raise HTTPException(
             status_code=409,
-            detail=f"Can only add notes to in_progress orders, not '{order.status}'",
+            detail=f"Can only add notes to in_progress or on_hold orders, not '{order.status}'",
         )
 
     order.admin_note = (body.note or "").strip() or None  # type: ignore[assignment]
@@ -463,7 +468,7 @@ async def cancel_order(
     db: AsyncSession = Depends(get_db),
     admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
 ):
-    """Cancel (void + soft-delete) an in-progress order."""
+    """Cancel (void + soft-delete) an in-progress or on_hold order."""
     order = (
         await db.execute(
             select(CreditOrder)
@@ -476,10 +481,10 @@ async def cancel_order(
 
     _assert_scope(admin, str(order.tenant_id))
 
-    if order.status != CreditOrderStatus.IN_PROGRESS:
+    if order.status not in _DECIDABLE:
         raise HTTPException(
             status_code=409,
-            detail=f"Can only cancel an in_progress order, not '{order.status}'",
+            detail=f"Can only cancel an in_progress or on_hold order, not '{order.status}'",
         )
 
     order.status = CreditOrderStatus.VOID  # type: ignore[assignment]
@@ -807,7 +812,9 @@ async def get_kpi(
         )
     ).all()
 
-    amounts = {k: Decimal(0) for k in ("awaiting", "to_review", "to_post", "posted", "rejected")}
+    amounts = {
+        k: Decimal(0) for k in ("awaiting", "to_review", "on_hold", "to_post", "posted", "rejected")
+    }
     counts = {k: 0 for k in amounts}
     for status, slip, amt, cnt in rows:
         s = str(getattr(status, "value", status))
@@ -815,6 +822,8 @@ async def get_kpi(
         cnt = int(cnt or 0)
         if s == CreditOrderStatus.IN_PROGRESS.value:
             key = "to_review" if slip else "awaiting"
+        elif s == CreditOrderStatus.ON_HOLD.value:
+            key = "on_hold"
         elif s == CreditOrderStatus.PAID.value:
             key = "to_post"
         elif s == CreditOrderStatus.COMPLETE.value:
@@ -826,12 +835,17 @@ async def get_kpi(
 
     # Total excludes rejected/void — only live requests still in the pipeline.
     total_amount = (
-        amounts["awaiting"] + amounts["to_review"] + amounts["to_post"] + amounts["posted"]
+        amounts["awaiting"]
+        + amounts["to_review"]
+        + amounts["on_hold"]
+        + amounts["to_post"]
+        + amounts["posted"]
     )
 
     status_counts = {
         "awaiting_payment": counts["awaiting"],
         "to_review": counts["to_review"],
+        "on_hold": counts["on_hold"],
         "to_post": counts["to_post"],
         "posted": counts["posted"],
         "rejected": counts["rejected"],
@@ -844,6 +858,7 @@ async def get_kpi(
         total_amount=float(total_amount),
         awaiting_amount=float(amounts["awaiting"]),
         to_review_amount=float(amounts["to_review"]),
+        on_hold_amount=float(amounts["on_hold"]),
         to_post_amount=float(amounts["to_post"]),
         posted_amount=float(amounts["posted"]),
         rejected_amount=float(amounts["rejected"]),

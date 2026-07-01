@@ -488,6 +488,7 @@ def test_kpi_returns_funnel_amounts():
     grouped.all.return_value = [
         ("in_progress", False, Decimal("20000"), 2),  # awaiting payment
         ("in_progress", True, Decimal("120000"), 3),  # to review
+        ("on_hold", False, Decimal("5000"), 1),  # expired, awaiting buyer contact
         ("paid", True, Decimal("35000"), 1),  # to post
         ("complete", True, Decimal("60000"), 4),  # posted
         ("void", False, Decimal("15000"), 1),  # rejected — excluded from total
@@ -508,14 +509,16 @@ def test_kpi_returns_funnel_amounts():
     assert body["to_post_count"] == 1
     assert body["awaiting_amount"] == 20000.0
     assert body["to_review_amount"] == 120000.0
+    assert body["on_hold_amount"] == 5000.0
     assert body["to_post_amount"] == 35000.0
     assert body["posted_amount"] == 60000.0
     assert body["rejected_amount"] == 15000.0
-    # Funnel reconciles: total_active = awaiting + to_review + to_post + posted (void excluded).
-    assert body["total_amount"] == 235000.0
+    # Funnel reconciles: total_active = awaiting + to_review + on_hold + to_post + posted (void excluded).
+    assert body["total_amount"] == 240000.0
     assert body["status_counts"] == {
         "awaiting_payment": 2,
         "to_review": 3,
+        "on_hold": 1,
         "to_post": 1,
         "posted": 4,
         "rejected": 1,

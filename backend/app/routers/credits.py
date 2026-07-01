@@ -38,7 +38,6 @@ from app.services import carmen_service, promptpay_service, storage_service
 from app.services.credit_service import (
     active_subscription,
     annual_price,
-    proration_credit,
     purchase_block_reason,
 )
 from app.services.file_service import FileService
@@ -47,6 +46,10 @@ from app.utils.tax import vat_on_top
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/credits", tags=["Credits"])
+
+# Orders still "open" and blocking a new purchase / acceptable for slip-upload
+# or self-serve cancel. Mirrors the partial unique index in the DB.
+_OPEN_STATUSES = (CreditOrderStatus.IN_PROGRESS, CreditOrderStatus.ON_HOLD)
 
 
 @router.get("/packs", response_model=list[CreditPackResponse])
@@ -115,13 +118,13 @@ async def create_order(
     Create a pending top-up order. Returns the PromptPay QR payload and a proforma invoice.
     Credits are NOT granted here — an admin approves the slip to fulfill.
     """
-    # Block if tenant already has any open order (pending or under review)
+    # Block if tenant already has any open order (in_progress or on_hold)
     has_open = (
         await db.execute(
             select(CreditOrder.id)
             .where(
                 CreditOrder.tenant_id == session.tenant_id,
-                CreditOrder.status == CreditOrderStatus.IN_PROGRESS,
+                CreditOrder.status.in_(_OPEN_STATUSES),
                 CreditOrder.deleted_at.is_(None),
             )
             .limit(1)
@@ -140,7 +143,8 @@ async def create_order(
         raise HTTPException(status_code=404, detail="Credit pack not found")
 
     # Upgrade guard: upgrade / renew allowed mid-plan; downgrade blocked.
-    credit = Decimal("0")
+    # ponytail: no proration credit — provider wants full price on every purchase.
+    # credit_service.proration_credit() stays for an easy re-enable if that changes.
     if pack.kind == "subscription":
         current = await active_subscription(db, session.tenant_id)
         if current is not None:
@@ -152,20 +156,11 @@ async def create_order(
             )
             if reason:
                 raise HTTPException(status_code=409, detail=reason)
-            cur_net = (
-                annual_price(str(cur_pack.price_thb))
-                if current.billing_period == "annual"
-                else Decimal(str(cur_pack.price_thb))
-            )
-            credit = proration_credit(
-                cur_net, current.period_start, current.period_end, datetime.now(UTC)
-            )
 
     # Annual = 12 months at a 10% discount; subscriptions only (top-ups never expire).
     is_annual = body.billing_period == "annual" and pack.kind == "subscription"
     billing_period = "annual" if is_annual else "monthly"
     net = annual_price(str(pack.price_thb)) if is_annual else Decimal(str(pack.price_thb))
-    net = max(net - credit, Decimal("0.00"))
     _sub, _vat, gross = vat_on_top(net)
     order = CreditOrder(
         tenant_id=session.tenant_id,
@@ -173,7 +168,7 @@ async def create_order(
         credits=pack.credits,
         amount_thb=gross,
         billing_period=billing_period,
-        proration_credit_thb=credit,
+        proration_credit_thb=Decimal("0.00"),
         status=CreditOrderStatus.IN_PROGRESS,
         expires_at=datetime.now(UTC) + timedelta(days=14),
     )
@@ -215,8 +210,7 @@ async def create_order(
         doc_type=BillingDocumentType.PROFORMA,
         pack_code=pack.code,  # type: ignore[arg-type]
         pack_description=(str(pack.description) if pack.description else f"{pack.credits} credits")
-        + (" (Annual — 12 months)" if is_annual else "")
-        + (f" (−฿{credit:,.2f} credit from current plan)" if credit > 0 else ""),
+        + (" (Annual — 12 months)" if is_annual else ""),
         credits=pack.credits,  # type: ignore[arg-type]
         amount_thb=net,
         buyer=buyer,
@@ -267,7 +261,7 @@ async def upload_slip(
 
     if order is None:
         raise HTTPException(status_code=404, detail="Order not found")
-    if order.status != CreditOrderStatus.IN_PROGRESS:
+    if order.status not in _OPEN_STATUSES:
         raise HTTPException(
             status_code=409,
             detail=f"Cannot upload slip for an order in status '{order.status}'",
@@ -275,6 +269,9 @@ async def upload_slip(
 
     # Validate file type and size (reuse existing file_service logic)
     # validate_and_read returns (bytes, filename); content_type comes from the upload header
+    # ponytail: storage upload then DB update isn't one atomic step — if the commit
+    # below fails after a successful upload, the slip is orphaned in storage (not
+    # lost data; same object key, so a retry just re-links it). No cleanup job needed.
     data, _ = await FileService.validate_and_read(file)
     content_type = file.content_type or "application/octet-stream"
 
@@ -294,7 +291,9 @@ async def upload_slip(
 
     order.slip_object_key = key  # type: ignore[assignment]
     order.slip_uploaded_at = datetime.now(UTC)  # type: ignore[assignment]
-    # Status stays in_progress (slip uploaded but still needs admin review)
+    # A slip arriving on a held order means the buyer engaged — put it back in
+    # the normal review queue instead of the "needs contact" bucket.
+    order.status = CreditOrderStatus.IN_PROGRESS  # type: ignore[assignment]
     await db.commit()
 
     return SlipUploadResponse(order_id=order_id, status=CreditOrderStatus.IN_PROGRESS.value)
@@ -324,7 +323,7 @@ async def cancel_order(
 
     if order is None:
         raise HTTPException(status_code=404, detail="Order not found")
-    if order.status != CreditOrderStatus.IN_PROGRESS:
+    if order.status not in _OPEN_STATUSES:
         raise HTTPException(
             status_code=409,
             detail=f"Cannot cancel an order in status '{order.status}'",
