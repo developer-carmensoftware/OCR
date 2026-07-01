@@ -1,7 +1,6 @@
 // recharts is intentionally code-split: this module is only reached via
 // React.lazy(() => import('./MetricChartImpl')) in MetricChart.tsx, so recharts
 // already loads on demand in its own chunk — the static import here is fine.
-// eslint-disable-next-line react-doctor/prefer-dynamic-import
 import {
   Bar,
   BarChart,

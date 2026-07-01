@@ -184,10 +184,10 @@ export default function DocumentPreview({
     el.addEventListener('touchend', onTouchEnd, { passive: true })
 
     return () => {
-      el.removeEventListener('wheel', onWheel, { passive: true } as any)
-      el.removeEventListener('touchstart', onTouchStart, { passive: true } as any)
-      el.removeEventListener('touchmove', onTouchMove, { passive: true } as any)
-      el.removeEventListener('touchend', onTouchEnd, { passive: true } as any)
+      el.removeEventListener('wheel', onWheel)
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
     }
   }, [previewType, showSelectedThumbs])
 
@@ -294,7 +294,6 @@ export default function DocumentPreview({
         </div>
       )}
 
-      {/* eslint-disable-next-line react-doctor/no-static-element-interactions */}
       <div
         ref={frameRef}
         className={`preview-frame${hasToolbar ? ' preview-frame--docked' : ''}`}

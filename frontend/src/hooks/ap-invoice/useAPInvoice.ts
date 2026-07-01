@@ -76,7 +76,6 @@ export function useAPInvoice() {
   // resolves (its default profile lands) and upgrades untouched lines from the arbitrary
   // first-match to the vendor's profile. The `changed` flag prevents a render loop.
   const vendorTaxProfile = vendor.systemVendor.taxProfileCode1
-  // eslint-disable-next-line react-doctor/no-event-handler
   useEffect(() => {
     if (!taxProfiles.length) return
 
@@ -93,7 +92,6 @@ export function useAPInvoice() {
           return it
         }
         const rate = parseNum(it.taxPct)
-        // eslint-disable-next-line react-doctor/no-event-handler
         const desired = resolveTaxProfileForRate(rate, taxProfiles, vendorTaxProfile)
         if (it.taxProfileCode1 !== desired) {
           changed = true
