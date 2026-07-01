@@ -32,6 +32,7 @@ Every meaningful change is logged in [`changelog/`](changelog/), **one file per 
 - Group by area (Backend / Frontend / DB / Infra) when useful; one terse bullet per change, link the commit hash once it exists.
 - Put **uncommitted / in-progress** work in its own section so it's clear what hasn't shipped.
 - See [changelog/README.md](changelog/README.md) for the full convention.
+- **CI enforces this**: the `changelog-check` job fails any PR that touches no `changelog/` file (escape hatch: `skip-changelog` label). Add/update today's entry **in the same commit/branch as the change, before opening the PR** — don't wait for CI to fail first.
 
 ---
 
