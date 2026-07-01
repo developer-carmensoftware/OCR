@@ -56,7 +56,10 @@ describe('CustomModal — password affordances', () => {
   })
 
   it('typing clears the invalid state', async () => {
-    const { rerender } = render(<CustomModal {...baseProps} errorNonce={1} />)
+    // errorNonce is a bump signal: mount at 0, then bump to 1 (real usage never
+    // mounts pre-flagged). Mirrors the "errorNonce bump" test above.
+    const { rerender } = render(<CustomModal {...baseProps} errorNonce={0} />)
+    rerender(<CustomModal {...baseProps} errorNonce={1} />)
     await waitFor(() => expect(input().getAttribute('aria-invalid')).toBe('true'))
     fireEvent.change(input(), { target: { value: '12' } })
     expect(input().hasAttribute('aria-invalid')).toBe(false)
