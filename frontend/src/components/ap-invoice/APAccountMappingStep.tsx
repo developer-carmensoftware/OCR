@@ -130,7 +130,7 @@ function GLAccountCard({ title, iconColor, rows }: GLCardProps) {
 }
 
 const DEFAULT_EMPTY_OBJECT = {}
-const DEFAULT_EMPTY_ARRAY: any[] = []
+const DEFAULT_EMPTY_ARRAY: never[] = []
 
 export default function APAccountMappingStep({
   lineItems,

@@ -78,8 +78,8 @@ export default function CustomSearchSelect({
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
-      document.removeEventListener('touchstart', handleClickOutside, { passive: true } as any)
-      window.removeEventListener('scroll', handleScroll, { capture: true, passive: true } as any)
+      document.removeEventListener('touchstart', handleClickOutside)
+      window.removeEventListener('scroll', handleScroll, { capture: true })
       window.removeEventListener('resize', handleScroll)
     }
   }, [value, isOpen])

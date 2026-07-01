@@ -92,8 +92,8 @@ export default function InlineSelect({
     window.addEventListener('resize', handleClose)
     return () => {
       document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('touchstart', onDown, { passive: true } as any)
-      window.removeEventListener('scroll', onScroll, { capture: true, passive: true } as any)
+      document.removeEventListener('touchstart', onDown)
+      window.removeEventListener('scroll', onScroll, { capture: true })
       window.removeEventListener('resize', handleClose)
     }
   }, [open])

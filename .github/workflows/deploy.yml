@@ -1,0 +1,83 @@
+name: Deploy
+
+# Ordered, gated CD: migrate the target DB, THEN trigger the Render deploy, THEN
+# smoke-test the live health endpoint. Backend Render service has autoDeploy=false
+# so this workflow controls deploy ordering (migrate-before-deploy).
+#
+# Branch → environment:  dev → staging,  main → production.
+# Secrets are scoped per GitHub Environment (Settings → Environments):
+#   SUPABASE_DB_URL          direct Postgres URL for migrations (session mode, not the txn pooler)
+#   RENDER_DEPLOY_HOOK_URL   backend service deploy hook
+#   HEALTH_CHECK_URL         e.g. https://.../api/v1/health
+
+on:
+  push:
+    branches: ["main", "dev"]
+
+concurrency:
+  group: deploy-${{ github.ref }}   # serialize deploys per environment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy (${{ github.ref_name == 'main' && 'production' || 'staging' }})
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+    permissions:
+      contents: write   # needed by the release step (main only)
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # 1. Migrate first. `db push` only applies migrations not yet recorded in the
+      #    target DB's supabase_migrations table — safe under expand/contract.
+      - name: Push DB migrations
+        run: supabase db push --db-url "$SUPABASE_DB_URL"
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+
+      # 2. Trigger the Render backend deploy (hook returns immediately; deploy is async).
+      - name: Trigger Render deploy
+        run: curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+
+      # 3. Smoke test: wait for the service to answer 200 post-deploy.
+      #    ponytail: confirms the service is up, not that it's the new build — hit
+      #    /api/version + compare sha if version-pinning ever matters.
+      - name: Smoke test health endpoint
+        run: |
+          url="${{ secrets.HEALTH_CHECK_URL }}"
+          echo "Polling $url for up to ~10 min..."
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$url" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "Healthy (200) after $((i*15))s ✔"
+              exit 0
+            fi
+            echo "  attempt $i: $code — retrying in 15s"
+            sleep 15
+          done
+          echo "::error::Health check never returned 200 — deploy may have failed."
+          exit 1
+
+      # 4. Production only: cut a GitHub Release from today's changelog entry.
+      - name: Create release from changelog
+        if: github.ref_name == 'main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          today=$(TZ='Asia/Bangkok' date +%Y-%m-%d)   # changelog files are dated in ICT
+          file="changelog/${today}.md"
+          tag="v$(echo "$today" | tr '-' '.')"
+          if [ ! -f "$file" ]; then
+            echo "No $file — skipping release."
+            exit 0
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists — skipping."
+            exit 0
+          fi
+          gh release create "$tag" --title "$tag" --notes-file "$file"

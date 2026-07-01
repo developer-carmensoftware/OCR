@@ -6,6 +6,15 @@ on:
   pull_request:
     branches: ["main"]
 
+# Least privilege: jobs only read the repo. (codeql.yml requests its own write scope.)
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref — faster feedback, fewer wasted minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -71,7 +80,7 @@ jobs:
           # Dummy values — tests mock all external calls, no real DB/LLM needed.
           # APP_DEBUG=true prevents weak-secret RuntimeError (acceptable in CI).
           APP_DEBUG: "true"
-          DATABASE_URL: mysql+aiomysql://root:password@localhost:3306/carmen_ai
+          DATABASE_URL: postgresql+asyncpg://postgres:password@localhost:5432/postgres
           OCR_JWT_SECRET: ci-test-secret-not-used-in-tests
           SESSION_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
           OPENROUTER_API_KEY: sk-or-test-not-real
@@ -109,21 +118,61 @@ jobs:
       - name: Test (vitest)
         run: npm run test
 
-  # ── Docker build check ───────────────────────────────────────────────────────
-  docker:
-    name: Docker build
+  # ── DB migrations: apply schemas + migrations + seed on the real Supabase stack ─
+  migrations-validate:
+    name: Migrations (Supabase)
     runs-on: ubuntu-latest
-    # Only runs when Dockerfile or deps change — skip on docs-only PRs
-    if: |
-      contains(github.event.head_commit.modified, 'backend/') ||
-      contains(github.event.head_commit.modified, 'frontend/') ||
-      github.event_name == 'pull_request'
-
     steps:
       - uses: actions/checkout@v7
 
-      - name: Build backend image
-        run: docker build ./backend --tag carmen-backend:ci
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
 
-      - name: Build frontend image
-        run: docker build ./frontend --tag carmen-frontend:ci
+      # `supabase db reset` boots the bundled Supabase Postgres (ships pg_cron,
+      # pgvector, partitioning) and applies schemas/ + migrations/ + seed. Fails
+      # on any broken DDL — catches migration errors before they reach staging.
+      - name: Apply migrations on ephemeral DB
+        run: |
+          supabase start
+          supabase db reset
+
+  # ── Secret scanning ───────────────────────────────────────────────────────────
+  # Run the gitleaks binary directly. The gitleaks-action wrapper requires a paid
+  # license for GitHub organizations; the binary itself is free/open-source.
+  gitleaks:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install gitleaks
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+      # Scan the working tree (not full git history) — catches secrets in the
+      # current code without re-flagging historical test fixtures on every run.
+      - name: Scan
+        run: gitleaks dir . --config .gitleaks.toml --redact --no-banner -v
+
+  # ── Changelog hygiene ─────────────────────────────────────────────────────────
+  # Per CLAUDE.md every meaningful change is logged in changelog/. Fail PRs that
+  # touch no changelog file. Escape hatch: add the `skip-changelog` label.
+  changelog-check:
+    name: Changelog touched
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Require a changelog/ change
+        if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-changelog') }}
+        run: |
+          base="origin/${{ github.base_ref }}"
+          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+          if git diff --name-only "$base"...HEAD | grep -q '^changelog/'; then
+            echo "changelog/ updated ✔"
+          else
+            echo "::error::No changelog/ file changed. Add an entry to changelog/$(date +%F).md or apply the 'skip-changelog' label."
+            exit 1
+          fi
