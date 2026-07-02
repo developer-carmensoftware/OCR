@@ -92,15 +92,7 @@ export default function SlipUpload({ onUpload, uploading }: Props) {
       }}
       onDragLeave={() => setDragging(false)}
       onDrop={handleDrop}
-      style={{
-        display: 'block',
-        width: '100%',
-        border: 'none',
-        background: 'none',
-        textAlign: 'left',
-        padding: 0,
-        cursor: 'pointer',
-      }}
+      style={{ border: 'none', background: 'none', cursor: 'pointer' }}
     >
       <input
         ref={inputRef}
