@@ -88,6 +88,7 @@ export default function ProformaDocument({
               <div className="pf-buyer-row">
                 {doc.buyer_contact_name && <span>{doc.buyer_contact_name}</span>}
                 {doc.buyer_email && <span>{doc.buyer_email}</span>}
+                {doc.buyer_tel && <span>Tel {doc.buyer_tel}</span>}
               </div>
             </div>
           </div>

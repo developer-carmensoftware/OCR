@@ -37,6 +37,7 @@ from app.services import ar_posting_service, storage_service
 from app.services import billing_document_service as bds
 from app.services.credit_service import activate_subscription, get_credit_balance, grant_credits
 from app.services.storage_service import StorageError
+from app.utils.tax import split_inclusive
 
 from .deps import require_permission
 
@@ -326,6 +327,17 @@ async def approve_order(
         address=str(proforma.buyer_address or "") if proforma else "",
         branch=str(proforma.buyer_branch or "") if proforma else "",
         contact_name=str(proforma.buyer_contact_name or "") if proforma else "",
+        tel=str(proforma.buyer_tel or "") if proforma else "",
+    )
+
+    # issue_document expects a NET (pre-VAT) amount and adds VAT on top. order.amount_thb
+    # is the GROSS (VAT-inclusive) price the customer paid, so passing it directly would
+    # re-apply VAT (524.30 → 561.00). Reuse the proforma's authoritative subtotal so the
+    # tax invoice matches the proforma exactly; fall back to splitting the gross.
+    net_amount = (
+        Decimal(str(proforma.subtotal))
+        if proforma is not None
+        else split_inclusive(Decimal(str(order.amount_thb)))[0]
     )
 
     await bds.issue_document(
@@ -336,7 +348,7 @@ async def approve_order(
         pack_code=order.pack_code,  # type: ignore[arg-type]
         pack_description=f"{order.credits} credits",
         credits=order.credits,  # type: ignore[arg-type]
-        amount_thb=Decimal(str(order.amount_thb)),
+        amount_thb=net_amount,
         buyer=buyer,
     )
 
@@ -795,7 +807,7 @@ async def post_ar_batch(
             resp = await ar_posting_service.post_ar_entry(
                 # Carmen field mapping (interfacePostAR/CarmenAI):
                 #   DealId=Proforma Invoice No, ClosingDate=Proforma Date,
-                #   Description=Package+price, Remark=Contact Name.
+                #   Description=Package+price, Remark=Contact Name/Tel/Email.
                 deal_id=str(proforma.number),
                 ar_code=str(ar_code),
                 account_name=str(proforma.buyer_name or ""),
@@ -804,7 +816,11 @@ async def post_ar_batch(
                 net=float(str(tax_inv.subtotal)),
                 vat=float(str(tax_inv.vat_amount)),
                 description=f"Package : {proforma.description or order.pack_code} — {tax_inv.total} THB",
-                remark=f"Contact Name : {proforma.buyer_contact_name or '-'}",
+                remark=(
+                    f"Contact Name : {proforma.buyer_contact_name or '-'}\n"
+                    f"Tel. : {proforma.buyer_tel or '-'}\n"
+                    f"Email : {proforma.buyer_email or '-'}"
+                ),
             )
             order.status = CreditOrderStatus.COMPLETE  # type: ignore[assignment]
             order.carmen_ar_posted_at = datetime.now(UTC)  # type: ignore[assignment]

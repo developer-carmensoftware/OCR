@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { AlertTriangle, Coins, Copy, Mail } from 'lucide-react'
+import { AlertTriangle, Coins, Copy, Mail, Phone } from 'lucide-react'
 import ProformaDocument from '../pricing/ProformaDocument'
 import DataTable, { type Column } from './DataTable'
 import { STAGE_KEY, STAGE_TONE, timeAgo } from './orderHelpers'
@@ -109,6 +109,7 @@ function VerifyFacts({
           <dd>
             {proforma?.buyer_name || '—'}
             {proforma?.buyer_contact_name ? ` · ${proforma.buyer_contact_name}` : ''}
+            {proforma?.buyer_tel ? ` · ${proforma.buyer_tel}` : ''}
           </dd>
         </div>
         <div>
@@ -136,10 +137,11 @@ function ContactBuyer({
 }) {
   const { t } = useT()
   const email = proforma?.buyer_email ?? ''
-  const copy = () => {
+  const tel = proforma?.buyer_tel ?? ''
+  const copy = (value: string, message: string) => {
     navigator.clipboard
-      ?.writeText(email)
-      .then(() => toast.success(t('orev.contact.copied')))
+      ?.writeText(value)
+      .then(() => toast.success(message))
       .catch(() => toast.error(t('orev.contact.copyFail')))
   }
   return (
@@ -170,12 +172,31 @@ function ContactBuyer({
               <a className="btn btn-outline orev-mini" href={`mailto:${email}`}>
                 <Mail size={13} /> {t('orev.contact.email')}
               </a>
-              <button type="button" className="btn btn-outline orev-mini" onClick={copy}>
+              <button
+                type="button"
+                className="btn btn-outline orev-mini"
+                onClick={() => copy(email, t('orev.contact.copied'))}
+              >
                 <Copy size={13} /> {t('orev.contact.copy')}
               </button>
             </div>
           ) : (
             <p className="orev-contact-noemail">{t('orev.contact.noEmail')}</p>
+          )}
+          {tel && (
+            <div className="orev-contact-actions">
+              <span className="orev-contact-email mono">{tel}</span>
+              <a className="btn btn-outline orev-mini" href={`tel:${tel}`}>
+                <Phone size={13} /> {t('orev.contact.call')}
+              </a>
+              <button
+                type="button"
+                className="btn btn-outline orev-mini"
+                onClick={() => copy(tel, t('orev.contact.telCopied'))}
+              >
+                <Copy size={13} /> {t('orev.contact.copy')}
+              </button>
+            </div>
           )}
         </>
       )}

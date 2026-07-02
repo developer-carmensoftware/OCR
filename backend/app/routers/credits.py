@@ -194,6 +194,7 @@ async def create_order(
             branch=buyer_override.branch,
             email=buyer_override.email,
             contact_name=buyer_override.contact_name,
+            tel=buyer_override.tel,
         )
     else:
         cfg = await bds._fetch_billing_configs(db)

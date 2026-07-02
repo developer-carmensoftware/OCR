@@ -73,11 +73,17 @@ def _proforma(order_id=None, tax_id="1234567890123", branch="HQ"):
     doc.description = "Starter pack"
     doc.buyer_name = "Test Co"
     doc.buyer_contact_name = "Khun Somchai"
+    doc.buyer_tel = "02-123-4567"
+    doc.buyer_email = "somchai@test.co"
     doc.buyer_tax_id = tax_id
     doc.buyer_address = "Bangkok"
     doc.buyer_branch = branch
     doc.order_id = order_id or str(uuid.uuid4())
     doc.deleted_at = None
+    # Monetary snapshot — net 990 + 7% VAT (matches the 990-net fixtures elsewhere).
+    doc.subtotal = Decimal("990")
+    doc.vat_amount = Decimal("69.30")
+    doc.total = Decimal("1059.30")
     return doc
 
 
@@ -209,7 +215,8 @@ def test_get_slip_url_returns_404_when_no_slip():
 
 def test_approve_order_marks_paid_and_grants_credits():
     order_id = str(uuid.uuid4())
-    order = _order(order_id=order_id, status="in_progress")
+    # amount_thb is the GROSS (VAT-inclusive) the customer paid: 990 net × 1.07.
+    order = _order(order_id=order_id, status="in_progress", amount_thb=1059.30)
     proforma = _proforma(order_id=order_id)
 
     # A top-up pack fulfils via grant_credits (subscription packs take the
@@ -229,17 +236,19 @@ def test_approve_order_marks_paid_and_grants_credits():
         grant_result,  # grant_credits: pg_insert returning balance
     ]
 
+    issue_doc = AsyncMock(return_value=MagicMock())
     with (
-        patch(
-            "app.routers.admin.credits.bds.issue_document",
-            new=AsyncMock(return_value=MagicMock()),
-        ),
+        patch("app.routers.admin.credits.bds.issue_document", new=issue_doc),
         make_admin_test_client(mock_db) as client,
     ):
         resp = client.post(f"{BASE}/credit-orders/{order_id}/approve", headers=AUTH)
 
     assert resp.status_code == 200
     assert resp.json()["status"] == "paid"
+    # Regression guard for the double-VAT bug: the tax invoice must be issued from the
+    # proforma's NET subtotal (990), NOT the order's GROSS amount_thb (1059.30) — else
+    # issue_document re-applies VAT and the total becomes 990 × 1.07² ≈ 1133.45.
+    assert issue_doc.await_args.kwargs["amount_thb"] == Decimal("990")
 
 
 def test_approve_subscription_order_activates_plan():
@@ -429,11 +438,14 @@ def test_post_ar_marks_complete_with_ref():
     assert kwargs["vat"] == 69.30
     assert kwargs["ar_code"] == "AR-TEST001"
     # Carmen field mapping: DealId = Proforma Invoice No (the FolioNo-overflow fix —
-    # must NOT be the order UUID), ClosingDate = Proforma Date, Remark = Contact Name.
+    # must NOT be the order UUID), ClosingDate = Proforma Date,
+    # Remark = Contact Name/Tel/Email (newline-separated).
     assert kwargs["deal_id"] == "PI-202606-0001"
     assert kwargs["deal_id"] != order_id
     assert kwargs["closing_date"] == "2026-06-15T00:00:00+00:00"
-    assert kwargs["remark"] == "Contact Name : Khun Somchai"
+    assert kwargs["remark"] == (
+        "Contact Name : Khun Somchai\nTel. : 02-123-4567\nEmail : somchai@test.co"
+    )
     assert kwargs["description"].startswith("Package :")
 
 
@@ -647,6 +659,7 @@ def test_list_order_documents_returns_docs():
     doc.buyer_branch = "HQ"
     doc.buyer_email = None
     doc.buyer_contact_name = None
+    doc.buyer_tel = None
     doc.pack_code = "starter"
     doc.description = "500 credits"
     doc.credits = 500

@@ -118,6 +118,7 @@ class BuyerInfoInput(BaseModel):
     branch: str = ""
     email: str = ""
     contact_name: str = ""
+    tel: str = ""
 
     @field_validator("tax_id")
     @classmethod
@@ -156,6 +157,13 @@ class BuyerInfoInput(BaseModel):
     def _check_address_len(cls, v: str) -> str:
         if len(v) > 2000:
             raise ValueError("Must be 2000 characters or fewer")
+        return v
+
+    @field_validator("tel")
+    @classmethod
+    def _check_tel_len(cls, v: str) -> str:
+        if len(v) > 50:
+            raise ValueError("Must be 50 characters or fewer")
         return v
 
 
@@ -202,6 +210,7 @@ class BillingDocumentResponse(BaseModel):
     buyer_branch: str | None = None
     buyer_email: str | None = None
     buyer_contact_name: str | None = None
+    buyer_tel: str | None = None
     # Line item
     pack_code: str
     description: str | None = None
@@ -249,6 +258,7 @@ class CompanyProfileResponse(BaseModel):
     branch: str = ""
     email: str = ""
     contact_name: str = ""
+    tel: str = ""
     source: str = "form"  # 'carmen' | 'last_invoice' | 'form'
 
 

@@ -35,6 +35,7 @@ class BuyerInfo(TypedDict, total=False):
     branch: str
     email: str
     contact_name: str
+    tel: str
 
 
 class SellerSnapshot(TypedDict, total=False):
@@ -172,6 +173,7 @@ async def issue_document(
         buyer_branch=buyer.get("branch") or None,
         buyer_email=buyer.get("email") or None,
         buyer_contact_name=buyer.get("contact_name") or None,
+        buyer_tel=buyer.get("tel") or None,
         # Line item
         pack_code=pack_code,
         description=pack_description,
@@ -207,6 +209,7 @@ async def get_last_buyer_info(db: AsyncSession, tenant_id: str) -> BuyerInfo:
                 BillingDocument.buyer_address,
                 BillingDocument.buyer_branch,
                 BillingDocument.buyer_contact_name,
+                BillingDocument.buyer_tel,
             )
             .where(
                 BillingDocument.tenant_id == tenant_id,
@@ -225,4 +228,5 @@ async def get_last_buyer_info(db: AsyncSession, tenant_id: str) -> BuyerInfo:
         address=row.buyer_address or "",
         branch=row.buyer_branch or "",
         contact_name=row.buyer_contact_name or "",
+        tel=row.buyer_tel or "",
     )
