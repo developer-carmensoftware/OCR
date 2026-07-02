@@ -37,7 +37,6 @@ from app.services import ar_posting_service, storage_service
 from app.services import billing_document_service as bds
 from app.services.credit_service import activate_subscription, get_credit_balance, grant_credits
 from app.services.storage_service import StorageError
-from app.utils.tax import split_inclusive
 
 from .deps import require_permission
 
@@ -288,7 +287,12 @@ async def approve_order(
     db: AsyncSession = Depends(get_db),
     admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
 ):
-    """Approve a slip: grant credits, issue tax invoice, mark order paid."""
+    """Approve a slip: grant credits, mark order paid.
+
+    No internal tax invoice is issued here — Carmen ERP is the system of record for
+    the fiscal tax invoice. The proforma (issued at order-creation) is the single
+    source of truth for this order's figures; post_ar reads amounts from it directly.
+    """
     order = (
         await db.execute(
             select(CreditOrder)
@@ -310,50 +314,8 @@ async def approve_order(
             detail=f"Order is '{order.status}', expected in_progress or on_hold",
         )
 
-    # Fetch proforma buyer info for the tax invoice snapshot
-    proforma = (
-        await db.execute(
-            select(BillingDocument).where(
-                BillingDocument.order_id == order_id,
-                BillingDocument.doc_type == BillingDocumentType.PROFORMA,
-                BillingDocument.deleted_at.is_(None),
-            )
-        )
-    ).scalar_one_or_none()
-
-    buyer = bds.BuyerInfo(
-        name=str(proforma.buyer_name or "") if proforma else "",
-        tax_id=str(proforma.buyer_tax_id or "") if proforma else "",
-        address=str(proforma.buyer_address or "") if proforma else "",
-        branch=str(proforma.buyer_branch or "") if proforma else "",
-        contact_name=str(proforma.buyer_contact_name or "") if proforma else "",
-        tel=str(proforma.buyer_tel or "") if proforma else "",
-    )
-
-    # issue_document expects a NET (pre-VAT) amount and adds VAT on top. order.amount_thb
-    # is the GROSS (VAT-inclusive) price the customer paid, so passing it directly would
-    # re-apply VAT (524.30 → 561.00). Reuse the proforma's authoritative subtotal so the
-    # tax invoice matches the proforma exactly; fall back to splitting the gross.
-    net_amount = (
-        Decimal(str(proforma.subtotal))
-        if proforma is not None
-        else split_inclusive(Decimal(str(order.amount_thb)))[0]
-    )
-
-    await bds.issue_document(
-        db,
-        tenant_id=str(order.tenant_id),
-        order_id=order_id,
-        doc_type=BillingDocumentType.TAX_INVOICE,
-        pack_code=order.pack_code,  # type: ignore[arg-type]
-        pack_description=f"{order.credits} credits",
-        credits=order.credits,  # type: ignore[arg-type]
-        amount_thb=net_amount,
-        buyer=buyer,
-    )
-
     # Subscription packs open a one-month use-it-or-lose-it window; top-up packs
-    # grant non-expiring credits. Both still issue the tax invoice + mark PAID.
+    # grant non-expiring credits. Both mark PAID below.
     pack = (
         await db.execute(select(CreditPack).where(CreditPack.code == order.pack_code))
     ).scalar_one_or_none()
@@ -563,7 +525,8 @@ async def list_order_documents(
     db: AsyncSession = Depends(get_db),
     admin: AdminPrincipal = Depends(require_permission("quotas", "read")),
 ):
-    """Return all billing documents for an order (proforma + tax invoice)."""
+    """Return all billing documents for an order (proforma; legacy orders may also
+    carry an internal tax invoice from before this system stopped issuing them)."""
     order = (
         await db.execute(
             select(CreditOrder).where(
@@ -782,25 +745,6 @@ async def post_ar_batch(
             )
             continue
 
-        # Authoritative amounts come from the issued tax invoice, not order.amount_thb
-        # (which is ambiguous net/gross) — AR figures must match what the customer owes.
-        tax_inv = (
-            await db.execute(
-                select(BillingDocument).where(
-                    BillingDocument.order_id == oid,
-                    BillingDocument.doc_type == BillingDocumentType.TAX_INVOICE,
-                    BillingDocument.deleted_at.is_(None),
-                )
-            )
-        ).scalar_one_or_none()
-        if tax_inv is None:
-            results.append(
-                PostArResultItem(
-                    order_id=oid, success=False, error="No tax invoice issued for this order"
-                )
-            )
-            continue
-
         # proforma is guaranteed non-None here — ar_code above was derived from it.
         assert proforma is not None
         try:
@@ -808,14 +752,16 @@ async def post_ar_batch(
                 # Carmen field mapping (interfacePostAR/CarmenAI):
                 #   DealId=Proforma Invoice No, ClosingDate=Proforma Date,
                 #   Description=Package+price, Remark=Contact Name/Tel/Email.
+                # The proforma is the single source of truth for this order's figures
+                # (no internal tax invoice is issued — Carmen ERP owns that document).
                 deal_id=str(proforma.number),
                 ar_code=str(ar_code),
                 account_name=str(proforma.buyer_name or ""),
                 closing_date=proforma.issue_date.isoformat() if proforma.issue_date else "",
-                total=float(str(tax_inv.total)),
-                net=float(str(tax_inv.subtotal)),
-                vat=float(str(tax_inv.vat_amount)),
-                description=f"Package : {proforma.description or order.pack_code} — {tax_inv.total} THB",
+                total=float(str(proforma.total)),
+                net=float(str(proforma.subtotal)),
+                vat=float(str(proforma.vat_amount)),
+                description=f"Package : {proforma.description or order.pack_code} — {proforma.total} THB",
                 remark=(
                     f"Contact Name : {proforma.buyer_contact_name or '-'}\n"
                     f"Tel. : {proforma.buyer_tel or '-'}\n"

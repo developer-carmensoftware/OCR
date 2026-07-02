@@ -215,9 +215,7 @@ def test_get_slip_url_returns_404_when_no_slip():
 
 def test_approve_order_marks_paid_and_grants_credits():
     order_id = str(uuid.uuid4())
-    # amount_thb is the GROSS (VAT-inclusive) the customer paid: 990 net × 1.07.
     order = _order(order_id=order_id, status="in_progress", amount_thb=1059.30)
-    proforma = _proforma(order_id=order_id)
 
     # A top-up pack fulfils via grant_credits (subscription packs take the
     # activate_subscription branch instead).
@@ -231,24 +229,15 @@ def test_approve_order_marks_paid_and_grants_credits():
     grant_result.scalar_one.return_value = 500
     mock_db.execute.side_effect = [
         _scalar(order),  # select CreditOrder
-        _scalar(proforma),  # select BillingDocument (proforma)
         _scalar(pack),  # select CreditPack (kind branch)
         grant_result,  # grant_credits: pg_insert returning balance
     ]
 
-    issue_doc = AsyncMock(return_value=MagicMock())
-    with (
-        patch("app.routers.admin.credits.bds.issue_document", new=issue_doc),
-        make_admin_test_client(mock_db) as client,
-    ):
+    with make_admin_test_client(mock_db) as client:
         resp = client.post(f"{BASE}/credit-orders/{order_id}/approve", headers=AUTH)
 
     assert resp.status_code == 200
     assert resp.json()["status"] == "paid"
-    # Regression guard for the double-VAT bug: the tax invoice must be issued from the
-    # proforma's NET subtotal (990), NOT the order's GROSS amount_thb (1059.30) — else
-    # issue_document re-applies VAT and the total becomes 990 × 1.07² ≈ 1133.45.
-    assert issue_doc.await_args.kwargs["amount_thb"] == Decimal("990")
 
 
 def test_approve_subscription_order_activates_plan():
@@ -256,7 +245,6 @@ def test_approve_subscription_order_activates_plan():
     order_id = str(uuid.uuid4())
     order = _order(order_id=order_id, status="in_progress", pack_code="sub_pro", credits=1500)
     order.billing_period = "annual"
-    proforma = _proforma(order_id=order_id)
 
     pack = MagicMock()
     pack.code = order.pack_code
@@ -265,19 +253,12 @@ def test_approve_subscription_order_activates_plan():
     mock_db = make_mock_db()
     mock_db.execute.side_effect = [
         _scalar(order),  # select CreditOrder
-        _scalar(proforma),  # select BillingDocument (proforma)
         _scalar(pack),  # select CreditPack (kind branch)
         MagicMock(),  # activate_subscription: supersede UPDATE
         MagicMock(),  # activate_subscription: pg_insert new window
     ]
 
-    with (
-        patch(
-            "app.routers.admin.credits.bds.issue_document",
-            new=AsyncMock(return_value=MagicMock()),
-        ),
-        make_admin_test_client(mock_db) as client,
-    ):
+    with make_admin_test_client(mock_db) as client:
         resp = client.post(f"{BASE}/credit-orders/{order_id}/approve", headers=AUTH)
 
     assert resp.status_code == 200
@@ -394,16 +375,6 @@ def test_cancel_non_in_progress_returns_409():
 # ── POST /admin/credit-orders/post-ar ─────────────────────────────────────────
 
 
-def _tax_invoice(total="1059.30", subtotal="990.00", vat="69.30"):
-    doc = MagicMock()
-    doc.number = "AI-202606-0007"
-    doc.total = Decimal(total)
-    doc.subtotal = Decimal(subtotal)
-    doc.vat_amount = Decimal(vat)
-    doc.deleted_at = None
-    return doc
-
-
 def test_post_ar_marks_complete_with_ref():
     order_id = str(uuid.uuid4())
     order = _order(order_id=order_id, status="paid")
@@ -415,7 +386,6 @@ def test_post_ar_marks_complete_with_ref():
         _scalar(order),  # select CreditOrder
         _scalar(proforma),  # select BillingDocument (proforma)
         _scalar(profile),  # select ArCustomerProfile
-        _scalar(_tax_invoice()),  # select BillingDocument (tax invoice)
     ]
 
     posted = AsyncMock(return_value={"success": True, "carmen_ar_ref": "AR-REF-1"})
@@ -431,7 +401,8 @@ def test_post_ar_marks_complete_with_ref():
     assert results[0]["success"] is True
     assert results[0]["carmen_ar_ref"] == "AR-REF-1"
     assert order.status == "complete"
-    # Exact figures come from the tax invoice, not order.amount_thb.
+    # Exact figures come from the proforma (single source of truth) — no internal
+    # tax invoice is issued/queried anymore.
     kwargs = posted.call_args.kwargs
     assert kwargs["total"] == 1059.30
     assert kwargs["net"] == 990.00
