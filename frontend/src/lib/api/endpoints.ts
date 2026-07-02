@@ -104,6 +104,7 @@ export const API = {
     creditOrderCancel: (id: string) => `${V1}/admin/credit-orders/${id}/cancel`,
     creditOrderDocuments: (id: string) => `${V1}/admin/credit-orders/${id}/documents`,
     creditOrdersPostAr: `${V1}/admin/credit-orders/post-ar`,
+    creditOrdersHoldBatch: `${V1}/admin/credit-orders/hold-batch`,
     creditOrdersKpi: `${V1}/admin/credit-orders/kpi`,
     arProfiles: `${V1}/admin/ar-customer-profiles`,
     arProfile: (id: string) => `${V1}/admin/ar-customer-profiles/${id}`,

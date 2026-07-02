@@ -123,40 +123,6 @@ body:has(.orev-app) {
    Two-pane console (used inside the shell above)
    ════════════════════════════════════════════════════════════════ */
 
-.orev-console {
-  display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
-  gap: 1.25rem;
-  align-items: start;
-  animation: fadeUp 0.2s var(--ease) both;
-}
-
-.orev-console .mono {
-  font-family: 'IBM Plex Mono', monospace;
-  letter-spacing: -0.01em;
-}
-
-/* ─── Queue (left) ─────────────────────────────────────────────── */
-
-.orev-queue {
-  position: sticky;
-  top: 1rem;
-  align-self: start;
-  display: flex;
-  flex-direction: column;
-  max-height: calc(100vh - 2rem);
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  overflow: hidden;
-}
-
-.orev-queue-head {
-  padding: 1rem 1rem 0.75rem;
-  border-bottom: 1px solid var(--border);
-}
-
 .orev-queue-title {
   margin: 0 0 0.75rem;
   font-size: 1.05rem;
@@ -237,131 +203,11 @@ body:has(.orev-app) {
   outline: none;
 }
 
-.orev-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.orev-item {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  width: 100%;
-  padding: 0.6rem 0.65rem;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    background 0.15s var(--ease),
-    border-color 0.15s var(--ease);
-}
-
-.orev-item:hover {
-  background: var(--muted);
-}
-
-.orev-item.is-selected {
-  background: oklch(from var(--primary) l c h / 0.1);
-  border-color: oklch(from var(--primary) l c h / 0.25);
-}
-
-/* Queue row skeleton — mirrors the real row: dot · [company / sub] · amount. */
-.orev-item.is-skeleton {
-  align-items: center;
-  pointer-events: none;
-}
-
-.orev-sk-bar {
-  display: block;
-  border-radius: 4px;
-}
-
-.orev-sk-dot {
-  flex-shrink: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-
-.orev-sk-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.orev-sk-bar--company {
-  height: 0.8rem;
-  width: 70%;
-}
-.orev-sk-bar--sub {
-  height: 0.62rem;
-  width: 45%;
-}
-
-.orev-sk-amt {
-  flex-shrink: 0;
-  width: 3.5rem;
-  height: 0.8rem;
-}
-
 .orev-dot {
   flex-shrink: 0;
   width: 8px;
   height: 8px;
   border-radius: 50%;
-}
-
-.orev-item-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.orev-item-company {
-  font-size: 0.86rem;
-  font-weight: 600;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.orev-item-sub {
-  font-size: 0.72rem;
-  color: var(--text-3);
-}
-
-.orev-item-amt {
-  flex-shrink: 0;
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.8rem;
-  font-weight: 500;
-  color: var(--text-2);
-}
-
-/* Inner clickable row (wrapper .orev-item now also holds the batch checkbox). */
-.orev-item-btn {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-  color: inherit;
 }
 
 .orev-item-check {
@@ -401,28 +247,6 @@ body:has(.orev-app) {
   border-radius: 999px;
   background: oklch(from var(--primary) l c h / 0.15);
   color: var(--primary);
-}
-
-/* Batch "Post Batch (N)" button in the queue header (Paid tab). */
-.orev-post-batch {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  width: 100%;
-  margin-top: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: var(--primary);
-  color: var(--primary-foreground);
-  font-size: 0.78rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-.orev-post-batch:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 .orev-list-empty {
@@ -1604,4 +1428,247 @@ body:has(.orev-app) {
   font-size: 0.7rem;
   font-weight: 600;
   color: var(--text-3);
+}
+
+/* ─── Unified orders table ─────────────────────────────────────── */
+
+.orev-tablewrap {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  animation: fadeUp 0.2s var(--ease) both;
+}
+
+.orev-table-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  padding: 1rem 1.25rem 0.5rem;
+}
+
+.orev-table-heading {
+  min-width: 0;
+}
+
+.orev-table-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.orev-tablewrap .orev-tabs {
+  padding: 0 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.orev-table-scroll {
+  overflow-x: auto;
+  border-top: 1px solid var(--border);
+}
+
+.orev-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.orev-table .mono {
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: -0.01em;
+}
+
+.orev-table thead th {
+  padding: 0.6rem 0.85rem;
+  text-align: left;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  background: var(--muted);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.orev-table td {
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.orev-row {
+  cursor: pointer;
+  transition: background 0.12s var(--ease);
+}
+.orev-row:hover {
+  background: oklch(from var(--primary) l c h / 0.06);
+}
+.orev-row.is-selected {
+  background: oklch(from var(--primary) l c h / 0.1);
+}
+.orev-row.is-skeleton {
+  pointer-events: none;
+}
+.orev-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.orev-th-check,
+.orev-td-check {
+  width: 34px;
+  text-align: center;
+  padding-right: 0;
+}
+
+.orev-td-company {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.orev-td-desc {
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-3);
+}
+
+.orev-col-amt {
+  text-align: right;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.orev-td-muted {
+  color: var(--text-4);
+}
+
+.orev-slip-link {
+  color: var(--primary);
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.orev-sk-cell {
+  display: block;
+  height: 0.8rem;
+  width: 70%;
+  border-radius: 4px;
+}
+
+/* ─── Detail slide-over (drawer) ───────────────────────────────── */
+
+.orev-drawer-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  justify-content: flex-end;
+  background: oklch(0 0 0 / 0.5);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+
+.orev-drawer-panel {
+  display: flex;
+  flex-direction: column;
+  /* Wide enough for the side-by-side slip | proforma comparison (~560px/col). */
+  width: min(1200px, 96vw);
+  height: 100%;
+  padding: 1rem 1.5rem 0;
+  background: var(--card-bg);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 24px oklch(0 0 0 / 0.18);
+  overflow-y: auto;
+}
+
+.orev-drawer-close {
+  position: sticky;
+  top: 0;
+  align-self: flex-end;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--text-2);
+  cursor: pointer;
+  transition:
+    background 0.12s var(--ease),
+    color 0.12s var(--ease);
+}
+.orev-drawer-close:hover {
+  background: var(--muted);
+  color: var(--text);
+}
+
+/* ─── Floating batch action bar ────────────────────────────────── */
+
+/* Pinned to the bottom of the viewport (not the table) — the same "act on the
+   selection" role as .orev-actionbar inside the drawer, for a multi-row selection. */
+.orev-batchbar {
+  /* Centered via left/right/margin, not transform: framer-motion drives its own
+     inline `transform` for the y/opacity entrance, which would otherwise clobber
+     a CSS transform: translateX(-50%) on the same element. */
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 1.5rem;
+  width: fit-content;
+  margin: 0 auto;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem 0.6rem 0.6rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+}
+
+.orev-batchbar-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--muted);
+  color: var(--text-2);
+  cursor: pointer;
+  transition:
+    background 0.12s var(--ease),
+    color 0.12s var(--ease);
+}
+.orev-batchbar-clear:hover {
+  background: oklch(from var(--rose) l c h / 0.12);
+  color: var(--rose);
+  border-color: oklch(from var(--rose) l c h / 0.3);
+}
+
+.orev-batchbar-count {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  padding-right: 0.5rem;
+  border-right: 1px solid var(--border);
+}
+
+.orev-batchbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
