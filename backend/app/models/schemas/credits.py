@@ -269,6 +269,20 @@ class HoldRequest(BaseModel):
     note: str | None = None
 
 
+class HoldBatchRequest(BaseModel):
+    order_ids: list[str] = Field(..., min_length=1)
+
+
+class HoldBatchResultItem(BaseModel):
+    order_id: str
+    success: bool
+    error: str | None = None
+
+
+class HoldBatchResponse(BaseModel):
+    results: list[HoldBatchResultItem]
+
+
 # ── AR Customer Profiles ────────────────────────────────────────────────────
 
 

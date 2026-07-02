@@ -1,35 +1,19 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import {
-  AlertTriangle,
-  Check,
-  Coins,
-  Copy,
-  ExternalLink,
-  Loader2,
-  Mail,
-  Maximize2,
-  Pause,
-  RotateCw,
-  Send,
-  X,
-  ZoomIn,
-  ZoomOut,
-} from 'lucide-react'
+import { AlertTriangle, Coins, Copy, Mail } from 'lucide-react'
 import ProformaDocument from '../pricing/ProformaDocument'
 import DataTable, { type Column } from './DataTable'
 import { STAGE_KEY, STAGE_TONE, timeAgo } from './orderHelpers'
+import { SlipViewer } from './SlipViewer'
+import { OrderActions, fmtDateTime } from './OrderActions'
+import { useOrderActions } from './useOrderActions'
 import {
-  approveOrder,
   fetchAdminOrderDocuments,
   fetchCreditBalance,
   fetchCreditLedger,
   getOrderSlipUrl,
   orderStage,
-  updateOrderNote,
   listCreditOrders,
-  postArBatch,
-  rejectOrder,
   type AdminCreditOrder,
   type CreditLedgerEntry,
 } from '../../lib/api/adminClient'
@@ -37,52 +21,11 @@ import type { BillingDocument, PaymentInfo } from '../../lib/api/credits'
 import { formatThb } from '../../lib/money'
 import { useT } from '../../i18n/LanguageContext'
 
-// Reject reasons are shown to the (Thai-default) buyer, so they stay Thai
-// regardless of the reviewer's UI language.
-const REJECT_PRESETS = [
-  'ยอดเงินในสลิปไม่ตรงกับยอดที่ต้องชำระ',
-  'สลิปไม่ชัดเจน อ่านยอด/รายละเอียดไม่ได้',
-  'บัญชีปลายทางไม่ใช่บัญชีของบริษัท',
-  'สลิปนี้ถูกใช้ยืนยันการชำระไปแล้ว',
-]
-const REJECT_OTHER = 'อื่น ๆ (ระบุเหตุผล)'
-
-function fmtDateTime(s: string | null): string {
-  return s ? new Date(s).toLocaleString() : '—'
-}
-
 function num(v: string | number | null): number {
   return typeof v === 'string' ? Number(v) : (v ?? 0)
 }
 
-function slipIsPdf(url: string): boolean {
-  return /\.pdf$/i.test(url.split('?')[0])
-}
-
-/** Keep the company name when a mutation endpoint returns it null (no Tenant join). */
-function withName(updated: AdminCreditOrder, prev: AdminCreditOrder): AdminCreditOrder {
-  return {
-    ...updated,
-    tenant_name: updated.tenant_name ?? prev.tenant_name,
-    buyer_name: updated.buyer_name ?? prev.buyer_name,
-  }
-}
-
 // ── Loading skeletons (mirror the real slip viewer + proforma document) ────────
-
-function SlipSkeleton() {
-  return (
-    <div className="orev-slip-sk" aria-hidden="true">
-      <div className="orev-slip-sk-tools">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <span key={i} className="skeleton orev-slip-sk-tool" />
-        ))}
-        <span className="skeleton orev-slip-sk-zoom" />
-      </div>
-      <div className="skeleton orev-slip-sk-stage" />
-    </div>
-  )
-}
 
 function DocSkeleton() {
   return (
@@ -115,104 +58,6 @@ function DocSkeleton() {
         {Array.from({ length: 3 }).map((_, i) => (
           <span key={i} className="skeleton orev-docsk-totalrow" />
         ))}
-      </div>
-    </div>
-  )
-}
-
-// ── Slip viewer (zoom / pan / rotate for images; native iframe for PDFs) ───────
-
-function SlipViewer({ url, error }: { url: string | null; error: boolean }) {
-  const { t } = useT()
-  const [scale, setScale] = useState(1)
-  const [rot, setRot] = useState(0)
-  const [pan, setPan] = useState({ x: 0, y: 0 })
-  const drag = useRef<{ x: number; y: number } | null>(null)
-
-  const reset = () => {
-    setScale(1)
-    setRot(0)
-    setPan({ x: 0, y: 0 })
-  }
-
-  if (!url) {
-    if (error) return <div className="orev-slip-fallback">{t('orev.slip.errFallback')}</div>
-    return <SlipSkeleton />
-  }
-
-  if (slipIsPdf(url)) {
-    return (
-      <div className="orev-slip">
-        {/* ponytail: no sandbox — Edge/Chrome block their built-in PDF viewer inside a
-            sandboxed iframe. src is a short-lived Supabase signed URL to our own slip,
-            not arbitrary HTML. Do not re-add sandbox (reintroduces the blocked-PDF bug). */}
-        <iframe src={url} className="orev-slip-frame" title={t('orev.slip.heading')} />
-        <a className="orev-slip-link" href={url} target="_blank" rel="noreferrer">
-          <ExternalLink size={13} /> {t('orev.slip.openTab')}
-        </a>
-      </div>
-    )
-  }
-
-  return (
-    <div className="orev-slip">
-      <div className="orev-slip-tools">
-        <button
-          type="button"
-          className="orev-tool"
-          onClick={() => setScale(s => Math.min(s + 0.25, 4))}
-          aria-label={t('orev.slip.zoomIn')}
-        >
-          <ZoomIn size={15} />
-        </button>
-        <button
-          type="button"
-          className="orev-tool"
-          onClick={() => setScale(s => Math.max(s - 0.25, 0.5))}
-          aria-label={t('orev.slip.zoomOut')}
-        >
-          <ZoomOut size={15} />
-        </button>
-        <button
-          type="button"
-          className="orev-tool"
-          onClick={() => setRot(r => (r + 90) % 360)}
-          aria-label={t('orev.slip.rotate')}
-        >
-          <RotateCw size={15} />
-        </button>
-        <button
-          type="button"
-          className="orev-tool"
-          onClick={reset}
-          aria-label={t('orev.slip.reset')}
-        >
-          <Maximize2 size={15} />
-        </button>
-        <span className="orev-slip-zoom">{Math.round(scale * 100)}%</span>
-      </div>
-      <div
-        className="orev-slip-stage"
-        onPointerDown={e => {
-          drag.current = { x: e.clientX - pan.x, y: e.clientY - pan.y }
-          ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
-        }}
-        onPointerMove={e => {
-          if (!drag.current) return
-          setPan({ x: e.clientX - drag.current.x, y: e.clientY - drag.current.y })
-        }}
-        onPointerUp={() => (drag.current = null)}
-        style={{ cursor: scale > 1 ? 'grab' : 'default' }}
-      >
-        <img
-          src={url}
-          alt={t('orev.slip.heading')}
-          className="orev-slip-img"
-          draggable={false}
-          style={{
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale}) rotate(${rot}deg)`,
-          }}
-        />
       </div>
     </div>
   )
@@ -430,271 +275,6 @@ function CompanyPanel({
   )
 }
 
-// ── Action bar (status-aware) ─────────────────────────────────────────────────
-
-interface ActionsState {
-  mode: 'idle' | 'reject' | 'hold'
-  preset: string
-  reason: string
-  holdNote: string
-  confirm: 'approve' | null
-}
-
-type ActionsAction =
-  | { type: 'RESET' }
-  | { type: 'SET_MODE'; mode: 'idle' | 'reject' | 'hold' }
-  | { type: 'SET_PRESET'; preset: string }
-  | { type: 'SET_REASON'; reason: string }
-  | { type: 'SET_HOLD_NOTE'; note: string }
-  | { type: 'SET_CONFIRM'; confirm: 'approve' | null }
-  | { type: 'CHOOSE_PRESET'; preset: string }
-
-const actionsInitial: ActionsState = {
-  mode: 'idle',
-  preset: REJECT_PRESETS[0],
-  reason: REJECT_PRESETS[0],
-  holdNote: '',
-  confirm: null,
-}
-
-function actionsReducer(state: ActionsState, action: ActionsAction): ActionsState {
-  switch (action.type) {
-    case 'RESET':
-      return actionsInitial
-    case 'SET_MODE':
-      return { ...state, mode: action.mode }
-    case 'SET_PRESET':
-      return { ...state, preset: action.preset }
-    case 'SET_REASON':
-      return { ...state, reason: action.reason }
-    case 'SET_HOLD_NOTE':
-      return { ...state, holdNote: action.note }
-    case 'SET_CONFIRM':
-      return { ...state, confirm: action.confirm }
-    case 'CHOOSE_PRESET':
-      return {
-        ...state,
-        preset: action.preset,
-        reason: action.preset === REJECT_OTHER ? '' : action.preset,
-      }
-    default:
-      return state
-  }
-}
-
-function OrderActions({
-  order,
-  busy,
-  onApprove,
-  onReject,
-  onHold,
-  onPostAr,
-  onMapAr,
-}: {
-  order: AdminCreditOrder
-  busy: boolean
-  onApprove: () => void
-  onReject: (reason: string) => void
-  onHold: (note: string) => void
-  onPostAr: () => void
-  onMapAr: () => void
-}) {
-  const { t } = useT()
-  const [state, dispatch] = useReducer(actionsReducer, actionsInitial)
-  const { mode, preset, reason, holdNote, confirm } = state
-  const confirmTimer = useRef<number | undefined>(undefined)
-
-  useEffect(() => {
-    dispatch({ type: 'RESET' })
-  }, [order.id])
-
-  const arm = (which: 'approve', run: () => void) => {
-    if (confirm === which) {
-      window.clearTimeout(confirmTimer.current)
-      dispatch({ type: 'SET_CONFIRM', confirm: null })
-      run()
-      return
-    }
-    dispatch({ type: 'SET_CONFIRM', confirm: which })
-    window.clearTimeout(confirmTimer.current)
-    confirmTimer.current = window.setTimeout(
-      () => dispatch({ type: 'SET_CONFIRM', confirm: null }),
-      4000
-    )
-  }
-
-  // Terminal: complete or void — read-only.
-  if (order.status === 'complete' || order.status === 'void') {
-    return (
-      <div className="orev-actions orev-actions--readonly">
-        {order.status === 'complete' && (
-          <span className="orev-outcome is-ok">
-            <Check size={15} /> {t('orev.outcome.complete', { ref: order.carmen_ar_ref || '—' })}
-          </span>
-        )}
-        {order.status === 'void' && (
-          <span className="orev-outcome is-bad">
-            <X size={15} />{' '}
-            {t('orev.outcome.void', {
-              reason: order.rejected_reason || t('orev.outcome.noReason'),
-            })}
-          </span>
-        )}
-      </div>
-    )
-  }
-
-  // Paid: approved — now post to Carmen AR (needs a mapped AR code).
-  if (order.status === 'paid') {
-    const mapped = !!order.carmen_ar_code
-    return (
-      <div className="orev-actions">
-        <span className="orev-outcome is-ok">
-          <Check size={15} />{' '}
-          {order.approved_by
-            ? t('orev.outcome.approvedBy', {
-                who: order.approved_by,
-                when: fmtDateTime(order.approved_at),
-              })
-            : t('orev.outcome.approved', { when: fmtDateTime(order.approved_at) })}
-        </span>
-        {mapped ? (
-          <button
-            type="button"
-            className="btn btn-confirm orev-approve"
-            disabled={busy}
-            onClick={onPostAr}
-          >
-            {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}{' '}
-            {t('orev.act.postAr')} · {order.carmen_ar_code}
-          </button>
-        ) : (
-          <button type="button" className="btn btn-outline" onClick={onMapAr}>
-            <AlertTriangle size={14} /> {t('orev.inv.mapToAr')}
-          </button>
-        )}
-      </div>
-    )
-  }
-
-  // In-progress: full decision bar (approve / void / cancel).
-  if (mode === 'reject') {
-    return (
-      <div className="orev-actions orev-actions--form">
-        <fieldset className="orev-reject">
-          <legend className="orev-verify-eyebrow">{t('orev.reject.legend')}</legend>
-          <div className="orev-reject-presets">
-            {[...REJECT_PRESETS, REJECT_OTHER].map(p => (
-              <label key={p} className={`orev-radio${preset === p ? ' is-on' : ''}`}>
-                <input
-                  type="radio"
-                  name="reject-preset"
-                  checked={preset === p}
-                  onChange={() => dispatch({ type: 'CHOOSE_PRESET', preset: p })}
-                />
-                {p}
-              </label>
-            ))}
-          </div>
-          <textarea
-            className="orev-textarea"
-            aria-label={t('orev.reject.detailPh')}
-            value={reason}
-            onChange={e => dispatch({ type: 'SET_REASON', reason: e.target.value })}
-            rows={2}
-            placeholder={t('orev.reject.detailPh')}
-          />
-        </fieldset>
-        <div className="orev-actions-bar">
-          <button
-            type="button"
-            className="btn btn-outline"
-            disabled={busy}
-            onClick={() => dispatch({ type: 'SET_MODE', mode: 'idle' })}
-          >
-            {t('orev.act.back')}
-          </button>
-          <button
-            type="button"
-            className="btn btn-overwrite"
-            disabled={busy || !reason.trim()}
-            onClick={() => onReject(reason.trim())}
-          >
-            {busy ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}{' '}
-            {t('orev.act.confirmVoid')}
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  if (mode === 'hold') {
-    return (
-      <div className="orev-actions orev-actions--form">
-        <label className="orev-field">
-          <span className="orev-verify-eyebrow">{t('orev.note.legend')}</span>
-          <textarea
-            className="orev-textarea"
-            value={holdNote}
-            onChange={e => dispatch({ type: 'SET_HOLD_NOTE', note: e.target.value })}
-            rows={2}
-            placeholder={t('orev.note.ph')}
-          />
-        </label>
-        <div className="orev-actions-bar">
-          <button
-            type="button"
-            className="btn btn-outline"
-            disabled={busy}
-            onClick={() => dispatch({ type: 'SET_MODE', mode: 'idle' })}
-          >
-            {t('orev.act.back')}
-          </button>
-          <button
-            type="button"
-            className="btn btn-confirm"
-            disabled={busy}
-            onClick={() => onHold(holdNote.trim())}
-          >
-            {busy ? <Loader2 size={14} className="animate-spin" /> : <Pause size={14} />}{' '}
-            {t('orev.note.save')}
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="orev-actions">
-      <button
-        type="button"
-        className="btn btn-outline orev-danger"
-        disabled={busy}
-        onClick={() => dispatch({ type: 'SET_MODE', mode: 'reject' })}
-      >
-        <X size={14} /> {t('orev.act.void')}
-      </button>
-      <button
-        type="button"
-        className="btn btn-outline"
-        disabled={busy}
-        onClick={() => dispatch({ type: 'SET_MODE', mode: 'hold' })}
-      >
-        <Pause size={14} /> {t('orev.note.legend')}
-      </button>
-      <button
-        type="button"
-        className={`btn btn-confirm orev-approve${confirm === 'approve' ? ' is-confirming' : ''}`}
-        disabled={busy}
-        onClick={() => arm('approve', onApprove)}
-      >
-        {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}{' '}
-        {confirm === 'approve' ? t('orev.act.confirmApprove') : t('orev.act.approve')}
-      </button>
-    </div>
-  )
-}
-
 // ── Workspace orchestrator ────────────────────────────────────────────────────
 
 interface WsState {
@@ -702,7 +282,6 @@ interface WsState {
   slipErr: boolean
   proforma: BillingDocument | null
   history: AdminCreditOrder[]
-  busy: boolean
 }
 
 type WsAction =
@@ -711,20 +290,18 @@ type WsAction =
   | { type: 'SET_SLIP_ERR' }
   | { type: 'SET_DOCS'; proforma: BillingDocument | null }
   | { type: 'SET_HISTORY'; history: AdminCreditOrder[] }
-  | { type: 'SET_BUSY'; busy: boolean }
 
 const wsInitial: WsState = {
   slipUrl: null,
   slipErr: false,
   proforma: null,
   history: [],
-  busy: false,
 }
 
 function wsReducer(state: WsState, action: WsAction): WsState {
   switch (action.type) {
     case 'RESET':
-      return { ...wsInitial, busy: state.busy }
+      return wsInitial
     case 'SET_SLIP_URL':
       return { ...state, slipUrl: action.url }
     case 'SET_SLIP_ERR':
@@ -733,8 +310,6 @@ function wsReducer(state: WsState, action: WsAction): WsState {
       return { ...state, proforma: action.proforma }
     case 'SET_HISTORY':
       return { ...state, history: action.history }
-    case 'SET_BUSY':
-      return { ...state, busy: action.busy }
     default:
       return state
   }
@@ -745,15 +320,22 @@ export default function OrderWorkspace({
   paymentInfo,
   onChanged,
   onMapAr,
+  onPostOne,
+  posting,
 }: {
   order: AdminCreditOrder
   paymentInfo: PaymentInfo | null
   onChanged: (updated: AdminCreditOrder) => void
   onMapAr: () => void
+  /** Shared posting function (page-level) — same one the table's inline Post and
+   *  batch bar use, so there is exactly one "post to AR" implementation. */
+  onPostOne: (order: AdminCreditOrder) => void
+  posting: boolean
 }) {
   const { t } = useT()
   const [state, dispatch] = useReducer(wsReducer, wsInitial)
-  const { slipUrl, slipErr, proforma, history, busy } = state
+  const { slipUrl, slipErr, proforma, history } = state
+  const { busy, onApprove, onReject, onHold } = useOrderActions(order, onChanged)
 
   useEffect(() => {
     dispatch({ type: 'RESET' })
@@ -780,18 +362,6 @@ export default function OrderWorkspace({
       alive = false
     }
   }, [order.id, order.tenant_id, order.status])
-
-  const act = async (fn: () => Promise<AdminCreditOrder>) => {
-    dispatch({ type: 'SET_BUSY', busy: true })
-    try {
-      const updated = withName(await fn(), order)
-      onChanged(updated)
-    } catch (e) {
-      toast.error((e as Error).message)
-    } finally {
-      dispatch({ type: 'SET_BUSY', busy: false })
-    }
-  }
 
   const company = order.buyer_name || order.tenant_name || '—'
   const priorReject = history.some(o => o.id !== order.id && o.status === 'void')
@@ -858,37 +428,11 @@ export default function OrderWorkspace({
       <div className="orev-actionbar">
         <OrderActions
           order={order}
-          busy={busy}
-          onApprove={() =>
-            act(async () => {
-              const u = await approveOrder(order.id)
-              toast.success(t('orev.toast.approved', { n: order.credits.toLocaleString() }))
-              return u
-            })
-          }
-          onReject={reason =>
-            act(async () => {
-              const u = await rejectOrder(order.id, reason)
-              toast.success(t('orev.toast.voided'))
-              return u
-            })
-          }
-          onHold={note =>
-            act(async () => {
-              const u = await updateOrderNote(order.id, note || undefined)
-              toast.success(t('orev.toast.noteSaved'))
-              return u
-            })
-          }
-          onPostAr={() =>
-            act(async () => {
-              const { results } = await postArBatch([order.id])
-              const r = results[0]
-              if (!r?.success) throw new Error(r?.error || 'AR posting failed')
-              toast.success(t('orev.toast.posted'))
-              return { ...order, status: 'complete', carmen_ar_ref: r.carmen_ar_ref }
-            })
-          }
+          busy={busy || posting}
+          onApprove={onApprove}
+          onReject={onReject}
+          onHold={onHold}
+          onPostAr={() => onPostOne(order)}
           onMapAr={onMapAr}
         />
       </div>

@@ -307,6 +307,16 @@ export interface PostArResponse {
   results: PostArResultItem[]
 }
 
+export interface HoldBatchResultItem {
+  order_id: string
+  success: boolean
+  error: string | null
+}
+
+export interface HoldBatchResponse {
+  results: HoldBatchResultItem[]
+}
+
 /** Reuse the public billing-document shape — the admin endpoint returns the same. */
 export type { BillingDocument, PaymentInfo } from './credits'
 
@@ -419,6 +429,17 @@ export async function postArBatch(orderIds: string[]): Promise<PostArResponse> {
     body: JSON.stringify({ order_ids: orderIds }),
   })
   if (!res.ok) throw new Error(await unwrapDetail(res, 'AR posting failed'))
+  return res.json()
+}
+
+/** Batch-park in-progress orders to on_hold (manual version of the expiry sweep). */
+export async function holdBatch(orderIds: string[]): Promise<HoldBatchResponse> {
+  const res = await adminFetch(API.admin.creditOrdersHoldBatch, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ order_ids: orderIds }),
+  })
+  if (!res.ok) throw new Error(await unwrapDetail(res, 'Hold failed'))
   return res.json()
 }
 

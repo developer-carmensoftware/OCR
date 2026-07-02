@@ -22,6 +22,8 @@ from app.models.schemas import (
     CreditBalanceResponse,
     CreditLedgerEntry,
     CreditOrderResponse,
+    HoldBatchRequest,
+    HoldBatchResponse,
     HoldRequest,
     KpiSummaryResponse,
     PaymentInfoResponse,
@@ -30,7 +32,7 @@ from app.models.schemas import (
     RejectRequest,
     TopupRequest,
 )
-from app.models.schemas.credits import PostArResultItem
+from app.models.schemas.credits import HoldBatchResultItem, PostArResultItem
 from app.services import ar_posting_service, storage_service
 from app.services import billing_document_service as bds
 from app.services.credit_service import activate_subscription, get_credit_balance, grant_credits
@@ -460,6 +462,54 @@ async def hold_order(
     await db.refresh(order)
     logger.info("order note updated: id=%s by=%s", order_id, admin.email)
     return CreditOrderResponse.model_validate(order)
+
+
+@router.post("/credit-orders/hold-batch", response_model=HoldBatchResponse)
+async def hold_batch(
+    body: HoldBatchRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
+):
+    """
+    Batch-park in-progress orders to on_hold. A manual, on-demand version of the
+    hourly expiry sweep (fn_hold_expired_orders) — admin pulls an order out of the
+    active To Review queue today instead of waiting out the 14-day window. Distinct
+    from `hold_order` above, which only edits the admin_note and never changes
+    status; this endpoint changes status and nothing else (no note).
+    """
+    results: list[HoldBatchResultItem] = []
+
+    for oid in body.order_ids:
+        order = (
+            await db.execute(
+                select(CreditOrder)
+                .where(CreditOrder.id == oid, CreditOrder.deleted_at.is_(None))
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+
+        if order is None:
+            results.append(HoldBatchResultItem(order_id=oid, success=False, error="Not found"))
+            continue
+
+        _assert_scope(admin, str(order.tenant_id))
+
+        if order.status != CreditOrderStatus.IN_PROGRESS:
+            results.append(
+                HoldBatchResultItem(
+                    order_id=oid,
+                    success=False,
+                    error=f"Status is '{order.status}', expected in_progress",
+                )
+            )
+            continue
+
+        order.status = CreditOrderStatus.ON_HOLD  # type: ignore[assignment]
+        results.append(HoldBatchResultItem(order_id=oid, success=True))
+
+    await db.commit()
+    logger.info("orders parked to on_hold: ids=%s by=%s", body.order_ids, admin.email)
+    return HoldBatchResponse(results=results)
 
 
 @router.post("/credit-orders/{order_id}/cancel", response_model=CreditOrderResponse)
