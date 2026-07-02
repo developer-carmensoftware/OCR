@@ -12,6 +12,7 @@ import {
   holdBatch,
   listCreditOrders,
   postArBatch,
+  rejectOrder,
   type AdminCreditOrder,
   type AdminOrderStatus,
   type KpiSummary,
@@ -207,6 +208,28 @@ export default function CreditOrdersPage() {
     }
   }
 
+  // The one place that voids orders in bulk. Like approveOrders, there's no
+  // batch-reject endpoint, so it fans out one /reject per order — all with the
+  // single reason the admin picked in the void-reason prompt (buyer-visible).
+  const voidOrders = async (ids: string[], reason: string) => {
+    if (ids.length === 0) return
+    setBusy(true)
+    try {
+      const settled = await Promise.allSettled(ids.map(id => rejectOrder(id, reason)))
+      const ok = settled.filter(r => r.status === 'fulfilled').length
+      const fail = settled.length - ok
+      if (ids.length === 1) {
+        if (ok) toast.success(t('orev.toast.voided'))
+        else toast.error((settled[0] as PromiseRejectedResult).reason?.message || 'Void failed')
+      } else {
+        toast[fail ? 'warning' : 'success'](t('orev.toast.voidedSummary', { ok, fail }))
+      }
+      afterBulkAction(ids)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="orev-page">
       <OrderKpiCards kpi={kpi} />
@@ -267,6 +290,7 @@ export default function CreditOrdersPage() {
             onApproveBatch={() => approveOrders(checked)}
             onHoldBatch={() => holdOrders(checked)}
             onPostBatch={() => postOrders(checked)}
+            onVoidBatch={reason => voidOrders(checked, reason)}
             busy={busy}
           />
           <OrderDrawer

@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef } from 'react'
-import { AlertTriangle, Check, Loader2, Pause, Send, X } from 'lucide-react'
+import { AlertTriangle, Check, Loader2, Pause, PauseCircle, Send, X } from 'lucide-react'
 import type { AdminCreditOrder } from '../../lib/api/adminClient'
 import { useT } from '../../i18n/LanguageContext'
 
@@ -243,7 +243,7 @@ export function OrderActions({
             onClick={() => onHold(holdNote.trim())}
           >
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Pause size={14} />}{' '}
-            {t('orev.note.save')}
+            {order.status === 'on_hold' ? t('orev.note.save') : t('orev.act.confirmHold')}
           </button>
         </div>
       </div>
@@ -252,6 +252,14 @@ export function OrderActions({
 
   return (
     <div className="orev-actions">
+      {order.status === 'on_hold' && (
+        <span className="orev-outcome is-warn">
+          <PauseCircle size={15} />{' '}
+          {order.admin_note
+            ? t('orev.outcome.onHold', { note: order.admin_note })
+            : t('orev.outcome.onHoldNoNote')}
+        </span>
+      )}
       <button
         type="button"
         className="btn btn-outline orev-danger"
@@ -266,7 +274,8 @@ export function OrderActions({
         disabled={busy}
         onClick={() => dispatch({ type: 'SET_MODE', mode: 'hold' })}
       >
-        <Pause size={14} /> {t('orev.note.legend')}
+        <Pause size={14} />{' '}
+        {order.status === 'on_hold' ? t('orev.note.legend') : t('orev.act.hold')}
       </button>
       <button
         type="button"

@@ -1,4 +1,14 @@
-import { AlertTriangle, Check, Pause, Search, Send, ThumbsUp, type LucideIcon } from 'lucide-react'
+import { useState } from 'react'
+import {
+  AlertTriangle,
+  Check,
+  Pause,
+  Search,
+  Send,
+  ThumbsUp,
+  X,
+  type LucideIcon,
+} from 'lucide-react'
 import { orderStage, type AdminCreditOrder, type OrderStage } from '../../lib/api/adminClient'
 import { formatThb } from '../../lib/money'
 import { formatDateToDDMMYYYY } from '../../lib/date'
@@ -6,6 +16,7 @@ import { useT } from '../../i18n/LanguageContext'
 import type { TKey } from '../../i18n/dict'
 import { STAGE_TONE } from './orderHelpers'
 import BatchActionBar from './BatchActionBar'
+import VoidReasonModal from './VoidReasonModal'
 
 // The unified table adds an `all` pseudo-stage on top of the six workflow stages.
 export type TabKey = OrderStage | 'all'
@@ -34,19 +45,21 @@ const BADGE_TABS: ReadonlySet<TabKey> = new Set<TabKey>(['to_review', 'on_hold',
 
 // Every tab that supports action lists the bulk actions that apply to *every* row
 // in it — checkbox + one button per action is the only way to act, whether on one
-// row or many (check one row → "Approve (1)"). Reject isn't here: it needs a
-// written, per-order reason (shown to the buyer), so it stays a drawer-only action.
+// row or many (check one row → "Approve (1)"). Void needs a buyer-visible reason,
+// so unlike the others its button opens a reason prompt (VoidReasonModal) that
+// applies one reason to the whole selection, rather than firing immediately.
 // Hold only appears on To Review — On Hold rows are already parked.
-type BatchAction = 'approve' | 'hold' | 'post'
+type BatchAction = 'approve' | 'hold' | 'post' | 'void'
 const BATCH_ACTIONS_FOR_TAB: Partial<Record<TabKey, BatchAction[]>> = {
-  to_review: ['approve', 'hold'],
-  on_hold: ['approve'],
+  to_review: ['approve', 'hold', 'void'],
+  on_hold: ['approve', 'void'],
   to_post: ['post'],
 }
 const BATCH_BUTTON: Record<BatchAction, { icon: LucideIcon; labelKey: TKey; cls: string }> = {
   approve: { icon: ThumbsUp, labelKey: 'orev.inv.approveBatch', cls: 'btn-confirm' },
   hold: { icon: Pause, labelKey: 'orev.inv.holdBatch', cls: 'btn-outline' },
   post: { icon: Send, labelKey: 'orev.inv.postBatch', cls: 'btn-confirm' },
+  void: { icon: X, labelKey: 'orev.inv.voidBatch', cls: 'btn-outline orev-danger' },
 }
 
 function companyOf(o: AdminCreditOrder): string {
@@ -93,6 +106,7 @@ interface Props {
   onApproveBatch: () => void
   onHoldBatch: () => void
   onPostBatch: () => void
+  onVoidBatch: (reason: string) => void
   busy: boolean
 }
 
@@ -114,9 +128,11 @@ export default function OrderTable({
   onApproveBatch,
   onHoldBatch,
   onPostBatch,
+  onVoidBatch,
   busy,
 }: Props) {
   const { t } = useT()
+  const [voidOpen, setVoidOpen] = useState(false)
   const q = search.trim().toLowerCase()
   const visible = q ? orders.filter(o => companyOf(o).toLowerCase().includes(q)) : orders
   const batchActions = BATCH_ACTIONS_FOR_TAB[tab] ?? []
@@ -126,6 +142,7 @@ export default function OrderTable({
     approve: onApproveBatch,
     hold: onHoldBatch,
     post: onPostBatch,
+    void: () => setVoidOpen(true),
   }
 
   return (
@@ -160,6 +177,17 @@ export default function OrderTable({
           cls: BATCH_BUTTON[action].cls,
           onRun: RUN[action],
         }))}
+      />
+
+      <VoidReasonModal
+        open={voidOpen}
+        count={checked.length}
+        busy={busy}
+        onCancel={() => setVoidOpen(false)}
+        onConfirm={reason => {
+          setVoidOpen(false)
+          onVoidBatch(reason)
+        }}
       />
 
       <div className="orev-tabs" role="tablist" aria-label={t('orev.title')}>

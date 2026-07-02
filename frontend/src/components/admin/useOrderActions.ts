@@ -4,6 +4,7 @@ import {
   approveOrder,
   rejectOrder,
   updateOrderNote,
+  holdBatch,
   type AdminCreditOrder,
 } from '../../lib/api/adminClient'
 import { useT } from '../../i18n/LanguageContext'
@@ -57,11 +58,23 @@ export function useOrderActions(
         toast.success(t('orev.toast.voided'))
         return u
       }),
+    // In_progress → actually parks the order (status → on_hold) via the same
+    // hold_batch endpoint the table's batch bar uses, so a single order can be
+    // held from the drawer without checking it in the table first. On an
+    // already-on_hold order this just edits the note — hold_batch only accepts
+    // in_progress rows and there's nothing further to transition.
     onHold: (note: string) =>
       act(async () => {
-        const u = await updateOrderNote(order.id, note || undefined)
-        toast.success(t('orev.toast.noteSaved'))
-        return u
+        if (order.status !== 'in_progress') {
+          const u = await updateOrderNote(order.id, note || undefined)
+          toast.success(t('orev.toast.noteSaved'))
+          return u
+        }
+        if (note) await updateOrderNote(order.id, note)
+        const { results } = await holdBatch([order.id])
+        if (!results[0]?.success) throw new Error(results[0]?.error || 'Hold failed')
+        toast.success(t('orev.toast.held'))
+        return { ...order, status: 'on_hold', admin_note: note || order.admin_note }
       }),
   }
 }
