@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { AlertTriangle, Coins, Copy, Mail, Phone } from 'lucide-react'
+import { AlertTriangle, Check, Coins, Copy } from 'lucide-react'
 import ProformaDocument from '../pricing/ProformaDocument'
 import DataTable, { type Column } from './DataTable'
 import { STAGE_KEY, STAGE_TONE, timeAgo } from './orderHelpers'
@@ -138,10 +138,20 @@ function ContactBuyer({
   const { t } = useT()
   const email = proforma?.buyer_email ?? ''
   const tel = proforma?.buyer_tel ?? ''
-  const copy = (value: string, message: string) => {
+  // Which field just got copied — flashes its button to a checkmark for a beat,
+  // on top of (not instead of) the toast, so the confirmation lands right at the
+  // point of the click as well as in the corner of the screen.
+  const [copiedField, setCopiedField] = useState<'email' | 'tel' | null>(null)
+  const copiedTimer = useRef<number | undefined>(undefined)
+  const copy = (field: 'email' | 'tel', value: string, message: string) => {
     navigator.clipboard
       ?.writeText(value)
-      .then(() => toast.success(message))
+      .then(() => {
+        toast.success(message)
+        setCopiedField(field)
+        window.clearTimeout(copiedTimer.current)
+        copiedTimer.current = window.setTimeout(() => setCopiedField(null), 1400)
+      })
       .catch(() => toast.error(t('orev.contact.copyFail')))
   }
   return (
@@ -153,6 +163,9 @@ function ContactBuyer({
           <div className="orev-contact-sk-actions">
             <span className="skeleton orev-contact-sk-email" />
             <span className="skeleton orev-contact-sk-btn" />
+          </div>
+          <div className="orev-contact-sk-actions">
+            <span className="skeleton orev-contact-sk-email orev-contact-sk-email--sm" />
             <span className="skeleton orev-contact-sk-btn" />
           </div>
         </div>
@@ -169,15 +182,14 @@ function ContactBuyer({
           {email ? (
             <div className="orev-contact-actions">
               <span className="orev-contact-email mono">{email}</span>
-              <a className="btn btn-outline orev-mini" href={`mailto:${email}`}>
-                <Mail size={13} /> {t('orev.contact.email')}
-              </a>
               <button
                 type="button"
-                className="btn btn-outline orev-mini"
-                onClick={() => copy(email, t('orev.contact.copied'))}
+                className={`orev-copy-btn${copiedField === 'email' ? ' is-copied' : ''}`}
+                onClick={() => copy('email', email, t('orev.contact.copied'))}
+                aria-label={t('orev.contact.copyEmailAria')}
+                title={t('orev.contact.copy')}
               >
-                <Copy size={13} /> {t('orev.contact.copy')}
+                {copiedField === 'email' ? <Check size={14} /> : <Copy size={14} />}
               </button>
             </div>
           ) : (
@@ -186,15 +198,14 @@ function ContactBuyer({
           {tel && (
             <div className="orev-contact-actions">
               <span className="orev-contact-email mono">{tel}</span>
-              <a className="btn btn-outline orev-mini" href={`tel:${tel}`}>
-                <Phone size={13} /> {t('orev.contact.call')}
-              </a>
               <button
                 type="button"
-                className="btn btn-outline orev-mini"
-                onClick={() => copy(tel, t('orev.contact.telCopied'))}
+                className={`orev-copy-btn${copiedField === 'tel' ? ' is-copied' : ''}`}
+                onClick={() => copy('tel', tel, t('orev.contact.telCopied'))}
+                aria-label={t('orev.contact.copyTelAria')}
+                title={t('orev.contact.copy')}
               >
-                <Copy size={13} /> {t('orev.contact.copy')}
+                {copiedField === 'tel' ? <Check size={14} /> : <Copy size={14} />}
               </button>
             </div>
           )}

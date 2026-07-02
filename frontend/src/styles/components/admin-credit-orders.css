@@ -458,6 +458,45 @@ body:has(.orev-app) {
   color: var(--text-2);
 }
 
+/* Inline icon-only copy affordance — a scaled-down .btn-icon so it sits flush
+   against a text row instead of the wide "Copy" text-button it replaced. */
+.orev-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--text-3);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+.orev-copy-btn:hover {
+  border-color: var(--primary-mid);
+  color: var(--primary);
+  background: var(--primary-light);
+}
+.orev-copy-btn:active {
+  transform: scale(0.9);
+}
+.orev-copy-btn:focus-visible {
+  outline: 2.5px solid var(--primary);
+  outline-offset: 2px;
+}
+.orev-copy-btn.is-copied {
+  border-color: var(--emerald-mid);
+  color: var(--emerald);
+  background: var(--emerald-light);
+}
+
 .orev-contact-noemail {
   margin: 0;
   font-size: 0.82rem;
@@ -770,9 +809,13 @@ body:has(.orev-app) {
   width: 9rem;
   border-radius: 4px;
 }
+.orev-contact-sk-email--sm {
+  width: 6rem;
+}
 .orev-contact-sk-btn {
-  height: 1.7rem;
-  width: 4.5rem;
+  height: 26px;
+  width: 26px;
+  flex-shrink: 0;
   border-radius: var(--radius-sm);
 }
 
@@ -915,6 +958,9 @@ body:has(.orev-app) {
 }
 .orev-outcome.is-bad {
   color: var(--rose);
+}
+.orev-outcome.is-warn {
+  color: var(--amber-text);
 }
 [data-theme='dark'] .orev-outcome.is-ok {
   color: var(--emerald);
