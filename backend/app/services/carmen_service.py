@@ -8,6 +8,7 @@ Outbound calls are logged via httpx event hooks to prove data only reaches Carme
 """
 
 import logging
+import re
 import time
 from typing import Any
 
@@ -358,6 +359,22 @@ async def post_invoice(body: dict, carmen_token: str) -> Any:
         raise _wrap_network_error(e) from e
 
 
+_TEL_LABEL_RE = re.compile(r"tel\.?\s*[:\-]?\s*", re.IGNORECASE)
+_TEL_DIGITS_RE = re.compile(r"[\d][\d\-\s]{5,}\d")
+
+
+def _extract_tel(raw: str) -> str:
+    """Pull just the phone number out of a free-text field like
+    ``"Hotel Tel. 022840429 Fax : 022840429"`` -> ``"022840429"``.
+    """
+    if not raw:
+        return ""
+    before_fax = re.split(r"fax", raw, flags=re.IGNORECASE)[0]
+    after_label = _TEL_LABEL_RE.split(before_fax, maxsplit=1)[-1]
+    m = _TEL_DIGITS_RE.search(after_label)
+    return m.group(0).strip() if m else after_label.strip()
+
+
 async def get_company_profile(carmen_token: str, db_cfg: dict[str, str] | None = None) -> dict:
     """
     Fetch the buyer's company profile from Carmen for billing document prefill.
@@ -391,6 +408,9 @@ async def get_company_profile(carmen_token: str, db_cfg: dict[str, str] | None =
                 "branch": data.get("BranchNo") or data.get("branch") or "",
                 "email": data.get("RegEmail") or data.get("email") or "",
                 "contact_name": data.get("RegContact") or "",
+                "tel": _extract_tel(
+                    data.get("HotelTel") or data.get("RegTel") or data.get("RegPhone") or ""
+                ),
             }
         return {}
     except Exception as exc:

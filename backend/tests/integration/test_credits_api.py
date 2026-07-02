@@ -93,6 +93,7 @@ def _billing_doc(
     doc.buyer_branch = None
     doc.buyer_email = None
     doc.buyer_contact_name = None
+    doc.buyer_tel = None
     doc.pack_code = pack_code
     doc.description = f"{credits} credits"
     doc.credits = credits

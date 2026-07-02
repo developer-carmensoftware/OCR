@@ -280,6 +280,7 @@ class BillingDocument(Base, TimestampMixin, SoftDeleteMixin):
     buyer_branch = Column(String(100), nullable=True)
     buyer_email = Column(String(255), nullable=True)
     buyer_contact_name = Column(String(255), nullable=True)
+    buyer_tel = Column(String(50), nullable=True)
 
     # Single line item = the pack purchased
     pack_code = Column(String(20), nullable=False)

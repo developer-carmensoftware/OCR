@@ -30,6 +30,8 @@ interface Props {
   onViewHistory: () => void
 }
 
+const REQUIRED_BUYER_KEYS: Array<keyof BuyerInfo> = ['name', 'tax_id', 'branch', 'address']
+
 const SOURCE_KEY: Record<string, TKey | ''> = {
   carmen: 'checkout.sourceCarmen',
   last_invoice: 'checkout.sourceLastInvoice',
@@ -78,7 +80,7 @@ export default function CheckoutFlow({
     : t('checkout.kindTopup')
 
   const updateBuyer = (patch: Partial<BuyerInfo>) => c.setBuyer({ ...c.buyer, ...patch })
-  const buyerComplete = Object.values(c.buyer).every(v => v.trim())
+  const buyerComplete = REQUIRED_BUYER_KEYS.every(k => c.buyer[k].trim())
 
   const handleConfirm = async () => {
     try {
@@ -134,7 +136,9 @@ export default function CheckoutFlow({
                 <div className="checkout-fields">
                   <div className="checkout-row-3">
                     <label className="checkout-field">
-                      <span className="checkout-field-label">{t('checkout.fieldName')}</span>
+                      <span className="checkout-field-label checkout-field-label--required">
+                        {t('checkout.fieldName')}
+                      </span>
                       <input
                         className="checkout-input"
                         required
@@ -144,7 +148,9 @@ export default function CheckoutFlow({
                       />
                     </label>
                     <label className="checkout-field">
-                      <span className="checkout-field-label">{t('checkout.fieldTaxId')}</span>
+                      <span className="checkout-field-label checkout-field-label--required">
+                        {t('checkout.fieldTaxId')}
+                      </span>
                       <input
                         className="checkout-input text-mono"
                         required
@@ -155,7 +161,9 @@ export default function CheckoutFlow({
                       />
                     </label>
                     <label className="checkout-field">
-                      <span className="checkout-field-label">{t('checkout.fieldBranch')}</span>
+                      <span className="checkout-field-label checkout-field-label--required">
+                        {t('checkout.fieldBranch')}
+                      </span>
                       <input
                         className="checkout-input"
                         required
@@ -165,8 +173,10 @@ export default function CheckoutFlow({
                       />
                     </label>
                   </div>
-                  <label className="checkout-field checkout-field--wide">
-                    <span className="checkout-field-label">{t('checkout.fieldAddress')}</span>
+                  <label className="checkout-field">
+                    <span className="checkout-field-label checkout-field-label--required">
+                      {t('checkout.fieldAddress')}
+                    </span>
                     <input
                       className="checkout-input"
                       required
@@ -179,17 +189,25 @@ export default function CheckoutFlow({
                     <span className="checkout-field-label">{t('checkout.fieldContactName')}</span>
                     <input
                       className="checkout-input"
-                      required
                       value={c.buyer.contact_name}
                       onChange={e => updateBuyer({ contact_name: e.target.value })}
                       placeholder={t('checkout.phContactName')}
                     />
                   </label>
                   <label className="checkout-field">
+                    <span className="checkout-field-label">{t('checkout.fieldTel')}</span>
+                    <input
+                      className="checkout-input"
+                      type="tel"
+                      value={c.buyer.tel}
+                      onChange={e => updateBuyer({ tel: e.target.value })}
+                      placeholder={t('checkout.phTel')}
+                    />
+                  </label>
+                  <label className="checkout-field">
                     <span className="checkout-field-label">{t('checkout.fieldEmail')}</span>
                     <input
                       className="checkout-input"
-                      required
                       type="email"
                       value={c.buyer.email}
                       onChange={e => updateBuyer({ email: e.target.value })}

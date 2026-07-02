@@ -32,6 +32,7 @@ const EMPTY_BUYER: BuyerInfo = {
   branch: '',
   email: '',
   contact_name: '',
+  tel: '',
 }
 
 function readPersisted(): CheckoutSession | null {
@@ -107,6 +108,7 @@ export function useCheckout(
           branch: p.branch,
           email: p.email,
           contact_name: p.contact_name ?? '',
+          tel: p.tel ?? '',
         })
         setProfileSource(p.source)
       })

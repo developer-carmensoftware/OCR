@@ -1430,7 +1430,7 @@
   color: var(--text-3);
 }
 
-.checkout-field-label::after {
+.checkout-field-label--required::after {
   content: ' *';
   color: var(--danger, #e53e3e);
 }
