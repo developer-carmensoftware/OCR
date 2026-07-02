@@ -1884,7 +1884,12 @@
 
 .pf-buyer-row {
   display: flex;
-  gap: 1.5rem;
+  flex-wrap: wrap;
+  gap: 0.3rem 1.5rem;
+}
+
+.pf-buyer-row > span {
+  white-space: nowrap;
 }
 
 .pf-kv {
