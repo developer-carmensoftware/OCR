@@ -9,7 +9,7 @@ arithmetic, not re-OCR'd.
 
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.ocr import ExtractedDetailRow
-from app.services.credit_card_service import _fill_bay_missing_tax, _normalize_fee_invoice
+from app.services.credit_card_service import _normalize_bay_statement, _normalize_fee_invoice
 
 
 def _extracted(**row_kwargs) -> ExtractedCreditCardData:
@@ -92,20 +92,74 @@ def test_paypal_keeps_customer_id_as_merchant_id():
     assert ext.merchant_id == "8C45WPKBSFA86"
 
 
-def test_bay_missing_tax_computed_from_row_arithmetic():
-    # QA: BAY VAT column unread — tax = gross − commis − net
-    ext = _extracted(pay_amt="112,576.00", commis_amt="2,532.96", tax_amt=None, total="109,865.73")
-    _fill_bay_missing_tax(ext)
-    assert _row(ext).tax_amt == "177.31"
+# ── BAY statement normalization (QA round 2 screenshot numbers) ───────────────
 
 
-def test_bay_existing_tax_untouched():
-    ext = _extracted(pay_amt="906.00", commis_amt="13.59", tax_amt="0.95", total="891.46")
-    _fill_bay_missing_tax(ext)
-    assert _row(ext).tax_amt == "0.95"
+def _bay_extracted(rows: list[dict]) -> ExtractedCreditCardData:
+    return ExtractedCreditCardData(details=[ExtractedDetailRow(**r) for r in rows])
 
 
-def test_bay_negative_result_not_written():
-    ext = _extracted(pay_amt="100.00", commis_amt="10.00", tax_amt=None, total="95.00")
-    _fill_bay_missing_tax(ext)
-    assert _row(ext).tax_amt is None
+_BAY_QA_ROWS = [
+    {"transaction": "VISA", "pay_amt": "906.00", "commis_amt": "13.59"},
+    {"transaction": "V-PLAT & INF", "pay_amt": "3,659.00", "commis_amt": "82.33"},
+    {"transaction": "M-PREMIUM", "pay_amt": "112,576.00", "commis_amt": "2,532.96"},
+]
+# LLM grabbed the WHT column (78.87) as tax — the true VAT (184.02) is recovered
+# from gross − commis − net on the summary line.
+_BAY_QA_TOTAL = {
+    "transaction": "TOTAL",
+    "pay_amt": "117,141.00",
+    "commis_amt": "2,628.88",
+    "tax_amt": "78.87",
+    "total": "114,328.10",
+}
+
+
+def test_bay_summary_row_consumed_and_vat_spread():
+    ext = _bay_extracted([*_BAY_QA_ROWS, _BAY_QA_TOTAL])
+    _normalize_bay_statement(ext)
+    assert len(ext.details) == 3  # TOTAL removed
+    assert [r.tax_amt for r in ext.details] == ["0.95", "5.76", "177.31"]  # Σ = 184.02
+    assert [r.total for r in ext.details] == ["891.46", "3,570.91", "109,865.73"]  # Σ = 114,328.10
+
+
+def test_bay_summary_detected_by_arithmetic_when_label_garbled():
+    total = dict(_BAY_QA_TOTAL, transaction="ยอดสิ้น??")  # label misread
+    ext = _bay_extracted([*_BAY_QA_ROWS, total])
+    _normalize_bay_statement(ext)
+    assert len(ext.details) == 3
+    assert ext.details[-1].tax_amt == "177.31"
+
+
+def test_bay_spread_sums_exactly_to_total_vat():
+    ext = _bay_extracted([*_BAY_QA_ROWS, _BAY_QA_TOTAL])
+    _normalize_bay_statement(ext)
+    spread = sum(float(r.tax_amt.replace(",", "")) for r in ext.details)
+    assert round(spread, 2) == 184.02
+
+
+def test_bay_no_summary_row_falls_back_to_row_arithmetic():
+    ext = _bay_extracted(
+        [
+            {
+                "transaction": "MSC",
+                "pay_amt": "112,576.00",
+                "commis_amt": "2,532.96",
+                "total": "109,865.73",
+            }
+        ]
+    )
+    _normalize_bay_statement(ext)
+    assert ext.details[0].tax_amt == "177.31"
+
+
+def test_bay_existing_row_tax_untouched():
+    ext = _bay_extracted(
+        [
+            {"transaction": "VISA", "pay_amt": "906.00", "commis_amt": "13.59", "tax_amt": "0.95"},
+            _BAY_QA_TOTAL,
+        ]
+    )
+    _normalize_bay_statement(ext)
+    assert ext.details[0].tax_amt == "0.95"
+    assert ext.details[0].total == "891.46"  # net still filled

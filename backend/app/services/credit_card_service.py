@@ -93,21 +93,88 @@ def _normalize_fee_invoice(extracted: ExtractedCreditCardData, bank_code: str) -
         row.total = "0"
 
 
-def _fill_bay_missing_tax(extracted: ExtractedCreditCardData) -> None:
-    """QA: BAY's VAT column is often unread. Statement arithmetic is
-    net = gross − commission − vat, so a blank tax is recoverable as
-    gross − commission − net. Computed only when OCR left it blank/0."""
-    for row in extracted.details:
-        if _parse_amt(row.tax_amt):
+_SUMMARY_LABELS = ("TOTAL", "GRAND TOTAL", "รวม", "จำนวนเงินรวม")
+
+
+def _is_summary_row(label: str | None) -> bool:
+    up = (label or "").strip().upper()
+    return any(k in up for k in _SUMMARY_LABELS)
+
+
+def _normalize_bay_statement(extracted: ExtractedCreditCardData) -> None:
+    """QA: BAY statements print VAT and NET only on the TOTAL line — per-row
+    values are blank and the LLM sometimes returns the TOTAL line as a detail
+    row (or grabs the WHT column as tax). Deterministic repair:
+
+    1. Find the summary row (by label, or gross ≈ Σ other rows' gross) and
+       remove it from details.
+    2. Total VAT = summary gross − commission − net (immune to wrong-column
+       reads); fallback to the summary row's own tax value.
+    3. Spread the VAT across detail rows proportional to commission (VAT is
+       levied on the fee), last row absorbing the rounding remainder.
+    4. Fill per-row net = gross − commission − tax.
+
+    OCR values already present per row are kept (compute-when-blank only).
+    """
+    rows = extracted.details
+    if not rows:
+        return
+
+    summary = next((r for r in rows if _is_summary_row(r.transaction)), None)
+    if summary is None and len(rows) > 1:
+        # Label garbled? A row whose gross equals the sum of all the others is the total line.
+        for cand in rows:
+            others = [_parse_amt(r.pay_amt) or 0.0 for r in rows if r is not cand]
+            if others and abs((_parse_amt(cand.pay_amt) or 0.0) - sum(others)) <= 0.02:
+                summary = cand
+                break
+
+    total_vat: float | None = None
+    if summary is not None:
+        s_gross, s_commis, s_net = (
+            _parse_amt(summary.pay_amt),
+            _parse_amt(summary.commis_amt),
+            _parse_amt(summary.total),
+        )
+        if s_gross is not None and s_commis is not None and s_net is not None:
+            total_vat = round(s_gross - s_commis - s_net, 2)
+        else:
+            total_vat = _parse_amt(summary.tax_amt)
+        rows.remove(summary)
+
+    blank_tax_rows = [r for r in rows if not _parse_amt(r.tax_amt)]
+    if total_vat and total_vat > 0 and blank_tax_rows:
+        commis_sum = sum(_parse_amt(r.commis_amt) or 0.0 for r in blank_tax_rows)
+        if commis_sum > 0:
+            allocated = 0.0
+            for r in blank_tax_rows[:-1]:
+                share = round((_parse_amt(r.commis_amt) or 0.0) * total_vat / commis_sum, 2)
+                r.tax_amt = _fmt_amt(share)
+                allocated += share
+            blank_tax_rows[-1].tax_amt = _fmt_amt(round(total_vat - allocated, 2))
+    else:
+        # No usable summary row — old per-row fallback: tax = gross − commis − net.
+        for r in blank_tax_rows:
+            gross, commis, net = (
+                _parse_amt(r.pay_amt),
+                _parse_amt(r.commis_amt),
+                _parse_amt(r.total),
+            )
+            if gross is None or commis is None or net is None:
+                continue
+            computed = round(gross - commis - net, 2)
+            if computed >= 0:
+                r.tax_amt = _fmt_amt(computed)
+
+    for r in rows:
+        if _parse_amt(r.total):  # blank or 0 → compute (a 0 net on a statement row is never real)
             continue
-        gross = _parse_amt(row.pay_amt)
-        commis = _parse_amt(row.commis_amt)
-        net = _parse_amt(row.total)
-        if gross is None or commis is None or net is None:
+        gross, commis, tax = _parse_amt(r.pay_amt), _parse_amt(r.commis_amt), _parse_amt(r.tax_amt)
+        if gross is None or commis is None or tax is None:
             continue
-        computed = round(gross - commis - net, 2)
-        if computed >= 0:
-            row.tax_amt = _fmt_amt(computed)
+        net = round(gross - commis - tax, 2)
+        if net >= 0:
+            r.total = _fmt_amt(net)
 
 
 async def finalize_extraction(
@@ -134,7 +201,7 @@ async def finalize_extraction(
     if resolved_bank_code in _FEE_INVOICE_CODES:
         _normalize_fee_invoice(extracted, resolved_bank_code)
     elif resolved_bank_code == "BAY":
-        _fill_bay_missing_tax(extracted)
+        _normalize_bay_statement(extracted)
 
     async with async_session() as db:
         if extracted.doc_no:
