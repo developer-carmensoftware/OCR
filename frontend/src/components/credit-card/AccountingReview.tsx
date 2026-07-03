@@ -125,7 +125,9 @@ export default function AccountingReview({
     const m = (rawConfig.mappings || {}) as Record<string, { acc?: string }>
     if (!m.commission?.acc) unmappedFields.push('Credit card commission')
     if (!m.tax?.acc) unmappedFields.push('Input Tax')
-    if (!m.net?.acc) unmappedFields.push('Bank Account')
+    // Fee-invoice formats (KTC/GHL/PayPal/SiamPay) always have Total=0, so the
+    // net row is never posted — only demand the mapping when a row will use it.
+    if (!m.net?.acc && details.some(d => toNum(d.Total))) unmappedFields.push('Bank Account')
     const pa = (rawConfig.paymentAmount || {}) as Record<string, { acc?: string }>
     const detailTypes = [
       ...new Set(details.flatMap(d => (d.Transaction ? [d.Transaction] : []))),

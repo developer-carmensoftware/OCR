@@ -1,3 +1,4 @@
+import { BANKS } from '../../constants'
 import type { BankDisplayName } from '../../types/api'
 
 interface Props {
@@ -40,9 +41,11 @@ export default function TopLevelConfigSection({
           }}
         >
           <option value="">Select bank...</option>
-          <option value="Bangkok Bank (BBL)">Bangkok Bank (BBL)</option>
-          <option value="Kasikornbank (KBANK)">Kasikornbank (KBANK)</option>
-          <option value="Siam Commercial Bank (SCB)">Siam Commercial Bank (SCB)</option>
+          {BANKS.map(b => (
+            <option key={b.value} value={b.full}>
+              {b.full}
+            </option>
+          ))}
         </select>
 
         <label
@@ -78,7 +81,7 @@ export default function TopLevelConfigSection({
           File Source {!fileSource && <span style={{ color: '#dc2626' }}>*</span>}
           <span
             className="gl-help-tip"
-            title="Carmen Cloud source code that identifies the originating bank or system — one code per bank (e.g. ACBB = Bangkok Bank, ACKB = Kasikornbank)"
+            title="Carmen Cloud source code that identifies the originating bank or system — one code per bank (e.g. ACBB = Bangkok Bank, ACKB = Kasikornbank, ACBY = Krungsri, ACKC = Krungthai Card)"
           >
             ?
           </span>
@@ -87,7 +90,7 @@ export default function TopLevelConfigSection({
           id="fileSource"
           type="text"
           aria-label="File Source"
-          placeholder="e.g. ACBB, ACKB, ACSC"
+          placeholder="e.g. ACBB, ACKB, ACSC, ACBY, ACKC"
           value={fileSource}
           onChange={e => setFileSource(e.target.value)}
           style={

@@ -22,7 +22,6 @@ from .business import (
 from .catalog import Bank, Module, PromptTemplate, TenantModule
 from .enums import (
     AlertSeverity,
-    BankType,
     DocumentType,
     FieldName,
     JobStatus,
@@ -65,7 +64,6 @@ __all__ = [
     "TaskStatus",
     "DocumentType",
     "AlertSeverity",
-    "BankType",
     "FieldName",
     "JobStatus",
     "PromptType",

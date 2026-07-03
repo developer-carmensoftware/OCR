@@ -181,7 +181,7 @@ INTERNAL_JOB_TOKEN=<hex-64-chars>   # must match vault.secrets where name='inter
 
 **Date columns:** `credit_cards.doc_date`, `ap_invoices.doc_date` are `DATE` type. LLM string output is normalized via `app/utils/date_parsing.py` (handles DD/MM/YYYY, ISO, dashes, Thai Buddhist years) before insert. API output uses DD/MM/YYYY string for backward compatibility.
 
-**Supported banks (pre-seeded):** `BBL` | `KBANK` | `SCB`
+**Supported banks (pre-seeded):** `BBL` | `KBANK` | `SCB` | `BAY` | `KTC` | `GHL` | `PAYPAL` | `SIAMPAY` — BAY is a bank-statement layout; KTC/GHL/PAYPAL/SIAMPAY are processor *fee invoices* (one details row from footer totals: `pay_amt`=grand total, `commis_amt`=fee before VAT, `tax_amt`=VAT, `total`=0)
 
 **Supported files:** JPG, PNG, WebP, PDF — max 20 MB (read into memory only, never persisted to disk)
 

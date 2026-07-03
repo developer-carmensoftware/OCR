@@ -137,8 +137,9 @@ export function useMapping() {
         address: info.address,
       }))
     }
-    if (selected && BANK_SOURCE_MAP[selected as BankDisplayName])
-      bankConfig.setFileSource(BANK_SOURCE_MAP[selected as BankDisplayName])
+    // Always overwrite: banks without an assigned GL source code map to '' —
+    // leaving the previous bank's source in place would submit a wrong JvhSource.
+    if (selected) bankConfig.setFileSource(BANK_SOURCE_MAP[selected as BankDisplayName] ?? '')
   }
 
   const handleCompanyChange = (e: React.ChangeEvent<HTMLInputElement>, field: string) => {

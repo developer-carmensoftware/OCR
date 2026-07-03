@@ -38,7 +38,7 @@ async def extract_stateless(
     """
     Stateless OCR extraction: resize → Vision LLM → return structured data.
     Does NOT write to DB.
-    bank_code: 'BBL' | 'KBANK' | 'SCB' — selects bank-specific prompt.
+    bank_code: 'BBL' | 'KBANK' | 'SCB' | 'BAY' | 'KTC' | 'GHL' | 'PAYPAL' | 'SIAMPAY' — selects bank-specific prompt.
     hints: correction hints from correction_service (injected into prompt).
     selected_pages: 0-based page indices for PDF files (None = all pages).
     pdf_password: password for an encrypted PDF (None = not encrypted).
