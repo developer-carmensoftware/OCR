@@ -9,7 +9,11 @@ arithmetic, not re-OCR'd.
 
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.ocr import ExtractedDetailRow
-from app.services.credit_card_service import _normalize_bay_statement, _normalize_fee_invoice
+from app.services.credit_card_service import (
+    _normalize_bay_statement,
+    _normalize_fee_invoice,
+    _strip_noncard_rows,
+)
 
 
 def _extracted(**row_kwargs) -> ExtractedCreditCardData:
@@ -370,3 +374,98 @@ def test_legacy_single_row_without_summary_still_reconciles():
         "346.23",
         "24.24",
     )
+
+
+# ── Plain statement banks (BBL/KBANK/SCB): strip leaked non-card rows ──────────
+
+
+def test_strip_real_scb_zero_rows_total_wht_and_net_amount():
+    # Real SCB ใบสรุปยอดขายบัตรเครดิต 262302202523 — the table lists ~40 card
+    # types, most 0.00, then TOTAL / WITHHOLDING TAX / NET AMOUNT trailer lines.
+    # Only the 4 rows with a real (non-zero) gross amount must survive.
+    ext = _bay_extracted(
+        [
+            {
+                "transaction": "VSA-DCC-P",
+                "pay_amt": "0.00",
+                "commis_amt": "0.00",
+                "tax_amt": "0.00",
+                "total": "0.00",
+            },
+            {
+                "transaction": "VSA-INT-P",
+                "pay_amt": "12,290.00",
+                "commis_amt": "393.28",
+                "tax_amt": "27.53",
+                "total": "11,869.19",
+            },
+            {
+                "transaction": "VSA-P",
+                "pay_amt": "0.00",
+                "commis_amt": "0.00",
+                "tax_amt": "0.00",
+                "total": "0.00",
+            },
+            {
+                "transaction": "VSA-INT",
+                "pay_amt": "4,400.00",
+                "commis_amt": "114.40",
+                "tax_amt": "8.01",
+                "total": "4,277.59",
+            },
+            {
+                "transaction": "MCA-INT-P",
+                "pay_amt": "780.00",
+                "commis_amt": "24.96",
+                "tax_amt": "1.75",
+                "total": "753.29",
+            },
+            {"transaction": "JCB", "pay_amt": "0.00", "commis_amt": "0.00"},
+            {
+                "transaction": "MCA-INT",
+                "pay_amt": "480.00",
+                "commis_amt": "12.48",
+                "tax_amt": "0.87",
+                "total": "466.65",
+            },
+            {
+                "transaction": "TOTAL",
+                "pay_amt": "17,950.00",
+                "commis_amt": "545.12",
+                "tax_amt": "38.16",
+                "total": "17,366.72",
+            },
+            {"transaction": "WITHHOLDING TAX.", "total": "16.35"},
+            {"transaction": "NET AMOUNT", "total": "17,366.72"},
+        ]
+    )
+    _strip_noncard_rows(ext)
+    assert [r.transaction for r in ext.details] == ["VSA-INT-P", "VSA-INT", "MCA-INT-P", "MCA-INT"]
+    # Column sums are now the real totals, not double-counted / padded with zeros.
+    assert sum(float(r.pay_amt.replace(",", "")) for r in ext.details) == 17950.00
+
+
+def test_strip_handles_thai_wht_label():
+    ext = _bay_extracted(
+        [
+            {"transaction": "Visa", "pay_amt": "500.00"},
+            {"transaction": "ภาษีเงินได้หัก ณ ที่จ่าย", "total": "16.35"},
+        ]
+    )
+    _strip_noncard_rows(ext)
+    assert [r.transaction for r in ext.details] == ["Visa"]
+
+
+def test_strip_keeps_normal_card_rows_when_no_noncard_row():
+    ext = _bay_extracted(
+        [
+            {"transaction": "Visa", "pay_amt": "500.00"},
+            {"transaction": "Master", "pay_amt": "300.00"},
+        ]
+    )
+    _strip_noncard_rows(ext)
+    assert len(ext.details) == 2  # nothing wrongly dropped
+    # "Subtotal" is explicitly NOT treated as a summary row
+    ext2 = _bay_extracted([{"transaction": "Subtotal Visa", "pay_amt": "500.00"}])
+    _strip_noncard_rows(ext2)
+    assert len(ext2.details) == 1

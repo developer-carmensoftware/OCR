@@ -121,7 +121,16 @@ def _solve_fee_row(values: dict[str, float | None]) -> tuple[float, float, float
     return grand, round(grand - vat, 2), vat
 
 
-_SUMMARY_LABELS = ("TOTAL", "GRAND TOTAL", "รวม", "จำนวนเงินรวม")
+# Mirrors the LLM skip-list in llm/prompts/shared.py ROW_RULES rule 2 — the
+# deterministic strip below is the safety net for when the model ignores it.
+_SUMMARY_LABELS = (
+    "TOTAL",
+    "GRAND TOTAL",
+    "NET AMOUNT",
+    "รวม",
+    "จำนวนเงินรวม",
+    "จำนวนเงินค่าธรรมเนียม",
+)
 
 
 def _is_summary_row(label: str | None) -> bool:
@@ -129,6 +138,39 @@ def _is_summary_row(label: str | None) -> bool:
     if up.startswith("SUB"):  # "Subtotal" contains TOTAL but is not the summary line
         return False
     return any(k in up for k in _SUMMARY_LABELS)
+
+
+# Withholding-tax deduction rows — the bank's own tax line, never a card row.
+# Mirrors llm/prompts/shared.py ROW_RULES rule 4.
+_WHT_LABELS = ("WHT", "WITHHOLDING", "ภาษีเงินได้หัก", "หัก ณ ที่จ่าย", "ภาษีถูกหัก")
+
+
+def _is_wht_row(label: str | None) -> bool:
+    # .upper() is a no-op on Thai, so the Thai keywords match unchanged.
+    up = (label or "").strip().upper()
+    return any(k in up for k in _WHT_LABELS)
+
+
+def _strip_noncard_rows(extracted: ExtractedCreditCardData) -> None:
+    """Keep only real card-transaction rows for plain statement banks.
+
+    BBL/KBANK/SCB have no other normalizer, so anything the LLM leaks stays in
+    `details` and double-counts in the frontend's column sums. Mirrors the three
+    row-exclusion rules the prompt gives the model (llm/prompts/shared.py
+    ROW_RULES), as a deterministic safety net for when it ignores them:
+      - summary lines (TOTAL / รวม / NET AMOUNT — rule 2),
+      - withholding-tax lines (rule 4),
+      - empty rows with a 0.00 / blank gross amount (rule 3) — a real SCB
+        statement lists ~35 zero card-type rows plus TOTAL / WHT / NET AMOUNT.
+    A real card row always carries a non-zero pay_amt, and card-type labels
+    (Visa, VSA-INT-P, …) never contain the summary/WHT keywords, so this is safe."""
+    extracted.details[:] = [
+        r
+        for r in extracted.details
+        if _parse_amt(r.pay_amt)  # non-zero gross — drops 0.00/blank rows
+        and not _is_summary_row(r.transaction)
+        and not _is_wht_row(r.transaction)
+    ]
 
 
 def _spread_footer_vat(line_rows: list, total_vat: float) -> None:
@@ -325,6 +367,10 @@ async def finalize_extraction(
         _normalize_fee_invoice(extracted, resolved_bank_code)
     elif resolved_bank_code in _BANK_STATEMENT_CODES:
         _normalize_bay_statement(extracted)
+    else:
+        # Plain statement banks (BBL/KBANK/SCB) + undetected: no normalizer of
+        # their own, so drop any summary / WHT row the LLM leaked into details.
+        _strip_noncard_rows(extracted)
 
     async with async_session() as db:
         if extracted.doc_no:
