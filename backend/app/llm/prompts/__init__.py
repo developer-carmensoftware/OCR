@@ -36,12 +36,12 @@ _PROMPT_VERSIONS: dict[str, str] = {
     "KBANK": "2.1.0",
     "SCB": "2.1.0",
     "BAY": "1.2.0",
-    "KTC": "1.1.0",
-    "GHL": "1.1.0",
-    "PAYPAL": "1.1.0",
-    "SIAMPAY": "1.2.0",
+    "KTC": "1.2.0",
+    "GHL": "1.2.0",
+    "PAYPAL": "1.2.0",
+    "SIAMPAY": "1.3.0",
     "GENERIC": "2.1.0",
-    "COMBINED": "2.3.0",
+    "COMBINED": "2.4.0",
 }
 
 # Pre-built at import time — no cost at request time

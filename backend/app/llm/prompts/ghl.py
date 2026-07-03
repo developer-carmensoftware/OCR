@@ -8,6 +8,8 @@ GHL (NTT DATA Digital Payment / บริษัท เอ็นทีที เ�
   Header labels: เลขที่/No → doc_no | วันที่/Date → doc_date (Thai month name + Buddhist year → DD/MM/YYYY) | ลูกค้า/Customer → merchant_name AND company_name | head office code next to สำนักงานใหญ่ (e.g. "00000") → branch_no
   merchant_id: always null
   Fee invoice — this document bills the merchant fee itself, there is no card-type table.
-  Critical: build exactly ONE details row from the totals (the totals ARE the data — do NOT skip them as summary rows):
-    transaction = fee description line (e.g. "TRANSACTION FEE ...") | pay_amt = จำนวนเงินทั้งสิ้น (Grand Total Amount) | commis_amt = จำนวนเงินหลังหักส่วนลด (After Discount) | tax_amt = ภาษีมูลค่าเพิ่ม (VAT 7%) | total = "0" (always)\
+  Critical: read EVERY row in the Particulars/จำนวนเงิน (Amount) table as its own details row (usually one, but there may be several):
+    transaction = line description (e.g. "TRANSACTION FEE ...") | commis_amt = that line's จำนวนเงิน/Amount (Baht, fee before VAT) | pay_amt/tax_amt = null (computed) | total = "0"
+  Critical: THEN add ONE final summary row from the footer totals (the system spreads its VAT across the lines above):
+    transaction = "TOTAL" | commis_amt = จำนวนเงินหลังหักส่วนลด (After Discount / Sub Total, before VAT) | tax_amt = ภาษีมูลค่าเพิ่ม (VAT) | pay_amt = จำนวนเงินทั้งสิ้น (Grand Total Amount) | total = "0"\
 """

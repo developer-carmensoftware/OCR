@@ -89,6 +89,14 @@ class Settings(BaseSettings):
     # Upload
     max_file_size_mb: int = 20
 
+    # VAT rates the fee-invoice normalizer may encounter, comma-separated.
+    # First entry = primary rate assumed when a rate cannot be inferred from the
+    # document itself (e.g. only one amount was extracted). Thai standard is 7%
+    # (statutory 10% reduced by an annually-renewed royal decree) — 0.10 is listed
+    # so a decree lapse or a 10% document doesn't get misclassified. Zero-VAT /
+    # exempt documents are detected structurally (grand == fee), not via this list.
+    vat_rates: str = "0.07,0.10"
+
     # Database
     # Neon Postgres example:
     #   postgresql+asyncpg://user:pass@ep-xxx.aws.neon.tech/carmen_ai?ssl=require
@@ -159,6 +167,20 @@ class Settings(BaseSettings):
     supabase_url: str = ""
     supabase_service_key: str = ""  # service_role key (bypasses RLS)
     slip_bucket: str = "payment-slips"
+
+    @property
+    def vat_rates_list(self) -> list[float]:
+        """Supported VAT rates (0 < r < 1), first = primary. Falls back to [0.07]."""
+        out: list[float] = []
+        for tok in self.vat_rates.split(","):
+            tok = tok.strip()
+            try:
+                r = float(tok)
+            except ValueError:
+                continue
+            if 0 < r < 1:
+                out.append(r)
+        return out or [0.07]
 
     @property
     def allowed_carmen_hosts_list(self) -> list[str]:

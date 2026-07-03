@@ -8,17 +8,6 @@ class TaskStatus(str, Enum):
     FAILED = "failed"
 
 
-class BankType(str, Enum):
-    BBL = "BBL"
-    KBANK = "KBANK"
-    SCB = "SCB"
-    BAY = "BAY"
-    KTC = "KTC"
-    GHL = "GHL"
-    PAYPAL = "PAYPAL"
-    SIAMPAY = "SIAMPAY"
-
-
 class DocumentType(str, Enum):
     CREDIT_CARD = "CREDIT_CARD"
     AP_INVOICE = "AP_INVOICE"

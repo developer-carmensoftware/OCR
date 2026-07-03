@@ -106,39 +106,41 @@ export const BANK_THAI_NAMES: Record<BankCode, string> = {
   SIAMPAY: 'SiamPay',
 }
 
+// (code, thai keywords, english keywords) — ordered specific-before-generic:
+// processors/issuers before the generic กรุง* substrings (which would otherwise
+// shadow KTC/BAY), and before กรุงเทพ specifically (just "Bangkok" — appears in
+// every Bangkok-address footer, including the processors' own). Single source
+// of truth for the issuer-name tier and the raw-text tier below. Mirrors
+// backend utils/bank_detect.py.
+const BANK_KEYWORDS: Array<{ code: BankCode; thai: string[]; english: string[] }> = [
+  { code: 'KTC', thai: ['บัตรกรุงไทย'], english: ['KRUNGTHAI CARD'] },
+  { code: 'BAY', thai: ['กรุงศรี'], english: ['KRUNGSRI', 'BANK OF AYUDHYA'] },
+  { code: 'GHL', thai: ['เอ็นทีที เดต้า'], english: ['NTT DATA'] },
+  { code: 'PAYPAL', thai: ['เพย์พาล'], english: ['PAYPAL'] },
+  { code: 'SIAMPAY', thai: ['สยามเพย์'], english: ['ASIA PAY', 'SIAMPAY'] },
+  { code: 'KBANK', thai: ['กสิกร'], english: [] },
+  { code: 'SCB', thai: ['ไทยพาณิชย์'], english: [] },
+  { code: 'BBL', thai: ['กรุงเทพ'], english: [] },
+]
+
+function matchBankKeywords(text: string, upper: string): BankCode | null {
+  for (const { code, thai, english } of BANK_KEYWORDS) {
+    if (thai.some(k => text.includes(k)) || english.some(k => upper.includes(k))) return code
+  }
+  return null
+}
+
 /** Infer bank display name from the bank's company name extracted by the LLM. */
 export function detectBankFromCompanyName(
   bankCompanyname: string | null | undefined
 ): BankDisplayName | null {
   if (!bankCompanyname) return null
   const upper = bankCompanyname.toUpperCase()
-  // Specific issuers before the generic กรุง* substrings (KTC/BAY/processors
-  // would otherwise be shadowed by กรุงเทพ). Mirrors backend utils/bank_detect.py.
-  if (
-    bankCompanyname.includes('บัตรกรุงไทย') ||
-    upper.includes('KRUNGTHAI CARD') ||
-    upper === 'KTC'
-  )
-    return 'Krungthai Card (KTC)'
-  if (
-    bankCompanyname.includes('กรุงศรี') ||
-    upper.includes('KRUNGSRI') ||
-    upper.includes('BANK OF AYUDHYA')
-  )
-    return 'Krungsri (BAY)'
-  if (bankCompanyname.includes('เอ็นทีที เดต้า') || upper.includes('NTT DATA') || upper === 'GHL')
-    return 'GHL (NTT DATA)'
-  if (upper.includes('PAYPAL') || bankCompanyname.includes('เพย์พาล')) return 'PayPal (PAYPAL)'
-  if (
-    upper.includes('ASIA PAY') ||
-    upper.includes('SIAMPAY') ||
-    bankCompanyname.includes('สยามเพย์')
-  )
-    return 'SiamPay (SIAMPAY)'
-  if (bankCompanyname.includes('กสิกร')) return 'Kasikornbank (KBANK)'
-  if (bankCompanyname.includes('ไทยพาณิชย์')) return 'Siam Commercial Bank (SCB)'
-  if (bankCompanyname.includes('กรุงเทพ')) return 'Bangkok Bank (BBL)'
-  return null
+  // ghl.py fixes bank_name to the literal "GHL" (too short/common a substring
+  // to safely match elsewhere, e.g. raw free text).
+  if (upper === 'GHL') return OCR_BANK_MAP.GHL
+  const code = matchBankKeywords(bankCompanyname, upper)
+  return code ? OCR_BANK_MAP[code] : null
 }
 
 /**
@@ -164,27 +166,21 @@ export function detectBankFromExtracted(
   const docName = (ext.doc_name || '').toUpperCase()
   const rawText = (ext.raw_text || '').toUpperCase()
 
-  if (docName.includes('KASIKORN') || docName.includes('กสิกร')) return 'KBANK'
-  if (docName.includes('BANGKOK BANK') || docName.includes('กรุงเทพ')) return 'BBL'
-  if (docName.includes('SIAM COMMERCIAL') || docName.includes('ไทยพาณิชย์')) return 'SCB'
+  // Same specific-first chain as the other tiers, then English legacy names
+  // and SCB document-title keywords.
+  if (docName) {
+    const code = matchBankKeywords(docName, docName)
+    if (code) return code
+    if (docName.includes('KASIKORN')) return 'KBANK'
+    if (docName.includes('BANGKOK BANK')) return 'BBL'
+    if (docName.includes('SIAM COMMERCIAL')) return 'SCB'
+    if (docName.includes('ใบนำฝาก') || docName.includes('ใบสรุปยอดขายบัตรเครดิต')) return 'SCB'
+  }
 
-  if (docName.includes('ใบนำฝาก') || docName.includes('ใบสรุปยอดขายบัตรเครดิต')) return 'SCB'
-
-  // Most-specific first. กรุงเทพ is checked LAST: it is just "Bangkok" and
-  // appears in every Bangkok-address footer (all four processors are Bangkok-based).
-  if (rawText.includes('บัตรกรุงไทย') || rawText.includes('KRUNGTHAI CARD')) return 'KTC'
-  if (
-    rawText.includes('กรุงศรี') ||
-    rawText.includes('KRUNGSRI') ||
-    rawText.includes('BANK OF AYUDHYA')
-  )
-    return 'BAY'
-  if (rawText.includes('เอ็นทีที เดต้า') || rawText.includes('NTT DATA')) return 'GHL'
-  if (rawText.includes('PAYPAL')) return 'PAYPAL'
-  if (rawText.includes('ASIA PAY') || rawText.includes('SIAMPAY')) return 'SIAMPAY'
-  if (rawText.includes('กสิกร')) return 'KBANK'
-  if (rawText.includes('ไทยพาณิชย์')) return 'SCB'
-  if (rawText.includes('กรุงเทพ')) return 'BBL'
+  if (ext.raw_text) {
+    const code = matchBankKeywords(rawText, rawText)
+    if (code) return code
+  }
 
   return null
 }

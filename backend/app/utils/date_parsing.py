@@ -30,6 +30,12 @@ _INPUT_FORMATS = (
     "%Y-%m-%d",  # 2024-03-15 — ISO
     "%Y/%m/%d",  # 2024/03/15
     "%d.%m.%Y",  # 15.03.2024
+    # 2-digit years — SiamPay prints "27/05/26". Tried AFTER the 4-digit forms so
+    # a full year always wins. strptime %y maps 00–68→2000s, so "26"→2026 (these
+    # issuers use AD 2-digit years, not Buddhist).
+    "%d/%m/%y",  # 27/05/26
+    "%d-%m-%y",  # 27-05-26
+    "%d.%m.%y",  # 27.05.26
 )
 
 # Thai month names (full + abbreviated) → month number. Some issuers (KTC, GHL)

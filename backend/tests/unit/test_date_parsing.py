@@ -55,6 +55,17 @@ def test_thai_month_two_digit_buddhist_year():
     assert parse_doc_date("31 ม.ค. 67") == date(2024, 1, 31)
 
 
+def test_parses_two_digit_numeric_year():
+    # SiamPay prints "27/05/26" (DD/MM/YY, AD 2-digit) — must not return None
+    assert parse_doc_date("27/05/26") == date(2026, 5, 27)
+    assert parse_doc_date("20/05/26") == date(2026, 5, 20)
+
+
+def test_four_digit_year_wins_over_two_digit():
+    # A full year must still parse as-is (2-digit formats are only a fallback)
+    assert parse_doc_date("05/05/2026") == date(2026, 5, 5)
+
+
 def test_returns_none_on_garbage():
     assert parse_doc_date("not a date") is None
 

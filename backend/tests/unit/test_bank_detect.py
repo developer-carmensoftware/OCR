@@ -79,6 +79,13 @@ def test_merchant_company_name_cannot_flip_to_new_issuer():
     assert detect_bank_code(company_name="บริษัท กรุงศรี ฟู้ดส์ จำกัด") is None
 
 
+def test_doc_name_detects_new_formats_specific_first():
+    # Tier-2 (doc_name) uses the same specific-before-generic chain as the
+    # other tiers — บัตรกรุงไทย must beat the trailing กรุงเทพ address word.
+    assert detect_bank_code(doc_name="ใบเสร็จรับเงิน บริษัท บัตรกรุงไทย กรุงเทพฯ") == "KTC"
+    assert detect_bank_code(doc_name="ใบแจ้งการโอนเข้าบัญชี ธนาคารกรุงศรีอยุธยา") == "BAY"
+
+
 def test_returns_none_without_signal():
     assert detect_bank_code() is None
     assert detect_bank_code(company_name="Acme Co", doc_name="Invoice") is None
