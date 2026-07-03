@@ -1,3 +1,4 @@
+import { BANKS } from '../../constants'
 import type { BankDisplayName } from '../../types/api'
 
 interface Props {
@@ -40,9 +41,11 @@ export default function TopLevelConfigSection({
           }}
         >
           <option value="">Select bank...</option>
-          <option value="Bangkok Bank (BBL)">Bangkok Bank (BBL)</option>
-          <option value="Kasikornbank (KBANK)">Kasikornbank (KBANK)</option>
-          <option value="Siam Commercial Bank (SCB)">Siam Commercial Bank (SCB)</option>
+          {BANKS.map(b => (
+            <option key={b.value} value={b.full}>
+              {b.full}
+            </option>
+          ))}
         </select>
 
         <label

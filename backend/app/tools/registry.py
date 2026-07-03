@@ -34,7 +34,7 @@ _SCHEMA_EXTRACT = {
         },
         "bank_type": {
             "type": "string",
-            "enum": ["SCB", "BBL", "KBANK"],
+            "enum": ["SCB", "BBL", "KBANK", "BAY", "KTC", "GHL", "PAYPAL", "SIAMPAY"],
             "description": "Bank-specific prompt selector",
         },
     },

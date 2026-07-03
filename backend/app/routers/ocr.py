@@ -59,7 +59,9 @@ def _task_to_dict(task: OCRTask) -> dict:
 async def extract_card(
     request: Request,
     files: list[UploadFile] = File(...),
-    bank_code: str | None = Query(None, description="Bank code: BBL / KBANK / SCB"),
+    bank_code: str | None = Query(
+        None, description="Bank code: BBL / KBANK / SCB / BAY / KTC / GHL / PAYPAL / SIAMPAY"
+    ),
     selected_pages: str | None = Form(
         None, description="JSON-encoded 0-based page indices for PDF, e.g. '[0,1,2]'"
     ),

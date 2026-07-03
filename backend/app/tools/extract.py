@@ -31,7 +31,7 @@ async def run(
     Args:
         file_bytes: Raw file content
         filename:   Original filename (used to detect mime type)
-        bank_type:  "SCB" | "BBL" | "KBANK" — selects bank-specific prompt
+        bank_type:  "SCB" | "BBL" | "KBANK" | "BAY" | "KTC" | "GHL" | "PAYPAL" | "SIAMPAY" — selects bank-specific prompt
 
     Returns:
         ToolResult with output=ExtractedCreditCardData dict on success

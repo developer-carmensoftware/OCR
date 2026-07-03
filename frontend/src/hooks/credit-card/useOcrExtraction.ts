@@ -83,12 +83,6 @@ const EXTRACTION_STAGES = [
   { at: 35, text: 'Complex document — still working…' },
 ]
 
-const BANK_CODE_TO_NAME: Record<string, string> = {
-  BBL: 'Bangkok Bank (BBL)',
-  KBANK: 'Kasikornbank (KBANK)',
-  SCB: 'Siam Commercial Bank (SCB)',
-}
-
 // Persists bank code + detail rows for the mapping step (ocr_wizard_state) and merges vendor
 // company/branch into accountingConfig so the GL-mapping step pre-fills correctly.
 // Kept outside the hook because it is a pure side effect with no React state dependency.
@@ -118,10 +112,10 @@ function _persistOcrLocalStorage(ext: Record<string, unknown>, detailsList: Deta
       if (ext.bank_company_name) updatedCompany.name = ext.bank_company_name as string
       if (ext.branch_no) updatedCompany.branch = ext.branch_no as string
       existing.company = updatedCompany
-      const detectedBankCode = detectBankFromCompanyName(ext.bank_company_name as string)
-      if (detectedBankCode && BANK_CODE_TO_NAME[detectedBankCode]) {
-        existing.bank = BANK_CODE_TO_NAME[detectedBankCode]
-      }
+      // detectBankFromCompanyName already returns the display name accountingConfig.bank stores
+      // (a stale BANK_CODE_TO_NAME[code] lookup here previously never matched, so this was dead).
+      const detectedBankName = detectBankFromCompanyName(ext.bank_company_name as string)
+      if (detectedBankName) existing.bank = detectedBankName
       localStorage.setItem(appKey('accountingConfig'), JSON.stringify(existing))
     } catch {
       /* ignore */

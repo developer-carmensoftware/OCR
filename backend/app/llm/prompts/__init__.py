@@ -7,17 +7,27 @@ Usage:
     prompt = get_ocr_prompt("SCB")     # explicit bank (backward compat)
 """
 
+from app.llm.prompts.bay import LAYOUT as _BAY
 from app.llm.prompts.bbl import LAYOUT as _BBL
 from app.llm.prompts.generic import LAYOUT as _GENERIC
+from app.llm.prompts.ghl import LAYOUT as _GHL
 from app.llm.prompts.kbank import LAYOUT as _KBANK
+from app.llm.prompts.ktc import LAYOUT as _KTC
+from app.llm.prompts.paypal import LAYOUT as _PAYPAL
 from app.llm.prompts.scb import LAYOUT as _SCB
 from app.llm.prompts.shared import build_bank_prompt, build_combined_prompt
+from app.llm.prompts.siampay import LAYOUT as _SIAMPAY
 
 # Registry: add a new bank = new layout file + one entry here
 _REGISTRY: dict[str, str] = {
     "BBL": _BBL,
     "KBANK": _KBANK,
     "SCB": _SCB,
+    "BAY": _BAY,
+    "KTC": _KTC,
+    "GHL": _GHL,
+    "PAYPAL": _PAYPAL,
+    "SIAMPAY": _SIAMPAY,
 }
 
 # Bump whenever a layout changes — used by GET /api/version
@@ -25,8 +35,13 @@ _PROMPT_VERSIONS: dict[str, str] = {
     "BBL": "2.0.0",
     "KBANK": "2.0.0",
     "SCB": "2.0.0",
+    "BAY": "1.0.0",
+    "KTC": "1.0.0",
+    "GHL": "1.0.0",
+    "PAYPAL": "1.0.0",
+    "SIAMPAY": "1.0.0",
     "GENERIC": "2.0.0",
-    "COMBINED": "2.0.0",
+    "COMBINED": "2.1.0",
 }
 
 # Pre-built at import time — no cost at request time
@@ -40,7 +55,7 @@ def get_ocr_prompt(bank_type: str | None = None, hints: dict[str, str] | None = 
     """Return the OCR extraction prompt.
 
     bank_type=None (default) → combined auto-detect prompt (recommended).
-    bank_type="BBL"|"KBANK"|"SCB" → bank-specific prompt (for explicit overrides).
+    bank_type="BBL"|"KBANK"|"SCB"|"BAY"|"KTC"|"GHL"|"PAYPAL"|"SIAMPAY" → bank-specific prompt.
 
     hints: {field_name: error_rate_info} from correction_service — appends a
            warning section for fields that are historically extracted incorrectly.

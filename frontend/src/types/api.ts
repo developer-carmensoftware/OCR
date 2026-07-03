@@ -150,11 +150,16 @@ export interface AccountingConfigResponse {
 
 // ── Shared / Utility ──────────────────────────────────────────────
 
-export type BankCode = 'BBL' | 'KBANK' | 'SCB'
+export type BankCode = 'BBL' | 'KBANK' | 'SCB' | 'BAY' | 'KTC' | 'GHL' | 'PAYPAL' | 'SIAMPAY'
 export type BankDisplayName =
   | 'Bangkok Bank (BBL)'
   | 'Kasikornbank (KBANK)'
   | 'Siam Commercial Bank (SCB)'
+  | 'Krungsri (BAY)'
+  | 'Krungthai Card (KTC)'
+  | 'GHL (NTT DATA)'
+  | 'PayPal (PAYPAL)'
+  | 'SiamPay (SIAMPAY)'
 
 export interface ApiError {
   detail: string

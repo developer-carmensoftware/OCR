@@ -19,6 +19,20 @@ from app.utils.db_helpers import has_submitted_doc
 
 logger = logging.getLogger(__name__)
 
+# Processor fee invoices: the LAYOUT prompts mandate total="0" (and, except for
+# PayPal's Customer ID, no merchant_id) — but prompt text is not a guarantee.
+# Clamp deterministically so a stray LLM value can never become a "Bank Account"
+# GL row in the Carmen JV.
+_FEE_INVOICE_CODES = {"KTC", "GHL", "PAYPAL", "SIAMPAY"}
+_NO_MERCHANT_ID_CODES = {"KTC", "GHL", "SIAMPAY"}  # PayPal maps Customer ID → merchant_id
+
+
+def _clamp_fee_invoice(extracted: ExtractedCreditCardData, bank_code: str) -> None:
+    if bank_code in _NO_MERCHANT_ID_CODES:
+        extracted.merchant_id = None
+    for row in extracted.details:
+        row.total = "0"
+
 
 async def finalize_extraction(
     extracted: ExtractedCreditCardData,
@@ -40,6 +54,9 @@ async def finalize_extraction(
         doc_name=extracted.doc_name,
         raw_text=extracted.raw_text,
     )
+
+    if resolved_bank_code in _FEE_INVOICE_CODES:
+        _clamp_fee_invoice(extracted, resolved_bank_code)
 
     async with async_session() as db:
         if extracted.doc_no:

@@ -12,6 +12,11 @@ class BankType(str, Enum):
     BBL = "BBL"
     KBANK = "KBANK"
     SCB = "SCB"
+    BAY = "BAY"
+    KTC = "KTC"
+    GHL = "GHL"
+    PAYPAL = "PAYPAL"
+    SIAMPAY = "SIAMPAY"
 
 
 class DocumentType(str, Enum):
