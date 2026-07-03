@@ -19,7 +19,7 @@ Do NOT merge multiple rows into one object.
 
 Header fields to extract:
 - bank_company_name : ชื่อนิติบุคคลของธนาคาร (ผู้ออกเอกสาร) จาก header/footer ของธนาคาร — ไม่ใช่ชื่อร้านค้า
-- branch_no        : รหัสสาขาของธนาคาร (ถ้ามี)
+- branch_no        : รหัสสาขาของธนาคาร (ถ้ามี) — look carefully near สาขา/สาขาที่/สถานประกอบการ/BRANCH/Head Office; this field is frequently missed, re-check before returning null
 - bank_name        : ชื่อธนาคารภาษาไทย (กำหนดตายตัวในแต่ละ bank prompt)
 - doc_name         : document title (e.g. "ใบเสร็จรับเงิน/ใบกำกับภาษี")
 - company_name     : company name from address section (ชื่อ / NAME)

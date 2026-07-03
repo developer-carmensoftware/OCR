@@ -70,6 +70,18 @@ export default function DetailTable({
   const { t } = useT()
   const [focusedCell, setFocusedCell] = useState<{ row: number; col: string } | null>(null)
 
+  // Hide amount columns that are 0/blank on every row — fee-invoice formats
+  // (KTC/GHL/PayPal/SiamPay) always have Net Amt = 0, showing it is just noise.
+  // ponytail: a hidden column can't be hand-edited; unhide by typing into another row? No —
+  // if that ever matters, add a "show empty columns" toggle.
+  const visibleColumns = DETAIL_COLUMNS.filter(
+    col =>
+      !AMOUNT_FIELDS.includes(col) ||
+      details.length === 0 ||
+      details.some(row => parseNum(row[col]) !== 0)
+  )
+  const visibleAmountFields = AMOUNT_FIELDS.filter(col => visibleColumns.includes(col))
+
   return (
     <>
       <div className="data-card">
@@ -85,7 +97,7 @@ export default function DetailTable({
           <table className="data-table">
             <thead>
               <tr>
-                {DETAIL_COLUMNS.map(col => {
+                {visibleColumns.map(col => {
                   const labelHtml = DETAIL_LABELS[col] || col
                   const labelText = labelHtml.replace(/<[^>]*>/g, ' ').trim()
                   return (
@@ -99,7 +111,7 @@ export default function DetailTable({
             <tbody className="stagger-rows">
               {details.map((row, rowIdx) => (
                 <tr key={row._uid ?? rowIdx}>
-                  {DETAIL_COLUMNS.map(col => {
+                  {visibleColumns.map(col => {
                     const isAmountField = AMOUNT_FIELDS.includes(col)
                     const isEditing = focusedCell?.row === rowIdx && focusedCell?.col === col
                     const displayValue =
@@ -146,7 +158,7 @@ export default function DetailTable({
         </div>
         <div className="card-body">
           <div className="total-summary-grid">
-            {AMOUNT_FIELDS.map(col => {
+            {visibleAmountFields.map(col => {
               const label = DETAIL_LABELS[col] ? DETAIL_LABELS[col].split('<br>')[0] : col
               const total = sumColumn(details, col)
               return (

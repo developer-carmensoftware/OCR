@@ -19,19 +19,95 @@ from app.utils.db_helpers import has_submitted_doc
 
 logger = logging.getLogger(__name__)
 
-# Processor fee invoices: the LAYOUT prompts mandate total="0" (and, except for
-# PayPal's Customer ID, no merchant_id) — but prompt text is not a guarantee.
-# Clamp deterministically so a stray LLM value can never become a "Bank Account"
-# GL row in the Carmen JV.
+# Processor fee invoices: per row, pay_amt (grand total incl VAT) = commis_amt
+# (fee before VAT) + tax_amt (VAT 7%), and total is always 0. The LLM frequently
+# swaps or omits these fields (QA: KTC Amount↔Net, GHL Net↔Commission, SiamPay
+# commission/tax missing), so we reassign deterministically from the arithmetic
+# instead of trusting the prompt.
 _FEE_INVOICE_CODES = {"KTC", "GHL", "PAYPAL", "SIAMPAY"}
 _NO_MERCHANT_ID_CODES = {"KTC", "GHL", "SIAMPAY"}  # PayPal maps Customer ID → merchant_id
+_VAT_RATE = 0.07
+
+_AMT_FIELDS = ("pay_amt", "commis_amt", "tax_amt", "total")
 
 
-def _clamp_fee_invoice(extracted: ExtractedCreditCardData, bank_code: str) -> None:
+def _parse_amt(v: str | None) -> float | None:
+    if v is None:
+        return None
+    s = str(v).replace(",", "").strip()
+    if not s:
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _fmt_amt(x: float) -> str:
+    return f"{x:,.2f}"
+
+
+def _solve_fee_row(values: dict[str, float | None]) -> tuple[float, float, float] | None:
+    """Resolve (grand, fee, vat) from whatever subset/assignment the LLM emitted."""
+    nonzero = sorted({round(v, 2) for v in values.values() if v}, reverse=True)
+    if not nonzero:
+        return None
+
+    if len(nonzero) == 1:
+        v = nonzero[0]
+        field = next(f for f, x in values.items() if x and round(x, 2) == v)
+        if field == "tax_amt":
+            fee = round(v / _VAT_RATE, 2)
+            return round(fee + v, 2), fee, v
+        if field == "commis_amt":
+            vat = round(v * _VAT_RATE, 2)
+            return round(v + vat, 2), v, vat
+        vat = round(v * _VAT_RATE / (1 + _VAT_RATE), 2)  # value is the grand total
+        return v, round(v - vat, 2), vat
+
+    if len(nonzero) == 2:
+        big, small = nonzero
+        if small > big * 0.2:  # pair is (grand, fee) — vat would be ≲7% of grand
+            return big, small, round(big - small, 2)
+        # small is the VAT; is big the fee (vat = big*7%) or the grand (vat = big*7/107)?
+        if abs(small - big * _VAT_RATE) < abs(small - big * _VAT_RATE / (1 + _VAT_RATE)):
+            return round(big + small, 2), big, small
+        return big, round(big - small, 2), small
+
+    grand, fee, vat = nonzero[0], nonzero[1], nonzero[-1]
+    if abs((fee + vat) - grand) > 0.02:  # inconsistent middle value — trust grand & vat
+        fee = round(grand - vat, 2)
+    return grand, fee, vat
+
+
+def _normalize_fee_invoice(extracted: ExtractedCreditCardData, bank_code: str) -> None:
     if bank_code in _NO_MERCHANT_ID_CODES:
         extracted.merchant_id = None
     for row in extracted.details:
+        solved = _solve_fee_row({f: _parse_amt(getattr(row, f)) for f in _AMT_FIELDS})
+        if solved:
+            grand, fee, vat = solved
+            row.pay_amt = _fmt_amt(grand)
+            row.commis_amt = _fmt_amt(fee)
+            row.tax_amt = _fmt_amt(vat)
         row.total = "0"
+
+
+def _fill_bay_missing_tax(extracted: ExtractedCreditCardData) -> None:
+    """QA: BAY's VAT column is often unread. Statement arithmetic is
+    net = gross − commission − vat, so a blank tax is recoverable as
+    gross − commission − net. Computed only when OCR left it blank/0."""
+    for row in extracted.details:
+        if _parse_amt(row.tax_amt):
+            continue
+        gross = _parse_amt(row.pay_amt)
+        commis = _parse_amt(row.commis_amt)
+        net = _parse_amt(row.total)
+        if gross is None or commis is None or net is None:
+            continue
+        computed = round(gross - commis - net, 2)
+        if computed >= 0:
+            row.tax_amt = _fmt_amt(computed)
 
 
 async def finalize_extraction(
@@ -56,7 +132,9 @@ async def finalize_extraction(
     )
 
     if resolved_bank_code in _FEE_INVOICE_CODES:
-        _clamp_fee_invoice(extracted, resolved_bank_code)
+        _normalize_fee_invoice(extracted, resolved_bank_code)
+    elif resolved_bank_code == "BAY":
+        _fill_bay_missing_tax(extracted)
 
     async with async_session() as db:
         if extracted.doc_no:

@@ -9,6 +9,7 @@ SIAMPAY (SiamPay / Asia Pay (Thailand) Limited)
   merchant_id: always null
   branch_no: always null
   Fee invoice — this document bills the merchant fee itself, there is no card-type table.
-  Critical: build exactly ONE details row from the footer totals, even when the invoice lists multiple fee lines (the totals ARE the data — do NOT skip them as summary rows):
-    transaction = service description of the first fee line (e.g. "SiamPay Service - Processing Fee") | pay_amt = Total | commis_amt = Subtotal | tax_amt = VAT 7% | total = "0" (always)\
+  Critical: build ONE details row PER fee line in the item table (do NOT merge lines, do NOT skip them):
+    transaction = line description (e.g. "SiamPay Service - Processing Fee") | commis_amt = line Amount (before VAT) | pay_amt/tax_amt = leave null (computed) | total = "0" (always)
+  Critical: the skip-rows-with-blank-pay_amt rule does NOT apply here — include every fee line even though pay_amt is null\
 """
