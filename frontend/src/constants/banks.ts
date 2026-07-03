@@ -63,13 +63,11 @@ export const BANK_SOURCE_MAP: Record<BankDisplayName, string> = {
   'Bangkok Bank (BBL)': 'ACBB',
   'Kasikornbank (KBANK)': 'ACKB',
   'Siam Commercial Bank (SCB)': 'ACSC',
-  // ponytail: Carmen GL source codes not yet assigned for the new formats —
-  // '' is falsy so useMapping's guarded lookup skips auto-fill; fill in when accounting confirms.
-  'Krungsri (BAY)': '',
-  'Krungthai Card (KTC)': '',
-  'GHL (NTT DATA)': '',
-  'PayPal (PAYPAL)': '',
-  'SiamPay (SIAMPAY)': '',
+  'Krungsri (BAY)': 'ACBY',
+  'Krungthai Card (KTC)': 'ACKC',
+  'GHL (NTT DATA)': 'ACGH',
+  'PayPal (PAYPAL)': 'ACPP',
+  'SiamPay (SIAMPAY)': 'ACSP',
 }
 
 /** Display name → API bank code mapping */
