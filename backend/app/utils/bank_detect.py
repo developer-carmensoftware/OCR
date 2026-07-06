@@ -10,6 +10,12 @@ carry the same `bank_code` the submit step will later store.
 Supported banks: BBL | KBANK | SCB | BAY | KTC | GHL | PAYPAL | SIAMPAY.
 """
 
+# Processor fee invoices (vs. statement banks): their detail rows are per-fee-line
+# with pay_amt intentionally blank (the fee lives in commis_amt; pay_amt is
+# computed later from the footer VAT). Single source of truth — imported by both
+# credit_card_service (normalizer routing) and llm_service (row cleaning).
+FEE_INVOICE_CODES = frozenset({"KTC", "GHL", "PAYPAL", "SIAMPAY"})
+
 # (code, thai keywords, english keywords) — ordered specific-before-generic:
 # processors/issuers before the generic กรุง* substrings (which would otherwise
 # shadow KTC/BAY), and before กรุงเทพ specifically (just "Bangkok" — appears in

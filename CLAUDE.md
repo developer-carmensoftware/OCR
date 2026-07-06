@@ -181,7 +181,7 @@ INTERNAL_JOB_TOKEN=<hex-64-chars>   # must match vault.secrets where name='inter
 
 **Date columns:** `credit_cards.doc_date`, `ap_invoices.doc_date` are `DATE` type. LLM string output is normalized via `app/utils/date_parsing.py` (handles DD/MM/YYYY, ISO, dashes, Thai Buddhist years) before insert. API output uses DD/MM/YYYY string for backward compatibility.
 
-**Supported banks (pre-seeded):** `BBL` | `KBANK` | `SCB` | `BAY` | `KTC` | `GHL` | `PAYPAL` | `SIAMPAY` — BAY is a bank-statement layout; KTC/GHL/PAYPAL/SIAMPAY are processor *fee invoices* (one details row from footer totals: `pay_amt`=grand total, `commis_amt`=fee before VAT, `tax_amt`=VAT, `total`=0)
+**Supported banks (pre-seeded):** `BBL` | `KBANK` | `SCB` | `BAY` | `KTC` | `GHL` | `PAYPAL` | `SIAMPAY` — BAY is a bank-statement layout; KTC/GHL/PAYPAL/SIAMPAY are processor *fee invoices*: one details row **per printed fee line** (`commis_amt`=that line's fee before VAT); the footer's printed VAT is spread proportionally across the lines (`tax_amt`, `pay_amt`=fee+VAT share, `total`=0). The prompt's final TOTAL summary row is consumed by `credit_card_service._normalize_fee_invoice` and never emitted as a detail row. If the footer can't be read, a lone line figure is treated as the fee before VAT at an assumed 7% rate and `ExtractedCreditCardData.warnings` carries a user-facing caveat (shown as an amber banner in the wizard).
 
 **Supported files:** JPG, PNG, WebP, PDF — max 20 MB (read into memory only, never persisted to disk)
 

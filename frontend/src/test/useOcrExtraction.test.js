@@ -190,6 +190,26 @@ describe('useOcrExtraction', () => {
       expect(spy).toHaveBeenCalledWith(expect.objectContaining({ type: 'ocr:quota-refresh' }))
     })
 
+    it('defaults warnings to [] when the backend omits them', async () => {
+      extractFromFile.mockResolvedValue(MOCK_EXTRACTED)
+      const props = makeProps()
+      const { result } = renderHook(() => useOcrExtraction(props))
+      await act(async () => {
+        await result.current.processFile([MOCK_FILE])
+      })
+      expect(result.current.warnings).toEqual([])
+    })
+
+    it('populates warnings from the extraction response', async () => {
+      extractFromFile.mockResolvedValue({ ...MOCK_EXTRACTED, warnings: ['VAT was assumed'] })
+      const props = makeProps()
+      const { result } = renderHook(() => useOcrExtraction(props))
+      await act(async () => {
+        await result.current.processFile([MOCK_FILE])
+      })
+      expect(result.current.warnings).toEqual(['VAT was assumed'])
+    })
+
     it('writes extracted bank info to localStorage accountingConfig', async () => {
       extractFromFile.mockResolvedValue(MOCK_EXTRACTED)
       const props = makeProps()
@@ -349,6 +369,20 @@ describe('useOcrExtraction', () => {
       // After reset, originals must also be empty so diff on next submission starts clean
       expect(result.current.originalDetails).toEqual([])
       expect(result.current.originalHeader).toEqual({})
+    })
+
+    it('clears warnings on reset', async () => {
+      extractFromFile.mockResolvedValue({ ...MOCK_EXTRACTED, warnings: ['VAT was assumed'] })
+      const props = makeProps()
+      const { result } = renderHook(() => useOcrExtraction(props))
+      await act(async () => {
+        await result.current.processFile([MOCK_FILE])
+      })
+      expect(result.current.warnings).toEqual(['VAT was assumed'])
+      act(() => {
+        result.current.resetExtractionState()
+      })
+      expect(result.current.warnings).toEqual([])
     })
   })
 })

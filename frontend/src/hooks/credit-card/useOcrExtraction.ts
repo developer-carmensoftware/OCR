@@ -54,6 +54,7 @@ export interface OcrExtractionHook {
   cardId: string | null
   headerData: HeaderData | Record<string, string>
   details: DetailRow[]
+  warnings: string[]
   originalDetails: DetailRow[]
   originalHeader: HeaderData | Record<string, string>
   processFile: (
@@ -151,6 +152,7 @@ export function useOcrExtraction({
   const [cardId, setCardId] = useState<string | null>(null)
   const [headerData, setHeaderData] = useState<Record<string, string>>({})
   const [details, setDetails] = useState<DetailRow[]>([])
+  const [warnings, setWarnings] = useState<string[]>([])
   const [originalDetails, setOriginalDetails] = useState<DetailRow[]>([])
   const [originalHeader, setOriginalHeader] = useState<Record<string, string>>({})
 
@@ -174,6 +176,7 @@ export function useOcrExtraction({
       rawDetails.length ? rawDetails : [{ ...EMPTY_DETAIL_ROW }]
     ).map(row => ({ ...EMPTY_DETAIL_ROW, ...row, _uid: crypto.randomUUID() }))
     setDetails(detailsList)
+    setWarnings((ext.warnings as string[] | undefined) || [])
     setOriginalDetails(structuredClone(detailsList))
     setOriginalHeader(structuredClone(header))
     _persistOcrLocalStorage(ext, detailsList)
@@ -353,6 +356,7 @@ export function useOcrExtraction({
     setStatus('')
     setHeaderData({})
     setDetails([])
+    setWarnings([])
     setOriginalDetails([])
     setOriginalHeader({})
     setBank('')
@@ -369,6 +373,7 @@ export function useOcrExtraction({
     cardId,
     headerData,
     details,
+    warnings,
     originalDetails,
     originalHeader,
     processFile,

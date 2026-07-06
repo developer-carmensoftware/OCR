@@ -33,6 +33,16 @@ def test_correct_extraction_passes_through():
     r = _row(ext)
     assert (r.pay_amt, r.commis_amt, r.tax_amt, r.total) == ("4,716.31", "4,407.76", "308.55", "0")
     assert ext.merchant_id is None
+    assert ext.warnings == []
+
+
+def test_empty_details_surfaces_a_warning_instead_of_silent_blank():
+    # QA: LLM found no rows at all (missed both the fee line and the footer) —
+    # must not silently return an empty details list with no explanation.
+    ext = ExtractedCreditCardData(merchant_id="M-123", details=[])
+    _normalize_fee_invoice(ext, "KTC")
+    assert ext.details == []
+    assert ext.warnings
 
 
 def test_ktc_amount_and_net_swapped():
@@ -65,15 +75,21 @@ def test_siampay_only_line_fee_present():
     assert r.tax_amt == "432.01"  # 7% VAT
     assert r.pay_amt == "6,603.53"
     assert r.total == "0"
+    assert ext.warnings  # rate assumed, not read from the document
 
 
-def test_only_grand_total_present():
+def test_lone_pay_amt_treated_as_fee_before_vat():
+    # The combined-prompt bug: the LLM drops the footer TOTAL row and misplaces
+    # the line fee into pay_amt (shared OUTPUT_RULES "gross sale amount"). A
+    # lone figure is now read as the FEE before VAT, never as a VAT-inclusive
+    # grand total (the old behavior re-derived 24.24/346.23 here — wrong).
     ext = _extracted(pay_amt="370.47")
     _normalize_fee_invoice(ext, "PAYPAL")
     r = _row(ext)
-    assert r.tax_amt == "24.24"  # 370.47 * 7/107
-    assert r.commis_amt == "346.23"
-    assert r.pay_amt == "370.47"
+    assert r.commis_amt == "370.47"
+    assert r.tax_amt == "25.93"  # 370.47 * 7%
+    assert r.pay_amt == "396.40"
+    assert ext.warnings  # rate assumed, not read from the document
 
 
 def test_grand_and_vat_pair():
@@ -280,6 +296,7 @@ def test_siampay_two_lines_footer_vat_spread():
         "16.05",
     )
     assert sum(float(r.tax_amt.replace(",", "")) for r in ext.details) == 433.06
+    assert ext.warnings == []
 
 
 def test_ktc_single_line_plus_summary():
@@ -302,6 +319,7 @@ def test_ktc_single_line_plus_summary():
         "4,407.76",
         "308.55",
     )
+    assert ext.warnings == []
 
 
 def test_ten_percent_vat_spread_is_rate_agnostic():
@@ -374,6 +392,211 @@ def test_legacy_single_row_without_summary_still_reconciles():
         "346.23",
         "24.24",
     )
+    assert ext.warnings == []
+
+
+# ── New defects fixed together with the combined-prompt bug ───────────────────
+
+
+def test_ghl_misplaced_line_amount_in_pay_amt():
+    # Real GHL doc: no TOTAL row survived at all (combined prompt dropped it),
+    # and the lone line figure landed in pay_amt instead of commis_amt. Must
+    # reconstruct the printed Subtotal 37,059.56 / VAT 2,594.17 / Grand 39,653.73
+    # — not the old grand-branch's wrong 34,635.10 / 2,424.46.
+    ext = _bay_extracted([{"transaction": "TRANSACTION FEE 30-05-2026", "pay_amt": "37,059.56"}])
+    _normalize_fee_invoice(ext, "GHL")
+    assert len(ext.details) == 1
+    r = ext.details[0]
+    assert (r.pay_amt, r.commis_amt, r.tax_amt) == ("39,653.73", "37,059.56", "2,594.17")
+    assert ext.warnings
+
+
+def test_misplaced_pay_amt_with_summary_row_rehomed_before_spread():
+    # A valid TOTAL row IS present, but the line row's fee is still misplaced in
+    # pay_amt. Must be re-homed into commis_amt BEFORE the footer-VAT spread —
+    # otherwise fee_sum=0 and the spread overwrites pay_amt with 0.00.
+    ext = _bay_extracted(
+        [
+            {"transaction": "TRANSACTION FEE 30-05-2026", "pay_amt": "37,059.56"},
+            {
+                "transaction": "จำนวนเงินทั้งสิ้น",
+                "commis_amt": "37,059.56",
+                "tax_amt": "2,594.17",
+                "pay_amt": "39,653.73",
+            },
+        ]
+    )
+    _normalize_fee_invoice(ext, "GHL")
+    assert len(ext.details) == 1
+    r = ext.details[0]
+    assert (r.pay_amt, r.commis_amt, r.tax_amt) == ("39,653.73", "37,059.56", "2,594.17")
+    assert ext.warnings == []  # printed VAT was usable — no assumption needed
+
+
+def test_ktc_summary_row_never_leaks_when_spread_fails():
+    # KTC "extra value" symptom: a จำนวนเงินรวม summary row survives but its VAT
+    # is underivable (blank commis_amt/tax_amt on the footer). It must still be
+    # stripped from details before the per-row fallback runs, or the frontend's
+    # client-side column sum double-counts it.
+    ext = _bay_extracted(
+        [
+            {"transaction": "ค่าบริการ Merchant Discount Rate (MDR)", "commis_amt": "4,407.76"},
+            {"transaction": "จำนวนเงินรวม", "pay_amt": "4,716.31"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "KTC")
+    assert len(ext.details) == 1
+    assert "จำนวนเงินรวม" not in [r.transaction for r in ext.details]
+    assert ext.warnings
+
+
+def test_multiple_summary_rows_all_consumed():
+    # A footer can print a subtotal line AND a separate grand-total line — both
+    # are summary rows and neither may leak into details, even though only one
+    # of them carries the usable VAT figure.
+    ext = _bay_extracted(
+        [
+            {"transaction": "Fee", "commis_amt": "100.00"},
+            {"transaction": "รวม", "commis_amt": "100.00", "tax_amt": "7.00"},
+            {"transaction": "จำนวนเงินรวม", "pay_amt": "107.00"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "KTC")
+    assert len(ext.details) == 1
+    assert ext.details[0].transaction == "Fee"
+    assert (ext.details[0].pay_amt, ext.details[0].commis_amt, ext.details[0].tax_amt) == (
+        "107.00",
+        "100.00",
+        "7.00",
+    )
+
+
+def test_lone_total_field_treated_as_fee():
+    ext = _bay_extracted([{"transaction": "Fee", "total": "346.23"}])
+    _normalize_fee_invoice(ext, "PAYPAL")
+    assert len(ext.details) == 1
+    r = ext.details[0]
+    assert (r.pay_amt, r.commis_amt, r.tax_amt, r.total) == ("370.47", "346.23", "24.24", "0")
+    assert ext.warnings
+
+
+def test_ghl_split_footer_rows_stripped_and_vat_read_from_its_line():
+    # Real GHL M202605-055177 screenshot: the model emitted EACH footer line as
+    # its own detail row (Sub Total / Bill Discount / After Discount / VAT / Grand
+    # Total) instead of one TOTAL row, and misplaced the line fee into pay_amt.
+    # Only the TRANSACTION FEE line must survive, with VAT read off its own footer
+    # line (1,357.25) and spread onto it — no assumed-rate warning.
+    ext = _bay_extracted(
+        [
+            {"transaction": "TRANSACTION FEE 29-05-2026", "pay_amt": "19,389.35"},
+            {"transaction": "จำนวนเงิน (Sub Total)", "pay_amt": "19,389.35"},
+            {"transaction": "ส่วนลดท้ายใบเสร็จ (Bill Discount)", "pay_amt": "0.00"},
+            {"transaction": "จำนวนเงินหลังหักส่วนลด (After Discount)", "pay_amt": "19,389.35"},
+            {"transaction": "ภาษีมูลค่าเพิ่ม (VAT 7% )", "pay_amt": "1,357.25"},
+            {"transaction": "จำนวนเงินทั้งสิ้น (Grand Total Amount)", "pay_amt": "20,746.60"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "GHL")
+    assert len(ext.details) == 1
+    r = ext.details[0]
+    assert r.transaction == "TRANSACTION FEE 29-05-2026"
+    assert (r.pay_amt, r.commis_amt, r.tax_amt, r.total) == (
+        "20,746.60",
+        "19,389.35",
+        "1,357.25",
+        "0",
+    )
+    assert ext.warnings == []
+
+
+def test_ghl_line_missing_fee_recovered_from_footer_subtotal():
+    # Real GHL M202605-051454 screenshot: the model dropped the fee off the line
+    # (put VAT 1,542.21 there instead), leaving commission blank — the spread
+    # would emit pay=tax=VAT. The fee must be recovered from the footer After
+    # Discount line (22,031.57), giving pay = 22,031.57 + 1,542.21 = 23,573.78.
+    ext = _bay_extracted(
+        [
+            {"transaction": "TRANSACTION FEE 27-05-2026", "tax_amt": "1,542.21"},
+            {"transaction": "จำนวนเงินหลังหักส่วนลด (After Discount)", "pay_amt": "22,031.57"},
+            {"transaction": "ภาษีมูลค่าเพิ่ม (VAT 7% )", "pay_amt": "1,542.21"},
+            {"transaction": "จำนวนเงินทั้งสิ้น (Grand Total Amount)", "pay_amt": "23,573.78"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "GHL")
+    assert len(ext.details) == 1
+    r = ext.details[0]
+    assert (r.pay_amt, r.commis_amt, r.tax_amt, r.total) == (
+        "23,573.78",
+        "22,031.57",
+        "1,542.21",
+        "0",
+    )
+    assert ext.warnings == []
+
+
+def test_ghl_line_missing_fee_recovered_from_grand_minus_vat():
+    # Same defect but the footer has no Sub-Total/After-Discount line — recover
+    # the fee from Grand − VAT instead.
+    ext = _bay_extracted(
+        [
+            {"transaction": "TRANSACTION FEE 27-05-2026", "tax_amt": "1,542.21"},
+            {"transaction": "ภาษีมูลค่าเพิ่ม (VAT 7% )", "pay_amt": "1,542.21"},
+            {"transaction": "จำนวนเงินทั้งสิ้น (Grand Total Amount)", "pay_amt": "23,573.78"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "GHL")
+    assert len(ext.details) == 1
+    assert ext.details[0].commis_amt == "22,031.57"
+
+
+def test_ghl_line_missing_fee_unrecoverable_warns():
+    # Fee gone from the line AND no Sub-Total/Grand footer figure to recover it —
+    # surface a warning instead of silently showing a blank commission.
+    ext = _bay_extracted(
+        [
+            {"transaction": "TRANSACTION FEE 27-05-2026", "tax_amt": "1,542.21"},
+            {"transaction": "ภาษีมูลค่าเพิ่ม (VAT 7% )", "pay_amt": "1,542.21"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "GHL")
+    assert ext.warnings
+
+
+def test_mdr_fee_line_not_mistaken_for_discount_footer():
+    # Guard: "Merchant Discount Rate (MDR)" is a real fee line — bare "Discount"
+    # must NOT strip it as a footer row.
+    ext = _bay_extracted(
+        [
+            {"transaction": "ค่าบริการ Merchant Discount Rate (MDR)", "commis_amt": "4,407.76"},
+            {"transaction": "ภาษีมูลค่าเพิ่ม (VAT 7%)", "pay_amt": "308.55"},
+            {"transaction": "จำนวนเงินทั้งสิ้น", "pay_amt": "4,716.31"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "KTC")
+    assert len(ext.details) == 1
+    assert ext.details[0].transaction == "ค่าบริการ Merchant Discount Rate (MDR)"
+    assert ext.details[0].tax_amt == "308.55"
+
+
+def test_lone_summary_row_is_not_stripped_to_empty():
+    # A single TOTAL-labeled row that also carries full grand/fee/vat IS the
+    # invoice (no other line rows) — stripping it would leave nothing, so it
+    # must survive with its printed values untouched.
+    ext = _bay_extracted(
+        [
+            {
+                "transaction": "TOTAL",
+                "pay_amt": "4,716.31",
+                "commis_amt": "4,407.76",
+                "tax_amt": "308.55",
+            }
+        ]
+    )
+    _normalize_fee_invoice(ext, "KTC")
+    assert len(ext.details) == 1
+    r = ext.details[0]
+    assert (r.pay_amt, r.commis_amt, r.tax_amt) == ("4,716.31", "4,407.76", "308.55")
+    assert ext.warnings == []
 
 
 # ── Plain statement banks (BBL/KBANK/SCB): strip leaked non-card rows ──────────
