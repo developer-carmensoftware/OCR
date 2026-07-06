@@ -10,6 +10,7 @@ GHL (NTT DATA Digital Payment / บริษัท เอ็นทีที เ�
   Fee invoice — this document bills the merchant fee itself, there is no card-type table.
   Critical: read EVERY row in the Particulars/จำนวนเงิน (Amount) table as its own details row (usually one, but there may be several):
     transaction = line description (e.g. "TRANSACTION FEE ...") | commis_amt = that line's จำนวนเงิน/Amount (Baht, fee before VAT) | pay_amt/tax_amt = null (computed) | total = "0"
-  Critical: THEN add ONE final summary row from the footer totals (the system spreads its VAT across the lines above):
-    transaction = "TOTAL" | commis_amt = จำนวนเงินหลังหักส่วนลด (After Discount / Sub Total, before VAT) | tax_amt = ภาษีมูลค่าเพิ่ม (VAT) | pay_amt = จำนวนเงินทั้งสิ้น (Grand Total Amount) | total = "0"\
+  Critical: THEN add ONE final summary row from the footer totals — this is an EXCEPTION to the skip-summary-rows rule; the system consumes it and spreads its VAT across the lines above:
+    transaction = "TOTAL" | commis_amt = จำนวนเงินหลังหักส่วนลด (After Discount / Sub Total, before VAT) | tax_amt = ภาษีมูลค่าเพิ่ม (VAT) | pay_amt = จำนวนเงินทั้งสิ้น (Grand Total Amount) | total = "0"
+  Critical: the skip-rows-with-blank-pay_amt rule does NOT apply here — include every fee line even though pay_amt is null\
 """

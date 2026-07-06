@@ -29,6 +29,7 @@ export interface ExtractResult {
   branch_no: string
   is_duplicate: boolean
   details: ExtractedRow[]
+  warnings: string[]
 }
 
 export interface ApiError extends Error {
@@ -141,5 +142,6 @@ export async function extractFromFile(
     branch_no: (card.branch_no as string) || '',
     is_duplicate: (card.is_duplicate as boolean) || false,
     details,
+    warnings: (card.warnings as string[] | undefined) || [],
   }
 }

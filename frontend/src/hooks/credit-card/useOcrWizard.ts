@@ -315,6 +315,7 @@ export function useOcrWizard() {
     setBank: extraction.setBank,
     headerData: extraction.headerData,
     details: extraction.details,
+    warnings: extraction.warnings,
     submitting: submission.submitting,
     jvRows,
     filePrefix,

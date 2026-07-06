@@ -575,6 +575,7 @@ const en = {
   'cc.aiDetected': 'AI detected',
   'cc.reExtractWith': 'Re-extract with:',
   'cc.current': 'current',
+  'cc.extractionWarning': 'Amounts need review',
   // Detail table
   'cc.details': 'Details',
   'cc.items': 'items',
@@ -1225,6 +1226,7 @@ const th: Record<TKey, string> = {
   'cc.aiDetected': 'AI ตรวจพบ',
   'cc.reExtractWith': 'ประมวลผลใหม่ด้วย:',
   'cc.current': 'ปัจจุบัน',
+  'cc.extractionWarning': 'โปรดตรวจสอบจำนวนเงิน',
   // Detail table
   'cc.details': 'รายละเอียด',
   'cc.items': 'รายการ',

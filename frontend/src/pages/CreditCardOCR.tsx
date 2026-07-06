@@ -20,6 +20,7 @@ import { appKey } from '../lib/storage'
 import {
   UploadSection,
   BankDetectionBanner,
+  ExtractionWarningBanner,
   HeaderCard,
   DetailTable,
   AccountingReview,
@@ -41,6 +42,7 @@ export default function CreditCardOCR() {
     extractionStatus,
     headerData,
     details,
+    warnings,
     fileInputRef,
     modal,
     showModal,
@@ -182,6 +184,7 @@ export default function CreditCardOCR() {
                 selectedPageThumbs={selectedPageThumbs}
               >
                 <BankDetectionBanner bank={bank} loading={loading} onReExtract={handleReExtract} />
+                <ExtractionWarningBanner warnings={warnings} />
                 <HeaderCard
                   headerData={headerData as Record<string, string>}
                   onUpdate={updateHeader}
