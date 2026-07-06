@@ -123,7 +123,17 @@ function Router() {
   const [route, setRoute] = useState(getRoute)
 
   useEffect(() => {
-    const onHashChange = () => setRoute(getRoute())
+    const onHashChange = (e: HashChangeEvent) => {
+      const next = getRoute()
+      // ponytail: sessionStorage, not a store — one string, one reader.
+      // Stash where we came from so pricing's back button can return there.
+      const oldHash = e.oldURL ? new URL(e.oldURL).hash : ''
+      const wasPricing = oldHash.replace(/^#\/?/, '').toLowerCase().startsWith('pricing')
+      if (next.startsWith('pricing') && !wasPricing) {
+        sessionStorage.setItem('pricing:returnTo', oldHash || '#/')
+      }
+      setRoute(next)
+    }
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [])

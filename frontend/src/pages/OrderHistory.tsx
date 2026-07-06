@@ -156,7 +156,14 @@ export default function OrderHistory() {
 
   return (
     <div className="pricing-page">
-      <AppHeader moduleName={t('nav.plansCredits')} eyebrow="Carmen Cloud · AI Automation">
+      <AppHeader
+        moduleName={t('nav.plansCredits')}
+        eyebrow="Carmen Cloud · AI Automation"
+        backLabel={t('nav.back')}
+        onBack={() => {
+          window.location.hash = sessionStorage.getItem('pricing:returnTo') || '#/'
+        }}
+      >
         <div className="segmented-control" style={{ margin: 0, maxHeight: 36, width: 'auto' }}>
           <button
             type="button"

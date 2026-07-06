@@ -8,6 +8,8 @@ interface Props {
   moduleName?: string
   eyebrow?: string
   backPath?: string
+  onBack?: () => void
+  backLabel?: string
   children?: ReactNode
 }
 
@@ -16,10 +18,13 @@ export default function AppHeader({
   moduleName,
   eyebrow = 'Carmen Cloud · OCR Module',
   backPath,
+  onBack,
+  backLabel = 'Carmen',
   children,
 }: Props) {
   const handleBack = () => {
-    if (backPath) window.location.href = getCarmenUrl(backPath)
+    if (onBack) onBack()
+    else if (backPath) window.location.href = getCarmenUrl(backPath)
     else window.location.hash = '#/'
   }
 
@@ -29,10 +34,10 @@ export default function AppHeader({
         type="button"
         className="app-header-back"
         onClick={handleBack}
-        aria-label="Back to Carmen"
+        aria-label={`Back to ${backLabel}`}
       >
         <ArrowLeft size={14} strokeWidth={2.25} />
-        <span>Carmen</span>
+        <span>{backLabel}</span>
       </button>
       <div className="app-header-sep" aria-hidden="true" />
       <div className="brand">
