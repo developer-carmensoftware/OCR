@@ -6,7 +6,7 @@ useDefault = true
 [allowlist]
 description = "Documented placeholders and CI dummies — not real secrets."
 paths = [
-  '''.*\.env\.example$''',   # backend/.env.example, cron_service/.env.example
+  '''.*\.env\.example$''',   # backend/.env.example
   '''frontend/\.env\.production$''',
   '''render\.yaml$''',       # generateValue/sync:false placeholders only
   '''\.github/workflows/ci\.yml$''',  # dummy test-only secrets
