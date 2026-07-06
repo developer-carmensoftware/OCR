@@ -2,21 +2,14 @@
 # Docs: https://render.com/docs/blueprint-spec
 #
 # Services in this Blueprint:
-#   1. carmen-ocr-backend  — FastAPI (Python web service)
-#   2. carmen-ocr-frontend — Vite SPA (static site, global CDN)
-#   3. carmen-cron         — Cron job: all daily jobs (01:00 UTC)
+#   1. carmen-ocr-backend — FastAPI (Python web service)
 #
 # Deploy:
 #   1. Push this repo to GitHub.
 #   2. In Render dashboard → New → Blueprint → connect this repo.
 #   3. Render auto-detects render.yaml and prompts for secret env vars.
 #   4. Set DATABASE_URL (Neon), OPENROUTER_API_KEY, SESSION_ENCRYPTION_KEY,
-#      MASTER_API_KEY.
-#   5. After first deploy:
-#        - Copy the static site URL into the backend's ALLOWED_ORIGINS.
-#        - Copy the backend URL into VITE_API_BASE_URL for the static site.
-#        - Copy the backend URL into BACKEND_URL for the cron services.
-#      Both services then redeploy automatically.
+#      MASTER_API_KEY, ALLOWED_ORIGINS, ALLOWED_CARMEN_HOSTS.
 
 services:
   # ════════════════════════════════════════════════════════════════════════════
@@ -68,9 +61,8 @@ services:
         sync: false
 
       # ── CORS ────────────────────────────────────────────────────────────────
-      # Set ALLOWED_ORIGINS to the exact frontend origin(s) after the static site
-      # deploys, e.g. https://carmen-ocr-frontend.onrender.com (comma-separated for
-      # multiple). NEVER use a wildcard regex — the app hard-fails on ".*" in prod.
+      # Set ALLOWED_ORIGINS to the exact frontend origin(s), comma-separated.
+      # NEVER use a wildcard regex — the app hard-fails on ".*" in prod.
       # ALLOWED_ORIGIN_REGEX is optional; use only a tightly-scoped pattern for
       # preview deploys (e.g. ^https://carmen-ocr-frontend-[a-z0-9]+\.onrender\.com$).
       - key: ALLOWED_ORIGINS
@@ -93,61 +85,3 @@ services:
       # proxy-appended end of X-Forwarded-For (see TRUSTED_PROXY_HOPS).
       - key: TRUST_PROXY
         value: "true"
-
-      # ── Observability (optional) ────────────────────────────────────────────
-      - key: SENTRY_DSN
-        sync: false
-      - key: SENTRY_ENVIRONMENT
-        value: production
-
-  # ════════════════════════════════════════════════════════════════════════════
-  # Frontend — Vite SPA
-  # ════════════════════════════════════════════════════════════════════════════
-  - type: web
-    runtime: static
-    name: carmen-ocr-frontend
-    rootDir: frontend
-    buildCommand: npm install && npm run build
-    staticPublishPath: dist
-    autoDeploy: true
-    pullRequestPreviewsEnabled: true
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
-    headers:
-      - path: /assets/*
-        name: Cache-Control
-        value: public, max-age=31536000, immutable
-      - path: /*
-        name: X-Content-Type-Options
-        value: nosniff
-      - path: /*
-        name: Referrer-Policy
-        value: strict-origin-when-cross-origin
-    envVars:
-      - key: VITE_API_BASE_URL
-        sync: false
-      - key: VITE_SENTRY_ENV
-        value: production
-      - key: VITE_SENTRY_DSN
-        sync: false
-
-  # ════════════════════════════════════════════════════════════════════════════
-  # Cron — All daily jobs (01:00 UTC)
-  #   session purge → daily summary → model cost → monthly summary → anomaly → pricing sync
-  # ════════════════════════════════════════════════════════════════════════════
-  - type: cron
-    name: carmen-cron
-    runtime: go
-    plan: free
-    region: singapore
-    rootDir: cron_service
-    schedule: "0 1 * * *"
-    buildCommand: go build -o cron .
-    startCommand: ./cron
-    envVars:
-      - key: BACKEND_URL
-        sync: false
-      - key: MASTER_API_KEY
-        sync: false
