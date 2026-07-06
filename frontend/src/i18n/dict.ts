@@ -17,6 +17,7 @@ const en = {
   'nav.plansCredits': 'Plans & Credits',
   'nav.plans': 'Plans',
   'nav.history': 'History',
+  'nav.back': 'Back',
 
   // — Pricing hero + top-up section —
   'pricing.title': 'Automate your accounting entries',
@@ -679,6 +680,7 @@ const th: Record<TKey, string> = {
   'nav.plansCredits': 'แพ็กเกจและเครดิต',
   'nav.plans': 'แพ็กเกจ',
   'nav.history': 'ประวัติ',
+  'nav.back': 'กลับ',
 
   // — Pricing hero + top-up section —
   'pricing.title': 'เริ่มใช้ AI ลงบัญชีอัตโนมัติฟรี',
