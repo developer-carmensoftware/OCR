@@ -37,7 +37,6 @@ from app.routers.feedback import router as feedback_router
 from app.routers.files import router as files_router
 from app.routers.mapping import router as mapping_router
 from app.routers.ocr import router as ocr_router
-from app.routers.tool_registry import router as tools_router
 from app.sentry import capture
 
 logger = logging.getLogger(__name__)
@@ -164,7 +163,6 @@ def create_app(lifespan=None) -> FastAPI:
     app.include_router(ocr_router)
     app.include_router(mapping_router)
     app.include_router(carmen_router)
-    app.include_router(tools_router)
     app.include_router(feedback_router)
     app.include_router(ap_invoice_router)
     app.include_router(files_router)
