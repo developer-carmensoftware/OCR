@@ -679,16 +679,6 @@ textarea:focus-visible {
   color: var(--text);
 }
 
-/* Bank options */
-[data-theme='dark'] .bank-option {
-  background: transparent;
-  border-color: var(--border);
-}
-[data-theme='dark'] .bank-option:hover {
-  background: var(--primary-light);
-  border-color: var(--primary-mid);
-}
-
 /* Upload drop zone */
 [data-theme='dark'] .upload-drop {
   background: var(--card-bg);
