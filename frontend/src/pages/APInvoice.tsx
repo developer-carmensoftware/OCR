@@ -9,7 +9,6 @@ import {
   ExtractionSkeleton,
   SplitLayout,
   UsageIndicator,
-  PaymentButton,
   AppHeader,
 } from '../components/common'
 import PDFPageSelector from '../components/common/PDFPageSelector'
@@ -163,7 +162,6 @@ export default function APInvoice() {
           backPath="/apInvoice"
         >
           <UsageIndicator />
-          <PaymentButton />
           <LanguageToggle />
           <DarkModeToggle />
         </AppHeader>

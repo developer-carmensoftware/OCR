@@ -3,7 +3,7 @@ import { m } from 'framer-motion'
 import { Receipt, FileText, Landmark, CheckCircle2, Clock, Lock, ArrowRight } from 'lucide-react'
 import '../styles/pages/home.css'
 import logo from '../assets/logo.png'
-import { DarkModeToggle, UsageIndicator, PaymentButton } from '../components/common'
+import { DarkModeToggle, UsageIndicator } from '../components/common'
 import LanguageToggle from '../components/common/LanguageToggle'
 import { useT } from '../i18n/LanguageContext'
 import type { TKey } from '../i18n/dict'
@@ -104,7 +104,6 @@ export default function Home() {
     <div className="home-page">
       <div className="home-dark-toggle">
         <UsageIndicator />
-        <PaymentButton />
         <LanguageToggle />
         <DarkModeToggle />
       </div>
