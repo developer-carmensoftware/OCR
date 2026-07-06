@@ -76,10 +76,10 @@ export const ENTERPRISE = {
  * TODO(user): replace placeholders with the real LINE / phone / email before launch.
  */
 export const SALES_CONTACT = {
-  line: '@carmen-ai',
-  lineUrl: 'https://line.me/R/ti/p/@carmen-ai',
-  phone: '02-000-0000',
-  email: 'sales@carmen.cloud',
+  line: '@carmensoftware',
+  lineUrl: 'https://line.me/R/ti/p/@carmensoftware',
+  phone: '02-284-0429',
+  email: 'support@carmensoftware.com',
 }
 
 /** VAT note shown beside every price — amounts are inclusive of 7% VAT. */
