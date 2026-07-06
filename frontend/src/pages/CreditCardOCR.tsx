@@ -10,7 +10,6 @@ import {
   ExtractionSkeleton,
   SplitLayout,
   UsageIndicator,
-  PaymentButton,
   AppHeader,
 } from '../components/common'
 import PDFPageSelector from '../components/common/PDFPageSelector'
@@ -142,7 +141,6 @@ export default function CreditCardOCR() {
           backPath="/glJv"
         >
           <UsageIndicator />
-          <PaymentButton />
           <LanguageToggle />
           <DarkModeToggle />
         </AppHeader>
