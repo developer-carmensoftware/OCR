@@ -657,6 +657,16 @@ const en = {
   'common.history': 'History',
   'modal.ok': 'OK',
 
+  // — Notification bell —
+  'notif.bellAria': 'Notifications',
+  'notif.title': 'Notifications',
+  'notif.empty': 'No notifications yet',
+  'notif.markAllRead': 'Mark all read',
+  'notif.approved': 'Order approved — {credits} credits added',
+  'notif.rejected': 'Order rejected: {reason}',
+  'notif.onHold': 'Your order was placed on hold (payment window expired)',
+  'notif.missingSlip': 'Reminder: payment slip not yet uploaded',
+
   // — Home / module picker —
   'home.subtitle':
     'AI-powered accounting automation — extract invoices and credit card statements, then post directly to Carmen Cloud with no manual entry.',
@@ -1308,6 +1318,16 @@ const th: Record<TKey, string> = {
   'common.aiSuggested': 'AI แนะนำ',
   'common.history': 'ประวัติ',
   'modal.ok': 'ตกลง',
+
+  // — Notification bell —
+  'notif.bellAria': 'การแจ้งเตือน',
+  'notif.title': 'การแจ้งเตือน',
+  'notif.empty': 'ยังไม่มีการแจ้งเตือน',
+  'notif.markAllRead': 'ทำเครื่องหมายว่าอ่านทั้งหมด',
+  'notif.approved': 'อนุมัติคำสั่งซื้อแล้ว — เพิ่ม {credits} เครดิต',
+  'notif.rejected': 'คำสั่งซื้อถูกปฏิเสธ: {reason}',
+  'notif.onHold': 'คำสั่งซื้อของคุณถูกระงับ (หมดเวลาชำระเงิน)',
+  'notif.missingSlip': 'เตือนความจำ: ยังไม่ได้อัปโหลดหลักฐานการชำระเงิน',
 
   // — Home / module picker —
   'home.subtitle':

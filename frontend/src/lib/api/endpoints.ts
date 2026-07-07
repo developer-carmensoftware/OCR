@@ -65,6 +65,11 @@ export const API = {
     orderDocuments: (orderId: string) => `${V1}/credits/orders/${orderId}/documents`,
   },
 
+  notifications: {
+    list: `${V1}/notifications`,
+    markRead: `${V1}/notifications/mark-read`,
+  },
+
   feedback: {
     corrections: `${V1}/feedback/corrections`,
     bugReport: `${V1}/feedback/bug-report`,
