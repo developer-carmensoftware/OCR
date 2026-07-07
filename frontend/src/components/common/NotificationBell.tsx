@@ -87,7 +87,9 @@ export default function NotificationBell() {
 
   const handleItem = (n: Notification) => {
     setOpen(false)
-    window.location.hash = '#/pricing/orders'
+    // Deep-link to the specific order when we have it, so the row opens/scrolls
+    // into view; the orders route ignores the query suffix when matching.
+    window.location.hash = n.order_id ? `#/pricing/orders?id=${n.order_id}` : '#/pricing/orders'
     // Navigate first; marking read is best-effort and must not block it.
     if (!n.read_at) void markRead([n.id])
   }
