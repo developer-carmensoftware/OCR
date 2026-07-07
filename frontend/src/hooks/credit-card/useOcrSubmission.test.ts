@@ -1,24 +1,45 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useOcrSubmission } from '../hooks/credit-card/useOcrSubmission'
+import { useOcrSubmission } from './useOcrSubmission'
+import type { JvRow } from './useOcrSubmission'
+import type { AccountingConfigResponse } from '../../types/api'
 
 // ─── module mocks ─────────────────────────────────────────────────────────────
-vi.mock('../lib/api/carmen', () => ({ submitToCarmen: vi.fn() }))
-vi.mock('../lib/api/feedback', () => ({
+vi.mock('../../lib/api/carmen', () => ({ submitToCarmen: vi.fn() }))
+vi.mock('../../lib/api/feedback', () => ({
   logCorrections: vi.fn(),
   diffCorrections: vi.fn(),
 }))
-vi.mock('../lib/api/config', () => ({ getAccountingConfig: vi.fn() }))
-vi.mock('../lib/url', () => ({ getCarmenUrl: vi.fn(p => `https://carmen.test/#${p}`) }))
-vi.mock('../lib/toast', () => ({ showToast: vi.fn() }))
+vi.mock('../../lib/api/config', () => ({ getAccountingConfig: vi.fn() }))
+vi.mock('../../lib/url', () => ({
+  getCarmenUrl: vi.fn((p: string) => `https://carmen.test/#${p}`),
+}))
+vi.mock('../../lib/toast', () => ({ showToast: vi.fn() }))
 
-import { submitToCarmen } from '../lib/api/carmen'
-import { logCorrections, diffCorrections } from '../lib/api/feedback'
-import { getAccountingConfig } from '../lib/api/config'
-import { showToast } from '../lib/toast'
+import { submitToCarmen as realSubmitToCarmen } from '../../lib/api/carmen'
+import {
+  logCorrections as realLogCorrections,
+  diffCorrections as realDiffCorrections,
+} from '../../lib/api/feedback'
+import { getAccountingConfig as realGetAccountingConfig } from '../../lib/api/config'
+import { showToast as realShowToast } from '../../lib/toast'
+
+const submitToCarmen = vi.mocked(realSubmitToCarmen)
+const logCorrections = vi.mocked(realLogCorrections)
+const diffCorrections = vi.mocked(realDiffCorrections)
+const getAccountingConfig = vi.mocked(realGetAccountingConfig)
+const showToast = vi.mocked(realShowToast)
+
+// submitToCarmen's payload param is `unknown` (see lib/api/carmen.ts); this narrows
+// just the fields these tests read off its call args.
+interface CarmenJvPayload {
+  JvhDate: string
+  Prefix: string
+  JvhSource: string
+}
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
-function makeProps(overrides = {}) {
+function makeProps(overrides: Record<string, unknown> = {}) {
   return {
     showModal: vi.fn(),
     closeModal: vi.fn(),
@@ -35,24 +56,24 @@ function makeProps(overrides = {}) {
       BankCompanyName: 'BCO',
       BranchNo: '001',
     },
-    details: [],
+    details: [] as Array<Record<string, string | number>>,
     bank: 'KBANK',
     cardId: 'card-uuid-123',
     originalHeader: {},
-    originalDetails: [],
+    originalDetails: [] as Array<Record<string, unknown>>,
     setJvRows: vi.fn(),
     setCarmenJvId: vi.fn(),
     ...overrides,
   }
 }
 
-const defaultRows = [{ dept: 'ACC', acc: '1100', desc: 'Revenue', credit: 1000, debit: 0 }]
+const defaultRows: JvRow[] = [{ dept: 'ACC', acc: '1100', desc: 'Revenue', credit: 1000, debit: 0 }]
 
 const defaultConfig = {
   file_prefix: 'PRE',
   file_source: 'SRC',
   description: 'Monthly JV',
-}
+} as unknown as AccountingConfigResponse
 
 function mockHappyPath() {
   diffCorrections.mockReturnValue([])
@@ -76,7 +97,7 @@ describe('useOcrSubmission', () => {
 
   describe('F1: state management', () => {
     it('F1.1 – submitting becomes true while async work is in flight', async () => {
-      let resolveCarmen
+      let resolveCarmen: (value: unknown) => void
       submitToCarmen.mockReturnValue(
         new Promise(r => {
           resolveCarmen = r
@@ -98,7 +119,7 @@ describe('useOcrSubmission', () => {
       expect(result.current.submitting).toBe(true)
 
       await act(async () => {
-        resolveCarmen({ Code: 0 })
+        resolveCarmen!({ Code: 0 })
       })
       expect(result.current.submitting).toBe(false)
     })
@@ -133,7 +154,7 @@ describe('useOcrSubmission', () => {
   // ── F2: Date parsing ─────────────────────────────────────────────────────────
 
   describe('F2: Carmen payload date parsing', () => {
-    async function getJvhDate(docDate) {
+    async function getJvhDate(docDate: string) {
       diffCorrections.mockReturnValue([])
       getAccountingConfig.mockResolvedValue(defaultConfig)
       submitToCarmen.mockResolvedValue({ Code: 0 })
@@ -143,7 +164,7 @@ describe('useOcrSubmission', () => {
       await act(async () => {
         await result.current.handleSubmitFinal(defaultRows)
       })
-      return submitToCarmen.mock.calls[0][0].JvhDate
+      return (submitToCarmen.mock.calls[0][0] as CarmenJvPayload).JvhDate
     }
 
     it('F2.1 – CE date "15/05/2024" → ISO 2024-05-15', async () => {
@@ -215,7 +236,7 @@ describe('useOcrSubmission', () => {
         file_prefix: 'API_PRE',
         file_source: 'API_SRC',
         description: '',
-      })
+      } as unknown as AccountingConfigResponse)
       submitToCarmen.mockResolvedValue({ Code: 0 })
 
       const props = makeProps()
@@ -224,7 +245,7 @@ describe('useOcrSubmission', () => {
         await result.current.handleSubmitFinal(defaultRows)
       })
 
-      const payload = submitToCarmen.mock.calls[0][0]
+      const payload = submitToCarmen.mock.calls[0][0] as CarmenJvPayload
       expect(payload.Prefix).toBe('API_PRE')
       expect(payload.JvhSource).toBe('API_SRC')
     })
@@ -327,7 +348,7 @@ describe('useOcrSubmission', () => {
 
       const toastCall = showToast.mock.calls.find(c => c[1] === 'error')
       expect(toastCall).toBeDefined()
-      expect(toastCall[0]).toMatch(/connection refused/)
+      expect(toastCall?.[0]).toMatch(/connection refused/)
     })
   })
 })

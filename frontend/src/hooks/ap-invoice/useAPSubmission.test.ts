@@ -1,14 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useAPSubmission } from '../hooks/ap-invoice/useAPSubmission'
+import type React from 'react'
+import { useAPSubmission } from './useAPSubmission'
+import type { APLineItem } from './useAPExtraction'
+import type { APInvoiceHeader } from '../../constants/apInvoice'
+import type { Vendor } from './useAPVendor'
+import type { CarmenCodeItem } from '../../lib/api/carmen'
 
-vi.mock('../lib/api/carmen', () => ({
+vi.mock('../../lib/api/carmen', () => ({
   fetchAccountCodes: vi.fn(),
   fetchDepartments: vi.fn(),
   submitAPInvoiceToCarmen: vi.fn(),
 }))
-vi.mock('../lib/api/client', () => ({ apiFetch: vi.fn() }))
-vi.mock('../lib/toast', () => ({
+vi.mock('../../lib/api/client', () => ({ apiFetch: vi.fn() }))
+vi.mock('../../lib/toast', () => ({
   showToast: vi.fn(),
   toast: {
     success: vi.fn(),
@@ -20,20 +25,44 @@ vi.mock('../lib/toast', () => ({
     loading: vi.fn(() => 'toast-id'),
   },
 }))
-vi.mock('../lib/format', () => ({
-  parseNum: vi.fn(v => parseFloat(String(v).replace(/,/g, '')) || 0),
+vi.mock('../../lib/format', () => ({
+  parseNum: vi.fn((v: unknown) => parseFloat(String(v).replace(/,/g, '')) || 0),
 }))
-vi.mock('../lib/date', () => ({
+vi.mock('../../lib/date', () => ({
   parseDateToISO: vi.fn(() => '2024-05-15T00:00:00.000Z'),
-  normalizeYearToCE: vi.fn(y => {
-    const val = parseInt(y, 10)
+  normalizeYearToCE: vi.fn((y: string | number) => {
+    const val = parseInt(String(y), 10)
     return val > 2400 ? val - 543 : val
   }),
 }))
 
-import { fetchAccountCodes, fetchDepartments, submitAPInvoiceToCarmen } from '../lib/api/carmen'
-import { apiFetch } from '../lib/api/client'
-import { showToast, toast } from '../lib/toast'
+import {
+  fetchAccountCodes as realFetchAccountCodes,
+  fetchDepartments as realFetchDepartments,
+  submitAPInvoiceToCarmen as realSubmitAPInvoiceToCarmen,
+} from '../../lib/api/carmen'
+import { apiFetch as realApiFetch } from '../../lib/api/client'
+import { showToast, toast } from '../../lib/toast'
+
+const fetchAccountCodes = vi.mocked(realFetchAccountCodes)
+const fetchDepartments = vi.mocked(realFetchDepartments)
+const submitAPInvoiceToCarmen = vi.mocked(realSubmitAPInvoiceToCarmen)
+const apiFetch = vi.mocked(realApiFetch)
+
+// The Carmen JV payload is built as Record<string, unknown> (see apInvoicePayload.ts);
+// this narrows just the fields these tests read off submitAPInvoiceToCarmen's call args.
+interface CarmenDetailLine {
+  InvdTaxT1: string
+  TaxProfileCode1: string | null
+  InvdT1Dr: string
+  InvdT1DrDeptCode: string
+  InvdTaxR1: string
+  InvdPrice: string
+}
+interface CarmenPayload {
+  Detail: CarmenDetailLine[]
+  TaxPeriod: string
+}
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -45,9 +74,9 @@ const MOCK_VENDOR = {
   vat1DrDeptCode: 'ACC',
   crDeptCode: 'ACC',
   taxProfileCode1: null,
-}
+} as unknown as Vendor
 
-const MAPPED_ITEMS = [
+const MAPPED_ITEMS: APLineItem[] = [
   {
     description: 'Office supplies',
     qty: '1',
@@ -63,7 +92,7 @@ const MAPPED_ITEMS = [
   },
 ]
 
-const UNMAPPED_ITEMS = [{ ...MAPPED_ITEMS[0], deptCode: '', accountCode: '' }]
+const UNMAPPED_ITEMS: APLineItem[] = [{ ...MAPPED_ITEMS[0], deptCode: '', accountCode: '' }]
 
 const MOCK_HEADER = {
   vendorName: 'Test Corp',
@@ -72,13 +101,13 @@ const MOCK_HEADER = {
   taxType: 'Add',
   grandTotal: '107.00',
   invhDesc: 'Monthly office supplies',
-}
+} as unknown as APInvoiceHeader
 
-function makeProps(overrides = {}) {
-  const lineItems = overrides.lineItems ?? [...MAPPED_ITEMS]
+function makeProps(overrides: Record<string, unknown> = {}) {
+  const lineItems = (overrides.lineItems as APLineItem[] | undefined) ?? [...MAPPED_ITEMS]
   const setLineItems =
-    overrides.setLineItems ??
-    vi.fn(updater => {
+    (overrides.setLineItems as React.Dispatch<React.SetStateAction<APLineItem[]>> | undefined) ??
+    vi.fn((updater: React.SetStateAction<APLineItem[]>) => {
       if (typeof updater === 'function') updater(lineItems)
     })
   return {
@@ -222,7 +251,7 @@ describe('useAPSubmission', () => {
       apiFetch.mockResolvedValue({
         ok: true,
         json: async () => ({ suggestions: { 0: { deptCode: 'ACC', accountCode: '5100' } } }),
-      })
+      } as unknown as Response)
       const props = makeProps({ lineItems: UNMAPPED_ITEMS })
       const { result } = renderHook(() => useAPSubmission(props))
       await act(async () => {
@@ -238,7 +267,7 @@ describe('useAPSubmission', () => {
       apiFetch.mockResolvedValue({
         ok: true,
         json: async () => ({ suggestions: { 0: { deptCode: 'ACC', accountCode: '5100' } } }),
-      })
+      } as unknown as Response)
       const props = makeProps({ lineItems: UNMAPPED_ITEMS })
       const { result } = renderHook(() => useAPSubmission(props))
       await act(async () => {
@@ -251,7 +280,7 @@ describe('useAPSubmission', () => {
       apiFetch.mockResolvedValue({
         ok: true,
         json: async () => ({ suggestions: {} }),
-      })
+      } as unknown as Response)
       const props = makeProps({ lineItems: UNMAPPED_ITEMS })
       const { result } = renderHook(() => useAPSubmission(props))
       await act(async () => {
@@ -261,7 +290,7 @@ describe('useAPSubmission', () => {
     })
 
     it('shows error toast when suggest API call fails', async () => {
-      apiFetch.mockResolvedValue({ ok: false, status: 500 })
+      apiFetch.mockResolvedValue({ ok: false, status: 500 } as unknown as Response)
       const props = makeProps({ lineItems: UNMAPPED_ITEMS })
       const { result } = renderHook(() => useAPSubmission(props))
       await act(async () => {
@@ -274,7 +303,7 @@ describe('useAPSubmission', () => {
   // ── F3: suggestion accept/reject ─────────────────────────────────────────────
 
   describe('F3: suggestion accept / reject', () => {
-    const ITEMS_WITH_SUGGESTIONS = [
+    const ITEMS_WITH_SUGGESTIONS: APLineItem[] = [
       {
         deptCode: 'ACC',
         accountCode: '5100',
@@ -295,8 +324,8 @@ describe('useAPSubmission', () => {
       let items = [...ITEMS_WITH_SUGGESTIONS]
       const props = makeProps({
         lineItems: items,
-        setLineItems: vi.fn(updater => {
-          items = updater(items)
+        setLineItems: vi.fn((updater: React.SetStateAction<APLineItem[]>) => {
+          items = typeof updater === 'function' ? updater(items) : updater
         }),
       })
       const { result } = renderHook(() => useAPSubmission(props))
@@ -310,8 +339,8 @@ describe('useAPSubmission', () => {
       let items = [...ITEMS_WITH_SUGGESTIONS]
       const props = makeProps({
         lineItems: items,
-        setLineItems: vi.fn(updater => {
-          items = updater(items)
+        setLineItems: vi.fn((updater: React.SetStateAction<APLineItem[]>) => {
+          items = typeof updater === 'function' ? updater(items) : updater
         }),
       })
       const { result } = renderHook(() => useAPSubmission(props))
@@ -326,8 +355,8 @@ describe('useAPSubmission', () => {
       let items = [...ITEMS_WITH_SUGGESTIONS]
       const props = makeProps({
         lineItems: items,
-        setLineItems: vi.fn(updater => {
-          items = updater(items)
+        setLineItems: vi.fn((updater: React.SetStateAction<APLineItem[]>) => {
+          items = typeof updater === 'function' ? updater(items) : updater
         }),
       })
       const { result } = renderHook(() => useAPSubmission(props))
@@ -345,8 +374,12 @@ describe('useAPSubmission', () => {
 
   describe('F4: loadGLData', () => {
     it('populates masterAccounts and masterDepts from Carmen API', async () => {
-      fetchAccountCodes.mockResolvedValue([{ AccCode: '1100', Description: 'Cash' }])
-      fetchDepartments.mockResolvedValue([{ DeptCode: 'ACC', Description: 'Accounting' }])
+      fetchAccountCodes.mockResolvedValue([
+        { AccCode: '1100', Description: 'Cash' },
+      ] as unknown as CarmenCodeItem[])
+      fetchDepartments.mockResolvedValue([
+        { DeptCode: 'ACC', Description: 'Accounting' },
+      ] as unknown as CarmenCodeItem[])
       const props = makeProps()
       const { result } = renderHook(() => useAPSubmission(props))
       await act(async () => {
@@ -362,7 +395,7 @@ describe('useAPSubmission', () => {
       fetchAccountCodes.mockResolvedValue([
         { AccCode: 'AccCode', Description: 'Header' }, // should be filtered
         { AccCode: '1100', Description: 'Cash' },
-      ])
+      ] as unknown as CarmenCodeItem[])
       fetchDepartments.mockResolvedValue([])
       const props = makeProps()
       const { result } = renderHook(() => useAPSubmission(props))
@@ -439,7 +472,7 @@ describe('useAPSubmission', () => {
   // ── F6: Carmen payload — per-line InvdTaxT1 (P0 bug fix) ─────────────────────
 
   describe('F6: Carmen payload InvdTaxT1 per line', () => {
-    const makeItems = (...types) =>
+    const makeItems = (...types: string[]): APLineItem[] =>
       types.map((taxType, i) => ({
         description: `Item ${i}`,
         qty: '1',
@@ -465,7 +498,7 @@ describe('useAPSubmission', () => {
       await act(async () => {
         await result.current.handleGenerate()
       })
-      const payload = submitAPInvoiceToCarmen.mock.calls[0][0]
+      const payload = submitAPInvoiceToCarmen.mock.calls[0][0] as CarmenPayload
       expect(payload.Detail[0].InvdTaxT1).toBe('Include')
     })
 
@@ -476,7 +509,7 @@ describe('useAPSubmission', () => {
       await act(async () => {
         await result.current.handleGenerate()
       })
-      const payload = submitAPInvoiceToCarmen.mock.calls[0][0]
+      const payload = submitAPInvoiceToCarmen.mock.calls[0][0] as CarmenPayload
       expect(payload.Detail[0].InvdTaxT1).toBe('Add')
     })
 
@@ -487,7 +520,7 @@ describe('useAPSubmission', () => {
       await act(async () => {
         await result.current.handleGenerate()
       })
-      const payload = submitAPInvoiceToCarmen.mock.calls[0][0]
+      const payload = submitAPInvoiceToCarmen.mock.calls[0][0] as CarmenPayload
       expect(payload.Detail[0].InvdTaxT1).toBe('None')
     })
 
@@ -501,7 +534,7 @@ describe('useAPSubmission', () => {
       await act(async () => {
         await result.current.handleGenerate()
       })
-      const detail = submitAPInvoiceToCarmen.mock.calls[0][0].Detail
+      const detail = (submitAPInvoiceToCarmen.mock.calls[0][0] as CarmenPayload).Detail
       expect(detail[0].InvdTaxT1).toBe('Include')
       expect(detail[1].InvdTaxT1).toBe('Add')
       expect(detail[2].InvdTaxT1).toBe('None')
@@ -517,7 +550,7 @@ describe('useAPSubmission', () => {
       await act(async () => {
         await result.current.handleGenerate()
       })
-      const line = submitAPInvoiceToCarmen.mock.calls[0][0].Detail[0]
+      const line = (submitAPInvoiceToCarmen.mock.calls[0][0] as CarmenPayload).Detail[0]
       expect(line.TaxProfileCode1).toBeNull()
       expect(line.InvdT1Dr).toBe('')
       expect(line.InvdT1DrDeptCode).toBe('')
@@ -536,7 +569,7 @@ describe('useAPSubmission', () => {
       await act(async () => {
         await result.current.handleGenerate()
       })
-      const line = submitAPInvoiceToCarmen.mock.calls[0][0].Detail[0]
+      const line = (submitAPInvoiceToCarmen.mock.calls[0][0] as CarmenPayload).Detail[0]
       expect(line.TaxProfileCode1).toBe('VAT07')
       expect(line.InvdT1Dr).toBe('1100')
       expect(line.InvdT1DrDeptCode).toBe('ACC')
@@ -553,7 +586,7 @@ describe('useAPSubmission', () => {
     })
 
     it('second call to handleGenerate is a no-op while first is in-flight', async () => {
-      let resolveFirst
+      let resolveFirst: (value: unknown) => void
       submitAPInvoiceToCarmen.mockImplementation(
         () =>
           new Promise(r => {
@@ -573,7 +606,7 @@ describe('useAPSubmission', () => {
       // Only one POST should have been made
       expect(submitAPInvoiceToCarmen).toHaveBeenCalledTimes(1)
       // Resolve the first call to clean up
-      resolveFirst({ Code: 0, InternalMessage: 'JV-1' })
+      resolveFirst!({ Code: 0, InternalMessage: 'JV-1' })
     })
 
     it('resets isSubmitting=false after success', async () => {
@@ -602,7 +635,7 @@ describe('useAPSubmission', () => {
   describe('F8: netPrice clamped to 0 when discount exceeds gross', () => {
     it('sends InvdPrice=0.00 when discountAmt > qty*unitPrice', async () => {
       submitAPInvoiceToCarmen.mockResolvedValue({ Code: 0, InternalMessage: 'JV-1' })
-      const oversizedDiscount = [
+      const oversizedDiscount: APLineItem[] = [
         {
           ...MAPPED_ITEMS[0],
           unitPrice: '100.00',
@@ -617,7 +650,7 @@ describe('useAPSubmission', () => {
       await act(async () => {
         await result.current.handleGenerate()
       })
-      const payload = submitAPInvoiceToCarmen.mock.calls[0][0]
+      const payload = submitAPInvoiceToCarmen.mock.calls[0][0] as CarmenPayload
       const price = parseFloat(payload.Detail[0].InvdPrice)
       expect(price).toBeGreaterThanOrEqual(0)
     })
@@ -633,7 +666,7 @@ describe('useAPSubmission', () => {
       await act(async () => {
         await result.current.handleGenerate()
       })
-      const payload = submitAPInvoiceToCarmen.mock.calls[0][0]
+      const payload = submitAPInvoiceToCarmen.mock.calls[0][0] as CarmenPayload
       expect(payload.TaxPeriod).toBe('05/2024')
     })
   })

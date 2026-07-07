@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useFileUpload } from '../hooks/credit-card/useFileUpload'
+import type React from 'react'
+import { useFileUpload } from './useFileUpload'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -12,8 +13,10 @@ function makeImageFile(name = 'receipt.jpg') {
 function makePDFFile(name = 'invoice.pdf') {
   return new File(['%PDF-1.4'], name, { type: 'application/pdf' })
 }
-function makeChangeEvent(files) {
-  return { target: { files: files.length ? files : null } }
+function makeChangeEvent(files: File[]) {
+  return {
+    target: { files: files.length ? files : null },
+  } as unknown as React.ChangeEvent<HTMLInputElement>
 }
 
 // ─── tests ────────────────────────────────────────────────────────────────────
@@ -36,7 +39,7 @@ describe('useFileUpload', () => {
     it('does nothing when no files are selected', () => {
       const { result } = renderHook(() => useFileUpload())
       act(() => {
-        result.current.handleFileChange({ target: { files: null } })
+        result.current.handleFileChange(makeChangeEvent([]))
       })
       expect(result.current.files).toHaveLength(0)
       expect(URL.createObjectURL).not.toHaveBeenCalled()
@@ -148,11 +151,11 @@ describe('useFileUpload', () => {
 
     it('clears fileInputRef.value when ref is attached', () => {
       const { result } = renderHook(() => useFileUpload())
-      result.current.fileInputRef.current = { value: 'C:\\fakepath\\file.jpg' }
+      result.current.fileInputRef.current = { value: 'C:\\fakepath\\file.jpg' } as HTMLInputElement
       act(() => {
         result.current.clearFiles()
       })
-      expect(result.current.fileInputRef.current.value).toBe('')
+      expect(result.current.fileInputRef.current?.value).toBe('')
     })
 
     it('does not throw when called with no files selected', () => {

@@ -1,15 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useAPExtraction } from '../hooks/ap-invoice/useAPExtraction'
+import { useAPExtraction } from './useAPExtraction'
 
-vi.mock('../lib/api/client', () => ({
+vi.mock('../../lib/api/client', () => ({
   apiFetch: vi.fn(),
   // Real fetchTimeout returns { signal, clear }; the hook destructures both on
   // every runOCR call, so the mock must too or it throws before apiFetch runs.
   fetchTimeout: vi.fn(() => ({ signal: new AbortController().signal, clear: vi.fn() })),
 }))
-vi.mock('../lib/api/config', () => ({ getAPVendorMapping: vi.fn() }))
-vi.mock('../lib/toast', () => ({
+vi.mock('../../lib/api/config', () => ({ getAPVendorMapping: vi.fn() }))
+vi.mock('../../lib/toast', () => ({
   showToast: vi.fn(),
   toast: {
     success: vi.fn(),
@@ -21,11 +21,11 @@ vi.mock('../lib/toast', () => ({
     loading: vi.fn(() => 'toast-id'),
   },
 }))
-vi.mock('../lib/format', () => ({
-  fmt: vi.fn(v => (v !== undefined && v !== '' ? String(v) : '')),
-  parseNum: vi.fn(v => parseFloat(String(v).replace(/,/g, '')) || 0),
+vi.mock('../../lib/format', () => ({
+  fmt: vi.fn((v: unknown) => (v !== undefined && v !== '' ? String(v) : '')),
+  parseNum: vi.fn((v: unknown) => parseFloat(String(v).replace(/,/g, '')) || 0),
 }))
-vi.mock('../constants/apInvoice', () => ({
+vi.mock('../../constants/apInvoice', () => ({
   EMPTY_HEADER: {
     vendorName: '',
     vendorTaxId: '',
@@ -42,9 +42,12 @@ vi.mock('../constants/apInvoice', () => ({
   DEFAULT_MAPPINGS: {},
 }))
 
-import { apiFetch } from '../lib/api/client'
-import { getAPVendorMapping } from '../lib/api/config'
-import { showToast, toast } from '../lib/toast'
+import { apiFetch as realApiFetch } from '../../lib/api/client'
+import { getAPVendorMapping as realGetAPVendorMapping } from '../../lib/api/config'
+import { toast } from '../../lib/toast'
+
+const apiFetch = vi.mocked(realApiFetch)
+const getAPVendorMapping = vi.mocked(realGetAPVendorMapping)
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -53,7 +56,7 @@ import { showToast, toast } from '../lib/toast'
 // sync with dict.ts.
 const MOCK_T = { errProcess: 'OCR processing error. Please try again.' }
 
-function makeProps(overrides = {}) {
+function makeProps(overrides: Record<string, unknown> = {}) {
   return {
     t: MOCK_T,
     setStep: vi.fn(),
@@ -93,8 +96,8 @@ const MOCK_API_RESPONSE = {
   is_duplicate: false,
 }
 
-function mockSuccess(data = MOCK_API_RESPONSE) {
-  apiFetch.mockResolvedValue({ ok: true, json: async () => data })
+function mockSuccess(data: Record<string, unknown> = MOCK_API_RESPONSE) {
+  apiFetch.mockResolvedValue({ ok: true, json: async () => data } as unknown as Response)
   getAPVendorMapping.mockRejectedValue(new Error('no mapping'))
 }
 
@@ -228,7 +231,7 @@ describe('useAPExtraction', () => {
       await act(async () => {
         await result.current.runOCR(MOCK_FILE)
       })
-      const modalCall = props.setModal.mock.calls[0][0]
+      const modalCall = (props.setModal.mock.calls[0] as [{ onConfirm: () => void }])[0]
       act(() => {
         modalCall.onConfirm()
       })
@@ -240,7 +243,7 @@ describe('useAPExtraction', () => {
 
   describe('F3: billing limits', () => {
     it('shows out-of-documents modal on 402 response', async () => {
-      apiFetch.mockResolvedValue({ ok: false, status: 402 })
+      apiFetch.mockResolvedValue({ ok: false, status: 402 } as unknown as Response)
       const props = makeProps()
       const { result } = renderHook(() => useAPExtraction(props))
       await act(async () => {
@@ -255,7 +258,7 @@ describe('useAPExtraction', () => {
     })
 
     it('shows rate-limit modal on 429 response', async () => {
-      apiFetch.mockResolvedValue({ ok: false, status: 429 })
+      apiFetch.mockResolvedValue({ ok: false, status: 429 } as unknown as Response)
       const props = makeProps()
       const { result } = renderHook(() => useAPExtraction(props))
       await act(async () => {
@@ -275,7 +278,7 @@ describe('useAPExtraction', () => {
   describe('F4: retry logic', () => {
     it('retries up to 3 times before setting error state', async () => {
       vi.useFakeTimers()
-      apiFetch.mockResolvedValue({ ok: false, status: 500 })
+      apiFetch.mockResolvedValue({ ok: false, status: 500 } as unknown as Response)
       const props = makeProps()
       const { result } = renderHook(() => useAPExtraction(props))
       const runPromise = act(async () => {
@@ -292,8 +295,11 @@ describe('useAPExtraction', () => {
     it('succeeds on second attempt after one failure', async () => {
       vi.useFakeTimers()
       apiFetch
-        .mockResolvedValueOnce({ ok: false, status: 500 })
-        .mockResolvedValueOnce({ ok: true, json: async () => MOCK_API_RESPONSE })
+        .mockResolvedValueOnce({ ok: false, status: 500 } as unknown as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => MOCK_API_RESPONSE,
+        } as unknown as Response)
       getAPVendorMapping.mockRejectedValue(new Error('no mapping'))
       const props = makeProps()
       const { result } = renderHook(() => useAPExtraction(props))
@@ -310,7 +316,7 @@ describe('useAPExtraction', () => {
 
     it('resets loading=false even after all retries fail', async () => {
       vi.useFakeTimers()
-      apiFetch.mockResolvedValue({ ok: false, status: 500 })
+      apiFetch.mockResolvedValue({ ok: false, status: 500 } as unknown as Response)
       const props = makeProps()
       const { result } = renderHook(() => useAPExtraction(props))
       const runPromise = act(async () => {
@@ -365,7 +371,7 @@ describe('useAPExtraction', () => {
   // ── F6: state manipulation ───────────────────────────────────────────────────
 
   describe('F6: updateHeader / updateItem', () => {
-    async function withExtractedData(props) {
+    async function withExtractedData(props: ReturnType<typeof makeProps>) {
       mockSuccess()
       const hook = renderHook(() => useAPExtraction(props))
       await act(async () => {

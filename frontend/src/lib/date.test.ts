@@ -5,7 +5,7 @@ import {
   parseDDMMYYYYToDate,
   formatDateToDDMMYYYY,
   normalizeDateStringToCE,
-} from '../lib/date'
+} from './date'
 
 // ── normalizeYearToCE ──────────────────────────────────────────────────────────
 
@@ -108,20 +108,20 @@ describe('parseDateToISO', () => {
 describe('parseDDMMYYYYToDate', () => {
   it('parses a valid CE date', () => {
     const d = parseDDMMYYYYToDate('15/05/2024')
-    expect(d.getFullYear()).toBe(2024)
-    expect(d.getMonth()).toBe(4) // 0-based May
-    expect(d.getDate()).toBe(15)
+    expect(d?.getFullYear()).toBe(2024)
+    expect(d?.getMonth()).toBe(4) // 0-based May
+    expect(d?.getDate()).toBe(15)
   })
 
   it('normalizes a Buddhist-era year to CE', () => {
     const d = parseDDMMYYYYToDate('15/05/2567')
-    expect(d.getFullYear()).toBe(2024)
+    expect(d?.getFullYear()).toBe(2024)
   })
 
   it('handles single-digit day/month', () => {
     const d = parseDDMMYYYYToDate('1/2/2025')
-    expect(d.getMonth()).toBe(1)
-    expect(d.getDate()).toBe(1)
+    expect(d?.getMonth()).toBe(1)
+    expect(d?.getDate()).toBe(1)
   })
 
   it('returns null for empty / malformed / wrong part count', () => {
@@ -144,7 +144,9 @@ describe('formatDateToDDMMYYYY', () => {
   })
 
   it('round-trips with parseDDMMYYYYToDate', () => {
-    expect(formatDateToDDMMYYYY(parseDDMMYYYYToDate('15/05/2024'))).toBe('15/05/2024')
+    const d = parseDDMMYYYYToDate('15/05/2024')
+    expect(d).not.toBeNull()
+    expect(formatDateToDDMMYYYY(d as Date)).toBe('15/05/2024')
   })
 })
 

@@ -1,14 +1,15 @@
 import '@testing-library/jest-dom'
+import { vi } from 'vitest'
 
 // Stub sessionStorage / localStorage for all tests
 const makeStorage = () => {
-  let store = {}
+  let store: Record<string, string> = {}
   return {
-    getItem: k => store[k] ?? null,
-    setItem: (k, v) => {
+    getItem: (k: string) => store[k] ?? null,
+    setItem: (k: string, v: string) => {
       store[k] = String(v)
     },
-    removeItem: k => {
+    removeItem: (k: string) => {
       delete store[k]
     },
     clear: () => {
