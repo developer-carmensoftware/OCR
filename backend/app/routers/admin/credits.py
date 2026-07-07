@@ -180,7 +180,8 @@ async def approve_order(
     order = await credit_order_service.get_order_for_update(db, order_id)
     _assert_scope(admin, str(order.tenant_id))
 
-    fulfilled = await credit_order_service.approve(db, order, admin.email)
+    fulfilled = await credit_order_service.approve(db, order)
+    order.approved_by = admin.email  # type: ignore[assignment]
 
     await db.commit()
     await db.refresh(order)

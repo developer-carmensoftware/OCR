@@ -162,13 +162,16 @@ async def get_slip_url(order: CreditOrder, *, ttl_seconds: int = 300) -> dict:
     return {"signed_url": url, "expires_in": ttl_seconds}
 
 
-async def approve(db: AsyncSession, order: CreditOrder, admin_email: str) -> str:
+async def approve(db: AsyncSession, order: CreditOrder) -> str:
     """Approve a slip: grant credits, mark order paid. Returns a fulfillment summary
     string for the caller to log.
 
     No internal tax invoice is issued here — Carmen ERP is the system of record for
     the fiscal tax invoice. The proforma (issued at order-creation) is the single
     source of truth for this order's figures; post_ar reads amounts from it directly.
+
+    Does not stamp `approved_by` — the caller sets that directly so this function's
+    return value (logged by the caller) never shares a scope with the admin's identity.
     """
     ensure_decidable(order)
 
@@ -200,7 +203,6 @@ async def approve(db: AsyncSession, order: CreditOrder, admin_email: str) -> str
 
     order.status = CreditOrderStatus.PAID  # type: ignore[assignment]
     order.paid_at = datetime.now(UTC)  # type: ignore[assignment]
-    order.approved_by = admin_email  # type: ignore[assignment]
     order.approved_at = datetime.now(UTC)  # type: ignore[assignment]
     return fulfilled
 
