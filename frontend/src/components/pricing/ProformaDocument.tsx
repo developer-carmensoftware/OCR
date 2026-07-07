@@ -1,5 +1,6 @@
 import { Printer } from 'lucide-react'
-import { formatThb, formatDate, bahtToEnglishWords } from '../../lib/money'
+import { formatThb, bahtToEnglishWords } from '../../lib/money'
+import { formatDate } from '../../lib/date'
 import { useT } from '../../i18n/LanguageContext'
 import logo from '../../assets/logo_carmen.png'
 import type { BillingDocument, PaymentInfo } from '../../lib/api/credits'

@@ -4,7 +4,7 @@ import { getUsage, type UsageData } from '../../lib/api/auth'
 import { getStoredToken } from '../../lib/api/client'
 import { useT } from '../../i18n/LanguageContext'
 import { catalogName } from '../../constants/billing'
-import { formatDate } from '../../lib/money'
+import { formatDate } from '../../lib/date'
 
 /** Compact "where you stand" strip: free quota remaining + top-up credit balance. */
 export default function UsageSummaryStrip() {

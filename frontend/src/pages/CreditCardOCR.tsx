@@ -2,29 +2,25 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { m, AnimatePresence } from 'framer-motion'
 import { useOcrWizard } from '../hooks/credit-card'
-import {
-  StepWizard,
-  FormActions,
-  CustomModal,
-  DarkModeToggle,
-  ExtractionSkeleton,
-  SplitLayout,
-  UsageIndicator,
-  AppHeader,
-} from '../components/common'
+import StepWizard from '../components/common/StepWizard'
+import FormActions from '../components/common/FormActions'
+import CustomModal from '../components/common/CustomModal'
+import DarkModeToggle from '../components/common/DarkModeToggle'
+import ExtractionSkeleton from '../components/common/ExtractionSkeleton'
+import SplitLayout from '../components/common/SplitLayout'
+import UsageIndicator from '../components/common/UsageIndicator'
+import AppHeader from '../components/common/AppHeader'
 import PDFPageSelector from '../components/common/PDFPageSelector'
 import LanguageToggle from '../components/common/LanguageToggle'
 import { useT } from '../i18n/LanguageContext'
 import { appKey } from '../lib/storage'
-import {
-  UploadSection,
-  BankDetectionBanner,
-  ExtractionWarningBanner,
-  HeaderCard,
-  DetailTable,
-  AccountingReview,
-  InputTaxReconciliation,
-} from '../components/credit-card'
+import UploadSection from '../components/credit-card/UploadSection'
+import BankDetectionBanner from '../components/credit-card/BankDetectionBanner'
+import ExtractionWarningBanner from '../components/credit-card/ExtractionWarningBanner'
+import HeaderCard from '../components/credit-card/HeaderCard'
+import DetailTable from '../components/credit-card/DetailTable'
+import AccountingReview from '../components/credit-card/AccountingReview'
+import InputTaxReconciliation from '../components/credit-card/InputTaxReconciliation'
 import { BANK_THAI_NAMES } from '../constants'
 import type { BankCode } from '../types/api'
 

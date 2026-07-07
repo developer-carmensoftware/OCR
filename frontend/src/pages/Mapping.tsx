@@ -6,7 +6,7 @@ import { useT } from '../i18n/LanguageContext'
 import { useMapping } from '../hooks/mapping'
 import TopLevelConfigSection from '../components/credit-card/TopLevelConfigSection'
 import CompanyInfoSection from '../components/credit-card/CompanyInfoSection'
-import AccountMappingTable from '../components/credit-card/AccountMappingTable'
+import MainMappingTable from '../components/credit-card/MainMappingTable'
 import PaymentTypeModal from '../components/credit-card/PaymentTypeModal'
 import type { ModalConfig } from '../hooks/useModal'
 
@@ -139,7 +139,7 @@ export default function Mapping() {
           missingCompanyFields={mappingCtrl.missingCompanyFields}
         />
 
-        <AccountMappingTable
+        <MainMappingTable
           masterAccounts={mappingCtrl.masterAccounts}
           masterDepartments={mappingCtrl.masterDepartments}
           loadingOpts={mappingCtrl.loadingOpts}
@@ -154,10 +154,8 @@ export default function Mapping() {
           setAcceptAllModal={mappingCtrl.setAcceptAllModal}
           loadInitialData={mappingCtrl.loadInitialData}
           activeScan={mappingCtrl.activeScan}
-          amountMappedCount={amountMappedCount}
           requiredMissingCount={requiredMissingCount}
           openAmountModal={mappingCtrl.openAmountModal}
-          allPaymentTypes={mappingCtrl.allPaymentTypes}
         />
 
         <div style={{ marginTop: '2.5rem' }}>

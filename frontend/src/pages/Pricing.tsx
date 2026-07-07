@@ -4,14 +4,11 @@ import { X, MessageCircle, Phone, Mail } from 'lucide-react'
 import AppHeader from '../components/common/AppHeader'
 import LanguageToggle from '../components/common/LanguageToggle'
 import { useT } from '../i18n/LanguageContext'
-import {
-  PlanCard,
-  EnterpriseCard,
-  PackList,
-  FeatureFlows,
-  CheckoutFlow,
-  PendingOrderBanner,
-} from '../components/pricing'
+import { PlanCard, EnterpriseCard } from '../components/pricing/PlanCard'
+import PackList from '../components/pricing/PackList'
+import FeatureFlows from '../components/pricing/FeatureFlows'
+import CheckoutFlow from '../components/pricing/CheckoutFlow'
+import PendingOrderBanner from '../components/pricing/PendingOrderBanner'
 import {
   usePricingCatalog,
   useOrderHistory,

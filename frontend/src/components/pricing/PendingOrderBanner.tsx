@@ -14,7 +14,8 @@ import {
   type PaymentInfo,
 } from '../../lib/api/credits'
 import { catalogName } from '../../constants/billing'
-import { formatThb, formatDate } from '../../lib/money'
+import { formatThb } from '../../lib/money'
+import { formatDate } from '../../lib/date'
 
 // ── OrderRow state ────────────────────────────────────────────────────────────
 

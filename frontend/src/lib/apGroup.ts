@@ -1,4 +1,4 @@
-import { parseNum, fmt, fmtQty } from './format'
+import { parseNum, fmt } from './format'
 import type { APLineItem } from '../types/ap'
 
 // The grouping identity of a line: None lines collapse to 'None'; taxable lines are keyed by their
@@ -34,7 +34,7 @@ export function buildGroupedRow(items: APLineItem[], desc: string): APLineItem {
   return {
     description: desc,
     category: '',
-    qty: fmtQty(1),
+    qty: fmt(1),
     unitPrice: fmt(unitPrice),
     discountPct: '0.00',
     discountAmt: fmt(sumDiscount),

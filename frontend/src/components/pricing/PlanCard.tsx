@@ -6,7 +6,7 @@ import {
   Buildings,
   type Icon as PhosphorIcon,
 } from '@phosphor-icons/react'
-import { formatThb, formatRate } from '../../lib/money'
+import { formatThb } from '../../lib/money'
 import { ENTERPRISE, perDoc, type PackPresentation } from '../../constants/billing'
 import { useT } from '../../i18n/LanguageContext'
 import type { BillingPeriod, CreditPack } from '../../lib/api/credits'
@@ -97,7 +97,7 @@ export function PlanCard({
         </p>
       ) : (
         <p className="plan-rate">
-          ≈ <span className="text-mono">฿{formatRate(rate)}</span> {t('plan.perDoc')}
+          ≈ <span className="text-mono">฿{formatThb(rate, true)}</span> {t('plan.perDoc')}
         </p>
       )}
 
