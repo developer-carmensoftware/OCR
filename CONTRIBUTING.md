@@ -75,26 +75,20 @@ docs: update CONTRIBUTING
 
 - [ ] `pre-commit run --all-files` passes
 - [ ] `pytest tests/` passes locally
-- [ ] New code has tests (especially for business logic in `services/` and `tools/`)
+- [ ] New code has tests (especially for business logic in `services/`)
 - [ ] No secrets committed (`.env` stays local)
 - [ ] `mypy` warnings addressed for any new code in strict modules
+- [ ] `changelog/<today>.md` updated — **CI-enforced**: the `changelog-check` job fails any PR that touches no `changelog/` file (see [changelog/README.md](changelog/README.md))
 
 ## mypy strict modules
 
-These modules are type-checked strictly (see `backend/pyproject.toml`):
-- `app/tools/`
-- `app/services/ap_invoice_postprocess_service.py`
-- `app/auth/session.py`
-- `app/exceptions.py`
-- `app/constants.py`
+These modules are type-checked strictly — authoritative list in `[[tool.mypy.overrides]]` in [backend/pyproject.toml](backend/pyproject.toml):
+`app/tools/`, `app/auth/session.py`, `app/exceptions.py`, `app/constants.py`, `app/context.py`, `app/config.py`, `app/llm/client.py`, `app/middleware/rate_limit.py`, `app/middleware/performance.py`, and services `ap_invoice_postprocess_service` / `usage_service` / `audit_service` / `llm_service`.
 
 When adding new modules, add them to `[[tool.mypy.overrides]]` in `pyproject.toml`.
 
 ## Deploy
 
-```powershell
-# Builds frontend + backend, generates IIS web.config, installs venv
-.\deploy.ps1 -DeployPath "C:\inetpub\carmen_ai"
-```
+Push to `main` / `dev` → [.github/workflows/deploy.yml](.github/workflows/deploy.yml) applies DB migrations first (`supabase db push`), then fires the Render deploy hook. Render `autoDeploy` is intentionally off so code never ships ahead of its migration. Frontend deploys via Vercel.
 
-See [backend/scripts/](backend/scripts/) for DB backup scripts.
+For schema changes locally: `supabase migration new <name>` → write DDL → `supabase db push`.

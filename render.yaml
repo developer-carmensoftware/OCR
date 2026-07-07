@@ -8,7 +8,7 @@
 #   1. Push this repo to GitHub.
 #   2. In Render dashboard → New → Blueprint → connect this repo.
 #   3. Render auto-detects render.yaml and prompts for secret env vars.
-#   4. Set DATABASE_URL (Neon), OPENROUTER_API_KEY, SESSION_ENCRYPTION_KEY,
+#   4. Set DATABASE_URL (Supabase pooler), OPENROUTER_API_KEY, SESSION_ENCRYPTION_KEY,
 #      MASTER_API_KEY, ALLOWED_ORIGINS, ALLOWED_CARMEN_HOSTS.
 
 services:
@@ -32,7 +32,7 @@ services:
       - key: PYTHON_VERSION
         value: "3.12"
 
-      # ── Database (Neon Postgres) ────────────────────────────────────────────
+      # ── Database (Supabase Postgres via Supavisor pooler) ──────────────────
       - key: DATABASE_URL
         sync: false
 
