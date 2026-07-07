@@ -191,7 +191,7 @@ async def approve_order(
         order.tenant_id,
         order.credits,
         fulfilled,
-        admin.email,
+        admin.admin_id,
     )
     return CreditOrderResponse.model_validate(order)
 
@@ -217,7 +217,7 @@ async def reject_order(
         order_id,
         order.tenant_id,
         body.reason,
-        admin.email,
+        admin.admin_id,
     )
     return CreditOrderResponse.model_validate(order)
 
@@ -237,7 +237,7 @@ async def hold_order(
 
     await db.commit()
     await db.refresh(order)
-    logger.info("order note updated: id=%s by=%s", order_id, admin.email)
+    logger.info("order note updated: id=%s by=%s", order_id, admin.admin_id)
     return CreditOrderResponse.model_validate(order)
 
 
@@ -258,7 +258,7 @@ async def hold_batch(
         db, body.order_ids, is_global=admin.is_global, tenant_scope=admin.tenant_scope
     )
     await db.commit()
-    logger.info("orders parked to on_hold: ids=%s by=%s", body.order_ids, admin.email)
+    logger.info("orders parked to on_hold: ids=%s by=%s", body.order_ids, admin.admin_id)
     return HoldBatchResponse(results=results)
 
 
@@ -276,7 +276,7 @@ async def cancel_order(
 
     await db.commit()
     await db.refresh(order)
-    logger.info("order cancelled: id=%s tenant=%s by=%s", order_id, order.tenant_id, admin.email)
+    logger.info("order cancelled: id=%s tenant=%s by=%s", order_id, order.tenant_id, admin.admin_id)
     return CreditOrderResponse.model_validate(order)
 
 
@@ -326,7 +326,7 @@ async def update_ar_profile(
         "AR profile updated: id=%s ar_code=%s by=%s",
         profile_id,
         profile.carmen_ar_code,
-        admin.email,
+        admin.admin_id,
     )
     return ArCustomerProfileResponse.model_validate(profile)
 
