@@ -46,7 +46,7 @@ useOcrWizard hook
       routers/ocr.py           check_quota("credit_card_ocr") → vision LLM → ExtractedCreditCardData
       llm/prompts/__init__.py  _REGISTRY dict maps bank_code → prompt file (code-based, pending CMS)
   → POST /api/v1/credit-card/mapping/suggest
-      tools/map_gl.py          LLM suggests GL dept/acc for fixed fields + payment types
+      services/gl_suggestion_service.py  LLM suggests GL dept/acc for fixed fields + payment types
   → POST /api/v1/carmen/gljv  submit to Carmen ERP
       routers/carmen.py        post-submit bookkeeping marks CreditCard.submitted_at
                                Duplicate check: (tenant_id, bank_code, doc_no, submitted_at IS NOT NULL)
