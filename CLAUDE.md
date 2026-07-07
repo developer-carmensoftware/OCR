@@ -61,7 +61,7 @@ useAPInvoice hook
       ap_invoice_postprocess   tax-type detection, footer discount distribution, per-line totals
       llm_usage_logger.log_llm_usage()  silent-failure token logging → llm_usage_logs
   → Step 2: column→field mapping  persisted to localStorage per vendor name
-  → POST /api/v1/ap-invoice/suggest-gl
+  → POST /api/v1/ap-invoice/suggest
       ap_invoice_service       pre-filters expense accounts → LLM → deptCode/accountCode
   → POST /api/v1/carmen/invoice  submit to Carmen ERP
 ```
@@ -173,8 +173,9 @@ INTERNAL_JOB_TOKEN=<hex-64-chars>   # must match vault.secrets where name='inter
 | Bank CMS | `banks`, `prompt_templates` |
 | Config | `system_configs`, `tenant_config_overrides`, `feature_flags`, `bu_accounting_configs`, `bu_accounting_mapping_entries`, `ap_vendor_column_mappings`, `ap_vendor_field_mapping_entries` |
 | Quotas | `quotas`, `quota_usage` |
+| Billing | `credit_packs`, `tenant_credits`, `credit_ledger`, `credit_orders`, `billing_documents`, `tenant_subscriptions`, `ar_customer_profiles`, `document_sequences` |
 | Reference | `model_pricing` |
-| Business data | `ocr_sessions`, `ocr_tasks`, `credit_cards`, `ap_invoices`, `correction_feedback` |
+| Business data | `ocr_sessions`, `ocr_tasks`, `credit_cards`, `ap_invoices`, `correction_feedback`, `bug_reports` |
 | Observability | `llm_usage_logs`, `audit_logs`, `performance_logs`, `outbound_call_logs` |
 | Analytics | `daily_usage_summary`, `daily_model_cost`, `monthly_usage_summary`, `anomaly_alerts`, `job_runs` |
 | Migration tracker | `_supabase_migrations` (Supabase CLI tracking) |
@@ -183,7 +184,7 @@ INTERNAL_JOB_TOKEN=<hex-64-chars>   # must match vault.secrets where name='inter
 
 **Supported banks (pre-seeded):** `BBL` | `KBANK` | `SCB` | `BAY` | `KTC` | `GHL` | `PAYPAL` | `SIAMPAY` — BAY is a bank-statement layout; KTC/GHL/PAYPAL/SIAMPAY are processor *fee invoices*: one details row **per printed fee line** (`commis_amt`=that line's fee before VAT); the footer's printed VAT is spread proportionally across the lines (`tax_amt`, `pay_amt`=fee+VAT share, `total`=0). The prompt's final TOTAL summary row is consumed by `credit_card_service._normalize_fee_invoice` and never emitted as a detail row. If the footer can't be read, a lone line figure is treated as the fee before VAT at an assumed 7% rate and `ExtractedCreditCardData.warnings` carries a user-facing caveat (shown as an amber banner in the wizard).
 
-**Supported files:** JPG, PNG, WebP, PDF — max 20 MB (read into memory only, never persisted to disk)
+**Supported files:** JPG, PNG, WebP, BMP, TIFF, HEIC/HEIF, PDF — max 20 MB (read into memory only, never persisted to disk; HEIC → JPEG via pillow-heif in `utils/image_processing.py`)
 
 **`llm_usage_logs.module_id` values:** `credit_card_ocr` | `ap_invoice`
 

@@ -5,12 +5,12 @@
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 662 nodes · 1100 edges · 82 communities (75 shown, 7 thin omitted)
+- 662 nodes · 1100 edges · 79 communities (71 shown, 8 thin omitted)
 - Extraction: 87% EXTRACTED · 13% INFERRED · 0% AMBIGUOUS · INFERRED: 140 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `be06c493`
+- Built from commit: `86cff5b4`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -25,7 +25,7 @@
 - [[_COMMUNITY_Community 7|Community 7]]
 - [[_COMMUNITY_Community 8|Community 8]]
 - [[_COMMUNITY_Community 9|Community 9]]
-- [[_COMMUNITY_Community 11|Community 11]]
+- [[_COMMUNITY_Community 10|Community 10]]
 - [[_COMMUNITY_Community 12|Community 12]]
 - [[_COMMUNITY_Community 13|Community 13]]
 - [[_COMMUNITY_Community 14|Community 14]]
@@ -34,17 +34,16 @@
 - [[_COMMUNITY_Community 17|Community 17]]
 - [[_COMMUNITY_Community 18|Community 18]]
 - [[_COMMUNITY_Community 19|Community 19]]
-- [[_COMMUNITY_Community 20|Community 20]]
 - [[_COMMUNITY_Community 21|Community 21]]
 - [[_COMMUNITY_Community 23|Community 23]]
+- [[_COMMUNITY_Community 24|Community 24]]
 - [[_COMMUNITY_Community 25|Community 25]]
 - [[_COMMUNITY_Community 26|Community 26]]
-- [[_COMMUNITY_Community 27|Community 27]]
-- [[_COMMUNITY_Community 28|Community 28]]
+- [[_COMMUNITY_Community 29|Community 29]]
 - [[_COMMUNITY_Community 30|Community 30]]
-- [[_COMMUNITY_Community 33|Community 33]]
-- [[_COMMUNITY_Community 34|Community 34]]
-- [[_COMMUNITY_Community 41|Community 41]]
+- [[_COMMUNITY_Community 35|Community 35]]
+- [[_COMMUNITY_Community 36|Community 36]]
+- [[_COMMUNITY_Community 38|Community 38]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `useT()` - 72 edges
@@ -59,122 +58,114 @@
 10. `getCarmenUrl()` - 11 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `handleOpenJv()` --calls--> `getCarmenUrl()`  [INFERRED]
-  components/credit-card/JournalVoucher.tsx → lib/url.ts
-- `parseJvhDate()` --calls--> `normalizeYearToCE()`  [INFERRED]
-  hooks/credit-card/useOcrSubmission.ts → lib/date.ts
 - `PackList()` --calls--> `useT()`  [INFERRED]
   components/pricing/PackList.tsx → i18n/LanguageContext.tsx
+- `parseJvhDate()` --calls--> `normalizeYearToCE()`  [INFERRED]
+  hooks/credit-card/useOcrSubmission.ts → lib/date.ts
+- `useOrderHistory()` --calls--> `useT()`  [INFERRED]
+  hooks/credits/useOrderHistory.ts → i18n/LanguageContext.tsx
+- `withExtractedData()` --calls--> `act()`  [INFERRED]
+  test/useOcrExtraction.test.js → components/admin/OrderWorkspace.tsx
 - `AdminProtectedRoute()` --calls--> `useAdminAuth()`  [INFERRED]
   components/admin/AdminProtectedRoute.tsx → contexts/AdminAuthContext.tsx
-- `paymentDate()` --calls--> `formatDateToDDMMYYYY()`  [INFERRED]
-  components/admin/OrderTable.tsx → lib/date.ts
 
-## Communities (82 total, 7 thin omitted)
+## Communities (79 total, 8 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.05
-Nodes (32): exchangeSSOToken(), getUsage(), revokeSession(), clearToken(), createApiClient(), getStoredToken(), resolveUrl(), storeToken() (+24 more)
+Nodes (34): cancelOrder(), createOrder(), detail(), getCompanyProfile(), getOrderDocuments(), getPaymentInfo(), OpenOrderError, uploadSlip() (+26 more)
 
 ### Community 1 - "Community 1"
-Cohesion: 0.08
-Nodes (26): profileKey(), profileLabel(), adjustField(), reconcileRows(), repairDocFigure(), header(), masterReconcile(), runAdjust() (+18 more)
+Cohesion: 0.05
+Nodes (31): exchangeSSOToken(), getUsage(), revokeSession(), clearToken(), createApiClient(), getStoredToken(), resolveUrl(), storeToken() (+23 more)
 
 ### Community 2 - "Community 2"
-Cohesion: 0.06
-Nodes (29): doSync(), saveEdit(), afterBulkAction(), approveOrders(), holdOrders(), loadList(), onChanged(), postBatch() (+21 more)
+Cohesion: 0.05
+Nodes (26): _fetchExtractWithRetry(), fetchTimeout(), diffCorrections(), logCorrections(), extractFromFile(), getFilePreview(), getPdfInfo(), useFileUpload() (+18 more)
 
 ### Community 3 - "Community 3"
-Cohesion: 0.08
-Nodes (23): paymentDate(), addDays(), buildInvoicePayload(), useAPSubmission(), fetchAccountCodes(), fetchDepartments(), fetchGLPrefixes(), _parseCarmenHttpError() (+15 more)
+Cohesion: 0.09
+Nodes (25): profileKey(), profileLabel(), adjustField(), reconcileRows(), repairDocFigure(), header(), masterReconcile(), runAdjust() (+17 more)
 
 ### Community 4 - "Community 4"
 Cohesion: 0.08
-Nodes (27): cancelOrder(), createOrder(), detail(), getCompanyProfile(), getOrderDocuments(), OpenOrderError, uploadSlip(), catalogName() (+19 more)
+Nodes (23): paymentDate(), addDays(), buildInvoicePayload(), useAPSubmission(), fetchAccountCodes(), fetchDepartments(), fetchGLPrefixes(), fetchTaxProfiles() (+15 more)
 
 ### Community 5 - "Community 5"
 Cohesion: 0.08
 Nodes (28): getEdit(), ruleKey(), save(), setEdit(), getAccountingConfig(), getAPFields(), getAPVendorFieldRules(), saveAccountingConfig() (+20 more)
 
 ### Community 6 - "Community 6"
-Cohesion: 0.11
-Nodes (13): adminLogout(), adminMe(), buildQs(), clearAdminToken(), fetchErrorBreakdown(), fetchJobs(), fetchLLMLogs(), fetchPerformanceLogs() (+5 more)
+Cohesion: 0.08
+Nodes (24): afterBulkAction(), approveOrders(), holdOrders(), loadList(), onChanged(), postBatch(), postOrders(), refreshCounts() (+16 more)
 
 ### Community 7 - "Community 7"
-Cohesion: 0.11
-Nodes (8): useAPInvoice(), useAPVendor(), listOrders(), FormActions(), LanguageToggle(), useOrderHistory(), useT(), OrderStatusBadge()
+Cohesion: 0.15
+Nodes (14): handleAdjust(), handleTopup(), refresh(), act(), doAdjust(), doTopup(), load(), withName() (+6 more)
 
 ### Community 8 - "Community 8"
-Cohesion: 0.14
-Nodes (5): timeAgo(), timeAgo(), fetchAdminOrderDocuments(), orderStage(), timeAgo()
+Cohesion: 0.11
+Nodes (7): buildQs(), fetchErrorBreakdown(), fetchJobs(), fetchLLMLogs(), fetchPerformanceLogs(), fetchTenantRanking(), fetchTenants()
 
 ### Community 9 - "Community 9"
+Cohesion: 0.14
+Nodes (4): FormActions(), LanguageToggle(), useT(), OrderStatusBadge()
+
+### Community 10 - "Community 10"
 Cohesion: 0.13
 Nodes (6): AdminAuthProvider(), AuthProvider(), translate(), LanguageProvider(), getRoute(), onHashChange()
-
-### Community 11 - "Community 11"
-Cohesion: 0.2
-Nodes (7): diffCorrections(), logCorrections(), parseJvhDate(), getJvhDate(), makeProps(), getJvhDate(), makeProps()
 
 ### Community 12 - "Community 12"
 Cohesion: 0.21
 Nodes (6): AdminLayout(), AdminLogin(), AdminProtectedRoute(), adminLogin(), useAdminAuth(), OrderReviewShell()
 
 ### Community 13 - "Community 13"
-Cohesion: 0.19
-Nodes (9): act(), withName(), mockSuccess(), withExtractedData(), useAPExtraction(), getAPVendorMapping(), mockSuccess(), withExtractedData() (+1 more)
+Cohesion: 0.31
+Nodes (8): adminLogout(), adminMe(), cancelOrder(), clearAdminToken(), fetchAdminPaymentInfo(), getAdminToken(), getOrderSlipUrl(), storeAdminToken()
 
 ### Community 14 - "Community 14"
-Cohesion: 0.21
-Nodes (4): extractFromFile(), mockExtract(), withExtractedData(), showToast()
+Cohesion: 0.27
+Nodes (6): mockSuccess(), withExtractedData(), useAPExtraction(), getAPVendorMapping(), mockSuccess(), withExtractedData()
 
 ### Community 15 - "Community 15"
-Cohesion: 0.21
-Nodes (5): _fetchExtractWithRetry(), fetchTimeout(), getFilePreview(), checkFilesSize(), selectedPagesToPdfUrl()
-
-### Community 16 - "Community 16"
-Cohesion: 0.29
-Nodes (10): useOrderActions(), withName(), approveOrder(), cancelOrder(), getOrderSlipUrl(), holdBatch(), holdOrder(), rejectOrder() (+2 more)
+Cohesion: 0.44
+Nodes (7): useOrderActions(), withName(), approveOrder(), holdBatch(), rejectOrder(), unwrapDetail(), updateOrderNote()
 
 ### Community 17 - "Community 17"
-Cohesion: 0.22
-Nodes (5): perDoc(), formatRate(), formatRate(), PackList(), PlanCard()
+Cohesion: 0.28
+Nodes (5): doSync(), saveEdit(), listArProfiles(), syncArProfiles(), updateArProfile()
 
 ### Community 18 - "Community 18"
-Cohesion: 0.35
-Nodes (10): handleAdjust(), handleTopup(), refresh(), doAdjust(), doTopup(), load(), adjustCredits(), fetchCreditBalance() (+2 more)
-
-### Community 19 - "Community 19"
-Cohesion: 0.36
-Nodes (7): getPdfInfo(), useFileUpload(), useOcrExtraction(), useOcrSubmission(), getPdfInfoWithRetry(), useOcrWizard(), useModal()
-
-### Community 21 - "Community 21"
 Cohesion: 0.25
 Nodes (3): sanitizeNumericInput(), sanitizeNumericInput(), sanitizeNumericInput()
 
-### Community 23 - "Community 23"
+### Community 19 - "Community 19"
+Cohesion: 0.25
+Nodes (4): timeAgo(), timeAgo(), orderStage(), timeAgo()
+
+### Community 21 - "Community 21"
 Cohesion: 0.38
 Nodes (4): fileToBase64(), handleClose(), handleFileChange(), reset()
 
-### Community 27 - "Community 27"
+### Community 23 - "Community 23"
 Cohesion: 0.6
 Nodes (4): handleRevoke(), load(), fetchSessions(), revokeSession()
 
-### Community 28 - "Community 28"
+### Community 24 - "Community 24"
 Cohesion: 0.7
 Nodes (4): handleResolve(), load(), fetchAlerts(), resolveAlert()
 
 ## Knowledge Gaps
-- **7 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **8 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `useT()` connect `Community 7` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 8`, `Community 9`, `Community 10`, `Community 12`, `Community 13`, `Community 15`, `Community 16`, `Community 17`, `Community 26`, `Community 33`, `Community 34`, `Community 35`, `Community 38`, `Community 39`, `Community 40`, `Community 52`, `Community 53`, `Community 54`, `Community 55`?**
+- **Why does `useT()` connect `Community 9` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 6`, `Community 7`, `Community 10`, `Community 11`, `Community 12`, `Community 14`, `Community 15`, `Community 17`, `Community 19`, `Community 26`, `Community 28`, `Community 29`, `Community 30`, `Community 33`, `Community 34`, `Community 35`, `Community 36`, `Community 37`, `Community 49`, `Community 50`, `Community 51`, `Community 52`?**
   _High betweenness centrality (0.454) - this node is a cross-community bridge._
-- **Why does `showToast()` connect `Community 14` to `Community 0`, `Community 1`, `Community 3`, `Community 7`, `Community 11`, `Community 13`, `Community 15`, `Community 19`?**
+- **Why does `showToast()` connect `Community 2` to `Community 1`, `Community 3`, `Community 4`, `Community 35`, `Community 14`?**
   _High betweenness centrality (0.093) - this node is a cross-community bridge._
-- **Why does `appKey()` connect `Community 5` to `Community 0`, `Community 1`, `Community 2`, `Community 11`, `Community 14`, `Community 15`, `Community 19`?**
+- **Why does `appKey()` connect `Community 5` to `Community 1`, `Community 2`, `Community 3`, `Community 6`?**
   _High betweenness centrality (0.069) - this node is a cross-community bridge._
 - **Are the 11 inferred relationships involving `useT()` (e.g. with `FormActions()` and `LanguageToggle()`) actually correct?**
   _`useT()` has 11 INFERRED edges - model-reasoned connections that need verification._

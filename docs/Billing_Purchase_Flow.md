@@ -6,7 +6,7 @@ How tenants purchase, upgrade, and renew subscription plans.
 
 ## Overview
 
-Carmen OCR offers three subscription tiers (Starter, Standard, Pro) billed monthly or annually, plus one-time top-up credit packs. Tenants can upgrade to a higher tier or renew their current tier at any time — even mid-plan — with prorated credit for unused days. Downgrading is not supported.
+Carmen OCR offers three subscription tiers (Starter, Growth, Pro — renamed from "Standard" to "Growth" on 2026-06-29) billed monthly or annually, plus one-time top-up credit packs. Tenants can upgrade to a higher tier or renew their current tier at any time — even mid-plan — with prorated credit for unused days. Downgrading is not supported.
 
 ---
 
@@ -58,6 +58,9 @@ An admin reviews the uploaded slip and either approves or rejects the order.
 **On rejection:**
 - The order is voided with a reason note visible to the tenant.
 
+**On hold (automatic):**
+- If the 14-day proforma window passes with no admin decision, an hourly job (`fn_hold_expired_orders`) moves the order to **on hold** — parked for the admin to contact the buyer, not force-voided (buyer-side approval chains can outlast 14 days). The admin can still approve or reject it afterwards.
+
 ---
 
 ## Pricing
@@ -86,7 +89,7 @@ proration_credit = current_plan_net × (days_remaining / total_days)
 The credit is subtracted from the new plan's net price before VAT is applied. If the credit exceeds the new plan's price, the net is floored at zero (no negative invoices).
 
 **Example:** Tenant on Starter Monthly (฿490/mo), 15 of 30 days remaining.
-Upgrading to Standard Monthly (฿990/mo):
+Upgrading to Growth Monthly (฿990/mo):
 - Credit = 490 × 15/30 = ฿245
 - New net = 990 − 245 = ฿745
 - VAT = 745 × 0.07 = ฿52.15
