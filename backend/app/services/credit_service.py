@@ -13,7 +13,7 @@ Billing model:
 """
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
@@ -23,9 +23,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.context import current_document_ref
 from app.database import async_session
-from app.exceptions import InsufficientCredits, ValidationError
-from app.models.enums import CreditLedgerReason, QuotaPeriod, SubscriptionStatus
-from app.models.orm import CreditLedger, QuotaUsage, TenantCredit, TenantSubscription
+from app.exceptions import ConflictError, InsufficientCredits, NotFoundError, ValidationError
+from app.models.enums import CreditLedgerReason, CreditOrderStatus, QuotaPeriod, SubscriptionStatus
+from app.models.orm import (
+    CreditLedger,
+    CreditOrder,
+    CreditPack,
+    QuotaUsage,
+    TenantCredit,
+    TenantSubscription,
+)
 from app.services.quota_service import (
     _CachedQuota,
     _ctx,
@@ -367,6 +374,74 @@ async def get_credit_balance(tenant_id: str) -> int:
     except Exception as exc:
         logger.error("get_credit_balance failed: %s", exc)
         return 0
+
+
+async def topup_order(
+    db: AsyncSession,
+    tenant_id: str,
+    pack_code: str,
+    order_id: str | None,
+    admin_email: str,
+) -> int:
+    """Grant a pack's worth of credits (offline-paid). Optionally mark an order paid.
+
+    Caller owns the transaction (does not commit).
+    """
+    pack = (
+        await db.execute(select(CreditPack).where(CreditPack.code == pack_code))
+    ).scalar_one_or_none()
+    if pack is None:
+        raise NotFoundError("Credit pack not found")
+
+    order_ref: str | None = None
+    if order_id:
+        order = (
+            await db.execute(select(CreditOrder).where(CreditOrder.id == order_id))
+        ).scalar_one_or_none()
+        if order is None or order.tenant_id != tenant_id:
+            raise NotFoundError("Order not found")
+        if order.status == CreditOrderStatus.PAID:
+            raise ConflictError("Order already fulfilled")
+        order.status = CreditOrderStatus.PAID  # type: ignore[assignment]
+        order.paid_at = datetime.now(UTC)  # type: ignore[assignment]
+        order.approved_by = admin_email  # type: ignore[assignment]
+        order.approved_at = datetime.now(UTC)  # type: ignore[assignment]
+        order_ref = str(order.id)
+
+    return await grant_credits(
+        db,
+        tenant_id,
+        pack.credits,  # type: ignore[arg-type]
+        reason=CreditLedgerReason.TOPUP,
+        pack_code=pack.code,  # type: ignore[arg-type]
+        ref=order_ref,
+    )
+
+
+async def adjust_balance(db: AsyncSession, tenant_id: str, delta: int, note: str | None) -> int:
+    """Manual credit correction (positive or negative). Caller owns the transaction."""
+    if delta == 0:
+        raise ValidationError("delta must be non-zero")
+    return await grant_credits(
+        db, tenant_id, delta, reason=CreditLedgerReason.ADMIN_ADJUST, note=note
+    )
+
+
+async def get_ledger(db: AsyncSession, tenant_id: str, limit: int) -> list[CreditLedger]:
+    """Audit history of credit changes for a tenant, newest first."""
+    rows = (
+        (
+            await db.execute(
+                select(CreditLedger)
+                .where(CreditLedger.tenant_id == tenant_id)
+                .order_by(CreditLedger.created_at.desc())
+                .limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return list(rows)
 
 
 # ── Subscriptions ─────────────────────────────────────────────────────────────

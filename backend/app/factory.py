@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from app.config import is_wildcard_origin_regex, settings
 from app.exceptions import (
     CarmenServiceError,
+    ConflictError,
     DuplicateDocumentError,
     ExtractionError,
     FileTooLargeError,
@@ -18,6 +19,7 @@ from app.exceptions import (
     LLMCapacityError,
     LLMParseError,
     LLMServiceError,
+    NotFoundError,
     RateLimitExceeded,
     RequestRateLimitExceeded,
     TenantContextMissing,
@@ -44,9 +46,11 @@ logger = logging.getLogger(__name__)
 _EXCEPTION_STATUS: list[tuple] = [
     (HTTPException, None),
     (DuplicateDocumentError, 409),
+    (ConflictError, 409),
     (InsufficientCredits, 402),
     (FileTooLargeError, 413),
     (ValidationError, 400),
+    (NotFoundError, 404),
     (LLMParseError, 422),
     (ExtractionError, 422),
     (LLMServiceError, 503),
