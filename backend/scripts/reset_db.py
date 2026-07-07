@@ -14,11 +14,15 @@ PostgreSQL note:
 """
 
 import asyncio
+import sys
+from pathlib import Path
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.config import settings
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from app.config import settings  # noqa: E402
 
 
 async def reset() -> None:

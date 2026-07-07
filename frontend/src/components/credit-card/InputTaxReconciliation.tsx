@@ -16,7 +16,7 @@ import { SkeletonRow } from '../common/Skeleton'
 import { submitInputTax, fetchTaxProfiles } from '../../lib/api/carmen'
 import type { TaxProfileItem } from '../../lib/api/carmen'
 import { normalizeYearToCE } from '../../lib/date'
-import { toNum, fmt } from '../../lib/format'
+import { parseNum, fmt } from '../../lib/format'
 import { useT } from '../../i18n/LanguageContext'
 import { useAccountingConfig } from '../../hooks/credit-card'
 import { resolveTaxProfileForRate } from '../../lib/apTax'
@@ -53,8 +53,8 @@ export default function InputTaxReconciliation({
   }, [])
 
   const company = (config?.company ?? {}) as Record<string, string>
-  const netAmount = details.reduce((s, d) => s + toNum(d.CommisAmt), 0)
-  const taxAmount = details.reduce((s, d) => s + toNum(d.TaxAmt), 0)
+  const netAmount = details.reduce((s, d) => s + parseNum(d.CommisAmt), 0)
+  const taxAmount = details.reduce((s, d) => s + parseNum(d.TaxAmt), 0)
   const total = netAmount + taxAmount
   const taxRate = netAmount > 0 ? parseFloat(((taxAmount / netAmount) * 100).toFixed(2)) : 7.0
   const resolvedProfileCode = resolveTaxProfileForRate(taxRate, taxProfiles)

@@ -1,4 +1,4 @@
-import type { UsageData } from '../../lib/api/auth'
+import type { UsageData } from './api/auth'
 
 export type UsageStats = UsageData['usage'] & {
   usedPercentage: number

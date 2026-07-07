@@ -1,5 +1,5 @@
 import { Coins } from 'lucide-react'
-import { formatThb, formatRate } from '../../lib/money'
+import { formatThb } from '../../lib/money'
 import { PACK_META, perDoc } from '../../constants/billing'
 import { useT } from '../../i18n/LanguageContext'
 import type { CreditPack } from '../../lib/api/credits'
@@ -43,7 +43,7 @@ export default function PackList({ packs, onSelect, disabled }: Props) {
             <span className="pack-card-price">
               <span className="pack-card-amount text-mono">฿{formatThb(pack.price_thb)}</span>
               <span className="pack-card-rate text-mono">
-                ฿{formatRate(rate)}
+                ฿{formatThb(rate, true)}
                 {t('pack.perDoc')}
               </span>
             </span>

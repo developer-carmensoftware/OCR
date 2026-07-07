@@ -6,7 +6,8 @@ can map them to correct HTTP status codes.
 
 HTTP mapping (see main.py):
   400  — bad user input (validation, missing fields)
-  409  — conflict (duplicate document)
+  404  — requested resource does not exist
+  409  — conflict (duplicate document, resource in the wrong state for this action)
   402  — payment required (free quota exhausted, no top-up credits left)
   413  — payload too large (file size)
   422  — unprocessable entity (LLM parse error, post-process failure)
@@ -38,6 +39,14 @@ class CarmenServiceError(RuntimeError):
 
 class ValidationError(RuntimeError):
     """Request data failed business-level validation. → 400"""
+
+
+class NotFoundError(RuntimeError):
+    """Requested resource does not exist (or is soft-deleted). → 404"""
+
+
+class ConflictError(RuntimeError):
+    """Resource is in a state that conflicts with the requested action. → 409"""
 
 
 class RateLimitExceeded(RuntimeError):

@@ -27,10 +27,8 @@ interface Props {
   setAcceptAllModal: (v: boolean) => void
   loadInitialData: () => void
   activeScan: ActiveScan
-  amountMappedCount: number
   requiredMissingCount: number
   openAmountModal: () => void
-  allPaymentTypes: string[]
 }
 
 const LABEL_MAP: Record<MainMappingKey, string> = {
@@ -39,7 +37,7 @@ const LABEL_MAP: Record<MainMappingKey, string> = {
   net: 'Bank Account',
 }
 
-export default function AccountMappingTable({
+export default function MainMappingTable({
   masterAccounts,
   masterDepartments,
   loadingOpts,
@@ -54,10 +52,8 @@ export default function AccountMappingTable({
   setAcceptAllModal,
   loadInitialData,
   activeScan,
-  amountMappedCount: _amountMappedCount,
   requiredMissingCount,
   openAmountModal,
-  allPaymentTypes: _allPaymentTypes,
 }: Props) {
   return (
     <div className="section">

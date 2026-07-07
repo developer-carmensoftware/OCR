@@ -4,7 +4,7 @@ import { getUsage } from '../../lib/api/auth'
 import { getStoredToken } from '../../lib/api/client'
 import { useAuth } from '../../contexts/AuthContext'
 import type { UsageData } from '../../lib/api/auth'
-import { computeUsageStats } from './usageHelpers'
+import { computeUsageStats } from '../../lib/usage'
 
 export default function UsageIndicator() {
   const [usage, setUsage] = useState<UsageData['usage'] | null>(null)

@@ -4,7 +4,9 @@ import { toast } from 'sonner'
 import AppHeader from '../components/common/AppHeader'
 import LanguageToggle from '../components/common/LanguageToggle'
 import { useT } from '../i18n/LanguageContext'
-import { OrderStatusBadge, PendingOrderBanner, ProformaDocument } from '../components/pricing'
+import OrderStatusBadge from '../components/pricing/OrderStatusBadge'
+import PendingOrderBanner from '../components/pricing/PendingOrderBanner'
+import ProformaDocument from '../components/pricing/ProformaDocument'
 import { getUsage, type ActiveSubscription } from '../lib/api/auth'
 import { getStoredToken } from '../lib/api/client'
 import { useOrderHistory } from '../hooks/credits'
@@ -17,7 +19,8 @@ import {
   type PaymentInfo,
 } from '../lib/api/credits'
 import { catalogName } from '../constants/billing'
-import { formatThb, formatDate } from '../lib/money'
+import { formatThb } from '../lib/money'
+import { formatDate } from '../lib/date'
 import '../styles/pages/pricing.css'
 
 function OrderRow({ order, paymentInfo }: { order: CreditOrder; paymentInfo: PaymentInfo | null }) {

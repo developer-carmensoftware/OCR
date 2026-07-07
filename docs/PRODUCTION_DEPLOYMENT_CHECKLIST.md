@@ -83,7 +83,7 @@ Render free sleep หลัง 15 นาทีไม่มี traffic → ทุ
 - `anomaly_service.py`: `TO_CHAR(NOW(), 'YYYY-MM')` (was `DATE_FORMAT`)
 
 ### 1.6 Reset Script — ✅ DONE
-- `reset_db.py`: `DROP SCHEMA public CASCADE; CREATE SCHEMA public;`
+- `scripts/reset_db.py`: `DROP SCHEMA public CASCADE; CREATE SCHEMA public;`
 
 ### 1.7 Test Results — ✅ DONE
 - 137/137 unit tests pass

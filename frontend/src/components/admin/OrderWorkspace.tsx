@@ -3,10 +3,10 @@ import { toast } from 'sonner'
 import { AlertTriangle, Check, Coins, Copy } from 'lucide-react'
 import ProformaDocument from '../pricing/ProformaDocument'
 import DataTable, { type Column } from './DataTable'
-import { STAGE_KEY, STAGE_TONE, timeAgo } from './orderHelpers'
+import { STAGE_KEY, STAGE_TONE, timeAgo } from '../../lib/orderHelpers'
 import { SlipViewer } from './SlipViewer'
 import { OrderActions, fmtDateTime } from './OrderActions'
-import { useOrderActions } from './useOrderActions'
+import { useOrderActions } from '../../hooks/admin'
 import {
   fetchAdminOrderDocuments,
   fetchCreditBalance,

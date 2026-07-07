@@ -1,16 +1,14 @@
 import { useState, useEffect } from 'react'
 import { m, AnimatePresence } from 'framer-motion'
 import { AlertCircle, RotateCw } from 'lucide-react'
-import {
-  DocumentPreview,
-  CustomModal,
-  StepWizard,
-  DarkModeToggle,
-  ExtractionSkeleton,
-  SplitLayout,
-  UsageIndicator,
-  AppHeader,
-} from '../components/common'
+import DocumentPreview from '../components/common/DocumentPreview'
+import CustomModal from '../components/common/CustomModal'
+import StepWizard from '../components/common/StepWizard'
+import DarkModeToggle from '../components/common/DarkModeToggle'
+import ExtractionSkeleton from '../components/common/ExtractionSkeleton'
+import SplitLayout from '../components/common/SplitLayout'
+import UsageIndicator from '../components/common/UsageIndicator'
+import AppHeader from '../components/common/AppHeader'
 import PDFPageSelector from '../components/common/PDFPageSelector'
 import APUploadStep from '../components/ap-invoice/APUploadStep'
 import APFieldMappingStep from '../components/ap-invoice/APFieldMappingStep'

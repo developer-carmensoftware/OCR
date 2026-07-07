@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sanitizeNumericInput } from '../components/common/numericHelpers'
+import { sanitizeNumericInput } from '../../lib/numeric'
 
 describe('sanitizeNumericInput', () => {
   it('strips letters but keeps digits and decimal point', () => {

@@ -1,21 +1,31 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useOcrExtraction } from '../hooks/credit-card/useOcrExtraction'
+import { useOcrExtraction } from './useOcrExtraction'
+import type { ExtractResult } from '../../lib/api/ocr'
 
-vi.mock('../lib/api/ocr', () => ({ extractFromFile: vi.fn() }))
-vi.mock('../lib/toast', () => ({ showToast: vi.fn() }))
-vi.mock('../constants', () => ({
+vi.mock('../../lib/api/ocr', () => ({ extractFromFile: vi.fn() }))
+vi.mock('../../lib/toast', () => ({ showToast: vi.fn() }))
+vi.mock('../../constants', () => ({
   EMPTY_DETAIL_ROW: { desc: '', amount: 0, type: '' },
   detectBankFromCompanyName: vi.fn(() => ''),
   detectBankFromExtracted: vi.fn(() => ''),
 }))
 
-import { extractFromFile } from '../lib/api/ocr'
-import { showToast } from '../lib/toast'
+import { extractFromFile as realExtractFromFile } from '../../lib/api/ocr'
+import { showToast } from '../../lib/toast'
+
+const extractFromFile = vi.mocked(realExtractFromFile)
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-function makeProps(overrides = {}) {
+// Test fixtures use a loose ad-hoc shape (desc/amount/type) rather than the real
+// ExtractResult field names — the hook merges whatever keys the API returns onto
+// EMPTY_DETAIL_ROW without validation, so this only needs to exercise that merge.
+function mockExtract(data: Record<string, unknown>) {
+  extractFromFile.mockResolvedValue(data as unknown as ExtractResult)
+}
+
+function makeProps(overrides: Record<string, unknown> = {}) {
   return {
     showModal: vi.fn(),
     closeModal: vi.fn(),
@@ -69,7 +79,7 @@ describe('useOcrExtraction', () => {
     })
 
     it('happy path: populates headerData, details, advances to step 2', async () => {
-      extractFromFile.mockResolvedValue(MOCK_EXTRACTED)
+      mockExtract(MOCK_EXTRACTED)
       const props = makeProps()
       const { result } = renderHook(() => useOcrExtraction(props))
       await act(async () => {
@@ -86,7 +96,7 @@ describe('useOcrExtraction', () => {
       // Regression: extractFromFile previously dropped `id`, leaving cardId=null,
       // so the Carmen submit never sent credit_card_id and submitted_at was never
       // set — breaking the duplicate check. Guard that the draft id is threaded.
-      extractFromFile.mockResolvedValue({ ...MOCK_EXTRACTED, id: 'draft-card-uuid' })
+      mockExtract({ ...MOCK_EXTRACTED, id: 'draft-card-uuid' })
       const props = makeProps()
       const { result } = renderHook(() => useOcrExtraction(props))
       await act(async () => {
@@ -96,7 +106,7 @@ describe('useOcrExtraction', () => {
     })
 
     it('uses EMPTY_DETAIL_ROW when API returns empty details', async () => {
-      extractFromFile.mockResolvedValue({ ...MOCK_EXTRACTED, details: [] })
+      mockExtract({ ...MOCK_EXTRACTED, details: [] })
       const props = makeProps()
       const { result } = renderHook(() => useOcrExtraction(props))
       await act(async () => {
@@ -106,7 +116,7 @@ describe('useOcrExtraction', () => {
     })
 
     it('shows duplicate modal when is_duplicate=true and does not advance step', async () => {
-      extractFromFile.mockResolvedValue({ ...MOCK_EXTRACTED, is_duplicate: true })
+      mockExtract({ ...MOCK_EXTRACTED, is_duplicate: true })
       const props = makeProps()
       const { result } = renderHook(() => useOcrExtraction(props))
       await act(async () => {
@@ -160,7 +170,7 @@ describe('useOcrExtraction', () => {
     })
 
     it('resets loading=false after success', async () => {
-      extractFromFile.mockResolvedValue(MOCK_EXTRACTED)
+      mockExtract(MOCK_EXTRACTED)
       const props = makeProps()
       const { result } = renderHook(() => useOcrExtraction(props))
       await act(async () => {
@@ -180,7 +190,7 @@ describe('useOcrExtraction', () => {
     })
 
     it('dispatches ocr:quota-refresh event after extraction', async () => {
-      extractFromFile.mockResolvedValue(MOCK_EXTRACTED)
+      mockExtract(MOCK_EXTRACTED)
       const spy = vi.spyOn(window, 'dispatchEvent')
       const props = makeProps()
       const { result } = renderHook(() => useOcrExtraction(props))
@@ -191,7 +201,7 @@ describe('useOcrExtraction', () => {
     })
 
     it('defaults warnings to [] when the backend omits them', async () => {
-      extractFromFile.mockResolvedValue(MOCK_EXTRACTED)
+      mockExtract(MOCK_EXTRACTED)
       const props = makeProps()
       const { result } = renderHook(() => useOcrExtraction(props))
       await act(async () => {
@@ -201,7 +211,7 @@ describe('useOcrExtraction', () => {
     })
 
     it('populates warnings from the extraction response', async () => {
-      extractFromFile.mockResolvedValue({ ...MOCK_EXTRACTED, warnings: ['VAT was assumed'] })
+      mockExtract({ ...MOCK_EXTRACTED, warnings: ['VAT was assumed'] })
       const props = makeProps()
       const { result } = renderHook(() => useOcrExtraction(props))
       await act(async () => {
@@ -211,7 +221,7 @@ describe('useOcrExtraction', () => {
     })
 
     it('writes extracted bank info to localStorage accountingConfig', async () => {
-      extractFromFile.mockResolvedValue(MOCK_EXTRACTED)
+      mockExtract(MOCK_EXTRACTED)
       const props = makeProps()
       const { result } = renderHook(() => useOcrExtraction(props))
       await act(async () => {
@@ -236,7 +246,7 @@ describe('useOcrExtraction', () => {
     })
 
     it('updates headerData and shows success toast on re-extract', async () => {
-      extractFromFile.mockResolvedValue({ ...MOCK_EXTRACTED, doc_no: 'DOC-002' })
+      mockExtract({ ...MOCK_EXTRACTED, doc_no: 'DOC-002' })
       const props = makeProps()
       const { result } = renderHook(() => useOcrExtraction(props))
       await act(async () => {
@@ -247,7 +257,7 @@ describe('useOcrExtraction', () => {
     })
 
     it('passes bankType to extractFromFile', async () => {
-      extractFromFile.mockResolvedValue(MOCK_EXTRACTED)
+      mockExtract(MOCK_EXTRACTED)
       const props = makeProps()
       const { result } = renderHook(() => useOcrExtraction(props))
       await act(async () => {
@@ -272,8 +282,8 @@ describe('useOcrExtraction', () => {
   // ── F3: detail manipulation ──────────────────────────────────────────────────
 
   describe('F3: detail manipulation', () => {
-    async function withExtractedData(props) {
-      extractFromFile.mockResolvedValue(MOCK_EXTRACTED)
+    async function withExtractedData(props: ReturnType<typeof makeProps>) {
+      mockExtract(MOCK_EXTRACTED)
       const hook = renderHook(() => useOcrExtraction(props))
       await act(async () => {
         await hook.result.current.processFile([MOCK_FILE])
@@ -295,9 +305,9 @@ describe('useOcrExtraction', () => {
       const props = makeProps()
       const { result } = await withExtractedData(props)
       act(() => {
-        result.current.updateDetail(0, 'amount', 9999)
+        result.current.updateDetail(0, 'amount', '9999')
       })
-      expect(result.current.details[0].amount).toBe(9999)
+      expect(result.current.details[0].amount).toBe('9999')
     })
 
     it('addRow appends exactly one empty row', async () => {
@@ -311,7 +321,7 @@ describe('useOcrExtraction', () => {
     })
 
     it('deleteRow removes the row at the given index', async () => {
-      extractFromFile.mockResolvedValue({
+      mockExtract({
         ...MOCK_EXTRACTED,
         details: [
           { desc: 'Row A', amount: 1 },
@@ -335,7 +345,7 @@ describe('useOcrExtraction', () => {
 
   describe('F4: resetExtractionState', () => {
     it('clears all extraction state', async () => {
-      extractFromFile.mockResolvedValue(MOCK_EXTRACTED)
+      mockExtract(MOCK_EXTRACTED)
       const props = makeProps()
       const { result } = renderHook(() => useOcrExtraction(props))
       await act(async () => {
@@ -353,7 +363,7 @@ describe('useOcrExtraction', () => {
 
     it('F4.2 – also resets originalDetails and originalHeader to prevent stale diffs on re-use', async () => {
       // Populate state via a first extraction
-      extractFromFile.mockResolvedValue(MOCK_EXTRACTED)
+      mockExtract(MOCK_EXTRACTED)
       const props = makeProps()
       const { result } = renderHook(() => useOcrExtraction(props))
       await act(async () => {
@@ -372,7 +382,7 @@ describe('useOcrExtraction', () => {
     })
 
     it('clears warnings on reset', async () => {
-      extractFromFile.mockResolvedValue({ ...MOCK_EXTRACTED, warnings: ['VAT was assumed'] })
+      mockExtract({ ...MOCK_EXTRACTED, warnings: ['VAT was assumed'] })
       const props = makeProps()
       const { result } = renderHook(() => useOcrExtraction(props))
       await act(async () => {

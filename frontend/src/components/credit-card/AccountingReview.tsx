@@ -16,7 +16,7 @@ import CustomModal from '../common/CustomModal'
 import Card from '../common/Card'
 import Badge from '../common/Badge'
 import { fetchAccountCodes } from '../../lib/api/carmen'
-import { toNum, fmt } from '../../lib/format'
+import { parseNum, fmt } from '../../lib/format'
 import { useT } from '../../i18n/LanguageContext'
 import { useAccountingConfig } from '../../hooks/credit-card'
 import type { DetailRow } from './DetailTable'
@@ -69,10 +69,10 @@ function buildRows(details: DetailRow[], config: Record<string, unknown>): Built
     const commCfg = mappings.commission || {}
     const taxCfg = mappings.tax || {}
     const netCfg = mappings.net || {}
-    addRow(amtCfg, toNum(detail.PayAmt), payType, false)
-    addRow(commCfg, toNum(detail.CommisAmt), 'Credit card commission', true)
-    addRow(taxCfg, toNum(detail.TaxAmt), 'Input Tax', true)
-    addRow(netCfg, toNum(detail.Total), 'Bank Account', true)
+    addRow(amtCfg, parseNum(detail.PayAmt), payType, false)
+    addRow(commCfg, parseNum(detail.CommisAmt), 'Credit card commission', true)
+    addRow(taxCfg, parseNum(detail.TaxAmt), 'Input Tax', true)
+    addRow(netCfg, parseNum(detail.Total), 'Bank Account', true)
   })
   return rows
 }
@@ -127,7 +127,7 @@ export default function AccountingReview({
     if (!m.tax?.acc) unmappedFields.push('Input Tax')
     // Fee-invoice formats (KTC/GHL/PayPal/SiamPay) always have Total=0, so the
     // net row is never posted — only demand the mapping when a row will use it.
-    if (!m.net?.acc && details.some(d => toNum(d.Total))) unmappedFields.push('Bank Account')
+    if (!m.net?.acc && details.some(d => parseNum(d.Total))) unmappedFields.push('Bank Account')
     const pa = (rawConfig.paymentAmount || {}) as Record<string, { acc?: string }>
     const detailTypes = [
       ...new Set(details.flatMap(d => (d.Transaction ? [d.Transaction] : []))),

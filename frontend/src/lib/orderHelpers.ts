@@ -1,5 +1,5 @@
-import { type OrderStage } from '../../lib/api/adminClient'
-import type { TKey } from '../../i18n/dict'
+import { type OrderStage } from './api/adminClient'
+import type { TKey } from '../i18n/dict'
 
 type T = (key: TKey, vars?: Record<string, string | number>) => string
 

@@ -614,65 +614,10 @@ sequenceDiagram
 
 ### 5.13 API 11a: Generic Tools — List / Schema / Invoke
 
-**วัตถุประสงค์**: ให้ LLM Agent เรียกใช้ stateless tools โดยตรงโดยไม่ต้องรู้ path เฉพาะ
-
-#### List All Tools
-
-**Method**: GET | **Endpoint**: `/api/v1/tools`
-
-**JSON Response**:
-
-```json
-{
-  "tools": [
-    {
-      "name": "extract_receipt",
-      "description": "Extract structured data from a bank receipt image using Vision LLM",
-      "input_schema": { "file_bytes": "bytes", "filename": "str", "bank_type": "str?" },
-      "invocable": false
-    },
-    {
-      "name": "suggest_gl_fixed_fields",
-      "description": "LLM-suggest GL account/dept codes for Commission, Tax Amount, Net Amount",
-      "input_schema": { "accounts": "list[{code, name, type?}]", "departments": "list[{code, name}]" },
-      "invocable": true
-    }
-  ],
-  "count": 4
-}
-```
-
-#### Get Tool Schema
-
-**Method**: GET | **Endpoint**: `/api/v1/tools/{name}`
-
-#### Invoke a Tool
-
-**Method**: POST | **Endpoint**: `/api/v1/tools/{name}`
-
-**JSON Request** (keys must match `input_schema`):
-
-```json
-{
-  "accounts": [{ "code": "113200", "name": "BANK RECEIVABLE", "type": "DEBIT" }],
-  "departments": [{ "code": "100", "name": "ACCOUNTING" }]
-}
-```
-
-**JSON Response** (ToolResult):
-
-```json
-{
-  "success": true,
-  "tool": "suggest_gl_fixed_fields",
-  "input": { "accounts": [...], "departments": [...] },
-  "output": { "Commission": { "dept": "100", "acc": "551100" }, ... },
-  "metadata": {},
-  "errors": []
-}
-```
-
-> `extract_receipt` และ `submit_receipt` ต้อง injected dependencies (bytes / DB session) — ระบบจะ block พร้อม HTTP 400 `invocable: false`
+> **Removed 2026-07-06.** The generic `/api/v1/tools` registry (agent-style invocation
+> by name) had no callers and was deleted. GL suggestion is served directly by
+> `routers/mapping.py` → `services/gl_suggestion_service.py`. Restore from git history
+> if an agent layer is reintroduced.
 
 ---
 

@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from app.config import is_wildcard_origin_regex, settings
 from app.exceptions import (
     CarmenServiceError,
+    ConflictError,
     DuplicateDocumentError,
     ExtractionError,
     FileTooLargeError,
@@ -18,6 +19,7 @@ from app.exceptions import (
     LLMCapacityError,
     LLMParseError,
     LLMServiceError,
+    NotFoundError,
     RateLimitExceeded,
     RequestRateLimitExceeded,
     TenantContextMissing,
@@ -37,7 +39,6 @@ from app.routers.feedback import router as feedback_router
 from app.routers.files import router as files_router
 from app.routers.mapping import router as mapping_router
 from app.routers.ocr import router as ocr_router
-from app.routers.tool_registry import router as tools_router
 from app.sentry import capture
 
 logger = logging.getLogger(__name__)
@@ -45,9 +46,11 @@ logger = logging.getLogger(__name__)
 _EXCEPTION_STATUS: list[tuple] = [
     (HTTPException, None),
     (DuplicateDocumentError, 409),
+    (ConflictError, 409),
     (InsufficientCredits, 402),
     (FileTooLargeError, 413),
     (ValidationError, 400),
+    (NotFoundError, 404),
     (LLMParseError, 422),
     (ExtractionError, 422),
     (LLMServiceError, 503),
@@ -164,7 +167,6 @@ def create_app(lifespan=None) -> FastAPI:
     app.include_router(ocr_router)
     app.include_router(mapping_router)
     app.include_router(carmen_router)
-    app.include_router(tools_router)
     app.include_router(feedback_router)
     app.include_router(ap_invoice_router)
     app.include_router(files_router)

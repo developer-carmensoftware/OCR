@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { toast } from 'sonner'
 import { useT } from '../../i18n/LanguageContext'
 import { showToast } from '../../lib/toast'
-import { parseNum, fmt, fmtQty, round2 } from '../../lib/format'
+import { parseNum, fmt, round2 } from '../../lib/format'
 import { saveAPVendorMapping } from '../../lib/api/config'
 import { appKey } from '../../lib/storage'
 import { useAPExtraction } from './useAPExtraction'
@@ -308,8 +308,8 @@ export function useAPInvoice() {
     const item = extraction.lineItems[rowIndex]
     if (!item) return
 
-    // Always format the edited field first (qty uses integer-friendly formatter)
-    const formattedValue = field === 'qty' ? fmtQty(rawValue) : fmt(rawValue)
+    // Always format the edited field first
+    const formattedValue = fmt(rawValue)
 
     if (!RECALC_TRIGGERS.has(field)) {
       // Non-driver field: just format in place
