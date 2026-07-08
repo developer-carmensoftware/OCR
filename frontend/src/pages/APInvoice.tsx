@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { m, AnimatePresence } from 'framer-motion'
 import { AlertCircle, RotateCw } from 'lucide-react'
-import DocumentPreview from '../components/common/DocumentPreview'
 import CustomModal from '../components/common/CustomModal'
 import StepWizard from '../components/common/StepWizard'
 import DarkModeToggle from '../components/common/DarkModeToggle'
@@ -20,9 +19,6 @@ import { useT } from '../i18n/LanguageContext'
 import LanguageToggle from '../components/common/LanguageToggle'
 import { AP_STEPS } from '../constants/apInvoice'
 import type { APColumnKey, APFieldKey } from '../constants/apInvoice'
-
-// suppress unused import
-void DocumentPreview
 
 export default function APInvoice() {
   const { t } = useT()

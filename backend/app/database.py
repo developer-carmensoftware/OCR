@@ -24,7 +24,7 @@ Session:
   get_db()         — FastAPI dependency yielding a committed session.
 
 Migrations:
-  All migration functions live in app.migrations (append-only list).
+  Schema is owned by supabase/migrations/*.sql — apply with `supabase db push`.
 """
 
 import logging

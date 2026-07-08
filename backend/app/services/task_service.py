@@ -3,7 +3,6 @@ Task Service — shared OCRTask lifecycle used by all extraction modules.
 """
 
 import uuid
-from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,15 +32,6 @@ async def create_task(
     db.add(task)
     await db.commit()
     return task
-
-
-async def mark_completed(db: AsyncSession, task_id: str | uuid.UUID) -> None:
-    result = await db.execute(select(OCRTask).where(OCRTask.id == uuid.UUID(str(task_id))))
-    task = result.scalar_one_or_none()
-    if task:
-        task.status = TaskStatus.COMPLETED  # type: ignore[assignment]
-        task.completed_at = datetime.now(UTC)  # type: ignore[assignment]
-        await db.commit()
 
 
 async def mark_failed(db: AsyncSession, task_id: str | uuid.UUID, error: str) -> None:
