@@ -8,6 +8,7 @@ type GroupBy = 'module' | 'tenant' | 'endpoint'
 
 interface ErrorRow {
   group: string
+  group_label?: string | null
   total_tasks?: number
   total_requests?: number
   errors: number
@@ -35,7 +36,7 @@ export default function ErrorsPage() {
   }, [groupBy, period, tenantId])
 
   const chartData = rows.map(r => ({
-    group: r.group ?? '—',
+    group: r.group_label ?? r.group ?? '—',
     errors: r.errors,
     total: r.total_tasks ?? r.total_requests ?? 0,
   }))
@@ -110,7 +111,7 @@ export default function ErrorsPage() {
             ) : (
               rows.map(r => (
                 <tr key={r.group} className="admin-tr">
-                  <td className="admin-td">{r.group ?? '—'}</td>
+                  <td className="admin-td">{r.group_label ?? r.group ?? '—'}</td>
                   <td className="admin-td text-right">{r.total_tasks ?? r.total_requests ?? 0}</td>
                   <td className="admin-td text-right">
                     <span className={r.errors > 0 ? 'text-red' : ''}>{r.errors}</span>

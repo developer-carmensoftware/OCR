@@ -7,6 +7,7 @@ import { fetchPerformanceLogs } from '../../lib/api/adminClient'
 interface PerfRow {
   id: string
   tenant_id: string
+  tenant_name?: string | null
   endpoint: string
   method: string
   duration_ms: number
@@ -49,14 +50,22 @@ const COLS: Column<PerfRow>[] = [
       </span>
     ),
   },
-  { key: 'tenant_id', label: 'Tenant', sortable: true },
+  { key: 'tenant_id', label: 'Tenant', sortable: true, render: r => r.tenant_name ?? r.tenant_id },
 ]
 
 export default function PerformancePage() {
   const [tenantId, setTenantId] = useState('')
+  const [minMsInput, setMinMsInput] = useState('')
   const [minMs, setMinMs] = useState('')
   const [rows, setRows] = useState<PerfRow[]>([])
   const [loading, setLoading] = useState(false)
+
+  // Debounce the free-text filter — without this, typing "1500" fired 4 separate
+  // full requests, one per keystroke.
+  useEffect(() => {
+    const id = setTimeout(() => setMinMs(minMsInput), 300)
+    return () => clearTimeout(id)
+  }, [minMsInput])
 
   useEffect(() => {
     setLoading(true)
@@ -80,8 +89,8 @@ export default function PerformancePage() {
             className="admin-form-input"
             aria-label="Minimum duration in milliseconds"
             placeholder="Min ms (e.g. 1000)"
-            value={minMs}
-            onChange={e => setMinMs(e.target.value)}
+            value={minMsInput}
+            onChange={e => setMinMsInput(e.target.value)}
             style={{ width: 160 }}
           />
           <TenantSelector value={tenantId} onChange={setTenantId} />

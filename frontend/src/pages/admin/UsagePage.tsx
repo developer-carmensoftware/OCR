@@ -10,6 +10,7 @@ interface UsageRow {
   date: string
   module_id: string
   tenant_id: string
+  tenant_name?: string | null
   documents: number
   submissions: number
   llm_calls: number
@@ -22,7 +23,7 @@ interface UsageRow {
 const COLS: Column<UsageRow>[] = [
   { key: 'date', label: 'Date', sortable: true },
   { key: 'module_id', label: 'Module', sortable: true },
-  { key: 'tenant_id', label: 'Tenant', sortable: true },
+  { key: 'tenant_id', label: 'Tenant', sortable: true, render: r => r.tenant_name ?? r.tenant_id },
   { key: 'documents', label: 'Docs', sortable: true, align: 'right' },
   { key: 'llm_calls', label: 'LLM Calls', sortable: true, align: 'right' },
   { key: 'tokens', label: 'Tokens', sortable: true, align: 'right' },

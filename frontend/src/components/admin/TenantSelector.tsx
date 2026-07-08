@@ -4,7 +4,7 @@ import { fetchTenants } from '../../lib/api/adminClient'
 
 interface Tenant {
   id: string
-  name: string
+  name: string | null
   host: string
   bu_code: string
 }
@@ -33,7 +33,7 @@ export default function TenantSelector({ value, onChange }: TenantSelectorProps)
       <option value="">All Tenants</option>
       {tenants.map(t => (
         <option key={t.id} value={t.id}>
-          {t.name} ({t.bu_code})
+          {t.name || t.host} ({t.bu_code})
         </option>
       ))}
     </select>

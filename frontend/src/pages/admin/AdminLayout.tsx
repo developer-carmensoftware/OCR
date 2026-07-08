@@ -4,7 +4,9 @@ import {
   BarChart3,
   Bell,
   Bot,
+  Building2,
   Coins,
+  Gauge,
   LayoutDashboard,
   LogOut,
   Settings,
@@ -23,31 +25,95 @@ interface NavItem {
   icon: ReactNode
 }
 
+interface NavSection {
+  label: string
+  items: NavItem[]
+}
+
 const ICON_SIZE = 17
 
-const NAV: NavItem[] = [
-  { label: 'Overview', hash: '/admin', icon: <LayoutDashboard size={ICON_SIZE} strokeWidth={2} /> },
-  { label: 'Usage', hash: '/admin/usage', icon: <BarChart3 size={ICON_SIZE} strokeWidth={2} /> },
+const NAV_SECTIONS: NavSection[] = [
   {
-    label: 'Tenant Ranking',
-    hash: '/admin/tenant-ranking',
-    icon: <Trophy size={ICON_SIZE} strokeWidth={2} />,
-  },
-  { label: 'LLM Logs', hash: '/admin/llm-logs', icon: <Bot size={ICON_SIZE} strokeWidth={2} /> },
-  {
-    label: 'Performance',
-    hash: '/admin/performance',
-    icon: <Zap size={ICON_SIZE} strokeWidth={2} />,
+    label: 'Overview',
+    items: [
+      {
+        label: 'Overview',
+        hash: '/admin',
+        icon: <LayoutDashboard size={ICON_SIZE} strokeWidth={2} />,
+      },
+    ],
   },
   {
-    label: 'Errors',
-    hash: '/admin/errors',
-    icon: <AlertCircle size={ICON_SIZE} strokeWidth={2} />,
+    label: 'Analytics',
+    items: [
+      {
+        label: 'Usage',
+        hash: '/admin/usage',
+        icon: <BarChart3 size={ICON_SIZE} strokeWidth={2} />,
+      },
+      {
+        label: 'LLM Logs',
+        hash: '/admin/llm-logs',
+        icon: <Bot size={ICON_SIZE} strokeWidth={2} />,
+      },
+      {
+        label: 'Tenant Ranking',
+        hash: '/admin/tenant-ranking',
+        icon: <Trophy size={ICON_SIZE} strokeWidth={2} />,
+      },
+    ],
   },
-  { label: 'Anomalies', hash: '/admin/anomalies', icon: <Bell size={ICON_SIZE} strokeWidth={2} /> },
-  { label: 'Jobs', hash: '/admin/jobs', icon: <Settings size={ICON_SIZE} strokeWidth={2} /> },
-  { label: 'Sessions', hash: '/admin/sessions', icon: <Users size={ICON_SIZE} strokeWidth={2} /> },
-  { label: 'Credits', hash: '/admin/credits', icon: <Coins size={ICON_SIZE} strokeWidth={2} /> },
+  {
+    label: 'Operations',
+    items: [
+      {
+        label: 'Sessions',
+        hash: '/admin/sessions',
+        icon: <Users size={ICON_SIZE} strokeWidth={2} />,
+      },
+      { label: 'Jobs', hash: '/admin/jobs', icon: <Settings size={ICON_SIZE} strokeWidth={2} /> },
+      {
+        label: 'Performance',
+        hash: '/admin/performance',
+        icon: <Zap size={ICON_SIZE} strokeWidth={2} />,
+      },
+      {
+        label: 'Errors',
+        hash: '/admin/errors',
+        icon: <AlertCircle size={ICON_SIZE} strokeWidth={2} />,
+      },
+      {
+        label: 'Anomalies',
+        hash: '/admin/anomalies',
+        icon: <Bell size={ICON_SIZE} strokeWidth={2} />,
+      },
+    ],
+  },
+  {
+    label: 'Billing',
+    items: [
+      {
+        label: 'Credits',
+        hash: '/admin/credits',
+        icon: <Coins size={ICON_SIZE} strokeWidth={2} />,
+      },
+    ],
+  },
+  {
+    label: 'Management',
+    items: [
+      {
+        label: 'Tenants',
+        hash: '/admin/tenants',
+        icon: <Building2 size={ICON_SIZE} strokeWidth={2} />,
+      },
+      {
+        label: 'Quota & Modules',
+        hash: '/admin/quota-modules',
+        icon: <Gauge size={ICON_SIZE} strokeWidth={2} />,
+      },
+    ],
+  },
 ]
 
 function getActiveHash(): string {
@@ -78,23 +144,29 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         </div>
 
         <nav className="admin-nav">
-          {NAV.map(item => {
-            const itemPath = item.hash.replace(/^\//, '')
-            const isActive = itemPath === 'admin' ? active === 'admin' : active.startsWith(itemPath)
-            return (
-              <a
-                key={item.hash}
-                href={`#${item.hash}`}
-                className={`admin-nav-item${isActive ? ' active' : ''}`}
-                aria-current={isActive ? 'page' : undefined}
-              >
-                <span className="admin-nav-icon" aria-hidden="true">
-                  {item.icon}
-                </span>
-                <span>{item.label}</span>
-              </a>
-            )
-          })}
+          {NAV_SECTIONS.map(section => (
+            <div className="admin-nav-section" key={section.label}>
+              <div className="admin-nav-section-label">{section.label}</div>
+              {section.items.map(item => {
+                const itemPath = item.hash.replace(/^\//, '')
+                const isActive =
+                  itemPath === 'admin' ? active === 'admin' : active.startsWith(itemPath)
+                return (
+                  <a
+                    key={item.hash}
+                    href={`#${item.hash}`}
+                    className={`admin-nav-item${isActive ? ' active' : ''}`}
+                    aria-current={isActive ? 'page' : undefined}
+                  >
+                    <span className="admin-nav-icon" aria-hidden="true">
+                      {item.icon}
+                    </span>
+                    <span>{item.label}</span>
+                  </a>
+                )
+              })}
+            </div>
+          ))}
         </nav>
 
         <div className="admin-sidebar-footer">

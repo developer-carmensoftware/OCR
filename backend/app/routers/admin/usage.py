@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
+from app.exceptions import ValidationError
 from app.services import usage_analytics_service as svc
 
 from .deps import require_permission
@@ -16,11 +17,23 @@ from .deps import require_permission
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# This endpoint returns one row per date×tenant×module with no row limit at all —
+# bounding the date range is the only lever that bounds it (llm_usage_logs is
+# retained 12 months anyway via pg_partman, so nothing wider was fully meaningful).
+_MAX_DATE_RANGE_DAYS = 92
+
 
 def _resolve_tenant(admin: AdminPrincipal, tenant_id: str | None) -> str | None:
     if not admin.is_global:
         return admin.tenant_scope
     return tenant_id or None
+
+
+def _assert_date_range(from_date: date, to_date: date) -> None:
+    if to_date < from_date:
+        raise ValidationError("'to' must not be before 'from'")
+    if (to_date - from_date).days > _MAX_DATE_RANGE_DAYS:
+        raise ValidationError(f"Date range too wide — max {_MAX_DATE_RANGE_DAYS} days")
 
 
 @router.get("/usage-summary")
@@ -36,6 +49,7 @@ async def get_usage_summary(
         from_date = date.today().replace(day=1)
     if not to_date:
         to_date = date.today()
+    _assert_date_range(from_date, to_date)
     tid = _resolve_tenant(admin, tenant_id)
     result = await svc.get_usage_summary(db, from_date, to_date, tid, module_id)
     return {"tenant_id": tid, "from": str(from_date), "to": str(to_date), **result}
