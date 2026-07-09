@@ -492,6 +492,7 @@ textarea:focus-visible {
   --rose: oklch(0.68 0.12 24.11);
   --rose-light: oklch(0.28 0.03 24.11);
   --rose-mid: oklch(0.4 0.06 24.11);
+  --rose-hover: oklch(0.75 0.12 24.11);
 
   --amber: oklch(0.8 0.1 75);
   --amber-light: oklch(0.28 0.03 75);

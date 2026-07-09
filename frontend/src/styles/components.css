@@ -811,7 +811,7 @@ input[type='text'].detail-input {
 
 input[type='text'].detail-input:hover {
   border-color: var(--border);
-  background: white;
+  background: var(--gray-100);
 }
 
 input[type='text'].detail-input:focus {

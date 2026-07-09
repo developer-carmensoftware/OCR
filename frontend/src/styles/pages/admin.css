@@ -1104,7 +1104,7 @@ body:has(.admin-login-page) {
 .admin-login-btn:hover:not(:disabled) {
   background: var(--primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 8px 24px oklch(0.4714 0.1794 258.7 / 0.3);
+  box-shadow: 0 8px 24px color-mix(in oklch, var(--primary) 30%, transparent);
 }
 .admin-login-btn:active:not(:disabled) {
   transform: translateY(0);
