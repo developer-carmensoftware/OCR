@@ -497,6 +497,8 @@ textarea:focus-visible {
   --amber-light: oklch(0.28 0.03 75);
   --amber-mid: oklch(0.42 0.06 75);
   --amber-text: oklch(0.82 0.09 75);
+  --success-foreground: oklch(0.8 0.08 145);
+  --info-foreground: oklch(0.8 0.08 195);
 
   --emerald: oklch(0.72 0.1 188.43);
   --emerald-light: oklch(0.26 0.025 188.43);

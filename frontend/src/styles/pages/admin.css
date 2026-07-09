@@ -705,17 +705,17 @@ body:has(.admin-login-page) {
 }
 .status-badge.ok {
   background: var(--emerald-light);
-  color: oklch(0.3 0.08 188.43);
-  border: 1px solid oklch(0.85 0.07 188.43);
+  color: var(--emerald);
+  border: 1px solid var(--emerald-mid);
 }
 .status-badge.error {
   background: var(--rose-light);
-  color: oklch(0.45 0.18 24.11);
+  color: var(--destructive);
   border: 1px solid var(--rose-mid);
 }
 .status-badge.warn {
   background: var(--amber-light);
-  color: oklch(0.42 0.13 75);
+  color: var(--amber-text);
   border: 1px solid var(--amber-mid);
 }
 
