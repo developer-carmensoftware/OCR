@@ -65,9 +65,13 @@ export const API = {
     orderDocuments: (orderId: string) => `${V1}/credits/orders/${orderId}/documents`,
   },
 
+  notifications: {
+    list: `${V1}/notifications`,
+    markRead: `${V1}/notifications/mark-read`,
+  },
+
   feedback: {
     corrections: `${V1}/feedback/corrections`,
-    bugReport: `${V1}/feedback/bug-report`,
   },
 
   files: {
@@ -90,6 +94,7 @@ export const API = {
     sessions: `${V1}/admin/sessions`,
     session: (sessionId: string) => `${V1}/admin/sessions/${sessionId}`,
     tenants: `${V1}/admin/tenants`,
+    tenant: (tenantId: string) => `${V1}/admin/tenants/${tenantId}`,
     errorBreakdown: `${V1}/admin/error-breakdown`,
     tenantCredits: (tenantId: string) => `${V1}/admin/tenants/${tenantId}/credits`,
     tenantCreditsLedger: (tenantId: string) => `${V1}/admin/tenants/${tenantId}/credits/ledger`,
@@ -109,5 +114,17 @@ export const API = {
     arProfiles: `${V1}/admin/ar-customer-profiles`,
     arProfile: (id: string) => `${V1}/admin/ar-customer-profiles/${id}`,
     arProfilesSync: `${V1}/admin/ar-customer-profiles/sync`,
+    quotaOverview: `${V1}/admin/quotas/overview`,
+    tenantQuota: (tenantId: string, quotaId: string) =>
+      `${V1}/admin/tenants/${tenantId}/quotas/${quotaId}`,
+    tenantQuotaReset: (tenantId: string, quotaId: string) =>
+      `${V1}/admin/tenants/${tenantId}/quotas/${quotaId}/reset`,
+    tenantModule: (tenantId: string, moduleId: string) =>
+      `${V1}/admin/tenants/${tenantId}/modules/${moduleId}`,
+    adminUsers: `${V1}/admin/admin-users`,
+    adminUser: (userId: string) => `${V1}/admin/admin-users/${userId}`,
+    adminUserPasswordReset: (userId: string) => `${V1}/admin/admin-users/${userId}/password-reset`,
+    adminUserRoles: (userId: string) => `${V1}/admin/admin-users/${userId}/roles`,
+    roles: `${V1}/admin/roles`,
   },
 } as const

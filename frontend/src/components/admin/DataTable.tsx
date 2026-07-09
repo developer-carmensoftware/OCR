@@ -13,7 +13,7 @@ const SKELETON_WIDTHS = [
 
 export interface Column<T> {
   key: keyof T | string
-  label: string
+  label: React.ReactNode
   render?: (row: T) => React.ReactNode
   sortable?: boolean
   align?: 'left' | 'right' | 'center'
