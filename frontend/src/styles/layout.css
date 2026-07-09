@@ -354,9 +354,6 @@
   .app-header-title {
     font-size: 0.95rem;
   }
-  .action-bar {
-    flex-wrap: wrap;
-  }
   .form-actions {
     flex-wrap: wrap;
     flex-direction: row;

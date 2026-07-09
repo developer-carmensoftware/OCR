@@ -102,7 +102,7 @@ useAPInvoice hook
 1. Create `backend/app/llm/prompts/<bank>.py` — export `LAYOUT`
 2. Register in `backend/app/llm/prompts/__init__.py` → `_REGISTRY`
 3. `INSERT INTO banks (code, name, ...) VALUES ('KTB', 'Krungthai Bank', ...)`
-4. Add to `BANKS` in `frontend/src/constants/index.js`
+4. Add to `BANKS` in `frontend/src/constants/banks.ts`
 5. Add detection in `detectBankFromCompanyName()` if needed
 
 > **Future (Admin Dashboard):** Steps 1–2 replaced by Prompt CMS; steps 3–5 replaced by UI. Zero redeploy.

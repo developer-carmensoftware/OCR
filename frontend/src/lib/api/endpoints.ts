@@ -72,7 +72,6 @@ export const API = {
 
   feedback: {
     corrections: `${V1}/feedback/corrections`,
-    bugReport: `${V1}/feedback/bug-report`,
   },
 
   files: {
