@@ -95,6 +95,7 @@ export const API = {
     sessions: `${V1}/admin/sessions`,
     session: (sessionId: string) => `${V1}/admin/sessions/${sessionId}`,
     tenants: `${V1}/admin/tenants`,
+    tenant: (tenantId: string) => `${V1}/admin/tenants/${tenantId}`,
     errorBreakdown: `${V1}/admin/error-breakdown`,
     tenantCredits: (tenantId: string) => `${V1}/admin/tenants/${tenantId}/credits`,
     tenantCreditsLedger: (tenantId: string) => `${V1}/admin/tenants/${tenantId}/credits/ledger`,
@@ -114,5 +115,12 @@ export const API = {
     arProfiles: `${V1}/admin/ar-customer-profiles`,
     arProfile: (id: string) => `${V1}/admin/ar-customer-profiles/${id}`,
     arProfilesSync: `${V1}/admin/ar-customer-profiles/sync`,
+    quotaOverview: `${V1}/admin/quotas/overview`,
+    tenantQuota: (tenantId: string, quotaId: string) =>
+      `${V1}/admin/tenants/${tenantId}/quotas/${quotaId}`,
+    tenantQuotaReset: (tenantId: string, quotaId: string) =>
+      `${V1}/admin/tenants/${tenantId}/quotas/${quotaId}/reset`,
+    tenantModule: (tenantId: string, moduleId: string) =>
+      `${V1}/admin/tenants/${tenantId}/modules/${moduleId}`,
   },
 } as const

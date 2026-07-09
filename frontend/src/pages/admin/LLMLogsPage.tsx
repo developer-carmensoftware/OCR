@@ -7,6 +7,7 @@ import { fetchLLMLogs } from '../../lib/api/adminClient'
 interface LogRow {
   id: string
   tenant_id: string
+  tenant_name?: string | null
   module_id: string
   model: string
   task_id: string
@@ -25,7 +26,7 @@ const COLS: Column<LogRow>[] = [
     sortable: true,
     render: r => r.created_at?.slice(0, 19).replace('T', ' ') ?? '—',
   },
-  { key: 'tenant_id', label: 'Tenant', sortable: true },
+  { key: 'tenant_id', label: 'Tenant', sortable: true, render: r => r.tenant_name ?? r.tenant_id },
   { key: 'module_id', label: 'Module', sortable: true },
   { key: 'model', label: 'Model', sortable: true },
   { key: 'total_tokens', label: 'Tokens', sortable: true, align: 'right' },
@@ -52,16 +53,22 @@ const COLS: Column<LogRow>[] = [
 
 type OrderBy = 'created_at' | 'cost_usd' | 'duration_ms' | 'total_tokens'
 
+const LOGS_LIMIT = 200
+
 export default function LLMLogsPage() {
   const [tenantId, setTenantId] = useState('')
   const [orderBy, setOrderBy] = useState<OrderBy>('created_at')
   const [rows, setRows] = useState<LogRow[]>([])
+  const [hasMore, setHasMore] = useState(false)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     setLoading(true)
-    fetchLLMLogs({ tenant_id: tenantId || undefined, order_by: orderBy, limit: 200 })
-      .then(r => setRows(r.data ?? []))
+    fetchLLMLogs({ tenant_id: tenantId || undefined, order_by: orderBy, limit: LOGS_LIMIT })
+      .then(r => {
+        setRows(r.data ?? [])
+        setHasMore(Boolean(r.has_more))
+      })
       .catch(e => toast.error(`LLM logs: ${e?.message ?? 'failed to load'}`))
       .finally(() => setLoading(false))
   }, [tenantId, orderBy])
@@ -88,6 +95,11 @@ export default function LLMLogsPage() {
       <div className="admin-card">
         <DataTable columns={COLS} rows={rows} loading={loading} emptyText="No LLM logs found" />
       </div>
+      {hasMore && (
+        <p className="admin-sub-text admin-truncation-note">
+          Showing the most recent {LOGS_LIMIT} — narrow the tenant or time filter to see more.
+        </p>
+      )}
     </div>
   )
 }

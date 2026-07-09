@@ -160,7 +160,7 @@ INTERNAL_JOB_TOKEN=<hex-64-chars>   # must match vault.secrets where name='inter
 
 ## Database
 
-**DB:** PostgreSQL (Supabase) — connected via Supavisor pooler (`...pooler.supabase.com`), database `postgres`. Supabase is used purely as a managed Postgres host: no Data API/Auth/Storage/Realtime client. Tenant isolation is application-layer (`tenant_id` FK), and the app connects with a privileged role — so the Supabase **Data API (PostgREST) must stay disabled** (or all `public` tables RLS-locked) to avoid bypassing the FastAPI layer. Pool is sized small (8+8) because session-mode pooling maps 1:1 to server connections.
+**DB:** PostgreSQL (Supabase) — connected via Supavisor pooler (`...pooler.supabase.com`), database `postgres`. Supabase is used purely as a managed Postgres host: no Data API/Auth/Storage/Realtime client. Tenant isolation is application-layer (`tenant_id` FK), and the app connects with a privileged role — so the Supabase **Data API (PostgREST) must stay disabled** (or all `public` tables RLS-locked) to avoid bypassing the FastAPI layer. Pool is sized small (5+5=10) because session-mode pooling maps 1:1 to server connections, capped by Supavisor's 15-connection-per-project limit — this exact value is the fix for a documented `EMAXCONNSESSION` incident (`docs/LOAD_TEST_REPORT_V2.md` §6.1), not a value to casually increase. A `PoolEvents.checkout` listener sets `statement_timeout=30s` on every checkout (`app/database.py`) — verified empirically that Supavisor drops `server_settings` startup parameters and resets session GUCs between checkouts even on a reused physical connection, so `SET` must be re-applied per checkout, not per connect.
 
 **Layer summary:**
 

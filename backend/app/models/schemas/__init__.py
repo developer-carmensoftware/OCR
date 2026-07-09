@@ -48,6 +48,7 @@ from app.models.schemas.ocr import (
     OCRTaskResponse,
     OCRUploadResponse,
 )
+from app.models.schemas.quotas import ModuleToggleRequest, QuotaLimitUpdateRequest
 
 __all__ = [
     # common
@@ -83,6 +84,9 @@ __all__ = [
     "PostArRequest",
     "PostArResponse",
     "KpiSummaryResponse",
+    # quotas
+    "QuotaLimitUpdateRequest",
+    "ModuleToggleRequest",
     # ap_invoice
     "SuggestGLItem",
     "SuggestGLRequest",

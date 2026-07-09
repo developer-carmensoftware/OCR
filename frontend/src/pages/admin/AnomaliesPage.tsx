@@ -6,6 +6,7 @@ import { fetchAlerts, resolveAlert } from '../../lib/api/adminClient'
 interface Alert {
   id: number
   tenant_id: string
+  tenant_name?: string | null
   module_id: string | null
   metric: string
   severity: string | null
@@ -76,7 +77,7 @@ export default function AnomaliesPage() {
                   </span>
                   <span className="alert-metric">{a.metric}</span>
                   {a.module_id && <span className="alert-module">{a.module_id}</span>}
-                  <span className="alert-tenant">{a.tenant_id}</span>
+                  <span className="alert-tenant">{a.tenant_name ?? a.tenant_id}</span>
                 </div>
                 <div className="alert-body">
                   {a.description && <p className="alert-description">{a.description}</p>}

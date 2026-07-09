@@ -25,6 +25,9 @@ const adminFetch = createApiClient({
   unauthorizedEvent: 'admin:unauthorized',
   onUnauthorized: clearAdminToken,
   debounce401Ms: 0,
+  // Matches the backend's 30s statement_timeout — client and server give up
+  // together instead of the UI spinning past a backend that already failed.
+  timeoutMs: 30_000,
 })
 
 // ── Typed helpers ─────────────────────────────────────────────────────────────
@@ -96,7 +99,7 @@ export async function fetchUsageTotals(params: QueryParams = {}) {
 
 export async function fetchUsageSummary(params: QueryParams = {}) {
   const res = await adminFetch(`${API.admin.usageSummary}${buildQs(params)}`)
-  if (!res.ok) throw new Error('Failed to fetch usage summary')
+  if (!res.ok) throw new Error(await unwrapDetail(res, 'Failed to fetch usage summary'))
   return res.json()
 }
 
@@ -148,9 +151,70 @@ export async function revokeSession(sessionId: string) {
   return res.json()
 }
 
-export async function fetchTenants(params: QueryParams = {}) {
+export interface TenantRow {
+  id: string
+  host: string
+  bu_code: string
+  name: string | null
+  plan: string | null
+  is_active: boolean
+  contact_email: string | null
+  modules_count: number
+  last_used_at: string | null
+  created_at: string | null
+}
+
+export interface TenantQuota {
+  period: string
+  metric: string
+  used: number
+  limit: number
+  pct: number
+  is_hard: boolean
+  period_key: string
+}
+
+export interface TenantModuleRow {
+  id: string
+  display_name: string
+  enabled_at: string | null
+}
+
+export interface TenantSessionRow {
+  id: string
+  username: string | null
+  carmen_user_id: string | null
+  is_active: boolean
+  last_used_at: string | null
+  created_at: string | null
+}
+
+export interface TenantDetail {
+  id: string
+  host: string
+  bu_code: string
+  name: string | null
+  plan: string | null
+  is_active: boolean
+  contact_email: string | null
+  notes: string | null
+  created_at: string | null
+  modules: TenantModuleRow[]
+  quotas: TenantQuota[]
+  recent_sessions: TenantSessionRow[]
+}
+
+export async function fetchTenants(
+  params: QueryParams = {}
+): Promise<{ total: number; data: TenantRow[] }> {
   const res = await adminFetch(`${API.admin.tenants}${buildQs(params)}`)
   if (!res.ok) throw new Error('Failed to fetch tenants')
+  return res.json()
+}
+
+export async function fetchTenantDetail(tenantId: string): Promise<TenantDetail> {
+  const res = await adminFetch(API.admin.tenant(tenantId))
+  if (!res.ok) throw new Error('Failed to fetch tenant detail')
   return res.json()
 }
 
@@ -446,5 +510,93 @@ export async function holdBatch(orderIds: string[]): Promise<HoldBatchResponse> 
 export async function fetchKpi(): Promise<KpiSummary> {
   const res = await adminFetch(API.admin.creditOrdersKpi)
   if (!res.ok) throw new Error('Failed to load KPI')
+  return res.json()
+}
+
+// ── Quota & Module overview ───────────────────────────────────────────────
+
+export interface QuotaRow {
+  id: string
+  period: string
+  metric: string
+  used: number
+  limit: number
+  pct: number
+  is_hard: boolean
+  period_key: string
+}
+
+export interface ModuleUsageRow {
+  module_id: string
+  display_name: string
+  calls: number
+  tokens: number
+  cost_usd: number
+}
+
+export interface ModuleCatalogEntry {
+  id: string
+  display_name: string
+}
+
+export interface TenantQuotaOverviewRow {
+  id: string
+  host: string
+  bu_code: string
+  name: string | null
+  plan: string | null
+  is_active: boolean
+  quotas: QuotaRow[]
+  modules_enabled: ModuleCatalogEntry[]
+  usage_by_module: ModuleUsageRow[]
+}
+
+export interface QuotaOverviewResponse {
+  from: string
+  to: string
+  data: TenantQuotaOverviewRow[]
+  modules: ModuleCatalogEntry[]
+}
+
+export async function fetchQuotaOverview(params: QueryParams = {}): Promise<QuotaOverviewResponse> {
+  const res = await adminFetch(`${API.admin.quotaOverview}${buildQs(params)}`)
+  if (!res.ok) throw new Error(await unwrapDetail(res, 'Failed to fetch quota overview'))
+  return res.json()
+}
+
+export async function updateQuotaLimit(
+  tenantId: string,
+  quotaId: string,
+  limitValue: number
+): Promise<{ id: string; limit_value: number }> {
+  const res = await adminFetch(API.admin.tenantQuota(tenantId, quotaId), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ limit_value: limitValue }),
+  })
+  if (!res.ok) throw new Error(await unwrapDetail(res, 'Failed to update quota limit'))
+  return res.json()
+}
+
+export async function resetQuotaUsage(
+  tenantId: string,
+  quotaId: string
+): Promise<{ id: string; period_key: string; used: number }> {
+  const res = await adminFetch(API.admin.tenantQuotaReset(tenantId, quotaId), { method: 'POST' })
+  if (!res.ok) throw new Error(await unwrapDetail(res, 'Failed to reset quota usage'))
+  return res.json()
+}
+
+export async function toggleTenantModule(
+  tenantId: string,
+  moduleId: string,
+  enabled: boolean
+): Promise<{ tenant_id: string; module_id: string; enabled: boolean }> {
+  const res = await adminFetch(API.admin.tenantModule(tenantId, moduleId), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  })
+  if (!res.ok) throw new Error(await unwrapDetail(res, 'Failed to toggle module'))
   return res.json()
 }

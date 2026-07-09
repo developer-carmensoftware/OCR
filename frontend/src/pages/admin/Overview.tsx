@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { Bell, Bot, Coins, FileText, AlertCircle, Send, TrendingUp, BarChart3 } from 'lucide-react'
 import KPICard from '../../components/admin/KPICard'
 import MetricChart from '../../components/admin/MetricChart'
 import TenantSelector from '../../components/admin/TenantSelector'
+import PageHeader from '../../components/admin/ui/PageHeader'
+import Card from '../../components/admin/ui/Card'
 import { fetchAlerts, fetchUsageSummary, fetchUsageTotals } from '../../lib/api/adminClient'
 
 function fmtCost(v: number) {
@@ -64,41 +67,55 @@ export default function Overview() {
 
   return (
     <div className="admin-page">
-      <div className="admin-page-header">
-        <h2 className="admin-page-title">Overview</h2>
-        <TenantSelector value={tenantId} onChange={setTenantId} />
-      </div>
+      <PageHeader
+        title="Overview"
+        description="Usage, cost, and health across your tenants for the last 30 days."
+        actions={<TenantSelector value={tenantId} onChange={setTenantId} />}
+      />
 
       <div className="kpi-grid">
-        <KPICard label="LLM Calls (MTD)" value={fmtNum(totals.llm_calls ?? 0)} loading={loading} />
+        <KPICard
+          label="LLM Calls (MTD)"
+          value={fmtNum(totals.llm_calls ?? 0)}
+          icon={<Bot size={18} strokeWidth={2} />}
+          loading={loading}
+        />
         <KPICard
           label="Cost (MTD)"
           value={fmtCost(totals.cost_usd ?? 0)}
           accent="yellow"
+          icon={<Coins size={18} strokeWidth={2} />}
           loading={loading}
         />
         <KPICard
           label="Error Rate"
           value={errorRate}
           accent={totals.errors > 0 ? 'red' : 'green'}
+          icon={<AlertCircle size={18} strokeWidth={2} />}
           loading={loading}
         />
         <KPICard
           label="Open Alerts"
           value={openAlerts}
           accent={openAlerts > 0 ? 'red' : 'green'}
+          icon={<Bell size={18} strokeWidth={2} />}
           loading={loading}
         />
-        <KPICard label="Documents (MTD)" value={fmtNum(totals.documents ?? 0)} loading={loading} />
+        <KPICard
+          label="Documents (MTD)"
+          value={fmtNum(totals.documents ?? 0)}
+          icon={<FileText size={18} strokeWidth={2} />}
+          loading={loading}
+        />
         <KPICard
           label="Submissions (MTD)"
           value={fmtNum(totals.submissions ?? 0)}
+          icon={<Send size={18} strokeWidth={2} />}
           loading={loading}
         />
       </div>
 
-      <div className="admin-chart-card">
-        <h3 className="admin-chart-title">Daily Cost (30 days)</h3>
+      <Card title="Daily Cost (30 days)" icon={<TrendingUp size={16} strokeWidth={2} />}>
         <MetricChart
           type="line"
           data={trend}
@@ -107,10 +124,9 @@ export default function Overview() {
           yFormatter={fmtCost}
           loading={loading}
         />
-      </div>
+      </Card>
 
-      <div className="admin-chart-card">
-        <h3 className="admin-chart-title">Daily LLM Calls (30 days)</h3>
+      <Card title="Daily LLM Calls (30 days)" icon={<BarChart3 size={16} strokeWidth={2} />}>
         <MetricChart
           type="bar"
           data={trend}
@@ -119,7 +135,7 @@ export default function Overview() {
           yFormatter={fmtNum}
           loading={loading}
         />
-      </div>
+      </Card>
     </div>
   )
 }

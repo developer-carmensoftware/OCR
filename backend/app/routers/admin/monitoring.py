@@ -5,12 +5,13 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
 from app.models.observability import AnomalyAlert, JobRun, PerformanceLog
+from app.services.tenant_lookup import tenant_name_map
 
 from .deps import require_permission
 
@@ -36,28 +37,38 @@ async def list_alerts(
     db: AsyncSession = Depends(get_db),
     admin: AdminPrincipal = Depends(require_permission("alerts", "read")),
 ):
-    q = select(AnomalyAlert)
-    q = _maybe_filter_tenant(q, AnomalyAlert.tenant_id, admin, tenant_id)
-    if status == "open":
-        q = q.where(AnomalyAlert.resolved_at.is_(None))
-    elif status == "resolved":
-        q = q.where(AnomalyAlert.resolved_at.isnot(None))
-    if severity:
-        q = q.where(AnomalyAlert.severity == severity)
-    if from_date:
-        q = q.where(AnomalyAlert.created_at >= from_date)
-    if to_date:
-        q = q.where(AnomalyAlert.created_at <= to_date)
-    q = q.order_by(AnomalyAlert.created_at.desc()).limit(limit)
+    def _apply_filters(stmt):
+        stmt = _maybe_filter_tenant(stmt, AnomalyAlert.tenant_id, admin, tenant_id)
+        if status == "open":
+            stmt = stmt.where(AnomalyAlert.resolved_at.is_(None))
+        elif status == "resolved":
+            stmt = stmt.where(AnomalyAlert.resolved_at.isnot(None))
+        if severity:
+            stmt = stmt.where(AnomalyAlert.severity == severity)
+        if from_date:
+            stmt = stmt.where(AnomalyAlert.created_at >= from_date)
+        if to_date:
+            stmt = stmt.where(AnomalyAlert.created_at <= to_date)
+        return stmt
 
+    # Real count, independent of `limit` — the old code returned len(rows) from the
+    # already-limited data query, so "total" was silently capped at `limit` (Overview's
+    # KPI card calls this with limit=1, so it could only ever show 0 or 1).
+    total = (
+        await db.execute(_apply_filters(select(func.count()).select_from(AnomalyAlert)))
+    ).scalar_one()
+
+    q = _apply_filters(select(AnomalyAlert)).order_by(AnomalyAlert.created_at.desc()).limit(limit)
     result = await db.execute(q)
     rows = result.scalars().all()
+    names = await tenant_name_map(db, [r.tenant_id for r in rows])
     return {
-        "total": len(rows),
+        "total": total,
         "data": [
             {
                 "id": r.id,
                 "tenant_id": r.tenant_id,
+                "tenant_name": names.get(r.tenant_id),
                 "module_id": r.module_id,
                 "metric": r.metric,
                 "severity": r.severity.value if r.severity else None,
@@ -173,12 +184,14 @@ async def get_performance_logs(
 
     result = await db.execute(q)
     rows = result.scalars().all()
+    names = await tenant_name_map(db, [r.tenant_id for r in rows])
     return {
         "total": len(rows),
         "data": [
             {
                 "id": r.id,
                 "tenant_id": r.tenant_id,
+                "tenant_name": names.get(r.tenant_id),
                 "endpoint": r.endpoint,
                 "method": r.method,
                 "duration_ms": round(float(r.duration_ms or 0), 1),  # type: ignore[arg-type]
