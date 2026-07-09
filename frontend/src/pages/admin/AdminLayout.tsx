@@ -12,6 +12,7 @@ import {
   Settings,
   Shield,
   Trophy,
+  UserCog,
   Users,
   Zap,
 } from 'lucide-react'
@@ -117,6 +118,16 @@ function getNavSections(t: ReturnType<typeof useT>['t']): NavSection[] {
           label: t('admin.nav.item.quotaModules'),
           hash: '/admin/quota-modules',
           icon: <Gauge size={ICON_SIZE} strokeWidth={2} />,
+        },
+      ],
+    },
+    {
+      label: t('admin.nav.section.accessControl'),
+      items: [
+        {
+          label: t('admin.nav.item.adminUsers'),
+          hash: '/admin/admin-users',
+          icon: <UserCog size={ICON_SIZE} strokeWidth={2} />,
         },
       ],
     },

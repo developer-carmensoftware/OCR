@@ -67,6 +67,7 @@ const SessionsPage = lazy(() => import('./pages/admin/SessionsPage'))
 const CreditsPage = lazy(() => import('./pages/admin/CreditsPage'))
 const TenantsPage = lazy(() => import('./pages/admin/TenantsPage'))
 const QuotaModulesPage = lazy(() => import('./pages/admin/QuotaModulesPage'))
+const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'))
 
 // Order Review — standalone page (own shell, reuses admin auth)
 const OrderReviewShell = lazy(() => import('./pages/order-review/OrderReviewShell'))
@@ -110,6 +111,8 @@ function AdminRouter() {
     AdminPage = <TenantsPage />
   } else if (route === 'admin/quota-modules') {
     AdminPage = <QuotaModulesPage />
+  } else if (route === 'admin/admin-users') {
+    AdminPage = <AdminUsersPage />
   } else if (route === 'admin/sessions') {
     AdminPage = <SessionsPage />
   } else if (route === 'admin/credits') {

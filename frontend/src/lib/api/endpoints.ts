@@ -121,5 +121,10 @@ export const API = {
       `${V1}/admin/tenants/${tenantId}/quotas/${quotaId}/reset`,
     tenantModule: (tenantId: string, moduleId: string) =>
       `${V1}/admin/tenants/${tenantId}/modules/${moduleId}`,
+    adminUsers: `${V1}/admin/admin-users`,
+    adminUser: (userId: string) => `${V1}/admin/admin-users/${userId}`,
+    adminUserPasswordReset: (userId: string) => `${V1}/admin/admin-users/${userId}/password-reset`,
+    adminUserRoles: (userId: string) => `${V1}/admin/admin-users/${userId}/roles`,
+    roles: `${V1}/admin/roles`,
   },
 } as const
