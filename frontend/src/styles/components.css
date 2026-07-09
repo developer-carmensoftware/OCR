@@ -102,7 +102,7 @@
 /* Done step-num: solid gradient fill */
 .step.done .step-num {
   background: linear-gradient(135deg, var(--emerald) 0%, var(--emerald-end) 100%);
-  border-color: transparent;
+  border: none; /* transparent border + border-radius + gradient bg renders a square seam on Chromium/Windows dark mode */
   color: white;
   box-shadow: 0 2px 8px oklch(from var(--emerald) l c h / 0.35);
 }
