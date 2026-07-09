@@ -28,6 +28,7 @@ import {
   type ModuleCatalogEntry,
   type QuotaRow,
 } from '../../lib/api/adminClient'
+import { useT } from '../../i18n/LanguageContext'
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10)
@@ -39,12 +40,15 @@ function monthStartStr() {
 
 const quotaTier = (pct: number) => (pct >= 100 ? 'over' : pct >= 80 ? 'warn' : '')
 
-const TABS = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'details', label: 'Details' },
-]
+function getTabs(t: ReturnType<typeof useT>['t']) {
+  return [
+    { id: 'overview', label: t('admin.quotas.tab.overview') },
+    { id: 'details', label: t('admin.quotas.tab.details') },
+  ]
+}
 
 export default function QuotaModulesPage() {
+  const { t } = useT()
   const [tab, setTab] = useState<'overview' | 'details'>('overview')
   const [activeOnly, setActiveOnly] = useState(true)
   const [from, setFrom] = useState(monthStartStr)
@@ -64,10 +68,13 @@ export default function QuotaModulesPage() {
         setRows(r.data ?? [])
         setModulesCatalog(r.modules ?? [])
       })
-      .catch(e => toast.error(`Quota overview: ${e?.message ?? 'failed to load'}`))
+      .catch(e =>
+        toast.error(t('admin.quotas.toast.loadFailed', { error: e?.message ?? 'failed to load' }))
+      )
       .finally(() => setLoading(false))
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(load, [activeOnly, from, to])
 
   const toggleRow = (id: string) => setExpandedId(prev => (prev === id ? null : id))
@@ -76,13 +83,13 @@ export default function QuotaModulesPage() {
     const raw = limitDrafts[quota.id] ?? String(quota.limit)
     const value = Number(raw)
     if (!Number.isFinite(value) || value <= 0) {
-      toast.error('Limit must be a number greater than 0')
+      toast.error(t('admin.quotas.toast.limitInvalid'))
       return
     }
     setSavingId(quota.id)
     try {
       await updateQuotaLimit(tenantId, quota.id, value)
-      toast.success('Quota limit updated')
+      toast.success(t('admin.quotas.toast.limitUpdated'))
       load()
     } catch (e) {
       toast.error((e as Error).message)
@@ -97,7 +104,7 @@ export default function QuotaModulesPage() {
     setResetTarget(null)
     try {
       await resetQuotaUsage(tenantId, quotaId)
-      toast.success('Quota usage reset')
+      toast.success(t('admin.quotas.toast.usageReset'))
       load()
     } catch (e) {
       toast.error((e as Error).message)
@@ -107,7 +114,9 @@ export default function QuotaModulesPage() {
   const handleToggleModule = async (tenantId: string, moduleId: string, enabled: boolean) => {
     try {
       await toggleTenantModule(tenantId, moduleId, enabled)
-      toast.success(enabled ? 'Module enabled' : 'Module disabled')
+      toast.success(
+        enabled ? t('admin.quotas.toast.moduleEnabled') : t('admin.quotas.toast.moduleDisabled')
+      )
       load()
     } catch (e) {
       toast.error((e as Error).message)
@@ -134,7 +143,7 @@ export default function QuotaModulesPage() {
         <button
           type="button"
           className="admin-icon-btn"
-          aria-label={expandedId === r.id ? 'Collapse' : 'Expand'}
+          aria-label={expandedId === r.id ? t('admin.quotas.collapse') : t('admin.quotas.expand')}
           aria-expanded={expandedId === r.id}
           onClick={() => toggleRow(r.id)}
         >
@@ -144,7 +153,7 @@ export default function QuotaModulesPage() {
     },
     {
       key: 'host',
-      label: 'Tenant',
+      label: t('admin.quotas.col.tenant'),
       sortable: true,
       render: r => (
         <div>
@@ -155,10 +164,10 @@ export default function QuotaModulesPage() {
     },
     {
       key: 'quotas',
-      label: 'Quota',
+      label: t('admin.quotas.col.quota'),
       render: r => {
         const q = r.quotas[0]
-        if (!q) return <span className="admin-sub-text">No quota</span>
+        if (!q) return <span className="admin-sub-text">{t('admin.quotas.noQuota')}</span>
         return (
           <div className="tenant-quota quota-cell">
             <div className="tenant-quota-label">
@@ -179,10 +188,10 @@ export default function QuotaModulesPage() {
     },
     {
       key: 'modules_enabled',
-      label: 'Modules',
+      label: t('admin.quotas.col.modules'),
       render: r =>
         r.modules_enabled.length === 0 ? (
-          <span className="admin-sub-text">None</span>
+          <span className="admin-sub-text">{t('admin.quotas.none')}</span>
         ) : (
           <div className="tenant-chips">
             {r.modules_enabled.map(m => (
@@ -195,14 +204,16 @@ export default function QuotaModulesPage() {
     },
     {
       key: 'usage_by_module',
-      label: 'Usage (period)',
+      label: t('admin.quotas.col.usagePeriod'),
       align: 'right',
       render: r =>
         r.usage_by_module.length === 0 ? (
           <span className="admin-sub-text">—</span>
         ) : (
           <span className="admin-mono">
-            {r.usage_by_module.reduce((sum, u) => sum + u.calls, 0)} calls
+            {t('admin.quotas.calls', {
+              count: r.usage_by_module.reduce((sum, u) => sum + u.calls, 0),
+            })}
           </span>
         ),
     },
@@ -211,17 +222,17 @@ export default function QuotaModulesPage() {
   const renderExpandedRow = (row: TenantQuotaOverviewRow) => (
     <div className="tenant-detail">
       <section className="tenant-detail-section">
-        <h4>Usage by module (selected period)</h4>
+        <h4>{t('admin.quotas.detail.usageByModule')}</h4>
         {row.usage_by_module.length === 0 ? (
-          <span className="admin-sub-text">No usage in the selected period</span>
+          <span className="admin-sub-text">{t('admin.quotas.detail.noUsage')}</span>
         ) : (
           <div className="quota-manage-list">
             {row.usage_by_module.map(u => (
               <div key={u.module_id} className="quota-manage-row">
                 <span className="admin-sub-text quota-manage-meta">{u.display_name}</span>
-                <span className="admin-mono">{u.calls} calls</span>
+                <span className="admin-mono">{t('admin.quotas.calls', { count: u.calls })}</span>
                 <span className="admin-mono admin-sub-text">
-                  {u.tokens.toLocaleString()} tokens
+                  {t('admin.quotas.detail.tokens', { count: u.tokens.toLocaleString() })}
                 </span>
                 <span className="admin-mono admin-sub-text">${u.cost_usd.toFixed(4)}</span>
               </div>
@@ -231,9 +242,9 @@ export default function QuotaModulesPage() {
       </section>
 
       <section className="tenant-detail-section">
-        <h4>Quotas</h4>
+        <h4>{t('admin.quotas.detail.quotas')}</h4>
         {row.quotas.length === 0 ? (
-          <span className="admin-sub-text">No quotas configured</span>
+          <span className="admin-sub-text">{t('admin.quotas.detail.noQuotas')}</span>
         ) : (
           <div className="quota-manage-list">
             {row.quotas.map(q => (
@@ -247,20 +258,20 @@ export default function QuotaModulesPage() {
                   value={limitDrafts[q.id] ?? String(q.limit)}
                   onChange={e => setLimitDrafts(prev => ({ ...prev, [q.id]: e.target.value }))}
                   min={1}
-                  aria-label={`Quota limit for ${q.metric}`}
+                  aria-label={t('admin.quotas.detail.quotaLimitAria', { metric: q.metric })}
                 />
                 <Button
                   variant="outline"
                   disabled={savingId === q.id}
                   onClick={() => handleSaveLimit(row.id, q)}
                 >
-                  Save
+                  {t('admin.quotas.detail.save')}
                 </Button>
                 <Button
                   variant="outline"
                   onClick={() => setResetTarget({ tenantId: row.id, quotaId: q.id })}
                 >
-                  Reset usage
+                  {t('admin.quotas.detail.resetUsage')}
                 </Button>
               </div>
             ))}
@@ -269,7 +280,7 @@ export default function QuotaModulesPage() {
       </section>
 
       <section className="tenant-detail-section">
-        <h4>Modules</h4>
+        <h4>{t('admin.quotas.detail.modules')}</h4>
         <div className="module-toggle-list">
           {modulesCatalog.map(m => {
             const enabled = row.modules_enabled.some(em => em.id === m.id)
@@ -295,14 +306,14 @@ export default function QuotaModulesPage() {
           checked={activeOnly}
           onChange={e => setActiveOnly(e.target.checked)}
         />
-        Active only
+        {t('admin.quotas.activeOnly')}
       </label>
       <DateRangePicker
         from={from}
         to={to}
-        onChange={(f, t) => {
+        onChange={(f, newTo) => {
           setFrom(f)
-          setTo(t)
+          setTo(newTo)
         }}
       />
     </>
@@ -311,39 +322,43 @@ export default function QuotaModulesPage() {
   return (
     <div className="admin-page">
       <PageHeader
-        title="Quota & Modules"
-        description="See how much each tenant is spending against their quota, broken down by module, and manage limits or module access."
+        title={t('admin.quotas.title')}
+        description={t('admin.quotas.description')}
         actions={filters}
       />
 
       {!loading && rows.length === 0 ? (
         <EmptyState
           icon={<Building2 size={22} strokeWidth={1.75} />}
-          title="No tenants match this filter"
-          description="Try unchecking “Active only” or widening the date range."
+          title={t('admin.quotas.emptyTitle')}
+          description={t('admin.quotas.emptyDescription')}
         />
       ) : (
         <>
-          <Tabs tabs={TABS} active={tab} onChange={id => setTab(id as 'overview' | 'details')} />
+          <Tabs
+            tabs={getTabs(t)}
+            active={tab}
+            onChange={id => setTab(id as 'overview' | 'details')}
+          />
 
           {tab === 'overview' ? (
             <>
               <div className="kpi-grid">
                 <KPICard
-                  label="Tenants"
+                  label={t('admin.quotas.kpi.tenants')}
                   value={tenantsCount}
                   icon={<Building2 size={18} strokeWidth={2} />}
                   loading={loading}
                 />
                 <KPICard
-                  label="Near limit"
+                  label={t('admin.quotas.kpi.nearLimit')}
                   value={nearLimitCount}
                   accent={nearLimitCount > 0 ? 'yellow' : 'green'}
                   icon={<AlertTriangle size={18} strokeWidth={2} />}
                   loading={loading}
                 />
                 <KPICard
-                  label="Modules enabled"
+                  label={t('admin.quotas.kpi.modulesEnabled')}
                   value={modulesEnabledCount}
                   icon={<Layers size={18} strokeWidth={2} />}
                   loading={loading}
@@ -351,14 +366,16 @@ export default function QuotaModulesPage() {
               </div>
 
               <Card
-                title="Calls by module (all tenants)"
+                title={t('admin.quotas.chart.callsByModule')}
                 icon={<BarChart3 size={16} strokeWidth={2} />}
               >
                 <MetricChart
                   type="bar"
                   data={moduleUsageChart}
                   xKey="module"
-                  series={[{ key: 'calls', label: 'Calls', color: '#6366f1' }]}
+                  series={[
+                    { key: 'calls', label: t('admin.quotas.series.calls'), color: '#6366f1' },
+                  ]}
                   loading={loading}
                 />
               </Card>
@@ -369,7 +386,7 @@ export default function QuotaModulesPage() {
                 columns={columns}
                 rows={rows}
                 loading={loading}
-                emptyText="No tenants found"
+                emptyText={t('admin.quotas.empty')}
                 expandedRowId={expandedId}
                 renderExpandedRow={renderExpandedRow}
               />
@@ -380,11 +397,11 @@ export default function QuotaModulesPage() {
 
       <CustomModal
         show={resetTarget !== null}
-        title="Reset quota usage"
-        message="This sets the tenant's usage counter for the current period back to zero. This cannot be undone."
+        title={t('admin.quotas.modal.resetTitle')}
+        message={t('admin.quotas.modal.resetMessage')}
         type="warning"
-        confirmText="Reset usage"
-        cancelText="Cancel"
+        confirmText={t('admin.quotas.modal.resetConfirm')}
+        cancelText={t('admin.quotas.modal.cancel')}
         onConfirm={handleReset}
         onCancel={() => setResetTarget(null)}
       />

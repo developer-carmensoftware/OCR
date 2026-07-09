@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useT } from '../../i18n/LanguageContext'
 
 interface DateRangePickerProps {
   from: string
@@ -9,6 +10,7 @@ interface DateRangePickerProps {
 const DEBOUNCE_MS = 300
 
 export default function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
+  const { t } = useT()
   // Local state gives instant input feedback; the parent's onChange (which drives a
   // network fetch in every consumer) is debounced so rapidly adjusting the range
   // doesn't fire one full request per change.
@@ -34,13 +36,13 @@ export default function DateRangePicker({ from, to, onChange }: DateRangePickerP
   return (
     <div className="admin-date-range">
       <label className="admin-date-label" htmlFor="date-from">
-        From
+        {t('admin.common.dateRange.from')}
       </label>
       <input
         id="date-from"
         type="date"
         className="admin-date-input"
-        aria-label="From date"
+        aria-label={t('admin.common.dateRange.from')}
         value={localFrom}
         onChange={e => {
           setLocalFrom(e.target.value)
@@ -50,13 +52,13 @@ export default function DateRangePicker({ from, to, onChange }: DateRangePickerP
       />
       <span className="admin-date-sep">–</span>
       <label className="admin-date-label" htmlFor="date-to">
-        To
+        {t('admin.common.dateRange.to')}
       </label>
       <input
         id="date-to"
         type="date"
         className="admin-date-input"
-        aria-label="To date"
+        aria-label={t('admin.common.dateRange.to')}
         value={localTo}
         onChange={e => {
           setLocalTo(e.target.value)

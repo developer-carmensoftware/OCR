@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { fetchTenants } from '../../lib/api/adminClient'
+import { useT } from '../../i18n/LanguageContext'
 
 interface Tenant {
   id: string
@@ -15,6 +16,7 @@ interface TenantSelectorProps {
 }
 
 export default function TenantSelector({ value, onChange }: TenantSelectorProps) {
+  const { t } = useT()
   const [tenants, setTenants] = useState<Tenant[]>([])
 
   useEffect(() => {
@@ -28,9 +30,9 @@ export default function TenantSelector({ value, onChange }: TenantSelectorProps)
       className="admin-select"
       value={value}
       onChange={e => onChange(e.target.value)}
-      title="Filter by tenant"
+      title={t('admin.common.tenantSelector.filterTitle')}
     >
-      <option value="">All Tenants</option>
+      <option value="">{t('admin.common.tenantSelector.allTenants')}</option>
       {tenants.map(t => (
         <option key={t.id} value={t.id}>
           {t.name || t.host} ({t.bu_code})

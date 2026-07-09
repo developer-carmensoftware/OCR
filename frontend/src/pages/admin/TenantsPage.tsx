@@ -8,22 +8,26 @@ import {
   type TenantRow,
   type TenantDetail,
 } from '../../lib/api/adminClient'
+import { useT } from '../../i18n/LanguageContext'
 
 const fmtDate = (s: string | null) => s?.slice(0, 19).replace('T', ' ') ?? '—'
 
-const METRIC_LABELS: Record<string, string> = {
-  calls: 'API Calls',
-  tokens: 'Tokens',
-  cost_usd: 'Cost (USD)',
-  documents: 'Documents',
+function metricLabel(t: ReturnType<typeof useT>['t'], metric: string): string {
+  const METRIC_LABELS: Record<string, string> = {
+    calls: t('admin.tenants.metric.calls'),
+    tokens: t('admin.tenants.metric.tokens'),
+    cost_usd: t('admin.tenants.metric.cost'),
+    documents: t('admin.tenants.metric.documents'),
+  }
+  return METRIC_LABELS[metric] ?? metric
 }
-const metricLabel = (metric: string) => METRIC_LABELS[metric] ?? metric
 
 const quotaTier = (pct: number) => (pct >= 100 ? 'over' : pct >= 80 ? 'warn' : '')
 
 const TENANTS_LIMIT = 500
 
 export default function TenantsPage() {
+  const { t } = useT()
   const [activeOnly, setActiveOnly] = useState(true)
   const [rows, setRows] = useState<TenantRow[]>([])
   const [total, setTotal] = useState(0)
@@ -40,10 +44,13 @@ export default function TenantsPage() {
         setRows(r.data ?? [])
         setTotal(r.total ?? 0)
       })
-      .catch(e => toast.error(`Tenants: ${e?.message ?? 'failed to load'}`))
+      .catch(e =>
+        toast.error(t('admin.tenants.toast.loadFailed', { error: e?.message ?? 'failed to load' }))
+      )
       .finally(() => setLoading(false))
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(load, [activeOnly])
 
   // Keyed per-tenant-id (not a single scalar) so an in-flight fetch for one row
@@ -73,12 +80,12 @@ export default function TenantsPage() {
   const columns: Column<TenantRow>[] = [
     {
       key: '_expand',
-      label: <span className="sr-only">Expand row</span>,
+      label: <span className="sr-only">{t('admin.tenants.expandRow')}</span>,
       render: r => (
         <button
           type="button"
           className="admin-icon-btn"
-          aria-label={expandedId === r.id ? 'Collapse' : 'Expand'}
+          aria-label={expandedId === r.id ? t('admin.tenants.collapse') : t('admin.tenants.expand')}
           aria-expanded={expandedId === r.id}
           onClick={() => toggle(r.id)}
         >
@@ -86,34 +93,34 @@ export default function TenantsPage() {
         </button>
       ),
     },
-    { key: 'host', label: 'Host', sortable: true },
-    { key: 'bu_code', label: 'BU', sortable: true },
+    { key: 'host', label: t('admin.tenants.col.host'), sortable: true },
+    { key: 'bu_code', label: t('admin.tenants.col.bu'), sortable: true },
     {
       key: 'plan',
-      label: 'Plan',
+      label: t('admin.tenants.col.plan'),
       sortable: true,
       render: r => <span className="status-badge neutral">{r.plan || '—'}</span>,
     },
     {
       key: 'modules_count',
-      label: 'Modules',
+      label: t('admin.tenants.col.modules'),
       sortable: true,
       align: 'right',
       render: r => String(r.modules_count),
     },
     {
       key: 'last_used_at',
-      label: 'Last Active',
+      label: t('admin.tenants.col.lastActive'),
       sortable: true,
       render: r => fmtDate(r.last_used_at),
     },
     {
       key: 'is_active',
-      label: 'Status',
+      label: t('admin.tenants.col.status'),
       sortable: true,
       render: r => (
         <span className={`status-badge ${r.is_active ? 'ok' : 'error'}`}>
-          {r.is_active ? 'Active' : 'Inactive'}
+          {r.is_active ? t('admin.tenants.status.active') : t('admin.tenants.status.inactive')}
         </span>
       ),
     },
@@ -121,15 +128,15 @@ export default function TenantsPage() {
 
   const renderExpandedRow = (row: TenantRow) => {
     const d = details[row.id]
-    if (d) return <TenantDetailPanel detail={d} />
+    if (d) return <TenantDetailPanel detail={d} t={t} />
 
     const err = detailErrors[row.id]
     if (err) {
       return (
         <div className="tenant-detail-error" aria-live="polite">
-          <span>Failed to load tenant detail: {err}</span>
+          <span>{t('admin.tenants.detail.loadFailed', { error: err })}</span>
           <button type="button" className="btn btn-outline" onClick={() => loadDetail(row.id)}>
-            Retry
+            {t('admin.tenants.detail.retry')}
           </button>
         </div>
       )
@@ -139,9 +146,9 @@ export default function TenantsPage() {
       return (
         <>
           <span className="sr-only" aria-live="polite">
-            Loading tenant details…
+            {t('admin.tenants.detail.loading')}
           </span>
-          <TenantDetailSkeleton />
+          <TenantDetailSkeleton t={t} />
         </>
       )
     }
@@ -152,7 +159,7 @@ export default function TenantsPage() {
   return (
     <div className="admin-page">
       <div className="admin-page-header">
-        <h2 className="admin-page-title">Tenants</h2>
+        <h2 className="admin-page-title">{t('admin.tenants.title')}</h2>
         <div className="admin-page-controls">
           <label className="admin-checkbox-label">
             <input
@@ -160,7 +167,7 @@ export default function TenantsPage() {
               checked={activeOnly}
               onChange={e => setActiveOnly(e.target.checked)}
             />
-            Active only
+            {t('admin.tenants.activeOnly')}
           </label>
         </div>
       </div>
@@ -170,21 +177,21 @@ export default function TenantsPage() {
           columns={columns}
           rows={rows}
           loading={loading}
-          emptyText="No tenants found"
+          emptyText={t('admin.tenants.empty')}
           expandedRowId={expandedId}
           renderExpandedRow={renderExpandedRow}
         />
       </div>
       {!loading && total > rows.length && (
         <p className="admin-sub-text admin-truncation-note">
-          Showing {rows.length} of {total} — narrow the filter to see the rest.
+          {t('admin.tenants.truncationNote', { shown: rows.length, total })}
         </p>
       )}
     </div>
   )
 }
 
-function TenantDetailSkeleton() {
+function TenantDetailSkeleton({ t }: { t: ReturnType<typeof useT>['t'] }) {
   return (
     <div className="tenant-detail" aria-hidden="true">
       <div className="tenant-detail-meta">
@@ -192,7 +199,7 @@ function TenantDetailSkeleton() {
       </div>
 
       <section className="tenant-detail-section">
-        <h4>Modules</h4>
+        <h4>{t('admin.tenants.detail.modules')}</h4>
         <div className="tenant-chips">
           <span className="skeleton tenant-chip-skeleton" />
           <span className="skeleton tenant-chip-skeleton" />
@@ -200,7 +207,7 @@ function TenantDetailSkeleton() {
       </section>
 
       <section className="tenant-detail-section">
-        <h4>Quotas</h4>
+        <h4>{t('admin.tenants.detail.quotas')}</h4>
         <div className="tenant-quota-list">
           <div className="tenant-quota">
             <div className="tenant-quota-label">
@@ -214,13 +221,13 @@ function TenantDetailSkeleton() {
       </section>
 
       <section className="tenant-detail-section">
-        <h4>Recent Sessions</h4>
+        <h4>{t('admin.tenants.detail.recentSessions')}</h4>
         <table className="admin-table admin-table--mini">
           <thead>
             <tr>
-              <th className="admin-th">User</th>
-              <th className="admin-th">Status</th>
-              <th className="admin-th">Last Used</th>
+              <th className="admin-th">{t('admin.tenants.detail.col.user')}</th>
+              <th className="admin-th">{t('admin.tenants.detail.col.status')}</th>
+              <th className="admin-th">{t('admin.tenants.detail.col.lastUsed')}</th>
             </tr>
           </thead>
           <tbody>
@@ -244,7 +251,13 @@ function TenantDetailSkeleton() {
   )
 }
 
-function TenantDetailPanel({ detail }: { detail: TenantDetail }) {
+function TenantDetailPanel({
+  detail,
+  t,
+}: {
+  detail: TenantDetail
+  t: ReturnType<typeof useT>['t']
+}) {
   return (
     <div className="tenant-detail">
       <div className="tenant-detail-meta">
@@ -255,9 +268,9 @@ function TenantDetailPanel({ detail }: { detail: TenantDetail }) {
       </div>
 
       <section className="tenant-detail-section">
-        <h4>Modules ({detail.modules.length})</h4>
+        <h4>{t('admin.tenants.detail.modulesCount', { count: detail.modules.length })}</h4>
         {detail.modules.length === 0 ? (
-          <span className="admin-sub-text">No modules enabled</span>
+          <span className="admin-sub-text">{t('admin.tenants.detail.noModules')}</span>
         ) : (
           <div className="tenant-chips">
             {detail.modules.map(m => (
@@ -270,15 +283,15 @@ function TenantDetailPanel({ detail }: { detail: TenantDetail }) {
       </section>
 
       <section className="tenant-detail-section">
-        <h4>Quotas</h4>
+        <h4>{t('admin.tenants.detail.quotas')}</h4>
         {detail.quotas.length === 0 ? (
-          <span className="admin-sub-text">No quotas configured</span>
+          <span className="admin-sub-text">{t('admin.tenants.detail.noQuotas')}</span>
         ) : (
           <div className="tenant-quota-list">
             {detail.quotas.map(q => (
               <div key={`${q.period}-${q.metric}`} className="tenant-quota">
                 <div className="tenant-quota-label">
-                  {q.period} · {metricLabel(q.metric)}
+                  {q.period} · {metricLabel(t, q.metric)}
                   <span className="admin-mono admin-sub-text">
                     {q.used} / {q.limit} ({q.pct}%)
                   </span>
@@ -296,16 +309,18 @@ function TenantDetailPanel({ detail }: { detail: TenantDetail }) {
       </section>
 
       <section className="tenant-detail-section">
-        <h4>Recent Sessions ({detail.recent_sessions.length})</h4>
+        <h4>
+          {t('admin.tenants.detail.recentSessionsCount', { count: detail.recent_sessions.length })}
+        </h4>
         {detail.recent_sessions.length === 0 ? (
-          <span className="admin-sub-text">No sessions</span>
+          <span className="admin-sub-text">{t('admin.tenants.detail.noSessions')}</span>
         ) : (
           <table className="admin-table admin-table--mini">
             <thead>
               <tr>
-                <th className="admin-th">User</th>
-                <th className="admin-th">Status</th>
-                <th className="admin-th">Last Used</th>
+                <th className="admin-th">{t('admin.tenants.detail.col.user')}</th>
+                <th className="admin-th">{t('admin.tenants.detail.col.status')}</th>
+                <th className="admin-th">{t('admin.tenants.detail.col.lastUsed')}</th>
               </tr>
             </thead>
             <tbody>
@@ -317,7 +332,9 @@ function TenantDetailPanel({ detail }: { detail: TenantDetail }) {
                   </td>
                   <td className="admin-td">
                     <span className={`status-badge ${s.is_active ? 'ok' : 'error'}`}>
-                      {s.is_active ? 'Active' : 'Revoked'}
+                      {s.is_active
+                        ? t('admin.tenants.detail.status.active')
+                        : t('admin.tenants.detail.status.revoked')}
                     </span>
                   </td>
                   <td className="admin-td">{fmtDate(s.last_used_at)}</td>
