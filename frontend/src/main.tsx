@@ -65,6 +65,9 @@ const AnomaliesPage = lazy(() => import('./pages/admin/AnomaliesPage'))
 const JobsPage = lazy(() => import('./pages/admin/JobsPage'))
 const SessionsPage = lazy(() => import('./pages/admin/SessionsPage'))
 const CreditsPage = lazy(() => import('./pages/admin/CreditsPage'))
+const TenantsPage = lazy(() => import('./pages/admin/TenantsPage'))
+const QuotaModulesPage = lazy(() => import('./pages/admin/QuotaModulesPage'))
+const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'))
 
 // Order Review — standalone page (own shell, reuses admin auth)
 const OrderReviewShell = lazy(() => import('./pages/order-review/OrderReviewShell'))
@@ -104,6 +107,12 @@ function AdminRouter() {
     AdminPage = <AnomaliesPage />
   } else if (route === 'admin/jobs') {
     AdminPage = <JobsPage />
+  } else if (route === 'admin/tenants') {
+    AdminPage = <TenantsPage />
+  } else if (route === 'admin/quota-modules') {
+    AdminPage = <QuotaModulesPage />
+  } else if (route === 'admin/admin-users') {
+    AdminPage = <AdminUsersPage />
   } else if (route === 'admin/sessions') {
     AdminPage = <SessionsPage />
   } else if (route === 'admin/credits') {

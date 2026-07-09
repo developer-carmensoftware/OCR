@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { Bell, Bot, Coins, FileText, AlertCircle, Send, TrendingUp, BarChart3 } from 'lucide-react'
 import KPICard from '../../components/admin/KPICard'
 import MetricChart from '../../components/admin/MetricChart'
 import TenantSelector from '../../components/admin/TenantSelector'
+import PageHeader from '../../components/admin/ui/PageHeader'
+import Card from '../../components/admin/ui/Card'
 import { fetchAlerts, fetchUsageSummary, fetchUsageTotals } from '../../lib/api/adminClient'
+import { useT } from '../../i18n/LanguageContext'
 
 function fmtCost(v: number) {
   return `$${v.toFixed(4)}`
@@ -14,6 +18,7 @@ function fmtNum(v: number) {
 }
 
 export default function Overview() {
+  const { t } = useT()
   const [tenantId, setTenantId] = useState('')
   const [totals, setTotals] = useState<Record<string, number>>({})
   const [trend, setTrend] = useState<Record<string, unknown>[]>([])
@@ -34,7 +39,9 @@ export default function Overview() {
         if (totRes.status === 'fulfilled') {
           setTotals(totRes.value.totals ?? {})
         } else {
-          toast.error(`Totals: ${totRes.reason?.message ?? 'failed'}`)
+          toast.error(
+            t('admin.overview.toast.totalsFailed', { error: totRes.reason?.message ?? 'failed' })
+          )
         }
         if (sumRes.status === 'fulfilled') {
           const byDate: Record<string, { date: string; cost_usd: number; llm_calls: number }> = {}
@@ -50,13 +57,16 @@ export default function Overview() {
               .map(r => ({ ...r, cost_usd: Number(r.cost_usd.toFixed(6)) }))
           )
         } else {
-          toast.error(`Trend: ${sumRes.reason?.message ?? 'failed'}`)
+          toast.error(
+            t('admin.overview.toast.trendFailed', { error: sumRes.reason?.message ?? 'failed' })
+          )
         }
         if (alertsRes.status === 'fulfilled') {
           setOpenAlerts(alertsRes.value.total ?? 0)
         }
       })
       .finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId])
 
   const errorRate =
@@ -64,62 +74,85 @@ export default function Overview() {
 
   return (
     <div className="admin-page">
-      <div className="admin-page-header">
-        <h2 className="admin-page-title">Overview</h2>
-        <TenantSelector value={tenantId} onChange={setTenantId} />
-      </div>
+      <PageHeader
+        title={t('admin.overview.title')}
+        description={t('admin.overview.description')}
+        actions={<TenantSelector value={tenantId} onChange={setTenantId} />}
+      />
 
       <div className="kpi-grid">
-        <KPICard label="LLM Calls (MTD)" value={fmtNum(totals.llm_calls ?? 0)} loading={loading} />
         <KPICard
-          label="Cost (MTD)"
+          label={t('admin.overview.kpi.llmCalls')}
+          value={fmtNum(totals.llm_calls ?? 0)}
+          icon={<Bot size={18} strokeWidth={2} />}
+          loading={loading}
+        />
+        <KPICard
+          label={t('admin.overview.kpi.cost')}
           value={fmtCost(totals.cost_usd ?? 0)}
           accent="yellow"
+          icon={<Coins size={18} strokeWidth={2} />}
           loading={loading}
         />
         <KPICard
-          label="Error Rate"
+          label={t('admin.overview.kpi.errorRate')}
           value={errorRate}
           accent={totals.errors > 0 ? 'red' : 'green'}
+          icon={<AlertCircle size={18} strokeWidth={2} />}
           loading={loading}
         />
         <KPICard
-          label="Open Alerts"
+          label={t('admin.overview.kpi.openAlerts')}
           value={openAlerts}
           accent={openAlerts > 0 ? 'red' : 'green'}
+          icon={<Bell size={18} strokeWidth={2} />}
           loading={loading}
         />
-        <KPICard label="Documents (MTD)" value={fmtNum(totals.documents ?? 0)} loading={loading} />
         <KPICard
-          label="Submissions (MTD)"
+          label={t('admin.overview.kpi.documents')}
+          value={fmtNum(totals.documents ?? 0)}
+          icon={<FileText size={18} strokeWidth={2} />}
+          loading={loading}
+        />
+        <KPICard
+          label={t('admin.overview.kpi.submissions')}
           value={fmtNum(totals.submissions ?? 0)}
+          icon={<Send size={18} strokeWidth={2} />}
           loading={loading}
         />
       </div>
 
-      <div className="admin-chart-card">
-        <h3 className="admin-chart-title">Daily Cost (30 days)</h3>
+      <Card
+        title={t('admin.overview.chart.dailyCost')}
+        icon={<TrendingUp size={16} strokeWidth={2} />}
+      >
         <MetricChart
           type="line"
           data={trend}
           xKey="date"
-          series={[{ key: 'cost_usd', label: 'Cost USD', color: '#f59e0b' }]}
+          series={[
+            { key: 'cost_usd', label: t('admin.overview.series.costUsd'), color: '#f59e0b' },
+          ]}
           yFormatter={fmtCost}
           loading={loading}
         />
-      </div>
+      </Card>
 
-      <div className="admin-chart-card">
-        <h3 className="admin-chart-title">Daily LLM Calls (30 days)</h3>
+      <Card
+        title={t('admin.overview.chart.dailyLlmCalls')}
+        icon={<BarChart3 size={16} strokeWidth={2} />}
+      >
         <MetricChart
           type="bar"
           data={trend}
           xKey="date"
-          series={[{ key: 'llm_calls', label: 'LLM Calls', color: '#6366f1' }]}
+          series={[
+            { key: 'llm_calls', label: t('admin.overview.series.llmCalls'), color: '#6366f1' },
+          ]}
           yFormatter={fmtNum}
           loading={loading}
         />
-      </div>
+      </Card>
     </div>
   )
 }

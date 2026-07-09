@@ -37,8 +37,8 @@ from app.services.quota_service import (
     _CachedQuota,
     _ctx,
     _get_cached_quota_rules,
-    _period_key,
     _utcnow,
+    period_key,
 )
 
 logger = logging.getLogger(__name__)
@@ -102,7 +102,7 @@ async def _try_consume_free(db: AsyncSession, quota: _CachedQuota, increment: in
     within the limit. Returns True if a free slot was consumed, False if the
     free quota is already exhausted for this period.
     """
-    key = _period_key(quota.period)
+    key = period_key(quota.period)
     stmt = (
         pg_insert(QuotaUsage)
         .values(quota_id=quota.id, period_key=key, used=increment)
@@ -259,7 +259,7 @@ async def _refund_free(db: AsyncSession, tenant_id: str, increment: int) -> None
     await db.execute(
         update(QuotaUsage)
         .where(
-            QuotaUsage.quota_id == monthly.id, QuotaUsage.period_key == _period_key(monthly.period)
+            QuotaUsage.quota_id == monthly.id, QuotaUsage.period_key == period_key(monthly.period)
         )
         .values(used=func.greatest(QuotaUsage.used - increment, 0), last_updated_at=_utcnow())
     )

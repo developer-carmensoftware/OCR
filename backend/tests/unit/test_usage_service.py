@@ -10,26 +10,26 @@ import pytest
 
 from app.exceptions import RateLimitExceeded
 from app.models.enums import QuotaPeriod
-from app.services.usage_service import _estimate_cost, _period_key
+from app.services.usage_service import _estimate_cost, period_key
 from tests.conftest import set_context
 
-# ── _period_key ───────────────────────────────────────────────────────────────
+# ── period_key ────────────────────────────────────────────────────────────────
 
 
 class TestPeriodKey:
     def test_B4_9_monthly_format(self):
-        key = _period_key(QuotaPeriod.MONTHLY)
+        key = period_key(QuotaPeriod.MONTHLY)
         assert len(key) == 7  # "YYYY-MM"
         assert key[4] == "-"
 
     def test_daily_format(self):
-        key = _period_key(QuotaPeriod.DAILY)
+        key = period_key(QuotaPeriod.DAILY)
         assert len(key) == 10  # "YYYY-MM-DD"
         parts = key.split("-")
         assert len(parts) == 3
 
     def test_yearly_format(self):
-        key = _period_key(QuotaPeriod.YEARLY)
+        key = period_key(QuotaPeriod.YEARLY)
         assert len(key) == 4  # "YYYY"
         assert key.isdigit()
 

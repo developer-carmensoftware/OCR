@@ -31,8 +31,8 @@ interface Module {
 const ACTIVE_TAG: TagConfig = {
   labelKey: 'home.tagActive',
   bg: 'var(--emerald-light)',
-  color: 'oklch(0.30 0.08 188.43)',
-  border: 'oklch(0.88 0.06 188.43)',
+  color: 'var(--emerald)',
+  border: 'var(--emerald-mid)',
 }
 
 const MODULES: Module[] = [

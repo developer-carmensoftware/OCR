@@ -172,7 +172,9 @@ class TestGetUsageSummary:
                 "avg_llm_latency_ms": 180,
             },
         ]
-        db = _make_db(llm_rows, [], [], [])
+        # batches: llm rows, tenant_name_map lookup (llm_rows have a truthy tenant_id,
+        # so it's actually called), task, cc_sub, ap_sub
+        db = _make_db(llm_rows, [], [], [], [])
         result = await self._call(db)
         assert result["days"] == 2
 
@@ -208,7 +210,9 @@ class TestGetUsageSummary:
         ap_sub_rows = [
             {"sub_date": date(2024, 1, 1), "sub_module": "cc", "sub_tenant": "t1", "sub_count": 2}
         ]
-        db = _make_db(llm_rows, task_rows, cc_sub_rows, ap_sub_rows)
+        # tenant_name_map lookup slots in between llm and task (llm_rows has a
+        # truthy tenant_id, so it's actually called)
+        db = _make_db(llm_rows, [], task_rows, cc_sub_rows, ap_sub_rows)
         result = await self._call(db)
         # 1 cc + 2 ap = 3 submissions
         assert result["data"][0]["submissions"] == 3
@@ -539,8 +543,12 @@ class TestErrorBreakdown:
         row = _DictMapping({"group": "t-1", "total": 5, "errors": 1, "avg_latency": 200})
         result_mock = MagicMock()
         result_mock.mappings.return_value.all.return_value = [row]
+        # group_by="tenant" with a truthy group ("t-1") means tenant_name_map makes
+        # its own extra db.execute() call — give it a separate (empty) result.
+        tenant_lookup_mock = MagicMock()
+        tenant_lookup_mock.mappings.return_value.all.return_value = []
         db = AsyncMock()
-        db.execute.return_value = result_mock
+        db.execute.side_effect = [result_mock, tenant_lookup_mock]
         result = await self._call(db, group_by="tenant")
         assert result["group_by"] == "tenant"
 
