@@ -24,7 +24,7 @@ from app.services.ap_vendor_history_service import (
     select_examples,
 )
 from app.utils.gl_filter import score_and_pad
-from app.utils.mime import get_mime_type
+from app.utils.image_processing import resize_if_needed
 from app.utils.pdf_utils import (
     PDF_RENDER_TIMEOUT_SECONDS,
     extract_pages_as_pdf,
@@ -178,16 +178,18 @@ async def extract_ap_invoice_data(
             selected_pages,
         )
     else:
-        mime_type = get_mime_type(filename)
+        processed_bytes, mime_type = await asyncio.get_running_loop().run_in_executor(
+            None, functools.partial(resize_if_needed, file_bytes)
+        )
         image_items = [
             {
                 "type": "image_url",
                 "image_url": {
-                    "url": f"data:{mime_type};base64,{base64.b64encode(file_bytes).decode()}"
+                    "url": f"data:{mime_type};base64,{base64.b64encode(processed_bytes).decode()}"
                 },
             }
         ]
-        total_bytes = len(file_bytes)
+        total_bytes = len(processed_bytes)
         logger.info("Extracting AP Invoice: %s (model: %s)", filename, ap_model)
 
     result_text = await call_vision_llm(

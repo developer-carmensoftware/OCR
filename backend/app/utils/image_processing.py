@@ -68,21 +68,45 @@ def preprocess_image(
     return output.getvalue()
 
 
-def resize_if_needed(image_bytes: bytes, max_dimension: int = 4096) -> bytes:
+def resize_if_needed(
+    image_bytes: bytes,
+    max_dimension: int = 2200,
+    jpeg_quality: int = 92,
+) -> tuple[bytes, str]:
     """
-    Returns original bytes unchanged if the image already fits within max_dimension.
-    Only decodes and re-encodes when a resize is actually required, avoiding the
-    JPEG→PNG size inflation that preprocess_image caused on every non-PDF file.
+    Shrink an image for faster upload/LLM processing without a visible quality loss.
+
+    Returns (bytes, mime_type) — mime_type always reflects the ACTUAL bytes returned
+    (never derived from the original filename, which the caller may still use for other
+    purposes but must not use for the LLM's declared MIME type):
+
+    - If the image already fits within max_dimension: bytes are returned byte-identical
+      (no re-encode), mime_type is the Pillow-detected source format.
+    - Otherwise: resized (LANCZOS) and re-encoded as JPEG at jpeg_quality, mime_type is
+      always "image/jpeg". Alpha/palette-transparency is flattened onto a white
+      background first (matches the light background of receipts/invoices) since JPEG
+      has no alpha channel and a naive mode convert can leave transparent regions black.
+      Mode is normalized BEFORE resizing, not after — Pillow silently drops to NEAREST
+      resampling for P/1 mode images regardless of the requested filter.
     """
     img = Image.open(io.BytesIO(image_bytes))
     if max(img.size) <= max_dimension:
-        return image_bytes
+        return image_bytes, img.get_format_mimetype() or "image/jpeg"
+
+    if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+        img = img.convert("RGBA")
+        background = Image.new("RGB", img.size, (255, 255, 255))
+        background.paste(img, mask=img.split()[-1])
+        img = background
+    elif img.mode not in ("L", "RGB", "CMYK"):
+        img = img.convert("RGB")
+
     ratio = max_dimension / max(img.size)
     new_size = (int(img.width * ratio), int(img.height * ratio))
     img = img.resize(new_size, Image.Resampling.LANCZOS)
     output = io.BytesIO()
-    img.save(output, format="PNG")
-    return output.getvalue()
+    img.save(output, format="JPEG", quality=jpeg_quality)
+    return output.getvalue(), "image/jpeg"
 
 
 def convert_heic_to_jpeg(raw_bytes: bytes) -> bytes:

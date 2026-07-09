@@ -40,6 +40,8 @@ async def extract_stateless(
     pdf_password: password for an encrypted PDF (None = not encrypted).
     """
     ext = os.path.splitext(original_filename)[1].lower()
+    image_mime_type: str | None = None  # PDF branch leaves this None → falls back to
+    # get_mime_type(original_filename) inside extract_from_image, i.e. application/pdf.
 
     if ext == ".pdf":
         # Credit-card docs are single-page — always extract page 1 as a native PDF
@@ -56,7 +58,7 @@ async def extract_stateless(
         except TimeoutError as exc:
             raise ValidationError("PDF processing timed out — the file may be malformed.") from exc
     else:
-        processed_bytes = await asyncio.get_running_loop().run_in_executor(
+        processed_bytes, image_mime_type = await asyncio.get_running_loop().run_in_executor(
             None, functools.partial(resize_if_needed, file_bytes)
         )
 
@@ -72,6 +74,7 @@ async def extract_stateless(
         bank_code,
         hints=hints,
         task_id=task_id,
+        image_mime_type=image_mime_type,
     )
     return extracted
 
