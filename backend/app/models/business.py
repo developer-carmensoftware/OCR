@@ -72,23 +72,6 @@ class OCRTask(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin):
     credit_card = relationship("CreditCard", back_populates="task", uselist=False)
     ap_invoice = relationship("APInvoice", back_populates="task", uselist=False)
 
-    __table_args__ = (
-        # Covers `WHERE created_at range AND deleted_at IS NULL GROUP BY module_id,
-        # tenant_id, DATE(created_at)` (usage_analytics_service's get_usage_summary/
-        # get_usage_totals/get_error_breakdown) — this table is never purged (5-year
-        # legal retention), so it had no composite index matching that actual query
-        # shape, only 5 unrelated single-column indexes. Partial on the near-universal
-        # `deleted_at IS NULL` filter, matching this codebase's existing partial-index
-        # convention (see Quota, PromptTemplate).
-        Index(
-            "ix_ocr_tasks_created_module_tenant_active",
-            "created_at",
-            "module_id",
-            "tenant_id",
-            postgresql_where=text("deleted_at IS NULL"),
-        ),
-    )
-
 
 class CreditCard(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixin):
     """

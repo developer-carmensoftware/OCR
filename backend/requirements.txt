@@ -20,7 +20,9 @@ python-dotenv==1.0.1
 pydantic-settings==2.14.2
 
 # Utilities
+python-dateutil==2.9.0
 httpx==0.28.1
+aiofiles==24.1.0
 
 # Authentication
 python-jose[cryptography]==3.3.0

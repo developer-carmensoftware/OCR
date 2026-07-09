@@ -17,14 +17,12 @@ from sqlalchemy import (
     DateTime,
     Float,
     Identity,
-    Index,
     Integer,
     Numeric,
     String,
     Text,
     UniqueConstraint,
     func,
-    text,
 )
 from sqlalchemy import Enum as SAEnum
 
@@ -253,19 +251,6 @@ class AnomalyAlert(Base, TimestampMixin):
     actual = Column(Numeric(14, 4), nullable=True)
     description = Column(Text, nullable=True)
     resolved_at = Column(DateTime(timezone=True), nullable=True)
-
-    __table_args__ = (
-        # Covers `WHERE resolved_at IS NULL` (list_alerts' default "open" filter, and
-        # the Overview "Open Alerts" KPI's count(*)) — resolved_at had no index at
-        # all, and this table (unlike the partitioned log tables) has no retention
-        # job, so the scan only gets slower over time. Partial + leading created_at
-        # makes both the count and the "open, newest first" list index-only/index-scan.
-        Index(
-            "ix_anomaly_alerts_open_created",
-            "created_at",
-            postgresql_where=text("resolved_at IS NULL"),
-        ),
-    )
 
 
 class JobRun(Base, TimestampMixin):

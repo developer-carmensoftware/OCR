@@ -1791,7 +1791,6 @@
 
 [data-theme='dark'] .ttd-trigger:hover {
   filter: brightness(1.08);
-  box-shadow: none;
 }
 
 /* ─── prefers-reduced-motion — keep opacity, remove movement ─── */

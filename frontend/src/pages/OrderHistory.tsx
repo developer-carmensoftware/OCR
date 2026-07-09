@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ChevronDown, ShoppingBag, ArrowRight, Loader2, CalendarClock } from 'lucide-react'
 import { toast } from 'sonner'
 import AppHeader from '../components/common/AppHeader'
@@ -23,49 +23,28 @@ import { formatThb } from '../lib/money'
 import { formatDate } from '../lib/date'
 import '../styles/pages/pricing.css'
 
-function OrderRow({
-  order,
-  paymentInfo,
-  focus = false,
-}: {
-  order: CreditOrder
-  paymentInfo: PaymentInfo | null
-  focus?: boolean
-}) {
+function OrderRow({ order, paymentInfo }: { order: CreditOrder; paymentInfo: PaymentInfo | null }) {
   const { t } = useT()
-  const [open, setOpen] = useState(focus)
+  const [open, setOpen] = useState(false)
   const [docs, setDocs] = useState<BillingDocument[] | null>(null)
   const [loadingDocs, setLoadingDocs] = useState(false)
-  const rowRef = useRef<HTMLLIElement>(null)
-
-  const loadDocs = () => {
-    if (docs !== null) return
-    setLoadingDocs(true)
-    getOrderDocuments(order.id)
-      // ponytail: accounting issues the real tax invoice; customers only see the proforma.
-      // Filtering on display (not dropping the API field) keeps admin/audit views intact.
-      .then(all => setDocs(all.filter(d => d.doc_type === 'proforma')))
-      .catch((e: Error) => toast.error(e.message))
-      .finally(() => setLoadingDocs(false))
-  }
 
   const toggle = () => {
     const next = !open
     setOpen(next)
-    if (next) loadDocs()
+    if (next && docs === null) {
+      setLoadingDocs(true)
+      getOrderDocuments(order.id)
+        // ponytail: accounting issues the real tax invoice; customers only see the proforma.
+        // Filtering on display (not dropping the API field) keeps admin/audit views intact.
+        .then(all => setDocs(all.filter(d => d.doc_type === 'proforma')))
+        .catch((e: Error) => toast.error(e.message))
+        .finally(() => setLoadingDocs(false))
+    }
   }
 
-  // Deep-linked from a notification: open, load, scroll into view, flash once.
-  useEffect(() => {
-    if (!focus) return
-    setOpen(true)
-    loadDocs()
-    rowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focus])
-
   return (
-    <li ref={rowRef} className={`order-row${focus ? ' order-row--focus' : ''}`}>
+    <li className="order-row">
       <button type="button" className="order-row-head" onClick={toggle} aria-expanded={open}>
         <div className="order-row-id">
           <span className="order-row-name">{catalogName(order.pack_code)}</span>
@@ -157,25 +136,11 @@ function ActivePlanBanner({ sub }: { sub: ActiveSubscription }) {
   )
 }
 
-// A notification deep-links as #/pricing/orders?id=<order_id>; pull that id out.
-function parseFocusId(): string | null {
-  const q = window.location.hash.split('?')[1]
-  return q ? new URLSearchParams(q).get('id') : null
-}
-
 export default function OrderHistory() {
   const { t } = useT()
   const { orders, loading, error, reload } = useOrderHistory()
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
   const [sub, setSub] = useState<ActiveSubscription | null>(null)
-  const [focusId, setFocusId] = useState(parseFocusId)
-
-  // Re-read the focus id if the hash changes while already on this page.
-  useEffect(() => {
-    const onHash = () => setFocusId(parseFocusId())
-    window.addEventListener('hashchange', onHash)
-    return () => window.removeEventListener('hashchange', onHash)
-  }, [])
 
   const openOrders = orders.filter(o => OPEN_ORDER_STATUSES.includes(o.status))
   const history = orders.filter(o => !OPEN_ORDER_STATUSES.includes(o.status))
@@ -268,12 +233,7 @@ export default function OrderHistory() {
         ) : (
           <ul className="order-list">
             {history.map(order => (
-              <OrderRow
-                key={order.id}
-                order={order}
-                paymentInfo={paymentInfo}
-                focus={order.id === focusId}
-              />
+              <OrderRow key={order.id} order={order} paymentInfo={paymentInfo} />
             ))}
           </ul>
         )}

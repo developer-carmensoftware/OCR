@@ -45,6 +45,9 @@ from app.services.quota_service import (
     _get_cached_quota_rules as _get_cached_quota_rules,
 )
 from app.services.quota_service import (
+    _period_key as _period_key,
+)
+from app.services.quota_service import (
     check_quota as check_quota,
 )
 from app.services.quota_service import (
@@ -55,9 +58,6 @@ from app.services.quota_service import (
 )
 from app.services.quota_service import (
     increment_quota as increment_quota,
-)
-from app.services.quota_service import (
-    period_key as period_key,
 )
 from app.services.quota_service import (
     upsert_tenant_quota as upsert_tenant_quota,
