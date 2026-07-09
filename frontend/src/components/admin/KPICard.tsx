@@ -1,12 +1,9 @@
-import type { ReactNode } from 'react'
-
 interface KPICardProps {
   label: string
   value: string | number
   sub?: string
   trend?: 'up' | 'down' | 'neutral'
   accent?: 'default' | 'green' | 'red' | 'yellow'
-  icon?: ReactNode
   loading?: boolean
 }
 
@@ -16,13 +13,11 @@ export default function KPICard({
   sub,
   trend,
   accent = 'default',
-  icon,
   loading = false,
 }: KPICardProps) {
   if (loading) {
     return (
       <div className={`kpi-card kpi-card--${accent}`}>
-        {icon && <div className="kpi-icon">{icon}</div>}
         <div className="kpi-label">{label}</div>
         <div className="skeleton skeleton-value" aria-hidden="true" />
       </div>
@@ -33,7 +28,6 @@ export default function KPICard({
 
   return (
     <div className={`kpi-card kpi-card--${accent}`}>
-      {icon && <div className="kpi-icon">{icon}</div>}
       <div className="kpi-label">{label}</div>
       <div className="kpi-value">
         {value}

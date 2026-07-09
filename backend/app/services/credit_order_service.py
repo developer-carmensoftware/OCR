@@ -20,7 +20,7 @@ from app.models.enums import BillingDocumentType, CreditLedgerReason, CreditOrde
 from app.models.orm import BillingDocument, CreditOrder, CreditPack, Tenant
 from app.models.schemas import CreditOrderResponse, KpiSummaryResponse
 from app.models.schemas.credits import HoldBatchResultItem, PostArResultItem
-from app.services import ar_posting_service, notification_service, storage_service
+from app.services import ar_posting_service, storage_service
 from app.services.credit_service import activate_subscription, grant_credits
 
 logger = logging.getLogger(__name__)
@@ -276,11 +276,6 @@ async def hold_batch(
             continue
 
         order.status = CreditOrderStatus.ON_HOLD  # type: ignore[assignment]
-        # Notify the buyer just like the cron auto-park does — same on_hold event,
-        # different trigger. Caller (router) owns the commit.
-        notification_service.notify(
-            db, tenant_id=order.tenant_id, order_id=order.id, type_="on_hold", payload={}
-        )
         results.append(HoldBatchResultItem(order_id=oid, success=True))
 
     return results

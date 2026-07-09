@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
 from app.models.business import OcrSession
-from app.services.tenant_lookup import tenant_name_map
 
 from .deps import require_permission
 
@@ -35,14 +34,12 @@ async def list_sessions(
 
     result = await db.execute(q)
     rows = result.scalars().all()
-    names = await tenant_name_map(db, [r.tenant_id for r in rows])
     return {
         "total": len(rows),
         "data": [
             {
                 "id": r.id,
                 "tenant_id": r.tenant_id,
-                "tenant_name": names.get(str(r.tenant_id)),
                 "carmen_user_id": r.carmen_user_id,
                 "username": r.username,
                 "is_active": r.is_active,

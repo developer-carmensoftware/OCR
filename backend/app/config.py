@@ -54,7 +54,12 @@ class Settings(BaseSettings):
     openrouter_ocr_model: str = "google/gemini-2.0-flash-001"
     openrouter_ap_invoice_model: str = "google/gemini-2.0-flash-001"
     openrouter_suggestion_model: str = "google/gemini-2.0-flash-001"
+    openrouter_bidding_model: str = ""
+    openrouter_vendorsuggest_model: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
+
+    # Tavily search API
+    tavily_api_key: str = ""
 
     # Master API key for service-to-service auth
     master_api_key: str = ""
@@ -98,6 +103,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/carmen_ai"
 
     # Carmen API
+    carmen_authorization: str = ""  # deprecated — kept for fallback only; prefer session token
     # SSRF allowlist for the client-supplied Carmen origin at /auth/exchange.
     # Comma-separated hostnames (no scheme), e.g. "carmen.example.com,erp.acme.co.th".
     # When set, only these hosts may be used as the Carmen origin. Leave empty only
@@ -131,6 +137,13 @@ class Settings(BaseSettings):
     # Never leave these set in production after bootstrapping.
     admin_bootstrap_email: str = ""
     admin_bootstrap_password: str = ""
+
+    # Ephemeral hosts (Render free / Heroku) — informational only since log retention
+    # is now done by dropping PostgreSQL partitions (no on-disk archives).
+    ephemeral_filesystem: bool = False
+
+    # Multi-tenancy
+    carmen_tenant_default: str = "dev"  # Fallback for localhost or missing Origin header
 
     # Sentry — leave empty to disable (set in production .env only)
     sentry_dsn: str = ""

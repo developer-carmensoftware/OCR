@@ -113,3 +113,13 @@ async def _fetch_jv_rows(source: str, carmen_token: str) -> list[dict]:
     _CACHE[cache_key] = (rows, now)
     logger.info("JV history cached: source=%s (%d rows)", source, len(rows))
     return rows
+
+
+def invalidate_mapping_cache(tenant_id: str | None = None) -> None:
+    """Drop cached entries. If tenant_id is None, clears the whole cache."""
+    if tenant_id is None:
+        _CACHE.clear()
+        return
+    tid = tenant_id or ""
+    for k in [k for k in _CACHE if k[0] == tid]:
+        _CACHE.pop(k, None)

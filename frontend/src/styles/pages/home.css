@@ -391,8 +391,10 @@
 
 .module-card.coming-soon:hover {
   transform: none;
-  box-shadow: var(--shadow-sm);
-  border-color: var(--border-hi);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.07),
+    0 6px 20px rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.08);
 }
 
 .module-card.coming-soon:hover .module-card-banner-icon {

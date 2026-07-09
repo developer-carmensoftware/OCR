@@ -30,12 +30,7 @@ from app.models.schemas import (
     RejectRequest,
     TopupRequest,
 )
-from app.services import (  # noqa: F401
-    ar_posting_service,
-    credit_order_service,
-    notification_service,
-    storage_service,
-)
+from app.services import ar_posting_service, credit_order_service, storage_service  # noqa: F401
 from app.services import billing_document_service as bds
 from app.services.credit_service import (
     adjust_balance,
@@ -187,13 +182,6 @@ async def approve_order(
 
     fulfilled = await credit_order_service.approve(db, order)
     order.approved_by = admin.email  # type: ignore[assignment]
-    notification_service.notify(
-        db,
-        tenant_id=order.tenant_id,
-        order_id=order.id,
-        type_="approved",
-        payload={"pack_code": order.pack_code, "credits": order.credits},
-    )
 
     await db.commit()
     await db.refresh(order)
@@ -221,13 +209,6 @@ async def reject_order(
     _assert_scope(admin, str(order.tenant_id))
 
     credit_order_service.reject(order, body.reason)
-    notification_service.notify(
-        db,
-        tenant_id=order.tenant_id,
-        order_id=order.id,
-        type_="rejected",
-        payload={"reason": body.reason or ""},
-    )
 
     await db.commit()
     await db.refresh(order)

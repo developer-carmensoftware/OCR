@@ -14,8 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.business import APInvoice, CreditCard, OCRTask
 from app.models.enums import TaskStatus
+from app.models.identity import Tenant
 from app.models.observability import LLMUsageLog, PerformanceLog
-from app.services.tenant_lookup import tenant_name_map
 
 
 async def get_usage_summary(
@@ -49,7 +49,6 @@ async def get_usage_summary(
     if module_id:
         q = q.where(LLMUsageLog.module_id == module_id)
     rows = (await db.execute(q)).mappings().all()
-    names = await tenant_name_map(db, [r["tenant_id"] for r in rows])
 
     task_count_q = (
         select(
@@ -128,7 +127,6 @@ async def get_usage_summary(
                 "date": str(r["summary_date"]),
                 "module_id": r["module_id"],
                 "tenant_id": r["tenant_id"],
-                "tenant_name": names.get(r["tenant_id"]) if r["tenant_id"] else None,
                 "documents": task_stats_map.get(
                     (str(r["summary_date"]), r["module_id"], str(r["tenant_id"])), (0, 0)
                 )[0],
@@ -231,13 +229,11 @@ async def get_llm_usage(
         "created_at": LLMUsageLog.created_at,
     }[order_by]
     rows = (await db.execute(q.order_by(order_col.desc()).limit(limit))).scalars().all()
-    names = await tenant_name_map(db, [r.tenant_id for r in rows])
 
     return [
         {
             "id": r.id,
             "tenant_id": r.tenant_id,
-            "tenant_name": names.get(r.tenant_id) if r.tenant_id else None,
             "module_id": r.module_id,
             "model": r.model,
             "task_id": r.task_id,
@@ -277,7 +273,7 @@ async def get_tenant_ranking(
             .limit(limit)
         )
         rows = (await db.execute(q)).mappings().all()
-        names = await tenant_name_map(db, [r["tid"] for r in rows if r["tid"]])
+        names = await _tenant_name_map(db, [r["tid"] for r in rows if r["tid"]])
         return [
             {
                 "tenant_id": r["tid"],
@@ -308,7 +304,7 @@ async def get_tenant_ranking(
     else:
         q = q.order_by(func.count(PerformanceLog.id).desc())
     rows = (await db.execute(q.limit(limit))).mappings().all()
-    names = await tenant_name_map(db, [r["tid"] for r in rows if r["tid"]])
+    names = await _tenant_name_map(db, [r["tid"] for r in rows if r["tid"]])
     return [
         {
             "tenant_id": r["tid"],
@@ -424,11 +420,9 @@ async def get_error_breakdown(
         .mappings()
         .all()
     )
-    names = await tenant_name_map(db, [r["group"] for r in rows]) if group_by == "tenant" else {}
     return [
         {
             "group": r["group"],
-            "group_label": names.get(r["group"]) if group_by == "tenant" else None,
             "total_requests": int(r["total"] or 0),
             "errors": int(r["errors"] or 0),
             "error_rate_pct": round((r["errors"] or 0) / r["total"] * 100, 2) if r["total"] else 0,
@@ -436,3 +430,14 @@ async def get_error_breakdown(
         }
         for r in rows
     ]
+
+
+async def _tenant_name_map(db: AsyncSession, tids: list[str]) -> dict[str, str]:
+    if not tids:
+        return {}
+    result = await db.execute(
+        select(Tenant.id, Tenant.name, Tenant.bu_code).where(
+            Tenant.id.in_(tids), Tenant.deleted_at.is_(None)
+        )
+    )
+    return {str(r.id): f"{r.name} ({r.bu_code})" for r in result.mappings().all()}

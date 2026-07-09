@@ -33,3 +33,14 @@ def latest() -> dict[str, Any] | None:
     """Return the most recent entry or None if buffer is empty."""
     with _lock:
         return _buffer[-1] if _buffer else None
+
+
+def snapshot() -> list[dict[str, Any]]:
+    """Return a copy of all entries (oldest first)."""
+    with _lock:
+        return list(_buffer)
+
+
+def clear() -> None:
+    with _lock:
+        _buffer.clear()

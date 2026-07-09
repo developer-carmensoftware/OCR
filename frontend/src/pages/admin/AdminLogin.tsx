@@ -3,10 +3,8 @@ import { Shield } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAdminAuth } from '../../contexts/AdminAuthContext'
 import { adminLogin } from '../../lib/api/adminClient'
-import { useT } from '../../i18n/LanguageContext'
 
 export default function AdminLogin() {
-  const { t } = useT()
   const { login } = useAdminAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -23,7 +21,7 @@ export default function AdminLogin() {
       sessionStorage.removeItem('admin_return_to')
       window.location.hash = back || '/admin'
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : t('admin.login.failed'))
+      toast.error(err instanceof Error ? err.message : 'Login failed')
     } finally {
       setLoading(false)
     }
@@ -36,14 +34,14 @@ export default function AdminLogin() {
           <span className="admin-login-icon" aria-hidden="true">
             <Shield size={28} strokeWidth={2.25} />
           </span>
-          <h1 className="admin-login-title">{t('admin.login.title')}</h1>
-          <p className="admin-login-subtitle">{t('admin.login.subtitle')}</p>
+          <h1 className="admin-login-title">Admin Dashboard</h1>
+          <p className="admin-login-subtitle">Sign in to continue</p>
         </div>
 
         <form className="admin-login-form" onSubmit={handleSubmit}>
           <div className="admin-form-group">
             <label className="admin-form-label" htmlFor="email">
-              {t('admin.login.email')}
+              Email
             </label>
             <input
               id="email"
@@ -59,7 +57,7 @@ export default function AdminLogin() {
 
           <div className="admin-form-group">
             <label className="admin-form-label" htmlFor="password">
-              {t('admin.login.password')}
+              Password
             </label>
             <input
               id="password"
@@ -78,7 +76,7 @@ export default function AdminLogin() {
             className="admin-login-btn"
             disabled={loading || !email || !password}
           >
-            {loading ? t('admin.login.signingIn') : t('admin.login.signIn')}
+            {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
       </div>

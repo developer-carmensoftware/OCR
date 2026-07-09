@@ -53,7 +53,7 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-def period_key(period: QuotaPeriod) -> str:
+def _period_key(period: QuotaPeriod) -> str:
     now = _utcnow()
     if period == QuotaPeriod.DAILY:
         return now.strftime("%Y-%m-%d")
@@ -185,7 +185,7 @@ async def check_quota() -> None:
         if not quotas:
             return
 
-        pairs = [(q.id, period_key(q.period)) for q in quotas]
+        pairs = [(q.id, _period_key(q.period)) for q in quotas]
         async with async_session() as db:
             result = await db.execute(
                 select(QuotaUsage.quota_id, QuotaUsage.used).where(
@@ -211,7 +211,7 @@ async def increment_quota(increment: float = 1.0) -> None:
         if not quotas:
             return
         values = [
-            {"quota_id": q.id, "period_key": period_key(q.period), "used": increment}
+            {"quota_id": q.id, "period_key": _period_key(q.period), "used": increment}
             for q in quotas
         ]
         async with async_session() as db:
@@ -245,7 +245,7 @@ async def consume_quota(increment: float = 1.0) -> None:
         return
 
     values = [
-        {"quota_id": q.id, "period_key": period_key(q.period), "used": increment} for q in quotas
+        {"quota_id": q.id, "period_key": _period_key(q.period), "used": increment} for q in quotas
     ]
     try:
         async with async_session() as db:
@@ -287,7 +287,7 @@ async def get_quota_summary(tenant_id: str) -> dict:
 
             rows = []
             for quota in quotas:
-                key = period_key(cast(QuotaPeriod, quota.period))
+                key = _period_key(cast(QuotaPeriod, quota.period))
                 usage_result = await db.execute(
                     select(QuotaUsage).where(
                         QuotaUsage.quota_id == quota.id,
@@ -299,7 +299,6 @@ async def get_quota_summary(tenant_id: str) -> dict:
                 limit = float(cast(Decimal, quota.limit_value))
                 rows.append(
                     {
-                        "id": str(quota.id),
                         "period": quota.period,
                         "metric": quota.metric,
                         "used": used,

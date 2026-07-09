@@ -36,10 +36,6 @@ export interface ApiClientOptions {
   unauthorizedEvent: string
   onUnauthorized?: () => void
   debounce401Ms?: number
-  /** Default request timeout in ms. Only applied when the caller doesn't already
-   *  pass their own `signal` (OCR extraction call sites manage their own, longer,
-   *  per-call fetchTimeout() — this must not double-wrap those). */
-  timeoutMs?: number
 }
 
 export function createApiClient(opts: ApiClientOptions) {
@@ -49,28 +45,7 @@ export function createApiClient(opts: ApiClientOptions) {
     const headers = new Headers(options.headers || {})
     if (token) headers.set('Authorization', `Bearer ${token}`)
 
-    const ownTimeout = opts.timeoutMs && !options.signal ? fetchTimeout(opts.timeoutMs) : null
-
-    let response: Response
-    try {
-      response = await fetch(resolveUrl(url), {
-        ...options,
-        headers,
-        signal: options.signal ?? ownTimeout?.signal,
-      })
-    } catch (err) {
-      if (ownTimeout && err instanceof DOMException && err.name === 'AbortError') {
-        // `{ cause }` on the Error constructor needs an ES2022 lib target (this
-        // project targets ES2020) — set the property directly instead; runtime
-        // support for reading `.cause` doesn't depend on how it was constructed.
-        const timeoutError = new Error(`Request timed out after ${opts.timeoutMs}ms`)
-        ;(timeoutError as Error & { cause?: unknown }).cause = err
-        throw timeoutError
-      }
-      throw err
-    } finally {
-      ownTimeout?.clear()
-    }
+    const response = await fetch(resolveUrl(url), { ...options, headers })
 
     if (response.status === 401) {
       opts.onUnauthorized?.()

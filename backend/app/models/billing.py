@@ -384,20 +384,3 @@ class DocumentSequence(Base):
     scope = Column(String(20), primary_key=True)
     period_key = Column(String(6), primary_key=True)
     last_no = Column(Integer, nullable=False, default=0)
-
-
-class UserNotification(Base):
-    """Append-only in-app notification for credit-order status changes (30-day retention)."""
-
-    __tablename__ = "user_notifications"
-
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
-    order_id = Column(PGUUID(as_uuid=True), ForeignKey("credit_orders.id"), nullable=True)
-    # varchar, not enum — avoids ALTER TYPE migrations (see enums incident 20260701)
-    type = Column(String(32), nullable=False)
-    payload = Column(JSON, nullable=False, default=dict, server_default="{}")
-    read_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-
-    __table_args__ = (Index("ix_user_notifications_tenant_created", "tenant_id", "created_at"),)
