@@ -57,17 +57,8 @@ export interface OcrExtractionHook {
   warnings: string[]
   originalDetails: DetailRow[]
   originalHeader: HeaderData | Record<string, string>
-  processFile: (
-    filesToProcess: File[],
-    selectedPages?: number[],
-    pdfPassword?: string
-  ) => Promise<void>
-  reExtract: (
-    files: File[],
-    bankType?: string,
-    selectedPages?: number[],
-    pdfPassword?: string
-  ) => Promise<void>
+  processFile: (filesToProcess: File[], pdfPassword?: string) => Promise<void>
+  reExtract: (files: File[], bankType?: string, pdfPassword?: string) => Promise<void>
   updateHeader: (key: string, value: string) => void
   updateDetail: (rowIndex: number, col: string, value: string) => void
   addRow: () => void
@@ -196,11 +187,7 @@ export function useOcrExtraction({
     })
   }
 
-  async function processFile(
-    filesToProcess: File[],
-    selectedPages?: number[],
-    pdfPassword?: string
-  ) {
+  async function processFile(filesToProcess: File[], pdfPassword?: string) {
     if (!filesToProcess || filesToProcess.length === 0) {
       showModal({
         title: 'No Document File Found',
@@ -214,7 +201,7 @@ export function useOcrExtraction({
     setLoading(true)
     setStatus('AI is extracting data from document...')
     try {
-      const ext = await extractFromFile(filesToProcess[0], undefined, selectedPages, pdfPassword)
+      const ext = await extractFromFile(filesToProcess[0], undefined, pdfPassword)
       if (ext.is_duplicate) {
         setStatus('Duplicate document found')
         showDuplicateModal(ext.doc_no)
@@ -302,17 +289,12 @@ export function useOcrExtraction({
     }
   }
 
-  async function reExtract(
-    files: File[],
-    bankType?: string,
-    selectedPages?: number[],
-    pdfPassword?: string
-  ) {
+  async function reExtract(files: File[], bankType?: string, pdfPassword?: string) {
     if (!files || files.length === 0) return
     setLoading(true)
     setStatus(`Re-extracting with ${bankType || 'auto-detect'}...`)
     try {
-      const ext = await extractFromFile(files[0], bankType || undefined, selectedPages, pdfPassword)
+      const ext = await extractFromFile(files[0], bankType || undefined, pdfPassword)
       applyExtractedData(ext as unknown as Record<string, unknown>)
       setBank(
         (bankType || detectBankFromExtracted(ext as unknown as Record<string, string>) || '') as

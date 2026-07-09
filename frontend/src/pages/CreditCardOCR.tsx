@@ -10,7 +10,6 @@ import ExtractionSkeleton from '../components/common/ExtractionSkeleton'
 import SplitLayout from '../components/common/SplitLayout'
 import UsageIndicator from '../components/common/UsageIndicator'
 import AppHeader from '../components/common/AppHeader'
-import PDFPageSelector from '../components/common/PDFPageSelector'
 import LanguageToggle from '../components/common/LanguageToggle'
 import { useT } from '../i18n/LanguageContext'
 import { appKey } from '../lib/storage'
@@ -53,13 +52,7 @@ export default function CreditCardOCR() {
     handleSubmitFinal,
     handleCancel,
     resetAll,
-    pdfSelector,
     pdfInfoLoading,
-    imageMerging,
-    imageCount,
-    selectedPageThumbs,
-    confirmPageSelection,
-    cancelPageSelection,
   } = useOcrWizard()
 
   const [showPreview, setShowPreview] = useState(false)
@@ -104,13 +97,6 @@ export default function CreditCardOCR() {
 
   return (
     <>
-      {pdfSelector && (
-        <PDFPageSelector
-          thumbnails={pdfSelector.thumbnails}
-          onConfirm={confirmPageSelection}
-          onCancel={cancelPageSelection}
-        />
-      )}
       <CustomModal
         show={modal.show}
         title={modal.title as string}
@@ -156,9 +142,7 @@ export default function CreditCardOCR() {
                 onFileChange={handleFileChange}
                 fileInputRef={fileInputRef}
                 fileName={files[0]?.name}
-                fileCount={imageCount || undefined}
                 pdfInfoLoading={pdfInfoLoading}
-                imageMerging={imageMerging}
               />
             )}
             {step === 1 && loading && (
@@ -175,7 +159,6 @@ export default function CreditCardOCR() {
                 previewUrl={previewUrl}
                 previewType={previewType}
                 fileName={files[0]?.name}
-                selectedPageThumbs={selectedPageThumbs}
               >
                 <BankDetectionBanner bank={bank} loading={loading} onReExtract={handleReExtract} />
                 <ExtractionWarningBanner warnings={warnings} />
@@ -205,7 +188,6 @@ export default function CreditCardOCR() {
                 previewUrl={previewUrl}
                 previewType={previewType}
                 fileName={files[0]?.name}
-                selectedPageThumbs={selectedPageThumbs}
               >
                 <AccountingReview
                   details={details}

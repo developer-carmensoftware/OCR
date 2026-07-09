@@ -7,9 +7,7 @@ interface Props {
   onFileChange: (e: React.ChangeEvent<HTMLInputElement> | { target: { files: FileList } }) => void
   fileInputRef: React.RefObject<HTMLInputElement | null>
   fileName?: string
-  fileCount?: number
   pdfInfoLoading?: boolean
-  imageMerging?: boolean
 }
 
 const INSTRUCTIONS: { n: number; c: string; key: TKey }[] = [
@@ -23,12 +21,10 @@ export default function UploadSection({
   onFileChange,
   fileInputRef,
   fileName,
-  fileCount,
   pdfInfoLoading,
-  imageMerging,
 }: Props) {
   const { t } = useT()
-  const busy = pdfInfoLoading || imageMerging
+  const busy = pdfInfoLoading
 
   const handleDrop = (e: React.DragEvent<HTMLButtonElement>) => {
     e.preventDefault()
@@ -39,14 +35,11 @@ export default function UploadSection({
     }
   }
 
-  const displayLabel =
-    fileCount && fileCount > 1
-      ? t('cc.imagesSelected', { n: fileCount })
+  const displayLabel = fileName
+    ? fileName.length > 32
+      ? fileName.slice(0, 29) + '…'
       : fileName
-        ? fileName.length > 32
-          ? fileName.slice(0, 29) + '…'
-          : fileName
-        : t('cc.dropHint')
+    : t('cc.dropHint')
 
   return (
     <div style={{ maxWidth: 560, margin: '0 auto' }}>
@@ -75,21 +68,10 @@ export default function UploadSection({
           aria-label="Upload document file"
           ref={fileInputRef}
           accept="image/*,application/pdf,.heic,.heif"
-          multiple
           onChange={e => onFileChange(e)}
           style={{ display: 'none' }}
         />
-        {imageMerging ? (
-          <>
-            <div className="upload-icon" style={{ color: 'var(--primary)' }}>
-              <Loader2 size={40} className="animate-spin" />
-            </div>
-            <div className="upload-label" style={{ color: 'var(--primary)' }}>
-              {t('cc.merging', { n: fileCount ?? 0 })}
-            </div>
-            <div className="upload-hint">{t('cc.mergingHint')}</div>
-          </>
-        ) : pdfInfoLoading ? (
+        {pdfInfoLoading ? (
           <>
             <div className="upload-icon" style={{ color: 'var(--primary)' }}>
               <Loader2 size={40} className="animate-spin" />
