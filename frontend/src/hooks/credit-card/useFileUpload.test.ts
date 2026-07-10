@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, waitFor } from '@testing-library/react'
 import type React from 'react'
 import { useFileUpload } from './useFileUpload'
 
@@ -91,13 +91,15 @@ describe('useFileUpload', () => {
       expect(result.current.previewType).toBe('image')
     })
 
-    it('sets previewType=pdf and appends #view=FitH for PDF files', () => {
+    it('sets previewType=pdf and appends #view=FitH for PDF files', async () => {
+      // The PDF preview URL is now produced asynchronously (auto-print actions are
+      // stripped before the iframe sees the file), so wait for it to settle.
       const { result } = renderHook(() => useFileUpload())
       act(() => {
         result.current.handleFileChange(makeChangeEvent([makePDFFile()]))
       })
       expect(result.current.previewType).toBe('pdf')
-      expect(result.current.previewUrl).toContain('#view=FitH')
+      await waitFor(() => expect(result.current.previewUrl).toContain('#view=FitH'))
     })
 
     it('sets previewType to uppercase extension for unsupported file types', () => {

@@ -1,11 +1,12 @@
-import { ArrowRight, MessageCircle } from 'lucide-react'
 import {
-  RocketLaunch,
-  Diamond,
+  ArrowRight,
+  MessageCircle,
+  Rocket,
+  Gem,
   Crown,
-  Buildings,
-  type Icon as PhosphorIcon,
-} from '@phosphor-icons/react'
+  Building2,
+  type LucideIcon,
+} from 'lucide-react'
 import { formatThb } from '../../lib/money'
 import { ENTERPRISE, perDoc, type PackPresentation } from '../../constants/billing'
 import { useT } from '../../i18n/LanguageContext'
@@ -24,10 +25,10 @@ interface PlanCardProps {
 }
 
 // ponytail: sub_standard alias kept until DB migration renames → sub_growth
-const _growthIcon = { Icon: Diamond, tint: 'plan-icon--standard' }
+const _growthIcon = { Icon: Gem, tint: 'plan-icon--standard' }
 
-const TIER_ICONS: Record<string, { Icon: PhosphorIcon; tint: string }> = {
-  sub_starter: { Icon: RocketLaunch, tint: 'plan-icon--starter' },
+const TIER_ICONS: Record<string, { Icon: LucideIcon; tint: string }> = {
+  sub_starter: { Icon: Rocket, tint: 'plan-icon--starter' },
   sub_growth: _growthIcon,
   sub_standard: _growthIcon,
   sub_pro: { Icon: Crown, tint: 'plan-icon--pro' },
@@ -69,7 +70,7 @@ export function PlanCard({
       {meta.badge && <span className="plan-badge">{t('plan.badgePopular')}</span>}
       {icon && (
         <span className={`plan-icon ${icon.tint}`}>
-          <icon.Icon size={20} weight="duotone" />
+          <icon.Icon size={20} />
         </span>
       )}
       <h3 className="plan-name">{meta.name}</h3>
@@ -119,7 +120,7 @@ export function EnterpriseCard({ onContact }: { onContact: () => void }) {
   return (
     <div className="enterprise-band" data-tier="enterprise">
       <span className="enterprise-band-icon">
-        <Buildings size={22} weight="duotone" />
+        <Building2 size={22} />
       </span>
       <div className="enterprise-band-copy">
         <strong className="enterprise-band-name">{ENTERPRISE.name}</strong>
