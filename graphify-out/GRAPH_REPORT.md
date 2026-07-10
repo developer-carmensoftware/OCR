@@ -1,16 +1,16 @@
-# Graph Report - OCR  (2026-07-09)
+# Graph Report - OCR  (2026-07-10)
 
 ## Corpus Check
-- 195 files · ~126,335 words
+- 195 files · ~126,252 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 741 nodes · 1273 edges · 80 communities (74 shown, 6 thin omitted)
+- 741 nodes · 1273 edges · 80 communities (73 shown, 7 thin omitted)
 - Extraction: 85% EXTRACTED · 15% INFERRED · 0% AMBIGUOUS · INFERRED: 186 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `9b2f1358`
+- Built from commit: `eef4f2a9`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -33,10 +33,11 @@
 - [[_COMMUNITY_Community 17|Community 17]]
 - [[_COMMUNITY_Community 18|Community 18]]
 - [[_COMMUNITY_Community 20|Community 20]]
-- [[_COMMUNITY_Community 23|Community 23]]
+- [[_COMMUNITY_Community 22|Community 22]]
 - [[_COMMUNITY_Community 27|Community 27]]
-- [[_COMMUNITY_Community 31|Community 31]]
-- [[_COMMUNITY_Community 32|Community 32]]
+- [[_COMMUNITY_Community 29|Community 29]]
+- [[_COMMUNITY_Community 30|Community 30]]
+- [[_COMMUNITY_Community 33|Community 33]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `useT()` - 93 edges
@@ -62,7 +63,7 @@
 - `getCols()` --calls--> `t()`  [INFERRED]
   pages/admin/CreditsPage.tsx → components/admin/VoidReasonModal.tsx
 
-## Communities (80 total, 6 thin omitted)
+## Communities (80 total, 7 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.05
@@ -101,12 +102,12 @@ Cohesion: 0.11
 Nodes (18): suggestMapping(), suggestPaymentTypes(), detectBankFromCompanyName(), detectBankFromExtracted(), matchBankKeywords(), readFromLocalStorage(), _persistOcrLocalStorage(), codeToDisplayName() (+10 more)
 
 ### Community 9 - "Community 9"
-Cohesion: 0.11
-Nodes (6): listOrders(), FormActions(), LanguageToggle(), useOrderHistory(), useT(), OrderStatusBadge()
-
-### Community 10 - "Community 10"
 Cohesion: 0.14
 Nodes (14): getEdit(), ruleKey(), save(), setEdit(), mockSuccess(), withExtractedData(), getAPFields(), getAPVendorFieldRules() (+6 more)
+
+### Community 10 - "Community 10"
+Cohesion: 0.12
+Nodes (4): FormActions(), LanguageToggle(), useT(), OrderStatusBadge()
 
 ### Community 11 - "Community 11"
 Cohesion: 0.14
@@ -129,14 +130,14 @@ Cohesion: 0.38
 Nodes (4): fileToBase64(), handleClose(), handleFileChange(), reset()
 
 ## Knowledge Gaps
-- **6 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **7 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `useT()` connect `Community 9` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 11`, `Community 12`, `Community 13`, `Community 14`, `Community 17`, `Community 22`, `Community 23`, `Community 26`, `Community 27`, `Community 28`, `Community 29`, `Community 30`, `Community 31`, `Community 43`, `Community 44`, `Community 45`, `Community 46`, `Community 47`, `Community 48`?**
+- **Why does `useT()` connect `Community 10` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 11`, `Community 12`, `Community 13`, `Community 14`, `Community 17`, `Community 22`, `Community 23`, `Community 26`, `Community 27`, `Community 28`, `Community 29`, `Community 30`, `Community 31`, `Community 32`, `Community 44`, `Community 45`, `Community 46`, `Community 47`, `Community 48`?**
   _High betweenness centrality (0.496) - this node is a cross-community bridge._
-- **Why does `showToast()` connect `Community 3` to `Community 1`, `Community 10`, `Community 5`, `Community 6`?**
+- **Why does `showToast()` connect `Community 3` to `Community 1`, `Community 5`, `Community 6`, `Community 9`?**
   _High betweenness centrality (0.086) - this node is a cross-community bridge._
 - **Why does `appKey()` connect `Community 8` to `Community 1`, `Community 3`, `Community 4`, `Community 5`?**
   _High betweenness centrality (0.064) - this node is a cross-community bridge._
