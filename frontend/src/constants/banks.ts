@@ -185,6 +185,13 @@ export function detectBankFromExtracted(
   return null
 }
 
+/**
+ * Step-3 debit legs are consolidated (one line per debit account) for these
+ * layouts: BAY bank statement + gateway fee invoices. Mirrors the backend split
+ * (`_BANK_STATEMENT_CODES` + `FEE_INVOICE_CODES`).
+ */
+export const CONSOLIDATE_DEBIT_BANKS = new Set<BankCode>(['BAY', 'KTC', 'GHL', 'PAYPAL', 'SIAMPAY'])
+
 export const BANKS: BankEntry[] = [
   { value: 'BBL', label: 'Bangkok Bank', full: 'Bangkok Bank (BBL)' },
   { value: 'KBANK', label: 'Kasikornbank', full: 'Kasikornbank (KBANK)' },
