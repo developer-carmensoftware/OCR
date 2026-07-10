@@ -1484,6 +1484,14 @@ input[type='text'].detail-input:focus {
   flex-shrink: 0;
 }
 
+/* Blocking (danger) variant — reuses the layout, swaps to rose tokens. Icon is
+   an SVG using currentColor, so overriding `color` recolors it too. */
+.mapping-alert.is-danger {
+  background: var(--rose-light);
+  border-color: var(--rose-mid);
+  color: var(--destructive);
+}
+
 @media (max-width: 640px) {
   .mapping-alert {
     flex-wrap: wrap;

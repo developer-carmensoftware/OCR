@@ -600,6 +600,10 @@ const en = {
   'cc.incompleteMapping': 'Incomplete Account Mapping',
   'cc.incompleteMappingMsg': 'Please complete the account mapping before confirming:\n{fields}',
   'cc.close': 'Close',
+  'cc.jvImbalance':
+    'Debit ({debit}) ≠ Credit ({credit}) — line {lines} do not balance (gross ≠ commission + tax + net). Fix the line items before submitting.',
+  'cc.effectiveRateNote':
+    "The document's effective VAT rate differs from the selected tax profile — please verify the amounts before submitting.",
   // Input tax reconciliation
   'cc.step6Title': 'Step 6: Input Tax Reconciliation',
   'cc.inputTaxRecon': 'Input Tax Reconciliation',
@@ -1606,6 +1610,10 @@ const th: Record<TKey, string> = {
   'cc.incompleteMapping': 'การจับคู่บัญชีไม่ครบถ้วน',
   'cc.incompleteMappingMsg': 'กรุณาจับคู่บัญชีให้ครบก่อนยืนยัน:\n{fields}',
   'cc.close': 'ปิด',
+  'cc.jvImbalance':
+    'เดบิต ({debit}) ≠ เครดิต ({credit}) — บรรทัด {lines} ไม่สมดุล (ยอดรวม ≠ ค่าธรรมเนียม + ภาษี + สุทธิ) กรุณาแก้ไขรายการก่อนส่ง',
+  'cc.effectiveRateNote':
+    'อัตราภาษีที่แท้จริงของเอกสารต่างจากโปรไฟล์ภาษีที่เลือก — กรุณาตรวจสอบยอดเงินก่อนส่ง',
   // Input tax reconciliation
   'cc.step6Title': 'ขั้นที่ 6: กระทบยอดภาษีซื้อ',
   'cc.inputTaxRecon': 'กระทบยอดภาษีซื้อ',

@@ -6,6 +6,7 @@ import { getCarmenUrl } from '../../lib/url'
 import { normalizeYearToCE } from '../../lib/date'
 import { showToast } from '../../lib/toast'
 import { appKey } from '../../lib/storage'
+import { round2 } from '../../lib/format'
 import type { ModalConfig } from '../useModal'
 
 /**
@@ -119,10 +120,10 @@ export function useOcrSubmission({
             Description: r.desc,
             CurCode: 'THB',
             CurRate: 1,
-            CrAmount: r.credit,
-            CrBase: r.credit,
-            DrAmount: r.debit,
-            DrBase: r.debit,
+            CrAmount: round2(r.credit),
+            CrBase: round2(r.credit),
+            DrAmount: round2(r.debit),
+            DrBase: round2(r.debit),
             DimList: {},
           })),
           DimHList: { Dim: [] },

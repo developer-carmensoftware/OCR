@@ -16,7 +16,7 @@ import CustomModal from '../common/CustomModal'
 import Card from '../common/Card'
 import Badge from '../common/Badge'
 import { fetchAccountCodes } from '../../lib/api/carmen'
-import { parseNum, fmt } from '../../lib/format'
+import { parseNum, fmt, round2 } from '../../lib/format'
 import { useT } from '../../i18n/LanguageContext'
 import { useAccountingConfig } from '../../hooks/credit-card'
 import type { DetailRow } from './DetailTable'
@@ -119,6 +119,21 @@ export default function AccountingReview({
   const totalDr = rows.reduce((s, r) => s + r.debit, 0)
   const totalCr = rows.reduce((s, r) => s + r.credit, 0)
 
+  // Every layout satisfies gross = commission + tax + net per row, so the JV's
+  // Dr (Σ commission+tax+net) must equal its Cr (Σ gross). A mismatch means a
+  // line is internally inconsistent — extraction drift, or a manual edit that
+  // left the columns out of sync — and the JV would post unbalanced. Surface
+  // the offending line(s) and block submit until it's fixed.
+  const imbalancedLines = details
+    .map((d, i) => ({
+      line: i + 1,
+      diff: round2(
+        parseNum(d.PayAmt) - (parseNum(d.CommisAmt) + parseNum(d.TaxAmt) + parseNum(d.Total))
+      ),
+    }))
+    .filter(r => Math.abs(r.diff) > 0.01)
+  const isImbalanced = Math.abs(round2(totalDr) - round2(totalCr)) > 0.01
+
   const unmappedFields: string[] = []
   if (rawConfig) {
     if (!rawConfig.filePrefix) unmappedFields.push('File Prefix')
@@ -174,6 +189,21 @@ export default function AccountingReview({
           <span className="cc-alert-text">{t('cc.noMapping')}</span>
           <button type="button" className="btn btn-sm btn-primary" onClick={onGoMapping}>
             {t('cc.goMappingSettings')}
+          </button>
+        </div>
+      )}
+      {!isLoading && rows.length > 0 && isImbalanced && (
+        <div className="mapping-alert is-danger">
+          <AlertCircle size={16} />
+          <span className="cc-alert-text">
+            {t('cc.jvImbalance', {
+              debit: fmt(totalDr),
+              credit: fmt(totalCr),
+              lines: imbalancedLines.map(r => r.line).join(', ') || '—',
+            })}
+          </span>
+          <button type="button" className="btn btn-sm btn-danger" onClick={onBack}>
+            {t('cc.back')}
           </button>
         </div>
       )}
@@ -296,7 +326,7 @@ export default function AccountingReview({
           <button
             type="button"
             className="btn-submit"
-            disabled={rows.length === 0 || submitting}
+            disabled={rows.length === 0 || submitting || isImbalanced}
             onClick={() => (hasMissing ? setWarningModal(true) : onSubmit(rows))}
           >
             {submitting ? (
