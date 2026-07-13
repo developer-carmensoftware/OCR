@@ -198,7 +198,14 @@ function Router() {
   )
 }
 
-const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement)
+// HMR guard: reuse the existing root across hot reloads instead of calling
+// createRoot() again on the same DOM node (that leaves two React trees
+// fighting over #root and throws "removeChild" errors on the next edit).
+const container = document.getElementById('root') as HTMLElement
+const root = import.meta.hot?.data.root ?? ReactDOM.createRoot(container)
+if (import.meta.hot) {
+  import.meta.hot.data.root = root
+}
 root.render(
   <ErrorBoundary>
     <LazyMotion features={domAnimation}>
