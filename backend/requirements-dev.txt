@@ -1,6 +1,6 @@
 # Development-only dependencies (not needed in production)
 ruff>=0.15
-mypy>=2.1
+mypy>=2.2.0
 pre-commit>=4.6
 bandit[toml]>=1.8
 
