@@ -2,7 +2,7 @@ from pydantic import BaseModel
 
 
 class AdminUserCreateRequest(BaseModel):
-    email: str
+    username: str
     password: str
     full_name: str | None = None
     role_ids: list[str] = []

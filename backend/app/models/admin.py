@@ -34,7 +34,7 @@ class AdminUser(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     __tablename__ = "admin_users"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email = Column(String(255), nullable=False)
+    username = Column(String(255), nullable=False)
     password_hash = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
@@ -46,8 +46,8 @@ class AdminUser(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
 
     __table_args__ = (
         Index(
-            "uq_admin_user_email_active",
-            "email",
+            "uq_admin_user_username_active",
+            "username",
             unique=True,
             postgresql_where=text("deleted_at IS NULL"),
         ),

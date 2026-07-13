@@ -3,14 +3,14 @@ Bootstrap CLI — create the first super_admin user.
 
 Usage:
     cd backend
-    ADMIN_BOOTSTRAP_EMAIL=me@company.com ADMIN_BOOTSTRAP_PASSWORD=StrongPass1! \\
+    ADMIN_BOOTSTRAP_USERNAME=admin ADMIN_BOOTSTRAP_PASSWORD=StrongPass1! \\
         python -m app.bootstrap_admin
 
     # Reset password for an existing super_admin:
     python -m app.bootstrap_admin --reset-password
 
 Environment variables:
-    ADMIN_BOOTSTRAP_EMAIL     (required)
+    ADMIN_BOOTSTRAP_USERNAME  (required)
     ADMIN_BOOTSTRAP_PASSWORD  (required, ≥ 8 chars)
 """
 
@@ -25,12 +25,12 @@ async def _bootstrap(reset_password: bool) -> None:
     from app.models.admin import AdminUser, AdminUserRole
     from app.services.admin_auth_service import hash_password
 
-    email = settings.admin_bootstrap_email.strip().lower()
+    username = settings.admin_bootstrap_username.strip().lower()
     password = settings.admin_bootstrap_password
 
-    if not email or not password:
+    if not username or not password:
         print(
-            "ERROR: ADMIN_BOOTSTRAP_EMAIL and ADMIN_BOOTSTRAP_PASSWORD must be set.",
+            "ERROR: ADMIN_BOOTSTRAP_USERNAME and ADMIN_BOOTSTRAP_PASSWORD must be set.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -46,7 +46,7 @@ async def _bootstrap(reset_password: bool) -> None:
     async with async_session() as db:
         res = await db.execute(
             select(AdminUser).where(
-                AdminUser.email == email,
+                AdminUser.username == username,
                 AdminUser.deleted_at.is_(None),
             )
         )
@@ -58,16 +58,16 @@ async def _bootstrap(reset_password: bool) -> None:
                 existing.failed_login_attempts = 0  # type: ignore[assignment]
                 existing.locked_until = None  # type: ignore[assignment]
                 await db.commit()
-                print(f"[OK] Password reset for {email}")
+                print(f"[OK] Password reset for {username}")
             else:
-                print(f"[INFO] Admin {email} already exists. Use --reset-password to update.")
+                print(f"[INFO] Admin {username} already exists. Use --reset-password to update.")
             return
 
         import uuid
 
         admin = AdminUser(
             id=uuid.uuid4(),
-            email=email,
+            username=username,
             password_hash=hash_password(password),
             full_name="Super Admin",
             is_active=True,
@@ -86,9 +86,9 @@ async def _bootstrap(reset_password: bool) -> None:
         db.add(role_grant)
         await db.commit()
 
-        print(f"[OK] Created super_admin: {email}")
+        print(f"[OK] Created super_admin: {username}")
         print("   Log in at the admin dashboard and change the password after first use.")
-        print("   Clear ADMIN_BOOTSTRAP_EMAIL and ADMIN_BOOTSTRAP_PASSWORD from your env.")
+        print("   Clear ADMIN_BOOTSTRAP_USERNAME and ADMIN_BOOTSTRAP_PASSWORD from your env.")
 
 
 def main() -> None:

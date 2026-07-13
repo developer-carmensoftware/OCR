@@ -2,7 +2,7 @@
 
 create table if not exists admin_users (
     id                     uuid         primary key default gen_random_uuid(),
-    email                  varchar(255) not null,
+    username               varchar(255) not null,
     password_hash          varchar(255) not null,
     full_name              varchar(255),
     is_active              boolean      not null default true,
@@ -22,8 +22,8 @@ create table if not exists admin_users (
 create index if not exists ix_admin_users_created_at on admin_users (created_at);
 create index if not exists ix_admin_users_deleted_at on admin_users (deleted_at);
 
-create unique index if not exists uq_admin_user_email_active
-    on admin_users (email)
+create unique index if not exists uq_admin_user_username_active
+    on admin_users (username)
     where deleted_at is null;
 
 

@@ -43,7 +43,8 @@ def get_current_admin(
 
     return AdminPrincipal(
         admin_id=str(aid),
-        email=str(payload.get("email", "")),
+        # ponytail: email fallback covers 8h-TTL tokens issued before deploy; delete after rollout
+        username=str(payload.get("username") or payload.get("email") or ""),
         roles=list(payload.get("roles") or []),
         perms=set(payload.get("perms") or []),
         tenant_scope=str(payload.get("tenant_scope", "")),
@@ -108,7 +109,8 @@ def require_maintenance_auth(
 
     admin = AdminPrincipal(
         admin_id=str(aid),
-        email=str(payload.get("email", "")),
+        # ponytail: email fallback covers 8h-TTL tokens issued before deploy; delete after rollout
+        username=str(payload.get("username") or payload.get("email") or ""),
         roles=list(payload.get("roles") or []),
         perms=set(payload.get("perms") or []),
         tenant_scope=str(payload.get("tenant_scope", "")),

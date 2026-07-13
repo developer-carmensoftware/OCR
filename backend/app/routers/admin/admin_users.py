@@ -45,7 +45,7 @@ async def create_admin_user(
     admin: AdminPrincipal = Depends(require_permission("admin_users", "write")),
 ):
     return await svc.create_admin_user(
-        db, body.email, body.password, body.full_name, body.role_ids, admin
+        db, body.username, body.password, body.full_name, body.role_ids, admin
     )
 
 

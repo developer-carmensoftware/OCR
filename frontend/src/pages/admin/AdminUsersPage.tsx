@@ -30,7 +30,7 @@ export default function AdminUsersPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const [showCreate, setShowCreate] = useState(false)
-  const [createEmail, setCreateEmail] = useState('')
+  const [createUsername, setCreateUsername] = useState('')
   const [createPassword, setCreatePassword] = useState('')
   const [createFullName, setCreateFullName] = useState('')
   const [createRoleIds, setCreateRoleIds] = useState<string[]>([])
@@ -67,21 +67,21 @@ export default function AdminUsersPage() {
     roles.find(r => r.name === name || r.id === name)?.id ?? name
 
   const handleCreate = async () => {
-    if (!createEmail.trim() || !createPassword) {
+    if (!createUsername.trim() || !createPassword) {
       toast.error(t('admin.adminUsers.toast.createInvalid'))
       return
     }
     setCreating(true)
     try {
       await createAdminUser({
-        email: createEmail.trim(),
+        username: createUsername.trim(),
         password: createPassword,
         full_name: createFullName.trim() || null,
         role_ids: createRoleIds,
       })
       toast.success(t('admin.adminUsers.toast.createSuccess'))
       setShowCreate(false)
-      setCreateEmail('')
+      setCreateUsername('')
       setCreatePassword('')
       setCreateFullName('')
       setCreateRoleIds([])
@@ -181,12 +181,12 @@ export default function AdminUsersPage() {
       ),
     },
     {
-      key: 'email',
-      label: t('admin.adminUsers.col.email'),
+      key: 'username',
+      label: t('admin.adminUsers.col.username'),
       sortable: true,
       render: r => (
         <div>
-          <div>{r.email}</div>
+          <div>{r.username}</div>
           {r.full_name && <div className="admin-sub-text">{r.full_name}</div>}
         </div>
       ),
@@ -316,12 +316,12 @@ export default function AdminUsersPage() {
         <Card title={t('admin.adminUsers.form.createTitle')}>
           <div className="quota-manage-list">
             <input
-              type="email"
+              type="text"
               className="admin-form-input"
-              placeholder={t('admin.adminUsers.form.email')}
-              value={createEmail}
-              onChange={e => setCreateEmail(e.target.value)}
-              aria-label={t('admin.adminUsers.form.email')}
+              placeholder={t('admin.adminUsers.form.username')}
+              value={createUsername}
+              onChange={e => setCreateUsername(e.target.value)}
+              aria-label={t('admin.adminUsers.form.username')}
             />
             <input
               type="password"

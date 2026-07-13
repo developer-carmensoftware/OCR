@@ -195,8 +195,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <DarkModeToggle />
           </div>
           <div className="admin-user-info">
-            <span className="admin-user-email" title={admin?.email}>
-              {admin?.email}
+            <span className="admin-user-email" title={admin?.username}>
+              {admin?.username}
             </span>
             <span className="admin-user-role">
               {admin?.roles?.[0] ?? t('admin.chrome.roleFallback')}

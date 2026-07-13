@@ -53,7 +53,7 @@ async def _roles_by_user(db: AsyncSession, user_ids: list[str]) -> dict[str, lis
 def _serialize(user: AdminUser, roles: list[str]) -> dict:
     return {
         "id": str(user.id),
-        "email": user.email,
+        "username": user.username,
         "full_name": user.full_name,
         "is_active": user.is_active,
         "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
@@ -99,25 +99,25 @@ async def _validate_role_ids(db: AsyncSession, role_ids: list[str]) -> None:
 
 async def create_admin_user(
     db: AsyncSession,
-    email: str,
+    username: str,
     password: str,
     full_name: str | None,
     role_ids: list[str],
     actor: AdminPrincipal,
 ) -> dict:
-    email_normalized = (email or "").strip().lower()
-    if not email_normalized:
-        raise ValidationError("Email is required")
+    username_normalized = (username or "").strip().lower()
+    if not username_normalized:
+        raise ValidationError("Username is required")
 
     existing = (
         await db.execute(
             select(AdminUser).where(
-                AdminUser.email == email_normalized, AdminUser.deleted_at.is_(None)
+                AdminUser.username == username_normalized, AdminUser.deleted_at.is_(None)
             )
         )
     ).scalar_one_or_none()
     if existing:
-        raise ConflictError("An admin user with this email already exists")
+        raise ConflictError("An admin user with this username already exists")
 
     try:
         password_hash = hash_password(password)
@@ -126,7 +126,7 @@ async def create_admin_user(
 
     await _validate_role_ids(db, role_ids)
 
-    user = AdminUser(email=email_normalized, password_hash=password_hash, full_name=full_name)
+    user = AdminUser(username=username_normalized, password_hash=password_hash, full_name=full_name)
     db.add(user)
     await db.flush()
 
@@ -142,7 +142,7 @@ async def create_admin_user(
         action=AuditAction.ADMIN_USER_CREATE,
         resource="admin_users",
         target_id=str(user.id),
-        after_value={"email": email_normalized, "full_name": full_name, "role_ids": role_ids},
+        after_value={"username": username_normalized, "full_name": full_name, "role_ids": role_ids},
     )
     return _serialize(user, role_ids)
 

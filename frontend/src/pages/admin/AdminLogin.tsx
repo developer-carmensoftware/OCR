@@ -8,16 +8,16 @@ import { useT } from '../../i18n/LanguageContext'
 export default function AdminLogin() {
   const { t } = useT()
   const { login } = useAdminAuth()
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!email || !password) return
+    if (!username || !password) return
     setLoading(true)
     try {
-      const res = await adminLogin(email, password)
+      const res = await adminLogin(username, password)
       await login(res.access_token)
       const back = sessionStorage.getItem('admin_return_to')
       sessionStorage.removeItem('admin_return_to')
@@ -42,17 +42,17 @@ export default function AdminLogin() {
 
         <form className="admin-login-form" onSubmit={handleSubmit}>
           <div className="admin-form-group">
-            <label className="admin-form-label" htmlFor="email">
-              {t('admin.login.email')}
+            <label className="admin-form-label" htmlFor="username">
+              {t('admin.login.username')}
             </label>
             <input
-              id="email"
-              type="email"
+              id="username"
+              type="text"
               className="admin-form-input"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="admin@company.com"
-              autoComplete="email"
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+              placeholder="admin"
+              autoComplete="username"
               required
             />
           </div>
@@ -76,7 +76,7 @@ export default function AdminLogin() {
           <button
             type="submit"
             className="admin-login-btn"
-            disabled={loading || !email || !password}
+            disabled={loading || !username || !password}
           >
             {loading ? t('admin.login.signingIn') : t('admin.login.signIn')}
           </button>
