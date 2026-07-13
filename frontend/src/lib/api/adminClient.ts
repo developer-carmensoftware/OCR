@@ -34,7 +34,7 @@ const adminFetch = createApiClient({
 
 export interface AdminUser {
   admin_id: string
-  email: string
+  username: string
   roles: string[]
   permissions: string[]
   tenant_scope: string
@@ -46,17 +46,17 @@ export interface LoginResponse {
   access_token: string
   token_type: string
   admin_id: string
-  email: string
+  username: string
   roles: string[]
   tenant_scope: string
   mfa_required: boolean
 }
 
-export async function adminLogin(email: string, password: string): Promise<LoginResponse> {
+export async function adminLogin(username: string, password: string): Promise<LoginResponse> {
   const res = await adminFetch(API.admin.login, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ username, password }),
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Login failed' }))
@@ -605,7 +605,7 @@ export async function toggleTenantModule(
 
 export interface AdminUserRow {
   id: string
-  email: string
+  username: string
   full_name: string | null
   is_active: boolean
   last_login_at: string | null
@@ -627,7 +627,7 @@ export async function fetchAdminUsers(): Promise<{ data: AdminUserRow[] }> {
 }
 
 export async function createAdminUser(payload: {
-  email: string
+  username: string
   password: string
   full_name?: string | null
   role_ids: string[]

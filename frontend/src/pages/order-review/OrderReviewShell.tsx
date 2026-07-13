@@ -33,8 +33,8 @@ export default function OrderReviewShell() {
         <div className="orev-app-user">
           <LanguageToggle />
           <DarkModeToggle />
-          <span className="orev-app-email" title={admin?.email}>
-            {admin?.email}
+          <span className="orev-app-email" title={admin?.username}>
+            {admin?.username}
           </span>
           <button
             type="button"

@@ -125,7 +125,7 @@ def make_admin_test_client(mock_db, perms=None, tenant_scope=""):
     def _admin():
         return AdminPrincipal(
             admin_id="admin-1",
-            email="admin@test.com",
+            username="admin@test.com",
             perms=perms,
             tenant_scope=tenant_scope,
         )

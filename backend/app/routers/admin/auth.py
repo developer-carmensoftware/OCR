@@ -25,7 +25,7 @@ async def admin_login(
     try:
         admin, token, roles, _perms, tenant_scope = await svc.login(
             db=db,
-            email=body.email,
+            username=body.username,
             password=body.password,
             ip_address=ip,
         )
@@ -45,7 +45,7 @@ async def admin_login(
     return LoginResponse(
         access_token=token,
         admin_id=str(admin.id),
-        email=str(admin.email),
+        username=str(admin.username),
         roles=roles,
         tenant_scope=tenant_scope,
         mfa_required=bool(admin.mfa_secret) and not False,  # noqa: SIM210 — Phase 1.5 placeholder
@@ -56,7 +56,7 @@ async def admin_login(
 async def admin_me(admin: AdminPrincipal = Depends(get_current_admin)):
     return {
         "admin_id": admin.admin_id,
-        "email": admin.email,
+        "username": admin.username,
         "roles": admin.roles,
         "permissions": sorted(admin.perms),
         "tenant_scope": admin.tenant_scope,

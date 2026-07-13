@@ -129,7 +129,7 @@ class Settings(BaseSettings):
 
     # Admin bootstrap credentials — read by `python -m app.bootstrap_admin`.
     # Never leave these set in production after bootstrapping.
-    admin_bootstrap_email: str = ""
+    admin_bootstrap_username: str = ""
     admin_bootstrap_password: str = ""
 
     # Sentry — leave empty to disable (set in production .env only)

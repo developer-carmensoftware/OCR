@@ -86,7 +86,7 @@ async def topup(
 ):
     """Grant a pack's worth of credits (offline-paid). Optionally mark an order paid."""
     _assert_scope(admin, tenant_id)
-    balance = await topup_order(db, tenant_id, body.pack_code, body.order_id, admin.email)
+    balance = await topup_order(db, tenant_id, body.pack_code, body.order_id, admin.username)
     await db.commit()
     return CreditBalanceResponse(tenant_id=tenant_id, balance=balance)
 
@@ -186,7 +186,7 @@ async def approve_order(
     _assert_scope(admin, str(order.tenant_id))
 
     fulfilled = await credit_order_service.approve(db, order)
-    order.approved_by = admin.email  # type: ignore[assignment]
+    order.approved_by = admin.username  # type: ignore[assignment]
     notification_service.notify(
         db,
         tenant_id=order.tenant_id,
