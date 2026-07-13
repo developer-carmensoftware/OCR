@@ -149,11 +149,11 @@ class Settings(BaseSettings):
     # NEVER put the real value in system_configs DB table — secrets in .env only.
     internal_job_token: str = ""
 
-    # ── Supabase Storage (slip upload) — SECRETS, never put in system_configs ──
+    # ── OneApp FileService (slip upload) — SECRETS, never put in system_configs ──
     # Required for slip upload/download. Leave empty to disable slip storage (dev).
-    supabase_url: str = ""
-    supabase_service_key: str = ""  # service_role key (bypasses RLS)
-    slip_bucket: str = "payment-slips"
+    # base URL e.g. https://host/Api/v1/External/FileService
+    file_service_url: str = ""
+    file_service_api_key: str = ""  # X-Api-Key access key (fsc_...)
 
     @property
     def vat_rates_list(self) -> list[float]:
