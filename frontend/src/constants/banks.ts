@@ -186,11 +186,12 @@ export function detectBankFromExtracted(
 }
 
 /**
- * Step-3 debit legs are consolidated (one line per debit account) for these
- * layouts: BAY bank statement + gateway fee invoices. Mirrors the backend split
- * (`_BANK_STATEMENT_CODES` + `FEE_INVOICE_CODES`).
+ * Step-3 JV debit side: consolidated (3 summed buckets — commission, tax, Bank
+ * Account) for ALL banks by default, so every layout reviews the same way
+ * (SIAMPAY-style). Flip to true to restore the per-transaction grouping (one
+ * debit set per detail line), preserved in ccJv.ts for future use.
  */
-export const CONSOLIDATE_DEBIT_BANKS = new Set<BankCode>(['BAY', 'KTC', 'GHL', 'PAYPAL', 'SIAMPAY'])
+export const GROUP_DEBIT_BY_TRANSACTION = false
 
 export const BANKS: BankEntry[] = [
   { value: 'BBL', label: 'Bangkok Bank', full: 'Bangkok Bank (BBL)' },

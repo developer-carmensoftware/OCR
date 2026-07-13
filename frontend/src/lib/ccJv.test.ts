@@ -19,7 +19,7 @@ const sum = (rows: { debit: number; credit: number }[], side: 'debit' | 'credit'
   rows.reduce((s, r) => s + r[side], 0)
 
 describe('buildJvRows', () => {
-  it('BAY: consolidates debit legs to one line per account, keeps credit per payment type', () => {
+  it('consolidated (default for all banks): one debit line per account, credit per payment type', () => {
     const details = [
       {
         Transaction: 'Visa',
@@ -83,7 +83,7 @@ describe('buildJvRows', () => {
     expect(buildJvRows(blank, config, { consolidateDebit: true })).toEqual([])
   })
 
-  it('non-target bank (consolidateDebit off): per-line rows, unchanged behavior', () => {
+  it('per-line mode (consolidateDebit off, preserved for future use): per-line rows', () => {
     const details = [
       {
         Transaction: 'Visa',
