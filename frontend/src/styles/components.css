@@ -102,7 +102,7 @@
 /* Done step-num: solid gradient fill */
 .step.done .step-num {
   background: linear-gradient(135deg, var(--emerald) 0%, var(--emerald-end) 100%);
-  border-color: transparent;
+  border: none; /* transparent border + border-radius + gradient bg renders a square seam on Chromium/Windows dark mode */
   color: white;
   box-shadow: 0 2px 8px oklch(from var(--emerald) l c h / 0.35);
 }
@@ -347,68 +347,6 @@
   font-size: 0.8rem;
   color: var(--text-3);
   line-height: 1.5;
-}
-
-/* ─── ACTION BAR ─── */
-.action-bar {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  margin-bottom: 2.25rem;
-}
-
-#btnProcess {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.82rem 1.9rem;
-  background: var(--primary);
-  color: white;
-  font-size: 0.9rem;
-  font-weight: 600;
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-primary);
-  transition:
-    background-color var(--dur-base) var(--ease),
-    box-shadow var(--dur-base) var(--ease),
-    transform var(--dur-fast) var(--ease);
-  letter-spacing: -0.01em;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  #btnProcess:hover {
-    background: var(--primary-hover);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px var(--primary-glow);
-  }
-}
-
-#btnProcess:active {
-  transform: scale(0.98);
-}
-
-#btnProcess:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-.loader {
-  width: 18px;
-  height: 18px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-  display: none;
-  flex-shrink: 0;
-}
-
-.status-text {
-  font-size: 0.8rem;
-  font-family: 'IBM Plex Mono', monospace;
-  color: var(--text-3);
 }
 
 /* ─── PREVIEW COLUMN ─── */
@@ -873,7 +811,7 @@ input[type='text'].detail-input {
 
 input[type='text'].detail-input:hover {
   border-color: var(--border);
-  background: white;
+  background: var(--gray-100);
 }
 
 input[type='text'].detail-input:focus {
@@ -1544,6 +1482,14 @@ input[type='text'].detail-input:focus {
 .mapping-alert i {
   color: var(--amber-text);
   flex-shrink: 0;
+}
+
+/* Blocking (danger) variant — reuses the layout, swaps to rose tokens. Icon is
+   an SVG using currentColor, so overriding `color` recolors it too. */
+.mapping-alert.is-danger {
+  background: var(--rose-light);
+  border-color: var(--rose-mid);
+  color: var(--destructive);
 }
 
 @media (max-width: 640px) {

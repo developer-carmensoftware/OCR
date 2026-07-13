@@ -1,4 +1,10 @@
 from app.models.schemas.admin import LoginRequest, LoginResponse, MFAVerifyRequest
+from app.models.schemas.admin_users import (
+    AdminUserCreateRequest,
+    AdminUserUpdateRequest,
+    PasswordResetRequest,
+    RoleAssignmentRequest,
+)
 from app.models.schemas.ap_invoice import SuggestGLItem, SuggestGLRequest
 from app.models.schemas.auth import ExchangeRequest, ExchangeResponse
 from app.models.schemas.common import FieldMapping
@@ -48,6 +54,7 @@ from app.models.schemas.ocr import (
     OCRTaskResponse,
     OCRUploadResponse,
 )
+from app.models.schemas.quotas import ModuleToggleRequest, QuotaLimitUpdateRequest
 
 __all__ = [
     # common
@@ -83,6 +90,9 @@ __all__ = [
     "PostArRequest",
     "PostArResponse",
     "KpiSummaryResponse",
+    # quotas
+    "QuotaLimitUpdateRequest",
+    "ModuleToggleRequest",
     # ap_invoice
     "SuggestGLItem",
     "SuggestGLRequest",
@@ -93,6 +103,11 @@ __all__ = [
     "LoginRequest",
     "LoginResponse",
     "MFAVerifyRequest",
+    # admin_users
+    "AdminUserCreateRequest",
+    "AdminUserUpdateRequest",
+    "PasswordResetRequest",
+    "RoleAssignmentRequest",
     # ocr / credit card
     "CreditCardTransactionSchema",
     "CreditCardSchema",

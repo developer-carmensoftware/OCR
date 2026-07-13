@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, waitFor } from '@testing-library/react'
 import { useAPExtraction } from './useAPExtraction'
 
 vi.mock('../../lib/api/client', () => ({
@@ -344,7 +344,8 @@ describe('useAPExtraction', () => {
         await new Promise(r => setTimeout(r, 0))
       })
       expect(result.current.file).toBe(MOCK_FILE)
-      expect(result.current.previewUrl).toBeTruthy()
+      // previewUrl is produced asynchronously now (auto-print stripping); wait for it.
+      await waitFor(() => expect(result.current.previewUrl).toBeTruthy())
     })
 
     it('sets previewType=pdf for PDF files', async () => {

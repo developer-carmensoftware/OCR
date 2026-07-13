@@ -104,25 +104,38 @@ export function useMapping() {
   ])
 
   useEffect(() => {
-    try {
-      const ocrState = JSON.parse(localStorage.getItem(appKey('ocr_wizard_state')) || '{}') as {
-        details?: Array<Record<string, string>>
+    const rescan = () => {
+      try {
+        const ocrState = JSON.parse(localStorage.getItem(appKey('ocr_wizard_state')) || '{}') as {
+          details?: Array<Record<string, string>>
+        }
+        if (ocrState.details && Array.isArray(ocrState.details)) {
+          const types = new Set<string>()
+          let comm = false,
+            tx = false,
+            n = false
+          ocrState.details.forEach(d => {
+            if (d.Transaction) types.add(d.Transaction)
+            if (parseNum(d.CommisAmt) > 0) comm = true
+            if (parseNum(d.TaxAmt) > 0) tx = true
+            if (parseNum(d.Total) > 0) n = true
+          })
+          setActiveScan({ paymentTypes: types, commission: comm, tax: tx, net: n })
+        }
+      } catch {
+        /* ignore */
       }
-      if (ocrState.details && Array.isArray(ocrState.details)) {
-        const types = new Set<string>()
-        let comm = false,
-          tx = false,
-          n = false
-        ocrState.details.forEach(d => {
-          if (d.Transaction) types.add(d.Transaction)
-          if (parseNum(d.CommisAmt) > 0) comm = true
-          if (parseNum(d.TaxAmt) > 0) tx = true
-          if (parseNum(d.Total) > 0) n = true
-        })
-        setActiveScan({ paymentTypes: types, commission: comm, tax: tx, net: n })
-      }
-    } catch {
-      /* ignore */
+    }
+    rescan()
+    // The snapshot was mount-only, so it went stale when the wizard's line items
+    // were edited after this tab opened. Re-scan on focus (user switches back to
+    // this tab) and on cross-tab localStorage writes so the required-mapping
+    // counts track the live details.
+    window.addEventListener('focus', rescan)
+    window.addEventListener('storage', rescan)
+    return () => {
+      window.removeEventListener('focus', rescan)
+      window.removeEventListener('storage', rescan)
     }
   }, [])
 

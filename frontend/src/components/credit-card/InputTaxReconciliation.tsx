@@ -16,7 +16,7 @@ import { SkeletonRow } from '../common/Skeleton'
 import { submitInputTax, fetchTaxProfiles } from '../../lib/api/carmen'
 import type { TaxProfileItem } from '../../lib/api/carmen'
 import { normalizeYearToCE } from '../../lib/date'
-import { parseNum, fmt } from '../../lib/format'
+import { parseNum, fmt, round2 } from '../../lib/format'
 import { useT } from '../../i18n/LanguageContext'
 import { useAccountingConfig } from '../../hooks/credit-card'
 import { resolveTaxProfileForRate } from '../../lib/apTax'
@@ -65,6 +65,11 @@ export default function InputTaxReconciliation({
   // Display/charge the profile's canonical rate, not the raw ratio — slightly-off extracted
   // amounts (e.g. tax 70.10 / net 1000 = 7.01) must not contradict the "VAT 7%" badge.
   const displayRate = resolvedProfileItem?.rate ?? Math.round(taxRate)
+  // We post the profile's canonical rate but keep the document's real VAT amount.
+  // If base × rate disagrees with the extracted VAT, the document's effective rate
+  // isn't standard — flag it so the user verifies before posting to ACTX.
+  const effectiveRateOff =
+    netAmount > 0 && Math.abs(round2(netAmount * (displayRate / 100)) - round2(taxAmount)) > 0.02
 
   const taxPeriod = (() => {
     if (!headerData.DocDate) return ''
@@ -107,10 +112,10 @@ export default function InputTaxReconciliation({
       InvhDesc: description || '',
       VnName: company.name || '',
       TaxProfileCode: resolvedProfileCode || `VAT0${Math.round(taxRate)}`,
-      BfTaxAmt: String(netAmount),
+      BfTaxAmt: round2(netAmount).toFixed(2),
       TaxRate: displayRate,
-      TaxAmt: taxAmount,
-      TotalAmt: String(total),
+      TaxAmt: round2(taxAmount),
+      TotalAmt: round2(total).toFixed(2),
       TaxId: company.taxId || '',
       BranchNo: company.branch || '',
       Address: company.address || '',
@@ -223,6 +228,13 @@ export default function InputTaxReconciliation({
             </table>
           </div>
         </div>
+
+        {hasData && effectiveRateOff && (
+          <div className="mapping-alert is-danger">
+            <AlertCircle size={16} />
+            <span className="cc-alert-text">{t('cc.effectiveRateNote')}</span>
+          </div>
+        )}
 
         <div className="form-actions">
           <button type="button" className="btn-danger" onClick={() => setShowDiscardConfirm(true)}>

@@ -351,4 +351,35 @@ describe('useOcrSubmission', () => {
       expect(toastCall?.[0]).toMatch(/connection refused/)
     })
   })
+
+  // ── F8: amount rounding at the Carmen boundary (round2) ───────────────────────
+
+  describe('F8: Cr/Dr amounts rounded to 2dp in the JV payload', () => {
+    interface JvDetail {
+      CrAmount: number
+      CrBase: number
+      DrAmount: number
+      DrBase: number
+    }
+
+    it('F8.1 – float residue and >2dp values are rounded before submit', async () => {
+      mockHappyPath()
+      const rows: JvRow[] = [
+        // 0.1 + 0.2 = 0.30000000000000004 — must not reach the ERP raw
+        { dept: 'A', acc: '1', desc: 'x', credit: 0.1 + 0.2, debit: 0 },
+        { dept: 'B', acc: '2', desc: 'y', credit: 0, debit: 12.3456 },
+      ]
+      const props = makeProps()
+      const { result } = renderHook(() => useOcrSubmission(props))
+      await act(async () => {
+        await result.current.handleSubmitFinal(rows)
+      })
+
+      const payload = submitToCarmen.mock.calls[0][0] as { Detail: JvDetail[] }
+      expect(payload.Detail[0].CrAmount).toBe(0.3)
+      expect(payload.Detail[0].CrBase).toBe(0.3)
+      expect(payload.Detail[1].DrAmount).toBe(12.35)
+      expect(payload.Detail[1].DrBase).toBe(12.35)
+    })
+  })
 })

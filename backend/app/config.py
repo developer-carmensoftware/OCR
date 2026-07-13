@@ -54,12 +54,7 @@ class Settings(BaseSettings):
     openrouter_ocr_model: str = "google/gemini-2.0-flash-001"
     openrouter_ap_invoice_model: str = "google/gemini-2.0-flash-001"
     openrouter_suggestion_model: str = "google/gemini-2.0-flash-001"
-    openrouter_bidding_model: str = ""
-    openrouter_vendorsuggest_model: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-
-    # Tavily search API
-    tavily_api_key: str = ""
 
     # Master API key for service-to-service auth
     master_api_key: str = ""
@@ -103,7 +98,6 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/carmen_ai"
 
     # Carmen API
-    carmen_authorization: str = ""  # deprecated — kept for fallback only; prefer session token
     # SSRF allowlist for the client-supplied Carmen origin at /auth/exchange.
     # Comma-separated hostnames (no scheme), e.g. "carmen.example.com,erp.acme.co.th".
     # When set, only these hosts may be used as the Carmen origin. Leave empty only
@@ -138,13 +132,6 @@ class Settings(BaseSettings):
     admin_bootstrap_email: str = ""
     admin_bootstrap_password: str = ""
 
-    # Ephemeral hosts (Render free / Heroku) — informational only since log retention
-    # is now done by dropping PostgreSQL partitions (no on-disk archives).
-    ephemeral_filesystem: bool = False
-
-    # Multi-tenancy
-    carmen_tenant_default: str = "dev"  # Fallback for localhost or missing Origin header
-
     # Sentry — leave empty to disable (set in production .env only)
     sentry_dsn: str = ""
     sentry_environment: str = "development"
@@ -162,11 +149,11 @@ class Settings(BaseSettings):
     # NEVER put the real value in system_configs DB table — secrets in .env only.
     internal_job_token: str = ""
 
-    # ── Supabase Storage (slip upload) — SECRETS, never put in system_configs ──
+    # ── OneApp FileService (slip upload) — SECRETS, never put in system_configs ──
     # Required for slip upload/download. Leave empty to disable slip storage (dev).
-    supabase_url: str = ""
-    supabase_service_key: str = ""  # service_role key (bypasses RLS)
-    slip_bucket: str = "payment-slips"
+    # base URL e.g. https://host/Api/v1/External/FileService
+    file_service_url: str = ""
+    file_service_api_key: str = ""  # X-Api-Key access key (fsc_...)
 
     @property
     def vat_rates_list(self) -> list[float]:

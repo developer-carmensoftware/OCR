@@ -6,6 +6,7 @@ import { getCarmenUrl } from '../../lib/url'
 import { normalizeYearToCE } from '../../lib/date'
 import { showToast } from '../../lib/toast'
 import { appKey } from '../../lib/storage'
+import { round2 } from '../../lib/format'
 import type { ModalConfig } from '../useModal'
 
 /**
@@ -111,20 +112,24 @@ export function useOcrSubmission({
           Description: cfg.description
             ? `${cfg.description}${headerData.DocDate ? ` - ${headerData.DocDate}` : ''}`
             : '',
-          Detail: rows.map(r => ({
-            JvhSeq: -1,
-            JvdSeq: -1,
-            DeptCode: r.dept,
-            AccCode: r.acc,
-            Description: r.desc,
-            CurCode: 'THB',
-            CurRate: 1,
-            CrAmount: r.credit,
-            CrBase: r.credit,
-            DrAmount: r.debit,
-            DrBase: r.debit,
-            DimList: {},
-          })),
+          // Drop display-only zero legs (e.g. gateway net=0.00 shown in Step 3 for a
+          // standard layout) — never post empty GL lines to Carmen.
+          Detail: rows
+            .filter(r => r.debit || r.credit)
+            .map(r => ({
+              JvhSeq: -1,
+              JvdSeq: -1,
+              DeptCode: r.dept,
+              AccCode: r.acc,
+              Description: r.desc,
+              CurCode: 'THB',
+              CurRate: 1,
+              CrAmount: round2(r.credit),
+              CrBase: round2(r.credit),
+              DrAmount: round2(r.debit),
+              DrBase: round2(r.debit),
+              DimList: {},
+            })),
           DimHList: { Dim: [] },
           UserModified: '',
         }

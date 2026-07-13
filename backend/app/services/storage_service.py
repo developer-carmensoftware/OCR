@@ -1,16 +1,22 @@
 """
-Supabase Storage service for payment slip files.
+OneApp FileService client for payment slip files.
 
 Slips are the only files persisted in this project (deliberate exception to the
 no-file-storage rule — needed for audit/dispute resolution). All other uploaded
 files (OCR images) are read into memory and discarded without hitting disk.
 
-Storage layout: {slip_bucket}/{tenant_id}/{order_id}.{ext}
-Bucket must be private (no public read).
+Slip bytes live in the internal OneApp FileService (its own bucket, keyed by a
+server-generated fileId). Postgres stores only that fileId in
+credit_orders.slip_object_key. Auth is a single X-Api-Key header.
+
+Only two endpoints are used:
+  POST {base}/Upload          → { data: { fileId } }
+  GET  {base}/Files/{fileId}  → { data: { url } }   (presigned, ~1h TTL)
 """
 
 import logging
 import mimetypes
+import re
 
 import httpx
 
@@ -25,20 +31,21 @@ _ALLOWED_SLIP_TYPES: dict[str, str] = {
 }
 
 
+def _safe_name(base: str) -> str:
+    """Sanitize a filename base for the multipart part / Content-Disposition sent to
+    FileService. Keeps [A-Za-z0-9._-], collapses the rest to '_', trims leading/trailing
+    dots. (order_id is a UUID today, so this is a no-op then — defense if the source
+    ever carries user input.)"""
+    return re.sub(r"[^A-Za-z0-9._-]", "_", base).strip("._") or "slip"
+
+
 def _base_url() -> str:
-    """Supabase Storage REST base URL."""
-    return f"{settings.supabase_url.rstrip('/')}/storage/v1"
+    """FileService base URL (…/Api/v1/External/FileService)."""
+    return settings.file_service_url.rstrip("/")
 
 
 def _headers() -> dict[str, str]:
-    return {
-        "Authorization": f"Bearer {settings.supabase_service_key}",
-        "apikey": settings.supabase_service_key,
-    }
-
-
-def _object_key(tenant_id: str, order_id: str, ext: str) -> str:
-    return f"{tenant_id}/{order_id}.{ext}"
+    return {"X-Api-Key": settings.file_service_api_key}
 
 
 def guess_ext(content_type: str) -> str:
@@ -49,73 +56,83 @@ def guess_ext(content_type: str) -> str:
 
 
 async def upload_slip(
-    tenant_id: str,
     order_id: str,
     data: bytes,
     content_type: str,
+    *,
+    path: str,
 ) -> str:
     """
-    Upload a payment slip to Supabase Storage.
+    Upload a payment slip to the OneApp FileService.
 
-    Returns the object key (relative path within the bucket).
+    `path` is the sub-folder to store under (e.g. "202607" — the order's creation
+    month, matching the proforma running number's YYYYMM for easy manual lookup).
+    Returns the server-generated fileId (stored as the slip pointer).
     Raises StorageError on failure.
+
+    ponytail: FileService mints a fresh fileId per call and the two endpoints we
+    use have no delete. Re-uploading a slip orphans the previous file (small,
+    rare — the DB pointer always tracks the newest). No cleanup job.
     """
-    if not settings.supabase_url or not settings.supabase_service_key:
-        raise StorageError("Storage not configured (SUPABASE_URL / SUPABASE_SERVICE_KEY missing)")
+    if not settings.file_service_url or not settings.file_service_api_key:
+        raise StorageError(
+            "Storage not configured (FILE_SERVICE_URL / FILE_SERVICE_API_KEY missing)"
+        )
 
     if content_type not in _ALLOWED_SLIP_TYPES:
         raise StorageError(f"Unsupported slip file type: {content_type}")
 
-    ext = _ALLOWED_SLIP_TYPES[content_type]
-    key = _object_key(tenant_id, order_id, ext)
-    url = f"{_base_url()}/object/{settings.slip_bucket}/{key}"
+    # Filename only drives the stored object's extension + fileOriginalName metadata
+    # (FileService names the object itself {uuid}.ext); sanitize since it crosses into
+    # the external service's multipart/Content-Disposition.
+    filename = f"{_safe_name(order_id)}.{_ALLOWED_SLIP_TYPES[content_type]}"
 
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
-            url,
-            content=data,
-            headers={**_headers(), "Content-Type": content_type},
+            f"{_base_url()}/Upload",
+            files={"file": (filename, data, content_type)},
+            data={"path": path},
+            headers=_headers(),
         )
 
     if resp.status_code not in (200, 201):
         logger.error("slip upload failed: status=%d body=%s", resp.status_code, resp.text[:200])
         raise StorageError(f"Storage upload failed ({resp.status_code})")
 
-    logger.info("slip uploaded: key=%s size=%d", key, len(data))
-    return key
+    try:
+        file_id = resp.json()["data"]["fileId"]
+    except (ValueError, KeyError, TypeError) as exc:
+        logger.error("slip upload returned no fileId: body=%s", resp.text[:200])
+        raise StorageError("Storage upload returned no fileId") from exc
+
+    logger.info("slip uploaded: fileId=%s size=%d", file_id, len(data))
+    return file_id
 
 
-async def signed_url(key: str, ttl_seconds: int = 300) -> str:
+async def signed_url(key: str, ttl_seconds: int = 3600) -> str:
     """
-    Generate a short-lived signed URL for admin to view a slip.
+    Fetch a presigned URL for the admin to view a slip.
 
-    Returns the signed URL string.
+    `key` is the fileId returned by upload_slip. FileService fixes the URL TTL at
+    ~1 hour; `ttl_seconds` is informational only (used for the caller's expires_in).
+    Returns the presigned URL string. Raises StorageError on failure.
     """
-    if not settings.supabase_url or not settings.supabase_service_key:
+    if not settings.file_service_url or not settings.file_service_api_key:
         raise StorageError("Storage not configured")
 
-    url = f"{_base_url()}/object/sign/{settings.slip_bucket}/{key}"
-
     async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            url,
-            json={"expiresIn": ttl_seconds},
-            headers={**_headers(), "Content-Type": "application/json"},
-        )
+        resp = await client.get(f"{_base_url()}/Files/{key}", headers=_headers())
 
     if resp.status_code != 200:
         logger.error("signed URL failed: status=%d body=%s", resp.status_code, resp.text[:200])
         raise StorageError(f"Could not generate signed URL ({resp.status_code})")
 
-    signed_path: str = resp.json()["signedURL"]
-    # Supabase returns a relative path like "/object/sign/<bucket>/...?token=...".
-    # The browser-facing URL needs the "/storage/v1" API prefix the response omits.
-    if not signed_path.startswith("/"):
-        return signed_path
-    if signed_path.startswith("/storage/v1"):
-        return f"{settings.supabase_url.rstrip('/')}{signed_path}"
-    return f"{_base_url()}{signed_path}"
+    try:
+        return resp.json()["data"]["url"]
+    except (ValueError, KeyError, TypeError) as exc:
+        logger.error("signed URL response missing url: body=%s", resp.text[:200])
+        raise StorageError("Signed URL response missing url") from exc
 
 
 class StorageError(Exception):
-    """Raised when a Supabase Storage operation fails."""
+    """Raised when a FileService operation fails."""

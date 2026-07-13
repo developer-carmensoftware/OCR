@@ -16,6 +16,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { useT } from '../../i18n/LanguageContext'
 
 type ChartType = 'line' | 'bar' | 'stacked-bar' | 'pie'
 
@@ -46,14 +47,20 @@ export default function MetricChart({
   yFormatter,
   loading = false,
 }: MetricChartProps) {
+  const { t } = useT()
   const fmt = (v: unknown) => (yFormatter ? yFormatter(Number(v)) : String(v ?? ''))
 
   if (loading) {
-    return <output className="skeleton skeleton-chart" aria-label="Loading chart…" />
+    return (
+      <output
+        className="skeleton skeleton-chart"
+        aria-label={t('admin.common.chart.loadingAria')}
+      />
+    )
   }
 
   if (!data || data.length === 0) {
-    return <div className="chart-empty">No data for selected period</div>
+    return <div className="chart-empty">{t('admin.common.chart.noData')}</div>
   }
 
   if (type === 'pie') {

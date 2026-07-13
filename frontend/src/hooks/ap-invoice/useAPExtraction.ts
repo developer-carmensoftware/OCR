@@ -14,6 +14,7 @@ import {
 import { usePdfPasswordPrompt } from '../usePdfPasswordPrompt'
 import { imagesToPdf, MAX_MULTI_IMAGES } from '../../lib/imagesToPdf'
 import { selectedPagesToPdfUrl } from '../../lib/pdfPages'
+import { sanitizedPdfUrl } from '../../lib/pdfPreview'
 import { toast } from '../../lib/toast'
 import { appKey } from '../../lib/storage'
 import { checkFilesSize } from '../../lib/fileValidation'
@@ -438,11 +439,19 @@ export function useAPExtraction({ setStep, setModal, loadVendors }: APExtraction
       getFilePreview(f)
         .then(setPreviewUrl)
         .catch(() => setPreviewType('HEIC'))
+    } else if (isPdf) {
+      // Strip embedded auto-print (OpenAction) before the iframe viewer sees it.
+      setPreviewType('pdf')
+      setPreviewUrl(null)
+      sanitizedPdfUrl(f).then(url => {
+        previewUrlRef.current = url
+        setPreviewUrl(url)
+      })
     } else {
       const url = URL.createObjectURL(f)
       previewUrlRef.current = url
       setPreviewUrl(url)
-      setPreviewType(isPdf ? 'pdf' : 'image')
+      setPreviewType('image')
     }
 
     if (isPdf) {

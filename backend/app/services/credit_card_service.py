@@ -6,6 +6,7 @@ Handles: duplicate check → CreditCard row creation → task status finalizatio
 
 import itertools
 import logging
+import re
 import uuid
 from datetime import UTC, datetime
 
@@ -53,6 +54,37 @@ _MISSING_FEE_WARNING = (
     "A fee line's amount could not be read from this document. Please check the "
     "original and enter the fee amount manually."
 )
+
+# Surfaced when negative amounts (refund / chargeback / credit note) appear. The
+# spread/solve assume positive fees, so we skip auto-normalization and show the
+# amounts as extracted rather than distribute a negative across lines.
+_NEGATIVE_UNSUPPORTED_WARNING = (
+    "This document contains negative amounts (e.g. a refund or credit note), "
+    "which automatic fee reconciliation does not support yet. Amounts are shown "
+    "as extracted — please verify them against the original document."
+)
+
+# Surfaced when the reconstructed line total (Σ fee + VAT) disagrees with the
+# document's own printed Grand Total — a line figure was likely misread.
+_RECON_MISMATCH_WARNING = (
+    "The line items do not add up to the document's printed grand total — a fee "
+    "amount may have been misread. Please verify the amounts before submitting."
+)
+
+# Surfaced when the footer VAT could not be attributed to specific fee lines
+# (their per-line fee amounts were blank), so the split may be inaccurate.
+_FEE_UNALLOCATED_WARNING = (
+    "Some fee lines had no readable amount, so VAT could not be attributed to "
+    "them accurately. Please verify the per-line amounts against the original "
+    "document."
+)
+
+# Tolerance (baht) for reconciling printed vs reconstructed figures.
+_RECON_TOL = 0.02
+
+
+def _has_negative_amount(rows: list) -> bool:
+    return any((_parse_amt(getattr(r, f)) or 0.0) < 0 for r in rows for f in _AMT_FIELDS)
 
 
 def _parse_amt(v: str | None) -> float | None:
@@ -112,18 +144,21 @@ def _solve_fee_row(values: dict[str, float | None]) -> tuple[float, float, float
             return big, small, round(big - small, 2), False
         # small is the VAT; is big the fee (vat = big*rate) or the grand
         # (vat = big*rate/(1+rate))? Score both readings across every supported
-        # rate and take the closest fit.
+        # rate and take the closest fit. An assumed rate drove this split, so
+        # flag it (rate_assumed=True) — the caller surfaces a verify warning.
         fee_err = min(abs(small - big * r) for r in _VAT_RATES)
         grand_err = min(abs(small - big * r / (1 + r)) for r in _VAT_RATES)
         if fee_err < grand_err:
-            return round(big + small, 2), big, small, False
-        return big, round(big - small, 2), small, False
+            return round(big + small, 2), big, small, True
+        return big, round(big - small, 2), small, True
 
     # 3+ distinct values (the LLM put data in a field that should be blank, e.g.
     # a nonzero `total`). Search for a (grand, fee, vat) assignment among the
     # candidates that actually reconciles (fee + vat == grand) instead of blindly
     # trusting position — with 4 values, the smallest isn't necessarily the VAT.
-    candidates = nonzero[:4]
+    # Use the multiset (not the deduped `nonzero`) so a legitimately repeated
+    # figure can still slot into the reconciliation.
+    candidates = sorted((round(v, 2) for v in values.values() if v), reverse=True)[:4]
     for grand in candidates:
         rest = [v for v in candidates if v != grand]
         for fee, vat in itertools.permutations(rest, 2):
@@ -166,34 +201,57 @@ def _is_summary_row(label: str | None) -> bool:
 # as its own detail row (observed on GHL: Bill Discount / After Discount / VAT /
 # Grand Total). None is ever a real fee line, so all are stripped as summaries.
 # NOTE: bare "DISCOUNT" is deliberately NOT listed — it would wrongly match the
-# real "Merchant Discount Rate (MDR)" fee line. Thai "ส่วนลด" only hits the footer.
-_FEE_FOOTER_LABELS = ("ส่วนลด", "BILL DISCOUNT", "AFTER DISCOUNT", "ภาษีมูลค่าเพิ่ม", "VAT")
+# real "Merchant Discount Rate (MDR)" fee line.
+# Long/specific footer phrases — safe to match anywhere in the label.
+_FEE_FOOTER_SUBSTR = ("BILL DISCOUNT", "AFTER DISCOUNT", "ภาษีมูลค่าเพิ่ม")
+# Short footer words a real fee line can also *contain* ("VAT Advisory Fee",
+# "ส่วนลดค่าบริการ") — so only a label that is ESSENTIALLY just the word ("VAT",
+# "VAT 7%", "ส่วนลด") is treated as the footer line. See _is_bare_footer_label.
+_FEE_FOOTER_BARE = ("VAT", "ส่วนลด")
+# Subtotal-line prefixes. "Subtotal" contains TOTAL, but this is anchored so a
+# real "Subscription Fee" / "Submerchant Fee" line is NOT swallowed as a footer.
+_SUBTOTAL_PREFIXES = ("SUBTOTAL", "SUB TOTAL", "SUB-TOTAL")
 _FEE_VAT_LABELS = ("ภาษีมูลค่าเพิ่ม", "VAT")
 # The fee before VAT prints as the After-Discount / Sub-Total line (equal when the
 # discount is 0). Used to recover the fee when the LLM drops it off the line row.
 _FEE_SUBTOTAL_LABELS = ("AFTER DISCOUNT", "หักส่วนลด", "SUB TOTAL", "SUBTOTAL")
 _FEE_GRAND_LABELS = ("GRAND TOTAL", "ทั้งสิ้น")
 
+# Strips rate/percent/punctuation so a bare footer label ("VAT 7%") reduces to
+# its keyword ("VAT") while a real fee line ("VAT Advisory Fee") does not.
+_FOOTER_NOISE = re.compile(r"[\s\d%.,:\-]+")
+
+
+def _is_bare_footer_label(up: str, keyword: str) -> bool:
+    return _FOOTER_NOISE.sub("", up) == _FOOTER_NOISE.sub("", keyword.upper())
+
 
 def _is_fee_summary_row(label: str | None) -> bool:
     """Fee invoices have no card-type rows (unlike _strip_noncard_rows' statement
     banks), so a bare Subtotal line — or any split-footer line — is a footer
-    figure here, not a real transaction row."""
+    figure here, not a real transaction row. Matching is anchored (not raw
+    substring): stripping a real fee line is silent data loss, whereas a leaked
+    footer row is visible and user-deletable, so we err toward keeping rows."""
     up = (label or "").strip().upper()
-    if up.startswith("SUB") or _is_summary_row(label):
+    if up.startswith(_SUBTOTAL_PREFIXES) or _is_summary_row(label):
         return True
-    return any(k.upper() in up for k in _FEE_FOOTER_LABELS)
+    if any(k in up for k in _FEE_FOOTER_SUBSTR):
+        return True
+    return any(_is_bare_footer_label(up, k) for k in _FEE_FOOTER_BARE)
 
 
-def _labeled_footer_value(summaries: list, keywords: tuple[str, ...]) -> float | None:
+def _labeled_footer_value(
+    summaries: list, keywords: tuple[str, ...], prefer: tuple[str, ...] = ()
+) -> float | None:
     """First numeric figure on a footer row whose label matches any keyword —
-    e.g. the VAT / Sub-Total / Grand-Total line of a split footer."""
+    e.g. the VAT / Sub-Total / Grand-Total line of a split footer. `prefer` lists
+    amount fields to read first (e.g. tax_amt for a VAT line) so a stray figure
+    in an earlier column doesn't win over the field the label actually names."""
+    order = prefer + tuple(f for f in _AMT_FIELDS if f not in prefer)
     for s in summaries:
         up = (s.transaction or "").strip().upper()
         if any(k in up for k in keywords):
-            v = next(
-                (_parse_amt(getattr(s, f)) for f in _AMT_FIELDS if _parse_amt(getattr(s, f))), None
-            )
+            v = next((_parse_amt(getattr(s, f)) for f in order if _parse_amt(getattr(s, f))), None)
             if v is not None:
                 return v
     return None
@@ -246,16 +304,36 @@ def _strip_noncard_rows(extracted: ExtractedCreditCardData) -> None:
     ]
 
 
-def _spread_footer_vat(line_rows: list, total_vat: float) -> None:
+def _spread_footer_vat(line_rows: list, total_vat: float) -> str | None:
     """Split one footer VAT figure across fee line rows, proportional to each
     line's fee (commis_amt), the last row absorbing the rounding remainder. Sets
     pay_amt = fee + vat share and total = '0' per row. Rate-agnostic: the VAT is
-    taken as printed on the document, never derived from an assumed rate."""
+    taken as printed on the document, never derived from an assumed rate.
+
+    Returns a warning constant when the per-line fees couldn't drive the split
+    (all blank → even split; some blank → those lines end at 0), else None."""
     fee_sum = sum(_parse_amt(r.commis_amt) or 0.0 for r in line_rows)
+    if fee_sum <= 0:
+        # No per-line fee to weight by — split VAT evenly instead of dumping the
+        # whole figure on the last row, and flag it for the user to verify.
+        n = len(line_rows)
+        allocated = 0.0
+        for r in line_rows[:-1]:
+            share = round(total_vat / n, 2)
+            r.tax_amt = _fmt_amt(share)
+            r.pay_amt = _fmt_amt(share)  # fee blank → pay == vat share
+            r.total = "0"
+            allocated += share
+        last = line_rows[-1]
+        last.tax_amt = _fmt_amt(round(total_vat - allocated, 2))
+        last.pay_amt = last.tax_amt
+        last.total = "0"
+        return _FEE_UNALLOCATED_WARNING
+
     allocated = 0.0
     for r in line_rows[:-1]:
         fee = _parse_amt(r.commis_amt) or 0.0
-        vat = round(fee * total_vat / fee_sum, 2) if fee_sum > 0 else 0.0
+        vat = round(fee * total_vat / fee_sum, 2)
         r.tax_amt = _fmt_amt(vat)
         r.pay_amt = _fmt_amt(round(fee + vat, 2))
         r.total = "0"
@@ -266,6 +344,11 @@ def _spread_footer_vat(line_rows: list, total_vat: float) -> None:
     last.tax_amt = _fmt_amt(vat)
     last.pay_amt = _fmt_amt(round(fee + vat, 2))
     last.total = "0"
+    # A blank line among otherwise-priced lines got vat/pay = 0 — warn so the
+    # user checks it rather than silently accepting a 0.00 fee line.
+    if any((_parse_amt(r.commis_amt) or 0.0) <= 0 for r in line_rows):
+        return _FEE_UNALLOCATED_WARNING
+    return None
 
 
 def _normalize_fee_invoice(extracted: ExtractedCreditCardData, bank_code: str) -> None:
@@ -294,6 +377,13 @@ def _normalize_fee_invoice(extracted: ExtractedCreditCardData, bank_code: str) -
         )
         return
 
+    if _has_negative_amount(rows):
+        # Refund / chargeback / credit note: the proportional spread and per-row
+        # solve assume positive fees, so leave the rows as extracted and warn
+        # rather than distribute a negative across lines. (Guard, not support.)
+        extracted.warnings.append(_NEGATIVE_UNSUPPORTED_WARNING)
+        return
+
     # A footer can print more than one summary line (e.g. KTC's รวม subtotal
     # AND its separate จำนวนเงินรวม grand-total line) — collect all of them by
     # identity so none can leak through as a detail row.
@@ -310,9 +400,9 @@ def _normalize_fee_invoice(extracted: ExtractedCreditCardData, bank_code: str) -
         # label — more reliable than guessing grand−sub across several
         # single-value footer rows. VAT drives the spread; fee/grand recover the
         # line fee when the model dropped it (see below).
-        footer_vat = _labeled_footer_value(summaries, _FEE_VAT_LABELS)
-        footer_fee = _labeled_footer_value(summaries, _FEE_SUBTOTAL_LABELS)
-        footer_grand = _labeled_footer_value(summaries, _FEE_GRAND_LABELS)
+        footer_vat = _labeled_footer_value(summaries, _FEE_VAT_LABELS, prefer=("tax_amt",))
+        footer_fee = _labeled_footer_value(summaries, _FEE_SUBTOTAL_LABELS, prefer=("commis_amt",))
+        footer_grand = _labeled_footer_value(summaries, _FEE_GRAND_LABELS, prefer=("pay_amt",))
         # Prefer whichever summary row carries the most usable figures.
         summary = max(
             summaries,
@@ -327,7 +417,15 @@ def _normalize_fee_invoice(extracted: ExtractedCreditCardData, bank_code: str) -
         for cand in rows:
             cand_fee = _parse_amt(cand.commis_amt) or 0.0
             others = [_parse_amt(r.commis_amt) or 0.0 for r in rows if r is not cand]
-            if cand_fee and others and abs(cand_fee - sum(others)) <= 0.02:
+            # A real footer sums ≥2 lines, so its fee strictly exceeds any single
+            # line. Requiring that rejects the false positive where two equal-fee
+            # lines make each look like "the sum of the others".
+            if (
+                cand_fee
+                and others
+                and abs(cand_fee - sum(others)) <= _RECON_TOL
+                and cand_fee > max(others) + _RECON_TOL
+            ):
                 summary = cand
                 line_rows = [r for r in rows if r is not cand]
                 break
@@ -355,7 +453,25 @@ def _normalize_fee_invoice(extracted: ExtractedCreditCardData, bank_code: str) -
                     line_rows[0].commis_amt = _fmt_amt(fee)
                 else:
                     extracted.warnings.append(_MISSING_FEE_WARNING)
-            _spread_footer_vat(line_rows, vat)
+            # Cross-check the reconstruction against the document's own printed
+            # totals: Σ fee + VAT should equal the Grand Total (or Subtotal + VAT).
+            # A drift beyond tolerance means a line fee was misread — the spread
+            # balances VAT exactly and so can never surface that on its own. Anchor
+            # priority: a labeled Grand-Total line, else the summary row's own
+            # grand (pay_amt), else Subtotal + VAT.
+            fee_sum = sum(_parse_amt(r.commis_amt) or 0.0 for r in line_rows)
+            anchor = footer_grand
+            if anchor is None:
+                anchor = grand
+            if anchor is None and footer_fee is not None:
+                anchor = round(footer_fee + vat, 2)
+            if anchor is None and sub is not None:
+                anchor = round(sub + vat, 2)
+            if anchor is not None and abs(fee_sum + vat - anchor) > _RECON_TOL:
+                extracted.warnings.append(_RECON_MISMATCH_WARNING)
+            spread_warning = _spread_footer_vat(line_rows, vat)
+            if spread_warning:
+                extracted.warnings.append(spread_warning)
             rows[:] = line_rows
             return
         logger.warning(
@@ -405,6 +521,12 @@ def _normalize_bay_statement(extracted: ExtractedCreditCardData) -> None:
     if not rows:
         return
 
+    if _has_negative_amount(rows):
+        # Refund / credit-note line: the VAT spread and net arithmetic assume
+        # positive amounts, so show the rows as extracted and warn. (Guard only.)
+        extracted.warnings.append(_NEGATIVE_UNSUPPORTED_WARNING)
+        return
+
     summary = next((r for r in rows if _is_summary_row(r.transaction)), None)
     if summary is None and len(rows) > 1:
         # Label garbled? A row whose gross equals the sum of all the others is the total line.
@@ -450,6 +572,10 @@ def _normalize_bay_statement(extracted: ExtractedCreditCardData) -> None:
                 r.tax_amt = _fmt_amt(share)
                 allocated += share
             blank_tax_rows[-1].tax_amt = _fmt_amt(round(remaining_vat - allocated, 2))
+        else:
+            # VAT exists but no per-row commission to weight the spread by — leave
+            # tax blank (net-fill below treats it as 0) and flag it to the user.
+            extracted.warnings.append(_FEE_UNALLOCATED_WARNING)
     else:
         # No usable summary row — old per-row fallback: tax = gross − commis − net.
         for r in blank_tax_rows:
@@ -467,8 +593,9 @@ def _normalize_bay_statement(extracted: ExtractedCreditCardData) -> None:
     for r in rows:
         if _parse_amt(r.total):  # blank or 0 → compute (a 0 net on a statement row is never real)
             continue
-        gross, commis, tax = _parse_amt(r.pay_amt), _parse_amt(r.commis_amt), _parse_amt(r.tax_amt)
-        if gross is None or commis is None or tax is None:
+        gross, commis = _parse_amt(r.pay_amt), _parse_amt(r.commis_amt)
+        tax = _parse_amt(r.tax_amt) or 0.0  # no VAT derived → net = gross − commis
+        if gross is None or commis is None:
             continue
         net = round(gross - commis - tax, 2)
         if net >= 0:

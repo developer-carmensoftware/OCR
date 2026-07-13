@@ -30,7 +30,6 @@ from app.services.file_service import file_service
 from app.services.task_service import create_task
 from app.utils.client_ip import get_client_ip
 from app.utils.date_parsing import format_doc_date
-from app.utils.pages import parse_selected_pages
 from app.utils.pdf_utils import ensure_pdf_openable
 
 logger = logging.getLogger(__name__)
@@ -62,9 +61,6 @@ async def extract_card(
     bank_code: str | None = Query(
         None, description="Bank code: BBL / KBANK / SCB / BAY / KTC / GHL / PAYPAL / SIAMPAY"
     ),
-    selected_pages: str | None = Form(
-        None, description="JSON-encoded 0-based page indices for PDF, e.g. '[0,1,2]'"
-    ),
     pdf_password: str | None = Form(None, description="Password for an encrypted PDF"),
     session: SessionInfo = Depends(get_current_session),
 ):
@@ -75,13 +71,6 @@ async def extract_card(
     """
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded")
-
-    # Validate cheap input BEFORE consuming a credit / creating task rows, so a
-    # malformed request can't burn a document credit or leave orphaned PENDING tasks.
-    try:
-        parsed_pages = parse_selected_pages(selected_pages)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
 
     filenames = file_service.get_filenames_string(files)
     current_document_ref.set(filenames)
@@ -136,7 +125,6 @@ async def extract_card(
                 bank_code=bank_code,
                 hints=hints or None,
                 task_id=task_id,
-                selected_pages=parsed_pages,
                 pdf_password=pdf_password,
             )
             extracted.task_id = task_id

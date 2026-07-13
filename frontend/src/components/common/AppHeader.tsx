@@ -2,6 +2,8 @@ import type { ReactNode } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import logo from '../../assets/logo.png'
 import { getCarmenUrl } from '../../lib/url'
+import { useAuth } from '../../contexts/AuthContext'
+import NotificationBell from './NotificationBell'
 
 interface Props {
   module?: string
@@ -22,6 +24,7 @@ export default function AppHeader({
   backLabel = 'Carmen',
   children,
 }: Props) {
+  const { isAuthenticated } = useAuth()
   const handleBack = () => {
     if (onBack) onBack()
     else if (backPath) window.location.href = getCarmenUrl(backPath)
@@ -49,7 +52,10 @@ export default function AppHeader({
           <h1 className="app-header-title">{moduleName}</h1>
         </div>
       </div>
-      <div className="app-header-actions">{children}</div>
+      <div className="app-header-actions">
+        {isAuthenticated && <NotificationBell />}
+        {children}
+      </div>
     </header>
   )
 }

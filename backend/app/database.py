@@ -24,13 +24,13 @@ Session:
   get_db()         — FastAPI dependency yielding a committed session.
 
 Migrations:
-  All migration functions live in app.migrations (append-only list).
+  Schema is owned by supabase/migrations/*.sql — apply with `supabase db push`.
 """
 
 import logging
 from collections.abc import AsyncGenerator
 
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -66,7 +66,7 @@ def _get_engine():
     if _ENGINE is None:
         # Supabase / Neon connection poolers (e.g. PgBouncer, Supavisor on port 6543)
         # require disabling prepared statements in asyncpg.
-        connect_args = {}
+        connect_args: dict = {}
         db_url = settings.database_url
         if "pooler" in db_url or "6543" in db_url:
             connect_args["statement_cache_size"] = 0
@@ -88,6 +88,26 @@ def _get_engine():
             pool_recycle=1800,  # Recycle before Supabase/pooler idle timeout drops the conn.
             connect_args=connect_args,
         )
+
+        # Hard ceiling on any single query, admin analytics included — with only 10
+        # pooled connections total, a query that hangs holds one of them open
+        # indefinitely; a few concurrent hangs exhausts the pool for the whole app
+        # (OCR extraction too). 30s is generous for any legitimate query today; one
+        # that needs longer should be paginated/bounded instead.
+        #
+        # Deliberately NOT passed as connect_args={"server_settings": {...}} — verified
+        # empirically that Supabase's Supavisor pooler silently drops that startup-packet
+        # parameter (a known pgbouncer-family limitation). A "connect"-only listener isn't
+        # enough either — also verified empirically that Supavisor resets session-level
+        # GUCs on a *reused* pooled connection between logical sessions (same physical
+        # connection object, same TCP socket, `SET` still doesn't survive) — so this is
+        # re-applied on every "checkout" (one extra trivial round-trip per checkout,
+        # negligible next to what it protects against).
+        @event.listens_for(_ENGINE.sync_engine, "checkout")
+        def _set_statement_timeout(dbapi_connection, connection_record, connection_proxy):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("SET statement_timeout = '30000'")
+
         _SESSION_FACTORY = async_sessionmaker(
             _ENGINE,
             class_=AsyncSession,

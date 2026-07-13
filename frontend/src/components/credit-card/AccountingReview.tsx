@@ -16,72 +16,33 @@ import CustomModal from '../common/CustomModal'
 import Card from '../common/Card'
 import Badge from '../common/Badge'
 import { fetchAccountCodes } from '../../lib/api/carmen'
-import { parseNum, fmt } from '../../lib/format'
+import { parseNum, fmt, round2 } from '../../lib/format'
 import { useT } from '../../i18n/LanguageContext'
 import { useAccountingConfig } from '../../hooks/credit-card'
+import { buildJvRows } from '../../lib/ccJv'
+import { CONSOLIDATE_DEBIT_BANKS } from '../../constants/banks'
+import type { BankCode } from '../../types/api'
 import type { DetailRow } from './DetailTable'
 import type { JvRow } from '../../hooks/credit-card/useOcrSubmission'
 
 interface Props {
   details: DetailRow[]
   headerData?: Record<string, string>
+  bank?: string | null
   onBack: () => void
   onSubmit: (rows: JvRow[]) => void
   onGoMapping: () => void
   submitting?: boolean
 }
 
-interface BuiltRow extends JvRow {
-  dept: string
-  acc: string
-  desc: string
-  debit: number
-  credit: number
-}
-
 let _accCache: Record<string, string> | null = null
-
-function buildRows(details: DetailRow[], config: Record<string, unknown>): BuiltRow[] {
-  const mappings = (config.mappings || {}) as Record<string, { dept?: string; acc?: string }>
-  const paymentAmount = (config.paymentAmount || {}) as Record<
-    string,
-    { dept?: string; acc?: string }
-  >
-  const rows: BuiltRow[] = []
-
-  const addRow = (
-    cfg: { dept?: string; acc?: string },
-    amount: number,
-    desc: string,
-    isDebit: boolean
-  ) => {
-    if (!amount) return
-    rows.push(
-      isDebit
-        ? { dept: cfg.dept || '', acc: cfg.acc || '', desc, debit: amount, credit: 0 }
-        : { dept: cfg.dept || '', acc: cfg.acc || '', desc, debit: 0, credit: amount }
-    )
-  }
-
-  details.forEach(detail => {
-    const payType = detail.Transaction || 'UNKNOWN'
-    const amtCfg = paymentAmount[payType] || {}
-    const commCfg = mappings.commission || {}
-    const taxCfg = mappings.tax || {}
-    const netCfg = mappings.net || {}
-    addRow(amtCfg, parseNum(detail.PayAmt), payType, false)
-    addRow(commCfg, parseNum(detail.CommisAmt), 'Credit card commission', true)
-    addRow(taxCfg, parseNum(detail.TaxAmt), 'Input Tax', true)
-    addRow(netCfg, parseNum(detail.Total), 'Bank Account', true)
-  })
-  return rows
-}
 
 const DEFAULT_EMPTY_OBJECT = {}
 
 export default function AccountingReview({
   details,
   headerData = DEFAULT_EMPTY_OBJECT,
+  bank,
   onBack,
   onSubmit,
   onGoMapping,
@@ -111,13 +72,32 @@ export default function AccountingReview({
 
   const getAccName = (acc: string) => accNameMap[acc] || ''
   const rawConfig = config as Record<string, unknown> | null
-  const rows = rawConfig ? buildRows(details, rawConfig) : []
+  const rows = rawConfig
+    ? buildJvRows(details, rawConfig, {
+        consolidateDebit: !!bank && CONSOLIDATE_DEBIT_BANKS.has(bank as BankCode),
+      })
+    : []
   // Rows depend on BOTH the accounting config and the account-name map. Account
   // names are module-cached, so on repeat visits accLoading is already false
   // while the config is still loading — gate on both to avoid a "No data" flash.
   const isLoading = configLoading || accLoading
   const totalDr = rows.reduce((s, r) => s + r.debit, 0)
   const totalCr = rows.reduce((s, r) => s + r.credit, 0)
+
+  // Every layout satisfies gross = commission + tax + net per row, so the JV's
+  // Dr (Σ commission+tax+net) must equal its Cr (Σ gross). A mismatch means a
+  // line is internally inconsistent — extraction drift, or a manual edit that
+  // left the columns out of sync — and the JV would post unbalanced. Surface
+  // the offending line(s) and block submit until it's fixed.
+  const imbalancedLines = details
+    .map((d, i) => ({
+      line: i + 1,
+      diff: round2(
+        parseNum(d.PayAmt) - (parseNum(d.CommisAmt) + parseNum(d.TaxAmt) + parseNum(d.Total))
+      ),
+    }))
+    .filter(r => Math.abs(r.diff) > 0.01)
+  const isImbalanced = Math.abs(round2(totalDr) - round2(totalCr)) > 0.01
 
   const unmappedFields: string[] = []
   if (rawConfig) {
@@ -174,6 +154,21 @@ export default function AccountingReview({
           <span className="cc-alert-text">{t('cc.noMapping')}</span>
           <button type="button" className="btn btn-sm btn-primary" onClick={onGoMapping}>
             {t('cc.goMappingSettings')}
+          </button>
+        </div>
+      )}
+      {!isLoading && rows.length > 0 && isImbalanced && (
+        <div className="mapping-alert is-danger">
+          <AlertCircle size={16} />
+          <span className="cc-alert-text">
+            {t('cc.jvImbalance', {
+              debit: fmt(totalDr),
+              credit: fmt(totalCr),
+              lines: imbalancedLines.map(r => r.line).join(', ') || '—',
+            })}
+          </span>
+          <button type="button" className="btn btn-sm btn-danger" onClick={onBack}>
+            {t('cc.back')}
           </button>
         </div>
       )}
@@ -237,30 +232,42 @@ export default function AccountingReview({
                   </td>
                 </tr>
               )}
-              {rows.map((r, i) => (
-                <tr key={`${r.dept}-${r.acc}-${r.desc}-${i}`}>
-                  <td className={!r.dept ? 'missing-cell animate-pulse' : ''}>
-                    {r.dept || (
-                      <span className="cc-missing-cell-text">
-                        <AlertCircle size={12} /> MISSING
-                      </span>
-                    )}
-                  </td>
-                  <td className={!r.acc ? 'missing-cell animate-pulse' : ''}>
-                    {r.acc || (
-                      <span className="cc-missing-cell-text">
-                        <AlertCircle size={12} /> MISSING
-                      </span>
-                    )}
-                  </td>
-                  <td className="cc-account-name-cell">{getAccName(r.acc)}</td>
-                  <td>{r.desc}</td>
-                  <td className="text-center">THB</td>
-                  <td className="text-right text-mono">1.00000000</td>
-                  <td className="text-right">{fmt(r.debit)}</td>
-                  <td className="text-right">{fmt(r.credit)}</td>
-                </tr>
-              ))}
+              {rows.map((r, i) => {
+                // A zero leg (e.g. gateway net=0.00, kept for a standard layout) that
+                // has no account is display-only and never posts — show a dash, not the
+                // red MISSING alarm reserved for a real amount lacking its mapping.
+                const posts = !!(r.debit || r.credit)
+                return (
+                  <tr key={`${r.dept}-${r.acc}-${r.desc}-${i}`}>
+                    <td className={!r.dept && posts ? 'missing-cell animate-pulse' : ''}>
+                      {r.dept ||
+                        (posts ? (
+                          <span className="cc-missing-cell-text">
+                            <AlertCircle size={12} /> MISSING
+                          </span>
+                        ) : (
+                          '—'
+                        ))}
+                    </td>
+                    <td className={!r.acc && posts ? 'missing-cell animate-pulse' : ''}>
+                      {r.acc ||
+                        (posts ? (
+                          <span className="cc-missing-cell-text">
+                            <AlertCircle size={12} /> MISSING
+                          </span>
+                        ) : (
+                          '—'
+                        ))}
+                    </td>
+                    <td className="cc-account-name-cell">{getAccName(r.acc)}</td>
+                    <td>{r.desc}</td>
+                    <td className="text-center">THB</td>
+                    <td className="text-right text-mono">1.00000000</td>
+                    <td className="text-right">{fmt(r.debit)}</td>
+                    <td className="text-right">{fmt(r.credit)}</td>
+                  </tr>
+                )
+              })}
             </tbody>
             {rows.length > 0 && (
               <tfoot>
@@ -296,7 +303,7 @@ export default function AccountingReview({
           <button
             type="button"
             className="btn-submit"
-            disabled={rows.length === 0 || submitting}
+            disabled={rows.length === 0 || submitting || isImbalanced}
             onClick={() => (hasMissing ? setWarningModal(true) : onSubmit(rows))}
           >
             {submitting ? (

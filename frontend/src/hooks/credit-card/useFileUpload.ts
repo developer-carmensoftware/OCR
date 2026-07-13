@@ -3,6 +3,7 @@ import type React from 'react'
 import { getFilePreview } from '../../lib/api/ocr'
 import { checkFilesSize } from '../../lib/fileValidation'
 import { showToast } from '../../lib/toast'
+import { sanitizedPdfUrl } from '../../lib/pdfPreview'
 
 const HEIC_RE = /\.(heic|heif)$/i
 
@@ -45,8 +46,10 @@ export function useFileUpload(): FileUploadHook {
       setPreviewUrl(URL.createObjectURL(file))
       setPreviewType('image')
     } else if (isPDF) {
-      setPreviewUrl(URL.createObjectURL(file) + '#view=FitH')
+      // Strip embedded auto-print (OpenAction) before the iframe viewer sees it.
       setPreviewType('pdf')
+      setPreviewUrl(null)
+      sanitizedPdfUrl(file).then(u => setPreviewUrl(u + '#view=FitH'))
     } else {
       setPreviewUrl(null)
       setPreviewType(name.split('.').pop()?.toUpperCase() || 'other')

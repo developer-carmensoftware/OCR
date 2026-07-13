@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import TenantSelector from '../../components/admin/TenantSelector'
 import { fetchSessions, revokeSession } from '../../lib/api/adminClient'
+import { useT } from '../../i18n/LanguageContext'
 
 interface SessionRow {
   id: string
@@ -14,6 +15,7 @@ interface SessionRow {
 }
 
 export default function SessionsPage() {
+  const { t } = useT()
   const [tenantId, setTenantId] = useState('')
   const [activeOnly, setActiveOnly] = useState(true)
   const [rows, setRows] = useState<SessionRow[]>([])
@@ -23,26 +25,29 @@ export default function SessionsPage() {
     setLoading(true)
     fetchSessions({ tenant_id: tenantId || undefined, active_only: activeOnly, limit: 100 })
       .then(r => setRows(r.data ?? []))
-      .catch(e => toast.error(`Sessions: ${e?.message ?? 'failed to load'}`))
+      .catch(e =>
+        toast.error(t('admin.sessions.toast.loadFailed', { error: e?.message ?? 'failed to load' }))
+      )
       .finally(() => setLoading(false))
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(load, [tenantId, activeOnly])
 
   const handleRevoke = async (id: string) => {
     try {
       await revokeSession(id)
-      toast.success('Session revoked')
+      toast.success(t('admin.sessions.toast.revoked'))
       load()
     } catch {
-      toast.error('Failed to revoke session')
+      toast.error(t('admin.sessions.toast.revokeFailed'))
     }
   }
 
   return (
     <div className="admin-page">
       <div className="admin-page-header">
-        <h2 className="admin-page-title">Sessions</h2>
+        <h2 className="admin-page-title">{t('admin.sessions.title')}</h2>
         <div className="admin-page-controls">
           <label className="admin-checkbox-label">
             <input
@@ -50,7 +55,7 @@ export default function SessionsPage() {
               checked={activeOnly}
               onChange={e => setActiveOnly(e.target.checked)}
             />
-            Active only
+            {t('admin.sessions.activeOnly')}
           </label>
           <TenantSelector value={tenantId} onChange={setTenantId} />
         </div>
@@ -60,25 +65,25 @@ export default function SessionsPage() {
         <table className="admin-table">
           <thead>
             <tr>
-              <th className="admin-th">User</th>
-              <th className="admin-th">Tenant</th>
-              <th className="admin-th">Status</th>
-              <th className="admin-th">Last Used</th>
-              <th className="admin-th">Created</th>
-              <th className="admin-th" aria-label="Actions"></th>
+              <th className="admin-th">{t('admin.sessions.col.user')}</th>
+              <th className="admin-th">{t('admin.sessions.col.tenant')}</th>
+              <th className="admin-th">{t('admin.sessions.col.status')}</th>
+              <th className="admin-th">{t('admin.sessions.col.lastUsed')}</th>
+              <th className="admin-th">{t('admin.sessions.col.created')}</th>
+              <th className="admin-th" aria-label={t('admin.sessions.actionsAria')}></th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
                 <td colSpan={6} className="admin-td-empty">
-                  Loading…
+                  {t('admin.sessions.loading')}
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={6} className="admin-td-empty">
-                  No sessions found
+                  {t('admin.sessions.empty')}
                 </td>
               </tr>
             ) : (
@@ -91,7 +96,9 @@ export default function SessionsPage() {
                   <td className="admin-td admin-mono">{r.tenant_id}</td>
                   <td className="admin-td">
                     <span className={`status-badge ${r.is_active ? 'ok' : 'error'}`}>
-                      {r.is_active ? 'Active' : 'Revoked'}
+                      {r.is_active
+                        ? t('admin.sessions.status.active')
+                        : t('admin.sessions.status.revoked')}
                     </span>
                   </td>
                   <td className="admin-td">
@@ -107,7 +114,7 @@ export default function SessionsPage() {
                         className="admin-btn-danger-sm"
                         onClick={() => handleRevoke(r.id)}
                       >
-                        Revoke
+                        {t('admin.sessions.revoke')}
                       </button>
                     )}
                   </td>

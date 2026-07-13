@@ -1,4 +1,3 @@
-import React from 'react'
 import { Network, Loader2, CheckCircle2 } from 'lucide-react'
 import CustomModal from '../components/common/CustomModal'
 import '../styles/pages/mapping.css'
@@ -203,6 +202,3 @@ export default function Mapping() {
     </>
   )
 }
-
-// suppress unused import warning
-void React

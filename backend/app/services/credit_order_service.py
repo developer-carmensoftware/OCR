@@ -20,7 +20,7 @@ from app.models.enums import BillingDocumentType, CreditLedgerReason, CreditOrde
 from app.models.orm import BillingDocument, CreditOrder, CreditPack, Tenant
 from app.models.schemas import CreditOrderResponse, KpiSummaryResponse
 from app.models.schemas.credits import HoldBatchResultItem, PostArResultItem
-from app.services import ar_posting_service, storage_service
+from app.services import ar_posting_service, notification_service, storage_service
 from app.services.credit_service import activate_subscription, grant_credits
 
 logger = logging.getLogger(__name__)
@@ -150,8 +150,11 @@ async def list_orders(
     return out
 
 
-async def get_slip_url(order: CreditOrder, *, ttl_seconds: int = 300) -> dict:
-    """Signed URL for the admin to view an order's uploaded slip.
+async def get_slip_url(order: CreditOrder, *, ttl_seconds: int = 3600) -> dict:
+    """Presigned URL for the admin to view an order's uploaded slip.
+
+    ttl_seconds mirrors the FileService URL lifetime (~1h) for the caller's
+    expires_in; the actual TTL is fixed by FileService.
 
     Raises NotFoundError if no slip was uploaded; storage_service.StorageError
     (upstream failure) propagates to the router, which maps it to 502.
@@ -276,6 +279,11 @@ async def hold_batch(
             continue
 
         order.status = CreditOrderStatus.ON_HOLD  # type: ignore[assignment]
+        # Notify the buyer just like the cron auto-park does — same on_hold event,
+        # different trigger. Caller (router) owns the commit.
+        notification_service.notify(
+            db, tenant_id=order.tenant_id, order_id=order.id, type_="on_hold", payload={}
+        )
         results.append(HoldBatchResultItem(order_id=oid, success=True))
 
     return results

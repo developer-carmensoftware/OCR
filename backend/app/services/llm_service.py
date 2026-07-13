@@ -62,12 +62,16 @@ async def extract_from_image(
     # Legacy alias
     bank_type: str | None = None,
     page_images: list[bytes] | None = None,
+    image_mime_type: str | None = None,
 ) -> tuple[str, ExtractedCreditCardData]:
     """
     Send an image (or multiple PDF pages) to OpenRouter vision LLM.
     Returns (raw_text, ExtractedCreditCardData).
     page_images: pre-rendered PNG bytes per page; if provided, overrides image_bytes
                  for multi-page documents (all pages sent in one LLM call).
+    image_mime_type: actual MIME of image_bytes (e.g. from resize_if_needed, which may
+                 re-encode into a different format than the filename suggests). Takes
+                 priority over filename-derived MIME when provided.
     """
     if not settings.openrouter_api_key:
         raise ValueError("OPENROUTER_API_KEY is not configured")
@@ -88,7 +92,7 @@ async def extract_from_image(
         ]
         total_image_bytes = sum(len(p) for p in page_images)
     else:
-        mime_type = get_mime_type(filename)
+        mime_type = image_mime_type or get_mime_type(filename)
         b64_image = base64.b64encode(image_bytes).decode("utf-8")
         image_items = [
             {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_image}"}}

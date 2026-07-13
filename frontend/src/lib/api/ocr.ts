@@ -79,14 +79,10 @@ export async function getFilePreview(file: File): Promise<string> {
 export async function extractFromFile(
   file: File,
   bankType?: string,
-  selectedPages?: number[],
   pdfPassword?: string
 ): Promise<ExtractResult> {
   const formData = new FormData()
   formData.append('files', file)
-  if (selectedPages && selectedPages.length > 0) {
-    formData.append('selected_pages', JSON.stringify(selectedPages))
-  }
   if (pdfPassword) formData.append('pdf_password', pdfPassword)
 
   const url = bankType ? `${API.creditCard.extract}?bank_code=${bankType}` : API.creditCard.extract

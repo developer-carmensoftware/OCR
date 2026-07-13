@@ -10,6 +10,10 @@ arithmetic, not re-OCR'd.
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.ocr import ExtractedDetailRow
 from app.services.credit_card_service import (
+    _ASSUMED_RATE_WARNING,
+    _FEE_UNALLOCATED_WARNING,
+    _NEGATIVE_UNSUPPORTED_WARNING,
+    _RECON_MISMATCH_WARNING,
     _normalize_bay_statement,
     _normalize_fee_invoice,
     _strip_noncard_rows,
@@ -692,3 +696,232 @@ def test_strip_keeps_normal_card_rows_when_no_noncard_row():
     ext2 = _bay_extracted([{"transaction": "Subtotal Visa", "pay_amt": "500.00"}])
     _strip_noncard_rows(ext2)
     assert len(ext2.details) == 1
+
+
+# ── Hardening: classifier precision, reconciliation, blank lines, negatives ────
+
+
+def test_subscription_fee_line_not_stripped_as_subtotal():
+    # B1: a real fee line named "Sub…" must survive — the anchored subtotal match
+    # no longer swallows it the way the old startswith("SUB") did.
+    ext = _bay_extracted(
+        [
+            {"transaction": "Subscription Fee", "commis_amt": "100.00"},
+            {
+                "transaction": "TOTAL",
+                "commis_amt": "100.00",
+                "tax_amt": "7.00",
+                "pay_amt": "107.00",
+            },
+        ]
+    )
+    _normalize_fee_invoice(ext, "PAYPAL")
+    assert [r.transaction for r in ext.details] == ["Subscription Fee"]
+    assert ext.details[0].tax_amt == "7.00"
+
+
+def test_vat_named_fee_line_not_stripped_as_vat_footer():
+    # B2: "VAT Advisory Fee" merely contains "VAT" — it is a real fee line, not
+    # the footer VAT row, so substring matching must not consume it.
+    ext = _bay_extracted(
+        [
+            {"transaction": "VAT Advisory Fee", "commis_amt": "200.00"},
+            {
+                "transaction": "TOTAL",
+                "commis_amt": "200.00",
+                "tax_amt": "14.00",
+                "pay_amt": "214.00",
+            },
+        ]
+    )
+    _normalize_fee_invoice(ext, "KTC")
+    assert [r.transaction for r in ext.details] == ["VAT Advisory Fee"]
+
+
+def test_discount_worded_fee_line_not_stripped_as_footer():
+    # B2 (Thai): a fee whose label merely contains "ส่วนลด" is not the bare
+    # discount footer line.
+    ext = _bay_extracted(
+        [
+            {"transaction": "ส่วนลดค่าบริการพิเศษ", "commis_amt": "50.00"},
+            {"transaction": "TOTAL", "commis_amt": "50.00", "tax_amt": "3.50", "pay_amt": "53.50"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "SIAMPAY")
+    assert [r.transaction for r in ext.details] == ["ส่วนลดค่าบริการพิเศษ"]
+
+
+def test_bare_discount_footer_still_stripped():
+    # Guard the guard: a bare "ส่วนลด" footer line IS still a footer.
+    ext = _bay_extracted(
+        [
+            {"transaction": "Fee", "commis_amt": "100.00"},
+            {"transaction": "ส่วนลด", "commis_amt": "0.00"},
+            {
+                "transaction": "TOTAL",
+                "commis_amt": "100.00",
+                "tax_amt": "7.00",
+                "pay_amt": "107.00",
+            },
+        ]
+    )
+    _normalize_fee_invoice(ext, "SIAMPAY")
+    assert [r.transaction for r in ext.details] == ["Fee"]
+
+
+def test_footer_vat_prefers_tax_column_over_stray_earlier_field():
+    # B10: the VAT footer line carries a stray value in pay_amt AND the real VAT
+    # in tax_amt — the labeled read must prefer tax_amt for a VAT line.
+    ext = _bay_extracted(
+        [
+            {"transaction": "Fee A", "commis_amt": "100.00"},
+            {"transaction": "ภาษีมูลค่าเพิ่ม (VAT 7%)", "pay_amt": "999.99", "tax_amt": "7.00"},
+            {"transaction": "จำนวนเงินทั้งสิ้น (Grand Total)", "pay_amt": "107.00"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "GHL")
+    assert len(ext.details) == 1
+    assert ext.details[0].tax_amt == "7.00"  # not the stray 999.99
+
+
+def test_multiline_one_blank_commission_warns_not_silently_zeroed():
+    # B3: a real fee line with no readable amount among priced lines gets 0 from
+    # the proportional spread — surface a warning instead of a silent 0.00.
+    ext = _bay_extracted(
+        [
+            {"transaction": "Fee A", "commis_amt": "100.00"},
+            {"transaction": "Fee B"},  # blank commission
+            {
+                "transaction": "TOTAL",
+                "commis_amt": "100.00",
+                "tax_amt": "7.00",
+                "pay_amt": "107.00",
+            },
+        ]
+    )
+    _normalize_fee_invoice(ext, "SIAMPAY")
+    assert _FEE_UNALLOCATED_WARNING in ext.warnings
+
+
+def test_multiline_all_blank_commissions_split_vat_evenly():
+    # B4: with no per-line fee to weight by, VAT is split evenly (not dumped 100%
+    # on the last row) and a warning is raised.
+    ext = _bay_extracted(
+        [
+            {"transaction": "Fee A"},
+            {"transaction": "Fee B"},
+            {"transaction": "VAT", "tax_amt": "10.00"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "SIAMPAY")
+    assert [r.tax_amt for r in ext.details] == ["5.00", "5.00"]
+    assert _FEE_UNALLOCATED_WARNING in ext.warnings
+
+
+def test_equal_fee_lines_not_mistaken_for_footer():
+    # B5: two equal fees, no summary label — neither may be pulled as the "footer"
+    # just because its fee equals the sum of the (single) other line.
+    ext = _bay_extracted(
+        [
+            {"transaction": "Fee A", "commis_amt": "100.00"},
+            {"transaction": "Fee B", "commis_amt": "100.00"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "SIAMPAY")
+    assert [r.transaction for r in ext.details] == ["Fee A", "Fee B"]
+
+
+def test_reconstructed_total_mismatch_warns():
+    # B7: a misread line fee makes Σ fee + VAT drift from the printed grand total.
+    # The VAT spread balances exactly, so only the recon cross-check catches it.
+    ext = _bay_extracted(
+        [
+            {"transaction": "Fee A", "commis_amt": "100.00"},
+            {"transaction": "Fee B", "commis_amt": "40.00"},  # misread (should be 50)
+            {
+                "transaction": "TOTAL",
+                "commis_amt": "150.00",
+                "tax_amt": "10.50",
+                "pay_amt": "160.50",
+            },
+        ]
+    )
+    _normalize_fee_invoice(ext, "KTC")
+    assert _RECON_MISMATCH_WARNING in ext.warnings
+
+
+def test_reconstructed_total_matches_no_warning():
+    # B7 negative: a clean multi-line invoice reconciles → no recon warning.
+    ext = _bay_extracted(
+        [
+            {"transaction": "Fee A", "commis_amt": "100.00"},
+            {"transaction": "Fee B", "commis_amt": "50.00"},
+            {
+                "transaction": "TOTAL",
+                "commis_amt": "150.00",
+                "tax_amt": "10.50",
+                "pay_amt": "160.50",
+            },
+        ]
+    )
+    _normalize_fee_invoice(ext, "KTC")
+    assert _RECON_MISMATCH_WARNING not in ext.warnings
+
+
+def test_two_value_grand_and_vat_pair_flags_assumed_rate():
+    # B11: (grand, vat) with no fee — the split is decided by an assumed rate, so
+    # surface a verify warning even though the arithmetic reconstructs cleanly.
+    ext = _extracted(pay_amt="107.00", tax_amt="7.00")
+    _normalize_fee_invoice(ext, "KTC")
+    r = _row(ext)
+    assert (r.pay_amt, r.commis_amt, r.tax_amt) == ("107.00", "100.00", "7.00")
+    assert _ASSUMED_RATE_WARNING in ext.warnings
+
+
+def test_negative_amount_fee_invoice_guarded_and_untouched():
+    # B9: a refund / credit-note line is not supported — warn and leave the rows
+    # exactly as extracted rather than mis-spread a negative.
+    ext = _bay_extracted(
+        [
+            {"transaction": "Refund Fee", "commis_amt": "-100.00"},
+            {
+                "transaction": "TOTAL",
+                "commis_amt": "-100.00",
+                "tax_amt": "-7.00",
+                "pay_amt": "-107.00",
+            },
+        ]
+    )
+    _normalize_fee_invoice(ext, "KTC")
+    assert _NEGATIVE_UNSUPPORTED_WARNING in ext.warnings
+    assert len(ext.details) == 2  # untouched
+    assert ext.details[0].commis_amt == "-100.00"
+
+
+def test_negative_amount_bay_statement_guarded():
+    ext = _bay_extracted([{"transaction": "VISA", "pay_amt": "-500.00", "commis_amt": "10.00"}])
+    _normalize_bay_statement(ext)
+    assert _NEGATIVE_UNSUPPORTED_WARNING in ext.warnings
+    assert ext.details[0].pay_amt == "-500.00"
+
+
+def test_bay_zero_commission_still_fills_net():
+    # B8: a BAY statement with zero commission on the blank rows must still get a
+    # per-row net (gross − commission − 0), not be left blank.
+    ext = _bay_extracted(
+        [
+            {"transaction": "VISA", "pay_amt": "1,000.00", "commis_amt": "0.00"},
+            {"transaction": "MASTER", "pay_amt": "500.00", "commis_amt": "0.00"},
+            {
+                "transaction": "TOTAL",
+                "pay_amt": "1,500.00",
+                "commis_amt": "0.00",
+                "tax_amt": "20.00",
+                "total": "1,480.00",
+            },
+        ]
+    )
+    _normalize_bay_statement(ext)
+    assert len(ext.details) == 2  # TOTAL consumed
+    assert [r.total for r in ext.details] == ["1,000.00", "500.00"]
+    assert _FEE_UNALLOCATED_WARNING in ext.warnings
