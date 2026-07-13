@@ -2,14 +2,7 @@ import { useState, useRef, type ReactNode, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 
 type TooltipPosition =
-  | 'top'
-  | 'bottom'
-  | 'left'
-  | 'right'
-  | 'top-left'
-  | 'top-right'
-  | 'bottom-left'
-  | 'bottom-right'
+  'top' | 'bottom' | 'left' | 'right' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 
 interface Props {
   text?: string

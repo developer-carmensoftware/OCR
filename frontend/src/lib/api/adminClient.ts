@@ -315,12 +315,7 @@ export interface AdminCreditOrder {
  * Backend keeps in_progress for both pre- and post-slip, so the slip flag splits it.
  */
 export type OrderStage =
-  | 'awaiting_payment'
-  | 'to_review'
-  | 'on_hold'
-  | 'to_post'
-  | 'posted'
-  | 'rejected'
+  'awaiting_payment' | 'to_review' | 'on_hold' | 'to_post' | 'posted' | 'rejected'
 
 export function orderStage(o: AdminCreditOrder): OrderStage {
   switch (o.status) {

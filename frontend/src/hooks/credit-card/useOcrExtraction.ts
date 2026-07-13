@@ -298,8 +298,7 @@ export function useOcrExtraction({
       applyExtractedData(ext as unknown as Record<string, unknown>)
       setBank(
         (bankType || detectBankFromExtracted(ext as unknown as Record<string, string>) || '') as
-          | BankCode
-          | ''
+          BankCode | ''
       )
       showToast(`Re-extracted successfully${bankType ? ` with ${bankType}` : ''}`, 'success')
     } catch (err) {
