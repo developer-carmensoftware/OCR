@@ -192,7 +192,6 @@ export default function CreditCardOCR() {
                 <AccountingReview
                   details={details}
                   headerData={headerData as Record<string, string>}
-                  bank={bank}
                   onBack={() => setStep(2)}
                   onSubmit={handleSubmitFinal}
                   onGoMapping={() => {

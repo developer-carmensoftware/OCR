@@ -31,16 +31,18 @@ const leg = (cfg: Mapping, desc: string, debit: number, credit: number): JvRow =
 /**
  * Build the Step-3 journal-entry rows from extracted detail lines + accounting config.
  *
- * Default (per-line): 1 credit (PayAmt → payment-type account) + up to 3 debits
- * (commission, tax, net) per line; zero amounts are skipped.
- *
- * Consolidated (BAY + gateway fee invoices, `consolidateDebit`): credit legs stay
+ * Consolidated (`consolidateDebit`, the default for all banks — see
+ * `GROUP_DEBIT_BY_TRANSACTION` in constants/banks.ts): credit legs stay
  * one-per-payment-type; the debit side collapses to the **three canonical buckets**
  * (commission, tax, Bank Account) in fixed order, each summed across all lines and
  * **always present** — so a gateway invoice (net = 0) still shows a `0.00` Bank Account
  * row and every document type reviews with the same standard layout. Lossless: Σdebit /
  * Σcredit are unchanged, so the JV stays balanced. The zero legs are display-only —
  * `useOcrSubmission` drops them before posting so no empty GL lines reach Carmen.
+ *
+ * Per-line (`consolidateDebit: false`, preserved for future use): 1 credit
+ * (PayAmt → payment-type account) + up to 3 debits (commission, tax, net) per
+ * line; zero amounts are skipped.
  */
 export function buildJvRows(
   details: Detail[],

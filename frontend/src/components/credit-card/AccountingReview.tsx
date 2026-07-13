@@ -20,15 +20,13 @@ import { parseNum, fmt, round2 } from '../../lib/format'
 import { useT } from '../../i18n/LanguageContext'
 import { useAccountingConfig } from '../../hooks/credit-card'
 import { buildJvRows } from '../../lib/ccJv'
-import { CONSOLIDATE_DEBIT_BANKS } from '../../constants/banks'
-import type { BankCode } from '../../types/api'
+import { GROUP_DEBIT_BY_TRANSACTION } from '../../constants/banks'
 import type { DetailRow } from './DetailTable'
 import type { JvRow } from '../../hooks/credit-card/useOcrSubmission'
 
 interface Props {
   details: DetailRow[]
   headerData?: Record<string, string>
-  bank?: string | null
   onBack: () => void
   onSubmit: (rows: JvRow[]) => void
   onGoMapping: () => void
@@ -42,7 +40,6 @@ const DEFAULT_EMPTY_OBJECT = {}
 export default function AccountingReview({
   details,
   headerData = DEFAULT_EMPTY_OBJECT,
-  bank,
   onBack,
   onSubmit,
   onGoMapping,
@@ -74,7 +71,7 @@ export default function AccountingReview({
   const rawConfig = config as Record<string, unknown> | null
   const rows = rawConfig
     ? buildJvRows(details, rawConfig, {
-        consolidateDebit: !!bank && CONSOLIDATE_DEBIT_BANKS.has(bank as BankCode),
+        consolidateDebit: !GROUP_DEBIT_BY_TRANSACTION,
       })
     : []
   // Rows depend on BOTH the accounting config and the account-name map. Account
@@ -105,8 +102,8 @@ export default function AccountingReview({
     const m = (rawConfig.mappings || {}) as Record<string, { acc?: string }>
     if (!m.commission?.acc) unmappedFields.push('Credit card commission')
     if (!m.tax?.acc) unmappedFields.push('Input Tax')
-    // Fee-invoice formats (KTC/GHL/PayPal/SiamPay) always have Total=0, so the
-    // net row is never posted — only demand the mapping when a row will use it.
+    // Some formats (e.g. fee invoices) always have Total=0, so the net row is
+    // never posted — only demand the mapping when a row will use it.
     if (!m.net?.acc && details.some(d => parseNum(d.Total))) unmappedFields.push('Bank Account')
     const pa = (rawConfig.paymentAmount || {}) as Record<string, { acc?: string }>
     const detailTypes = [
