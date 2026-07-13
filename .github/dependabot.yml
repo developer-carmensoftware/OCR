@@ -51,5 +51,8 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
     ignore:
-      - dependency-name: "tailwindcss"
+      # TS 7's stable programmatic API lands in 7.1; typescript-eslint has no
+      # released support yet (tracking issue #12518) and lint is a required
+      # CI step. Remove once typescript-eslint publishes TS7 support.
+      - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
