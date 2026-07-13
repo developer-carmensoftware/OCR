@@ -128,6 +128,10 @@ class OutboundCallLog(Base):
     request_size_bytes = Column(Integer, nullable=True)
     session_id = Column(String(36), nullable=True)
     carmen_user_id = Column(String(36), nullable=True)
+    # LLM routing evidence (openrouter calls only; null for Carmen): the privacy
+    # directive we sent (e.g. "deny;only=...") and the provider OpenRouter routed to.
+    provider = Column(String(60), nullable=True)
+    data_policy = Column(String(120), nullable=True)
 
 
 class DailyUsageSummary(Base, TimestampMixin):

@@ -56,6 +56,33 @@ class Settings(BaseSettings):
     openrouter_suggestion_model: str = "google/gemini-2.0-flash-001"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
+    # ── LLM privacy enforcement ───────────────────────────────────────────────
+    # Sent as OpenRouter `provider` preferences on EVERY request (llm/client.py).
+    # This is the TECHNICAL enforcement of the consent-modal no-training promise
+    # (UserConsentModal.tsx) — it does not depend on the OpenRouter dashboard's
+    # account-level toggles (which can be changed silently). Do not relax without
+    # updating UserConsentModal + docs/SECURITY_PDPA_CHECKLIST.md.
+    #   "deny"  → route only to endpoints that do NOT collect/train on request data.
+    llm_data_collection: str = "deny"  # "allow" | "deny"
+    # Strict Zero-Data-Retention routing. Off by default: enabling it makes OpenRouter
+    # reject a request outright if no ZDR endpoint exists for the model (e.g. a model
+    # served only via Google AI Studio). Flip on once every configured model is
+    # verified to have a ZDR-capable endpoint (Vertex for Google).
+    llm_require_zdr: bool = False
+    # Comma-separated OpenRouter provider slugs to restrict routing to; empty = no
+    # restriction. The text (suggestion) model can be a non-Google model that
+    # OpenRouter would otherwise route to many hosts (incl. non-EU/US jurisdictions);
+    # this pins it to US-jurisdiction providers. Vision models are Google-only already.
+    llm_text_provider_allowlist: str = "fireworks,deepinfra,digitalocean"
+    llm_vision_provider_allowlist: str = ""
+    # Resolved-provider display names we expect LLM traffic to route to (as reported by
+    # OpenRouter in the response, e.g. "Google", "Google AI Studio", "DeepInfra").
+    # Matched case-insensitively as substrings; a call routed anywhere else raises an
+    # anomaly alert (llm_provider_out_of_policy). Flat set, not per-kind (vision→Google,
+    # text→US hosts) — ponytail: split per-kind only if a provider serves both kinds and
+    # we need to distinguish them. Empty = alerting disabled.
+    llm_expected_providers: str = "Google,DeepInfra,Fireworks,DigitalOcean"
+
     # Master API key for service-to-service auth
     master_api_key: str = ""
 
@@ -198,6 +225,21 @@ class Settings(BaseSettings):
         deduped = [k for k in keys if not (k in seen or seen.add(k))]
         return deduped or [self.openrouter_api_key]
 
+    @property
+    def llm_text_provider_allowlist_list(self) -> list[str]:
+        """Parsed text-model provider slug allowlist (empty = no restriction)."""
+        return [p.strip() for p in self.llm_text_provider_allowlist.split(",") if p.strip()]
+
+    @property
+    def llm_vision_provider_allowlist_list(self) -> list[str]:
+        """Parsed vision-model provider slug allowlist (empty = no restriction)."""
+        return [p.strip() for p in self.llm_vision_provider_allowlist.split(",") if p.strip()]
+
+    @property
+    def llm_expected_providers_list(self) -> list[str]:
+        """Parsed expected resolved-provider display names (empty = alerting off)."""
+        return [p.strip() for p in self.llm_expected_providers.split(",") if p.strip()]
+
     class Config:
         env_file = Path(__file__).parent.parent / ".env"
         env_file_encoding = "utf-8"
@@ -296,6 +338,17 @@ if not settings.app_debug:
         raise RuntimeError(
             "ADMIN_JWT_SECRET must differ from OCR_JWT_SECRET to prevent token confusion "
             "between user and admin tokens."
+        )
+    # Loud warning (not a hard fail): running with data_collection != "deny" means
+    # customer documents may be sent to providers that retain/train on them, which
+    # contradicts the consent modal's no-training promise. A pilot might deliberately
+    # relax this, so we shout rather than crash.
+    if settings.llm_data_collection != "deny":
+        _config_logger.critical(
+            "LLM_DATA_COLLECTION=%r (not 'deny') — customer documents may be routed to "
+            "providers that collect/train on them, contradicting the consent-modal "
+            "no-training promise. Set LLM_DATA_COLLECTION=deny for the pilot.",
+            settings.llm_data_collection,
         )
 
 # ── Database URL normalization ────────────────────────────────────────────────

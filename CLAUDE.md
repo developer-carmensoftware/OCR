@@ -83,6 +83,8 @@ useAPInvoice hook
 - **Quota engine** — `check_quota(module_id)` at start of every extract endpoint. Quotas stored in `quotas` + `quota_usage` tables; replaces legacy flat `bu_usage`.
 - **module_id on every LLM call** — `log_llm_usage(module_id="credit_card_ocr")` instead of old `usage_type` string. Enables per-module cost breakdown in `daily_usage_summary`.
 - **Shared LLM client** — `llm/client.py` is the sole `AsyncOpenAI` factory. Never construct it elsewhere.
+- **LLM privacy is enforced per-request, not via dashboard** — `_provider_prefs()` in `llm/client.py` attaches `extra_body={"provider": {"data_collection": "deny", ...}}` to EVERY OpenRouter call (vision + text). This is the technical enforcement of the consent-modal no-training promise (`UserConsentModal.tsx`); it does not rely on the OpenRouter account dashboard toggles (which can drift silently). `LLM_TEXT_PROVIDER_ALLOWLIST` additionally pins the non-Google suggestion model to US-jurisdiction providers. Prod logs CRITICAL if `LLM_DATA_COLLECTION != "deny"`. The dashboard's Google-ZDR toggle (disable AI Studio, keep Vertex) is a manual second layer — see `docs/SECURITY_PDPA_CHECKLIST.md`.
+- **Consent is recorded server-side** — `consent_logs` (append-only, no soft-delete, no retention purge — legal evidence, PDPA ม.19) is the source of truth for AI-processing consent; `POST/GET /api/v1/consent`. Org-level (keyed on `tenant_id`). `useUserConsent.ts` treats localStorage only as a fast-path cache; `CONSENT_VERSION` bumps re-prompt every tenant so a real server record exists.
 - **AP invoice post-processing is non-trivial** — `ap_invoice_postprocess.py` must run after LLM.
 - **AP review reconciliation (pin-based)** — In the Step-3 Account Summary, "From Table" (Σ line items) is reconciled against "From Document" (the immutable extracted footer totals). Every row keeps `lineTotal = lineSubTotal + taxAmt`, so the summary has only two free quantities (Σsub, Σtax) and `grand ≡ Σsub + Σtax`. Each per-field **Adjust** writes ONLY its own amount field on the plug row(s) and lets the total follow via `syncLineTotals` (`lib/apTax.ts`) — never re-deriving a sibling from the rate (that caused the old "whack-a-mole"). The header "From Document" values are the trusted anchor and are **never** re-synced from line sums (`hooks/ap-invoice/useAPInvoice.ts`).
 - **Document self-inconsistency = misread digit** — When the printed footer itself doesn't add up (`sub + tax ≠ grand`, beyond a 1-satang tolerance), the LLM misread a figure; reconciling line items can never clear it. `repairDocFigure()` (`hooks/ap-invoice/useAPValidation.ts`) identifies the outlier using the line-item sums as tiebreaker and recomputes it from `grand = sub + tax`. **Hybrid apply**: high-confidence repairs (unambiguous outlier + gap ≤ `AUTO_FIX_MAX_GAP` = 1 baht) are auto-applied once on entering Step 3 (`step===3` effect, guarded by a ref so it never overrides later manual edits); ambiguous or large-gap cases surface a manual "Fix document figures" banner and suppress the per-field Adjust buttons (which would otherwise drag the corroborated table value onto the misread doc value).
@@ -146,6 +148,11 @@ OPENROUTER_OCR_MODEL=google/gemini-2.5-flash-lite
 OPENROUTER_SUGGESTION_MODEL=google/gemini-2.0-flash-lite
 OPENROUTER_AP_INVOICE_MODEL=google/gemini-2.5-flash-lite
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+LLM_DATA_COLLECTION=deny            # per-request no-train/no-collect enforcement (see Key Design Decisions)
+LLM_REQUIRE_ZDR=false               # strict Zero-Data-Retention routing (off until every model verified ZDR-capable)
+LLM_TEXT_PROVIDER_ALLOWLIST=fireworks,deepinfra,digitalocean  # pin non-Google text model to US providers
+LLM_VISION_PROVIDER_ALLOWLIST=      # vision is Google-only already
+LLM_EXPECTED_PROVIDERS=Google,DeepInfra,Fireworks,DigitalOcean  # alert if routed elsewhere (llm_provider_out_of_policy)
 DATABASE_URL=postgresql+asyncpg://user:password@host/dbname?sslmode=require
 MAX_FILE_SIZE_MB=20
 APP_PORT=8010
@@ -177,7 +184,7 @@ FILE_SERVICE_API_KEY=fsc_...        # X-Api-Key client access key
 | Quotas | `quotas`, `quota_usage` |
 | Billing | `credit_packs`, `tenant_credits`, `credit_ledger`, `credit_orders`, `billing_documents`, `tenant_subscriptions`, `ar_customer_profiles`, `document_sequences` |
 | Reference | `model_pricing` |
-| Business data | `ocr_sessions`, `ocr_tasks`, `credit_cards`, `ap_invoices`, `correction_feedback`, `bug_reports` |
+| Business data | `ocr_sessions`, `ocr_tasks`, `credit_cards`, `ap_invoices`, `correction_feedback`, `bug_reports`, `consent_logs` |
 | Observability | `llm_usage_logs`, `audit_logs`, `performance_logs`, `outbound_call_logs` |
 | Analytics | `daily_usage_summary`, `daily_model_cost`, `monthly_usage_summary`, `anomaly_alerts`, `job_runs` |
 | Migration tracker | `_supabase_migrations` (Supabase CLI tracking) |

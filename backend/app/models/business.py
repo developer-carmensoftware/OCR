@@ -9,15 +9,18 @@ WriterMixin.created_by: stores carmen_user_id (the Carmen ERP user who acted).
 import uuid
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     Column,
     Date,
     DateTime,
     ForeignKey,
+    Identity,
     Index,
     Integer,
     String,
     Text,
+    func,
     text,
 )
 from sqlalchemy import Enum as SAEnum
@@ -337,3 +340,23 @@ class BugReport(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixi
     screenshot_b64 = Column(Text, nullable=True)
     screenshot_mime = Column(String(16), nullable=True)
     carmen_user_id = Column(String(36), nullable=True, index=True)
+
+
+class ConsentLog(Base, TenantFKMixin):
+    """
+    Server-side consent record — PDPA ม.19 proof of who consented, when, which version.
+
+    Append-only legal evidence: NO SoftDeleteMixin, NO WriterMixin (never updated,
+    never deleted, never purged). Org-level consent keyed on tenant_id to match the
+    frontend's tenant-scoped consent gate (useUserConsent.ts). Multiple rows per
+    (tenant, version) are allowed — the history is the evidence.
+    """
+
+    __tablename__ = "consent_logs"
+
+    id = Column(BigInteger, Identity(always=True), primary_key=True)
+    carmen_user_id = Column(String(36), nullable=True)
+    consent_version = Column(String(20), nullable=False)
+    ip_address = Column(String(45), nullable=True)
+    user_agent = Column(String(400), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

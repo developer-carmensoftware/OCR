@@ -74,6 +74,11 @@ export const API = {
     corrections: `${V1}/feedback/corrections`,
   },
 
+  consent: {
+    record: `${V1}/consent`,
+    status: (version: string) => `${V1}/consent/status?version=${encodeURIComponent(version)}`,
+  },
+
   files: {
     pdfInfo: `${V1}/files/pdf-info`,
     preview: `${V1}/files/preview`,

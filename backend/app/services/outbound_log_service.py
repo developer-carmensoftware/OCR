@@ -51,8 +51,14 @@ async def log_outbound(
     status_code: int | None = None,
     duration_ms: float | None = None,
     request_size_bytes: int | None = None,
+    provider: str | None = None,
+    data_policy: str | None = None,
 ) -> None:
-    """Buffer one outbound-call record. Reads context vars — never raises."""
+    """Buffer one outbound-call record. Reads context vars — never raises.
+
+    `provider`/`data_policy` carry LLM routing evidence (which provider OpenRouter
+    routed to + the privacy directive we sent); null for non-LLM (Carmen) calls.
+    """
     try:
         _OUTBOUND_BUFFER.append(
             {
@@ -65,6 +71,8 @@ async def log_outbound(
                 "request_size_bytes": request_size_bytes,
                 "session_id": current_ocr_session_id.get() or None,
                 "carmen_user_id": current_carmen_user_id.get() or None,
+                "provider": provider,
+                "data_policy": data_policy,
             }
         )
         overflow = len(_OUTBOUND_BUFFER) - _BUFFER_HARD_CAP

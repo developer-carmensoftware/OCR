@@ -9,6 +9,7 @@ from app.models.schemas.ap_invoice import SuggestGLItem, SuggestGLRequest
 from app.models.schemas.auth import ExchangeRequest, ExchangeResponse
 from app.models.schemas.common import FieldMapping
 from app.models.schemas.config import AccountingConfigRequest, AccountingConfigResponse
+from app.models.schemas.consent import ConsentRequest, ConsentStatusResponse
 from app.models.schemas.credits import (
     AdjustRequest,
     ArCustomerProfileResponse,
@@ -66,6 +67,9 @@ __all__ = [
     # config
     "AccountingConfigRequest",
     "AccountingConfigResponse",
+    # consent
+    "ConsentRequest",
+    "ConsentStatusResponse",
     # credits
     "CreditPackResponse",
     "CreateOrderRequest",

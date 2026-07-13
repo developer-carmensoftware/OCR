@@ -29,8 +29,12 @@ def _single_key_pool(mock_client):
     ]
 
 
-def _make_response(content, prompt_tokens=10, completion_tokens=5):
-    """Build a minimal mock OpenAI response object."""
+def _make_response(content, prompt_tokens=10, completion_tokens=5, provider="Google"):
+    """Build a minimal mock OpenAI response object.
+
+    `provider` mimics OpenRouter's non-standard top-level field (retained by the SDK's
+    extra="allow" config). Default "Google" is in the expected-providers set → no alert.
+    """
     choice = MagicMock()
     choice.message.content = content
 
@@ -42,6 +46,7 @@ def _make_response(content, prompt_tokens=10, completion_tokens=5):
     resp = MagicMock()
     resp.choices = [choice]
     resp.usage = usage
+    resp.provider = provider
     return resp
 
 
@@ -155,6 +160,17 @@ class TestCallTextLlm:
         call_args = self.mock_client.chat.completions.create.call_args
         assert call_args.kwargs["model"] == settings.openrouter_suggestion_model
 
+    async def test_text_sends_provider_privacy_prefs(self):
+        """Text (suggestion) requests must carry provider.data_collection=deny."""
+        from app.llm.client import call_text_llm
+
+        self.mock_client.chat.completions.create.return_value = _make_response("{}")
+        await call_text_llm("test prompt")
+        provider = self.mock_client.chat.completions.create.call_args.kwargs["extra_body"][
+            "provider"
+        ]
+        assert provider["data_collection"] == "deny"
+
 
 # ── B5: call_vision_llm ───────────────────────────────────────────────────────
 
@@ -225,6 +241,90 @@ class TestCallVisionLlm:
             mock_log.assert_called_once()
             kwargs = mock_log.call_args.kwargs
             assert kwargs["module_id"] == "credit_card_ocr"
+
+    async def test_vision_sends_data_collection_deny(self):
+        """Vision requests must carry provider.data_collection=deny (no-train enforcement)."""
+        from app.llm.client import call_vision_llm
+
+        self.mock_client.chat.completions.create.return_value = _make_response("ok")
+        await call_vision_llm(system_prompt="sys", user_content=[], model="test-model")
+        provider = self.mock_client.chat.completions.create.call_args.kwargs["extra_body"][
+            "provider"
+        ]
+        assert provider["data_collection"] == "deny"
+        # Vision models are Google-only → no provider allowlist by default.
+        assert "only" not in provider
+
+    async def test_routing_evidence_logged(self):
+        """Resolved provider + privacy directive must be recorded on the outbound log."""
+        from app.llm.client import call_vision_llm
+
+        self.mock_client.chat.completions.create.return_value = _make_response(
+            "ok", provider="Google"
+        )
+        with patch(
+            "app.services.outbound_log_service.log_outbound", new_callable=AsyncMock
+        ) as mock_out:
+            await call_vision_llm(system_prompt="sys", user_content=[], model="test-model")
+        kwargs = mock_out.call_args.kwargs
+        assert kwargs["provider"] == "Google"
+        assert kwargs["data_policy"].startswith("deny")
+
+    async def test_no_alert_for_expected_provider(self):
+        """A provider in the expected set must NOT raise a routing alert."""
+        from app.llm.client import call_vision_llm
+
+        self.mock_client.chat.completions.create.return_value = _make_response(
+            "ok", provider="Google"
+        )
+        with patch(
+            "app.services.anomaly_service.open_alert_if_absent", new_callable=AsyncMock
+        ) as mock_alert:
+            await call_vision_llm(system_prompt="sys", user_content=[], model="test-model")
+        mock_alert.assert_not_called()
+
+    async def test_alert_for_unexpected_provider(self):
+        """A provider outside the expected set must raise a routing alert."""
+        from app.llm.client import call_vision_llm
+
+        self.mock_client.chat.completions.create.return_value = _make_response(
+            "ok", provider="Baidu"
+        )
+        with patch(
+            "app.services.anomaly_service.open_alert_if_absent", new_callable=AsyncMock
+        ) as mock_alert:
+            await call_vision_llm(system_prompt="sys", user_content=[], model="test-model")
+        mock_alert.assert_called_once()
+        assert mock_alert.call_args.kwargs["metric"] == "llm_provider_out_of_policy"
+
+
+class TestProviderPrefs:
+    """_provider_prefs — the per-request OpenRouter privacy routing preferences."""
+
+    def test_default_denies_data_collection(self):
+        from app.llm.client import _provider_prefs
+
+        assert _provider_prefs("vision")["data_collection"] == "deny"
+        assert _provider_prefs("text")["data_collection"] == "deny"
+
+    def test_zdr_absent_by_default_present_when_enabled(self):
+        from app.config import settings
+        from app.llm.client import _provider_prefs
+
+        assert "zdr" not in _provider_prefs("text")
+        with patch.object(settings, "llm_require_zdr", True):
+            assert _provider_prefs("text")["zdr"] is True
+
+    def test_text_allowlist_applied_vision_unrestricted(self):
+        from app.config import settings
+        from app.llm.client import _provider_prefs
+
+        with (
+            patch.object(settings, "llm_text_provider_allowlist", "fireworks,deepinfra"),
+            patch.object(settings, "llm_vision_provider_allowlist", ""),
+        ):
+            assert _provider_prefs("text")["only"] == ["fireworks", "deepinfra"]
+            assert "only" not in _provider_prefs("vision")
 
 
 # ── Capacity pool: acquire / distribution / failover ──────────────────────────
