@@ -21,12 +21,15 @@ import { useT } from '../../i18n/LanguageContext'
 import { useAccountingConfig } from '../../hooks/credit-card'
 import { buildJvRows } from '../../lib/ccJv'
 import { GROUP_DEBIT_BY_TRANSACTION } from '../../constants/banks'
+import { codeToSource } from '../../lib/bankTransforms'
 import type { DetailRow } from './DetailTable'
 import type { JvRow } from '../../hooks/credit-card/useOcrSubmission'
+import type { BankCode } from '../../types/api'
 
 interface Props {
   details: DetailRow[]
   headerData?: Record<string, string>
+  bank?: BankCode | ''
   onBack: () => void
   onSubmit: (rows: JvRow[]) => void
   onGoMapping: () => void
@@ -40,6 +43,7 @@ const DEFAULT_EMPTY_OBJECT = {}
 export default function AccountingReview({
   details,
   headerData = DEFAULT_EMPTY_OBJECT,
+  bank = '',
   onBack,
   onSubmit,
   onGoMapping,
@@ -118,7 +122,11 @@ export default function AccountingReview({
   const configBadges = rawConfig
     ? [
         { label: `Prefix: ${rawConfig.filePrefix || '-'}`, variant: 'info' as const },
-        { label: `Source: ${rawConfig.fileSource || '-'}`, variant: 'gray' as const },
+        {
+          // Source is bank-derived (matches what will post), not the stored config value.
+          label: `Source: ${(bank && codeToSource(bank)) || rawConfig.fileSource || '-'}`,
+          variant: 'gray' as const,
+        },
         {
           label: `Description: ${rawConfig.description ? `${rawConfig.description}${headerData.DocDate ? ` - ${headerData.DocDate}` : ''}` : '-'}`,
           variant: 'gray' as const,
