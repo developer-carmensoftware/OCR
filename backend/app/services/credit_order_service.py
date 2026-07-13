@@ -150,8 +150,11 @@ async def list_orders(
     return out
 
 
-async def get_slip_url(order: CreditOrder, *, ttl_seconds: int = 300) -> dict:
-    """Signed URL for the admin to view an order's uploaded slip.
+async def get_slip_url(order: CreditOrder, *, ttl_seconds: int = 3600) -> dict:
+    """Presigned URL for the admin to view an order's uploaded slip.
+
+    ttl_seconds mirrors the FileService URL lifetime (~1h) for the caller's
+    expires_in; the actual TTL is fixed by FileService.
 
     Raises NotFoundError if no slip was uploaded; storage_service.StorageError
     (upstream failure) propagates to the router, which maps it to 502.

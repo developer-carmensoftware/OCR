@@ -42,7 +42,14 @@ from app.services.credit_service import (
 )
 from app.services.file_service import FileService
 from app.services.storage_service import StorageError
+from app.utils.image_processing import resize_if_needed
 from app.utils.tax import vat_on_top
+
+# Slips only need to be legible (read the digits) — not archival quality. Downscale +
+# JPEG re-encode before storing to keep the bucket small. Aggressive vs. the OCR path
+# (2200/92) since no LLM reads these — a human just eyeballs the transfer amount.
+_SLIP_MAX_DIMENSION = 1600
+_SLIP_JPEG_QUALITY = 70
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/credits", tags=["Credits"])
@@ -271,8 +278,10 @@ async def upload_slip(
     # Validate file type and size (reuse existing file_service logic)
     # validate_and_read returns (bytes, filename); content_type comes from the upload header
     # ponytail: storage upload then DB update isn't one atomic step — if the commit
-    # below fails after a successful upload, the slip is orphaned in storage (not
-    # lost data; same object key, so a retry just re-links it). No cleanup job needed.
+    # below fails after a successful upload, the slip is orphaned in FileService.
+    # FileService mints a new fileId per upload (no delete endpoint), so a re-upload
+    # also leaks the prior file. Not lost data (the pointer tracks the newest); the
+    # orphans are small and rare, accepted — no cleanup job.
     data, _ = await FileService.validate_and_read(file)
     content_type = file.content_type or "application/octet-stream"
 
@@ -280,12 +289,28 @@ async def upload_slip(
     if content_type not in allowed:
         raise HTTPException(status_code=422, detail=f"Unsupported file type: {content_type}")
 
+    # Compress images before storing (PDFs pass through untouched). Fall back to the
+    # original bytes if re-encoding fails — a smaller slip is nice-to-have, never worth
+    # dropping the upload over.
+    if content_type in ("image/jpeg", "image/png"):
+        try:
+            data, content_type = resize_if_needed(
+                data, max_dimension=_SLIP_MAX_DIMENSION, jpeg_quality=_SLIP_JPEG_QUALITY
+            )
+        except Exception:
+            logger.warning("slip compression failed for order %s; storing original", order_id)
+
+    # Store under the order's creation month (yyyymm), on the same UTC basis as the
+    # proforma running number (PF-YYYYMM-NNNN) so slips file alongside their proforma.
+    # Upload can happen a later month than creation, so use created_at, not now().
+    path = (order.created_at or datetime.now(UTC)).astimezone(UTC).strftime("%Y%m")
+
     try:
         key = await storage_service.upload_slip(
-            tenant_id=session.tenant_id,
             order_id=order_id,
             data=data,
             content_type=content_type,
+            path=path,
         )
     except StorageError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
