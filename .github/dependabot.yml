@@ -8,6 +8,10 @@ updates:
       interval: weekly
     commit-message:
       prefix: "ci"
+    labels: ["dependencies", "github-actions", "skip-changelog"]
+    groups:
+      actions:
+        patterns: ["*"]
 
   # ── Python (backend) ─────────────────────────────────────────────────────────
   - package-ecosystem: pip
@@ -16,13 +20,17 @@ updates:
       interval: weekly
     commit-message:
       prefix: "deps(backend)"
+    labels: ["dependencies", "python", "skip-changelog"]
     groups:
       fastapi-stack:
         patterns: ["fastapi", "uvicorn", "starlette", "pydantic*"]
       sqlalchemy-stack:
-        patterns: ["sqlalchemy", "aiomysql", "alembic"]
+        patterns: ["sqlalchemy", "asyncpg"]
       test-tools:
         patterns: ["pytest*", "httpx", "anyio"]
+      backend-minor:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   # ── JavaScript (frontend) ────────────────────────────────────────────────────
   - package-ecosystem: npm
@@ -31,6 +39,7 @@ updates:
       interval: weekly
     commit-message:
       prefix: "deps(frontend)"
+    labels: ["dependencies", "javascript", "skip-changelog"]
     groups:
       react:
         patterns: ["react", "react-dom"]
@@ -38,3 +47,9 @@ updates:
         patterns: ["vite", "@vitejs/*"]
       test-tools:
         patterns: ["vitest", "@vitest/*", "@testing-library/*"]
+      frontend-minor:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]

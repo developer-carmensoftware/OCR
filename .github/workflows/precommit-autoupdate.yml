@@ -1,0 +1,44 @@
+name: pre-commit autoupdate
+
+# Dependabot has no pre-commit ecosystem, so .pre-commit-config.yaml `rev:` pins
+# never auto-update. This is the equivalent: run `pre-commit autoupdate` weekly
+# and open a PR if the pins moved.
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"   # weekly, Monday 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  autoupdate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install pre-commit
+
+      - run: pre-commit autoupdate
+
+      - name: Open PR if hooks changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if git diff --quiet; then
+            echo "No hook updates."
+            exit 0
+          fi
+          branch="chore/pre-commit-autoupdate-$(date +%F)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git commit -am "chore: pre-commit autoupdate"
+          git push -u origin "$branch"
+          gh pr create --fill --label skip-changelog --base main --head "$branch"
