@@ -6,7 +6,6 @@ import { useOcrSubmission } from './useOcrSubmission'
 import { showToast } from '../../lib/toast'
 import { getPdfInfo, PDF_PASSWORD_REQUIRED, type ApiError } from '../../lib/api/ocr'
 import { usePdfPasswordPrompt } from '../usePdfPasswordPrompt'
-import { appKey } from '../../lib/storage'
 import type { JvRow } from './useOcrSubmission'
 import type React from 'react'
 
@@ -26,9 +25,6 @@ async function getPdfInfoWithRetry(file: File, password?: string) {
 export function useOcrWizard() {
   const [step, setStep] = useState(1)
   const [jvRows, setJvRows] = useState<JvRow[]>([])
-  const [filePrefix, setFilePrefix] = useState('IC')
-  const [fileSource, setFileSource] = useState('')
-  const [jvDescription, setJvDescription] = useState('')
   const [carmenJvId, setCarmenJvId] = useState<string | null>(null)
   const [pdfInfoLoading, setPdfInfoLoading] = useState(false)
   // Guards against a second upload firing while we're still analysing the first
@@ -72,24 +68,6 @@ export function useOcrWizard() {
       if (fileUpload.previewUrl) URL.revokeObjectURL(fileUpload.previewUrl.split('#')[0])
     }
   }, [fileUpload.previewUrl])
-
-  useEffect(() => {
-    try {
-      const config = JSON.parse(localStorage.getItem(appKey('accountingConfig')) || '{}') as {
-        filePrefix?: string
-        fileSource?: string
-        description?: string
-      }
-      setFilePrefix(config.filePrefix || 'IC')
-      setFileSource(config.fileSource || '')
-      const desc = config.description
-        ? `${config.description}${extraction.headerData.DocDate ? ` - ${extraction.headerData.DocDate}` : ''}`
-        : ''
-      setJvDescription(desc)
-    } catch {
-      /* ignore */
-    }
-  }, [step, extraction.headerData.DocDate])
 
   function handleFileChange(
     e: React.ChangeEvent<HTMLInputElement> | { target: { files: FileList } }
@@ -207,9 +185,6 @@ export function useOcrWizard() {
     warnings: extraction.warnings,
     submitting: submission.submitting,
     jvRows,
-    filePrefix,
-    fileSource,
-    jvDescription,
     carmenJvId,
     modal,
     showModal,

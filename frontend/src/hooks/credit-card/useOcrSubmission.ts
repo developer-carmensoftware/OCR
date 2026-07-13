@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { submitToCarmen } from '../../lib/api/carmen'
 import { logCorrections, diffCorrections } from '../../lib/api/feedback'
 import { getAccountingConfig } from '../../lib/api/config'
+import { codeToSource } from '../../lib/bankTransforms'
 import { getCarmenUrl } from '../../lib/url'
 import { normalizeYearToCE } from '../../lib/date'
 import { showToast } from '../../lib/toast'
@@ -107,7 +108,9 @@ export function useOcrSubmission({
           JvhDate: parseJvhDate(headerData.DocDate),
           Prefix: cfg.file_prefix || cfg.filePrefix || '',
           JvhNo: 'Auto',
-          JvhSource: cfg.file_source || cfg.fileSource || '',
+          // Source follows the scanned bank (single authority), not stale saved
+          // config; fall back to stored config only when the bank is unknown.
+          JvhSource: (bank && codeToSource(bank)) || cfg.file_source || cfg.fileSource || '',
           Status: 'Draft',
           Description: cfg.description
             ? `${cfg.description}${headerData.DocDate ? ` - ${headerData.DocDate}` : ''}`

@@ -35,6 +35,13 @@ function getGLSourceCode(displayName: string): string {
   return BANK_SOURCE_MAP[displayName as BankDisplayName] || ''
 }
 
+/** Bank code → Carmen GL source code (e.g. 'KBANK' → 'ACKB'). The single
+ * authority for source: 1:1 with the bank, add/remove a code in BANK_SOURCE_MAP. */
+export function codeToSource(bankCode: string | null | undefined): string {
+  const name = codeToDisplayName(bankCode)
+  return name ? BANK_SOURCE_MAP[name] : ''
+}
+
 function getBankInfo(displayName: string): BankInfo | null {
   return BANK_INFO[displayName as BankDisplayName] || null
 }
@@ -54,11 +61,9 @@ export function normalizeConfigShape(
 
   const finalPrefix = ((isApi ? source.file_prefix : source.filePrefix) as string) || 'IC'
 
-  const rawSource = (isApi ? source.file_source : source.fileSource) as string | undefined
-  const bankChanged = finalBank !== rawBank
-  const finalSource = bankChanged
-    ? getGLSourceCode(finalBank) || ''
-    : rawSource || getGLSourceCode(finalBank) || ''
+  // Source is always bank-derived (single authority: BANK_SOURCE_MAP) — never
+  // read back a stored value, which could be stale from a previous bank.
+  const finalSource = getGLSourceCode(finalBank) || ''
 
   let companyData: CompanyData = { name: '', taxId: '', branch: '', address: '' }
   if (isApi) {

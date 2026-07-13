@@ -7,7 +7,6 @@ interface Props {
   filePrefix: string
   setFilePrefix: (v: string) => void
   fileSource: string
-  setFileSource: (v: string) => void
   description: string
   setDescription: (v: string) => void
 }
@@ -18,7 +17,6 @@ export default function TopLevelConfigSection({
   filePrefix,
   setFilePrefix,
   fileSource,
-  setFileSource,
   description,
   setDescription,
 }: Props) {
@@ -81,24 +79,34 @@ export default function TopLevelConfigSection({
           File Source {!fileSource && <span style={{ color: '#dc2626' }}>*</span>}
           <span
             className="gl-help-tip"
-            title="Carmen Cloud source code that identifies the originating bank or system — one code per bank (e.g. ACBB = Bangkok Bank, ACKB = Kasikornbank, ACBY = Krungsri, ACKC = Krungthai Card)"
+            title="Carmen Cloud source code that identifies the originating bank or system — one code per bank (e.g. ACBB = Bangkok Bank, ACKB = Kasikornbank, ACBY = Krungsri, ACKC = Krungthai Card). Auto-set from the selected Bank."
           >
             ?
           </span>
         </label>
-        <input
-          id="fileSource"
-          type="text"
-          aria-label="File Source"
-          placeholder="e.g. ACBB, ACKB, ACSC, ACBY, ACKC"
-          value={fileSource}
-          onChange={e => setFileSource(e.target.value)}
-          style={
-            !fileSource
-              ? { borderColor: 'var(--rose)', background: 'var(--btn-err-bg, #fff1f2)' }
-              : {}
-          }
-        />
+        <div>
+          <input
+            id="fileSource"
+            type="text"
+            aria-label="File Source"
+            placeholder="Select a bank"
+            value={fileSource}
+            readOnly
+            title="Auto-set from the selected Bank"
+            style={{
+              cursor: 'default',
+              // theme-aware muted token (defined for light + dark); color stays
+              // from the global input rule so contrast is correct in both themes.
+              background: 'var(--muted)',
+              ...(!fileSource
+                ? { borderColor: 'var(--rose)', background: 'var(--btn-err-bg, #fff1f2)' }
+                : {}),
+            }}
+          />
+          <small style={{ display: 'block', marginTop: 2, color: 'var(--text-3)' }}>
+            Auto-set from Bank
+          </small>
+        </div>
 
         <label htmlFor="description">Description</label>
         <input

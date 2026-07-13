@@ -227,10 +227,13 @@ describe('useOcrSubmission', () => {
     })
   })
 
-  // ── F4: getAccountingConfig & fallback ────────────────────────────────────────
+  // ── F4: getAccountingConfig & source derivation ───────────────────────────────
 
   describe('F4: getAccountingConfig fallback', () => {
-    it('F4.1 – API success → Prefix and JvhSource from API config', async () => {
+    it('F4.1 – Prefix from API config; JvhSource derived from the scanned bank (not config)', async () => {
+      // Source is 1:1 with the bank (single authority: BANK_SOURCE_MAP), so it
+      // must follow the scanned bank, never the stored file_source — otherwise a
+      // stale saved config posts the wrong source. Prefix still comes from config.
       diffCorrections.mockReturnValue([])
       getAccountingConfig.mockResolvedValue({
         file_prefix: 'API_PRE',
@@ -239,7 +242,7 @@ describe('useOcrSubmission', () => {
       } as unknown as AccountingConfigResponse)
       submitToCarmen.mockResolvedValue({ Code: 0 })
 
-      const props = makeProps()
+      const props = makeProps() // bank: 'KBANK' → source ACKB
       const { result } = renderHook(() => useOcrSubmission(props))
       await act(async () => {
         await result.current.handleSubmitFinal(defaultRows)
@@ -247,6 +250,25 @@ describe('useOcrSubmission', () => {
 
       const payload = submitToCarmen.mock.calls[0][0] as CarmenJvPayload
       expect(payload.Prefix).toBe('API_PRE')
+      expect(payload.JvhSource).toBe('ACKB')
+    })
+
+    it('F4.2 – unknown bank → JvhSource falls back to the stored file_source', async () => {
+      diffCorrections.mockReturnValue([])
+      getAccountingConfig.mockResolvedValue({
+        file_prefix: 'API_PRE',
+        file_source: 'API_SRC',
+        description: '',
+      } as unknown as AccountingConfigResponse)
+      submitToCarmen.mockResolvedValue({ Code: 0 })
+
+      const props = makeProps({ bank: '' })
+      const { result } = renderHook(() => useOcrSubmission(props))
+      await act(async () => {
+        await result.current.handleSubmitFinal(defaultRows)
+      })
+
+      const payload = submitToCarmen.mock.calls[0][0] as CarmenJvPayload
       expect(payload.JvhSource).toBe('API_SRC')
     })
   })

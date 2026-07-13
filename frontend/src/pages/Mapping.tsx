@@ -126,7 +126,6 @@ export default function Mapping() {
           filePrefix={mappingCtrl.filePrefix}
           setFilePrefix={mappingCtrl.setFilePrefix}
           fileSource={mappingCtrl.fileSource}
-          setFileSource={mappingCtrl.setFileSource}
           description={mappingCtrl.description}
           setDescription={mappingCtrl.setDescription}
         />
