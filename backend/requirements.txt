@@ -5,7 +5,7 @@ python-multipart==0.0.32
 
 # Database
 sqlalchemy==2.0.51
-asyncpg==0.30.0
+asyncpg==0.31.0
 
 # LLM via OpenRouter (OpenAI-compatible SDK)
 openai==1.58.1
