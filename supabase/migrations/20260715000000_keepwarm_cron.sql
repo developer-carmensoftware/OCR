@@ -17,6 +17,14 @@
 --
 -- This is a workaround for the free plan, not a permanent design: on a paid always-on
 -- instance it is redundant and can simply be unscheduled.
+--
+-- KNOWN BUG, FIXED IN 20260715010000: the `trim(both '"' from value)` below fails at
+-- run time — system_configs.value is jsonb, so it resolves to btrim(jsonb, unknown),
+-- which does not exist. Copied from the pre-existing anomaly-detection / pricing-sync
+-- jobs, which carry (and have always silently died from) the same bug. This file is
+-- left as-is because it is already applied to the remote DB and applied migrations are
+-- never edited; 20260715010000 unschedules and recreates all three jobs correctly, so
+-- both a fresh `db reset` and the live DB converge on the working version.
 
 -- Idempotent: drop any pre-existing schedule so re-applying is safe.
 select cron.unschedule(jobname) from cron.job where jobname = 'keep-warm';
