@@ -13,7 +13,7 @@ openai==1.58.1
 # Image Processing
 Pillow==11.1.0
 pymupdf>=1.28.0
-pillow-heif>=0.16.0
+pillow-heif>=1.4.0
 
 # Configuration
 python-dotenv==1.2.2
