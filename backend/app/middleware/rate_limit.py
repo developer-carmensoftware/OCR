@@ -31,8 +31,17 @@ _LIMITS: dict[str, tuple[int, int]] = {
     "default": (120, 60),
 }
 
-# Skip rate limiting for non-API paths
-_SKIP_PREFIXES = ("/docs", "/redoc", "/openapi.json", "/livez", "/readyz")
+# Skip rate limiting for non-API paths and health probes. /api/v1/health is the
+# platform health check (render.yaml healthCheckPath) — it must not consume the
+# caller's default bucket, and a keep-warm ping hits it on a fixed schedule.
+_SKIP_PREFIXES = (
+    "/docs",
+    "/redoc",
+    "/openapi.json",
+    "/livez",
+    "/readyz",
+    "/api/v1/health",
+)
 
 
 def _endpoint_group(path: str) -> str:

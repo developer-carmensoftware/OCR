@@ -72,8 +72,9 @@ export const ENTERPRISE = {
 }
 
 /**
- * Contact channels for Enterprise / sales.
- * TODO(user): replace placeholders with the real LINE / phone / email before launch.
+ * Contact channels for Enterprise / sales — real values, single source for the
+ * "Contact sales" modal. (The pay-to bank details on the proforma are NOT here;
+ * those come from the DB via GET /api/v1/credits/payment-info.)
  */
 export const SALES_CONTACT = {
   line: '@carmensoftware',

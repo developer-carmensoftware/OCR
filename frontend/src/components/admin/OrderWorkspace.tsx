@@ -313,6 +313,7 @@ interface WsState {
   slipUrl: string | null
   slipErr: boolean
   proforma: BillingDocument | null
+  docsErr: boolean
   history: AdminCreditOrder[]
 }
 
@@ -321,12 +322,14 @@ type WsAction =
   | { type: 'SET_SLIP_URL'; url: string }
   | { type: 'SET_SLIP_ERR' }
   | { type: 'SET_DOCS'; proforma: BillingDocument | null }
+  | { type: 'SET_DOCS_ERR' }
   | { type: 'SET_HISTORY'; history: AdminCreditOrder[] }
 
 const wsInitial: WsState = {
   slipUrl: null,
   slipErr: false,
   proforma: null,
+  docsErr: false,
   history: [],
 }
 
@@ -340,6 +343,8 @@ function wsReducer(state: WsState, action: WsAction): WsState {
       return { ...state, slipErr: true }
     case 'SET_DOCS':
       return { ...state, proforma: action.proforma }
+    case 'SET_DOCS_ERR':
+      return { ...state, docsErr: true }
     case 'SET_HISTORY':
       return { ...state, history: action.history }
     default:
@@ -366,7 +371,7 @@ export default function OrderWorkspace({
 }) {
   const { t } = useT()
   const [state, dispatch] = useReducer(wsReducer, wsInitial)
-  const { slipUrl, slipErr, proforma, history } = state
+  const { slipUrl, slipErr, proforma, docsErr, history } = state
   const { busy, onApprove, onReject, onHold } = useOrderActions(order, onChanged)
 
   useEffect(() => {
@@ -384,7 +389,9 @@ export default function OrderWorkspace({
           proforma: docs.find(d => d.doc_type === 'proforma') ?? null,
         })
       })
-      .catch(() => {})
+      // Swallowing this left the proforma column showing a loading skeleton forever,
+      // with no way for the reviewer to tell "still loading" from "failed to load".
+      .catch(() => alive && dispatch({ type: 'SET_DOCS_ERR' }))
     if (order.tenant_id) {
       listCreditOrders('all', order.tenant_id)
         .then(rows => alive && dispatch({ type: 'SET_HISTORY', history: rows }))
@@ -446,6 +453,8 @@ export default function OrderWorkspace({
           <div className="orev-doc-scroll">
             {proforma ? (
               <ProformaDocument doc={proforma} paymentInfo={paymentInfo} />
+            ) : docsErr ? (
+              <div className="orev-slip-fallback">{t('orev.doc.errFallback')}</div>
             ) : (
               <DocSkeleton />
             )}

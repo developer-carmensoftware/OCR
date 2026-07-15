@@ -86,13 +86,17 @@ async def get_all_tasks(
     offset: int = 0,
 ) -> tuple[list[OCRTask], int]:
     tenant_id = current_tenant_id.get()
+    if not tenant_id:
+        # Fail closed: no tenant context must return nothing, never all tenants' tasks.
+        return [], 0
 
-    query = select(OCRTask).where(OCRTask.deleted_at.is_(None))
-    count_q = select(func.count()).select_from(OCRTask).where(OCRTask.deleted_at.is_(None))
+    query = select(OCRTask).where(OCRTask.deleted_at.is_(None), OCRTask.tenant_id == tenant_id)
+    count_q = (
+        select(func.count())
+        .select_from(OCRTask)
+        .where(OCRTask.deleted_at.is_(None), OCRTask.tenant_id == tenant_id)
+    )
 
-    if tenant_id:
-        query = query.where(OCRTask.tenant_id == tenant_id)
-        count_q = count_q.where(OCRTask.tenant_id == tenant_id)
     if status:
         query = query.where(OCRTask.status == status)
         count_q = count_q.where(OCRTask.status == status)

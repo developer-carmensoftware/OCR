@@ -35,6 +35,12 @@ from app.utils.pdf_utils import ensure_pdf_openable
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/credit-card", tags=["Credit Card OCR"])
 
+# Hard cap on files per extract request. Each file is read fully into memory,
+# gets its own vision-LLM call, and consumes its own document credit — so an
+# unbounded batch is both an OOM vector (N×20 MB on a small instance) and a
+# billing surprise. Beta batches are small; raise if a real use case needs more.
+MAX_FILES_PER_EXTRACT = 10
+
 
 def _task_to_dict(task: OCRTask) -> dict:
     return {
@@ -71,6 +77,11 @@ async def extract_card(
     """
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded")
+    if len(files) > MAX_FILES_PER_EXTRACT:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Too many files: {len(files)} (max {MAX_FILES_PER_EXTRACT} per request)",
+        )
 
     filenames = file_service.get_filenames_string(files)
     current_document_ref.set(filenames)
@@ -91,7 +102,10 @@ async def extract_card(
         await ensure_pdf_openable(file_bytes, effective_name, pdf_password)
         file_data.append((effective_name, file_bytes))
 
-    charged = await consume_document()
+    # Charge one document credit per file — each file gets its own extraction and
+    # LLM call, so a 30-file batch must cost 30, not 1. The whole batch draws from a
+    # single credit tier (no cross-tier splitting); refund_document reverses per file.
+    charged = await consume_document(increment=len(file_data))
 
     # Phase 2: short-lived DB session — fetch hints + create task rows, then release.
     # If this fails, nothing succeeded yet → always refund.
@@ -144,8 +158,10 @@ async def extract_card(
     )
     errors = [r for r in raw if isinstance(r, BaseException)]
     if errors:
-        if len(errors) == len(task_records):
-            await refund_document(charged)
+        # Refund exactly the files that failed (each was charged its own credit),
+        # then surface the first error. Files that extracted successfully keep their
+        # charge — the user got value from them.
+        await refund_document(charged, increment=len(errors))
         raise errors[0]
 
     return [r for r in raw if not isinstance(r, BaseException)]

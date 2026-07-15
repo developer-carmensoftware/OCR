@@ -8,15 +8,22 @@ Covers:
 - Missing auth → 401/422
 """
 
+import uuid
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import app.routers.carmen as _carmen_router
 from tests.conftest import make_mock_db
-from tests.integration.conftest import make_test_client
+from tests.integration.conftest import FAKE_SESSION, make_test_client
 
 BASE = "/api/v1/carmen"
 AUTH = {"Authorization": "Bearer dummy"}
+
+# The duplicate guard resolves the tenant via uuid.UUID(session.tenant_id); the shared
+# FAKE_SESSION uses a non-UUID id ("t-test"), which the router treats as "no card to
+# guard". These tests need a real UUID tenant to exercise the guard at all.
+_TENANT_UUID = "11111111-1111-1111-1111-111111111111"
 
 
 @contextmanager
@@ -28,6 +35,24 @@ def _patch_service(name: str, mock_fn):
         yield mock_fn
     finally:
         setattr(_carmen_router, name, original)
+
+
+def _use_uuid_tenant_session():
+    """Point get_current_session at a session whose tenant_id is a real UUID."""
+    from dataclasses import replace
+
+    from app.auth.dependencies import get_current_session
+    from app.main import app
+
+    session = replace(FAKE_SESSION, tenant_id=_TENANT_UUID)
+
+    async def _session():
+        from app.context import current_tenant_id
+
+        current_tenant_id.set(session.tenant_id)
+        return session
+
+    app.dependency_overrides[get_current_session] = _session
 
 
 def _ok(payload=None):
@@ -115,6 +140,86 @@ def test_gljv_forwards_409():
             resp = client.post(f"{BASE}/gljv", json={}, headers=AUTH)
     assert resp.status_code == 409
     assert "Carmen" in resp.json().get("detail", "")
+
+
+# ── POST /gljv — duplicate-submit guard ──────────────────────────────────────
+
+
+def _card(*, submitted: bool):
+    """A CreditCard row as the locked pre-post lookup would return it."""
+    from app.models.orm import CreditCard
+
+    return CreditCard(
+        id=uuid.uuid4(),
+        tenant_id=uuid.UUID(_TENANT_UUID),
+        bank_code="KBANK",
+        doc_no="INV-123",
+        submitted_at=datetime.now(UTC) if submitted else None,
+    )
+
+
+def test_gljv_rejects_resubmit_of_an_already_submitted_card():
+    """Double-click / retry after a successful submit must not post a second JV."""
+    card = _card(submitted=True)
+    mock_db = make_mock_db(execute_rows=[card])
+    post = _ok({"Code": 0, "InternalMessage": "JV-9"})
+
+    with _patch_service("post_gljv", post), make_test_client(mock_db) as client:
+        _use_uuid_tenant_session()
+        resp = client.post(
+            f"{BASE}/gljv?credit_card_id={card.id}&doc_no=INV-123&bank_code=KBANK",
+            json={"JvhSeq": -1, "Detail": []},
+            headers=AUTH,
+        )
+
+    assert resp.status_code == 409
+    # The guard must run BEFORE the post — a 409 after posting would still duplicate.
+    post.assert_not_awaited()
+
+
+def test_gljv_rejects_a_second_document_with_the_same_doc_no():
+    """A different draft of an already-submitted (tenant, bank, doc_no) is a duplicate."""
+    card = _card(submitted=False)
+    mock_db = make_mock_db(execute_rows=[card])
+    post = _ok({"Code": 0, "InternalMessage": "JV-9"})
+
+    with (
+        _patch_service("post_gljv", post),
+        _patch_service("has_submitted_doc", AsyncMock(return_value=True)),
+        make_test_client(mock_db) as client,
+    ):
+        _use_uuid_tenant_session()
+        resp = client.post(
+            f"{BASE}/gljv?credit_card_id={card.id}&doc_no=INV-123&bank_code=KBANK",
+            json={"JvhSeq": -1, "Detail": []},
+            headers=AUTH,
+        )
+
+    assert resp.status_code == 409
+    post.assert_not_awaited()
+
+
+def test_gljv_posts_and_stamps_when_not_a_duplicate():
+    card = _card(submitted=False)
+    mock_db = make_mock_db(execute_rows=[card])
+    post = _ok({"Code": 0, "InternalMessage": "JV-9"})
+
+    with (
+        _patch_service("post_gljv", post),
+        _patch_service("has_submitted_doc", AsyncMock(return_value=False)),
+        make_test_client(mock_db) as client,
+    ):
+        _use_uuid_tenant_session()
+        resp = client.post(
+            f"{BASE}/gljv?credit_card_id={card.id}&doc_no=INV-123&bank_code=KBANK",
+            json={"JvhSeq": -1, "Detail": []},
+            headers=AUTH,
+        )
+
+    assert resp.status_code == 200
+    assert resp.json().get("Code") == 0
+    post.assert_awaited_once()
+    assert card.submitted_at is not None  # stamped, so the next submit is rejected
 
 
 def test_gljv_non_uuid_credit_card_id_does_not_500():

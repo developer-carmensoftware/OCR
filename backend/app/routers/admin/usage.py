@@ -166,9 +166,12 @@ async def tenant_ranking(
     period_hours: int = Query(24, ge=1, le=720),
     limit: int = Query(20, le=100),
     db: AsyncSession = Depends(get_db),
-    _admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
+    admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
 ):
-    data = await svc.get_tenant_ranking(db, metric, period_hours, limit)
+    # Scope the ranking to a non-global admin's own tenant — this endpoint compares
+    # tenants against each other and must not expose other tenants' metrics.
+    tid = _resolve_tenant(admin, None)
+    data = await svc.get_tenant_ranking(db, metric, period_hours, limit, tenant_id=tid)
     return {"metric": metric, "period_hours": period_hours, "data": data}
 
 

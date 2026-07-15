@@ -198,7 +198,13 @@ function adjustField(
       .map((item, i) => ({ item, i }))
       .filter(({ item }) => parseNum(item.taxPct) > 0)
     const lastTaxable = taxables.length ? taxables[taxables.length - 1] : undefined
-    if (lastTaxable) targetIdx = lastTaxable.i
+    // No taxable line at all → refuse rather than dump tax on the last (non-taxable)
+    // row: that row's taxType says it carries no tax, so writing taxAmt there makes it
+    // internally inconsistent and posts a bogus tax figure to Carmen. Leaving the rows
+    // untouched keeps the reconciliation banner up, which is the honest signal that the
+    // tax rate / profile needs fixing first.
+    if (!lastTaxable) return items
+    targetIdx = lastTaxable.i
   }
 
   // Writes only `itemKey`. The caller (useAPInvoice.adjustField / blurHeader) runs a

@@ -174,3 +174,27 @@ create index if not exists ix_bug_reports_status       on bug_reports (status);
 create index if not exists ix_bug_reports_carmen_user  on bug_reports (carmen_user_id);
 create index if not exists ix_bug_reports_created_at   on bug_reports (created_at);
 create index if not exists ix_bug_reports_deleted_at   on bug_reports (deleted_at);
+
+
+-- Server-side consent record (PDPA ม.19 — proof of who consented, when, which version).
+-- Append-only legal evidence: NO soft-delete, NO retention purge. Org-level consent
+-- (one meaningful row per tenant+version), keyed to match the frontend's tenant-scoped
+-- consent gate (useUserConsent.ts). Multiple rows per (tenant, version) are allowed —
+-- history is evidence, not a bug — so this is a plain index, not a unique constraint.
+--
+-- Mirrors migration 20260713010000_consent_logs.sql. It MUST stay declared here: this
+-- is not a partitioned log table, so it is not covered by the db-diff exclusions in
+-- config.toml, and an undeclared table makes `supabase db diff` propose DROP TABLE on
+-- the one table that exists to be legal evidence.
+create table if not exists consent_logs (
+    id              bigint generated always as identity primary key,
+    tenant_id       uuid        not null references tenants (id),
+    carmen_user_id  varchar(36),
+    consent_version varchar(20) not null,
+    ip_address      varchar(45),
+    user_agent      varchar(400),
+    created_at      timestamptz not null default now()
+);
+
+create index if not exists ix_consent_logs_tenant_version
+    on consent_logs (tenant_id, consent_version);

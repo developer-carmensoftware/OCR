@@ -55,67 +55,52 @@ const NUMERIC_FIELDS = [
 ]
 const isNumFld = (f: string) => NUMERIC_FIELDS.includes(f)
 
-// Pure fetch+retry helper — no React state. Throws for terminal errors (401/402/408/429) and after
-// retry exhaustion so the caller (runOCR) handles modals and state in one place.
-async function _fetchExtractWithRetry(
+// Pure fetch helper — no React state. Throws so the caller (runOCR) handles modals and
+// state in one place.
+//
+// Deliberately does NOT auto-retry (matching the credit-card extract). /extract charges a
+// document credit server-side before calling the LLM. A failed extraction is refunded by
+// the backend, but a response lost in transit *after* a successful extraction is not — and
+// the client cannot tell those two apart. Retrying therefore risks charging twice (and
+// re-running the LLM) for one document. A genuine transient blip surfaces as an error the
+// user can retry by hand, which is strictly better than a silent double charge.
+async function _fetchExtract(
   fileObj: File,
   selectedPages?: number[],
   pdfPassword?: string
 ): Promise<Record<string, unknown>> {
-  let retries = 3
-  let delay = 800
-  while (retries > 0) {
-    try {
-      const formData = new FormData()
-      formData.append('file', fileObj)
-      if (selectedPages && selectedPages.length > 0) {
-        formData.append('selected_pages', JSON.stringify(selectedPages))
-      }
-      if (pdfPassword) formData.append('pdf_password', pdfPassword)
-      const { signal, clear } = fetchTimeout(EXTRACT_TIMEOUT_MS)
-      let res: Response
-      try {
-        res = await apiFetch(API.apInvoice.extract, {
-          method: 'POST',
-          body: formData,
-          signal,
-        })
-      } catch (fetchErr) {
-        if ((fetchErr as Error).name === 'AbortError')
-          throw Object.assign(new Error('HTTP 408'), { cause: fetchErr })
-        throw fetchErr
-      } finally {
-        clear()
-      }
-      if (!res.ok) {
-        // PdfPasswordRequired maps to 400 — only that status carries the code marker.
-        if (res.status === 400) {
-          const body = (await res.json?.().catch(() => ({}))) as { code?: string }
-          if (body?.code === PDF_PASSWORD_REQUIRED) {
-            throw Object.assign(new Error('pdf_password_required'), { code: PDF_PASSWORD_REQUIRED })
-          }
-        }
-        throw new Error(`HTTP ${res.status}`)
-      }
-      return (await res.json()) as Record<string, unknown>
-    } catch (err) {
-      const msg = (err as Error).message
-      // Terminal errors — propagate immediately without retrying
-      if (
-        (err as ApiError).code === PDF_PASSWORD_REQUIRED ||
-        msg.includes('401') ||
-        msg.includes('402') ||
-        msg.includes('408') ||
-        msg.includes('429')
-      )
-        throw err
-      retries--
-      if (retries === 0) throw err
-      await new Promise(r => setTimeout(r, delay))
-      delay *= 2
-    }
+  const formData = new FormData()
+  formData.append('file', fileObj)
+  if (selectedPages && selectedPages.length > 0) {
+    formData.append('selected_pages', JSON.stringify(selectedPages))
   }
-  throw new Error('Extraction failed after retries')
+  if (pdfPassword) formData.append('pdf_password', pdfPassword)
+  const { signal, clear } = fetchTimeout(EXTRACT_TIMEOUT_MS)
+  let res: Response
+  try {
+    res = await apiFetch(API.apInvoice.extract, {
+      method: 'POST',
+      body: formData,
+      signal,
+    })
+  } catch (fetchErr) {
+    if ((fetchErr as Error).name === 'AbortError')
+      throw Object.assign(new Error('HTTP 408'), { cause: fetchErr })
+    throw fetchErr
+  } finally {
+    clear()
+  }
+  if (!res.ok) {
+    // PdfPasswordRequired maps to 400 — only that status carries the code marker.
+    if (res.status === 400) {
+      const body = (await res.json?.().catch(() => ({}))) as { code?: string }
+      if (body?.code === PDF_PASSWORD_REQUIRED) {
+        throw Object.assign(new Error('pdf_password_required'), { code: PDF_PASSWORD_REQUIRED })
+      }
+    }
+    throw new Error(`HTTP ${res.status}`)
+  }
+  return (await res.json()) as Record<string, unknown>
 }
 
 export function useAPExtraction({ setStep, setModal, loadVendors }: APExtractionProps) {
@@ -180,11 +165,7 @@ export function useAPExtraction({ setStep, setModal, loadVendors }: APExtraction
     setStatus('AI is extracting data from document...')
     setError(null)
     try {
-      const data = await _fetchExtractWithRetry(
-        fileObj,
-        selectedPages,
-        password ?? pwPrompt.pdfPassword
-      )
+      const data = await _fetchExtract(fileObj, selectedPages, password ?? pwPrompt.pdfPassword)
 
       setApInvoiceId((data.id as string) || null)
       setHeaderData({
@@ -353,6 +334,25 @@ export function useAPExtraction({ setStep, setModal, loadVendors }: APExtraction
       }
       if ((err as ApiError).code === PDF_PASSWORD_REQUIRED) {
         promptForPassword(fileObj, selectedPages)
+        return
+      }
+      // A server fault is not the user's document — don't tell them to rescan it.
+      if (/HTTP 5\d\d/.test(e.message)) {
+        toast.error('Server error')
+        setModal({
+          show: true,
+          type: 'warning',
+          title: 'Server Error',
+          message:
+            'The server could not process this document right now. This is not a problem with your file — please try again in a moment.',
+          confirmText: 'Close',
+          onConfirm: () => {
+            setModal({ show: false })
+            setStep(1)
+            setFile(null)
+            setPreviewUrl(null)
+          },
+        })
         return
       }
       console.error(err)

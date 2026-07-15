@@ -260,7 +260,11 @@ async def get_tenant_ranking(
     metric: Literal["error_rate", "latency", "cost", "volume"],
     period_hours: int,
     limit: int,
+    tenant_id: str | None = None,
 ) -> list[dict[str, Any]]:
+    # `tenant_id` scopes the ranking to a single tenant. A non-global admin must pass
+    # their own scope here so this cross-tenant comparison can't leak other tenants'
+    # error rate / latency / cost / volume to them.
     since = datetime.now(UTC) - timedelta(hours=period_hours)
 
     if metric == "cost":
@@ -276,6 +280,8 @@ async def get_tenant_ranking(
             .order_by(func.sum(LLMUsageLog.cost_usd).desc())
             .limit(limit)
         )
+        if tenant_id:
+            q = q.where(LLMUsageLog.tenant_id == tenant_id)
         rows = (await db.execute(q)).mappings().all()
         names = await tenant_name_map(db, [r["tid"] for r in rows if r["tid"]])
         return [
@@ -301,6 +307,8 @@ async def get_tenant_ranking(
         .where(PerformanceLog.created_at >= since, PerformanceLog.tenant_id.isnot(None))
         .group_by(PerformanceLog.tenant_id)
     )
+    if tenant_id:
+        q = q.where(PerformanceLog.tenant_id == tenant_id)
     if metric == "error_rate":
         q = q.order_by((error_count / func.count(PerformanceLog.id)).desc())
     elif metric == "latency":

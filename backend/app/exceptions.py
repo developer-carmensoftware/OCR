@@ -59,16 +59,17 @@ class RateLimitExceeded(RuntimeError):
 
 
 class InsufficientCredits(RuntimeError):
-    """Free monthly quota exhausted and no top-up credits remain. → 402
+    """Free trial quota exhausted and no top-up credits remain. → 402
 
     Distinct from RateLimitExceeded (429): this signals the tenant should buy a
-    top-up credit pack, not that they are being throttled.
+    top-up credit pack, not that they are being throttled. The free quota is a
+    one-time lifetime trial allowance, not a monthly reset.
     """
 
     def __init__(self, tenant_id: str):
         self.tenant_id = tenant_id
         super().__init__(
-            "Monthly free document quota exhausted and no top-up credits remain. "
+            "Free trial document quota exhausted and no top-up credits remain. "
             "Purchase a credit pack to continue."
         )
 

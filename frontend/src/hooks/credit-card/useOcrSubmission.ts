@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { submitToCarmen } from '../../lib/api/carmen'
 import { logCorrections, diffCorrections } from '../../lib/api/feedback'
 import { getAccountingConfig } from '../../lib/api/config'
@@ -66,8 +66,14 @@ export function useOcrSubmission({
   setCarmenJvId,
 }: OcrSubmissionProps): OcrSubmissionHook {
   const [submitting, setSubmitting] = useState(false)
+  // Ref, not the `submitting` state: state updates are async, so two clicks in the
+  // same tick both read the old value and both post. submitToCarmen is not
+  // idempotent — a double post means a duplicate JV in the ERP.
+  const submittingRef = useRef(false)
 
   async function handleSubmitFinal(rows: JvRow[]) {
+    if (submittingRef.current) return
+    submittingRef.current = true
     setSubmitting(true)
     setJvRows(rows)
     const docNo = headerData.DocNo
@@ -90,6 +96,10 @@ export function useOcrSubmission({
       let carmenError: string | null = null
       let jvId: string | null = null
       let carmenRejected = false
+      // Distinct from carmenRejected (Carmen responded and declined): the submit
+      // never got a confirmed response (network drop / early 5xx). We cannot claim
+      // the JV was saved, so this must never show a "saved successfully" modal.
+      let carmenFailed = false
 
       try {
         const carmenConfig = await getAccountingConfig().catch(() => {
@@ -159,11 +169,29 @@ export function useOcrSubmission({
           showToast('Successfully sent data to Carmen Cloud JV', 'success')
         }
       } catch (err) {
-        carmenError = (err as Error).message
+        const e = err as { code?: string; message: string }
+        // A definitive 409 duplicate is a server rejection, not a transport failure —
+        // hand it to the outer catch's dedicated "duplicate document" modal.
+        if (e.code === 'DUPLICATE_DOC_NO') throw err
+        carmenFailed = true
+        carmenError = e.message
         showToast(`Carmen Cloud JV: ${carmenError}`, 'error')
       }
 
-      if (carmenRejected) {
+      if (carmenFailed) {
+        // Transport / early-server failure: the JV's fate is unknown. Do NOT claim it
+        // was saved and do NOT advance — keep the user on Step 3 to verify and retry.
+        showModal({
+          title: 'Submission failed',
+          message:
+            `Could not confirm the JV for document ${docNo} reached Carmen Cloud.\n\n` +
+            `${carmenError}\n\n` +
+            'The document may not have been saved. Please check Carmen before retrying to avoid a duplicate.',
+          type: 'error',
+          confirmText: 'Back to review',
+          onConfirm: closeModal,
+        })
+      } else if (carmenRejected) {
         showModal({
           title: 'Warning: Data Already Posted',
           message: `Document number ${docNo} saved to database.\n\nCarmen: "${carmenError}"`,
@@ -176,11 +204,9 @@ export function useOcrSubmission({
         })
       } else {
         showModal({
-          title: carmenError ? 'Saved Successfully (Carmen issue)' : 'JV Saved Successfully!',
-          message: carmenError
-            ? `Document number ${docNo} has been saved to the database.\n\nHowever, sending to Carmen Cloud JV failed:\n${carmenError}`
-            : `Document number ${docNo} has been successfully saved and sent to Carmen Cloud JV.`,
-          type: carmenError ? 'warning' : 'success',
+          title: 'JV Saved Successfully!',
+          message: `Document number ${docNo} has been successfully saved and sent to Carmen Cloud JV.`,
+          type: 'success',
           confirmText: 'Proceed to Input Tax Reconciliation',
           cancelText: jvId ? 'View JV' : undefined,
           cancelStyle: jvId
@@ -215,6 +241,7 @@ export function useOcrSubmission({
         })
       }
     } finally {
+      submittingRef.current = false
       setSubmitting(false)
     }
   }

@@ -211,6 +211,142 @@ class TestExtractCard:
         assert dummy_task.status == TaskStatus.FAILED
         assert dummy_task.error_message == "LLM Failure"
 
+    # ── Billing: one credit per file, not one per request ─────────────────────
+
+    @patch("app.routers.ocr.refund_document", new_callable=AsyncMock)
+    @patch("app.routers.ocr.consume_document", new_callable=AsyncMock)
+    @patch("app.routers.ocr.get_correction_hints", new_callable=AsyncMock)
+    @patch("app.routers.ocr.create_task")
+    @patch("app.routers.ocr.ocr_service.extract_stateless", new_callable=AsyncMock)
+    @patch("app.services.credit_card_service.has_submitted_doc", new_callable=AsyncMock)
+    def test_extract_charges_one_document_per_file(
+        self,
+        mock_has_submitted,
+        mock_extract_stateless,
+        mock_create_task,
+        mock_get_hints,
+        mock_consume,
+        mock_refund,
+        mock_session,
+    ):
+        """A 3-file batch must cost 3 documents — each file gets its own LLM call."""
+        ctx_mock, db_mock = mock_session
+        mock_get_hints.return_value = {}
+        mock_consume.return_value = "free"
+
+        mock_create_task.side_effect = lambda *a, **kw: OCRTask(
+            id=uuid.uuid4(),
+            tenant_id=FAKE_SESSION.tenant_id,
+            module_id="credit_card_ocr",
+            original_filename=kw.get("original_filename", "r.jpg"),
+            status=TaskStatus.PROCESSING,
+        )
+        mock_extract_stateless.return_value = ExtractedCreditCardData(
+            id=None,
+            task_id=None,
+            bank_name="KBANK",
+            company_name="Acme Co",
+            doc_date="15/03/2024",
+            doc_no="INV-123",
+            details=[],
+            is_duplicate=False,
+        )
+        mock_has_submitted.return_value = False
+
+        jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
+        with (
+            patch("app.routers.ocr.async_session", return_value=ctx_mock),
+            patch("app.services.credit_card_service.async_session", return_value=ctx_mock),
+            make_test_client(db_mock) as client,
+        ):
+            resp = client.post(
+                f"{BASE_URL}/extract?bank_code=KBANK",
+                files=[("files", (f"r{i}.jpg", jpeg, "image/jpeg")) for i in range(3)],
+                headers=AUTH_HEADERS,
+            )
+
+        assert resp.status_code == 200
+        mock_consume.assert_awaited_once_with(increment=3)
+        mock_refund.assert_not_awaited()
+
+    @patch("app.routers.ocr.refund_document", new_callable=AsyncMock)
+    @patch("app.routers.ocr.consume_document", new_callable=AsyncMock)
+    @patch("app.routers.ocr.get_correction_hints", new_callable=AsyncMock)
+    @patch("app.routers.ocr.create_task")
+    @patch("app.routers.ocr.ocr_service.extract_stateless", new_callable=AsyncMock)
+    @patch("app.services.credit_card_service.has_submitted_doc", new_callable=AsyncMock)
+    def test_extract_refunds_only_the_files_that_failed(
+        self,
+        mock_has_submitted,
+        mock_extract_stateless,
+        mock_create_task,
+        mock_get_hints,
+        mock_consume,
+        mock_refund,
+        mock_session,
+    ):
+        """2 of 3 files fail → charge 3, refund exactly 2 (the successful one is earned)."""
+        ctx_mock, db_mock = mock_session
+        mock_get_hints.return_value = {}
+        mock_consume.return_value = "credit"
+
+        mock_create_task.side_effect = lambda *a, **kw: OCRTask(
+            id=uuid.uuid4(),
+            tenant_id=FAKE_SESSION.tenant_id,
+            module_id="credit_card_ocr",
+            original_filename=kw.get("original_filename", "r.jpg"),
+            status=TaskStatus.PROCESSING,
+        )
+        ok = ExtractedCreditCardData(
+            id=None,
+            task_id=None,
+            bank_name="KBANK",
+            company_name="Acme Co",
+            doc_date="15/03/2024",
+            doc_no="INV-123",
+            details=[],
+            is_duplicate=False,
+        )
+        mock_extract_stateless.side_effect = [ok, RuntimeError("LLM 1"), RuntimeError("LLM 2")]
+        mock_has_submitted.return_value = False
+
+        jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
+        with (
+            patch("app.routers.ocr.async_session", return_value=ctx_mock),
+            patch("app.services.credit_card_service.async_session", return_value=ctx_mock),
+            make_test_client(db_mock) as client,
+            pytest.raises(RuntimeError),
+        ):
+            client.post(
+                f"{BASE_URL}/extract?bank_code=KBANK",
+                files=[("files", (f"r{i}.jpg", jpeg, "image/jpeg")) for i in range(3)],
+                headers=AUTH_HEADERS,
+            )
+
+        mock_consume.assert_awaited_once_with(increment=3)
+        mock_refund.assert_awaited_once_with("credit", increment=2)
+
+    @patch("app.routers.ocr.consume_document", new_callable=AsyncMock)
+    def test_extract_rejects_batch_over_file_cap(self, mock_consume, mock_session):
+        """Over the cap → 422 before anything is read or charged (OOM + billing guard)."""
+        _, db_mock = mock_session
+        from app.routers.ocr import MAX_FILES_PER_EXTRACT
+
+        jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 20
+        with make_test_client(db_mock) as client:
+            resp = client.post(
+                f"{BASE_URL}/extract?bank_code=KBANK",
+                files=[
+                    ("files", (f"r{i}.jpg", jpeg, "image/jpeg"))
+                    for i in range(MAX_FILES_PER_EXTRACT + 1)
+                ],
+                headers=AUTH_HEADERS,
+            )
+
+        assert resp.status_code == 422
+        assert "Too many files" in resp.json()["detail"]
+        mock_consume.assert_not_awaited()
+
     @patch("app.routers.ocr.consume_document", new_callable=AsyncMock)
     @patch("app.routers.ocr.get_correction_hints", new_callable=AsyncMock)
     @patch("app.routers.ocr.create_task")

@@ -315,6 +315,19 @@ async def upload_slip(
     except StorageError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
+    # Re-read the row under FOR UPDATE and re-check status before mutating. The
+    # upload above is a slow network call during which an admin approve/reject
+    # can flip the order to a decided state; without this lock+re-check the write
+    # below would silently revert a PAID order to IN_PROGRESS, making it decidable
+    # again and letting credits be granted twice. (cancel_order locks for the same
+    # reason.) The lock is taken only after the upload, so it is held briefly.
+    await db.refresh(order, with_for_update=True)
+    if order.status not in _OPEN_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot upload slip for an order in status '{order.status}'",
+        )
+
     order.slip_object_key = key  # type: ignore[assignment]
     order.slip_uploaded_at = datetime.now(UTC)  # type: ignore[assignment]
     # A slip arriving on a held order means the buyer engaged — put it back in
