@@ -5,11 +5,14 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.admin_session import AdminPrincipal
+from app.config import settings
 from app.database import get_db
 from app.exceptions import ValidationError
+from app.models.observability import OutboundCallLog
 from app.services import usage_analytics_service as svc
 
 from .deps import require_permission
@@ -88,6 +91,73 @@ async def get_llm_usage(
     tid = _resolve_tenant(admin, tenant_id)
     data = await svc.get_llm_usage(db, tid, from_date, to_date, module_id, order_by, limit)
     return {"count": len(data), "has_more": len(data) == limit, "data": data}
+
+
+@router.get("/llm-routing")
+async def get_llm_routing(
+    from_date: datetime | None = Query(None, alias="from"),
+    to_date: datetime | None = Query(None, alias="to"),
+    tenant_id: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
+):
+    """LLM routing-evidence report — the auditable proof behind the no-train claim.
+
+    Aggregates outbound_call_logs (openrouter calls only): how many carried the
+    no-train directive (data_policy ~ 'deny'), which providers actually served them,
+    and how many routed outside the expected-provider set. Exportable to show customers.
+    """
+    if not from_date:
+        from_date = datetime.now(UTC) - timedelta(days=30)
+    if not to_date:
+        to_date = datetime.now(UTC)
+    tid = _resolve_tenant(admin, tenant_id)
+
+    q = (
+        select(
+            OutboundCallLog.provider,
+            func.count().label("calls"),
+            func.count().filter(OutboundCallLog.data_policy.ilike("%deny%")).label("deny_calls"),
+        )
+        .where(
+            OutboundCallLog.service == "openrouter",
+            OutboundCallLog.created_at >= from_date,
+            OutboundCallLog.created_at <= to_date,
+        )
+        .group_by(OutboundCallLog.provider)
+    )
+    if tid:
+        q = q.where(OutboundCallLog.tenant_id == tid)
+    rows = (await db.execute(q)).all()
+
+    expected = [e.lower() for e in settings.llm_expected_providers_list]
+
+    def _in_policy(provider: str | None) -> bool:
+        if provider is None:
+            return True  # errored before routing / SDK didn't surface it — not a breach
+        return any(e in provider.lower() for e in expected)
+
+    total = sum(r.calls for r in rows)
+    deny_total = sum(r.deny_calls for r in rows)
+    out_of_policy = sum(r.calls for r in rows if not _in_policy(r.provider))
+    providers = [
+        {
+            "provider": r.provider or "(unknown)",
+            "calls": r.calls,
+            "in_policy": _in_policy(r.provider),
+        }
+        for r in sorted(rows, key=lambda r: r.calls, reverse=True)
+    ]
+    return {
+        "from": from_date,
+        "to": to_date,
+        "total_calls": total,
+        "deny_directive_sent": deny_total,
+        "deny_pct": round(100.0 * deny_total / total, 2) if total else None,
+        "out_of_policy_calls": out_of_policy,
+        "expected_providers": settings.llm_expected_providers_list,
+        "providers": providers,
+    }
 
 
 @router.get("/tenant-ranking")

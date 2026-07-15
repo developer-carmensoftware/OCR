@@ -14,6 +14,7 @@ from .business import (
     BUAccountingConfig,
     BUAccountingMappingEntry,
     BugReport,
+    ConsentLog,
     CorrectionFeedback,
     CreditCard,
     OcrSession,
@@ -47,6 +48,8 @@ from .observability import (
 from .schemas import (
     BugReportRequest,
     BugReportResponse,
+    ConsentRequest,
+    ConsentStatusResponse,
     CorrectionFeedbackBatchRequest,
     CorrectionFeedbackBatchResponse,
     CorrectionFeedbackRequest,
@@ -101,6 +104,7 @@ __all__ = [
     "APInvoice",
     "CorrectionFeedback",
     "BugReport",
+    "ConsentLog",
     "BUAccountingConfig",
     "BUAccountingMappingEntry",
     "APVendorColumnMapping",
@@ -128,4 +132,6 @@ __all__ = [
     "CorrectionFeedbackBatchResponse",
     "BugReportRequest",
     "BugReportResponse",
+    "ConsentRequest",
+    "ConsentStatusResponse",
 ]

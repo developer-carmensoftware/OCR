@@ -34,6 +34,7 @@ from app.routers.ap_invoice import router as ap_invoice_router
 from app.routers.auth import router as auth_router
 from app.routers.carmen import router as carmen_router
 from app.routers.config import router as config_router
+from app.routers.consent import router as consent_router
 from app.routers.credits import router as credits_router
 from app.routers.feedback import router as feedback_router
 from app.routers.files import router as files_router
@@ -173,6 +174,7 @@ def create_app(lifespan=None) -> FastAPI:
     app.include_router(files_router)
     app.include_router(admin_router)
     app.include_router(config_router)
+    app.include_router(consent_router)
     app.include_router(credits_router)
     app.include_router(notifications_router)
 
