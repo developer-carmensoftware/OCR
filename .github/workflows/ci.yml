@@ -118,6 +118,12 @@ jobs:
       - name: Test (vitest)
         run: npm run test
 
+      # The production bundle is what Vercel actually ships. tsc/vitest do not exercise
+      # the Vite/Rolldown + Tailwind pipeline, so a build-only break (PostCSS plugin,
+      # bundler config, CSS layer) would otherwise surface at deploy time, not on the PR.
+      - name: Build (vite)
+        run: npm run build
+
   # ── DB migrations: apply schemas + migrations + seed on the real Supabase stack ─
   migrations-validate:
     name: Migrations (Supabase)

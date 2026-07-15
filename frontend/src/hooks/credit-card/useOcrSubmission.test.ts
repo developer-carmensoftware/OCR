@@ -338,7 +338,7 @@ describe('useOcrSubmission', () => {
   // ── F7: submitToCarmen throws (network / unexpected error) ────────────────────
 
   describe('F7: submitToCarmen throws', () => {
-    it('F7.1 – network error → error toast, "Saved Successfully (Carmen issue)" modal, submitting false', async () => {
+    it('F7.1 – network error → honest "Submission failed" modal, no advance, submitting false', async () => {
       diffCorrections.mockReturnValue([])
       getAccountingConfig.mockResolvedValue(defaultConfig)
       submitToCarmen.mockRejectedValue(new Error('network timeout'))
@@ -350,10 +350,32 @@ describe('useOcrSubmission', () => {
       })
 
       expect(showToast).toHaveBeenCalledWith(expect.stringContaining('network timeout'), 'error')
+      // A transport failure must never claim the JV was saved, and must not advance
+      // the wizard to Step 4 (Input Tax Reconciliation).
       expect(props.showModal).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Saved Successfully (Carmen issue)' })
+        expect.objectContaining({ title: 'Submission failed', type: 'error' })
       )
+      expect(props.setStep).not.toHaveBeenCalledWith(4)
       expect(props.setCarmenJvId).not.toHaveBeenCalled()
+      expect(result.current.submitting).toBe(false)
+    })
+
+    it('F7.3 – 409 duplicate → "Duplicate Document Found" modal, not a generic error', async () => {
+      diffCorrections.mockReturnValue([])
+      getAccountingConfig.mockResolvedValue(defaultConfig)
+      const dupErr = Object.assign(new Error('already submitted'), { code: 'DUPLICATE_DOC_NO' })
+      submitToCarmen.mockRejectedValue(dupErr)
+
+      const props = makeProps()
+      const { result } = renderHook(() => useOcrSubmission(props))
+      await act(async () => {
+        await result.current.handleSubmitFinal(defaultRows)
+      })
+
+      expect(props.showModal).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Duplicate Document Found' })
+      )
+      expect(props.setStep).not.toHaveBeenCalledWith(4)
       expect(result.current.submitting).toBe(false)
     })
 

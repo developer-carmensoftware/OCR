@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { m, AnimatePresence } from 'framer-motion'
 import { FileText, Info, CheckCircle2, XCircle, Lock, ArrowLeft } from 'lucide-react'
 import { getCarmenUrl } from '../../lib/url'
+import { useT } from '../../i18n/LanguageContext'
 import '../../styles/components/user-consent.css'
 
 type Lang = 'th' | 'en'
@@ -77,7 +78,10 @@ function useIsMobile() {
 }
 
 export default function UserConsentModal({ show, onConfirm }: Props) {
-  const [lang, setLang] = useState<Lang>('en')
+  const { lang: appLang } = useT()
+  // Follow the app's language for the initial render (a Thai user shouldn't meet a
+  // PDPA consent form in English); the in-modal toggle can still override per-reader.
+  const [lang, setLang] = useState<Lang>(appLang)
   const [checked, setChecked] = useState(false)
   const dialogRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()

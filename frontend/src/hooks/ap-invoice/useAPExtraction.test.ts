@@ -273,10 +273,15 @@ describe('useAPExtraction', () => {
     })
   })
 
-  // ── F4: retry logic ──────────────────────────────────────────────────────────
+  // ── F4: no auto-retry (billing safety) ───────────────────────────────────────
+  //
+  // /extract charges a document credit server-side before calling the LLM. A failed
+  // extraction is refunded, but a response lost after a *successful* one is not — and
+  // the client can't tell those apart — so a retry risks charging twice for one
+  // document. The old 3x auto-retry did exactly that; extraction now posts once.
 
-  describe('F4: retry logic', () => {
-    it('retries up to 3 times before setting error state', async () => {
+  describe('F4: no auto-retry (billing safety)', () => {
+    it('posts /extract exactly once on a 500 — a retry would re-charge a document', async () => {
       vi.useFakeTimers()
       apiFetch.mockResolvedValue({ ok: false, status: 500 } as unknown as Response)
       const props = makeProps()
@@ -287,20 +292,13 @@ describe('useAPExtraction', () => {
         return p
       })
       await runPromise
-      expect(apiFetch).toHaveBeenCalledTimes(3)
-      expect(result.current.error).toBe(MOCK_T.errProcess)
+      expect(apiFetch).toHaveBeenCalledTimes(1)
       vi.useRealTimers()
     })
 
-    it('succeeds on second attempt after one failure', async () => {
+    it('surfaces a 500 as a server error, not as a bad-scan hint', async () => {
       vi.useFakeTimers()
-      apiFetch
-        .mockResolvedValueOnce({ ok: false, status: 500 } as unknown as Response)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => MOCK_API_RESPONSE,
-        } as unknown as Response)
-      getAPVendorMapping.mockRejectedValue(new Error('no mapping'))
+      apiFetch.mockResolvedValue({ ok: false, status: 500 } as unknown as Response)
       const props = makeProps()
       const { result } = renderHook(() => useAPExtraction(props))
       const runPromise = act(async () => {
@@ -309,12 +307,29 @@ describe('useAPExtraction', () => {
         return p
       })
       await runPromise
-      expect(apiFetch).toHaveBeenCalledTimes(2)
-      expect(props.setStep).toHaveBeenCalledWith(2)
+      expect(props.setModal).toHaveBeenCalledWith(
+        expect.objectContaining({ show: true, title: 'Server Error' })
+      )
+      expect(toast.error).not.toHaveBeenCalledWith(expect.stringContaining('clearer scan'))
       vi.useRealTimers()
     })
 
-    it('resets loading=false even after all retries fail', async () => {
+    it('does not retry a network drop either (the server may have processed it)', async () => {
+      vi.useFakeTimers()
+      apiFetch.mockRejectedValue(new Error('Failed to fetch'))
+      const props = makeProps()
+      const { result } = renderHook(() => useAPExtraction(props))
+      const runPromise = act(async () => {
+        const p = result.current.runOCR(MOCK_FILE)
+        await vi.runAllTimersAsync()
+        return p
+      })
+      await runPromise
+      expect(apiFetch).toHaveBeenCalledTimes(1)
+      vi.useRealTimers()
+    })
+
+    it('resets loading=false after a failed extraction', async () => {
       vi.useFakeTimers()
       apiFetch.mockResolvedValue({ ok: false, status: 500 } as unknown as Response)
       const props = makeProps()

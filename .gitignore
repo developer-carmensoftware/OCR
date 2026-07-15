@@ -1,6 +1,10 @@
 # Environment
 .env
 **/.env
+# Vite loads .env.local in every mode except test — including production builds.
+# It is a per-developer override and must never be committed.
+**/.env.local
+**/.env.*.local
 
 # Local test fixtures
 test-fixtures/

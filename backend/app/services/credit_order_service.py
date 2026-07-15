@@ -416,7 +416,15 @@ async def post_ar_batch(
     is_global: bool,
     tenant_scope: str,
 ) -> list[PostArResultItem]:
-    """Batch-post paid orders to Carmen ERP as AR entries."""
+    """Batch-post paid orders to Carmen ERP as AR entries.
+
+    Commits after each order (not once at batch end): the previous single-commit
+    held every row's FOR UPDATE lock across every Carmen HTTP round-trip, and a
+    failed batch-end commit after Carmen had already accepted a post left the order
+    PAID — so a retry re-posted a duplicate AR entry. Per-order commit releases each
+    lock right after its own HTTP call and makes a Carmen-accepted post durable
+    before the next order, so a later failure never triggers a duplicate re-post.
+    """
     results: list[PostArResultItem] = []
 
     for oid in order_ids:
@@ -430,12 +438,14 @@ async def post_ar_batch(
 
         if order is None:
             results.append(PostArResultItem(order_id=oid, success=False, error="Not found"))
+            await db.commit()
             continue
 
         if not _in_scope(order, is_global=is_global, tenant_scope=tenant_scope):
             results.append(
                 PostArResultItem(order_id=oid, success=False, error="Tenant out of scope")
             )
+            await db.commit()
             continue
 
         if order.status != CreditOrderStatus.PAID:
@@ -444,6 +454,7 @@ async def post_ar_batch(
                     order_id=oid, success=False, error=f"Status is '{order.status}', expected paid"
                 )
             )
+            await db.commit()
             continue
 
         # Look up AR code from the order's buyer (via proforma snapshot)
@@ -477,6 +488,7 @@ async def post_ar_batch(
                     order_id=oid, success=False, error="No AR code mapped for this buyer"
                 )
             )
+            await db.commit()
             continue
 
         # proforma is guaranteed non-None here — ar_code above was derived from it.
@@ -511,6 +523,10 @@ async def post_ar_batch(
         except Exception as exc:
             logger.exception("AR posting failed for order %s", oid)
             results.append(PostArResultItem(order_id=oid, success=False, error=str(exc)))
+
+        # Persist this order's outcome (COMPLETE on success) and release its lock
+        # before moving to the next — see the per-order-commit rationale above.
+        await db.commit()
 
     return results
 

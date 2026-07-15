@@ -76,9 +76,50 @@ services:
       - key: ALLOWED_CARMEN_HOSTS
         sync: false
 
+      # ── OneApp FileService (payment-slip storage) ─────────────────────────────
+      # Required by the purchase flow: without these, slip upload fails with a 502
+      # (storage_service raises StorageError when unconfigured).
+      - key: FILE_SERVICE_URL
+        sync: false
+      - key: FILE_SERVICE_API_KEY
+        sync: false
+
+      # ── Carmen AR posting (admin order review → ERP) ──────────────────────────
+      - key: CARMEN_AR_URL
+        sync: false
+      - key: CARMEN_AR_TOKEN
+        sync: false
+
+      # ── Scheduled jobs (pg_cron → pg_net → this service) ──────────────────────
+      # Shared secret for maintenance endpoints (/admin/anomaly/run, /admin/pricing/sync).
+      # MUST be set, and MUST equal the Supabase Vault secret named 'internal_job_token'
+      # — an empty value makes require_maintenance_auth reject every cron call with 401,
+      # silently disabling anomaly/budget detection and model-pricing refresh.
+      # Generate: python -c "import secrets; print(secrets.token_hex(32))"
+      - key: INTERNAL_JOB_TOKEN
+        sync: false
+
+      # ── Observability ─────────────────────────────────────────────────────────
+      # Without a DSN, Sentry no-ops and 5xx are only visible in Render's logs
+      # (which are lost on spin-down) — set this before opening to real users.
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production
+
       # ── App ─────────────────────────────────────────────────────────────────
+      # Explicitly off: app_debug is the ONLY production switch — it gates the
+      # weak-secret rejection, the wildcard-CORS hard-fail, admin/OCR key separation,
+      # and traceback leakage. It already defaults to false; pinned here so an
+      # inherited APP_DEBUG=true can never silently disarm all of them.
+      - key: APP_DEBUG
+        value: "false"
       - key: MAX_FILE_SIZE_MB
         value: "20"
+      # Code default is 0.5h; 8h matches .env.example and keeps a user from losing
+      # in-progress wizard work to a mid-session expiry.
+      - key: SESSION_TTL_HOURS
+        value: "8"
       - key: LOG_JSON
         value: "true"
       # Behind Render's load balancer — read the real client IP from the

@@ -42,6 +42,10 @@ async def get_correction_hints(
     Result cached per (tenant, bank_code) for _HINTS_CACHE_TTL seconds.
     """
     tenant_id = current_tenant_id.get() or ""
+    if not tenant_id:
+        # Fail closed: without a tenant context the aggregate below would pool every
+        # tenant's correction stats together — a cross-tenant leak. Return no hints.
+        return {}
     cache_key = (tenant_id, bank_code)
 
     now = time.monotonic()
@@ -64,9 +68,8 @@ async def get_correction_hints(
         CorrectionFeedback.deleted_at.is_(None),
     ]
 
-    if tenant_id:
-        card_filters.append(CreditCard.tenant_id == tenant_id)
-        corr_filters.append(CorrectionFeedback.tenant_id == tenant_id)
+    card_filters.append(CreditCard.tenant_id == tenant_id)
+    corr_filters.append(CorrectionFeedback.tenant_id == tenant_id)
 
     # Count submitted documents for this bank (denominator)
     total_result = await db.execute(

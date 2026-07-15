@@ -395,8 +395,12 @@ async def topup_order(
 
     order_ref: str | None = None
     if order_id:
+        # Lock the order row so a concurrent top-up or an admin approve racing this
+        # top-up can't both pass the PAID check and grant credits twice.
         order = (
-            await db.execute(select(CreditOrder).where(CreditOrder.id == order_id))
+            await db.execute(
+                select(CreditOrder).where(CreditOrder.id == order_id).with_for_update()
+            )
         ).scalar_one_or_none()
         if order is None or order.tenant_id != tenant_id:
             raise NotFoundError("Order not found")

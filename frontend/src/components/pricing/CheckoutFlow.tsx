@@ -91,8 +91,15 @@ export default function CheckoutFlow({
   }
 
   const handleSlip = async (file: File) => {
-    await c.submitSlip(file)
-    toast.success(t('checkout.slipSubmittedToast'))
+    try {
+      await c.submitSlip(file)
+      toast.success(t('checkout.slipSubmittedToast'))
+    } catch (e) {
+      // submitSlip re-throws after setting c.error; without this catch the failure was
+      // silent (SlipUpload swallows it) and the buyer saw the spinner stop with no
+      // feedback. Read the thrown error, not c.error — state is stale in this tick.
+      toast.error((e as Error).message || t('checkout.slipError'))
+    }
   }
 
   return (

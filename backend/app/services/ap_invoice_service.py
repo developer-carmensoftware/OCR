@@ -26,6 +26,7 @@ from app.services.ap_vendor_history_service import (
 from app.utils.gl_filter import score_and_pad
 from app.utils.image_processing import resize_if_needed
 from app.utils.pdf_utils import (
+    MAX_PAGES_PER_CALL,
     PDF_RENDER_TIMEOUT_SECONDS,
     extract_pages_as_pdf,
     get_pdf_page_count,
@@ -157,11 +158,39 @@ async def extract_ap_invoice_data(
                     "PDF processing timed out — the file may be malformed."
                 ) from exc
         else:
-            # No selection → whole PDF natively; decrypt first if encrypted so the
-            # provider doesn't reject it as "The document has no pages."
-            pdf_bytes = await asyncio.get_running_loop().run_in_executor(
-                None, functools.partial(normalize_pdf_for_llm, file_bytes, pdf_password)
+            # No selection → whole PDF natively, but never exceed MAX_PAGES_PER_CALL.
+            # An unbounded page count is both a token-cost/DoS vector and a likely
+            # context-overflow LLM failure; the pages-cap invariant (utils/pages.py)
+            # must hold on this path too, not only the explicit-selection path. Over
+            # the cap, send the first MAX_PAGES_PER_CALL pages natively.
+            page_count = await asyncio.get_running_loop().run_in_executor(
+                None, functools.partial(get_pdf_page_count, file_bytes, pdf_password)
             )
+            if page_count > MAX_PAGES_PER_CALL:
+                logger.warning(
+                    "AP invoice %s has %d pages; capping to first %d for extraction",
+                    filename,
+                    page_count,
+                    MAX_PAGES_PER_CALL,
+                )
+                pdf_bytes = await asyncio.wait_for(
+                    asyncio.get_running_loop().run_in_executor(
+                        None,
+                        functools.partial(
+                            extract_pages_as_pdf,
+                            file_bytes,
+                            list(range(MAX_PAGES_PER_CALL)),
+                            pdf_password,
+                        ),
+                    ),
+                    timeout=PDF_RENDER_TIMEOUT_SECONDS,
+                )
+            else:
+                # Within the cap → decrypt only if encrypted so the provider doesn't
+                # reject it as "The document has no pages."
+                pdf_bytes = await asyncio.get_running_loop().run_in_executor(
+                    None, functools.partial(normalize_pdf_for_llm, file_bytes, pdf_password)
+                )
         image_items = [
             {
                 "type": "image_url",

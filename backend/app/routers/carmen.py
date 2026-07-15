@@ -6,6 +6,7 @@ Session injection (get_current_session) supplies the per-user Carmen token.
 """
 
 import logging
+import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
@@ -16,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import SessionInfo, get_current_session
 from app.constants import Module
 from app.database import get_db
+from app.exceptions import DuplicateDocumentError
 from app.models.orm import CreditCard
 from app.services import audit_service
 from app.services.ap_invoice_service import mark_invoice_submitted
@@ -35,6 +37,7 @@ from app.services.carmen_service import (
     put_input_tax,
 )
 from app.utils.client_ip import get_client_ip
+from app.utils.db_helpers import has_submitted_doc
 
 logger = logging.getLogger(__name__)
 
@@ -84,58 +87,88 @@ async def proxy_gljv(
     session: SessionInfo = Depends(get_current_session),
 ):
     body = await request.json()
+
+    # ── Duplicate-submit guard (BEFORE posting to Carmen) ──────────────────────
+    # The card row is locked FOR UPDATE and held through the Carmen post + stamp
+    # below, so two concurrent submits of the same document serialize: the second
+    # blocks until the first commits (stamping submitted_at) and is then rejected.
+    # A malformed / cross-tenant / absent card_id degrades to the legacy no-guard
+    # path (posts, skips bookkeeping) — the real wizard always sends a valid id.
+    card: CreditCard | None = None
+    tenant_uuid: uuid.UUID | None = None
+    if credit_card_id:
+        try:
+            card_uuid = uuid.UUID(credit_card_id)
+            tenant_uuid = uuid.UUID(session.tenant_id)
+        except (ValueError, AttributeError):
+            logger.warning(
+                "Skipping duplicate guard / bookkeeping: credit_card_id %r is not a UUID",
+                credit_card_id,
+            )
+            card_uuid = None
+        if card_uuid and tenant_uuid:
+            card = (
+                await db.execute(
+                    select(CreditCard)
+                    .where(
+                        CreditCard.id == card_uuid,
+                        CreditCard.tenant_id == tenant_uuid,
+                        CreditCard.deleted_at.is_(None),
+                    )
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+        if card is not None:
+            eff_doc = doc_no or card.doc_no
+            # (a) this exact card already went to Carmen (double-click / retry after success)
+            if card.submitted_at is not None:
+                raise DuplicateDocumentError(
+                    f"Document number {eff_doc or ''} has already been submitted to Carmen."
+                )
+            # (b) a different card with the same (tenant, bank, doc_no) already submitted
+            eff_bank = bank_code or card.bank_code
+            if (
+                eff_bank
+                and eff_doc
+                and await has_submitted_doc(
+                    db,
+                    CreditCard,
+                    tenant_id=tenant_uuid,
+                    bank_code=eff_bank,
+                    doc_no=eff_doc,
+                )
+            ):
+                raise DuplicateDocumentError(
+                    f"Document number {eff_doc} has already been submitted to Carmen."
+                )
+
     async with _carmen_errors("Carmen Cloud JV ล้มเหลว"):
         res = await post_gljv(body, session.carmen_token)
-        if res and res.get("Code", -1) >= 0 and credit_card_id:
-            import uuid
+        # Carmen has already accepted the JV; the bookkeeping below must never turn a
+        # successful submit into an HTTP 500 (the lock releases on session close).
+        if res and res.get("Code", -1) >= 0 and card is not None:
+            card.submitted_at = datetime.now(UTC)  # type: ignore[assignment]
+            if doc_no:
+                card.doc_no = doc_no  # type: ignore[assignment]
+            if company_name:
+                card.company_name = company_name  # type: ignore[assignment]
+            if bank_code:
+                card.bank_code = bank_code  # type: ignore[assignment]
+            if branch_no:
+                card.branch_no = branch_no  # type: ignore[assignment]
+            await db.commit()
+            logger.info("Marked Credit Card %s as submitted", credit_card_id)
 
-            # Carmen has already accepted the JV; the bookkeeping below must
-            # never turn a successful submit into an HTTP 500. Guard the UUID
-            # parse defensively — `credit_card_id` must be a UUID, but a
-            # malformed value should degrade gracefully rather than raise.
-            try:
-                card_uuid = uuid.UUID(credit_card_id)
-                tenant_uuid = uuid.UUID(session.tenant_id)
-            except (ValueError, AttributeError):
-                logger.warning(
-                    "Skipping post-submit bookkeeping: credit_card_id %r is not a UUID",
-                    credit_card_id,
-                )
-                return res
+            card_doc_no: str | None = card.doc_no  # type: ignore[assignment]
 
-            # Tenant-scoped lookup — a card_id from another tenant must never match,
-            # otherwise a caller could flip another tenant's submit state / fields (IDOR).
-            result = await db.execute(
-                select(CreditCard).where(
-                    CreditCard.id == card_uuid,
-                    CreditCard.tenant_id == tenant_uuid,
-                    CreditCard.deleted_at.is_(None),
-                )
+            # Write audit log
+            await audit_service.log_action(
+                session,
+                AuditAction.SUBMIT,
+                resource="credit_card",
+                resource_id=card_doc_no or str(card.id),
+                ip_address=get_client_ip(request),
             )
-            card = result.scalar_one_or_none()
-            if card:
-                card.submitted_at = datetime.now(UTC)  # type: ignore[assignment]
-                if doc_no:
-                    card.doc_no = doc_no  # type: ignore[assignment]
-                if company_name:
-                    card.company_name = company_name  # type: ignore[assignment]
-                if bank_code:
-                    card.bank_code = bank_code  # type: ignore[assignment]
-                if branch_no:
-                    card.branch_no = branch_no  # type: ignore[assignment]
-                await db.commit()
-                logger.info("Marked Credit Card %s as submitted", credit_card_id)
-
-                card_doc_no: str | None = card.doc_no  # type: ignore[assignment]
-
-                # Write audit log
-                await audit_service.log_action(
-                    session,
-                    AuditAction.SUBMIT,
-                    resource="credit_card",
-                    resource_id=card_doc_no or str(card.id),
-                    ip_address=get_client_ip(request),
-                )
         return res
 
 
