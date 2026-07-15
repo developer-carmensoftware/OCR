@@ -101,10 +101,14 @@ async def proxy_gljv(
             card_uuid = uuid.UUID(credit_card_id)
             tenant_uuid = uuid.UUID(session.tenant_id)
         except (ValueError, AttributeError):
-            logger.warning(
-                "Skipping duplicate guard / bookkeeping: credit_card_id %r is not a UUID",
-                credit_card_id,
-            )
+            # Deliberately does not echo the caller-supplied value: it is unbounded
+            # request input, this path is a known-benign flow (the wizard sends doc_no
+            # here on a duplicate re-submit — see test_gljv_non_uuid_credit_card_id…),
+            # and interpolating anything named credit_card_* trips CodeQL's
+            # py/clear-text-logging-sensitive-data name heuristic (a false positive —
+            # this is our own credit_cards.id row UUID, never card data; the schema has
+            # no PAN column at all).
+            logger.warning("Skipping duplicate guard / bookkeeping: credit_card_id is not a UUID")
             card_uuid = None
         if card_uuid and tenant_uuid:
             card = (
@@ -157,11 +161,12 @@ async def proxy_gljv(
             if branch_no:
                 card.branch_no = branch_no  # type: ignore[assignment]
             await db.commit()
-            logger.info("Marked Credit Card %s as submitted", credit_card_id)
 
             card_doc_no: str | None = card.doc_no  # type: ignore[assignment]
 
-            # Write audit log
+            # The durable record of this exact event — a redundant logger.info of the
+            # same id used to sit above and is dropped: audit_logs is queryable, keyed
+            # by the doc_no a human would actually search on, and doesn't trip CodeQL.
             await audit_service.log_action(
                 session,
                 AuditAction.SUBMIT,
