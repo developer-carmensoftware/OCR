@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import cast
 
-from sqlalchemy import func, select, text, tuple_
+from sqlalchemy import case, func, select, text, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -111,6 +111,11 @@ async def get_tenants_quota_overview(
             LLMUsageLog.tenant_id.label("tid"),
             LLMUsageLog.module_id.label("mid"),
             func.count(LLMUsageLog.id).label("calls"),
+            # scans (extract) is the number comparable to quota — one per document
+            # attempted. suggestions ride along and never touch quota. Splitting them
+            # here is what lets the page stop showing a blended count next to "6/30".
+            func.sum(case((LLMUsageLog.call_type == "extract", 1), else_=0)).label("scans"),
+            func.sum(case((LLMUsageLog.call_type == "suggest", 1), else_=0)).label("suggestions"),
             func.sum(LLMUsageLog.total_tokens).label("tokens"),
             func.sum(LLMUsageLog.cost_usd).label("cost"),
         )
@@ -129,6 +134,8 @@ async def get_tenants_quota_overview(
                 "module_id": r["mid"],
                 "display_name": module_display.get(r["mid"], r["mid"]),
                 "calls": int(r["calls"] or 0),
+                "scans": int(r["scans"] or 0),
+                "suggestions": int(r["suggestions"] or 0),
                 "tokens": int(r["tokens"] or 0),
                 "cost_usd": float(r["cost"] or 0),
             }

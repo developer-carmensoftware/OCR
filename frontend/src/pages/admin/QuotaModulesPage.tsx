@@ -129,8 +129,9 @@ export default function QuotaModulesPage() {
   const modulesEnabledCount = rows.reduce((sum, r) => sum + r.modules_enabled.length, 0)
   const moduleUsageChart = modulesCatalog.map(m => ({
     module: m.display_name,
-    calls: rows.reduce(
-      (sum, r) => sum + (r.usage_by_module.find(u => u.module_id === m.id)?.calls ?? 0),
+    // scans, not blended calls — matches the Usage column and the page framing.
+    scans: rows.reduce(
+      (sum, r) => sum + (r.usage_by_module.find(u => u.module_id === m.id)?.scans ?? 0),
       0
     ),
   }))
@@ -171,7 +172,7 @@ export default function QuotaModulesPage() {
         return (
           <div className="tenant-quota quota-cell">
             <div className="tenant-quota-label">
-              <span className="admin-mono">
+              <span className="admin-mono" title={t('admin.quotas.quotaHint')}>
                 {q.used} / {q.limit}
               </span>
               <span className="admin-sub-text">{q.pct}%</span>
@@ -182,6 +183,7 @@ export default function QuotaModulesPage() {
                 style={{ width: `${Math.min(q.pct, 100)}%` }}
               />
             </div>
+            <span className="admin-sub-text">{t('admin.quotas.docsCharged')}</span>
           </div>
         )
       },
@@ -206,16 +208,24 @@ export default function QuotaModulesPage() {
       key: 'usage_by_module',
       label: t('admin.quotas.col.usagePeriod'),
       align: 'right',
-      render: r =>
-        r.usage_by_module.length === 0 ? (
-          <span className="admin-sub-text">—</span>
-        ) : (
-          <span className="admin-mono">
-            {t('admin.quotas.calls', {
-              count: r.usage_by_module.reduce((sum, u) => sum + u.calls, 0),
-            })}
+      render: r => {
+        if (r.usage_by_module.length === 0) return <span className="admin-sub-text">—</span>
+        // Headline is scans (extracts), the number that lines up with quota — not the
+        // blended call count, which double-counts because a suggestion rides along with
+        // every document. Suggestions shown quietly beside it.
+        const scans = r.usage_by_module.reduce((sum, u) => sum + u.scans, 0)
+        const suggestions = r.usage_by_module.reduce((sum, u) => sum + u.suggestions, 0)
+        return (
+          <span className="quota-usage-cell">
+            <span className="admin-mono">{t('admin.quotas.scans', { count: scans })}</span>
+            {suggestions > 0 && (
+              <span className="admin-sub-text">
+                {t('admin.quotas.suggestions', { count: suggestions })}
+              </span>
+            )}
           </span>
-        ),
+        )
+      },
     },
   ]
 
@@ -230,7 +240,10 @@ export default function QuotaModulesPage() {
             {row.usage_by_module.map(u => (
               <div key={u.module_id} className="quota-manage-row">
                 <span className="admin-sub-text quota-manage-meta">{u.display_name}</span>
-                <span className="admin-mono">{t('admin.quotas.calls', { count: u.calls })}</span>
+                <span className="admin-mono">{t('admin.quotas.scans', { count: u.scans })}</span>
+                <span className="admin-mono admin-sub-text">
+                  {t('admin.quotas.suggestions', { count: u.suggestions })}
+                </span>
                 <span className="admin-mono admin-sub-text">
                   {t('admin.quotas.detail.tokens', { count: u.tokens.toLocaleString() })}
                 </span>
@@ -366,7 +379,7 @@ export default function QuotaModulesPage() {
               </div>
 
               <Card
-                title={t('admin.quotas.chart.callsByModule')}
+                title={t('admin.quotas.chart.scansByModule')}
                 icon={<BarChart3 size={16} strokeWidth={2} />}
               >
                 <MetricChart
@@ -374,7 +387,7 @@ export default function QuotaModulesPage() {
                   data={moduleUsageChart}
                   xKey="module"
                   series={[
-                    { key: 'calls', label: t('admin.quotas.series.calls'), color: '#6366f1' },
+                    { key: 'scans', label: t('admin.quotas.series.scans'), color: '#6366f1' },
                   ]}
                   loading={loading}
                 />

@@ -567,7 +567,12 @@ export interface QuotaRow {
 export interface ModuleUsageRow {
   module_id: string
   display_name: string
+  /** extract + suggest. Kept for back-compat; prefer scans for a quota-comparable number. */
   calls: number
+  /** Vision extracts — one per document attempted. This is what lines up against quota. */
+  scans: number
+  /** GL-mapping suggestions that ride along; never touch quota. */
+  suggestions: number
   tokens: number
   cost_usd: number
 }
