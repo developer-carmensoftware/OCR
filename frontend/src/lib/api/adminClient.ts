@@ -582,6 +582,14 @@ export interface ModuleCatalogEntry {
   display_name: string
 }
 
+export interface TenantSubscriptionSummary {
+  /** Documents per cycle. */
+  allowance: number
+  /** Cycle-adjusted docs_used — what the next scan would count. */
+  used: number
+  period_end: string | null
+}
+
 export interface TenantQuotaOverviewRow {
   id: string
   host: string
@@ -592,6 +600,10 @@ export interface TenantQuotaOverviewRow {
   quotas: QuotaRow[]
   modules_enabled: ModuleCatalogEntry[]
   usage_by_module: ModuleUsageRow[]
+  /** The active paid plan, charged before free quota. null when none is in-window. */
+  subscription: TenantSubscriptionSummary | null
+  /** Non-expiring top-up credits, charged after subscription and free are spent. */
+  credit_balance: number
 }
 
 export interface QuotaOverviewResponse {

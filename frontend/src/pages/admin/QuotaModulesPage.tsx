@@ -40,6 +40,34 @@ function monthStartStr() {
 
 const quotaTier = (pct: number) => (pct >= 100 ? 'over' : pct >= 80 ? 'warn' : '')
 
+interface ActiveBucket {
+  bucket: 'subscription' | 'free'
+  used: number
+  limit: number
+  pct: number
+}
+
+/**
+ * The bucket a tenant's scans currently land on. Consumption order is
+ * subscription → free → top-up, so an active subscription is what actually moves;
+ * the free quota only moves once the subscription lapses. Returns null only when the
+ * tenant has neither (no plan and no free quota row).
+ */
+function activeBucket(row: TenantQuotaOverviewRow): ActiveBucket | null {
+  if (row.subscription) {
+    const { used, allowance } = row.subscription
+    return {
+      bucket: 'subscription',
+      used,
+      limit: allowance,
+      pct: allowance > 0 ? Math.round((used / allowance) * 100) : 0,
+    }
+  }
+  const q = row.quotas[0]
+  if (!q) return null
+  return { bucket: 'free', used: q.used, limit: q.limit, pct: q.pct }
+}
+
 function getTabs(t: ReturnType<typeof useT>['t']) {
   return [
     { id: 'overview', label: t('admin.quotas.tab.overview') },
@@ -125,7 +153,12 @@ export default function QuotaModulesPage() {
 
   // ── Overview-tab stats, derived client-side from the same fetch as the table ──
   const tenantsCount = rows.length
-  const nearLimitCount = rows.filter(r => r.quotas.some(q => q.pct >= 80)).length
+  // Near limit on the bucket actually being charged. Testing free quota alone missed a
+  // subscribed tenant at 95% of their plan (their free quota is frozen low, never "near").
+  const nearLimitCount = rows.filter(r => {
+    const a = activeBucket(r)
+    return a !== null && a.pct >= 80
+  }).length
   const modulesEnabledCount = rows.reduce((sum, r) => sum + r.modules_enabled.length, 0)
   const moduleUsageChart = modulesCatalog.map(m => ({
     module: m.display_name,
@@ -167,23 +200,41 @@ export default function QuotaModulesPage() {
       key: 'quotas',
       label: t('admin.quotas.col.quota'),
       render: r => {
-        const q = r.quotas[0]
-        if (!q) return <span className="admin-sub-text">{t('admin.quotas.noQuota')}</span>
+        const active = activeBucket(r)
+        if (!active) return <span className="admin-sub-text">{t('admin.quotas.noQuota')}</span>
+
+        // Reserve = the buckets NOT currently being charged, shown small. A subscribed
+        // tenant's free quota is a frozen reserve; an unsubscribed tenant's reserve is
+        // just top-up credits. This is what stops the headline bar looking "stuck".
+        const reserve: string[] = []
+        const freeQuota = r.quotas[0]
+        if (active.bucket === 'subscription' && freeQuota) {
+          reserve.push(`${t('admin.quotas.bucket.free')} ${freeQuota.used}/${freeQuota.limit}`)
+        }
+        if (r.credit_balance > 0) {
+          reserve.push(t('admin.quotas.credits', { count: r.credit_balance }))
+        }
+
         return (
           <div className="tenant-quota quota-cell">
             <div className="tenant-quota-label">
               <span className="admin-mono" title={t('admin.quotas.quotaHint')}>
-                {q.used} / {q.limit}
+                {active.used} / {active.limit}
               </span>
-              <span className="admin-sub-text">{q.pct}%</span>
+              <span className="admin-sub-text">{active.pct}%</span>
             </div>
             <div className="tenant-quota-bar">
               <div
-                className={`tenant-quota-fill ${quotaTier(q.pct)}`.trim()}
-                style={{ width: `${Math.min(q.pct, 100)}%` }}
+                className={`tenant-quota-fill ${quotaTier(active.pct)}`.trim()}
+                style={{ width: `${Math.min(active.pct, 100)}%` }}
               />
             </div>
-            <span className="admin-sub-text">{t('admin.quotas.docsCharged')}</span>
+            <span className="admin-sub-text">{t(`admin.quotas.bucket.${active.bucket}`)}</span>
+            {reserve.length > 0 && (
+              <span className="admin-sub-text">
+                {t('admin.quotas.reserve', { items: reserve.join(' · ') })}
+              </span>
+            )}
           </div>
         )
       },

@@ -15,12 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.admin_session import AdminPrincipal
 from app.exceptions import NotFoundError, ValidationError
-from app.models.billing import Quota, QuotaUsage
+from app.models.billing import Quota, QuotaUsage, TenantCredit
 from app.models.catalog import Module, TenantModule
 from app.models.enums import QuotaPeriod
 from app.models.identity import Tenant
 from app.models.observability import LLMUsageLog
 from app.services.audit_service import AuditAction, log_admin_action
+from app.services.credit_service import active_subscription_map
 from app.services.quota_service import period_key
 
 
@@ -141,6 +142,19 @@ async def get_tenants_quota_overview(
             }
         )
 
+    # The page charges subscription → free → top-up, so a subscribed tenant's free quota
+    # bar is frozen while real usage lands on the subscription. Surface both extra buckets
+    # so the moving one is visible. Bulk, keyed by str(tenant_id).
+    subs_by_tenant = await active_subscription_map(db, tenant_ids)
+    credit_rows = (
+        await db.execute(
+            select(TenantCredit.tenant_id, TenantCredit.balance).where(
+                TenantCredit.tenant_id.in_(tenant_ids)
+            )
+        )
+    ).all()
+    credit_by_tenant = {str(tid): int(bal or 0) for tid, bal in credit_rows}
+
     data = [
         {
             "id": str(t.id),
@@ -152,6 +166,8 @@ async def get_tenants_quota_overview(
             "quotas": quotas_by_tenant.get(str(t.id), []),
             "modules_enabled": modules_by_tenant.get(str(t.id), []),
             "usage_by_module": usage_by_tenant.get(str(t.id), []),
+            "subscription": subs_by_tenant.get(str(t.id)),
+            "credit_balance": credit_by_tenant.get(str(t.id), 0),
         }
         for t in tenants
     ]

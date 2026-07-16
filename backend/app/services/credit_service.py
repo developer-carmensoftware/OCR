@@ -475,6 +475,58 @@ async def active_subscription(db: AsyncSession, tenant_id: str) -> TenantSubscri
     ).scalar_one_or_none()
 
 
+async def active_subscription_map(db: AsyncSession, tenant_uuids: list) -> dict[str, dict]:
+    """Bulk version of active_subscription for admin list views: one active, in-window
+    subscription per tenant, keyed by str(tenant_id).
+
+    Returns {str(tid): {"allowance": int, "used": int, "period_end": iso-str}}. `used` is
+    cycle-adjusted with the SAME case() as _try_consume_subscription, so a rolled annual
+    cycle shows 0 (what the next consume would count), not last cycle's stored docs_used.
+    Keeping that expression here, next to the consume path, avoids a second copy drifting
+    in the admin service.
+    """
+    if not tenant_uuids:
+        return {}
+    # Cycle-adjusted used — mirrors _try_consume_subscription's effective_used.
+    used_effective = case(
+        (
+            TenantSubscription.cycle_start
+            < func.fn_cycle_start(TenantSubscription.period_start, func.now()),
+            0,
+        ),
+        else_=TenantSubscription.docs_used,
+    )
+    rows = (
+        (
+            await db.execute(
+                select(
+                    TenantSubscription.tenant_id.label("tid"),
+                    TenantSubscription.doc_allowance.label("allowance"),
+                    used_effective.label("used"),
+                    TenantSubscription.period_end.label("period_end"),
+                ).where(
+                    TenantSubscription.tenant_id.in_(tenant_uuids),
+                    TenantSubscription.status == SubscriptionStatus.ACTIVE,
+                    TenantSubscription.period_start <= func.now(),
+                    TenantSubscription.period_end > func.now(),
+                )
+            )
+        )
+        .mappings()
+        .all()
+    )
+    # The partial unique index uq_tenant_subscriptions_one_active guarantees ≤1 active
+    # row per tenant, so no de-dup is needed here.
+    return {
+        str(r["tid"]): {
+            "allowance": int(r["allowance"] or 0),
+            "used": int(r["used"] or 0),
+            "period_end": r["period_end"].isoformat() if r["period_end"] else None,
+        }
+        for r in rows
+    }
+
+
 async def get_active_subscription(tenant_id: str) -> TenantSubscription | None:
     """
     active_subscription() with its own session — for read-only callers (/usage).

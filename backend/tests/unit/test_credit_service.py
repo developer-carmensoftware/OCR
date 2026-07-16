@@ -527,3 +527,65 @@ class TestPurchaseBlockReason:
 
     def test_monthly_renew_allowed(self):
         assert credit_service.purchase_block_reason("monthly", 500, "monthly", 500) is None
+
+
+# ── active_subscription_map (bulk) ────────────────────────────────────────────
+
+
+class TestActiveSubscriptionMap:
+    """The cycle-roll `used` is evaluated by Postgres (fn_cycle_start + case), so a mock
+    can only exercise the empty-guard, the row→dict mapping, and str() keying — not the
+    SQL correctness, which is co-located with (and covered via) _try_consume_subscription.
+    """
+
+    async def test_empty_tenant_list_short_circuits(self):
+        db = AsyncMock()
+        result = await credit_service.active_subscription_map(db, [])
+        assert result == {}
+        db.execute.assert_not_called()
+
+    async def test_maps_rows_keyed_by_str_tenant_id(self):
+        import uuid
+
+        tid = uuid.uuid4()
+        period_end = datetime(2026, 8, 6, 4, 55, tzinfo=UTC)
+        row = MagicMock()
+        row.__getitem__.side_effect = lambda k: {
+            "tid": tid,
+            "allowance": 200,
+            "used": 53,
+            "period_end": period_end,
+        }[k]
+
+        exec_result = MagicMock()
+        exec_result.mappings.return_value.all.return_value = [row]
+        db = AsyncMock()
+        db.execute.return_value = exec_result
+
+        result = await credit_service.active_subscription_map(db, [tid])
+
+        assert set(result) == {str(tid)}
+        entry = result[str(tid)]
+        assert entry["allowance"] == 200
+        assert entry["used"] == 53
+        assert entry["period_end"] == period_end.isoformat()
+
+    async def test_query_filters_to_active_status(self):
+        # Guard against a future edit dropping the status filter and pulling superseded
+        # rows into an admin view. Assert the compiled SQL carries the ACTIVE predicate.
+        import uuid
+
+        captured = {}
+
+        exec_result = MagicMock()
+        exec_result.mappings.return_value.all.return_value = []
+
+        async def _capture(stmt):
+            captured["sql"] = str(stmt)
+            return exec_result
+
+        db = AsyncMock()
+        db.execute.side_effect = _capture
+        await credit_service.active_subscription_map(db, [uuid.uuid4()])
+        assert "status" in captured["sql"]
+        assert "period_end" in captured["sql"]
