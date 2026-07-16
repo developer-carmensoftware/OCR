@@ -258,6 +258,19 @@ export function useOcrExtraction({
             clearFiles()
           },
         })
+      } else if (e.status === 403) {
+        // ModuleDisabled — e.message already carries the backend `detail` (lib/api/ocr.ts).
+        showModal({
+          title: 'Module unavailable',
+          message:
+            e.message || 'This module is turned off for your account. Contact your administrator.',
+          type: 'warning',
+          confirmText: 'Close',
+          onConfirm: () => {
+            closeModal()
+            clearFiles()
+          },
+        })
       } else if (e.status === 401) {
         // AuthContext handles the "session expired" toast + state reset via ocr:unauthorized.
         clearFiles()

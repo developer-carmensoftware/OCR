@@ -25,6 +25,18 @@ class LLMParseError(RuntimeError):
     """LLM returned content that could not be parsed as JSON. → 422"""
 
 
+class ModuleDisabled(RuntimeError):
+    """This module has been turned off for the tenant by an admin. → 403
+
+    Opt-out: enforced only when tenant_modules carries an explicit enabled=False
+    row. No row means allowed — most tenants have never had a row written.
+    """
+
+    def __init__(self, module_id: str = ""):
+        self.module_id = module_id
+        super().__init__("This module is turned off for your account. Contact your administrator.")
+
+
 class ExtractionError(RuntimeError):
     """Document could not be processed (unsupported format, blank page). → 422"""
 

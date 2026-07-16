@@ -98,6 +98,12 @@ async function _fetchExtract(
         throw Object.assign(new Error('pdf_password_required'), { code: PDF_PASSWORD_REQUIRED })
       }
     }
+    // ModuleDisabled (403) carries a user-facing reason in `detail` — surface it
+    // instead of a bare "HTTP 403".
+    if (res.status === 403) {
+      const body = (await res.json?.().catch(() => ({}))) as { detail?: string }
+      throw Object.assign(new Error('HTTP 403'), { detail: body?.detail })
+    }
     throw new Error(`HTTP ${res.status}`)
   }
   return (await res.json()) as Record<string, unknown>
@@ -334,6 +340,25 @@ export function useAPExtraction({ setStep, setModal, loadVendors }: APExtraction
       }
       if ((err as ApiError).code === PDF_PASSWORD_REQUIRED) {
         promptForPassword(fileObj, selectedPages)
+        return
+      }
+      if (e.message.includes('403')) {
+        const detail = (err as { detail?: string }).detail
+        toast.error(detail ?? 'This module is turned off for your account.')
+        setModal({
+          show: true,
+          type: 'warning',
+          title: 'Module unavailable',
+          message:
+            detail ?? 'This module is turned off for your account. Contact your administrator.',
+          confirmText: 'Close',
+          onConfirm: () => {
+            setModal({ show: false })
+            setStep(1)
+            setFile(null)
+            setPreviewUrl(null)
+          },
+        })
         return
       }
       // A server fault is not the user's document — don't tell them to rescan it.
