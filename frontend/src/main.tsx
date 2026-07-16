@@ -80,6 +80,7 @@ const TenantRankingPage = lazy(() => import('./pages/admin/TenantRankingPage'))
 const LLMLogsPage = lazy(() => import('./pages/admin/LLMLogsPage'))
 const PerformancePage = lazy(() => import('./pages/admin/PerformancePage'))
 const ErrorsPage = lazy(() => import('./pages/admin/ErrorsPage'))
+const ExtractionsPage = lazy(() => import('./pages/admin/ExtractionsPage'))
 const AnomaliesPage = lazy(() => import('./pages/admin/AnomaliesPage'))
 const JobsPage = lazy(() => import('./pages/admin/JobsPage'))
 const SessionsPage = lazy(() => import('./pages/admin/SessionsPage'))
@@ -87,6 +88,7 @@ const CreditsPage = lazy(() => import('./pages/admin/CreditsPage'))
 const TenantsPage = lazy(() => import('./pages/admin/TenantsPage'))
 const QuotaModulesPage = lazy(() => import('./pages/admin/QuotaModulesPage'))
 const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'))
+const CreditOrdersPage = lazy(() => import('./pages/admin/CreditOrdersPage'))
 
 // Order Review — standalone page (own shell, reuses admin auth)
 const OrderReviewShell = lazy(() => import('./pages/order-review/OrderReviewShell'))
@@ -122,6 +124,8 @@ function AdminRouter() {
     AdminPage = <PerformancePage />
   } else if (route === 'admin/errors') {
     AdminPage = <ErrorsPage />
+  } else if (route === 'admin/extractions') {
+    AdminPage = <ExtractionsPage />
   } else if (route === 'admin/anomalies') {
     AdminPage = <AnomaliesPage />
   } else if (route === 'admin/jobs') {
@@ -136,6 +140,10 @@ function AdminRouter() {
     AdminPage = <SessionsPage />
   } else if (route === 'admin/credits') {
     AdminPage = <CreditsPage />
+  } else if (route === 'admin/credit-orders') {
+    // Same page as the standalone #/order-review shell, mounted inside the admin
+    // sidebar so it is reachable from the nav at all. #/order-review still works.
+    AdminPage = <CreditOrdersPage />
   } else {
     AdminPage = <Overview />
   }

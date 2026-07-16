@@ -160,8 +160,41 @@ export interface TenantRow {
   is_active: boolean
   contact_email: string | null
   modules_count: number
+  /** max(llm_usage_logs.created_at) — blind to attempts that never reached the model. Prefer last_use. */
   last_used_at: string | null
   created_at: string | null
+
+  // Engagement — present only when fetched with include_engagement: true, so every
+  // field is optional and TenantSelector's plain call still type-checks.
+  tried?: number
+  ok?: number
+  failed?: number
+  /** Submitted to Carmen. The activation metric: extract-without-submit means they tried it and didn't trust it. */
+  posted_to_carmen?: number
+  users?: number
+  active_days?: number
+  active_weeks?: number
+  first_use?: string | null
+  last_use?: string | null
+  days_idle?: number | null
+  credit_card?: number
+  ap_invoice?: number
+}
+
+export interface ExtractionFailureRow {
+  id: string
+  created_at: string | null
+  tenant_id: string
+  tenant_name: string | null
+  module_id: string
+  original_filename: string | null
+  error_message: string | null
+  carmen_user_id: string | null
+  /** null (not 0) when the model was never called — distinct from a call that returned nothing. */
+  llm_calls: number | null
+  total_tokens: number | null
+  duration_ms: number | null
+  model: string | null
 }
 
 export interface TenantQuota {
@@ -209,6 +242,16 @@ export async function fetchTenants(
 ): Promise<{ total: number; data: TenantRow[] }> {
   const res = await adminFetch(`${API.admin.tenants}${buildQs(params)}`)
   if (!res.ok) throw new Error('Failed to fetch tenants')
+  return res.json()
+}
+
+export async function fetchExtractionFailures(
+  params: QueryParams = {}
+): Promise<{ total: number; data: ExtractionFailureRow[] }> {
+  const res = await adminFetch(`${API.admin.extractionFailures}${buildQs(params)}`)
+  // unwrapDetail, not a fixed string: this endpoint rejects a >92-day range with a
+  // specific reason the user needs to read.
+  if (!res.ok) throw new Error(await unwrapDetail(res, 'Failed to fetch extraction failures'))
   return res.json()
 }
 

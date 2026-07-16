@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import DataTable, { type Column } from '../../components/admin/DataTable'
+import KPICard from '../../components/admin/KPICard'
 import {
   fetchTenants,
   fetchTenantDetail,
@@ -11,6 +12,30 @@ import {
 import { useT } from '../../i18n/LanguageContext'
 
 const fmtDate = (s: string | null) => s?.slice(0, 19).replace('T', ' ') ?? '—'
+
+/** Days after which a BU that once used the product reads as gone quiet. */
+const IDLE_WARN_DAYS = 14
+
+function median(nums: number[]): number {
+  if (!nums.length) return 0
+  const s = [...nums].sort((a, b) => a - b)
+  const mid = Math.floor(s.length / 2)
+  return s.length % 2 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2)
+}
+
+/** Adoption funnel — derived from the rows already on screen, no extra endpoint. */
+function funnel(rows: TenantRow[]) {
+  const extracted = rows.filter(r => (r.tried ?? 0) > 0)
+  const activeCutoff = Date.now() - 7 * 86_400_000
+  return {
+    loggedIn: rows.length,
+    extracted: extracted.length,
+    neverExtracted: rows.length - extracted.length,
+    medianDocs: median(extracted.map(r => r.tried ?? 0)),
+    active7d: extracted.filter(r => r.last_use && new Date(r.last_use).getTime() >= activeCutoff)
+      .length,
+  }
+}
 
 function metricLabel(t: ReturnType<typeof useT>['t'], metric: string): string {
   const METRIC_LABELS: Record<string, string> = {
@@ -29,6 +54,7 @@ const TENANTS_LIMIT = 500
 export default function TenantsPage() {
   const { t } = useT()
   const [activeOnly, setActiveOnly] = useState(true)
+  const [neverExtracted, setNeverExtracted] = useState(false)
   const [rows, setRows] = useState<TenantRow[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -39,7 +65,7 @@ export default function TenantsPage() {
 
   const load = () => {
     setLoading(true)
-    fetchTenants({ active_only: activeOnly, limit: TENANTS_LIMIT })
+    fetchTenants({ active_only: activeOnly, limit: TENANTS_LIMIT, include_engagement: true })
       .then(r => {
         setRows(r.data ?? [])
         setTotal(r.total ?? 0)
@@ -77,6 +103,14 @@ export default function TenantsPage() {
     if (!details[id]) loadDetail(id)
   }
 
+  // Funnel counts the whole tenant list; the table can be filtered down to the
+  // never-extracted slice without the KPIs shifting under you.
+  const f = useMemo(() => funnel(rows), [rows])
+  const visibleRows = useMemo(
+    () => (neverExtracted ? rows.filter(r => !(r.tried ?? 0)) : rows),
+    [rows, neverExtracted]
+  )
+
   const columns: Column<TenantRow>[] = [
     {
       key: '_expand',
@@ -96,23 +130,54 @@ export default function TenantsPage() {
     { key: 'host', label: t('admin.tenants.col.host'), sortable: true },
     { key: 'bu_code', label: t('admin.tenants.col.bu'), sortable: true },
     {
-      key: 'plan',
-      label: t('admin.tenants.col.plan'),
-      sortable: true,
-      render: r => <span className="status-badge neutral">{r.plan || '—'}</span>,
-    },
-    {
-      key: 'modules_count',
-      label: t('admin.tenants.col.modules'),
+      key: 'tried',
+      label: t('admin.tenants.col.tried'),
       sortable: true,
       align: 'right',
-      render: r => String(r.modules_count),
+      render: r => String(r.tried ?? 0),
     },
     {
-      key: 'last_used_at',
+      key: 'posted_to_carmen',
+      label: t('admin.tenants.col.posted'),
+      sortable: true,
+      align: 'right',
+      // Extracted but never submitted = they tried it and didn't trust the result.
+      // That is a different problem from not showing up, so it must not look the same.
+      render: r => {
+        const posted = r.posted_to_carmen ?? 0
+        const stale = posted === 0 && (r.tried ?? 0) > 0
+        return <span className={stale ? 'text-danger' : undefined}>{posted}</span>
+      },
+    },
+    {
+      key: 'active_weeks',
+      label: t('admin.tenants.col.activeWeeks'),
+      sortable: true,
+      align: 'right',
+      render: r => String(r.active_weeks ?? 0),
+    },
+    {
+      key: 'days_idle',
+      label: t('admin.tenants.col.daysIdle'),
+      sortable: true,
+      align: 'right',
+      render: r =>
+        r.days_idle === null || r.days_idle === undefined ? (
+          '—'
+        ) : (
+          <span className={r.days_idle > IDLE_WARN_DAYS ? 'text-warn' : undefined}>
+            {r.days_idle}
+          </span>
+        ),
+    },
+    {
+      key: 'last_use',
       label: t('admin.tenants.col.lastActive'),
       sortable: true,
-      render: r => fmtDate(r.last_used_at),
+      // last_use (tasks) over last_used_at (llm_usage_logs): the latter has no row
+      // when the call never reached the model, so it silently skips failed attempts
+      // and overstates idleness for exactly the BUs that churned on failures.
+      render: r => fmtDate(r.last_use ?? r.last_used_at),
     },
     {
       key: 'is_active',
@@ -169,13 +234,40 @@ export default function TenantsPage() {
             />
             {t('admin.tenants.activeOnly')}
           </label>
+          <label className="admin-checkbox-label">
+            <input
+              type="checkbox"
+              checked={neverExtracted}
+              onChange={e => setNeverExtracted(e.target.checked)}
+            />
+            {t('admin.tenants.filter.neverExtracted')}
+          </label>
         </div>
+      </div>
+
+      {/* The funnel is the one thing you cannot get by scanning the table: how many
+          BUs opened the door and did nothing. Derived from the rows already loaded. */}
+      <div className="kpi-grid">
+        <KPICard label={t('admin.tenants.kpi.busLoggedIn')} value={f.loggedIn} loading={loading} />
+        <KPICard
+          label={t('admin.tenants.kpi.busExtracted')}
+          value={f.extracted}
+          loading={loading}
+        />
+        <KPICard
+          label={t('admin.tenants.kpi.busNeverExtracted')}
+          value={f.neverExtracted}
+          accent={f.neverExtracted > 0 ? 'yellow' : 'default'}
+          loading={loading}
+        />
+        <KPICard label={t('admin.tenants.kpi.medianDocs')} value={f.medianDocs} loading={loading} />
+        <KPICard label={t('admin.tenants.kpi.active7d')} value={f.active7d} loading={loading} />
       </div>
 
       <div className="admin-card">
         <DataTable
           columns={columns}
-          rows={rows}
+          rows={visibleRows}
           loading={loading}
           emptyText={t('admin.tenants.empty')}
           expandedRowId={expandedId}
@@ -264,6 +356,9 @@ function TenantDetailPanel({
         <span>
           <strong>{detail.name || detail.host}</strong> · {detail.bu_code}
         </span>
+        {/* plan lives here, not as a column: the engagement columns took the width
+            and plan is a per-tenant constant, not something you scan a list for. */}
+        <span className="status-badge neutral">{detail.plan || '—'}</span>
         {detail.contact_email && <span className="admin-sub-text">{detail.contact_email}</span>}
       </div>
 

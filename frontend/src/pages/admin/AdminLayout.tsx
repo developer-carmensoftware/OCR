@@ -5,7 +5,9 @@ import {
   Bell,
   Bot,
   Building2,
+  ClipboardCheck,
   Coins,
+  FileWarning,
   Gauge,
   LayoutDashboard,
   LogOut,
@@ -34,6 +36,14 @@ interface NavSection {
 
 const ICON_SIZE = 17
 
+/**
+ * Grouped by the question you are asking, not the table the page reads.
+ *
+ * The old "Analytics" and "Management" sections were named after shelves, so
+ * finding the page that answers a question meant already knowing which page that
+ * was. Errors (performance_logs) and Extractions (ocr_tasks) read different tables
+ * and sit together, because "why isn't it working" is one question.
+ */
 function getNavSections(t: ReturnType<typeof useT>['t']): NavSection[] {
   return [
     {
@@ -44,25 +54,75 @@ function getNavSections(t: ReturnType<typeof useT>['t']): NavSection[] {
           hash: '/admin',
           icon: <LayoutDashboard size={ICON_SIZE} strokeWidth={2} />,
         },
+        {
+          label: t('admin.nav.item.anomalies'),
+          hash: '/admin/anomalies',
+          icon: <Bell size={ICON_SIZE} strokeWidth={2} />,
+        },
       ],
     },
     {
-      label: t('admin.nav.section.analytics'),
+      label: t('admin.nav.section.adoption'),
       items: [
+        {
+          label: t('admin.nav.item.tenants'),
+          hash: '/admin/tenants',
+          icon: <Building2 size={ICON_SIZE} strokeWidth={2} />,
+        },
         {
           label: t('admin.nav.item.usage'),
           hash: '/admin/usage',
           icon: <BarChart3 size={ICON_SIZE} strokeWidth={2} />,
         },
         {
-          label: t('admin.nav.item.llmLogs'),
-          hash: '/admin/llm-logs',
-          icon: <Bot size={ICON_SIZE} strokeWidth={2} />,
-        },
-        {
           label: t('admin.nav.item.tenantRanking'),
           hash: '/admin/tenant-ranking',
           icon: <Trophy size={ICON_SIZE} strokeWidth={2} />,
+        },
+        {
+          label: t('admin.nav.item.quotaModules'),
+          hash: '/admin/quota-modules',
+          icon: <Gauge size={ICON_SIZE} strokeWidth={2} />,
+        },
+      ],
+    },
+    {
+      label: t('admin.nav.section.quality'),
+      items: [
+        {
+          label: t('admin.nav.item.extractions'),
+          hash: '/admin/extractions',
+          icon: <FileWarning size={ICON_SIZE} strokeWidth={2} />,
+        },
+        {
+          label: t('admin.nav.item.errors'),
+          hash: '/admin/errors',
+          icon: <AlertCircle size={ICON_SIZE} strokeWidth={2} />,
+        },
+        {
+          label: t('admin.nav.item.performance'),
+          hash: '/admin/performance',
+          icon: <Zap size={ICON_SIZE} strokeWidth={2} />,
+        },
+      ],
+    },
+    {
+      label: t('admin.nav.section.billing'),
+      items: [
+        {
+          label: t('admin.nav.item.credits'),
+          hash: '/admin/credits',
+          icon: <Coins size={ICON_SIZE} strokeWidth={2} />,
+        },
+        {
+          label: t('admin.nav.item.orderQueue'),
+          hash: '/admin/credit-orders',
+          icon: <ClipboardCheck size={ICON_SIZE} strokeWidth={2} />,
+        },
+        {
+          label: t('admin.nav.item.llmLogs'),
+          hash: '/admin/llm-logs',
+          icon: <Bot size={ICON_SIZE} strokeWidth={2} />,
         },
       ],
     },
@@ -78,46 +138,6 @@ function getNavSections(t: ReturnType<typeof useT>['t']): NavSection[] {
           label: t('admin.nav.item.jobs'),
           hash: '/admin/jobs',
           icon: <Settings size={ICON_SIZE} strokeWidth={2} />,
-        },
-        {
-          label: t('admin.nav.item.performance'),
-          hash: '/admin/performance',
-          icon: <Zap size={ICON_SIZE} strokeWidth={2} />,
-        },
-        {
-          label: t('admin.nav.item.errors'),
-          hash: '/admin/errors',
-          icon: <AlertCircle size={ICON_SIZE} strokeWidth={2} />,
-        },
-        {
-          label: t('admin.nav.item.anomalies'),
-          hash: '/admin/anomalies',
-          icon: <Bell size={ICON_SIZE} strokeWidth={2} />,
-        },
-      ],
-    },
-    {
-      label: t('admin.nav.section.billing'),
-      items: [
-        {
-          label: t('admin.nav.item.credits'),
-          hash: '/admin/credits',
-          icon: <Coins size={ICON_SIZE} strokeWidth={2} />,
-        },
-      ],
-    },
-    {
-      label: t('admin.nav.section.management'),
-      items: [
-        {
-          label: t('admin.nav.item.tenants'),
-          hash: '/admin/tenants',
-          icon: <Building2 size={ICON_SIZE} strokeWidth={2} />,
-        },
-        {
-          label: t('admin.nav.item.quotaModules'),
-          hash: '/admin/quota-modules',
-          icon: <Gauge size={ICON_SIZE} strokeWidth={2} />,
         },
       ],
     },

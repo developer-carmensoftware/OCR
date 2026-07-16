@@ -101,6 +101,7 @@ export const API = {
     tenants: `${V1}/admin/tenants`,
     tenant: (tenantId: string) => `${V1}/admin/tenants/${tenantId}`,
     errorBreakdown: `${V1}/admin/error-breakdown`,
+    extractionFailures: `${V1}/admin/extraction-failures`,
     tenantCredits: (tenantId: string) => `${V1}/admin/tenants/${tenantId}/credits`,
     tenantCreditsLedger: (tenantId: string) => `${V1}/admin/tenants/${tenantId}/credits/ledger`,
     tenantCreditsTopup: (tenantId: string) => `${V1}/admin/tenants/${tenantId}/credits/topup`,

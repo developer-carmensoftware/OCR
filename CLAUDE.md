@@ -66,6 +66,46 @@ useAPInvoice hook
   → POST /api/v1/carmen/invoice  submit to Carmen ERP
 ```
 
+### Admin dashboard (`#/admin/*`) — check here before writing SQL
+
+16 pages already exist. **Read this table before hand-querying the DB** — on 2026-07-16
+a full day went into ad-hoc SQL to answer questions that four of these pages already
+answered, purely because nobody knew they were there.
+
+| Question | Page | Reads |
+|---|---|---|
+| What needs me right now? | `#/admin` Overview | LLM calls/cost MTD, error rate, open alerts |
+| | `#/admin/anomalies` | `anomaly_alerts` (+ resolve) |
+| Is the pilot working? | `#/admin/tenants` | per-BU engagement: scanned vs **posted to Carmen**, active weeks, days idle, + adoption funnel |
+| | `#/admin/usage` | date×module×tenant docs/calls/tokens/cost |
+| | `#/admin/tenant-ranking` | rank by cost/error rate/latency/volume |
+| | `#/admin/quota-modules` | **who is at the quota wall, and edits the limit** |
+| Why isn't it working? | `#/admin/extractions` | **why an extraction failed** — `ocr_tasks.error_message`, grouped by cause |
+| | `#/admin/errors` | error *counts* — `ocr_tasks` by module, `performance_logs` 5xx by tenant/endpoint |
+| | `#/admin/performance` | request latency |
+| Who pays / what does it cost? | `#/admin/credits`, `#/admin/credit-orders`, `#/admin/llm-logs` | balances & ledger, order queue, per-call cost |
+| Is the machine running? | `#/admin/sessions`, `#/admin/jobs` | live sessions (+revoke), **`job_runs` cron health** |
+| Who can touch it? | `#/admin/admin-users` | RBAC |
+
+Gotchas worth knowing before trusting a number:
+
+- **`/error-breakdown` switches data source by `group_by`** — `module` reads `ocr_tasks`
+  (real extraction failures); `tenant`/`endpoint` read `performance_logs` 5xx. "Which BU
+  has failing extractions" is **not** answerable there; use Extractions.
+- **Extractions covers post-charge failures only.** A PDF rejected by `ensure_pdf_openable`
+  (password-protected, corrupt) 400s before `create_task` runs, so it never gets an
+  `ocr_tasks` row. Zero on that page ≠ zero in reality.
+- **`tenants.last_used_at` is `max(llm_usage_logs.created_at)`** — blind to attempts that
+  never reached the model. The Tenants page renders task-derived `last_use` instead.
+- **`GET /admin/tenants` needs `include_engagement=true`** for the engagement fields. It is
+  off by default because `TenantSelector` calls the same endpoint on five other pages.
+- Adding a page = 4 edits: `lazy()` in `main.tsx`, an `else if` in `AdminRouter`, a `NavItem`
+  in `AdminLayout.getNavSections`, and `admin.nav.item.*` in **both** `en` and `th` of
+  `i18n/dict.ts` (TS fails the build if TH is missing).
+
+The SQL behind the adoption views lives in [`backend/db/queries.sql`](backend/db/queries.sql)
+items 11–14 — useful for cross-checking a page against the raw numbers.
+
 ---
 
 ## Key Design Decisions
