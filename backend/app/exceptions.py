@@ -22,7 +22,21 @@ class LLMServiceError(RuntimeError):
 
 
 class LLMParseError(RuntimeError):
-    """LLM returned content that could not be parsed as JSON. → 422"""
+    """LLM returned content that could not be parsed as JSON. → 422
+
+    The default message is what the end user reads: `_error_response` puts
+    `str(exc)` straight into the response `detail`, so a bare json.JSONDecodeError
+    here surfaces as "Unterminated string starting at: line 34 column 22" on an
+    accountant's screen.
+    """
+
+    def __init__(
+        self,
+        message: str = (
+            "Could not read this document. Please try again, or upload a clearer photo or PDF."
+        ),
+    ):
+        super().__init__(message)
 
 
 class ExtractionError(RuntimeError):

@@ -11,6 +11,7 @@ import logging
 
 from app.config import settings
 from app.constants import Module
+from app.exceptions import LLMParseError
 from app.llm.client import _strip_code_fences, call_vision_llm
 from app.llm.prompts import get_ocr_prompt
 from app.models import ExtractedCreditCardData
@@ -133,7 +134,11 @@ async def extract_from_image(
         debug_buffer.record(result_text, source="vision_llm")
 
     result_text = _strip_code_fences(result_text)
-    parsed = json.loads(result_text)
+    try:
+        parsed = json.loads(result_text)
+    except json.JSONDecodeError as exc:
+        logger.error("Vision JSON parse failed (%s). Raw: %.500s", exc, result_text)
+        raise LLMParseError() from exc
     data: dict = parsed[0] if isinstance(parsed, list) else parsed
 
     raw_text: str = data.pop("raw_text", "") or ""
