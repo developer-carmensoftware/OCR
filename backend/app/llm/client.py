@@ -428,6 +428,7 @@ async def call_vision_llm(
             module_id=module_id,
             duration_ms=(time.perf_counter() - start) * 1000,
             count_quota=count_quota,
+            call_type="extract",
         )
 
     content = (
@@ -531,6 +532,11 @@ async def call_text_llm(
             task_id=task_id,
             module_id=module_id,
             duration_ms=duration_ms,
+            # Every caller of the text path is a GL-mapping suggestion today
+            # (gl_suggestion_service, ap_invoice_service.suggest_for_items). If a
+            # non-suggestion text call ever lands here, give it its own call_type
+            # rather than letting it inherit this one.
+            call_type="suggest",
         )
 
     content = (

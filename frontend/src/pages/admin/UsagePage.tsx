@@ -15,6 +15,10 @@ interface UsageRow {
   documents: number
   submissions: number
   llm_calls: number
+  /** Vision calls — one per document. */
+  extract_calls: number
+  /** GL-mapping suggestions. Nobody presses a button for these; they ride along with a document. */
+  suggest_calls: number
   tokens: number
   cost_usd: number
   errors: number
@@ -32,7 +36,20 @@ function getCols(t: ReturnType<typeof useT>['t']): Column<UsageRow>[] {
       render: r => r.tenant_name ?? r.tenant_id,
     },
     { key: 'documents', label: t('admin.usage.col.docs'), sortable: true, align: 'right' },
-    { key: 'llm_calls', label: t('admin.usage.col.llmCalls'), sortable: true, align: 'right' },
+    // llm_calls is extract + suggest. Split so "how much did they use" (extract, which
+    // tracks documents) is never read off a number the GL suggestions inflate.
+    {
+      key: 'extract_calls',
+      label: t('admin.usage.col.extractCalls'),
+      sortable: true,
+      align: 'right',
+    },
+    {
+      key: 'suggest_calls',
+      label: t('admin.usage.col.suggestCalls'),
+      sortable: true,
+      align: 'right',
+    },
     { key: 'tokens', label: t('admin.usage.col.tokens'), sortable: true, align: 'right' },
     {
       key: 'cost_usd',
@@ -77,8 +94,10 @@ export default function UsagePage() {
     rows.reduce<Record<string, { date: string; credit_card_ocr: number; ap_invoice: number }>>(
       (acc, r) => {
         if (!acc[r.date]) acc[r.date] = { date: r.date, credit_card_ocr: 0, ap_invoice: 0 }
-        if (r.module_id === 'credit_card_ocr') acc[r.date].credit_card_ocr += r.llm_calls
-        else if (r.module_id === 'ap_invoice') acc[r.date].ap_invoice += r.llm_calls
+        // extract_calls, not llm_calls: this chart is read as "how much are they using
+        // it per day", and the GL suggestions riding along would roughly double it.
+        if (r.module_id === 'credit_card_ocr') acc[r.date].credit_card_ocr += r.extract_calls
+        else if (r.module_id === 'ap_invoice') acc[r.date].ap_invoice += r.extract_calls
         return acc
       },
       {}

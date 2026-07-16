@@ -9,7 +9,7 @@ Uses direct async calls with a mocked AsyncSession — no HTTP stack.
 
 import uuid
 from datetime import UTC, date, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -255,6 +255,53 @@ class TestTenantEngagementMap:
         assert row["tried"] == 5
         assert row["posted_to_carmen"] == 0
         assert row["days_idle"] == 8
+
+
+# ── call_type: extract vs suggest must never blend ───────────────────────────
+
+
+class TestCallTypeSplit:
+    async def test_vision_logs_extract_text_logs_suggest(self):
+        # Both kinds carry the same module_id, so call_type is the only thing keeping
+        # "how much did they use it" apart from "what did we pay for". If either client
+        # stops tagging, every per-module count silently doubles.
+        import inspect
+
+        from app.llm import client
+
+        vision_src = inspect.getsource(client.call_vision_llm)
+        text_src = inspect.getsource(client.call_text_llm)
+        assert 'call_type="extract"' in vision_src
+        assert 'call_type="suggest"' in text_src
+
+    async def test_log_llm_usage_persists_call_type(self):
+        from app.services.llm_usage_logger import log_llm_usage
+
+        captured = {}
+
+        class _Session:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            def add(self, row):
+                captured["row"] = row
+
+            async def commit(self):
+                pass
+
+        with (
+            patch("app.services.llm_usage_logger.async_session", _Session),
+            patch("app.services.llm_usage_logger._get_pricing", AsyncMock(return_value=None)),
+            patch("app.services.llm_usage_logger._ctx", return_value="t-1"),
+        ):
+            await log_llm_usage(
+                model="m", prompt_tokens=1, completion_tokens=1, total_tokens=2, call_type="suggest"
+            )
+
+        assert captured["row"].call_type == "suggest"
 
 
 # ── GET /admin/tenants — the include_engagement default ──────────────────────

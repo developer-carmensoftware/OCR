@@ -57,6 +57,10 @@ class LLMUsageLog(Base):
     total_tokens = Column(Integer, default=0)
     duration_ms = Column(Float, nullable=True)
     cost_usd = Column(Numeric(10, 6), nullable=True)
+    # 'extract' | 'suggest' — both kinds log under the same module_id, so without this
+    # every per-module count/latency blends a 5-12s vision call with a fast text one.
+    # Null only on rows written before the column existed (backfilled by migration).
+    call_type = Column(String(16), nullable=True)
 
 
 class AuditLog(Base):

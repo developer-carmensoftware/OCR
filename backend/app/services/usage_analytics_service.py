@@ -34,9 +34,17 @@ async def get_usage_summary(
             LLMUsageLog.module_id,
             LLMUsageLog.tenant_id,
             func.count(LLMUsageLog.id).label("llm_calls"),
+            # Extract and suggest both carry this module_id, so the total above answers
+            # "what did we pay for" but not "how much did they actually use". Split it.
+            func.sum(case((LLMUsageLog.call_type == "extract", 1), else_=0)).label("extract_calls"),
+            func.sum(case((LLMUsageLog.call_type == "suggest", 1), else_=0)).label("suggest_calls"),
             func.sum(LLMUsageLog.total_tokens).label("tokens"),
             func.sum(LLMUsageLog.cost_usd).label("cost_usd"),
-            func.avg(LLMUsageLog.duration_ms).label("avg_llm_latency_ms"),
+            # Extract only: averaging a 5-12s vision call with a fast text suggestion
+            # produces a number that describes neither.
+            func.avg(case((LLMUsageLog.call_type == "extract", LLMUsageLog.duration_ms))).label(
+                "avg_llm_latency_ms"
+            ),
         )
         .where(LLMUsageLog.created_at >= from_dt, LLMUsageLog.created_at <= to_dt)
         .group_by(
@@ -136,6 +144,8 @@ async def get_usage_summary(
                     (str(r["summary_date"]), r["module_id"], str(r["tenant_id"])), 0
                 ),
                 "llm_calls": int(r["llm_calls"] or 0),
+                "extract_calls": int(r["extract_calls"] or 0),
+                "suggest_calls": int(r["suggest_calls"] or 0),
                 "tokens": int(r["tokens"] or 0),
                 "cost_usd": float(str(r["cost_usd"] or 0)),
                 "errors": task_stats_map.get(
@@ -159,9 +169,18 @@ async def get_usage_totals(
 
     llm_q = select(
         func.count(LLMUsageLog.id).label("total_llm_calls"),
+        func.sum(case((LLMUsageLog.call_type == "extract", 1), else_=0)).label(
+            "total_extract_calls"
+        ),
+        func.sum(case((LLMUsageLog.call_type == "suggest", 1), else_=0)).label(
+            "total_suggest_calls"
+        ),
         func.sum(LLMUsageLog.total_tokens).label("total_tokens"),
         func.sum(LLMUsageLog.cost_usd).label("total_cost_usd"),
-        func.avg(LLMUsageLog.duration_ms).label("avg_llm_latency_ms"),
+        # Extract only — see get_usage_summary.
+        func.avg(case((LLMUsageLog.call_type == "extract", LLMUsageLog.duration_ms))).label(
+            "avg_llm_latency_ms"
+        ),
     ).where(LLMUsageLog.created_at >= from_dt, LLMUsageLog.created_at <= to_dt)
     if tenant_id:
         llm_q = llm_q.where(LLMUsageLog.tenant_id == tenant_id)
@@ -198,6 +217,8 @@ async def get_usage_totals(
         "documents": int(task_row.get("total_documents") or 0),
         "submissions": cc_count + ap_count,
         "llm_calls": int(llm_row.get("total_llm_calls") or 0),
+        "extract_calls": int(llm_row.get("total_extract_calls") or 0),
+        "suggest_calls": int(llm_row.get("total_suggest_calls") or 0),
         "tokens": int(llm_row.get("total_tokens") or 0),
         "cost_usd": float(llm_row.get("total_cost_usd") or 0),
         "avg_llm_latency_ms": round(float(llm_row.get("avg_llm_latency_ms") or 0), 2),

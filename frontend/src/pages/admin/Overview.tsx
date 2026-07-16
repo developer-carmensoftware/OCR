@@ -69,8 +69,11 @@ export default function Overview() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId])
 
+  // errors counts FAILED ocr_tasks, so the denominator must be documents. It used to be
+  // llm_calls, which is extract + GL-suggestion calls: the suggestions inflated the
+  // denominator and quietly understated the real failure rate.
   const errorRate =
-    totals.llm_calls > 0 ? ((totals.errors / totals.llm_calls) * 100).toFixed(1) + '%' : '—'
+    totals.documents > 0 ? ((totals.errors / totals.documents) * 100).toFixed(1) + '%' : '—'
 
   return (
     <div className="admin-page">
