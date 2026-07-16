@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 from app.config import settings
 from app.constants import ExpenseAccounts, Module
-from app.exceptions import ValidationError
+from app.exceptions import LLMParseError, ValidationError
 from app.llm.client import _strip_code_fences, call_text_llm, call_vision_llm
 from app.llm.prompts.ap_invoice import PROMPT as AP_INVOICE_PROMPT
 from app.llm.prompts.mapping import build_ap_expense_prompt
@@ -238,9 +238,9 @@ async def extract_ap_invoice_data(
 
     try:
         data = json.loads(result_text)
-    except json.JSONDecodeError:
-        logger.error(f"JSON Decode Error. Raw text: {result_text[:500]}")
-        raise RuntimeError("LLM returned invalid JSON")
+    except json.JSONDecodeError as exc:
+        logger.error("AP JSON parse failed (%s). Raw: %.500s", exc, result_text)
+        raise LLMParseError() from exc
 
     return postprocess_ap_invoice(data)
 
