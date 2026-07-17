@@ -94,17 +94,23 @@ async def get_tenants_quota_overview(
             }
         )
 
-    # Enabled modules per tenant, bulk
+    # Module rows per tenant, bulk — BOTH enabled states. Enforcement is opt-out: a
+    # module is available unless there is an explicit enabled=False row, so the UI needs
+    # the disabled set to render the switch truthfully (no row = ON, not OFF).
     mod_rows = await db.execute(
-        select(TenantModule.tenant_id, TenantModule.module_id).where(
-            TenantModule.tenant_id.in_(tenant_ids), TenantModule.enabled.is_(True)
+        select(TenantModule.tenant_id, TenantModule.module_id, TenantModule.enabled).where(
+            TenantModule.tenant_id.in_(tenant_ids)
         )
     )
     modules_by_tenant: dict[str, list[dict]] = {}
-    for tid, mid in mod_rows.all():
-        modules_by_tenant.setdefault(str(tid), []).append(
-            {"id": mid, "display_name": module_display.get(mid, mid)}
-        )
+    modules_disabled_by_tenant: dict[str, list[str]] = {}
+    for tid, mid, enabled in mod_rows.all():
+        if enabled:
+            modules_by_tenant.setdefault(str(tid), []).append(
+                {"id": mid, "display_name": module_display.get(mid, mid)}
+            )
+        else:
+            modules_disabled_by_tenant.setdefault(str(tid), []).append(mid)
 
     # Per-tenant, per-module usage over the selected window, bulk
     usage_q = (
@@ -165,6 +171,7 @@ async def get_tenants_quota_overview(
             "is_active": t.is_active,
             "quotas": quotas_by_tenant.get(str(t.id), []),
             "modules_enabled": modules_by_tenant.get(str(t.id), []),
+            "modules_disabled": modules_disabled_by_tenant.get(str(t.id), []),
             "usage_by_module": usage_by_tenant.get(str(t.id), []),
             "subscription": subs_by_tenant.get(str(t.id)),
             "credit_balance": credit_by_tenant.get(str(t.id), 0),

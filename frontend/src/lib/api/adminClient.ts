@@ -599,6 +599,9 @@ export interface TenantQuotaOverviewRow {
   is_active: boolean
   quotas: QuotaRow[]
   modules_enabled: ModuleCatalogEntry[]
+  /** Module ids with an explicit enabled=false row. Enforcement is opt-out: everything
+   *  not in this list is available, whether or not a row exists. */
+  modules_disabled: string[]
   usage_by_module: ModuleUsageRow[]
   /** The active paid plan, charged before free quota. null when none is in-window. */
   subscription: TenantSubscriptionSummary | null

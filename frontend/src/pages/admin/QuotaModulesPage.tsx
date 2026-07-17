@@ -159,7 +159,9 @@ export default function QuotaModulesPage() {
     const a = activeBucket(r)
     return a !== null && a.pct >= 80
   }).length
-  const modulesEnabledCount = rows.reduce((sum, r) => sum + r.modules_enabled.length, 0)
+  // Under opt-out, "modules enabled" summed across tenants is meaningless (everyone has
+  // everything). The signal that matters is how many tenants have a module turned off.
+  const modulesRestrictedCount = rows.filter(r => r.modules_disabled.length > 0).length
   const moduleUsageChart = modulesCatalog.map(m => ({
     module: m.display_name,
     // scans, not blended calls — matches the Usage column and the page framing.
@@ -242,14 +244,18 @@ export default function QuotaModulesPage() {
     {
       key: 'modules_enabled',
       label: t('admin.quotas.col.modules'),
+      // Everything is available by default, so the useful signal is the exceptions —
+      // which modules an admin has turned OFF. "All enabled" is the normal state.
       render: r =>
-        r.modules_enabled.length === 0 ? (
-          <span className="admin-sub-text">{t('admin.quotas.none')}</span>
+        r.modules_disabled.length === 0 ? (
+          <span className="admin-sub-text">{t('admin.quotas.allEnabled')}</span>
         ) : (
           <div className="tenant-chips">
-            {r.modules_enabled.map(m => (
-              <span key={m.id} className="tenant-chip">
-                {m.display_name}
+            {r.modules_disabled.map(id => (
+              <span key={id} className="tenant-chip danger">
+                {t('admin.quotas.moduleOff', {
+                  name: modulesCatalog.find(m => m.id === id)?.display_name ?? id,
+                })}
               </span>
             ))}
           </div>
@@ -347,7 +353,10 @@ export default function QuotaModulesPage() {
         <h4>{t('admin.quotas.detail.modules')}</h4>
         <div className="module-toggle-list">
           {modulesCatalog.map(m => {
-            const enabled = row.modules_enabled.some(em => em.id === m.id)
+            // Opt-out: a module is ON unless explicitly disabled. No row = ON, matching
+            // the extract-time gate — otherwise the switch would read OFF for tenants
+            // who can actually scan.
+            const enabled = !row.modules_disabled.includes(m.id)
             return (
               <Switch
                 key={m.id}
@@ -422,8 +431,9 @@ export default function QuotaModulesPage() {
                   loading={loading}
                 />
                 <KPICard
-                  label={t('admin.quotas.kpi.modulesEnabled')}
-                  value={modulesEnabledCount}
+                  label={t('admin.quotas.kpi.modulesRestricted')}
+                  value={modulesRestrictedCount}
+                  accent={modulesRestrictedCount > 0 ? 'yellow' : 'default'}
                   icon={<Layers size={18} strokeWidth={2} />}
                   loading={loading}
                 />
