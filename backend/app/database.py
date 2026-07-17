@@ -167,10 +167,6 @@ async def ensure_db() -> None:
     _DB_INITIALIZED = True
 
 
-async def init_db() -> None:
-    await ensure_db()
-
-
 # ── Backward-compat aliases ───────────────────────────────────────────────────
 
 

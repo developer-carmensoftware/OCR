@@ -185,7 +185,7 @@ sequenceDiagram
 
     Router->>Svc: extract(file_bytes, bank_code, hints)
     activate Svc
-    Svc->>Svc: preprocess_image() — Pillow resize, keep color
+    Svc->>Svc: resize_if_needed() — Pillow resize, keep color
     Svc->>Prompts: get_ocr_prompt(bank_code, hints)
     Note right of Prompts: hints appended as CORRECTION NOTES<br/>if any field error_rate > 10%
     Prompts-->>Svc: bank-specific prompt + optional hints

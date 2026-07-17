@@ -54,7 +54,8 @@ async def test_starter_pack_posts_524_30_not_double_vated_561():
             pack_code="sub_starter",
             pack_description="Starter Plan — 200 credits/month",
             credits=200,
-            # sub_starter.price_thb seed value — net, per VAT_NOTE ("Prices exclude 7% VAT").
+            # sub_starter.price_thb seed value — net, per i18n `checkout.vatNote`
+            # ("Prices exclude 7% VAT").
             amount_thb=Decimal("490"),
             buyer=BuyerInfo(
                 name="Camen Cloud Co.,Ltd.",
