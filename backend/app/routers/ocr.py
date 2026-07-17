@@ -27,6 +27,7 @@ from app.services.correction_service import get_correction_hints
 from app.services.credit_card_service import finalize_extraction, mark_task_failed
 from app.services.credit_service import consume_document, refund_document
 from app.services.file_service import file_service
+from app.services.quota_service import assert_module_enabled
 from app.services.task_service import create_task
 from app.utils.client_ip import get_client_ip
 from app.utils.date_parsing import format_doc_date
@@ -101,6 +102,10 @@ async def extract_card(
         file_bytes, effective_name = await file_service.validate_and_read(upload_file)
         await ensure_pdf_openable(file_bytes, effective_name, pdf_password)
         file_data.append((effective_name, file_bytes))
+
+    # Access gate before any charge: if an admin disabled this module for the tenant,
+    # 403 here so no credit is consumed (same pre-charge placement as the PDF check).
+    await assert_module_enabled(Module.CREDIT_CARD_OCR)
 
     # Charge one document credit per file — each file gets its own extraction and
     # LLM call, so a 30-file batch must cost 30, not 1. The whole batch draws from a

@@ -1281,6 +1281,13 @@ body:has(.admin-login-page) {
   color: var(--text-2);
 }
 
+/* A turned-off module — the exception worth flagging on an opt-out page. */
+.tenant-chip.danger {
+  background: var(--danger-bg, rgba(244, 63, 94, 0.12));
+  border-color: var(--danger, #f43f5e);
+  color: var(--danger, #f43f5e);
+}
+
 .tenant-quota-list {
   display: flex;
   flex-direction: column;
@@ -1353,6 +1360,14 @@ body:has(.admin-login-page) {
 
 .quota-cell {
   min-width: 170px;
+}
+
+/* Usage cell: scans headline with suggestions as a quiet second line. */
+.quota-usage-cell {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
 }
 
 .quota-manage-list {

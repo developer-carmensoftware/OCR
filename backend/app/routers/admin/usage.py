@@ -211,3 +211,29 @@ async def error_breakdown(
     tid = _resolve_tenant(admin, tenant_id)
     data = await svc.get_error_breakdown(db, group_by, period_hours, tid, limit)
     return {"group_by": group_by, "period_hours": period_hours, "data": data}
+
+
+@router.get("/extraction-failures")
+async def extraction_failures(
+    from_date: date | None = Query(None, alias="from"),
+    to_date: date | None = Query(None, alias="to"),
+    module_id: str | None = Query(None),
+    tenant_id: str | None = Query(None),
+    limit: int = Query(500, le=500),
+    db: AsyncSession = Depends(get_db),
+    admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
+):
+    """Failed extractions with their error_message — the "why" behind the error
+    counts on /error-breakdown, which only reports totals.
+
+    Deliberately returns raw rows and no grouping: at pilot volume the caller groups
+    them client-side, so filtering or regrouping costs no round-trip.
+    """
+    if not from_date:
+        from_date = date.today().replace(day=1)
+    if not to_date:
+        to_date = date.today()
+    _assert_date_range(from_date, to_date)
+    tid = _resolve_tenant(admin, tenant_id)
+    result = await svc.get_extraction_failures(db, from_date, to_date, tid, module_id, limit)
+    return {"tenant_id": tid, "from": str(from_date), "to": str(to_date), **result}

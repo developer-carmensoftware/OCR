@@ -14,16 +14,36 @@ from app.models.catalog import Module, TenantModule
 from app.models.identity import Tenant
 from app.models.observability import LLMUsageLog
 from app.services.quota_service import get_quota_summary
+from app.services.usage_analytics_service import get_tenant_engagement_map
 
 from .deps import require_permission
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# Defaults for a tenant that has never run an extraction. Spread under the real
+# aggregates so every row carries the same keys and the frontend never branches on
+# undefined — "logged in, never extracted" reads as 0, not as missing data.
+_NO_ENGAGEMENT: dict = {
+    "tried": 0,
+    "ok": 0,
+    "failed": 0,
+    "posted_to_carmen": 0,
+    "users": 0,
+    "active_days": 0,
+    "active_weeks": 0,
+    "first_use": None,
+    "last_use": None,
+    "days_idle": None,
+    "credit_card": 0,
+    "ap_invoice": 0,
+}
+
 
 @router.get("/tenants")
 async def list_tenants(
     active_only: bool = Query(True),
+    include_engagement: bool = Query(False),
     limit: int = Query(200, le=500),
     db: AsyncSession = Depends(get_db),
     admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
@@ -33,6 +53,12 @@ async def list_tenants(
     Scoped admins see only their assigned tenant.
     Global admins see all tenants with last-usage timestamp from llm_usage_logs
     and a count of enabled modules.
+
+    include_engagement adds per-tenant task aggregates (tried/ok/failed/
+    posted_to_carmen/active_weeks/days_idle/...). It is OFF by default because
+    TenantSelector calls this endpoint on five other admin pages purely to fill a
+    <select> that reads id/name/host/bu_code — they must not pay for three extra
+    aggregate queries. With it off the response is byte-identical to before.
     """
 
     def _apply_filters(stmt):
@@ -56,6 +82,7 @@ async def list_tenants(
 
     last_used_map: dict[str, str] = {}
     modules_count_map: dict[str, int] = {}
+    engagement_map: dict[str, dict] = {}
     if tenants:
         tenant_ids = [str(t.id) for t in tenants]
         tenant_uuids = [t.id for t in tenants]
@@ -83,6 +110,9 @@ async def list_tenants(
         mod_result = await db.execute(mod_q)
         modules_count_map = {str(r.tid): r.n for r in mod_result.mappings().all()}
 
+        if include_engagement:
+            engagement_map = await get_tenant_engagement_map(db, tenant_uuids)
+
     return {
         "total": total,
         "data": [
@@ -97,6 +127,13 @@ async def list_tenants(
                 "modules_count": modules_count_map.get(str(t.id), 0),
                 "last_used_at": last_used_map.get(str(t.id)),
                 "created_at": t.created_at.isoformat() if t.created_at else None,
+                # A tenant with no tasks is absent from engagement_map — the zeros
+                # below are the "logged in, never extracted" row.
+                **(
+                    {**_NO_ENGAGEMENT, **engagement_map.get(str(t.id), {})}
+                    if include_engagement
+                    else {}
+                ),
             }
             for t in tenants
         ],

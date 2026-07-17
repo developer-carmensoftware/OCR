@@ -28,9 +28,14 @@ async def log_llm_usage(
     module_id: str | None = None,
     duration_ms: float | None = None,
     count_quota: bool = False,
+    call_type: str | None = None,
 ) -> None:
     """
     Insert one LLMUsageLog row for cost tracking.
+
+    `call_type` is 'extract' or 'suggest'. Both kinds carry the same module_id, so
+    without it every per-module count blends one-call-per-document extracts with the
+    GL-mapping suggestions nobody explicitly asked for.
 
     Note: `count_quota` is retained for API compatibility but is a no-op —
     quota consumption is performed atomically at the start of each extract
@@ -58,6 +63,7 @@ async def log_llm_usage(
                     total_tokens=total_tokens,
                     duration_ms=duration_ms,
                     cost_usd=cost_usd,
+                    call_type=call_type,
                 )
             )
             await db.commit()

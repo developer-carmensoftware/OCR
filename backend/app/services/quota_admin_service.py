@@ -9,18 +9,19 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import cast
 
-from sqlalchemy import func, select, text, tuple_
+from sqlalchemy import case, func, select, text, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.admin_session import AdminPrincipal
 from app.exceptions import NotFoundError, ValidationError
-from app.models.billing import Quota, QuotaUsage
+from app.models.billing import Quota, QuotaUsage, TenantCredit
 from app.models.catalog import Module, TenantModule
 from app.models.enums import QuotaPeriod
 from app.models.identity import Tenant
 from app.models.observability import LLMUsageLog
 from app.services.audit_service import AuditAction, log_admin_action
+from app.services.credit_service import active_subscription_map
 from app.services.quota_service import period_key
 
 
@@ -93,17 +94,23 @@ async def get_tenants_quota_overview(
             }
         )
 
-    # Enabled modules per tenant, bulk
+    # Module rows per tenant, bulk — BOTH enabled states. Enforcement is opt-out: a
+    # module is available unless there is an explicit enabled=False row, so the UI needs
+    # the disabled set to render the switch truthfully (no row = ON, not OFF).
     mod_rows = await db.execute(
-        select(TenantModule.tenant_id, TenantModule.module_id).where(
-            TenantModule.tenant_id.in_(tenant_ids), TenantModule.enabled.is_(True)
+        select(TenantModule.tenant_id, TenantModule.module_id, TenantModule.enabled).where(
+            TenantModule.tenant_id.in_(tenant_ids)
         )
     )
     modules_by_tenant: dict[str, list[dict]] = {}
-    for tid, mid in mod_rows.all():
-        modules_by_tenant.setdefault(str(tid), []).append(
-            {"id": mid, "display_name": module_display.get(mid, mid)}
-        )
+    modules_disabled_by_tenant: dict[str, list[str]] = {}
+    for tid, mid, enabled in mod_rows.all():
+        if enabled:
+            modules_by_tenant.setdefault(str(tid), []).append(
+                {"id": mid, "display_name": module_display.get(mid, mid)}
+            )
+        else:
+            modules_disabled_by_tenant.setdefault(str(tid), []).append(mid)
 
     # Per-tenant, per-module usage over the selected window, bulk
     usage_q = (
@@ -111,6 +118,11 @@ async def get_tenants_quota_overview(
             LLMUsageLog.tenant_id.label("tid"),
             LLMUsageLog.module_id.label("mid"),
             func.count(LLMUsageLog.id).label("calls"),
+            # scans (extract) is the number comparable to quota — one per document
+            # attempted. suggestions ride along and never touch quota. Splitting them
+            # here is what lets the page stop showing a blended count next to "6/30".
+            func.sum(case((LLMUsageLog.call_type == "extract", 1), else_=0)).label("scans"),
+            func.sum(case((LLMUsageLog.call_type == "suggest", 1), else_=0)).label("suggestions"),
             func.sum(LLMUsageLog.total_tokens).label("tokens"),
             func.sum(LLMUsageLog.cost_usd).label("cost"),
         )
@@ -129,10 +141,25 @@ async def get_tenants_quota_overview(
                 "module_id": r["mid"],
                 "display_name": module_display.get(r["mid"], r["mid"]),
                 "calls": int(r["calls"] or 0),
+                "scans": int(r["scans"] or 0),
+                "suggestions": int(r["suggestions"] or 0),
                 "tokens": int(r["tokens"] or 0),
                 "cost_usd": float(r["cost"] or 0),
             }
         )
+
+    # The page charges subscription → free → top-up, so a subscribed tenant's free quota
+    # bar is frozen while real usage lands on the subscription. Surface both extra buckets
+    # so the moving one is visible. Bulk, keyed by str(tenant_id).
+    subs_by_tenant = await active_subscription_map(db, tenant_ids)
+    credit_rows = (
+        await db.execute(
+            select(TenantCredit.tenant_id, TenantCredit.balance).where(
+                TenantCredit.tenant_id.in_(tenant_ids)
+            )
+        )
+    ).all()
+    credit_by_tenant = {str(tid): int(bal or 0) for tid, bal in credit_rows}
 
     data = [
         {
@@ -144,7 +171,10 @@ async def get_tenants_quota_overview(
             "is_active": t.is_active,
             "quotas": quotas_by_tenant.get(str(t.id), []),
             "modules_enabled": modules_by_tenant.get(str(t.id), []),
+            "modules_disabled": modules_disabled_by_tenant.get(str(t.id), []),
             "usage_by_module": usage_by_tenant.get(str(t.id), []),
+            "subscription": subs_by_tenant.get(str(t.id)),
+            "credit_balance": credit_by_tenant.get(str(t.id), 0),
         }
         for t in tenants
     ]

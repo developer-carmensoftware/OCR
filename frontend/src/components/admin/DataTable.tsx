@@ -1,4 +1,5 @@
 import { Fragment, useState } from 'react'
+import { useT } from '../../i18n/LanguageContext'
 
 const SKELETON_WIDTHS = [
   'sk-w-72',
@@ -49,11 +50,15 @@ export default function DataTable<T = Record<string, unknown>>({
   columns,
   rows,
   pageSize = 50,
-  emptyText = 'No data',
+  emptyText,
   loading = false,
   expandedRowId,
   renderExpandedRow,
 }: DataTableProps<T>) {
+  // The pagination controls and the empty fallback used to be hardcoded English,
+  // so every admin page rendered "‹ Prev / Next › / of" untranslated no matter what
+  // the language toggle said. Fixing it here fixes all 11 callers at once.
+  const { t } = useT()
   const [page, setPage] = useState(0)
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortAsc, setSortAsc] = useState(true)
@@ -151,7 +156,7 @@ export default function DataTable<T = Record<string, unknown>>({
           {paginated.length === 0 ? (
             <tr>
               <td colSpan={columns.length} className="admin-td-empty">
-                {emptyText}
+                {emptyText ?? t('admin.common.table.noData')}
               </td>
             </tr>
           ) : (
@@ -189,7 +194,11 @@ export default function DataTable<T = Record<string, unknown>>({
       {pages > 1 && (
         <div className="admin-table-pagination">
           <span className="pagination-info">
-            {start + 1}–{Math.min(start + pageSize, total)} of {total}
+            {t('admin.common.table.range', {
+              from: start + 1,
+              to: Math.min(start + pageSize, total),
+              total,
+            })}
           </span>
           <button
             type="button"
@@ -197,7 +206,7 @@ export default function DataTable<T = Record<string, unknown>>({
             onClick={() => setPage(p => p - 1)}
             className="pagination-btn"
           >
-            ‹ Prev
+            {t('admin.common.table.prev')}
           </button>
           <button
             type="button"
@@ -205,7 +214,7 @@ export default function DataTable<T = Record<string, unknown>>({
             onClick={() => setPage(p => p + 1)}
             className="pagination-btn"
           >
-            Next ›
+            {t('admin.common.table.next')}
           </button>
         </div>
       )}
