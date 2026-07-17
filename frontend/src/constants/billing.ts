@@ -51,8 +51,8 @@ export const PLAN_INCLUDES = [
 /** One-time top-up packs — credits never expire, used after the monthly quota. */
 export const PACK_META: Record<string, PackPresentation> = {
   pack_small: { name: 'Small' },
-  pack_medium: { name: 'Medium', badge: 'Best value' },
-  pack_large: { name: 'Large' },
+  pack_medium: { name: 'Medium' },
+  pack_large: { name: 'Large', badge: 'Best value' },
 }
 
 /**
