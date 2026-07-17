@@ -63,7 +63,7 @@ export function PlanCard({
   const annualTotal = pack.price_annual_thb ?? pack.price_thb * 12
   const monthlyEquivalent = annual ? annualTotal / 12 : pack.price_thb
   const savePct = annual ? Math.round((1 - monthlyEquivalent / pack.price_thb) * 100) : 0
-  const rate = perDoc(pack.price_thb, pack.credits)
+  const rate = perDoc(annual ? monthlyEquivalent : pack.price_thb, pack.credits)
   const icon = TIER_ICONS[pack.code]
   return (
     <div className={`plan-card${meta.highlight ? ' is-highlight' : ''}`} data-tier={pack.code}>
@@ -91,16 +91,15 @@ export function PlanCard({
         </span>
         <span className="plan-price-period">{t('plan.perMonth')}</span>
       </div>
-      {annual ? (
+      {annual && (
         <p className="plan-rate">
           {t('plan.billedYearly', { total: formatThb(annualTotal) })}{' '}
           <span className="plan-save">{t('plan.saveAnnualPct', { pct: savePct })}</span>
         </p>
-      ) : (
-        <p className="plan-rate">
-          ≈ <span className="text-mono">฿{formatThb(rate, true)}</span> {t('plan.perDoc')}
-        </p>
       )}
+      <p className="plan-rate">
+        ≈ <span className="text-mono">฿{formatThb(rate, true)}</span> {t('plan.perDoc')}
+      </p>
 
       <button
         type="button"
