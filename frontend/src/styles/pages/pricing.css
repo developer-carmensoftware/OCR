@@ -1278,6 +1278,7 @@
 .pack-card-rate {
   font-size: 0.78rem;
   color: var(--text-2);
+  white-space: nowrap;
 }
 
 /* ─── Trust strip (quiet reassurance, closes the page) ─── */
