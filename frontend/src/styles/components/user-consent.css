@@ -215,6 +215,11 @@
   margin: 0;
 }
 
+/* --primary-dark is near-black in dark palette → invisible on the tinted bg */
+[data-theme='dark'] .uc-callout-text {
+  color: var(--text-2);
+}
+
 /* ── Footer ── */
 .uc-footer {
   border-top: 1px solid var(--border);
