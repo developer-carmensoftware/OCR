@@ -94,6 +94,19 @@ async def get_payment_info(db: AsyncSession) -> dict[str, str]:
     }
 
 
+async def get_vat_rate(db: AsyncSession) -> Decimal:
+    """`billing.vat_rate` ('7') as the fraction vat_on_top wants (Decimal('0.07')).
+
+    The single source for every VAT figure on an order. `credit_orders.amount_thb`
+    (what the buyer is told to transfer) and `billing_documents.total` (what post_ar
+    sends to Carmen as the AR entry) are computed in two different modules — both
+    read the rate from here so they cannot disagree the moment the config moves off
+    the 7 that vat_on_top happens to default to.
+    """
+    cfg = await _fetch_billing_configs(db)
+    return Decimal(cfg.get("billing.vat_rate") or "7") / 100
+
+
 async def get_promptpay_id(db: AsyncSession) -> str:
     """Return the configured PromptPay ID, or '' if not set."""
     cfg = await _fetch_billing_configs(db)
@@ -151,7 +164,7 @@ async def issue_document(
         buyer: Dict with name/tax_id/address/branch (all optional).
     """
     seller = await get_seller_snapshot(db)
-    vat_rate = Decimal(seller.get("vat_rate") or "7") / 100
+    vat_rate = await get_vat_rate(db)
     subtotal, vat_amount, total = vat_on_top(amount_thb, vat_rate)
     number = await _next_document_number(db)
 

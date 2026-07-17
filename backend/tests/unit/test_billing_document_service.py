@@ -19,6 +19,7 @@ from app.services.billing.documents import (
     get_last_buyer_info,
     get_promptpay_id,
     get_seller_snapshot,
+    get_vat_rate,
     issue_document,
 )
 
@@ -148,6 +149,48 @@ async def test_issue_document_proforma_vat_math():
     assert doc.doc_type == BillingDocumentType.PROFORMA
     assert doc.number == "PF-202606-0001"
     assert db.add.called
+
+
+@pytest.mark.asyncio
+async def test_issue_document_uses_the_configured_vat_rate():
+    """The other half of the single-source invariant: routers/credits.py prices the
+    order with get_vat_rate(), and the proforma must be issued at that same rate.
+    Both read billing.vat_rate, so amount_thb and total cannot drift apart.
+    """
+    db = _make_db()
+    with (
+        patch(
+            "app.services.billing.documents._fetch_billing_configs",
+            new=AsyncMock(return_value={"billing.vat_rate": "10"}),
+        ),
+        patch(
+            "app.services.billing.documents._next_document_number",
+            new=AsyncMock(return_value="PF-202606-0002"),
+        ),
+    ):
+        doc = await issue_document(
+            db,
+            tenant_id="t-1",
+            order_id="o-1",
+            doc_type=BillingDocumentType.PROFORMA,
+            pack_code="starter",
+            pack_description="500 credits",
+            credits=500,
+            amount_thb=Decimal("990"),
+            buyer=BuyerInfo(name="Buyer Co"),
+        )
+
+    # 1059.30 here would mean vat_on_top's 7% default won over the config.
+    assert doc.vat_amount == Decimal("99.00")
+    assert doc.total == Decimal("1089.00")
+
+
+@pytest.mark.asyncio
+async def test_get_vat_rate_returns_fraction_and_defaults_to_seven():
+    db = _make_db(all_rows=[("billing.vat_rate", '"10"')])
+    assert await get_vat_rate(db) == Decimal("0.10")
+    # Unset config → the 7% the catalog copy promises, not a crash.
+    assert await get_vat_rate(_make_db(all_rows=[])) == Decimal("0.07")
 
 
 @pytest.mark.asyncio
