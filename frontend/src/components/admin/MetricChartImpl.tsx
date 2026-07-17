@@ -38,6 +38,19 @@ export interface MetricChartProps {
 
 const FALLBACK_COLORS = ['#6366f1', '#22d3ee', '#f59e0b', '#10b981', '#f43f5e', '#a78bfa']
 
+// recharts renders SVG it can't read CSS vars from, and its Tooltip/axis default
+// to a white box + gray text that ignore dark mode. Feed it theme tokens explicitly.
+const axisTick = { fontSize: 11, fill: 'var(--text-3)' }
+const tooltipStyle = {
+  background: 'var(--card-bg)',
+  border: '1px solid var(--border)',
+  borderRadius: 8,
+  color: 'var(--text)',
+  fontSize: 12,
+}
+const tooltipItemStyle = { color: 'var(--text-2)' }
+const tooltipLabelStyle = { color: 'var(--text-3)' }
+
 export default function MetricChart({
   type,
   data,
@@ -88,7 +101,12 @@ export default function MetricChart({
               />
             ))}
           </Pie>
-          <Tooltip formatter={fmt as never} />
+          <Tooltip
+            formatter={fmt as never}
+            contentStyle={tooltipStyle}
+            itemStyle={tooltipItemStyle}
+            labelStyle={tooltipLabelStyle}
+          />
           <Legend />
         </PieChart>
       </ResponsiveContainer>
@@ -100,9 +118,14 @@ export default function MetricChart({
       <ResponsiveContainer width="100%" height={height}>
         <LineChart data={data} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle, #e5e7eb)" />
-          <XAxis dataKey={xKey} tick={{ fontSize: 11 }} />
-          <YAxis tickFormatter={fmt} tick={{ fontSize: 11 }} width={56} />
-          <Tooltip formatter={fmt as never} />
+          <XAxis dataKey={xKey} tick={axisTick} />
+          <YAxis tickFormatter={fmt} tick={axisTick} width={56} />
+          <Tooltip
+            formatter={fmt as never}
+            contentStyle={tooltipStyle}
+            itemStyle={tooltipItemStyle}
+            labelStyle={tooltipLabelStyle}
+          />
           {series.length > 1 && <Legend />}
           {series.map(s => (
             <Line
@@ -125,9 +148,14 @@ export default function MetricChart({
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle, #e5e7eb)" />
-        <XAxis dataKey={xKey} tick={{ fontSize: 11 }} />
-        <YAxis tickFormatter={fmt} tick={{ fontSize: 11 }} width={56} />
-        <Tooltip formatter={fmt as never} />
+        <XAxis dataKey={xKey} tick={axisTick} />
+        <YAxis tickFormatter={fmt} tick={axisTick} width={56} />
+        <Tooltip
+          formatter={fmt as never}
+          contentStyle={tooltipStyle}
+          itemStyle={tooltipItemStyle}
+          labelStyle={tooltipLabelStyle}
+        />
         {series.length > 1 && <Legend />}
         {series.map(s => (
           <Bar

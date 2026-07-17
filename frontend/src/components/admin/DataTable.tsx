@@ -138,18 +138,37 @@ export default function DataTable<T = Record<string, unknown>>({
       <table className="admin-table">
         <thead>
           <tr>
-            {columns.map(col => (
-              <th
-                key={String(col.key)}
-                className={`admin-th${col.sortable ? ' sortable' : ''}${col.align === 'right' ? ' text-right' : ''}`}
-                onClick={col.sortable ? () => handleSort(String(col.key)) : undefined}
-              >
-                {col.label}
-                {col.sortable && sortKey === String(col.key) && (
-                  <span className="sort-icon">{sortAsc ? ' ↑' : ' ↓'}</span>
-                )}
-              </th>
-            ))}
+            {columns.map(col => {
+              const isSorted = sortKey === String(col.key)
+              return (
+                <th
+                  key={String(col.key)}
+                  className={`admin-th${col.sortable ? ' sortable' : ''}${col.align === 'right' ? ' text-right' : ''}`}
+                  aria-sort={
+                    col.sortable
+                      ? isSorted
+                        ? sortAsc
+                          ? 'ascending'
+                          : 'descending'
+                        : 'none'
+                      : undefined
+                  }
+                >
+                  {col.sortable ? (
+                    <button
+                      type="button"
+                      className="admin-th-sort"
+                      onClick={() => handleSort(String(col.key))}
+                    >
+                      {col.label}
+                      {isSorted && <span className="sort-icon">{sortAsc ? ' ↑' : ' ↓'}</span>}
+                    </button>
+                  ) : (
+                    col.label
+                  )}
+                </th>
+              )
+            })}
           </tr>
         </thead>
         <tbody>
