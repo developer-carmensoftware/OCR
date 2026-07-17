@@ -290,16 +290,9 @@ body:has(.admin-login-page) {
   line-height: 1.15;
 }
 
-.admin-page-title::before {
-  content: '';
-  display: inline-block;
-  width: 4px;
-  height: 1.2rem;
-  background: linear-gradient(180deg, var(--primary), var(--teal));
-  border-radius: 4px;
-  margin-right: 0.7rem;
-  vertical-align: -2px;
-}
+/* Accent bar dropped so pages on the old .admin-page-* header match the newer
+   .ui-page-* kit (which deliberately has no bar) — one page-title vocabulary,
+   no visual jump when navigating between migrated and un-migrated pages. */
 
 .admin-page-controls {
   display: flex;
@@ -351,7 +344,6 @@ body:has(.admin-login-page) {
   height: 6px;
   border-radius: 50%;
   background: var(--primary);
-  animation: blink 3s ease-in-out infinite;
 }
 
 /* ─── KPI GRID ─────────────────────────────────────────────────────────── */
@@ -493,16 +485,36 @@ body:has(.admin-login-page) {
 }
 
 .admin-th.sortable {
+  padding: 0;
+  transition: background 0.15s;
+}
+.admin-th.sortable:hover {
+  background: var(--primary-light);
+}
+
+/* Sort control is a real <button> so keyboard/screen-reader users can sort;
+   the cell padding moves onto it so the whole header stays the hit area. */
+.admin-th-sort {
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: none;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
   cursor: pointer;
   -webkit-user-select: none;
   user-select: none;
-  transition:
-    color 0.15s,
-    background 0.15s;
+  transition: color 0.15s;
 }
-.admin-th.sortable:hover {
+.admin-th.text-right .admin-th-sort {
+  justify-content: flex-end;
+}
+.admin-th-sort:hover {
   color: var(--primary);
-  background: var(--primary-light);
 }
 .admin-th.text-right {
   text-align: right;
@@ -825,6 +837,8 @@ body:has(.admin-login-page) {
   padding: 0.18rem 0.55rem;
   border-radius: 100px;
 }
+/* Dark foreground on the light tint is tuned for AA in light mode; dark mode
+   flips rose-light/amber-light to a dark fill, so the text must lighten too. */
 .alert-severity--critical {
   background: var(--rose-light);
   color: oklch(0.45 0.18 24.11);
@@ -832,6 +846,12 @@ body:has(.admin-login-page) {
 .alert-severity--warn {
   background: var(--amber-light);
   color: oklch(0.42 0.13 75);
+}
+[data-theme='dark'] .alert-severity--critical {
+  color: var(--rose);
+}
+[data-theme='dark'] .alert-severity--warn {
+  color: var(--amber-text);
 }
 
 .alert-metric {
@@ -1169,6 +1189,21 @@ body:has(.admin-login-page) {
     flex-direction: row;
     flex-wrap: nowrap;
     padding: 0.5rem;
+    gap: 0.25rem;
+  }
+  /* Flatten the grouped sections into one clean scroll row — the section
+     headings only make sense in the vertical desktop rail. */
+  .admin-nav-section {
+    display: contents;
+  }
+  .admin-nav-section-label {
+    display: none;
+  }
+  .admin-nav-section + .admin-nav-section {
+    margin-top: 0;
+  }
+  .admin-nav-item {
+    white-space: nowrap;
   }
   .admin-nav-item.active::before {
     display: none;
@@ -1203,6 +1238,27 @@ body:has(.admin-login-page) {
   }
   .admin-page-controls {
     width: 100%;
+  }
+}
+
+/* Touch ergonomics — DESIGN.md mandates 44px minimum tap targets on mobile.
+   Applies to the small controls that otherwise sit well below that. */
+@media (max-width: 768px) {
+  .admin-nav-item,
+  .pagination-btn,
+  .admin-select,
+  .admin-date-input,
+  .alert-resolve-btn,
+  .admin-btn-danger-sm {
+    min-height: 44px;
+  }
+  .admin-logout-btn,
+  .admin-icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+  .admin-th-sort {
+    min-height: 44px;
   }
 }
 
@@ -1283,9 +1339,12 @@ body:has(.admin-login-page) {
 
 /* A turned-off module — the exception worth flagging on an opt-out page. */
 .tenant-chip.danger {
-  background: var(--danger-bg, rgba(244, 63, 94, 0.12));
-  border-color: var(--danger, #f43f5e);
-  color: var(--danger, #f43f5e);
+  background: var(--rose-light);
+  border-color: var(--rose-mid);
+  color: oklch(0.45 0.18 24.11);
+}
+[data-theme='dark'] .tenant-chip.danger {
+  color: var(--rose);
 }
 
 .tenant-quota-list {
