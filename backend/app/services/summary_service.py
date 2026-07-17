@@ -387,14 +387,3 @@ async def build_monthly_summary(target_date: date | None = None) -> dict:
         await db.commit()
         logger.info("[monthly_summary] %d rows upserted for %s", len(rows), month_start)
         return {"rows_upserted": len(rows), "month": month_start.strftime("%Y-%m")}
-
-
-async def backfill_summaries(from_date: date, to_date: date) -> int:
-    """Rebuild summaries for a date range (inclusive). Returns days processed."""
-    count = 0
-    current = from_date
-    while current <= to_date:
-        await build_daily_summary(current)
-        current += timedelta(days=1)
-        count += 1
-    return count

@@ -127,17 +127,6 @@ async def fetch_vendor_history(vn_code: str, carmen_token: str) -> list[dict]:
     return trimmed
 
 
-def invalidate_vendor_history_cache(tenant_id: str | None = None) -> None:
-    """Drop cached entries. If tenant_id is None, clears the whole cache."""
-    if tenant_id is None:
-        _CACHE.clear()
-        return
-    tid = tenant_id or ""
-    dead = [k for k in _CACHE if k[0] == tid]
-    for k in dead:
-        _CACHE.pop(k, None)
-
-
 # ── Aggregation ───────────────────────────────────────────────────────────────
 
 

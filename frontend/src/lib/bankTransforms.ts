@@ -1,4 +1,4 @@
-import { BANK_CODE_MAP, BANK_SOURCE_MAP, OCR_BANK_MAP, BANK_INFO } from '../constants/banks'
+import { BANK_SOURCE_MAP, OCR_BANK_MAP, BANK_INFO } from '../constants/banks'
 import type { BankCode, BankDisplayName } from '../types/api'
 import type { BankInfo } from '../constants/banks'
 
@@ -25,10 +25,6 @@ function isApiShape(source: Record<string, unknown>): boolean {
 export function codeToDisplayName(bankCode: string | null | undefined): BankDisplayName | '' {
   if (!bankCode) return ''
   return OCR_BANK_MAP[bankCode as BankCode] || ''
-}
-
-export function displayNameToCode(displayName: string): BankCode | null {
-  return BANK_CODE_MAP[displayName as BankDisplayName] || null
 }
 
 function getGLSourceCode(displayName: string): string {
