@@ -262,19 +262,59 @@ async def test_issue_document_empty_buyer_fields_are_none():
 # ── get_last_buyer_info ───────────────────────────────────────────────────────
 
 
-@pytest.mark.asyncio
-async def test_get_last_buyer_info_returns_most_recent():
+def _buyer_row(**overrides):
     row = MagicMock()
     row.buyer_name = "Acme Co."
     row.buyer_tax_id = "1111111111111"
     row.buyer_address = "Bangkok"
     row.buyer_branch = "Main"
-    db = _make_db(first_row=row)
+    row.buyer_email = "ap@acme.co.th"
+    row.buyer_contact_name = "Somchai"
+    row.buyer_tel = "021234567"
+    for k, v in overrides.items():
+        setattr(row, k, v)
+    return row
+
+
+@pytest.mark.asyncio
+async def test_get_last_buyer_info_returns_most_recent():
+    db = _make_db(first_row=_buyer_row())
     info = await get_last_buyer_info(db, "t-1")
     assert info["name"] == "Acme Co."
     assert info["tax_id"] == "1111111111111"
     assert info["address"] == "Bangkok"
     assert info["branch"] == "Main"
+
+
+@pytest.mark.asyncio
+async def test_get_last_buyer_info_carries_every_field_issue_document_writes():
+    """Regression: buyer_email was missing from the SELECT, so a repeat buyer whose
+    Carmen lookup came back empty got a prefill (and a proforma) with no email —
+    while the Carmen branch of the same endpoint returned one. Any field
+    issue_document persists has to survive the round trip, or it silently dies here.
+    """
+    db = _make_db(first_row=_buyer_row())
+    info = await get_last_buyer_info(db, "t-1")
+    assert info == BuyerInfo(
+        name="Acme Co.",
+        tax_id="1111111111111",
+        address="Bangkok",
+        branch="Main",
+        email="ap@acme.co.th",
+        contact_name="Somchai",
+        tel="021234567",
+    )
+    # BuyerInfo is total=False, so a dropped key is not a type error — only this
+    # whole-dict compare catches the next one.
+    assert set(info) == set(BuyerInfo.__annotations__)
+
+
+@pytest.mark.asyncio
+async def test_get_last_buyer_info_nulls_become_empty_strings():
+    db = _make_db(first_row=_buyer_row(buyer_email=None, buyer_tel=None))
+    info = await get_last_buyer_info(db, "t-1")
+    assert info["email"] == ""
+    assert info["tel"] == ""
 
 
 @pytest.mark.asyncio

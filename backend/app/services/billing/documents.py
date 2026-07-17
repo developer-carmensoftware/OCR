@@ -221,6 +221,7 @@ async def get_last_buyer_info(db: AsyncSession, tenant_id: str) -> BuyerInfo:
                 BillingDocument.buyer_tax_id,
                 BillingDocument.buyer_address,
                 BillingDocument.buyer_branch,
+                BillingDocument.buyer_email,
                 BillingDocument.buyer_contact_name,
                 BillingDocument.buyer_tel,
             )
@@ -240,6 +241,7 @@ async def get_last_buyer_info(db: AsyncSession, tenant_id: str) -> BuyerInfo:
         tax_id=row.buyer_tax_id or "",
         address=row.buyer_address or "",
         branch=row.buyer_branch or "",
+        email=row.buyer_email or "",
         contact_name=row.buyer_contact_name or "",
         tel=row.buyer_tel or "",
     )
