@@ -1937,6 +1937,13 @@
   border: 1px solid var(--pf-blue);
 }
 
+/* proforma is a fixed "paper" palette — beat the global [data-theme='dark'] th rule */
+[data-theme='dark'] .pf-table th {
+  background: var(--pf-blue) !important;
+  color: #fff !important;
+  border-color: var(--pf-blue) !important;
+}
+
 .pf-table td {
   padding: 0.6rem;
   border: 1px solid var(--pf-line);
