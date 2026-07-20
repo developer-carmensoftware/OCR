@@ -28,4 +28,4 @@ cryptography==49.0.0
 bcrypt==5.0.0
 
 # Observability
-sentry-sdk[fastapi]==2.64.0
+sentry-sdk[fastapi]==2.66.0
