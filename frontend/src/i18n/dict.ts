@@ -721,6 +721,8 @@ const en = {
   'maintenance.retry': 'Try again',
   'maintenance.backBy': 'Expected back by {time}',
   'maintenance.banner': 'Scheduled maintenance {start} – {end} · in {countdown}',
+  'maintenance.bannerTitle': 'Scheduled maintenance',
+  'maintenance.bannerIn': 'in {countdown}',
   'maintenance.dismiss': 'Dismiss',
   // — Admin maintenance page —
   'admin.maintenance.title': 'Maintenance Mode',
@@ -734,6 +736,10 @@ const en = {
   'admin.maintenance.perTenantHint': 'Take a single company offline without affecting others.',
   'admin.maintenance.tenantOn': 'Under maintenance',
   'admin.maintenance.tenantOff': 'Active',
+  'admin.maintenance.takeOffline': 'Take offline',
+  'admin.maintenance.bringOnline': 'Bring back online',
+  'admin.maintenance.takeOfflineFor': 'Take {tenant} offline for maintenance',
+  'admin.maintenance.bringOnlineFor': 'Bring {tenant} back online',
   'admin.maintenance.saved': 'Maintenance setting saved',
   'admin.maintenance.saveError': 'Failed to save: {error}',
   // — Admin: scheduled window —
@@ -1841,6 +1847,8 @@ const th: Record<TKey, string> = {
   'maintenance.retry': 'ลองใหม่',
   'maintenance.backBy': 'คาดว่าจะกลับมาราว {time}',
   'maintenance.banner': 'ระบบจะปิดปรับปรุง {start} – {end} · อีก {countdown}',
+  'maintenance.bannerTitle': 'ระบบจะปิดปรับปรุง',
+  'maintenance.bannerIn': 'อีก {countdown}',
   'maintenance.dismiss': 'ปิด',
   // — Admin maintenance page —
   'admin.maintenance.title': 'โหมดปิดปรับปรุง',
@@ -1854,6 +1862,10 @@ const th: Record<TKey, string> = {
   'admin.maintenance.perTenantHint': 'ปิดเฉพาะบริษัทเดียวโดยไม่กระทบรายอื่น',
   'admin.maintenance.tenantOn': 'กำลังปิดปรับปรุง',
   'admin.maintenance.tenantOff': 'ใช้งานปกติ',
+  'admin.maintenance.takeOffline': 'ปิดใช้งาน',
+  'admin.maintenance.bringOnline': 'เปิดใช้งานคืน',
+  'admin.maintenance.takeOfflineFor': 'ปิดใช้งาน {tenant} เพื่อปรับปรุงระบบ',
+  'admin.maintenance.bringOnlineFor': 'เปิดใช้งาน {tenant} คืน',
   'admin.maintenance.saved': 'บันทึกการตั้งค่าแล้ว',
   'admin.maintenance.saveError': 'บันทึกไม่สำเร็จ: {error}',
   // — Admin: scheduled window —

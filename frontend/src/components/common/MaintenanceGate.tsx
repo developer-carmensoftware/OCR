@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Wrench } from 'lucide-react'
+import { CalendarClock, Wrench, X } from 'lucide-react'
 import { getStoredToken, resolveUrl } from '../../lib/api/client'
 import { useT } from '../../i18n/LanguageContext'
 
@@ -79,6 +79,7 @@ export function MaintenanceGate({ children }: Props) {
   const { t, lang } = useT()
   const [status, setStatus] = useState<Status>(EMPTY)
   const [onAdmin, setOnAdmin] = useState(isAdminRoute)
+  const [leaving, setLeaving] = useState(false)
   const [dismissed, setDismissed] = useState<string | null>(() => {
     try {
       return localStorage.getItem(DISMISS_KEY)
@@ -133,43 +134,59 @@ export function MaintenanceGate({ children }: Props) {
 
   // Reserve space for the fixed banner so it never covers app chrome.
   useEffect(() => {
-    document.body.classList.toggle('has-maint-banner', showBanner)
+    // Released on dismiss-click, not on commit, so the page glides up while the
+    // banner slides out instead of snapping after it.
+    document.body.classList.toggle('has-maint-banner', showBanner && !leaving)
     return () => document.body.classList.remove('has-maint-banner')
-  }, [showBanner])
+  }, [showBanner, leaving])
 
   // Move focus into the blocking wall so keyboard users aren't left behind it.
   useEffect(() => {
     if (showOverlay) retryRef.current?.focus()
   }, [showOverlay])
 
-  const dismiss = () => {
+  // Dismiss plays the slide-out first; the state commit rides the animationend,
+  // so the banner is never yanked out from under the pointer.
+  const dismiss = () => setLeaving(true)
+  const commitDismiss = () => {
+    if (!leaving) return // entrance animation also lands here
     try {
       if (window_start) localStorage.setItem(DISMISS_KEY, window_start)
     } catch {
       /* storage unavailable */
     }
+    setLeaving(false)
     setDismissed(window_start)
   }
 
   return (
     <>
       {showBanner && (
-        <div className="maint-banner" role="status">
-          <span>
-            {t('maintenance.banner', {
-              start: fmtICT(window_start!, lang),
-              end: fmtHM(window_end!, lang),
-              countdown: countdown(window_start!),
-            })}
-          </span>
-          <button
-            type="button"
-            className="maint-banner__dismiss"
-            aria-label={t('maintenance.dismiss')}
-            onClick={dismiss}
-          >
-            ×
-          </button>
+        <div
+          className={`maint-banner${leaving ? ' maint-banner--leaving' : ''}`}
+          role="status"
+          onAnimationEnd={commitDismiss}
+        >
+          <div className="maint-banner__inner">
+            <span className="maint-banner__icon" aria-hidden>
+              <CalendarClock size={15} strokeWidth={2} />
+            </span>
+            <span className="maint-banner__label">{t('maintenance.bannerTitle')}</span>
+            <span className="maint-banner__window">
+              {fmtICT(window_start!, lang)} – {fmtHM(window_end!, lang)}
+            </span>
+            <span className="maint-banner__countdown">
+              {t('maintenance.bannerIn', { countdown: countdown(window_start!) })}
+            </span>
+            <button
+              type="button"
+              className="maint-banner__dismiss"
+              aria-label={t('maintenance.dismiss')}
+              onClick={dismiss}
+            >
+              <X size={15} strokeWidth={2.25} />
+            </button>
+          </div>
         </div>
       )}
       {children}

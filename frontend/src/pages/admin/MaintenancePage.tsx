@@ -259,11 +259,19 @@ export default function MaintenancePage() {
                   <span className={`status-badge ${down ? 'error' : 'ok'}`}>
                     {down ? t('admin.maintenance.tenantOn') : t('admin.maintenance.tenantOff')}
                   </span>
+                  {/* Verb + object: the badge beside it already states the status,
+                      so the button must state the action, not repeat the state. */}
                   <button
-                    className={`btn ${down ? 'btn-outline' : 'btn-confirm'}`}
+                    className="btn btn-sm btn-outline"
+                    aria-label={t(
+                      down
+                        ? 'admin.maintenance.bringOnlineFor'
+                        : 'admin.maintenance.takeOfflineFor',
+                      { tenant: tenant.name || tenant.host }
+                    )}
                     onClick={() => toggleTenant(tenant.id, !down)}
                   >
-                    {down ? t('admin.maintenance.tenantOff') : t('admin.maintenance.tenantOn')}
+                    {down ? t('admin.maintenance.bringOnline') : t('admin.maintenance.takeOffline')}
                   </button>
                 </span>
               </div>
