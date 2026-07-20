@@ -7,8 +7,6 @@
 
 :root {
   --maint-banner-h: 2.5rem;
-  /* Dark amber ink — legible on --amber in BOTH themes (amber L≈0.76–0.80). */
-  --maint-banner-ink: oklch(0.28 0.07 78);
   --maint-scrim: oklch(0.16 0.02 258.7 / 0.96);
   --maint-on-scrim: oklch(0.98 0.003 258.7);
 }
@@ -17,11 +15,19 @@
 body.has-maint-banner {
   padding-top: var(--maint-banner-h);
 }
+/* Layout property, animated deliberately: this is a once-per-session 2.5rem
+   reflow, and letting it snap is exactly what made the dismiss feel abrupt. */
+body {
+  transition: padding-top var(--dur-slow) var(--ease-out);
+}
 /* The sticky module header must dock below the banner on scroll, not under it. */
 body.has-maint-banner .app-header {
   top: calc(0.75rem + var(--maint-banner-h));
 }
 
+/* Advance notice, not an alarm: the system's amber *surface* vocabulary
+   (amber-light fill, amber-mid hairline, amber-text ink) rather than a
+   saturated amber slab. Both fill and ink are theme-aware tokens. */
 .maint-banner {
   position: fixed;
   inset: 0 0 auto 0;
@@ -30,35 +36,125 @@ body.has-maint-banner .app-header {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.75rem;
-  padding: 0.4rem 1rem;
-  font-size: 0.9rem;
-  background: var(--amber);
-  color: var(--maint-banner-ink);
+  padding: 0 var(--space-4);
+  background: var(--amber-light);
+  border-bottom: 1px solid var(--amber-mid);
+  box-shadow: var(--shadow-sm);
+  color: var(--amber-text);
+  animation: maint-banner-in var(--dur-slow) var(--ease-out) both;
+}
+
+.maint-banner__inner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.maint-banner__icon {
+  display: inline-flex;
+  flex: none;
+  opacity: 0.85;
+}
+
+.maint-banner__label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Times are values the user checks against a calendar — mono, per the data rule. */
+.maint-banner__window {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  opacity: 0.9;
+}
+
+.maint-banner__countdown {
+  flex: none;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--amber) 22%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .maint-banner__dismiss {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: none;
   min-width: 2.75rem;
   min-height: 2.75rem;
-  margin: -0.5rem 0; /* keep the 44px hit area without inflating the bar height */
+  margin: -0.5rem -0.75rem -0.5rem 0; /* 44px hit area without inflating the bar */
   border: none;
   background: transparent;
   color: inherit;
-  font-size: 1.15rem;
-  font-weight: 700;
-  line-height: 1;
+  opacity: 0.65;
   cursor: pointer;
-  border-radius: 6px;
+  position: relative;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+/* The 44px touch target stays invisible; only this puck lights up, so hovering a
+   2.5rem bar doesn't paint a square taller than the bar itself. */
+.maint-banner__dismiss::before {
+  content: '';
+  position: absolute;
+  width: 1.65rem;
+  height: 1.65rem;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+.maint-banner__dismiss > svg {
+  position: relative; /* above the puck */
 }
 .maint-banner__dismiss:hover {
-  background: oklch(0 0 0 / 0.08);
+  opacity: 1;
+}
+.maint-banner__dismiss:hover::before {
+  background: color-mix(in oklch, var(--amber) 24%, transparent);
 }
 .maint-banner__dismiss:focus-visible {
-  outline: 2px solid var(--maint-banner-ink);
-  outline-offset: 2px;
+  opacity: 1;
+  outline: none;
+}
+.maint-banner__dismiss:focus-visible::before {
+  background: color-mix(in oklch, var(--amber) 24%, transparent);
+  box-shadow: 0 0 0 2px var(--amber-text);
+}
+
+@keyframes maint-banner-in {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+}
+
+.maint-banner--leaving {
+  animation: maint-banner-out var(--dur-base) var(--ease-in) both;
+  pointer-events: none;
+}
+@keyframes maint-banner-out {
+  to {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+}
+
+/* Narrow screens: the window times are the first thing to go, the countdown
+   ("in 2h 5m") answers the same question in less space. */
+@media (max-width: 30rem) {
+  .maint-banner__window {
+    display: none;
+  }
 }
 
 .maint-overlay {
@@ -76,6 +172,12 @@ body.has-maint-banner .app-header {
   color: var(--maint-on-scrim);
   -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
+  animation: maint-overlay-in var(--dur-slow) var(--ease-out) both;
+}
+@keyframes maint-overlay-in {
+  from {
+    opacity: 0;
+  }
 }
 
 /* Status chip in the app's own icon vocabulary (lucide), not a decorative emoji.
@@ -138,5 +240,26 @@ body.has-maint-banner .app-header {
   }
   .maint-overlay__chip {
     animation: none;
+  }
+  body {
+    transition: none;
+  }
+  .maint-banner,
+  .maint-overlay {
+    animation: maint-fade-in var(--dur-fast) linear both;
+  }
+  /* Still an animation, not `none`: the dismiss commit rides its animationend. */
+  .maint-banner--leaving {
+    animation: maint-fade-out var(--dur-fast) linear both;
+  }
+  @keyframes maint-fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes maint-fade-out {
+    to {
+      opacity: 0;
+    }
   }
 }
