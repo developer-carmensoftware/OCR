@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Wrench } from 'lucide-react'
 import { resolveUrl } from '../../lib/api/client'
 import { useT } from '../../i18n/LanguageContext'
 
@@ -181,9 +182,9 @@ export function MaintenanceGate({ children }: Props) {
             }
           }}
         >
-          <div className="maint-overlay__icon" aria-hidden>
-            🛠️
-          </div>
+          <span className="maint-overlay__chip" aria-hidden>
+            <Wrench size={26} strokeWidth={1.75} />
+          </span>
           <h1 className="maint-overlay__title">{t('maintenance.title')}</h1>
           <p className="maint-overlay__body">{message || t('maintenance.body')}</p>
           {window_end && (

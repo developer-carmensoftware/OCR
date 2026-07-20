@@ -78,8 +78,26 @@ body.has-maint-banner .app-header {
   backdrop-filter: blur(2px);
 }
 
-.maint-overlay__icon {
-  font-size: 2.5rem;
+/* Status chip in the app's own icon vocabulary (lucide), not a decorative emoji.
+   The slow ring-pulse is a sign of life — the system is working, not frozen. */
+.maint-overlay__chip {
+  display: grid;
+  place-items: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 999px;
+  color: var(--amber);
+  background: oklch(0.76 0.13 78 / 0.14);
+  animation: maint-pulse 2.6s ease-in-out infinite;
+}
+@keyframes maint-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 oklch(0.76 0.13 78 / 0.28);
+  }
+  50% {
+    box-shadow: 0 0 0 12px oklch(0.76 0.13 78 / 0);
+  }
 }
 .maint-overlay__title {
   margin: 0;
@@ -117,5 +135,8 @@ body.has-maint-banner .app-header {
   .maint-overlay {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
+  }
+  .maint-overlay__chip {
+    animation: none;
   }
 }
