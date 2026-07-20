@@ -92,14 +92,18 @@ describe('useFileUpload', () => {
     })
 
     it('sets previewType=pdf and appends #view=FitH for PDF files', async () => {
-      // The PDF preview URL is now produced asynchronously (auto-print actions are
-      // stripped before the iframe sees the file), so wait for it to settle.
+      // The PDF preview now extracts only page 1 (credit card is single-page).
+      // In the test env pdf-lib can't parse the tiny stub, so the fallback path
+      // produces #page=1&view=FitH.
       const { result } = renderHook(() => useFileUpload())
       act(() => {
         result.current.handleFileChange(makeChangeEvent([makePDFFile()]))
       })
       expect(result.current.previewType).toBe('pdf')
-      await waitFor(() => expect(result.current.previewUrl).toContain('#view=FitH'))
+      await waitFor(() => {
+        expect(result.current.previewUrl).not.toBeNull()
+        expect(result.current.previewUrl).toContain('view=FitH')
+      })
     })
 
     it('sets previewType to uppercase extension for unsupported file types', () => {

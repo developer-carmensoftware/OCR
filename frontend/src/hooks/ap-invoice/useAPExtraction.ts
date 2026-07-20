@@ -538,17 +538,24 @@ export function useAPExtraction({ setStep, setModal, loadVendors }: APExtraction
     if (!sel) return
     setSelectedPageThumbs(selectedPages.map(p => ({ thumb: sel.thumbnails[p], pageNum: p + 1 })))
     setPdfSelector(null)
-    // Preview only the selected pages: swap in a native PDF subset (zoomable/readable).
-    // Falls back to the full document if the PDF cannot be parsed client-side.
+    // Immediately clear the full-document preview so the user never sees all
+    // pages while we build the subset PDF containing only selected pages.
+    revokePreviewUrls()
+    setPreviewUrl(null)
     void selectedPagesToPdfUrl(sel.pendingFile, selectedPages)
       .then(url => {
-        revokePreviewUrls()
         previewUrlRef.current = url
         setPreviewUrl(url)
         setPreviewType('pdf')
       })
       .catch(() => {
-        /* keep the full-document preview */
+        // Could not build subset — create a single-page fallback using page=1
+        // fragment so the viewer at least starts on the right page.
+        sanitizedPdfUrl(sel.pendingFile).then(url => {
+          previewUrlRef.current = url
+          setPreviewUrl(url + `#page=${selectedPages[0] + 1}`)
+          setPreviewType('pdf')
+        })
       })
     runOCR(sel.pendingFile, selectedPages)
   }
