@@ -127,7 +127,13 @@ export default function MaintenancePage() {
   }
 
   const active = status?.active ?? false
-  const hasWindow = !!(status?.window_start && status?.window_end)
+  // Only a window whose end is still ahead counts as "scheduled" — a window that
+  // has already elapsed left the system reopened, so it reads as Off, not Scheduled.
+  const hasWindow = !!(
+    status?.window_start &&
+    status?.window_end &&
+    new Date(status.window_end).getTime() > Date.now()
+  )
   const statusLabel = active
     ? t('admin.maintenance.statusActive')
     : hasWindow
