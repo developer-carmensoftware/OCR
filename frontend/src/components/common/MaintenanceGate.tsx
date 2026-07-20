@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Wrench } from 'lucide-react'
-import { resolveUrl } from '../../lib/api/client'
+import { getStoredToken, resolveUrl } from '../../lib/api/client'
 import { useT } from '../../i18n/LanguageContext'
 
 interface Props {
@@ -19,7 +19,13 @@ const DISMISS_KEY = 'maint_banner_dismissed'
 
 async function probe(): Promise<Status> {
   try {
-    const res = await fetch(resolveUrl('/api/v1/maintenance/status'))
+    // Send the token so /status is tenant-aware — without it the poll only sees
+    // the global flag and would fight the JWT-scoped 503s (per-tenant reload loop).
+    const token = getStoredToken()
+    const res = await fetch(
+      resolveUrl('/api/v1/maintenance/status'),
+      token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
+    )
     if (!res.ok) return EMPTY
     return { ...EMPTY, ...(await res.json()) }
   } catch {

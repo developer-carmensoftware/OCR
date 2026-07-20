@@ -36,7 +36,6 @@ from app.models.schemas.credits import (
     TopupRequest,
 )
 from app.models.schemas.maintenance import (
-    GlobalMaintenanceRequest,
     ScheduleMaintenanceRequest,
     TenantMaintenanceRequest,
 )
@@ -66,7 +65,6 @@ __all__ = [
     # common
     "FieldMapping",
     # maintenance
-    "GlobalMaintenanceRequest",
     "ScheduleMaintenanceRequest",
     "TenantMaintenanceRequest",
     # mapping

@@ -8,11 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
-from app.models.schemas import (
-    GlobalMaintenanceRequest,
-    ScheduleMaintenanceRequest,
-    TenantMaintenanceRequest,
-)
+from app.models.schemas import ScheduleMaintenanceRequest, TenantMaintenanceRequest
 from app.services import maintenance_service
 from app.services.usage_service import list_model_pricing
 
@@ -103,16 +99,6 @@ async def get_maintenance(
     _admin: AdminPrincipal = Depends(require_permission("configs", "read")),
 ):
     return await maintenance_service.get_status(db)
-
-
-@router.put("/maintenance")
-async def set_maintenance(
-    req: GlobalMaintenanceRequest,
-    db: AsyncSession = Depends(get_db),
-    _admin: AdminPrincipal = Depends(require_permission("configs", "write")),
-):
-    await maintenance_service.set_global(db, req.enabled, req.message)
-    return {"ok": True}
 
 
 @router.put("/maintenance/tenant/{tenant_id}")

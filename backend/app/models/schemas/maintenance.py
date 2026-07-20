@@ -1,11 +1,6 @@
 from pydantic import BaseModel
 
 
-class GlobalMaintenanceRequest(BaseModel):
-    enabled: bool
-    message: str | None = None
-
-
 class TenantMaintenanceRequest(BaseModel):
     enabled: bool
 

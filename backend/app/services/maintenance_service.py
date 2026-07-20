@@ -104,12 +104,11 @@ async def is_maintenance(tenant_id: str | None) -> tuple[bool, str]:
         if time.monotonic() - _cache["ts"] > _CACHE_TTL_S:
             async with async_session() as db:
                 await _refresh_cache(db)
+        active = _global_active() or (bool(tenant_id) and str(tenant_id) in _cache["tenants"])
+        return active, _cache["message"]
     except Exception as exc:  # noqa: BLE001 — fail-open is the whole point
         logger.warning("maintenance flag read failed (fail-open): %s", exc)
         return False, ""
-
-    active = _global_active() or (bool(tenant_id) and str(tenant_id) in _cache["tenants"])
-    return active, _cache["message"]
 
 
 # ── Admin read/write ──────────────────────────────────────────────────────────
@@ -159,15 +158,6 @@ async def _upsert(db: AsyncSession, key: str, value, value_type: str) -> None:
         .values(key_name=key, value=value, value_type=value_type, category="maintenance")
         .on_conflict_do_update(index_elements=[SystemConfig.key_name], set_={"value": value})
     )
-
-
-async def set_global(db: AsyncSession, enabled: bool, message: str | None = None) -> None:
-    await _ensure_enabled_key(db)
-    await _upsert(db, _KEY_ENABLED, enabled, "bool")
-    if message is not None:
-        await _upsert(db, _KEY_MESSAGE, message, "string")
-    await db.commit()
-    _cache["ts"] = 0.0
 
 
 async def set_schedule(

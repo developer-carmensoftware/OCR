@@ -760,15 +760,6 @@ export async function fetchMaintenance(): Promise<MaintenanceStatus> {
   return res.json()
 }
 
-export async function setGlobalMaintenance(enabled: boolean, message?: string): Promise<void> {
-  const res = await adminFetch(API.admin.maintenance, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enabled, message }),
-  })
-  if (!res.ok) throw new Error(await unwrapDetail(res, 'Failed to update maintenance'))
-}
-
 /** start/end are ISO8601 UTC (Date.toISOString()). */
 export async function setMaintenanceSchedule(
   windowStart: string,
