@@ -11,7 +11,7 @@ asyncpg==0.31.0
 openai==1.58.1
 
 # Image Processing
-Pillow==11.1.0
+Pillow==12.3.0
 pymupdf>=1.28.0
 pillow-heif>=1.4.0
 
