@@ -1,12 +1,23 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertCircle, Bell, BellOff, CheckCheck, CheckCircle2, Clock, XCircle } from 'lucide-react'
+import {
+  AlertCircle,
+  Bell,
+  BellOff,
+  CheckCheck,
+  CheckCircle2,
+  ChevronDown,
+  Clock,
+  Sparkles,
+  XCircle,
+} from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useT } from '../../i18n/LanguageContext'
-import type { TKey } from '../../i18n/dict'
+import type { Lang, TKey } from '../../i18n/dict'
 import '../../styles/components/notification-bell.css'
 import { useNotifications } from '../../hooks/notifications'
-import type { Notification } from '../../lib/api/notifications'
+import type { BellItem } from '../../lib/api/notifications'
+import type { ReleaseNoteCopy } from '../../content/releaseNotes'
 
 // Per-type presentation: icon + tone class (tone drives the tinted icon container).
 const TYPE_META: Record<string, { icon: LucideIcon; tone: string }> = {
@@ -14,11 +25,18 @@ const TYPE_META: Record<string, { icon: LucideIcon; tone: string }> = {
   rejected: { icon: XCircle, tone: 'error' },
   on_hold: { icon: Clock, tone: 'warning' },
   missing_slip: { icon: AlertCircle, tone: 'warning' },
+  release_note: { icon: Sparkles, tone: 'info' },
 }
 
 type TFn = (key: TKey, vars?: Record<string, string | number>) => string
 
-function notifText(n: Notification, t: TFn): string {
+// Release copy is DATA, not i18n keys — it lives in the content file so a dev
+// ships the note in the same PR as the change without touching dict.ts.
+function releaseCopy(n: BellItem, lang: Lang): ReleaseNoteCopy {
+  return (n.payload as Record<Lang, ReleaseNoteCopy>)[lang]
+}
+
+function notifText(n: BellItem, t: TFn): string {
   const p = n.payload as Record<string, unknown>
   switch (n.type) {
     case 'approved':
@@ -44,9 +62,10 @@ function timeAgo(iso: string, t: TFn): string {
 }
 
 export default function NotificationBell() {
-  const { t } = useT()
+  const { t, lang } = useT()
   const { items, unreadCount, markRead } = useNotifications()
   const [open, setOpen] = useState(false)
+  const [expanded, setExpanded] = useState<string | null>(null)
   const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({})
   const btnRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -85,7 +104,14 @@ export default function NotificationBell() {
     }
   }, [open])
 
-  const handleItem = (n: Notification) => {
+  const handleItem = (n: BellItem) => {
+    // Release notes expand in place — there is nowhere to navigate to, and closing
+    // the panel to show a changelog would cost more than the extra panel height.
+    if (n.type === 'release_note') {
+      setExpanded(id => (id === n.id ? null : n.id))
+      if (!n.read_at) void markRead([n.id])
+      return
+    }
     setOpen(false)
     // Deep-link to the specific order when we have it, so the row opens/scrolls
     // into view; the orders route ignores the query suffix when matching.
@@ -145,22 +171,45 @@ export default function NotificationBell() {
                 {items.map(n => {
                   const meta = TYPE_META[n.type] ?? { icon: Bell, tone: 'info' }
                   const Icon = meta.icon
+                  const release = n.type === 'release_note' ? releaseCopy(n, lang) : null
+                  const isOpen = expanded === n.id
                   return (
                     <li key={n.id}>
                       <button
                         type="button"
                         className={`notif-bell__item${n.read_at ? '' : ' is-unread'}`}
+                        aria-expanded={release ? isOpen : undefined}
                         onClick={() => handleItem(n)}
                       >
                         <span className={`notif-bell__icon notif-bell__icon--${meta.tone}`}>
                           <Icon size={16} strokeWidth={2} />
                         </span>
                         <span className="notif-bell__body">
-                          <span className="notif-bell__text">{notifText(n, t)}</span>
+                          <span className="notif-bell__text">
+                            {release ? release.title : notifText(n, t)}
+                          </span>
                           <time className="notif-bell__time">{timeAgo(n.created_at, t)}</time>
                         </span>
+                        {release && (
+                          <ChevronDown
+                            className="notif-bell__chevron"
+                            data-open={isOpen || undefined}
+                            size={14}
+                            strokeWidth={2}
+                            aria-hidden="true"
+                          />
+                        )}
                         {!n.read_at && <span className="notif-bell__dot" aria-hidden="true" />}
                       </button>
+                      {/* Sibling of the button, not a child: a list inside a
+                          <button> is invalid HTML. */}
+                      {release && isOpen && (
+                        <ul className="notif-bell__release-items">
+                          {release.items.map(line => (
+                            <li key={line}>{line}</li>
+                          ))}
+                        </ul>
+                      )}
                     </li>
                   )
                 })}
