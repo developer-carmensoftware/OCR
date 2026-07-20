@@ -40,6 +40,7 @@ import { AdminAuthProvider } from './contexts/AdminAuthContext'
 import { LanguageProvider } from './i18n/LanguageContext'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import { ConsentGate } from './components/common/ConsentGate'
+import { MaintenanceGate } from './components/common/MaintenanceGate'
 import AdminProtectedRoute from './components/admin/AdminProtectedRoute'
 import ErrorBoundary from './components/common/ErrorBoundary'
 import PageSkeleton from './components/common/PageSkeleton'
@@ -83,6 +84,7 @@ const ErrorsPage = lazy(() => import('./pages/admin/ErrorsPage'))
 const ExtractionsPage = lazy(() => import('./pages/admin/ExtractionsPage'))
 const AnomaliesPage = lazy(() => import('./pages/admin/AnomaliesPage'))
 const JobsPage = lazy(() => import('./pages/admin/JobsPage'))
+const MaintenancePage = lazy(() => import('./pages/admin/MaintenancePage'))
 const SessionsPage = lazy(() => import('./pages/admin/SessionsPage'))
 const CreditsPage = lazy(() => import('./pages/admin/CreditsPage'))
 const TenantsPage = lazy(() => import('./pages/admin/TenantsPage'))
@@ -130,6 +132,8 @@ function AdminRouter() {
     AdminPage = <AnomaliesPage />
   } else if (route === 'admin/jobs') {
     AdminPage = <JobsPage />
+  } else if (route === 'admin/maintenance') {
+    AdminPage = <MaintenancePage />
   } else if (route === 'admin/tenants') {
     AdminPage = <TenantsPage />
   } else if (route === 'admin/quota-modules') {
@@ -248,9 +252,11 @@ root.render(
             theme="light"
           />
           <LanguageProvider>
-            <ConsentGate>
-              <Router />
-            </ConsentGate>
+            <MaintenanceGate>
+              <ConsentGate>
+                <Router />
+              </ConsentGate>
+            </MaintenanceGate>
           </LanguageProvider>
         </AdminAuthProvider>
       </AuthProvider>

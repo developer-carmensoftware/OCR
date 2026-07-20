@@ -10,12 +10,35 @@ causing "I/O operation on closed file" between tests.
 
 import asyncio
 import sys
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+
+@pytest.fixture(autouse=True)
+def _maintenance_inactive():
+    """Force maintenance mode inactive for every test. The maintenance middleware
+    reads a module-global cache; without this, a live maintenance flag in the DB
+    (a real one is on right now during the pilot) or a prior test that seeded it
+    would 503 unrelated router tests. A far-future ts keeps it from refreshing
+    from the DB. Tests that exercise the flag re-seed the cache in their body."""
+    from app.services import maintenance_service as _maint
+
+    _maint._cache.update(
+        {
+            "ts": time.monotonic() + 1_000_000,
+            "enabled": False,
+            "message": "",
+            "window_start": None,
+            "window_end": None,
+            "tenants": set(),
+        }
+    )
+    yield
 
 
 # ── Mock DB session ───────────────────────────────────────────────────────────

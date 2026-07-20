@@ -1,0 +1,142 @@
+/* ═══════════════════════════════════════════
+   MAINTENANCE — advance-notice banner + full-screen wall
+   Tokens + semantic z-scale only. The overlay is a deliberate dark takeover
+   in both themes (a "system is down" scrim), so its scrim/ink are committed
+   constants rather than theme-tracking tokens.
+   ═══════════════════════════════════════════ */
+
+:root {
+  --maint-banner-h: 2.5rem;
+  /* Dark amber ink — legible on --amber in BOTH themes (amber L≈0.76–0.80). */
+  --maint-banner-ink: oklch(0.28 0.07 78);
+  --maint-scrim: oklch(0.16 0.02 258.7 / 0.96);
+  --maint-on-scrim: oklch(0.98 0.003 258.7);
+}
+
+/* Push page content down when the banner is shown, so it never covers app chrome. */
+body.has-maint-banner {
+  padding-top: var(--maint-banner-h);
+}
+/* The sticky module header must dock below the banner on scroll, not under it. */
+body.has-maint-banner .app-header {
+  top: calc(0.75rem + var(--maint-banner-h));
+}
+
+.maint-banner {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: var(--z-modal-backdrop);
+  min-height: var(--maint-banner-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.4rem 1rem;
+  font-size: 0.9rem;
+  background: var(--amber);
+  color: var(--maint-banner-ink);
+}
+
+.maint-banner__dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  margin: -0.5rem 0; /* keep the 44px hit area without inflating the bar height */
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.maint-banner__dismiss:hover {
+  background: oklch(0 0 0 / 0.08);
+}
+.maint-banner__dismiss:focus-visible {
+  outline: 2px solid var(--maint-banner-ink);
+  outline-offset: 2px;
+}
+
+.maint-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  text-align: center;
+  background: var(--maint-scrim);
+  color: var(--maint-on-scrim);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+
+/* Status chip in the app's own icon vocabulary (lucide), not a decorative emoji.
+   The slow ring-pulse is a sign of life — the system is working, not frozen. */
+.maint-overlay__chip {
+  display: grid;
+  place-items: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 999px;
+  color: var(--amber);
+  background: oklch(0.76 0.13 78 / 0.14);
+  animation: maint-pulse 2.6s ease-in-out infinite;
+}
+@keyframes maint-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 oklch(0.76 0.13 78 / 0.28);
+  }
+  50% {
+    box-shadow: 0 0 0 12px oklch(0.76 0.13 78 / 0);
+  }
+}
+.maint-overlay__title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+.maint-overlay__body {
+  margin: 0;
+  max-width: 32rem;
+  color: oklch(0.98 0.003 258.7 / 0.85);
+}
+.maint-overlay__sub {
+  margin: 0;
+  color: oklch(0.98 0.003 258.7 / 0.7);
+}
+.maint-overlay__retry {
+  margin-top: 0.5rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 1.25rem;
+  border-radius: 0.5rem;
+  border: 1px solid oklch(0.98 0.003 258.7 / 0.3);
+  background: transparent;
+  color: var(--maint-on-scrim);
+  cursor: pointer;
+}
+.maint-overlay__retry:hover {
+  background: oklch(0.98 0.003 258.7 / 0.1);
+}
+.maint-overlay__retry:focus-visible {
+  outline: 2px solid var(--maint-on-scrim);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .maint-overlay {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .maint-overlay__chip {
+    animation: none;
+  }
+}

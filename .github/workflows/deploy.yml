@@ -13,6 +13,15 @@ name: Deploy
 on:
   push:
     branches: ["main", "dev"]
+  # Manual run with maintenance=true wraps the deploy in a maintenance window
+  # (flag ON before db push, OFF after health passes). Plain push deploys stay
+  # zero-downtime — only opt in when a breaking migration needs everyone out.
+  workflow_dispatch:
+    inputs:
+      maintenance:
+        description: "Enable maintenance mode during this deploy"
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-${{ github.ref }}   # serialize deploys per environment
@@ -32,6 +41,18 @@ jobs:
       - uses: supabase/setup-cli@v3
         with:
           version: latest
+
+      # 0. Optional: raise the maintenance wall BEFORE migrating, so no request hits
+      #    the DB mid-schema-change. Only on a manual run with maintenance=true.
+      - name: Enable maintenance mode
+        if: github.event_name == 'workflow_dispatch' && inputs.maintenance
+        run: |
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c "
+            INSERT INTO system_configs (key_name, value, value_type, category, description)
+            VALUES ('maintenance.enabled', 'true'::json, 'bool', 'maintenance', 'Global maintenance mode')
+            ON CONFLICT (key_name) DO UPDATE SET value = 'true'::json;"
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
 
       # 1. Migrate first. `db push` only applies migrations not yet recorded in the
       #    target DB's supabase_migrations table — safe under expand/contract.
@@ -62,6 +83,16 @@ jobs:
           done
           echo "::error::Health check never returned 200 — deploy may have failed."
           exit 1
+
+      # 3b. Lower the maintenance wall. `always()` so a failed migrate/deploy never
+      #     leaves prod stuck in maintenance — it turns off regardless of outcome.
+      - name: Disable maintenance mode
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.maintenance
+        run: |
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c "
+            UPDATE system_configs SET value = 'false'::json WHERE key_name = 'maintenance.enabled';"
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
 
       # 4. Production only: cut a GitHub Release from today's changelog entry.
       - name: Create release from changelog
