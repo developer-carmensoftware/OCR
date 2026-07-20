@@ -51,8 +51,11 @@ export default function MaintenancePage() {
       .then(s => {
         setStatus(s)
         setMessage(s.message)
-        setStart(s.window_start ? toLocalInput(new Date(s.window_start)) : '')
-        setEnd(s.window_end ? toLocalInput(new Date(s.window_end)) : '')
+        // Only prefill an active or still-upcoming window; a window that has
+        // already elapsed is done, so start fresh with empty fields.
+        const relevant = !!s.window_end && new Date(s.window_end).getTime() > Date.now()
+        setStart(relevant && s.window_start ? toLocalInput(new Date(s.window_start)) : '')
+        setEnd(relevant && s.window_end ? toLocalInput(new Date(s.window_end)) : '')
       })
       .catch(e => toast.error(t('admin.maintenance.saveError', { error: e?.message ?? '' })))
     fetchTenants({ active_only: false, limit: 500 })
