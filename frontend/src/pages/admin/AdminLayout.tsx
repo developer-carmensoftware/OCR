@@ -16,6 +16,7 @@ import {
   Trophy,
   UserCog,
   Users,
+  Wrench,
   Zap,
 } from 'lucide-react'
 import { useAdminAuth } from '../../contexts/AdminAuthContext'
@@ -138,6 +139,11 @@ function getNavSections(t: ReturnType<typeof useT>['t']): NavSection[] {
           label: t('admin.nav.item.jobs'),
           hash: '/admin/jobs',
           icon: <Settings size={ICON_SIZE} strokeWidth={2} />,
+        },
+        {
+          label: t('admin.nav.item.maintenance'),
+          hash: '/admin/maintenance',
+          icon: <Wrench size={ICON_SIZE} strokeWidth={2} />,
         },
       ],
     },

@@ -35,6 +35,11 @@ from app.models.schemas.credits import (
     SlipUploadResponse,
     TopupRequest,
 )
+from app.models.schemas.maintenance import (
+    GlobalMaintenanceRequest,
+    ScheduleMaintenanceRequest,
+    TenantMaintenanceRequest,
+)
 from app.models.schemas.mapping import (
     CodeOption,
     SuggestPaymentTypesRequest,
@@ -60,6 +65,10 @@ from app.models.schemas.quotas import ModuleToggleRequest, QuotaLimitUpdateReque
 __all__ = [
     # common
     "FieldMapping",
+    # maintenance
+    "GlobalMaintenanceRequest",
+    "ScheduleMaintenanceRequest",
+    "TenantMaintenanceRequest",
     # mapping
     "CodeOption",
     "SuggestRequest",

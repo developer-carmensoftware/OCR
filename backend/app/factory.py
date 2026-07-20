@@ -27,6 +27,7 @@ from app.exceptions import (
     ValidationError,
 )
 from app.middleware.cors_log import CORSLogMiddleware
+from app.middleware.maintenance import MaintenanceMiddleware
 from app.middleware.performance import PerformanceMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
@@ -39,6 +40,7 @@ from app.routers.consent import router as consent_router
 from app.routers.credits import router as credits_router
 from app.routers.feedback import router as feedback_router
 from app.routers.files import router as files_router
+from app.routers.maintenance import router as maintenance_router
 from app.routers.mapping import router as mapping_router
 from app.routers.notifications import router as notifications_router
 from app.routers.ocr import router as ocr_router
@@ -83,6 +85,7 @@ def create_app(lifespan=None) -> FastAPI:
     )
 
     app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(MaintenanceMiddleware)
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(PerformanceMiddleware)
 
@@ -179,5 +182,6 @@ def create_app(lifespan=None) -> FastAPI:
     app.include_router(consent_router)
     app.include_router(credits_router)
     app.include_router(notifications_router)
+    app.include_router(maintenance_router)
 
     return app

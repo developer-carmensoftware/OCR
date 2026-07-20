@@ -82,6 +82,11 @@ export function createApiClient(opts: ApiClientOptions) {
         }, opts.debounce401Ms ?? 2000)
       }
     }
+    // Maintenance wall — backend flags it with X-Maintenance so we don't consume
+    // the body (callers still read it). MaintenanceGate listens and takes over.
+    if (response.status === 503 && response.headers.get('X-Maintenance')) {
+      window.dispatchEvent(new CustomEvent('ocr:maintenance'))
+    }
     return response
   }
 }
