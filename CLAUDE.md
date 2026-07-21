@@ -37,6 +37,31 @@ Every meaningful change is logged in [`changelog/`](changelog/), **one file per 
 
 ---
 
+## Versioning
+
+**SemVer, stored once in the repo-root [`VERSION`](VERSION) file.** Everything derives from it:
+`backend/app/config.py` (`_read_version()` → `app_version` → `/api/version`, `/docs`),
+`frontend/vite.config.ts` (+ `vitest.config.js`) bake it in as `__APP_VERSION__` (shown on Home),
+and `deploy.yml` tags the GitHub Release `v$(cat VERSION)`. `APP_VERSION` in the env still
+overrides the backend value, but it is an override, not the source.
+
+| Bump | When |
+|---|---|
+| **PATCH** | bug fix, prompt tweak, perf, copy fix — nothing new to learn |
+| **MINOR** | new user-visible capability: a module, a bank, an admin page, a wizard step |
+| **MAJOR** | breaks someone outside this repo — Carmen posting contract, `/api/v1` shape, forced re-onboard/re-consent |
+
+Refactors, CI, and dependency bumps bump **nothing** — same rule `releaseNotes.ts` uses. A deploy
+with no version bump hits the existing tag and simply skips the release; that is the intended path,
+not a failure.
+
+Releasing = edit `VERSION` **and** add the matching `version:` to the newest `releaseNotes.ts`
+entry, in the same commit. `releaseNotes.test.ts` fails if they disagree. Dates keep their own
+jobs: `changelog/YYYY-MM-DD.md` filenames and the release-note identity/seen-key — a date is never
+a version.
+
+---
+
 ## Architecture
 
 ### Credit Card OCR (5-step wizard)

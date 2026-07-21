@@ -65,8 +65,8 @@ export const ENTERPRISE = {
 export const SALES_CONTACT = {
   line: '@carmensoftware',
   lineUrl: 'https://line.me/R/ti/p/@carmensoftware',
-  phone: '02-284-0429',
-  email: 'support@carmensoftware.com',
+  phone: '+66(0) 84 941 7198',
+  email: 'rattana@carmensoftware.com',
 }
 
 /** Derived per-document baht, e.g. for "≈ ฿1.98 / doc". */

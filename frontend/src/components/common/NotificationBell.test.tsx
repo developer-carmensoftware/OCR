@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, within } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { LanguageProvider } from '../../i18n/LanguageContext'
 import type { BellItem } from '../../lib/api/notifications'
 
 // This component mounts in AppHeader on every user-facing page, so a crash here
-// takes the whole surface down. These cover the render + expand path; the
-// merge/seen logic is covered in hooks/notifications/useNotifications.test.ts.
+// takes the whole surface down. These cover the render + navigation path; the
+// merge/seen logic lives in hooks/notifications/useNotifications.test.ts.
 
 const markRead = vi.fn()
 let items: BellItem[] = []
@@ -22,8 +22,8 @@ const releaseRow: BellItem = {
   order_id: null,
   type: 'release_note',
   payload: {
-    en: { title: 'Maintenance notices', items: ['Updates appear here.', 'Bar shows a countdown.'] },
-    th: { title: 'แจ้งเตือนการปิดปรับปรุง', items: ['การอัปเดตจะแสดงที่นี่', 'แถบแสดงนับถอยหลัง'] },
+    en: { title: 'Maintenance notices', items: ['Updates appear here.'] },
+    th: { title: 'แจ้งเตือนการปิดปรับปรุง', items: ['การอัปเดตจะแสดงที่นี่'] },
   },
   read_at: null,
   created_at: '2026-07-20T00:00:00+07:00',
@@ -46,57 +46,38 @@ function openPanel() {
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
+  sessionStorage.clear()
   items = [releaseRow, orderRow]
   unreadCount = 2
-  window.location.hash = ''
+  window.location.hash = '#/apinvoice'
 })
 
 describe('NotificationBell — release notes', () => {
-  it('renders the release title collapsed, without its bullets', () => {
+  it('shows the release title as a row', () => {
     openPanel()
     expect(screen.getByText('Maintenance notices')).toBeInTheDocument()
-    expect(screen.queryByText('Updates appear here.')).not.toBeInTheDocument()
   })
 
-  it('expands bullets on click and marks the note read', () => {
+  it('opens the What’s New page and closes the panel', () => {
     openPanel()
     fireEvent.click(screen.getByText('Maintenance notices'))
-    expect(screen.getByText('Updates appear here.')).toBeInTheDocument()
-    expect(screen.getByText('Bar shows a countdown.')).toBeInTheDocument()
-    expect(markRead).toHaveBeenCalledWith(['release:2026-07-20'])
-  })
-
-  it('keeps the panel open and does not navigate', () => {
-    openPanel()
-    fireEvent.click(screen.getByText('Maintenance notices'))
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
-    expect(window.location.hash).toBe('')
-  })
-
-  it('collapses on a second click', () => {
-    openPanel()
-    const row = screen.getByText('Maintenance notices')
-    fireEvent.click(row)
-    fireEvent.click(row)
-    expect(screen.queryByText('Updates appear here.')).not.toBeInTheDocument()
-  })
-
-  it('exposes expanded state to assistive tech', () => {
-    openPanel()
-    const row = screen.getByText('Maintenance notices').closest('button')!
-    expect(row).toHaveAttribute('aria-expanded', 'false')
-    fireEvent.click(row)
-    expect(row).toHaveAttribute('aria-expanded', 'true')
-  })
-
-  it('leaves order notifications navigating to their order', () => {
-    openPanel()
-    fireEvent.click(screen.getByText(/Order approved/i))
-    expect(window.location.hash).toBe('#/pricing/orders?id=order-1')
+    expect(window.location.hash).toBe('#/whats-new')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('renders Thai copy from the same row when the language is th', () => {
+  it('stashes where it came from for the page back button', () => {
+    openPanel()
+    fireEvent.click(screen.getByText('Maintenance notices'))
+    expect(sessionStorage.getItem('whatsnew:returnTo')).toBe('#/apinvoice')
+  })
+
+  it('does not mark read on click — the page clears the mark on mount', () => {
+    openPanel()
+    fireEvent.click(screen.getByText('Maintenance notices'))
+    expect(markRead).not.toHaveBeenCalled()
+  })
+
+  it('renders the row title in Thai when the language is th', () => {
     localStorage.setItem('lang', 'th')
     render(
       <LanguageProvider>
@@ -104,15 +85,14 @@ describe('NotificationBell — release notes', () => {
       </LanguageProvider>
     )
     fireEvent.click(screen.getByRole('button', { name: /การแจ้งเตือน/ }))
-    fireEvent.click(screen.getByText('แจ้งเตือนการปิดปรับปรุง'))
-    expect(screen.getByText('การอัปเดตจะแสดงที่นี่')).toBeInTheDocument()
+    expect(screen.getByText('แจ้งเตือนการปิดปรับปรุง')).toBeInTheDocument()
     expect(screen.queryByText('Maintenance notices')).not.toBeInTheDocument()
   })
 
-  it('nests bullets outside the row button (a list inside a button is invalid)', () => {
+  it('leaves order notifications navigating to their order', () => {
     openPanel()
-    fireEvent.click(screen.getByText('Maintenance notices'))
-    const row = screen.getByText('Maintenance notices').closest('button')!
-    expect(within(row).queryByRole('list')).toBeNull()
+    fireEvent.click(screen.getByText(/Order approved/i))
+    expect(window.location.hash).toBe('#/pricing/orders?id=order-1')
+    expect(markRead).toHaveBeenCalledWith(['uuid-1'])
   })
 })
