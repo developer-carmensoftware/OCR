@@ -51,11 +51,19 @@ export function buildInvoicePayload(
     const tax1Overwrite =
       taxAmt > 0 && (profileRate == null || Math.abs(profileRate - taxRate) > 0.01)
     const qty = parseNum(item.qty) || 1
-    const grossPrice = parseNum(item.unitPrice)
-    const discAmt = parseNum(item.discountAmt)
-    const grossLine = grossPrice * qty
-    const netPriceRaw = grossLine > 0 ? (grossLine - discAmt) / qty : grossPrice
-    const netPrice = parseFloat(Math.max(0, netPriceRaw).toFixed(2))
+    // Carmen has no discount field on the line, so the unit price it stores must already
+    // be net. Anchor it on the line AMOUNT rather than recomputing it from unitPrice and
+    // discountAmt: those are display fields, and when they disagreed with lineSubTotal
+    // Carmen's AP screen showed a Price/Unit that did not multiply out to its own Net
+    // Amount (6 x 781.00 against a Net of 4,379.44), which is unusable for anyone
+    // checking the figures by hand.
+    //
+    // Include lines carry VAT in the price column, so they anchor on the VAT-inclusive
+    // total; Add/None lines anchor on the ex-VAT net. Negative rows (a "-190 DISCOUNT"
+    // line, a deposit row) pass straight through — they must post a negative price, not
+    // the 0.00 the old clamp produced.
+    const priceAnchor = item.taxType === 'Include' ? total : netAmt
+    const netPrice = parseFloat((priceAnchor / qty).toFixed(2))
 
     return {
       InvhSeq: -1,

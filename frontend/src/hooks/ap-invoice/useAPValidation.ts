@@ -106,9 +106,14 @@ export function useAPValidation({ headerData, lineItems, fieldMappings, t }: APV
   // UI shows a warning instead of an Adjust button that would loop forever.
   const isDocInconsistent = tgtGrand > 0 && Math.abs(tgtSubTotal + tgtTax - tgtGrand) > 0.005
 
+  // Discount is deliberately NOT here. It is a display figure — Carmen has no line
+  // discount field and the payload no longer reads discountAmt at all — so a cent of
+  // drift against the document has no effect on what gets posted. Gating submit on it
+  // stranded users behind an Adjust button whose only action was to write a fabricated
+  // discount onto the last row. The diff is still surfaced in the summary; it just
+  // doesn't block. Sub/Tax/Grand DO gate: those are the posted amounts.
   const validationErrors: string[] = [
     isSubDiff && t?.('ap.subTotal'),
-    isDiscDiff && t?.('ap.discount'),
     isTaxDiff && t?.('ap.tax'),
     isGrandDiff && t?.('ap.grandTotal'),
   ].filter((v): v is string => Boolean(v))

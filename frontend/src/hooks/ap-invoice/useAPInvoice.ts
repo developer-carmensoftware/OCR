@@ -543,6 +543,7 @@ export function useAPInvoice() {
     extractionStatus: extraction.extractionStatus,
     error: extraction.error,
     setError: extraction.setError,
+    warnings: extraction.warnings,
     suggestLoading: submission.suggestLoading,
     headerData: extraction.headerData,
     lineItems: extraction.lineItems,

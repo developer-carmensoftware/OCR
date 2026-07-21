@@ -58,6 +58,9 @@ interface CarmenDetailLine {
   InvdT1DrDeptCode: string
   InvdTaxR1: string
   InvdPrice: string
+  InvdQty: number
+  NetAmt: string
+  TotalPrice: string
 }
 interface CarmenPayload {
   Detail: CarmenDetailLine[]
@@ -630,29 +633,113 @@ describe('useAPSubmission', () => {
     })
   })
 
-  // ── F8: netPrice clamp ≥ 0 (P3 bug fix) ─────────────────────────────────────
+  // ── F8: InvdPrice is anchored on the line amount ────────────────────────────
 
-  describe('F8: netPrice clamped to 0 when discount exceeds gross', () => {
-    it('sends InvdPrice=0.00 when discountAmt > qty*unitPrice', async () => {
+  describe('F8: InvdPrice x InvdQty always reproduces the line amount', () => {
+    const priceOf = (p: CarmenPayload, i = 0) => parseFloat(p.Detail[i].InvdPrice)
+    const submit = async (lineItems: APLineItem[]) => {
       submitAPInvoiceToCarmen.mockResolvedValue({ Code: 0, InternalMessage: 'JV-1' })
-      const oversizedDiscount: APLineItem[] = [
-        {
-          ...MAPPED_ITEMS[0],
-          unitPrice: '100.00',
-          discountAmt: '200.00',
-          lineSubTotal: '0.00',
-          taxAmt: '0.00',
-          lineTotal: '0.00',
-        },
-      ]
-      const props = makeProps({ lineItems: oversizedDiscount })
-      const { result } = renderHook(() => useAPSubmission(props))
+      const { result } = renderHook(() => useAPSubmission(makeProps({ lineItems })))
       await act(async () => {
         await result.current.handleGenerate()
       })
-      const payload = submitAPInvoiceToCarmen.mock.calls[0][0] as CarmenPayload
-      const price = parseFloat(payload.Detail[0].InvdPrice)
-      expect(price).toBeGreaterThanOrEqual(0)
+      return submitAPInvoiceToCarmen.mock.calls[0][0] as CarmenPayload
+    }
+
+    it('derives the unit price from NetAmt, not from unitPrice - discountAmt', async () => {
+      // The regression seen in Carmen's AP screen on invoice 66-0023: the row posted
+      // Qty 6 x Price 781.00 against a Net Amount of 4,379.44, which does not multiply
+      // out. The price must follow the amount.
+      const payload = await submit([
+        {
+          ...MAPPED_ITEMS[0],
+          qty: '6',
+          unitPrice: '781.00',
+          discountAmt: '0.00',
+          taxType: 'Exclude',
+          lineSubTotal: '4379.44',
+          taxAmt: '306.56',
+          lineTotal: '4686.00',
+        },
+      ])
+      expect(priceOf(payload)).toBeCloseTo(729.91, 2)
+      const d = payload.Detail[0]
+      expect(parseFloat(d.InvdPrice) * d.InvdQty).toBeCloseTo(parseFloat(d.NetAmt), 1)
+    })
+
+    it('anchors Include lines on the VAT-inclusive total', async () => {
+      // Include lines carry VAT in the price column, so NetAmt (ex-VAT) is the wrong
+      // anchor — TotalPrice is what Qty x Price/Unit must reproduce.
+      const payload = await submit([
+        {
+          ...MAPPED_ITEMS[0],
+          qty: '2',
+          unitPrice: '107.00',
+          discountAmt: '0.00',
+          taxType: 'Include',
+          lineSubTotal: '200.00',
+          taxAmt: '14.00',
+          lineTotal: '214.00',
+        },
+      ])
+      expect(priceOf(payload)).toBeCloseTo(107.0, 2)
+      const d = payload.Detail[0]
+      expect(parseFloat(d.InvdPrice) * d.InvdQty).toBeCloseTo(parseFloat(d.TotalPrice), 1)
+    })
+
+    it('posts a negative price for a credit row instead of clamping it to 0.00', async () => {
+      // The prompt emits "5% DISCOUNT -190" rows as a negative unitPrice. The old
+      // Math.max(0, ...) guard turned every one of them into 0.00 alongside a negative
+      // NetAmt — arithmetic that cannot be checked by hand.
+      const payload = await submit([
+        {
+          ...MAPPED_ITEMS[0],
+          qty: '1',
+          unitPrice: '-190.00',
+          discountAmt: '0.00',
+          taxType: 'None',
+          lineSubTotal: '-190.00',
+          taxAmt: '0.00',
+          lineTotal: '-190.00',
+        },
+      ])
+      expect(priceOf(payload)).toBeCloseTo(-190.0, 2)
+    })
+
+    it('posts a negative price for a deposit row', async () => {
+      const payload = await submit([
+        {
+          ...MAPPED_ITEMS[0],
+          category: 'เงินมัดจำ',
+          qty: '1',
+          unitPrice: '-500.00',
+          discountAmt: '0.00',
+          taxType: 'Exclude',
+          lineSubTotal: '-500.00',
+          taxAmt: '-35.00',
+          lineTotal: '-535.00',
+        },
+      ])
+      expect(priceOf(payload)).toBeCloseTo(-500.0, 2)
+    })
+
+    it('ignores discountAmt entirely', async () => {
+      // discountAmt is a display field; a wrong one (the old Adjust button wrote
+      // fabricated values onto the last row) must not be able to move the posted price.
+      const base = {
+        ...MAPPED_ITEMS[0],
+        qty: '2',
+        unitPrice: '100.00',
+        taxType: 'Exclude' as const,
+        lineSubTotal: '180.00',
+        taxAmt: '12.60',
+        lineTotal: '192.60',
+      }
+      const clean = await submit([{ ...base, discountAmt: '20.00' }])
+      submitAPInvoiceToCarmen.mockClear()
+      const tampered = await submit([{ ...base, discountAmt: '999.00' }])
+      expect(priceOf(clean)).toBeCloseTo(90.0, 2)
+      expect(priceOf(tampered)).toBeCloseTo(priceOf(clean), 2)
     })
   })
 

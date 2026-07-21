@@ -74,3 +74,62 @@ describe('syncLineTotals — pin-based Adjust keeps lineTotal = sub + tax', () =
     )
   })
 })
+
+// ── Parity with the backend post-processor ──────────────────────────────────────
+//
+// recalcRow and the Python _compute_line_totals are independent implementations of the
+// same formula. They agree only because _resolve_line_discount normalises discountAmt so
+// that `qty * unitPrice - discountAmt` equals the row's pre-tax amount. If that invariant
+// is ever broken on the backend, these fail — which is the point: before it existed, a
+// per-unit discount column produced backend totals that recalcRow silently disagreed
+// with, so the first edit to any field on such a row moved its amount.
+describe('parity with backend post-process output', () => {
+  // The six rows of invoice 66-0023 exactly as postprocess() emits them.
+  const backendRows: APLineItem[] = [
+    ['6', '781.00', '0.00', '4686.00', '328.02', '5014.02'],
+    ['1', '480.00', '72.00', '408.00', '28.56', '436.56'],
+    ['22', '253.00', '834.90', '4731.10', '331.18', '5062.28'],
+    ['1', '4190.00', '628.50', '3561.50', '249.31', '3810.81'],
+    ['1', '4060.00', '1218.00', '2842.00', '198.94', '3040.94'],
+    ['1', '1625.00', '162.50', '1462.50', '102.37', '1564.87'],
+  ].map(([qty, unitPrice, discountAmt, lineSubTotal, taxAmt, lineTotal]) => ({
+    qty,
+    unitPrice,
+    discountAmt,
+    taxType: 'Exclude' as const,
+    taxPct: '7.00',
+    lineSubTotal,
+    taxAmt,
+    lineTotal,
+  }))
+
+  it('test_discount_parity: recalcRow reproduces every backend row unchanged', () => {
+    backendRows.forEach(item => {
+      const r = recalcRow(item)
+      expect(parseNum(r.lineSubTotal)).toBeCloseTo(parseNum(item.lineSubTotal), 1)
+      expect(parseNum(r.lineTotal)).toBeCloseTo(parseNum(item.lineTotal), 1)
+    })
+  })
+
+  it('a percent-discount row survives an unrelated edit without moving', () => {
+    // Re-running recalcRow is what any Step-3 edit triggers. The amount must not drift.
+    const before = backendRows[3]
+    const after = recalcRow(recalcRow(before))
+    expect(parseNum(after.lineSubTotal)).toBeCloseTo(3561.5, 2)
+  })
+
+  it('restates discountPct from the amounts instead of trusting a stale field', () => {
+    const r = recalcRow({ ...backendRows[4], discountPct: '99.00' })
+    expect(parseNum(r.discountPct)).toBeCloseTo(30, 1)
+  })
+
+  it('a negative credit row recalculates from its price', () => {
+    // Under the old `unitPrice > 0` guard this row fell into the grouped-row fallback and
+    // editing its price did nothing.
+    const r = recalcRow(
+      row({ unitPrice: '-190.00', taxType: 'None', lineSubTotal: '0.00', lineTotal: '0.00' })
+    )
+    expect(parseNum(r.lineSubTotal)).toBeCloseTo(-190, 2)
+    expect(parseNum(r.lineTotal)).toBeCloseTo(-190, 2)
+  })
+})

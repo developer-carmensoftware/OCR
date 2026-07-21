@@ -26,8 +26,13 @@ export function resolveTaxProfileForRate(
 // taxPct is clamped >= 0 and forced to 0 for None. When unitPrice is missing (e.g. grouped rows)
 // the net anchor falls back to lineSubTotal + discountAmt.
 //
-// Mirrors the Python `_compute_line_totals` in
-// backend/app/services/ap_invoice_postprocess_service.py — keep the two in sync.
+// Agrees with the Python `_compute_line_totals` in
+// backend/app/services/ap_invoice_postprocess_service.py — not by sharing code but because
+// `_resolve_line_discount` normalises discountAmt to satisfy
+// `qty * unitPrice - discountAmt == afterDisc`, which is exactly the anchor used here.
+// The two formulas are otherwise independent, so `test_discount_parity` in apTax.test.ts
+// is what actually holds them together: it failed silently for per-unit discount columns
+// before that invariant existed, and the first edit to such a row moved its amount.
 export function recalcRow(item: APLineItem): APLineItem {
   const qty = parseNum(item.qty) || 1
   const unitPrice = parseNum(item.unitPrice)
@@ -35,8 +40,11 @@ export function recalcRow(item: APLineItem): APLineItem {
   const taxType = (item.taxType || 'Exclude') as APTaxType
   const taxPct = taxType === 'None' ? 0 : Math.max(0, parseNum(item.taxPct))
 
+  // `!== 0`, not `> 0`: a negative row (a "-190 DISCOUNT" line, a deposit row) has a real
+  // price and must recalculate from it. Under `> 0` those rows fell into the grouped-row
+  // fallback, so editing their unitPrice did nothing at all.
   const afterDisc =
-    unitPrice > 0
+    unitPrice !== 0
       ? round2(qty * unitPrice - discountAmt)
       : round2(parseNum(item.lineSubTotal) + discountAmt)
 
@@ -55,10 +63,17 @@ export function recalcRow(item: APLineItem): APLineItem {
     lineTotal = round2(lineSubTotal + taxAmt)
   }
 
+  // Re-derive the % from the amount so the discount column stops lying after a qty,
+  // unitPrice or discountAmt edit. Left stale it was worse than absent: blurring the %
+  // field re-applied the old percentage and moved the row's amount with it.
+  const gross = round2(qty * unitPrice)
+  const discountPct = gross > 0 ? round2((discountAmt / gross) * 100) : parseNum(item.discountPct)
+
   return {
     ...item,
     taxType,
     taxPct: fmt(taxPct),
+    discountPct: fmt(discountPct),
     lineSubTotal: fmt(lineSubTotal),
     taxAmt: fmt(taxAmt),
     lineTotal: fmt(lineTotal),
