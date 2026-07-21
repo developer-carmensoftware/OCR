@@ -94,7 +94,8 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
 
-      # 4. Production only: cut a GitHub Release from today's changelog entry.
+      # 4. Production only: cut a GitHub Release tagged with the SemVer in VERSION,
+      #    with today's changelog entry as the notes body.
       - name: Create release from changelog
         if: github.ref_name == 'main'
         env:
@@ -102,13 +103,15 @@ jobs:
         run: |
           today=$(TZ='Asia/Bangkok' date +%Y-%m-%d)   # changelog files are dated in ICT
           file="changelog/${today}.md"
-          tag="v$(echo "$today" | tr '-' '.')"
+          tag="v$(cat VERSION)"
           if [ ! -f "$file" ]; then
             echo "No $file — skipping release."
             exit 0
           fi
+          # Existing tag = VERSION was not bumped, so this deploy is not a release
+          # (a refactor or a fix too small to tell users about). Not an error.
           if gh release view "$tag" >/dev/null 2>&1; then
-            echo "Release $tag already exists — skipping."
+            echo "Release $tag already exists (VERSION unchanged) — skipping."
             exit 0
           fi
           gh release create "$tag" --title "$tag" --notes-file "$file"

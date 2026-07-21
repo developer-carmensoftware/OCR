@@ -23,6 +23,19 @@ _WEAK_FERNET_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 _WILDCARD_REGEX_PATTERNS = {".*", ".+", "^.*$", "^.+$", "(.*)", ".*?"}
 
 
+def _read_version() -> str:
+    """App version from the repo-root VERSION file — the single source of truth.
+
+    ponytail: a bare file, not a packaging tool, because the frontend (vite.config.ts)
+    has to read the same number and neither side should parse the other's manifest.
+    Falls back to "dev" so a partial checkout or a wheel without the file still boots.
+    """
+    try:
+        return (Path(__file__).parents[2] / "VERSION").read_text().strip() or "dev"
+    except OSError:
+        return "dev"
+
+
 def is_wildcard_origin_regex(pattern: str | None) -> bool:
     """True if the CORS origin regex effectively matches any origin."""
     if not pattern:
@@ -139,8 +152,9 @@ class Settings(BaseSettings):
     carmen_ar_url: str = ""
     carmen_ar_token: str = ""  # value for the Authorization header
 
-    # Application version — bump on every release
-    app_version: str = "1.0.0"
+    # Application version — SemVer, read from the repo-root VERSION file.
+    # Bump VERSION (not this line) on a user-visible release; APP_VERSION env overrides.
+    app_version: str = _read_version()
 
     # Auth — JWT + session encryption
     # Generate session_encryption_key: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

@@ -50,6 +50,7 @@ export default function WhatsNew() {
                     <time className="whatsnew-date" dateTime={release.date}>
                       {formatDate(release.date)}
                     </time>
+                    <span className="whatsnew-version">v{release.version}</span>
                     {release.date > seenOnArrival && (
                       <span className="whatsnew-tag">{t('whatsnew.new')}</span>
                     )}
