@@ -9,7 +9,6 @@ import LanguageToggle from '../components/common/LanguageToggle'
 import { useT } from '../i18n/LanguageContext'
 import type { TKey } from '../i18n/dict'
 import { useEntrance } from '../lib/useEntrance'
-import { LATEST_RELEASE } from '../content/releaseNotes'
 
 interface TagConfig {
   labelKey: TKey
@@ -131,7 +130,7 @@ export default function Home() {
         {/* Display only — never an entry point. Users arrive via Carmen SSO
             straight into a module and have no route here. */}
         <div className="home-version">
-          <span className="dot" /> System Online — v{LATEST_RELEASE.replace(/-/g, '.')}
+          <span className="dot" /> System Online — v{__APP_VERSION__}
         </div>
       </m.div>
       <div className="home-modules">

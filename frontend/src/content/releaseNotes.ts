@@ -7,10 +7,9 @@
  * function names, English only). This is 2-4 lines for a Thai accounting clerk
  * who just watched the system go offline and wants to know what changed.
  *
- * The ISO date IS the identity. It matches the release-tag scheme
- * (`v2026.07.20` ← `changelog/2026-07-20.md`, cut by deploy.yml), and
- * lexicographic order equals chronological order — so "which have I already
- * seen" is one string comparison, not a version parser.
+ * The ISO date IS the identity: lexicographic order equals chronological order,
+ * so "which have I already seen" is one string comparison, not a version parser.
+ * `version` rides alongside for display only — it is never compared.
  *
  * ponytail: one entry per DATE, not per deploy. Shipping twice in a day means
  * editing that day's entry — cheaper than inventing a release id, at the price
@@ -22,6 +21,9 @@
  *      bumps get a changelog line and nothing here.
  *   2. 2-4 bullets, one line each, describing what they can now do or will see.
  *   3. Both languages. TS will not compile with one missing.
+ *   4. Bump the repo-root `VERSION` file to match this entry's `version` — CI
+ *      fails the PR if the newest entry and VERSION disagree, and deploy.yml
+ *      cuts the GitHub Release tag from VERSION.
  */
 
 export interface ReleaseNoteCopy {
@@ -30,8 +32,10 @@ export interface ReleaseNoteCopy {
 }
 
 export interface ReleaseNote {
-  /** YYYY-MM-DD, ICT. Matches that day's changelog file and the git tag. */
+  /** YYYY-MM-DD, ICT. Matches that day's changelog file. Identity + seen-key. */
   date: string
+  /** SemVer of the release this entry describes. Display only — see VERSION. */
+  version: string
   en: ReleaseNoteCopy
   th: ReleaseNoteCopy
 }
@@ -39,6 +43,7 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-07-20',
+    version: '1.0.0',
     en: {
       title: 'Maintenance notices you can actually read',
       items: [
@@ -59,9 +64,8 @@ export const RELEASE_NOTES: ReleaseNote[] = [
 ]
 
 /**
- * Date of the newest user-visible release. Shown on the Home landing page as the
- * version string — deliberately "when did this last change for you", not "which
- * build is running": there is no trustworthy build version to read (see
- * deploy.yml's note about /api/version).
+ * Date of the newest user-visible release — the high-water mark for "have I read
+ * this yet" (see lib/releaseNotesSeen.ts). NOT a version string: the version shown
+ * in the UI is `__APP_VERSION__`, from the repo-root VERSION file.
  */
 export const LATEST_RELEASE = RELEASE_NOTES[0]?.date ?? ''

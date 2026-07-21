@@ -36,4 +36,15 @@ describe('release notes', () => {
   it('LATEST_RELEASE is the newest date', () => {
     expect(LATEST_RELEASE).toBe(RELEASE_NOTES[0]?.date ?? '')
   })
+
+  it('every version is SemVer', () => {
+    for (const r of RELEASE_NOTES) expect(r.version).toMatch(/^\d+\.\d+\.\d+$/)
+  })
+
+  // The drift guard. VERSION is the source of truth — backend config.py reads it,
+  // vite bakes it in as __APP_VERSION__, deploy.yml tags the release from it. This
+  // catches the "bumped VERSION, forgot the release note" half of the same edit.
+  it('newest entry matches the repo-root VERSION file', () => {
+    expect(RELEASE_NOTES[0]?.version).toBe(__APP_VERSION__)
+  })
 })

@@ -8,11 +8,13 @@ vi.mock('../content/releaseNotes', () => ({
   RELEASE_NOTES: [
     {
       date: '2026-07-20',
+      version: '1.1.0',
       en: { title: 'Newer', items: ['a1'] },
       th: { title: 'ใหม่กว่า', items: ['ก1'] },
     },
     {
       date: '2026-07-10',
+      version: '1.0.0',
       en: { title: 'Older', items: ['b1'] },
       th: { title: 'เก่ากว่า', items: ['ข1'] },
     },
@@ -40,6 +42,8 @@ describe('WhatsNew', () => {
     expect(titles).toEqual(['Newer', 'Older'])
     expect(screen.getByText('a1')).toBeInTheDocument()
     expect(screen.getByText('b1')).toBeInTheDocument()
+    expect(screen.getByText('v1.1.0')).toBeInTheDocument()
+    expect(screen.getByText('v1.0.0')).toBeInTheDocument()
   })
 
   it('clears the seen mark on mount — arriving here is reading them', () => {
