@@ -679,6 +679,12 @@ const en = {
   'whatsnew.subtitle': 'Updates to Carmen AI Automation, newest first.',
   'whatsnew.new': 'New',
   'whatsnew.empty': 'No updates to show yet.',
+  // Not plain "New" — that is the unread tag, and two different "New"s on the
+  // same entry read as one thing.
+  'whatsnew.cat.features': 'New features',
+  'whatsnew.cat.fixes': 'Fixed',
+  'whatsnew.cat.qol': 'Improved',
+  'whatsnew.before': 'Before',
 
   // — Home / module picker —
   'home.subtitle':
@@ -1811,6 +1817,10 @@ const th: Record<TKey, string> = {
   'whatsnew.subtitle': 'การอัปเดตของ Carmen AI Automation เรียงจากล่าสุด',
   'whatsnew.new': 'ใหม่',
   'whatsnew.empty': 'ยังไม่มีการอัปเดตที่จะแสดง',
+  'whatsnew.cat.features': 'ฟีเจอร์ใหม่',
+  'whatsnew.cat.fixes': 'แก้ไขข้อผิดพลาด',
+  'whatsnew.cat.qol': 'ปรับปรุงการใช้งาน',
+  'whatsnew.before': 'ก่อนหน้านี้',
 
   // — Home / module picker —
   'home.subtitle':

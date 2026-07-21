@@ -9,14 +9,25 @@ vi.mock('../content/releaseNotes', () => ({
     {
       date: '2026-07-20',
       version: '1.1.0',
-      en: { title: 'Newer', items: ['a1'] },
-      th: { title: 'ใหม่กว่า', items: ['ก1'] },
+      en: {
+        title: 'Newer',
+        features: ['a1'],
+        fixes: [{ text: 'a2', before: 'a2-before' }],
+        qol: ['a3'],
+      },
+      th: {
+        title: 'ใหม่กว่า',
+        features: ['ก1'],
+        fixes: [{ text: 'ก2', before: 'ก2-เดิม' }],
+        qol: ['ก3'],
+      },
     },
     {
       date: '2026-07-10',
       version: '1.0.0',
-      en: { title: 'Older', items: ['b1'] },
-      th: { title: 'เก่ากว่า', items: ['ข1'] },
+      // Only one category — the other two sections must not render at all.
+      en: { title: 'Older', fixes: [{ text: 'b1', before: 'b1-before' }] },
+      th: { title: 'เก่ากว่า', fixes: [{ text: 'ข1', before: 'ข1-เดิม' }] },
     },
   ],
   LATEST_RELEASE: '2026-07-20',
@@ -44,6 +55,28 @@ describe('WhatsNew', () => {
     expect(screen.getByText('b1')).toBeInTheDocument()
     expect(screen.getByText('v1.1.0')).toBeInTheDocument()
     expect(screen.getByText('v1.0.0')).toBeInTheDocument()
+  })
+
+  it('groups bullets under their category', () => {
+    render(<WhatsNew />)
+    const labels = screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent)
+    // Newer has all three, in a fixed order; Older only has fixes.
+    expect(labels).toEqual(['New features', 'Fixed', 'Improved', 'Fixed'])
+  })
+
+  it('shows what a fix was like before, for every fix', () => {
+    render(<WhatsNew />)
+    expect(screen.getByText('a2-before')).toBeInTheDocument()
+    expect(screen.getByText('b1-before')).toBeInTheDocument()
+    // Twice: once per entry that has a fix.
+    expect(screen.getAllByText('Before')).toHaveLength(2)
+  })
+
+  it('omits categories an entry has nothing in', () => {
+    render(<WhatsNew />)
+    // Only the newer entry has features/qol, so each label appears exactly once.
+    expect(screen.getAllByText('New features')).toHaveLength(1)
+    expect(screen.getAllByText('Improved')).toHaveLength(1)
   })
 
   it('clears the seen mark on mount — arriving here is reading them', () => {

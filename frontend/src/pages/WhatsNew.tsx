@@ -56,11 +56,51 @@ export default function WhatsNew() {
                     )}
                   </div>
                   <h2 className="whatsnew-entry-title">{copy.title}</h2>
-                  <ul className="whatsnew-items">
-                    {copy.items.map(line => (
-                      <li key={line}>{line}</li>
-                    ))}
-                  </ul>
+
+                  {copy.features?.length ? (
+                    <section className="whatsnew-cat">
+                      <h3 className="whatsnew-cat-label whatsnew-cat-label--features">
+                        {t('whatsnew.cat.features')}
+                      </h3>
+                      <ul className="whatsnew-items">
+                        {copy.features.map(line => (
+                          <li key={line}>{line}</li>
+                        ))}
+                      </ul>
+                    </section>
+                  ) : null}
+
+                  {copy.fixes?.length ? (
+                    <section className="whatsnew-cat">
+                      <h3 className="whatsnew-cat-label whatsnew-cat-label--fixes">
+                        {t('whatsnew.cat.fixes')}
+                      </h3>
+                      <ul className="whatsnew-items">
+                        {copy.fixes.map(fix => (
+                          <li key={fix.text}>
+                            {fix.text}
+                            <span className="whatsnew-before">
+                              <span className="whatsnew-before-label">{t('whatsnew.before')}</span>
+                              {fix.before}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  ) : null}
+
+                  {copy.qol?.length ? (
+                    <section className="whatsnew-cat">
+                      <h3 className="whatsnew-cat-label whatsnew-cat-label--qol">
+                        {t('whatsnew.cat.qol')}
+                      </h3>
+                      <ul className="whatsnew-items">
+                        {copy.qol.map(line => (
+                          <li key={line}>{line}</li>
+                        ))}
+                      </ul>
+                    </section>
+                  ) : null}
                 </li>
               )
             })}
