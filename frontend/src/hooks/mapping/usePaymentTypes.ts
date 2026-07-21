@@ -11,7 +11,6 @@ export interface PaymentTypesHook {
   isAmountModalOpen: boolean
   setIsAmountModalOpen: React.Dispatch<React.SetStateAction<boolean>>
   initFromData: (mappings?: Record<string, FieldMapping>, customTypes?: string[]) => void
-  loadPaymentAmountFromStorage: () => void
   handlePaymentMappingChange: (type: string, field: keyof FieldMapping, value: string) => void
   handleAddCustomType: (
     activeScanPaymentTypes: Set<string>,
@@ -50,23 +49,6 @@ export function usePaymentTypes(): PaymentTypesHook {
     })
   }
 
-  const loadPaymentAmountFromStorage = () => {
-    const amountState = localStorage.getItem(appKey('accountMappingAmount'))
-    if (!amountState) return
-    try {
-      const parsed = JSON.parse(amountState) as Record<string, unknown>
-      initFromData(
-        Object.fromEntries(Object.entries(parsed).filter(([k]) => k !== '__customTypes')) as Record<
-          string,
-          FieldMapping
-        >,
-        (parsed.__customTypes as string[]) || []
-      )
-    } catch {
-      /* ignore */
-    }
-  }
-
   const handlePaymentMappingChange = (type: string, field: keyof FieldMapping, value: string) => {
     setPaymentAmount(prev => ({
       ...prev,
@@ -78,6 +60,9 @@ export function usePaymentTypes(): PaymentTypesHook {
     activeScanPaymentTypes: Set<string>,
     onSuggest?: ((types: string[]) => void) | null
   ) => {
+    // ponytail: custom types are upper-cased here but activeScan keys are raw document
+    // strings (useMapping rescan), so a mixed-case doc value renders a duplicate row.
+    // Fixing means normalizing both sides + migrating already-saved keys — own change.
     const trimmed = newCustomType.trim().toUpperCase()
     if (!trimmed || activeScanPaymentTypes.has(trimmed) || customPaymentTypes.includes(trimmed))
       return
@@ -115,6 +100,10 @@ export function usePaymentTypes(): PaymentTypesHook {
   const saveAmountSelection = () => {
     paymentAmountSnapshot.current = null
     customPaymentTypesSnapshot.current = null
+    // ponytail: accountMappingAmount is an offline-only duplicate of
+    // accountingConfig.paymentAmount, and __customTypes has no reader at all
+    // (useAccountingConfig strips it). Fold both into accountingConfig next time this
+    // persistence is touched — needs a one-shot migration read for existing browsers.
     localStorage.setItem(
       appKey('accountMappingAmount'),
       JSON.stringify({ ...paymentAmount, __customTypes: customPaymentTypes })
@@ -131,7 +120,6 @@ export function usePaymentTypes(): PaymentTypesHook {
     isAmountModalOpen,
     setIsAmountModalOpen,
     initFromData,
-    loadPaymentAmountFromStorage,
     handlePaymentMappingChange,
     handleAddCustomType,
     handleRemoveCustomType,

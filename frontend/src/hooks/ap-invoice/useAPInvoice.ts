@@ -111,10 +111,7 @@ export function useAPInvoice() {
     }
     const taxId = extraction.headerData.vendorTaxId
     if (taxId) {
-      saveAPVendorMapping(
-        taxId,
-        extraction.fieldMappings as unknown as Parameters<typeof saveAPVendorMapping>[1]
-      ).catch(() => {})
+      saveAPVendorMapping(taxId, extraction.fieldMappings).catch(() => {})
       try {
         const savedAll = JSON.parse(
           localStorage.getItem(appKey('ap_invoice_mapping')) || '{}'
