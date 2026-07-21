@@ -673,6 +673,13 @@ const en = {
   'notif.onHold': 'Your order was placed on hold (payment window expired)',
   'notif.missingSlip': 'Reminder: payment slip not yet uploaded',
 
+  // What's New — release history page (#/whats-new), entered from the bell.
+  // The release copy itself is data in content/releaseNotes.ts, not keys.
+  'whatsnew.title': "What's new",
+  'whatsnew.subtitle': 'Updates to Carmen AI Automation, newest first.',
+  'whatsnew.new': 'New',
+  'whatsnew.empty': 'No updates to show yet.',
+
   // — Home / module picker —
   'home.subtitle':
     'AI-powered accounting automation — extract invoices and credit card statements, then post directly to Carmen Cloud with no manual entry.',
@@ -1799,6 +1806,11 @@ const th: Record<TKey, string> = {
   'notif.rejected': 'คำสั่งซื้อถูกปฏิเสธ: {reason}',
   'notif.onHold': 'คำสั่งซื้อของคุณถูกระงับ (หมดเวลาชำระเงิน)',
   'notif.missingSlip': 'เตือนความจำ: ยังไม่ได้อัปโหลดหลักฐานการชำระเงิน',
+
+  'whatsnew.title': 'มีอะไรใหม่',
+  'whatsnew.subtitle': 'การอัปเดตของ Carmen AI Automation เรียงจากล่าสุด',
+  'whatsnew.new': 'ใหม่',
+  'whatsnew.empty': 'ยังไม่มีการอัปเดตที่จะแสดง',
 
   // — Home / module picker —
   'home.subtitle':

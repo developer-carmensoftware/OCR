@@ -1,0 +1,148 @@
+/* ═══════════════════════════════════════════
+   WHAT'S NEW — release history, entered from the notification bell
+   Reading surface, so it is narrower than the data pages: prose caps at ~70ch.
+   Entries are separated by a hairline, not boxed into cards — the content is a
+   chronology, and card chrome would make three releases look like three offers.
+   ═══════════════════════════════════════════ */
+
+.whatsnew-page {
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.whatsnew-main {
+  padding: 0.5rem 0 3rem;
+}
+
+.whatsnew-title {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--text);
+  text-wrap: balance;
+}
+
+.whatsnew-subtitle {
+  margin: 0.35rem 0 2rem;
+  max-width: 60ch;
+  font-size: 0.875rem;
+  line-height: 1.65;
+  color: var(--text-3);
+}
+
+.whatsnew-empty {
+  margin: 0;
+  color: var(--text-3);
+}
+
+.whatsnew-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.whatsnew-entry {
+  padding: 1.5rem 0;
+  border-top: 1px solid var(--border);
+  animation: whatsnew-entry-in 0.32s var(--ease-out) both;
+}
+
+.whatsnew-entry:first-child {
+  border-top: none;
+  padding-top: 0.25rem;
+}
+
+/* Bounded stagger: the list is short by design, and anything past the third
+   entry appearing late reads as lag rather than sequence. */
+.whatsnew-entry:nth-child(2) {
+  animation-delay: 60ms;
+}
+.whatsnew-entry:nth-child(n + 3) {
+  animation-delay: 120ms;
+}
+
+@keyframes whatsnew-entry-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.whatsnew-entry-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.4rem;
+}
+
+/* Mono because it is a value the reader checks against a calendar, per the
+   design system's data rule. */
+.whatsnew-date {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  letter-spacing: -0.01em;
+  color: var(--text-3);
+}
+
+.whatsnew-tag {
+  padding: 0.14rem 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--primary-light);
+  color: var(--primary);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.whatsnew-entry-title {
+  margin: 0 0 0.6rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  text-wrap: balance;
+}
+
+.whatsnew-items {
+  margin: 0;
+  padding-left: 1.1rem;
+  list-style: disc;
+  color: var(--text-2);
+  font-size: 0.875rem;
+  line-height: 1.65;
+  max-width: 70ch;
+  text-wrap: pretty;
+}
+
+.whatsnew-items li {
+  margin-bottom: 0.4rem;
+}
+
+.whatsnew-items li:last-child {
+  margin-bottom: 0;
+}
+
+.whatsnew-items li::marker {
+  color: var(--text-4);
+}
+
+@media (max-width: 640px) {
+  .whatsnew-page {
+    padding: 1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .whatsnew-entry {
+    animation: whatsnew-entry-fade 0.2s linear both;
+  }
+  @keyframes whatsnew-entry-fade {
+    from {
+      opacity: 0;
+    }
+  }
+}

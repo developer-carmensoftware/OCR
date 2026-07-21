@@ -42,7 +42,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     en: {
       title: 'Maintenance notices you can actually read',
       items: [
-        'Updates to the system now appear here in the bell. Tap one to see what changed.',
+        'System updates now appear in the notification bell. Open one to read the full history on this page.',
         'The scheduled-maintenance bar shows the exact window and a countdown to it.',
         'Order notifications open the matching order directly instead of the full list.',
       ],
@@ -50,7 +50,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     th: {
       title: 'แจ้งเตือนการปิดปรับปรุงที่อ่านเข้าใจง่ายขึ้น',
       items: [
-        'การอัปเดตระบบจะแสดงที่กระดิ่งนี้ แตะเพื่อดูว่ามีอะไรเปลี่ยนไปบ้าง',
+        'การอัปเดตระบบจะแสดงที่กระดิ่งแจ้งเตือน กดเพื่อเปิดหน้านี้และดูประวัติทั้งหมด',
         'แถบแจ้งปิดปรับปรุงแสดงช่วงเวลาที่ชัดเจน พร้อมนับถอยหลัง',
         'การแจ้งเตือนคำสั่งซื้อจะเปิดคำสั่งซื้อนั้นโดยตรง แทนที่จะเปิดรายการทั้งหมด',
       ],

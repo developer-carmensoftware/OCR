@@ -6,7 +6,7 @@ import {
   BellOff,
   CheckCheck,
   CheckCircle2,
-  ChevronDown,
+  ChevronRight,
   Clock,
   Sparkles,
   XCircle,
@@ -16,6 +16,7 @@ import { useT } from '../../i18n/LanguageContext'
 import type { Lang, TKey } from '../../i18n/dict'
 import '../../styles/components/notification-bell.css'
 import { useNotifications } from '../../hooks/notifications'
+import { WHATS_NEW_RETURN_KEY } from '../../lib/releaseNotesSeen'
 import type { BellItem } from '../../lib/api/notifications'
 import type { ReleaseNoteCopy } from '../../content/releaseNotes'
 
@@ -65,7 +66,6 @@ export default function NotificationBell() {
   const { t, lang } = useT()
   const { items, unreadCount, markRead } = useNotifications()
   const [open, setOpen] = useState(false)
-  const [expanded, setExpanded] = useState<string | null>(null)
   const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({})
   const btnRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -105,14 +105,14 @@ export default function NotificationBell() {
   }, [open])
 
   const handleItem = (n: BellItem) => {
-    // Release notes expand in place — there is nowhere to navigate to, and closing
-    // the panel to show a changelog would cost more than the extra panel height.
+    setOpen(false)
+    // Release notes open the full history page, which clears the seen mark on
+    // mount — so no markRead here. Stash where we came from for its back button.
     if (n.type === 'release_note') {
-      setExpanded(id => (id === n.id ? null : n.id))
-      if (!n.read_at) void markRead([n.id])
+      sessionStorage.setItem(WHATS_NEW_RETURN_KEY, window.location.hash || '#/')
+      window.location.hash = '#/whats-new'
       return
     }
-    setOpen(false)
     // Deep-link to the specific order when we have it, so the row opens/scrolls
     // into view; the orders route ignores the query suffix when matching.
     window.location.hash = n.order_id ? `#/pricing/orders?id=${n.order_id}` : '#/pricing/orders'
@@ -172,13 +172,11 @@ export default function NotificationBell() {
                   const meta = TYPE_META[n.type] ?? { icon: Bell, tone: 'info' }
                   const Icon = meta.icon
                   const release = n.type === 'release_note' ? releaseCopy(n, lang) : null
-                  const isOpen = expanded === n.id
                   return (
                     <li key={n.id}>
                       <button
                         type="button"
                         className={`notif-bell__item${n.read_at ? '' : ' is-unread'}`}
-                        aria-expanded={release ? isOpen : undefined}
                         onClick={() => handleItem(n)}
                       >
                         <span className={`notif-bell__icon notif-bell__icon--${meta.tone}`}>
@@ -191,9 +189,8 @@ export default function NotificationBell() {
                           <time className="notif-bell__time">{timeAgo(n.created_at, t)}</time>
                         </span>
                         {release && (
-                          <ChevronDown
-                            className="notif-bell__chevron"
-                            data-open={isOpen || undefined}
+                          <ChevronRight
+                            className="notif-bell__go"
                             size={14}
                             strokeWidth={2}
                             aria-hidden="true"
@@ -201,15 +198,6 @@ export default function NotificationBell() {
                         )}
                         {!n.read_at && <span className="notif-bell__dot" aria-hidden="true" />}
                       </button>
-                      {/* Sibling of the button, not a child: a list inside a
-                          <button> is invalid HTML. */}
-                      {release && isOpen && (
-                        <ul className="notif-bell__release-items">
-                          {release.items.map(line => (
-                            <li key={line}>{line}</li>
-                          ))}
-                        </ul>
-                      )}
                     </li>
                   )
                 })}

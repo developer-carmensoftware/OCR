@@ -71,6 +71,7 @@ const Mapping = lazy(() => import('./pages/Mapping'))
 const APInvoice = lazy(() => import('./pages/APInvoice'))
 const Pricing = lazy(() => import('./pages/Pricing'))
 const OrderHistory = lazy(() => import('./pages/OrderHistory'))
+const WhatsNew = lazy(() => import('./pages/WhatsNew'))
 
 // Admin pages
 const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'))
@@ -213,6 +214,8 @@ function Router() {
     Page = sub === 'mapping' ? <Mapping /> : <CreditCardOCR />
   } else if (route.startsWith('apinvoice')) {
     Page = <APInvoice />
+  } else if (route === 'whats-new') {
+    Page = <WhatsNew />
   } else if (route === 'pricing/orders') {
     Page = <OrderHistory />
   } else if (route.startsWith('pricing')) {
