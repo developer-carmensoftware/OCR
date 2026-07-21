@@ -152,6 +152,9 @@ export function useAPExtraction({ setStep, setModal, loadVendors }: APExtraction
   const [fieldMappings, setFieldMappings] =
     useState<Record<APColumnKey, APFieldKey | 'ignore'>>(DEFAULT_MAPPINGS)
   const [apInvoiceId, setApInvoiceId] = useState<string | null>(null)
+  // Backend-set, English, display-only — e.g. the VAT reading could not be confirmed
+  // against the document footer. Mirrors the credit-card extraction warnings.
+  const [warnings, setWarnings] = useState<string[]>([])
   const [isDuplicate, setIsDuplicate] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const previewUrlRef = useRef<string | null>(null)
@@ -174,6 +177,7 @@ export function useAPExtraction({ setStep, setModal, loadVendors }: APExtraction
       const data = await _fetchExtract(fileObj, selectedPages, password ?? pwPrompt.pdfPassword)
 
       setApInvoiceId((data.id as string) || null)
+      setWarnings((data.warnings as string[]) || [])
       setHeaderData({
         vendorName: (data.vendorName as string) || '',
         vendorTaxId: (data.vendorTaxId as string) || '',
@@ -581,6 +585,7 @@ export function useAPExtraction({ setStep, setModal, loadVendors }: APExtraction
     setFieldMappings(DEFAULT_MAPPINGS)
     setIsDuplicate(false)
     setApInvoiceId(null)
+    setWarnings([])
     setStatus('')
     setError(null)
     setPdfInfoLoading(false)
@@ -631,6 +636,7 @@ export function useAPExtraction({ setStep, setModal, loadVendors }: APExtraction
     setFieldMappings,
     apInvoiceId,
     isDuplicate,
+    warnings,
     pdfInfoLoading,
     imageMerging,
     imageCount,

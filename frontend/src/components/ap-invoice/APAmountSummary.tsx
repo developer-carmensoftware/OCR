@@ -45,7 +45,8 @@ interface SummaryRowProps {
   tableVal: string
   tableClassName?: string
   docVal: string
-  onAdjust: () => void
+  // Optional: a row with no meaningful plug target (Discount) simply omits it.
+  onAdjust?: () => void
   onChange: (v: string) => void
   onBlur: (v: string) => void
 }
@@ -66,7 +67,7 @@ function SummaryRow({
     <div className="ap-summary-row">
       <span className="ap-summary-label">{label}</span>
       <div className="ap-summary-values">
-        {isDiff && !hideAdjust && (
+        {isDiff && !hideAdjust && onAdjust && (
           <button type="button" className="ap-adjust-btn" onClick={onAdjust}>
             <RotateCw size={14} /> {t('ap.adjust')}
           </button>
@@ -98,7 +99,8 @@ export default function AmountSummary({
 }: Props) {
   const { t } = useT()
   const { lineSubTotal, discount, tax, lineTotal } = sums
-  const { subTotal: tgtSub, discount: tgtDisc, tax: tgtTax } = targets
+  // targets.discount is intentionally unread — the Discount row has no Adjust.
+  const { subTotal: tgtSub, tax: tgtTax } = targets
   const { isSubDiff, isDiscDiff, isTaxDiff, isGrandDiff, isDocInconsistent } = diffs
 
   return (
@@ -140,12 +142,17 @@ export default function AmountSummary({
           onChange={v => updateHeader('subTotal', v)}
           onBlur={v => blurHeader('subTotal', v)}
         />
+        {/* No Adjust here on purpose. Discount is a display figure — Carmen has no line
+            discount field and the payload no longer reads discountAmt — so there is
+            nothing to reconcile TO. The button used to write the difference onto
+            whichever row happened to be last (often the deposit row), inventing a
+            discount that row never had just to make two display numbers agree. The
+            diff still shows; it no longer gates submit either. */}
         <SummaryRow
           label={t('ap.discount')}
           isDiff={isDiscDiff}
           tableVal={fmt(discount)}
           docVal={headerData.totalDiscount}
-          onAdjust={() => adjustField(tgtDisc, discount, 'discountAmt')}
           onChange={v => updateHeader('totalDiscount', v)}
           onBlur={v => blurHeader('totalDiscount', v)}
           tableClassName={isDiscDiff ? '' : 'ap-sum-discount-no-diff'}

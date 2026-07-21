@@ -60,36 +60,36 @@ class TestDetectTaxType:
     def test_B2_1_exclude_detected_when_items_sum_with_tax_matches_grand(self):
         # item = 100, +7% tax = 107 → grand=107 → Exclude
         items = [self._item(qty=1, unit_price=100.0, tax_pct=7.0)]
-        result = _detect_tax_type(items, deposit_pct=0, doc_sub=0, doc_grand=107.0)
+        result, _ = _detect_tax_type(items, deposit_pct=0, doc_sub=0, doc_grand=107.0)
         assert result == "Exclude"
 
     def test_B2_2_include_detected_when_items_sum_equals_grand_directly(self):
         # item = 107 tax-included @ 7% → grand=107, stated tax=7 → Include
         # doc_tax must be passed so the None-VAT shortcut is skipped
         items = [self._item(qty=1, unit_price=107.0, tax_pct=7.0)]
-        result = _detect_tax_type(items, deposit_pct=0, doc_sub=0, doc_grand=107.0, doc_tax=7.0)
+        result, _ = _detect_tax_type(items, deposit_pct=0, doc_sub=0, doc_grand=107.0, doc_tax=7.0)
         assert result == "Include"
 
     def test_B2_3_deposit_doc_scales_before_compare(self):
         # item = 200, +7% = 214. deposit_pct=50 → effective=100 → collected+tax=107
         items = [self._item(qty=1, unit_price=200.0, tax_pct=7.0)]
-        result = _detect_tax_type(items, deposit_pct=50, doc_sub=0, doc_grand=107.0)
+        result, _ = _detect_tax_type(items, deposit_pct=50, doc_sub=0, doc_grand=107.0)
         assert result == "Exclude"
 
     def test_B2_4_tie_break_defaults_to_exclude(self):
         # no doc_grand and no doc_sub → returns Exclude
         items = [self._item()]
-        result = _detect_tax_type(items, deposit_pct=0, doc_sub=0, doc_grand=0)
+        result, _ = _detect_tax_type(items, deposit_pct=0, doc_sub=0, doc_grand=0)
         assert result == "Exclude"
 
     def test_empty_items_returns_exclude(self):
-        assert _detect_tax_type([], 0, 0, 0) == "Exclude"
+        assert _detect_tax_type([], 0, 0, 0)[0] == "Exclude"
 
     def test_uses_doc_sub_when_doc_grand_is_zero(self):
         # item=100 net, sub=100, stated tax=7 → grand unknown → Exclude fits sub directly
         # doc_tax must be passed so the None-VAT shortcut is skipped
         items = [self._item(qty=1, unit_price=100.0, tax_pct=7.0)]
-        result = _detect_tax_type(items, deposit_pct=0, doc_sub=100.0, doc_grand=0, doc_tax=7.0)
+        result, _ = _detect_tax_type(items, deposit_pct=0, doc_sub=100.0, doc_grand=0, doc_tax=7.0)
         assert result == "Exclude"
 
     def test_detection_rate_skips_leading_exempt_row(self):
@@ -101,7 +101,7 @@ class TestDetectTaxType:
             self._item(qty=1, unit_price=0.0, tax_pct=0.0),
             self._item(qty=1, unit_price=100.0, tax_pct=10.0),
         ]
-        result = _detect_tax_type(items, deposit_pct=0, doc_sub=0, doc_grand=110.0, doc_tax=10.0)
+        result, _ = _detect_tax_type(items, deposit_pct=0, doc_sub=0, doc_grand=110.0, doc_tax=10.0)
         assert result == "Exclude"
 
 
@@ -115,9 +115,14 @@ class TestDistributeFooterDiscount:
             {"qty": 1, "unitPrice": 100.0, "discountAmt": 0},
         ]
         _distribute_footer_discount(items, doc_disc=30.0)
-        # 200/(200+100)=2/3 of 30=20; 100/300=1/3 of 30=10
-        assert items[0]["discountAmt"] == pytest.approx(20.0, abs=0.01)
-        assert items[1]["discountAmt"] == pytest.approx(10.0, abs=0.01)
+        # 200/(200+100)=2/3 of 30=20; 100/300=1/3 of 30=10.
+        # Recorded on _footerDisc, NOT folded into discountAmt — keeping the two apart
+        # is what stops a document with both a discount column and a footer discount
+        # from deducting the row's own discount twice.
+        assert items[0]["_footerDisc"] == pytest.approx(20.0, abs=0.01)
+        assert items[1]["_footerDisc"] == pytest.approx(10.0, abs=0.01)
+        assert items[0]["discountAmt"] == 0
+        assert items[1]["discountAmt"] == 0
 
     def test_B2_6_last_item_absorbs_rounding_remainder(self):
         # Use 3 items where proportion can't be exact
@@ -127,13 +132,33 @@ class TestDistributeFooterDiscount:
             {"qty": 1, "unitPrice": 100.0, "discountAmt": 0},
         ]
         _distribute_footer_discount(items, doc_disc=10.0)
-        total = sum(i["discountAmt"] for i in items)
-        assert round(total, 2) == 10.0  # remainder absorbed in last item
+        total = sum(i["_footerDisc"] for i in items)
+        assert round(total, 2) == 10.0  # remainder absorbed, nothing lost
 
     def test_no_discount_leaves_items_unchanged(self):
         items = [{"qty": 1, "unitPrice": 100.0, "discountAmt": 5.0}]
         _distribute_footer_discount(items, doc_disc=0)
         assert items[0]["discountAmt"] == 5.0
+        assert "_footerDisc" not in items[0]
+
+    def test_negative_row_takes_no_share_and_is_out_of_the_base(self):
+        # A "-190 DISCOUNT" row must not receive a NEGATIVE share (which would grow it)
+        # nor shrink the base the real rows prorate over.
+        items = [
+            {"qty": 1, "unitPrice": 200.0, "discountAmt": 0},
+            {"qty": 1, "unitPrice": -190.0, "discountAmt": 0},
+        ]
+        _distribute_footer_discount(items, doc_disc=30.0)
+        assert items[0]["_footerDisc"] == pytest.approx(30.0, abs=0.01)
+        assert items[1].get("_footerDisc", 0) == 0
+
+    def test_falls_back_to_lineAmt_when_qty_price_absent(self):
+        # Rows carrying only an Amount column used to make the whole footer discount
+        # vanish (the qty×unitPrice base summed to 0 and the function bailed).
+        items = [{"lineAmt": 300.0, "discountAmt": 0}, {"lineAmt": 100.0, "discountAmt": 0}]
+        _distribute_footer_discount(items, doc_disc=40.0)
+        assert sum(i["_footerDisc"] for i in items) == pytest.approx(40.0, abs=0.01)
+        assert items[0]["_footerDisc"] == pytest.approx(30.0, abs=0.01)
 
     def test_empty_items_no_crash(self):
         _distribute_footer_discount([], doc_disc=100.0)  # should not raise
@@ -159,7 +184,7 @@ class TestComputeLineTotals:
 
     def test_B2_7_exclude_no_discount(self):
         item = self._item(qty=1, unit_price=100.0, tax_pct=7.0)
-        _compute_line_totals(item, "Exclude", has_footer_disc=False)
+        _compute_line_totals(item, "Exclude")
         assert item["lineSubTotal"] == 100.0
         assert item["taxAmt"] == pytest.approx(7.0, abs=0.01)
         assert item["lineTotal"] == pytest.approx(107.0, abs=0.01)
@@ -167,25 +192,38 @@ class TestComputeLineTotals:
     def test_B2_8_exclude_per_row_discount_lineAmt_is_net(self):
         # lineAmt=90 is NET (per-row discount=10) → don't double-deduct
         item = self._item(qty=1, unit_price=100.0, disc=10.0, tax_pct=7.0, line_amt=90.0)
-        _compute_line_totals(item, "Exclude", has_footer_disc=False)
+        _compute_line_totals(item, "Exclude")
         assert item["lineSubTotal"] == pytest.approx(90.0, abs=0.01)
         assert item["taxAmt"] == pytest.approx(6.30, abs=0.01)
         assert item["lineTotal"] == pytest.approx(96.30, abs=0.01)
 
-    def test_B2_9_exclude_footer_discount_lineAmt_is_gross(self):
-        # lineAmt=100 is GROSS (footer dist gave disc=10) → deduct discount
-        item = self._item(qty=1, unit_price=100.0, disc=10.0, tax_pct=7.0, line_amt=100.0)
-        _compute_line_totals(item, "Exclude", has_footer_disc=True)
+    def test_B2_9_exclude_footer_discount_is_deducted_from_lineAmt(self):
+        # lineAmt=100 with a 10 footer share → the share is still outstanding, deduct it.
+        item = self._item(qty=1, unit_price=100.0, tax_pct=7.0, line_amt=100.0)
+        item["_footerDisc"] = 10.0
+        _compute_line_totals(item, "Exclude")
         assert item["lineSubTotal"] == pytest.approx(90.0, abs=0.01)
         assert item["taxAmt"] == pytest.approx(6.30, abs=0.01)
         assert item["lineTotal"] == pytest.approx(96.30, abs=0.01)
+        # The footer share is restated into discountAmt so the invariant holds.
+        assert item["discountAmt"] == pytest.approx(10.0, abs=0.01)
+
+    def test_row_discount_and_footer_share_are_not_double_deducted(self):
+        # The B1 regression: gross 100, own discount 10 already reflected in the printed
+        # Amount of 90, plus a 5 footer share → 85. The old document-wide has_footer_disc
+        # flag deducted the row's own 10 a second time and produced 80.
+        item = self._item(qty=1, unit_price=100.0, disc=10.0, tax_pct=7.0, line_amt=90.0)
+        item["_footerDisc"] = 5.0
+        _compute_line_totals(item, "Exclude")
+        assert item["lineSubTotal"] == pytest.approx(85.0, abs=0.01)
+        assert item["discountAmt"] == pytest.approx(15.0, abs=0.01)
 
     # ── Include tax ──
 
     def test_B2_10_include_tax_subtraction(self):
         # lineAmt=107 tax-included @ 7% → sub=100, tax=7, total=107
         item = self._item(qty=1, unit_price=107.0, tax_pct=7.0, line_amt=107.0)
-        _compute_line_totals(item, "Include", has_footer_disc=False)
+        _compute_line_totals(item, "Include")
         assert item["lineSubTotal"] == pytest.approx(100.0, abs=0.01)
         assert item["taxAmt"] == pytest.approx(7.0, abs=0.01)
         assert item["lineTotal"] == pytest.approx(107.0, abs=0.01)
@@ -519,3 +557,136 @@ class TestPostprocess:
         raw2 = self._raw(documentDate="01/06/2569")
         result2 = postprocess(raw2)
         assert result2["documentDate"] == "01/06/2026"
+
+
+# ── Regression: percent-discount column must not flip the document's VAT reading ──
+
+
+class TestPercentDiscountColumn:
+    """Invoice 66-0023 (B 47 Service, 20260408_164331.jpg).
+
+    Six rows with a printed "ส่วนลด %" column, footers รวมเงิน 17,691.10 /
+    VAT 7% 1,238.38 / รวมทั้งสิ้น 18,929.48 — a plain Exclude document.
+
+    Shipped behaviour before this fix: discountPct was extracted but never turned
+    into discountAmt, so _detect_tax_type summed qty × unitPrice at 20,607.00
+    instead of 17,691.10. Include beat Exclude by being less wrong (1,677.52 vs
+    2,915.90), every line was divided by 1.07, and the resulting shortfall was
+    plugged onto the last row — which posted 2,524.19 against a printed 1,462.50.
+    The grand total was right, so nothing looked wrong anywhere in the UI.
+    """
+
+    ROWS = [
+        # description, qty, unitPrice, discountPct, printed Amount
+        ("น้ำมันเครื่อง Benz 229.52", 6, 781.00, 0, 4686.00),
+        ("ไส้กรองน้ำมันเครื่อง", 1, 480.00, 15, 408.00),
+        ("น้ำยา AD BLUE 000 583 01 07/09", 22, 253.00, 15, 4731.10),
+        ("กรองอากาศ 651 094 01 00", 1, 4190.00, 15, 3561.50),
+        ("กรองแอร์ตัวใน 205 835 01 47", 1, 4060.00, 30, 2842.00),
+        ("ค่าบริการ เช็คระยะ", 1, 1625.00, 10, 1462.50),
+    ]
+
+    def _raw(self):
+        # Shaped as the LLM returns it: discountPct read off the column,
+        # discountAmt absent — the exact input that used to break detection.
+        return {
+            "vendorName": "B 47 SERVICE CO., LTD.",
+            "documentNumber": "66-0023",
+            "documentDate": "10/1/2566",
+            "items": [
+                {
+                    "description": desc,
+                    "qty": qty,
+                    "unitPrice": price,
+                    "discountPct": pct,
+                    "lineAmt": amount,
+                    "taxPct": 7,
+                }
+                for desc, qty, price, pct, amount in self.ROWS
+            ],
+            "docSubTotal": 17691.10,
+            "docTaxAmount": 1238.38,
+            "docGrandTotal": 18929.48,
+            "docDiscount": 0,
+            "depositPct": 0,
+        }
+
+    def test_discount_column_does_not_flip_tax_type_to_include(self):
+        result = postprocess(self._raw())
+        assert result["taxType"] == "Exclude"
+
+    def test_every_line_matches_the_printed_amount(self):
+        result = postprocess(self._raw())
+        printed = [amount for *_, amount in self.ROWS]
+        assert [i["lineSubTotal"] for i in result["items"]] == pytest.approx(printed, abs=0.01)
+
+    def test_last_row_is_not_a_plug(self):
+        # The tell-tale symptom: row 6 posted 2,524.19 for a printed 1,462.50.
+        result = postprocess(self._raw())
+        assert result["items"][-1]["lineSubTotal"] == pytest.approx(1462.50, abs=0.01)
+
+    def test_percent_column_resolves_to_a_line_discount(self):
+        result = postprocess(self._raw())
+        assert [i["discountAmt"] for i in result["items"]] == pytest.approx(
+            [0.0, 72.0, 834.90, 628.50, 1218.0, 162.50], abs=0.01
+        )
+        assert [i["discountPct"] for i in result["items"]] == pytest.approx(
+            [0, 15, 15, 15, 30, 10], abs=0.01
+        )
+
+    def test_headers_reconcile_to_the_document(self):
+        result = postprocess(self._raw())
+        assert result["subTotal"] == pytest.approx(17691.10, abs=0.01)
+        assert result["taxAmount"] == pytest.approx(1238.38, abs=0.01)
+        assert result["grandTotal"] == pytest.approx(18929.48, abs=0.01)
+        # sub + tax must land exactly on grand, or the frontend raises its
+        # "document figures don't add up" banner on a document that adds up fine.
+        assert result["subTotal"] + result["taxAmount"] == pytest.approx(
+            result["grandTotal"], abs=0.005
+        )
+
+    def test_line_sums_match_the_headers(self):
+        # What the Step-3 submit gate checks. Any mismatch here is a user staring at a
+        # reconciliation banner with no way to clear it.
+        result = postprocess(self._raw())
+        items = result["items"]
+        assert sum(i["lineSubTotal"] for i in items) == pytest.approx(result["subTotal"], abs=0.005)
+        assert sum(i["taxAmt"] for i in items) == pytest.approx(result["taxAmount"], abs=0.005)
+        assert sum(i["lineTotal"] for i in items) == pytest.approx(result["grandTotal"], abs=0.005)
+
+    def test_a_clean_fit_raises_no_warning(self):
+        assert postprocess(self._raw())["warnings"] == []
+
+    def test_invariant_holds_on_every_row(self):
+        # qty × unitPrice − discountAmt == the row's pre-tax amount. This is what lets
+        # the frontend's recalcRow reproduce these totals from the same inputs.
+        for item in postprocess(self._raw())["items"]:
+            gross = item["qty"] * item["unitPrice"]
+            after_disc = item["lineTotal"] if item["taxType"] == "Include" else item["lineSubTotal"]
+            assert gross - item["discountAmt"] == pytest.approx(after_disc, abs=0.01)
+
+
+class TestTaxTypeGuessWarning:
+    def test_warns_when_neither_reading_fits_the_footer(self):
+        # Items that reconcile to nothing: 1,000 against a stated grand total of 1,500.
+        # Detection still has to answer, but the answer is a guess and must say so.
+        raw = {
+            "items": [{"qty": 1, "unitPrice": 1000.0, "discountAmt": 0, "taxPct": 7}],
+            "docSubTotal": 0,
+            "docTaxAmount": 98.0,
+            "docGrandTotal": 1500.0,
+            "docDiscount": 0,
+            "depositPct": 0,
+        }
+        assert postprocess(raw)["warnings"]
+
+    def test_no_warning_when_a_reading_fits(self):
+        raw = {
+            "items": [{"qty": 1, "unitPrice": 100.0, "discountAmt": 0, "taxPct": 7}],
+            "docSubTotal": 100.0,
+            "docTaxAmount": 7.0,
+            "docGrandTotal": 107.0,
+            "docDiscount": 0,
+            "depositPct": 0,
+        }
+        assert postprocess(raw)["warnings"] == []
