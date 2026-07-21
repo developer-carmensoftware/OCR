@@ -23,6 +23,7 @@ vi.mock('../../lib/api/notifications', () => ({
 }))
 
 const { useNotifications } = await import('./useNotifications')
+const { markReleaseSeen } = await import('../../lib/releaseNotesSeen')
 
 const SERVER_ROW = {
   id: 'uuid-1',
@@ -38,7 +39,7 @@ async function setup() {
   listNotifications.mockResolvedValue({ items: [SERVER_ROW], unread_count: 1 })
   markNotificationsRead.mockResolvedValue(undefined)
   const hook = renderHook(() => useNotifications())
-  await waitFor(() => expect(hook.result.current.items.length).toBe(3))
+  await waitFor(() => expect(hook.result.current.items.length).toBe(2))
   return hook
 }
 
@@ -48,18 +49,15 @@ beforeEach(() => {
 })
 
 describe('useNotifications — release notes', () => {
-  it('pins release rows above server notifications', async () => {
+  it('surfaces only the newest release, pinned above server notifications', async () => {
     const { result } = await setup()
-    expect(result.current.items.map(i => i.id)).toEqual([
-      'release:2026-07-20',
-      'release:2026-07-10',
-      'uuid-1',
-    ])
+    // One doorway to #/whats-new, not one row per release — the page lists the rest.
+    expect(result.current.items.map(i => i.id)).toEqual(['release:2026-07-20', 'uuid-1'])
   })
 
-  it('counts unseen releases on top of the server unread count', async () => {
+  it('counts the unseen release on top of the server unread count', async () => {
     const { result } = await setup()
-    expect(result.current.unreadCount).toBe(3) // 1 server + 2 unseen releases
+    expect(result.current.unreadCount).toBe(2) // 1 server + 1 unseen release
   })
 
   it('does not drift when the poll refreshes the server count', async () => {
@@ -67,8 +65,8 @@ describe('useNotifications — release notes', () => {
     await act(async () => {
       await result.current.refresh()
     })
-    // Would be 5 if the release delta were folded into stored state each refresh.
-    expect(result.current.unreadCount).toBe(3)
+    // Would climb each refresh if the release delta were folded into stored state.
+    expect(result.current.unreadCount).toBe(2)
   })
 
   it('marks a release seen locally without calling the API', async () => {
@@ -81,22 +79,21 @@ describe('useNotifications — release notes', () => {
     expect(result.current.unreadCount).toBe(1) // server row only
   })
 
-  it('reading the newest also clears older releases', async () => {
+  it('a stale seen mark older than the newest release still reads as unseen', async () => {
+    localStorage.setItem('releaseNotesSeen', '2026-07-10')
     const { result } = await setup()
-    await act(async () => {
-      await result.current.markRead(['release:2026-07-20'])
-    })
-    expect(result.current.items.every(i => !i.id.startsWith('release:') || i.read_at)).toBe(true)
-  })
-
-  it('reading an older release leaves the newer one unread', async () => {
-    const { result } = await setup()
-    await act(async () => {
-      await result.current.markRead(['release:2026-07-10'])
-    })
     const newest = result.current.items.find(i => i.id === 'release:2026-07-20')
     expect(newest?.read_at).toBeNull()
-    expect(result.current.unreadCount).toBe(2) // 1 server + newest release
+    expect(result.current.unreadCount).toBe(2) // 1 server + the newer release
+  })
+
+  it('picks up the mark cleared by the What’s New page', async () => {
+    const { result } = await setup()
+    expect(result.current.unreadCount).toBe(2)
+    await act(async () => {
+      markReleaseSeen('2026-07-20') // what WhatsNew does on mount
+    })
+    expect(result.current.unreadCount).toBe(1)
   })
 
   it('passes only server ids to the API on a mixed call', async () => {

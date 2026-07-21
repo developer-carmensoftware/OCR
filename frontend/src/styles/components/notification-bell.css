@@ -235,40 +235,27 @@
   font-size: 0.8rem;
 }
 
-/* ── Release notes — the one expandable row type ── */
+/* ── Release notes — the one row that leads somewhere ── */
 
-.notif-bell__chevron {
+/* Points right, not down: this row navigates to #/whats-new rather than
+   disclosing content in place. */
+.notif-bell__go {
   flex-shrink: 0;
-  margin-top: 0.45rem;
+  align-self: center;
   color: var(--text-4);
   transition: transform 150ms var(--ease-out-premium);
 }
 
-.notif-bell__chevron[data-open] {
-  transform: rotate(180deg);
-}
-
-/* Outside the row button (a list inside a <button> is invalid HTML), indented to
-   the row's text column so the bullets read as belonging to the title above. */
-.notif-bell__release-items {
-  margin: 0 0 0.4rem;
-  padding: 0.1rem 0.75rem 0 2.65rem;
-  list-style: disc;
-  color: var(--text-2);
-  font-size: 0.76rem;
-  line-height: 1.55;
-}
-
-.notif-bell__release-items li {
-  margin-bottom: 0.3rem;
-}
-
-.notif-bell__release-items li::marker {
-  color: var(--text-4);
+.notif-bell__item:hover .notif-bell__go {
+  transform: translateX(2px);
+  color: var(--text-3);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .notif-bell__chevron {
+  .notif-bell__go {
     transition: none;
+  }
+  .notif-bell__item:hover .notif-bell__go {
+    transform: none;
   }
 }
