@@ -31,6 +31,8 @@ export interface MappingDataHook {
 export function useMappingData(): MappingDataHook {
   const [masterAccounts, setMasterAccounts] = useState<MasterAccount[]>([])
   const [masterDepartments, setMasterDepartments] = useState<MasterDepartment[]>([])
+  // ponytail: masterGLPrefixes has no UI consumer left — confirm no suggestion prompt
+  // needs it, then drop the state and the fetchGLPrefixes call (one request per mount).
   const [masterGLPrefixes, setMasterGLPrefixes] = useState<MasterGLPrefix[]>([])
   const [loadingOpts, setLoadingOpts] = useState(true)
 

@@ -20,9 +20,7 @@ export interface AccountingConfig {
 
 export interface AccountingConfigHook {
   config: AccountingConfig | null
-  rawConfig: AccountingConfig | null
   loading: boolean
-  setConfig: (valOrFn: AccountingConfig | ((prev: AccountingConfig) => AccountingConfig)) => void
   refresh: () => void
   filePrefix: string
   fileSource: string
@@ -78,6 +76,9 @@ export function useAccountingConfig(): AccountingConfigHook {
   const refresh = useCallback(() => setRefreshKey(k => k + 1), [])
 
   useEffect(() => {
+    // ponytail: storage-only listener. Safe today because Mapping Settings opens in a
+    // separate tab (CreditCardOCR.tsx window.open) and 'storage' never fires in the
+    // writing tab. Add a 'focus' listener too if it ever becomes an in-app route.
     const onStorage = (e: StorageEvent) => {
       if (e.key === appKey('accounting_config_updated')) refresh()
     }
@@ -128,18 +129,9 @@ export function useAccountingConfig(): AccountingConfigHook {
     }
   }, [refreshKey])
 
-  const setConfig = useCallback(
-    (valOrFn: AccountingConfig | ((prev: AccountingConfig) => AccountingConfig)) => {
-      setConfigState(prev => (typeof valOrFn === 'function' ? valOrFn(prev || {}) : valOrFn))
-    },
-    []
-  )
-
   return {
     config,
-    rawConfig: config,
     loading,
-    setConfig,
     refresh,
     filePrefix: config?.filePrefix || '',
     fileSource: config?.fileSource || '',

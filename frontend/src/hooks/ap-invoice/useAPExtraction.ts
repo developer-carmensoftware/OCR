@@ -208,8 +208,8 @@ export function useAPExtraction({ setStep, setModal, loadVendors }: APExtraction
       if (taxId) {
         getAPVendorMapping(taxId)
           .then(res => {
-            const r = res as unknown as Record<string, unknown>
-            if (r.mapping) setFieldMappings(r.mapping as Record<APColumnKey, APFieldKey | 'ignore'>)
+            if (res.mapping)
+              setFieldMappings(res.mapping as Record<APColumnKey, APFieldKey | 'ignore'>)
             else throw new Error('no mapping')
           })
           .catch(() => {

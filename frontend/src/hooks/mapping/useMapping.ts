@@ -67,17 +67,22 @@ export function useMapping() {
   })
 
   const configAppliedRef = useRef(false)
+  const { initFromData } = paymentTypes
 
   useEffect(() => {
     if (bankConfig.configLoading || !bankConfig.bank) return
     if (configAppliedRef.current) return
-    configAppliedRef.current = true
 
+    // Latch only once there is something to apply: `bank` and `savedMappings` land in the
+    // same React batch today, but if that ever reorders, latching first would burn the
+    // guard on an empty config and the mappings would never restore.
     if (
       Object.keys(bankConfig.savedMappings).length === 0 &&
       bankConfig.savedCustomTypes.length === 0
     )
       return
+
+    configAppliedRef.current = true
 
     const MAIN_KEYS = new Set<MainMappingKey>(['commission', 'tax', 'net'])
     const mainMappings: Partial<MainMappings> = {}
@@ -95,12 +100,15 @@ export function useMapping() {
     if (Object.keys(mainMappings).length > 0) {
       setMappings(prev => ({ ...prev, ...mainMappings }))
     }
+    if (Object.keys(paymentMappings).length > 0 || bankConfig.savedCustomTypes.length > 0) {
+      initFromData(paymentMappings, bankConfig.savedCustomTypes)
+    }
   }, [
     bankConfig.configLoading,
     bankConfig.bank,
     bankConfig.savedMappings,
     bankConfig.savedCustomTypes,
-    paymentTypes.initFromData,
+    initFromData,
   ])
 
   useEffect(() => {
@@ -293,11 +301,9 @@ export function useMapping() {
     companyRequiredFields: COMPANY_REQUIRED_FIELDS,
     missingCompanyFields,
     mappings,
-    setMappings,
     handleMappingChange,
     masterAccounts: masterData.masterAccounts,
     masterDepartments: masterData.masterDepartments,
-    masterGLPrefixes: masterData.masterGLPrefixes,
     loadingOpts: masterData.loadingOpts,
     loadInitialData: masterData.loadInitialData,
     paymentAmount: paymentTypes.paymentAmount,
@@ -313,7 +319,6 @@ export function useMapping() {
       ),
     handleRemoveCustomType: paymentTypes.handleRemoveCustomType,
     isAmountModalOpen: paymentTypes.isAmountModalOpen,
-    setIsAmountModalOpen: paymentTypes.setIsAmountModalOpen,
     openAmountModal: paymentTypes.openAmountModal,
     cancelAmountSelection: () =>
       paymentTypes.cancelAmountSelection(suggestions.clearAllSuggestions),
@@ -328,7 +333,6 @@ export function useMapping() {
       suggestions.applyMainSuggestion(key, setMappings),
     rejectMainSuggestion: suggestions.rejectMainSuggestion,
     paymentSuggestions: suggestions.paymentSuggestions,
-    setPaymentSuggestions: suggestions.setPaymentSuggestions,
     paymentSuggestLoading: suggestions.paymentSuggestLoading,
     autoSuggestPaymentTypes: suggestions.autoSuggestPaymentTypes,
     confirmPaymentSuggestion: (type: string) =>

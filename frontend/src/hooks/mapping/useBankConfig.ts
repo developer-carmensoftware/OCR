@@ -90,7 +90,14 @@ export function useBankConfig(): BankConfigHook {
         const raw = localStorage.getItem(appKey('accountingConfig'))
         if (raw) {
           try {
-            applyConfig(JSON.parse(raw) as Record<string, unknown>)
+            const parsed = JSON.parse(raw) as {
+              mappings?: Record<string, FieldMapping>
+              paymentAmount?: Record<string, FieldMapping>
+            }
+            applyConfig(parsed as Record<string, unknown>)
+            // localStorage keeps main mappings and payment types in two fields; the API
+            // returns them merged. Flatten here so consumers see one shape either way.
+            setSavedMappings({ ...(parsed.mappings ?? {}), ...(parsed.paymentAmount ?? {}) })
           } catch {
             /* ignore */
           }

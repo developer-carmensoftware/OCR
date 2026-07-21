@@ -19,16 +19,33 @@
  * Adding an entry:
  *   1. Only if a USER can see the difference. Refactors, CI, and dependency
  *      bumps get a changelog line and nothing here.
- *   2. 2-4 bullets, one line each, describing what they can now do or will see.
+ *   2. Sort each bullet into `features` / `fixes` / `qol`. One line each,
+ *      describing what they can now do or will see. Empty sections are omitted.
  *   3. Both languages. TS will not compile with one missing.
  *   4. Bump the repo-root `VERSION` file to match this entry's `version` — CI
  *      fails the PR if the newest entry and VERSION disagree, and deploy.yml
  *      cuts the GitHub Release tag from VERSION.
  */
 
+/**
+ * A fix has to say what it was like BEFORE. "Mapping now saves correctly" tells a
+ * clerk nothing — they need to recognize the thing that was wasting their time to
+ * know it stopped. `before` is required rather than conventional, so the compiler
+ * asks the question instead of a reviewer having to.
+ */
+export interface ReleaseFix {
+  before: string
+  text: string
+}
+
 export interface ReleaseNoteCopy {
   title: string
-  items: string[]
+  /** Something they could not do at all before. */
+  features?: string[]
+  /** Something that was broken. */
+  fixes?: ReleaseFix[]
+  /** Worked before, just worse — fewer clicks, clearer wording, less waiting. */
+  qol?: string[]
 }
 
 export interface ReleaseNote {
@@ -42,20 +59,64 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: '2026-07-21',
+    version: '1.0.1',
+    en: {
+      title: 'Account mappings stay saved',
+      fixes: [
+        {
+          before:
+            'Re-opening Mapping Settings showed "1 pending mapping" and the payment type back at "Click to Map", even though you had just saved it — so every scan meant mapping the same rows again.',
+          text: 'Payment-type accounts you have mapped now come back exactly as you left them.',
+        },
+        {
+          before: 'Payment types you added yourself disappeared after a reload.',
+          text: 'Your own payment types are remembered too.',
+        },
+        {
+          before:
+            'On the GHL fee invoice, Branch No. was left blank and the address showed in English against a Thai tax invoice.',
+          text: 'Branch No. is filled from the document, and the address prints as issued.',
+        },
+      ],
+    },
+    th: {
+      title: 'การจับคู่บัญชีถูกจดจำไว้แล้ว',
+      fixes: [
+        {
+          before:
+            'เปิดหน้าตั้งค่าการจับคู่บัญชีอีกครั้ง ระบบขึ้นว่า "1 pending mapping" และ payment type กลับไปเป็น "Click to Map" ทั้งที่เพิ่งบันทึกไป ทำให้ต้อง map ซ้ำทุกครั้งที่สแกน',
+          text: 'บัญชีของ payment type ที่จับคู่ไว้ จะแสดงค่าเดิมตามที่บันทึกไว้',
+        },
+        {
+          before: 'payment type ที่เพิ่มเอง หายไปหลังจากโหลดหน้าใหม่',
+          text: 'payment type ที่เพิ่มเองถูกจดจำไว้เช่นกัน',
+        },
+        {
+          before:
+            'ใบแจ้งค่าธรรมเนียม GHL: เลขที่สาขาว่างเปล่า และที่อยู่แสดงเป็นภาษาอังกฤษ ทั้งที่ใบกำกับภาษีเป็นภาษาไทย',
+          text: 'เลขที่สาขาดึงจากเอกสารให้อัตโนมัติ และที่อยู่แสดงตามที่พิมพ์บนใบกำกับภาษี',
+        },
+      ],
+    },
+  },
+  {
     date: '2026-07-20',
     version: '1.0.0',
     en: {
       title: 'Maintenance notices you can actually read',
-      items: [
+      features: [
         'System updates now appear in the notification bell. Open one to read the full history on this page.',
+      ],
+      qol: [
         'The scheduled-maintenance bar shows the exact window and a countdown to it.',
         'Order notifications open the matching order directly instead of the full list.',
       ],
     },
     th: {
       title: 'แจ้งเตือนการปิดปรับปรุงที่อ่านเข้าใจง่ายขึ้น',
-      items: [
-        'การอัปเดตระบบจะแสดงที่กระดิ่งแจ้งเตือน กดเพื่อเปิดหน้านี้และดูประวัติทั้งหมด',
+      features: ['การอัปเดตระบบจะแสดงที่กระดิ่งแจ้งเตือน กดเพื่อเปิดหน้านี้และดูประวัติทั้งหมด'],
+      qol: [
         'แถบแจ้งปิดปรับปรุงแสดงช่วงเวลาที่ชัดเจน พร้อมนับถอยหลัง',
         'การแจ้งเตือนคำสั่งซื้อจะเปิดคำสั่งซื้อนั้นโดยตรง แทนที่จะเปิดรายการทั้งหมด',
       ],
