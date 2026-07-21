@@ -54,12 +54,34 @@ class Settings(BaseSettings):
     openrouter_ocr_model: str = "google/gemini-2.0-flash-001"
     openrouter_ap_invoice_model: str = "google/gemini-2.0-flash-001"
     openrouter_suggestion_model: str = "google/gemini-2.0-flash-001"
-    openrouter_bidding_model: str = ""
-    openrouter_vendorsuggest_model: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
-    # Tavily search API
-    tavily_api_key: str = ""
+    # ── LLM privacy enforcement ───────────────────────────────────────────────
+    # Sent as OpenRouter `provider` preferences on EVERY request (llm/client.py).
+    # This is the TECHNICAL enforcement of the consent-modal no-training promise
+    # (UserConsentModal.tsx) — it does not depend on the OpenRouter dashboard's
+    # account-level toggles (which can be changed silently). Do not relax without
+    # updating UserConsentModal + docs/SECURITY_PDPA_CHECKLIST.md.
+    #   "deny"  → route only to endpoints that do NOT collect/train on request data.
+    llm_data_collection: str = "deny"  # "allow" | "deny"
+    # Strict Zero-Data-Retention routing. Off by default: enabling it makes OpenRouter
+    # reject a request outright if no ZDR endpoint exists for the model (e.g. a model
+    # served only via Google AI Studio). Flip on once every configured model is
+    # verified to have a ZDR-capable endpoint (Vertex for Google).
+    llm_require_zdr: bool = False
+    # Comma-separated OpenRouter provider slugs to restrict routing to; empty = no
+    # restriction. The text (suggestion) model can be a non-Google model that
+    # OpenRouter would otherwise route to many hosts (incl. non-EU/US jurisdictions);
+    # this pins it to US-jurisdiction providers. Vision models are Google-only already.
+    llm_text_provider_allowlist: str = "fireworks,deepinfra,digitalocean"
+    llm_vision_provider_allowlist: str = ""
+    # Resolved-provider display names we expect LLM traffic to route to (as reported by
+    # OpenRouter in the response, e.g. "Google", "Google AI Studio", "DeepInfra").
+    # Matched case-insensitively as substrings; a call routed anywhere else raises an
+    # anomaly alert (llm_provider_out_of_policy). Flat set, not per-kind (vision→Google,
+    # text→US hosts) — ponytail: split per-kind only if a provider serves both kinds and
+    # we need to distinguish them. Empty = alerting disabled.
+    llm_expected_providers: str = "Google,DeepInfra,Fireworks,DigitalOcean"
 
     # Master API key for service-to-service auth
     master_api_key: str = ""
@@ -89,18 +111,33 @@ class Settings(BaseSettings):
     # Upload
     max_file_size_mb: int = 20
 
+    # VAT rates the fee-invoice normalizer may encounter, comma-separated.
+    # First entry = primary rate assumed when a rate cannot be inferred from the
+    # document itself (e.g. only one amount was extracted). Thai standard is 7%
+    # (statutory 10% reduced by an annually-renewed royal decree) — 0.10 is listed
+    # so a decree lapse or a 10% document doesn't get misclassified. Zero-VAT /
+    # exempt documents are detected structurally (grand == fee), not via this list.
+    vat_rates: str = "0.07,0.10"
+
     # Database
     # Neon Postgres example:
     #   postgresql+asyncpg://user:pass@ep-xxx.aws.neon.tech/carmen_ai?ssl=require
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/carmen_ai"
 
     # Carmen API
-    carmen_authorization: str = ""  # deprecated — kept for fallback only; prefer session token
     # SSRF allowlist for the client-supplied Carmen origin at /auth/exchange.
     # Comma-separated hostnames (no scheme), e.g. "carmen.example.com,erp.acme.co.th".
     # When set, only these hosts may be used as the Carmen origin. Leave empty only
     # in dev — production deployments should pin the known Carmen host(s).
     allowed_carmen_hosts: str = ""
+
+    # ── Carmen AR posting (admin order-review) — SECRETS, never in system_configs ──
+    # Seller's own Carmen ERP endpoint for posting paid orders as AR entries.
+    # Admin context has no per-session Carmen token, so a service credential is used.
+    # carmen_ar_url = full endpoint, e.g. https://erp.example.com/Carmen.API/api/interfacePostAR/CarmenAI
+    # Leave empty to disable AR posting (post-ar returns a clear "not configured" error).
+    carmen_ar_url: str = ""
+    carmen_ar_token: str = ""  # value for the Authorization header
 
     # Application version — bump on every release
     app_version: str = "1.0.0"
@@ -119,15 +156,8 @@ class Settings(BaseSettings):
 
     # Admin bootstrap credentials — read by `python -m app.bootstrap_admin`.
     # Never leave these set in production after bootstrapping.
-    admin_bootstrap_email: str = ""
+    admin_bootstrap_username: str = ""
     admin_bootstrap_password: str = ""
-
-    # Ephemeral hosts (Render free / Heroku) — informational only since log retention
-    # is now done by dropping PostgreSQL partitions (no on-disk archives).
-    ephemeral_filesystem: bool = False
-
-    # Multi-tenancy
-    carmen_tenant_default: str = "dev"  # Fallback for localhost or missing Origin header
 
     # Sentry — leave empty to disable (set in production .env only)
     sentry_dsn: str = ""
@@ -139,6 +169,32 @@ class Settings(BaseSettings):
 
     # Graceful shutdown — seconds to wait before cancelling background tasks
     shutdown_grace_seconds: int = 5
+
+    # Internal job token — presented by pg_net cron jobs as Bearer in Authorization.
+    # Must match the vault.secrets value 'internal_job_token' set in Supabase Vault.
+    # Generate: python -c "import secrets; print(secrets.token_hex(32))"
+    # NEVER put the real value in system_configs DB table — secrets in .env only.
+    internal_job_token: str = ""
+
+    # ── OneApp FileService (slip upload) — SECRETS, never put in system_configs ──
+    # Required for slip upload/download. Leave empty to disable slip storage (dev).
+    # base URL e.g. https://host/Api/v1/External/FileService
+    file_service_url: str = ""
+    file_service_api_key: str = ""  # X-Api-Key access key (fsc_...)
+
+    @property
+    def vat_rates_list(self) -> list[float]:
+        """Supported VAT rates (0 < r < 1), first = primary. Falls back to [0.07]."""
+        out: list[float] = []
+        for tok in self.vat_rates.split(","):
+            tok = tok.strip()
+            try:
+                r = float(tok)
+            except ValueError:
+                continue
+            if 0 < r < 1:
+                out.append(r)
+        return out or [0.07]
 
     @property
     def allowed_carmen_hosts_list(self) -> list[str]:
@@ -168,6 +224,21 @@ class Settings(BaseSettings):
         seen: set[str] = set()
         deduped = [k for k in keys if not (k in seen or seen.add(k))]
         return deduped or [self.openrouter_api_key]
+
+    @property
+    def llm_text_provider_allowlist_list(self) -> list[str]:
+        """Parsed text-model provider slug allowlist (empty = no restriction)."""
+        return [p.strip() for p in self.llm_text_provider_allowlist.split(",") if p.strip()]
+
+    @property
+    def llm_vision_provider_allowlist_list(self) -> list[str]:
+        """Parsed vision-model provider slug allowlist (empty = no restriction)."""
+        return [p.strip() for p in self.llm_vision_provider_allowlist.split(",") if p.strip()]
+
+    @property
+    def llm_expected_providers_list(self) -> list[str]:
+        """Parsed expected resolved-provider display names (empty = alerting off)."""
+        return [p.strip() for p in self.llm_expected_providers.split(",") if p.strip()]
 
     class Config:
         env_file = Path(__file__).parent.parent / ".env"
@@ -267,6 +338,17 @@ if not settings.app_debug:
         raise RuntimeError(
             "ADMIN_JWT_SECRET must differ from OCR_JWT_SECRET to prevent token confusion "
             "between user and admin tokens."
+        )
+    # Loud warning (not a hard fail): running with data_collection != "deny" means
+    # customer documents may be sent to providers that retain/train on them, which
+    # contradicts the consent modal's no-training promise. A pilot might deliberately
+    # relax this, so we shout rather than crash.
+    if settings.llm_data_collection != "deny":
+        _config_logger.critical(
+            "LLM_DATA_COLLECTION=%r (not 'deny') — customer documents may be routed to "
+            "providers that collect/train on them, contradicting the consent-modal "
+            "no-training promise. Set LLM_DATA_COLLECTION=deny for the pilot.",
+            settings.llm_data_collection,
         )
 
 # ── Database URL normalization ────────────────────────────────────────────────

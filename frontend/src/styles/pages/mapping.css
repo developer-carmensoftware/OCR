@@ -1,11 +1,6 @@
 /* ── Skeleton loader ─────────────────────────────────────────────────── */
 .skeleton {
-  background: linear-gradient(
-    90deg,
-    var(--muted) 25%,
-    oklch(0.92 0.006 258.7) 50%,
-    var(--muted) 75%
-  );
+  background: linear-gradient(90deg, var(--gray-100) 25%, var(--gray-200) 50%, var(--gray-100) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.6s ease infinite;
 }
@@ -18,7 +13,7 @@
 }
 
 body {
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
   background: var(--background);
   color: var(--text);
   padding: 3rem 2rem;
@@ -268,7 +263,15 @@ input[type='text']:focus {
   box-shadow: 0 8px 24px oklch(from var(--primary) l c h / 0.3);
 }
 
-.mapping-label.clickable {
+.mapping-label.clickable,
+button.mapping-label.clickable {
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  font-family: inherit;
+  font-size: inherit;
+  outline: none;
   cursor: pointer;
   color: var(--primary);
   text-decoration: underline;
@@ -276,7 +279,8 @@ input[type='text']:focus {
   transition: color 0.2s;
 }
 
-.mapping-label.clickable:hover {
+.mapping-label.clickable:hover,
+button.mapping-label.clickable:hover {
   color: var(--primary-hover);
 }
 
@@ -443,15 +447,32 @@ input[type='text']:focus {
 }
 
 /* ─── DARK MODE ─── */
-[data-theme='dark'] .container,
 [data-theme='dark'] .search-select-dropdown,
 [data-theme='dark'] .mapping-modal-content {
-  background: var(--gray-800);
+  background: var(--card-bg);
   border-color: var(--border);
   color: var(--text);
 }
 [data-theme='dark'] .search-input {
-  background: var(--gray-800);
+  background: var(--muted);
   border-color: var(--border);
   color: var(--text);
+}
+
+.btn-save-mapping {
+  width: 100%;
+  padding: 1.2rem;
+  color: #fff;
+  border-radius: 12px;
+  font-weight: bold;
+  font-size: 1.1rem;
+  border: none;
+  box-shadow: 0 4px 15px rgba(13, 148, 136, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  transition:
+    background-color 150ms ease,
+    cursor 150ms ease;
 }

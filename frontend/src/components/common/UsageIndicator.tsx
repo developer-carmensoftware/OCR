@@ -1,21 +1,16 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { getUsage } from '../../lib/api/auth'
 import { getStoredToken } from '../../lib/api/client'
 import { useAuth } from '../../contexts/AuthContext'
 import type { UsageData } from '../../lib/api/auth'
-
-type UsageStats = UsageData['usage'] & {
-  usedPercentage: number
-  color: string
-  isLow: boolean
-}
+import { computeUsageStats } from '../../lib/usage'
 
 export default function UsageIndicator() {
   const [usage, setUsage] = useState<UsageData['usage'] | null>(null)
   const [loading, setLoading] = useState(true)
   const { isAuthenticated } = useAuth() as { isAuthenticated: boolean }
-  const quotaRef = useRef<HTMLDivElement>(null)
+  const quotaRef = useRef<HTMLAnchorElement>(null)
 
   const fetchUsage = async () => {
     try {
@@ -40,26 +35,7 @@ export default function UsageIndicator() {
     }
   }, [isAuthenticated])
 
-  const stats = useMemo((): UsageStats | null => {
-    if (!usage) return null
-    const { monthly_calls, max_monthly_calls, remaining_calls, credit_balance } = usage
-    const totalRemaining = remaining_calls + credit_balance
-    // Bar reflects usage against the full pool: free monthly allowance + top-up credits.
-    const totalCapacity = max_monthly_calls + credit_balance
-    const usedPercentage = totalCapacity > 0 ? (monthly_calls / totalCapacity) * 100 : 0
-    let color = 'var(--teal)'
-    if (usedPercentage >= 90) color = 'var(--rose)'
-    else if (usedPercentage >= 70) color = 'var(--amber)'
-    return {
-      monthly_calls,
-      max_monthly_calls,
-      remaining_calls: totalRemaining,
-      credit_balance,
-      usedPercentage,
-      color,
-      isLow: totalRemaining <= 5,
-    }
-  }, [usage])
+  const stats = useMemo(() => computeUsageStats(usage), [usage])
 
   useEffect(() => {
     if (!quotaRef.current || !stats) return
@@ -85,23 +61,24 @@ export default function UsageIndicator() {
 
   return (
     <AnimatePresence>
-      <motion.div
+      <m.div
         initial={{ opacity: 0, scale: 0.95, y: 4 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
       >
-        <div
+        <a
           ref={quotaRef}
-          role="status"
-          aria-label={`OCR quota: ${stats.remaining_calls} documents remaining`}
-          className={`ui-quota${stats.isLow ? ' is-low' : ''}`}
+          href="#/pricing"
+          title="View plans and top up credits"
+          aria-label={`OCR quota: ${stats.remaining_calls} documents remaining — open pricing`}
+          className={`ui-quota ui-quota--link${stats.isLow ? ' is-low' : ''}`}
         >
           <div className="ui-quota-col col-remain">
             <span className="ui-quota-label">Remain</span>
             <span className="ui-quota-value">{stats.remaining_calls}</span>
           </div>
-        </div>
-      </motion.div>
+        </a>
+      </m.div>
     </AnimatePresence>
   )
 }

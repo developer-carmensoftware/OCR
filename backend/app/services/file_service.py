@@ -21,8 +21,6 @@ class FileService:
     Implements security checks for file size and types.
     """
 
-    ALLOWED_EXTENSIONS: set[str] = {".jpg", ".jpeg", ".png", ".pdf", ".webp", ".heic", ".heif"}
-
     @staticmethod
     async def validate_and_read(file: UploadFile) -> tuple[bytes, str]:
         """

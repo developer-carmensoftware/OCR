@@ -9,15 +9,18 @@ WriterMixin.created_by: stores carmen_user_id (the Carmen ERP user who acted).
 import uuid
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     Column,
     Date,
     DateTime,
     ForeignKey,
+    Identity,
     Index,
     Integer,
     String,
     Text,
+    func,
     text,
 )
 from sqlalchemy import Enum as SAEnum
@@ -72,6 +75,23 @@ class OCRTask(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin):
     credit_card = relationship("CreditCard", back_populates="task", uselist=False)
     ap_invoice = relationship("APInvoice", back_populates="task", uselist=False)
 
+    __table_args__ = (
+        # Covers `WHERE created_at range AND deleted_at IS NULL GROUP BY module_id,
+        # tenant_id, DATE(created_at)` (usage_analytics_service's get_usage_summary/
+        # get_usage_totals/get_error_breakdown) — this table is never purged (5-year
+        # legal retention), so it had no composite index matching that actual query
+        # shape, only 5 unrelated single-column indexes. Partial on the near-universal
+        # `deleted_at IS NULL` filter, matching this codebase's existing partial-index
+        # convention (see Quota, PromptTemplate).
+        Index(
+            "ix_ocr_tasks_created_module_tenant_active",
+            "created_at",
+            "module_id",
+            "tenant_id",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
+
 
 class CreditCard(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixin):
     """
@@ -96,6 +116,16 @@ class CreditCard(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMix
 
     task = relationship("OCRTask", back_populates="credit_card")
 
+    __table_args__ = (
+        # 1:1 with ocr_tasks — partial so a soft-deleted row can be superseded.
+        Index(
+            "uq_credit_cards_task",
+            "task_id",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
+
 
 class APInvoice(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixin):
     """
@@ -116,12 +146,22 @@ class APInvoice(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixi
 
     task = relationship("OCRTask", back_populates="ap_invoice")
 
+    __table_args__ = (
+        # 1:1 with ocr_tasks — partial so a soft-deleted row can be superseded.
+        Index(
+            "uq_ap_invoices_task",
+            "task_id",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
+
 
 class CorrectionFeedback(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixin):
     """
     User correction of an LLM-extracted field.
     Used by correction_service to compute per-field error rates and inject prompt hints.
-    Unique per (scope, doc_no, field_name) — latest correction wins.
+    Unique per (tenant, bank_code, doc_no, field_name) — latest correction wins.
     """
 
     __tablename__ = "correction_feedback"
@@ -135,9 +175,11 @@ class CorrectionFeedback(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, W
     carmen_user_id = Column(String(36), nullable=True, index=True)
 
     __table_args__ = (
+        # bank_code is part of the scope: doc_no is not unique across banks.
         Index(
             "uq_correction_scope_active",
             "tenant_id",
+            "bank_code",
             "doc_no",
             "field_name",
             unique=True,
@@ -298,3 +340,23 @@ class BugReport(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixi
     screenshot_b64 = Column(Text, nullable=True)
     screenshot_mime = Column(String(16), nullable=True)
     carmen_user_id = Column(String(36), nullable=True, index=True)
+
+
+class ConsentLog(Base, TenantFKMixin):
+    """
+    Server-side consent record — PDPA ม.19 proof of who consented, when, which version.
+
+    Append-only legal evidence: NO SoftDeleteMixin, NO WriterMixin (never updated,
+    never deleted, never purged). Org-level consent keyed on tenant_id to match the
+    frontend's tenant-scoped consent gate (useUserConsent.ts). Multiple rows per
+    (tenant, version) are allowed — the history is the evidence.
+    """
+
+    __tablename__ = "consent_logs"
+
+    id = Column(BigInteger, Identity(always=True), primary_key=True)
+    carmen_user_id = Column(String(36), nullable=True)
+    consent_version = Column(String(20), nullable=False)
+    ip_address = Column(String(45), nullable=True)
+    user_agent = Column(String(400), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

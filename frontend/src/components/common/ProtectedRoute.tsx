@@ -13,13 +13,10 @@ interface ProtectedRouteProps {
 }
 
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
-  if (DEV_BYPASS) return <>{children}</>
-
-  // hooks must be called unconditionally — DEV_BYPASS check above is evaluated at module level
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   const { isAuthenticated, loading } = useAuth() as { isAuthenticated: boolean; loading: boolean }
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   const { exchanging, error } = useCarmenSSO()
+
+  if (DEV_BYPASS) return <>{children}</>
 
   if (loading || exchanging) return <AuthScreen state="loading" />
   if (error) return <AuthScreen state="error" message={error} />

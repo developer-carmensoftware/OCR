@@ -1,0 +1,18 @@
+-- Re-add 'on_hold' to creditorderstatus.
+--
+-- History: on_hold existed briefly (20260622030000_add_order_on_hold.sql) as a
+-- manual admin "park" state, then got folded back into in_progress the next
+-- day by the 4-status simplification (20260623000200_credit_order_status_v2.sql).
+-- That type was fully dropped, so the value must be re-added from scratch.
+--
+-- This time on_hold has a narrower, automatic trigger: the hourly expiry sweep
+-- (see the next migration) flips an in_progress order to on_hold once its
+-- 14-day proforma window passes with no admin decision yet, so the quota admin
+-- can contact the buyer instead of force-voiding an order whose payment is
+-- just running through a slow internal approval chain. Admin still resolves
+-- it via the existing approve/reject endpoints.
+--
+-- Postgres can't add an enum value and use it in the same transaction, so the
+-- value is added here on its own; the index + cron fix that reference it are
+-- in the next migration (a separate transaction via the CLI).
+alter type creditorderstatus add value if not exists 'on_hold';

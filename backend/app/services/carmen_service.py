@@ -8,6 +8,7 @@ Outbound calls are logged via httpx event hooks to prove data only reaches Carme
 """
 
 import logging
+import re
 import time
 from typing import Any
 
@@ -179,7 +180,7 @@ async def get_gl_prefix(carmen_token: str) -> Any:
             return {"Data": [], "Status": f"upstream_{resp.status_code}"}
         return resp.json()
     except RequestError as e:
-        logger.warning("Carmen glPrefix unreachable: %s", e)
+        logger.warning("Carmen CloudPrefix unreachable: %s", e)
         return {"Data": [], "Status": "upstream_unreachable"}
 
 
@@ -356,3 +357,62 @@ async def post_invoice(body: dict, carmen_token: str) -> Any:
         raise
     except RequestError as e:
         raise _wrap_network_error(e) from e
+
+
+_TEL_LABEL_RE = re.compile(r"tel\.?\s*[:\-]?\s*", re.IGNORECASE)
+_TEL_DIGITS_RE = re.compile(r"[\d][\d\-\s]{5,}\d")
+
+
+def _extract_tel(raw: str) -> str:
+    """Pull just the phone number out of a free-text field like
+    ``"Hotel Tel. 022840429 Fax : 022840429"`` -> ``"022840429"``.
+    """
+    if not raw:
+        return ""
+    before_fax = re.split(r"fax", raw, flags=re.IGNORECASE)[0]
+    after_label = _TEL_LABEL_RE.split(before_fax, maxsplit=1)[-1]
+    m = _TEL_DIGITS_RE.search(after_label)
+    return m.group(0).strip() if m else after_label.strip()
+
+
+async def get_company_profile(carmen_token: str, db_cfg: dict[str, str] | None = None) -> dict:
+    """
+    Fetch the buyer's company profile from Carmen for billing document prefill.
+
+    Path is stored in system_configs key `billing.carmen_company_path`.
+    Returns normalized {name, tax_id, address, branch} or {} when unset/error.
+    db_cfg: pre-fetched billing config dict to avoid an extra DB round-trip.
+    """
+    path = (db_cfg or {}).get("billing.carmen_company_path", "").strip()
+    if not path:
+        return {}
+
+    try:
+        url = f"{_base_url()}/{path.lstrip('/')}"
+        logger.info("get_company_profile: GET %s", url)
+        resp = await _get_client().get(url, headers=_headers(carmen_token))
+        logger.info("get_company_profile: status=%s body=%s", resp.status_code, resp.text[:500])
+        if resp.status_code != 200:
+            return {}
+        data = resp.json()
+        # Carmen rptGetCompany returns an array — take first element
+        if isinstance(data, list) and data:
+            data = data[0]
+        if isinstance(data, dict):
+            addr_parts = [data.get(k) or "" for k in ("RegAdd1", "RegAdd2", "RegAdd3")]
+            address = " ".join(p for p in addr_parts if p).strip()
+            return {
+                "name": data.get("RegName") or data.get("companyName") or "",
+                "tax_id": data.get("RegTaxId") or data.get("taxId") or "",
+                "address": address or data.get("address") or "",
+                "branch": data.get("BranchNo") or data.get("branch") or "",
+                "email": data.get("RegEmail") or data.get("email") or "",
+                "contact_name": data.get("RegContact") or "",
+                "tel": _extract_tel(
+                    data.get("HotelTel") or data.get("RegTel") or data.get("RegPhone") or ""
+                ),
+            }
+        return {}
+    except Exception as exc:
+        logger.warning("get_company_profile failed: %s", exc)
+        return {}

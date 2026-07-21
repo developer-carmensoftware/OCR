@@ -1,11 +1,11 @@
 import { SlidersHorizontal, ArrowLeft, ArrowRight } from 'lucide-react'
 import Badge from '../common/Badge'
 import { isNumFld, fmt } from '../../constants/apInvoice'
+import { useT } from '../../i18n/LanguageContext'
 import type { APLineItem } from '../../hooks/ap-invoice/useAPExtraction'
 import type { APColumnKey, APFieldKey, FieldOption } from '../../constants/apInvoice'
 
 interface Props {
-  t: Record<string, string>
   lineItems: APLineItem[]
   fieldMappings: Record<APColumnKey, APFieldKey | 'ignore'>
   availableFields: FieldOption[]
@@ -18,7 +18,6 @@ const COLS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 const REQUIRED_FIELDS: (APFieldKey | 'ignore')[] = ['description', 'lineTotal']
 
 export default function APFieldMappingStep({
-  t,
   lineItems,
   fieldMappings,
   availableFields,
@@ -26,12 +25,13 @@ export default function APFieldMappingStep({
   onBack,
   onConfirm,
 }: Props) {
+  const { t } = useT()
   return (
     <div className="data-card">
       <div className="card-title">
         <div className="card-title-left">
           <SlidersHorizontal size={16} />
-          {t.mapTitle}
+          {t('ap.mapTitle')}
         </div>
       </div>
       <div className="card-body-flush">
@@ -47,7 +47,7 @@ export default function APFieldMappingStep({
                         Column {index + 1}
                         {REQUIRED_FIELDS.includes(val) && (
                           <Badge variant="warning" className="ap-required-badge">
-                            Required
+                            {t('ap.required')}
                           </Badge>
                         )}
                       </div>
@@ -100,10 +100,10 @@ export default function APFieldMappingStep({
       </div>
       <div className="ap-step-nav">
         <button type="button" className="btn btn-outline" onClick={onBack}>
-          <ArrowLeft size={14} /> {t.backUpload}
+          <ArrowLeft size={14} /> {t('ap.backUpload')}
         </button>
         <button type="button" className="btn btn-primary" onClick={onConfirm}>
-          {t.confirmMap} <ArrowRight size={14} />
+          {t('ap.confirmMap')} <ArrowRight size={14} />
         </button>
       </div>
     </div>

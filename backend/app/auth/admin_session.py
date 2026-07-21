@@ -3,7 +3,7 @@ Admin JWT issuance/verification — separate from Carmen-user session tokens.
 
 Claims:
   aid           — AdminUser UUID
-  email         — admin email (for display)
+  username      — admin username (for display)
   roles         — list of role ids the admin holds (e.g. ["super_admin"])
   perms         — flattened permission ids ("{resource}:{action}")
   tenant_scope  — "" = global (cross-tenant); else a tenant UUID the admin is scoped to
@@ -24,7 +24,7 @@ class AdminPrincipal:
     """Resolved admin identity passed to route handlers via Depends(get_current_admin)."""
 
     admin_id: str
-    email: str
+    username: str
     roles: list[str] = field(default_factory=list)
     perms: set[str] = field(default_factory=set)
     tenant_scope: str = ""  # "" = global
@@ -40,7 +40,7 @@ class AdminPrincipal:
 
 def create_admin_jwt(
     admin_id: str,
-    email: str,
+    username: str,
     roles: list[str],
     perms: list[str],
     secret: str,
@@ -51,7 +51,7 @@ def create_admin_jwt(
     now = datetime.now(UTC)
     payload = {
         "aid": admin_id,
-        "email": email,
+        "username": username,
         "roles": roles,
         "perms": perms,
         "tenant_scope": tenant_scope,

@@ -1,16 +1,13 @@
 import { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { AlertCircle, RotateCw } from 'lucide-react'
-import {
-  DocumentPreview,
-  CustomModal,
-  StepWizard,
-  DarkModeToggle,
-  ExtractionSkeleton,
-  SplitLayout,
-  UsageIndicator,
-  AppHeader,
-} from '../components/common'
+import CustomModal from '../components/common/CustomModal'
+import StepWizard from '../components/common/StepWizard'
+import DarkModeToggle from '../components/common/DarkModeToggle'
+import ExtractionSkeleton from '../components/common/ExtractionSkeleton'
+import SplitLayout from '../components/common/SplitLayout'
+import UsageIndicator from '../components/common/UsageIndicator'
+import AppHeader from '../components/common/AppHeader'
 import PDFPageSelector from '../components/common/PDFPageSelector'
 import APUploadStep from '../components/ap-invoice/APUploadStep'
 import APFieldMappingStep from '../components/ap-invoice/APFieldMappingStep'
@@ -18,16 +15,15 @@ import APReviewStep from '../components/ap-invoice/APReviewStep'
 import APAccountMappingStep from '../components/ap-invoice/APAccountMappingStep'
 import APSuccessStep from '../components/ap-invoice/APSuccessStep'
 import { useAPInvoice } from '../hooks/ap-invoice'
+import { useT } from '../i18n/LanguageContext'
+import LanguageToggle from '../components/common/LanguageToggle'
 import { AP_STEPS } from '../constants/apInvoice'
 import type { APColumnKey, APFieldKey } from '../constants/apInvoice'
 
-// suppress unused import
-void DocumentPreview
-
 export default function APInvoice() {
+  const { t } = useT()
   const ctrl = useAPInvoice()
   const {
-    t,
     step,
     setStep,
     file,
@@ -95,12 +91,11 @@ export default function APInvoice() {
     if (n === 1 && step > 1) {
       setModal({
         show: true,
-        title: 'Return to Upload?',
-        message:
-          'Going back will clear all extracted data.\nYou will need to re-upload and re-extract the document, which will use 1 additional quota.',
+        title: t('ap.returnTitle'),
+        message: t('ap.returnMsg'),
         type: 'warning',
-        confirmText: 'Go Back',
-        cancelText: 'Stay Here',
+        confirmText: t('ap.goBack'),
+        cancelText: t('ap.stayHere'),
         onConfirm: () => {
           setModal({ show: false })
           handleReset()
@@ -141,11 +136,11 @@ export default function APInvoice() {
 
       <CustomModal
         show={acceptAllModal}
-        title="Confirm Accept All"
-        message="AI may suggest incorrect account codes. Have you reviewed all items?"
+        title={t('ap.acceptAllTitle')}
+        message={t('ap.acceptAllMsg')}
         type="warning"
-        confirmText="Confirm Accept All"
-        cancelText="Cancel"
+        confirmText={t('ap.acceptAllConfirm')}
+        cancelText={t('modal.cancel')}
         onConfirm={() => {
           setAcceptAllModal(false)
           handleAcceptAll()
@@ -156,12 +151,12 @@ export default function APInvoice() {
       <div className="app-container">
         <AppHeader
           module="ap-invoice"
-          moduleName={t.appSub}
-          eyebrow={`${t.appTitle} · Account Payable`}
+          moduleName={t('ap.appSub')}
+          eyebrow={`${t('ap.appTitle')} · Account Payable`}
           backPath="/apInvoice"
         >
           <UsageIndicator />
-          {/* Plan & Credits + Bug Report hidden for now — pending finalisation */}
+          <LanguageToggle />
           <DarkModeToggle />
         </AppHeader>
 
@@ -172,7 +167,7 @@ export default function APInvoice() {
         />
 
         <AnimatePresence mode="wait">
-          <motion.div
+          <m.div
             key={loading ? `${step}-loading` : error ? `${step}-error` : step}
             initial={{ opacity: 0, transform: 'translateY(10px)' }}
             animate={{ opacity: 1, transform: 'translateY(0px)' }}
@@ -181,7 +176,6 @@ export default function APInvoice() {
           >
             {step === 1 && !loading && !error && (
               <APUploadStep
-                t={t}
                 fileInputRef={fileInputRef}
                 onFileChange={handleFileChange}
                 pdfInfoLoading={pdfInfoLoading}
@@ -198,14 +192,14 @@ export default function APInvoice() {
                 <div className="ap-error-box">
                   <AlertCircle size={20} />
                   <div>
-                    <div className="ap-error-title">OCR Processing Error</div>
+                    <div className="ap-error-title">{t('ap.ocrError')}</div>
                     <div className="ap-error-msg">{error}</div>
                     <button
                       type="button"
                       className="btn btn-sm btn-outline ap-error-retry"
                       onClick={() => setError(null)}
                     >
-                      <RotateCw size={14} /> {t.retry}
+                      <RotateCw size={14} /> {t('ap.retry')}
                     </button>
                   </div>
                 </div>
@@ -225,7 +219,6 @@ export default function APInvoice() {
                 >
                   {step === 2 && (
                     <APFieldMappingStep
-                      t={t}
                       lineItems={lineItems}
                       fieldMappings={fieldMappings as Record<APColumnKey, APFieldKey | 'ignore'>}
                       availableFields={availableFields}
@@ -247,7 +240,6 @@ export default function APInvoice() {
 
             {step === 4 && (
               <APAccountMappingStep
-                t={t}
                 lineItems={lineItems}
                 updateItem={updateItem}
                 updateHeader={updateHeader}
@@ -271,14 +263,13 @@ export default function APInvoice() {
 
             {step === 5 && (
               <APSuccessStep
-                t={t}
                 headerData={headerData}
                 lineItems={lineItems}
                 invoiceSeq={invoiceSeq}
                 onReset={handleReset}
               />
             )}
-          </motion.div>
+          </m.div>
         </AnimatePresence>
       </div>
     </>

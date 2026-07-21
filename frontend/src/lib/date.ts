@@ -44,6 +44,14 @@ export function formatDateToDDMMYYYY(d: Date): string {
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`
 }
 
+/** DD/MM/YYYY from an ISO date string (project-wide display format); "—" if empty/invalid. */
+export function formatDate(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return formatDateToDDMMYYYY(d)
+}
+
 /** Normalize a date string formatted as "DD/MM/YYYY" (possibly with B.E. year) to C.E. */
 export function normalizeDateStringToCE(dateStr: string | null | undefined): string {
   if (!dateStr) return ''

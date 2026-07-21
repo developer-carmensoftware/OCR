@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Landmark, ChevronDown, RotateCw, CircleCheck, CircleHelp } from 'lucide-react'
 import { BANKS, BANK_THAI_NAMES } from '../../constants'
+import { useT } from '../../i18n/LanguageContext'
 import type { BankCode } from '../../types/api'
 
 const BANK_LOGOS = Object.fromEntries(
@@ -10,11 +11,6 @@ const BANK_LOGOS = Object.fromEntries(
   ])
 )
 
-const OPTIONS: Array<{ value: BankCode | null; label: string; sub: string }> = [
-  { value: null, label: 'Auto-detect', sub: 'Let AI identify the bank' },
-  ...BANKS.map(b => ({ value: b.value, label: b.label, sub: b.full })),
-]
-
 interface Props {
   bank: BankCode | ''
   loading: boolean
@@ -22,10 +18,18 @@ interface Props {
 }
 
 export default function BankDetectionBanner({ bank, loading, onReExtract }: Props) {
+  const { t } = useT()
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const detected = bank ? `${BANK_THAI_NAMES[bank as BankCode] || bank} (${bank})` : 'Unknown bank'
+  const OPTIONS: Array<{ value: BankCode | null; label: string; sub: string }> = [
+    { value: null, label: t('cc.autoDetect'), sub: t('cc.autoDetectSub') },
+    ...BANKS.map(b => ({ value: b.value, label: b.label, sub: b.full })),
+  ]
+
+  const detected = bank
+    ? `${BANK_THAI_NAMES[bank as BankCode] || bank} (${bank})`
+    : t('cc.unknownBank')
 
   useEffect(() => {
     if (!open) return
@@ -53,18 +57,19 @@ export default function BankDetectionBanner({ bank, loading, onReExtract }: Prop
             <CircleHelp size={15} strokeWidth={2.5} />
           )}
         </div>
-        <span className="bank-detection-label">AI detected</span>
+        <span className="bank-detection-label">{t('cc.aiDetected')}</span>
         <span className="bank-detection-value">{detected}</span>
       </div>
 
       <div ref={containerRef} style={{ position: 'relative' }}>
         <button
+          type="button"
           className={`btn btn-sm btn-outline bank-reextract-btn ${open ? 'is-open' : ''}`}
           onClick={() => setOpen(v => !v)}
           disabled={loading}
         >
           <RotateCw size={12} />
-          Re-extract
+          {t('cc.reExtract')}
           <ChevronDown size={12} className="bank-reextract-chevron" />
         </button>
 
@@ -72,10 +77,11 @@ export default function BankDetectionBanner({ bank, loading, onReExtract }: Prop
           className={`bank-reextract-dropdown ${open ? 'is-open' : ''}`}
           {...(!open && { 'aria-hidden': true })}
         >
-          <div className="bank-reextract-hint">Re-extract with:</div>
+          <div className="bank-reextract-hint">{t('cc.reExtractWith')}</div>
           {OPTIONS.map((opt, i) => (
             <button
               key={opt.value ?? 'auto'}
+              type="button"
               className={`bank-reextract-option ${bank === opt.value ? 'is-current' : ''}`}
               style={{ '--i': i } as React.CSSProperties}
               onClick={() => handleSelect(opt.value)}
@@ -92,7 +98,9 @@ export default function BankDetectionBanner({ bank, loading, onReExtract }: Prop
               )}
               <span className="bank-reextract-option-label">
                 {opt.label}
-                {bank === opt.value && <span className="bank-reextract-option-tag">current</span>}
+                {bank === opt.value && (
+                  <span className="bank-reextract-option-tag">{t('cc.current')}</span>
+                )}
               </span>
             </button>
           ))}

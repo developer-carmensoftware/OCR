@@ -16,74 +16,40 @@ import CustomModal from '../common/CustomModal'
 import Card from '../common/Card'
 import Badge from '../common/Badge'
 import { fetchAccountCodes } from '../../lib/api/carmen'
-import { toNum, fmt } from '../../lib/format'
+import { parseNum, fmt, round2 } from '../../lib/format'
+import { useT } from '../../i18n/LanguageContext'
 import { useAccountingConfig } from '../../hooks/credit-card'
+import { buildJvRows } from '../../lib/ccJv'
+import { GROUP_DEBIT_BY_TRANSACTION } from '../../constants/banks'
+import { codeToSource } from '../../lib/bankTransforms'
 import type { DetailRow } from './DetailTable'
 import type { JvRow } from '../../hooks/credit-card/useOcrSubmission'
+import type { BankCode } from '../../types/api'
 
 interface Props {
   details: DetailRow[]
   headerData?: Record<string, string>
+  bank?: BankCode | ''
   onBack: () => void
   onSubmit: (rows: JvRow[]) => void
   onGoMapping: () => void
   submitting?: boolean
 }
 
-interface BuiltRow extends JvRow {
-  dept: string
-  acc: string
-  desc: string
-  debit: number
-  credit: number
-}
-
 let _accCache: Record<string, string> | null = null
 
-function buildRows(details: DetailRow[], config: Record<string, unknown>): BuiltRow[] {
-  const mappings = (config.mappings || {}) as Record<string, { dept?: string; acc?: string }>
-  const paymentAmount = (config.paymentAmount || {}) as Record<
-    string,
-    { dept?: string; acc?: string }
-  >
-  const rows: BuiltRow[] = []
-
-  const addRow = (
-    cfg: { dept?: string; acc?: string },
-    amount: number,
-    desc: string,
-    isDebit: boolean
-  ) => {
-    if (!amount) return
-    rows.push(
-      isDebit
-        ? { dept: cfg.dept || '', acc: cfg.acc || '', desc, debit: amount, credit: 0 }
-        : { dept: cfg.dept || '', acc: cfg.acc || '', desc, debit: 0, credit: amount }
-    )
-  }
-
-  details.forEach(detail => {
-    const payType = detail.Transaction || 'UNKNOWN'
-    const amtCfg = paymentAmount[payType] || {}
-    const commCfg = mappings.commission || {}
-    const taxCfg = mappings.tax || {}
-    const netCfg = mappings.net || {}
-    addRow(amtCfg, toNum(detail.PayAmt), payType, false)
-    addRow(commCfg, toNum(detail.CommisAmt), 'Credit card commission', true)
-    addRow(taxCfg, toNum(detail.TaxAmt), 'Input Tax', true)
-    addRow(netCfg, toNum(detail.Total), 'Bank Account', true)
-  })
-  return rows
-}
+const DEFAULT_EMPTY_OBJECT = {}
 
 export default function AccountingReview({
   details,
-  headerData = {},
+  headerData = DEFAULT_EMPTY_OBJECT,
+  bank = '',
   onBack,
   onSubmit,
   onGoMapping,
   submitting = false,
 }: Props) {
+  const { t } = useT()
   const { config, loading: configLoading, refresh: loadConfig } = useAccountingConfig()
   const [warningModal, setWarningModal] = useState(false)
   const [accNameMap, setAccNameMap] = useState<Record<string, string>>(_accCache || {})
@@ -107,7 +73,11 @@ export default function AccountingReview({
 
   const getAccName = (acc: string) => accNameMap[acc] || ''
   const rawConfig = config as Record<string, unknown> | null
-  const rows = rawConfig ? buildRows(details, rawConfig) : []
+  const rows = rawConfig
+    ? buildJvRows(details, rawConfig, {
+        consolidateDebit: !GROUP_DEBIT_BY_TRANSACTION,
+      })
+    : []
   // Rows depend on BOTH the accounting config and the account-name map. Account
   // names are module-cached, so on repeat visits accLoading is already false
   // while the config is still loading — gate on both to avoid a "No data" flash.
@@ -115,15 +85,34 @@ export default function AccountingReview({
   const totalDr = rows.reduce((s, r) => s + r.debit, 0)
   const totalCr = rows.reduce((s, r) => s + r.credit, 0)
 
+  // Every layout satisfies gross = commission + tax + net per row, so the JV's
+  // Dr (Σ commission+tax+net) must equal its Cr (Σ gross). A mismatch means a
+  // line is internally inconsistent — extraction drift, or a manual edit that
+  // left the columns out of sync — and the JV would post unbalanced. Surface
+  // the offending line(s) and block submit until it's fixed.
+  const imbalancedLines = details
+    .map((d, i) => ({
+      line: i + 1,
+      diff: round2(
+        parseNum(d.PayAmt) - (parseNum(d.CommisAmt) + parseNum(d.TaxAmt) + parseNum(d.Total))
+      ),
+    }))
+    .filter(r => Math.abs(r.diff) > 0.01)
+  const isImbalanced = Math.abs(round2(totalDr) - round2(totalCr)) > 0.01
+
   const unmappedFields: string[] = []
   if (rawConfig) {
     if (!rawConfig.filePrefix) unmappedFields.push('File Prefix')
     const m = (rawConfig.mappings || {}) as Record<string, { acc?: string }>
     if (!m.commission?.acc) unmappedFields.push('Credit card commission')
     if (!m.tax?.acc) unmappedFields.push('Input Tax')
-    if (!m.net?.acc) unmappedFields.push('Bank Account')
+    // Some formats (e.g. fee invoices) always have Total=0, so the net row is
+    // never posted — only demand the mapping when a row will use it.
+    if (!m.net?.acc && details.some(d => parseNum(d.Total))) unmappedFields.push('Bank Account')
     const pa = (rawConfig.paymentAmount || {}) as Record<string, { acc?: string }>
-    const detailTypes = [...new Set(details.map(d => d.Transaction).filter(Boolean))] as string[]
+    const detailTypes = [
+      ...new Set(details.flatMap(d => (d.Transaction ? [d.Transaction] : []))),
+    ] as string[]
     detailTypes.forEach(pt => {
       if (!pa[pt]?.acc) unmappedFields.push(pt)
     })
@@ -133,7 +122,11 @@ export default function AccountingReview({
   const configBadges = rawConfig
     ? [
         { label: `Prefix: ${rawConfig.filePrefix || '-'}`, variant: 'info' as const },
-        { label: `Source: ${rawConfig.fileSource || '-'}`, variant: 'gray' as const },
+        {
+          // Source is bank-derived (matches what will post), not the stored config value.
+          label: `Source: ${(bank && codeToSource(bank)) || rawConfig.fileSource || '-'}`,
+          variant: 'gray' as const,
+        },
         {
           label: `Description: ${rawConfig.description ? `${rawConfig.description}${headerData.DocDate ? ` - ${headerData.DocDate}` : ''}` : '-'}`,
           variant: 'gray' as const,
@@ -145,7 +138,7 @@ export default function AccountingReview({
     <div>
       <div className="section-header">
         <span className="cc-step-title">
-          <CheckCheck size={16} /> Step 4: Accounting Review (Journal Concept)
+          <CheckCheck size={16} /> {t('cc.step4Title')}
         </span>
       </div>
 
@@ -153,19 +146,34 @@ export default function AccountingReview({
         <div className="mapping-alert">
           <AlertTriangle size={16} />
           <span className="cc-alert-text">
-            Missing account mapping for: <strong>{unmappedFields.join(', ')}</strong>
+            {t('cc.missingMappingFor')} <strong>{unmappedFields.join(', ')}</strong>
           </span>
           <button type="button" className="btn btn-sm btn-danger" onClick={onGoMapping}>
-            Edit Mapping
+            {t('cc.editMapping')}
           </button>
         </div>
       )}
       {!isLoading && !rawConfig && (
         <div className="mapping-alert">
           <Info size={16} />
-          <span className="cc-alert-text">No Account Mapping configured</span>
+          <span className="cc-alert-text">{t('cc.noMapping')}</span>
           <button type="button" className="btn btn-sm btn-primary" onClick={onGoMapping}>
-            Go to Mapping Settings
+            {t('cc.goMappingSettings')}
+          </button>
+        </div>
+      )}
+      {!isLoading && rows.length > 0 && isImbalanced && (
+        <div className="mapping-alert is-danger">
+          <AlertCircle size={16} />
+          <span className="cc-alert-text">
+            {t('cc.jvImbalance', {
+              debit: fmt(totalDr),
+              credit: fmt(totalCr),
+              lines: imbalancedLines.map(r => r.line).join(', ') || '—',
+            })}
+          </span>
+          <button type="button" className="btn btn-sm btn-danger" onClick={onBack}>
+            {t('cc.back')}
           </button>
         </div>
       )}
@@ -174,10 +182,10 @@ export default function AccountingReview({
         icon={<FileText size={16} />}
         title={
           <>
-            Journal Details
+            {t('cc.journalDetails')}
             {accLoading && (
               <span className="cc-loader-text">
-                <Loader2 size={12} className="animate-spin" /> Loading account names...
+                <Loader2 size={12} className="animate-spin" /> {t('cc.loadingAccNames')}
               </span>
             )}
           </>
@@ -225,34 +233,46 @@ export default function AccountingReview({
               {rows.length === 0 && !isLoading && (
                 <tr>
                   <td colSpan={8} className="cc-empty-row-text">
-                    No data — Please configure Account Mapping first
+                    {t('cc.noData')}
                   </td>
                 </tr>
               )}
-              {rows.map((r, i) => (
-                <tr key={i}>
-                  <td className={!r.dept ? 'missing-cell animate-pulse' : ''}>
-                    {r.dept || (
-                      <span className="cc-missing-cell-text">
-                        <AlertCircle size={12} /> MISSING
-                      </span>
-                    )}
-                  </td>
-                  <td className={!r.acc ? 'missing-cell animate-pulse' : ''}>
-                    {r.acc || (
-                      <span className="cc-missing-cell-text">
-                        <AlertCircle size={12} /> MISSING
-                      </span>
-                    )}
-                  </td>
-                  <td className="cc-account-name-cell">{getAccName(r.acc)}</td>
-                  <td>{r.desc}</td>
-                  <td className="text-center">THB</td>
-                  <td className="text-right text-mono">1.00000000</td>
-                  <td className="text-right">{fmt(r.debit)}</td>
-                  <td className="text-right">{fmt(r.credit)}</td>
-                </tr>
-              ))}
+              {rows.map((r, i) => {
+                // A zero leg (e.g. gateway net=0.00, kept for a standard layout) that
+                // has no account is display-only and never posts — show a dash, not the
+                // red MISSING alarm reserved for a real amount lacking its mapping.
+                const posts = !!(r.debit || r.credit)
+                return (
+                  <tr key={`${r.dept}-${r.acc}-${r.desc}-${i}`}>
+                    <td className={!r.dept && posts ? 'missing-cell animate-pulse' : ''}>
+                      {r.dept ||
+                        (posts ? (
+                          <span className="cc-missing-cell-text">
+                            <AlertCircle size={12} /> MISSING
+                          </span>
+                        ) : (
+                          '—'
+                        ))}
+                    </td>
+                    <td className={!r.acc && posts ? 'missing-cell animate-pulse' : ''}>
+                      {r.acc ||
+                        (posts ? (
+                          <span className="cc-missing-cell-text">
+                            <AlertCircle size={12} /> MISSING
+                          </span>
+                        ) : (
+                          '—'
+                        ))}
+                    </td>
+                    <td className="cc-account-name-cell">{getAccName(r.acc)}</td>
+                    <td>{r.desc}</td>
+                    <td className="text-center">THB</td>
+                    <td className="text-right text-mono">1.00000000</td>
+                    <td className="text-right">{fmt(r.debit)}</td>
+                    <td className="text-right">{fmt(r.credit)}</td>
+                  </tr>
+                )
+              })}
             </tbody>
             {rows.length > 0 && (
               <tfoot>
@@ -270,15 +290,15 @@ export default function AccountingReview({
 
         <div className="form-actions">
           <button type="button" className="btn-cancel" onClick={onBack}>
-            <ArrowLeft size={14} /> Back
+            <ArrowLeft size={14} /> {t('cc.back')}
           </button>
           <button type="button" className="btn-cancel cc-mr-auto" onClick={onGoMapping}>
-            <Settings size={14} /> Mapping Settings
+            <Settings size={14} /> {t('cc.mappingSettings')}
           </button>
           <button
             type="button"
             className="btn-icon"
-            title="Refresh Mapping Data"
+            title={t('cc.refreshMapping')}
             onClick={loadConfig}
             disabled={configLoading}
           >
@@ -288,7 +308,7 @@ export default function AccountingReview({
           <button
             type="button"
             className="btn-submit"
-            disabled={rows.length === 0 || submitting}
+            disabled={rows.length === 0 || submitting || isImbalanced}
             onClick={() => (hasMissing ? setWarningModal(true) : onSubmit(rows))}
           >
             {submitting ? (
@@ -296,7 +316,7 @@ export default function AccountingReview({
             ) : (
               <UploadCloud size={14} />
             )}
-            {submitting ? 'Submitting...' : 'Confirm and Submit'}
+            {submitting ? t('cc.submitting') : t('cc.confirmSubmit')}
           </button>
         </div>
       </Card>
@@ -304,10 +324,10 @@ export default function AccountingReview({
       <CustomModal
         show={warningModal}
         type="warning"
-        title="Incomplete Account Mapping"
-        message={`Please complete the account mapping before confirming:\n${unmappedFields.join(', ')}`}
-        confirmText="Go to Mapping Settings"
-        cancelText="Close"
+        title={t('cc.incompleteMapping')}
+        message={t('cc.incompleteMappingMsg', { fields: unmappedFields.join(', ') })}
+        confirmText={t('cc.goMappingSettings')}
+        cancelText={t('cc.close')}
         onConfirm={() => {
           setWarningModal(false)
           onGoMapping()

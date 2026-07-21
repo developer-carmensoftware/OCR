@@ -154,8 +154,8 @@
 }
 
 .app-header .logo-box .logo-img {
-  width: 20px;
-  height: 20px;
+  width: 28px;
+  height: 28px;
   object-fit: contain;
   filter: brightness(0) invert(1);
   opacity: 0.96;
@@ -233,17 +233,22 @@
 }
 
 [data-theme='dark'] .app-header[data-module='credit-card'] {
-  --module-accent: oklch(0.65 0.16 258.7);
-  --module-accent-soft: oklch(0.3 0.06 258.7);
+  --module-accent: oklch(0.62 0.05 258.7);
+  --module-accent-soft: oklch(0.26 0.015 258.7);
 }
 
 [data-theme='dark'] .app-header[data-module='ap-invoice'] {
-  --module-accent: oklch(0.7 0.13 253.27);
-  --module-accent-soft: oklch(0.3 0.06 253.27);
+  --module-accent: oklch(0.62 0.05 253.27);
+  --module-accent-soft: oklch(0.26 0.015 253.27);
+}
+
+[data-theme='dark'] .app-header[data-module='mapping'] {
+  --module-accent: oklch(0.62 0.04 188.43);
+  --module-accent-soft: oklch(0.24 0.012 188.43);
 }
 
 [data-theme='dark'] .app-header-back {
-  background: oklch(0.26 0.024 258.7);
+  background: var(--muted);
   border-color: var(--border);
   color: var(--text-2);
 }
@@ -348,9 +353,6 @@
   }
   .app-header-title {
     font-size: 0.95rem;
-  }
-  .action-bar {
-    flex-wrap: wrap;
   }
   .form-actions {
     flex-wrap: wrap;

@@ -14,6 +14,7 @@ from .business import (
     BUAccountingConfig,
     BUAccountingMappingEntry,
     BugReport,
+    ConsentLog,
     CorrectionFeedback,
     CreditCard,
     OcrSession,
@@ -22,7 +23,6 @@ from .business import (
 from .catalog import Bank, Module, PromptTemplate, TenantModule
 from .enums import (
     AlertSeverity,
-    BankType,
     DocumentType,
     FieldName,
     JobStatus,
@@ -48,6 +48,8 @@ from .observability import (
 from .schemas import (
     BugReportRequest,
     BugReportResponse,
+    ConsentRequest,
+    ConsentStatusResponse,
     CorrectionFeedbackBatchRequest,
     CorrectionFeedbackBatchResponse,
     CorrectionFeedbackRequest,
@@ -65,7 +67,6 @@ __all__ = [
     "TaskStatus",
     "DocumentType",
     "AlertSeverity",
-    "BankType",
     "FieldName",
     "JobStatus",
     "PromptType",
@@ -103,6 +104,7 @@ __all__ = [
     "APInvoice",
     "CorrectionFeedback",
     "BugReport",
+    "ConsentLog",
     "BUAccountingConfig",
     "BUAccountingMappingEntry",
     "APVendorColumnMapping",
@@ -130,4 +132,6 @@ __all__ = [
     "CorrectionFeedbackBatchResponse",
     "BugReportRequest",
     "BugReportResponse",
+    "ConsentRequest",
+    "ConsentStatusResponse",
 ]

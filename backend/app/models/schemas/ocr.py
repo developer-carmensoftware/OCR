@@ -97,6 +97,10 @@ class ExtractedCreditCardData(BaseModel):
     details: list[ExtractedDetailRow] = Field(default_factory=list)
     is_duplicate: bool = Field(False)
     raw_text: str | None = Field(None)
+    warnings: list[str] = Field(
+        default_factory=list,
+        description="User-facing extraction warnings (English), set by backend normalizers only",
+    )
 
 
 # ── Correction Feedback ───────────────────────────────────────────────────────

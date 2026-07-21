@@ -18,6 +18,7 @@ from app.services.audit_service import AuditAction
 from app.services.carmen_service import CarmenAPIError, get_account_codes, get_departments
 from app.services.credit_service import consume_document, refund_document
 from app.services.file_service import file_service
+from app.services.quota_service import assert_module_enabled
 from app.services.task_service import create_task, mark_failed
 from app.utils.client_ip import get_client_ip
 from app.utils.date_parsing import parse_doc_date
@@ -70,6 +71,9 @@ async def extract_ap_invoice(
     # Open the PDF before consuming a credit so an encrypted/corrupt PDF fails first
     # (PdfPasswordRequired → 400 / ExtractionError → 422) without burning a credit.
     await ensure_pdf_openable(file_bytes, filename, pdf_password)
+
+    # Access gate before any charge — 403 if an admin disabled this module.
+    await assert_module_enabled(Module.AP_INVOICE)
 
     charged = await consume_document()
 

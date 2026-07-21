@@ -2,11 +2,11 @@ import { User, CheckCircle2, AlertTriangle, Plus, RotateCw, Search, Info } from 
 import Badge from '../common/Badge'
 import Tooltip from '../common/Tooltip'
 import { getCarmenUrl } from '../../lib/url'
+import { useT } from '../../i18n/LanguageContext'
 import type { Vendor } from '../../hooks/ap-invoice/useAPVendor'
 import type React from 'react'
 
 interface Props {
-  t: Record<string, string>
   systemVendor: Vendor
   setSystemVendor: React.Dispatch<React.SetStateAction<Vendor>>
   vendorSearch: string
@@ -19,7 +19,6 @@ interface Props {
 }
 
 export default function VendorSearch({
-  t,
   systemVendor,
   setSystemVendor,
   vendorSearch,
@@ -30,6 +29,7 @@ export default function VendorSearch({
   onRefresh,
   refreshing,
 }: Props) {
+  const { t } = useT()
   return (
     <div className="vendor-search-wrap">
       <div
@@ -50,53 +50,32 @@ export default function VendorSearch({
             position: 'relative',
           }}
         >
-          <User size={15} /> {t.systemVendor}
-          <Tooltip text='Choose vendor or click "+ New Vendor" if not found.' position="top-right">
+          <User size={15} /> {t('ap.systemVendor')}
+          <Tooltip text={t('common.vendorTooltip')} position="top-right">
             <Info size={14} style={{ color: 'var(--text-4)', cursor: 'help' }} />
           </Tooltip>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <Badge variant={systemVendor.code ? 'success' : 'warning'}>
             {systemVendor.code ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}
-            {systemVendor.code ? 'Mapped' : 'Unmapped'}
+            {systemVendor.code ? t('common.mapped') : t('common.unmapped')}
           </Badge>
           <a
             href={getCarmenUrl('/apVendor/create')}
             target="_blank"
             rel="noopener noreferrer"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.3rem',
-              padding: '0.25rem 0.65rem',
-              fontSize: '0.75rem',
-              fontWeight: 600,
-              color: 'var(--primary)',
-              background: 'var(--ap-exclude-bg, #eff6ff)',
-              border: '1px solid var(--primary)',
-              borderRadius: '999px',
-              textDecoration: 'none',
-              whiteSpace: 'nowrap',
-            }}
+            className="vendor-new-btn"
           >
-            <Plus size={11} /> New Vendor
+            <Plus size={11} /> {t('common.newVendor')}
           </a>
           <button
             type="button"
             onClick={onRefresh}
             disabled={refreshing}
-            title="Refresh vendor list"
+            title={t('common.refreshVendor')}
+            className="vendor-refresh-btn"
             style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '1.75rem',
-              height: '1.75rem',
-              background: 'var(--gray-50)',
-              border: '1px solid var(--border)',
-              borderRadius: '999px',
               cursor: refreshing ? 'not-allowed' : 'pointer',
-              color: 'var(--text-3)',
               opacity: refreshing ? 0.6 : 1,
             }}
           >
@@ -110,7 +89,8 @@ export default function VendorSearch({
         <input
           type="text"
           className={`vendor-search-input ${systemVendor.code ? 'matched' : ''}`}
-          placeholder={t.searchVendor}
+          aria-label={t('ap.searchVendor')}
+          placeholder={t('ap.searchVendor')}
           value={vendorSearch}
           onChange={e => {
             setVendorSearch(e.target.value)
@@ -139,6 +119,8 @@ export default function VendorSearch({
                       ? { opacity: 0.45, cursor: 'not-allowed', pointerEvents: 'none' }
                       : undefined
                   }
+                  role="button"
+                  tabIndex={isInactive ? -1 : 0}
                   onMouseDown={
                     isInactive
                       ? undefined
@@ -148,6 +130,20 @@ export default function VendorSearch({
                             `${v.code} — ${v.name} | TaxID : ${v.taxId || '—'} | Branch No. : ${String(v.branchNo ?? '—').padStart(5, '0')}`
                           )
                           setShowVendorDrop(false)
+                        }
+                  }
+                  onKeyDown={
+                    isInactive
+                      ? undefined
+                      : e => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            setSystemVendor(v)
+                            setVendorSearch(
+                              `${v.code} — ${v.name} | TaxID : ${v.taxId || '—'} | Branch No. : ${String(v.branchNo ?? '—').padStart(5, '0')}`
+                            )
+                            setShowVendorDrop(false)
+                          }
                         }
                   }
                 >
@@ -160,7 +156,7 @@ export default function VendorSearch({
                       <span
                         style={{
                           marginLeft: '0.4rem',
-                          fontSize: '0.7rem',
+                          fontSize: '0.75rem',
                           fontWeight: 600,
                           color: 'var(--rose)',
                           background: 'var(--btn-err-bg, #fee2e2)',
@@ -168,7 +164,7 @@ export default function VendorSearch({
                           padding: '0 4px',
                         }}
                       >
-                        Inactive
+                        {t('common.inactive')}
                       </span>
                     )}
                   </div>
@@ -190,7 +186,7 @@ export default function VendorSearch({
                 textAlign: 'center',
               }}
             >
-              No vendor found
+              {t('common.noVendorFound')}
             </div>
           )}
         </div>

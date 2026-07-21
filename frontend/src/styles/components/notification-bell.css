@@ -1,0 +1,274 @@
+.notif-bell {
+  position: relative;
+}
+
+/* ── Trigger — matches the sibling .theme-toggle / .lang-toggle header buttons ── */
+.notif-bell__trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  color: var(--text-2);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition:
+    color 150ms var(--ease-out-premium),
+    background 150ms var(--ease-out-premium),
+    border-color 150ms var(--ease-out-premium);
+}
+
+.notif-bell__trigger:hover {
+  color: var(--text);
+  background: var(--muted);
+}
+
+/* Open state reads as active, matching the primary-tinted selection language */
+.notif-bell__trigger[data-active] {
+  color: var(--primary);
+  background: var(--primary-light);
+  border-color: var(--primary);
+}
+
+.notif-bell__badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--rose);
+  color: var(--primary-foreground, oklch(1 0 0));
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 17px;
+  text-align: center;
+  pointer-events: none;
+  box-shadow: 0 0 0 2px var(--card-bg); /* punch out from the button edge */
+}
+
+/* ── Panel — portaled to body; fixed top-right by default so it can never land
+      mid-screen, then refined under the bell via inline top/right. ── */
+.notif-bell__panel {
+  position: fixed;
+  top: 4rem;
+  right: 1rem;
+  z-index: var(--z-dropdown);
+  display: flex;
+  flex-direction: column;
+  width: 340px;
+  max-width: calc(100vw - 1.5rem);
+  max-height: min(72vh, 30rem);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  transform-origin: top right;
+  animation: notif-panel-in 160ms var(--ease-out-premium, ease-out);
+}
+
+@keyframes notif-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notif-bell__panel {
+    animation: none;
+  }
+}
+
+.notif-bell__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.875rem;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.notif-bell__title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.notif-bell__mark-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-3);
+  padding: 0.2rem 0.4rem;
+  margin: -0.2rem -0.4rem;
+  border-radius: var(--radius-xs, 4px);
+  transition:
+    color 150ms var(--ease-out-premium),
+    background 150ms var(--ease-out-premium);
+}
+
+.notif-bell__mark-all:hover {
+  color: var(--primary);
+  background: var(--primary-light);
+}
+
+/* ── List — the only scrolling region, so a long backlog scrolls in place ── */
+.notif-bell__list {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.notif-bell__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  width: 100%;
+  padding: 0.625rem 0.5rem;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-align: left;
+  transition: background 120ms var(--ease-out-premium);
+}
+
+.notif-bell__item:hover {
+  background: var(--muted);
+}
+
+.notif-bell__item.is-unread {
+  background: color-mix(in oklch, var(--primary) 5%, var(--card-bg));
+}
+
+.notif-bell__item.is-unread:hover {
+  background: color-mix(in oklch, var(--primary) 10%, var(--card-bg));
+}
+
+/* Semantic icon container — replaces the (banned) colored side-stripe */
+.notif-bell__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+}
+
+.notif-bell__icon--success {
+  background: var(--emerald-light);
+  color: var(--emerald);
+}
+.notif-bell__icon--error {
+  background: var(--rose-light);
+  color: var(--rose);
+}
+.notif-bell__icon--warning {
+  background: var(--amber-light);
+  color: var(--amber);
+}
+.notif-bell__icon--info {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.notif-bell__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.notif-bell__text {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+/* Timestamp is a metadata readout → mono, per the "data is mono" rule */
+.notif-bell__time {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-4);
+}
+
+/* Unread marker — a dot, never a side-stripe */
+.notif-bell__dot {
+  width: 7px;
+  height: 7px;
+  margin-top: 0.35rem;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+/* ── Empty state — teaches, not just "nothing here" ── */
+.notif-bell__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 2.25rem 1rem;
+  color: var(--text-4);
+  font-size: 0.8rem;
+}
+
+/* ── Release notes — the one expandable row type ── */
+
+.notif-bell__chevron {
+  flex-shrink: 0;
+  margin-top: 0.45rem;
+  color: var(--text-4);
+  transition: transform 150ms var(--ease-out-premium);
+}
+
+.notif-bell__chevron[data-open] {
+  transform: rotate(180deg);
+}
+
+/* Outside the row button (a list inside a <button> is invalid HTML), indented to
+   the row's text column so the bullets read as belonging to the title above. */
+.notif-bell__release-items {
+  margin: 0 0 0.4rem;
+  padding: 0.1rem 0.75rem 0 2.65rem;
+  list-style: disc;
+  color: var(--text-2);
+  font-size: 0.76rem;
+  line-height: 1.55;
+}
+
+.notif-bell__release-items li {
+  margin-bottom: 0.3rem;
+}
+
+.notif-bell__release-items li::marker {
+  color: var(--text-4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notif-bell__chevron {
+    transition: none;
+  }
+}

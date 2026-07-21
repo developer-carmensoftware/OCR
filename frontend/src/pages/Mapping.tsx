@@ -1,11 +1,11 @@
-import React from 'react'
 import { Network, Loader2, CheckCircle2 } from 'lucide-react'
 import CustomModal from '../components/common/CustomModal'
 import '../styles/pages/mapping.css'
+import { useT } from '../i18n/LanguageContext'
 import { useMapping } from '../hooks/mapping'
 import TopLevelConfigSection from '../components/credit-card/TopLevelConfigSection'
 import CompanyInfoSection from '../components/credit-card/CompanyInfoSection'
-import AccountMappingTable from '../components/credit-card/AccountMappingTable'
+import MainMappingTable from '../components/credit-card/MainMappingTable'
 import PaymentTypeModal from '../components/credit-card/PaymentTypeModal'
 import type { ModalConfig } from '../hooks/useModal'
 
@@ -79,6 +79,7 @@ function MappingSkeleton() {
 }
 
 export default function Mapping() {
+  const { t } = useT()
   const mappingCtrl = useMapping()
 
   if (mappingCtrl.configLoading) return <MappingSkeleton />
@@ -105,18 +106,18 @@ export default function Mapping() {
       />
       <CustomModal
         show={mappingCtrl.acceptAllModal}
-        title="Confirm Accept All"
-        message="AI might suggest incorrect account codes. Have you reviewed all items?"
+        title={t('cc.acceptAllTitle')}
+        message={t('cc.acceptAllMsg')}
         type="warning"
-        confirmText="Confirm Accept All"
-        cancelText="Cancel"
+        confirmText={t('cc.acceptAllConfirm')}
+        cancelText={t('modal.cancel')}
         onConfirm={mappingCtrl.handleAcceptAll}
         onCancel={() => mappingCtrl.setAcceptAllModal(false)}
       />
 
       <div className="container" style={{ margin: '2rem auto', maxWidth: '800px' }}>
         <h1>
-          <Network size={20} /> Account Mapping Configuration
+          <Network size={20} /> {t('cc.mappingTitle')}
         </h1>
 
         <TopLevelConfigSection
@@ -125,7 +126,6 @@ export default function Mapping() {
           filePrefix={mappingCtrl.filePrefix}
           setFilePrefix={mappingCtrl.setFilePrefix}
           fileSource={mappingCtrl.fileSource}
-          setFileSource={mappingCtrl.setFileSource}
           description={mappingCtrl.description}
           setDescription={mappingCtrl.setDescription}
         />
@@ -137,7 +137,7 @@ export default function Mapping() {
           missingCompanyFields={mappingCtrl.missingCompanyFields}
         />
 
-        <AccountMappingTable
+        <MainMappingTable
           masterAccounts={mappingCtrl.masterAccounts}
           masterDepartments={mappingCtrl.masterDepartments}
           loadingOpts={mappingCtrl.loadingOpts}
@@ -152,33 +152,19 @@ export default function Mapping() {
           setAcceptAllModal={mappingCtrl.setAcceptAllModal}
           loadInitialData={mappingCtrl.loadInitialData}
           activeScan={mappingCtrl.activeScan}
-          amountMappedCount={amountMappedCount}
           requiredMissingCount={requiredMissingCount}
           openAmountModal={mappingCtrl.openAmountModal}
-          allPaymentTypes={mappingCtrl.allPaymentTypes}
         />
 
         <div style={{ marginTop: '2.5rem' }}>
           <button
             type="button"
-            className="btn-save"
+            className="btn-save-mapping"
             onClick={() => void mappingCtrl.saveAllSettings(true)}
             disabled={mappingCtrl.saving}
             style={{
-              width: '100%',
-              padding: '1.2rem',
               background: mappingCtrl.saving ? '#5eaca3' : 'var(--teal)',
-              color: '#fff',
-              borderRadius: '12px',
               cursor: mappingCtrl.saving ? 'not-allowed' : 'pointer',
-              fontWeight: 'bold',
-              fontSize: '1.1rem',
-              border: 'none',
-              boxShadow: '0 4px 15px rgba(13,148,136,0.3)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.75rem',
             }}
           >
             {mappingCtrl.saving ? (
@@ -186,7 +172,7 @@ export default function Mapping() {
             ) : (
               <CheckCircle2 size={18} />
             )}
-            {mappingCtrl.saving ? 'Saving...' : 'Save & Close'}
+            {mappingCtrl.saving ? t('cc.saving') : t('cc.saveClose')}
           </button>
         </div>
       </div>
@@ -207,9 +193,6 @@ export default function Mapping() {
         confirmPaymentSuggestion={mappingCtrl.confirmPaymentSuggestion}
         rejectPaymentSuggestion={mappingCtrl.rejectPaymentSuggestion}
         customPaymentTypes={mappingCtrl.customPaymentTypes}
-        newCustomType={mappingCtrl.newCustomType}
-        setNewCustomType={mappingCtrl.setNewCustomType}
-        handleAddCustomType={mappingCtrl.handleAddCustomType}
         handleRemoveCustomType={mappingCtrl.handleRemoveCustomType}
         saveAmountSelection={mappingCtrl.saveAmountSelection}
         cancelAmountSelection={mappingCtrl.cancelAmountSelection}
@@ -218,6 +201,3 @@ export default function Mapping() {
     </>
   )
 }
-
-// suppress unused import warning
-void React

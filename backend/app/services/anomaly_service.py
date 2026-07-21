@@ -250,3 +250,37 @@ async def _insert_alert(
         severity.value,
         actual,
     )
+
+
+async def open_alert_if_absent(
+    *,
+    tenant_id: str,
+    module_id: str | None,
+    metric: str,
+    severity: AlertSeverity,
+    description: str,
+    actual=None,
+) -> None:
+    """Raise one anomaly alert if no open alert for (tenant_id, metric) already exists.
+
+    For callers OUTSIDE the nightly job (e.g. the LLM routing guard) that need to open a
+    deduped alert on the spot. Opens its own session, commits, and never raises —
+    alerting must not break the caller.
+    """
+    try:
+        async with async_session() as db:
+            if await _alert_exists(db, tenant_id, metric):
+                return
+            await _insert_alert(
+                db,
+                tenant_id=tenant_id,
+                module_id=module_id,
+                metric=metric,
+                severity=severity,
+                threshold=None,
+                actual=actual,
+                description=description,
+            )
+            await db.commit()
+    except Exception as exc:
+        logger.error("open_alert_if_absent failed (metric=%s): %s", metric, exc)

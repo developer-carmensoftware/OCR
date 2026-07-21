@@ -1,12 +1,12 @@
 """
-Image pre-processing utilities.
-Enhance receipt images before sending to OCR for better accuracy.
+Image pre-processing utilities: shrink, format-convert, and validate uploads
+before they are sent to the vision LLM.
 """
 
 import io
 import os
 
-from PIL import Image, ImageEnhance, ImageFilter
+from PIL import Image
 
 try:
     from pillow_heif import register_heif_opener
@@ -17,72 +17,45 @@ except ImportError:
     _HEIF_AVAILABLE = False
 
 
-def preprocess_image(
+def resize_if_needed(
     image_bytes: bytes,
-    *,
-    grayscale: bool = True,
-    contrast_factor: float = 1.5,
-    sharpness_factor: float = 2.0,
-    denoise: bool = True,
-    max_dimension: int = 4096,
-) -> bytes:
+    max_dimension: int = 2200,
+    jpeg_quality: int = 92,
+) -> tuple[bytes, str]:
     """
-    Pre-process an image to improve OCR accuracy on receipts/invoices.
+    Shrink an image for faster upload/LLM processing without a visible quality loss.
 
-    Steps:
-    1. Resize if too large (prevent OOM)
-    2. Convert to grayscale (reduces noise for text detection)
-    3. Enhance contrast (bank receipts are often faded)
-    4. Sharpen (makes text edges crisper)
-    5. Light denoise
-    """
-    img: Image.Image = Image.open(io.BytesIO(image_bytes))
+    Returns (bytes, mime_type) — mime_type always reflects the ACTUAL bytes returned
+    (never derived from the original filename, which the caller may still use for other
+    purposes but must not use for the LLM's declared MIME type):
 
-    # ── 1. Resize if too large ──
-    if max(img.size) > max_dimension:
-        ratio = max_dimension / max(img.size)
-        new_size = (int(img.width * ratio), int(img.height * ratio))
-        img = img.resize(new_size, Image.Resampling.LANCZOS)
-
-    # ── 2. Convert to grayscale ──
-    if grayscale and img.mode != "L":
-        img = img.convert("L")
-
-    # ── 3. Enhance contrast ──
-    if contrast_factor != 1.0:
-        contrast_enhancer = ImageEnhance.Contrast(img)
-        img = contrast_enhancer.enhance(contrast_factor)
-
-    # ── 4. Sharpen ──
-    if sharpness_factor != 1.0:
-        sharpness_enhancer = ImageEnhance.Sharpness(img)
-        img = sharpness_enhancer.enhance(sharpness_factor)
-
-    # ── 5. Denoise ──
-    if denoise:
-        img = img.filter(ImageFilter.MedianFilter(size=3))
-
-    # Convert back to bytes
-    output = io.BytesIO()
-    img.save(output, format="PNG", optimize=True)
-    return output.getvalue()
-
-
-def resize_if_needed(image_bytes: bytes, max_dimension: int = 4096) -> bytes:
-    """
-    Returns original bytes unchanged if the image already fits within max_dimension.
-    Only decodes and re-encodes when a resize is actually required, avoiding the
-    JPEG→PNG size inflation that preprocess_image caused on every non-PDF file.
+    - If the image already fits within max_dimension: bytes are returned byte-identical
+      (no re-encode), mime_type is the Pillow-detected source format.
+    - Otherwise: resized (LANCZOS) and re-encoded as JPEG at jpeg_quality, mime_type is
+      always "image/jpeg". Alpha/palette-transparency is flattened onto a white
+      background first (matches the light background of receipts/invoices) since JPEG
+      has no alpha channel and a naive mode convert can leave transparent regions black.
+      Mode is normalized BEFORE resizing, not after — Pillow silently drops to NEAREST
+      resampling for P/1 mode images regardless of the requested filter.
     """
     img = Image.open(io.BytesIO(image_bytes))
     if max(img.size) <= max_dimension:
-        return image_bytes
+        return image_bytes, img.get_format_mimetype() or "image/jpeg"
+
+    if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+        img = img.convert("RGBA")
+        background = Image.new("RGB", img.size, (255, 255, 255))
+        background.paste(img, mask=img.split()[-1])
+        img = background
+    elif img.mode not in ("L", "RGB", "CMYK"):
+        img = img.convert("RGB")
+
     ratio = max_dimension / max(img.size)
     new_size = (int(img.width * ratio), int(img.height * ratio))
     img = img.resize(new_size, Image.Resampling.LANCZOS)
     output = io.BytesIO()
-    img.save(output, format="PNG")
-    return output.getvalue()
+    img.save(output, format="JPEG", quality=jpeg_quality)
+    return output.getvalue(), "image/jpeg"
 
 
 def convert_heic_to_jpeg(raw_bytes: bytes) -> bytes:

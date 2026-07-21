@@ -31,6 +31,77 @@ _LLM_TIMEOUT_SECONDS = 120.0
 _Kind = Literal["vision", "text"]
 
 
+def _provider_prefs(kind: _Kind) -> dict[str, Any]:
+    """Build OpenRouter `provider` routing preferences enforcing the privacy policy.
+
+    Sent as `extra_body={"provider": ...}` on every request so no-collect/no-train
+    routing is guaranteed per-request — independent of the OpenRouter account
+    dashboard toggles (which can be changed silently). See config.py llm_* settings
+    and UserConsentModal.tsx (the consent promise this enforces).
+    """
+    prefs: dict[str, Any] = {"data_collection": settings.llm_data_collection}
+    if settings.llm_require_zdr:
+        prefs["zdr"] = True
+    allow = (
+        settings.llm_vision_provider_allowlist_list
+        if kind == "vision"
+        else settings.llm_text_provider_allowlist_list
+    )
+    if allow:
+        prefs["only"] = allow
+    return prefs
+
+
+def _policy_str(prefs: dict[str, Any]) -> str:
+    """Compact evidence string for the privacy directive sent (stored per call).
+
+    e.g. "deny", "deny+zdr", "deny;only=fireworks,deepinfra,digitalocean".
+    """
+    s = str(prefs.get("data_collection", "?"))
+    if prefs.get("zdr"):
+        s += "+zdr"
+    only = prefs.get("only")
+    if only:
+        s += ";only=" + ",".join(only)
+    return s[:120]
+
+
+async def _guard_provider(provider: str | None, module_id: str | None) -> None:
+    """Alert if OpenRouter routed to a provider outside the expected set.
+
+    Belt-and-suspenders over the `only`/`data_collection` enforcement — catches config
+    drift or an OpenRouter routing change that sends data somewhere unexpected. Fires an
+    anomaly alert (deduped) + ERROR log only on violation (rare → no hot-path DB cost
+    normally). NEVER raises: a broken guard must not break extraction.
+    """
+    try:
+        expected = settings.llm_expected_providers_list
+        if not provider or not expected:
+            return
+        p = provider.lower()
+        if any(e.lower() in p for e in expected):
+            return
+        logger.error(
+            "LLM routed to UNEXPECTED provider %r (expected one of %s) — data-routing "
+            "policy may be breached",
+            provider,
+            expected,
+        )
+        from app.context import current_tenant_id
+        from app.models.enums import AlertSeverity
+        from app.services import anomaly_service
+
+        await anomaly_service.open_alert_if_absent(
+            tenant_id=current_tenant_id.get() or "system",
+            module_id=module_id,
+            metric="llm_provider_out_of_policy",
+            severity=AlertSeverity.WARN,
+            description=f"LLM routed to unexpected provider: {provider}",
+        )
+    except Exception as exc:
+        logger.error("_guard_provider failed: %s", exc)
+
+
 # ── Multi-key capacity pool ───────────────────────────────────────────────────
 # Each OpenRouter key gets its OWN cached client + separate vision/text semaphores.
 # OpenRouter rate-limits per key, so spreading in-flight calls across N keys yields
@@ -289,6 +360,7 @@ async def call_vision_llm(
     start = time.perf_counter()
     status_code = 200
     key_label = "?"
+    provider = None
     rid = current_request_id.get("")
     extra_headers = {"X-Request-ID": rid} if rid else {}
     if settings.app_debug:
@@ -315,9 +387,12 @@ async def call_vision_llm(
                 temperature=0.0,
                 max_tokens=8192,
                 extra_headers=extra_headers,
+                extra_body={"provider": _provider_prefs("vision")},
             ),
             label="vision",
         )
+        provider = getattr(response, "provider", None)
+        await _guard_provider(provider, module_id)
     except LLMCapacityError:
         # Pool saturated past the max queue wait → 429 (Retry-After). Propagate as-is so
         # the global handler maps it; do NOT wrap into 503/500.
@@ -339,6 +414,8 @@ async def call_vision_llm(
             status_code=status_code,
             duration_ms=(time.perf_counter() - start) * 1000,
             request_size_bytes=image_size_bytes,
+            provider=provider,
+            data_policy=_policy_str(_provider_prefs("vision")),
         )
 
     if response.usage:
@@ -351,6 +428,7 @@ async def call_vision_llm(
             module_id=module_id,
             duration_ms=(time.perf_counter() - start) * 1000,
             count_quota=count_quota,
+            call_type="extract",
         )
 
     content = (
@@ -398,6 +476,7 @@ async def call_text_llm(
     start = time.perf_counter()
     status_code = 200
     key_label = "?"
+    provider = None
     rid = current_request_id.get("")
     extra_headers = {"X-Request-ID": rid} if rid else {}
 
@@ -415,9 +494,12 @@ async def call_text_llm(
                 temperature=0.0,
                 max_tokens=max_tokens,
                 extra_headers=extra_headers,
+                extra_body={"provider": _provider_prefs("text")},
             ),
             label="text",
         )
+        provider = getattr(response, "provider", None)
+        await _guard_provider(provider, module_id)
     except LLMCapacityError as exc:
         # Suggestion is best-effort — under pool saturation, degrade to "no suggestion"
         # rather than surfacing a 429. The caller already handles None.
@@ -437,6 +519,8 @@ async def call_text_llm(
             status_code=status_code,
             duration_ms=duration_ms,
             request_size_bytes=len(prompt.encode()),
+            provider=provider,
+            data_policy=_policy_str(_provider_prefs("text")),
         )
 
     if response.usage:
@@ -448,6 +532,11 @@ async def call_text_llm(
             task_id=task_id,
             module_id=module_id,
             duration_ms=duration_ms,
+            # Every caller of the text path is a GL-mapping suggestion today
+            # (gl_suggestion_service, ap_invoice_service.suggest_for_items). If a
+            # non-suggestion text call ever lands here, give it its own call_type
+            # rather than letting it inherit this one.
+            call_type="suggest",
         )
 
     content = (

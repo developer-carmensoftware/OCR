@@ -8,12 +8,6 @@ class TaskStatus(str, Enum):
     FAILED = "failed"
 
 
-class BankType(str, Enum):
-    BBL = "BBL"
-    KBANK = "KBANK"
-    SCB = "SCB"
-
-
 class DocumentType(str, Enum):
     CREDIT_CARD = "CREDIT_CARD"
     AP_INVOICE = "AP_INVOICE"
@@ -90,6 +84,28 @@ class CreditLedgerReason(str, Enum):
 
 
 class CreditOrderStatus(str, Enum):
-    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
     PAID = "paid"
-    CANCELLED = "cancelled"
+    COMPLETE = "complete"
+    VOID = "void"
+    # Auto-set by the hourly expiry sweep (fn_hold_expired_orders) when an
+    # in_progress order's 14-day proforma window passes with no admin decision
+    # yet — parks it for the quota admin to contact the buyer instead of
+    # force-voiding it (buyer-side approval chains can outlast 14 days).
+    ON_HOLD = "on_hold"
+
+
+class BillingDocumentType(str, Enum):
+    """Discriminator for billing_documents rows."""
+
+    PROFORMA = "proforma"  # issued at order creation (request for payment)
+    TAX_INVOICE = "tax_invoice"  # issued after admin approves payment (receipt / tax invoice)
+
+
+class SubscriptionStatus(str, Enum):
+    """Lifecycle of a tenant's monthly subscription window."""
+
+    ACTIVE = "active"  # in-window, allowance consumable
+    LAPSED = "lapsed"  # period ended (use-it-or-lose-it expired)
+    SUPERSEDED = "superseded"  # replaced by a newer subscription
+    # 'scheduled' (queued renewal, Option B) reserved — add via `alter type` when needed.

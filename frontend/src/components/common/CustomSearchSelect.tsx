@@ -1,5 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef, CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
+import { useT } from '../../i18n/LanguageContext'
 
 export interface SelectOption {
   code: string
@@ -19,6 +20,7 @@ interface Props {
   topChoice?: TopChoice | null
   suggestedValue?: string | null
   hasError?: boolean
+  'aria-label'?: string
 }
 
 export default function CustomSearchSelect({
@@ -29,7 +31,9 @@ export default function CustomSearchSelect({
   topChoice,
   suggestedValue,
   hasError = false,
+  'aria-label': ariaLabel,
 }: Props) {
+  const { t } = useT()
   const [isOpen, setIsOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [dropdownStyle, setDropdownStyle] = useState<CSSProperties>({})
@@ -67,15 +71,15 @@ export default function CustomSearchSelect({
     }
 
     document.addEventListener('mousedown', handleClickOutside)
-    document.addEventListener('touchstart', handleClickOutside)
+    document.addEventListener('touchstart', handleClickOutside, { passive: true })
     if (isOpen) {
-      window.addEventListener('scroll', handleScroll, true)
+      window.addEventListener('scroll', handleScroll, { capture: true, passive: true })
       window.addEventListener('resize', handleScroll)
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
       document.removeEventListener('touchstart', handleClickOutside)
-      window.removeEventListener('scroll', handleScroll, true)
+      window.removeEventListener('scroll', handleScroll, { capture: true })
       window.removeEventListener('resize', handleScroll)
     }
   }, [value, isOpen])
@@ -126,13 +130,13 @@ export default function CustomSearchSelect({
   const topBadge =
     topChoice?.source === 'history'
       ? {
-          label: 'History',
+          label: t('common.history'),
           bg: 'var(--btn-ok-bg, #f0fdf4)',
           color: 'var(--btn-ok-text, #16a34a)',
           border: 'var(--btn-ok-border, #86efac)',
         }
       : {
-          label: 'AI Suggested',
+          label: t('common.aiSuggested'),
           bg: 'var(--ap-suggest-bg, #f5f3ff)',
           color: 'var(--primary, #7c3aed)',
           border: 'var(--primary-mid, #c4b5fd)',
@@ -156,6 +160,7 @@ export default function CustomSearchSelect({
       <input
         type="text"
         placeholder={placeholder}
+        aria-label={ariaLabel || placeholder}
         value={displayValue}
         onFocus={() => {
           setIsOpen(true)
@@ -168,15 +173,13 @@ export default function CustomSearchSelect({
         onChange={e => setSearchTerm(e.target.value)}
         title={
           isAISuggested
-            ? `AI Suggested: ${suggestedValue}${suggestedDesc ? ` — ${suggestedDesc}` : ''}`
+            ? `${t('common.aiSuggested')}: ${suggestedValue}${suggestedDesc ? ` — ${suggestedDesc}` : ''}`
             : value && selectedDesc
               ? `${value} — ${selectedDesc}`
               : ''
         }
-        className="search-select-input"
+        className="search-select-input custom-search-select-input"
         style={{
-          width: '100%',
-          padding: '0.5rem 0.65rem',
           border: `1px solid ${isAISuggested ? 'var(--primary-mid)' : hasError ? 'var(--rose)' : 'var(--border)'}`,
           borderBottomColor: isOpen
             ? 'var(--primary)'
@@ -185,12 +188,6 @@ export default function CustomSearchSelect({
               : hasError
                 ? 'var(--rose)'
                 : 'var(--border)',
-          borderRadius: '6px',
-          fontSize: '0.85rem',
-          outline: 'none',
-          transition:
-            'border-color 180ms var(--ease-out), background-color 180ms var(--ease-out), color 180ms var(--ease-out)',
-          fontFamily: "'DM Mono', monospace",
           background: isAISuggested
             ? 'var(--primary-light)'
             : hasError
@@ -205,10 +202,19 @@ export default function CustomSearchSelect({
             {showTopChoice && topChoice && (
               <>
                 <div
+                  role="button"
+                  tabIndex={0}
                   onMouseDown={e => {
                     e.preventDefault()
                     onChange(topChoice.code)
                     setIsOpen(false)
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      onChange(topChoice.code)
+                      setIsOpen(false)
+                    }
                   }}
                   onMouseEnter={e => {
                     ;(e.currentTarget as HTMLElement).style.background = 'var(--primary-light)'
@@ -216,16 +222,10 @@ export default function CustomSearchSelect({
                   onMouseLeave={e => {
                     ;(e.currentTarget as HTMLElement).style.background = topBadge.bg
                   }}
+                  className="custom-search-select-top"
                   style={{
-                    padding: '0.6rem 0.8rem',
                     background: topBadge.bg,
                     borderBottom: `1px solid ${topBadge.border}`,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '0.5rem',
-                    transition: 'background 0.1s',
                   }}
                 >
                   <div>
@@ -238,18 +238,20 @@ export default function CustomSearchSelect({
                       }}
                     >
                       {topChoice.code}{' '}
-                      <span style={{ fontWeight: 500, fontFamily: "'Sarabun', sans-serif" }}>
+                      <span
+                        style={{ fontWeight: 500, fontFamily: "'IBM Plex Sans Thai', sans-serif" }}
+                      >
                         - {topChoice.name}
                       </span>
                     </div>
                     {topChoice.name2 && (
                       <div
                         style={{
-                          fontSize: '0.72rem',
+                          fontSize: '0.75rem',
                           color: topBadge.color,
                           opacity: 0.75,
                           marginTop: '2px',
-                          fontFamily: "'Sarabun', sans-serif",
+                          fontFamily: "'IBM Plex Sans Thai', sans-serif",
                         }}
                       >
                         {topChoice.name2}
@@ -261,7 +263,7 @@ export default function CustomSearchSelect({
                   <div
                     style={{
                       padding: '0.2rem 0.8rem',
-                      fontSize: '0.7rem',
+                      fontSize: '0.75rem',
                       color: 'var(--text-4)',
                       background: 'var(--gray-50)',
                       borderBottom: '1px solid var(--gray-100)',
@@ -273,9 +275,11 @@ export default function CustomSearchSelect({
               </>
             )}
 
-            {filteredWithoutTop.map((opt, i) => (
+            {filteredWithoutTop.map(opt => (
               <div
-                key={i}
+                key={opt.code}
+                role="button"
+                tabIndex={0}
                 style={{
                   padding: '0.6rem 0.8rem',
                   borderBottom: '1px solid var(--gray-100)',
@@ -286,6 +290,13 @@ export default function CustomSearchSelect({
                   e.preventDefault()
                   onChange(opt.code)
                   setIsOpen(false)
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    onChange(opt.code)
+                    setIsOpen(false)
+                  }
                 }}
                 onMouseEnter={e => {
                   ;(e.currentTarget as HTMLElement).style.background = 'var(--primary-light)'
@@ -307,7 +318,7 @@ export default function CustomSearchSelect({
                     style={{
                       color: 'var(--text-3)',
                       fontWeight: 500,
-                      fontFamily: "'Sarabun', sans-serif",
+                      fontFamily: "'IBM Plex Sans Thai', sans-serif",
                     }}
                   >
                     {' '}
@@ -320,7 +331,7 @@ export default function CustomSearchSelect({
                       fontSize: '0.75rem',
                       color: 'var(--text-4)',
                       marginTop: '3px',
-                      fontFamily: "'Sarabun', sans-serif",
+                      fontFamily: "'IBM Plex Sans Thai', sans-serif",
                     }}
                   >
                     {opt.name2}

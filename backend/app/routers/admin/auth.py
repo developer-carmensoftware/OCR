@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Request
 
 from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
-from app.models.schemas import LoginRequest, LoginResponse, MFAVerifyRequest
+from app.models.schemas import LoginRequest, LoginResponse
 from app.routers.admin.deps import get_current_admin
 from app.services import admin_auth_service as svc
 from app.utils.client_ip import get_client_ip
@@ -25,7 +25,7 @@ async def admin_login(
     try:
         admin, token, roles, _perms, tenant_scope = await svc.login(
             db=db,
-            email=body.email,
+            username=body.username,
             password=body.password,
             ip_address=ip,
         )
@@ -45,10 +45,13 @@ async def admin_login(
     return LoginResponse(
         access_token=token,
         admin_id=str(admin.id),
-        email=str(admin.email),
+        username=str(admin.username),
         roles=roles,
         tenant_scope=tenant_scope,
-        mfa_required=bool(admin.mfa_secret) and not False,  # noqa: SIM210 — Phase 1.5 placeholder
+        # MFA is deferred: there is no enforced TOTP flow, so never signal that one is
+        # required (a stub that always "passed" was worse than no MFA). The mfa_secret
+        # column is kept for a future real implementation.
+        mfa_required=False,
     )
 
 
@@ -56,7 +59,7 @@ async def admin_login(
 async def admin_me(admin: AdminPrincipal = Depends(get_current_admin)):
     return {
         "admin_id": admin.admin_id,
-        "email": admin.email,
+        "username": admin.username,
         "roles": admin.roles,
         "permissions": sorted(admin.perms),
         "tenant_scope": admin.tenant_scope,
@@ -75,20 +78,3 @@ async def admin_logout(admin: AdminPrincipal = Depends(get_current_admin)):
     )
     # JWT is stateless — client discards the token.
     return {"detail": "Logged out"}
-
-
-# ── MFA (Phase 1.5 stub) ─────────────────────────────────────────────────────
-
-
-@router.post("/mfa/verify")
-async def admin_mfa_verify(
-    body: MFAVerifyRequest,
-    _admin: AdminPrincipal = Depends(get_current_admin),
-):
-    """TOTP verification stub — MFA enforcement is deferred to Phase 1.5."""
-    if not body.totp_code:
-        from fastapi import HTTPException
-
-        raise HTTPException(status_code=400, detail="TOTP code required")
-    # Actual TOTP check + re-issue token with mfa_passed=True implemented in Phase 1.5
-    return {"detail": "MFA verification not yet enforced", "mfa_passed": True}

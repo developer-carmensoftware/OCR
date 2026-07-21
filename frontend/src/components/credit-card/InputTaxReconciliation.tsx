@@ -16,7 +16,8 @@ import { SkeletonRow } from '../common/Skeleton'
 import { submitInputTax, fetchTaxProfiles } from '../../lib/api/carmen'
 import type { TaxProfileItem } from '../../lib/api/carmen'
 import { normalizeYearToCE } from '../../lib/date'
-import { toNum, fmt } from '../../lib/format'
+import { parseNum, fmt, round2 } from '../../lib/format'
+import { useT } from '../../i18n/LanguageContext'
 import { useAccountingConfig } from '../../hooks/credit-card'
 import { resolveTaxProfileForRate } from '../../lib/apTax'
 import type { DetailRow } from './DetailTable'
@@ -34,6 +35,7 @@ export default function InputTaxReconciliation({
   onBack: _onBack,
   onFinish,
 }: Props) {
+  const { t } = useT()
   const { config, loading: configLoading } = useAccountingConfig()
   const [showConfirm, setShowConfirm] = useState(false)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
@@ -51,8 +53,8 @@ export default function InputTaxReconciliation({
   }, [])
 
   const company = (config?.company ?? {}) as Record<string, string>
-  const netAmount = details.reduce((s, d) => s + toNum(d.CommisAmt), 0)
-  const taxAmount = details.reduce((s, d) => s + toNum(d.TaxAmt), 0)
+  const netAmount = details.reduce((s, d) => s + parseNum(d.CommisAmt), 0)
+  const taxAmount = details.reduce((s, d) => s + parseNum(d.TaxAmt), 0)
   const total = netAmount + taxAmount
   const taxRate = netAmount > 0 ? parseFloat(((taxAmount / netAmount) * 100).toFixed(2)) : 7.0
   const resolvedProfileCode = resolveTaxProfileForRate(taxRate, taxProfiles)
@@ -60,6 +62,14 @@ export default function InputTaxReconciliation({
   const taxProfile = resolvedProfileItem
     ? `${resolvedProfileItem.code} : ${resolvedProfileItem.desc}`
     : `VAT0${Math.round(taxRate)} : VAT ${Math.round(taxRate)}%`
+  // Display/charge the profile's canonical rate, not the raw ratio — slightly-off extracted
+  // amounts (e.g. tax 70.10 / net 1000 = 7.01) must not contradict the "VAT 7%" badge.
+  const displayRate = resolvedProfileItem?.rate ?? Math.round(taxRate)
+  // We post the profile's canonical rate but keep the document's real VAT amount.
+  // If base × rate disagrees with the extracted VAT, the document's effective rate
+  // isn't standard — flag it so the user verifies before posting to ACTX.
+  const effectiveRateOff =
+    netAmount > 0 && Math.abs(round2(netAmount * (displayRate / 100)) - round2(taxAmount)) > 0.02
 
   const taxPeriod = (() => {
     if (!headerData.DocDate) return ''
@@ -102,10 +112,10 @@ export default function InputTaxReconciliation({
       InvhDesc: description || '',
       VnName: company.name || '',
       TaxProfileCode: resolvedProfileCode || `VAT0${Math.round(taxRate)}`,
-      BfTaxAmt: String(netAmount),
-      TaxRate: taxRate,
-      TaxAmt: taxAmount,
-      TotalAmt: String(total),
+      BfTaxAmt: round2(netAmount).toFixed(2),
+      TaxRate: displayRate,
+      TaxAmt: round2(taxAmount),
+      TotalAmt: round2(total).toFixed(2),
       TaxId: company.taxId || '',
       BranchNo: company.branch || '',
       Address: company.address || '',
@@ -117,12 +127,12 @@ export default function InputTaxReconciliation({
     try {
       await submitInputTax(payload)
       setShowConfirm(false)
-      toast.success('Input Tax Reconciliation added successfully')
+      toast.success(t('cc.inputTaxAdded'))
       onFinish()
     } catch (err) {
       const msg = (err as Error).message || 'An error occurred'
       setSubmitError(msg)
-      toast.error(`Failed to add Input Tax: ${msg}`)
+      toast.error(t('cc.inputTaxFailed', { msg }))
     } finally {
       setSubmitting(false)
     }
@@ -132,14 +142,14 @@ export default function InputTaxReconciliation({
     <div>
       <div className="section-header">
         <span className="cc-step-title">
-          <FileText size={16} /> Step 6: Input Tax Reconciliation
+          <FileText size={16} /> {t('cc.step6Title')}
         </span>
       </div>
 
       <div className="data-card">
         <div className="card-title">
           <div className="card-title-left">
-            <Scale size={16} /> Input Tax Reconciliation
+            <Scale size={16} /> {t('cc.inputTaxRecon')}
           </div>
           <div className="card-title-badges">
             <span className="cc-badge-primary">Source: ACTX</span>
@@ -179,7 +189,7 @@ export default function InputTaxReconciliation({
                 ) : !hasData ? (
                   <tr>
                     <td colSpan={12} className="cc-empty-row-text">
-                      No Credit card commission / Input Tax data available
+                      {t('cc.noTaxData')}
                     </td>
                   </tr>
                 ) : (
@@ -196,7 +206,7 @@ export default function InputTaxReconciliation({
                     <td>
                       <span className="cc-badge-primary-nowrap">{taxProfile}</span>
                     </td>
-                    <td className="text-right cc-mono-only">{fmt(taxRate)}</td>
+                    <td className="text-right cc-mono-only">{fmt(displayRate)}</td>
                     <td className="text-right cc-mono-semi-bold">{fmt(netAmount)}</td>
                     <td className="text-right cc-mono-semi-bold">{fmt(taxAmount)}</td>
                     <td className="text-right cc-mono-bold-teal">{fmt(total)}</td>
@@ -219,9 +229,16 @@ export default function InputTaxReconciliation({
           </div>
         </div>
 
+        {hasData && effectiveRateOff && (
+          <div className="mapping-alert is-danger">
+            <AlertCircle size={16} />
+            <span className="cc-alert-text">{t('cc.effectiveRateNote')}</span>
+          </div>
+        )}
+
         <div className="form-actions">
           <button type="button" className="btn-danger" onClick={() => setShowDiscardConfirm(true)}>
-            <X size={14} /> Discard
+            <X size={14} /> {t('cc.discard')}
           </button>
           <div className="form-actions-sep" />
           <button
@@ -233,7 +250,7 @@ export default function InputTaxReconciliation({
             }}
             disabled={!hasData || isLoading}
           >
-            <PlusCircle size={14} /> Add Input Tax
+            <PlusCircle size={14} /> {t('cc.addInputTax')}
           </button>
         </div>
       </div>
@@ -245,19 +262,11 @@ export default function InputTaxReconciliation({
               <div className="cc-modal-icon-teal">
                 <FileText size={36} />
               </div>
-              <div className="cc-modal-title">Add Input Tax Reconciliation</div>
-              <p className="cc-modal-body-text">
-                This item will be automatically added to the system as an
-                <br />
-                <strong>Input Tax Reconciliation</strong>.<br />
-                Do you want to proceed?
-              </p>
+              <div className="cc-modal-title">{t('cc.addInputTaxTitle')}</div>
+              <p className="cc-modal-body-text">{t('cc.addInputTaxBody')}</p>
               <div className="cc-modal-info-box-teal">
                 <Flag size={14} className="cc-info-icon-flag" />
-                <span>
-                  After confirmation, the system will <strong>complete the entire process</strong>{' '}
-                  and return to the start page automatically.
-                </span>
+                <span>{t('cc.addInputTaxInfo')}</span>
               </div>
               {submitError && (
                 <div className="cc-modal-error-box">
@@ -271,7 +280,7 @@ export default function InputTaxReconciliation({
                   onClick={() => setShowConfirm(false)}
                   disabled={submitting}
                 >
-                  Cancel
+                  {t('modal.cancel')}
                 </button>
                 <button
                   type="button"
@@ -281,11 +290,11 @@ export default function InputTaxReconciliation({
                 >
                   {submitting ? (
                     <>
-                      <Loader2 size={14} className="animate-spin" /> Sending...
+                      <Loader2 size={14} className="animate-spin" /> {t('cc.sending')}
                     </>
                   ) : (
                     <>
-                      <Check size={14} /> Confirm
+                      <Check size={14} /> {t('cc.confirm')}
                     </>
                   )}
                 </button>
@@ -302,16 +311,11 @@ export default function InputTaxReconciliation({
               <div className="cc-modal-icon-rose">
                 <Flag size={36} />
               </div>
-              <div className="cc-modal-title">Skip Input Tax step?</div>
-              <p className="cc-modal-body-text">
-                You chose <strong>not to add Input Tax</strong> to the system.
-              </p>
+              <div className="cc-modal-title">{t('cc.skipTitle')}</div>
+              <p className="cc-modal-body-text">{t('cc.skipBody')}</p>
               <div className="cc-modal-info-box-rose">
                 <Flag size={14} className="cc-info-icon-flag" />
-                <span>
-                  This action will <strong>complete the entire process</strong> and return to the
-                  start page.
-                </span>
+                <span>{t('cc.skipInfo')}</span>
               </div>
               <div className="modal-actions">
                 <button
@@ -319,18 +323,18 @@ export default function InputTaxReconciliation({
                   className="btn-cancel"
                   onClick={() => setShowDiscardConfirm(false)}
                 >
-                  <ArrowLeft size={14} /> Back to review
+                  <ArrowLeft size={14} /> {t('cc.backToReview')}
                 </button>
                 <button
                   type="button"
                   className="btn-danger cc-btn-danger-rose"
                   onClick={() => {
                     setShowDiscardConfirm(false)
-                    toast.info('Process completed without adding Input Tax')
+                    toast.info(t('cc.processedNoTax'))
                     onFinish()
                   }}
                 >
-                  <X size={14} /> Confirm Discard
+                  <X size={14} /> {t('cc.confirmDiscard')}
                 </button>
               </div>
             </div>

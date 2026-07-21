@@ -14,7 +14,11 @@ export function ConsentGate({ children }: Props) {
   return (
     <>
       {children}
-      <UserConsentModal show={!!user && !hasConsented} onConfirm={giveConsent} />
+      <UserConsentModal
+        key={!!user && !hasConsented ? 'open' : 'closed'}
+        show={!!user && !hasConsented}
+        onConfirm={giveConsent}
+      />
     </>
   )
 }

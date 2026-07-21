@@ -56,12 +56,27 @@ export const API = {
 
   credits: {
     packs: `${V1}/credits/packs`,
+    companyProfile: `${V1}/credits/company-profile`,
+    paymentInfo: `${V1}/credits/payment-info`,
     orders: `${V1}/credits/orders`,
+    order: (orderId: string) => `${V1}/credits/orders/${orderId}`,
+    orderSlip: (orderId: string) => `${V1}/credits/orders/${orderId}/slip`,
+    orderCancel: (orderId: string) => `${V1}/credits/orders/${orderId}/cancel`,
+    orderDocuments: (orderId: string) => `${V1}/credits/orders/${orderId}/documents`,
+  },
+
+  notifications: {
+    list: `${V1}/notifications`,
+    markRead: `${V1}/notifications/mark-read`,
   },
 
   feedback: {
     corrections: `${V1}/feedback/corrections`,
-    bugReport: `${V1}/feedback/bug-report`,
+  },
+
+  consent: {
+    record: `${V1}/consent`,
+    status: (version: string) => `${V1}/consent/status?version=${encodeURIComponent(version)}`,
   },
 
   files: {
@@ -81,13 +96,45 @@ export const API = {
     alerts: `${V1}/admin/alerts`,
     resolveAlert: (alertId: number | string) => `${V1}/admin/alerts/${alertId}/resolve`,
     jobs: `${V1}/admin/jobs`,
+    maintenance: `${V1}/admin/maintenance`,
+    maintenanceSchedule: `${V1}/admin/maintenance/schedule`,
+    maintenanceEnd: `${V1}/admin/maintenance/end`,
+    tenantMaintenance: (tenantId: string) => `${V1}/admin/maintenance/tenant/${tenantId}`,
     sessions: `${V1}/admin/sessions`,
     session: (sessionId: string) => `${V1}/admin/sessions/${sessionId}`,
     tenants: `${V1}/admin/tenants`,
+    tenant: (tenantId: string) => `${V1}/admin/tenants/${tenantId}`,
     errorBreakdown: `${V1}/admin/error-breakdown`,
+    extractionFailures: `${V1}/admin/extraction-failures`,
     tenantCredits: (tenantId: string) => `${V1}/admin/tenants/${tenantId}/credits`,
     tenantCreditsLedger: (tenantId: string) => `${V1}/admin/tenants/${tenantId}/credits/ledger`,
     tenantCreditsTopup: (tenantId: string) => `${V1}/admin/tenants/${tenantId}/credits/topup`,
     tenantCreditsAdjust: (tenantId: string) => `${V1}/admin/tenants/${tenantId}/credits/adjust`,
+    paymentInfo: `${V1}/admin/payment-info`,
+    creditOrders: `${V1}/admin/credit-orders`,
+    creditOrderSlipUrl: (id: string) => `${V1}/admin/credit-orders/${id}/slip-url`,
+    creditOrderApprove: (id: string) => `${V1}/admin/credit-orders/${id}/approve`,
+    creditOrderReject: (id: string) => `${V1}/admin/credit-orders/${id}/reject`,
+    creditOrderNote: (id: string) => `${V1}/admin/credit-orders/${id}/hold`,
+    creditOrderCancel: (id: string) => `${V1}/admin/credit-orders/${id}/cancel`,
+    creditOrderDocuments: (id: string) => `${V1}/admin/credit-orders/${id}/documents`,
+    creditOrdersPostAr: `${V1}/admin/credit-orders/post-ar`,
+    creditOrdersHoldBatch: `${V1}/admin/credit-orders/hold-batch`,
+    creditOrdersKpi: `${V1}/admin/credit-orders/kpi`,
+    arProfiles: `${V1}/admin/ar-customer-profiles`,
+    arProfile: (id: string) => `${V1}/admin/ar-customer-profiles/${id}`,
+    arProfilesSync: `${V1}/admin/ar-customer-profiles/sync`,
+    quotaOverview: `${V1}/admin/quotas/overview`,
+    tenantQuota: (tenantId: string, quotaId: string) =>
+      `${V1}/admin/tenants/${tenantId}/quotas/${quotaId}`,
+    tenantQuotaReset: (tenantId: string, quotaId: string) =>
+      `${V1}/admin/tenants/${tenantId}/quotas/${quotaId}/reset`,
+    tenantModule: (tenantId: string, moduleId: string) =>
+      `${V1}/admin/tenants/${tenantId}/modules/${moduleId}`,
+    adminUsers: `${V1}/admin/admin-users`,
+    adminUser: (userId: string) => `${V1}/admin/admin-users/${userId}`,
+    adminUserPasswordReset: (userId: string) => `${V1}/admin/admin-users/${userId}/password-reset`,
+    adminUserRoles: (userId: string) => `${V1}/admin/admin-users/${userId}/roles`,
+    roles: `${V1}/admin/roles`,
   },
 } as const

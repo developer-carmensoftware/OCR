@@ -3,6 +3,7 @@ import Badge from '../common/Badge'
 import Card from '../common/Card'
 import NumericInput from '../common/NumericInput'
 import { fmt, round2 } from '../../constants/apInvoice'
+import { useT } from '../../i18n/LanguageContext'
 import type { APInvoiceHeader } from '../../constants/apInvoice'
 
 interface Sums {
@@ -25,7 +26,6 @@ interface Diffs {
 }
 
 interface Props {
-  t: Record<string, string>
   sums: Sums
   targets: Targets
   diffs: Diffs
@@ -37,7 +37,6 @@ interface Props {
 }
 
 interface SummaryRowProps {
-  t: Record<string, string>
   label: string
   isDiff: boolean
   // While the document is internally inconsistent, a per-field Adjust would drag the (corroborated)
@@ -52,7 +51,6 @@ interface SummaryRowProps {
 }
 
 function SummaryRow({
-  t,
   label,
   isDiff,
   hideAdjust,
@@ -63,13 +61,14 @@ function SummaryRow({
   onChange,
   onBlur,
 }: SummaryRowProps) {
+  const { t } = useT()
   return (
     <div className="ap-summary-row">
       <span className="ap-summary-label">{label}</span>
       <div className="ap-summary-values">
         {isDiff && !hideAdjust && (
           <button type="button" className="ap-adjust-btn" onClick={onAdjust}>
-            <RotateCw size={14} /> {t.adjust}
+            <RotateCw size={14} /> {t('ap.adjust')}
           </button>
         )}
         <span className={`ap-sum-from-table ${isDiff ? 'diff' : ''} ${tableClassName || ''}`}>
@@ -88,7 +87,6 @@ function SummaryRow({
 }
 
 export default function AmountSummary({
-  t,
   sums,
   targets,
   diffs,
@@ -98,6 +96,7 @@ export default function AmountSummary({
   adjustField,
   onFixDoc,
 }: Props) {
+  const { t } = useT()
   const { lineSubTotal, discount, tax, lineTotal } = sums
   const { subTotal: tgtSub, discount: tgtDisc, tax: tgtTax } = targets
   const { isSubDiff, isDiscDiff, isTaxDiff, isGrandDiff, isDocInconsistent } = diffs
@@ -106,14 +105,14 @@ export default function AmountSummary({
     <Card
       className="ap-summary-card"
       icon={<Calculator size={16} />}
-      title={t.summaryAccount}
+      title={t('ap.summaryAccount')}
       right={
         <div className="ap-summary-badges">
           <Badge variant="success" pill={false}>
-            {t.sumFromTable}
+            {t('ap.sumFromTable')}
           </Badge>
           <Badge variant="info" pill={false}>
-            {t.sumFromDoc}
+            {t('ap.sumFromDoc')}
           </Badge>
         </div>
       }
@@ -125,15 +124,14 @@ export default function AmountSummary({
           // table value to the misread document value).
           <div className="ap-doc-fix-banner">
             <AlertTriangle size={15} className="ap-doc-fix-icon" />
-            <span className="ap-doc-fix-text">{t.docInconsistentHint}</span>
+            <span className="ap-doc-fix-text">{t('ap.docInconsistentHint')}</span>
             <button type="button" className="ap-doc-fix-btn" onClick={onFixDoc}>
-              <Wrench size={13} /> {t.fixDocFigures}
+              <Wrench size={13} /> {t('ap.fixDocFigures')}
             </button>
           </div>
         )}
         <SummaryRow
-          t={t}
-          label={t.subTotal}
+          label={t('ap.subTotal')}
           isDiff={isSubDiff}
           hideAdjust={isDocInconsistent}
           tableVal={fmt(lineSubTotal)}
@@ -143,8 +141,7 @@ export default function AmountSummary({
           onBlur={v => blurHeader('subTotal', v)}
         />
         <SummaryRow
-          t={t}
-          label={t.discount}
+          label={t('ap.discount')}
           isDiff={isDiscDiff}
           tableVal={fmt(discount)}
           docVal={headerData.totalDiscount}
@@ -154,8 +151,7 @@ export default function AmountSummary({
           tableClassName={isDiscDiff ? '' : 'ap-sum-discount-no-diff'}
         />
         <SummaryRow
-          t={t}
-          label={t.tax}
+          label={t('ap.tax')}
           isDiff={isTaxDiff}
           hideAdjust={isDocInconsistent}
           tableVal={fmt(tax)}
@@ -165,7 +161,7 @@ export default function AmountSummary({
           onBlur={v => blurHeader('taxAmount', v)}
         />
         <div className="ap-grand-total-row">
-          <span className="ap-grand-total-label">{t.grandTotal}</span>
+          <span className="ap-grand-total-label">{t('ap.grandTotal')}</span>
           <div className="ap-summary-values">
             {isGrandDiff && isDocInconsistent ? (
               // The document's own figures don't add up (sub + tax ≠ grand): reconciling line items
@@ -173,10 +169,10 @@ export default function AmountSummary({
               <button
                 type="button"
                 className="ap-adjust-btn"
-                title={t.docInconsistent}
+                title={t('ap.docInconsistent')}
                 onClick={onFixDoc}
               >
-                <Wrench size={14} /> {t.fixDocFigures}
+                <Wrench size={14} /> {t('ap.fixDocFigures')}
               </button>
             ) : (
               isGrandDiff && (
@@ -185,7 +181,7 @@ export default function AmountSummary({
                   className="ap-adjust-btn"
                   onClick={() => adjustField(round2(headerData.grandTotal), lineTotal, 'lineTotal')}
                 >
-                  <RotateCw size={14} /> {t.adjust}
+                  <RotateCw size={14} /> {t('ap.adjust')}
                 </button>
               )
             )}
@@ -194,7 +190,7 @@ export default function AmountSummary({
             </span>
             <NumericInput
               className={`ap-sum-from-doc grand-total ${isGrandDiff ? 'diff' : ''}`}
-              aria-label={t.grandTotal}
+              aria-label={t('ap.grandTotal')}
               value={headerData.grandTotal}
               onChange={v => updateHeader('grandTotal', v)}
               onBlur={v => blurHeader('grandTotal', v)}

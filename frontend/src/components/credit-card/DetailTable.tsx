@@ -3,6 +3,7 @@ import { List, Calculator } from 'lucide-react'
 import { DETAIL_COLUMNS, DETAIL_LABELS } from '../../constants'
 import type { DetailColumn } from '../../constants/fields'
 import NumericInput from '../common/NumericInput'
+import { useT } from '../../i18n/LanguageContext'
 import { fmt, parseNum } from '../../lib/format'
 
 export interface DetailRow {
@@ -25,13 +26,13 @@ interface Props {
 
 const AMOUNT_FIELDS: DetailColumn[] = ['PayAmt', 'CommisAmt', 'TaxAmt', 'Total']
 
-// Returns empty string for blank/null inputs so the cell stays visually empty rather than showing
-// "0.00". For non-empty input delegates to fmt() from lib/format.
+// Blank/null amount cells render as "0.00" (missing value = 0). For non-empty input
+// delegates to fmt() from lib/format.
 function formatAmount(value: unknown): string {
   const str = String(value ?? '')
     .replace(/,/g, '')
     .trim()
-  if (str === '') return ''
+  if (str === '') return fmt(0)
   const num = parseFloat(str)
   if (isNaN(num)) return str
   return fmt(num)
@@ -41,6 +42,24 @@ function sumColumn(details: DetailRow[], col: string): number {
   return details.reduce((sum, row) => sum + parseNum(row[col]), 0)
 }
 
+function RenderLabel({ label }: { label: string }) {
+  if (label.includes('<br>')) {
+    const parts = label.split('<br>')
+    const primary = parts[0]
+    const secondaryRaw = parts[1] || ''
+    const match = secondaryRaw.match(/<span[^>]*>(.*?)<\/span>/)
+    const secondary = match ? match[1] : secondaryRaw
+    return (
+      <>
+        {primary}
+        <br />
+        <span style={{ fontSize: '0.8em', color: '#666' }}>{secondary}</span>
+      </>
+    )
+  }
+  return <>{label}</>
+}
+
 export default function DetailTable({
   details,
   onUpdate,
@@ -48,6 +67,7 @@ export default function DetailTable({
   onDeleteRow: _onDeleteRow,
   readOnly,
 }: Props) {
+  const { t } = useT()
   const [focusedCell, setFocusedCell] = useState<{ row: number; col: string } | null>(null)
 
   return (
@@ -55,9 +75,11 @@ export default function DetailTable({
       <div className="data-card">
         <div className="card-title">
           <div className="card-title-left">
-            <List size={16} /> Details
+            <List size={16} /> {t('cc.details')}
           </div>
-          <span className="row-count">{details.length} items</span>
+          <span className="row-count">
+            {details.length} {t('cc.items')}
+          </span>
         </div>
         <div className="card-body-flush table-wrapper">
           <table className="data-table">
@@ -65,8 +87,11 @@ export default function DetailTable({
               <tr>
                 {DETAIL_COLUMNS.map(col => {
                   const labelHtml = DETAIL_LABELS[col] || col
+                  const labelText = labelHtml.replace(/<[^>]*>/g, ' ').trim()
                   return (
-                    <th key={col} scope="col" dangerouslySetInnerHTML={{ __html: labelHtml }} />
+                    <th key={col} scope="col" aria-label={labelText}>
+                      <RenderLabel label={labelHtml} />
+                    </th>
                   )
                 })}
               </tr>
@@ -116,7 +141,7 @@ export default function DetailTable({
       <div className="data-card total-summary-card">
         <div className="card-title">
           <div className="card-title-left">
-            <Calculator size={16} /> Total Summary
+            <Calculator size={16} /> {t('cc.totalSummary')}
           </div>
         </div>
         <div className="card-body">

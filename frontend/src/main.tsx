@@ -1,14 +1,35 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react'
 import * as Sentry from '@sentry/react'
+import { LazyMotion, domAnimation } from 'framer-motion'
 
-document.documentElement.dataset.theme = 'light'
+// Apply persisted theme before first paint (avoids a light→dark flash).
+document.documentElement.dataset.theme = localStorage.getItem('theme') === 'dark' ? 'dark' : 'light'
 
 if (import.meta.env.VITE_SENTRY_DSN) {
+  // The one-time Carmen SSO token arrives in the URL hash (#/…?token=…) and is only
+  // stripped later, inside a React effect (useCarmenSSO) — so the pageload transaction,
+  // navigation breadcrumbs, or any early error can carry it off-site. It cannot be
+  // stripped before init (the effect still needs to read it), so redact it on the way out.
+  const redact = (u: string) => u.replace(/([?&]token=)[^&]*/gi, '$1[redacted]')
+  const scrub = <T extends Sentry.Event>(event: T): T => {
+    if (event.request?.url) event.request.url = redact(event.request.url)
+    if (typeof event.transaction === 'string') event.transaction = redact(event.transaction)
+    for (const crumb of event.breadcrumbs ?? []) {
+      for (const key of ['url', 'to', 'from'] as const) {
+        const value = crumb.data?.[key]
+        if (typeof value === 'string') crumb.data![key] = redact(value)
+      }
+    }
+    return event
+  }
+
   Sentry.init({
     dsn: import.meta.env.VITE_SENTRY_DSN as string,
     environment: (import.meta.env.VITE_SENTRY_ENV as string) ?? 'production',
     tracesSampleRate: 0.1,
     integrations: [Sentry.browserTracingIntegration()],
+    beforeSend: scrub,
+    beforeSendTransaction: scrub,
   })
 }
 
@@ -16,8 +37,10 @@ import ReactDOM from 'react-dom/client'
 import { Toaster } from 'sonner'
 import { AuthProvider } from './contexts/AuthContext'
 import { AdminAuthProvider } from './contexts/AdminAuthContext'
+import { LanguageProvider } from './i18n/LanguageContext'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import { ConsentGate } from './components/common/ConsentGate'
+import { MaintenanceGate } from './components/common/MaintenanceGate'
 import AdminProtectedRoute from './components/admin/AdminProtectedRoute'
 import ErrorBoundary from './components/common/ErrorBoundary'
 import PageSkeleton from './components/common/PageSkeleton'
@@ -46,6 +69,8 @@ const Home = lazy(() => import('./pages/Home'))
 const CreditCardOCR = lazy(() => import('./pages/CreditCardOCR'))
 const Mapping = lazy(() => import('./pages/Mapping'))
 const APInvoice = lazy(() => import('./pages/APInvoice'))
+const Pricing = lazy(() => import('./pages/Pricing'))
+const OrderHistory = lazy(() => import('./pages/OrderHistory'))
 
 // Admin pages
 const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'))
@@ -56,10 +81,19 @@ const TenantRankingPage = lazy(() => import('./pages/admin/TenantRankingPage'))
 const LLMLogsPage = lazy(() => import('./pages/admin/LLMLogsPage'))
 const PerformancePage = lazy(() => import('./pages/admin/PerformancePage'))
 const ErrorsPage = lazy(() => import('./pages/admin/ErrorsPage'))
+const ExtractionsPage = lazy(() => import('./pages/admin/ExtractionsPage'))
 const AnomaliesPage = lazy(() => import('./pages/admin/AnomaliesPage'))
 const JobsPage = lazy(() => import('./pages/admin/JobsPage'))
+const MaintenancePage = lazy(() => import('./pages/admin/MaintenancePage'))
 const SessionsPage = lazy(() => import('./pages/admin/SessionsPage'))
 const CreditsPage = lazy(() => import('./pages/admin/CreditsPage'))
+const TenantsPage = lazy(() => import('./pages/admin/TenantsPage'))
+const QuotaModulesPage = lazy(() => import('./pages/admin/QuotaModulesPage'))
+const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'))
+const CreditOrdersPage = lazy(() => import('./pages/admin/CreditOrdersPage'))
+
+// Order Review — standalone page (own shell, reuses admin auth)
+const OrderReviewShell = lazy(() => import('./pages/order-review/OrderReviewShell'))
 
 function getRoute(): string {
   const hash = window.location.hash.split('?')[0]
@@ -92,14 +126,28 @@ function AdminRouter() {
     AdminPage = <PerformancePage />
   } else if (route === 'admin/errors') {
     AdminPage = <ErrorsPage />
+  } else if (route === 'admin/extractions') {
+    AdminPage = <ExtractionsPage />
   } else if (route === 'admin/anomalies') {
     AdminPage = <AnomaliesPage />
   } else if (route === 'admin/jobs') {
     AdminPage = <JobsPage />
+  } else if (route === 'admin/maintenance') {
+    AdminPage = <MaintenancePage />
+  } else if (route === 'admin/tenants') {
+    AdminPage = <TenantsPage />
+  } else if (route === 'admin/quota-modules') {
+    AdminPage = <QuotaModulesPage />
+  } else if (route === 'admin/admin-users') {
+    AdminPage = <AdminUsersPage />
   } else if (route === 'admin/sessions') {
     AdminPage = <SessionsPage />
   } else if (route === 'admin/credits') {
     AdminPage = <CreditsPage />
+  } else if (route === 'admin/credit-orders') {
+    // Same page as the standalone #/order-review shell, mounted inside the admin
+    // sidebar so it is reachable from the nav at all. #/order-review still works.
+    AdminPage = <CreditOrdersPage />
   } else {
     AdminPage = <Overview />
   }
@@ -115,10 +163,40 @@ function Router() {
   const [route, setRoute] = useState(getRoute)
 
   useEffect(() => {
-    const onHashChange = () => setRoute(getRoute())
+    const onHashChange = (e: HashChangeEvent) => {
+      const next = getRoute()
+      // ponytail: sessionStorage, not a store — one string, one reader.
+      // Stash where we came from so pricing's back button can return there.
+      const oldHash = e.oldURL ? new URL(e.oldURL).hash : ''
+      const wasPricing = oldHash.replace(/^#\/?/, '').toLowerCase().startsWith('pricing')
+      if (next.startsWith('pricing') && !wasPricing) {
+        sessionStorage.setItem('pricing:returnTo', oldHash || '#/')
+      }
+      setRoute(next)
+    }
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [])
+
+  // Out-of-credits (HTTP 402) anywhere in the app → send the user to pricing.
+  useEffect(() => {
+    const toPricing = () => {
+      window.location.hash = '#/pricing'
+    }
+    window.addEventListener('ocr:open-topup', toPricing)
+    return () => window.removeEventListener('ocr:open-topup', toPricing)
+  }, [])
+
+  // Order Review — standalone page, its own shell, reuses admin auth.
+  if (route === 'order-review') {
+    return (
+      <Suspense fallback={<PageSkeleton />}>
+        <AdminProtectedRoute>
+          <OrderReviewShell />
+        </AdminProtectedRoute>
+      </Suspense>
+    )
+  }
 
   // Admin section — has its own auth, separate from Carmen
   if (route.startsWith('admin')) {
@@ -135,6 +213,10 @@ function Router() {
     Page = sub === 'mapping' ? <Mapping /> : <CreditCardOCR />
   } else if (route.startsWith('apinvoice')) {
     Page = <APInvoice />
+  } else if (route === 'pricing/orders') {
+    Page = <OrderHistory />
+  } else if (route.startsWith('pricing')) {
+    Page = <Pricing />
   } else {
     Page = <Home />
   }
@@ -147,25 +229,38 @@ function Router() {
   )
 }
 
-const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement)
+// HMR guard: reuse the existing root across hot reloads instead of calling
+// createRoot() again on the same DOM node (that leaves two React trees
+// fighting over #root and throws "removeChild" errors on the next edit).
+const container = document.getElementById('root') as HTMLElement
+const root = import.meta.hot?.data.root ?? ReactDOM.createRoot(container)
+if (import.meta.hot) {
+  import.meta.hot.data.root = root
+}
 root.render(
   <ErrorBoundary>
-    <AuthProvider>
-      <AdminAuthProvider>
-        <Toaster
-          position="bottom-center"
-          duration={3500}
-          visibleToasts={4}
-          expand={false}
-          closeButton
-          richColors
-          theme="light"
-        />
-        <ConsentGate>
-          <Router />
-        </ConsentGate>
-      </AdminAuthProvider>
-    </AuthProvider>
+    <LazyMotion features={domAnimation}>
+      <AuthProvider>
+        <AdminAuthProvider>
+          <Toaster
+            position="bottom-center"
+            duration={3500}
+            visibleToasts={4}
+            expand={false}
+            closeButton
+            richColors
+            theme="light"
+          />
+          <LanguageProvider>
+            <MaintenanceGate>
+              <ConsentGate>
+                <Router />
+              </ConsentGate>
+            </MaintenanceGate>
+          </LanguageProvider>
+        </AdminAuthProvider>
+      </AuthProvider>
+    </LazyMotion>
   </ErrorBoundary>
 )
 

@@ -28,9 +28,9 @@ body:has(.admin-login-page) {
       oklch(0.5852 0.1706 253.27 / 0.07) 0%,
       transparent 55%
     ),
-    oklch(0.97 0.005 258.7);
+    var(--background);
   color: var(--text);
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
 }
 
 [data-theme='dark'] .admin-shell {
@@ -45,7 +45,7 @@ body:has(.admin-login-page) {
       oklch(0.4714 0.1794 258.7 / 0.12) 0%,
       transparent 55%
     ),
-    oklch(0.16 0.018 258.7);
+    var(--background);
 }
 
 /* ─── SIDEBAR ─────────────────────────────────────────────────────────── */
@@ -76,12 +76,11 @@ body:has(.admin-login-page) {
   width: 36px;
   height: 36px;
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--primary), var(--teal));
+  background: var(--primary-light);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
-  box-shadow: var(--shadow-primary);
+  color: var(--primary);
   flex-shrink: 0;
 }
 .admin-logo-icon svg {
@@ -191,12 +190,23 @@ body:has(.admin-login-page) {
 .admin-sidebar-footer {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.6rem;
   padding: 0.85rem 1rem;
   margin: 0.5rem;
   background: var(--gray-50);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+}
+
+.admin-sidebar-toggles {
+  display: flex;
+  width: 100%;
+  gap: 0.4rem;
+}
+.admin-sidebar-toggles .lang-toggle,
+.admin-sidebar-toggles .theme-toggle {
+  height: 32px;
 }
 
 .admin-user-info {
@@ -280,16 +290,9 @@ body:has(.admin-login-page) {
   line-height: 1.15;
 }
 
-.admin-page-title::before {
-  content: '';
-  display: inline-block;
-  width: 4px;
-  height: 1.2rem;
-  background: linear-gradient(180deg, var(--primary), var(--teal));
-  border-radius: 4px;
-  margin-right: 0.7rem;
-  vertical-align: -2px;
-}
+/* Accent bar dropped so pages on the old .admin-page-* header match the newer
+   .ui-page-* kit (which deliberately has no bar) — one page-title vocabulary,
+   no visual jump when navigating between migrated and un-migrated pages. */
 
 .admin-page-controls {
   display: flex;
@@ -341,7 +344,6 @@ body:has(.admin-login-page) {
   height: 6px;
   border-radius: 50%;
   background: var(--primary);
-  animation: blink 3s ease-in-out infinite;
 }
 
 /* ─── KPI GRID ─────────────────────────────────────────────────────────── */
@@ -358,7 +360,7 @@ body:has(.admin-login-page) {
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 1.1rem 1.2rem 1rem;
+  padding: var(--space-5) var(--space-5) var(--space-4);
   box-shadow: var(--shadow-sm);
   transition:
     transform 0.2s var(--ease),
@@ -367,33 +369,59 @@ body:has(.admin-login-page) {
   overflow: hidden;
 }
 
+/* Soft corner glow, not a flat top stripe — reads warmer/friendlier, less
+   "generic SaaS metric tile". Accent is communicated by the icon chip below. */
 .kpi-card::before {
   content: '';
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: var(--primary);
-}
-
-.kpi-card--default::before {
-  background: var(--primary);
+  top: -35%;
+  right: -25%;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--primary) 0%, transparent 70%);
+  opacity: 0.07;
+  pointer-events: none;
 }
 .kpi-card--green::before {
-  background: var(--emerald);
+  background: radial-gradient(circle, var(--emerald) 0%, transparent 70%);
 }
 .kpi-card--red::before {
-  background: var(--rose);
+  background: radial-gradient(circle, var(--rose) 0%, transparent 70%);
 }
 .kpi-card--yellow::before {
-  background: var(--amber);
+  background: radial-gradient(circle, var(--amber) 0%, transparent 70%);
 }
 
 .kpi-card:hover {
   transform: translateY(-2px);
   border-color: var(--border-hi);
   box-shadow: var(--shadow-md);
+}
+
+.kpi-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary-light);
+  color: var(--primary);
+  margin-bottom: var(--space-3);
+  position: relative;
+}
+.kpi-card--green .kpi-icon {
+  background: var(--emerald-light);
+  color: var(--emerald);
+}
+.kpi-card--red .kpi-icon {
+  background: var(--rose-light);
+  color: var(--rose);
+}
+.kpi-card--yellow .kpi-icon {
+  background: var(--amber-light);
+  color: var(--amber);
 }
 
 .kpi-label {
@@ -457,16 +485,36 @@ body:has(.admin-login-page) {
 }
 
 .admin-th.sortable {
+  padding: 0;
+  transition: background 0.15s;
+}
+.admin-th.sortable:hover {
+  background: var(--primary-light);
+}
+
+/* Sort control is a real <button> so keyboard/screen-reader users can sort;
+   the cell padding moves onto it so the whole header stays the hit area. */
+.admin-th-sort {
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: none;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
   cursor: pointer;
   -webkit-user-select: none;
   user-select: none;
-  transition:
-    color 0.15s,
-    background 0.15s;
+  transition: color 0.15s;
 }
-.admin-th.sortable:hover {
+.admin-th.text-right .admin-th-sort {
+  justify-content: flex-end;
+}
+.admin-th-sort:hover {
   color: var(--primary);
-  background: var(--primary-light);
 }
 .admin-th.text-right {
   text-align: right;
@@ -669,17 +717,17 @@ body:has(.admin-login-page) {
 }
 .status-badge.ok {
   background: var(--emerald-light);
-  color: oklch(0.3 0.08 188.43);
-  border: 1px solid oklch(0.85 0.07 188.43);
+  color: var(--emerald);
+  border: 1px solid var(--emerald-mid);
 }
 .status-badge.error {
   background: var(--rose-light);
-  color: oklch(0.45 0.18 24.11);
+  color: var(--destructive);
   border: 1px solid var(--rose-mid);
 }
 .status-badge.warn {
   background: var(--amber-light);
-  color: oklch(0.42 0.13 75);
+  color: var(--amber-text);
   border: 1px solid var(--amber-mid);
 }
 
@@ -698,6 +746,9 @@ body:has(.admin-login-page) {
 .admin-sub-text {
   font-size: 0.72rem;
   color: var(--text-4);
+}
+.admin-truncation-note {
+  margin-top: 0.6rem;
 }
 
 /* ─── BUTTONS ──────────────────────────────────────────────────────────── */
@@ -786,6 +837,8 @@ body:has(.admin-login-page) {
   padding: 0.18rem 0.55rem;
   border-radius: 100px;
 }
+/* Dark foreground on the light tint is tuned for AA in light mode; dark mode
+   flips rose-light/amber-light to a dark fill, so the text must lighten too. */
 .alert-severity--critical {
   background: var(--rose-light);
   color: oklch(0.45 0.18 24.11);
@@ -793,6 +846,12 @@ body:has(.admin-login-page) {
 .alert-severity--warn {
   background: var(--amber-light);
   color: oklch(0.42 0.13 75);
+}
+[data-theme='dark'] .alert-severity--critical {
+  color: var(--rose);
+}
+[data-theme='dark'] .alert-severity--warn {
+  color: var(--amber-text);
 }
 
 .alert-metric {
@@ -877,6 +936,12 @@ body:has(.admin-login-page) {
   );
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after {
+    animation: none;
+  }
+}
+
 .skeleton-label {
   height: 0.6rem;
   width: 48%;
@@ -894,6 +959,7 @@ body:has(.admin-login-page) {
   display: inline-block;
 }
 .skeleton-chart {
+  display: block; /* <output> defaults to inline → height would be ignored */
   height: 260px;
   border-radius: var(--radius-md);
 }
@@ -967,7 +1033,7 @@ body:has(.admin-login-page) {
       transparent 60%
     ),
     oklch(0.96 0.008 258.7);
-  font-family: 'Inter', 'Sarabun', sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
 }
 
 [data-theme='dark'] .admin-login-page {
@@ -993,34 +1059,35 @@ body:has(.admin-login-page) {
   backdrop-filter: blur(20px);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
-  padding: 2.4rem 2.2rem;
+  padding: var(--space-7) var(--space-6);
   box-shadow: var(--shadow-xl);
   animation: modalScaleIn 0.4s var(--ease) both;
 }
 
 .admin-login-header {
   text-align: center;
-  margin-bottom: 1.8rem;
+  margin-bottom: var(--space-6);
 }
 
+/* Same flat icon-chip language as .kpi-icon / .ui-card-icon — one consistent
+   accent treatment across the redesign, not a bespoke gradient badge. */
 .admin-login-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 64px;
-  height: 64px;
+  width: 56px;
+  height: 56px;
   border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, var(--primary), var(--teal));
-  color: white;
-  box-shadow: var(--shadow-primary);
-  margin-bottom: 1rem;
+  background: var(--primary-light);
+  color: var(--primary);
+  margin-bottom: var(--space-4);
 }
 .admin-login-icon svg {
   display: block;
 }
 
 .admin-login-title {
-  margin: 0 0 0.25rem;
+  margin: 0 0 var(--space-1);
   font-size: 1.4rem;
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -1041,7 +1108,7 @@ body:has(.admin-login-page) {
 .admin-login-btn {
   width: 100%;
   padding: 0.75rem;
-  background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+  background: var(--primary);
   color: white;
   border: none;
   border-radius: var(--radius-md);
@@ -1049,14 +1116,15 @@ body:has(.admin-login-page) {
   font-weight: 700;
   font-family: inherit;
   cursor: pointer;
-  margin-top: 0.4rem;
+  margin-top: var(--space-2);
   letter-spacing: 0.02em;
   box-shadow: var(--shadow-primary);
   transition: all 0.18s var(--ease);
 }
 .admin-login-btn:hover:not(:disabled) {
+  background: var(--primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 8px 24px oklch(0.4714 0.1794 258.7 / 0.35);
+  box-shadow: 0 8px 24px color-mix(in oklch, var(--primary) 30%, transparent);
 }
 .admin-login-btn:active:not(:disabled) {
   transform: translateY(0);
@@ -1121,6 +1189,21 @@ body:has(.admin-login-page) {
     flex-direction: row;
     flex-wrap: nowrap;
     padding: 0.5rem;
+    gap: 0.25rem;
+  }
+  /* Flatten the grouped sections into one clean scroll row — the section
+     headings only make sense in the vertical desktop rail. */
+  .admin-nav-section {
+    display: contents;
+  }
+  .admin-nav-section-label {
+    display: none;
+  }
+  .admin-nav-section + .admin-nav-section {
+    margin-top: 0;
+  }
+  .admin-nav-item {
+    white-space: nowrap;
   }
   .admin-nav-item.active::before {
     display: none;
@@ -1156,4 +1239,490 @@ body:has(.admin-login-page) {
   .admin-page-controls {
     width: 100%;
   }
+}
+
+/* Touch ergonomics — DESIGN.md mandates 44px minimum tap targets on mobile.
+   Applies to the small controls that otherwise sit well below that. */
+@media (max-width: 768px) {
+  .admin-nav-item,
+  .pagination-btn,
+  .admin-select,
+  .admin-date-input,
+  .alert-resolve-btn,
+  .admin-btn-danger-sm {
+    min-height: 44px;
+  }
+  .admin-logout-btn,
+  .admin-icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+  .admin-th-sort {
+    min-height: 44px;
+  }
+}
+
+/* ─── TENANT DETAIL PANEL ──────────────────────────────────────────────── */
+
+/* Compact inline variant of .btn-icon (components.css) for row-scoped actions —
+   same bordered/hover/focus language, smaller footprint, matching .orev-copy-btn's
+   precedent for icon affordances that live inside a table row. */
+.admin-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  flex-shrink: 0;
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--text-3);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+.admin-icon-btn:hover {
+  border-color: var(--primary-mid);
+  color: var(--primary);
+  background: var(--primary-light);
+}
+.admin-icon-btn:active {
+  transform: scale(0.92);
+}
+.admin-icon-btn:focus-visible {
+  outline: 2.5px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.tenant-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  padding: 0.9rem 0.5rem;
+}
+
+.tenant-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1rem;
+}
+
+.tenant-detail-section h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+}
+
+.tenant-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.tenant-chip {
+  padding: 0.22rem 0.7rem;
+  border-radius: 100px;
+  background: var(--gray-100);
+  border: 1px solid var(--border);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+/* A turned-off module — the exception worth flagging on an opt-out page. */
+.tenant-chip.danger {
+  background: var(--rose-light);
+  border-color: var(--rose-mid);
+  color: oklch(0.45 0.18 24.11);
+}
+[data-theme='dark'] .tenant-chip.danger {
+  color: var(--rose);
+}
+
+.tenant-quota-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.tenant-quota-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+  text-transform: capitalize;
+}
+.tenant-quota-bar {
+  height: 6px;
+  border-radius: 100px;
+  background: var(--gray-100);
+  overflow: hidden;
+}
+.tenant-quota-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 100px;
+}
+
+/* Expand-panel loading skeleton — mirrors the real Modules/Quotas/Sessions shape. */
+.tenant-detail-skeleton-line {
+  display: inline-block;
+  height: 0.85rem;
+  width: 140px;
+  border-radius: 4px;
+}
+.tenant-chip-skeleton {
+  display: inline-block;
+  width: 92px;
+  height: 1.5rem;
+  border-radius: var(--radius-pill);
+}
+.tenant-quota-fill-skeleton {
+  height: 100%;
+  width: 45%;
+  border-radius: 100px;
+}
+.tenant-quota-fill.warn {
+  background: var(--amber);
+}
+.tenant-quota-fill.over {
+  background: var(--rose);
+}
+
+.admin-table--mini {
+  font-size: 0.85rem;
+}
+
+.tenant-detail-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--radius-md);
+  background: var(--rose-light);
+  border: 1px solid var(--rose-mid);
+  color: var(--text-2);
+  font-size: 0.85rem;
+}
+
+/* ─── QUOTA & MODULES PAGE ─────────────────────────────────────────────── */
+
+.quota-cell {
+  min-width: 170px;
+}
+
+/* Usage cell: scans headline with suggestions as a quiet second line. */
+.quota-usage-cell {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+}
+
+.quota-manage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.quota-manage-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+.quota-manage-meta {
+  text-transform: capitalize;
+  min-width: 140px;
+}
+.quota-limit-input {
+  width: 110px;
+}
+
+.module-toggle-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+}
+
+/* ─── NAV SECTIONS (grouped sidebar) ───────────────────────────────────── */
+
+.admin-nav-section + .admin-nav-section {
+  margin-top: var(--space-4);
+}
+
+.admin-nav-section-label {
+  padding: 0 var(--space-3);
+  margin-bottom: var(--space-2);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+
+/* ─── UI KIT: CARD ─────────────────────────────────────────────────────── */
+
+.ui-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.ui-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.ui-card-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.ui-card-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary-light);
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.ui-card-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.ui-card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.ui-card-body {
+  padding: var(--space-5);
+}
+
+.ui-card + .ui-card {
+  margin-top: var(--space-5);
+}
+
+/* ─── UI KIT: PAGE HEADER ──────────────────────────────────────────────── */
+
+.ui-page-header {
+  margin-bottom: var(--space-5);
+}
+
+/* Title + actions share one line — same shape as the established
+   .admin-page-header pattern on the untouched pages. The description (when
+   present) gets its own full-width line below instead of being squeezed into
+   that same flex row alongside inline filter controls, which is what was
+   causing cramped/overlapping text positioning. */
+.ui-page-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.ui-page-title {
+  /* Matches .admin-page-title's size/tracking so page titles don't jump when
+     navigating between a redesigned page and one still pending Phase 2 — the
+     left accent bar is deliberately dropped (superseded by icon chips), not
+     an oversight. */
+  min-width: 0;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  color: var(--text);
+}
+
+@media (max-width: 768px) {
+  .ui-page-title {
+    font-size: 1.25rem;
+  }
+}
+
+.ui-page-description {
+  font-size: 0.85rem;
+  color: var(--text-3);
+  max-width: 70ch;
+  margin-top: var(--space-2);
+}
+
+.ui-page-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+/* ─── UI KIT: TABS ─────────────────────────────────────────────────────── */
+
+.ui-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--gray-50);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-5);
+}
+
+.ui-tab {
+  padding: 0.45rem 1rem;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    background 0.15s var(--ease),
+    color 0.15s var(--ease);
+}
+
+.ui-tab:hover {
+  color: var(--text);
+}
+
+.ui-tab.active {
+  background: var(--card-bg);
+  color: var(--primary);
+  box-shadow: var(--shadow-xs);
+}
+
+/* ─── UI KIT: SWITCH ───────────────────────────────────────────────────── */
+
+.ui-switch-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text-2);
+}
+.ui-switch-label.disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.ui-switch {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-hi);
+  background: var(--gray-200);
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background 0.18s var(--ease),
+    border-color 0.18s var(--ease);
+}
+.ui-switch.checked {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.ui-switch:disabled {
+  cursor: not-allowed;
+}
+
+.ui-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: var(--shadow-xs);
+  transition: transform 0.18s var(--ease-spring-premium);
+}
+.ui-switch.checked .ui-switch-thumb {
+  transform: translateX(16px);
+}
+
+/* ─── UI KIT: EMPTY STATE ──────────────────────────────────────────────── */
+
+.ui-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--space-8) var(--space-5);
+  color: var(--text-3);
+}
+
+.ui-empty-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--gray-50);
+  color: var(--text-4);
+  margin-bottom: var(--space-4);
+}
+
+.ui-empty-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text-2);
+  margin-bottom: var(--space-1);
+}
+
+.ui-empty-description {
+  font-size: 0.82rem;
+  max-width: 40ch;
+  margin-bottom: var(--space-4);
+}
+
+/* Dark-mode-only fine-tuning (tokens already cascade correctly; these are the
+   few spots that need an explicit nudge, same discretion as the block above). */
+[data-theme='dark'] .ui-tabs {
+  background: var(--muted);
+}
+[data-theme='dark'] .ui-switch {
+  background: var(--gray-300);
+}
+[data-theme='dark'] .status-badge.neutral {
+  background: var(--gray-100);
+  color: var(--text-3);
+  border: 1px solid var(--border);
+}
+
+.status-badge.neutral {
+  background: var(--gray-100);
+  color: var(--text-3);
+  border: 1px solid var(--border-hi);
 }

@@ -86,7 +86,11 @@ export async function submitToCarmen(
   })
   if (!res.ok) {
     const detail = await _parseCarmenHttpError(res)
-    throw new Error(detail)
+    const error = new Error(detail) as Error & { code?: string }
+    // The server duplicate-submit guard returns 409 before posting to Carmen —
+    // tag it so the wizard shows the "duplicate document" modal, not a generic error.
+    if (res.status === 409) error.code = 'DUPLICATE_DOC_NO'
+    throw error
   }
   return res.json()
 }

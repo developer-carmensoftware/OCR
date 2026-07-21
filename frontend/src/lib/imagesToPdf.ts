@@ -60,8 +60,9 @@ export async function imagesToPdf(files: File[]): Promise<File> {
   const { PDFDocument } = await import('pdf-lib')
   const pdfDoc = await PDFDocument.create()
 
-  for (const file of files) {
-    const bytes = await toResizedJpeg(file)
+  const resizedBytesList = await Promise.all(files.map(toResizedJpeg))
+
+  for (const bytes of resizedBytesList) {
     const image = await pdfDoc.embedJpg(bytes)
     const { width: imgW, height: imgH } = image
 

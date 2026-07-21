@@ -1,0 +1,265 @@
+/* ═══════════════════════════════════════════
+   MAINTENANCE — advance-notice banner + full-screen wall
+   Tokens + semantic z-scale only. The overlay is a deliberate dark takeover
+   in both themes (a "system is down" scrim), so its scrim/ink are committed
+   constants rather than theme-tracking tokens.
+   ═══════════════════════════════════════════ */
+
+:root {
+  --maint-banner-h: 2.5rem;
+  --maint-scrim: oklch(0.16 0.02 258.7 / 0.96);
+  --maint-on-scrim: oklch(0.98 0.003 258.7);
+}
+
+/* Push page content down when the banner is shown, so it never covers app chrome. */
+body.has-maint-banner {
+  padding-top: var(--maint-banner-h);
+}
+/* Layout property, animated deliberately: this is a once-per-session 2.5rem
+   reflow, and letting it snap is exactly what made the dismiss feel abrupt. */
+body {
+  transition: padding-top var(--dur-slow) var(--ease-out);
+}
+/* The sticky module header must dock below the banner on scroll, not under it. */
+body.has-maint-banner .app-header {
+  top: calc(0.75rem + var(--maint-banner-h));
+}
+
+/* Advance notice, not an alarm: the system's amber *surface* vocabulary
+   (amber-light fill, amber-mid hairline, amber-text ink) rather than a
+   saturated amber slab. Both fill and ink are theme-aware tokens. */
+.maint-banner {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: var(--z-modal-backdrop);
+  min-height: var(--maint-banner-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-4);
+  background: var(--amber-light);
+  border-bottom: 1px solid var(--amber-mid);
+  box-shadow: var(--shadow-sm);
+  color: var(--amber-text);
+  animation: maint-banner-in var(--dur-slow) var(--ease-out) both;
+}
+
+.maint-banner__inner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.maint-banner__icon {
+  display: inline-flex;
+  flex: none;
+  opacity: 0.85;
+}
+
+.maint-banner__label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Times are values the user checks against a calendar — mono, per the data rule. */
+.maint-banner__window {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  opacity: 0.9;
+}
+
+.maint-banner__countdown {
+  flex: none;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--amber) 22%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.maint-banner__dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  margin: -0.5rem -0.75rem -0.5rem 0; /* 44px hit area without inflating the bar */
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.65;
+  cursor: pointer;
+  position: relative;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+/* The 44px touch target stays invisible; only this puck lights up, so hovering a
+   2.5rem bar doesn't paint a square taller than the bar itself. */
+.maint-banner__dismiss::before {
+  content: '';
+  position: absolute;
+  width: 1.65rem;
+  height: 1.65rem;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+.maint-banner__dismiss > svg {
+  position: relative; /* above the puck */
+}
+.maint-banner__dismiss:hover {
+  opacity: 1;
+}
+.maint-banner__dismiss:hover::before {
+  background: color-mix(in oklch, var(--amber) 24%, transparent);
+}
+.maint-banner__dismiss:focus-visible {
+  opacity: 1;
+  outline: none;
+}
+.maint-banner__dismiss:focus-visible::before {
+  background: color-mix(in oklch, var(--amber) 24%, transparent);
+  box-shadow: 0 0 0 2px var(--amber-text);
+}
+
+@keyframes maint-banner-in {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+}
+
+.maint-banner--leaving {
+  animation: maint-banner-out var(--dur-base) var(--ease-in) both;
+  pointer-events: none;
+}
+@keyframes maint-banner-out {
+  to {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+}
+
+/* Narrow screens: the window times are the first thing to go, the countdown
+   ("in 2h 5m") answers the same question in less space. */
+@media (max-width: 30rem) {
+  .maint-banner__window {
+    display: none;
+  }
+}
+
+.maint-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  text-align: center;
+  background: var(--maint-scrim);
+  color: var(--maint-on-scrim);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  animation: maint-overlay-in var(--dur-slow) var(--ease-out) both;
+}
+@keyframes maint-overlay-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Status chip in the app's own icon vocabulary (lucide), not a decorative emoji.
+   The slow ring-pulse is a sign of life — the system is working, not frozen. */
+.maint-overlay__chip {
+  display: grid;
+  place-items: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 999px;
+  color: var(--amber);
+  background: oklch(0.76 0.13 78 / 0.14);
+  animation: maint-pulse 2.6s ease-in-out infinite;
+}
+@keyframes maint-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 oklch(0.76 0.13 78 / 0.28);
+  }
+  50% {
+    box-shadow: 0 0 0 12px oklch(0.76 0.13 78 / 0);
+  }
+}
+.maint-overlay__title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+.maint-overlay__body {
+  margin: 0;
+  max-width: 32rem;
+  color: oklch(0.98 0.003 258.7 / 0.85);
+}
+.maint-overlay__sub {
+  margin: 0;
+  color: oklch(0.98 0.003 258.7 / 0.7);
+}
+.maint-overlay__retry {
+  margin-top: 0.5rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 1.25rem;
+  border-radius: 0.5rem;
+  border: 1px solid oklch(0.98 0.003 258.7 / 0.3);
+  background: transparent;
+  color: var(--maint-on-scrim);
+  cursor: pointer;
+}
+.maint-overlay__retry:hover {
+  background: oklch(0.98 0.003 258.7 / 0.1);
+}
+.maint-overlay__retry:focus-visible {
+  outline: 2px solid var(--maint-on-scrim);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .maint-overlay {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .maint-overlay__chip {
+    animation: none;
+  }
+  body {
+    transition: none;
+  }
+  .maint-banner,
+  .maint-overlay {
+    animation: maint-fade-in var(--dur-fast) linear both;
+  }
+  /* Still an animation, not `none`: the dismiss commit rides its animationend. */
+  .maint-banner--leaving {
+    animation: maint-fade-out var(--dur-fast) linear both;
+  }
+  @keyframes maint-fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes maint-fade-out {
+    to {
+      opacity: 0;
+    }
+  }
+}

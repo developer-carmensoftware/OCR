@@ -3,7 +3,7 @@ Database setup — single shared PostgreSQL database: carmen_ai (Neon-compatible
 
 Architecture: Single Database, Multi-Tenant via Foreign Keys
   All tenants share one database.
-  Data plane tables reference tenants.id + business_units.id (FK).
+  Data plane tables reference tenants.id (FK) — business_units table was dropped.
   Control plane tables are global.
 
 Fresh start requirement:
@@ -24,13 +24,13 @@ Session:
   get_db()         — FastAPI dependency yielding a committed session.
 
 Migrations:
-  All migration functions live in app.migrations (append-only list).
+  Schema is owned by supabase/migrations/*.sql — apply with `supabase db push`.
 """
 
 import logging
 from collections.abc import AsyncGenerator
 
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -66,7 +66,7 @@ def _get_engine():
     if _ENGINE is None:
         # Supabase / Neon connection poolers (e.g. PgBouncer, Supavisor on port 6543)
         # require disabling prepared statements in asyncpg.
-        connect_args = {}
+        connect_args: dict = {}
         db_url = settings.database_url
         if "pooler" in db_url or "6543" in db_url:
             connect_args["statement_cache_size"] = 0
@@ -88,6 +88,26 @@ def _get_engine():
             pool_recycle=1800,  # Recycle before Supabase/pooler idle timeout drops the conn.
             connect_args=connect_args,
         )
+
+        # Hard ceiling on any single query, admin analytics included — with only 10
+        # pooled connections total, a query that hangs holds one of them open
+        # indefinitely; a few concurrent hangs exhausts the pool for the whole app
+        # (OCR extraction too). 30s is generous for any legitimate query today; one
+        # that needs longer should be paginated/bounded instead.
+        #
+        # Deliberately NOT passed as connect_args={"server_settings": {...}} — verified
+        # empirically that Supabase's Supavisor pooler silently drops that startup-packet
+        # parameter (a known pgbouncer-family limitation). A "connect"-only listener isn't
+        # enough either — also verified empirically that Supavisor resets session-level
+        # GUCs on a *reused* pooled connection between logical sessions (same physical
+        # connection object, same TCP socket, `SET` still doesn't survive) — so this is
+        # re-applied on every "checkout" (one extra trivial round-trip per checkout,
+        # negligible next to what it protects against).
+        @event.listens_for(_ENGINE.sync_engine, "checkout")
+        def _set_statement_timeout(dbapi_connection, connection_record, connection_proxy):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("SET statement_timeout = '30000'")
+
         _SESSION_FACTORY = async_sessionmaker(
             _ENGINE,
             class_=AsyncSession,
@@ -132,36 +152,19 @@ _DB_INITIALIZED = False
 
 async def ensure_db() -> None:
     """
-    Verify connectivity, create/verify all tables, run migrations.
+    Verify DB connectivity at startup. Schema is managed by Supabase CLI migrations —
+    this function no longer creates tables or runs migrations.
     Runs once at startup; subsequent calls are no-ops.
-
-    NOTE: Unlike the previous MariaDB implementation, this does NOT create the
-    database itself — Neon (and most managed Postgres providers) require the
-    database to be provisioned via their console/API.
     """
     global _DB_INITIALIZED
     if _DB_INITIALIZED:
         return
 
-    # Force all ORM models to register with Base before create_all().
-    import app.models.orm  # noqa: F401
-
     engine = _get_engine()
-
-    # Sanity ping — fail fast with a clear error if Neon URL is wrong.
     async with engine.connect() as conn:
         await conn.execute(text("SELECT 1"))
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    await migrate_db()
-
     _DB_INITIALIZED = True
-
-
-async def init_db() -> None:
-    await ensure_db()
 
 
 # ── Backward-compat aliases ───────────────────────────────────────────────────
@@ -184,55 +187,3 @@ async def get_all_tenants() -> list[str]:
     except Exception as exc:
         logger.exception("get_all_tenants failed: %s", exc)
         return []
-
-
-async def migrate_all_tenants() -> None:
-    await migrate_db()
-
-
-# ── Migration runner ──────────────────────────────────────────────────────────
-
-
-async def migrate_db(_tenant: str = "") -> None:
-    """Run pending migrations on carmen_ai. _tenant param kept for backward compat."""
-    from app.migrations import _MIGRATIONS
-
-    engine = _get_engine()
-    async with engine.begin() as conn:
-        await conn.execute(
-            text("""
-            CREATE TABLE IF NOT EXISTS schema_migrations (
-                name       VARCHAR(100) PRIMARY KEY,
-                applied_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        )
-        rows = await conn.execute(text("SELECT name FROM schema_migrations"))
-        applied = {row[0] for row in rows.fetchall()}
-
-        for name, fn in _MIGRATIONS:
-            if name in applied:
-                continue
-            if fn is None:
-                await conn.execute(
-                    text(
-                        "INSERT INTO schema_migrations (name) VALUES (:name)"
-                        " ON CONFLICT (name) DO NOTHING"
-                    ),
-                    {"name": name},
-                )
-                continue
-            logger.info("Applying migration: %s", name)
-            try:
-                await fn(conn)
-                await conn.execute(
-                    text(
-                        "INSERT INTO schema_migrations (name) VALUES (:name)"
-                        " ON CONFLICT (name) DO NOTHING"
-                    ),
-                    {"name": name},
-                )
-                logger.info("Migration %s applied.", name)
-            except Exception as exc:
-                logger.error("Migration %s FAILED: %s", name, exc)
-                raise

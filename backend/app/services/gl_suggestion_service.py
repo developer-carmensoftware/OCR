@@ -10,16 +10,43 @@ Both return ToolResult with output = {suggestions: {field_type: {dept, acc}}, so
 
 import logging
 import traceback
+from dataclasses import dataclass, field
 from typing import Any
 
 from app.config import settings
 from app.constants import GLFields, Module
 from app.llm.client import call_text_llm
 from app.llm.prompts.mapping import build_fixed_fields_prompt, build_payment_types_prompt
-from app.tools.base import ToolResult
 from app.utils.gl_filter import score_and_pad
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ToolResult:
+    """Standardized output from a GL-suggestion call.
+
+    output = {suggestions: {field_type: {dept, acc}}, source: "ai"} on success.
+    Callers (routers/mapping.py) read `.output`; `errors` holds any failure text.
+    """
+
+    success: bool
+    tool: str
+    input: dict[str, Any]
+    output: Any = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    errors: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "success": self.success,
+            "tool": self.tool,
+            "input": self.input,
+            "output": self.output,
+            "metadata": self.metadata,
+            "errors": self.errors,
+        }
+
 
 TOOL_FIXED = "suggest_gl_fixed_fields"
 TOOL_PAYMENT = "suggest_gl_payment_types"

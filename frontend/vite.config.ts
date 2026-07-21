@@ -11,15 +11,16 @@ export default defineConfig({
     },
   },
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom'],
-          'framer': ['framer-motion'],
-          'lucide': ['lucide-react'],
-          'sonner': ['sonner'],
-          'recharts': ['recharts'],
-          'pdf-lib': ['pdf-lib'],
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          if (id.includes('framer-motion')) return 'framer'
+          if (id.includes('lucide-react')) return 'lucide'
+          if (id.includes('sonner')) return 'sonner'
+          if (id.includes('recharts')) return 'recharts'
+          if (id.includes('pdf-lib')) return 'pdf-lib'
+          if (id.includes('react')) return 'react-vendor'
         },
       },
     },

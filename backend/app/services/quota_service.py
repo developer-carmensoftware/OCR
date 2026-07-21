@@ -53,7 +53,7 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-def _period_key(period: QuotaPeriod) -> str:
+def period_key(period: QuotaPeriod) -> str:
     now = _utcnow()
     if period == QuotaPeriod.DAILY:
         return now.strftime("%Y-%m-%d")
@@ -171,6 +171,39 @@ def _evaluate_quotas(
             )
 
 
+async def assert_module_enabled(module_id: str) -> None:
+    """Gate: raise ModuleDisabled if an admin turned this module off for the tenant.
+
+    Opt-out semantics — a module is blocked ONLY when tenant_modules has an explicit
+    row with enabled=False. No row (the common case: most tenants have never had one
+    written) means allowed, so turning enforcement on never locks out existing tenants.
+
+    Fail-open on infra errors, exactly like consume_document: a transient DB hiccup must
+    not block a scan. Only an explicit disabled row raises.
+    """
+    from app.exceptions import ModuleDisabled
+    from app.models.catalog import TenantModule
+
+    tenant_id = _ctx()
+    if not tenant_id:
+        return
+    try:
+        async with async_session() as db:
+            enabled = (
+                await db.execute(
+                    select(TenantModule.enabled).where(
+                        TenantModule.tenant_id == tenant_id,
+                        TenantModule.module_id == module_id,
+                    )
+                )
+            ).scalar_one_or_none()
+    except Exception as exc:
+        logger.error("assert_module_enabled failed (allowing): %s", exc)
+        return
+    if enabled is False:
+        raise ModuleDisabled(module_id)
+
+
 async def check_quota() -> None:
     """
     Read-only quota pre-check for current request context.
@@ -185,7 +218,7 @@ async def check_quota() -> None:
         if not quotas:
             return
 
-        pairs = [(q.id, _period_key(q.period)) for q in quotas]
+        pairs = [(q.id, period_key(q.period)) for q in quotas]
         async with async_session() as db:
             result = await db.execute(
                 select(QuotaUsage.quota_id, QuotaUsage.used).where(
@@ -211,7 +244,7 @@ async def increment_quota(increment: float = 1.0) -> None:
         if not quotas:
             return
         values = [
-            {"quota_id": q.id, "period_key": _period_key(q.period), "used": increment}
+            {"quota_id": q.id, "period_key": period_key(q.period), "used": increment}
             for q in quotas
         ]
         async with async_session() as db:
@@ -245,7 +278,7 @@ async def consume_quota(increment: float = 1.0) -> None:
         return
 
     values = [
-        {"quota_id": q.id, "period_key": _period_key(q.period), "used": increment} for q in quotas
+        {"quota_id": q.id, "period_key": period_key(q.period), "used": increment} for q in quotas
     ]
     try:
         async with async_session() as db:
@@ -287,7 +320,7 @@ async def get_quota_summary(tenant_id: str) -> dict:
 
             rows = []
             for quota in quotas:
-                key = _period_key(cast(QuotaPeriod, quota.period))
+                key = period_key(cast(QuotaPeriod, quota.period))
                 usage_result = await db.execute(
                     select(QuotaUsage).where(
                         QuotaUsage.quota_id == quota.id,
@@ -299,6 +332,7 @@ async def get_quota_summary(tenant_id: str) -> dict:
                 limit = float(cast(Decimal, quota.limit_value))
                 rows.append(
                     {
+                        "id": str(quota.id),
                         "period": quota.period,
                         "metric": quota.metric,
                         "used": used,

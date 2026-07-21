@@ -1,10 +1,10 @@
 # Database Design — Carmen AI Hub
 
-**Database:** PostgreSQL 16 via Neon (`neondb`)
-**Driver:** `asyncpg` (via SQLAlchemy 2.x async)
-**ORM:** SQLAlchemy 2.x async (`backend/app/models/orm.py`)
-**Migrations:** append-only registry in `backend/app/database.py` → `migrate_db()`
-**Reset script:** `backend/reset_db.py` — `DROP/CREATE SCHEMA public` + `create_all()` + migrations + seed
+**Database:** PostgreSQL 17.6 via Supabase (region: ap-southeast-1, project: ycykjisvvrrbgeiirqre)
+**Driver:** `asyncpg` (via SQLAlchemy 2.x async) — Supavisor session-mode pooler port 5432, `statement_cache_size=0`
+**ORM:** SQLAlchemy 2.x async (`backend/app/models/`)
+**Migrations:** Supabase CLI — `supabase/migrations/*.sql` (31 files: 8-file greenfield baseline + incremental billing/AR migrations). Apply with `supabase db push`.
+**Schema reset:** `DROP SCHEMA public CASCADE` in Supabase SQL Editor, then `supabase db push`
 
 ---
 
@@ -23,6 +23,9 @@
 │  system_configs · tenant_config_overrides · feature_flags           │
 │  quotas · quota_usage                                               │
 │  model_pricing                                                      │
+│  credit_packs · tenant_credits · credit_ledger · credit_orders     │
+│  billing_documents · tenant_subscriptions · ar_customer_profiles   │
+│  document_sequences                                                 │
 └──────────────────────────┬──────────────────────────────────────────┘
                            │  (read via in-memory cache)
                            ▼
@@ -30,18 +33,19 @@
 │  DATA PLANE  — OCR / AP processes write here                        │
 │                                                                     │
 │  ocr_sessions · ocr_tasks                                           │
-│  credit_cards · credit_card_transactions                            │
+│  credit_cards (header only — line items not persisted)              │
 │  ap_invoices                                                        │
-│  mapping_history · correction_feedback                              │
+│  correction_feedback · bug_reports                                  │
 └─────────────────────────────────────────────────────────────────────┘
                            │
                            ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  OBSERVABILITY  — Append-only, partitioned quarterly                │
+│  OBSERVABILITY  — Append-only, partitioned monthly (pg_partman)     │
 │                                                                     │
-│  llm_usage_logs · audit_logs                                        │
-│  performance_logs · outbound_call_logs                              │
-│  daily_usage_summary · anomaly_alerts · job_runs                    │
+│  llm_usage_logs · audit_logs (24-month retention)                   │
+│  performance_logs · outbound_call_logs (12-month retention each)    │
+│  daily_usage_summary · daily_model_cost · monthly_usage_summary     │
+│  anomaly_alerts · job_runs                                          │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -49,6 +53,7 @@
 - Data Plane writes real-time from OCR/AP requests
 - Control Plane writes only via Admin Dashboard actions
 - Data Plane reads Control Plane through in-memory cache (not per-request DB)
+- Background analytics, session purge, and pricing sync run as **pg_cron jobs** inside Postgres (not Python asyncio loops)
 
 ---
 
@@ -80,7 +85,7 @@ class TenantFKMixin:
 |---|---|
 | Business data (credit_cards, ap_invoices, …) | `TenantFKMixin + TimestampMixin + SoftDeleteMixin + WriterMixin` |
 | Auth / session | `TenantFKMixin + TimestampMixin + SoftDeleteMixin` |
-| Observability log (llm_usage, audit, perf, outbound) | `TimestampMixin` only — no FK (high-volume append-only) |
+| Observability log (llm_usage, audit, perf, outbound) | Composite PK `(id BIGINT GENERATED ALWAYS, created_at)` — no `TimestampMixin`, no FK (partitioned, high-volume append-only) |
 | Control plane entities (banks, tenants, …) | `TimestampMixin + SoftDeleteMixin + WriterMixin` |
 | Config / reference (model_pricing, system_configs) | `TimestampMixin + WriterMixin` |
 | Junction / counters (quota_usage, api_key_usage) | `TimestampMixin` only |
@@ -134,8 +139,9 @@ single `tenant_id` FK, no separate `business_unit_id`.
 | PK type | Used on |
 |---|---|
 | `PGUUID(as_uuid=True)` | Business entities: `ocr_tasks`, `credit_cards`, `ap_invoices`, `tenants`, `admin_users`, `api_keys`, `ocr_sessions`, etc. Default `uuid.uuid4` (not str) |
-| `BigInteger` autoincrement | High-volume log tables: `llm_usage_logs`, `audit_logs`, `performance_logs`, `outbound_call_logs`, `anomaly_alerts`, `job_runs` |
-| `Integer` autoincrement | Smaller tables: `mapping_history`, `correction_feedback`, `daily_usage_summary`, `daily_model_cost`, `monthly_usage_summary` |
+| `(BigInteger GENERATED ALWAYS, created_at)` composite PK | Partitioned log tables: `llm_usage_logs`, `audit_logs`, `performance_logs`, `outbound_call_logs` — partition key must be in every unique index |
+| `BigInteger` autoincrement | Analytics + alert tables: `anomaly_alerts`, `job_runs` |
+| `Integer` autoincrement | Smaller tables: `correction_feedback`, `daily_usage_summary`, `daily_model_cost`, `monthly_usage_summary` |
 | Natural string key | Reference: `banks.code` (`BBL`), `modules.id` (`credit_card_ocr`), `roles.id`, `permissions.id` |
 | Composite | Junctions: `role_permissions(role_id, permission_id)`, `tenant_modules(tenant_id, module_id)`, `quota_usage(quota_id, period_key)` |
 
@@ -177,20 +183,11 @@ Extracted header data from a credit card bank statement.
 
 **Duplicate check:** `WHERE tenant_id=X AND bank_code=Z AND doc_no=N AND submitted_at IS NOT NULL AND deleted_at IS NULL`
 
-Relationship: `→ credit_card_transactions` (1:N, ordered by `sort_order`)
+**1:1 with `ocr_tasks`** enforced by partial unique index `uq_credit_cards_task (task_id) WHERE deleted_at IS NULL`.
 
----
-
-### `credit_card_transactions`
-
-One row per line item from a bank statement. Replaces the old `credit_cards.transactions` JSON blob.
-
-| Key columns | Notes |
-|---|---|
-| `credit_card_id` FK → credit_cards | |
-| `tx_date` | `DATE` — parsed via `utils.date_parsing.parse_doc_date` |
-| `description`, `amount`, `tx_type` | |
-| `sort_order` | Preserves LLM output order |
+**Line items are NOT persisted** — like AP invoices, credit-card transactions follow the
+extract-display-only pattern (Carmen ERP is source of truth). They are returned transiently
+in the API response (`CreditCardTransactionSchema`) and never written to the DB.
 
 ---
 
@@ -206,20 +203,7 @@ Metadata of an AP Invoice OCR job. **Line items are NOT stored** — Carmen ERP 
 | `submitted_at` | NULL = draft |
 | `carmen_user_id` | |
 
----
-
-### `mapping_history`
-
-GL mapping learning — which dept/account was confirmed for a field type and bank.
-
-| Key columns | Notes |
-|---|---|
-| `bank_code` FK → banks | |
-| `field_type` | e.g. `merchant_type_food` |
-| `dept_code`, `acc_code` | GL codes confirmed by user |
-| `confirmed_count` | incremented on each confirmation |
-
-Partial unique index (active only): `(tenant_id, bank_code, field_type, dept_code, acc_code) WHERE deleted_at IS NULL`
+**1:1 with `ocr_tasks`** enforced by partial unique index `uq_ap_invoices_task (task_id) WHERE deleted_at IS NULL`.
 
 ---
 
@@ -232,9 +216,11 @@ User corrections of LLM-extracted fields → drives `correction_service.py` whic
 | `bank_code` FK → banks | |
 | `doc_no`, `field_name` | |
 | `original_value`, `corrected_value` | |
+| `value_embedding` | `extensions.vector(1536)` — HNSW cosine index for nearest-neighbour prompt hints (NULL until embedded) |
 | `carmen_user_id` | who corrected |
 
-Partial unique index (active only): `(tenant_id, doc_no, field_name) WHERE deleted_at IS NULL`
+Partial unique index (active only): `(tenant_id, bank_code, doc_no, field_name) WHERE deleted_at IS NULL` — `bank_code` is in scope because `doc_no` is not unique across banks. The upsert in `correction_service.py` matches this index via index inference (not `ON CONSTRAINT`, which cannot target a partial unique index).
+HNSW index: `(value_embedding extensions.vector_cosine_ops) WHERE value_embedding IS NOT NULL`
 
 **Error rate formula** (`correction_service.py`):
 `error_rate = corrections(field, 90d) / submitted_receipts(bank, 90d)`
@@ -255,15 +241,32 @@ Active Carmen ERP user session.
 | `last_used_at` | Updated each request |
 
 **Session lifecycle:** JWT exp OR Carmen 401 → `is_active = False`
-**Cleanup:** inactive sessions older than 30 days → purged by retention service
+**Cleanup:** inactive sessions older than 30 days → purged hourly by pg_cron SQL function `fn_purge_inactive_sessions()`
+
+---
+
+### `bug_reports`
+
+User-submitted bug report from the frontend. Append-only in practice; `status` supports admin triage.
+
+| Key columns | Notes |
+|---|---|
+| `title`, `description` | |
+| `screenshot_b64` | Base64 image, frontend caps at 1 MB |
+| `status` | Triage workflow state |
+| `carmen_user_id` | Reporter |
 
 ---
 
 ## 6. Observability Tables
 
-Flat tables (no partitioning). `tenant_id` is `VARCHAR(36)` + index — no FK to avoid coupling high-volume append-only tables to the tenants table. Integrity enforced at application layer.
+**Partitioned monthly** by `pg_partman` (`PARTITION BY RANGE (created_at)`). `tenant_id` is `VARCHAR(36)` + index — no FK (high-volume append-only). PK is composite `(id BIGINT GENERATED ALWAYS, created_at)` — partition key must be in every unique index. Integrity enforced at application layer.
 
-**Export strategy:** When log tables grow large, export old rows via a separate script (not automatic). Business analytics are preserved indefinitely in `daily_model_cost` and `monthly_usage_summary`.
+**Retention (automatic):** pg_partman drops aged partitions nightly via pg_cron:
+- `llm_usage_logs`, `performance_logs`, `outbound_call_logs`: 12 months
+- `audit_logs`: 24 months (compliance)
+
+Business analytics are preserved indefinitely in `daily_model_cost` and `monthly_usage_summary`.
 
 ### `llm_usage_logs`
 
@@ -278,7 +281,7 @@ One row per LLM API call. PK is `BIGINT` to prevent auto-increment overflow.
 | `duration_ms` | |
 | `carmen_session_id`, `carmen_user_id` | |
 
-**Retention:** No automatic deletion. Export via script when approaching storage limits.
+**Retention:** pg_partman drops partitions older than 12 months (see §10).
 
 ### `audit_logs`
 
@@ -311,7 +314,7 @@ Every outbound HTTP call (OpenRouter, Carmen ERP).
 
 ## 7. Analytics Tables
 
-Three analytics tables built nightly by `summary_service.py`. All kept indefinitely (unlike raw log tables which can be exported/deleted when storage grows).
+Built nightly by **pg_cron SQL functions** (`fn_build_daily_summary`, `fn_build_daily_model_cost`, `fn_build_monthly_summary`) scheduled at 01:17–01:32 UTC. The Python `summary_service.py` remains for on-demand admin backfill via `POST /api/v1/admin/maintenance/summary/*`. All analytics kept indefinitely.
 
 ### `daily_usage_summary`
 
@@ -352,7 +355,7 @@ One row per background scheduler job execution. Detects drift: `status = running
 
 | `job_name` values |
 |---|
-| `session-purge`, `summary`, `daily_model_cost`, `monthly_summary`, `anomaly-detection` |
+| `session-purge`, `daily-summary`, `daily-model-cost`, `monthly-summary`, `pricing-sync`, `partman-maintain` |
 
 ---
 
@@ -423,7 +426,7 @@ Replaces old hardcoded `BankType` enum. Adding a bank = INSERT row + create prom
 
 | Key columns | Notes |
 |---|---|
-| `code` PK | `BBL`, `KBANK`, `SCB` (pre-seeded) |
+| `code` PK | Pre-seeded: `BBL` `KBANK` `SCB` `BAY` `KTC` `GHL` `PAYPAL` `SIAMPAY` — KTC/GHL/PAYPAL/SIAMPAY are processor *fee-invoice* layouts, see CLAUDE.md |
 | `detection_pattern` | Regex for `detectBankFromCompanyName()` |
 | `is_active` | Hidden from dropdown when false |
 
@@ -497,64 +500,104 @@ Real-time counter, incremented by `usage_service.increment_quota()`.
 
 ---
 
+### Billing & Credits
+
+How consumption is funded: every tenant has a free monthly document quota (the `quotas` MONTHLY/CALLS rule). Beyond that, extraction consumes either the active **subscription** allowance or the persistent **top-up** credit balance. Purchases go through the pricing page → proforma → bank-transfer slip → admin approval flow (see [Billing_Purchase_Flow.md](./Billing_Purchase_Flow.md)). ORM: `backend/app/models/billing.py`.
+
+#### `credit_packs`
+Purchasable catalog (CMS-editable like banks). `kind` = `subscription` (monthly document tier: `sub_starter`, `sub_growth`, `sub_pro`) or `topup` (one-time non-expiring credits). The free 30 docs/month tier is NOT a pack — it lives in `quotas`.
+
+#### `tenant_credits` / `credit_ledger`
+`tenant_credits` is the runtime top-up balance (one row per tenant). `credit_ledger` is the append-only audit of every balance change — `delta`, `balance_after`, `reason` (`topup` / `consumption` / `admin_adjust` / `refund`), `ref` (task/order id).
+
+#### `credit_orders`
+One purchase order. `status`: `in_progress → paid → complete`, or `void` (rejected), or `on_hold` (set by the hourly `fn_hold_expired_orders` sweep when the 14-day proforma window passes without an admin decision — parked, not force-voided). Key columns: `billing_period` (`monthly`/`annual`), `proration_credit_thb`, `slip_object_key`/`slip_uploaded_at` (payment slip), `carmen_ar_posted_at`/`carmen_ar_ref` (Carmen AR posting).
+
+Partial unique index `uq_credit_orders_one_open_per_tenant (tenant_id) WHERE status='in_progress' AND deleted_at IS NULL` — one open order at a time.
+
+#### `billing_documents`
+Immutable proforma / tax-invoice snapshot per order (`doc_type`), with full buyer+seller snapshots and VAT breakdown. `number` (e.g. `PF-202606-0001`, `IV-202606-0001`) comes from `document_sequences`. Frontend renders/prints as HTML — no server-side PDF.
+
+#### `tenant_subscriptions`
+The tenant's document-allowance window. `status`: `active` / `lapsed` / `superseded`. Window-based enforcement (`period_start ≤ now < period_end`); annual subscriptions keep a year-long window but reset `docs_used` per month-cycle (`cycle_start`). Partial unique index: one `active` row per tenant. Daily `fn_lapse_expired_subscriptions` pg_cron job marks expiries.
+
+#### `ar_customer_profiles`
+Unique buyer companies (tax-id + branch) mapped to Carmen AR codes for AR posting.
+
+#### `document_sequences`
+Gapless per-`(scope, period_key)` counter for document numbers — atomic `INSERT ... ON CONFLICT DO UPDATE ... RETURNING`.
+
+---
+
 ## 9. Migration System
 
-**Append-only list** in `database.py → _MIGRATIONS`. Never reorder, never rename applied entries.
+Schema is owned by **Supabase CLI** migrations in `supabase/migrations/*.sql`, applied with
+`supabase db push`. The old Python `_MIGRATIONS` runner (`backend/app/migrations.py`) was
+deleted in the Supabase-native cutover. Migration files are timestamp-prefixed and applied
+in lexical order; never edit or reorder an already-applied file.
 
-```python
-_MIGRATIONS = [
-    # Squashed history markers (no-op — kept for DBs that already recorded them)
-    ("001_squashed_initial_schema", None),
-    ("199_pg_baseline",             None),    # PostgreSQL migration baseline
-    # Live migrations (200+)
-    ("200_pg_seed_control_plane",   fn),      # seed roles, permissions, modules, banks, plans
-    ("201_uuid_native_type",        None),    # PGUUID columns — applied via create_all()
-    ("202_partial_unique_indexes",  None),    # partial indexes — applied via create_all()
-    ("203_partition_log_tables",    None),    # marker only — partitioning removed
-    ("204_analytics_tables",        None),    # daily_model_cost + monthly_usage_summary
-]
+31 files: an 8-file greenfield baseline (2026-06-15) plus incremental migrations since. The baseline:
+
+```text
+20260615000000_v1_baseline.sql          -- all plain tables (identity → analytics)
+20260615000001_partition_log_tables.sql -- 4 log tables, pg_partman monthly partitioning
+20260615000002_seed_control_plane.sql   -- roles, permissions, modules, banks, plans
+20260615000003_seed_billing_config.sql  -- credit packs + billing system_configs
+20260615000004_cron_jobs.sql            -- pg_cron jobs + pg_net + SQL aggregate fns
+20260615000005_rls_deny_all.sql         -- RLS deny-all defense-in-depth
+20260615000006_pgvector_corrections.sql -- value_embedding column + HNSW index
+20260615000007_integrity_hardening.sql  -- CHECK constraints, 1:1 task_id, correction scope
 ```
 
-**Fresh install procedure:**
-```bash
-cd backend
-python reset_db.py   # DROP/CREATE SCHEMA public → create_all() → migrations → seed
-```
+Everything after the baseline is incremental: billing/subscription tables + billing cron (2026-06-18/19), order on-hold + AR customer profiles + Carmen AR posting (2026-06-22/23), billing period + proration (2026-06-24/25), Standard→Growth tier rename (2026-06-29), commission-bank seeds BAY/KTC/GHL/PAYPAL/SIAMPAY (2026-07-03), anomaly cron via pg_net (2026-07-06). See `supabase/migrations/` for the authoritative list.
 
 **Adding a new migration:**
-1. Write `async def _m<N>_<description>(conn: AsyncConnection) -> None:`
-2. Append `("N_description", _m<N>_<description>)` to `_MIGRATIONS`
-3. Use `try/except` for DDL that may already exist (idempotent)
-4. **Never** modify or reorder existing entries
+1. `supabase migration new <description>` → creates a new timestamp-prefixed file
+2. Write idempotent DDL (`IF NOT EXISTS`; for constraints use the `DO $$ … pg_constraint $$` guard)
+3. `supabase db push` to apply
+4. **Never** modify or reorder an already-applied file
 
 ---
 
 ## 10. Retention
 
-Service: `backend/app/services/retention_service.py`
-Triggered by scheduler every 24h.
+Retention runs **inside Postgres** (pg_cron + pg_partman) — no Python retention loop.
 
 | Table | Action |
 |---|---|
-| `ocr_sessions` (inactive > 30 days) | Batch DELETE, 5,000 rows/pass |
-| Log tables (`llm_usage_logs`, `audit_logs`, `performance_logs`, `outbound_call_logs`) | No automatic deletion — export via script when storage grows |
+| `ocr_sessions` (inactive > 30 days) | Hourly pg_cron `fn_purge_inactive_sessions()` |
+| Log tables (`llm_usage_logs`, `performance_logs`, `outbound_call_logs`) | pg_partman drops partitions older than 12 months (nightly `partman-maintain`) |
+| `audit_logs` | pg_partman, 24-month retention (compliance) |
 
-**Business analytics** (`daily_model_cost`, `monthly_usage_summary`) are kept indefinitely; raw log deletion does not affect cost/usage visibility.
+**Business analytics** (`daily_model_cost`, `monthly_usage_summary`) are kept indefinitely; raw log deletion does not affect cost/usage visibility. The Python `retention_service.py` remains only for on-demand admin backfill/purge.
+
+### Legal retention context (Thai law)
+
+| กฎหมาย | ระยะเวลาเก็บ |
+|---|---|
+| ประมวลรัษฎากร ม.87/3 — ใบกำกับภาษี/ใบเสร็จ | 5 ปี (อาจถึง 7 ปีหากมีคดี) |
+| พ.ร.บ.การบัญชี 2543 ม.14 — บัญชี+เอกสารประกอบ | 5 ปี นับแต่ปิดบัญชี |
+| PDPA — ข้อมูลส่วนบุคคล | เก็บเท่าที่จำเป็น ต้องลบเมื่อไม่ใช้ |
+
+Business tables (`ocr_tasks`, `credit_cards`, `ap_invoices`) have **no automatic deletion** — Carmen ERP is the source of truth for accounting records; rows here are metadata kept under the 5-year accounting-law horizon. Uploaded images are never stored, so there is no file retention concern.
 
 ---
 
-## 11. Scheduler Background Jobs
+## 11. Background Jobs (pg_cron)
 
-All jobs recorded in `job_runs` table. Scheduler runs inside FastAPI event loop (asyncio task).
+All scheduled work runs **inside Postgres** via pg_cron (UTC). Two classes: pure-SQL functions, and pg_net HTTP callbacks into FastAPI (authorized with the vault `internal_job_token`; app must set `system_configs['app.base_url']`). The only Python loop left is `_perf_flush_loop` (`app/lifecycle.py`) — flushes buffered performance/audit/outbound logs every 10 s.
 
-| Job | Schedule | Notes |
+| Job | Schedule (UTC) | Mechanism |
 |---|---|---|
-| `session-purge` | 24h | Deletes inactive ocr_sessions > 30d |
-| `summary` | 24h | Aggregates ALL tenants → daily_usage_summary |
-| `daily_model_cost` | 24h | Per-model breakdown → daily_model_cost |
-| `monthly_summary` | 24h | Rollup → monthly_usage_summary |
-| `anomaly-detection` | 24h | Runs after summary |
-| `pricing-sync` | 8h | OpenRouter API → llm_model_pricing (separate loop) |
+| `daily-summary` | 01:17 daily | SQL `fn_build_daily_summary()` |
+| `daily-model-cost` | 01:22 daily | SQL `fn_build_daily_model_cost()` |
+| `monthly-summary` | 01:32, 1st of month | SQL `fn_build_monthly_summary()` |
+| `anomaly-detection` | 01:40 daily | pg_net → `POST /api/v1/admin/anomaly/run` |
+| `session-purge` | hourly | SQL `fn_purge_inactive_sessions()` |
+| `partman-maintain` | 02:23 daily | `partman.run_maintenance_proc()` |
+| `pricing-sync` | every 8 h | pg_net → `POST /api/v1/admin/pricing/sync` |
+| `hold-expired-orders` | hourly | SQL `fn_hold_expired_orders()` — 14-day proforma window |
+| `lapse-subscriptions` | 00:12 daily | SQL `fn_lapse_expired_subscriptions()` |
 
 ---
 
@@ -563,7 +606,7 @@ All jobs recorded in `job_runs` table. Scheduler runs inside FastAPI event loop 
 ```
 1. INSERT INTO modules (id, display_name, ...) VALUES ('my_module', ...)
 2. Create ORM models inheriting TenantFKMixin + TimestampMixin + SoftDeleteMixin
-3. Add migrations (append to _MIGRATIONS)
+3. Add migrations (`supabase migration new <name>` → DDL → `supabase db push`)
 4. Add module_id to OCRTask creation in the new router
 5. Add check_quota("my_module") at start of extract endpoint
 6. Add quota tracking in log_llm_usage calls
@@ -583,12 +626,14 @@ All jobs recorded in `job_runs` table. Scheduler runs inside FastAPI event loop 
 
 ## 14. What's Planned (Not Yet Built)
 
+Built since this list was written: admin auth flow (`routers/admin/auth.py` + `services/admin_auth_service.py` — email/password; TOTP MFA still a Phase-1.5 placeholder), `require_permission()` (`routers/admin/deps.py`), bootstrap CLI (`app/bootstrap_admin.py`), and admin routers for tenants/sessions/usage/monitoring/credits/maintenance.
+
+Still pending:
+
 | Feature | Depends on |
 |---|---|
-| Admin auth flow (email/password + MFA) | `admin_users` table ✅ |
-| `require_permission()` dependency | `roles/permissions` tables ✅ |
+| MFA enforcement (TOTP verify + token re-issue) | `admin_users.mfa_secret` ✅ |
 | Prompt CMS service (`prompt_service.py`) | `prompt_templates` table ✅ |
 | Feature flag service | `feature_flags` table ✅ |
 | Config service with hot-reload | `system_configs` table ✅ |
 | API key auth middleware | `api_keys` table ✅ |
-| Bootstrap CLI for first super_admin | `admin_users` table ✅ |

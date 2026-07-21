@@ -50,11 +50,7 @@ async def lifespan(_app):
     await ensure_db()
     logger.info("Database initialized")
 
-    from app.services.cron_service import pricing_sync_loop, session_cleanup_loop
-
     perf_flush_task = asyncio.create_task(_perf_flush_loop())
-    pricing_task = asyncio.create_task(pricing_sync_loop())
-    session_cleanup_task = asyncio.create_task(session_cleanup_loop())
 
     yield
 
@@ -64,10 +60,8 @@ async def lifespan(_app):
         await asyncio.sleep(grace)
 
     perf_flush_task.cancel()
-    pricing_task.cancel()
-    session_cleanup_task.cancel()
     try:
-        await asyncio.gather(perf_flush_task, pricing_task, session_cleanup_task)
+        await asyncio.gather(perf_flush_task)
     except asyncio.CancelledError:
         pass
 

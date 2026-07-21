@@ -6,7 +6,8 @@ can map them to correct HTTP status codes.
 
 HTTP mapping (see main.py):
   400  — bad user input (validation, missing fields)
-  409  — conflict (duplicate document)
+  404  — requested resource does not exist
+  409  — conflict (duplicate document, resource in the wrong state for this action)
   402  — payment required (free quota exhausted, no top-up credits left)
   413  — payload too large (file size)
   422  — unprocessable entity (LLM parse error, post-process failure)
@@ -21,7 +22,33 @@ class LLMServiceError(RuntimeError):
 
 
 class LLMParseError(RuntimeError):
-    """LLM returned content that could not be parsed as JSON. → 422"""
+    """LLM returned content that could not be parsed as JSON. → 422
+
+    The default message is what the end user reads: `_error_response` puts
+    `str(exc)` straight into the response `detail`, so a bare json.JSONDecodeError
+    here surfaces as "Unterminated string starting at: line 34 column 22" on an
+    accountant's screen.
+    """
+
+    def __init__(
+        self,
+        message: str = (
+            "Could not read this document. Please try again, or upload a clearer photo or PDF."
+        ),
+    ):
+        super().__init__(message)
+
+
+class ModuleDisabled(RuntimeError):
+    """This module has been turned off for the tenant by an admin. → 403
+
+    Opt-out: enforced only when tenant_modules carries an explicit enabled=False
+    row. No row means allowed — most tenants have never had a row written.
+    """
+
+    def __init__(self, module_id: str = ""):
+        self.module_id = module_id
+        super().__init__("This module is turned off for your account. Contact your administrator.")
 
 
 class ExtractionError(RuntimeError):
@@ -40,6 +67,14 @@ class ValidationError(RuntimeError):
     """Request data failed business-level validation. → 400"""
 
 
+class NotFoundError(RuntimeError):
+    """Requested resource does not exist (or is soft-deleted). → 404"""
+
+
+class ConflictError(RuntimeError):
+    """Resource is in a state that conflicts with the requested action. → 409"""
+
+
 class RateLimitExceeded(RuntimeError):
     """Business unit has exceeded its allocated LLM call quota. → 429"""
 
@@ -50,16 +85,17 @@ class RateLimitExceeded(RuntimeError):
 
 
 class InsufficientCredits(RuntimeError):
-    """Free monthly quota exhausted and no top-up credits remain. → 402
+    """Free trial quota exhausted and no top-up credits remain. → 402
 
     Distinct from RateLimitExceeded (429): this signals the tenant should buy a
-    top-up credit pack, not that they are being throttled.
+    top-up credit pack, not that they are being throttled. The free quota is a
+    one-time lifetime trial allowance, not a monthly reset.
     """
 
     def __init__(self, tenant_id: str):
         self.tenant_id = tenant_id
         super().__init__(
-            "Monthly free document quota exhausted and no top-up credits remain. "
+            "Free trial document quota exhausted and no top-up credits remain. "
             "Purchase a credit pack to continue."
         )
 

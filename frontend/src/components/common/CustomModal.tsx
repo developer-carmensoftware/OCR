@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { motion, AnimatePresence, useAnimationControls, useReducedMotion } from 'framer-motion'
+import { m, AnimatePresence, useAnimationControls, useReducedMotion } from 'framer-motion'
 import { CheckCircle2, AlertTriangle, XCircle, Info, Loader2, Eye, EyeOff } from 'lucide-react'
+import { useT } from '../../i18n/LanguageContext'
 
 type ModalType = 'info' | 'success' | 'warning' | 'error' | 'loading'
 
@@ -40,8 +41,8 @@ export default function CustomModal({
   type = 'info',
   onConfirm,
   onCancel,
-  confirmText = 'OK',
-  cancelText = 'Cancel',
+  confirmText,
+  cancelText,
   cancelStyle,
   inputLabel,
   inputValue,
@@ -57,35 +58,49 @@ export default function CustomModal({
   const [inputVal, setInputVal] = useState('')
   const [inputErrored, setInputErrored] = useState(false)
   const [revealed, setRevealed] = useState(false)
-  const shakeControls = useAnimationControls()
-  const reduceMotion = useReducedMotion()
-  const isPassword = inputType === 'password'
 
-  useEffect(() => {
-    if (show) setInputVal(inputValue || '')
-  }, [show, inputLabel, inputValue])
+  // Track previous props to sync/reset state during render (avoids useEffect cascading renders)
+  const [prevShow, setPrevShow] = useState(show)
+  const [prevInputValue, setPrevInputValue] = useState(inputValue)
+  const [prevInputLabel, setPrevInputLabel] = useState(inputLabel)
+  const [prevErrorNonce, setPrevErrorNonce] = useState(errorNonce)
 
-  // Reset the invalid + reveal state whenever the dialog (re)opens.
-  useEffect(() => {
+  if (show !== prevShow || inputValue !== prevInputValue || inputLabel !== prevInputLabel) {
+    setPrevShow(show)
+    setPrevInputValue(inputValue)
+    setPrevInputLabel(inputLabel)
     if (show) {
+      setInputVal(inputValue || '')
       setInputErrored(false)
       setRevealed(false)
     }
-  }, [show])
+  }
 
-  // A new errorNonce means "this attempt was wrong" — flag red and shake the field.
+  if (errorNonce !== prevErrorNonce) {
+    setPrevErrorNonce(errorNonce)
+    if (errorNonce) {
+      setInputErrored(true)
+    }
+  }
+
+  const shakeControls = useAnimationControls()
+  const reduceMotion = useReducedMotion()
+  const { t } = useT()
+  const isPassword = inputType === 'password'
+  const confirmLabel = confirmText ?? t('modal.ok')
+  const cancelLabel = cancelText ?? t('modal.cancel')
+
+  // A new errorNonce means "this attempt was wrong" — shake the field.
   // Re-runs on every bump so consecutive wrong tries each get their own shake.
   useEffect(() => {
     if (!errorNonce) return
-    setInputErrored(true)
     if (!reduceMotion) {
       shakeControls.start({
         x: [0, -8, 8, -6, 6, -3, 3, 0],
         transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] },
       })
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [errorNonce])
+  }, [errorNonce, reduceMotion, shakeControls])
 
   const handleInputChange = (v: string) => {
     setInputVal(v)
@@ -149,10 +164,25 @@ export default function CustomModal({
 
   const cfg = TYPE_CONFIG[type as keyof typeof TYPE_CONFIG] ?? TYPE_CONFIG.info
 
+  // Smooth ease-out (no spring overshoot). Reduced-motion users get a plain fade.
+  const boxMotion = reduceMotion
+    ? {
+        initial: { opacity: 0 },
+        animate: { opacity: 1 },
+        exit: { opacity: 0 },
+        transition: { duration: 0.15 },
+      }
+    : {
+        initial: { opacity: 0, scale: 0.96, y: 10 },
+        animate: { opacity: 1, scale: 1, y: 0 },
+        exit: { opacity: 0, scale: 0.98, y: 6 },
+        transition: { duration: 0.24, ease: [0.16, 1, 0.3, 1] as const },
+      }
+
   return createPortal(
     <AnimatePresence>
       {show && (
-        <motion.div
+        <m.div
           className="modal-overlay"
           role="dialog"
           aria-modal="true"
@@ -163,13 +193,7 @@ export default function CustomModal({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.18 }}
         >
-          <motion.div
-            className={`modal-box modal-${type}`}
-            initial={{ opacity: 0, scale: 0.92, y: 16 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 8 }}
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-          >
+          <m.div className={`modal-box modal-${type}`} {...boxMotion}>
             <div className="modal-icon-wrapper">
               <cfg.Icon size={26} strokeWidth={1.75} />
             </div>
@@ -181,7 +205,7 @@ export default function CustomModal({
             </p>
 
             {inputLabel && (
-              <motion.div className="modal-input-group" animate={shakeControls}>
+              <m.div className="modal-input-group" animate={shakeControls}>
                 <label className="modal-input-label">{inputLabel}</label>
                 <div className="modal-input-wrap">
                   <input
@@ -217,7 +241,7 @@ export default function CustomModal({
                     </button>
                   )}
                 </div>
-              </motion.div>
+              </m.div>
             )}
 
             <div className="modal-actions">
@@ -230,7 +254,7 @@ export default function CustomModal({
                   onClick={onCancel}
                   disabled={busy}
                 >
-                  {cancelText}
+                  {cancelLabel}
                 </button>
               )}
               <button
@@ -241,11 +265,11 @@ export default function CustomModal({
                 disabled={busy}
               >
                 {busy && <Loader2 size={15} className="animate-spin" aria-hidden="true" />}
-                {confirmText}
+                {confirmLabel}
               </button>
             </div>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>,
     document.body

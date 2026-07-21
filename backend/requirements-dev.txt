@@ -1,13 +1,13 @@
 # Development-only dependencies (not needed in production)
 ruff>=0.15
-mypy>=2.1
+mypy>=2.2.0
 pre-commit>=4.6
-bandit[toml]>=1.8
+bandit[toml]>=1.9.4
 
 # Testing
-pytest>=8.4
-pytest-asyncio>=0.23
-pytest-mock>=3.15
-pytest-cov>=6.0
+pytest>=9.1.1
+pytest-asyncio>=1.4.0
+pytest-mock>=3.15.1
+pytest-cov>=7.1.0
 httpx>=0.27
-anyio>=4.0
+anyio>=4.14.2

@@ -13,25 +13,87 @@ Billing model:
 """
 
 import logging
+from datetime import UTC, datetime
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import case, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.context import current_document_ref
 from app.database import async_session
-from app.exceptions import InsufficientCredits, ValidationError
-from app.models.enums import CreditLedgerReason, QuotaPeriod
-from app.models.orm import CreditLedger, QuotaUsage, TenantCredit
+from app.exceptions import ConflictError, InsufficientCredits, NotFoundError, ValidationError
+from app.models.enums import CreditLedgerReason, CreditOrderStatus, QuotaPeriod, SubscriptionStatus
+from app.models.orm import (
+    CreditLedger,
+    CreditOrder,
+    CreditPack,
+    QuotaUsage,
+    TenantCredit,
+    TenantSubscription,
+)
 from app.services.quota_service import (
     _CachedQuota,
     _ctx,
     _get_cached_quota_rules,
-    _period_key,
     _utcnow,
+    period_key,
 )
 
 logger = logging.getLogger(__name__)
+
+# Annual = 10% off 12 months. The ONLY place the discount lives;
+# /packs and create_order both call annual_price().
+ANNUAL_DISCOUNT = Decimal("0.10")
+
+
+def annual_price(monthly: Decimal | float | str) -> Decimal:
+    """Annual list price for a monthly tier = monthly × 12 × (1 − 10%), to 2dp."""
+    return (Decimal(str(monthly)) * 12 * (1 - ANNUAL_DISCOUNT)).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+
+def proration_credit(
+    plan_net: Decimal,
+    period_start: Any,
+    period_end: Any,
+    now: datetime,
+) -> Decimal:
+    """Remaining value of the current plan = list net × fraction of days left, to 2dp.
+
+    ponytail: not called from create_order — provider wants full price on every
+    purchase (no upgrade discount). Kept so re-enabling is a one-line change;
+    credit_orders.proration_credit_thb stays in the schema (always 0 for now).
+    """
+    total = (period_end - period_start).total_seconds()
+    if total <= 0:
+        return Decimal("0.00")
+    remaining = max(0.0, (period_end - now).total_seconds())
+    frac = min(1.0, remaining / total)
+    # ponytail: list price base, not paid amount — switch to source order subtotal if exact accounting needed
+    return (plan_net * Decimal(str(frac))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def purchase_block_reason(
+    cur_period: Any, cur_credits: Any, new_period: str, new_credits: int
+) -> str | None:
+    """Why a tenant with an active plan can't buy this one — or None if allowed.
+
+    Downgrade (fewer docs) is never allowed. An annual subscriber can only move
+    to another annual plan: switching to monthly mid-term would forfeit prepaid
+    value (the smallest annual price > the largest monthly price), so it's blocked
+    until the annual term lapses.
+    """
+    if new_credits < cur_credits:
+        return "Downgrade is not supported."
+    if cur_period == "annual" and new_period != "annual":
+        return (
+            "Your annual plan can't switch to monthly billing mid-term. "
+            "Choose an annual plan or wait until it expires."
+        )
+    return None
 
 
 async def _try_consume_free(db: AsyncSession, quota: _CachedQuota, increment: int) -> bool:
@@ -40,7 +102,7 @@ async def _try_consume_free(db: AsyncSession, quota: _CachedQuota, increment: in
     within the limit. Returns True if a free slot was consumed, False if the
     free quota is already exhausted for this period.
     """
-    key = _period_key(quota.period)
+    key = period_key(quota.period)
     stmt = (
         pg_insert(QuotaUsage)
         .values(quota_id=quota.id, period_key=key, used=increment)
@@ -54,6 +116,61 @@ async def _try_consume_free(db: AsyncSession, quota: _CachedQuota, increment: in
     )
     result = await db.execute(stmt)
     return result.first() is not None
+
+
+async def _try_consume_subscription(db: AsyncSession, tenant_id: str, increment: int) -> bool:
+    """
+    Atomically charge one document against the tenant's active, in-window
+    subscription allowance. Returns True if charged, False if there is no active
+    subscription, the window has ended, or the monthly allowance is exhausted
+    (use-it-or-lose-it). When the window has passed the WHERE simply fails — this
+    is the lazy lapse enforcement; the daily cron only fixes display status.
+
+    Monthly reset is done in-place: if now() has crossed into a new month-cycle
+    (cycle_start < fn_cycle_start(period_start, now())), docs_used resets to 0
+    before this charge and cycle_start steps forward. Monthly windows never cross
+    a cycle (they are < 1 month), so they behave exactly as before; annual windows
+    reset every month while the year-long license stays active.
+    """
+    target = func.fn_cycle_start(TenantSubscription.period_start, func.now())
+    # docs_used as it should count for the *current* cycle (0 if the cycle rolled).
+    effective_used = case(
+        (TenantSubscription.cycle_start < target, 0),
+        else_=TenantSubscription.docs_used,
+    )
+    stmt = (
+        update(TenantSubscription)
+        .where(
+            TenantSubscription.tenant_id == tenant_id,
+            TenantSubscription.status == SubscriptionStatus.ACTIVE,
+            TenantSubscription.period_start <= func.now(),
+            TenantSubscription.period_end > func.now(),
+            effective_used + increment <= TenantSubscription.doc_allowance,
+        )
+        .values(
+            docs_used=effective_used + increment,
+            cycle_start=func.greatest(TenantSubscription.cycle_start, target),
+            updated_at=func.now(),
+        )
+        .returning(TenantSubscription.docs_used)
+    )
+    return (await db.execute(stmt)).first() is not None
+
+
+async def _refund_subscription(db: AsyncSession, tenant_id: str, increment: int) -> None:
+    """Give back a subscription document consumed this window (floored at 0)."""
+    await db.execute(
+        update(TenantSubscription)
+        .where(
+            TenantSubscription.tenant_id == tenant_id,
+            TenantSubscription.status == SubscriptionStatus.ACTIVE,
+            TenantSubscription.period_end > func.now(),
+        )
+        .values(
+            docs_used=func.greatest(TenantSubscription.docs_used - increment, 0),
+            updated_at=func.now(),
+        )
+    )
 
 
 async def _consume_credits(db: AsyncSession, tenant_id: str, increment: int) -> None:
@@ -91,11 +208,12 @@ async def _consume_credits(db: AsyncSession, tenant_id: str, increment: int) -> 
 
 async def consume_document(increment: int = 1) -> str | None:
     """
-    Charge one document against the current tenant: free monthly quota first,
-    then top-up credits. Raises InsufficientCredits (→ 402) when both are spent.
+    Charge one document against the current tenant, in priority order:
+    active subscription allowance → free trial quota → top-up credits. Raises
+    InsufficientCredits (→ 402) when all three are spent.
 
-    Returns what was charged — "free", "credit", or None (nothing charged:
-    fail-open / no enforceable quota). Pass the return value to
+    Returns what was charged — "subscription", "free", "credit", or None
+    (nothing charged: fail-open / no enforceable quota). Pass the return value to
     refund_document() to reverse the charge if the extraction later fails.
 
     Fail-open on missing quota / infra errors (mirrors consume_quota) so a
@@ -113,6 +231,9 @@ async def consume_document(increment: int = 1) -> str | None:
 
         async with async_session() as db:
             async with db.begin():
+                if await _try_consume_subscription(db, tenant_id, increment):
+                    logger.info("subscription doc consumed: tenant=%s", tenant_id)
+                    return "subscription"
                 if await _try_consume_free(db, monthly, increment):
                     logger.info(
                         "free slot consumed: tenant=%s limit=%.0f",
@@ -138,7 +259,7 @@ async def _refund_free(db: AsyncSession, tenant_id: str, increment: int) -> None
     await db.execute(
         update(QuotaUsage)
         .where(
-            QuotaUsage.quota_id == monthly.id, QuotaUsage.period_key == _period_key(monthly.period)
+            QuotaUsage.quota_id == monthly.id, QuotaUsage.period_key == period_key(monthly.period)
         )
         .values(used=func.greatest(QuotaUsage.used - increment, 0), last_updated_at=_utcnow())
     )
@@ -160,7 +281,9 @@ async def refund_document(charged: str | None, increment: int = 1) -> None:
     try:
         async with async_session() as db:
             async with db.begin():
-                if charged == "free":
+                if charged == "subscription":
+                    await _refund_subscription(db, tenant_id, increment)
+                elif charged == "free":
                     await _refund_free(db, tenant_id, increment)
                 elif charged == "credit":
                     await grant_credits(
@@ -219,7 +342,7 @@ async def grant_credits(
         )
         .returning(TenantCredit.balance)
     )
-    new_balance = int((await db.execute(stmt)).scalar_one())
+    new_balance = int((await db.execute(stmt)).scalar_one())  # Numeric → int
     if new_balance < 0:
         raise ValidationError("Adjustment would make the credit balance negative.")
     db.add(
@@ -247,7 +370,231 @@ async def get_credit_balance(tenant_id: str) -> int:
                     select(TenantCredit.balance).where(TenantCredit.tenant_id == tenant_id)
                 )
             ).scalar_one_or_none()
-            return int(bal) if bal is not None else 0
+            return int(bal) if bal is not None else 0  # Numeric → int
     except Exception as exc:
         logger.error("get_credit_balance failed: %s", exc)
         return 0
+
+
+async def topup_order(
+    db: AsyncSession,
+    tenant_id: str,
+    pack_code: str,
+    order_id: str | None,
+    admin_email: str,
+) -> int:
+    """Grant a pack's worth of credits (offline-paid). Optionally mark an order paid.
+
+    Caller owns the transaction (does not commit).
+    """
+    pack = (
+        await db.execute(select(CreditPack).where(CreditPack.code == pack_code))
+    ).scalar_one_or_none()
+    if pack is None:
+        raise NotFoundError("Credit pack not found")
+
+    order_ref: str | None = None
+    if order_id:
+        # Lock the order row so a concurrent top-up or an admin approve racing this
+        # top-up can't both pass the PAID check and grant credits twice.
+        order = (
+            await db.execute(
+                select(CreditOrder).where(CreditOrder.id == order_id).with_for_update()
+            )
+        ).scalar_one_or_none()
+        if order is None or order.tenant_id != tenant_id:
+            raise NotFoundError("Order not found")
+        if order.status == CreditOrderStatus.PAID:
+            raise ConflictError("Order already fulfilled")
+        order.status = CreditOrderStatus.PAID  # type: ignore[assignment]
+        order.paid_at = datetime.now(UTC)  # type: ignore[assignment]
+        order.approved_by = admin_email  # type: ignore[assignment]
+        order.approved_at = datetime.now(UTC)  # type: ignore[assignment]
+        order_ref = str(order.id)
+
+    return await grant_credits(
+        db,
+        tenant_id,
+        pack.credits,  # type: ignore[arg-type]
+        reason=CreditLedgerReason.TOPUP,
+        pack_code=pack.code,  # type: ignore[arg-type]
+        ref=order_ref,
+    )
+
+
+async def adjust_balance(db: AsyncSession, tenant_id: str, delta: int, note: str | None) -> int:
+    """Manual credit correction (positive or negative). Caller owns the transaction."""
+    if delta == 0:
+        raise ValidationError("delta must be non-zero")
+    return await grant_credits(
+        db, tenant_id, delta, reason=CreditLedgerReason.ADMIN_ADJUST, note=note
+    )
+
+
+async def get_ledger(db: AsyncSession, tenant_id: str, limit: int) -> list[CreditLedger]:
+    """Audit history of credit changes for a tenant, newest first."""
+    rows = (
+        (
+            await db.execute(
+                select(CreditLedger)
+                .where(CreditLedger.tenant_id == tenant_id)
+                .order_by(CreditLedger.created_at.desc())
+                .limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return list(rows)
+
+
+# ── Subscriptions ─────────────────────────────────────────────────────────────
+
+
+async def active_subscription(db: AsyncSession, tenant_id: str) -> TenantSubscription | None:
+    """
+    The tenant's current in-window active subscription, or None.
+
+    Single source of truth for "does this tenant have a live plan?" — used both
+    by the purchase guard (Option A blocks a new subscription while one is active)
+    and the /usage display. Window-based on purpose: a future-dated/queued row
+    (Option B) is correctly ignored until its window opens.
+    """
+    return (
+        await db.execute(
+            select(TenantSubscription)
+            .where(
+                TenantSubscription.tenant_id == tenant_id,
+                TenantSubscription.status == SubscriptionStatus.ACTIVE,
+                TenantSubscription.period_start <= func.now(),
+                TenantSubscription.period_end > func.now(),
+            )
+            .order_by(TenantSubscription.period_end.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+async def active_subscription_map(db: AsyncSession, tenant_uuids: list) -> dict[str, dict]:
+    """Bulk version of active_subscription for admin list views: one active, in-window
+    subscription per tenant, keyed by str(tenant_id).
+
+    Returns {str(tid): {"allowance": int, "used": int, "period_end": iso-str}}. `used` is
+    cycle-adjusted with the SAME case() as _try_consume_subscription, so a rolled annual
+    cycle shows 0 (what the next consume would count), not last cycle's stored docs_used.
+    Keeping that expression here, next to the consume path, avoids a second copy drifting
+    in the admin service.
+    """
+    if not tenant_uuids:
+        return {}
+    # Cycle-adjusted used — mirrors _try_consume_subscription's effective_used.
+    used_effective = case(
+        (
+            TenantSubscription.cycle_start
+            < func.fn_cycle_start(TenantSubscription.period_start, func.now()),
+            0,
+        ),
+        else_=TenantSubscription.docs_used,
+    )
+    rows = (
+        (
+            await db.execute(
+                select(
+                    TenantSubscription.tenant_id.label("tid"),
+                    TenantSubscription.doc_allowance.label("allowance"),
+                    used_effective.label("used"),
+                    TenantSubscription.period_end.label("period_end"),
+                ).where(
+                    TenantSubscription.tenant_id.in_(tenant_uuids),
+                    TenantSubscription.status == SubscriptionStatus.ACTIVE,
+                    TenantSubscription.period_start <= func.now(),
+                    TenantSubscription.period_end > func.now(),
+                )
+            )
+        )
+        .mappings()
+        .all()
+    )
+    # The partial unique index uq_tenant_subscriptions_one_active guarantees ≤1 active
+    # row per tenant, so no de-dup is needed here.
+    return {
+        str(r["tid"]): {
+            "allowance": int(r["allowance"] or 0),
+            "used": int(r["used"] or 0),
+            "period_end": r["period_end"].isoformat() if r["period_end"] else None,
+        }
+        for r in rows
+    }
+
+
+async def get_active_subscription(tenant_id: str) -> TenantSubscription | None:
+    """
+    active_subscription() with its own session — for read-only callers (/usage).
+
+    Exposes the *effective* docs_used: 0 when the monthly cycle has rolled but the
+    tenant hasn't consumed yet this cycle (consume would reset it on next use).
+    The detached, never-committed row carries the display value only.
+    """
+    if not tenant_id:
+        return None
+    try:
+        async with async_session() as db:
+            sub = await active_subscription(db, tenant_id)
+            if sub is None:
+                return None
+            target = (
+                await db.execute(select(func.fn_cycle_start(sub.period_start, func.now())))
+            ).scalar()
+            if sub.cycle_start is not None and target is not None and sub.cycle_start < target:
+                sub.docs_used = 0  # type: ignore[assignment]  # display only — expunged, never persists
+            db.expunge(sub)
+            return sub
+    except Exception as exc:
+        logger.error("get_active_subscription failed: %s", exc)
+        return None
+
+
+async def activate_subscription(
+    db: AsyncSession,
+    tenant_id: str,
+    plan_code: str,
+    doc_allowance: int,
+    source_order_id: str,
+    billing_period: str = "monthly",
+) -> None:
+    """
+    Open a fresh subscription window for the tenant (caller owns txn).
+
+    The window is `now() → now() + term - 1 day` so consecutive licenses tile
+    without overlapping on the boundary (a 24 Jun monthly license ends 23 Jul).
+    term is one month (monthly) or one year (annual); annual keeps the same
+    per-month doc_allowance and resets docs_used each month via cycle_start (see
+    _try_consume_subscription). This is the only place period math lives.
+
+    Supersedes any existing active row first. With the Option-A purchase guard
+    there should be none, but doing it unconditionally keeps the unique index
+    safe if the guard is ever relaxed.
+    """
+    term = "1 year" if billing_period == "annual" else "1 month"
+    await db.execute(
+        update(TenantSubscription)
+        .where(
+            TenantSubscription.tenant_id == tenant_id,
+            TenantSubscription.status == SubscriptionStatus.ACTIVE,
+        )
+        .values(status=SubscriptionStatus.SUPERSEDED, updated_at=func.now())
+    )
+    await db.execute(
+        pg_insert(TenantSubscription).values(
+            tenant_id=tenant_id,
+            plan_code=plan_code,
+            doc_allowance=doc_allowance,
+            docs_used=0,
+            period_start=func.now(),
+            period_end=text(f"now() + interval '{term}' - interval '1 day'"),
+            cycle_start=func.now(),
+            billing_period=billing_period,
+            status=SubscriptionStatus.ACTIVE,
+            source_order_id=source_order_id,
+        )
+    )

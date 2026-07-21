@@ -15,7 +15,7 @@ Uses direct async calls with a mocked AsyncSession — no HTTP stack.
 
 from datetime import date, datetime
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -158,6 +158,8 @@ class TestGetUsageSummary:
                 "module_id": "cc",
                 "tenant_id": "t1",
                 "llm_calls": 5,
+                "extract_calls": 4,
+                "suggest_calls": 1,
                 "tokens": 1000,
                 "cost_usd": Decimal("0.01"),
                 "avg_llm_latency_ms": 200,
@@ -167,12 +169,16 @@ class TestGetUsageSummary:
                 "module_id": "cc",
                 "tenant_id": "t1",
                 "llm_calls": 3,
+                "extract_calls": 2,
+                "suggest_calls": 1,
                 "tokens": 600,
                 "cost_usd": Decimal("0.006"),
                 "avg_llm_latency_ms": 180,
             },
         ]
-        db = _make_db(llm_rows, [], [], [])
+        # batches: llm rows, tenant_name_map lookup (llm_rows have a truthy tenant_id,
+        # so it's actually called), task, cc_sub, ap_sub
+        db = _make_db(llm_rows, [], [], [], [])
         result = await self._call(db)
         assert result["days"] == 2
 
@@ -188,6 +194,8 @@ class TestGetUsageSummary:
                 "module_id": "cc",
                 "tenant_id": "t1",
                 "llm_calls": 5,
+                "extract_calls": 4,
+                "suggest_calls": 1,
                 "tokens": 1000,
                 "cost_usd": Decimal("0.01"),
                 "avg_llm_latency_ms": 200,
@@ -208,7 +216,9 @@ class TestGetUsageSummary:
         ap_sub_rows = [
             {"sub_date": date(2024, 1, 1), "sub_module": "cc", "sub_tenant": "t1", "sub_count": 2}
         ]
-        db = _make_db(llm_rows, task_rows, cc_sub_rows, ap_sub_rows)
+        # tenant_name_map lookup slots in between llm and task (llm_rows has a
+        # truthy tenant_id, so it's actually called)
+        db = _make_db(llm_rows, [], task_rows, cc_sub_rows, ap_sub_rows)
         result = await self._call(db)
         # 1 cc + 2 ap = 3 submissions
         assert result["data"][0]["submissions"] == 3
@@ -371,7 +381,7 @@ class TestGetLlmUsage:
 
 
 class TestTenantRanking:
-    async def _call(self, db, metric="error_rate", period_hours=24, limit=20):
+    async def _call(self, db, metric="error_rate", period_hours=24, limit=20, admin=None):
         from app.routers.admin.usage import tenant_ranking
 
         return await tenant_ranking(
@@ -379,7 +389,7 @@ class TestTenantRanking:
             period_hours=period_hours,
             limit=limit,
             db=db,
-            _admin=_make_admin(),
+            admin=admin or _make_admin(),
         )
 
     def _perf_rows(self):
@@ -453,6 +463,30 @@ class TestTenantRanking:
         row = result["data"][0]
         # 10 errors / 100 requests = 10.0 %
         assert row["error_rate_pct"] == pytest.approx(10.0, abs=0.01)
+
+    async def test_A4_scoped_admin_ranking_is_limited_to_own_tenant(self):
+        """This endpoint ranks tenants against each other — a tenant-scoped admin must
+        not be handed other tenants' error rate / latency / cost / volume."""
+        db = AsyncMock()
+        db.execute.side_effect = [self._perf_rows(), self._empty_tenant_map()]
+        with patch(
+            "app.services.usage_analytics_service.get_tenant_ranking",
+            new_callable=AsyncMock,
+        ) as mock_rank:
+            mock_rank.return_value = []
+            await self._call(db, admin=_make_admin(is_global=False, tenant_scope="t-9"))
+        assert mock_rank.await_args.kwargs["tenant_id"] == "t-9"
+
+    async def test_A4_global_admin_ranking_is_unrestricted(self):
+        db = AsyncMock()
+        db.execute.side_effect = [self._perf_rows(), self._empty_tenant_map()]
+        with patch(
+            "app.services.usage_analytics_service.get_tenant_ranking",
+            new_callable=AsyncMock,
+        ) as mock_rank:
+            mock_rank.return_value = []
+            await self._call(db, admin=_make_admin(is_global=True))
+        assert mock_rank.await_args.kwargs["tenant_id"] is None
 
 
 # ── user_usage ────────────────────────────────────────────────────────────────
@@ -539,8 +573,12 @@ class TestErrorBreakdown:
         row = _DictMapping({"group": "t-1", "total": 5, "errors": 1, "avg_latency": 200})
         result_mock = MagicMock()
         result_mock.mappings.return_value.all.return_value = [row]
+        # group_by="tenant" with a truthy group ("t-1") means tenant_name_map makes
+        # its own extra db.execute() call — give it a separate (empty) result.
+        tenant_lookup_mock = MagicMock()
+        tenant_lookup_mock.mappings.return_value.all.return_value = []
         db = AsyncMock()
-        db.execute.return_value = result_mock
+        db.execute.side_effect = [result_mock, tenant_lookup_mock]
         result = await self._call(db, group_by="tenant")
         assert result["group_by"] == "tenant"
 

@@ -1,0 +1,1720 @@
+/* ════════════════════════════════════════════════════════════════
+   ORDER REVIEW CONSOLE — standalone page (own shell) + two-pane
+   queue + slip-forward workspace. Tokens from base.css (theme-aware).
+   ════════════════════════════════════════════════════════════════ */
+
+/* ─── Standalone app shell (separate from the admin dashboard) ───── */
+
+body:has(.orev-app) {
+  padding: 0 !important;
+  background-image: none;
+}
+
+.orev-app {
+  min-height: 100vh;
+  background: var(--background);
+  color: var(--text);
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
+}
+
+.orev-app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.5rem;
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+}
+
+.orev-app-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.orev-app-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--primary), var(--teal));
+  color: oklch(1 0 0);
+  box-shadow: var(--shadow-primary, 0 4px 14px oklch(from var(--primary) l c h / 0.25));
+}
+
+.orev-app-logo-img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  /* mark is colored; force white so it reads on the gradient chip (mirrors .app-header .logo-img) */
+  filter: brightness(0) invert(1);
+  opacity: 0.96;
+}
+
+.orev-app-title {
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.orev-app-user {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.orev-app-email {
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  color: var(--text-3);
+}
+
+.orev-app-logout {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  color: var(--text-3);
+  cursor: pointer;
+  transition:
+    color 0.15s var(--ease),
+    border-color 0.15s var(--ease);
+}
+
+.orev-app-logout:hover {
+  color: var(--rose);
+  border-color: oklch(from var(--rose) l c h / 0.4);
+}
+
+.orev-app-main {
+  padding: 1.5rem 2rem 3rem;
+}
+
+/* Inside the standalone shell the sticky queue/header offset accounts for the
+   56px app header. */
+.orev-app .orev-queue {
+  top: calc(56px + 1rem);
+  max-height: calc(100vh - 56px - 2rem);
+}
+
+@media (max-width: 880px) {
+  .orev-app-main {
+    padding: 1rem;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Two-pane console (used inside the shell above)
+   ════════════════════════════════════════════════════════════════ */
+
+.orev-queue-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.orev-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 0.75rem;
+}
+
+.orev-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-3);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s var(--ease),
+    color 0.15s var(--ease);
+}
+
+.orev-tab:hover {
+  background: var(--muted);
+  color: var(--text-2);
+}
+
+.orev-tab.is-active {
+  background: oklch(from var(--primary) l c h / 0.12);
+  color: var(--primary);
+}
+
+/* One-line "what is this tab for" hint under the tabs. */
+.orev-tab-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--text-3);
+}
+
+.orev-search {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--muted);
+  color: var(--text-3);
+}
+
+.orev-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.orev-search:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px oklch(from var(--primary) l c h / 0.15);
+}
+
+.orev-search input:focus {
+  outline: none;
+}
+
+.orev-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.orev-item-check {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+/* AR-code chip shown in each queue row (and reused elsewhere). */
+.orev-ar-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.orev-ar-chip.is-ok {
+  color: oklch(from var(--emerald) 0.45 c h);
+}
+.orev-ar-chip.is-warn {
+  color: var(--warning-fg);
+}
+[data-theme='dark'] .orev-ar-chip.is-ok {
+  color: var(--emerald);
+}
+
+/* Per-status count badge on queue tabs. */
+.orev-tab-count {
+  margin-left: 4px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  font-feature-settings: 'tnum';
+  padding: 0 5px;
+  border-radius: 999px;
+  background: oklch(from var(--primary) l c h / 0.15);
+  color: var(--primary);
+}
+
+.orev-list-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-3);
+}
+
+/* ─── Status tone vocabulary (dots + badges) ───────────────────── */
+
+.orev-dot.is-wait {
+  background: var(--primary);
+}
+.orev-dot.is-hold {
+  background: var(--amber);
+}
+.orev-dot.is-ok {
+  background: var(--emerald);
+}
+.orev-dot.is-bad {
+  background: var(--rose);
+}
+.orev-dot.is-idle {
+  background: var(--text-4);
+}
+
+/* ─── Workspace (right) ────────────────────────────────────────── */
+
+.orev-main {
+  min-width: 0;
+}
+
+.orev-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.orev-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.orev-head-main {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.85rem;
+}
+
+.orev-company-name {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.orev-amount {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.orev-pack {
+  font-size: 0.8rem;
+  color: var(--text-3);
+}
+
+.orev-head-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.orev-head-time {
+  font-size: 0.72rem;
+  color: var(--text-3);
+}
+
+.orev-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid;
+  border-radius: 100px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.orev-badge.is-wait {
+  color: var(--primary);
+  background: oklch(from var(--primary) l c h / 0.12);
+  border-color: oklch(from var(--primary) l c h / 0.25);
+}
+.orev-badge.is-hold {
+  color: oklch(from var(--amber) 0.46 c h);
+  background: oklch(from var(--amber) l c h / 0.16);
+  border-color: oklch(from var(--amber) l c h / 0.32);
+}
+.orev-badge.is-ok {
+  color: oklch(from var(--emerald) 0.45 c h);
+  background: oklch(from var(--emerald) l c h / 0.14);
+  border-color: oklch(from var(--emerald) l c h / 0.3);
+}
+.orev-badge.is-bad {
+  color: var(--rose);
+  background: oklch(from var(--rose) l c h / 0.12);
+  border-color: oklch(from var(--rose) l c h / 0.28);
+}
+.orev-badge.is-idle {
+  color: var(--text-3);
+  background: var(--muted);
+  border-color: var(--border);
+}
+
+[data-theme='dark'] .orev-badge.is-hold {
+  color: var(--amber);
+}
+[data-theme='dark'] .orev-badge.is-ok {
+  color: var(--emerald);
+}
+
+/* ─── Verify + contact cards ───────────────────────────────────── */
+
+.orev-verify,
+.orev-contact {
+  padding: 0.9rem 1rem;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.orev-verify-eyebrow {
+  display: block;
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-4);
+  margin-bottom: 0.6rem;
+}
+
+.orev-verify-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem 1.25rem;
+  margin: 0;
+}
+
+.orev-verify-grid dt {
+  font-size: 0.72rem;
+  color: var(--text-3);
+  margin-bottom: 1px;
+}
+
+.orev-verify-grid dd {
+  margin: 0;
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.orev-verify-grid dd.mono {
+  font-size: 0.82rem;
+}
+
+.orev-verify-hint {
+  color: var(--text-3);
+  font-weight: 400;
+}
+
+.orev-contact-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.orev-contact-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.orev-contact-person {
+  font-size: 0.8rem;
+  color: var(--text-3);
+}
+
+.orev-contact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.orev-contact-email {
+  font-size: 0.84rem;
+  color: var(--text-2);
+}
+
+/* Inline icon-only copy affordance — a scaled-down .btn-icon so it sits flush
+   against a text row instead of the wide "Copy" text-button it replaced. */
+.orev-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--text-3);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+.orev-copy-btn:hover {
+  border-color: var(--primary-mid);
+  color: var(--primary);
+  background: var(--primary-light);
+}
+.orev-copy-btn:active {
+  transform: scale(0.9);
+}
+.orev-copy-btn:focus-visible {
+  outline: 2.5px solid var(--primary);
+  outline-offset: 2px;
+}
+.orev-copy-btn.is-copied {
+  border-color: var(--emerald-mid);
+  color: var(--emerald);
+  background: var(--emerald-light);
+}
+
+.orev-contact-noemail {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-4);
+}
+
+.orev-note {
+  margin: 0.6rem 0 0;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.82rem;
+  color: var(--text-2);
+  background: oklch(from var(--amber) l c h / 0.1);
+  border: 1px solid oklch(from var(--amber) l c h / 0.25);
+  border-radius: var(--radius-sm);
+}
+
+/* ─── Compare: slip beside document ────────────────────────────── */
+
+.orev-compare {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.orev-compare-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  overflow: hidden;
+}
+
+.orev-col-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--muted);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+}
+
+.orev-doc-scroll {
+  max-height: 70vh;
+  overflow: auto;
+  padding: 0.5rem;
+}
+
+/* Slip viewer */
+.orev-slip {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.orev-slip-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.orev-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--text-2);
+  cursor: pointer;
+  transition:
+    background 0.15s var(--ease),
+    color 0.15s var(--ease);
+}
+
+.orev-tool:hover {
+  background: oklch(from var(--primary) l c h / 0.1);
+  color: var(--primary);
+}
+
+.orev-slip-zoom {
+  margin-left: auto;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.72rem;
+  color: var(--text-3);
+}
+
+.orev-slip-stage {
+  height: 70vh;
+  overflow: hidden;
+  background: repeating-conic-gradient(var(--muted) 0% 25%, var(--card-bg) 0% 50%) 50% / 22px 22px;
+  display: grid;
+  place-items: center;
+  touch-action: none;
+}
+
+.orev-slip-img {
+  max-width: 100%;
+  max-height: 100%;
+  user-select: none;
+  transition: transform 0.05s linear;
+}
+
+.orev-slip-frame {
+  width: 100%;
+  height: 70vh;
+  border: 0;
+}
+
+.orev-slip-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.78rem;
+  color: var(--primary);
+  text-decoration: none;
+}
+.orev-slip-link:hover {
+  text-decoration: underline;
+}
+
+.orev-slip-fallback {
+  display: grid;
+  place-items: center;
+  min-height: 200px;
+  height: 70vh;
+  padding: 1rem;
+  color: var(--text-4);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+/* Slip viewer skeleton — tools strip over the image stage. */
+.orev-slip-sk {
+  display: flex;
+  flex-direction: column;
+}
+.orev-slip-sk-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.orev-slip-sk-tool {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+}
+.orev-slip-sk-zoom {
+  margin-left: auto;
+  width: 2.5rem;
+  height: 0.8rem;
+  border-radius: 4px;
+}
+.orev-slip-sk-stage {
+  height: calc(70vh - 48px);
+  border-radius: 0;
+}
+
+/* Proforma document skeleton — header / banner / two cards / table / totals. */
+.orev-docsk {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 1rem;
+}
+.orev-docsk-head {
+  display: flex;
+  gap: 1rem;
+}
+.orev-docsk-logo {
+  flex-shrink: 0;
+  width: 90px;
+  height: 48px;
+  border-radius: 6px;
+}
+.orev-docsk-seller {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.orev-docsk-line {
+  display: block;
+  height: 0.62rem;
+  width: 100%;
+  border-radius: 4px;
+}
+.orev-docsk-seller .orev-docsk-line:nth-child(1) {
+  width: 55%;
+}
+.orev-docsk-seller .orev-docsk-line:nth-child(2) {
+  width: 70%;
+}
+.orev-docsk-seller .orev-docsk-line:nth-child(3) {
+  width: 40%;
+}
+.orev-docsk-seller .orev-docsk-line:nth-child(4) {
+  width: 50%;
+}
+.orev-docsk-banner {
+  display: block;
+  height: 1.6rem;
+  width: 100%;
+  border-radius: 4px;
+}
+.orev-docsk-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+.orev-docsk-card {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.orev-docsk-cardtitle {
+  display: block;
+  height: 0.6rem;
+  width: 40%;
+  border-radius: 4px;
+}
+.orev-docsk-card .orev-docsk-line:nth-child(2) {
+  width: 80%;
+}
+.orev-docsk-card .orev-docsk-line:nth-child(3) {
+  width: 60%;
+}
+.orev-docsk-card .orev-docsk-line:nth-child(4) {
+  width: 70%;
+}
+.orev-docsk-table {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.orev-docsk-thead {
+  display: block;
+  height: 1.1rem;
+  width: 100%;
+  border-radius: 4px;
+}
+.orev-docsk-trow {
+  display: block;
+  height: 0.85rem;
+  width: 100%;
+  border-radius: 4px;
+}
+.orev-docsk-totals {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+  margin-top: 0.25rem;
+}
+.orev-docsk-totalrow {
+  display: block;
+  height: 0.8rem;
+  border-radius: 4px;
+}
+.orev-docsk-totals .orev-docsk-totalrow:nth-child(1) {
+  width: 9rem;
+}
+.orev-docsk-totals .orev-docsk-totalrow:nth-child(2) {
+  width: 8rem;
+}
+.orev-docsk-totals .orev-docsk-totalrow:nth-child(3) {
+  width: 11rem;
+  height: 1.1rem;
+}
+
+/* Contact card skeleton (proforma still loading). */
+.orev-contact-sk {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.orev-contact-sk-name {
+  display: block;
+  height: 0.95rem;
+  width: 45%;
+  border-radius: 4px;
+}
+.orev-contact-sk-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.orev-contact-sk-email {
+  height: 0.85rem;
+  width: 9rem;
+  border-radius: 4px;
+}
+.orev-contact-sk-email--sm {
+  width: 6rem;
+}
+.orev-contact-sk-btn {
+  height: 26px;
+  width: 26px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+}
+
+/* ─── Company panel (collapsible) ──────────────────────────────── */
+
+.orev-company {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+}
+
+.orev-company-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-2);
+  cursor: pointer;
+  list-style: none;
+}
+.orev-company-summary::-webkit-details-marker {
+  display: none;
+}
+.orev-company-summary::before {
+  content: '▸';
+  font-size: 0.75rem;
+  color: var(--text-4);
+  transition: transform 0.15s var(--ease);
+}
+.orev-company[open] > .orev-company-summary::before {
+  transform: rotate(90deg);
+}
+
+.orev-company-bal {
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: var(--text-3);
+}
+
+.orev-company-body {
+  padding: 0 1rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.orev-subhead {
+  margin: 0.25rem 0 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-4);
+}
+
+.orev-muted {
+  color: var(--text-3);
+  font-size: 0.78rem;
+}
+
+.orev-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.orev-history li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.2rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+
+.orev-history li:last-child {
+  border-bottom: 0;
+}
+
+.orev-history-status {
+  margin-left: auto;
+  font-size: 0.74rem;
+  color: var(--text-3);
+}
+
+/* ─── Action bar ───────────────────────────────────────────────── */
+
+.orev-actionbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-top: 0.25rem;
+  padding: 0.85rem 0;
+  background: linear-gradient(to top, var(--card-bg) 70%, transparent);
+}
+
+.orev-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.orev-actions--form {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.orev-actions-bar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.orev-actions--readonly {
+  justify-content: flex-start;
+}
+
+.orev-outcome {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-2);
+}
+.orev-outcome.is-ok {
+  color: oklch(from var(--emerald) 0.45 c h);
+}
+.orev-outcome.is-bad {
+  color: var(--rose);
+}
+.orev-outcome.is-warn {
+  color: var(--amber-text);
+}
+[data-theme='dark'] .orev-outcome.is-ok {
+  color: var(--emerald);
+}
+
+.btn.orev-danger {
+  color: var(--rose);
+}
+.btn.orev-mini {
+  padding: 0.4rem 0.7rem;
+  font-size: 0.78rem;
+}
+
+.orev-approve.is-confirming {
+  box-shadow: 0 0 0 3px oklch(from var(--primary) l c h / 0.3);
+}
+
+/* Reject form */
+.orev-reject {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.orev-reject-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 0.6rem;
+}
+
+.orev-radio {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.84rem;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.orev-radio:hover {
+  background: var(--muted);
+}
+
+.orev-radio.is-on {
+  background: oklch(from var(--primary) l c h / 0.08);
+  color: var(--text);
+}
+
+.orev-field {
+  display: block;
+}
+
+.orev-textarea {
+  width: 100%;
+  margin-top: 0.4rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  font: inherit;
+  font-size: 0.86rem;
+  color: var(--text);
+  resize: vertical;
+}
+
+.orev-textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px oklch(from var(--primary) l c h / 0.15);
+}
+
+/* ─── Empty workspace ──────────────────────────────────────────── */
+
+.orev-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 60vh;
+  text-align: center;
+  color: var(--text-4);
+}
+
+.orev-empty-title {
+  margin: 0.5rem 0 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+.orev-empty-sub {
+  margin: 0;
+  max-width: 30rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-4);
+}
+
+/* ─── Responsive ───────────────────────────────────────────────── */
+
+@media (max-width: 960px) {
+  .orev-compare {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 880px) {
+  .orev-console {
+    grid-template-columns: 1fr;
+  }
+  .orev-queue {
+    position: static;
+    max-height: 420px;
+  }
+}
+
+/* Phone: collapse cramped 2-col facts, trim stacked viewer heights, drop the
+   header email (it overflowed the brand + toggles + logout row). */
+@media (max-width: 560px) {
+  .orev-app-email {
+    display: none;
+  }
+  .orev-app-header {
+    padding: 0 1rem;
+  }
+  .orev-verify-grid {
+    grid-template-columns: 1fr;
+  }
+  .orev-slip-stage,
+  .orev-slip-frame,
+  .orev-slip-fallback {
+    height: 55vh;
+  }
+  .orev-slip-sk-stage {
+    height: calc(55vh - 48px);
+  }
+  .orev-doc-scroll {
+    max-height: 55vh;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orev-console {
+    animation: none;
+  }
+  .orev-slip-img {
+    transition: none;
+  }
+}
+
+/* Touch devices (tablets): grow small controls to a 44px-ish tap target. */
+@media (pointer: coarse) {
+  .orev-tool,
+  .orev-app-logout {
+    width: 44px;
+    height: 44px;
+  }
+  .orev-item-check {
+    width: 22px;
+    height: 22px;
+  }
+  .orev-mini {
+    padding: 0.6rem 0.9rem;
+  }
+}
+
+/* ── Page layout (replaces console as top-level) ──────────────── */
+.orev-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* ── KPI Cards (4 cards) ──────────────────────────────────────── */
+.orev-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.orev-kpi-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text);
+}
+.orev-kpi-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-3);
+}
+.orev-kpi-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.orev-kpi-amt {
+  font-size: 1rem;
+  font-weight: 700;
+  font-feature-settings: 'tnum';
+}
+.orev-kpi-amt--lg {
+  font-size: 1.35rem;
+}
+.orev-kpi-amt--ok {
+  color: var(--emerald);
+}
+.orev-kpi-amt--warn {
+  color: var(--amber);
+}
+.orev-kpi-desc {
+  font-size: 0.72rem;
+  color: var(--text-3);
+  font-feature-settings: 'tnum';
+}
+/* KPI skeleton bars — sized to the real header/amount/desc rows. */
+.orev-kpi-sk {
+  display: block;
+  border-radius: 5px;
+}
+.orev-kpi-sk--icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+}
+.orev-kpi-sk--title {
+  height: 0.8rem;
+  width: 50%;
+}
+.orev-kpi-sk--amt {
+  height: 1.5rem;
+  width: 70%;
+  margin: 0.15rem 0;
+}
+.orev-kpi-sk--desc {
+  height: 0.7rem;
+  width: 40%;
+}
+@media (max-width: 880px) {
+  .orev-kpi-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 560px) {
+  .orev-kpi-row {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 480px) {
+  .orev-kpi-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Main tabs (AR Mapping | Invoice Verifier) ─────────────────── */
+.orev-main-tabs {
+  display: flex;
+  gap: 0;
+  padding: 0.25rem;
+  border-radius: var(--radius-md);
+  background: var(--muted);
+  border: 1px solid var(--border);
+}
+.orev-main-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-3);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.orev-main-tab:hover {
+  color: var(--text);
+}
+.orev-main-tab.active {
+  background: var(--card-bg);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border);
+}
+.orev-tab-badge {
+  font-size: 0.625rem;
+  font-weight: 700;
+  font-feature-settings: 'tnum';
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+/* ── AR Customer Profiles panel ────────────────────────────────── */
+.orev-ar-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  overflow: hidden;
+}
+.orev-ar-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--muted);
+}
+.orev-ar-heading {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  margin: 0;
+}
+.orev-ar-sub {
+  font-size: 0.7rem;
+  color: var(--text-3);
+  margin: 0.125rem 0 0;
+}
+.orev-ar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.orev-search-wrap {
+  position: relative;
+}
+.orev-search-icon {
+  position: absolute;
+  left: 0.625rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-3);
+}
+.orev-search-wrap input {
+  padding: 0.375rem 0.75rem 0.375rem 2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 0.75rem;
+  background: var(--card-bg);
+  color: var(--text);
+  min-width: 14rem;
+}
+.orev-ar-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.orev-ar-table-wrap {
+  overflow-x: auto;
+}
+.orev-ar-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+.orev-ar-table thead tr {
+  border-bottom: 1px solid var(--border);
+  background: var(--muted);
+}
+.orev-ar-table th {
+  padding: 0.625rem 1rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: left;
+}
+.orev-ar-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.orev-ar-table tbody tr:hover {
+  background: var(--muted);
+}
+.orev-ar-name {
+  font-weight: 700;
+}
+.orev-ar-code {
+  font-family: var(--font-mono, monospace);
+  font-weight: 700;
+  padding: 0.125rem 0.5rem;
+  background: var(--success-subtle);
+  color: var(--success);
+  border-radius: 0.25rem;
+  font-size: 0.7rem;
+}
+.orev-ar-missing {
+  font-weight: 600;
+  color: var(--rose);
+  font-size: 0.7rem;
+}
+.orev-ar-input {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--primary);
+  border-radius: 0.375rem;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  background: var(--card-bg);
+  color: var(--text);
+  text-transform: uppercase;
+  width: 10rem;
+}
+.orev-ar-act-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.orev-ar-btn-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  border-radius: 0.375rem;
+}
+.orev-ar-btn-edit:hover {
+  background: var(--muted);
+}
+.orev-ar-btn-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border: none;
+  background: var(--success);
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 700;
+  cursor: pointer;
+  border-radius: 0.375rem;
+  transition: filter 0.15s var(--ease);
+}
+.orev-ar-btn-save:hover {
+  filter: brightness(0.9);
+}
+.orev-ar-btn-save:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+[data-theme='dark'] .orev-ar-btn-save {
+  color: oklch(0.15 0 0);
+}
+.orev-ar-btn-cancel {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem;
+  border: none;
+  background: var(--muted);
+  color: var(--text-3);
+  cursor: pointer;
+  border-radius: 0.375rem;
+}
+.orev-ar-empty {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-3);
+  font-weight: 600;
+}
+/* Skeleton bars for the AR-profiles table while it loads. */
+.orev-ar-sk {
+  display: block;
+  height: 0.9rem;
+  width: 80%;
+  border-radius: 4px;
+}
+.orev-ar-sk--sm {
+  width: 55%;
+}
+.orev-ar-sk--xs {
+  width: 35%;
+}
+.orev-ar-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--border);
+  background: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+/* ─── Unified orders table ─────────────────────────────────────── */
+
+.orev-tablewrap {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  animation: fadeUp 0.2s var(--ease) both;
+}
+
+.orev-table-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  padding: 1rem 1.25rem 0.5rem;
+}
+
+.orev-table-heading {
+  min-width: 0;
+}
+
+.orev-table-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.orev-tablewrap .orev-tabs {
+  padding: 0 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.orev-table-scroll {
+  overflow-x: auto;
+  border-top: 1px solid var(--border);
+}
+
+.orev-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.orev-table .mono {
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: -0.01em;
+}
+
+.orev-table thead th {
+  padding: 0.6rem 0.85rem;
+  text-align: left;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  background: var(--muted);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.orev-table td {
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.orev-row {
+  cursor: pointer;
+  transition: background 0.12s var(--ease);
+}
+.orev-row:hover {
+  background: oklch(from var(--primary) l c h / 0.06);
+}
+.orev-row.is-selected {
+  background: oklch(from var(--primary) l c h / 0.1);
+}
+.orev-row.is-skeleton {
+  pointer-events: none;
+}
+.orev-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.orev-th-check,
+.orev-td-check {
+  width: 34px;
+  text-align: center;
+  padding-right: 0;
+}
+
+.orev-td-company {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.orev-td-desc {
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-3);
+}
+
+.orev-col-amt {
+  text-align: right;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.orev-td-muted {
+  color: var(--text-4);
+}
+
+.orev-slip-link {
+  color: var(--primary);
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.orev-sk-cell {
+  display: block;
+  height: 0.8rem;
+  width: 70%;
+  border-radius: 4px;
+}
+
+/* ─── Detail slide-over (drawer) ───────────────────────────────── */
+
+.orev-drawer-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  justify-content: flex-end;
+  background: oklch(0 0 0 / 0.5);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+
+.orev-drawer-panel {
+  display: flex;
+  flex-direction: column;
+  /* Wide enough for the side-by-side slip | proforma comparison (~560px/col). */
+  width: min(1200px, 96vw);
+  height: 100%;
+  padding: 1rem 1.5rem 0;
+  background: var(--card-bg);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 24px oklch(0 0 0 / 0.18);
+  overflow-y: auto;
+}
+
+.orev-drawer-close {
+  position: sticky;
+  top: 0;
+  align-self: flex-end;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--text-2);
+  cursor: pointer;
+  transition:
+    background 0.12s var(--ease),
+    color 0.12s var(--ease);
+}
+.orev-drawer-close:hover {
+  background: var(--muted);
+  color: var(--text);
+}
+
+/* ─── Floating batch action bar ────────────────────────────────── */
+
+/* Pinned to the bottom of the viewport (not the table) — the same "act on the
+   selection" role as .orev-actionbar inside the drawer, for a multi-row selection. */
+.orev-batchbar {
+  /* Centered via left/right/margin, not transform: framer-motion drives its own
+     inline `transform` for the y/opacity entrance, which would otherwise clobber
+     a CSS transform: translateX(-50%) on the same element. */
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 1.5rem;
+  width: fit-content;
+  margin: 0 auto;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem 0.6rem 0.6rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+}
+
+.orev-batchbar-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--muted);
+  color: var(--text-2);
+  cursor: pointer;
+  transition:
+    background 0.12s var(--ease),
+    color 0.12s var(--ease);
+}
+.orev-batchbar-clear:hover {
+  background: oklch(from var(--rose) l c h / 0.12);
+  color: var(--rose);
+  border-color: oklch(from var(--rose) l c h / 0.3);
+}
+
+.orev-batchbar-count {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  padding-right: 0.5rem;
+  border-right: 1px solid var(--border);
+}
+
+.orev-batchbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}

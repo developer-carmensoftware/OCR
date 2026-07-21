@@ -54,19 +54,11 @@ export interface OcrExtractionHook {
   cardId: string | null
   headerData: HeaderData | Record<string, string>
   details: DetailRow[]
+  warnings: string[]
   originalDetails: DetailRow[]
   originalHeader: HeaderData | Record<string, string>
-  processFile: (
-    filesToProcess: File[],
-    selectedPages?: number[],
-    pdfPassword?: string
-  ) => Promise<void>
-  reExtract: (
-    files: File[],
-    bankType?: string,
-    selectedPages?: number[],
-    pdfPassword?: string
-  ) => Promise<void>
+  processFile: (filesToProcess: File[], pdfPassword?: string) => Promise<void>
+  reExtract: (files: File[], bankType?: string, pdfPassword?: string) => Promise<void>
   updateHeader: (key: string, value: string) => void
   updateDetail: (rowIndex: number, col: string, value: string) => void
   addRow: () => void
@@ -82,12 +74,6 @@ const EXTRACTION_STAGES = [
   { at: 22, text: 'Almost done…' },
   { at: 35, text: 'Complex document — still working…' },
 ]
-
-const BANK_CODE_TO_NAME: Record<string, string> = {
-  BBL: 'Bangkok Bank (BBL)',
-  KBANK: 'Kasikornbank (KBANK)',
-  SCB: 'Siam Commercial Bank (SCB)',
-}
 
 // Persists bank code + detail rows for the mapping step (ocr_wizard_state) and merges vendor
 // company/branch into accountingConfig so the GL-mapping step pre-fills correctly.
@@ -118,10 +104,10 @@ function _persistOcrLocalStorage(ext: Record<string, unknown>, detailsList: Deta
       if (ext.bank_company_name) updatedCompany.name = ext.bank_company_name as string
       if (ext.branch_no) updatedCompany.branch = ext.branch_no as string
       existing.company = updatedCompany
-      const detectedBankCode = detectBankFromCompanyName(ext.bank_company_name as string)
-      if (detectedBankCode && BANK_CODE_TO_NAME[detectedBankCode]) {
-        existing.bank = BANK_CODE_TO_NAME[detectedBankCode]
-      }
+      // detectBankFromCompanyName already returns the display name accountingConfig.bank stores
+      // (a stale BANK_CODE_TO_NAME[code] lookup here previously never matched, so this was dead).
+      const detectedBankName = detectBankFromCompanyName(ext.bank_company_name as string)
+      if (detectedBankName) existing.bank = detectedBankName
       localStorage.setItem(appKey('accountingConfig'), JSON.stringify(existing))
     } catch {
       /* ignore */
@@ -157,6 +143,7 @@ export function useOcrExtraction({
   const [cardId, setCardId] = useState<string | null>(null)
   const [headerData, setHeaderData] = useState<Record<string, string>>({})
   const [details, setDetails] = useState<DetailRow[]>([])
+  const [warnings, setWarnings] = useState<string[]>([])
   const [originalDetails, setOriginalDetails] = useState<DetailRow[]>([])
   const [originalHeader, setOriginalHeader] = useState<Record<string, string>>({})
 
@@ -180,8 +167,9 @@ export function useOcrExtraction({
       rawDetails.length ? rawDetails : [{ ...EMPTY_DETAIL_ROW }]
     ).map(row => ({ ...EMPTY_DETAIL_ROW, ...row, _uid: crypto.randomUUID() }))
     setDetails(detailsList)
-    setOriginalDetails(JSON.parse(JSON.stringify(detailsList)) as DetailRow[])
-    setOriginalHeader(JSON.parse(JSON.stringify(header)) as Record<string, string>)
+    setWarnings((ext.warnings as string[] | undefined) || [])
+    setOriginalDetails(structuredClone(detailsList))
+    setOriginalHeader(structuredClone(header))
     _persistOcrLocalStorage(ext, detailsList)
   }
 
@@ -199,11 +187,7 @@ export function useOcrExtraction({
     })
   }
 
-  async function processFile(
-    filesToProcess: File[],
-    selectedPages?: number[],
-    pdfPassword?: string
-  ) {
+  async function processFile(filesToProcess: File[], pdfPassword?: string) {
     if (!filesToProcess || filesToProcess.length === 0) {
       showModal({
         title: 'No Document File Found',
@@ -217,7 +201,7 @@ export function useOcrExtraction({
     setLoading(true)
     setStatus('AI is extracting data from document...')
     try {
-      const ext = await extractFromFile(filesToProcess[0], undefined, selectedPages, pdfPassword)
+      const ext = await extractFromFile(filesToProcess[0], undefined, pdfPassword)
       if (ext.is_duplicate) {
         setStatus('Duplicate document found')
         showDuplicateModal(ext.doc_no)
@@ -274,6 +258,19 @@ export function useOcrExtraction({
             clearFiles()
           },
         })
+      } else if (e.status === 403) {
+        // ModuleDisabled — e.message already carries the backend `detail` (lib/api/ocr.ts).
+        showModal({
+          title: 'Module unavailable',
+          message:
+            e.message || 'This module is turned off for your account. Contact your administrator.',
+          type: 'warning',
+          confirmText: 'Close',
+          onConfirm: () => {
+            closeModal()
+            clearFiles()
+          },
+        })
       } else if (e.status === 401) {
         // AuthContext handles the "session expired" toast + state reset via ocr:unauthorized.
         clearFiles()
@@ -305,22 +302,16 @@ export function useOcrExtraction({
     }
   }
 
-  async function reExtract(
-    files: File[],
-    bankType?: string,
-    selectedPages?: number[],
-    pdfPassword?: string
-  ) {
+  async function reExtract(files: File[], bankType?: string, pdfPassword?: string) {
     if (!files || files.length === 0) return
     setLoading(true)
     setStatus(`Re-extracting with ${bankType || 'auto-detect'}...`)
     try {
-      const ext = await extractFromFile(files[0], bankType || undefined, selectedPages, pdfPassword)
+      const ext = await extractFromFile(files[0], bankType || undefined, pdfPassword)
       applyExtractedData(ext as unknown as Record<string, unknown>)
       setBank(
         (bankType || detectBankFromExtracted(ext as unknown as Record<string, string>) || '') as
-          | BankCode
-          | ''
+          BankCode | ''
       )
       showToast(`Re-extracted successfully${bankType ? ` with ${bankType}` : ''}`, 'success')
     } catch (err) {
@@ -359,6 +350,7 @@ export function useOcrExtraction({
     setStatus('')
     setHeaderData({})
     setDetails([])
+    setWarnings([])
     setOriginalDetails([])
     setOriginalHeader({})
     setBank('')
@@ -375,6 +367,7 @@ export function useOcrExtraction({
     cardId,
     headerData,
     details,
+    warnings,
     originalDetails,
     originalHeader,
     processFile,

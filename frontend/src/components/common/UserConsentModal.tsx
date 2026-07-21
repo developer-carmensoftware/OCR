@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { FileText, Info, CheckCircle2, XCircle, Lock, ArrowLeft } from 'lucide-react'
 import { getCarmenUrl } from '../../lib/url'
+import { useT } from '../../i18n/LanguageContext'
 import '../../styles/components/user-consent.css'
 
 type Lang = 'th' | 'en'
@@ -77,20 +78,15 @@ function useIsMobile() {
 }
 
 export default function UserConsentModal({ show, onConfirm }: Props) {
-  const [lang, setLang] = useState<Lang>('en')
+  const { lang: appLang } = useT()
+  // Follow the app's language for the initial render (a Thai user shouldn't meet a
+  // PDPA consent form in English); the in-modal toggle can still override per-reader.
+  const [lang, setLang] = useState<Lang>(appLang)
   const [checked, setChecked] = useState(false)
   const dialogRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
 
   const c = COPY[lang]
-
-  // Reset state when modal re-opens
-  useEffect(() => {
-    if (show) {
-      setChecked(false)
-      setLang('en')
-    }
-  }, [show])
 
   // Focus trap: Tab wraps within the dialog; Escape is blocked
   useEffect(() => {
@@ -130,14 +126,14 @@ export default function UserConsentModal({ show, onConfirm }: Props) {
   return createPortal(
     <AnimatePresence>
       {show && (
-        <motion.div
+        <m.div
           className="uc-overlay"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.18 }}
         >
-          <motion.div
+          <m.div
             ref={dialogRef}
             className="uc-dialog"
             role="dialog"
@@ -156,7 +152,7 @@ export default function UserConsentModal({ show, onConfirm }: Props) {
               <h2 className="uc-title" id="uc-title">
                 {c.title}
               </h2>
-              <div className="uc-lang-toggle" role="group" aria-label="Language">
+              <section className="uc-lang-toggle" aria-label="Language">
                 <button
                   type="button"
                   className={`uc-lang-btn${lang === 'th' ? ' active' : ''}`}
@@ -173,7 +169,7 @@ export default function UserConsentModal({ show, onConfirm }: Props) {
                 >
                   EN
                 </button>
-              </div>
+              </section>
             </div>
 
             {/* Body */}
@@ -255,8 +251,8 @@ export default function UserConsentModal({ show, onConfirm }: Props) {
                 </button>
               </div>
             </div>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>,
     document.body

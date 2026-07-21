@@ -1,0 +1,20 @@
+# gitleaks config — extends the default ruleset, adds an allowlist for the
+# placeholder/dummy secrets this repo intentionally commits.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented placeholders and CI dummies — not real secrets."
+paths = [
+  '''.*\.env\.example$''',   # backend/.env.example
+  '''frontend/\.env\.production$''',
+  '''render\.yaml$''',       # generateValue/sync:false placeholders only
+  '''\.github/workflows/ci\.yml$''',  # dummy test-only secrets
+  '''backend/tests/''',      # unit-test fixtures use fake tokens/UUIDs, not real secrets
+  '''.*\.test\.(ts|tsx|js|jsx)$''',   # frontend test fixtures
+]
+regexes = [
+  '''AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=''',  # dummy Fernet key in CI
+  '''sk-or-test-not-real''',                           # dummy OpenRouter key in CI
+  '''ci-test-secret-not-used-in-tests''',
+]

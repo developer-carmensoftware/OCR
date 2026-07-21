@@ -29,6 +29,7 @@ export interface ExtractResult {
   branch_no: string
   is_duplicate: boolean
   details: ExtractedRow[]
+  warnings: string[]
 }
 
 export interface ApiError extends Error {
@@ -78,14 +79,10 @@ export async function getFilePreview(file: File): Promise<string> {
 export async function extractFromFile(
   file: File,
   bankType?: string,
-  selectedPages?: number[],
   pdfPassword?: string
 ): Promise<ExtractResult> {
   const formData = new FormData()
   formData.append('files', file)
-  if (selectedPages && selectedPages.length > 0) {
-    formData.append('selected_pages', JSON.stringify(selectedPages))
-  }
   if (pdfPassword) formData.append('pdf_password', pdfPassword)
 
   const url = bankType ? `${API.creditCard.extract}?bank_code=${bankType}` : API.creditCard.extract
@@ -141,5 +138,6 @@ export async function extractFromFile(
     branch_no: (card.branch_no as string) || '',
     is_duplicate: (card.is_duplicate as boolean) || false,
     details,
+    warnings: (card.warnings as string[] | undefined) || [],
   }
 }

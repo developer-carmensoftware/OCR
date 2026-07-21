@@ -1,6 +1,7 @@
 # INCIDENT PLAYBOOK — Carmen AI OCR
 
 > ถ้าระบบล่ม ทำตามขั้นตอนนี้ทีละข้อ
+> Stack ปัจจุบัน: Backend = **Render** (`carmen-ocr-backend`) · Frontend = **Vercel** · DB = **Supabase Postgres** · LLM = **OpenRouter**
 
 ---
 
@@ -8,109 +9,123 @@
 
 | ช่องทาง | สัญญาณ |
 |---|---|
-| UptimeRobot | SMS / LINE / Email ว่า `/livez` ไม่ตอบ |
-| Sentry | Error spike alert |
+| Uptime monitor (UptimeRobot) | Email/alert ว่า health endpoint ไม่ตอบ |
+| Sentry | Error spike alert (ถ้าตั้ง `SENTRY_DSN` ไว้) |
 | ลูกค้าแจ้ง | โทร / LINE |
 
-**เปิด browser ไปที่:**
-- `http://<server>/livez` — ถ้าไม่ตอบ = process ตาย
-- `http://<server>/readyz` — ถ้าไม่ตอบ = DB ไม่ได้
+**เปิด browser ไปที่ backend URL (Render):**
+
+- `https://<backend>/livez` — ไม่ตอบ = process ตาย / service down
+- `https://<backend>/readyz` — `/livez` ตอบแต่อันนี้ไม่ตอบ = ต่อ DB ไม่ได้
+- `https://<backend>/api/v1/health` — endpoint เดียวกับที่ uptime monitor ใช้
 
 ---
 
 ## 2. Triage — หาสาเหตุ
 
-### Process ตาย
-```powershell
-# เช็ค IIS
-Get-WebSite | Select-Object Name, State
+### Backend ตาย / ไม่ตอบ
 
-# เช็ค log ล่าสุด
-Get-EventLog -LogName Application -Source "carmen-ai" -Newest 20
-```
+1. เปิด **Render dashboard → carmen-ocr-backend → Logs** ดู error ล่าสุด
+2. ดู **Events / Deploys** — ล่มหลัง deploy ล่าสุดหรือไม่?
+3. Free tier: service sleep หลังไม่มี traffic ~15 นาที — request แรกช้า (cold start) ไม่ใช่ incident
+4. เช็ค [status.render.com](https://status.render.com) — อาจเป็นฝั่ง Render เอง
 
-### DB ไม่ได้
-```powershell
-# เช็ค MariaDB service
-Get-Service MariaDB
+### DB ไม่ได้ (`/readyz` fail)
 
-# ลอง connect
-& "C:\Program Files\MariaDB 10.5\bin\mysql.exe" -u root -p<PASSWORD> -e "SELECT 1;"
-```
+1. เปิด **Supabase dashboard → project → Database health**
+2. เช็คจำนวน connection — Supavisor session mode มี connection cap ต่ำ (pool ฝั่งแอปตั้งไว้เล็ก 8+8, ดู CLAUDE.md) ถ้าเต็มจะเจอ `EMAXCONNSESSION`
+3. เช็ค [status.supabase.com](https://status.supabase.com)
 
-### Disk เต็ม
-```powershell
-Get-PSDrive -PSProvider FileSystem | Select-Object Name, @{N='FreeGB';E={[math]::Round($_.Free/1GB,1)}}
-```
+### Extract ช้า / error แต่ระบบอื่นปกติ
 
-### Memory / CPU spike
-```powershell
-Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 10 Name, CPU, WorkingSet64
-```
+1. เช็ค [status.openrouter.ai](https://status.openrouter.ai) — LLM upstream คือ bottleneck หลัก (ดู LOAD_TEST_REPORT_V2)
+2. ดู `llm_usage_logs` / Sentry ว่า error มาจาก OpenRouter (429/5xx) หรือโค้ดเรา
+3. HTTP 429 + `Retry-After` จากระบบเรา = LLM capacity valve ทำงานตามออกแบบ ไม่ใช่ bug
+
+### Frontend เปิดไม่ขึ้น
+
+1. เปิด **Vercel dashboard → Deployments** — deployment ล่าสุด fail หรือไม่ → Rollback ได้จากหน้าเดียวกัน
+2. ถ้า frontend ขึ้นแต่ API call fail ทุกอัน → กลับไปเช็ค backend (ข้อบน) + CORS (`ALLOWED_ORIGINS` บน Render ต้องมี origin ของ frontend)
 
 ---
 
 ## 3. แก้ไข
 
-### กรณี: Process ตาย
-```powershell
-Start-WebSite -Name "carmen-ai"
-# หรือ restart IIS ทั้งหมด
-iisreset
-```
+### กรณี: Backend process ตาย / ค้าง
 
-### กรณี: MariaDB หยุด
-```powershell
-Start-Service MariaDB
-```
+Render dashboard → **Manual Deploy → "Restart service"** (หรือ "Clear build cache & deploy" ถ้า build เสีย)
 
-### กรณี: Disk เต็ม
-```powershell
-# ดู folder ใหญ่สุด
-Get-ChildItem C:\ -Recurse -ErrorAction SilentlyContinue |
-  Sort-Object Length -Descending | Select-Object -First 20 FullName, Length
+### กรณี: พังหลัง deploy ล่าสุด
 
-# ลบ backup เก่า (เก็บแค่ 7 ล่าสุด)
-Get-ChildItem "C:\backups\carmen_ai\" | Sort-Object LastWriteTime -Descending |
-  Select-Object -Skip 7 | Remove-Item -Force
-```
+Render dashboard → **Deploys → เลือก deploy ก่อนหน้า → Rollback**
+⚠️ ถ้า deploy นั้นมี migration ใหม่ (`supabase/migrations/`) rollback โค้ดอย่างเดียวอาจไม่พอ — ดูว่า migration เป็น additive (ปกติปลอดภัย) หรือเปลี่ยนโครงสร้างที่โค้ดเก่าไม่รู้จัก
 
-### กรณี: DB เสียหาย → Restore จาก Backup
-ดู [RESTORE.md](./RESTORE.md)
+### กรณี: Supabase ล่ม
+
+รอฝั่ง Supabase กู้ (ดู status page) — ระบบเราไม่มี failover DB
+ระหว่างนั้นแจ้งลูกค้าตามข้อ 5
+
+### กรณี: DB เสียหาย → Restore
+
+ดูหัวข้อ **Restore** ด้านล่าง
 
 ---
 
 ## 4. ยืนยันระบบกลับมา
 
-```powershell
-# เช็ค health endpoints
-Invoke-WebRequest http://localhost:8010/livez
-Invoke-WebRequest http://localhost:8010/readyz
+```text
+GET https://<backend>/livez    → {"status":"ok"}
+GET https://<backend>/readyz   → {"status":"ok"}
 ```
 
-ทั้งสองต้องตอบ `{"status":"ok"}`
+จากนั้นทดสอบ flow จริง 1 รอบ: login ผ่าน Carmen SSO → extract เอกสาร 1 ใบ
 
 ---
 
 ## 5. Post-incident
 
 - [ ] บันทึกเวลาเริ่มต้นและจบของ incident
-- [ ] บันทึกสาเหตุที่พบ
-- [ ] บันทึกขั้นตอนที่ใช้แก้
+- [ ] บันทึกสาเหตุที่พบ + ขั้นตอนที่ใช้แก้ (ลง `changelog/<วันนี้>.md`)
 - [ ] แจ้งลูกค้าถ้า downtime > 15 นาที
-- [ ] เพิ่ม alert rule ถ้าพบว่ายังไม่มี monitoring ตรงนี้
+- [ ] เพิ่ม alert rule ถ้าพบว่ายังไม่มี monitoring ตรงนั้น
 
 ---
 
-## ข้อมูล Baseline (วัด 2026-05-20)
+## Restore — กู้คืนฐานข้อมูล (Supabase)
 
-| รายการ | ค่า |
-|---|---|
-| DB size | 6.91 MB |
-| จำนวน tables | 42 |
-| Active tenants (30d) | 1 |
-| Active BUs (30d) | 1 |
-| Peak LLM calls/hour | 19 (2026-05-15 11:00) |
+> ระบบ **ไม่มี file storage** — รูปเอกสารไม่ถูกเก็บ มีแค่ DB เท่านั้นที่ต้องกู้
+> Carmen ERP เป็น source of truth ของข้อมูลบัญชีที่ submit แล้ว — ข้อมูลใน DB เราเป็น metadata/config เป็นหลัก
+
+### Schema (โครงสร้าง)
+
+Schema ทั้งหมดอยู่ใน `supabase/migrations/*.sql` (source of truth ใน git):
+
+```bash
+# สร้าง schema ใหม่จากศูนย์ลง project เปล่า
+supabase link --project-ref <project-ref>
+supabase db push
+```
+
+### Data (ข้อมูล)
+
+1. **Supabase dashboard → Database → Backups** — restore จาก backup อัตโนมัติของ Supabase (ความถี่/ย้อนหลังขึ้นกับ plan ของ project)
+2. สำรองเอง (แนะนำก่อนทำอะไรเสี่ยง):
+
+   ```bash
+   supabase db dump -f backup.sql          # โครงสร้าง + seed
+   supabase db dump -f data.sql --data-only
+   ```
+
+3. Restore dump กลับ: รันไฟล์ SQL ผ่าน Supabase SQL Editor หรือ `psql` ไปที่ connection string ของ project
+
+### ตรวจสอบหลัง restore
+
+```sql
+SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';
+```
+
+เทียบจำนวน table กับ `supabase/migrations/` (baseline + billing/AR) แล้วเปิด `/readyz` ยืนยันว่า backend ต่อ DB ได้
+Session เก่ายังใช้ได้หลัง restore เพราะ JWT เป็น stateless
 
 ---
 

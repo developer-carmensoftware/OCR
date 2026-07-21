@@ -315,3 +315,22 @@ The OCR loading overlay (`.ocr-loading-overlay`) uses `backdrop-filter: blur(8px
 - **Don't** ship a new workflow screen without empty states. Every table, every data column, and every result area must render something useful before data arrives — either a skeleton or an instructional empty state that teaches the next step.
 - **Don't** animate layout properties (`width`, `height`, `top`, `left`, `padding`). Animate `transform` and `opacity` only. Every entrance in this system uses `translateY` + `opacity` (fadeUp, fadeDown, modalScaleIn) — match this pattern.
 - **Don't** use the `.home-modules-title` uppercase tracked eyebrow pattern on interior screens. "Select Module" on the home page is a one-time deliberate use of that pattern. It is not a reusable section-label template.
+
+---
+
+## 7. Showcase Layer (marketing surfaces only)
+
+The core system is product-register and deliberately restrained (§1). The **pricing/marketing surface** (`/pricing`, the "ระบบ AI ช่วยงานบัญชี" feature section) is the one place that legitimately needs to *sell* the AI, so it gets a **sanctioned, narrowly-scoped exception** — a "showcase layer." This exists to host the three feature infographics (Credit Card, AP Invoice, GL Suggestion) ported from the design mock, refined to fit the system.
+
+**What the showcase layer permits (and nothing more):**
+- **Richer elevation** via `--showcase-shadow` and a larger `--showcase-radius` (20px) on the feature cards — premium but still light.
+- **Soft accent header washes**: a feature card header may use a light gradient wash built from the feature accent via `color-mix` (e.g. `linear-gradient(135deg, color-mix(in srgb, var(--flow) 14%, var(--card-bg)), var(--card-bg))`). The accent (`--flow`) maps to the existing palette: blue=`--primary`, emerald=`--emerald`, teal=`--teal`.
+- **Story motion**: the input→process→output pipeline may animate as a staged reveal (auto-played when scrolled into view), longer than core UI (`--showcase-dur` ≈ 380ms). It conveys the *flow*, which is the section's whole point — this is the documented exception to "motion conveys state, not atmosphere."
+
+**The showcase layer still obeys the core rules — these are NOT relaxed:**
+- **No dark fills / banners.** All surfaces stay light; dark bands read as stray dark-mode among the light plan cards. Expressiveness comes from wash + accent + elevation + motion, never a dark surface.
+- **No gradient text, no hero-metric template, no glassmorphism.**
+- **WCAG AA everywhere.** Accent-as-foreground uses the AA, theme-aware `--flow-strong` tier; the light `--flow` token is for tints/glows/1px borders only. Filled chips that carry white text must use a dark-enough surface, not a light pastel.
+- **Tokens only**, no raw hex. `prefers-reduced-motion: reduce` shows the full pipeline with no sequence.
+
+If a future surface is *not* marketing (any authenticated task screen), it does **not** get the showcase layer — it stays on the core system.

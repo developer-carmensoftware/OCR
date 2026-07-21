@@ -1,31 +1,30 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { useOcrWizard } from '../hooks/credit-card'
-import {
-  StepWizard,
-  FormActions,
-  CustomModal,
-  DarkModeToggle,
-  ExtractionSkeleton,
-  SplitLayout,
-  UsageIndicator,
-  AppHeader,
-} from '../components/common'
-import PDFPageSelector from '../components/common/PDFPageSelector'
+import StepWizard from '../components/common/StepWizard'
+import FormActions from '../components/common/FormActions'
+import CustomModal from '../components/common/CustomModal'
+import DarkModeToggle from '../components/common/DarkModeToggle'
+import ExtractionSkeleton from '../components/common/ExtractionSkeleton'
+import SplitLayout from '../components/common/SplitLayout'
+import UsageIndicator from '../components/common/UsageIndicator'
+import AppHeader from '../components/common/AppHeader'
+import LanguageToggle from '../components/common/LanguageToggle'
+import { useT } from '../i18n/LanguageContext'
 import { appKey } from '../lib/storage'
-import {
-  UploadSection,
-  BankDetectionBanner,
-  HeaderCard,
-  DetailTable,
-  AccountingReview,
-  InputTaxReconciliation,
-} from '../components/credit-card'
+import UploadSection from '../components/credit-card/UploadSection'
+import BankDetectionBanner from '../components/credit-card/BankDetectionBanner'
+import ExtractionWarningBanner from '../components/credit-card/ExtractionWarningBanner'
+import HeaderCard from '../components/credit-card/HeaderCard'
+import DetailTable from '../components/credit-card/DetailTable'
+import AccountingReview from '../components/credit-card/AccountingReview'
+import InputTaxReconciliation from '../components/credit-card/InputTaxReconciliation'
 import { BANK_THAI_NAMES } from '../constants'
 import type { BankCode } from '../types/api'
 
 export default function CreditCardOCR() {
+  const { t } = useT()
   const {
     step,
     files,
@@ -37,6 +36,7 @@ export default function CreditCardOCR() {
     extractionStatus,
     headerData,
     details,
+    warnings,
     fileInputRef,
     modal,
     showModal,
@@ -52,13 +52,7 @@ export default function CreditCardOCR() {
     handleSubmitFinal,
     handleCancel,
     resetAll,
-    pdfSelector,
     pdfInfoLoading,
-    imageMerging,
-    imageCount,
-    selectedPageThumbs,
-    confirmPageSelection,
-    cancelPageSelection,
   } = useOcrWizard()
 
   const [showPreview, setShowPreview] = useState(false)
@@ -66,13 +60,14 @@ export default function CreditCardOCR() {
   function handleReExtract(bankType: BankCode | null) {
     const bankDisplay = bankType
       ? `${BANK_THAI_NAMES[bankType] || bankType} (${bankType})`
-      : 'Auto-detect'
+      : t('cc.autoDetect')
+    const method = bankType ? t('cc.methodPrompt', { bank: bankDisplay }) : t('cc.methodAuto')
     showModal({
-      title: 'Re-extract Document?',
-      message: `Re-extracting with ${bankDisplay} will use 1 additional quota.\n\nThe system will use ${bankType ? `the ${bankDisplay} prompt` : 'auto-detection'} as the primary extraction method.`,
+      title: t('cc.reExtractTitle'),
+      message: t('cc.reExtractMsg', { bank: bankDisplay, method }),
       type: 'warning',
-      confirmText: 'Re-extract',
-      cancelText: 'Cancel',
+      confirmText: t('cc.reExtract'),
+      cancelText: t('modal.cancel'),
       onConfirm: () => {
         closeModal()
         reExtract(bankType ?? undefined)
@@ -84,12 +79,11 @@ export default function CreditCardOCR() {
   function handleStepClick(n: number) {
     if (n === 1 && step > 1) {
       showModal({
-        title: 'Return to Upload?',
-        message:
-          'Going back will clear all extracted data.\nYou will need to re-upload and re-extract the document, which will use 1 additional quota.',
+        title: t('cc.returnTitle'),
+        message: t('cc.returnMsg'),
         type: 'warning',
-        confirmText: 'Go Back',
-        cancelText: 'Stay Here',
+        confirmText: t('cc.goBack'),
+        cancelText: t('cc.stayHere'),
         onConfirm: () => {
           closeModal()
           resetAll()
@@ -103,13 +97,6 @@ export default function CreditCardOCR() {
 
   return (
     <>
-      {pdfSelector && (
-        <PDFPageSelector
-          thumbnails={pdfSelector.thumbnails}
-          onConfirm={confirmPageSelection}
-          onCancel={cancelPageSelection}
-        />
-      )}
       <CustomModal
         show={modal.show}
         title={modal.title as string}
@@ -136,14 +123,14 @@ export default function CreditCardOCR() {
           backPath="/glJv"
         >
           <UsageIndicator />
-          {/* Plan & Credits + Bug Report hidden for now — pending finalisation */}
+          <LanguageToggle />
           <DarkModeToggle />
         </AppHeader>
 
         <StepWizard step={step} onStepClick={n => !loading && !submitting && handleStepClick(n)} />
 
         <AnimatePresence mode="wait">
-          <motion.div
+          <m.div
             key={loading ? 'loading' : step}
             initial={{ opacity: 0, transform: 'translateY(10px)' }}
             animate={{ opacity: 1, transform: 'translateY(0px)' }}
@@ -155,9 +142,7 @@ export default function CreditCardOCR() {
                 onFileChange={handleFileChange}
                 fileInputRef={fileInputRef}
                 fileName={files[0]?.name}
-                fileCount={imageCount || undefined}
                 pdfInfoLoading={pdfInfoLoading}
-                imageMerging={imageMerging}
               />
             )}
             {step === 1 && loading && (
@@ -174,9 +159,9 @@ export default function CreditCardOCR() {
                 previewUrl={previewUrl}
                 previewType={previewType}
                 fileName={files[0]?.name}
-                selectedPageThumbs={selectedPageThumbs}
               >
                 <BankDetectionBanner bank={bank} loading={loading} onReExtract={handleReExtract} />
+                <ExtractionWarningBanner warnings={warnings} />
                 <HeaderCard
                   headerData={headerData as Record<string, string>}
                   onUpdate={updateHeader}
@@ -190,7 +175,7 @@ export default function CreditCardOCR() {
                 <FormActions
                   onCancel={handleCancel}
                   onSubmit={() => setStep(3)}
-                  submitLabel="Next (Review Accounting)"
+                  submitLabel={t('cc.nextReview')}
                   showBack={false}
                 />
               </SplitLayout>
@@ -203,11 +188,11 @@ export default function CreditCardOCR() {
                 previewUrl={previewUrl}
                 previewType={previewType}
                 fileName={files[0]?.name}
-                selectedPageThumbs={selectedPageThumbs}
               >
                 <AccountingReview
                   details={details}
                   headerData={headerData as Record<string, string>}
+                  bank={bank}
                   onBack={() => setStep(2)}
                   onSubmit={handleSubmitFinal}
                   onGoMapping={() => {
@@ -219,7 +204,7 @@ export default function CreditCardOCR() {
                     } catch {
                       /* ignore */
                     }
-                    toast.info('Opened new tab for Mapping settings')
+                    toast.info(t('cc.openedMapping'))
                     window.open('#/CreditCardOCR/mapping', '_blank')
                   }}
                   submitting={submitting}
@@ -235,7 +220,7 @@ export default function CreditCardOCR() {
                 onFinish={resetAll}
               />
             )}
-          </motion.div>
+          </m.div>
         </AnimatePresence>
       </div>
     </>

@@ -14,6 +14,13 @@ import type { MainMappingKey } from './useMappingSuggestions'
 
 export type MainMappings = Record<MainMappingKey, FieldMapping>
 
+const COMPANY_REQUIRED_FIELDS: Array<{ key: keyof CompanyData; label: string }> = [
+  { key: 'name', label: 'Company Name' },
+  { key: 'taxId', label: 'Tax ID' },
+  { key: 'branch', label: 'Branch No' },
+  { key: 'address', label: 'Address' },
+]
+
 export interface ActiveScan {
   paymentTypes: Set<string>
   commission: boolean
@@ -88,29 +95,47 @@ export function useMapping() {
     if (Object.keys(mainMappings).length > 0) {
       setMappings(prev => ({ ...prev, ...mainMappings }))
     }
-    paymentTypes.initFromData(paymentMappings, bankConfig.savedCustomTypes)
-  }, [bankConfig.configLoading, bankConfig.bank]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [
+    bankConfig.configLoading,
+    bankConfig.bank,
+    bankConfig.savedMappings,
+    bankConfig.savedCustomTypes,
+    paymentTypes.initFromData,
+  ])
 
   useEffect(() => {
-    try {
-      const ocrState = JSON.parse(localStorage.getItem(appKey('ocr_wizard_state')) || '{}') as {
-        details?: Array<Record<string, string>>
+    const rescan = () => {
+      try {
+        const ocrState = JSON.parse(localStorage.getItem(appKey('ocr_wizard_state')) || '{}') as {
+          details?: Array<Record<string, string>>
+        }
+        if (ocrState.details && Array.isArray(ocrState.details)) {
+          const types = new Set<string>()
+          let comm = false,
+            tx = false,
+            n = false
+          ocrState.details.forEach(d => {
+            if (d.Transaction) types.add(d.Transaction)
+            if (parseNum(d.CommisAmt) > 0) comm = true
+            if (parseNum(d.TaxAmt) > 0) tx = true
+            if (parseNum(d.Total) > 0) n = true
+          })
+          setActiveScan({ paymentTypes: types, commission: comm, tax: tx, net: n })
+        }
+      } catch {
+        /* ignore */
       }
-      if (ocrState.details && Array.isArray(ocrState.details)) {
-        const types = new Set<string>()
-        let comm = false,
-          tx = false,
-          n = false
-        ocrState.details.forEach(d => {
-          if (d.Transaction) types.add(d.Transaction)
-          if (parseNum(d.CommisAmt) > 0) comm = true
-          if (parseNum(d.TaxAmt) > 0) tx = true
-          if (parseNum(d.Total) > 0) n = true
-        })
-        setActiveScan({ paymentTypes: types, commission: comm, tax: tx, net: n })
-      }
-    } catch {
-      /* ignore */
+    }
+    rescan()
+    // The snapshot was mount-only, so it went stale when the wizard's line items
+    // were edited after this tab opened. Re-scan on focus (user switches back to
+    // this tab) and on cross-tab localStorage writes so the required-mapping
+    // counts track the live details.
+    window.addEventListener('focus', rescan)
+    window.addEventListener('storage', rescan)
+    return () => {
+      window.removeEventListener('focus', rescan)
+      window.removeEventListener('storage', rescan)
     }
   }, [])
 
@@ -125,8 +150,9 @@ export function useMapping() {
         address: info.address,
       }))
     }
-    if (selected && BANK_SOURCE_MAP[selected as BankDisplayName])
-      bankConfig.setFileSource(BANK_SOURCE_MAP[selected as BankDisplayName])
+    // Always overwrite: banks without an assigned GL source code map to '' —
+    // leaving the previous bank's source in place would submit a wrong JvhSource.
+    if (selected) bankConfig.setFileSource(BANK_SOURCE_MAP[selected as BankDisplayName] ?? '')
   }
 
   const handleCompanyChange = (e: React.ChangeEvent<HTMLInputElement>, field: string) => {
@@ -169,13 +195,7 @@ export function useMapping() {
     setAcceptAllModal(false)
   }
 
-  const companyRequiredFields: Array<{ key: keyof CompanyData; label: string }> = [
-    { key: 'name', label: 'Company Name' },
-    { key: 'taxId', label: 'Tax ID' },
-    { key: 'branch', label: 'Branch No' },
-    { key: 'address', label: 'Address' },
-  ]
-  const missingCompanyFields = companyRequiredFields.filter(
+  const missingCompanyFields = COMPANY_REQUIRED_FIELDS.filter(
     f => !bankConfig.company[f.key as keyof typeof bankConfig.company]?.trim()
   )
   const topLevelRequired = [
@@ -270,7 +290,7 @@ export function useMapping() {
     company: bankConfig.company,
     setCompany: bankConfig.setCompany,
     handleCompanyChange,
-    companyRequiredFields,
+    companyRequiredFields: COMPANY_REQUIRED_FIELDS,
     missingCompanyFields,
     mappings,
     setMappings,

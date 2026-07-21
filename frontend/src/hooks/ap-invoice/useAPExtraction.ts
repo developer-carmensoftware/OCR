@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import type React from 'react'
+import { useT } from '../../i18n/LanguageContext'
 import { apiFetch, fetchTimeout } from '../../lib/api/client'
 import { API } from '../../lib/api/endpoints'
 import { getAPVendorMapping } from '../../lib/api/config'
@@ -13,6 +14,7 @@ import {
 import { usePdfPasswordPrompt } from '../usePdfPasswordPrompt'
 import { imagesToPdf, MAX_MULTI_IMAGES } from '../../lib/imagesToPdf'
 import { selectedPagesToPdfUrl } from '../../lib/pdfPages'
+import { sanitizedPdfUrl } from '../../lib/pdfPreview'
 import { toast } from '../../lib/toast'
 import { appKey } from '../../lib/storage'
 import { checkFilesSize } from '../../lib/fileValidation'
@@ -27,7 +29,6 @@ export type { APLineItem }
 const EXTRACT_TIMEOUT_MS = 150_000
 
 interface APExtractionProps {
-  t: Record<string, string>
   setStep: (step: number) => void
   setModal: (state: ModalState) => void
   loadVendors?: (() => void) | null
@@ -54,70 +55,62 @@ const NUMERIC_FIELDS = [
 ]
 const isNumFld = (f: string) => NUMERIC_FIELDS.includes(f)
 
-// Pure fetch+retry helper — no React state. Throws for terminal errors (401/402/408/429) and after
-// retry exhaustion so the caller (runOCR) handles modals and state in one place.
-async function _fetchExtractWithRetry(
+// Pure fetch helper — no React state. Throws so the caller (runOCR) handles modals and
+// state in one place.
+//
+// Deliberately does NOT auto-retry (matching the credit-card extract). /extract charges a
+// document credit server-side before calling the LLM. A failed extraction is refunded by
+// the backend, but a response lost in transit *after* a successful extraction is not — and
+// the client cannot tell those two apart. Retrying therefore risks charging twice (and
+// re-running the LLM) for one document. A genuine transient blip surfaces as an error the
+// user can retry by hand, which is strictly better than a silent double charge.
+async function _fetchExtract(
   fileObj: File,
   selectedPages?: number[],
   pdfPassword?: string
 ): Promise<Record<string, unknown>> {
-  let retries = 3
-  let delay = 800
-  while (retries > 0) {
-    try {
-      const formData = new FormData()
-      formData.append('file', fileObj)
-      if (selectedPages && selectedPages.length > 0) {
-        formData.append('selected_pages', JSON.stringify(selectedPages))
-      }
-      if (pdfPassword) formData.append('pdf_password', pdfPassword)
-      const { signal, clear } = fetchTimeout(EXTRACT_TIMEOUT_MS)
-      let res: Response
-      try {
-        res = await apiFetch(API.apInvoice.extract, {
-          method: 'POST',
-          body: formData,
-          signal,
-        })
-      } catch (fetchErr) {
-        if ((fetchErr as Error).name === 'AbortError')
-          throw Object.assign(new Error('HTTP 408'), { cause: fetchErr })
-        throw fetchErr
-      } finally {
-        clear()
-      }
-      if (!res.ok) {
-        // PdfPasswordRequired maps to 400 — only that status carries the code marker.
-        if (res.status === 400) {
-          const body = (await res.json?.().catch(() => ({}))) as { code?: string }
-          if (body?.code === PDF_PASSWORD_REQUIRED) {
-            throw Object.assign(new Error('pdf_password_required'), { code: PDF_PASSWORD_REQUIRED })
-          }
-        }
-        throw new Error(`HTTP ${res.status}`)
-      }
-      return (await res.json()) as Record<string, unknown>
-    } catch (err) {
-      const msg = (err as Error).message
-      // Terminal errors — propagate immediately without retrying
-      if (
-        (err as ApiError).code === PDF_PASSWORD_REQUIRED ||
-        msg.includes('401') ||
-        msg.includes('402') ||
-        msg.includes('408') ||
-        msg.includes('429')
-      )
-        throw err
-      retries--
-      if (retries === 0) throw err
-      await new Promise(r => setTimeout(r, delay))
-      delay *= 2
-    }
+  const formData = new FormData()
+  formData.append('file', fileObj)
+  if (selectedPages && selectedPages.length > 0) {
+    formData.append('selected_pages', JSON.stringify(selectedPages))
   }
-  throw new Error('Extraction failed after retries')
+  if (pdfPassword) formData.append('pdf_password', pdfPassword)
+  const { signal, clear } = fetchTimeout(EXTRACT_TIMEOUT_MS)
+  let res: Response
+  try {
+    res = await apiFetch(API.apInvoice.extract, {
+      method: 'POST',
+      body: formData,
+      signal,
+    })
+  } catch (fetchErr) {
+    if ((fetchErr as Error).name === 'AbortError')
+      throw Object.assign(new Error('HTTP 408'), { cause: fetchErr })
+    throw fetchErr
+  } finally {
+    clear()
+  }
+  if (!res.ok) {
+    // PdfPasswordRequired maps to 400 — only that status carries the code marker.
+    if (res.status === 400) {
+      const body = (await res.json?.().catch(() => ({}))) as { code?: string }
+      if (body?.code === PDF_PASSWORD_REQUIRED) {
+        throw Object.assign(new Error('pdf_password_required'), { code: PDF_PASSWORD_REQUIRED })
+      }
+    }
+    // ModuleDisabled (403) carries a user-facing reason in `detail` — surface it
+    // instead of a bare "HTTP 403".
+    if (res.status === 403) {
+      const body = (await res.json?.().catch(() => ({}))) as { detail?: string }
+      throw Object.assign(new Error('HTTP 403'), { detail: body?.detail })
+    }
+    throw new Error(`HTTP ${res.status}`)
+  }
+  return (await res.json()) as Record<string, unknown>
 }
 
-export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtractionProps) {
+export function useAPExtraction({ setStep, setModal, loadVendors }: APExtractionProps) {
+  const { t } = useT()
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [previewType, setPreviewType] = useState<string | null>(null)
@@ -178,11 +171,7 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
     setStatus('AI is extracting data from document...')
     setError(null)
     try {
-      const data = await _fetchExtractWithRetry(
-        fileObj,
-        selectedPages,
-        password ?? pwPrompt.pdfPassword
-      )
+      const data = await _fetchExtract(fileObj, selectedPages, password ?? pwPrompt.pdfPassword)
 
       setApInvoiceId((data.id as string) || null)
       setHeaderData({
@@ -353,9 +342,47 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
         promptForPassword(fileObj, selectedPages)
         return
       }
+      if (e.message.includes('403')) {
+        const detail = (err as { detail?: string }).detail
+        toast.error(detail ?? 'This module is turned off for your account.')
+        setModal({
+          show: true,
+          type: 'warning',
+          title: 'Module unavailable',
+          message:
+            detail ?? 'This module is turned off for your account. Contact your administrator.',
+          confirmText: 'Close',
+          onConfirm: () => {
+            setModal({ show: false })
+            setStep(1)
+            setFile(null)
+            setPreviewUrl(null)
+          },
+        })
+        return
+      }
+      // A server fault is not the user's document — don't tell them to rescan it.
+      if (/HTTP 5\d\d/.test(e.message)) {
+        toast.error('Server error')
+        setModal({
+          show: true,
+          type: 'warning',
+          title: 'Server Error',
+          message:
+            'The server could not process this document right now. This is not a problem with your file — please try again in a moment.',
+          confirmText: 'Close',
+          onConfirm: () => {
+            setModal({ show: false })
+            setStep(1)
+            setFile(null)
+            setPreviewUrl(null)
+          },
+        })
+        return
+      }
       console.error(err)
       setStatus(e.message)
-      setError(t.errProcess)
+      setError(t('ap.errProcess'))
       toast.error('Could not read this invoice — try a clearer scan')
     } finally {
       setLoading(false)
@@ -437,11 +464,19 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
       getFilePreview(f)
         .then(setPreviewUrl)
         .catch(() => setPreviewType('HEIC'))
+    } else if (isPdf) {
+      // Strip embedded auto-print (OpenAction) before the iframe viewer sees it.
+      setPreviewType('pdf')
+      setPreviewUrl(null)
+      sanitizedPdfUrl(f).then(url => {
+        previewUrlRef.current = url
+        setPreviewUrl(url)
+      })
     } else {
       const url = URL.createObjectURL(f)
       previewUrlRef.current = url
       setPreviewUrl(url)
-      setPreviewType(isPdf ? 'pdf' : 'image')
+      setPreviewType('image')
     }
 
     if (isPdf) {
@@ -503,17 +538,24 @@ export function useAPExtraction({ t, setStep, setModal, loadVendors }: APExtract
     if (!sel) return
     setSelectedPageThumbs(selectedPages.map(p => ({ thumb: sel.thumbnails[p], pageNum: p + 1 })))
     setPdfSelector(null)
-    // Preview only the selected pages: swap in a native PDF subset (zoomable/readable).
-    // Falls back to the full document if the PDF cannot be parsed client-side.
+    // Immediately clear the full-document preview so the user never sees all
+    // pages while we build the subset PDF containing only selected pages.
+    revokePreviewUrls()
+    setPreviewUrl(null)
     void selectedPagesToPdfUrl(sel.pendingFile, selectedPages)
       .then(url => {
-        revokePreviewUrls()
         previewUrlRef.current = url
         setPreviewUrl(url)
         setPreviewType('pdf')
       })
       .catch(() => {
-        /* keep the full-document preview */
+        // Could not build subset — create a single-page fallback using page=1
+        // fragment so the viewer at least starts on the right page.
+        sanitizedPdfUrl(sel.pendingFile).then(url => {
+          previewUrlRef.current = url
+          setPreviewUrl(url + `#page=${selectedPages[0] + 1}`)
+          setPreviewType('pdf')
+        })
       })
     runOCR(sel.pendingFile, selectedPages)
   }

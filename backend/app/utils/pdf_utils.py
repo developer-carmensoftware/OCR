@@ -1,11 +1,11 @@
 """
-PDF utilities: page counting, rendering pages to PNG, and thumbnail generation.
+PDF utilities: page counting, page selection, and thumbnail generation.
 Uses PyMuPDF (fitz) — must be installed via: pip install pymupdf
 
-Hardened against malicious PDFs: rendering DPI and output pixmap dimensions are
-clamped, and the number of pages rendered per call is capped, so a crafted PDF
-(huge mediabox / thousands of pages) cannot exhaust worker memory/CPU. Callers
-should additionally wrap the (blocking) render in an asyncio timeout.
+Hardened against malicious PDFs: output pixmap dimensions are clamped and the
+number of pages handled per call is capped, so a crafted PDF (huge mediabox /
+thousands of pages) cannot exhaust worker memory/CPU. Callers should
+additionally wrap the (blocking) render in an asyncio timeout.
 """
 
 import asyncio
@@ -16,10 +16,9 @@ import fitz  # PyMuPDF
 from app.exceptions import ExtractionError, PdfPasswordRequired
 
 MAX_PAGES_PER_CALL = 10
-# Upper bounds for rasterisation. A malicious PDF can declare an enormous page
+# Upper bound for rasterisation. A malicious PDF can declare an enormous page
 # size; without clamping, get_pixmap() would allocate width*height*3 bytes and
-# OOM the worker. Cap both the DPI and the absolute pixel dimensions.
-MAX_RENDER_DPI = 300
+# OOM the worker.
 MAX_PIXMAP_DIM = 5000  # px per side
 # Thumbnails render every page; cap so a many-thousand-page PDF can't stall a worker.
 MAX_THUMBNAIL_PAGES = 30
@@ -54,44 +53,6 @@ def get_pdf_page_count(pdf_bytes: bytes, password: str | None = None) -> int:
     doc = open_pdf(pdf_bytes, password)
     try:
         return doc.page_count
-    finally:
-        doc.close()
-
-
-def _clamped_matrix(page: "fitz.Page", dpi: int) -> "fitz.Matrix":
-    """Build a render matrix whose output stays within MAX_PIXMAP_DIM per side."""
-    dpi = max(1, min(dpi, MAX_RENDER_DPI))
-    scale = dpi / 72
-    rect = page.rect
-    width = max(1.0, rect.width)
-    height = max(1.0, rect.height)
-    longest = max(width, height) * scale
-    if longest > MAX_PIXMAP_DIM:
-        scale *= MAX_PIXMAP_DIM / longest
-    return fitz.Matrix(scale, scale)
-
-
-def render_pdf_pages(
-    pdf_bytes: bytes,
-    page_indices: list[int],
-    dpi: int = 200,
-    password: str | None = None,
-) -> list[bytes]:
-    """
-    Render specified pages (0-based indices) of a PDF to PNG bytes.
-    Returns a list of PNG bytes in the same order as page_indices.
-    At most MAX_PAGES_PER_CALL pages are rendered regardless of input length.
-    """
-    doc = open_pdf(pdf_bytes, password)
-    try:
-        results: list[bytes] = []
-        for idx in page_indices[:MAX_PAGES_PER_CALL]:
-            if idx < 0 or idx >= doc.page_count:
-                continue
-            page = doc[idx]
-            pixmap = page.get_pixmap(matrix=_clamped_matrix(page, dpi), alpha=False)
-            results.append(pixmap.tobytes("png"))
-        return results
     finally:
         doc.close()
 

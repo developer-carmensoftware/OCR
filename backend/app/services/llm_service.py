@@ -11,15 +11,47 @@ import logging
 
 from app.config import settings
 from app.constants import Module
+from app.exceptions import LLMParseError
 from app.llm.client import _strip_code_fences, call_vision_llm
 from app.llm.prompts import get_ocr_prompt
 from app.models import ExtractedCreditCardData
 from app.utils import debug_buffer
+from app.utils.bank_detect import FEE_INVOICE_CODES, detect_bank_code
 from app.utils.mime import get_mime_type
 
 logger = logging.getLogger(__name__)
 
-_CARD_FIELDS = set(ExtractedCreditCardData.model_fields.keys())
+_CARD_FIELDS = set(ExtractedCreditCardData.model_fields.keys()) - {"warnings"}
+
+_WHT_KEYWORDS = frozenset({"wht", "withholding", "ภาษีเงินได้หัก", "หัก ณ ที่จ่าย", "ภาษีถูกหัก"})
+
+
+def _is_zero(v: str | None) -> bool:
+    if v is None:
+        return True
+    try:
+        return float(v.replace(",", "")) == 0
+    except ValueError:
+        return False
+
+
+def _is_wht_row(r) -> bool:
+    return bool(r.transaction) and any(k in r.transaction.lower() for k in _WHT_KEYWORDS)
+
+
+def _clean_llm_rows(details: list, *, is_fee_invoice: bool) -> list:
+    """Drop non-transaction rows the LLM leaked into details[].
+
+    WHT (withholding-tax) rows are never card rows → always dropped. The
+    blank/0.00 pay_amt drop targets statement banks (BBL/KBANK/SCB), which list
+    ~35 zero-amount filler card types — but fee-invoice line rows carry
+    pay_amt=null BY DESIGN (the fee is in commis_amt; pay_amt is computed later
+    from the footer VAT), so that drop must be skipped for them or every line
+    row is deleted before the normalizer ever runs.
+    """
+    return [
+        r for r in details if not _is_wht_row(r) and (is_fee_invoice or not _is_zero(r.pay_amt))
+    ]
 
 
 async def extract_from_image(
@@ -31,12 +63,16 @@ async def extract_from_image(
     # Legacy alias
     bank_type: str | None = None,
     page_images: list[bytes] | None = None,
+    image_mime_type: str | None = None,
 ) -> tuple[str, ExtractedCreditCardData]:
     """
     Send an image (or multiple PDF pages) to OpenRouter vision LLM.
     Returns (raw_text, ExtractedCreditCardData).
     page_images: pre-rendered PNG bytes per page; if provided, overrides image_bytes
                  for multi-page documents (all pages sent in one LLM call).
+    image_mime_type: actual MIME of image_bytes (e.g. from resize_if_needed, which may
+                 re-encode into a different format than the filename suggests). Takes
+                 priority over filename-derived MIME when provided.
     """
     if not settings.openrouter_api_key:
         raise ValueError("OPENROUTER_API_KEY is not configured")
@@ -57,7 +93,7 @@ async def extract_from_image(
         ]
         total_image_bytes = sum(len(p) for p in page_images)
     else:
-        mime_type = get_mime_type(filename)
+        mime_type = image_mime_type or get_mime_type(filename)
         b64_image = base64.b64encode(image_bytes).decode("utf-8")
         image_items = [
             {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_image}"}}
@@ -98,7 +134,11 @@ async def extract_from_image(
         debug_buffer.record(result_text, source="vision_llm")
 
     result_text = _strip_code_fences(result_text)
-    parsed = json.loads(result_text)
+    try:
+        parsed = json.loads(result_text)
+    except json.JSONDecodeError as exc:
+        logger.error("Vision JSON parse failed (%s). Raw: %.500s", exc, result_text)
+        raise LLMParseError() from exc
     data: dict = parsed[0] if isinstance(parsed, list) else parsed
 
     raw_text: str = data.pop("raw_text", "") or ""
@@ -106,24 +146,18 @@ async def extract_from_image(
     extracted = ExtractedCreditCardData(**{k: v for k, v in data.items() if k in _CARD_FIELDS})
     extracted.raw_text = raw_text
 
-    def _is_zero(v: str | None) -> bool:
-        if v is None:
-            return True
-        try:
-            return float(v.replace(",", "")) == 0
-        except ValueError:
-            return False
-
-    _WHT_KEYWORDS = frozenset({"wht", "withholding", "ภาษีเงินได้หัก", "หัก ณ ที่จ่าย", "ภาษีถูกหัก"})
-
-    def _is_wht_row(r) -> bool:
-        if not r.transaction:
-            return False
-        t = r.transaction.lower()
-        return any(k in t for k in _WHT_KEYWORDS)
-
-    extracted.details = [
-        r for r in extracted.details if not _is_zero(r.pay_amt) and not _is_wht_row(r)
-    ]
+    # Resolve the bank from the extracted fields (same detection finalize_extraction
+    # uses) so row cleaning can spare fee-invoice line rows, whose pay_amt is null
+    # by design and would otherwise be dropped as "blank" before the normalizer runs.
+    resolved_bank = detect_bank_code(
+        bank_company_name=extracted.bank_company_name,
+        bank_name=extracted.bank_name,
+        company_name=extracted.company_name,
+        doc_name=extracted.doc_name,
+        raw_text=raw_text,
+    )
+    extracted.details = _clean_llm_rows(
+        extracted.details, is_fee_invoice=resolved_bank in FEE_INVOICE_CODES
+    )
 
     return raw_text, extracted

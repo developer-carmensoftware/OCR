@@ -1,0 +1,927 @@
+"""
+Unit tests for the fee-invoice normalizer + BAY tax fill in credit_card_service.
+
+QA findings (CA-4): the LLM frequently swaps or omits the amount fields on the
+fee-invoice formats (KTC Amount↔Net, GHL Net↔Commission, SiamPay commission/tax
+missing) and misses BAY's VAT column — these are repaired deterministically from
+arithmetic, not re-OCR'd.
+"""
+
+from app.models.schemas import ExtractedCreditCardData
+from app.models.schemas.ocr import ExtractedDetailRow
+from app.services.credit_card_service import (
+    _ASSUMED_RATE_WARNING,
+    _FEE_UNALLOCATED_WARNING,
+    _NEGATIVE_UNSUPPORTED_WARNING,
+    _RECON_MISMATCH_WARNING,
+    _normalize_bay_statement,
+    _normalize_fee_invoice,
+    _strip_noncard_rows,
+)
+
+
+def _extracted(**row_kwargs) -> ExtractedCreditCardData:
+    return ExtractedCreditCardData(
+        merchant_id=row_kwargs.pop("merchant_id", "M-123"),
+        details=[ExtractedDetailRow(transaction="fee", **row_kwargs)],
+    )
+
+
+def _row(ext: ExtractedCreditCardData) -> ExtractedDetailRow:
+    return ext.details[0]
+
+
+def test_correct_extraction_passes_through():
+    ext = _extracted(pay_amt="4,716.31", commis_amt="4,407.76", tax_amt="308.55", total="0")
+    _normalize_fee_invoice(ext, "KTC")
+    r = _row(ext)
+    assert (r.pay_amt, r.commis_amt, r.tax_amt, r.total) == ("4,716.31", "4,407.76", "308.55", "0")
+    assert ext.merchant_id is None
+    assert ext.warnings == []
+
+
+def test_empty_details_surfaces_a_warning_instead_of_silent_blank():
+    # QA: LLM found no rows at all (missed both the fee line and the footer) —
+    # must not silently return an empty details list with no explanation.
+    ext = ExtractedCreditCardData(merchant_id="M-123", details=[])
+    _normalize_fee_invoice(ext, "KTC")
+    assert ext.details == []
+    assert ext.warnings
+
+
+def test_ktc_amount_and_net_swapped():
+    # QA: grand total landed in Total, nothing in PayAmt
+    ext = _extracted(total="4,716.31", commis_amt="4,407.76", tax_amt="308.55")
+    _normalize_fee_invoice(ext, "KTC")
+    r = _row(ext)
+    assert (r.pay_amt, r.commis_amt, r.tax_amt, r.total) == ("4,716.31", "4,407.76", "308.55", "0")
+
+
+def test_ghl_net_and_commission_swapped():
+    # QA: fee landed in Total, grand in CommisAmt
+    ext = _extracted(commis_amt="39,653.73", tax_amt="2,594.17", total="37,059.56")
+    _normalize_fee_invoice(ext, "GHL")
+    r = _row(ext)
+    assert (r.pay_amt, r.commis_amt, r.tax_amt, r.total) == (
+        "39,653.73",
+        "37,059.56",
+        "2,594.17",
+        "0",
+    )
+
+
+def test_siampay_only_line_fee_present():
+    # QA: commission/tax missing — per-line layout emits only commis_amt
+    ext = _extracted(commis_amt="6,171.52")
+    _normalize_fee_invoice(ext, "SIAMPAY")
+    r = _row(ext)
+    assert r.commis_amt == "6,171.52"
+    assert r.tax_amt == "432.01"  # 7% VAT
+    assert r.pay_amt == "6,603.53"
+    assert r.total == "0"
+    assert ext.warnings  # rate assumed, not read from the document
+
+
+def test_lone_pay_amt_treated_as_fee_before_vat():
+    # The combined-prompt bug: the LLM drops the footer TOTAL row and misplaces
+    # the line fee into pay_amt (shared OUTPUT_RULES "gross sale amount"). A
+    # lone figure is now read as the FEE before VAT, never as a VAT-inclusive
+    # grand total (the old behavior re-derived 24.24/346.23 here — wrong).
+    ext = _extracted(pay_amt="370.47")
+    _normalize_fee_invoice(ext, "PAYPAL")
+    r = _row(ext)
+    assert r.commis_amt == "370.47"
+    assert r.tax_amt == "25.93"  # 370.47 * 7%
+    assert r.pay_amt == "396.40"
+    assert ext.warnings  # rate assumed, not read from the document
+
+
+def test_grand_and_vat_pair():
+    ext = _extracted(pay_amt="370.47", tax_amt="24.24")
+    _normalize_fee_invoice(ext, "PAYPAL")
+    r = _row(ext)
+    assert (r.pay_amt, r.commis_amt, r.tax_amt) == ("370.47", "346.23", "24.24")
+
+
+def test_fee_and_vat_pair_reconstructs_grand():
+    ext = _extracted(commis_amt="4,407.76", tax_amt="308.55")
+    _normalize_fee_invoice(ext, "KTC")
+    r = _row(ext)
+    assert (r.pay_amt, r.commis_amt, r.tax_amt) == ("4,716.31", "4,407.76", "308.55")
+
+
+def test_paypal_keeps_customer_id_as_merchant_id():
+    ext = _extracted(pay_amt="370.47", merchant_id="8C45WPKBSFA86")
+    _normalize_fee_invoice(ext, "PAYPAL")
+    assert ext.merchant_id == "8C45WPKBSFA86"
+
+
+def test_zero_vat_invoice_with_explicit_zero_tax():
+    # Zero-rated / exempt fee invoice: grand == fee, VAT printed as 0 — must NOT
+    # fabricate a 7% VAT out of the grand total.
+    ext = _extracted(pay_amt="1,000.00", commis_amt="1,000.00", tax_amt="0.00")
+    _normalize_fee_invoice(ext, "PAYPAL")
+    r = _row(ext)
+    assert (r.pay_amt, r.commis_amt, r.tax_amt) == ("1,000.00", "1,000.00", "0.00")
+
+
+def test_zero_vat_invoice_with_blank_tax():
+    # Same document but the LLM left the tax cell blank — grand == fee is the
+    # structural signal that this is a zero-VAT invoice, not a missed 7%.
+    ext = _extracted(pay_amt="1,000.00", commis_amt="1,000.00")
+    _normalize_fee_invoice(ext, "PAYPAL")
+    r = _row(ext)
+    assert (r.pay_amt, r.commis_amt, r.tax_amt) == ("1,000.00", "1,000.00", "0.00")
+
+
+def test_ten_percent_vat_passes_through_as_printed():
+    # A reconciling document needs no rate assumption — 10% VAT is untouched.
+    ext = _extracted(pay_amt="110.00", commis_amt="100.00", tax_amt="10.00")
+    _normalize_fee_invoice(ext, "KTC")
+    r = _row(ext)
+    assert (r.pay_amt, r.commis_amt, r.tax_amt) == ("110.00", "100.00", "10.00")
+
+
+def test_ten_percent_grand_and_vat_pair():
+    # (grand, vat) at 10% — the single-rate disambiguation used to misread this
+    # as (fee, vat) and fabricate grand = 120.00.
+    ext = _extracted(pay_amt="110.00", tax_amt="10.00")
+    _normalize_fee_invoice(ext, "KTC")
+    r = _row(ext)
+    assert (r.pay_amt, r.commis_amt, r.tax_amt) == ("110.00", "100.00", "10.00")
+
+
+def test_inconsistent_triple_repairs_fee_from_grand_and_vat():
+    # Middle value misread (4,000.00 instead of 4,407.76) — nothing reconciles,
+    # so trust grand & vat and recompute the fee between them.
+    ext = _extracted(pay_amt="4,716.31", commis_amt="4,000.00", tax_amt="308.55")
+    _normalize_fee_invoice(ext, "KTC")
+    r = _row(ext)
+    assert (r.pay_amt, r.commis_amt, r.tax_amt) == ("4,716.31", "4,407.76", "308.55")
+
+
+def test_four_distinct_values_finds_reconciling_triple():
+    # Grand landed in Total (KTC swap) AND a spurious value polluted PayAmt —
+    # the solver must find the (fee, vat) pair that actually reconciles to the
+    # grand, not blindly trust position (which would pick the spurious value as VAT).
+    ext = _extracted(pay_amt="50.00", commis_amt="4,407.76", tax_amt="308.55", total="4,716.31")
+    _normalize_fee_invoice(ext, "KTC")
+    r = _row(ext)
+    assert (r.pay_amt, r.commis_amt, r.tax_amt, r.total) == (
+        "4,716.31",
+        "4,407.76",
+        "308.55",
+        "0",
+    )
+
+
+# ── BAY statement normalization (QA round 2 screenshot numbers) ───────────────
+
+
+def _bay_extracted(rows: list[dict]) -> ExtractedCreditCardData:
+    return ExtractedCreditCardData(details=[ExtractedDetailRow(**r) for r in rows])
+
+
+_BAY_QA_ROWS = [
+    {"transaction": "VISA", "pay_amt": "906.00", "commis_amt": "13.59"},
+    {"transaction": "V-PLAT & INF", "pay_amt": "3,659.00", "commis_amt": "82.33"},
+    {"transaction": "M-PREMIUM", "pay_amt": "112,576.00", "commis_amt": "2,532.96"},
+]
+# LLM grabbed the WHT column (78.87) as tax — the true VAT (184.02) is recovered
+# from gross − commis − net on the summary line.
+_BAY_QA_TOTAL = {
+    "transaction": "TOTAL",
+    "pay_amt": "117,141.00",
+    "commis_amt": "2,628.88",
+    "tax_amt": "78.87",
+    "total": "114,328.10",
+}
+
+
+def test_bay_summary_row_consumed_and_vat_spread():
+    ext = _bay_extracted([*_BAY_QA_ROWS, _BAY_QA_TOTAL])
+    _normalize_bay_statement(ext)
+    assert len(ext.details) == 3  # TOTAL removed
+    assert [r.tax_amt for r in ext.details] == ["0.95", "5.76", "177.31"]  # Σ = 184.02
+    assert [r.total for r in ext.details] == ["891.46", "3,570.91", "109,865.73"]  # Σ = 114,328.10
+
+
+def test_bay_summary_detected_by_arithmetic_when_label_garbled():
+    total = dict(_BAY_QA_TOTAL, transaction="ยอดสิ้น??")  # label misread
+    ext = _bay_extracted([*_BAY_QA_ROWS, total])
+    _normalize_bay_statement(ext)
+    assert len(ext.details) == 3
+    assert ext.details[-1].tax_amt == "177.31"
+
+
+def test_bay_spread_sums_exactly_to_total_vat():
+    ext = _bay_extracted([*_BAY_QA_ROWS, _BAY_QA_TOTAL])
+    _normalize_bay_statement(ext)
+    spread = sum(float((r.tax_amt or "0").replace(",", "")) for r in ext.details)
+    assert round(spread, 2) == 184.02
+
+
+def test_bay_no_summary_row_falls_back_to_row_arithmetic():
+    ext = _bay_extracted(
+        [
+            {
+                "transaction": "MSC",
+                "pay_amt": "112,576.00",
+                "commis_amt": "2,532.96",
+                "total": "109,865.73",
+            }
+        ]
+    )
+    _normalize_bay_statement(ext)
+    assert ext.details[0].tax_amt == "177.31"
+
+
+def test_bay_existing_row_tax_untouched():
+    ext = _bay_extracted(
+        [
+            {"transaction": "VISA", "pay_amt": "906.00", "commis_amt": "13.59", "tax_amt": "0.95"},
+            _BAY_QA_TOTAL,
+        ]
+    )
+    _normalize_bay_statement(ext)
+    assert ext.details[0].tax_amt == "0.95"
+    assert ext.details[0].total == "891.46"  # net still filled
+
+
+def test_bay_mixed_prefilled_and_blank_rows_dont_double_count_vat():
+    # QA regression: one row already has a (correct) tax_amt, the other two are
+    # blank. total_vat (184.02) must be reduced by the pre-filled 0.95 before
+    # being spread across the blank rows — not spread in full on top of it.
+    rows = [
+        {"transaction": "VISA", "pay_amt": "906.00", "commis_amt": "13.59", "tax_amt": "0.95"},
+        {"transaction": "V-PLAT & INF", "pay_amt": "3,659.00", "commis_amt": "82.33"},
+        {"transaction": "M-PREMIUM", "pay_amt": "112,576.00", "commis_amt": "2,532.96"},
+        _BAY_QA_TOTAL,
+    ]
+    ext = _bay_extracted(rows)
+    _normalize_bay_statement(ext)
+    assert len(ext.details) == 3
+    assert ext.details[0].tax_amt == "0.95"  # untouched
+    spread = sum(float((r.tax_amt or "0").replace(",", "")) for r in ext.details)
+    assert round(spread, 2) == 184.02  # not 184.02 + 0.95
+
+
+# ── Unified fee-invoice shape: line rows + TOTAL summary row (real doc numbers) ──
+# All 4 processors print N fee lines + a footer (Subtotal/VAT/Grand). The prompt
+# emits the footer as a "TOTAL" summary row; the backend spreads its printed VAT
+# across the lines (rate-agnostic) and drops the summary row.
+
+
+def test_siampay_two_lines_footer_vat_spread():
+    # Real SiamPay receipt RE2026-05269: Processing 6,171.52 + Transaction 15.00,
+    # footer Subtotal 6,186.52 / VAT 433.06 / Total 6,619.58.
+    ext = _bay_extracted(
+        [
+            {"transaction": "SiamPay Service - Processing Fee", "commis_amt": "6,171.52"},
+            {"transaction": "SiamPay Service - Transaction Fee", "commis_amt": "15.00"},
+            {
+                "transaction": "TOTAL",
+                "commis_amt": "6,186.52",
+                "tax_amt": "433.06",
+                "pay_amt": "6,619.58",
+            },
+        ]
+    )
+    _normalize_fee_invoice(ext, "SIAMPAY")
+    assert len(ext.details) == 2  # summary row consumed
+    assert (ext.details[0].commis_amt, ext.details[0].tax_amt, ext.details[0].pay_amt) == (
+        "6,171.52",
+        "432.01",
+        "6,603.53",
+    )
+    assert (ext.details[1].commis_amt, ext.details[1].tax_amt, ext.details[1].pay_amt) == (
+        "15.00",
+        "1.05",
+        "16.05",
+    )
+    assert sum(float(r.tax_amt.replace(",", "")) for r in ext.details) == 433.06
+    assert ext.warnings == []
+
+
+def test_ktc_single_line_plus_summary():
+    # Real KTC S5-2569-05-01: one MDR line 4,407.76, footer VAT 308.55, grand 4,716.31.
+    ext = _bay_extracted(
+        [
+            {"transaction": "ค่าบริการ Merchant Discount Rate (MDR)", "commis_amt": "4,407.76"},
+            {
+                "transaction": "TOTAL",
+                "commis_amt": "4,407.76",
+                "tax_amt": "308.55",
+                "pay_amt": "4,716.31",
+            },
+        ]
+    )
+    _normalize_fee_invoice(ext, "KTC")
+    assert len(ext.details) == 1
+    assert (ext.details[0].pay_amt, ext.details[0].commis_amt, ext.details[0].tax_amt) == (
+        "4,716.31",
+        "4,407.76",
+        "308.55",
+    )
+    assert ext.warnings == []
+
+
+def test_ten_percent_vat_spread_is_rate_agnostic():
+    # Hypothetical non-7% fee invoice — VAT must come from the footer (15.00),
+    # NOT from 7% of the fees (which would be 10.50). Proves multi-rate support.
+    ext = _bay_extracted(
+        [
+            {"transaction": "Fee A", "commis_amt": "100.00"},
+            {"transaction": "Fee B", "commis_amt": "50.00"},
+            {
+                "transaction": "TOTAL",
+                "commis_amt": "150.00",
+                "tax_amt": "15.00",
+                "pay_amt": "165.00",
+            },
+        ]
+    )
+    _normalize_fee_invoice(ext, "SIAMPAY")
+    assert [r.tax_amt for r in ext.details] == ["10.00", "5.00"]  # 10% spread, not 7%
+    assert sum(float(r.tax_amt) for r in ext.details) == 15.00
+
+
+def test_summary_vat_derived_when_blank():
+    # Footer VAT cell blank on the summary row → derive it from Grand − Subtotal.
+    ext = _bay_extracted(
+        [
+            {"transaction": "MDR", "commis_amt": "4,407.76"},
+            {"transaction": "TOTAL", "commis_amt": "4,407.76", "pay_amt": "4,716.31"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "KTC")
+    assert ext.details[0].tax_amt == "308.55"
+
+
+def test_summary_detected_by_arithmetic_when_label_garbled():
+    ext = _bay_extracted(
+        [
+            {"transaction": "Processing", "commis_amt": "6,171.52"},
+            {"transaction": "Transaction", "commis_amt": "15.00"},
+            {
+                "transaction": "???",
+                "commis_amt": "6,186.52",
+                "tax_amt": "433.06",
+                "pay_amt": "6,619.58",
+            },
+        ]
+    )
+    _normalize_fee_invoice(ext, "SIAMPAY")
+    assert len(ext.details) == 2
+    assert sum(float(r.tax_amt.replace(",", "")) for r in ext.details) == 433.06
+
+
+def test_legacy_single_row_without_summary_still_reconciles():
+    # Backward compat: old prompt shape (one row carrying grand/fee/vat, no TOTAL
+    # summary row) must still pass through via the per-row fallback.
+    ext = _bay_extracted(
+        [
+            {
+                "transaction": "Online Payment Services",
+                "pay_amt": "370.47",
+                "commis_amt": "346.23",
+                "tax_amt": "24.24",
+            },
+        ]
+    )
+    _normalize_fee_invoice(ext, "PAYPAL")
+    assert len(ext.details) == 1
+    assert (ext.details[0].pay_amt, ext.details[0].commis_amt, ext.details[0].tax_amt) == (
+        "370.47",
+        "346.23",
+        "24.24",
+    )
+    assert ext.warnings == []
+
+
+# ── New defects fixed together with the combined-prompt bug ───────────────────
+
+
+def test_ghl_misplaced_line_amount_in_pay_amt():
+    # Real GHL doc: no TOTAL row survived at all (combined prompt dropped it),
+    # and the lone line figure landed in pay_amt instead of commis_amt. Must
+    # reconstruct the printed Subtotal 37,059.56 / VAT 2,594.17 / Grand 39,653.73
+    # — not the old grand-branch's wrong 34,635.10 / 2,424.46.
+    ext = _bay_extracted([{"transaction": "TRANSACTION FEE 30-05-2026", "pay_amt": "37,059.56"}])
+    _normalize_fee_invoice(ext, "GHL")
+    assert len(ext.details) == 1
+    r = ext.details[0]
+    assert (r.pay_amt, r.commis_amt, r.tax_amt) == ("39,653.73", "37,059.56", "2,594.17")
+    assert ext.warnings
+
+
+def test_misplaced_pay_amt_with_summary_row_rehomed_before_spread():
+    # A valid TOTAL row IS present, but the line row's fee is still misplaced in
+    # pay_amt. Must be re-homed into commis_amt BEFORE the footer-VAT spread —
+    # otherwise fee_sum=0 and the spread overwrites pay_amt with 0.00.
+    ext = _bay_extracted(
+        [
+            {"transaction": "TRANSACTION FEE 30-05-2026", "pay_amt": "37,059.56"},
+            {
+                "transaction": "จำนวนเงินทั้งสิ้น",
+                "commis_amt": "37,059.56",
+                "tax_amt": "2,594.17",
+                "pay_amt": "39,653.73",
+            },
+        ]
+    )
+    _normalize_fee_invoice(ext, "GHL")
+    assert len(ext.details) == 1
+    r = ext.details[0]
+    assert (r.pay_amt, r.commis_amt, r.tax_amt) == ("39,653.73", "37,059.56", "2,594.17")
+    assert ext.warnings == []  # printed VAT was usable — no assumption needed
+
+
+def test_ktc_summary_row_never_leaks_when_spread_fails():
+    # KTC "extra value" symptom: a จำนวนเงินรวม summary row survives but its VAT
+    # is underivable (blank commis_amt/tax_amt on the footer). It must still be
+    # stripped from details before the per-row fallback runs, or the frontend's
+    # client-side column sum double-counts it.
+    ext = _bay_extracted(
+        [
+            {"transaction": "ค่าบริการ Merchant Discount Rate (MDR)", "commis_amt": "4,407.76"},
+            {"transaction": "จำนวนเงินรวม", "pay_amt": "4,716.31"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "KTC")
+    assert len(ext.details) == 1
+    assert "จำนวนเงินรวม" not in [r.transaction for r in ext.details]
+    assert ext.warnings
+
+
+def test_multiple_summary_rows_all_consumed():
+    # A footer can print a subtotal line AND a separate grand-total line — both
+    # are summary rows and neither may leak into details, even though only one
+    # of them carries the usable VAT figure.
+    ext = _bay_extracted(
+        [
+            {"transaction": "Fee", "commis_amt": "100.00"},
+            {"transaction": "รวม", "commis_amt": "100.00", "tax_amt": "7.00"},
+            {"transaction": "จำนวนเงินรวม", "pay_amt": "107.00"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "KTC")
+    assert len(ext.details) == 1
+    assert ext.details[0].transaction == "Fee"
+    assert (ext.details[0].pay_amt, ext.details[0].commis_amt, ext.details[0].tax_amt) == (
+        "107.00",
+        "100.00",
+        "7.00",
+    )
+
+
+def test_lone_total_field_treated_as_fee():
+    ext = _bay_extracted([{"transaction": "Fee", "total": "346.23"}])
+    _normalize_fee_invoice(ext, "PAYPAL")
+    assert len(ext.details) == 1
+    r = ext.details[0]
+    assert (r.pay_amt, r.commis_amt, r.tax_amt, r.total) == ("370.47", "346.23", "24.24", "0")
+    assert ext.warnings
+
+
+def test_ghl_split_footer_rows_stripped_and_vat_read_from_its_line():
+    # Real GHL M202605-055177 screenshot: the model emitted EACH footer line as
+    # its own detail row (Sub Total / Bill Discount / After Discount / VAT / Grand
+    # Total) instead of one TOTAL row, and misplaced the line fee into pay_amt.
+    # Only the TRANSACTION FEE line must survive, with VAT read off its own footer
+    # line (1,357.25) and spread onto it — no assumed-rate warning.
+    ext = _bay_extracted(
+        [
+            {"transaction": "TRANSACTION FEE 29-05-2026", "pay_amt": "19,389.35"},
+            {"transaction": "จำนวนเงิน (Sub Total)", "pay_amt": "19,389.35"},
+            {"transaction": "ส่วนลดท้ายใบเสร็จ (Bill Discount)", "pay_amt": "0.00"},
+            {"transaction": "จำนวนเงินหลังหักส่วนลด (After Discount)", "pay_amt": "19,389.35"},
+            {"transaction": "ภาษีมูลค่าเพิ่ม (VAT 7% )", "pay_amt": "1,357.25"},
+            {"transaction": "จำนวนเงินทั้งสิ้น (Grand Total Amount)", "pay_amt": "20,746.60"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "GHL")
+    assert len(ext.details) == 1
+    r = ext.details[0]
+    assert r.transaction == "TRANSACTION FEE 29-05-2026"
+    assert (r.pay_amt, r.commis_amt, r.tax_amt, r.total) == (
+        "20,746.60",
+        "19,389.35",
+        "1,357.25",
+        "0",
+    )
+    assert ext.warnings == []
+
+
+def test_ghl_line_missing_fee_recovered_from_footer_subtotal():
+    # Real GHL M202605-051454 screenshot: the model dropped the fee off the line
+    # (put VAT 1,542.21 there instead), leaving commission blank — the spread
+    # would emit pay=tax=VAT. The fee must be recovered from the footer After
+    # Discount line (22,031.57), giving pay = 22,031.57 + 1,542.21 = 23,573.78.
+    ext = _bay_extracted(
+        [
+            {"transaction": "TRANSACTION FEE 27-05-2026", "tax_amt": "1,542.21"},
+            {"transaction": "จำนวนเงินหลังหักส่วนลด (After Discount)", "pay_amt": "22,031.57"},
+            {"transaction": "ภาษีมูลค่าเพิ่ม (VAT 7% )", "pay_amt": "1,542.21"},
+            {"transaction": "จำนวนเงินทั้งสิ้น (Grand Total Amount)", "pay_amt": "23,573.78"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "GHL")
+    assert len(ext.details) == 1
+    r = ext.details[0]
+    assert (r.pay_amt, r.commis_amt, r.tax_amt, r.total) == (
+        "23,573.78",
+        "22,031.57",
+        "1,542.21",
+        "0",
+    )
+    assert ext.warnings == []
+
+
+def test_ghl_line_missing_fee_recovered_from_grand_minus_vat():
+    # Same defect but the footer has no Sub-Total/After-Discount line — recover
+    # the fee from Grand − VAT instead.
+    ext = _bay_extracted(
+        [
+            {"transaction": "TRANSACTION FEE 27-05-2026", "tax_amt": "1,542.21"},
+            {"transaction": "ภาษีมูลค่าเพิ่ม (VAT 7% )", "pay_amt": "1,542.21"},
+            {"transaction": "จำนวนเงินทั้งสิ้น (Grand Total Amount)", "pay_amt": "23,573.78"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "GHL")
+    assert len(ext.details) == 1
+    assert ext.details[0].commis_amt == "22,031.57"
+
+
+def test_ghl_line_missing_fee_unrecoverable_warns():
+    # Fee gone from the line AND no Sub-Total/Grand footer figure to recover it —
+    # surface a warning instead of silently showing a blank commission.
+    ext = _bay_extracted(
+        [
+            {"transaction": "TRANSACTION FEE 27-05-2026", "tax_amt": "1,542.21"},
+            {"transaction": "ภาษีมูลค่าเพิ่ม (VAT 7% )", "pay_amt": "1,542.21"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "GHL")
+    assert ext.warnings
+
+
+def test_mdr_fee_line_not_mistaken_for_discount_footer():
+    # Guard: "Merchant Discount Rate (MDR)" is a real fee line — bare "Discount"
+    # must NOT strip it as a footer row.
+    ext = _bay_extracted(
+        [
+            {"transaction": "ค่าบริการ Merchant Discount Rate (MDR)", "commis_amt": "4,407.76"},
+            {"transaction": "ภาษีมูลค่าเพิ่ม (VAT 7%)", "pay_amt": "308.55"},
+            {"transaction": "จำนวนเงินทั้งสิ้น", "pay_amt": "4,716.31"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "KTC")
+    assert len(ext.details) == 1
+    assert ext.details[0].transaction == "ค่าบริการ Merchant Discount Rate (MDR)"
+    assert ext.details[0].tax_amt == "308.55"
+
+
+def test_lone_summary_row_is_not_stripped_to_empty():
+    # A single TOTAL-labeled row that also carries full grand/fee/vat IS the
+    # invoice (no other line rows) — stripping it would leave nothing, so it
+    # must survive with its printed values untouched.
+    ext = _bay_extracted(
+        [
+            {
+                "transaction": "TOTAL",
+                "pay_amt": "4,716.31",
+                "commis_amt": "4,407.76",
+                "tax_amt": "308.55",
+            }
+        ]
+    )
+    _normalize_fee_invoice(ext, "KTC")
+    assert len(ext.details) == 1
+    r = ext.details[0]
+    assert (r.pay_amt, r.commis_amt, r.tax_amt) == ("4,716.31", "4,407.76", "308.55")
+    assert ext.warnings == []
+
+
+# ── Plain statement banks (BBL/KBANK/SCB): strip leaked non-card rows ──────────
+
+
+def test_strip_real_scb_zero_rows_total_wht_and_net_amount():
+    # Real SCB ใบสรุปยอดขายบัตรเครดิต 262302202523 — the table lists ~40 card
+    # types, most 0.00, then TOTAL / WITHHOLDING TAX / NET AMOUNT trailer lines.
+    # Only the 4 rows with a real (non-zero) gross amount must survive.
+    ext = _bay_extracted(
+        [
+            {
+                "transaction": "VSA-DCC-P",
+                "pay_amt": "0.00",
+                "commis_amt": "0.00",
+                "tax_amt": "0.00",
+                "total": "0.00",
+            },
+            {
+                "transaction": "VSA-INT-P",
+                "pay_amt": "12,290.00",
+                "commis_amt": "393.28",
+                "tax_amt": "27.53",
+                "total": "11,869.19",
+            },
+            {
+                "transaction": "VSA-P",
+                "pay_amt": "0.00",
+                "commis_amt": "0.00",
+                "tax_amt": "0.00",
+                "total": "0.00",
+            },
+            {
+                "transaction": "VSA-INT",
+                "pay_amt": "4,400.00",
+                "commis_amt": "114.40",
+                "tax_amt": "8.01",
+                "total": "4,277.59",
+            },
+            {
+                "transaction": "MCA-INT-P",
+                "pay_amt": "780.00",
+                "commis_amt": "24.96",
+                "tax_amt": "1.75",
+                "total": "753.29",
+            },
+            {"transaction": "JCB", "pay_amt": "0.00", "commis_amt": "0.00"},
+            {
+                "transaction": "MCA-INT",
+                "pay_amt": "480.00",
+                "commis_amt": "12.48",
+                "tax_amt": "0.87",
+                "total": "466.65",
+            },
+            {
+                "transaction": "TOTAL",
+                "pay_amt": "17,950.00",
+                "commis_amt": "545.12",
+                "tax_amt": "38.16",
+                "total": "17,366.72",
+            },
+            {"transaction": "WITHHOLDING TAX.", "total": "16.35"},
+            {"transaction": "NET AMOUNT", "total": "17,366.72"},
+        ]
+    )
+    _strip_noncard_rows(ext)
+    assert [r.transaction for r in ext.details] == ["VSA-INT-P", "VSA-INT", "MCA-INT-P", "MCA-INT"]
+    # Column sums are now the real totals, not double-counted / padded with zeros.
+    assert sum(float(r.pay_amt.replace(",", "")) for r in ext.details) == 17950.00
+
+
+def test_strip_handles_thai_wht_label():
+    ext = _bay_extracted(
+        [
+            {"transaction": "Visa", "pay_amt": "500.00"},
+            {"transaction": "ภาษีเงินได้หัก ณ ที่จ่าย", "total": "16.35"},
+        ]
+    )
+    _strip_noncard_rows(ext)
+    assert [r.transaction for r in ext.details] == ["Visa"]
+
+
+def test_strip_keeps_normal_card_rows_when_no_noncard_row():
+    ext = _bay_extracted(
+        [
+            {"transaction": "Visa", "pay_amt": "500.00"},
+            {"transaction": "Master", "pay_amt": "300.00"},
+        ]
+    )
+    _strip_noncard_rows(ext)
+    assert len(ext.details) == 2  # nothing wrongly dropped
+    # "Subtotal" is explicitly NOT treated as a summary row
+    ext2 = _bay_extracted([{"transaction": "Subtotal Visa", "pay_amt": "500.00"}])
+    _strip_noncard_rows(ext2)
+    assert len(ext2.details) == 1
+
+
+# ── Hardening: classifier precision, reconciliation, blank lines, negatives ────
+
+
+def test_subscription_fee_line_not_stripped_as_subtotal():
+    # B1: a real fee line named "Sub…" must survive — the anchored subtotal match
+    # no longer swallows it the way the old startswith("SUB") did.
+    ext = _bay_extracted(
+        [
+            {"transaction": "Subscription Fee", "commis_amt": "100.00"},
+            {
+                "transaction": "TOTAL",
+                "commis_amt": "100.00",
+                "tax_amt": "7.00",
+                "pay_amt": "107.00",
+            },
+        ]
+    )
+    _normalize_fee_invoice(ext, "PAYPAL")
+    assert [r.transaction for r in ext.details] == ["Subscription Fee"]
+    assert ext.details[0].tax_amt == "7.00"
+
+
+def test_vat_named_fee_line_not_stripped_as_vat_footer():
+    # B2: "VAT Advisory Fee" merely contains "VAT" — it is a real fee line, not
+    # the footer VAT row, so substring matching must not consume it.
+    ext = _bay_extracted(
+        [
+            {"transaction": "VAT Advisory Fee", "commis_amt": "200.00"},
+            {
+                "transaction": "TOTAL",
+                "commis_amt": "200.00",
+                "tax_amt": "14.00",
+                "pay_amt": "214.00",
+            },
+        ]
+    )
+    _normalize_fee_invoice(ext, "KTC")
+    assert [r.transaction for r in ext.details] == ["VAT Advisory Fee"]
+
+
+def test_discount_worded_fee_line_not_stripped_as_footer():
+    # B2 (Thai): a fee whose label merely contains "ส่วนลด" is not the bare
+    # discount footer line.
+    ext = _bay_extracted(
+        [
+            {"transaction": "ส่วนลดค่าบริการพิเศษ", "commis_amt": "50.00"},
+            {"transaction": "TOTAL", "commis_amt": "50.00", "tax_amt": "3.50", "pay_amt": "53.50"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "SIAMPAY")
+    assert [r.transaction for r in ext.details] == ["ส่วนลดค่าบริการพิเศษ"]
+
+
+def test_bare_discount_footer_still_stripped():
+    # Guard the guard: a bare "ส่วนลด" footer line IS still a footer.
+    ext = _bay_extracted(
+        [
+            {"transaction": "Fee", "commis_amt": "100.00"},
+            {"transaction": "ส่วนลด", "commis_amt": "0.00"},
+            {
+                "transaction": "TOTAL",
+                "commis_amt": "100.00",
+                "tax_amt": "7.00",
+                "pay_amt": "107.00",
+            },
+        ]
+    )
+    _normalize_fee_invoice(ext, "SIAMPAY")
+    assert [r.transaction for r in ext.details] == ["Fee"]
+
+
+def test_footer_vat_prefers_tax_column_over_stray_earlier_field():
+    # B10: the VAT footer line carries a stray value in pay_amt AND the real VAT
+    # in tax_amt — the labeled read must prefer tax_amt for a VAT line.
+    ext = _bay_extracted(
+        [
+            {"transaction": "Fee A", "commis_amt": "100.00"},
+            {"transaction": "ภาษีมูลค่าเพิ่ม (VAT 7%)", "pay_amt": "999.99", "tax_amt": "7.00"},
+            {"transaction": "จำนวนเงินทั้งสิ้น (Grand Total)", "pay_amt": "107.00"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "GHL")
+    assert len(ext.details) == 1
+    assert ext.details[0].tax_amt == "7.00"  # not the stray 999.99
+
+
+def test_multiline_one_blank_commission_warns_not_silently_zeroed():
+    # B3: a real fee line with no readable amount among priced lines gets 0 from
+    # the proportional spread — surface a warning instead of a silent 0.00.
+    ext = _bay_extracted(
+        [
+            {"transaction": "Fee A", "commis_amt": "100.00"},
+            {"transaction": "Fee B"},  # blank commission
+            {
+                "transaction": "TOTAL",
+                "commis_amt": "100.00",
+                "tax_amt": "7.00",
+                "pay_amt": "107.00",
+            },
+        ]
+    )
+    _normalize_fee_invoice(ext, "SIAMPAY")
+    assert _FEE_UNALLOCATED_WARNING in ext.warnings
+
+
+def test_multiline_all_blank_commissions_split_vat_evenly():
+    # B4: with no per-line fee to weight by, VAT is split evenly (not dumped 100%
+    # on the last row) and a warning is raised.
+    ext = _bay_extracted(
+        [
+            {"transaction": "Fee A"},
+            {"transaction": "Fee B"},
+            {"transaction": "VAT", "tax_amt": "10.00"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "SIAMPAY")
+    assert [r.tax_amt for r in ext.details] == ["5.00", "5.00"]
+    assert _FEE_UNALLOCATED_WARNING in ext.warnings
+
+
+def test_equal_fee_lines_not_mistaken_for_footer():
+    # B5: two equal fees, no summary label — neither may be pulled as the "footer"
+    # just because its fee equals the sum of the (single) other line.
+    ext = _bay_extracted(
+        [
+            {"transaction": "Fee A", "commis_amt": "100.00"},
+            {"transaction": "Fee B", "commis_amt": "100.00"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "SIAMPAY")
+    assert [r.transaction for r in ext.details] == ["Fee A", "Fee B"]
+
+
+def test_reconstructed_total_mismatch_warns():
+    # B7: a misread line fee makes Σ fee + VAT drift from the printed grand total.
+    # The VAT spread balances exactly, so only the recon cross-check catches it.
+    ext = _bay_extracted(
+        [
+            {"transaction": "Fee A", "commis_amt": "100.00"},
+            {"transaction": "Fee B", "commis_amt": "40.00"},  # misread (should be 50)
+            {
+                "transaction": "TOTAL",
+                "commis_amt": "150.00",
+                "tax_amt": "10.50",
+                "pay_amt": "160.50",
+            },
+        ]
+    )
+    _normalize_fee_invoice(ext, "KTC")
+    assert _RECON_MISMATCH_WARNING in ext.warnings
+
+
+def test_reconstructed_total_matches_no_warning():
+    # B7 negative: a clean multi-line invoice reconciles → no recon warning.
+    ext = _bay_extracted(
+        [
+            {"transaction": "Fee A", "commis_amt": "100.00"},
+            {"transaction": "Fee B", "commis_amt": "50.00"},
+            {
+                "transaction": "TOTAL",
+                "commis_amt": "150.00",
+                "tax_amt": "10.50",
+                "pay_amt": "160.50",
+            },
+        ]
+    )
+    _normalize_fee_invoice(ext, "KTC")
+    assert _RECON_MISMATCH_WARNING not in ext.warnings
+
+
+def test_two_value_grand_and_vat_pair_flags_assumed_rate():
+    # B11: (grand, vat) with no fee — the split is decided by an assumed rate, so
+    # surface a verify warning even though the arithmetic reconstructs cleanly.
+    ext = _extracted(pay_amt="107.00", tax_amt="7.00")
+    _normalize_fee_invoice(ext, "KTC")
+    r = _row(ext)
+    assert (r.pay_amt, r.commis_amt, r.tax_amt) == ("107.00", "100.00", "7.00")
+    assert _ASSUMED_RATE_WARNING in ext.warnings
+
+
+def test_negative_amount_fee_invoice_guarded_and_untouched():
+    # B9: a refund / credit-note line is not supported — warn and leave the rows
+    # exactly as extracted rather than mis-spread a negative.
+    ext = _bay_extracted(
+        [
+            {"transaction": "Refund Fee", "commis_amt": "-100.00"},
+            {
+                "transaction": "TOTAL",
+                "commis_amt": "-100.00",
+                "tax_amt": "-7.00",
+                "pay_amt": "-107.00",
+            },
+        ]
+    )
+    _normalize_fee_invoice(ext, "KTC")
+    assert _NEGATIVE_UNSUPPORTED_WARNING in ext.warnings
+    assert len(ext.details) == 2  # untouched
+    assert ext.details[0].commis_amt == "-100.00"
+
+
+def test_negative_amount_bay_statement_guarded():
+    ext = _bay_extracted([{"transaction": "VISA", "pay_amt": "-500.00", "commis_amt": "10.00"}])
+    _normalize_bay_statement(ext)
+    assert _NEGATIVE_UNSUPPORTED_WARNING in ext.warnings
+    assert ext.details[0].pay_amt == "-500.00"
+
+
+def test_bay_zero_commission_still_fills_net():
+    # B8: a BAY statement with zero commission on the blank rows must still get a
+    # per-row net (gross − commission − 0), not be left blank.
+    ext = _bay_extracted(
+        [
+            {"transaction": "VISA", "pay_amt": "1,000.00", "commis_amt": "0.00"},
+            {"transaction": "MASTER", "pay_amt": "500.00", "commis_amt": "0.00"},
+            {
+                "transaction": "TOTAL",
+                "pay_amt": "1,500.00",
+                "commis_amt": "0.00",
+                "tax_amt": "20.00",
+                "total": "1,480.00",
+            },
+        ]
+    )
+    _normalize_bay_statement(ext)
+    assert len(ext.details) == 2  # TOTAL consumed
+    assert [r.total for r in ext.details] == ["1,000.00", "500.00"]
+    assert _FEE_UNALLOCATED_WARNING in ext.warnings

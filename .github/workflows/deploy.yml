@@ -1,0 +1,114 @@
+name: Deploy
+
+# Ordered, gated CD: migrate the target DB, THEN trigger the Render deploy, THEN
+# smoke-test the live health endpoint. Backend Render service has autoDeploy=false
+# so this workflow controls deploy ordering (migrate-before-deploy).
+#
+# Branch → environment:  dev → staging,  main → production.
+# Secrets are scoped per GitHub Environment (Settings → Environments):
+#   SUPABASE_DB_URL          direct Postgres URL for migrations (session mode, not the txn pooler)
+#   RENDER_DEPLOY_HOOK_URL   backend service deploy hook
+#   HEALTH_CHECK_URL         e.g. https://.../api/v1/health
+
+on:
+  push:
+    branches: ["main", "dev"]
+  # Manual run with maintenance=true wraps the deploy in a maintenance window
+  # (flag ON before db push, OFF after health passes). Plain push deploys stay
+  # zero-downtime — only opt in when a breaking migration needs everyone out.
+  workflow_dispatch:
+    inputs:
+      maintenance:
+        description: "Enable maintenance mode during this deploy"
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-${{ github.ref }}   # serialize deploys per environment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy (${{ github.ref_name == 'main' && 'production' || 'staging' }})
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+    permissions:
+      contents: write   # needed by the release step (main only)
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: latest
+
+      # 0. Optional: raise the maintenance wall BEFORE migrating, so no request hits
+      #    the DB mid-schema-change. Only on a manual run with maintenance=true.
+      - name: Enable maintenance mode
+        if: github.event_name == 'workflow_dispatch' && inputs.maintenance
+        run: |
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c "
+            INSERT INTO system_configs (key_name, value, value_type, category, description)
+            VALUES ('maintenance.enabled', 'true'::json, 'bool', 'maintenance', 'Global maintenance mode')
+            ON CONFLICT (key_name) DO UPDATE SET value = 'true'::json;"
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+
+      # 1. Migrate first. `db push` only applies migrations not yet recorded in the
+      #    target DB's supabase_migrations table — safe under expand/contract.
+      - name: Push DB migrations
+        run: supabase db push --db-url "$SUPABASE_DB_URL"
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+
+      # 2. Trigger the Render backend deploy (hook returns immediately; deploy is async).
+      - name: Trigger Render deploy
+        run: curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+
+      # 3. Smoke test: wait for the service to answer 200 post-deploy.
+      #    ponytail: confirms the service is up, not that it's the new build — hit
+      #    /api/version + compare sha if version-pinning ever matters.
+      - name: Smoke test health endpoint
+        run: |
+          url="${{ secrets.HEALTH_CHECK_URL }}"
+          echo "Polling $url for up to ~10 min..."
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$url" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "Healthy (200) after $((i*15))s ✔"
+              exit 0
+            fi
+            echo "  attempt $i: $code — retrying in 15s"
+            sleep 15
+          done
+          echo "::error::Health check never returned 200 — deploy may have failed."
+          exit 1
+
+      # 3b. Lower the maintenance wall. `always()` so a failed migrate/deploy never
+      #     leaves prod stuck in maintenance — it turns off regardless of outcome.
+      - name: Disable maintenance mode
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.maintenance
+        run: |
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c "
+            UPDATE system_configs SET value = 'false'::json WHERE key_name = 'maintenance.enabled';"
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+
+      # 4. Production only: cut a GitHub Release from today's changelog entry.
+      - name: Create release from changelog
+        if: github.ref_name == 'main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          today=$(TZ='Asia/Bangkok' date +%Y-%m-%d)   # changelog files are dated in ICT
+          file="changelog/${today}.md"
+          tag="v$(echo "$today" | tr '-' '.')"
+          if [ ! -f "$file" ]; then
+            echo "No $file — skipping release."
+            exit 0
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists — skipping."
+            exit 0
+          fi
+          gh release create "$tag" --title "$tag" --notes-file "$file"

@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 from app.config import settings
 from app.constants import ExpenseAccounts, Module
-from app.exceptions import ValidationError
+from app.exceptions import LLMParseError, ValidationError
 from app.llm.client import _strip_code_fences, call_text_llm, call_vision_llm
 from app.llm.prompts.ap_invoice import PROMPT as AP_INVOICE_PROMPT
 from app.llm.prompts.mapping import build_ap_expense_prompt
@@ -24,8 +24,9 @@ from app.services.ap_vendor_history_service import (
     select_examples,
 )
 from app.utils.gl_filter import score_and_pad
-from app.utils.mime import get_mime_type
+from app.utils.image_processing import resize_if_needed
 from app.utils.pdf_utils import (
+    MAX_PAGES_PER_CALL,
     PDF_RENDER_TIMEOUT_SECONDS,
     extract_pages_as_pdf,
     get_pdf_page_count,
@@ -157,11 +158,39 @@ async def extract_ap_invoice_data(
                     "PDF processing timed out — the file may be malformed."
                 ) from exc
         else:
-            # No selection → whole PDF natively; decrypt first if encrypted so the
-            # provider doesn't reject it as "The document has no pages."
-            pdf_bytes = await asyncio.get_running_loop().run_in_executor(
-                None, functools.partial(normalize_pdf_for_llm, file_bytes, pdf_password)
+            # No selection → whole PDF natively, but never exceed MAX_PAGES_PER_CALL.
+            # An unbounded page count is both a token-cost/DoS vector and a likely
+            # context-overflow LLM failure; the pages-cap invariant (utils/pages.py)
+            # must hold on this path too, not only the explicit-selection path. Over
+            # the cap, send the first MAX_PAGES_PER_CALL pages natively.
+            page_count = await asyncio.get_running_loop().run_in_executor(
+                None, functools.partial(get_pdf_page_count, file_bytes, pdf_password)
             )
+            if page_count > MAX_PAGES_PER_CALL:
+                logger.warning(
+                    "AP invoice %s has %d pages; capping to first %d for extraction",
+                    filename,
+                    page_count,
+                    MAX_PAGES_PER_CALL,
+                )
+                pdf_bytes = await asyncio.wait_for(
+                    asyncio.get_running_loop().run_in_executor(
+                        None,
+                        functools.partial(
+                            extract_pages_as_pdf,
+                            file_bytes,
+                            list(range(MAX_PAGES_PER_CALL)),
+                            pdf_password,
+                        ),
+                    ),
+                    timeout=PDF_RENDER_TIMEOUT_SECONDS,
+                )
+            else:
+                # Within the cap → decrypt only if encrypted so the provider doesn't
+                # reject it as "The document has no pages."
+                pdf_bytes = await asyncio.get_running_loop().run_in_executor(
+                    None, functools.partial(normalize_pdf_for_llm, file_bytes, pdf_password)
+                )
         image_items = [
             {
                 "type": "image_url",
@@ -178,16 +207,18 @@ async def extract_ap_invoice_data(
             selected_pages,
         )
     else:
-        mime_type = get_mime_type(filename)
+        processed_bytes, mime_type = await asyncio.get_running_loop().run_in_executor(
+            None, functools.partial(resize_if_needed, file_bytes)
+        )
         image_items = [
             {
                 "type": "image_url",
                 "image_url": {
-                    "url": f"data:{mime_type};base64,{base64.b64encode(file_bytes).decode()}"
+                    "url": f"data:{mime_type};base64,{base64.b64encode(processed_bytes).decode()}"
                 },
             }
         ]
-        total_bytes = len(file_bytes)
+        total_bytes = len(processed_bytes)
         logger.info("Extracting AP Invoice: %s (model: %s)", filename, ap_model)
 
     result_text = await call_vision_llm(
@@ -207,9 +238,9 @@ async def extract_ap_invoice_data(
 
     try:
         data = json.loads(result_text)
-    except json.JSONDecodeError:
-        logger.error(f"JSON Decode Error. Raw text: {result_text[:500]}")
-        raise RuntimeError("LLM returned invalid JSON")
+    except json.JSONDecodeError as exc:
+        logger.error("AP JSON parse failed (%s). Raw: %.500s", exc, result_text)
+        raise LLMParseError() from exc
 
     return postprocess_ap_invoice(data)
 

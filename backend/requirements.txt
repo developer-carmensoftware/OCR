@@ -1,33 +1,31 @@
 # Web Framework
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-python-multipart==0.0.20
+fastapi==0.139.2
+uvicorn[standard]==0.51.0
+python-multipart==0.0.32
 
 # Database
-sqlalchemy==2.0.36
-asyncpg==0.30.0
+sqlalchemy==2.0.51
+asyncpg==0.31.0
 
 # LLM via OpenRouter (OpenAI-compatible SDK)
-openai==1.58.1
+openai==2.46.0
 
 # Image Processing
-Pillow==11.1.0
-pymupdf>=1.24.0
-pillow-heif>=0.16.0
+Pillow==12.3.0
+pymupdf>=1.28.0
+pillow-heif>=1.4.0
 
 # Configuration
-python-dotenv==1.0.1
-pydantic-settings==2.7.1
+python-dotenv==1.2.2
+pydantic-settings==2.14.2
 
 # Utilities
-python-dateutil==2.9.0
 httpx==0.28.1
-aiofiles==24.1.0
 
 # Authentication
-python-jose[cryptography]==3.3.0
-cryptography==42.0.8
-bcrypt==4.2.1
+python-jose[cryptography]==3.5.0
+cryptography==49.0.0
+bcrypt==5.0.0
 
 # Observability
-sentry-sdk[fastapi]==2.22.0
+sentry-sdk[fastapi]==2.66.0

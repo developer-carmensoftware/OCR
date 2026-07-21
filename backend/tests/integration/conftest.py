@@ -68,8 +68,6 @@ def make_test_client(mock_db):
     with (
         patch("app.lifecycle.ensure_db", new_callable=AsyncMock),
         patch("app.services.usage_service.fetch_openrouter_pricing", new_callable=AsyncMock),
-        patch("app.services.cron_service.session_cleanup_loop", new_callable=AsyncMock),
-        patch("app.services.cron_service.pricing_sync_loop", new_callable=AsyncMock),
         # _perf_flush_loop drains real log buffers against the DB; with asyncio.sleep
         # mocked below it would busy-spin and flood logs, so stub it out entirely.
         patch("app.lifecycle._perf_flush_loop", new_callable=AsyncMock),

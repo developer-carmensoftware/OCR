@@ -92,7 +92,7 @@ async def load_admin_roles_and_perms(
 
 async def login(
     db: AsyncSession,
-    email: str,
+    username: str,
     password: str,
     ip_address: str | None = None,
 ) -> tuple[AdminUser, str, list[str], list[str], str]:
@@ -101,20 +101,20 @@ async def login(
     Returns (admin, jwt, roles, perms, tenant_scope).
     Raises AdminAuthError on any failure.
     """
-    email_normalized = (email or "").strip().lower()
-    if not email_normalized or not password:
-        raise AdminAuthError("Email and password are required", status_code=400)
+    username_normalized = (username or "").strip().lower()
+    if not username_normalized or not password:
+        raise AdminAuthError("Username and password are required", status_code=400)
 
     res = await db.execute(
         select(AdminUser).where(
-            AdminUser.email == email_normalized,
+            AdminUser.username == username_normalized,
             AdminUser.deleted_at.is_(None),
         )
     )
     admin = res.scalar_one_or_none()
 
-    # Generic error — never leak whether the email exists.
-    invalid_credentials = AdminAuthError("Invalid email or password", status_code=401)
+    # Generic error — never leak whether the username exists.
+    invalid_credentials = AdminAuthError("Invalid username or password", status_code=401)
 
     if not admin:
         raise invalid_credentials
@@ -138,7 +138,7 @@ async def login(
             admin.locked_until = now + timedelta(minutes=LOCKOUT_MINUTES)  # type: ignore[assignment]
             logger.warning(
                 "Admin %s locked for %d minutes after %d failed attempts",
-                email_normalized,
+                username_normalized,
                 LOCKOUT_MINUTES,
                 current_attempts + 1,
             )
@@ -159,7 +159,7 @@ async def login(
 
     token = create_admin_jwt(
         admin_id=str(admin.id),
-        email=str(admin.email),
+        username=str(admin.username),
         roles=roles,
         perms=perms,
         secret=get_admin_jwt_secret(),

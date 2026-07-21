@@ -12,6 +12,7 @@ import {
   Save,
 } from 'lucide-react'
 import AccountMappingTable from './AccountMappingTable'
+import { useT } from '../../i18n/LanguageContext'
 import type { APLineItem } from '../../hooks/ap-invoice/useAPExtraction'
 import type { Vendor } from '../../hooks/ap-invoice/useAPVendor'
 import type { APInvoiceHeader } from '../../constants/apInvoice'
@@ -22,7 +23,6 @@ interface GLAccount {
 }
 
 interface Props {
-  t: Record<string, string>
   lineItems: APLineItem[]
   updateItem: (idx: number, key: string, val: string) => void
   systemVendor?: Partial<Vendor>
@@ -129,15 +129,17 @@ function GLAccountCard({ title, iconColor, rows }: GLCardProps) {
   )
 }
 
+const DEFAULT_EMPTY_OBJECT = {}
+const DEFAULT_EMPTY_ARRAY: never[] = []
+
 export default function APAccountMappingStep({
-  t,
   lineItems,
   updateItem,
-  systemVendor = {},
-  headerData = {},
+  systemVendor = DEFAULT_EMPTY_OBJECT,
+  headerData = DEFAULT_EMPTY_OBJECT,
   updateHeader,
-  masterAccounts = [],
-  masterDepts = [],
+  masterAccounts = DEFAULT_EMPTY_ARRAY,
+  masterDepts = DEFAULT_EMPTY_ARRAY,
   onBack,
   onGenerate,
   onAISuggest,
@@ -149,6 +151,7 @@ export default function APAccountMappingStep({
   allMapped = false,
   isSubmitting = false,
 }: Props) {
+  const { t } = useT()
   const taxProfile = fmtField(systemVendor.taxProfileCode1, systemVendor.taxProfileDesc1)
   const debitDept = fmtField(systemVendor.vat1DrDeptCode, systemVendor.vat1DrDeptDesc)
   const debitAcc = fmtField(systemVendor.vat1DrAccCode, systemVendor.vat1DrAccDesc)
@@ -192,14 +195,14 @@ export default function APAccountMappingStep({
       {/* Invoice description */}
       <div className="ap-invoice-desc-container">
         <label className="ap-invoice-desc-label">
-          <AlignLeft size={13} style={{ marginRight: '0.35rem' }} /> {t.invDescLabel}
+          <AlignLeft size={13} style={{ marginRight: '0.35rem' }} /> {t('ap.invDescLabel')}
         </label>
         <input
           type="text"
           value={headerData.invhDesc || ''}
           onChange={e => updateHeader('invhDesc', e.target.value)}
-          placeholder={t.invDescPlaceholder}
-          aria-label={t.invDescLabel}
+          placeholder={t('ap.invDescPlaceholder')}
+          aria-label={t('ap.invDescLabel')}
           className="ap-invoice-desc-input"
         />
       </div>
@@ -207,22 +210,22 @@ export default function APAccountMappingStep({
       {/* Fixed GL accounts */}
       <div className="ap-fixed-gl-grid">
         <GLAccountCard
-          title={t.debitTax}
+          title={t('ap.debitTax')}
           iconColor="blue"
           rows={[
             {
-              label: t.taxProfile,
+              label: t('ap.taxProfile'),
               value: taxProfile,
               colSpan: true,
               hint: 'Tax profile from Carmen linking this vendor to the correct input tax account',
             },
             {
-              label: t.deptCode,
+              label: t('ap.deptCode'),
               value: debitDept,
               hint: 'Department code from Carmen — e.g. ACC, SALE, MKT',
             },
             {
-              label: t.accountCode,
+              label: t('ap.accountCode'),
               value: debitAcc,
               highlight: 'primary',
               hint: 'GL account code from Carmen chart of accounts — e.g. 1101-01, 5100-00',
@@ -230,22 +233,22 @@ export default function APAccountMappingStep({
           ]}
         />
         <GLAccountCard
-          title={t.creditAp}
+          title={t('ap.creditAp')}
           iconColor="green"
           rows={[
             {
-              label: t.vendorGroup,
+              label: t('ap.vendorGroup'),
               value: vendorGroup,
               colSpan: true,
               hint: 'Vendor category in Carmen — determines the default accounts payable posting account',
             },
             {
-              label: t.deptCode,
+              label: t('ap.deptCode'),
               value: creditDept,
               hint: 'Department code from Carmen — e.g. ACC, SALE, MKT',
             },
             {
-              label: t.accountCode,
+              label: t('ap.accountCode'),
               value: creditAcc,
               highlight: 'emerald',
               hint: 'GL account code from Carmen chart of accounts — e.g. 1101-01, 5100-00',
@@ -256,7 +259,6 @@ export default function APAccountMappingStep({
 
       {/* Expense line mapping */}
       <AccountMappingTable
-        t={t}
         lineItems={lineItems}
         masterAccounts={masterAccounts}
         masterDepts={masterDepts}
@@ -272,12 +274,12 @@ export default function APAccountMappingStep({
       {/* Navigation */}
       <div className="ap-step-nav">
         <button type="button" className="btn btn-outline" onClick={onBack}>
-          <ArrowLeft size={14} /> {t.backReview}
+          <ArrowLeft size={14} /> {t('ap.backReview')}
         </button>
         <div className="ap-step-nav-end">
           {!allMapped && (
             <span className="ap-mapping-warning">
-              <AlertTriangle size={13} /> {t.mappingWarning}
+              <AlertTriangle size={13} /> {t('ap.mappingWarning')}
             </span>
           )}
           <button
@@ -286,7 +288,7 @@ export default function APAccountMappingStep({
             onClick={onGenerate}
             disabled={!allMapped || isSubmitting}
           >
-            <Save size={14} /> {isSubmitting ? t.sending : t.generateInv}
+            <Save size={14} /> {isSubmitting ? t('ap.sending') : t('ap.generateInv')}
           </button>
         </div>
       </div>

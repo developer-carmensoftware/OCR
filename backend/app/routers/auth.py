@@ -287,8 +287,8 @@ async def revoke_session(
 
 @router.get("/usage")
 async def get_usage(_session: SessionInfo = Depends(get_current_session)):
-    """Get quota usage + top-up credit balance for the current tenant."""
-    from app.services.credit_service import get_credit_balance
+    """Get quota usage + top-up credit balance + active subscription for the tenant."""
+    from app.services.credit_service import get_active_subscription, get_credit_balance
     from app.services.usage_service import get_quota_summary
 
     summary = await get_quota_summary(_session.tenant_id)
@@ -304,11 +304,29 @@ async def get_usage(_session: SessionInfo = Depends(get_current_session)):
     used = int(monthly["used"]) if monthly else 0
     limit = int(monthly["limit"]) if monthly else 0
     credit_balance = await get_credit_balance(_session.tenant_id)
+
+    sub = await get_active_subscription(_session.tenant_id)
+    subscription = (
+        {
+            "plan_code": sub.plan_code,
+            "doc_allowance": sub.doc_allowance,
+            "docs_used": sub.docs_used,
+            "docs_remaining": max(0, sub.doc_allowance - sub.docs_used),
+            "period_start": sub.period_start.isoformat() if sub.period_start else None,
+            "period_end": sub.period_end.isoformat() if sub.period_end else None,
+            "billing_period": sub.billing_period,
+            "status": sub.status.value if hasattr(sub.status, "value") else sub.status,
+        }
+        if sub is not None
+        else None
+    )
+
     return {
         "usage": {
             "monthly_calls": used,
             "max_monthly_calls": limit,
             "remaining_calls": max(0, limit - used),
             "credit_balance": credit_balance,
+            "subscription": subscription,
         }
     }

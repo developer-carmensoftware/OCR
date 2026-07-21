@@ -1,5 +1,5 @@
 import type React from 'react'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { Check } from 'lucide-react'
 
 interface Step {
@@ -24,7 +24,7 @@ const DEFAULT_STEPS: Step[] = [
 export default function StepWizard({ step, steps, onStepClick }: Props) {
   const STEPS = steps || DEFAULT_STEPS
   return (
-    <div className="step-wizard-wrap">
+    <nav className="step-wizard-wrap" aria-label="Progress">
       <div className="step-wizard">
         {STEPS.map((s, i) => {
           const isDone = step > s.n
@@ -50,27 +50,45 @@ export default function StepWizard({ step, steps, onStepClick }: Props) {
               <div
                 className={`step ${isActive ? 'active' : isDone ? 'done' : ''} ${isClickable ? 'clickable' : ''}`}
                 style={{ position: 'relative' }}
+                aria-current={isActive ? 'step' : undefined}
                 {...interactiveProps}
               >
                 {isActive && (
-                  <motion.span
+                  <m.span
                     layoutId="step-active-pill"
                     style={{
                       position: 'absolute',
                       inset: 0,
                       borderRadius: '100px',
-                      background: 'var(--primary)',
+                      background: 'var(--card-bg)',
+                      boxShadow: 'var(--shadow-sm), 0 0 0 0.5px rgba(0, 0, 0, 0.04)',
                       zIndex: 0,
                     }}
                     transition={{ type: 'spring', stiffness: 380, damping: 32 }}
                   />
                 )}
                 <div className="step-num" style={{ position: 'relative', zIndex: 1 }}>
-                  {isDone ? <Check size={11} strokeWidth={3} /> : String(s.n).padStart(2, '0')}
+                  {isDone ? (
+                    <m.span
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Check size={11} strokeWidth={3} />
+                    </m.span>
+                  ) : (
+                    String(s.n).padStart(2, '0')
+                  )}
                 </div>
                 <span className="step-label" style={{ position: 'relative', zIndex: 1 }}>
                   {s.label}
-                  {s.sub && <span style={{ display: 'inline', opacity: 0.65 }}> {s.sub}</span>}
+                  {s.sub && (
+                    <span className="step-sub-label" style={{ display: 'inline', opacity: 0.65 }}>
+                      {' '}
+                      {s.sub}
+                    </span>
+                  )}
                 </span>
               </div>
               {i < STEPS.length - 1 && (
@@ -83,6 +101,6 @@ export default function StepWizard({ step, steps, onStepClick }: Props) {
           )
         })}
       </div>
-    </div>
+    </nav>
   )
 }

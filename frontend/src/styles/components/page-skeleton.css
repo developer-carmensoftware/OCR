@@ -16,7 +16,7 @@
   background-color: var(--body-bg-oklch);
   background-image: radial-gradient(
     ellipse 70% 30% at 50% 0%,
-    oklch(0.4714 0.1794 258.7 / 0.08) 0%,
+    var(--primary-glow) 0%,
     transparent 100%
   );
   z-index: 100;

@@ -2,6 +2,17 @@ import type { ExchangeResponse } from '../../types/api'
 import { resolveUrl } from './client'
 import { API } from './endpoints'
 
+export interface ActiveSubscription {
+  plan_code: string
+  doc_allowance: number
+  docs_used: number
+  docs_remaining: number
+  period_start: string | null
+  period_end: string | null
+  billing_period?: string // 'monthly' | 'annual'
+  status: string
+}
+
 export interface UsageData {
   bu: string
   usage: {
@@ -9,6 +20,7 @@ export interface UsageData {
     max_monthly_calls: number
     remaining_calls: number
     credit_balance: number
+    subscription?: ActiveSubscription | null
   }
 }
 

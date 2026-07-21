@@ -3,6 +3,8 @@ import type React from 'react'
 import { getFilePreview } from '../../lib/api/ocr'
 import { checkFilesSize } from '../../lib/fileValidation'
 import { showToast } from '../../lib/toast'
+import { sanitizedPdfUrl } from '../../lib/pdfPreview'
+import { selectedPagesToPdfUrl } from '../../lib/pdfPages'
 
 const HEIC_RE = /\.(heic|heif)$/i
 
@@ -45,8 +47,16 @@ export function useFileUpload(): FileUploadHook {
       setPreviewUrl(URL.createObjectURL(file))
       setPreviewType('image')
     } else if (isPDF) {
-      setPreviewUrl(URL.createObjectURL(file) + '#view=FitH')
+      // Credit card always processes only page 1 — show only that page in the
+      // preview so users aren't confused by the remaining pages.
       setPreviewType('pdf')
+      setPreviewUrl(null)
+      selectedPagesToPdfUrl(file, [0])
+        .then(u => setPreviewUrl(u + '#view=FitH'))
+        .catch(() => {
+          // Subset extraction failed — fall back to full PDF starting at page 1.
+          sanitizedPdfUrl(file).then(u => setPreviewUrl(u + '#page=1&view=FitH'))
+        })
     } else {
       setPreviewUrl(null)
       setPreviewType(name.split('.').pop()?.toUpperCase() || 'other')
