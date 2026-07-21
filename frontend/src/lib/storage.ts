@@ -8,8 +8,11 @@
  *  2. Cross-tenant collision — keys are namespaced per tenant via `appKey()`,
  *     so two tabs on different tenants never overwrite each other's config.
  *
- * NOTE: per-user keys (consent) and global UI prefs (theme) are intentionally
- * NOT managed here — they are not tenant-scoped business data.
+ * NOTE: per-user keys (consent), global UI prefs (theme, lang) and
+ * `releaseNotesSeen` are intentionally NOT managed here — they are not
+ * tenant-scoped business data, and `releaseNotesSeen` in particular must survive
+ * logout and tenant switch (same human, same changelog). Do not "fix" it by
+ * adding it to APP_STORAGE_BASES.
  */
 
 // Base names of every app-owned, tenant-scoped localStorage key.
