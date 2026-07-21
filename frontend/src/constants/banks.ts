@@ -12,7 +12,10 @@ export interface BankEntry {
   full: BankDisplayName
 }
 
-/** Bank metadata: company info, GL mappings */
+/** Bank metadata: company info, GL mappings.
+ * `address` goes straight into the Carmen input-tax payload, so store it exactly as the
+ * bank prints it on its tax invoice — Thai when the invoice is Thai, English when that is
+ * all the bank publishes. One string, one language per bank; no TH/EN pair. */
 export const BANK_INFO: Record<BankDisplayName, BankInfo> = {
   'Bangkok Bank (BBL)': {
     name: 'Bangkok Bank Public Company Limited',
@@ -43,7 +46,10 @@ export const BANK_INFO: Record<BankDisplayName, BankInfo> = {
   'GHL (NTT DATA)': {
     name: 'NTT DATA Digital Payment (Thailand) Co., Ltd.',
     taxId: '0105556152330',
-    address: '130/1 Sethiwan Tower, 5th Fl., North Sathorn Road, Silom, Bang Rak, Bangkok 10500',
+    // ponytail: addresses here are static per bank, not OCR'd — GHL's invoice prints Thai,
+    // so store it as printed. Extract from the document only if a bank ever moves.
+    address:
+      '130/1 อาคารเศรษฐีวรรณ สาทร ชั้น 5 ถนนสาทรเหนือ แขวงสีลม เขตบางรัก จังหวัดกรุงเทพมหานคร 10500',
   },
   'PayPal (PAYPAL)': {
     name: 'PayPal Thailand Limited',
