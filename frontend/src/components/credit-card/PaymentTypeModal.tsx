@@ -63,10 +63,35 @@ export default function PaymentTypeModal({
   setAcceptAllModal,
 }: Props) {
   const [showAdditional, setShowAdditional] = useState(false)
+  const [attemptedOk, setAttemptedOk] = useState(false)
 
   if (!isAmountModalOpen) return null
 
   const additionalTypes = allPaymentTypes.filter(t => !activeScan.paymentTypes.has(t))
+
+  // Pairs the dept's DefaultAccount forbids — recomputed live so the banner
+  // clears as the user fixes rows.
+  const illegalTypes = allPaymentTypes.filter(type => {
+    const m = paymentAmount[type]
+    return m?.dept && m?.acc && !isAccountAllowed(m.dept, m.acc, masterDepartments)
+  })
+
+  const handleOk = () => {
+    if (illegalTypes.length === 0) {
+      setAttemptedOk(false)
+      saveAmountSelection()
+      return
+    }
+    setAttemptedOk(true)
+    // The offending row may be inside the collapsed "additional mappings" —
+    // expand and scroll to it so the error is visible, not just named.
+    if (illegalTypes.some(t => additionalTypes.includes(t))) setShowAdditional(true)
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-pt="${CSS.escape(illegalTypes[0])}"]`)
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      el?.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' })
+    })
+  }
 
   return ReactDOM.createPortal(
     <div className="pm-overlay mapping-modal">
@@ -108,6 +133,37 @@ export default function PaymentTypeModal({
 
         <div className="pm-body mapping-modal-body table-wrapper">
           <div className="pm-inner">
+            {attemptedOk && illegalTypes.length > 0 && (
+              <div
+                role="alert"
+                style={{
+                  display: 'flex',
+                  gap: '0.5rem',
+                  alignItems: 'flex-start',
+                  padding: '0.6rem 0.8rem',
+                  marginBottom: '0.5rem',
+                  borderRadius: '6px',
+                  background: 'var(--rose-light)',
+                  border: '1px solid var(--rose)',
+                  color: 'var(--rose)',
+                  fontSize: '0.8rem',
+                }}
+              >
+                <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
+                <div>
+                  <strong>Account not allowed for department</strong>
+                  {illegalTypes.map(type => {
+                    const m = paymentAmount[type]
+                    return (
+                      <div key={type}>
+                        {type}: {m?.acc} is not in department {m?.dept}&apos;s allowed list
+                        {additionalTypes.includes(type) ? ' (in additional mappings below)' : ''}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
             <div className="pm-grid-header">
               <div>Payment Type</div>
               <div>Department Code</div>
@@ -161,6 +217,7 @@ export default function PaymentTypeModal({
                   return (
                     <div
                       key={`req-${type}`}
+                      data-pt={type}
                       className={`pm-row ${isPending ? 'pm-row--required-pending' : 'pm-row--required-ok'}`}
                     >
                       <div className="pm-type-cell">
@@ -267,7 +324,7 @@ export default function PaymentTypeModal({
                       : null
 
                     return (
-                      <div key={type} className="pm-row pm-row--custom">
+                      <div key={type} data-pt={type} className="pm-row pm-row--custom">
                         <div className="pm-type-cell">
                           <div className="pm-type-badge pm-type-badge--custom">{type}</div>
                           {isCustom && (
@@ -331,7 +388,7 @@ export default function PaymentTypeModal({
           <button type="button" className="btn-cancel" onClick={cancelAmountSelection}>
             Cancel
           </button>
-          <button type="button" className="btn-confirm" onClick={saveAmountSelection}>
+          <button type="button" className="btn-confirm" onClick={handleOk}>
             OK
           </button>
         </div>

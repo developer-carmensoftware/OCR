@@ -242,9 +242,14 @@ export function useMapping() {
     }
 
     // Block saving pairs the dept's DefaultAccount forbids — they'd fail at Carmen.
+    // Only types visible in the UI (main fields + scan/custom payment types) are
+    // gated: a stale hidden entry would otherwise dead-end the Save with no row to fix.
+    const visibleTypes = new Set([...activeScan.paymentTypes, ...paymentTypes.customPaymentTypes])
     const illegalPairs = [
       ...Object.entries(mappings).map(([k, m]) => ({ label: k, ...m })),
-      ...Object.entries(paymentTypes.paymentAmount).map(([k, m]) => ({ label: k, ...m })),
+      ...Object.entries(paymentTypes.paymentAmount)
+        .filter(([k]) => visibleTypes.has(k))
+        .map(([k, m]) => ({ label: k, ...m })),
     ].filter(m => m.dept && m.acc && !isAccountAllowed(m.dept, m.acc, masterData.masterDepartments))
     if (illegalPairs.length > 0) {
       setModalConfig({
@@ -354,24 +359,10 @@ export function useMapping() {
     openAmountModal: paymentTypes.openAmountModal,
     cancelAmountSelection: () =>
       paymentTypes.cancelAmountSelection(suggestions.clearAllSuggestions),
-    saveAmountSelection: () => {
-      // Modal OK writes localStorage directly (wizard reads it) — same legality gate as Save.
-      const illegal = Object.entries(paymentTypes.paymentAmount).filter(
-        ([, m]) => m.dept && m.acc && !isAccountAllowed(m.dept, m.acc, masterData.masterDepartments)
-      )
-      if (illegal.length > 0) {
-        setModalConfig({
-          show: true,
-          title: 'Account not allowed for department',
-          message: `${illegal
-            .map(([type, m]) => `${type}: ${m.acc} is not allowed for department ${m.dept}`)
-            .join('\n')}\nPlease pick an account from the department's allowed list.`,
-          type: 'error',
-        })
-        return
-      }
-      paymentTypes.saveAmountSelection()
-    },
+    // Legality gate lives in PaymentTypeModal's OK handler (inline banner +
+    // auto-expand of additional mappings — an error modal naming a collapsed
+    // row confused users).
+    saveAmountSelection: paymentTypes.saveAmountSelection,
     activeScan,
     allPaymentTypes,
     suggestionMeta: suggestions.suggestionMeta,
