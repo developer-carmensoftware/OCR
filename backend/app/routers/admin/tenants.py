@@ -101,14 +101,30 @@ async def list_tenants(
             str(r.tid): r.last_used.isoformat() for r in lu_result.mappings().all() if r.last_used
         }
 
-        # Enabled-module count per tenant
-        mod_q = (
+        # Enabled-module count per tenant. tenant_modules is OPT-OUT: a row exists only
+        # when an admin explicitly toggled a module, so "no row" means enabled, not
+        # disabled (same rule as quota_service.is_module_enabled and the Quotas page).
+        # Counting enabled rows read 0 for every tenant nobody had ever touched.
+        catalog_count = (
+            await db.execute(
+                select(func.count()).select_from(Module).where(Module.is_active.is_(True))
+            )
+        ).scalar_one()
+        off_q = (
             select(TenantModule.tenant_id.label("tid"), func.count().label("n"))
-            .where(TenantModule.tenant_id.in_(tenant_uuids), TenantModule.enabled.is_(True))
+            .join(Module, Module.id == TenantModule.module_id)
+            .where(
+                TenantModule.tenant_id.in_(tenant_uuids),
+                TenantModule.enabled.is_(False),
+                Module.is_active.is_(True),
+            )
             .group_by(TenantModule.tenant_id)
         )
-        mod_result = await db.execute(mod_q)
-        modules_count_map = {str(r.tid): r.n for r in mod_result.mappings().all()}
+        off_result = await db.execute(off_q)
+        disabled_count_map = {str(r.tid): r.n for r in off_result.mappings().all()}
+        modules_count_map = {
+            str(t.id): catalog_count - disabled_count_map.get(str(t.id), 0) for t in tenants
+        }
 
         if include_engagement:
             engagement_map = await get_tenant_engagement_map(db, tenant_uuids)
@@ -161,23 +177,31 @@ async def get_tenant_detail(
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
-    # Enabled modules ⋈ catalog for display names
+    # Catalog ⟕ tenant_modules. Opt-out semantics: a module is enabled unless there is an
+    # explicit enabled=False row, so we start from the catalog and subtract. An inner join
+    # on enabled=True showed "0 modules" for every tenant, because the only writer of this
+    # table is the admin toggle (quota_admin_service.set_module) — nothing seeds it.
     mod_rows = (
         await db.execute(
-            select(TenantModule.module_id, TenantModule.enabled_at, Module.display_name)
-            .join(Module, Module.id == TenantModule.module_id)
-            .where(TenantModule.tenant_id == tid, TenantModule.enabled.is_(True))
+            select(Module.id, Module.display_name, TenantModule.enabled, TenantModule.enabled_at)
+            .outerjoin(
+                TenantModule,
+                (TenantModule.module_id == Module.id) & (TenantModule.tenant_id == tid),
+            )
+            .where(Module.is_active.is_(True))
             .order_by(Module.sort_order)
         )
     ).all()
     modules = [
         {
-            "id": r.module_id,
+            "id": r.id,
             "display_name": r.display_name,
             "enabled_at": r.enabled_at.isoformat() if r.enabled_at else None,
         }
         for r in mod_rows
+        if r.enabled is not False
     ]
+    modules_disabled = [r.id for r in mod_rows if r.enabled is False]
 
     # Quotas — reuse the shared summary (opens its own session)
     quotas = (await get_quota_summary(tenant_id)).get("quotas", [])
@@ -218,6 +242,7 @@ async def get_tenant_detail(
         "notes": tenant.notes,
         "created_at": tenant.created_at.isoformat() if tenant.created_at else None,
         "modules": modules,
+        "modules_disabled": modules_disabled,
         "quotas": quotas,
         "recent_sessions": recent_sessions,
     }

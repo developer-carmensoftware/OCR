@@ -60,7 +60,10 @@ async def get_tenants_quota_overview(
     quotas = (
         (
             await db.execute(
-                select(Quota).where(Quota.tenant_id.in_(tenant_ids), Quota.deleted_at.is_(None))
+                select(Quota)
+                .where(Quota.tenant_id.in_(tenant_ids), Quota.deleted_at.is_(None))
+                # Deterministic: the page renders quotas[0] as the headline bar.
+                .order_by(Quota.period, Quota.metric)
             )
         )
         .scalars()

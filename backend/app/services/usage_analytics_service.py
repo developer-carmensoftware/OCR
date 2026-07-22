@@ -412,7 +412,7 @@ async def get_error_breakdown(
             OCRTask.module_id.label("group"),
             func.count(OCRTask.id).label("total"),
             failed_count.label("errors"),
-        ).where(OCRTask.created_at >= since)
+        ).where(OCRTask.created_at >= since, OCRTask.deleted_at.is_(None))
         if tenant_id:
             q = q.where(OCRTask.tenant_id == tenant_id)
         rows = (
