@@ -76,6 +76,11 @@ function getNavSections(t: ReturnType<typeof useT>['t']): NavSection[] {
           icon: <BarChart3 size={ICON_SIZE} strokeWidth={2} />,
         },
         {
+          label: t('admin.nav.item.userUsage'),
+          hash: '/admin/user-usage',
+          icon: <Users size={ICON_SIZE} strokeWidth={2} />,
+        },
+        {
           label: t('admin.nav.item.tenantRanking'),
           hash: '/admin/tenant-ranking',
           icon: <Trophy size={ICON_SIZE} strokeWidth={2} />,

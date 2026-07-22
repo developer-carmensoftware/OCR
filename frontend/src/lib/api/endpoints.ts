@@ -91,6 +91,7 @@ export const API = {
     usageSummary: `${V1}/admin/usage-summary`,
     usageTotals: `${V1}/admin/usage-summary/totals`,
     tenantRanking: `${V1}/admin/tenant-ranking`,
+    userUsage: `${V1}/admin/user-usage`,
     llmUsage: `${V1}/admin/llm-usage`,
     performanceLogs: `${V1}/admin/performance-logs`,
     alerts: `${V1}/admin/alerts`,

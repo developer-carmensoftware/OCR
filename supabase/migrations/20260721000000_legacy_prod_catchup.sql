@@ -384,7 +384,7 @@ create index if not exists ix_audit_logs_admin_user ON public.audit_logs USING b
 create index if not exists ix_audit_logs_carmen_user ON public.audit_logs USING btree (carmen_user_id);
 create index if not exists ix_bug_reports_carmen_user ON public.bug_reports USING btree (carmen_user_id);
 create index if not exists ix_correction_feedback_carmen_user ON public.correction_feedback USING btree (carmen_user_id);
-create index if not exists ix_correction_feedback_embedding ON public.correction_feedback USING hnsw (value_embedding vector_cosine_ops) WHERE (value_embedding IS NOT NULL);
+create index if not exists ix_correction_feedback_embedding ON public.correction_feedback USING hnsw (value_embedding extensions.vector_cosine_ops) WHERE (value_embedding IS NOT NULL);
 create index if not exists ix_credit_cards_carmen_user ON public.credit_cards USING btree (carmen_user_id);
 create index if not exists ix_daily_usage_summary_date ON public.daily_usage_summary USING btree (summary_date);
 create index if not exists ix_llm_usage_logs_carmen_session ON public.llm_usage_logs USING btree (carmen_session_id);

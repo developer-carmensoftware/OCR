@@ -79,6 +79,7 @@ const AdminLayout = lazy(() => import('./pages/admin/AdminLayout'))
 const Overview = lazy(() => import('./pages/admin/Overview'))
 const UsagePage = lazy(() => import('./pages/admin/UsagePage'))
 const TenantRankingPage = lazy(() => import('./pages/admin/TenantRankingPage'))
+const UserUsagePage = lazy(() => import('./pages/admin/UserUsagePage'))
 const LLMLogsPage = lazy(() => import('./pages/admin/LLMLogsPage'))
 const PerformancePage = lazy(() => import('./pages/admin/PerformancePage'))
 const ErrorsPage = lazy(() => import('./pages/admin/ErrorsPage'))
@@ -121,6 +122,8 @@ function AdminRouter() {
     AdminPage = <UsagePage />
   } else if (route === 'admin/tenant-ranking') {
     AdminPage = <TenantRankingPage />
+  } else if (route === 'admin/user-usage') {
+    AdminPage = <UserUsagePage />
   } else if (route === 'admin/llm-logs') {
     AdminPage = <LLMLogsPage />
   } else if (route === 'admin/performance') {
