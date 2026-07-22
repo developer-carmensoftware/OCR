@@ -70,17 +70,38 @@ def _filter_by_keywords(
     return score_and_pad(accounts, keywords, limit, pad_threshold=fallback_limit)
 
 
+def _dept_allowed_map(departments: list[dict]) -> dict[str, set[str]]:
+    """dept code → set of AccCodes it restricts to (Carmen DefaultAccount).
+
+    Departments with an empty/absent list are omitted — they allow all accounts.
+    """
+    return {d["code"]: set(d["allowed_accounts"]) for d in departments if d.get("allowed_accounts")}
+
+
+def _pair_ok(dept: str | None, acc: str | None, dept_allowed: dict[str, set[str]]) -> bool:
+    """True unless the dept restricts accounts and acc is not in its allowed list."""
+    if not dept or not acc:
+        return True
+    allowed = dept_allowed.get(dept)
+    return not allowed or acc in allowed
+
+
 def _validate_codes(
     data: dict,
     keys: list[str],
     valid_acc: set,
     valid_dept: set,
+    dept_allowed: dict[str, set[str]] | None = None,
 ) -> dict[str, dict]:
     """Validate LLM output codes exist in allowed sets; default dept=GEN when account matched.
 
     Accepts both `dept`/`acc` and `deptCode`/`accountCode` key shapes — Gemini
     occasionally returns the verbose form despite prompt instructions.
+
+    A (dept, acc) pair where the dept's DefaultAccount list excludes acc is illegal:
+    the acc is dropped and the user re-picks from the dept-filtered UI list.
     """
+    dept_allowed = dept_allowed or {}
     suggestions = {}
     for key in keys:
         mapping = data.get(key) or {}
@@ -92,8 +113,10 @@ def _validate_codes(
         )
         dept = raw_dept if raw_dept in valid_dept else None
         acc = raw_acc if raw_acc in valid_acc else None
-        if acc and not dept and "GEN" in valid_dept:
+        if acc and not dept and "GEN" in valid_dept and _pair_ok("GEN", acc, dept_allowed):
             dept = "GEN"
+        if not _pair_ok(dept, acc, dept_allowed):
+            acc = None
         suggestions[key] = {"dept": dept, "acc": acc}
     return suggestions
 
@@ -183,7 +206,8 @@ async def suggest_fixed_fields(
 
         valid_acc = {a["code"] for a in accounts}
         valid_dept = {d["code"] for d in departments}
-        suggestions = _validate_codes(data, FIXED_TYPES, valid_acc, valid_dept)
+        dept_allowed = _dept_allowed_map(departments)
+        suggestions = _validate_codes(data, FIXED_TYPES, valid_acc, valid_dept, dept_allowed)
 
         fallback_acc = {
             "Credit card commission": (commission_filtered or commission_acc or [{}])[0].get(
@@ -195,10 +219,9 @@ async def suggest_fixed_fields(
         for field in FIXED_TYPES:
             entry = suggestions.get(field) or {}
             if not entry.get("acc") and fallback_acc[field] in valid_acc:
-                suggestions[field] = {
-                    "acc": fallback_acc[field],
-                    "dept": "GEN" if "GEN" in valid_dept else entry.get("dept"),
-                }
+                dept = "GEN" if "GEN" in valid_dept else entry.get("dept")
+                if _pair_ok(dept, fallback_acc[field], dept_allowed):
+                    suggestions[field] = {"acc": fallback_acc[field], "dept": dept}
 
         logger.info(f"[{TOOL_FIXED}] completed — {len(suggestions)} fields suggested")
         return ToolResult(
@@ -286,7 +309,8 @@ async def suggest_payment_types(
 
         valid_acc = {a["code"] for a in accounts}
         valid_dept = {d["code"] for d in departments}
-        suggestions = _validate_codes(data, payment_types, valid_acc, valid_dept)
+        dept_allowed = _dept_allowed_map(departments)
+        suggestions = _validate_codes(data, payment_types, valid_acc, valid_dept, dept_allowed)
 
         fallback_pool = b_filtered or b_accounts or accounts
         fallback_acc = fallback_pool[0]["code"] if fallback_pool else None
@@ -294,10 +318,9 @@ async def suggest_payment_types(
             for key in payment_types:
                 entry = suggestions.get(key) or {}
                 if not entry.get("acc"):
-                    suggestions[key] = {
-                        "acc": fallback_acc,
-                        "dept": "GEN" if "GEN" in valid_dept else entry.get("dept"),
-                    }
+                    dept = "GEN" if "GEN" in valid_dept else entry.get("dept")
+                    if _pair_ok(dept, fallback_acc, dept_allowed):
+                        suggestions[key] = {"acc": fallback_acc, "dept": dept}
 
         logger.info(
             f"[{TOOL_PAYMENT}] completed — {len(suggestions)}/{len(payment_types)} types suggested"

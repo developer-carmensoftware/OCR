@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { suggestMapping, suggestPaymentTypes } from '../../lib/api/mapping'
+import { mergeSuggestion } from '../../lib/deptAccounts'
 import type { FieldMapping } from '../../types/api'
 import type { MasterAccount, MasterDepartment } from './useMappingData'
 import type { ModalConfig } from '../useModal'
@@ -102,7 +103,11 @@ export function useMappingSuggestions({
         bank_code: bankCode,
         source: source || null,
         accounts: masterAccounts.map(a => ({ code: a.code, name: a.name, type: a.type })),
-        departments: masterDepartments.map(d => ({ code: d.code, name: d.name })),
+        departments: masterDepartments.map(d => ({
+          code: d.code,
+          name: d.name,
+          allowed_accounts: d.allowedAccounts,
+        })),
       })
 
       const suggestKeyMap: Record<MainMappingKey, string> = {
@@ -156,7 +161,7 @@ export function useMappingSuggestions({
         const cur = prev[key] || { dept: '', acc: '' }
         return {
           ...prev,
-          [key]: { dept: cur.dept || suggestion.dept || '', acc: cur.acc || suggestion.acc || '' },
+          [key]: mergeSuggestion(cur, suggestion, masterDepartments),
         }
       })
     }
@@ -197,7 +202,11 @@ export function useMappingSuggestions({
         source: source || null,
         payment_types: needsAI,
         accounts: masterAccounts.map(a => ({ code: a.code, name: a.name, type: a.type })),
-        departments: masterDepartments.map(d => ({ code: d.code, name: d.name })),
+        departments: masterDepartments.map(d => ({
+          code: d.code,
+          name: d.name,
+          allowed_accounts: d.allowedAccounts,
+        })),
       })
       const newSuggestions: Record<string, Suggestion> = {}
       Object.entries(result.suggestions || {}).forEach(([t, val]) => {
@@ -222,7 +231,7 @@ export function useMappingSuggestions({
         const cur = prev[type] || { dept: '', acc: '' }
         return {
           ...prev,
-          [type]: { dept: cur.dept || suggestion.dept || '', acc: cur.acc || suggestion.acc || '' },
+          [type]: mergeSuggestion(cur, suggestion, masterDepartments),
         }
       })
     }

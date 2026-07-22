@@ -20,6 +20,8 @@ interface Props {
   topChoice?: TopChoice | null
   suggestedValue?: string | null
   hasError?: boolean
+  /** Short note pinned above the option list (e.g. why the list is filtered) */
+  notice?: string
   'aria-label'?: string
 }
 
@@ -31,6 +33,7 @@ export default function CustomSearchSelect({
   topChoice,
   suggestedValue,
   hasError = false,
+  notice,
   'aria-label': ariaLabel,
 }: Props) {
   const { t } = useT()
@@ -199,6 +202,21 @@ export default function CustomSearchSelect({
       {isOpen &&
         createPortal(
           <div ref={dropdownRef} style={dropdownStyle}>
+            {notice && (
+              <div
+                style={{
+                  padding: '0.35rem 0.8rem',
+                  fontSize: '0.72rem',
+                  color: 'var(--text-3)',
+                  background: 'var(--primary-light)',
+                  borderBottom: '1px solid var(--gray-100)',
+                  position: 'sticky',
+                  top: 0,
+                }}
+              >
+                {notice}
+              </div>
+            )}
             {showTopChoice && topChoice && (
               <>
                 <div

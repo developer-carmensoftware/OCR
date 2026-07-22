@@ -6,6 +6,7 @@ import { apiFetch } from '../../lib/api/client'
 import { API } from '../../lib/api/endpoints'
 import { showToast, toast } from '../../lib/toast'
 import { parseNum } from '../../lib/format'
+import { parseDefaultAccount, isAccountAllowed } from '../../lib/deptAccounts'
 import type { ModalState } from '../../types/modal'
 import type { APLineItem } from './useAPExtraction'
 import type { APInvoiceHeader } from '../../constants/apInvoice'
@@ -20,6 +21,8 @@ interface GLAccount {
   code: string
   name: string
   name2?: string
+  /** AccCodes this dept restricts to; empty = all allowed (Carmen DefaultAccount, depts only) */
+  allowedAccounts?: string[]
 }
 
 interface APSubmissionProps {
@@ -75,6 +78,7 @@ export function useAPSubmission({
             code: d.DeptCode as string,
             name: (d.Description as string) || '',
             name2: (d.Description2 as string) || '',
+            allowedAccounts: parseDefaultAccount(d.DefaultAccount),
           }))
       )
     } catch {
@@ -109,8 +113,15 @@ export function useAPSubmission({
           const s = suggestions[idx]
           if (!s) return item
           const newDept = (!item.deptCode || item._suggestDept) && s.deptCode ? s.deptCode : null
+          // Backend validated the acc against ITS suggested dept — when the user's own
+          // dept is kept, re-check the acc against that dept's DefaultAccount list.
+          const effDept = newDept ?? item.deptCode
           const newAcc =
-            (!item.accountCode || item._suggestAcc) && s.accountCode ? s.accountCode : null
+            (!item.accountCode || item._suggestAcc) &&
+            s.accountCode &&
+            isAccountAllowed(effDept, s.accountCode, masterDepts)
+              ? s.accountCode
+              : null
           if (newDept || newAcc) suggestedCount++
           return {
             ...item,
@@ -353,7 +364,15 @@ export function useAPSubmission({
   const hasSuggestions = lineItems.some(i => i._suggestDept || i._suggestAcc)
   const allMapped =
     lineItems.length > 0 &&
-    lineItems.every(i => i.deptCode && i.accountCode && !i._suggestDept && !i._suggestAcc)
+    lineItems.every(
+      i =>
+        i.deptCode &&
+        i.accountCode &&
+        !i._suggestDept &&
+        !i._suggestAcc &&
+        // a pair the dept's DefaultAccount forbids blocks Generate, same as unmapped
+        isAccountAllowed(i.deptCode, i.accountCode, masterDepts)
+    )
 
   return {
     suggestLoading,

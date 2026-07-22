@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import CustomSearchSelect from '../common/CustomSearchSelect'
 import AISuggestBar from '../common/AISuggestBar'
+import { allowedAccountsForDept, isAccountAllowed } from '../../lib/deptAccounts'
 import '../../styles/components/payment-modal.css'
 import type { FieldMapping } from '../../types/api'
 import type { MasterAccount, MasterDepartment } from '../../hooks/mapping/useMappingData'
@@ -135,6 +136,16 @@ export default function PaymentTypeModal({
                         source: suggestion.source,
                       }
                     : null
+                  const acctOptions = allowedAccountsForDept(
+                    pAmt.dept,
+                    masterDepartments,
+                    masterAccounts
+                  )
+                  const acctNotice =
+                    acctOptions.length < masterAccounts.length
+                      ? `${acctOptions.length} accounts allowed for ${pAmt.dept}`
+                      : undefined
+
                   const accFromMaster = suggestion?.acc
                     ? masterAccounts.find(a => a.code === suggestion.acc)
                     : null
@@ -171,8 +182,10 @@ export default function PaymentTypeModal({
                       <CustomSearchSelect
                         value={pAmt.acc}
                         onChange={val => handlePaymentMappingChange(type, 'acc', val)}
-                        options={masterAccounts}
+                        options={acctOptions}
+                        notice={acctNotice}
                         placeholder="Acc..."
+                        hasError={!isAccountAllowed(pAmt.dept, pAmt.acc, masterDepartments)}
                         topChoice={accTopChoice}
                         suggestedValue={suggestion?.acc ?? null}
                       />
@@ -231,6 +244,16 @@ export default function PaymentTypeModal({
                           source: suggestion.source,
                         }
                       : null
+                    const acctOptions = allowedAccountsForDept(
+                      pAmt.dept,
+                      masterDepartments,
+                      masterAccounts
+                    )
+                    const acctNotice =
+                      acctOptions.length < masterAccounts.length
+                        ? `${acctOptions.length} accounts allowed for ${pAmt.dept}`
+                        : undefined
+
                     const accFromMaster = suggestion?.acc
                       ? masterAccounts.find(a => a.code === suggestion.acc)
                       : null
@@ -269,8 +292,10 @@ export default function PaymentTypeModal({
                         <CustomSearchSelect
                           value={pAmt.acc}
                           onChange={val => handlePaymentMappingChange(type, 'acc', val)}
-                          options={masterAccounts}
+                          options={acctOptions}
+                          notice={acctNotice}
                           placeholder="Acc..."
+                          hasError={!isAccountAllowed(pAmt.dept, pAmt.acc, masterDepartments)}
                           topChoice={accTopChoice?.code ? accTopChoice : null}
                           suggestedValue={suggestion?.acc ?? null}
                         />

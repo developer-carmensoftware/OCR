@@ -96,6 +96,8 @@ export interface CodeOption {
   code: string
   name: string
   type?: string | null
+  /** Dept-restricted AccCodes (Carmen DefaultAccount); empty/absent = all allowed */
+  allowed_accounts?: string[]
 }
 
 export interface SuggestRequest {

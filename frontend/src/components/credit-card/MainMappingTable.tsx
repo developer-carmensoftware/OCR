@@ -1,6 +1,7 @@
 import React from 'react'
 import { Loader2, AlertTriangle, CheckCircle2, Info, Check, X, History } from 'lucide-react'
 import CustomSearchSelect from '../common/CustomSearchSelect'
+import { allowedAccountsForDept, isAccountAllowed } from '../../lib/deptAccounts'
 import AISuggestBar from '../common/AISuggestBar'
 import Badge from '../common/Badge'
 import type { FieldMapping } from '../../types/api'
@@ -175,6 +176,16 @@ export default function MainMappingTable({
                 }
               : null
 
+            const acctOptions = allowedAccountsForDept(
+              mappings[key].dept,
+              masterDepartments,
+              masterAccounts
+            )
+            const acctNotice =
+              acctOptions.length < masterAccounts.length
+                ? `${acctOptions.length} accounts allowed for ${mappings[key].dept}`
+                : undefined
+
             const accFromMaster = suggestion?.acc
               ? masterAccounts.find(a => a.code === suggestion.acc)
               : null
@@ -213,11 +224,15 @@ export default function MainMappingTable({
                   <CustomSearchSelect
                     value={mappings[key].acc}
                     onChange={(val: string) => handleMappingChange(key, 'acc', val)}
-                    options={masterAccounts}
+                    options={acctOptions}
+                    notice={acctNotice}
                     placeholder="Type Account Code..."
                     topChoice={accTopChoice?.code ? accTopChoice : null}
                     suggestedValue={suggestion?.acc ?? null}
-                    hasError={!mappings[key].acc}
+                    hasError={
+                      !mappings[key].acc ||
+                      !isAccountAllowed(mappings[key].dept, mappings[key].acc, masterDepartments)
+                    }
                   />
                 </div>
                 <div className="cc-suggestion-buttons">
