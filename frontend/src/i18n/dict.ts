@@ -117,11 +117,11 @@ const en = {
 
   // — Slip upload —
   'slip.errType': 'Only JPG, PNG, or PDF files are supported',
-  'slip.errSize': 'File exceeds 20 MB',
+  'slip.errSize': 'File exceeds 5 MB',
   'slip.chooseDifferent': 'Choose a different file',
   'slip.submitting': 'Submitting…',
   'slip.uploadLabel': 'Upload payment slip',
-  'slip.uploadHint': 'Click or drag a file here · JPG · PNG · PDF · up to 20 MB',
+  'slip.uploadHint': 'Click or drag a file here · JPG · PNG · PDF · up to 5 MB',
 
   // — Order history + status —
   'order.statusInProgress': 'In progress',
@@ -403,7 +403,7 @@ const en = {
   'ap.appTitle': 'Carmen Cloud',
   'ap.appSub': 'AI AP Invoice Automation',
   'ap.uploadTitle': 'Upload Invoice Document',
-  'ap.uploadDesc': 'Supports JPG, PNG, and PDF files (max 20 MB)',
+  'ap.uploadDesc': 'Supports JPG, PNG, and PDF files (max 5 MB)',
   'ap.uploadBtn': 'Select Document',
   'ap.mapTitle': 'Review and Field Mapping',
   'ap.confirmMap': 'Confirm Field Mapping',
@@ -570,7 +570,7 @@ const en = {
   'cc.readingPdfHint': 'Detecting page count, this will only take a moment',
   'cc.dropHint': 'Click or drag files here',
   'cc.imagesSelected': '{n} images selected',
-  'cc.uploadSupports': 'Supports JPG · PNG · PDF · HEIC · Multiple images · up to 20 MB',
+  'cc.uploadSupports': 'Supports JPG · PNG · PDF · HEIC · Multiple images · up to 5 MB',
   'cc.browseFile': 'Browse File',
   // Bank detection
   'cc.autoDetectSub': 'Let AI identify the bank',
@@ -1285,11 +1285,11 @@ const th: Record<TKey, string> = {
 
   // — Slip upload —
   'slip.errType': 'รองรับเฉพาะไฟล์ JPG, PNG หรือ PDF เท่านั้น',
-  'slip.errSize': 'ไฟล์มีขนาดเกิน 20 MB',
+  'slip.errSize': 'ไฟล์มีขนาดเกิน 5 MB',
   'slip.chooseDifferent': 'เลือกไฟล์อื่น',
   'slip.submitting': 'กำลังส่ง…',
   'slip.uploadLabel': 'อัปโหลดสลิปการชำระเงิน',
-  'slip.uploadHint': 'คลิกหรือลากไฟล์มาวางที่นี่ · JPG · PNG · PDF · ไม่เกิน 20 MB',
+  'slip.uploadHint': 'คลิกหรือลากไฟล์มาวางที่นี่ · JPG · PNG · PDF · ไม่เกิน 5 MB',
 
   // — Order history + status —
   'order.statusInProgress': 'กำลังดำเนินการ',
@@ -1565,7 +1565,7 @@ const th: Record<TKey, string> = {
   'ap.appTitle': 'Carmen Cloud',
   'ap.appSub': 'AI AP Invoice Automation',
   'ap.uploadTitle': 'อัปโหลดเอกสารใบแจ้งหนี้',
-  'ap.uploadDesc': 'รองรับไฟล์ JPG, PNG และ PDF (ไม่เกิน 20 MB)',
+  'ap.uploadDesc': 'รองรับไฟล์ JPG, PNG และ PDF (ไม่เกิน 5 MB)',
   'ap.uploadBtn': 'เลือกเอกสาร',
   'ap.mapTitle': 'ตรวจสอบและจับคู่คอลัมน์',
   'ap.confirmMap': 'ยืนยันการจับคู่คอลัมน์',
@@ -1729,7 +1729,7 @@ const th: Record<TKey, string> = {
   'cc.readingPdfHint': 'กำลังตรวจจำนวนหน้า ใช้เวลาเพียงครู่เดียว',
   'cc.dropHint': 'คลิกหรือลากไฟล์มาวางที่นี่',
   'cc.imagesSelected': 'เลือก {n} รูปภาพ',
-  'cc.uploadSupports': 'รองรับ JPG · PNG · PDF · HEIC · หลายรูปภาพ · ไม่เกิน 20 MB',
+  'cc.uploadSupports': 'รองรับ JPG · PNG · PDF · HEIC · หลายรูปภาพ · ไม่เกิน 5 MB',
   'cc.browseFile': 'เลือกไฟล์',
   // Bank detection
   'cc.autoDetectSub': 'ให้ AI ระบุธนาคารให้',

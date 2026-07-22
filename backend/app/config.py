@@ -122,7 +122,7 @@ class Settings(BaseSettings):
     trusted_proxy_hops: int = 1
 
     # Upload
-    max_file_size_mb: int = 20
+    max_file_size_mb: int = 5
 
     # VAT rates the fee-invoice normalizer may encounter, comma-separated.
     # First entry = primary rate assumed when a rate cannot be inferred from the

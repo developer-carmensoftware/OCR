@@ -10,7 +10,7 @@ interface Props {
 }
 
 // Mirror of backend MAX_PAGES_PER_CALL — the LLM call only accepts this many pages.
-const MAX_PAGES = 10
+const MAX_PAGES = 5
 
 export default function PDFPageSelector({ thumbnails, onConfirm, onCancel }: Props) {
   const [selected, setSelected] = useState<Set<number>>(

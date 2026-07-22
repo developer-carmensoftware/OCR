@@ -38,7 +38,7 @@ router = APIRouter(prefix="/api/v1/credit-card", tags=["Credit Card OCR"])
 
 # Hard cap on files per extract request. Each file is read fully into memory,
 # gets its own vision-LLM call, and consumes its own document credit — so an
-# unbounded batch is both an OOM vector (N×20 MB on a small instance) and a
+# unbounded batch is both an OOM vector (N×5 MB on a small instance) and a
 # billing surprise. Beta batches are small; raise if a real use case needs more.
 MAX_FILES_PER_EXTRACT = 10
 

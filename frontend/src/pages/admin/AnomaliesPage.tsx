@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import TenantSelector from '../../components/admin/TenantSelector'
 import { fetchAlerts, resolveAlert } from '../../lib/api/adminClient'
 import { useT } from '../../i18n/LanguageContext'
+import { fmtDateTime } from '../../lib/dates'
 
 interface Alert {
   id: number
@@ -95,9 +96,9 @@ export default function AnomaliesPage() {
                     </p>
                   )}
                   <p className="alert-time">
-                    {a.created_at?.slice(0, 19).replace('T', ' ')}
+                    {fmtDateTime(a.created_at)}
                     {a.resolved_at &&
-                      ` → ${t('admin.anomalies.resolvedAt', { date: a.resolved_at.slice(0, 19).replace('T', ' ') })}`}
+                      ` → ${t('admin.anomalies.resolvedAt', { date: fmtDateTime(a.resolved_at) })}`}
                   </p>
                 </div>
                 {!a.resolved_at && (

@@ -326,7 +326,7 @@ sequenceDiagram
 
 ### 4.1 กระบวนการนำเข้าข้อมูลรายวัน (5-Step OCR Wizard)
 
-1. **Step 1 — Upload**: เจ้าหน้าที่เลือกธนาคาร/ผู้ให้บริการ (BBL/KBANK/SCB/BAY/KTC/GHL/PAYPAL/SIAMPAY) และอัปโหลดไฟล์ภาพหรือ PDF (multi-page PDF เลือกหน้าได้สูงสุด 10 หน้า)
+1. **Step 1 — Upload**: เจ้าหน้าที่เลือกธนาคาร/ผู้ให้บริการ (BBL/KBANK/SCB/BAY/KTC/GHL/PAYPAL/SIAMPAY) และอัปโหลดไฟล์ภาพหรือ PDF (multi-page PDF เลือกหน้าได้สูงสุด 5 หน้า)
 2. **Step 2 — Processing**: ระบบส่งไฟล์ให้ Vision LLM ประมวลผลและแสดงสถานะการอ่าน
 3. **Step 3 — Verification**: เจ้าหน้าที่ตรวจสอบและแก้ไขข้อมูล Header (ชื่อเอกสาร, วันที่, เลขที่เอกสาร ฯลฯ) และรายการย่อย (Details)
 4. **Step 4 — Accounting Review**: ระบบโหลด Account Mapping จาก localStorage และแสดง Journal Entry (Debit/Credit) พร้อมแจ้งเตือนหาก mapping ไม่ครบ (รวมถึง File Prefix)
@@ -354,9 +354,9 @@ sequenceDiagram
 
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `files` | Binary[] (multipart) | Yes | ไฟล์ภาพหรือ PDF หนึ่งไฟล์ขึ้นไป (max 20MB ต่อไฟล์) |
+| `files` | Binary[] (multipart) | Yes | ไฟล์ภาพหรือ PDF หนึ่งไฟล์ขึ้นไป (max 5MB ต่อไฟล์) |
 | `bank_code` | String (query) | No | รหัสธนาคาร: `BBL` `KBANK` `SCB` `BAY` `KTC` `GHL` `PAYPAL` `SIAMPAY` (ไม่ระบุ = generic prompt) |
-| `selected_pages` | String (form) | No | JSON array ของ 0-based page indices สำหรับ PDF เช่น `"[0,1,2]"` (สูงสุด 10 หน้า) |
+| `selected_pages` | String (form) | No | JSON array ของ 0-based page indices สำหรับ PDF เช่น `"[0,1,2]"` (สูงสุด 5 หน้า) |
 | `pdf_password` | String (form) | No | รหัสผ่านสำหรับ PDF ที่เข้ารหัส |
 
 > ระบบ validate ไฟล์ + เปิด PDF ให้ได้ก่อน แล้วจึง `consume_document()` (ตัด quota/credit) — ไฟล์เสียหรือรหัสผิดจะไม่เสีย credit
@@ -843,7 +843,7 @@ ALLOWED_CARMEN_HOSTS=carmen.example.com
 | `ADMIN_JWT_SECRET` | Yes (prod) | - | Secret สำหรับ admin JWT — **ต้องต่างจาก** `OCR_JWT_SECRET` (app hard-fail ใน prod ถ้าซ้ำ/ว่าง) |
 | `SESSION_ENCRYPTION_KEY` | Yes | - | Fernet key สำหรับ session encryption |
 | `INTERNAL_JOB_TOKEN` | Yes (prod) | - | Bearer token สำหรับ pg_cron → FastAPI callbacks (pricing-sync, anomaly) |
-| `MAX_FILE_SIZE_MB` | No | 20 | ขนาดไฟล์สูงสุด (MB) |
+| `MAX_FILE_SIZE_MB` | No | 5 | ขนาดไฟล์สูงสุด (MB) |
 | `APP_PORT` | No | 8010 | Port ของ FastAPI server |
 | `ALLOWED_ORIGINS` | Yes (prod) | - | CORS allowed origins (wildcard ใช้ได้บน dev เท่านั้น) |
 | `ALLOWED_CARMEN_HOSTS` | Yes (prod) | - | Whitelist hostname ของ Carmen ERP (SSRF protection) |
@@ -860,7 +860,7 @@ ALLOWED_CARMEN_HOSTS=carmen.example.com
 6. **Performance**: API Master Data (Carmen Proxy) ต้องตอบสนองไม่เกิน 3 วินาที; AI Suggest ไม่เกิน 10 วินาที
 7. **Idempotent Migrations**: schema เป็นของ Supabase CLI (`supabase/migrations/*.sql`) — DDL ต้อง idempotent, ห้ามแก้ไขหรือ reorder ไฟล์ที่ apply แล้ว
 8. **Color Image Processing**: ห้ามแปลงภาพเป็น grayscale ก่อนส่ง Vision LLM เพราะลดความแม่นยำในการอ่าน
-9. **File Size Limit**: ไฟล์ต้องมีขนาดไม่เกิน 20 MB ต่อไฟล์; รองรับ JPG, PNG, WebP, BMP, TIFF, HEIC, PDF (อ่านเข้า memory เท่านั้น ไม่เขียนลง disk)
+9. **File Size Limit**: ไฟล์ต้องมีขนาดไม่เกิน 5 MB ต่อไฟล์; รองรับ JPG, PNG, WebP, BMP, TIFF, HEIC, PDF (อ่านเข้า memory เท่านั้น ไม่เขียนลง disk)
 10. **No File Storage**: ไฟล์ที่อัปโหลดอ่านเข้า memory → ส่ง LLM → ทิ้ง ห้ามสร้างโฟลเดอร์ `uploads/` หรือ `exports/`
 
 ---
@@ -896,11 +896,11 @@ ALLOWED_CARMEN_HOSTS=carmen.example.com
 
 **เอกสาร**:
 
-- PDF (`.pdf`) — รองรับ multi-page; page selector เลือกได้สูงสุด 10 หน้า
+- PDF (`.pdf`) — รองรับ multi-page; page selector เลือกได้สูงสุด 5 หน้า
 
 **ข้อจำกัด**:
 
-- ขนาดไฟล์สูงสุด: **20 MB** ต่อไฟล์
+- ขนาดไฟล์สูงสุด: **5 MB** ต่อไฟล์
 - การประมวลผล: อ่านไฟล์เข้า memory → ส่ง LLM → ทิ้ง (ไม่เขียนลง disk เลย)
 
 ### 9.3 Image Processing Requirements

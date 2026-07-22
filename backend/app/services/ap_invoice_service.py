@@ -11,8 +11,8 @@ if TYPE_CHECKING:
 
 from app.config import settings
 from app.constants import ExpenseAccounts, Module
-from app.exceptions import LLMParseError, ValidationError
-from app.llm.client import _strip_code_fences, call_text_llm, call_vision_llm
+from app.exceptions import ValidationError
+from app.llm.client import call_text_llm, call_vision_llm, parse_vision_json
 from app.llm.prompts.ap_invoice import PROMPT as AP_INVOICE_PROMPT
 from app.llm.prompts.mapping import build_ap_expense_prompt
 from app.services.ap_invoice_postprocess_service import postprocess as postprocess_ap_invoice
@@ -234,18 +234,7 @@ async def extract_ap_invoice_data(
         count_quota=True,
     )
 
-    result_text = _strip_code_fences(result_text)
-
-    try:
-        data = json.loads(result_text)
-    except json.JSONDecodeError as exc:
-        logger.error("AP JSON parse failed (%s). Raw: %.500s", exc, result_text)
-        raise LLMParseError() from exc
-
-    if isinstance(data, list):  # LLM sometimes wraps the object in a one-element array
-        data = data[0] if data else {}
-
-    return postprocess_ap_invoice(data)
+    return postprocess_ap_invoice(parse_vision_json(result_text))
 
 
 def _parse_default_account(raw: Any) -> set[str]:
