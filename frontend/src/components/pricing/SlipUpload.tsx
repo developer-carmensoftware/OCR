@@ -2,9 +2,10 @@ import React, { useRef, useState } from 'react'
 import { UploadCloud, Loader2, FileCheck2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useT } from '../../i18n/LanguageContext'
+import { MAX_FILE_SIZE_MB } from '../../lib/fileValidation'
 
 const ACCEPTED = ['image/jpeg', 'image/png', 'application/pdf']
-const MAX_BYTES = 20 * 1024 * 1024
+const MAX_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 interface Props {
   onUpload: (file: File) => Promise<void>

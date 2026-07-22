@@ -4,6 +4,7 @@ import DataTable, { type Column } from '../../components/admin/DataTable'
 import TenantSelector from '../../components/admin/TenantSelector'
 import { fetchPerformanceLogs } from '../../lib/api/adminClient'
 import { useT } from '../../i18n/LanguageContext'
+import { fmtDateTime } from '../../lib/dates'
 
 interface PerfRow {
   id: string
@@ -23,7 +24,7 @@ function getCols(t: ReturnType<typeof useT>['t']): Column<PerfRow>[] {
       key: 'created_at',
       label: t('admin.performance.col.time'),
       sortable: true,
-      render: r => r.created_at?.slice(0, 19).replace('T', ' ') ?? '—',
+      render: r => fmtDateTime(r.created_at),
     },
     { key: 'method', label: t('admin.performance.col.method'), sortable: true },
     { key: 'endpoint', label: t('admin.performance.col.endpoint'), sortable: true },

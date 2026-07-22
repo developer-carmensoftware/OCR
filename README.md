@@ -97,7 +97,7 @@ BBL · KBANK · SCB · BAY · KTC · GHL · PAYPAL · SIAMPAY
 
 ## Supported File Types
 
-JPG · PNG · WebP · BMP · TIFF · HEIC · PDF — max 20 MB, PDF เลือกได้สูงสุด 10 หน้า
+JPG · PNG · WebP · BMP · TIFF · HEIC · PDF — max 5 MB, PDF เลือกได้สูงสุด 5 หน้า
 (อ่านเข้า memory เท่านั้น — ระบบไม่เก็บไฟล์เอกสาร)
 
 ---

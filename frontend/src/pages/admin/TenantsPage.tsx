@@ -10,8 +10,7 @@ import {
   type TenantDetail,
 } from '../../lib/api/adminClient'
 import { useT } from '../../i18n/LanguageContext'
-
-const fmtDate = (s: string | null) => s?.slice(0, 19).replace('T', ' ') ?? '—'
+import { fmtDateTime as fmtDate } from '../../lib/dates'
 
 /** Days after which a BU that once used the product reads as gone quiet. */
 const IDLE_WARN_DAYS = 14

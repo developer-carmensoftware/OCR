@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import TenantSelector from '../../components/admin/TenantSelector'
 import { fetchSessions, revokeSession } from '../../lib/api/adminClient'
 import { useT } from '../../i18n/LanguageContext'
+import { fmtDateTime } from '../../lib/dates'
 
 interface SessionRow {
   id: string
@@ -102,12 +103,8 @@ export default function SessionsPage() {
                         : t('admin.sessions.status.revoked')}
                     </span>
                   </td>
-                  <td className="admin-td">
-                    {r.last_used_at?.slice(0, 19).replace('T', ' ') ?? '—'}
-                  </td>
-                  <td className="admin-td">
-                    {r.created_at?.slice(0, 19).replace('T', ' ') ?? '—'}
-                  </td>
+                  <td className="admin-td">{fmtDateTime(r.last_used_at)}</td>
+                  <td className="admin-td">{fmtDateTime(r.created_at)}</td>
                   <td className="admin-td">
                     {r.is_active && (
                       <button
