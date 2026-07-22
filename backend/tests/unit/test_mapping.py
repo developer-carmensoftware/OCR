@@ -503,3 +503,24 @@ class TestPromptBuilders:
         assert '"VSA"' in prompt
         assert '"MCA"' in prompt
         assert '"QR-TH"' in prompt
+
+    def test_payment_types_prompt_group_framing(self):
+        from app.llm.prompts.mapping import build_payment_types_prompt
+
+        kwargs = dict(
+            types_list="  - VSA",
+            dept_lines="  GEN General",
+            acc_lines="  1020-01 Bank",
+            b_account_count=1,
+            payment_types=["VSA"],
+        )
+        bank = build_payment_types_prompt(**kwargs)  # default group="bank"
+        assert "money the bank owes the merchant" in bank
+        assert "payment gateway" not in bank
+
+        gateway = build_payment_types_prompt(**kwargs, group="gateway")
+        assert "payment gateway" in gateway
+        assert "money the bank owes the merchant" not in gateway
+
+        unknown = build_payment_types_prompt(**kwargs, group="crypto")
+        assert unknown == bank  # unknown group falls back to bank framing

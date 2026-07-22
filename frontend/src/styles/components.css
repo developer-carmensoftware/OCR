@@ -2318,7 +2318,8 @@ input[type='text'].detail-input:focus {
 
 .cc-mapping-grid-container {
   display: grid;
-  grid-template-columns: 70px 140px minmax(0, 1fr) minmax(0, 1fr) auto;
+  /* label column wide enough for one-line "Credit card commission" */
+  grid-template-columns: 70px minmax(210px, auto) minmax(0, 1fr) minmax(0, 1fr) auto;
   gap: 0.5rem;
   align-items: center;
   width: 100%;
@@ -2350,6 +2351,58 @@ input[type='text'].detail-input:focus {
   cursor: pointer;
   color: var(--primary);
   text-decoration: underline;
+}
+
+/* Credit-row "Account Receivable / Bank" — plain label + count pill */
+.cc-map-ar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0;
+  background: none;
+  border: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cc-map-ar-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.cc-map-ar-btn:hover .cc-map-ar-title,
+.cc-map-ar-btn:focus-visible .cc-map-ar-title {
+  text-decoration: underline;
+}
+
+.cc-map-ar-count {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--radius-full, 100px);
+  flex-shrink: 0;
+}
+
+.cc-map-ar-count.missing {
+  color: var(--rose);
+  background: var(--btn-err-bg, var(--rose-light));
+}
+
+.cc-map-ar-count.ready {
+  color: var(--teal);
+  background: var(--teal-light);
+}
+
+.cc-map-ar-chevron {
+  flex-shrink: 0;
+  color: var(--primary);
+  transition: transform 0.15s ease;
+}
+
+.cc-map-ar-btn:hover .cc-map-ar-chevron {
+  transform: translateX(2px);
 }
 
 .cc-grid-span-3 {

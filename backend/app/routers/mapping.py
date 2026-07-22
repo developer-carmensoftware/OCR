@@ -120,6 +120,7 @@ async def suggest_payment_types(
         accounts=[a.model_dump() for a in req.accounts],
         departments=[d.model_dump() for d in req.departments],
         hint_text="\n".join(hint_lines),
+        bank_code=req.bank_code,
     )
     ai_suggestions = (result.output or {}).get("suggestions", {})
     return {"suggestions": {**ai_suggestions, **bypass}, "source": "history" if bypass else "ai"}

@@ -42,6 +42,22 @@ Input Tax + Bank Account accounts (BalanceSheet, {balance_acc_count}):
 {{"Credit card commission":{{"dept":null,"acc":null}},"Input Tax":{{"dept":null,"acc":null}},"Bank Account":{{"dept":null,"acc":null}}}}"""
 
 
+# Credit-side framing per bank group (see app/utils/bank_detect.credit_suggest_group).
+# Adding a group = one entry here + a branch in credit_suggest_group.
+_CREDIT_CONTEXTS = {
+    "bank": {
+        "context": "each payment type is a receivable from the bank",
+        "dr_line": "Dr [Payment Type Account] ← BalanceSheet: bank receivable / cash account (Normal Balance: Debit)",
+        "hint": "All types typically map to the same bank receivable / C/A account — they represent money the bank owes the merchant.",
+    },
+    "gateway": {
+        "context": "each payment type is a settlement receivable from a payment gateway / card processor (NOT a bank deposit account)",
+        "dr_line": "Dr [Payment Type Account] ← BalanceSheet: gateway/processor settlement receivable (Normal Balance: Debit)",
+        "hint": "All types typically map to the same settlement-receivable account (ลูกหนี้/receivable from the processor) — prefer receivable-style accounts over bank C/A or S/A deposit accounts.",
+    },
+}
+
+
 def build_payment_types_prompt(
     types_list: str,
     dept_lines: str,
@@ -49,8 +65,10 @@ def build_payment_types_prompt(
     b_account_count: int,
     payment_types: list[str],
     hint_text: str = "",
+    group: str = "bank",
 ) -> str:
     keys = ", ".join(f'"{t}"' for t in payment_types)
+    ctx = _CREDIT_CONTEXTS.get(group, _CREDIT_CONTEXTS["bank"])
     history_section = (
         f"Prior confirmed mappings for this tenant (use as strong hints):\n{hint_text}\n\n"
         if hint_text.strip()
@@ -58,15 +76,15 @@ def build_payment_types_prompt(
     )
     return f"""You are a Thai accounting assistant. Map card/payment settlement types to accounting codes. Return JSON only — no markdown.
 
-Journal Entry context (each payment type is a receivable from the bank):
-  Dr [Payment Type Account] ← BalanceSheet: bank receivable / cash account (Normal Balance: Debit)
+Journal Entry context ({ctx["context"]}):
+  {ctx["dr_line"]}
   Cr Revenue                (handled by the system — do NOT select)
 
-Payment types to map (each represents a bank settlement channel):
+Payment types to map (each represents a settlement channel):
 {types_list}
 
 Payment type codes: VSA=Visa, MCA=Mastercard, QR-*=QR payments, -P=Premium, -INT=International, -DCC=DCC, -AFF=Affiliate
-All types typically map to the same bank receivable / C/A account — they represent money the bank owes the merchant.
+{ctx["hint"]}
 
 Departments:
 {dept_lines or "  (none)"}
