@@ -59,65 +59,6 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    date: '2026-07-22',
-    version: '1.0.2',
-    en: {
-      title: 'Safer account mapping, smarter suggestions',
-      features: [
-        "Account code choices now follow each department's allowed-account list from Carmen — departments with a restricted list only offer those accounts, and illegal pairs are flagged red before they can be saved or posted.",
-      ],
-      fixes: [
-        {
-          before:
-            'Invoices with a discount column could read the VAT type wrong and post per-line amounts that did not match the document.',
-          text: "Discount invoices now read VAT correctly, and the unit price in Carmen multiplies out to the line's Net Amount.",
-        },
-        {
-          before:
-            'Some AP invoice scans failed with a system error no matter how many times you retried.',
-          text: 'Those scans now read correctly on the first try.',
-        },
-        {
-          before:
-            'In dark mode, hovering "additional mappings" in the payment-type window turned the text unreadable (white on white).',
-          text: 'Hover colors are fixed in dark mode.',
-        },
-      ],
-      qol: [
-        'AI Suggest now recognizes payment-gateway fee invoices (KTC, PayPal, and others) and proposes settlement-receivable accounts instead of bank accounts.',
-        'The mapping page is wider, and the credit row "Account Receivable / Bank" shows a live count of mapped payment types.',
-        'Upload limits are now 5 MB per file and up to 5 PDF pages per scan.',
-      ],
-    },
-    th: {
-      title: 'จับคู่บัญชีปลอดภัยขึ้น พร้อมคำแนะนำที่ฉลาดขึ้น',
-      features: [
-        'ตัวเลือกรหัสบัญชีจะเป็นไปตามรายการบัญชีที่อนุญาตของแต่ละแผนกจาก Carmen — แผนกที่จำกัดรายการไว้จะแสดงเฉพาะบัญชีที่อนุญาต และคู่ที่ไม่ถูกต้องจะถูกไฮไลต์สีแดงก่อนบันทึกหรือส่งบัญชี',
-      ],
-      fixes: [
-        {
-          before:
-            'ใบแจ้งหนี้ที่มีคอลัมน์ส่วนลด อาจอ่านประเภท VAT ผิด และยอดรายบรรทัดที่ส่งไปไม่ตรงกับเอกสาร',
-          text: 'ใบแจ้งหนี้ที่มีส่วนลดอ่าน VAT ถูกต้องแล้ว และราคาต่อหน่วยใน Carmen คูณออกมาตรงกับยอดสุทธิของบรรทัด',
-        },
-        {
-          before: 'สแกนใบแจ้งหนี้ AP บางไฟล์ขึ้น system error ไม่ว่าจะลองซ้ำกี่ครั้ง',
-          text: 'ไฟล์เหล่านั้นอ่านได้ถูกต้องตั้งแต่ครั้งแรกแล้ว',
-        },
-        {
-          before:
-            'โหมดมืด: เอาเมาส์ชี้ "additional mappings" ในหน้าต่าง payment type แล้วตัวหนังสืออ่านไม่ได้ (ขาวบนพื้นขาว)',
-          text: 'สีตอน hover ในโหมดมืดแสดงถูกต้องแล้ว',
-        },
-      ],
-      qol: [
-        'AI Suggest รู้จักใบแจ้งค่าธรรมเนียม payment gateway (KTC, PayPal และอื่นๆ) และเสนอบัญชีลูกหนี้จากผู้ให้บริการแทนบัญชีธนาคาร',
-        'หน้าจับคู่บัญชีกว้างขึ้น และแถว "Account Receivable / Bank" แสดงจำนวน payment type ที่จับคู่แล้วแบบสด',
-        'ขนาดไฟล์อัปโหลดจำกัดที่ 5 MB ต่อไฟล์ และ PDF สแกนได้สูงสุด 5 หน้าต่อครั้ง',
-      ],
-    },
-  },
-  {
     date: '2026-07-21',
     version: '1.0.1',
     en: {
