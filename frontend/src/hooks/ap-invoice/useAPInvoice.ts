@@ -11,6 +11,7 @@ import { useAPVendor } from './useAPVendor'
 import { useAPValidation, reconcileRows, repairDocFigure } from './useAPValidation'
 import { recalcRow, syncLineTotals, resolveTaxProfileForRate } from '../../lib/apTax'
 import { groupSelected } from '../../lib/apGroup'
+import { isAccountAllowed } from '../../lib/deptAccounts'
 import { useAPSubmission } from './useAPSubmission'
 import { fetchTaxProfiles } from '../../lib/api/carmen'
 import type { TaxProfileItem } from '../../lib/api/carmen'
@@ -492,6 +493,17 @@ export function useAPInvoice() {
     return true
   }
 
+  // Changing a row's dept to one whose DefaultAccount forbids the current account clears it.
+  const updateItemChecked = (idx: number, key: string, val: string) => {
+    extraction.updateItem(idx, key, val)
+    if (key === 'deptCode') {
+      const acc = extraction.lineItems[idx]?.accountCode
+      if (acc && !isAccountAllowed(val, acc, submission.masterDepts)) {
+        extraction.updateItem(idx, 'accountCode', '')
+      }
+    }
+  }
+
   const removeItemWithUndo = (idx: number) => {
     const item = extraction.lineItems[idx]
     if (!item) return
@@ -585,7 +597,7 @@ export function useAPInvoice() {
     handleFileChange: extraction.handleFileChange,
     updateHeader: extraction.updateHeader,
     blurHeader,
-    updateItem: extraction.updateItem,
+    updateItem: updateItemChecked,
     blurItem: extraction.blurItem,
     removeItem: removeItemWithUndo,
     confirmMapping,

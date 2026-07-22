@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { saveAccountingConfig } from '../../lib/api/config'
 import { appKey } from '../../lib/storage'
+import { isAccountAllowed, mergeSuggestion } from '../../lib/deptAccounts'
 import { parseNum } from '../../lib/format'
 import { BANK_INFO, BANK_CODE_MAP, BANK_SOURCE_MAP } from '../../constants/banks'
 import { useBankConfig } from './useBankConfig'
@@ -168,12 +169,26 @@ export function useMapping() {
   }
 
   const handleMappingChange = (type: string, field: keyof FieldMapping, value: string) => {
-    setMappings(prev => ({ ...prev, [type]: { ...prev[type as MainMappingKey], [field]: value } }))
+    setMappings(prev => {
+      const cur = prev[type as MainMappingKey]
+      const next = { ...cur, [field]: value }
+      // Dept change that forbids the current account (Carmen DefaultAccount) clears it.
+      if (field === 'dept' && !isAccountAllowed(value, next.acc, masterData.masterDepartments)) {
+        next.acc = ''
+      }
+      return { ...prev, [type]: next }
+    })
     suggestions.rejectMainSuggestion(type)
   }
 
   const handlePaymentMappingChange = (type: string, field: keyof FieldMapping, value: string) => {
     paymentTypes.handlePaymentMappingChange(type, field, value)
+    if (
+      field === 'dept' &&
+      !isAccountAllowed(value, paymentTypes.paymentAmount[type]?.acc, masterData.masterDepartments)
+    ) {
+      paymentTypes.handlePaymentMappingChange(type, 'acc', '')
+    }
     suggestions.rejectPaymentSuggestion(type)
   }
 
@@ -184,7 +199,7 @@ export function useMapping() {
         const s = suggestions.mainSuggestions[key]
         if (s) {
           const cur = next[key] || { dept: '', acc: '' }
-          next[key] = { dept: cur.dept || s.dept || '', acc: cur.acc || s.acc || '' }
+          next[key] = mergeSuggestion(cur, s, masterData.masterDepartments)
         }
       })
       return next
@@ -194,7 +209,7 @@ export function useMapping() {
       Object.entries(suggestions.paymentSuggestions).forEach(([type, s]) => {
         if (s) {
           const cur = next[type] || { dept: '', acc: '' }
-          next[type] = { dept: cur.dept || s.dept || '', acc: cur.acc || s.acc || '' }
+          next[type] = mergeSuggestion(cur, s, masterData.masterDepartments)
         }
       })
       return next
@@ -221,6 +236,28 @@ export function useMapping() {
         show: true,
         title: 'Please fill in all required fields',
         message: `Please fill in ${allMissing.map(f => f.label).join(', ')} before saving`,
+        type: 'error',
+      })
+      return
+    }
+
+    // Block saving pairs the dept's DefaultAccount forbids — they'd fail at Carmen.
+    // Only types visible in the UI (main fields + scan/custom payment types) are
+    // gated: a stale hidden entry would otherwise dead-end the Save with no row to fix.
+    const visibleTypes = new Set([...activeScan.paymentTypes, ...paymentTypes.customPaymentTypes])
+    const illegalPairs = [
+      ...Object.entries(mappings).map(([k, m]) => ({ label: k, ...m })),
+      ...Object.entries(paymentTypes.paymentAmount)
+        .filter(([k]) => visibleTypes.has(k))
+        .map(([k, m]) => ({ label: k, ...m })),
+    ].filter(m => m.dept && m.acc && !isAccountAllowed(m.dept, m.acc, masterData.masterDepartments))
+    if (illegalPairs.length > 0) {
+      setModalConfig({
+        show: true,
+        title: 'Account not allowed for department',
+        message: `${illegalPairs
+          .map(m => `${m.label}: ${m.acc} is not allowed for department ${m.dept}`)
+          .join('\n')}\nPlease pick an account from the department's allowed list.`,
         type: 'error',
       })
       return
@@ -322,6 +359,9 @@ export function useMapping() {
     openAmountModal: paymentTypes.openAmountModal,
     cancelAmountSelection: () =>
       paymentTypes.cancelAmountSelection(suggestions.clearAllSuggestions),
+    // Legality gate lives in PaymentTypeModal's OK handler (inline banner +
+    // auto-expand of additional mappings — an error modal naming a collapsed
+    // row confused users).
     saveAmountSelection: paymentTypes.saveAmountSelection,
     activeScan,
     allPaymentTypes,

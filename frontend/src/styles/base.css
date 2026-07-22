@@ -472,6 +472,9 @@ textarea:focus-visible {
   --card-foreground: var(--foreground);
   --muted: oklch(0.25 0.005 var(--neutral-h));
   --muted-foreground: oklch(0.62 0.006 var(--neutral-h));
+  --secondary: oklch(
+    0.29 0.006 var(--neutral-h)
+  ); /* hover surface — light theme leaks white without this */
   --accent: oklch(0.29 0.006 var(--neutral-h));
 
   /* ponytail: --primary-fill is the saturated version for filled buttons;

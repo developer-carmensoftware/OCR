@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { fetchAccountCodes, fetchDepartments, fetchGLPrefixes } from '../../lib/api/carmen'
+import { parseDefaultAccount } from '../../lib/deptAccounts'
 
 export interface MasterAccount {
   code: string
@@ -13,6 +14,8 @@ export interface MasterDepartment {
   code: string
   name: string
   name2?: string
+  /** AccCodes this dept restricts to; empty = all accounts allowed (Carmen DefaultAccount) */
+  allowedAccounts?: string[]
 }
 
 export interface MasterGLPrefix {
@@ -57,6 +60,7 @@ export function useMappingData(): MappingDataHook {
           code: d.DeptCode as string,
           name: d.Description as string,
           name2: d.Description2 as string | undefined,
+          allowedAccounts: parseDefaultAccount(d.DefaultAccount),
         }))
 
       setMasterAccounts(mappedAcc)
