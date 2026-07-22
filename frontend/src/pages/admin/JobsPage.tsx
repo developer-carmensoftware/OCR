@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import DataTable, { type Column } from '../../components/admin/DataTable'
 import { fetchJobs } from '../../lib/api/adminClient'
 import { useT } from '../../i18n/LanguageContext'
+import { fmtDateTime } from '../../lib/dates'
 
 interface JobRow {
   id: string
@@ -21,7 +22,7 @@ function getCols(t: ReturnType<typeof useT>['t']): Column<JobRow>[] {
       key: 'started_at',
       label: t('admin.jobs.col.started'),
       sortable: true,
-      render: r => r.started_at?.slice(0, 19).replace('T', ' ') ?? '—',
+      render: r => fmtDateTime(r.started_at),
     },
     { key: 'job_name', label: t('admin.jobs.col.job'), sortable: true },
     {

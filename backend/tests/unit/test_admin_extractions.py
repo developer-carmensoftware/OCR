@@ -339,11 +339,21 @@ class TestListTenantsEngagementFlag:
         count = MagicMock()
         count.scalar_one.return_value = 1
         db = AsyncMock()
-        db.execute.side_effect = [count, _result([tenant]), _result([]), _result([])]
+        # modules_count is opt-out: the active-module catalog minus explicitly
+        # disabled rows, so it costs a catalog count plus a disabled-rows query.
+        db.execute.side_effect = [
+            count,
+            _result([tenant]),
+            _result([]),  # last_used
+            _result(["credit_card_ocr", "ap_invoice"]),  # catalog count -> scalar_one = 2
+            _result([]),  # explicitly-disabled rows: none
+        ]
 
         result = await self._call(db, include_engagement=False)
 
-        assert db.execute.await_count == 4  # count, tenants, last_used, modules
+        assert db.execute.await_count == 5  # count, tenants, last_used, catalog, disabled
+        # No tenant_modules rows at all must read as "everything on", not zero.
+        assert result["data"][0]["modules_count"] == 2
         assert "tried" not in result["data"][0]
         assert set(result["data"][0]) == {
             "id",
@@ -367,7 +377,8 @@ class TestListTenantsEngagementFlag:
             count,
             _result([tenant]),
             _result([]),  # last_used
-            _result([]),  # modules
+            _result(["credit_card_ocr", "ap_invoice"]),  # module catalog count
+            _result([]),  # explicitly-disabled modules
             _result([]),  # cc submitted
             _result([]),  # ap submitted
             _result([]),  # task aggregates — none: this tenant never extracted

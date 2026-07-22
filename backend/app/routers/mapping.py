@@ -48,12 +48,17 @@ async def suggest_mapping(
     history = await get_confirmed_mappings(
         req.bank_code, _FIXED_FIELD_TYPES, source, session.carmen_token
     )
+    dept_allowed = map_gl._dept_allowed_map([d.model_dump() for d in req.departments])
 
     bypass: dict[str, dict] = {}
     hint_lines: list[str] = []
     for field in _FIXED_FIELD_TYPES:
         entry = history.get(field)
         if not entry:
+            continue
+        if not map_gl._pair_ok(entry["dept"], entry["acc"], dept_allowed):
+            # History pair no longer legal for the dept (Carmen DefaultAccount
+            # changed since it was posted) — fall through to enforced AI suggest.
             continue
         if entry["confirmed_count"] >= BYPASS_THRESHOLD:
             bypass[field] = {"dept": entry["dept"], "acc": entry["acc"]}
@@ -87,6 +92,7 @@ async def suggest_payment_types(
     history = await get_confirmed_mappings(
         req.bank_code, req.payment_types, source, session.carmen_token
     )
+    dept_allowed = map_gl._dept_allowed_map([d.model_dump() for d in req.departments])
 
     bypass: dict[str, dict] = {}
     hint_lines: list[str] = []
@@ -94,6 +100,8 @@ async def suggest_payment_types(
         entry = history.get(pt)
         if not entry:
             continue
+        if not map_gl._pair_ok(entry["dept"], entry["acc"], dept_allowed):
+            continue  # history pair now illegal for the dept — enforced AI suggests instead
         if entry["confirmed_count"] >= BYPASS_THRESHOLD:
             bypass[pt] = {"dept": entry["dept"], "acc": entry["acc"]}
         else:
@@ -112,6 +120,7 @@ async def suggest_payment_types(
         accounts=[a.model_dump() for a in req.accounts],
         departments=[d.model_dump() for d in req.departments],
         hint_text="\n".join(hint_lines),
+        bank_code=req.bank_code,
     )
     ai_suggestions = (result.output or {}).get("suggestions", {})
     return {"suggestions": {**ai_suggestions, **bypass}, "source": "history" if bypass else "ai"}

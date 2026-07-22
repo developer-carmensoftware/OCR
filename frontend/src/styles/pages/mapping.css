@@ -23,8 +23,8 @@ body {
 }
 
 .container {
-  max-width: 920px;
-  margin: 0 auto;
+  max-width: 960px;
+  margin: 2rem auto;
   background: var(--card-bg);
   padding: 2.5rem;
   border-radius: var(--radius-xl);
@@ -212,6 +212,7 @@ input[type='text']:focus {
 /* Mapping Table */
 .mapping-container {
   display: grid;
+  /* label gets more room than the short dept/acc code selects */
   grid-template-columns: 100px 150px 1fr 1fr;
   gap: 0.75rem;
   align-items: center;

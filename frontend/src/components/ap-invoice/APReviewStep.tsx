@@ -13,6 +13,7 @@ import Card from '../common/Card'
 import DateInput from '../common/DateInput'
 import VendorSearch from './APVendorSearch'
 import AmountSummary from './APAmountSummary'
+import ExtractionWarningBanner from '../credit-card/ExtractionWarningBanner'
 import APLineItemsTable from './APLineItemsTable'
 import { parseNum } from '../../constants/apInvoice'
 import { useT } from '../../i18n/LanguageContext'
@@ -24,6 +25,8 @@ import type { APInvoiceHeader } from '../../constants/apInvoice'
 import type { TaxProfileItem } from '../../lib/api/carmen'
 
 interface Ctrl {
+  // Backend extraction warnings (e.g. the VAT reading could not be confirmed).
+  warnings: string[]
   headerData: APInvoiceHeader
   lineItems: Array<Record<string, string | undefined>>
   fieldMappings: Record<APColumnKey, string>
@@ -135,6 +138,7 @@ export default function APReviewStep({ ctrl }: Props) {
     ungroupItems,
     originalLineItemsCount,
     removeItem,
+    warnings,
   } = ctrl
 
   const vendorMapped = !!systemVendor.code
@@ -186,6 +190,10 @@ export default function APReviewStep({ ctrl }: Props) {
 
   return (
     <>
+      {/* Surfaced here rather than on upload: these warn about the AMOUNTS, and this is
+          the step where the amounts are checked. */}
+      <ExtractionWarningBanner warnings={warnings} />
+
       <VendorSearch
         systemVendor={systemVendor}
         setSystemVendor={setSystemVendor}

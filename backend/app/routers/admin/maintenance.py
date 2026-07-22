@@ -18,16 +18,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/retention/run")
-async def trigger_retention(
-    _auth: AdminPrincipal | None = Depends(require_maintenance_auth),
-):
-    from app.services.retention_service import purge_inactive_sessions
-
-    purged_sessions = await purge_inactive_sessions()
-    return {"status": "completed", "purged_sessions": purged_sessions}
-
-
 @router.post("/summary/rebuild")
 async def trigger_summary_rebuild(
     target_date: date | None = Query(None, alias="date"),

@@ -19,7 +19,10 @@ router = APIRouter()
 
 @router.get("/sessions")
 async def list_sessions(
-    active_only: bool = Query(True),
+    # Sessions are scrubbed to is_active=false after an hour and retained 90 days
+    # (fn_purge_inactive_sessions), so this list is login history, not just live state.
+    # Defaulting to active_only would show at most the last hour of it.
+    active_only: bool = Query(False),
     tenant_id: str | None = Query(None),
     limit: int = Query(50, le=200),
     db: AsyncSession = Depends(get_db),

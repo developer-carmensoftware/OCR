@@ -41,11 +41,22 @@ export function useBankConfig(): BankConfigHook {
 
   useEffect(() => {
     let ocrBank: BankDisplayName | '' = ''
+    let ocrBranch = ''
     try {
       const ocrState = JSON.parse(
         localStorage.getItem(appKey('ocr_wizard_state')) || '{}'
       ) as Record<string, unknown>
       ocrBank = codeToDisplayName(ocrState.bank as string) || ''
+    } catch {
+      /* ignore */
+    }
+    try {
+      // Branch comes off the document (useOcrExtraction writes it here); the saved
+      // accounting config has no branch of its own, so it must not blank this out.
+      const cfg = JSON.parse(localStorage.getItem(appKey('accountingConfig')) || '{}') as {
+        company?: { branch?: string }
+      }
+      ocrBranch = cfg.company?.branch || ''
     } catch {
       /* ignore */
     }
@@ -56,7 +67,10 @@ export function useBankConfig(): BankConfigHook {
       setFilePrefix(normalized.finalPrefix)
       setFileSource(normalized.finalSource)
       setDescription((source.description as string) || '')
-      setCompany(normalized.companyData)
+      setCompany({
+        ...normalized.companyData,
+        branch: normalized.companyData.branch || ocrBranch,
+      })
     }
 
     getAccountingConfig()
@@ -76,7 +90,14 @@ export function useBankConfig(): BankConfigHook {
         const raw = localStorage.getItem(appKey('accountingConfig'))
         if (raw) {
           try {
-            applyConfig(JSON.parse(raw) as Record<string, unknown>)
+            const parsed = JSON.parse(raw) as {
+              mappings?: Record<string, FieldMapping>
+              paymentAmount?: Record<string, FieldMapping>
+            }
+            applyConfig(parsed as Record<string, unknown>)
+            // localStorage keeps main mappings and payment types in two fields; the API
+            // returns them merged. Flatten here so consumers see one shape either way.
+            setSavedMappings({ ...(parsed.mappings ?? {}), ...(parsed.paymentAmount ?? {}) })
           } catch {
             /* ignore */
           }
@@ -91,6 +112,7 @@ export function useBankConfig(): BankConfigHook {
               name: info.name,
               taxId: info.taxId,
               address: info.address,
+              branch: prev.branch || ocrBranch,
             }))
           }
         } else {

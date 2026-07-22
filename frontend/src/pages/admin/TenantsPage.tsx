@@ -10,8 +10,7 @@ import {
   type TenantDetail,
 } from '../../lib/api/adminClient'
 import { useT } from '../../i18n/LanguageContext'
-
-const fmtDate = (s: string | null) => s?.slice(0, 19).replace('T', ' ') ?? '—'
+import { fmtDateTime as fmtDate } from '../../lib/dates'
 
 /** Days after which a BU that once used the product reads as gone quiet. */
 const IDLE_WARN_DAYS = 14
@@ -373,6 +372,13 @@ function TenantDetailPanel({
                 {m.display_name}
               </span>
             ))}
+            {/* Opt-out: every catalog module is on unless an admin turned it off, so the
+                exceptions are the news. Same convention as the Quotas & Modules page. */}
+            {detail.modules_disabled.map(id => (
+              <span key={id} className="tenant-chip danger">
+                {t('admin.tenants.detail.modulesDisabled', { name: id })}
+              </span>
+            ))}
           </div>
         )}
       </section>
@@ -384,7 +390,7 @@ function TenantDetailPanel({
         ) : (
           <div className="tenant-quota-list">
             {detail.quotas.map(q => (
-              <div key={`${q.period}-${q.metric}`} className="tenant-quota">
+              <div key={q.id} className="tenant-quota">
                 <div className="tenant-quota-label">
                   {q.period} · {metricLabel(t, q.metric)}
                   <span className="admin-mono admin-sub-text">

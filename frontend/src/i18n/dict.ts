@@ -117,11 +117,11 @@ const en = {
 
   // — Slip upload —
   'slip.errType': 'Only JPG, PNG, or PDF files are supported',
-  'slip.errSize': 'File exceeds 20 MB',
+  'slip.errSize': 'File exceeds 5 MB',
   'slip.chooseDifferent': 'Choose a different file',
   'slip.submitting': 'Submitting…',
   'slip.uploadLabel': 'Upload payment slip',
-  'slip.uploadHint': 'Click or drag a file here · JPG · PNG · PDF · up to 20 MB',
+  'slip.uploadHint': 'Click or drag a file here · JPG · PNG · PDF · up to 5 MB',
 
   // — Order history + status —
   'order.statusInProgress': 'In progress',
@@ -403,7 +403,7 @@ const en = {
   'ap.appTitle': 'Carmen Cloud',
   'ap.appSub': 'AI AP Invoice Automation',
   'ap.uploadTitle': 'Upload Invoice Document',
-  'ap.uploadDesc': 'Supports JPG, PNG, and PDF files (max 20 MB)',
+  'ap.uploadDesc': 'Supports JPG, PNG, and PDF files (max 5 MB)',
   'ap.uploadBtn': 'Select Document',
   'ap.mapTitle': 'Review and Field Mapping',
   'ap.confirmMap': 'Confirm Field Mapping',
@@ -570,7 +570,7 @@ const en = {
   'cc.readingPdfHint': 'Detecting page count, this will only take a moment',
   'cc.dropHint': 'Click or drag files here',
   'cc.imagesSelected': '{n} images selected',
-  'cc.uploadSupports': 'Supports JPG · PNG · PDF · HEIC · Multiple images · up to 20 MB',
+  'cc.uploadSupports': 'Supports JPG · PNG · PDF · HEIC · Multiple images · up to 5 MB',
   'cc.browseFile': 'Browse File',
   // Bank detection
   'cc.autoDetectSub': 'Let AI identify the bank',
@@ -679,6 +679,12 @@ const en = {
   'whatsnew.subtitle': 'Updates to Carmen AI Automation, newest first.',
   'whatsnew.new': 'New',
   'whatsnew.empty': 'No updates to show yet.',
+  // Not plain "New" — that is the unread tag, and two different "New"s on the
+  // same entry read as one thing.
+  'whatsnew.cat.features': 'New features',
+  'whatsnew.cat.fixes': 'Fixed',
+  'whatsnew.cat.qol': 'Improved',
+  'whatsnew.before': 'Before',
 
   // — Home / module picker —
   'home.subtitle':
@@ -708,6 +714,7 @@ const en = {
   'admin.nav.item.overview': 'Overview',
   'admin.nav.item.usage': 'Usage',
   'admin.nav.item.llmLogs': 'LLM Logs',
+  'admin.nav.item.userUsage': 'User Usage',
   'admin.nav.item.tenantRanking': 'Tenant Ranking',
   'admin.nav.item.sessions': 'Sessions',
   'admin.nav.item.jobs': 'Jobs',
@@ -831,7 +838,8 @@ const en = {
   'admin.sessions.loading': 'Loading…',
   'admin.sessions.empty': 'No sessions found',
   'admin.sessions.status.active': 'Active',
-  'admin.sessions.status.revoked': 'Revoked',
+  // Covers both an admin revoke and the hourly scrub — is_active=false, indistinguishable.
+  'admin.sessions.status.revoked': 'Ended',
   'admin.sessions.revoke': 'Revoke',
   'admin.sessions.toast.revoked': 'Session revoked',
   'admin.sessions.toast.revokeFailed': 'Failed to revoke session',
@@ -1004,6 +1012,22 @@ const en = {
   'admin.tenantRanking.col.avgLatency': 'Avg Latency (ms)',
   'admin.tenantRanking.empty': 'No data for period',
   'admin.tenantRanking.toast.loadFailed': 'Tenant ranking: {error}',
+  'admin.userUsage.title': 'User Usage',
+  'admin.userUsage.col.user': 'User',
+  'admin.userUsage.col.calls': 'LLM calls',
+  'admin.userUsage.col.tokens': 'Tokens',
+  'admin.userUsage.col.cost': 'Cost',
+  'admin.userUsage.col.avgLatency': 'Avg latency',
+  'admin.userUsage.order.calls': 'Sort by calls',
+  'admin.userUsage.order.tokens': 'Sort by tokens',
+  'admin.userUsage.order.cost': 'Sort by cost',
+  'admin.userUsage.orderAria': 'Sort metric',
+  'admin.userUsage.period.7d': 'Last 7 days',
+  'admin.userUsage.period.30d': 'Last 30 days',
+  'admin.userUsage.period.90d': 'Last 90 days',
+  'admin.userUsage.periodAria': 'Period',
+  'admin.userUsage.empty': 'No user activity for period',
+  'admin.userUsage.toast.loadFailed': 'User usage: {error}',
 
   'admin.tenants.title': 'Tenants',
   'admin.tenants.activeOnly': 'Active only',
@@ -1041,6 +1065,7 @@ const en = {
   'admin.tenants.detail.modules': 'Modules',
   'admin.tenants.detail.modulesCount': 'Modules ({count})',
   'admin.tenants.detail.noModules': 'No modules enabled',
+  'admin.tenants.detail.modulesDisabled': '{name} off',
   'admin.tenants.detail.quotas': 'Quotas',
   'admin.tenants.detail.noQuotas': 'No quotas configured',
   'admin.tenants.detail.recentSessions': 'Recent Sessions',
@@ -1260,11 +1285,11 @@ const th: Record<TKey, string> = {
 
   // — Slip upload —
   'slip.errType': 'รองรับเฉพาะไฟล์ JPG, PNG หรือ PDF เท่านั้น',
-  'slip.errSize': 'ไฟล์มีขนาดเกิน 20 MB',
+  'slip.errSize': 'ไฟล์มีขนาดเกิน 5 MB',
   'slip.chooseDifferent': 'เลือกไฟล์อื่น',
   'slip.submitting': 'กำลังส่ง…',
   'slip.uploadLabel': 'อัปโหลดสลิปการชำระเงิน',
-  'slip.uploadHint': 'คลิกหรือลากไฟล์มาวางที่นี่ · JPG · PNG · PDF · ไม่เกิน 20 MB',
+  'slip.uploadHint': 'คลิกหรือลากไฟล์มาวางที่นี่ · JPG · PNG · PDF · ไม่เกิน 5 MB',
 
   // — Order history + status —
   'order.statusInProgress': 'กำลังดำเนินการ',
@@ -1540,7 +1565,7 @@ const th: Record<TKey, string> = {
   'ap.appTitle': 'Carmen Cloud',
   'ap.appSub': 'AI AP Invoice Automation',
   'ap.uploadTitle': 'อัปโหลดเอกสารใบแจ้งหนี้',
-  'ap.uploadDesc': 'รองรับไฟล์ JPG, PNG และ PDF (ไม่เกิน 20 MB)',
+  'ap.uploadDesc': 'รองรับไฟล์ JPG, PNG และ PDF (ไม่เกิน 5 MB)',
   'ap.uploadBtn': 'เลือกเอกสาร',
   'ap.mapTitle': 'ตรวจสอบและจับคู่คอลัมน์',
   'ap.confirmMap': 'ยืนยันการจับคู่คอลัมน์',
@@ -1704,7 +1729,7 @@ const th: Record<TKey, string> = {
   'cc.readingPdfHint': 'กำลังตรวจจำนวนหน้า ใช้เวลาเพียงครู่เดียว',
   'cc.dropHint': 'คลิกหรือลากไฟล์มาวางที่นี่',
   'cc.imagesSelected': 'เลือก {n} รูปภาพ',
-  'cc.uploadSupports': 'รองรับ JPG · PNG · PDF · HEIC · หลายรูปภาพ · ไม่เกิน 20 MB',
+  'cc.uploadSupports': 'รองรับ JPG · PNG · PDF · HEIC · หลายรูปภาพ · ไม่เกิน 5 MB',
   'cc.browseFile': 'เลือกไฟล์',
   // Bank detection
   'cc.autoDetectSub': 'ให้ AI ระบุธนาคารให้',
@@ -1811,6 +1836,10 @@ const th: Record<TKey, string> = {
   'whatsnew.subtitle': 'การอัปเดตของ Carmen AI Automation เรียงจากล่าสุด',
   'whatsnew.new': 'ใหม่',
   'whatsnew.empty': 'ยังไม่มีการอัปเดตที่จะแสดง',
+  'whatsnew.cat.features': 'ฟีเจอร์ใหม่',
+  'whatsnew.cat.fixes': 'แก้ไขข้อผิดพลาด',
+  'whatsnew.cat.qol': 'ปรับปรุงการใช้งาน',
+  'whatsnew.before': 'ก่อนหน้านี้',
 
   // — Home / module picker —
   'home.subtitle':
@@ -1839,6 +1868,7 @@ const th: Record<TKey, string> = {
   'admin.nav.item.overview': 'ภาพรวม',
   'admin.nav.item.usage': 'การใช้งาน',
   'admin.nav.item.llmLogs': 'บันทึก LLM',
+  'admin.nav.item.userUsage': 'การใช้งานรายผู้ใช้',
   'admin.nav.item.tenantRanking': 'อันดับ Tenant ',
   'admin.nav.item.sessions': 'เซสชัน',
   'admin.nav.item.jobs': 'งานที่ประมวลผล',
@@ -1963,7 +1993,7 @@ const th: Record<TKey, string> = {
   'admin.sessions.loading': 'กำลังโหลด…',
   'admin.sessions.empty': 'ไม่พบเซสชัน',
   'admin.sessions.status.active': 'ใช้งานอยู่',
-  'admin.sessions.status.revoked': 'ถูกเพิกถอน',
+  'admin.sessions.status.revoked': 'สิ้นสุดแล้ว',
   'admin.sessions.revoke': 'เพิกถอน',
   'admin.sessions.toast.revoked': 'เพิกถอนเซสชันแล้ว',
   'admin.sessions.toast.revokeFailed': 'เพิกถอนเซสชันไม่สำเร็จ',
@@ -2136,6 +2166,22 @@ const th: Record<TKey, string> = {
   'admin.tenantRanking.col.avgLatency': 'เวลาแฝงเฉลี่ย (มิลลิวินาที)',
   'admin.tenantRanking.empty': 'ไม่มีข้อมูลในช่วงเวลานี้',
   'admin.tenantRanking.toast.loadFailed': 'อันดับ Tenant : {error}',
+  'admin.userUsage.title': 'การใช้งานรายผู้ใช้',
+  'admin.userUsage.col.user': 'ผู้ใช้',
+  'admin.userUsage.col.calls': 'จำนวนการเรียก LLM',
+  'admin.userUsage.col.tokens': 'Tokens',
+  'admin.userUsage.col.cost': 'ค่าใช้จ่าย',
+  'admin.userUsage.col.avgLatency': 'เวลาเฉลี่ย',
+  'admin.userUsage.order.calls': 'เรียงตามจำนวนการเรียก',
+  'admin.userUsage.order.tokens': 'เรียงตาม Tokens',
+  'admin.userUsage.order.cost': 'เรียงตามค่าใช้จ่าย',
+  'admin.userUsage.orderAria': 'เกณฑ์การเรียง',
+  'admin.userUsage.period.7d': '7 วันล่าสุด',
+  'admin.userUsage.period.30d': '30 วันล่าสุด',
+  'admin.userUsage.period.90d': '90 วันล่าสุด',
+  'admin.userUsage.periodAria': 'ช่วงเวลา',
+  'admin.userUsage.empty': 'ไม่มีการใช้งานในช่วงเวลานี้',
+  'admin.userUsage.toast.loadFailed': 'การใช้งานรายผู้ใช้: {error}',
 
   'admin.tenants.title': ' Tenant ',
   'admin.tenants.activeOnly': 'ที่ใช้งานอยู่เท่านั้น',
@@ -2173,6 +2219,7 @@ const th: Record<TKey, string> = {
   'admin.tenants.detail.modules': 'โมดูล',
   'admin.tenants.detail.modulesCount': 'โมดูล ({count})',
   'admin.tenants.detail.noModules': 'ไม่มีโมดูลที่เปิดใช้งาน',
+  'admin.tenants.detail.modulesDisabled': 'ปิด {name}',
   'admin.tenants.detail.quotas': 'โควตา',
   'admin.tenants.detail.noQuotas': 'ยังไม่ได้ตั้งค่าโควตา',
   'admin.tenants.detail.recentSessions': 'เซสชันล่าสุด',

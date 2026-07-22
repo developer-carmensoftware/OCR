@@ -11,8 +11,8 @@ if TYPE_CHECKING:
 
 from app.config import settings
 from app.constants import ExpenseAccounts, Module
-from app.exceptions import LLMParseError, ValidationError
-from app.llm.client import _strip_code_fences, call_text_llm, call_vision_llm
+from app.exceptions import ValidationError
+from app.llm.client import call_text_llm, call_vision_llm, parse_vision_json
 from app.llm.prompts.ap_invoice import PROMPT as AP_INVOICE_PROMPT
 from app.llm.prompts.mapping import build_ap_expense_prompt
 from app.services.ap_invoice_postprocess_service import postprocess as postprocess_ap_invoice
@@ -234,15 +234,22 @@ async def extract_ap_invoice_data(
         count_quota=True,
     )
 
-    result_text = _strip_code_fences(result_text)
+    return postprocess_ap_invoice(parse_vision_json(result_text))
 
-    try:
-        data = json.loads(result_text)
-    except json.JSONDecodeError as exc:
-        logger.error("AP JSON parse failed (%s). Raw: %.500s", exc, result_text)
-        raise LLMParseError() from exc
 
-    return postprocess_ap_invoice(data)
+def _parse_default_account(raw: Any) -> set[str]:
+    """Carmen DefaultAccount is a *stringified* JSON array of {AccCode, Description}.
+
+    Empty/absent/unparseable ⇒ empty set = no restriction (all accounts allowed).
+    """
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (ValueError, TypeError):
+            return set()
+    if not isinstance(raw, list):
+        return set()
+    return {e["AccCode"] for e in raw if isinstance(e, dict) and e.get("AccCode")}
 
 
 async def suggest_for_items(
@@ -271,10 +278,24 @@ async def suggest_for_items(
         if a.get("AccCode") and a.get("AccCode") != "AccCode"
     ]
     departments = [
-        {"code": d["DeptCode"], "name": d.get("Description") or ""}
+        {
+            "code": d["DeptCode"],
+            "name": d.get("Description") or "",
+            "allowed": _parse_default_account(d.get("DefaultAccount")),
+        }
         for d in (depts_raw.get("Data") or [])
         if d.get("DeptCode") and d.get("DeptCode") != "CodeDep"
     ]
+    # dept → AccCodes it restricts to (Carmen DefaultAccount); absent = all allowed
+    dept_allowed = {d["code"]: d["allowed"] for d in departments if d["allowed"]}
+
+    def _enforce(sugg: dict[int, dict]) -> dict[int, dict]:
+        """Drop accounts illegal for their dept — user re-picks from the dept-filtered UI."""
+        for entry in sugg.values():
+            allowed = dept_allowed.get(entry.get("deptCode"))
+            if allowed and entry.get("accountCode") not in allowed:
+                entry["accountCode"] = None
+        return sugg
 
     # Prefer accounts that match BOTH type AND prefix; fall back to prefix-only,
     # then type-only, then all accounts — avoids including asset/prepaid (1xxxxx)
@@ -319,7 +340,7 @@ async def suggest_for_items(
             )
 
     if not remaining_items:
-        return bypassed, True
+        return _enforce(bypassed), True
 
     # Pre-filter expense accounts using remaining items' keywords
     filtered_accounts = _filter_expense_accounts(
@@ -346,7 +367,7 @@ async def suggest_for_items(
     data = await call_text_llm(prompt, module_id=Module.AP_INVOICE, max_tokens=4096)
     if data is None:
         logger.warning("AP invoice suggest LLM returned None — returning bypass-only results")
-        return bypassed, False
+        return _enforce(bypassed), False
 
     def _resolve(raw, valid_map: dict):
         """Match LLM-returned code against valid_map.
@@ -380,7 +401,7 @@ async def suggest_for_items(
         acc = _resolve(raw_acc, valid_acc_map)
         suggestions[item["index"]] = {"deptCode": dept, "accountCode": acc}
 
-    return suggestions, True
+    return _enforce(suggestions), True
 
 
 async def mark_invoice_submitted(db: "AsyncSession", ap_invoice_id: str, tenant_id: str) -> None:

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { fetchAccountCodes, fetchDepartments, fetchGLPrefixes } from '../../lib/api/carmen'
+import { parseDefaultAccount } from '../../lib/deptAccounts'
 
 export interface MasterAccount {
   code: string
@@ -13,6 +14,8 @@ export interface MasterDepartment {
   code: string
   name: string
   name2?: string
+  /** AccCodes this dept restricts to; empty = all accounts allowed (Carmen DefaultAccount) */
+  allowedAccounts?: string[]
 }
 
 export interface MasterGLPrefix {
@@ -31,6 +34,8 @@ export interface MappingDataHook {
 export function useMappingData(): MappingDataHook {
   const [masterAccounts, setMasterAccounts] = useState<MasterAccount[]>([])
   const [masterDepartments, setMasterDepartments] = useState<MasterDepartment[]>([])
+  // ponytail: masterGLPrefixes has no UI consumer left — confirm no suggestion prompt
+  // needs it, then drop the state and the fetchGLPrefixes call (one request per mount).
   const [masterGLPrefixes, setMasterGLPrefixes] = useState<MasterGLPrefix[]>([])
   const [loadingOpts, setLoadingOpts] = useState(true)
 
@@ -55,6 +60,7 @@ export function useMappingData(): MappingDataHook {
           code: d.DeptCode as string,
           name: d.Description as string,
           name2: d.Description2 as string | undefined,
+          allowedAccounts: parseDefaultAccount(d.DefaultAccount),
         }))
 
       setMasterAccounts(mappedAcc)

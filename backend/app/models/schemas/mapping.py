@@ -5,6 +5,8 @@ class CodeOption(BaseModel):
     code: str
     name: str
     type: str | None = None
+    # Dept-restricted AccCodes (Carmen DefaultAccount); empty/None = all allowed
+    allowed_accounts: list[str] | None = None
 
 
 class SuggestRequest(BaseModel):

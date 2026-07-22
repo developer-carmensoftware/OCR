@@ -115,7 +115,7 @@ services:
       - key: APP_DEBUG
         value: "false"
       - key: MAX_FILE_SIZE_MB
-        value: "20"
+        value: "5"
       # Code default is 0.5h; 8h matches .env.example and keeps a user from losing
       # in-progress wizard work to a mid-session expiry.
       - key: SESSION_TTL_HOURS

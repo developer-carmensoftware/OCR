@@ -116,6 +116,58 @@
   text-wrap: balance;
 }
 
+/* Category sections. The label is a small caps eyebrow, not a heading-sized thing —
+   an entry usually has two of these, and heading weight at that frequency turns a
+   short list into an outline. Colour carries the category; the word carries it for
+   anyone who cannot see the colour. */
+.whatsnew-cat + .whatsnew-cat {
+  margin-top: 0.9rem;
+}
+
+.whatsnew-cat-label {
+  margin: 0 0 0.3rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.whatsnew-cat-label--features {
+  color: var(--primary);
+}
+
+.whatsnew-cat-label--fixes {
+  color: var(--success, #16a34a);
+}
+
+.whatsnew-cat-label--qol {
+  color: var(--text-3);
+}
+
+/* The "before" state, subordinate to the fix itself: a reader scanning for what
+   changed should hit the fix first and find the old behaviour underneath it only
+   if they need to recognize the problem. */
+.whatsnew-before {
+  display: block;
+  margin-top: 0.15rem;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--border);
+  color: var(--text-3);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.whatsnew-before-label {
+  margin-right: 0.35rem;
+  font-weight: 600;
+  color: var(--text-4, var(--text-3));
+}
+
+.whatsnew-before-label::after {
+  content: ':';
+}
+
 .whatsnew-items {
   margin: 0;
   padding-left: 1.1rem;

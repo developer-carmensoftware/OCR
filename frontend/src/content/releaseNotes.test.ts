@@ -27,9 +27,36 @@ describe('release notes', () => {
     for (const r of RELEASE_NOTES) {
       for (const copy of [r.en, r.th]) {
         expect(copy.title.trim()).not.toBe('')
-        expect(copy.items.length).toBeGreaterThan(0)
-        expect(copy.items.every(i => i.trim() !== '')).toBe(true)
+        const bullets = [
+          ...(copy.features ?? []),
+          ...(copy.qol ?? []),
+          ...(copy.fixes ?? []).map(f => f.text),
+        ]
+        expect(bullets.length).toBeGreaterThan(0)
+        expect(bullets.every(b => b.trim() !== '')).toBe(true)
       }
+    }
+  })
+
+  // The type makes `before` required, so an omission cannot compile. This catches
+  // the version that does compile: an empty string to shut the compiler up.
+  it('every fix says what it was like before', () => {
+    for (const r of RELEASE_NOTES) {
+      for (const copy of [r.en, r.th]) {
+        for (const fix of copy.fixes ?? []) {
+          expect(fix.before.trim()).not.toBe('')
+        }
+      }
+    }
+  })
+
+  // A missing TH bullet is invisible to a Thai reader — no error, just a shorter
+  // list than the English one. TS only enforces that both languages exist.
+  it('EN and TH have the same number of bullets in each category', () => {
+    for (const r of RELEASE_NOTES) {
+      expect(r.th.features?.length ?? 0).toBe(r.en.features?.length ?? 0)
+      expect(r.th.fixes?.length ?? 0).toBe(r.en.fixes?.length ?? 0)
+      expect(r.th.qol?.length ?? 0).toBe(r.en.qol?.length ?? 0)
     }
   })
 

@@ -109,6 +109,12 @@ export async function fetchTenantRanking(params: QueryParams = {}) {
   return res.json()
 }
 
+export async function fetchUserUsage(params: QueryParams = {}) {
+  const res = await adminFetch(`${API.admin.userUsage}${buildQs(params)}`)
+  if (!res.ok) throw new Error(await unwrapDetail(res, 'Failed to fetch user usage'))
+  return res.json()
+}
+
 export async function fetchLLMLogs(params: QueryParams = {}) {
   const res = await adminFetch(`${API.admin.llmUsage}${buildQs(params)}`)
   if (!res.ok) throw new Error('Failed to fetch LLM logs')
@@ -198,6 +204,7 @@ export interface ExtractionFailureRow {
 }
 
 export interface TenantQuota {
+  id: string
   period: string
   metric: string
   used: number
@@ -233,6 +240,7 @@ export interface TenantDetail {
   notes: string | null
   created_at: string | null
   modules: TenantModuleRow[]
+  modules_disabled: string[]
   quotas: TenantQuota[]
   recent_sessions: TenantSessionRow[]
 }

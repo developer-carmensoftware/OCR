@@ -9,6 +9,7 @@ import Tabs from '../../components/admin/ui/Tabs'
 import EmptyState from '../../components/admin/ui/EmptyState'
 import { fetchExtractionFailures, type ExtractionFailureRow } from '../../lib/api/adminClient'
 import { useT } from '../../i18n/LanguageContext'
+import { fmtDateTime } from '../../lib/dates'
 
 /**
  * Why an extraction failed. /error-breakdown reports how MANY failed; this reports
@@ -83,7 +84,7 @@ function groupByCause(rows: ExtractionFailureRow[]): FailureGroup[] {
     .sort((a, b) => b.failures - a.failures)
 }
 
-const fmtDate = (s: string | null) => s?.slice(0, 19).replace('T', ' ') ?? '—'
+const fmtDate = fmtDateTime
 const monthStart = () => {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`

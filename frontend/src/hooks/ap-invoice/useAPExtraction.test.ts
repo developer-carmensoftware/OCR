@@ -45,6 +45,7 @@ vi.mock('../../constants/apInvoice', () => ({
 import { apiFetch as realApiFetch } from '../../lib/api/client'
 import { getAPVendorMapping as realGetAPVendorMapping } from '../../lib/api/config'
 import { toast } from '../../lib/toast'
+import { appKey } from '../../lib/storage'
 
 const apiFetch = vi.mocked(realApiFetch)
 const getAPVendorMapping = vi.mocked(realGetAPVendorMapping)
@@ -182,6 +183,62 @@ describe('useAPExtraction', () => {
         await result.current.runOCR(MOCK_FILE)
       })
       expect(result.current.loading).toBe(false)
+    })
+  })
+
+  // ── F1b: vendor column mapping restore ───────────────────────────────────────
+  // Every other test in this file mocks getAPVendorMapping as rejected, so neither
+  // branch of the restore was covered. The GET wraps the flat map in `mapping` —
+  // reading the wrong key here silently drops a vendor's saved column layout.
+
+  describe('F1b: vendor mapping restore', () => {
+    it('applies the saved mapping returned by the API', async () => {
+      apiFetch.mockResolvedValue({
+        ok: true,
+        json: async () => MOCK_API_RESPONSE,
+      } as unknown as Response)
+      getAPVendorMapping.mockResolvedValue({
+        vendor_tax_id: '1234567890123',
+        mapping: { col1: 'description', col2: 'lineTotal' },
+      })
+
+      const props = makeProps()
+      const { result } = renderHook(() => useAPExtraction(props))
+      await act(async () => {
+        await result.current.runOCR(MOCK_FILE)
+      })
+
+      await waitFor(() =>
+        expect(result.current.fieldMappings).toEqual({ col1: 'description', col2: 'lineTotal' })
+      )
+      expect(getAPVendorMapping).toHaveBeenCalledWith('1234567890123')
+    })
+
+    it('falls back to the localStorage mapping for that vendor when the API has none', async () => {
+      mockSuccess()
+      localStorage.setItem(
+        appKey('ap_invoice_mapping'),
+        JSON.stringify({ '1234567890123': { col1: 'description' } })
+      )
+
+      const props = makeProps()
+      const { result } = renderHook(() => useAPExtraction(props))
+      await act(async () => {
+        await result.current.runOCR(MOCK_FILE)
+      })
+
+      await waitFor(() => expect(result.current.fieldMappings).toEqual({ col1: 'description' }))
+    })
+
+    it('does not look up a mapping when the document carries no vendor tax id', async () => {
+      mockSuccess({ ...MOCK_API_RESPONSE, vendorTaxId: '' })
+      const props = makeProps()
+      const { result } = renderHook(() => useAPExtraction(props))
+      await act(async () => {
+        await result.current.runOCR(MOCK_FILE)
+      })
+
+      expect(getAPVendorMapping).not.toHaveBeenCalled()
     })
   })
 

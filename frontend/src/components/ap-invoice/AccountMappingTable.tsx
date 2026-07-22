@@ -3,11 +3,13 @@ import { SkeletonRow } from '../common/Skeleton'
 import CustomSearchSelect from '../common/CustomSearchSelect'
 import AISuggestBar from '../common/AISuggestBar'
 import { useT } from '../../i18n/LanguageContext'
+import { allowedAccountsForDept, isAccountAllowed } from '../../lib/deptAccounts'
 import type { APLineItem } from '../../hooks/ap-invoice/useAPExtraction'
 
 interface GLAccount {
   code: string
   name: string
+  allowedAccounts?: string[]
 }
 
 interface Props {
@@ -102,6 +104,15 @@ export default function AccountMappingTable({
                       source: 'ai',
                     }
                   : null
+                const acctOptions = allowedAccountsForDept(
+                  item.deptCode,
+                  masterDepts,
+                  masterAccounts
+                )
+                const acctNotice =
+                  acctOptions.length < masterAccounts.length
+                    ? `${acctOptions.length} accounts allowed for ${item.deptCode}`
+                    : undefined
                 const accChoice = item._suggestAcc
                   ? {
                       code: item._suggestAcc,
@@ -128,11 +139,15 @@ export default function AccountMappingTable({
                     <td>
                       <CustomSearchSelect
                         value={item.accountCode || ''}
-                        options={masterAccounts}
+                        options={acctOptions}
+                        notice={acctNotice}
                         placeholder={t('ap.searchAcc')}
                         topChoice={accChoice}
                         onChange={val => updateItem(ri, 'accountCode', val)}
-                        hasError={missingAcc}
+                        hasError={
+                          missingAcc ||
+                          !isAccountAllowed(item.deptCode, item.accountCode, masterDepts)
+                        }
                       />
                     </td>
                     {hasSuggestions && (

@@ -17,7 +17,7 @@ import httpx
 from openai import APIConnectionError, APITimeoutError, AsyncOpenAI, RateLimitError
 
 from app.config import settings
-from app.exceptions import LLMCapacityError, LLMServiceError
+from app.exceptions import LLMCapacityError, LLMParseError, LLMServiceError
 
 logger = logging.getLogger(__name__)
 
@@ -337,6 +337,28 @@ def _strip_code_fences(text: str) -> str:
     last = lines[-1].strip()
     inner = lines[1:-1] if last == "```" else lines[1:]
     return "\n".join(inner).strip()
+
+
+def parse_vision_json(result_text: str) -> dict:
+    """Parse a vision-LLM response into a dict, tolerating markdown fences and a
+    one-element array wrapper. Anything else raises LLMParseError so the user gets
+    a clean "invalid JSON, retry" instead of a 500 AttributeError deeper in.
+
+    Single parse path for every vision module — the 2026-07-22 OOM incident started
+    with one module missing the list-unwrap guard another module had.
+    """
+    raw = _strip_code_fences(result_text)
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        logger.error("Vision JSON parse failed (%s). Raw: %.500s", exc, raw)
+        raise LLMParseError() from exc
+    if isinstance(parsed, list) and parsed:
+        parsed = parsed[0]
+    if not isinstance(parsed, dict):
+        logger.error("Vision JSON is %s, not an object. Raw: %.500s", type(parsed).__name__, raw)
+        raise LLMParseError()
+    return parsed
 
 
 async def call_vision_llm(

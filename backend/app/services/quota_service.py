@@ -311,10 +311,14 @@ async def get_quota_summary(tenant_id: str) -> dict:
     try:
         async with async_session() as db:
             result = await db.execute(
-                select(Quota).where(
+                select(Quota)
+                .where(
                     Quota.tenant_id == tenant_id,
                     Quota.deleted_at.is_(None),
                 )
+                # Deterministic: the admin UI renders quotas[0] as the headline bar,
+                # so an unordered select made it flip between reloads.
+                .order_by(Quota.period, Quota.metric)
             )
             quotas = list(result.scalars().all())
 

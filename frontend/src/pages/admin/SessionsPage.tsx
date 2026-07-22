@@ -3,10 +3,12 @@ import { toast } from 'sonner'
 import TenantSelector from '../../components/admin/TenantSelector'
 import { fetchSessions, revokeSession } from '../../lib/api/adminClient'
 import { useT } from '../../i18n/LanguageContext'
+import { fmtDateTime } from '../../lib/dates'
 
 interface SessionRow {
   id: string
   tenant_id: string
+  tenant_name: string | null
   carmen_user_id: string
   username: string
   is_active: boolean
@@ -17,7 +19,7 @@ interface SessionRow {
 export default function SessionsPage() {
   const { t } = useT()
   const [tenantId, setTenantId] = useState('')
-  const [activeOnly, setActiveOnly] = useState(true)
+  const [activeOnly, setActiveOnly] = useState(false)
   const [rows, setRows] = useState<SessionRow[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -93,7 +95,7 @@ export default function SessionsPage() {
                     <div>{r.username || '—'}</div>
                     <div className="admin-sub-text admin-mono">{r.carmen_user_id}</div>
                   </td>
-                  <td className="admin-td admin-mono">{r.tenant_id}</td>
+                  <td className="admin-td">{r.tenant_name ?? r.tenant_id}</td>
                   <td className="admin-td">
                     <span className={`status-badge ${r.is_active ? 'ok' : 'error'}`}>
                       {r.is_active
@@ -101,12 +103,8 @@ export default function SessionsPage() {
                         : t('admin.sessions.status.revoked')}
                     </span>
                   </td>
-                  <td className="admin-td">
-                    {r.last_used_at?.slice(0, 19).replace('T', ' ') ?? '—'}
-                  </td>
-                  <td className="admin-td">
-                    {r.created_at?.slice(0, 19).replace('T', ' ') ?? '—'}
-                  </td>
+                  <td className="admin-td">{fmtDateTime(r.last_used_at)}</td>
+                  <td className="admin-td">{fmtDateTime(r.created_at)}</td>
                   <td className="admin-td">
                     {r.is_active && (
                       <button

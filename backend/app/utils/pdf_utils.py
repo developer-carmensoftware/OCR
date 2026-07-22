@@ -15,7 +15,7 @@ import fitz  # PyMuPDF
 
 from app.exceptions import ExtractionError, PdfPasswordRequired
 
-MAX_PAGES_PER_CALL = 10
+MAX_PAGES_PER_CALL = 5
 # Upper bound for rasterisation. A malicious PDF can declare an enormous page
 # size; without clamping, get_pixmap() would allocate width*height*3 bytes and
 # OOM the worker.

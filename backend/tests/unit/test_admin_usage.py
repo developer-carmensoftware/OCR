@@ -506,39 +506,58 @@ class TestUserUsage:
             admin=_make_admin(),
         )
 
-    async def test_A5_empty_returns_zero_total_users(self):
-        result_mock = MagicMock()
-        result_mock.mappings.return_value.all.return_value = []
-        db = AsyncMock()
-        db.execute.return_value = result_mock
-        result = await self._call(db)
-        assert result["total_users"] == 0
-        assert result["data"] == []
+    @staticmethod
+    def _db(usage_rows, session_rows=()):
+        """Two executes: the llm_usage_logs aggregate, then the username lookup."""
 
-    async def test_A5_data_contains_carmen_user_id(self):
-        row = _DictMapping(
+        def _res(rows):
+            m = MagicMock()
+            m.mappings.return_value.all.return_value = list(rows)
+            return m
+
+        db = AsyncMock()
+        db.execute.side_effect = [_res(usage_rows), _res(session_rows)]
+        return db
+
+    @staticmethod
+    def _usage_row(uid="u-999"):
+        return _DictMapping(
             {
-                "uid": "u-999",
+                "uid": uid,
                 "total_calls": 10,
                 "total_tokens": 5000,
                 "total_cost": Decimal("0.05"),
                 "avg_latency": Decimal("200"),
             }
         )
-        result_mock = MagicMock()
-        result_mock.mappings.return_value.all.return_value = [row]
-        db = AsyncMock()
-        db.execute.return_value = result_mock
-        result = await self._call(db)
+
+    async def test_A5_empty_returns_zero_total_users(self):
+        result = await self._call(self._db([]))
+        assert result["total_users"] == 0
+        assert result["data"] == []
+
+    async def test_A5_data_contains_carmen_user_id(self):
+        result = await self._call(self._db([self._usage_row()]))
         assert result["data"][0]["carmen_user_id"] == "u-999"
         assert result["data"][0]["total_calls"] == 10
 
+    async def test_A5_username_resolved_from_sessions(self):
+        # llm_usage_logs stores only the opaque id; ocr_sessions is the only table
+        # holding the human-readable name, which is why the hourly purge now scrubs
+        # sessions instead of deleting them.
+        sess = _DictMapping({"carmen_user_id": "u-999", "username": "ADMGDS"})
+        result = await self._call(self._db([self._usage_row()], [sess]))
+        assert result["data"][0]["username"] == "ADMGDS"
+
+    async def test_A5_username_is_none_when_session_is_gone(self):
+        # Past the 90-day session retention the name is unrecoverable — the page
+        # falls back to the raw id rather than dropping the row.
+        result = await self._call(self._db([self._usage_row()], []))
+        assert result["data"][0]["username"] is None
+        assert result["data"][0]["carmen_user_id"] == "u-999"
+
     async def test_A5_from_to_keys_present(self):
-        result_mock = MagicMock()
-        result_mock.mappings.return_value.all.return_value = []
-        db = AsyncMock()
-        db.execute.return_value = result_mock
-        result = await self._call(db)
+        result = await self._call(self._db([]))
         assert "from" in result
         assert "to" in result
 

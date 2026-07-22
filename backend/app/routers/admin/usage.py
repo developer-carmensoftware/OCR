@@ -14,6 +14,7 @@ from app.database import get_db
 from app.exceptions import ValidationError
 from app.models.observability import OutboundCallLog
 from app.services import usage_analytics_service as svc
+from app.services.tenant_lookup import username_map
 
 from .deps import require_permission
 
@@ -191,6 +192,10 @@ async def user_usage(
         to_date = datetime.now(UTC)
     tid = _resolve_tenant(admin, tenant_id)
     data = await svc.get_user_usage(db, tid, from_date, to_date, order_by, limit)
+    # llm_usage_logs stores only the opaque carmen_user_id; the name lives in ocr_sessions.
+    names = await username_map(db, [r["carmen_user_id"] for r in data])
+    for row in data:
+        row["username"] = names.get(row["carmen_user_id"])
     return {
         "from": from_date.isoformat(),
         "to": to_date.isoformat(),
