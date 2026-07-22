@@ -11,7 +11,7 @@ import type { ModalConfig } from '../hooks/useModal'
 
 function MappingSkeleton() {
   return (
-    <div style={{ margin: '2rem auto', maxWidth: '800px' }}>
+    <div style={{ margin: '2rem auto', maxWidth: '960px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
         <div className="skeleton" style={{ width: 20, height: 20, borderRadius: '50%' }} />
         <div className="skeleton" style={{ width: 260, height: 24, borderRadius: 6 }} />
@@ -115,7 +115,7 @@ export default function Mapping() {
         onCancel={() => mappingCtrl.setAcceptAllModal(false)}
       />
 
-      <div className="container" style={{ margin: '2rem auto', maxWidth: '800px' }}>
+      <div className="container">
         <h1>
           <Network size={20} /> {t('cc.mappingTitle')}
         </h1>

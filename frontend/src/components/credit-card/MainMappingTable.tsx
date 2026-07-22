@@ -1,5 +1,14 @@
 import React from 'react'
-import { Loader2, AlertTriangle, CheckCircle2, Info, Check, X, History } from 'lucide-react'
+import {
+  Loader2,
+  AlertTriangle,
+  CheckCircle2,
+  Info,
+  Check,
+  X,
+  History,
+  ChevronRight,
+} from 'lucide-react'
 import CustomSearchSelect from '../common/CustomSearchSelect'
 import { allowedAccountsForDept, isAccountAllowed } from '../../lib/deptAccounts'
 import AISuggestBar from '../common/AISuggestBar'
@@ -106,30 +115,28 @@ export default function MainMappingTable({
 
           {/* Credit row — Account Receivable */}
           <div className="mapping-type type-credit cc-mapping-type-credit">Credit</div>
-          <button
-            type="button"
-            className="mapping-label clickable cc-mapping-label-clickable"
-            onClick={openAmountModal}
-            onKeyDown={e => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                openAmountModal()
-              }
-            }}
-          >
-            Account Receivable (Click to Map)
+          <button type="button" className="cc-map-ar-btn" onClick={openAmountModal}>
+            <span className="cc-map-ar-title">Account Receivable / Bank</span>
+            {activeScan.paymentTypes.size > 0 && (
+              <span
+                className={`cc-map-ar-count ${requiredMissingCount > 0 ? 'missing' : 'ready'}`}
+                title={`${activeScan.paymentTypes.size - requiredMissingCount} of ${activeScan.paymentTypes.size} payment types mapped`}
+              >
+                {activeScan.paymentTypes.size - requiredMissingCount}/{activeScan.paymentTypes.size}
+              </span>
+            )}
+            <ChevronRight size={14} className="cc-map-ar-chevron" />
           </button>
           <div className="cc-grid-span-3">
             <div
               id="amountMappingStatus"
+              role="status"
               className={`cc-mapping-status ${requiredMissingCount > 0 ? 'missing' : 'ready'}`}
             >
               {activeScan.paymentTypes.size === 0 ? (
                 <>
                   <Info size={14} className="cc-flex-shrink-0" />
-                  <span>
-                    Click <strong>Account Receivable</strong> to open mapping modal
-                  </span>
+                  <span>Payment types appear here after a document scan</span>
                 </>
               ) : requiredMissingCount > 0 ? (
                 <>

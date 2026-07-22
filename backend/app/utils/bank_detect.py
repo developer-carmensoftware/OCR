@@ -16,6 +16,16 @@ Supported banks: BBL | KBANK | SCB | BAY | KTC | GHL | PAYPAL | SIAMPAY.
 # credit_card_service (normalizer routing) and llm_service (row cleaning).
 FEE_INVOICE_CODES = frozenset({"KTC", "GHL", "PAYPAL", "SIAMPAY"})
 
+
+def credit_suggest_group(bank_code: str | None) -> str:
+    """Which credit-side (payment-type) suggestion framing this bank uses.
+
+    ponytail: two groups today (bank | gateway); a new group = new branch here
+    + a context entry in llm/prompts/mapping.py _CREDIT_CONTEXTS.
+    """
+    return "gateway" if (bank_code or "").upper() in FEE_INVOICE_CODES else "bank"
+
+
 # (code, thai keywords, english keywords) — ordered specific-before-generic:
 # processors/issuers before the generic กรุง* substrings (which would otherwise
 # shadow KTC/BAY), and before กรุงเทพ specifically (just "Bangkok" — appears in

@@ -17,6 +17,7 @@ from app.config import settings
 from app.constants import GLFields, Module
 from app.llm.client import call_text_llm
 from app.llm.prompts.mapping import build_fixed_fields_prompt, build_payment_types_prompt
+from app.utils.bank_detect import credit_suggest_group
 from app.utils.gl_filter import score_and_pad
 
 logger = logging.getLogger(__name__)
@@ -247,16 +248,20 @@ async def suggest_payment_types(
     accounts: list[dict[str, Any]],
     departments: list[dict[str, Any]],
     hint_text: str = "",
+    bank_code: str | None = None,
 ) -> ToolResult:
     """
     Suggest dept/acc for a dynamic list of payment types (Visa, MCA, QR, etc.).
 
     accounts / departments: list of {code, name, type?} dicts
+    bank_code selects the prompt framing (bank vs payment-gateway settlement).
     """
+    group = credit_suggest_group(bank_code)
     tool_input = {
         "payment_types": payment_types,
         "account_count": len(accounts),
         "dept_count": len(departments),
+        "group": group,
     }
     try:
         if not settings.openrouter_api_key or not payment_types:
@@ -298,6 +303,7 @@ async def suggest_payment_types(
             b_account_count=len(b_filtered),
             payment_types=payment_types,
             hint_text=hint_text,
+            group=group,
         )
 
         data = await call_text_llm(prompt, module_id=Module.CREDIT_CARD_OCR)
@@ -323,7 +329,7 @@ async def suggest_payment_types(
                         suggestions[key] = {"acc": fallback_acc, "dept": dept}
 
         logger.info(
-            f"[{TOOL_PAYMENT}] completed — {len(suggestions)}/{len(payment_types)} types suggested"
+            f"[{TOOL_PAYMENT}] completed — {len(suggestions)}/{len(payment_types)} types suggested (group={group})"
         )
         return ToolResult(
             success=True,

@@ -110,7 +110,7 @@ export default function PaymentTypeModal({
       <div className="pm-dialog mapping-modal-content" onClick={e => e.stopPropagation()}>
         <div className="pm-header mapping-modal-header">
           <div className="pm-header-top">
-            <span>Select Payment Types for Account Receivable</span>
+            <span>Map Payment Types</span>
             {activeScan.paymentTypes.size > 0 && (
               <span className="pm-required-badge">
                 <FileText size={13} /> Required for this scan: {activeScan.paymentTypes.size} items

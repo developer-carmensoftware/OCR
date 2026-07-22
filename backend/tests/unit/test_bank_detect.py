@@ -89,3 +89,13 @@ def test_doc_name_detects_new_formats_specific_first():
 def test_returns_none_without_signal():
     assert detect_bank_code() is None
     assert detect_bank_code(company_name="Acme Co", doc_name="Invoice") is None
+
+
+def test_credit_suggest_group():
+    from app.utils.bank_detect import credit_suggest_group
+
+    assert credit_suggest_group("PAYPAL") == "gateway"
+    assert credit_suggest_group("ktc") == "gateway"
+    assert credit_suggest_group("KBANK") == "bank"
+    assert credit_suggest_group(None) == "bank"
+    assert credit_suggest_group("") == "bank"
