@@ -8,7 +8,7 @@ sqlalchemy==2.0.51
 asyncpg==0.31.0
 
 # LLM via OpenRouter (OpenAI-compatible SDK)
-openai==2.46.0
+openai==2.48.0
 
 # Image Processing
 Pillow==12.3.0
@@ -28,4 +28,4 @@ cryptography==49.0.0
 bcrypt==5.0.0
 
 # Observability
-sentry-sdk[fastapi]==2.66.0
+sentry-sdk[fastapi]==2.66.1
