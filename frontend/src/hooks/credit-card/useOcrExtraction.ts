@@ -65,6 +65,26 @@ export interface OcrExtractionHook {
   deleteRow: (index: number) => void
   resetExtractionState: () => void
   applyExtractedData: (ext: Record<string, unknown>, _taskId?: string | null) => void
+  restoreDraft: (snapshot: OcrDraftState) => void
+}
+
+/**
+ * The part of the wizard that has to survive a session drop. Everything else is either
+ * re-derivable (Carmen lookups, the mapping localStorage) or unserializable (the File
+ * and its object-URL preview — restoring shows an empty preview pane, by design).
+ *
+ * `originalHeader`/`originalDetails` are not redundant with the live values: they are the
+ * baseline useOcrSubmission diffs to build correction feedback. Drop them from the
+ * snapshot and every restored document logs its whole content as user corrections.
+ */
+export interface OcrDraftState {
+  bank: BankCode | ''
+  cardId: string | null
+  headerData: Record<string, string>
+  details: DetailRow[]
+  warnings: string[]
+  originalHeader: Record<string, string>
+  originalDetails: DetailRow[]
 }
 
 const EXTRACTION_STAGES = [
@@ -346,6 +366,26 @@ export function useOcrExtraction({
     setDetails(prev => prev.filter((_, i) => i !== index))
   }
 
+  /**
+   * Put a saved snapshot back. Deliberately not routed through applyExtractedData():
+   * that takes the raw API shape, mints fresh `_uid`s (breaking row identity the user
+   * already edited against) and re-writes the mapping-page handoff — none of which is
+   * wanted when the data is already in UI shape.
+   */
+  function restoreDraft(snapshot: OcrDraftState) {
+    // `?? []` / `?? {}` are not paranoia about our own writer: a snapshot outlives a deploy,
+    // and an undefined collection here throws on the next render with no way for the user
+    // to clear it. DRAFT_VERSION in lib/draft.ts is the primary gate; this is the backstop.
+    setBank(snapshot.bank || '')
+    setCardId(snapshot.cardId ?? null)
+    setHeaderData(snapshot.headerData ?? {})
+    setDetails(snapshot.details ?? [])
+    setWarnings(snapshot.warnings ?? [])
+    setOriginalHeader(snapshot.originalHeader ?? {})
+    setOriginalDetails(snapshot.originalDetails ?? [])
+    setStatus('Restored from your last session')
+  }
+
   function resetExtractionState() {
     setStatus('')
     setHeaderData({})
@@ -378,5 +418,6 @@ export function useOcrExtraction({
     deleteRow,
     resetExtractionState,
     applyExtractedData,
+    restoreDraft,
   }
 }

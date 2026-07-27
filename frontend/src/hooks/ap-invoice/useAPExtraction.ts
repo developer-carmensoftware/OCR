@@ -28,6 +28,20 @@ export type { APLineItem }
 
 const EXTRACT_TIMEOUT_MS = 150_000
 
+/**
+ * The part of an AP invoice that has to survive a session drop. Carmen lookups
+ * (taxProfiles, masterAccounts, masterDepts) are deliberately absent — they refetch on
+ * mount, and a stale copy of a chart of accounts is worse than no copy.
+ */
+export interface APDraftState {
+  headerData: APInvoiceHeader
+  lineItems: APLineItem[]
+  fieldMappings: Record<APColumnKey, APFieldKey | 'ignore'>
+  apInvoiceId: string | null
+  warnings: string[]
+  isDuplicate: boolean
+}
+
 interface APExtractionProps {
   setStep: (step: number) => void
   setModal: (state: ModalState) => void
@@ -596,6 +610,24 @@ export function useAPExtraction({ setStep, setModal, loadVendors }: APExtraction
     pwPrompt.reset()
   }
 
+  /**
+   * Put a saved snapshot back after a session drop. Mirrors resetExtraction() field for
+   * field, minus everything tied to the File (preview, page thumbs, password) which
+   * cannot be serialized — a restored invoice has an empty preview pane, by design.
+   */
+  const restoreDraft = (snapshot: APDraftState) => {
+    // `??` fallbacks are not paranoia about our own writer: a snapshot outlives a deploy,
+    // and an undefined collection here throws on the next render with no way for the user
+    // to clear it. DRAFT_VERSION in lib/draft.ts is the primary gate; this is the backstop.
+    setHeaderData(snapshot.headerData ?? EMPTY_HEADER)
+    setLineItems(snapshot.lineItems ?? [])
+    setFieldMappings(snapshot.fieldMappings ?? DEFAULT_MAPPINGS)
+    setApInvoiceId(snapshot.apInvoiceId ?? null)
+    setWarnings(snapshot.warnings ?? [])
+    setIsDuplicate(Boolean(snapshot.isDuplicate))
+    setStatus('Restored from your last session')
+  }
+
   const updateHeader = (key: string, val: string) => setHeaderData(p => ({ ...p, [key]: val }))
   const blurHeader = (key: string, val: string) => {
     setHeaderData(p => ({ ...p, [key]: fmt(val) }))
@@ -647,6 +679,7 @@ export function useAPExtraction({ setStep, setModal, loadVendors }: APExtraction
     handleFileChange,
     runOCR,
     resetExtraction,
+    restoreDraft,
     updateHeader,
     blurHeader,
     updateItem,

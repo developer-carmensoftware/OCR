@@ -237,11 +237,15 @@ Active Carmen ERP user session.
 | `carmen_token_encrypted` | Fernet-encrypted; decrypted per request |
 | `carmen_user_id` | |
 | `carmen_uri` | Full origin URI of the Carmen instance |
-| `is_active` | False = revoked (set on Carmen 401 response) |
+| `is_active` | False = revoked (explicit logout, admin revoke, or the hourly scrub) |
 | `last_used_at` | Updated each request |
 
-**Session lifecycle:** JWT exp OR Carmen 401 → `is_active = False`
-**Cleanup:** inactive sessions older than 30 days → purged hourly by pg_cron SQL function `fn_purge_inactive_sessions()`
+**Session lifecycle:** the JWT's own `exp` ends the session. A Carmen 401 does **not** —
+Carmen's token is a separate 30-minute clock that expires mid-wizard on its own schedule,
+so an upstream 401 is not evidence our session is dead (`carmen_service._on_response`).
+**Cleanup:** `fn_purge_inactive_sessions()`, hourly pg_cron — blanks the credential and sets
+`is_active = false` at `created_at + 1h`, deletes the row at 90 days (the row is kept as the
+only `carmen_user_id → username` mapping in the schema).
 
 ---
 
@@ -565,7 +569,7 @@ Retention runs **inside Postgres** (pg_cron + pg_partman) — no Python retentio
 
 | Table | Action |
 |---|---|
-| `ocr_sessions` (inactive > 30 days) | Hourly pg_cron `fn_purge_inactive_sessions()` |
+| `ocr_sessions` | Hourly pg_cron `fn_purge_inactive_sessions()` — credential scrubbed at 1h, row deleted at 90 days |
 | Log tables (`llm_usage_logs`, `performance_logs`, `outbound_call_logs`) | pg_partman drops partitions older than 12 months (nightly `partman-maintain`) |
 | `audit_logs` | pg_partman, 24-month retention (compliance) |
 

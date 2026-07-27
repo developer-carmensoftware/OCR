@@ -15,6 +15,12 @@ const makeStorage = () => {
     clear: () => {
       store = {}
     },
+    // The real Storage interface — clearAppStorage() and clearAllDrafts() both
+    // enumerate keys, and without these they silently no-op under test.
+    get length() {
+      return Object.keys(store).length
+    },
+    key: (i: number) => Object.keys(store)[i] ?? null,
   }
 }
 
