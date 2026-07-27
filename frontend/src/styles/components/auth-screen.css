@@ -120,6 +120,13 @@
   color: var(--rose);
 }
 
+/* Expiry is amber, not rose — nothing failed, a clock simply ran out. */
+.auth-icon-container--expired {
+  background: var(--amber-light);
+  border: 1.5px solid var(--amber-mid);
+  color: var(--amber-text);
+}
+
 .auth-title {
   font-size: 1rem;
   font-weight: 700;
@@ -161,6 +168,12 @@
   color: var(--primary);
   background: var(--primary-light);
   border: 1px solid var(--primary-mid);
+}
+
+.auth-badge--expired {
+  color: var(--amber-text);
+  background: var(--amber-light);
+  border: 1px solid var(--amber-mid);
 }
 
 .auth-progress-track {

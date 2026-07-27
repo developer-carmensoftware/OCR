@@ -70,6 +70,11 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       fixes: [
         {
           before:
+            'If your session ended while you were working, you were sent back to the login screen and every scan and correction you had made was gone.',
+          text: 'Your unfinished document is now kept. Reopen the module from Carmen and choose Restore to carry on where you left off — the scanned image is not kept, so only the preview will be empty.',
+        },
+        {
+          before:
             'Invoices with a discount column could read the VAT type wrong and post per-line amounts that did not match the document.',
           text: "Discount invoices now read VAT correctly, and the unit price in Carmen multiplies out to the line's Net Amount.",
         },
@@ -90,6 +95,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
         },
       ],
       qol: [
+        'The login screen now says when a session has timed out, instead of looking like you were never signed in.',
         'AI Suggest now recognizes payment-gateway fee invoices (KTC, PayPal, and others) and proposes settlement-receivable accounts instead of bank accounts.',
         'The mapping page is wider, and the credit row "Account Receivable / Bank" shows a live count of mapped payment types.',
         'Upload limits are now 5 MB per file and up to 5 PDF pages per scan.',
@@ -102,6 +108,11 @@ export const RELEASE_NOTES: ReleaseNote[] = [
         'ตัวเลือกรหัสบัญชีจะเป็นไปตามรายการบัญชีที่อนุญาตของแต่ละแผนกจาก Carmen — แผนกที่จำกัดรายการไว้จะแสดงเฉพาะบัญชีที่อนุญาต และคู่ที่ไม่ถูกต้องจะถูกไฮไลต์สีแดงก่อนบันทึกหรือส่งบัญชี',
       ],
       fixes: [
+        {
+          before:
+            'ถ้า session หมดอายุระหว่างทำงาน ระบบจะเด้งกลับไปหน้าเข้าสู่ระบบ และสิ่งที่สแกนกับแก้ไขไว้ทั้งหมดหายไป',
+          text: 'เอกสารที่ยังไม่ได้ส่งจะถูกเก็บไว้ให้แล้ว เปิดโมดูลจาก Carmen อีกครั้งแล้วเลือก "Restore" เพื่อทำต่อจากจุดเดิม (ไฟล์ภาพไม่ได้ถูกเก็บไว้ จึงมีเพียงช่องแสดงตัวอย่างเอกสารที่ว่าง)',
+        },
         {
           before:
             'ใบแจ้งหนี้ที่มีคอลัมน์ส่วนลด อาจอ่านประเภท VAT ผิด และยอดรายบรรทัดที่ส่งไปไม่ตรงกับเอกสาร',
@@ -123,6 +134,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
         },
       ],
       qol: [
+        'หน้าเข้าสู่ระบบจะบอกชัดเจนว่า session หมดอายุ แทนที่จะดูเหมือนไม่เคยเข้าสู่ระบบมาก่อน',
         'AI Suggest รู้จักใบแจ้งค่าธรรมเนียม payment gateway (KTC, PayPal และอื่นๆ) และเสนอบัญชีลูกหนี้จากผู้ให้บริการแทนบัญชีธนาคาร',
         'หน้าจับคู่บัญชีกว้างขึ้น และแถว "Account Receivable / Bank" แสดงจำนวน payment type ที่จับคู่แล้วแบบสด',
         'ขนาดไฟล์อัปโหลดจำกัดที่ 5 MB ต่อไฟล์ และ PDF สแกนได้สูงสุด 5 หน้าต่อครั้ง',
