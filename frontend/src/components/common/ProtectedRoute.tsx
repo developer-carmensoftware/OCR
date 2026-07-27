@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import { Loader2, AlertTriangle, Shield, Circle } from 'lucide-react'
-import { useAuth } from '../../contexts/AuthContext'
+import { Loader2, AlertTriangle, Shield, Circle, Clock } from 'lucide-react'
+import { useAuth, EXPIRED_FLAG_KEY } from '../../contexts/AuthContext'
 import { useCarmenSSO } from '../../hooks/useCarmenSSO'
 import { getCarmenUrl } from '../../lib/url'
 import logo from '../../assets/logo.png'
@@ -20,12 +20,22 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   if (loading || exchanging) return <AuthScreen state="loading" />
   if (error) return <AuthScreen state="error" message={error} />
-  if (!isAuthenticated) return <AuthScreen state="unauthenticated" />
+  if (!isAuthenticated)
+    return <AuthScreen state={sessionExpired() ? 'expired' : 'unauthenticated'} />
 
   return <>{children}</>
 }
 
-type AuthState = 'loading' | 'error' | 'unauthenticated'
+/** True when this screen follows a session that died under the user (AuthContext). */
+function sessionExpired(): boolean {
+  try {
+    return sessionStorage.getItem(EXPIRED_FLAG_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+type AuthState = 'loading' | 'error' | 'unauthenticated' | 'expired'
 
 interface AuthScreenProps {
   state: AuthState
@@ -68,6 +78,17 @@ function AuthScreen({ state, message }: AuthScreenProps) {
         label: 'Authentication Required',
       },
     },
+    // Same wall, different story: this user was working a second ago. Say what ended
+    // and that their document is waiting, or the screen reads like the work is gone.
+    expired: {
+      Icon: Clock,
+      title: 'Session Ended',
+      subtitle:
+        'Your Carmen session timed out. Any unsubmitted document has been saved — reopen this module from Carmen and choose Restore to carry on.',
+      badge: {
+        label: 'Session Expired',
+      },
+    },
   }
   const config = configs[state]
 
@@ -97,7 +118,7 @@ function AuthScreen({ state, message }: AuthScreenProps) {
             <div className="auth-progress-bar" />
           </div>
         )}
-        {(state === 'unauthenticated' || state === 'error') && (
+        {state !== 'loading' && (
           <a href={getCarmenUrl('/')} className="auth-btn">
             Go to Carmen
           </a>

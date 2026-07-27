@@ -59,7 +59,16 @@ async def _on_request(request: httpx.Request) -> None:
 
 
 async def _on_response(response: httpx.Response) -> None:
-    """Fire-and-forget log entry after Carmen responds, plus session deactivation on 401."""
+    """Fire-and-forget log entry after Carmen responds.
+
+    A 401 from Carmen used to also flip `ocr_sessions.is_active = false`. It no longer
+    does. Carmen is authoritative over *its* token, not over our session: its token is a
+    fixed 30 minutes and expires mid-wizard on its own schedule, so treating every
+    upstream 401 as proof our session is dead meant a single rejected lookup — even a
+    transient one, with both tokens healthy — permanently killed the session and threw
+    the user's unsubmitted work away. The request still returns 401 to the caller; what
+    changed is that the row stays usable (and #/admin/sessions stays truthful).
+    """
     from app.services.outbound_log_service import log_outbound
 
     start = response.request.extensions.get("_start", time.perf_counter())
@@ -72,34 +81,6 @@ async def _on_response(response: httpx.Response) -> None:
         duration_ms=duration_ms,
         request_size_bytes=int(response.request.headers.get("content-length", 0) or 0),
     )
-    if response.status_code == 401:
-        await _deactivate_current_session()
-
-
-async def _deactivate_current_session() -> None:
-    """Mark the current request's OcrSession as inactive after a Carmen 401.
-    Carmen is the source of truth for token validity — once it rejects the token,
-    further calls in this session are pointless. Failure to update is swallowed
-    so the calling request continues to surface the 401 to the user."""
-    from sqlalchemy import update
-
-    from app.context import current_ocr_session_id as current_session_id
-    from app.database import async_session
-    from app.models.orm import OcrSession
-
-    sid = current_session_id.get() or ""
-    if not sid:
-        return
-    try:
-        async with async_session() as db:
-            await db.execute(update(OcrSession).where(OcrSession.id == sid).values(is_active=False))
-            await db.commit()
-        from app.auth.dependencies import invalidate_session_cache
-
-        invalidate_session_cache(sid)
-        logger.info("Carmen returned 401 — session %s deactivated", sid)
-    except Exception:
-        logger.exception("Failed to deactivate session %s after Carmen 401", sid)
 
 
 # Module-level AsyncClient — reused across all Carmen calls.
