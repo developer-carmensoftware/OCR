@@ -114,7 +114,7 @@ export function draftPromptMessage(label: string | undefined, at: number): strin
   })
   const what = label ? `“${label}”` : 'A document'
   return (
-    `${what} from ${when} was never submitted — your session ended first.\n\n` +
+    `${what} from ${when} was never submitted.\n\n` +
     'Restore it to carry on where you left off, or discard it and start over.\n' +
     'The scanned image itself is not kept, so the preview will be empty.'
   )
