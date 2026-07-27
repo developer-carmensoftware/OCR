@@ -220,7 +220,7 @@ LLM_TEXT_PROVIDER_ALLOWLIST=fireworks,deepinfra,digitalocean  # pin non-Google t
 LLM_VISION_PROVIDER_ALLOWLIST=      # vision is Google-only already
 LLM_EXPECTED_PROVIDERS=Google,DeepInfra,Fireworks,DigitalOcean  # alert if routed elsewhere (llm_provider_out_of_policy)
 DATABASE_URL=postgresql+asyncpg://user:password@host/dbname?sslmode=require
-MAX_FILE_SIZE_MB=20
+MAX_FILE_SIZE_MB=5
 APP_PORT=8010
 # Secrets — NEVER put these in system_configs DB table
 OCR_JWT_SECRET=<strong-random-secret>
