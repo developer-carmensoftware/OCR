@@ -9,8 +9,9 @@ import CreditOrdersPage from '../admin/CreditOrdersPage'
 /**
  * Standalone shell for the Order Review console — its own page, separate from the
  * admin dashboard (no admin sidebar). Reuses the admin auth/session: the backend
- * endpoints require admin `quotas` permission, so a reviewer signs in at the
- * shared admin login and is returned here.
+ * endpoints require the admin `orders` permission, so a reviewer signs in at the
+ * shared admin login and is returned here. An account holding only the
+ * `order_reviewer` role can reach this page and nothing else.
  */
 export default function OrderReviewShell() {
   const { admin, logout } = useAdminAuth()

@@ -12,7 +12,7 @@ interface AdminAuthContextValue {
   admin: AdminUser | null
   loading: boolean
   isAuthenticated: boolean
-  login: (token: string) => Promise<void>
+  login: (token: string) => Promise<AdminUser>
   logout: () => Promise<void>
 }
 
@@ -47,6 +47,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     storeAdminToken(token)
     const me = await adminMe()
     setAdmin(me)
+    return me
   }, [])
 
   const logout = useCallback(async () => {
