@@ -56,6 +56,9 @@
   --rose-light: oklch(0.97 0.02 25);
   --rose-mid: oklch(0.88 0.05 25);
   --rose-hover: oklch(0.52 0.16 25);
+  /* AA foreground tier — --rose is only 3.8:1 on white, too low for sub-19px
+     text. Same role --amber-text plays for amber. */
+  --rose-text: oklch(0.48 0.15 25);
 
   --amber: oklch(0.76 0.13 78);
   --amber-light: oklch(0.97 0.02 78);
@@ -496,6 +499,8 @@ textarea:focus-visible {
   --rose-light: oklch(0.28 0.03 24.11);
   --rose-mid: oklch(0.4 0.06 24.11);
   --rose-hover: oklch(0.75 0.12 24.11);
+  /* On the dark card surface --rose already clears AA (5.9:1); keep it. */
+  --rose-text: oklch(0.68 0.12 24.11);
 
   --amber: oklch(0.8 0.1 75);
   --amber-light: oklch(0.28 0.03 75);
