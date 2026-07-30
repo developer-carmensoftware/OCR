@@ -7,10 +7,11 @@ import type { UsageData } from '../../lib/api/auth'
 // the trigger → panel behaviour and which pool rows render.
 
 let usage: UsageData['usage']
+let authed = true
 
 vi.mock('../../lib/api/auth', () => ({ getUsage: () => Promise.resolve({ bu: 'x', usage }) }))
 vi.mock('../../lib/api/client', () => ({ getStoredToken: () => 'tok' }))
-vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ isAuthenticated: true }) }))
+vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ isAuthenticated: authed }) }))
 
 const { default: UsageIndicator } = await import('./UsageIndicator')
 
@@ -22,8 +23,36 @@ async function openPanel() {
 }
 
 beforeEach(() => {
+  authed = true
   usage = { monthly_calls: 3, max_monthly_calls: 30, remaining_calls: 27, credit_balance: 0 }
   window.location.hash = '#/glJv'
+})
+
+describe('UsageIndicator — loading', () => {
+  it('renders nothing when unauthenticated instead of a skeleton that never clears', () => {
+    // The fetch effect bails out before setLoading(false), so an early return is
+    // the only thing keeping the skeleton from sitting in the header forever.
+    authed = false
+    const { container } = render(<UsageIndicator />)
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('keeps the skeleton on the same elements as the loaded badge', async () => {
+    // jsdom does not apply the stylesheet, so this can only assert the structural
+    // contract the CSS relies on: both states carry .ui-quota-value (min-width:
+    // 4ch fixes the width) and .ui-quota-chevron, so nothing resizes on resolve.
+    const { container } = render(<UsageIndicator />)
+    const shape = () => ({
+      value: !!container.querySelector('.ui-quota-value'),
+      chevron: !!container.querySelector('.ui-quota-chevron'),
+    })
+    expect(shape()).toEqual({ value: true, chevron: true })
+    expect(container.querySelector('.ui-quota-placeholder')).toBeInTheDocument()
+
+    await screen.findByRole('button', { name: /documents remaining/i })
+    expect(shape()).toEqual({ value: true, chevron: true })
+    expect(container.querySelector('.ui-quota-placeholder')).not.toBeInTheDocument()
+  })
 })
 
 describe('UsageIndicator', () => {

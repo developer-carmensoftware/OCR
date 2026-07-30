@@ -116,15 +116,21 @@ export default function UsageIndicator() {
     }
   }, [open])
 
+  // Nothing to show and nothing coming: the fetch effect bails out when not
+  // authenticated, so `loading` would never clear and the skeleton would sit
+  // there forever.
+  if (!isAuthenticated) return null
+
   if (loading) {
     return (
       <div className="ui-quota ui-quota--skeleton" aria-hidden="true">
         <div className="ui-quota-col col-remain">
+          {/* The label is static, so show it for real; only the number is unknown.
+              Same geometry as the loaded trigger, so resolving usage doesn't
+              reflow the header and re-truncate the module title. */}
           <span className="ui-quota-label">{t('quota.remain')}</span>
-          <span className="ui-quota-value ui-quota-placeholder">—</span>
+          <span className="ui-quota-value ui-quota-placeholder" />
         </div>
-        {/* Same shape as the loaded trigger, so resolving usage doesn't reflow
-            the header and re-truncate the module title. */}
         <span className="ui-quota-chevron">
           <ChevronDown size={14} strokeWidth={2.25} />
         </span>

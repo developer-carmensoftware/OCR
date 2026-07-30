@@ -133,22 +133,39 @@
   color: var(--rose-text);
 }
 
+/* Mono, so ch is exact. Reserving 4 characters keeps the badge a fixed width from
+   skeleton through every ocr:quota-refresh — otherwise 27 → 1542 widens it and
+   drags .app-header-title's ellipsis with it. Grows past 4 digits on its own. */
 .ui-quota-value {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.8rem;
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
+  min-width: 4ch;
+  text-align: center;
 }
 
 /* ─── Skeleton / loading state ─── */
+/* Chrome stays at full strength so nothing pops when usage resolves; only the
+   chevron dims, since the badge isn't pressable yet. */
 .ui-quota--skeleton {
-  opacity: 0.45;
   pointer-events: none;
 }
 
+.ui-quota--skeleton .ui-quota-chevron {
+  opacity: 0.4;
+}
+
+/* A faded em dash reads as "no data"; this is loading. Shimmer block instead,
+   reusing page-skeleton.css's sk-shimmer so it matches every other skeleton in
+   the app. The global prefers-reduced-motion rule stops the animation. */
 .ui-quota-placeholder {
-  color: var(--text-4) !important;
+  min-height: 0.8rem;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--gray-100) 25%, var(--gray-200) 50%, var(--gray-100) 75%);
+  background-size: 300% 100%;
+  animation: sk-shimmer 1.6s ease infinite;
 }
 
 /* ─── Low state ─── */

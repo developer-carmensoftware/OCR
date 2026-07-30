@@ -169,14 +169,11 @@ const en = {
   'proforma.docNo': 'Document no.',
   'proforma.print': 'Print / Save PDF',
 
-  // — Usage strip —
+  // — Usage readouts (quota popover + order history plan strip) —
   'usage.freeLeft': 'Free quota left',
   'usage.topupCredits': 'Top-up credits',
-  'usage.runningLow': 'Running low — pick a plan below to keep going',
   'usage.planLeft': 'Plan docs left',
   'usage.activeUntil': 'Active until',
-  'usage.renews': 'renews',
-  'usage.freeTrial': 'Free trial',
   'order.expires': 'Expires',
 
   // — Feature flows (marketing showcase) —
@@ -1343,14 +1340,11 @@ const th: Record<TKey, string> = {
   'proforma.docNo': 'เลขที่เอกสาร',
   'proforma.print': 'พิมพ์ / บันทึก PDF',
 
-  // — Usage strip —
+  // — Usage readouts (quota popover + order history plan strip) —
   'usage.freeLeft': 'โควตาฟรีคงเหลือ',
   'usage.topupCredits': 'เครดิตเติม',
-  'usage.runningLow': 'เครดิตใกล้หมด — เลือกแพ็กเกจด้านล่างเพื่อใช้งานต่อ',
   'usage.planLeft': 'เอกสารในแพ็กเกจคงเหลือ',
   'usage.activeUntil': 'ใช้งานถึง',
-  'usage.renews': 'ต่ออายุ',
-  'usage.freeTrial': 'ทดลองใช้งานฟรี',
   'order.expires': 'หมดอายุ',
 
   // — Feature flows (marketing showcase) —
