@@ -1,27 +1,46 @@
 /* ─── USAGE / QUOTA WIDGET ─── */
-.ui-quota--link {
-  text-decoration: none;
-}
 
+/* The badge owns ALL its inner spacing: one padding, one gap. When the column and
+   the chevron each carried their own padding, the readout sat 12px from the left
+   edge but 18.4px from the chevron, and the chevron only 8px from the right — the
+   content read left-heavy with the glyph adrift. Right inset is deliberately
+   tighter than left: a chevron carries its own optical whitespace. */
 .ui-quota {
   display: flex;
-  align-items: stretch;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.6rem 0.3rem 0.75rem;
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   overflow: hidden;
-  cursor: default;
   -webkit-user-select: none;
   user-select: none;
   position: relative;
   transition:
     border-color 0.18s var(--ease),
-    box-shadow 0.18s var(--ease);
+    box-shadow 0.18s var(--ease),
+    transform 0.12s var(--ease);
+}
+
+/* The badge is a disclosure button, not a readout: it opens the quota panel, and
+   it is the app's only route to #/pricing, so it has to read as pressable. Must
+   come after .ui-quota — equal specificity, so source order decides. */
+.ui-quota--trigger {
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
 }
 
 .ui-quota:hover {
   border-color: var(--border-hi);
   box-shadow: var(--shadow-sm);
+}
+
+/* Matches .app-header-back, its neighbour in the same header. */
+.ui-quota--trigger:active {
+  transform: scale(0.97);
 }
 
 /* thin progress line at the bottom — shows used % */
@@ -40,23 +59,14 @@
 }
 
 /* ─── Column ─── */
+/* No padding and no fill: the button owns spacing, and the --muted fill only ever
+   existed to separate this column from col-used / col-total, both long gone. */
 .ui-quota-col {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 0.3rem 0.75rem;
   gap: 0.14rem;
   flex-shrink: 0;
-}
-
-.ui-quota-col + .ui-quota-col {
-  border-left: 1px solid var(--border);
-}
-
-/* highlight remain column */
-.ui-quota-col.col-remain {
-  background: var(--muted);
 }
 
 .ui-quota-col.col-remain .ui-quota-value {
@@ -64,18 +74,63 @@
 }
 
 .ui-quota.is-low .col-remain .ui-quota-value {
-  color: var(--rose);
+  color: var(--rose-text);
+}
+
+/* ─── Disclosure chevron ─── */
+/* Quiet at rest so the number stays the only Carmen Blue element in the badge
+   (DESIGN.md's One Voice Rule); it picks up the accent on hover and while open. */
+.ui-quota-chevron {
+  display: flex;
+  align-items: center;
+  color: var(--text-3);
+  transition:
+    transform 0.18s var(--ease),
+    color 0.15s var(--ease);
+}
+
+.ui-quota--trigger:hover .ui-quota-chevron,
+.ui-quota--trigger[aria-expanded='true'] .ui-quota-chevron {
+  color: var(--primary);
+}
+
+.ui-quota--trigger[aria-expanded='true'] .ui-quota-chevron {
+  transform: rotate(180deg);
+}
+
+/* Ties the hover/open rules above on specificity and wins on source order, so the
+   low state holds through hover and open without needing its own variants. */
+.ui-quota.is-low .ui-quota-chevron {
+  color: var(--rose-text);
 }
 
 /* ─── Text ─── */
+/* 0.68rem is DESIGN.md §3's label floor; this ran at 0.56rem, under its own
+   system's minimum and illegible in Thai. */
 .ui-quota-label {
-  font-size: 0.56rem;
+  font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--text-4);
+  color: var(--text-3);
   line-height: 1;
   white-space: nowrap;
+  /* Tracking adds 0.1em after the final letter, so the label's ink centred ~0.5px
+     left of the number above it. Claw the trailing space back. */
+  margin-right: -0.1em;
+}
+
+/* Uppercase is a no-op on Thai, and positive tracking pulls tone marks off
+   their base glyph — so there is no overhang to compensate either. */
+[lang='th'] .ui-quota-label {
+  letter-spacing: 0;
+  text-transform: none;
+  margin-right: 0;
+}
+
+/* The low state tints the column rose, and --text-3 only reaches 4.27:1 on it. */
+.ui-quota.is-low .ui-quota-label {
+  color: var(--rose-text);
 }
 
 .ui-quota-value {
@@ -97,60 +152,186 @@
 }
 
 /* ─── Low state ─── */
+/* Tint the whole badge, not the column. Tinting one column was a 3-column-era
+   habit; with a lone readout plus a chevron it left a rose block stopping
+   two-thirds across the button for no reason.
+   No [data-theme='dark'] overrides: --rose-light / --rose-mid / --card-bg are
+   already theme-aware, so the previous dark block restated itself. */
 .ui-quota.is-low {
+  background: var(--rose-light);
   border-color: var(--rose-mid);
 }
 
-.ui-quota.is-low .col-remain {
-  background: var(--rose-light);
-}
+/* ─── QUOTA PANEL ─── */
 
-/* ─── Dark mode ─── */
-[data-theme='dark'] .ui-quota {
+/* Same popover shape as .notif-bell__panel — the two live side by side in the
+   header, so they must open identically. */
+.ui-quota-panel {
+  position: fixed;
+  top: 4rem;
+  right: 1rem;
+  z-index: var(--z-dropdown);
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  max-width: calc(100vw - 1.5rem);
+  /* Landscape tablet is ~400px tall; without this the footer lands offscreen. */
+  max-height: calc(100vh - 5rem);
   background: var(--card-bg);
-  border-color: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  transform-origin: top right;
+  animation: ui-quota-panel-in 160ms var(--ease);
 }
 
-[data-theme='dark'] .ui-quota.is-low {
+@keyframes ui-quota-panel-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-quota-panel {
+    animation: none;
+  }
+}
+
+.ui-quota-panel.is-low {
   border-color: var(--rose-mid);
 }
 
-[data-theme='dark'] .ui-quota.is-low .col-remain {
+.ui-quota-panel-header {
+  flex-shrink: 0;
+  padding: 0.75rem 0.875rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+/* min-height: 0 is load-bearing: a flex item defaults to min-height: auto, which
+   refuses to shrink below its content, so overflow-y would never engage and the
+   panel's own overflow: hidden would clip the footer instead of scrolling. */
+.ui-quota-rows {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.ui-quota-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.6rem 0.875rem;
+}
+
+.ui-quota-row + .ui-quota-row {
+  border-top: 1px solid var(--border);
+}
+
+/* The total is the number the badge itself shows — anchor it visually. Keyed on
+   a class, not :last-child, so adding a pool row later can't silently move it. */
+.ui-quota-row.is-total {
+  background: var(--muted);
+  position: sticky;
+  bottom: 0;
+}
+
+.ui-quota-row.is-total .ui-quota-row-value {
+  color: var(--primary);
+}
+
+.ui-quota-panel.is-low .ui-quota-row.is-total .ui-quota-row-value {
+  color: var(--rose-text);
+}
+
+.ui-quota-row-label {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.ui-quota-row-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.ui-quota-row-note {
+  grid-column: 1 / -1;
+  font-size: 0.7rem;
+  color: var(--text-3);
+  line-height: 1.4;
+}
+
+.ui-quota-low-hint {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0.6rem 0.875rem;
   background: var(--rose-light);
+  border-top: 1px solid var(--rose-mid);
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--rose-text);
+  text-wrap: pretty;
+}
+
+.ui-quota-panel-footer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0.875rem;
+  border-top: 1px solid var(--border);
+}
+
+.ui-quota-panel-footer .btn-primary {
+  flex: 1;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  text-decoration: none;
+}
+
+.ui-quota-history {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-3);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 0.15s var(--ease);
+}
+
+.ui-quota-history:hover {
+  color: var(--primary);
 }
 
 /* ─── Responsive ─── */
 
-/* tablet: hide used column */
+/* Accounting staff work on tablets; DESIGN.md §6 sets 44px as the floor. On
+   .ui-quota, not .ui-quota--trigger, so the skeleton is the same height and
+   resolving usage doesn't jog the header. */
 @media (max-width: 768px) {
-  .ui-quota-col.col-used {
-    display: none;
+  .ui-quota {
+    min-height: 44px;
   }
 }
 
-/* mobile: hide total column too + tighter padding */
+/* Tighten horizontally only — the 44px floor above owns the height. */
 @media (max-width: 480px) {
-  .ui-quota-col.col-total {
-    display: none;
-  }
-  .ui-quota-col {
-    padding: 0.25rem 0.6rem;
+  .ui-quota {
+    padding-right: 0.45rem;
+    padding-left: 0.6rem;
   }
   .ui-quota-value {
     font-size: 0.75rem;
   }
-}
-
-/* ─── Legacy classes (keep for backward compat) ─── */
-.usage-bar-bg {
-  width: 60px;
-  height: 3px;
-  background: var(--border);
-  border-radius: 99px;
-  overflow: hidden;
-}
-
-.usage-bar-fill {
-  height: 100%;
-  border-radius: 99px;
 }

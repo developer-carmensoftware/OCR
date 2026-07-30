@@ -663,6 +663,14 @@ const en = {
   'common.history': 'History',
   'modal.ok': 'OK',
 
+  // — Quota badge + popover (header) —
+  'quota.remain': 'Remain',
+  'quota.topup': 'Top up credits',
+  'quota.triggerAria': '{remaining} documents remaining. Open quota details',
+  'quota.panelTitle': 'Document quota',
+  'quota.lowHint': 'Running low. Top up to keep processing documents.',
+  'quota.total': 'Total remaining',
+
   // — Notification bell —
   'notif.bellAria': 'Notifications',
   'notif.title': 'Notifications',
@@ -1821,6 +1829,14 @@ const th: Record<TKey, string> = {
   'common.aiSuggested': 'AI แนะนำ',
   'common.history': 'ประวัติ',
   'modal.ok': 'ตกลง',
+
+  // — Quota badge + popover (header) —
+  'quota.remain': 'คงเหลือ',
+  'quota.topup': 'เติมเครดิต',
+  'quota.triggerAria': 'เหลือ {remaining} เอกสาร กดเพื่อดูรายละเอียดโควตา',
+  'quota.panelTitle': 'โควตาเอกสาร',
+  'quota.lowHint': 'เครดิตใกล้หมด เติมเครดิตเพื่อใช้งานต่อ',
+  'quota.total': 'คงเหลือทั้งหมด',
 
   // — Notification bell —
   'notif.bellAria': 'การแจ้งเตือน',
