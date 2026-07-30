@@ -36,7 +36,7 @@ if (import.meta.env.VITE_SENTRY_DSN) {
 import ReactDOM from 'react-dom/client'
 import { Toaster } from 'sonner'
 import { AuthProvider } from './contexts/AuthContext'
-import { AdminAuthProvider } from './contexts/AdminAuthContext'
+import { AdminAuthProvider, useAdminAuth } from './contexts/AdminAuthContext'
 import { LanguageProvider } from './i18n/LanguageContext'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import { ConsentGate } from './components/common/ConsentGate'
@@ -104,6 +104,7 @@ function getRoute(): string {
 
 function AdminRouter() {
   const [route, setRoute] = useState(getRoute)
+  const { admin } = useAdminAuth()
 
   useEffect(() => {
     const onHashChange = () => setRoute(getRoute())
@@ -113,6 +114,14 @@ function AdminRouter() {
 
   if (route === 'admin/login') {
     return <AdminLogin />
+  }
+
+  // ponytail: `tenants:read` gates the entire dashboard — every page here needs it
+  // except the order queue, which has its own shell. Cheaper and stricter than
+  // filtering the nav per item. The backend 403s regardless; this is the UX half.
+  if (admin && !admin.permissions.includes('tenants:read')) {
+    window.location.hash = '/order-review'
+    return null
   }
 
   let AdminPage: React.ReactElement

@@ -18,10 +18,14 @@ export default function AdminLogin() {
     setLoading(true)
     try {
       const res = await adminLogin(username, password)
-      await login(res.access_token)
+      const me = await login(res.access_token)
       const back = sessionStorage.getItem('admin_return_to')
       sessionStorage.removeItem('admin_return_to')
-      window.location.hash = back || '/admin'
+      // ponytail: one perm decides the whole dashboard. `order_reviewer` has only
+      // orders:* — land them on their console instead of an /admin full of 403s.
+      window.location.hash = me.permissions.includes('tenants:read')
+        ? back || '/admin'
+        : '/order-review'
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : t('admin.login.failed'))
     } finally {

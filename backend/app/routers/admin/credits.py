@@ -1,5 +1,9 @@
 """Admin credit management — balance, top-up, adjust, ledger, slip review, AR posting.
 
+Two permissions, deliberately: balance/topup/adjust/ledger (the Credits page) need
+`quotas:*`; everything from the slip-review queue down needs `orders:*`, so an
+`order_reviewer` account can work the queue without touching balances or quotas.
+
 Thin HTTP layer: auth deps, per-request tenant-scope assertion, and response mapping.
 Business logic lives in services/credit_service.py (balance/topup/adjust/ledger) and
 services/credit_order_service.py (credit-orders queue, AR profiles, AR posting, KPIs).
@@ -133,7 +137,7 @@ async def list_credit_orders(
     tenant_id: str | None = Query(None, description="Limit to one company's orders (history)"),
     limit: int = Query(50, le=200),
     db: AsyncSession = Depends(get_db),
-    admin: AdminPrincipal = Depends(require_permission("quotas", "read")),
+    admin: AdminPrincipal = Depends(require_permission("orders", "read")),
 ):
     """
     List credit orders across all tenants (global admin) or own tenant (scoped admin).
@@ -154,7 +158,7 @@ async def list_credit_orders(
 @router.get("/payment-info", response_model=PaymentInfoResponse)
 async def get_payment_info(
     db: AsyncSession = Depends(get_db),
-    _admin: AdminPrincipal = Depends(require_permission("quotas", "read")),
+    _admin: AdminPrincipal = Depends(require_permission("orders", "read")),
 ):
     """Company pay-to details for proforma preview in the review modal."""
     return PaymentInfoResponse(**await bds.get_payment_info(db))
@@ -164,7 +168,7 @@ async def get_payment_info(
 async def get_slip_signed_url(
     order_id: str,
     db: AsyncSession = Depends(get_db),
-    admin: AdminPrincipal = Depends(require_permission("quotas", "read")),
+    admin: AdminPrincipal = Depends(require_permission("orders", "read")),
 ):
     """Return a short-lived signed URL for the admin to view the uploaded slip."""
     order = await credit_order_service.get_order(db, order_id)
@@ -179,7 +183,7 @@ async def get_slip_signed_url(
 async def approve_order(
     order_id: str,
     db: AsyncSession = Depends(get_db),
-    admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
+    admin: AdminPrincipal = Depends(require_permission("orders", "write")),
 ):
     """Approve a slip: grant credits, mark order paid."""
     order = await credit_order_service.get_order_for_update(db, order_id)
@@ -214,7 +218,7 @@ async def reject_order(
     order_id: str,
     body: RejectRequest,
     db: AsyncSession = Depends(get_db),
-    admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
+    admin: AdminPrincipal = Depends(require_permission("orders", "write")),
 ):
     """Reject a slip: mark order void with a reason."""
     order = await credit_order_service.get_order_for_update(db, order_id)
@@ -247,7 +251,7 @@ async def hold_order(
     order_id: str,
     body: HoldRequest,
     db: AsyncSession = Depends(get_db),
-    admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
+    admin: AdminPrincipal = Depends(require_permission("orders", "write")),
 ):
     """Update the admin note on an order still awaiting a decision."""
     order = await credit_order_service.get_order_for_update(db, order_id)
@@ -265,7 +269,7 @@ async def hold_order(
 async def hold_batch(
     body: HoldBatchRequest,
     db: AsyncSession = Depends(get_db),
-    admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
+    admin: AdminPrincipal = Depends(require_permission("orders", "write")),
 ):
     """
     Batch-park in-progress orders to on_hold. A manual, on-demand version of the
@@ -286,7 +290,7 @@ async def hold_batch(
 async def cancel_order(
     order_id: str,
     db: AsyncSession = Depends(get_db),
-    admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
+    admin: AdminPrincipal = Depends(require_permission("orders", "write")),
 ):
     """Cancel (void + soft-delete) an in-progress or on_hold order."""
     order = await credit_order_service.get_order_for_update(db, order_id)
@@ -304,7 +308,7 @@ async def cancel_order(
 async def list_order_documents(
     order_id: str,
     db: AsyncSession = Depends(get_db),
-    admin: AdminPrincipal = Depends(require_permission("quotas", "read")),
+    admin: AdminPrincipal = Depends(require_permission("orders", "read")),
 ):
     """Return all billing documents for an order (proforma; legacy orders may also
     carry an internal tax invoice from before this system stopped issuing them)."""
@@ -322,7 +326,7 @@ async def list_ar_profiles(
     search: str | None = Query(None),
     unmapped_only: bool = Query(False),
     db: AsyncSession = Depends(get_db),
-    _admin: AdminPrincipal = Depends(require_permission("quotas", "read")),
+    _admin: AdminPrincipal = Depends(require_permission("orders", "read")),
 ):
     """List AR customer profiles for Carmen AR code mapping."""
     rows = await credit_order_service.list_ar_profiles(
@@ -336,7 +340,7 @@ async def update_ar_profile(
     profile_id: str,
     body: ArCustomerProfileUpdate,
     db: AsyncSession = Depends(get_db),
-    admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
+    admin: AdminPrincipal = Depends(require_permission("orders", "write")),
 ):
     """Set or update the Carmen AR code for a customer profile."""
     profile = await credit_order_service.update_ar_profile(db, profile_id, body.carmen_ar_code)
@@ -354,7 +358,7 @@ async def update_ar_profile(
 @router.post("/ar-customer-profiles/sync")
 async def sync_ar_profiles(
     db: AsyncSession = Depends(get_db),
-    _admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
+    _admin: AdminPrincipal = Depends(require_permission("orders", "write")),
 ):
     """Re-scan billing_documents for new unique buyers and upsert into ar_customer_profiles."""
     result = await credit_order_service.sync_ar_profiles(db)
@@ -369,7 +373,7 @@ async def sync_ar_profiles(
 async def post_ar_batch(
     body: PostArRequest,
     db: AsyncSession = Depends(get_db),
-    admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
+    admin: AdminPrincipal = Depends(require_permission("orders", "write")),
 ):
     """Batch-post paid orders to Carmen ERP as AR entries."""
     results = await credit_order_service.post_ar_batch(
@@ -385,7 +389,7 @@ async def post_ar_batch(
 @router.get("/credit-orders/kpi", response_model=KpiSummaryResponse)
 async def get_kpi(
     db: AsyncSession = Depends(get_db),
-    admin: AdminPrincipal = Depends(require_permission("quotas", "read")),
+    admin: AdminPrincipal = Depends(require_permission("orders", "read")),
 ):
     """KPI summary for the order-review dashboard."""
     return await credit_order_service.get_kpi(
