@@ -169,11 +169,14 @@ const en = {
   'proforma.docNo': 'Document no.',
   'proforma.print': 'Print / Save PDF',
 
-  // — Usage readouts (quota popover + order history plan strip) —
+  // — Usage strip —
   'usage.freeLeft': 'Free quota left',
   'usage.topupCredits': 'Top-up credits',
+  'usage.runningLow': 'Running low — pick a plan below to keep going',
   'usage.planLeft': 'Plan docs left',
   'usage.activeUntil': 'Active until',
+  'usage.renews': 'renews',
+  'usage.freeTrial': 'Free trial',
   'order.expires': 'Expires',
 
   // — Feature flows (marketing showcase) —
@@ -659,14 +662,6 @@ const en = {
   'common.aiSuggested': 'AI Suggested',
   'common.history': 'History',
   'modal.ok': 'OK',
-
-  // — Quota badge + popover (header) —
-  'quota.remain': 'Remain',
-  'quota.topup': 'Top up credits',
-  'quota.triggerAria': '{remaining} documents remaining. Open quota details',
-  'quota.panelTitle': 'Document quota',
-  'quota.lowHint': 'Running low. Top up to keep processing documents.',
-  'quota.total': 'Total remaining',
 
   // — Notification bell —
   'notif.bellAria': 'Notifications',
@@ -1340,11 +1335,14 @@ const th: Record<TKey, string> = {
   'proforma.docNo': 'เลขที่เอกสาร',
   'proforma.print': 'พิมพ์ / บันทึก PDF',
 
-  // — Usage readouts (quota popover + order history plan strip) —
+  // — Usage strip —
   'usage.freeLeft': 'โควตาฟรีคงเหลือ',
   'usage.topupCredits': 'เครดิตเติม',
+  'usage.runningLow': 'เครดิตใกล้หมด — เลือกแพ็กเกจด้านล่างเพื่อใช้งานต่อ',
   'usage.planLeft': 'เอกสารในแพ็กเกจคงเหลือ',
   'usage.activeUntil': 'ใช้งานถึง',
+  'usage.renews': 'ต่ออายุ',
+  'usage.freeTrial': 'ทดลองใช้งานฟรี',
   'order.expires': 'หมดอายุ',
 
   // — Feature flows (marketing showcase) —
@@ -1823,14 +1821,6 @@ const th: Record<TKey, string> = {
   'common.aiSuggested': 'AI แนะนำ',
   'common.history': 'ประวัติ',
   'modal.ok': 'ตกลง',
-
-  // — Quota badge + popover (header) —
-  'quota.remain': 'คงเหลือ',
-  'quota.topup': 'เติมเครดิต',
-  'quota.triggerAria': 'เหลือ {remaining} เอกสาร กดเพื่อดูรายละเอียดโควตา',
-  'quota.panelTitle': 'โควตาเอกสาร',
-  'quota.lowHint': 'เครดิตใกล้หมด เติมเครดิตเพื่อใช้งานต่อ',
-  'quota.total': 'คงเหลือทั้งหมด',
 
   // — Notification bell —
   'notif.bellAria': 'การแจ้งเตือน',
