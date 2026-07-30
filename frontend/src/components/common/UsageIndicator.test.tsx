@@ -1,6 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { formatDate } from '../../lib/date'
 import type { UsageData } from '../../lib/api/auth'
+
+// Noon UTC, so the calendar day is the same from UTC-11 to UTC+11: an earlier
+// version used midnight ICT, which is 17:00 UTC the previous day, so it read as
+// the 31st locally and the 30th on CI. The expectation goes through formatDate
+// too, which makes the assertion timezone-agnostic by construction rather than
+// by picking a lucky hour. (formatDate uses local-time getters — see the note in
+// changelog/2026-07-30.md about that being latent app-wide behaviour.)
+const PERIOD_END = '2026-08-31T12:00:00Z'
 
 // The badge is the app's only route to #/pricing, so the disclosure path is
 // load-bearing. Pool math lives in UsageIndicator.test.ts (pure); this covers
@@ -96,7 +105,7 @@ describe('UsageIndicator', () => {
         docs_used: 0,
         docs_remaining: 1500,
         period_start: null,
-        period_end: '2026-08-31T00:00:00+07:00',
+        period_end: PERIOD_END,
         status: 'active',
       },
     }
@@ -107,7 +116,9 @@ describe('UsageIndicator', () => {
     expect(panel.getByText('1500 / 1500')).toBeInTheDocument()
     expect(panel.getByText('15')).toBeInTheDocument()
     expect(panel.getByText('1542')).toBeInTheDocument() // 1500 + 27 + 15
-    expect(panel.getByText(/Professional · Active until 31\/08\/2026/)).toBeInTheDocument()
+    expect(
+      panel.getByText(`Professional · Active until ${formatDate(PERIOD_END)}`)
+    ).toBeInTheDocument()
   })
 
   it('omits the expiry clause when the plan has no period_end', async () => {
