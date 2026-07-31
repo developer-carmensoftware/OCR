@@ -1,6 +1,15 @@
 import type React from 'react'
 import { m } from 'framer-motion'
-import { Receipt, FileText, Landmark, CheckCircle2, Clock, Lock, ArrowRight } from 'lucide-react'
+import {
+  Receipt,
+  FileText,
+  Landmark,
+  CheckCircle2,
+  Clock,
+  Lock,
+  ArrowRight,
+  Wallet,
+} from 'lucide-react'
 import '../styles/pages/home.css'
 import logo from '../assets/logo.png'
 import DarkModeToggle from '../components/common/DarkModeToggle'
@@ -205,6 +214,22 @@ export default function Home() {
           })}
         </m.div>
       </div>
+      {/* Second entrance to #/pricing. Deliberately NOT a 4th MODULES entry —
+          that grid is AI product modules (ACTIVE/COMING SOON tags, feature
+          chips) and a billing card inside it would read as a product. */}
+      <a className="home-plans-strip" href="#/pricing">
+        <span className="home-plans-strip-icon" aria-hidden="true">
+          <Wallet size={18} strokeWidth={1.75} />
+        </span>
+        <span className="home-plans-strip-text">
+          <span className="home-plans-strip-title">{t('nav.plansCredits')}</span>
+          <span className="home-plans-strip-desc">{t('home.plansDesc')}</span>
+        </span>
+        <span className="home-plans-strip-cta">
+          {t('home.plansCta')}
+          <ArrowRight size={14} />
+        </span>
+      </a>
       <div className="home-footer">Carmen Cloud AI Automation Platform</div>
     </div>
   )

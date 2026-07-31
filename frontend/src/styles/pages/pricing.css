@@ -31,11 +31,6 @@
   color: var(--primary);
 }
 
-.ui-quota--link {
-  text-decoration: none;
-  cursor: pointer;
-}
-
 /* ─── Hero ─── */
 .pricing-main {
   padding: 1.5rem 0 2rem;
