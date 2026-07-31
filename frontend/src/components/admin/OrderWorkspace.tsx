@@ -18,7 +18,7 @@ import {
   type CreditLedgerEntry,
 } from '../../lib/api/adminClient'
 import type { BillingDocument, PaymentInfo } from '../../lib/api/credits'
-import { formatThb } from '../../lib/money'
+import { formatThb, whtDeduction } from '../../lib/money'
 import { useT } from '../../i18n/LanguageContext'
 
 function num(v: string | number | null): number {
@@ -77,6 +77,10 @@ function VerifyFacts({
   const { t } = useT()
   const vat = proforma ? num(proforma.vat_amount) : null
   const sub = proforma ? num(proforma.subtotal) : null
+  // A buyer who withholds 3% transfers this instead of amount_thb — still a full payment,
+  // since the difference goes to the Revenue Department in our name. Show it so a short
+  // slip reads as expected rather than suspicious.
+  const netWht = sub != null ? num(order.amount_thb) - whtDeduction(sub) : null
   const acct = paymentInfo?.bank_account_no
     ? `${paymentInfo.bank_name} ${paymentInfo.bank_account_no} · ${paymentInfo.bank_account_name}`
     : '—'
@@ -88,12 +92,13 @@ function VerifyFacts({
           <dt>{t('orev.verify.amount')}</dt>
           <dd className="mono">
             ฿{formatThb(order.amount_thb, true)}
-            {vat != null && sub != null && (
+            {vat != null && sub != null && netWht != null && (
               <span className="orev-verify-hint">
                 {' ('}
                 {t('orev.verify.amountHint', {
                   sub: `฿${formatThb(sub, true)}`,
                   vat: `฿${formatThb(vat, true)}`,
+                  netWht: `฿${formatThb(netWht, true)}`,
                 })}
                 {')'}
               </span>

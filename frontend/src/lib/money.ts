@@ -8,6 +8,24 @@ export function formatThb(value: number | string, withDecimals = false): string 
   })
 }
 
+/** Thai withholding-tax rate on service invoices, in percent. */
+export const WHT_RATE_PCT = 3
+
+/**
+ * Withholding tax the buyer deducts from a service invoice.
+ *
+ * The base is the **ex-VAT subtotal**, never the VAT-inclusive gross:
+ * 990 × 3% = 29.70, not 1,059.30 × 3% = 31.78.
+ *
+ * ponytail: the rate is a module constant, not `system_configs`. It is set by law and
+ * moves about once a decade (the COVID e-WHT reductions being the exception), so a
+ * redeploy is the same effort as a config row with none of the plumbing. Promote it to
+ * `billing.wht_rate` alongside `billing.vat_rate` only if it must vary per document.
+ */
+export function whtDeduction(subtotal: number, ratePct = WHT_RATE_PCT): number {
+  return Math.round(subtotal * ratePct) / 100
+}
+
 const _ONES = [
   '',
   'One',
