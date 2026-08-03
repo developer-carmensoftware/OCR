@@ -67,6 +67,18 @@ class ValidationError(RuntimeError):
     """Request data failed business-level validation. → 400"""
 
 
+class FieldValidationError(ValidationError):
+    """One or more per-field failures → 422 with an `errors` list.
+
+    Distinct from ValidationError (a single 400 message) because Carmen's settings
+    screen renders these inline against the field that caused them.
+    """
+
+    def __init__(self, errors: list[dict]):
+        self.errors = errors
+        super().__init__("; ".join(e.get("message", "") for e in errors) or "Validation failed")
+
+
 class NotFoundError(RuntimeError):
     """Requested resource does not exist (or is soft-deleted). → 404"""
 

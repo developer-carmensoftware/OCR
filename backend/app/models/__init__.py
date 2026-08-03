@@ -21,6 +21,7 @@ from .business import (
     OCRTask,
 )
 from .catalog import Bank, Module, PromptTemplate, TenantModule
+from .email_automation import EmailDocument, EmailIngestSettings
 from .enums import (
     AlertSeverity,
     DocumentType,
@@ -109,6 +110,9 @@ __all__ = [
     "BUAccountingMappingEntry",
     "APVendorColumnMapping",
     "APVendorFieldMappingEntry",
+    # Email Automation
+    "EmailIngestSettings",
+    "EmailDocument",
     # Observability
     "LLMUsageLog",
     "AuditLog",

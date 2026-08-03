@@ -1,6 +1,7 @@
+import re
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 from app.models.enums import FieldName, TaskStatus
 from app.utils.date_parsing import format_doc_date
@@ -94,6 +95,14 @@ class ExtractedCreditCardData(BaseModel):
     merchant_id: str | None = Field(None, description="Merchant ID")
     bank_company_name: str | None = Field(None, description="Bank company name")
     branch_no: str | None = Field(None, description="Branch number")
+    tax_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Every 13-digit tax ID printed on the document (issuer's and merchant's). "
+            "Email automation checks the BU's registered tax ID against this list before "
+            "posting — see CARMEN_INTEGRATION.md §2.4."
+        ),
+    )
     details: list[ExtractedDetailRow] = Field(default_factory=list)
     is_duplicate: bool = Field(False)
     raw_text: str | None = Field(None)
@@ -101,6 +110,22 @@ class ExtractedCreditCardData(BaseModel):
         default_factory=list,
         description="User-facing extraction warnings (English), set by backend normalizers only",
     )
+
+    @field_validator("tax_ids", mode="before")
+    @classmethod
+    def _coerce_tax_ids(cls, v):
+        """LLM output is untrusted — null, a bare string or junk must not fail the
+        whole extraction. Keep only well-formed 13-digit numbers, de-duplicated."""
+        if isinstance(v, str):
+            v = [v]
+        if not isinstance(v, list):
+            return []
+        out: list[str] = []
+        for item in v:
+            digits = re.sub(r"\D", "", str(item or ""))
+            if len(digits) == 13 and digits not in out:
+                out.append(digits)
+        return out
 
 
 # ── Correction Feedback ───────────────────────────────────────────────────────

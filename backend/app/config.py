@@ -190,6 +190,21 @@ class Settings(BaseSettings):
     # NEVER put the real value in system_configs DB table — secrets in .env only.
     internal_job_token: str = ""
 
+    # ── Email Automation (bank commission mail → auto-posted JV) ────────────────
+    # One mailbox for every tenant; the BU is identified by the +tag subaddress,
+    # so `email_ingest_address` is the bare mailbox and each BU gets ocr+<tag>@…
+    email_ingest_address: str = "ocr@carmensoftware.com"
+    imap_host: str = ""  # empty = ingestion disabled (dev default)
+    imap_port: int = 993
+    imap_user: str = ""
+    imap_password: str = ""
+    imap_folder: str = "INBOX"
+    imap_batch_size: int = 20  # messages processed per poll — each may cost LLM calls
+
+    # Carmen posting credential used when a BU has none of its own. Dev only:
+    # in production Carmen supplies a per-BU token through PUT /carmen/settings.
+    carmen_dev_token: str = ""
+
     # ── OneApp FileService (slip upload) — SECRETS, never put in system_configs ──
     # Required for slip upload/download. Leave empty to disable slip storage (dev).
     # base URL e.g. https://host/Api/v1/External/FileService
