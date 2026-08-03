@@ -24,7 +24,7 @@ httpx==0.28.1
 
 # Authentication
 python-jose[cryptography]==3.5.0
-cryptography==49.0.0
+cryptography==50.0.0
 bcrypt==5.0.0
 
 # Observability
