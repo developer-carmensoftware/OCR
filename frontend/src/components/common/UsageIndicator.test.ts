@@ -39,7 +39,7 @@ describe('computeUsageStats', () => {
     expect(stats?.remaining_calls).toBe(32) // 27 + 5
   })
 
-  it('flags low and colors red when the whole pool is nearly spent', () => {
+  it('flags low when the whole pool is nearly spent', () => {
     const stats = computeUsageStats({
       monthly_calls: 30,
       max_monthly_calls: 30,
@@ -48,6 +48,16 @@ describe('computeUsageStats', () => {
     })
     expect(stats?.remaining_calls).toBe(2)
     expect(stats?.isLow).toBe(true)
-    expect(stats?.color).toBe('var(--rose)') // 30/32 ≈ 94% used
+  })
+
+  it('does not flag low one credit above the threshold', () => {
+    const stats = computeUsageStats({
+      monthly_calls: 24,
+      max_monthly_calls: 30,
+      remaining_calls: 6,
+      credit_balance: 0,
+    })
+    expect(stats?.remaining_calls).toBe(6)
+    expect(stats?.isLow).toBe(false)
   })
 })

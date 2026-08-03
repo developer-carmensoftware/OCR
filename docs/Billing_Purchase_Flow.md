@@ -103,6 +103,18 @@ The cheapest annual plan (Starter, ฿5,292) costs more than the most expensive 
 
 Top-up packs are one-time purchases that add document credits to the tenant's balance. They are not affected by the subscription guard — a tenant can buy top-ups regardless of their plan status. Top-up credits never expire.
 
+### Withholding Tax (WHT 3%)
+
+Carmen sells **services** to **Thai juristic persons**, so the buyer is legally required to withhold 3% income tax at source (ท.ป.4/2528) and remit it to the Revenue Department directly. The proforma therefore prints two extra lines below the grand total — `WHT (3%) Amount` and `Payment Amount` — so the customer knows exactly what to transfer.
+
+Three rules govern this:
+
+- **WHT is a deduction the buyer makes, not a charge we add.** Subtotal, VAT, grand total and `credit_orders.amount_thb` are unaffected — `amount_thb` remains the invoiced debt. The WHT figure is derived at render time from `billing_documents.subtotal`; nothing is stored.
+- **The base is the ex-VAT subtotal, never the gross.** ฿990 × 3% = **฿29.70**. Using the ฿1,059.30 gross would give ฿31.78, which is wrong.
+- **A slip short by exactly the WHT is a full payment.** The 3% reaches the Revenue Department in Carmen's name, so the admin approves and grants full credits. The slip-review panel shows both the invoiced amount and the WHT-deducted amount for this reason.
+
+The proforma asks the buyer to send the Withholding Tax Certificate (or use e-Withholding Tax via their bank). Without it the withheld 3% cannot be credited against Carmen's corporate income tax. Carmen AR consequently carries a 3% open residual per invoice until the certificate arrives and finance clears it against WHT receivable.
+
 ---
 
 ## Plan Expiry

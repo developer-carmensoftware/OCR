@@ -1,5 +1,5 @@
 import { Printer } from 'lucide-react'
-import { formatThb, bahtToEnglishWords } from '../../lib/money'
+import { formatThb, bahtToEnglishWords, whtDeduction, WHT_RATE_PCT } from '../../lib/money'
 import { formatDate } from '../../lib/date'
 import { useT } from '../../i18n/LanguageContext'
 import logo from '../../assets/logo_carmen.png'
@@ -38,6 +38,11 @@ export default function ProformaDocument({
   const title = TITLE[doc.doc_type] ?? TITLE.proforma
   const isProforma = doc.doc_type === 'proforma'
   const subtotal = num(doc.subtotal)
+  const total = num(doc.total)
+  // Buyers here are Thai juristic persons (Carmen ERP tenants), so they withhold 3% at
+  // source and remit it themselves — the invoice total stands, only the cash transferred
+  // is lower. Display-only: nothing about the order or the stored document changes.
+  const wht = whtDeduction(subtotal)
   const pi = paymentInfo
 
   return (
@@ -189,9 +194,21 @@ export default function ProformaDocument({
             </div>
             <div className="pf-total-row pf-grand">
               <span>Grand Total</span>
-              <span className="text-mono">฿{formatThb(num(doc.total), true)}</span>
+              <span className="text-mono">฿{formatThb(total, true)}</span>
             </div>
-            <div className="pf-amount-words">({bahtToEnglishWords(num(doc.total))})</div>
+            <div className="pf-amount-words">({bahtToEnglishWords(total)})</div>
+            {isProforma && (
+              <>
+                <div className="pf-total-row pf-subrow">
+                  <span>WHT ({WHT_RATE_PCT}%) Amount</span>
+                  <span className="text-mono">({formatThb(wht, true)})</span>
+                </div>
+                <div className="pf-total-row pf-subrow">
+                  <span>Payment Amount</span>
+                  <span className="text-mono">{formatThb(total - wht, true)}</span>
+                </div>
+              </>
+            )}
           </div>
         </section>
 
@@ -217,6 +234,11 @@ export default function ProformaDocument({
                 <li>
                   This document is not a full tax invoice. Our accounting team will send an official
                   e-Tax Invoice to the <b>email address</b> you provided.
+                </li>
+                <li>
+                  If you withhold tax at source, please send us the{' '}
+                  <b>Withholding Tax Certificate</b>, or deduct via e-Withholding Tax through your
+                  bank.
                 </li>
               </ol>
             </section>

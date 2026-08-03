@@ -31,11 +31,6 @@
   color: var(--primary);
 }
 
-.ui-quota--link {
-  text-decoration: none;
-  cursor: pointer;
-}
-
 /* ─── Hero ─── */
 .pricing-main {
   padding: 1.5rem 0 2rem;
@@ -2073,6 +2068,11 @@
   font-size: 0.7rem;
   font-style: italic;
   color: var(--pf-soft);
+}
+
+/* WHT deduction + payment amount — sit under the grand total, quieter than it */
+.pf-subrow span:last-child {
+  font-weight: 400;
 }
 
 /* Terms + signatures */
