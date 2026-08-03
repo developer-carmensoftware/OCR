@@ -10,6 +10,8 @@ layout changes there, change it here — test_cc_jv.py pins the arithmetic.
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from datetime import UTC, datetime
 from typing import Any
 
@@ -30,6 +32,37 @@ BANK_SOURCE_MAP: dict[str, str] = {
 # Same three fixed field types the accounting-config service uses; everything else
 # in `mappings` is a payment type (splitMappings in useAccountingConfig.ts).
 _FIXED_TYPES = ("commission", "tax", "net")
+
+
+def _fold(text: str) -> str:
+    """Drop the differences the extractor invents, keep the ones that carry meaning.
+
+    Thai vowel and tone marks are separate combining code points, so a model that
+    misses one produces a string that is visually near-identical but compares
+    unequal ('ค่าบริการ' vs 'คาบริการ'). Those marks, spacing and case are folded
+    away; letters and DIGITS are not — this BU really has both
+    '04-4100-03 SiamPay …' and '04-4100-04 SiamPay …', which are different payment
+    types one character apart, and no amount of OCR noise may merge them.
+    """
+    text = unicodedata.normalize("NFC", text)
+    text = "".join(c for c in text if unicodedata.category(c) != "Mn")
+    return re.sub(r"\s+", " ", text).strip().casefold()
+
+
+def canonical_payment_type(pay_type: str, mappings: dict[str, Any]) -> str:
+    """The saved mapping key `pay_type` refers to, or `pay_type` unchanged.
+
+    An exact hit always wins. Only when there is none do we retry on the folded
+    form, so a dropped vowel mark does not park a document whose payment type the
+    BU mapped months ago. Ambiguity is never resolved by guessing: if the folded
+    form matches more than one saved key the original is returned and the document
+    parks, which is the safe direction to fail on a money path.
+    """
+    if pay_type in mappings:
+        return pay_type
+    folded = _fold(pay_type)
+    hits = [k for k in mappings if k not in _FIXED_TYPES and _fold(k) == folded]
+    return hits[0] if len(hits) == 1 else pay_type
 
 
 def _num(value: str | None) -> float:
@@ -70,7 +103,9 @@ def build_jv_rows(details: list[ExtractedDetailRow], mappings: dict[str, Any]) -
         amt = _num(d.pay_amt)
         if not amt:
             continue
-        pay_type = d.transaction or "UNKNOWN"
+        # The canonical key is also the description: it is the wording the BU
+        # curated, so a misread does not reach their books as a typo.
+        pay_type = canonical_payment_type(d.transaction or "UNKNOWN", payment)
         rows.append(leg(payment.get(pay_type, {}), pay_type, 0.0, amt))
     if not rows:
         return rows  # degenerate document — nothing to post
@@ -94,7 +129,7 @@ def unmapped_payment_types(
     for d in details:
         if not _num(d.pay_amt):
             continue
-        pay_type = d.transaction or "UNKNOWN"
+        pay_type = canonical_payment_type(d.transaction or "UNKNOWN", mappings)
         cfg = mappings.get(pay_type) or {}
         if not (cfg.get("dept") and cfg.get("acc")) and pay_type not in missing:
             missing.append(pay_type)

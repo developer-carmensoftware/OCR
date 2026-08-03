@@ -241,6 +241,11 @@ async def _process_attachment(
 
     charged: str | None = None
     task_id: str | None = None
+    # Recorded on failures too: "several BUs failing on the same issuer at once"
+    # is the only early warning that a bank changed its form, and it cannot be
+    # computed if a failed row forgets which bank the document came from.
+    bank_code: str | None = None
+    doc_no: str | None = None
     try:
         rule = match_rule(rules, sender, filename)
         bank_code = (rule or {}).get("bank_code")
@@ -282,6 +287,7 @@ async def _process_attachment(
             doc_name=extracted.doc_name,
             raw_text=extracted.raw_text,
         )
+        doc_no = extracted.doc_no
 
         if extracted.is_duplicate:
             raise _Skip("duplicate_document", f"Document {extracted.doc_no} already submitted")
@@ -322,7 +328,7 @@ async def _process_attachment(
             status="posted",
             task_id=task_id,
             bank_code=bank_code,
-            doc_no=extracted.doc_no,
+            doc_no=doc_no,
             jv_no=str(result.get("InternalMessage") or ""),
         )
         logger.info("[email] Posted %s (%s) for tenant %s", extracted.doc_no, filename, tenant_id)
@@ -335,6 +341,8 @@ async def _process_attachment(
             ledger_id,
             status="failed",
             task_id=task_id,
+            bank_code=bank_code,
+            doc_no=doc_no,
             reason_code=skip.reason_code,
             error=str(skip),
         )
@@ -347,6 +355,8 @@ async def _process_attachment(
             ledger_id,
             status="failed",
             task_id=task_id,
+            bank_code=bank_code,
+            doc_no=doc_no,
             reason_code="carmen_rejected",
             error=str(exc),
         )
@@ -358,6 +368,8 @@ async def _process_attachment(
             ledger_id,
             status="failed",
             task_id=task_id,
+            bank_code=bank_code,
+            doc_no=doc_no,
             reason_code="unreadable_document",
             error=str(exc),
         )

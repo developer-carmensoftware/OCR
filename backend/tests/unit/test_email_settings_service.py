@@ -221,7 +221,11 @@ def test_to_response_none_row_is_not_configured():
     assert body["status"]["blockers"] == ["not_configured"]
 
 
-def test_to_response_ready_when_enabled_with_tax_id_and_active_rule():
+def test_to_response_ready_when_enabled_with_tax_id_and_active_rule(monkeypatch):
+    # The mailbox is env-configured (a dev .env points it at a personal inbox), so
+    # pin it here — asserting the production default made this test pass or fail
+    # depending on whose machine it ran on.
+    monkeypatch.setattr(es.app_settings, "email_ingest_address", "ocr@carmensoftware.com")
     row = _fake_row(rules=[{"bank_code": "KTC", "is_active": True}])
     body = es.to_response(row, "host", "bu")
     assert body["ingest_address"] == "ocr+abc123@carmensoftware.com"

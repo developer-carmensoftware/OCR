@@ -6,7 +6,7 @@ implementations stay provably in sync.
 """
 
 from app.models.schemas.ocr import ExtractedDetailRow
-from app.services.cc_jv import build_jv_rows, unmapped_payment_types
+from app.services.cc_jv import build_jv_rows, canonical_payment_type, unmapped_payment_types
 
 CONFIG = {
     "commission": {"dept": "GEN", "acc": "5100"},
@@ -112,3 +112,84 @@ def test_unmapped_payment_types_empty_when_everything_is_mapped():
         _row(transaction="Visa", pay_amt="100.00", commis_amt="3.00", tax_amt="0.21", total="96.79")
     ]
     assert unmapped_payment_types(details, CONFIG) == []
+
+
+# ── Misread payment types (canonical_payment_type) ────────────────────────────
+#
+# The extractor drops Thai vowel/tone marks often enough that a type the BU
+# mapped months ago arrives unrecognisable. Folding those away must never fold
+# away a digit — this tenant really has two SiamPay lines one character apart.
+
+THAI_CONFIG = {
+    "commission": {"dept": "GEN", "acc": "5100"},
+    "tax": {"dept": "GEN", "acc": "1150"},
+    "net": {"dept": "GEN", "acc": "1010"},
+    "ค่าบริการ Merchant Discount Rate (MDR)": {"dept": "GEN", "acc": "1021005"},
+    "04-4100-03 SiamPay Service - Processing Fee": {"dept": "101", "acc": "1010003"},
+    "04-4100-04 SiamPay Service - Transaction Fe": {"dept": "101", "acc": "1010004"},
+}
+
+
+def test_dropped_thai_vowel_marks_still_resolve_to_the_saved_mapping():
+    # 'ค่าบริการ' read as 'คาบรการ' — mai ek and sara i lost.
+    assert (
+        canonical_payment_type("คาบรการ Merchant Discount Rate (MDR)", THAI_CONFIG)
+        == "ค่าบริการ Merchant Discount Rate (MDR)"
+    )
+
+
+def test_spacing_and_case_noise_resolves_too():
+    assert (
+        canonical_payment_type("04-4100-03  siampay service - processing fee", THAI_CONFIG)
+        == "04-4100-03 SiamPay Service - Processing Fee"
+    )
+
+
+def test_a_differing_digit_is_never_folded_away():
+    # The two SiamPay types differ by one digit and map to different accounts.
+    # Folding must keep them apart, so an unknown '-05' parks instead of posting
+    # to '-04'.
+    assert (
+        canonical_payment_type("04-4100-05 SiamPay Service - Settlement Fee", THAI_CONFIG)
+        == "04-4100-05 SiamPay Service - Settlement Fee"
+    )
+
+
+def test_new_type_differing_only_in_a_digit_parks_instead_of_borrowing_a_gl():
+    """The case a similarity score gets wrong, which is why this is not fuzzy.
+
+    'difflib.get_close_matches' scores this pair at 0.977 and would silently post
+    a brand-new payment type to the '-03' account. Only the digit differs, and a
+    digit is exactly what must never be forgiven on a money path.
+    """
+    probe = "04-4100-05 SiamPay Service - Processing Fee"
+    assert canonical_payment_type(probe, THAI_CONFIG) == probe
+    details = [_row(transaction=probe, pay_amt="100.00", commis_amt="3.00", tax_amt="0.21")]
+    assert unmapped_payment_types(details, THAI_CONFIG) == [probe]
+
+
+def test_misread_type_no_longer_parks_the_document():
+    details = [
+        _row(
+            transaction="คาบรการ Merchant Discount Rate (MDR)",
+            pay_amt="4716.31",
+            commis_amt="4407.76",
+            tax_amt="308.55",
+            total="0",
+        )
+    ]
+    assert unmapped_payment_types(details, THAI_CONFIG) == []
+    rows = build_jv_rows(details, THAI_CONFIG)
+    credit = next(r for r in rows if r["credit"])
+    assert credit["acc"] == "1021005"
+    # The BU's own wording reaches the JV, not the misread one.
+    assert credit["desc"] == "ค่าบริการ Merchant Discount Rate (MDR)"
+
+
+def test_genuinely_new_type_still_parks():
+    details = [
+        _row(
+            transaction="Alipay", pay_amt="100.00", commis_amt="3.00", tax_amt="0.21", total="96.79"
+        )
+    ]
+    assert unmapped_payment_types(details, THAI_CONFIG) == ["Alipay"]
