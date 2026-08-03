@@ -442,9 +442,65 @@ token per posting run.
 *Pros:* the standard answer, and the best security/ownership balance.
 *Cons:* Carmen has to build the endpoint if it does not exist yet.
 
-**Our preference:** Option 3 if the endpoint can be built, otherwise Option 1. We would
-rather not hold long-lived customer credentials (Option 2) unless the other two are
-impossible.
+**Option 4 — Post inside a real user's session, deferred to their next login.**
+A variant of Option 1 that removes the credential problem instead of solving it: nothing
+posts on a schedule at all. We hold finished documents and tell Carmen there is work
+waiting; the next time any user of that BU logs in, Carmen pulls the queue and posts it
+**under that user's own session**.
+
+```text
+ingest → extract → tax-ID check → resolve GL mapping from the customer's saved config
+   ├─ complete → ready_to_post ───────────────┐
+   └─ gap      → awaiting_mapping             │
+                                              │
+      user logs into the BU  ←── webhook told Carmen there is work waiting
+                                              │
+   ├─ ready_to_post    → Carmen pulls and posts under that user's session
+   └─ awaiting_mapping → the missing mapping is resolved now, with a live token;
+                          the user confirms it once and it is saved for next time
+```
+
+*Why the GL mapping is not a blocker here:* a BU that has completed Mapping Settings needs
+**no Carmen token at all** to prepare a document — the mapping already lives in our
+database and the result is deterministic. A token is only needed when a payment type
+appears that has never been mapped, which happens once per new type. Since posting already
+waits for a user session under this option, that one case can wait for the same window
+rather than needing a credential of its own.
+
+*A related proposal, which we think matters regardless of which option is chosen:*
+**a GL mapping that an LLM guessed should never post by itself.** Mapping the customer
+saved is deterministic and can post untouched; a guessed one should be confirmed once — by
+the customer, at their next login — and then saved, so every later document with that
+payment type is deterministic too. This is not the per-document approval step that this
+version deliberately removes: the customer approves a *rule*, once, and the number of such
+confirmations falls to zero quickly.
+
+*Pros:* no long-lived credential is stored on either side; every JV is attributable to a
+named Carmen user and is subject to Carmen's own permission model (a service account would
+bypass it); and if our system were ever compromised, an attacker could offer bad documents
+but could not post anything — a Carmen user still has to pull.
+*Cons:* documents wait for a login, so a BU nobody opens for a week accumulates a backlog
+(needs an ageing alert); credits are spent at extraction, before posting, so a customer who
+never logs in has paid for work not yet delivered; and the posting state machine is now
+shared by two systems, which makes the claim/acknowledge protocol below load-bearing.
+
+If this option is chosen, four things have to be right:
+
+1. **Claim and acknowledge must close the loop.** Carmen `PATCH`es back with the JV number;
+   a claim that is never acknowledged must time out and return to `ready_to_post`. (The
+   pilot hit exactly this: a lost acknowledgement left documents that could never move.)
+2. **Two users logging in at once must not double-post** — a conditional status update on
+   our side, dedupe on `document_id` on Carmen's, and the existing
+   `(tenant, bank_code, doc_no)` duplicate guard as the last net.
+3. **Mark automated postings in `JvhSource`.** The JV carries the name of a user who never
+   saw the document; accounting needs to tell those apart when reviewing later.
+4. **Carmen should call `GET /documents/ready` on every login regardless of webhooks.**
+   The webhook is an accelerator, not the transport of record.
+
+**For discussion at the joint meeting.** Options 1 and 4 need nothing new from us and keep
+credentials out of the picture entirely; Option 3 is the textbook answer if Carmen already
+has (or wants) a token endpoint; Option 2 is the one we would rather avoid, since it means
+holding a long-lived customer credential. No decision has been made on either side.
 
 Whichever is chosen, the JV content itself is unchanged from what the wizard posts today
 (`JvhSeq/JvhDate/Prefix/JvhSource/Detail[]`), and the GL accounts come from the mapping
