@@ -6,7 +6,7 @@ is a table of its own rather than a column on ocr_tasks.
 
 import uuid
 
-from sqlalchemy import JSON, Boolean, Column, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 
@@ -28,7 +28,11 @@ class EmailIngestSettings(Base, TimestampMixin, WriterMixin):
     enabled = Column(Boolean, nullable=False, default=False)
     tax_ids = Column(_JSON, nullable=False, default=list)
     rules = Column(_JSON, nullable=False, default=list)
+    # Must be replayed to Carmen on every post, so it is encrypted, not hashed.
     carmen_token_enc = Column(Text, nullable=True)
+    carmen_uri = Column(Text, nullable=True)
+    carmen_token_fp = Column(String(16), nullable=True)
+    carmen_token_verified_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class EmailDocument(Base, TenantFKMixin, TimestampMixin):

@@ -1,9 +1,9 @@
 # Carmen ↔ OCR — Email Automation Integration Contract
 
-> **Status: DRAFT — for review by the Carmen team.**
-> Sections marked **OPEN** need a decision from Carmen before we can finalise the
-> implementation. Everything else is settled on our side and will not change without
-> notice here.
+> **Status: agreed on the posting credential (§2.1, §2.6, §4); the rest is for review.**
+> Sections still marked **OPEN** need a decision before we can finalise them. Everything
+> else is settled on our side and will not change without notice here.
+> §5 is the short list of what we need from Carmen.
 >
 > Companion documents: [EMAIL_FLOW.md](EMAIL_FLOW.md) (the v1 pilot design, now superseded),
 > [Security_Trust_Overview.md](Security_Trust_Overview.md).
@@ -93,38 +93,43 @@ We follow each side's own convention rather than mixing.
 
 ## 2. Part A — Settings API (Carmen → OCR)
 
-### 2.1 Authentication — **OPEN (needs Carmen's answer)**
+> Every route below is live and has been exercised end to end against a Carmen dev
+> instance, including each error case quoted here.
+>
+> **This section is the reasoning. For the reference a developer codes against, hand them
+> [CARMEN_API_SPEC.md](CARMEN_API_SPEC.md)** — every endpoint with its fields, response and
+> error table, in Thai. The machine-readable version is the OpenAPI document the service
+> publishes at **`/docs`** (`/openapi.json`).
 
-Two workable options; we can implement either, and the choice mostly depends on whether
-Carmen calls us from the browser (a user is present) or server-to-server.
+### 2.1 Authentication — **settled: API key, scoped**
 
-**Option A — API key + request signature (server-to-server).**
-Carmen holds a key we issue per Carmen host. Every request carries the key plus an
-HMAC-SHA256 signature of the exact request body, and a timestamp to stop replay.
+Carmen holds a key we issue per Carmen host, and presents it on every call:
 
 ```http
 PUT /api/v1/carmen/settings
 Authorization: ApiKey ocr_live_7f3a91…
-X-OCR-Timestamp: 1785000000
-X-OCR-Signature: sha256=9c1f…
 Content-Type: application/json
 ```
 
-*Pros:* works with no user session, survives session expiry, easy to automate.
-*Cons:* Carmen must store a secret and rotate it.
+- The key is **bound to the hostname(s) it may manage**. `host`/`bu` in the payload is
+  supplied by the caller, so a key that was not scoped would be a key that can write any
+  customer's tax IDs and posting credential. A request for a BU outside the key's scope is
+  `403 {"detail": "This API key may not manage that business unit"}`, not a silent write —
+  and this applies to every route in §2, reads included.
+- A missing, malformed or revoked key is `401`. An unknown `(host, bu)` — a BU that has
+  never signed into the OCR app — is `400 "Unknown business unit"`, because the tenant is
+  created at first login and not by this API. `422` is reserved for the per-field
+  validation shape, and `409` for a tax ID already claimed by another BU (§2.4).
+- We store only the SHA-256 hash; the plaintext is shown once at issue time. If it is
+  lost, we issue a new one and revoke the old — tell us and it takes a minute.
+- One key per environment (staging, production). Please do not share one across both.
 
-**Option B — the user's Carmen token (reuse the existing SSO exchange).**
-Carmen's settings screen sends the logged-in user's Carmen token to
-`POST /api/v1/auth/exchange` (an endpoint that already exists and that we already
-validate against Carmen's own API), then calls the settings endpoint with the resulting
-OCR session JWT.
+We considered signing each request (HMAC over the body plus a timestamp) and decided the
+scoped key over TLS is the right level for now. If Carmen would prefer signatures, say
+so — it is additive and changes no payload.
 
-*Pros:* no new credential anywhere, and every settings change is attributable to a real
-Carmen user (better audit trail). *Cons:* only works while a user is on screen.
-
-**Our recommendation:** Option B for the settings screen, and Option A later if Carmen
-ever needs to push settings without a user (bulk provisioning, migrations). Starting
-with B costs nothing and can be extended to A without changing the payload.
+> Sent out-of-band, not by email or chat; we will agree a channel, the same one as the
+> webhook secret in §3.5.
 
 ### 2.2 Read current settings
 
@@ -139,7 +144,7 @@ GET /api/v1/carmen/settings?host=hotelgroup.carmenwork.com&bu=hq
   "enabled": true,
   "entitled": true,                       // active monthly package — see §3.3
   "ingest_address": "…",                  // OPEN — see §2.5
-  "tax_ids": ["0105536000123"],
+  "tax_ids": ["0105536000127"],
   "rules": [
     {
       "id": "b3f1…",
@@ -171,7 +176,7 @@ PUT /api/v1/carmen/settings
   "host": "hotelgroup.carmenwork.com",
   "bu": "hq",
   "enabled": true,
-  "tax_ids": ["0105536000123"],           // REQUIRED — see §2.4
+  "tax_ids": ["0105536000127"],           // REQUIRED — see §2.4
   "rules": [
     {
       "bank_code": "KTC",                 // the rule's identity — required
@@ -249,6 +254,88 @@ kind of setup step this design is trying to remove.
 
 We will confirm before implementation. **No action needed from Carmen** beyond displaying
 the returned value.
+
+### 2.6 The posting credential
+
+Carmen mints a token per BU and sends it here. Deliberately **its own endpoint, not a
+field on `PUT /settings`** — an ordinary settings edit (a new tax ID, a tweaked rule)
+should not re-transmit a secret every time.
+
+```http
+PUT /api/v1/carmen/settings/token
+Authorization: ApiKey ocr_live_7f3a91…
+```
+
+```jsonc
+{
+  "host": "hotelgroup.carmenwork.com",
+  "bu": "hq",
+  "token": "…",                                  // write-only, never returned
+  "carmen_uri": "https://hotelgroup.carmenwork.com"   // optional; defaults to https://<host>
+}
+```
+
+**We verify the token against Carmen before storing it** — we call
+`GET {carmen_uri}/Carmen.API/api/interface/department` with it, an ordinary authenticated
+read. A token Carmen will not accept is rejected on the spot and **nothing is written**, so
+the customer finds out on the settings screen rather than on a real document at 3am.
+
+Both failures come back as `422` in the same per-field shape as `PUT /settings` (§2.3), so
+Carmen's screen can render them inline without a second code path:
+
+```jsonc
+{ "errors": [ { "field": "token", "code": "token_rejected",
+                "message": "Carmen rejected this token (HTTP 401)" } ] }
+
+{ "errors": [ { "field": "carmen_uri", "code": "invalid_uri",
+                "message": "uri hostname not allowed" } ] }
+```
+
+`invalid_uri` means the URL failed the same SSRF check `/auth/exchange` applies: https
+only, no loopback or private address (whether written literally or reached through DNS),
+and the host allowlist when one is configured. Sending no `carmen_uri` at all is the
+normal case — we default to `https://<host>` and validate that too.
+
+Every error body also carries a top-level `detail` string (the first message, for logs and
+for clients that do not read `errors`). Render from `errors`; treat `detail` as a fallback.
+
+Success returns the credential's status — which is everything about it that is safe to
+show, and never the value:
+
+```jsonc
+{
+  "configured": true,
+  "fingerprint": "9c1f3a2b",              // first 8 hex of sha256 — see below
+  "carmen_uri": "https://hotelgroup.carmenwork.com",
+  "verified_at": "2026-08-04T03:15:00Z"
+}
+```
+
+```http
+GET    /api/v1/carmen/settings/token?host=…&bu=…    → the same status block
+DELETE /api/v1/carmen/settings/token?host=…&bu=…    → 204
+```
+
+Four things worth stating plainly:
+
+- **`DELETE` removes our copy; it does not revoke anything.** Only Carmen can revoke, and
+  must — a copy we deleted is still a live credential everywhere else. Please wire
+  revocation to the customer switching Email Automation **off**, so the setting and the
+  credential cannot disagree.
+- **Rotation is off-then-on.** There is no separate rotate endpoint and Carmen needs no
+  new concept: invalidate, mint, `PUT` again. `PUT` overwrites whatever is stored.
+- **`fingerprint`** lets both sides name a credential in a support conversation without
+  either of them revealing it. Quote it in tickets.
+- **We will re-verify daily.** The token has no expiry, so nothing announces a revocation:
+  the first symptom would otherwise be a customer's document failing to post. A job
+  re-proves every stored credential against Carmen — the same `GET /department` as above —
+  and clears `verified_at` when one stops working. Built and tested; it starts running on
+  a schedule when the ingest mailbox goes live. If you would rather we did not make that
+  daily call, tell us — it is the only substitute we have for an expiry date.
+
+The token is stored encrypted (it has to be replayed to Carmen, so it cannot be hashed
+the way our own API key is), is never returned by any endpoint, and never appears in a
+log line or an error message.
 
 ---
 
@@ -408,116 +495,78 @@ Carmen (or the customer) learns what happened to a forwarded document.
 
 ---
 
-## 4. Part C — Posting the JV — **OPEN (the main decision)**
+## 4. Part C — Posting the JV — **settled**
 
-Every other part of this document is independent of this choice, but this one changes
-which side owns the posting code, so we would like to settle it first.
-
-The problem: posting a JV to Carmen today uses the **logged-in user's Carmen token**,
-which lives for about 30 minutes. Automatic posting happens on a schedule with nobody
+The problem this had to solve: posting a JV to Carmen uses the **logged-in user's Carmen
+token**, which lives about 30 minutes. Automatic posting happens on a schedule with nobody
 logged in, so a session token cannot be used.
 
-**Option 1 — Carmen pulls and posts (no credential leaves Carmen).**
-We send `document.ready`; Carmen fetches the prepared JV from us and posts it internally.
+**Decision: Carmen issues a token per BU with no expiry, and we post directly.** It is
+minted when the customer switches Email Automation on, delivered through §2.6, and
+invalidated when they switch it off. Rotation is the same path — off, then on.
 
-```http
-GET /api/v1/carmen/documents/{document_id}     → the JV payload, ready to post
-PATCH /api/v1/carmen/documents/{document_id}   → { "jv_no": "…" }  (tell us the outcome)
-```
+Two properties of that token are what make it acceptable rather than alarming, and both
+are decisions Carmen makes at mint time, not features anyone has to build:
 
-*Pros:* we never hold a Carmen credential — the smallest possible attack surface, and
-nothing to rotate. *Cons:* the duplicate guard and the posting retry live on Carmen's side.
+- **It is scoped to the BU, not to a person.** It does not carry an employee's identity,
+  so it does not die when they leave, and it does not put their name on documents they
+  never saw.
+- **Carmen's own permission model still applies to it.** It can do what that BU's
+  automation needs and no more.
 
-**Option 2 — Carmen issues a long-lived service token per BU.**
-Sent to us with the settings payload; we store it encrypted and post directly.
+What we do on our side to keep a credential without an expiry date manageable:
 
-*Pros:* no change to Carmen's posting code; our side stays in control end to end.
-*Cons:* we hold a long-lived customer credential, which needs rotation, revocation and
-an expiry alarm.
+| | |
+|---|---|
+| Stored encrypted, per BU | never returned by any endpoint, never logged |
+| Verified before it is stored | a token Carmen rejects never reaches the database (§2.6) |
+| Re-verified daily | the only substitute for an expiry — a revocation is otherwise silent |
+| Fingerprinted | both sides can name a credential without revealing it |
+| Scoped API key on the settings endpoints | one customer's key cannot touch another's credential |
 
-**Option 3 — Client-credentials exchange.**
-Carmen exposes a token endpoint; we exchange a client id/secret for a short-lived access
-token per posting run.
+Two things that still need Carmen's side, and are the reason §5 is not empty:
 
-*Pros:* the standard answer, and the best security/ownership balance.
-*Cons:* Carmen has to build the endpoint if it does not exist yet.
+1. **Revocation must actually happen on the OFF switch.** Deleting our copy is not
+   revoking; if the OFF switch only updates a flag, the credential outlives the setting.
+2. **Mark automated postings in `JvhSource`.** No human saw these documents. Accounting
+   needs to tell them apart from wizard postings when reviewing later.
 
-**Option 4 — Post inside a real user's session, deferred to their next login.**
-A variant of Option 1 that removes the credential problem instead of solving it: nothing
-posts on a schedule at all. We hold finished documents and tell Carmen there is work
-waiting; the next time any user of that BU logs in, Carmen pulls the queue and posts it
-**under that user's own session**.
-
-```text
-ingest → extract → tax-ID check → resolve GL mapping from the customer's saved config
-   ├─ complete → ready_to_post ───────────────┐
-   └─ gap      → awaiting_mapping             │
-                                              │
-      user logs into the BU  ←── webhook told Carmen there is work waiting
-                                              │
-   ├─ ready_to_post    → Carmen pulls and posts under that user's session
-   └─ awaiting_mapping → the missing mapping is resolved now, with a live token;
-                          the user confirms it once and it is saved for next time
-```
-
-*Why the GL mapping is not a blocker here:* a BU that has completed Mapping Settings needs
-**no Carmen token at all** to prepare a document — the mapping already lives in our
-database and the result is deterministic. A token is only needed when a payment type
-appears that has never been mapped, which happens once per new type. Since posting already
-waits for a user session under this option, that one case can wait for the same window
-rather than needing a credential of its own.
-
-*A related proposal, which we think matters regardless of which option is chosen:*
-**a GL mapping that an LLM guessed should never post by itself.** Mapping the customer
-saved is deterministic and can post untouched; a guessed one should be confirmed once — by
-the customer, at their next login — and then saved, so every later document with that
-payment type is deterministic too. This is not the per-document approval step that this
-version deliberately removes: the customer approves a *rule*, once, and the number of such
-confirmations falls to zero quickly.
-
-*Pros:* no long-lived credential is stored on either side; every JV is attributable to a
-named Carmen user and is subject to Carmen's own permission model (a service account would
-bypass it); and if our system were ever compromised, an attacker could offer bad documents
-but could not post anything — a Carmen user still has to pull.
-*Cons:* documents wait for a login, so a BU nobody opens for a week accumulates a backlog
-(needs an ageing alert); credits are spent at extraction, before posting, so a customer who
-never logs in has paid for work not yet delivered; and the posting state machine is now
-shared by two systems, which makes the claim/acknowledge protocol below load-bearing.
-
-If this option is chosen, four things have to be right:
-
-1. **Claim and acknowledge must close the loop.** Carmen `PATCH`es back with the JV number;
-   a claim that is never acknowledged must time out and return to `ready_to_post`. (The
-   pilot hit exactly this: a lost acknowledgement left documents that could never move.)
-2. **Two users logging in at once must not double-post** — a conditional status update on
-   our side, dedupe on `document_id` on Carmen's, and the existing
-   `(tenant, bank_code, doc_no)` duplicate guard as the last net.
-3. **Mark automated postings in `JvhSource`.** The JV carries the name of a user who never
-   saw the document; accounting needs to tell those apart when reviewing later.
-4. **Carmen should call `GET /documents/ready` on every login regardless of webhooks.**
-   The webhook is an accelerator, not the transport of record.
-
-**For discussion at the joint meeting.** Options 1 and 4 need nothing new from us and keep
-credentials out of the picture entirely; Option 3 is the textbook answer if Carmen already
-has (or wants) a token endpoint; Option 2 is the one we would rather avoid, since it means
-holding a long-lived customer credential. No decision has been made on either side.
-
-Whichever is chosen, the JV content itself is unchanged from what the wizard posts today
+The JV content itself is unchanged from what the wizard posts today
 (`JvhSeq/JvhDate/Prefix/JvhSource/Detail[]`), and the GL accounts come from the mapping
 the customer has already configured in the OCR app.
+
+**One proposal still open, and it is independent of the above:** *a GL mapping that an LLM
+guessed should never post by itself.* Mapping the customer saved is deterministic and can
+post untouched; a guessed one should be confirmed once — by the customer — and then saved,
+so every later document with that payment type is deterministic too. This is not the
+per-document approval step this version deliberately removes: the customer approves a
+*rule*, once, and the number of such confirmations falls to zero quickly.
 
 ---
 
 ## 5. Checklist for the Carmen team
 
+The posting credential is three items, and all three live inside the ON/OFF switch Carmen
+is already building:
+
 | # | We need | Blocks |
 |---|---|---|
-| 1 | Decision on §4 — how the JV gets posted | the whole posting path |
-| 2 | Decision on §2.1 — API key or user token | the settings endpoint |
-| 3 | Webhook endpoint URL + secret exchange channel (§3.5) | both webhooks |
-| 4 | Which Carmen field holds the BU tax ID (§2.4) | switching the feature on |
-| 5 | Yes/no on the proposed `document.*` events (§3.4) | outcome reporting |
-| 6 | Confirmation that Email Automation is gated on the monthly package only | entitlement logic |
+| 1 | **ON** → mint the BU token, `PUT /api/v1/carmen/settings/token` (§2.6) | automated posting |
+| 2 | **OFF** → invalidate that token on Carmen's side, then `DELETE` the same route | revocation |
+| 3 | The JV endpoint accepts that token | automated posting |
+
+There is no item 4 on the credential. Rotation, liveness checking, fingerprinting and
+expiry alarms are all on our side.
+
+The rest of the integration:
+
+| # | We need | Blocks |
+|---|---|---|
+| 4 | Webhook endpoint URL + secret exchange channel (§3.5) | both webhooks |
+| 5 | Which Carmen field holds the BU tax ID (§2.4) | switching the feature on |
+| 6 | Yes/no on the proposed `document.*` events (§3.4) | outcome reporting |
+| 7 | Confirmation that Email Automation is gated on the monthly package only | entitlement logic |
+| 8 | Confirmation that automated JVs are distinguishable in `JvhSource` (§4) | audit review |
 
 ---
 

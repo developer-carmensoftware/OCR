@@ -21,6 +21,7 @@ import imaplib
 import logging
 import re
 import uuid
+from datetime import UTC, datetime
 from email.header import decode_header, make_header
 from email.message import Message
 from typing import Any
@@ -30,9 +31,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.constants import Module
-from app.context import current_tenant_id
+from app.context import current_carmen_uri, current_tenant_id
 from app.database import async_session
 from app.exceptions import PdfPasswordRequired, ValidationError
+from app.models.business import CreditCard
 from app.models.email_automation import EmailDocument, EmailIngestSettings
 from app.services import email_settings_service as es
 from app.services import ocr_service
@@ -193,9 +195,14 @@ async def run_ingest(limit: int | None = None) -> dict:
             rules = list(row.rules or [])
             tax_ids = set(row.tax_ids or [])
             passwords = es.rule_passwords(row)
-            token = es.posting_token(row)
+            token, carmen_uri = await es.posting_target(db, row)
 
+        # carmen_service reads the target host from a ContextVar the request
+        # middleware normally fills in. There is no request here, so the job has to
+        # set it itself — without this every post raises and lands in the ledger
+        # under the wrong reason.
         token_ctx = current_tenant_id.set(tenant_id)
+        uri_ctx = current_carmen_uri.set(carmen_uri)
         try:
             for filename, blob in msg["attachments"]:
                 outcome = await _process_attachment(
@@ -208,11 +215,13 @@ async def run_ingest(limit: int | None = None) -> dict:
                     tax_ids=tax_ids,
                     passwords=passwords,
                     carmen_token=token,
+                    carmen_uri=carmen_uri,
                 )
                 summary[outcome] = summary.get(outcome, 0) + 1
             if not msg["attachments"]:
                 summary["skipped"] += 1
         finally:
+            current_carmen_uri.reset(uri_ctx)
             current_tenant_id.reset(token_ctx)
 
     logger.info("[email] Poll finished: %s", summary)
@@ -230,6 +239,7 @@ async def _process_attachment(
     tax_ids: set[str],
     passwords: list[str],
     carmen_token: str,
+    carmen_uri: str = "",
 ) -> str:
     """Extract → verify → post one attachment. Returns 'posted' | 'failed' | 'skipped'."""
     async with async_session() as db:
@@ -311,6 +321,11 @@ async def _process_attachment(
 
         if not carmen_token:
             raise _Skip("carmen_rejected", "No Carmen posting credential for this BU")
+        if not carmen_uri:
+            # Park with the honest reason. Without this the RuntimeError from
+            # carmen_service._base_url falls through to the generic handler and the
+            # document is filed as unreadable, which sends everyone looking at the PDF.
+            raise _Skip("carmen_rejected", "No Carmen host known for this BU")
 
         payload = build_gljv_payload(
             rows, doc_date=extracted.doc_date, bank_code=bank_code, config=config
@@ -322,6 +337,8 @@ async def _process_attachment(
                 str((result or {}).get("UserMessage") or "Carmen rejected the JV"),
                 refund=False,  # the extraction was fine; the ERP declined it
             )
+
+        await _mark_submitted(extracted.id)
 
         await _finish(
             ledger_id,
@@ -419,6 +436,32 @@ async def _claim(
         await db.rollback()
         return None
     return row
+
+
+async def _mark_submitted(card_id: str | None) -> None:
+    """Stamp `credit_cards.submitted_at` — the same thing the wizard does after posting.
+
+    Without it the duplicate guard is blind to everything this job posts: the check
+    on the way in reads `submitted_at IS NOT NULL` (`has_submitted_doc`), so a
+    document forwarded twice in two different mails posts twice. The ledger's own
+    dedupe key is (message, attachment), which catches the same *mail* again and
+    not the same *document* — and both arrival modes carrying one report is exactly
+    the case CARMEN_INTEGRATION.md §0.1 promises we handle.
+
+    Failing here must not undo a JV Carmen has already accepted, so this logs and
+    returns; the partial unique index on (tenant, bank_code, doc_no) is what makes
+    a lost stamp loud rather than silent.
+    """
+    if not card_id:
+        return
+    try:
+        async with async_session() as db:
+            card = await db.get(CreditCard, uuid.UUID(card_id))
+            if card is not None:
+                card.submitted_at = datetime.now(UTC)  # type: ignore[assignment]
+                await db.commit()
+    except Exception:
+        logger.exception("[email] Could not stamp submitted_at on card %s", card_id)
 
 
 async def _finish(

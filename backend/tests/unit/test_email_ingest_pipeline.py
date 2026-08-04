@@ -120,6 +120,7 @@ class _Patches:
         self.carmen_side_effect = carmen_side_effect
         self.refund_document = AsyncMock()
         self.consume_document = AsyncMock(return_value="credit")
+        self.mark_submitted = AsyncMock()
         self._stack = []
 
     def __enter__(self):
@@ -133,6 +134,7 @@ class _Patches:
             ),
             patch.object(ingest, "finalize_extraction", AsyncMock(return_value=self.extracted)),
             patch.object(ingest, "mark_task_failed", AsyncMock()),
+            patch.object(ingest, "_mark_submitted", self.mark_submitted),
             patch.object(ingest, "get_accounting_config", AsyncMock(return_value=self.config)),
             patch.object(
                 ingest,
@@ -157,6 +159,7 @@ async def _run(
     tax_ids=None,
     rules=None,
     carmen_token="dev-tok",
+    carmen_uri="https://hotel.carmenwork.com",
     **patch_kwargs,
 ):
     """Runs _process_attachment and returns (outcome, patches) so callers can
@@ -175,6 +178,7 @@ async def _run(
             tax_ids=tax_ids if tax_ids is not None else {"1234567890123"},
             passwords=[],
             carmen_token=carmen_token,
+            carmen_uri=carmen_uri,
         )
     return outcome, p
 
@@ -198,6 +202,56 @@ async def test_happy_path_posts_and_records_ledger():
     assert ledger.jv_no == "JV-999"
     assert ledger.reason_code is None
     p.refund_document.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_posting_stamps_submitted_at_so_the_duplicate_guard_sees_it():
+    """The whole reason a re-forwarded document used to post twice.
+
+    `is_duplicate` on the way in reads `submitted_at IS NOT NULL`; only the wizard
+    ever wrote it, so this job was blind to its own postings (JV 966 + 967 for one
+    SIAMPAY report, 2026-08-04).
+    """
+    db = _FakeDB()
+    extracted = _extracted()
+    extracted.id = "11111111-2222-3333-4444-555555555555"
+    outcome, p = await _run(
+        db,
+        extracted=extracted,
+        config=_config(),
+        carmen_result={"Code": 0, "InternalMessage": "JV-999"},
+    )
+    assert outcome == "posted"
+    p.mark_submitted.assert_awaited_once_with(extracted.id)
+
+
+@pytest.mark.asyncio
+async def test_rejected_jv_does_not_stamp_submitted_at():
+    """Carmen declined, so nothing was posted — stamping would block the retry."""
+    db = _FakeDB()
+    outcome, p = await _run(
+        db,
+        extracted=_extracted(),
+        config=_config(),
+        carmen_result={"Code": 1, "UserMessage": "Insufficient balance"},
+    )
+    assert outcome == "failed"
+    p.mark_submitted.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_already_submitted_document_never_reaches_carmen():
+    db = _FakeDB()
+    outcome, p = await _run(
+        db,
+        extracted=_extracted(is_duplicate=True),
+        config=_config(),
+        carmen_result={"Code": 0},
+    )
+    assert outcome == "failed"
+    assert db.added[0].reason_code == "duplicate_document"
+    p.mark_submitted.assert_not_awaited()
+    p.refund_document.assert_awaited_once()
 
 
 # ── Gates ──────────────────────────────────────────────────────────────────────
@@ -271,6 +325,7 @@ async def test_carmen_declines_jv_fails_but_does_not_refund():
             tax_ids={"1234567890123"},
             passwords=[],
             carmen_token="dev-tok",
+            carmen_uri="https://hotel.carmenwork.com",
         )
     assert outcome == "failed"
     assert db.added[0].reason_code == "carmen_rejected"
@@ -299,6 +354,7 @@ async def test_carmen_transport_failure_fails_but_does_not_refund():
             tax_ids={"1234567890123"},
             passwords=[],
             carmen_token="dev-tok",
+            carmen_uri="https://hotel.carmenwork.com",
         )
     assert outcome == "failed"
     assert db.added[0].reason_code == "carmen_rejected"
