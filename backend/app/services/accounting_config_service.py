@@ -103,6 +103,48 @@ async def save_accounting_config(
     logger.info("Saved accounting config for tenant=%s", tenant_id)
 
 
+async def fill_missing_mappings(
+    db: AsyncSession, tenant_id: str, mappings: dict[str, dict[str, str]]
+) -> None:
+    """Write dept/acc only where the BU has none. Never overwrites what it set.
+
+    Additive on purpose: this is called by the email job, which runs while someone
+    may have the same config open in the app. `save_accounting_config` replaces
+    every entry, so using it here would delete their work between two clicks.
+    """
+    fillable = {k: v for k, v in mappings.items() if v.get("dept") and v.get("acc")}
+    if not fillable:
+        return
+
+    row = await _get_config(db, tenant_id)
+    if row is None:
+        row = BUAccountingConfig(tenant_id=tenant_id)
+        db.add(row)
+        await db.flush()
+
+    # A custom type can already have a row with empty dept/acc — that is a gap to
+    # fill, not a value to protect.
+    existing = {str(e.field_type): e for e in await _get_entries(db, row.id)}
+    for field_type, mapping in fillable.items():
+        entry = existing.get(field_type)
+        if entry is None:
+            db.add(
+                BUAccountingMappingEntry(
+                    config_id=row.id,
+                    field_type=field_type,
+                    dept_code=mapping["dept"],
+                    acc_code=mapping["acc"],
+                    is_custom=(field_type not in _FIXED_TYPES),
+                )
+            )
+        elif not (entry.dept_code and entry.acc_code):
+            entry.dept_code = mapping["dept"]
+            entry.acc_code = mapping["acc"]
+
+    await db.commit()
+    logger.info("Filled %d GL mapping(s) for tenant=%s", len(fillable), tenant_id)
+
+
 # ── AP vendor column mapping ───────────────────────────────────────────────────
 
 

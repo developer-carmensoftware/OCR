@@ -113,6 +113,7 @@ class _Patches:
         config: AccountingConfigResponse,
         carmen_result: dict | None,
         carmen_side_effect=None,
+        suggested: dict | None = None,
     ):
         self.extracted = extracted
         self.config = config
@@ -121,6 +122,8 @@ class _Patches:
         self.refund_document = AsyncMock()
         self.consume_document = AsyncMock(return_value="credit")
         self.mark_submitted = AsyncMock()
+        self.suggest = AsyncMock(return_value=suggested or {})
+        self.fill_missing_mappings = AsyncMock()
         self._stack = []
 
     def __enter__(self):
@@ -136,6 +139,8 @@ class _Patches:
             patch.object(ingest, "mark_task_failed", AsyncMock()),
             patch.object(ingest, "_mark_submitted", self.mark_submitted),
             patch.object(ingest, "get_accounting_config", AsyncMock(return_value=self.config)),
+            patch.object(ingest, "_suggest_missing_mappings", self.suggest),
+            patch.object(ingest, "fill_missing_mappings", self.fill_missing_mappings),
             patch.object(
                 ingest,
                 "post_gljv",
@@ -274,17 +279,55 @@ async def test_tax_id_mismatch_fails_and_refunds():
 
 
 @pytest.mark.asyncio
-async def test_mapping_incomplete_fails_and_refunds():
+async def test_unmapped_bu_gets_ai_mappings_posts_and_saves_them():
+    """A BU that never opened the mapping page must still post its first document.
+
+    The guessed pairs are written back, so the second document of the same payment
+    type is deterministic — that is what makes one AI guess acceptable.
+    """
     db = _FakeDB()
     outcome, p = await _run(
         db,
         extracted=_extracted(),
         config=_config(mappings={}),  # nothing mapped at all
+        carmen_result={"Code": 0, "InternalMessage": "JV-1000"},
+        suggested=MAPPINGS,
+    )
+    assert outcome == "posted"
+    assert db.added[0].reason_code is None
+    p.refund_document.assert_not_called()
+    p.fill_missing_mappings.assert_awaited_once()
+    assert p.fill_missing_mappings.await_args.args[2] == MAPPINGS
+
+
+@pytest.mark.asyncio
+async def test_mapping_incomplete_fails_and_refunds_when_ai_cannot_fill_it():
+    """The fallback: no LLM answer, or Carmen's GL master was unreachable."""
+    db = _FakeDB()
+    outcome, p = await _run(
+        db,
+        extracted=_extracted(),
+        config=_config(mappings={}),
         carmen_result={"Code": 0},
+        suggested={},  # AI produced nothing usable
     )
     assert outcome == "failed"
     assert db.added[0].reason_code == "mapping_incomplete"
     p.refund_document.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_fully_mapped_bu_never_calls_the_suggester():
+    db = _FakeDB()
+    outcome, p = await _run(
+        db,
+        extracted=_extracted(),
+        config=_config(),
+        carmen_result={"Code": 0, "InternalMessage": "JV-1"},
+    )
+    assert outcome == "posted"
+    p.suggest.assert_not_awaited()
+    p.fill_missing_mappings.assert_not_awaited()
 
 
 @pytest.mark.asyncio

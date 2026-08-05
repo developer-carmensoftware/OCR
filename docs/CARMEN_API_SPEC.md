@@ -68,7 +68,6 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
 |---|---|
 | `not_configured` | ยังไม่เคยตั้งค่า |
 | `not_entitled` | ไม่มี package รายเดือนที่ยังไม่หมดอายุ |
-| `no_gl_mapping` | ยังไม่ได้ตั้ง GL mapping ในแอป OCR (`commission` / `tax` / `net`) |
 | `no_tax_id` | ยังไม่ได้ใส่เลขผู้เสียภาษี |
 | `no_rule` | ไม่มี rule ที่ `is_active` |
 | `disabled` | `enabled` ยังเป็น false |

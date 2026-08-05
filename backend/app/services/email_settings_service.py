@@ -25,8 +25,6 @@ from app.config import settings as app_settings
 from app.exceptions import ConflictError, FieldValidationError, ValidationError
 from app.models.email_automation import EmailDocument, EmailIngestSettings
 from app.models.identity import Tenant
-from app.services.accounting_config_service import get_accounting_config
-from app.services.cc_jv import unmapped_payment_types
 from app.services.credit_service import active_subscription
 
 logger = logging.getLogger(__name__)
@@ -154,19 +152,6 @@ async def is_entitled(db: AsyncSession, tenant: Tenant) -> bool:
     return await active_subscription(db, str(tenant.id)) is not None
 
 
-async def has_gl_mapping(db: AsyncSession, tenant: Tenant) -> bool:
-    """Has the BU mapped commission / tax / net in the OCR app?
-
-    Without them every document parks at `mapping_incomplete`, so a BU can look
-    perfectly configured from Carmen's side and still post nothing. Passing no line
-    items to `unmapped_payment_types` makes it report exactly the missing fixed
-    types — reusing the rule the ingest pipeline enforces rather than restating it
-    here, where the two could drift.
-    """
-    cfg = await get_accounting_config(db, str(tenant.id))
-    return not unmapped_payment_types([], cfg.mappings or {})
-
-
 async def document_counts(db: AsyncSession, row: EmailIngestSettings) -> dict:
     """The counters in the `status` block."""
     total, last = (
@@ -187,10 +172,13 @@ async def build_settings_response(
 ) -> dict:
     """The §2.2 body — assembled here so GET and PUT cannot drift apart.
 
-    `to_response` covers what the BU configured; the two blockers added here are
-    conditions it cannot see, and both are ones that otherwise surface as silence:
-    an unpaid BU that ingests anyway, and a BU with no GL mapping whose every
-    document parks while `ready` says true.
+    `to_response` covers what the BU configured; the blocker added here is a
+    condition it cannot see and one that otherwise surfaces as silence — an unpaid
+    BU that ingests anyway.
+
+    A missing GL mapping is deliberately *not* a blocker: the ingest job AI-fills
+    what the BU never mapped and saves the result, so a BU that has never opened the
+    mapping page still posts (CARMEN_INTEGRATION.md §4).
     """
     body = to_response(row, host, bu)
     body["entitled"] = await is_entitled(db, tenant)
@@ -202,8 +190,6 @@ async def build_settings_response(
     status.update(await document_counts(db, row))
     if not body["entitled"]:
         status["blockers"].append("not_entitled")
-    if not await has_gl_mapping(db, tenant):
-        status["blockers"].append("no_gl_mapping")
     status["ready"] = not status["blockers"]
     return body
 

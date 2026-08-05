@@ -562,12 +562,22 @@ The JV content itself is unchanged from what the wizard posts today
 (`JvhSeq/JvhDate/Prefix/JvhSource/Detail[]`), and the GL accounts come from the mapping
 the customer has already configured in the OCR app.
 
-**One proposal still open, and it is independent of the above:** *a GL mapping that an LLM
-guessed should never post by itself.* Mapping the customer saved is deterministic and can
-post untouched; a guessed one should be confirmed once — by the customer — and then saved,
-so every later document with that payment type is deterministic too. This is not the
-per-document approval step this version deliberately removes: the customer approves a
-*rule*, once, and the number of such confirmations falls to zero quickly.
+**GL mapping the customer has not set is filled by AI, and saved.** A BU that never opened
+the mapping page in the OCR app would otherwise have every document park at
+`mapping_incomplete` — silence, for a feature sold as automatic. So when a payment type or
+a fixed field has no mapping, we ask the same suggester the wizard uses (against that BU's
+own Carmen account and department master, with Carmen's `DefaultAccount` restrictions
+enforced), post with the result, and **write it back to the BU's config**. Only the first
+document of a given payment type is a guess; every later one is deterministic.
+
+Two consequences worth stating plainly, because they are the price of not blocking:
+
+- **A guess can be wrong.** The customer sees and corrects the mapping in the OCR app —
+  and a correction sticks, because saving never overwrites what they set. A JV already
+  posted under a wrong account has to be fixed in Carmen.
+- **`mapping_incomplete` still exists**, but only as the fallback for when the suggester
+  produced nothing usable or Carmen's master was unreachable — not as a door that stays
+  shut until the customer configures something.
 
 ---
 

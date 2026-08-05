@@ -38,15 +38,22 @@ from app.models.business import CreditCard
 from app.models.email_automation import EmailDocument
 from app.models.identity import Tenant
 from app.services import email_settings_service as es
+from app.services import gl_suggestion_service as gl
 from app.services import ocr_service
-from app.services.accounting_config_service import get_accounting_config
-from app.services.carmen_service import CarmenAPIError, post_gljv
+from app.services.accounting_config_service import fill_missing_mappings, get_accounting_config
+from app.services.carmen_service import (
+    CarmenAPIError,
+    get_account_codes,
+    get_departments,
+    post_gljv,
+)
 from app.services.cc_jv import build_gljv_payload, build_jv_rows, unmapped_payment_types
 from app.services.credit_card_service import finalize_extraction, mark_task_failed
 from app.services.credit_service import consume_document, refund_document
 from app.services.quota_service import assert_module_enabled
 from app.services.task_service import create_task
 from app.utils.bank_detect import detect_bank_code
+from app.utils.gl_filter import parse_default_account
 from app.utils.pdf_utils import ensure_pdf_openable
 
 logger = logging.getLogger(__name__)
@@ -319,7 +326,20 @@ async def _process_attachment(
             config = await get_accounting_config(db, tenant_id)
         missing = unmapped_payment_types(extracted.details, config.mappings or {})
         if missing:
-            raise _Skip("mapping_incomplete", f"No GL mapping for: {', '.join(missing)}")
+            # Nobody is here to confirm a guess, and parking every document of a BU
+            # that never opened the mapping page is the worse failure. So the AI fills
+            # the gap and what it picked is *saved* — the next document carrying the
+            # same payment type is deterministic.
+            suggested = await _suggest_missing_mappings(missing, bank_code, carmen_token)
+            if suggested:
+                async with async_session() as db:
+                    await fill_missing_mappings(db, tenant_id, suggested)
+                config.mappings = {**(config.mappings or {}), **suggested}
+            still = unmapped_payment_types(extracted.details, config.mappings or {})
+            if still:
+                # Fallback, not a closed door: the LLM had no answer or Carmen's
+                # master was unreachable.
+                raise _Skip("mapping_incomplete", f"No GL mapping for: {', '.join(still)}")
 
         rows = build_jv_rows(extracted.details, config.mappings or {})
         if not rows or not any(r["credit"] for r in rows):
@@ -400,6 +420,70 @@ async def _process_attachment(
         )
         logger.exception("[email] Failed on %s", filename)
         return "failed"
+
+
+# ── GL mapping the BU never set ───────────────────────────────────────────────
+
+# `unmapped_payment_types` speaks the config's keys; the suggester speaks the
+# wizard's labels. Same three fields (useMappingSuggestions.ts `suggestKeyMap`).
+_FIXED_LABEL = {
+    "commission": "Credit card commission",
+    "tax": "Input Tax",
+    "net": "Bank Account",
+}
+
+
+async def _suggest_missing_mappings(
+    missing: list[str], bank_code: str | None, carmen_token: str
+) -> dict[str, dict[str, str]]:
+    """AI-fill the mappings this BU has none for, using the wizard's own suggester.
+
+    Only pairs where both codes survived validation against Carmen's master (and the
+    dept's DefaultAccount rule) are returned — a half-filled mapping would post a JV
+    line with a blank account.
+    """
+    if not carmen_token:
+        return {}
+    try:
+        accounts_raw = await get_account_codes(carmen_token)
+        depts_raw = await get_departments(carmen_token)
+    except CarmenAPIError as exc:
+        logger.warning("[email] Could not read Carmen GL master for suggestions: %s", exc)
+        return {}
+
+    accounts = [
+        {
+            "code": a["AccCode"],
+            "name": a.get("Description") or "",
+            "type": (a.get("Type") or "").lower(),
+        }
+        for a in (accounts_raw.get("Data") or [])
+        if a.get("AccCode") and a.get("AccCode") != "AccCode"
+    ]
+    departments = [
+        {
+            "code": d["DeptCode"],
+            "name": d.get("Description") or "",
+            "allowed_accounts": sorted(parse_default_account(d.get("DefaultAccount"))),
+        }
+        for d in (depts_raw.get("Data") or [])
+        if d.get("DeptCode") and d.get("DeptCode") != "CodeDep"
+    ]
+
+    out: dict[str, dict[str, str]] = {}
+    if fixed := [m for m in missing if m in _FIXED_LABEL]:
+        result = await gl.suggest_fixed_fields(accounts, departments)
+        sugg = (result.output or {}).get("suggestions") or {}
+        out.update({key: sugg.get(_FIXED_LABEL[key]) or {} for key in fixed})
+    if dynamic := [m for m in missing if m not in _FIXED_LABEL]:
+        result = await gl.suggest_payment_types(
+            payment_types=dynamic, accounts=accounts, departments=departments, bank_code=bank_code
+        )
+        out.update((result.output or {}).get("suggestions") or {})
+
+    filled = {k: v for k, v in out.items() if v.get("dept") and v.get("acc")}
+    logger.info("[email] AI filled %d/%d missing GL mapping(s)", len(filled), len(missing))
+    return filled
 
 
 # ── PDF passwords ─────────────────────────────────────────────────────────────

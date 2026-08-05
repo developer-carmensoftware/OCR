@@ -416,23 +416,38 @@ async def test_disabled_settings_may_be_saved_without_a_package():
 
 
 @pytest.mark.asyncio
-async def test_build_response_flags_an_unpaid_bu_and_one_with_no_gl_mapping(monkeypatch):
+async def test_build_response_flags_an_unpaid_bu(monkeypatch):
     monkeypatch.setattr(es, "is_entitled", AsyncMock(return_value=False))
-    monkeypatch.setattr(es, "has_gl_mapping", AsyncMock(return_value=False))
     monkeypatch.setattr(es, "document_counts", AsyncMock(return_value={"documents_total": 0}))
     row = _fake_row(rules=[{"bank_code": "KTC", "is_active": True}])
 
     body = await es.build_settings_response(AsyncMock(), _tenant_with_host(), row, "h", "b")
 
     assert body["entitled"] is False
-    assert {"not_entitled", "no_gl_mapping"} <= set(body["status"]["blockers"])
+    assert body["status"]["blockers"] == ["not_entitled"]
     assert body["status"]["ready"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_bu_with_no_gl_mapping_is_still_ready(monkeypatch):
+    """The ingest job AI-fills what was never mapped, so it no longer blocks.
+
+    `no_gl_mapping` used to park every document of a BU that had not opened the
+    mapping page; now the first document fills the gap and saves it.
+    """
+    monkeypatch.setattr(es, "is_entitled", AsyncMock(return_value=True))
+    monkeypatch.setattr(es, "document_counts", AsyncMock(return_value={"documents_total": 0}))
+    row = _fake_row(rules=[{"bank_code": "KTC", "is_active": True}])
+
+    body = await es.build_settings_response(AsyncMock(), _tenant_with_host(), row, "h", "b")
+
+    assert body["status"]["blockers"] == []
+    assert body["status"]["ready"] is True
 
 
 @pytest.mark.asyncio
 async def test_build_response_is_ready_only_when_every_gate_passes(monkeypatch):
     monkeypatch.setattr(es, "is_entitled", AsyncMock(return_value=True))
-    monkeypatch.setattr(es, "has_gl_mapping", AsyncMock(return_value=True))
     monkeypatch.setattr(es, "document_counts", AsyncMock(return_value={"documents_total": 3}))
     row = _fake_row(rules=[{"bank_code": "KTC", "is_active": True}])
 
@@ -451,27 +466,6 @@ async def test_unconfigured_bu_reports_only_not_configured(monkeypatch):
     body = await es.build_settings_response(AsyncMock(), _tenant_with_host(), None, "h", "b")
     assert body["status"]["blockers"] == ["not_configured"]
     assert "documents_total" not in body["status"]
-
-
-@pytest.mark.asyncio
-async def test_has_gl_mapping_follows_the_same_rule_the_pipeline_enforces(monkeypatch):
-    """A BU with no accounting config parks every document — say so at setup time."""
-    from app.models.schemas.config import AccountingConfigResponse
-
-    monkeypatch.setattr(
-        es, "get_accounting_config", AsyncMock(return_value=AccountingConfigResponse())
-    )
-    assert await es.has_gl_mapping(AsyncMock(), _tenant_with_host()) is False
-
-    complete = AccountingConfigResponse(
-        mappings={
-            "commission": {"dept": "GEN", "acc": "5100"},
-            "tax": {"dept": "GEN", "acc": "1150"},
-            "net": {"dept": "GEN", "acc": "1010"},
-        }
-    )
-    monkeypatch.setattr(es, "get_accounting_config", AsyncMock(return_value=complete))
-    assert await es.has_gl_mapping(AsyncMock(), _tenant_with_host()) is True
 
 
 # ── SSRF: the origin we make a server-side request to ─────────────────────────
