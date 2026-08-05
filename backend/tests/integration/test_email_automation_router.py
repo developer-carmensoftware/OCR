@@ -1,72 +1,84 @@
 """
-Integration tests for /api/v1/carmen/settings — the dual-auth entry point
-Carmen (ApiKey) and our own simulated settings page (admin Bearer) both call.
+Integration tests for /api/v1/carmen/settings — the entry point Carmen calls with
+the logged-in user's own Carmen token, and our operators call with an admin JWT.
 
-`_caller` is tested directly (async, mocked db) rather than end-to-end through
-every downstream service call, since its job is narrow: resolve an
-Authorization header to an actor string or reject it. The route-level tests
-then override `_caller` via dependency_overrides to prove the routes are wired
-to it, plus one real (non-overridden) 401 case to prove a bad header is
-actually rejected before reaching business logic.
+`_caller` is tested directly (its job is narrow: turn an Authorization header into a
+Caller or reject it) and `_resolve` likewise, because that is where a Carmen token is
+actually proven. The route-level tests then override `_caller` to prove the routes are
+wired to it, plus one real 401 to prove a bad header is rejected before any handler runs.
 """
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
 
-from app.routers.email_automation import Caller, _caller
+from app.exceptions import RequestRateLimitExceeded
+from app.routers.email_automation import Caller, _caller, _resolve
 from tests.integration.conftest import make_test_client
 
 BASE = "/api/v1/carmen"
 
-
-def _exec(scalar_one_or_none=None):
-    r = MagicMock()
-    r.scalar_one_or_none.return_value = scalar_one_or_none
-    return r
+# Carmen's real token format is "<hash>|<user_uuid>", and the value can carry a space —
+# `direct <key>` is what the dev instance issues. Parsing must survive that.
+CARMEN_TOKEN = "direct 9f3ac1|3fa85f64-5717-4562-b3fc-2c963f66afa6"
 
 
-# ── _caller — unit ─────────────────────────────────────────────────────────────
+def _request(ip: str = "203.0.113.9"):
+    """Minimal stand-in for the Request the rate limiter reads a client IP from."""
+    return SimpleNamespace(client=SimpleNamespace(host=ip), headers={}, scope={})
+
+
+def _tenant(host="hotelgroup.carmenwork.com", bu="hq"):
+    return SimpleNamespace(id=uuid4(), host=host, bu_code=bu)
+
+
+# ── _caller ────────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_caller_missing_header_is_401():
     with pytest.raises(HTTPException) as exc:
-        await _caller(db=AsyncMock(), authorization=None)
+        await _caller(_request(), authorization=None)
     assert exc.value.status_code == 401
 
 
 @pytest.mark.asyncio
 async def test_caller_unknown_scheme_is_401():
     with pytest.raises(HTTPException) as exc:
-        await _caller(db=AsyncMock(), authorization="Basic dXNlcjpwYXNz")
+        await _caller(_request(), authorization="Basic dXNlcjpwYXNz")
     assert exc.value.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_caller_valid_api_key_returns_actor_and_its_scope():
-    db = AsyncMock()
-    key_row = MagicMock(name="Carmen staging")
-    key_row.name = "Carmen staging"
-    key_row.tenant_id = None
-    key_row.scopes = ["carmen:settings", "host:Hotel.Carmenwork.com"]
-    db.execute = AsyncMock(return_value=_exec(scalar_one_or_none=key_row))
-
-    caller = await _caller(db=db, authorization="ApiKey ocr_live_abc123")
-    assert caller.actor == "apikey:Carmen staging"
-    # Lower-cased on the way in, so the comparison in _authorize is case-insensitive
-    # against tenants.host (which routers/auth._validate_uri already lower-cases).
-    assert caller.hosts == frozenset({"hotel.carmenwork.com"})
+async def test_caller_scheme_with_no_value_is_401():
+    with pytest.raises(HTTPException):
+        await _caller(_request(), authorization="CarmenToken   ")
 
 
 @pytest.mark.asyncio
-async def test_caller_unknown_api_key_is_401():
-    db = AsyncMock()
-    db.execute = AsyncMock(return_value=_exec(scalar_one_or_none=None))
-    with pytest.raises(HTTPException) as exc:
-        await _caller(db=db, authorization="ApiKey not-a-real-key")
-    assert exc.value.status_code == 401
+async def test_caller_keeps_a_carmen_token_that_contains_a_space():
+    """The whole credential, not the first word.
+
+    A naive split() would hand Carmen back half a token and every call would 401
+    with a message blaming the customer.
+    """
+    caller = await _caller(_request(), authorization=f"CarmenToken {CARMEN_TOKEN}")
+    assert caller.carmen_token == CARMEN_TOKEN
+    assert caller.actor == "user:3fa85f64-5717-4562-b3fc-2c963f66afa6"
+
+
+@pytest.mark.asyncio
+async def test_caller_rate_limits_the_carmen_token_path():
+    """This path makes an outbound call before the caller is known to be genuine."""
+    from app.routers import email_automation as mod
+
+    req = _request(ip="198.51.100.7")
+    with pytest.raises(RequestRateLimitExceeded):
+        for _ in range(mod._settings_limiter._max + 1):
+            await _caller(req, authorization=f"CarmenToken {CARMEN_TOKEN}")
 
 
 @pytest.mark.asyncio
@@ -75,17 +87,87 @@ async def test_caller_valid_admin_bearer_returns_actor():
         "app.routers.email_automation.decode_admin_jwt",
         return_value={"aid": "a-1", "username": "alice"},
     ):
-        caller = await _caller(db=AsyncMock(), authorization="Bearer sometoken")
+        caller = await _caller(_request(), authorization="Bearer sometoken")
     assert caller.actor == "admin:alice"
-    assert caller.hosts is None  # admin JWT is not host-restricted
+    assert caller.carmen_token is None  # operator path — nothing to prove against Carmen
 
 
 @pytest.mark.asyncio
 async def test_caller_invalid_admin_bearer_is_401():
     with patch("app.routers.email_automation.decode_admin_jwt", side_effect=ValueError("bad")):
         with pytest.raises(HTTPException) as exc:
-            await _caller(db=AsyncMock(), authorization="Bearer garbage")
+            await _caller(_request(), authorization="Bearer garbage")
     assert exc.value.status_code == 401
+
+
+# ── _resolve — where a Carmen token is actually proven ─────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_resolve_proves_the_token_against_the_host_in_the_payload():
+    """host/bu are caller-supplied, so they are what the token is checked against."""
+    from app.routers import email_automation as mod
+
+    tenant = _tenant()
+    validate = AsyncMock()
+    with (
+        patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=tenant),
+        patch.object(mod, "_validate_token", validate),
+    ):
+        got = await _resolve(AsyncMock(), Caller("user:x", CARMEN_TOKEN), tenant.host, "hq")
+
+    assert got is tenant
+    token, uri = validate.await_args.args
+    assert token == CARMEN_TOKEN
+    assert uri == f"https://{tenant.host}"  # the claimed host, not one we chose
+
+
+@pytest.mark.asyncio
+async def test_resolve_rejects_a_token_carmen_does_not_accept():
+    from app.routers import email_automation as mod
+
+    with (
+        patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=_tenant()),
+        patch.object(
+            mod,
+            "_validate_token",
+            AsyncMock(side_effect=HTTPException(401, "Carmen token rejected")),
+        ),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await _resolve(AsyncMock(), Caller("user:x", "not-a-real-token"), "h", "b")
+    assert exc.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_resolve_keeps_unreachable_carmen_distinct_from_a_bad_token():
+    """502 vs 401 is the difference between 'your server is down' and 'log in again'."""
+    from app.routers import email_automation as mod
+
+    with (
+        patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=_tenant()),
+        patch.object(
+            mod,
+            "_validate_token",
+            AsyncMock(side_effect=HTTPException(502, "Cannot reach Carmen")),
+        ),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await _resolve(AsyncMock(), Caller("user:x", CARMEN_TOKEN), "h", "b")
+    assert exc.value.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_resolve_skips_the_probe_for_the_admin_path():
+    from app.routers import email_automation as mod
+
+    validate = AsyncMock()
+    with (
+        patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=_tenant()),
+        patch.object(mod, "_validate_token", validate),
+    ):
+        await _resolve(AsyncMock(), Caller("admin:root", None), "h", "b")
+    validate.assert_not_awaited()
 
 
 # ── Routes — wiring + the un-overridden 401 path ──────────────────────────────
@@ -98,23 +180,20 @@ def test_get_settings_401_without_authorization_header():
 
 
 def test_get_settings_reaches_handler_for_both_auth_styles():
-    """Overrides `_caller` (proven independently above) to isolate route wiring —
-    both auth styles must reach the same GET handler and get the same shape back."""
+    """Overrides `_caller` (proven independently above) to isolate route wiring."""
     from app.main import app
-    from app.services import email_ingest_service as ingest_svc
     from app.services import email_settings_service as es
 
     # make_test_client() clears dependency_overrides itself on exit, so no manual
     # cleanup is needed (and would double-clear / KeyError if attempted here).
-    app.dependency_overrides[_caller] = lambda: Caller("test-actor", None, None)
+    app.dependency_overrides[_caller] = lambda: Caller("test-actor", None)
+    body = {"status": {"ready": False, "blockers": ["not_configured"]}, "entitled": True}
     with (
         patch.object(es, "resolve_tenant", new_callable=AsyncMock, return_value=MagicMock()),
         patch.object(es, "get_settings", new_callable=AsyncMock, return_value=None),
-        patch.object(ingest_svc, "get_settings_status", new_callable=AsyncMock),
+        patch.object(es, "build_settings_response", new_callable=AsyncMock, return_value=body),
     ):
         with make_test_client(AsyncMock()) as client:
             resp = client.get(f"{BASE}/settings", params={"host": "h", "bu": "b"})
     assert resp.status_code == 200
-    body = resp.json()
-    assert body["status"]["blockers"] == ["not_configured"]
-    assert body["entitled"] is True
+    assert resp.json()["status"]["blockers"] == ["not_configured"]

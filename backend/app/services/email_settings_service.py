@@ -17,14 +17,17 @@ import secrets
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import decrypt_carmen_token, encrypt_carmen_token
 from app.config import settings as app_settings
 from app.exceptions import ConflictError, FieldValidationError, ValidationError
-from app.models.email_automation import EmailIngestSettings
+from app.models.email_automation import EmailDocument, EmailIngestSettings
 from app.models.identity import Tenant
+from app.services.accounting_config_service import get_accounting_config
+from app.services.cc_jv import unmapped_payment_types
+from app.services.credit_service import active_subscription
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +142,72 @@ def to_response(row: EmailIngestSettings | None, host: str, bu: str) -> dict:
     }
 
 
+# ── Readiness (contract §2.2 `status`) ────────────────────────────────────────
+
+
+async def is_entitled(db: AsyncSession, tenant: Tenant) -> bool:
+    """Does this BU have a live monthly package? (§3.3)
+
+    `active_subscription` documents itself as the single source of truth for that
+    question and is already window-aware, so this is a naming shim, not a rule.
+    """
+    return await active_subscription(db, str(tenant.id)) is not None
+
+
+async def has_gl_mapping(db: AsyncSession, tenant: Tenant) -> bool:
+    """Has the BU mapped commission / tax / net in the OCR app?
+
+    Without them every document parks at `mapping_incomplete`, so a BU can look
+    perfectly configured from Carmen's side and still post nothing. Passing no line
+    items to `unmapped_payment_types` makes it report exactly the missing fixed
+    types — reusing the rule the ingest pipeline enforces rather than restating it
+    here, where the two could drift.
+    """
+    cfg = await get_accounting_config(db, str(tenant.id))
+    return not unmapped_payment_types([], cfg.mappings or {})
+
+
+async def document_counts(db: AsyncSession, row: EmailIngestSettings) -> dict:
+    """The counters in the `status` block."""
+    total, last = (
+        await db.execute(
+            select(func.count(EmailDocument.id), func.max(EmailDocument.created_at)).where(
+                EmailDocument.tenant_id == row.tenant_id
+            )
+        )
+    ).one()
+    return {
+        "documents_total": total or 0,
+        "last_received_at": last.isoformat() if last else None,
+    }
+
+
+async def build_settings_response(
+    db: AsyncSession, tenant: Tenant, row: EmailIngestSettings | None, host: str, bu: str
+) -> dict:
+    """The §2.2 body — assembled here so GET and PUT cannot drift apart.
+
+    `to_response` covers what the BU configured; the two blockers added here are
+    conditions it cannot see, and both are ones that otherwise surface as silence:
+    an unpaid BU that ingests anyway, and a BU with no GL mapping whose every
+    document parks while `ready` says true.
+    """
+    body = to_response(row, host, bu)
+    body["entitled"] = await is_entitled(db, tenant)
+
+    if row is None:
+        return body  # not_configured — nothing else is meaningful yet
+
+    status = body["status"]
+    status.update(await document_counts(db, row))
+    if not body["entitled"]:
+        status["blockers"].append("not_entitled")
+    if not await has_gl_mapping(db, tenant):
+        status["blockers"].append("no_gl_mapping")
+    status["ready"] = not status["blockers"]
+    return body
+
+
 async def save_settings(db: AsyncSession, tenant: Tenant, payload: Any) -> EmailIngestSettings:
     """Replace the BU's settings wholesale (contract §2.3 — full list, not a delta)."""
     errors: list[dict] = []
@@ -168,6 +237,16 @@ async def save_settings(db: AsyncSession, tenant: Tenant, payload: Any) -> Email
                 "field": "tax_ids",
                 "code": "required",
                 "message": "At least one tax ID is required before enabling Email Automation",
+            }
+        )
+    # The feature is sold, not free (§3.3). Refusing at write time is what keeps a
+    # BU from being switched on and then quietly ingesting on someone else's dime.
+    if payload.enabled and not await is_entitled(db, tenant):
+        errors.append(
+            {
+                "field": "enabled",
+                "code": "not_entitled",
+                "message": "An active monthly package is required to enable Email Automation",
             }
         )
     if errors:

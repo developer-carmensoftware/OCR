@@ -2,75 +2,53 @@
 
 Contract: docs/CARMEN_INTEGRATION.md §2 (settings) and §3 (outcomes).
 
-Auth is deliberately dual (`_caller`): Carmen presents the API key we issue it,
-our own simulated settings page presents an admin JWT. Same handler, same payload,
-same validation — so when Carmen's screens go live, our page is deleted and nothing
-else changes. The key path is the one that ships; the JWT path exists so a browser
-never has to hold a live API key.
+**Carmen authenticates with the logged-in user's own Carmen token**, which its
+settings screen already holds — there is no key for us to issue and no secret for a
+customer to store. Every customer runs their own Carmen installation, so a key would
+have meant one per installation, hand-delivered, forever. This is the same mechanism
+`/auth/exchange` has used for every wizard user since day one.
 
-An API key is bound to what it may manage (`_authorize`) — a key's own tenant, or
-the hosts named in its scopes. The BU in the payload is caller-supplied, so without
-that check any valid key writes any BU's tax IDs and posting credential.
+It also removes the trusted-input problem rather than checking it: `host`/`bu` in the
+payload are not a claim we verify against a scope, they are what the token is proven
+*against*. Acting on a host requires a credential that host's own Carmen accepts.
+One host is always one corporate group, so that is exactly the ownership boundary.
+
+The `Bearer <admin jwt>` path is ours — operators fixing a customer's settings without
+asking them for a token.
 """
 
 from __future__ import annotations
 
-import hashlib
 import logging
-import uuid
 from dataclasses import dataclass
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
-from pydantic import BaseModel, Field, SecretStr
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.admin_session import decode_admin_jwt
+from app.auth.session import extract_user_id_from_token
 from app.database import get_db
 from app.exceptions import FieldValidationError
-from app.models.admin import APIKey
 from app.models.identity import Tenant
+from app.models.schemas.email_automation import SettingsIn, TokenIn
 from app.routers.admin.deps import require_maintenance_auth
-from app.routers.auth import _validate_uri
+
+# ponytail: private imports across routers. _validate_uri / _validate_token raise
+# HTTPException and the login path depends on those exact codes, so extracting them
+# into a shared module is a real refactor, not a move — do it when something else
+# needs them too.
+from app.routers.auth import _validate_token, _validate_uri
 from app.services import email_ingest_service as ingest
 from app.services import email_settings_service as es
 from app.services.admin_auth_service import get_admin_jwt_secret
+from app.services.rate_limit_service import InMemoryRateLimiter
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/carmen", tags=["Email Automation"])
 
-
-# ── Payload (contract §2.3) ───────────────────────────────────────────────────
-
-
-class RuleIn(BaseModel):
-    bank_code: str | None = None
-    bank_sender_email: str | None = None
-    filename_pattern: str | None = None
-    pdf_password: str | None = None  # write-only: omit = keep, "" = clear
-    is_active: bool = True
-
-
-class SettingsIn(BaseModel):
-    host: str
-    bu: str
-    enabled: bool = False
-    tax_ids: list[str] = Field(default_factory=list)
-    rules: list[RuleIn] = Field(default_factory=list)
-
-
-class TokenIn(BaseModel):
-    """The posting credential (§2.6) — its own payload, not part of a settings edit.
-
-    Keeping it out of SettingsIn means an ordinary settings change (a new tax ID, a
-    tweaked rule) never re-transmits the secret. SecretStr keeps it out of validation
-    errors and Sentry breadcrumbs.
-    """
-
-    host: str
-    bu: str
-    token: SecretStr
-    carmen_uri: str | None = None  # default: https://<tenant host>
+# Every CarmenToken request makes an outbound call to the customer's Carmen before
+# the caller is known to be genuine. Same reason /auth/exchange is limited, same tool.
+_settings_limiter = InMemoryRateLimiter(max_calls=20, window_seconds=60.0)
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -78,72 +56,74 @@ class TokenIn(BaseModel):
 
 @dataclass(frozen=True)
 class Caller:
-    actor: str  # audit trail string
-    tenant_id: uuid.UUID | None  # APIKey scoped to a single BU
-    hosts: frozenset[str] | None  # from `host:<hostname>` scopes; None = admin JWT
+    actor: str  # audit trail: "user:<carmen uuid>" or "admin:<name>"
+    carmen_token: str | None  # None = admin JWT, our own operator path
 
 
 async def _caller(
-    db: AsyncSession = Depends(get_db),
+    request: Request,
     authorization: str | None = Header(None),
 ) -> Caller:
-    """Authenticate. Accepts `ApiKey …` or `Bearer <admin jwt>`.
+    """Identify the caller. Accepts `CarmenToken …` or `Bearer <admin jwt>`.
 
-    Authentication only — what the caller may *touch* is `_authorize`, because the
-    BU is not known until the payload has been read.
+    Identification only — a Carmen token is *proven* in `_resolve`, because which
+    Carmen to prove it against is not known until the payload has been read.
     """
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authorization required")
+    scheme, _, rest = (authorization or "").partition(" ")
+    rest = rest.strip()
 
-    if authorization.startswith("ApiKey "):
-        raw = authorization[7:].strip()
-        key_hash = hashlib.sha256(raw.encode()).hexdigest()
-        row = (
-            await db.execute(
-                select(APIKey).where(APIKey.key_hash == key_hash, APIKey.revoked_at.is_(None))
-            )
-        ).scalar_one_or_none()
-        if row is None:
-            raise HTTPException(status_code=401, detail="Invalid API key")
-        hosts = frozenset(
-            s[5:].lower()
-            for s in (row.scopes or [])
-            if isinstance(s, str) and s.startswith("host:")
-        )
-        return Caller(actor=f"apikey:{row.name}", tenant_id=row.tenant_id, hosts=hosts)
+    if scheme == "CarmenToken" and rest:
+        # Fire the limiter while the request is still cheap, i.e. before _resolve
+        # turns it into an outbound HTTP call to an arbitrary host.
+        _settings_limiter.check(request)
+        # partition() splits once on purpose: a Carmen token is "<hash>|<uuid>" and
+        # the value may itself contain spaces. split() would truncate the credential.
+        return Caller(actor=f"user:{extract_user_id_from_token(rest)}", carmen_token=rest)
 
-    if authorization.startswith("Bearer "):
+    if scheme == "Bearer" and rest:
         try:
-            payload = decode_admin_jwt(authorization[7:], get_admin_jwt_secret())
+            payload = decode_admin_jwt(rest, get_admin_jwt_secret())
         except ValueError:
             raise HTTPException(status_code=401, detail="Invalid or expired token") from None
-        actor = f"admin:{payload.get('username') or payload.get('aid')}"
-        return Caller(actor=actor, tenant_id=None, hosts=None)
+        return Caller(
+            actor=f"admin:{payload.get('username') or payload.get('aid')}", carmen_token=None
+        )
 
-    raise HTTPException(status_code=401, detail="Authorization must be 'ApiKey …' or 'Bearer …'")
-
-
-def _authorize(caller: Caller, tenant: Tenant) -> None:
-    """May this caller manage this BU?
-
-    Fail closed: an API key with neither a tenant nor a `host:` scope manages
-    nothing. The host/bu in the payload is caller-supplied, so this is the only
-    thing standing between one customer's key and another customer's books.
-    """
-    if caller.tenant_id is None and caller.hosts is None:
-        return  # admin JWT — our own RBAC already ran
-    if caller.tenant_id is not None and caller.tenant_id == tenant.id:
-        return
-    if caller.hosts and str(tenant.host).lower() in caller.hosts:
-        return
-    logger.warning("[email] %s denied on %s/%s", caller.actor, tenant.host, tenant.bu_code)
-    raise HTTPException(status_code=403, detail="This API key may not manage that business unit")
+    raise HTTPException(
+        status_code=401,
+        detail="Authorization must be 'CarmenToken <carmen token>' or 'Bearer <admin jwt>'",
+    )
 
 
 async def _resolve(db: AsyncSession, caller: Caller, host: str, bu: str) -> Tenant:
+    """The BU this request may act on — proven, not asserted.
+
+    The token is checked against the Carmen instance the payload names, so claiming
+    another company's host means producing a credential that company's own Carmen
+    validates. `_validate_token`'s 401 ("re-login") and 502 ("cannot reach Carmen")
+    propagate unchanged: Carmen's screen needs to tell those two apart.
+    """
     tenant = await es.resolve_tenant(db, host, bu)
-    _authorize(caller, tenant)
+    if caller.carmen_token is not None:
+        await _validate_token(caller.carmen_token, _safe_carmen_uri(None, tenant))
     return tenant
+
+
+def _safe_carmen_uri(uri: str | None, tenant: Tenant) -> str:
+    """SSRF gate. Every server-side request we make on a caller's behalf goes through it.
+
+    `_validate_uri` (routers/auth.py) is the same check `/auth/exchange` already
+    applies: https only, ALLOWED_CARMEN_HOSTS allowlist, loopback/private-IP
+    rejection including what a hostname resolves to. Its 400 is re-raised as the
+    422 field-error shape Carmen's screen already renders inline.
+    """
+    candidate = (uri or f"https://{tenant.host}").strip()
+    try:
+        return _validate_uri(candidate)
+    except HTTPException as exc:
+        raise FieldValidationError(
+            [{"field": "carmen_uri", "code": "invalid_uri", "message": str(exc.detail)}]
+        ) from exc
 
 
 # ── Settings (§2.2 / §2.3) ────────────────────────────────────────────────────
@@ -158,13 +138,7 @@ async def read_settings(
 ):
     tenant = await _resolve(db, caller, host, bu)
     row = await es.get_settings(db, tenant)
-    body = es.to_response(row, host, bu)
-    if row is not None:
-        body["status"].update(await ingest.get_settings_status(db, row))
-    # ponytail: entitlement is gated on the monthly package (§3.3) — wired when the
-    # subscription webhook lands. Until then a configured BU is an entitled BU.
-    body["entitled"] = True
-    return body
+    return await es.build_settings_response(db, tenant, row, host, bu)
 
 
 @router.put("/settings")
@@ -176,30 +150,10 @@ async def write_settings(
     tenant = await _resolve(db, caller, payload.host, payload.bu)
     row = await es.save_settings(db, tenant, payload)
     logger.info("[email] Settings written for %s/%s by %s", payload.host, payload.bu, caller.actor)
-    body = es.to_response(row, payload.host, payload.bu)
-    body["status"].update(await ingest.get_settings_status(db, row))
-    body["entitled"] = True
-    return body
+    return await es.build_settings_response(db, tenant, row, payload.host, payload.bu)
 
 
 # ── The posting credential (§2.6) ─────────────────────────────────────────────
-
-
-def _safe_carmen_uri(uri: str | None, tenant: Tenant) -> str:
-    """SSRF gate. We are about to make a server-side request carrying a credential.
-
-    `_validate_uri` (routers/auth.py) is the same check `/auth/exchange` already
-    applies: https only, ALLOWED_CARMEN_HOSTS allowlist, loopback/private-IP
-    rejection including what a hostname resolves to. Its 400 is re-raised as the
-    422 field-error shape Carmen's screen already renders inline.
-    """
-    candidate = (uri or f"https://{tenant.host}").strip()
-    try:
-        return _validate_uri(candidate)
-    except HTTPException as exc:
-        raise FieldValidationError(
-            [{"field": "carmen_uri", "code": "invalid_uri", "message": str(exc.detail)}]
-        ) from exc
 
 
 @router.put("/settings/token")

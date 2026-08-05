@@ -101,35 +101,51 @@ We follow each side's own convention rather than mixing.
 > error table, in Thai. The machine-readable version is the OpenAPI document the service
 > publishes at **`/docs`** (`/openapi.json`).
 
-### 2.1 Authentication — **settled: API key, scoped**
+### 2.1 Authentication — **settled: the user's own Carmen token. No key.**
 
-Carmen holds a key we issue per Carmen host, and presents it on every call:
+Carmen's settings screen already holds the logged-in user's Carmen token. Send it:
 
 ```http
 PUT /api/v1/carmen/settings
-Authorization: ApiKey ocr_live_7f3a91…
+Authorization: CarmenToken <the user's Carmen token>
 Content-Type: application/json
 ```
 
-- The key is **bound to the hostname(s) it may manage**. `host`/`bu` in the payload is
-  supplied by the caller, so a key that was not scoped would be a key that can write any
-  customer's tax IDs and posting credential. A request for a BU outside the key's scope is
-  `403 {"detail": "This API key may not manage that business unit"}`, not a silent write —
-  and this applies to every route in §2, reads included.
-- A missing, malformed or revoked key is `401`. An unknown `(host, bu)` — a BU that has
-  never signed into the OCR app — is `400 "Unknown business unit"`, because the tenant is
-  created at first login and not by this API. `422` is reserved for the per-field
-  validation shape, and `409` for a tax ID already claimed by another BU (§2.4).
-- We store only the SHA-256 hash; the plaintext is shown once at issue time. If it is
-  lost, we issue a new one and revoke the old — tell us and it takes a minute.
-- One key per environment (staging, production). Please do not share one across both.
+**There is nothing to issue, deliver, store or rotate**, for any number of installations.
+That is the point. Every customer runs their own Carmen, so an API key would have meant one
+key per installation, handed over out-of-band, kept in a secret manager, and re-done for
+every new customer — unbounded manual work on both sides, forever. The 101st customer now
+needs no action from anyone.
 
-We considered signing each request (HMAC over the body plus a timestamp) and decided the
-scoped key over TLS is the right level for now. If Carmen would prefer signatures, say
-so — it is additive and changes no payload.
+**How we know the token is genuine:** we call
+`GET {host}/Carmen.API/api/interface/department` with it before doing anything. Your Carmen
+answers `200` or `401`; that is the whole check. This is not a new mechanism — it is exactly
+what `/auth/exchange` has done for every OCR wizard user since day one.
 
-> Sent out-of-band, not by email or chat; we will agree a channel, the same one as the
-> webhook secret in §3.5.
+**What that buys beyond convenience.** `host`/`bu` in the payload stop being a claim we have
+to check and become the thing the token is *verified against*: acting on a host means holding
+a credential that host's own Carmen accepts. Since one host is always one corporate group, a
+valid token for host X may manage any BU under X — which is the ownership boundary, and the
+same thing a host-scoped key would have granted.
+
+| Status | When |
+|---|---|
+| `401` | header missing or malformed; or Carmen rejected the token → **re-login**, do not retry |
+| `502` | we could not reach that Carmen to check → **transient**, retry |
+| `429` | more than 20 requests a minute from one IP (each one costs an outbound call to you) |
+| `400` | unknown `(host, bu)` — that BU has never signed into the OCR app |
+| `409` | tax ID already registered to another BU (§2.4) |
+| `422` | per-field validation, see the `errors[]` shape |
+
+**Please treat `401` and `502` differently on screen** — one means the user's session
+expired, the other means their own server is unreachable. Blaming the customer's login for
+our inability to reach their host is the confusing case worth avoiding.
+
+`Bearer <admin jwt>` is also accepted; that path is ours, for operators fixing a customer's
+settings without asking them for a token.
+
+> Nothing needs to be exchanged out-of-band any more. The webhook secret in §3.5 is now the
+> only shared secret in this integration.
 
 ### 2.2 Read current settings
 
@@ -263,7 +279,7 @@ should not re-transmit a secret every time.
 
 ```http
 PUT /api/v1/carmen/settings/token
-Authorization: ApiKey ocr_live_7f3a91…
+Authorization: CarmenToken <the user's Carmen token>
 ```
 
 ```jsonc
@@ -556,7 +572,9 @@ is already building:
 | 3 | The JV endpoint accepts that token | automated posting |
 
 There is no item 4 on the credential. Rotation, liveness checking, fingerprinting and
-expiry alarms are all on our side.
+expiry alarms are all on our side — and **there is no onboarding step at all**: the calls
+above authenticate with the token the settings screen already holds (§2.1), so nothing has
+to be exchanged between us when a new customer or a new BU appears.
 
 The rest of the integration:
 
@@ -565,8 +583,12 @@ The rest of the integration:
 | 4 | Webhook endpoint URL + secret exchange channel (§3.5) | both webhooks |
 | 5 | Which Carmen field holds the BU tax ID (§2.4) | switching the feature on |
 | 6 | Yes/no on the proposed `document.*` events (§3.4) | outcome reporting |
-| 7 | Confirmation that Email Automation is gated on the monthly package only | entitlement logic |
-| 8 | Confirmation that automated JVs are distinguishable in `JvhSource` (§4) | audit review |
+| 7 | Confirmation that automated JVs are distinguishable in `JvhSource` (§4) | audit review |
+
+> Item 7 of the previous revision — "confirm Email Automation is gated on the monthly
+> package" — is closed: it is gated, and enforced both at the toggle (`422 not_entitled`)
+> and in the ingest loop, so a package lapsing mid-month stops posting rather than only
+> blocking the switch.
 
 ---
 

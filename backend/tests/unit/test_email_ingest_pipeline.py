@@ -361,6 +361,63 @@ async def test_carmen_transport_failure_fails_but_does_not_refund():
     p.refund_document.assert_not_called()  # fate unknown — never auto-refund a maybe-posted JV
 
 
+# ── run_ingest gate: a lapsed package must stop ingestion ─────────────────────
+
+
+def _one_message():
+    return [
+        {
+            "message_id": "<msg-lapsed@bank.co.th>",
+            "subject": "statement",
+            "from": "no-reply@ktc.co.th",
+            "recipients": ["ocr+abc123@carmensoftware.com"],
+            "attachments": [("statement.jpg", b"fake")],
+        }
+    ]
+
+
+async def _run_ingest_with(*, entitled: bool):
+    """One poll for a configured, enabled BU whose package may or may not be live."""
+    settings_row = MagicMock(tenant_id=uuid4(), enabled=True, rules=[], tax_ids=[])
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=MagicMock())  # tenant exists
+
+    process = AsyncMock(return_value="posted")
+    with (
+        patch.object(ingest.settings, "imap_host", "imap.example.com"),
+        patch.object(ingest.settings, "email_ingest_address", "ocr@carmensoftware.com"),
+        patch.object(ingest, "_fetch_unseen", lambda limit: _one_message()),
+        patch.object(ingest, "async_session", _session_factory(db)),
+        patch.object(ingest.es, "get_by_tag", AsyncMock(return_value=settings_row)),
+        patch.object(ingest.es, "is_entitled", AsyncMock(return_value=entitled)),
+        patch.object(ingest.es, "rule_passwords", MagicMock(return_value=[])),
+        patch.object(ingest.es, "posting_target", AsyncMock(return_value=("tok", "https://h"))),
+        patch.object(ingest, "_process_attachment", process),
+    ):
+        summary = await ingest.run_ingest(limit=5)
+    return summary, process
+
+
+@pytest.mark.asyncio
+async def test_lapsed_package_skips_the_message_without_extracting_it():
+    """Settings are not rewritten when a subscription ends, so `enabled` stays true.
+
+    The gate has to be here as well as on the toggle, or a customer keeps ingesting
+    (and paying us nothing) after their package lapses.
+    """
+    summary, process = await _run_ingest_with(entitled=False)
+    assert summary["skipped"] == 1
+    assert summary["posted"] == 0
+    process.assert_not_awaited()  # no LLM call, no credit spent
+
+
+@pytest.mark.asyncio
+async def test_active_package_lets_the_message_through():
+    summary, process = await _run_ingest_with(entitled=True)
+    assert summary["posted"] == 1
+    process.assert_awaited_once()
+
+
 # ── Ledger dedupe (_claim in isolation) ────────────────────────────────────────
 
 

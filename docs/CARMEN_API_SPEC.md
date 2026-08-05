@@ -1,10 +1,13 @@
 # Email Automation API — spec สำหรับทีม Carmen
 
-> **v1.0 · 2026-08-04 · X-Api-Key (`Authorization: ApiKey …`) Authentication**
+> **v1.1 · 2026-08-04 · `Authorization: CarmenToken <token ของ user>`**
 >
 > เอกสารนี้คือ API reference ที่เอาไปเขียนโค้ดตามได้เลย
 > เหตุผลเบื้องหลังการออกแบบอยู่ที่ [CARMEN_INTEGRATION.md](CARMEN_INTEGRATION.md)
 > ส่วนตัว machine-readable อยู่ที่ `/openapi.json` ของ service
+>
+> **เปลี่ยนจาก v1.0:** ตัด API key ทิ้งทั้งหมด ใช้ token ของ user ที่ login อยู่แทน —
+> ไม่มีคีย์ให้ขอ ไม่มีอะไรให้เก็บ ไม่มีขั้นตอน onboard ต่อ installation
 
 ---
 
@@ -45,43 +48,59 @@ https://{ocr-host}/api/v1/carmen
 
 | # | ใคร | ทำอะไร |
 |---|---|---|
-| 1 | **OCR** | ออก API Key ให้ Carmen 1 ใบต่อ 1 host ส่งให้แบบ out-of-band |
-| 2 | **Carmen** | ลูกค้าเปิดสวิตช์ Email Automation → mint token ของ BU นั้น |
-| 3 | **Carmen** | `PUT /settings/token` ส่ง token มาให้เรา — เราทดสอบกับ Carmen ก่อนเก็บ |
-| 4 | **Carmen** | `PUT /settings` ส่ง tax_ids + rules ของ BU นั้น |
-| 5 | **Carmen** | `GET /settings` อ่าน `ingest_address` มาแสดงให้ลูกค้า copy ไปตั้ง auto-forward |
-| 6 | **OCR** | poll เมล → extract → ตรวจ tax id → ทำ JV → post เข้า Carmen ด้วย token ข้อ 3 |
-| 7 | **Carmen** | ลูกค้าปิดสวิตช์ → เพิกถอน token ฝั่งตัวเอง + `DELETE /settings/token` |
+| 1 | **Carmen** | ลูกค้าเปิดสวิตช์ Email Automation → mint token ของ BU นั้น |
+| 2 | **Carmen** | `PUT /settings/token` ส่ง token มาให้เรา — เราทดสอบกับ Carmen ก่อนเก็บ |
+| 3 | **Carmen** | `PUT /settings` ส่ง tax_ids + rules ของ BU นั้น |
+| 4 | **Carmen** | `GET /settings` อ่าน `ingest_address` มาแสดงให้ลูกค้า copy ไปตั้ง auto-forward |
+| 5 | **OCR** | poll เมล → extract → ตรวจ tax id → ทำ JV → post เข้า Carmen ด้วย token ข้อ 2 |
+| 6 | **Carmen** | ลูกค้าปิดสวิตช์ → เพิกถอน token ฝั่งตัวเอง + `DELETE /settings/token` |
+
+**ไม่มีขั้นตอนที่ต้องคุยกันระหว่างสองฝ่ายเลย** — ไม่มีคีย์ให้ส่ง ลูกค้ารายที่ 101 ใช้ได้ทันที
 
 ---
 
 ## Authentication
 
-ทุก endpoint ต้องมี header นี้
+**ใช้ token ของ user ที่ login อยู่บนหน้าจอ setting** ซึ่ง Carmen ถืออยู่แล้ว
+ไม่มี API key ไม่ต้องขอ ไม่ต้องเก็บ ไม่ต้องหมุน
 
 | Header | Value |
 |---|---|
-| `Authorization` **required** | `ApiKey ocr_live_xxxxxxxxxxxxxxxxxxxxxxxx` |
+| `Authorization` **required** | `CarmenToken <Carmen token ของ user>` |
 
-### การได้ Key
+> ⚠️ **ส่งค่า token ทั้งก้อน** รูปแบบจริงคือ `<hash>\|<user_uuid>` และ**มีช่องว่างอยู่ข้างในได้**
+> (`direct <key>` คือรูปแบบที่ dev instance ออกให้) เราตัดที่ช่องว่างแรกครั้งเดียว —
+> ฝั่งที่ประกอบ header ก็อย่า trim หรือ split เพิ่ม
 
-OCR เป็นคนออกให้ ส่งให้แบบ out-of-band (ไม่ส่งทางเมล/แชท — นัดช่องทางกันอีกที)
-Key ผูกกับ **hostname ที่จัดการได้** ตั้งแต่ตอนออก และเราเก็บแค่ค่า hash ของมัน
-ถ้าทำหาย แจ้งมา เราออกใบใหม่ + revoke ใบเก่าให้ ใช้เวลาไม่ถึงนาที
+### เราตรวจ token ยังไง
 
-แนะนำให้ใช้คนละใบระหว่าง staging กับ production
+ก่อนทำอะไร เรายิง `GET {host}/Carmen.API/api/interface/department` ด้วย token นั้น
+Carmen ของลูกค้าตอบ `200` หรือ `401` แค่นั้นคือทั้งหมด
+
+**นี่คือกลไกเดิมที่ `/auth/exchange` ใช้กับ user ทุกคนของ OCR wizard มาตั้งแต่วันแรก**
+ไม่ใช่ของใหม่
+
+`host` / `bu` ใน payload จึงไม่ใช่ "คำกล่าวอ้างที่เราต้องไปตรวจ" แต่เป็น**ตัวที่ token ถูกเอาไปพิสูจน์กับมัน** —
+จะแตะ host ไหนต้องถือ credential ที่ Carmen ของ host นั้นยอมรับ
+
+เนื่องจาก **1 host = 1 เครือบริษัทเสมอ** token ที่ใช้ได้กับ host X จึงจัดการ BU ไหนก็ได้ใต้ X
+ซึ่งตรงกับขอบเขตความเป็นเจ้าของพอดี
 
 ### Error Responses
 
-| Status | Message | Cause |
-|---|---|---|
-| `401` | `Authorization required` | ไม่ได้ส่ง header มาเลย |
-| `401` | `Authorization must be 'ApiKey …' or 'Bearer …'` | scheme ไม่ถูก |
-| `401` | `Invalid API key` | key ผิด หรือถูก revoke แล้ว |
-| `403` | `This API key may not manage that business unit` | ใช้ key ยิง BU ที่ไม่ได้อยู่ใน scope ของ key นั้น |
+| Status | Message | Cause | ควรทำยังไง |
+|---|---|---|---|
+| `401` | `Authorization must be 'CarmenToken …' or 'Bearer …'` | ไม่ได้ส่ง header หรือ scheme ผิด | แก้โค้ด |
+| `401` | `Carmen token rejected — please re-login to Carmen` | Carmen ปฏิเสธ token | **ให้ user login ใหม่** อย่า retry |
+| `502` | `Cannot reach Carmen to validate token` | เราติดต่อ Carmen ของลูกค้าไม่ได้ | **ชั่วคราว** retry ได้ |
+| `429` | — | เกิน 20 request/นาที ต่อ 1 IP | รอแล้วค่อยยิงใหม่ |
 
-> ⚠️ **`host` / `bu` ใน payload เป็นค่าที่ผู้เรียกส่งมาเอง** เราจึงตรวจทุกครั้งว่า key ใบนั้น
-> จัดการ BU นั้นได้จริงไหม — **รวมถึง GET ด้วย** ไม่ใช่แค่ตอนเขียน
+> ⚠️ **แยก `401` กับ `502` บนหน้าจอด้วย** — อันหนึ่งคือ session ของ user หมดอายุ
+> อีกอันคือเซิร์ฟเวอร์ของลูกค้าเองติดต่อไม่ได้ การขึ้นว่า "กรุณา login ใหม่"
+> ตอนที่ปัญหาคือเราเข้าไม่ถึง host เขา จะทำให้ตามหาสาเหตุผิดทาง
+
+> ℹ️ จำกัด 20 request/นาที เพราะทุก request ทำให้เกิดการยิงออกไปหา Carmen ของลูกค้า 1 ครั้ง
+> หน้าจอ setting ปกติใช้ราว 3 request ต่อการตั้งค่า 1 รอบ
 
 ---
 
@@ -234,6 +253,8 @@ GET /api/v1/carmen/settings?host={host}&bu={bu}
 | Value | หมายความว่า |
 |---|---|
 | `not_configured` | BU นี้ยังไม่เคยตั้งค่าเลย |
+| `not_entitled` | **ยังไม่มี package รายเดือนที่ยังไม่หมดอายุ** — เปิดใช้ไม่ได้ |
+| `no_gl_mapping` | **ยังไม่ได้ตั้ง GL mapping ในแอป OCR** (`commission` / `tax` / `net`) — ถ้าขาด เอกสารทุกใบจะ park ที่ `mapping_incomplete` |
 | `no_tax_id` | ยังไม่ได้ใส่เลขผู้เสียภาษี |
 | `no_rule` | ไม่มี rule ที่ `is_active` เลยสักอัน |
 | `disabled` | ตั้งค่าครบแล้วแต่ `enabled` ยังเป็น false |
@@ -306,9 +327,16 @@ Content-Type: application/json
 |---|---|---|
 | `422` | `invalid_checksum` | เลขผู้เสียภาษีไม่ใช่ 13 หลัก หรือ check digit ไม่ผ่าน |
 | `422` | `required` | เปิด `enabled` แต่ไม่มี `tax_ids` |
+| `422` | **`not_entitled`** | เปิด `enabled` แต่ BU นี้ยังไม่มี package รายเดือนที่ยังไม่หมดอายุ |
 | `422` | `unsupported_bank` | `bank_code` ไม่อยู่ในลิสต์ที่รองรับ |
 | `409` | `Tax ID … is already registered to another BU` | เลขผู้เสียภาษีนี้ถูก BU อื่นจองไว้แล้ว |
 | `400` | `Unknown business unit` | BU ยังไม่เคย login |
+
+> ℹ️ **`not_entitled` บล็อกเฉพาะตอน `enabled: true`** — บันทึกค่าตั้งตอนที่ package หมดอายุยังทำได้
+> ลูกค้าจะได้ไม่เสียของที่ตั้งไว้ระหว่างรอต่ออายุ
+>
+> และถ้า package หมดอายุหลังจากเปิดใช้ไปแล้ว **เราหยุด ingest ให้เอง** ค่า `enabled` ไม่ถูกเขียนทับ
+> เพราะฉะนั้นอย่าใช้ `enabled` เป็นตัวบอกว่าระบบกำลังทำงานอยู่จริง — ใช้ `status.ready`
 
 > ℹ️ **เลขผู้เสียภาษีเป็นของ BU เดียวเท่านั้นทั้งระบบ** ถ้าชนแปลว่ามีคนพิมพ์ผิด
 > ช่วยแสดง error นี้ให้ user เห็นด้วย

@@ -35,7 +35,8 @@ from app.context import current_carmen_uri, current_tenant_id
 from app.database import async_session
 from app.exceptions import PdfPasswordRequired, ValidationError
 from app.models.business import CreditCard
-from app.models.email_automation import EmailDocument, EmailIngestSettings
+from app.models.email_automation import EmailDocument
+from app.models.identity import Tenant
 from app.services import email_settings_service as es
 from app.services import ocr_service
 from app.services.accounting_config_service import get_accounting_config
@@ -189,6 +190,13 @@ async def run_ingest(limit: int | None = None) -> dict:
             row = await es.get_by_tag(db, tag)
             if row is None or not row.enabled:
                 logger.warning("[email] Tag %s unknown or disabled — dropped", tag)
+                summary["skipped"] += 1
+                continue
+            # A lapsed package does not rewrite settings, so `enabled` stays true
+            # after it expires — the gate has to be here, not only on the toggle.
+            tenant = await db.get(Tenant, row.tenant_id)
+            if tenant is None or not await es.is_entitled(db, tenant):
+                logger.warning("[email] Tenant %s has no active package — dropped", row.tenant_id)
                 summary["skipped"] += 1
                 continue
             tenant_id = str(row.tenant_id)
@@ -487,20 +495,3 @@ async def _finish(
         row.reason_code = reason_code  # type: ignore[assignment]
         row.error_message = error  # type: ignore[assignment]
         await db.commit()
-
-
-async def get_settings_status(db: AsyncSession, row: EmailIngestSettings) -> dict:
-    """Counts for the `status` block of GET /carmen/settings."""
-    from sqlalchemy import func, select
-
-    total, last = (
-        await db.execute(
-            select(func.count(EmailDocument.id), func.max(EmailDocument.created_at)).where(
-                EmailDocument.tenant_id == row.tenant_id
-            )
-        )
-    ).one()
-    return {
-        "documents_total": total or 0,
-        "last_received_at": last.isoformat() if last else None,
-    }

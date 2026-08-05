@@ -12,10 +12,9 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
 
 from app.exceptions import ConflictError, FieldValidationError
-from app.routers.email_automation import Caller, RuleIn, SettingsIn, _authorize
+from app.models.schemas.email_automation import RuleIn, SettingsIn
 from app.services import email_settings_service as es
 
 
@@ -32,6 +31,17 @@ def _exec(scalars=None, scalar_one_or_none=None):
     r.scalars.return_value = iter(scalars if scalars is not None else [])
     r.scalar_one_or_none.return_value = scalar_one_or_none
     return r
+
+
+@pytest.fixture(autouse=True)
+def _entitled_by_default(monkeypatch):
+    """Most tests here are about validation, not billing.
+
+    Without this every `enabled=True` case would fail on the subscription gate for
+    reasons that have nothing to do with what it is testing. The entitlement tests
+    override it — their own monkeypatch is applied after this one.
+    """
+    monkeypatch.setattr(es, "is_entitled", AsyncMock(return_value=True))
 
 
 def _tenant():
@@ -377,28 +387,91 @@ def test_token_status_never_contains_the_token_value():
     assert enc not in str(body)
 
 
-# ── _authorize: the BU in the payload is caller-supplied ──────────────────────
+# ── Readiness gates: the two ways `ready: true` used to lie ───────────────────
 
 
-def test_authorize_rejects_a_key_scoped_to_another_host():
-    caller = Caller(actor="apikey:A", tenant_id=None, hosts=frozenset({"hotel-a.example.com"}))
-    with pytest.raises(HTTPException) as exc:
-        _authorize(caller, _tenant_with_host("hotel-b.example.com"))
-    assert exc.value.status_code == 403
+@pytest.mark.asyncio
+async def test_enabling_without_an_active_package_is_rejected(monkeypatch):
+    """The feature is sold, not free — and the gate was hardcoded open until now."""
+    monkeypatch.setattr(es, "is_entitled", AsyncMock(return_value=False))
+    payload = SettingsIn(host="h", bu="b", enabled=True, tax_ids=[_valid_tax_id()], rules=[])
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[_exec(scalars=[])])  # conflict check only
+
+    with pytest.raises(FieldValidationError) as exc:
+        await es.save_settings(db, _tenant_with_host(), payload)
+    codes = {e["code"] for e in exc.value.errors}
+    assert "not_entitled" in codes
+    db.commit.assert_not_called()
 
 
-def test_authorize_rejects_a_key_with_no_scope_at_all():
-    """Fail closed — an unscoped key is not a wildcard key."""
-    caller = Caller(actor="apikey:A", tenant_id=None, hosts=frozenset())
-    with pytest.raises(HTTPException):
-        _authorize(caller, _tenant_with_host())
+@pytest.mark.asyncio
+async def test_disabled_settings_may_be_saved_without_a_package():
+    """Only *enabling* needs a package — a customer may still edit while lapsed."""
+    payload = SettingsIn(host="h", bu="b", enabled=False, tax_ids=[], rules=[])
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[_exec(scalar_one_or_none=_fake_row())])
+    await es.save_settings(db, _tenant_with_host(), payload)  # no raise
+    db.commit.assert_awaited()
 
 
-def test_authorize_allows_matching_host_and_matching_tenant():
-    tenant = _tenant_with_host("hotel-a.example.com")
-    _authorize(Caller("apikey:A", None, frozenset({"hotel-a.example.com"})), tenant)
-    _authorize(Caller("apikey:A", tenant.id, frozenset()), tenant)
-    _authorize(Caller("admin:root", None, None), tenant)  # admin JWT — RBAC already ran
+@pytest.mark.asyncio
+async def test_build_response_flags_an_unpaid_bu_and_one_with_no_gl_mapping(monkeypatch):
+    monkeypatch.setattr(es, "is_entitled", AsyncMock(return_value=False))
+    monkeypatch.setattr(es, "has_gl_mapping", AsyncMock(return_value=False))
+    monkeypatch.setattr(es, "document_counts", AsyncMock(return_value={"documents_total": 0}))
+    row = _fake_row(rules=[{"bank_code": "KTC", "is_active": True}])
+
+    body = await es.build_settings_response(AsyncMock(), _tenant_with_host(), row, "h", "b")
+
+    assert body["entitled"] is False
+    assert {"not_entitled", "no_gl_mapping"} <= set(body["status"]["blockers"])
+    assert body["status"]["ready"] is False
+
+
+@pytest.mark.asyncio
+async def test_build_response_is_ready_only_when_every_gate_passes(monkeypatch):
+    monkeypatch.setattr(es, "is_entitled", AsyncMock(return_value=True))
+    monkeypatch.setattr(es, "has_gl_mapping", AsyncMock(return_value=True))
+    monkeypatch.setattr(es, "document_counts", AsyncMock(return_value={"documents_total": 3}))
+    row = _fake_row(rules=[{"bank_code": "KTC", "is_active": True}])
+
+    body = await es.build_settings_response(AsyncMock(), _tenant_with_host(), row, "h", "b")
+
+    assert body["entitled"] is True
+    assert body["status"]["blockers"] == []
+    assert body["status"]["ready"] is True
+    assert body["status"]["documents_total"] == 3
+
+
+@pytest.mark.asyncio
+async def test_unconfigured_bu_reports_only_not_configured(monkeypatch):
+    """row is None: the counters and the other blockers are not meaningful yet."""
+    monkeypatch.setattr(es, "is_entitled", AsyncMock(return_value=True))
+    body = await es.build_settings_response(AsyncMock(), _tenant_with_host(), None, "h", "b")
+    assert body["status"]["blockers"] == ["not_configured"]
+    assert "documents_total" not in body["status"]
+
+
+@pytest.mark.asyncio
+async def test_has_gl_mapping_follows_the_same_rule_the_pipeline_enforces(monkeypatch):
+    """A BU with no accounting config parks every document — say so at setup time."""
+    from app.models.schemas.config import AccountingConfigResponse
+
+    monkeypatch.setattr(
+        es, "get_accounting_config", AsyncMock(return_value=AccountingConfigResponse())
+    )
+    assert await es.has_gl_mapping(AsyncMock(), _tenant_with_host()) is False
+
+    complete = AccountingConfigResponse(
+        mappings={
+            "commission": {"dept": "GEN", "acc": "5100"},
+            "tax": {"dept": "GEN", "acc": "1150"},
+            "net": {"dept": "GEN", "acc": "1010"},
+        }
+    )
+    monkeypatch.setattr(es, "get_accounting_config", AsyncMock(return_value=complete))
+    assert await es.has_gl_mapping(AsyncMock(), _tenant_with_host()) is True
 
 
 # ── SSRF: carmen_uri is a URL we make a server-side request to ────────────────
