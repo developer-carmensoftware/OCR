@@ -52,7 +52,11 @@ from app.models.schemas import ExtractedCreditCardData
 from app.services import email_settings_service as es
 from app.services import gl_suggestion_service as gl
 from app.services import ocr_service
-from app.services.accounting_config_service import fill_missing_mappings, get_accounting_config
+from app.services.accounting_config_service import (
+    description_for,
+    fill_missing_mappings,
+    get_accounting_config,
+)
 from app.services.carmen_service import (
     CarmenAPIError,
     get_account_codes,
@@ -521,7 +525,7 @@ async def _post_input_tax(
             doc_date=extracted.doc_date,
             bank=bank,
             branch=getattr(config, "branch", None),
-            description=getattr(config, "description", None),
+            description=description_for(config, bank_code),
             tax_profiles_raw=await get_tax_profiles(carmen_token),
         )
         if payload is None:

@@ -148,9 +148,15 @@ def build_gljv_payload(
     config: Any,
 ) -> dict:
     """JV rows + accounting config → the exact body useOcrSubmission.ts posts."""
+    from app.services.accounting_config_service import description_for
+
+    # Per-bank wording when the BU set one, else the BU's single description — the
+    # input-tax record built from the same statement resolves it the same way, so
+    # the two documents never disagree about what they are.
+    base = description_for(config, bank_code)
     description = ""
-    if config.description:
-        description = f"{config.description} - {doc_date}" if doc_date else config.description
+    if base:
+        description = f"{base} - {doc_date}" if doc_date else base
 
     return {
         "JvhSeq": -1,

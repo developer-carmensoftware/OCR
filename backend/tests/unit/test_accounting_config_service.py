@@ -13,7 +13,7 @@ from uuid import uuid4
 import pytest
 
 from app.models import BUAccountingMappingEntry
-from app.services.accounting_config_service import fill_missing_mappings
+from app.services.accounting_config_service import description_for, fill_missing_mappings
 
 TENANT_ID = str(uuid4())
 
@@ -85,3 +85,38 @@ async def test_a_half_filled_suggestion_is_dropped_not_written():
 
     db.execute.assert_not_awaited()  # returns before touching the DB
     db.commit.assert_not_awaited()
+
+
+# ── description_for: per-bank wording, with the BU's single one as fallback ────
+
+
+class _Cfg(SimpleNamespace):
+    pass
+
+
+def _cfg(description=None, bank_descriptions=None):
+    return _Cfg(description=description, bank_descriptions=bank_descriptions or {})
+
+
+def test_a_bank_with_its_own_wording_gets_it():
+    cfg = _cfg("Generic settlement", {"SCB": "SCB settlement", "KTC": "KTC fee invoice"})
+    assert description_for(cfg, "SCB") == "SCB settlement"
+    assert description_for(cfg, "KTC") == "KTC fee invoice"
+
+
+def test_a_bank_without_one_falls_back_to_the_bus_single_description():
+    """The whole point of the fallback: nothing changes for a BU that never sets one."""
+    cfg = _cfg("Generic settlement", {"SCB": "SCB settlement"})
+    assert description_for(cfg, "BBL") == "Generic settlement"
+    assert description_for(cfg, None) == "Generic settlement"
+    assert description_for(_cfg("Generic settlement"), "SCB") == "Generic settlement"
+
+
+def test_a_blank_per_bank_entry_is_not_treated_as_wording():
+    """An empty string on the JV reads as a missing description, not an override."""
+    assert description_for(_cfg("Generic", {"SCB": "   "}), "SCB") == "Generic"
+    assert description_for(_cfg("Generic", {"SCB": ""}), "SCB") == "Generic"
+
+
+def test_no_description_anywhere_is_none_not_a_crash():
+    assert description_for(_cfg(), "SCB") is None

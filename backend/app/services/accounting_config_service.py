@@ -42,7 +42,19 @@ async def get_accounting_config(db: AsyncSession, tenant_id: str) -> AccountingC
         branch=row.branch,
         mappings=mappings,
         custom_types=custom_types,
+        bank_descriptions=dict(row.bank_descriptions or {}),
     )
+
+
+def description_for(config: Any, bank_code: str | None) -> str | None:
+    """The description this bank's documents should carry.
+
+    A BU receiving statements from several banks can give each its own wording;
+    `description` is what everything else still falls back to, so a BU that never
+    sets one behaves exactly as it did before the column existed.
+    """
+    per_bank = getattr(config, "bank_descriptions", None) or {}
+    return (per_bank.get(bank_code or "") or "").strip() or getattr(config, "description", None)
 
 
 async def save_accounting_config(
@@ -56,6 +68,10 @@ async def save_accounting_config(
         row.file_source = req.file_source
         row.description = req.description
         row.branch = req.branch
+        # Omitted = keep. The wizard does not send this field yet, and it must not
+        # wipe per-bank wording every time someone saves a GL mapping.
+        if req.bank_descriptions is not None:
+            row.bank_descriptions = {k: v for k, v in req.bank_descriptions.items() if v}
         await db.flush()
     else:
         row = BUAccountingConfig(
@@ -65,6 +81,7 @@ async def save_accounting_config(
             file_source=req.file_source,
             description=req.description,
             branch=req.branch,
+            bank_descriptions={k: v for k, v in (req.bank_descriptions or {}).items() if v},
         )
         db.add(row)
         await db.flush()
