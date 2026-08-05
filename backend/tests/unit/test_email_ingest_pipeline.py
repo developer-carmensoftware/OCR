@@ -489,3 +489,59 @@ async def test_claim_dedupes_on_integrity_error_second_attempt():
     second = await ingest._claim(db, TENANT_ID, "<msg-4@bank.co.th>", "statement.jpg")
     assert second is None
     db.rollback.assert_awaited_once()
+
+
+# ── Deferred LLM cost (the bug a live run found on 2026-08-05) ────────────────
+
+
+@pytest.mark.asyncio
+async def test_extraction_cost_is_parked_then_written_with_the_tenant_that_owned_it():
+    """`llm_usage_logs.tenant_id` is NOT NULL, and email ingest extracts before it
+    knows whose document it is.
+
+    Without parking, that insert raises inside log_llm_usage's own
+    except-and-continue and the cost disappears — a live run logged zero rows.
+    """
+    from app.context import current_tenant_id, pending_llm_usage
+    from app.services import llm_usage_logger as lu
+
+    written = []
+    ctx = pending_llm_usage.set([])
+    try:
+        with patch.object(lu, "async_session", _session_factory(_FakeDB())):
+            # no tenant yet — must not reach the DB
+            await lu.log_llm_usage("m", 10, 5, 15, module_id="credit_card_ocr")
+            assert len(pending_llm_usage.get()) == 1
+
+            tctx = current_tenant_id.set(TENANT_ID)
+            try:
+                with patch.object(
+                    lu, "log_llm_usage", AsyncMock(side_effect=lambda **kw: written.append(kw))
+                ):
+                    n = await lu.flush_pending_usage(task_id="task-1")
+            finally:
+                current_tenant_id.reset(tctx)
+    finally:
+        pending_llm_usage.reset(ctx)
+
+    assert n == 1
+    assert written[0]["task_id"] == "task-1"
+    assert written[0]["model"] == "m"
+    assert pending_llm_usage.get() is None  # buffer left clean for the next document
+
+
+@pytest.mark.asyncio
+async def test_a_normal_request_is_unaffected_by_the_parking_buffer():
+    """No buffer set (every wizard call) → straight to the DB as before."""
+    from app.context import current_tenant_id
+    from app.services import llm_usage_logger as lu
+
+    db = _FakeDB()
+    tctx = current_tenant_id.set(TENANT_ID)
+    try:
+        with patch.object(lu, "async_session", _session_factory(db)):
+            await lu.log_llm_usage("m", 10, 5, 15, module_id="credit_card_ocr")
+    finally:
+        current_tenant_id.reset(tctx)
+    assert len(db.added) == 1
+    assert str(db.added[0].tenant_id) == TENANT_ID

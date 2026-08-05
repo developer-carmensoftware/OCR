@@ -35,6 +35,12 @@ current_scheduler_tenant: ContextVar[str] = ContextVar("current_scheduler_tenant
 # ── Request correlation ID (set by PerformanceMiddleware per request) ─────────
 current_request_id: ContextVar[str] = ContextVar("current_request_id", default="")
 
+# ── Deferred LLM usage (email ingest reads the document before it knows whose) ─
+# When this holds a list, `log_llm_usage` parks a tenant-less call in it instead
+# of inserting a row that `llm_usage_logs.tenant_id NOT NULL` would reject. The
+# caller flushes it once routing has named the tenant.
+pending_llm_usage: ContextVar[list | None] = ContextVar("pending_llm_usage", default=None)
+
 
 def require_tenant() -> str:
     """Return the current tenant_id or raise TenantContextMissing.

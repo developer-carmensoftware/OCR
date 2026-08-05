@@ -41,7 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.constants import Module
-from app.context import current_carmen_uri, current_tenant_id
+from app.context import current_carmen_uri, current_tenant_id, pending_llm_usage
 from app.database import async_session
 from app.exceptions import PdfPasswordRequired, ValidationError
 from app.models.business import CreditCard
@@ -61,6 +61,7 @@ from app.services.carmen_service import (
 from app.services.cc_jv import build_gljv_payload, build_jv_rows, unmapped_payment_types
 from app.services.credit_card_service import finalize_extraction, mark_task_failed
 from app.services.credit_service import consume_document, refund_document
+from app.services.llm_usage_logger import flush_pending_usage
 from app.services.quota_service import assert_module_enabled
 from app.services.task_service import create_task
 from app.utils.bank_detect import detect_bank_code
@@ -227,6 +228,34 @@ async def _process_attachment(
         logger.info("[email] Already seen: %s / %s", message_id, filename)
         return "skipped"
 
+    # `llm_usage_logs.tenant_id` is NOT NULL, and the extraction below happens
+    # before anyone is identified. Parking its cost here is what stops the insert
+    # from raising inside the logger's own except-and-continue and taking the whole
+    # row with it — a live run on 2026-08-05 logged nothing at all without this.
+    # `_post_extracted` flushes the buffer once it has a tenant and a task.
+    usage_ctx = pending_llm_usage.set([])
+    try:
+        return await _route_and_post(
+            message_id=message_id,
+            sender=sender,
+            filename=filename,
+            blob=blob,
+            rules=rules,
+            passwords=passwords,
+        )
+    finally:
+        pending_llm_usage.reset(usage_ctx)
+
+
+async def _route_and_post(
+    *,
+    message_id: str,
+    sender: str,
+    filename: str,
+    blob: bytes,
+    rules: list[dict],
+    passwords: list[str],
+) -> str:
     try:
         # Before any charge: a locked or corrupt file must not cost anything.
         password = await _open_or_fail(blob, filename, passwords)
@@ -236,11 +265,6 @@ async def _process_attachment(
 
     bank_code = (match_rule(rules, sender, filename) or {}).get("bank_code")
     try:
-        # ponytail: task_id=None and no tenant in scope, so this call's row in
-        # llm_usage_logs has neither — nobody has been identified yet. Per-BU cost
-        # queries are unaffected (they filter on tenant_id); the org-wide total
-        # gains an unattributed slice. Fix by having log_llm_usage return the row id
-        # and back-filling it after routing, if that slice ever matters.
         extracted = await ocr_service.extract_stateless(
             file_bytes=blob,
             original_filename=filename,
@@ -332,6 +356,9 @@ async def _post_extracted(
                 carmen_user_id=None,
             )
             task_id = str(task.id)
+
+        # The extraction's cost, parked before we knew whose document this was.
+        await flush_pending_usage(task_id)
 
         try:
             extracted = await finalize_extraction(extracted, task_id, tenant_id, bank_code, None)

@@ -41,9 +41,28 @@ async def log_llm_usage(
     quota consumption is performed atomically at the start of each extract
     endpoint via `consume_quota()`.
     """
-    from app.context import current_carmen_user_id, current_ocr_session_id
+    from app.context import current_carmen_user_id, current_ocr_session_id, pending_llm_usage
 
     tenant_id = _ctx()
+
+    # `tenant_id` is NOT NULL, so a call made before anyone is identified cannot be
+    # inserted — it would raise here and be swallowed, losing the cost silently.
+    # Email ingest reads a document to find out whose it is, so it parks the call
+    # and flushes it after routing (`flush_pending_usage`).
+    pending = pending_llm_usage.get()
+    if not tenant_id and pending is not None:
+        pending.append(
+            {
+                "model": model,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+                "module_id": module_id,
+                "duration_ms": duration_ms,
+                "call_type": call_type,
+            }
+        )
+        return
 
     try:
         rates = await _get_pricing(model)
@@ -71,3 +90,21 @@ async def log_llm_usage(
         # Never disrupt the OCR flow, but surface as ERROR (not warning): silent loss
         # here means cost/quota tracking drifts and we lose per-module accounting.
         logger.error("log_llm_usage failed — usage/cost not recorded: %s", exc, exc_info=True)
+
+
+async def flush_pending_usage(task_id: str | None = None) -> int:
+    """Write the calls that were parked before the tenant was known. Returns how many.
+
+    Must run with `current_tenant_id` already set — that is the whole point. The
+    buffer is emptied either way, so a caller that gives up on a document cannot
+    leak its cost onto the next one.
+    """
+    from app.context import pending_llm_usage
+
+    parked = pending_llm_usage.get()
+    if not parked:
+        return 0
+    calls, parked[:] = list(parked), []
+    for call in calls:
+        await log_llm_usage(task_id=task_id, **call)
+    return len(calls)
