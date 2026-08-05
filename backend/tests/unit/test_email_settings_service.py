@@ -474,30 +474,29 @@ async def test_has_gl_mapping_follows_the_same_rule_the_pipeline_enforces(monkey
     assert await es.has_gl_mapping(AsyncMock(), _tenant_with_host()) is True
 
 
-# ── SSRF: carmen_uri is a URL we make a server-side request to ────────────────
+# ── SSRF: the origin we make a server-side request to ─────────────────────────
 
 
 @pytest.mark.parametrize(
-    "uri",
+    "host",
     [
-        "http://169.254.169.254/",  # cloud metadata, and not https
-        "https://169.254.169.254/",  # link-local literal
-        "https://127.0.0.1/",  # loopback
-        "https://10.0.0.5/",  # private range
-        "ftp://hotel.carmenwork.com",  # wrong scheme
+        "169.254.169.254",  # cloud metadata
+        "127.0.0.1",  # loopback
+        "10.0.0.5",  # private range
     ],
 )
 @pytest.mark.asyncio
-async def test_carmen_uri_rejected_before_any_outbound_request(uri):
+async def test_carmen_origin_rejected_before_any_outbound_request(host):
     from app.routers.email_automation import _safe_carmen_uri
 
     with pytest.raises(FieldValidationError) as exc:
-        await _safe_carmen_uri(uri, _tenant_with_host())
+        await _safe_carmen_uri(_tenant_with_host(host))
     assert exc.value.errors[0]["field"] == "carmen_uri"
 
 
 @pytest.mark.asyncio
-async def test_carmen_uri_defaults_to_the_tenant_host():
+async def test_carmen_origin_is_derived_from_the_tenant_host():
+    """One value, not two: the origin a token is validated against is the one we post to."""
     from app.routers.email_automation import _safe_carmen_uri
 
-    assert await _safe_carmen_uri(None, _tenant_with_host()) == "https://hotel.carmenwork.com"
+    assert await _safe_carmen_uri(_tenant_with_host()) == "https://hotel.carmenwork.com"

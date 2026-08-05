@@ -293,13 +293,17 @@ Authorization: <the user's Carmen token>
 {
   "host": "hotelgroup.carmenwork.com",
   "bu": "hq",
-  "token": "…",                                  // write-only, never returned
-  "carmen_uri": "https://hotelgroup.carmenwork.com"   // optional; defaults to https://<host>
+  "token": "…"                                   // write-only, never returned
 }
 ```
 
+There is no `carmen_uri` field. The origin is always `https://<host>` — `tenants.host` was
+itself derived from the URI Carmen sent at login, and the token is validated against that
+same origin, so a second field could only ever disagree with the first: verify against one
+Carmen, post to another. An old caller still sending one is ignored, not rejected.
+
 **We verify the token against Carmen before storing it** — we call
-`GET {carmen_uri}/Carmen.API/api/interface/department` with it, an ordinary authenticated
+`GET https://<host>/Carmen.API/api/interface/department` with it, an ordinary authenticated
 read. A token Carmen will not accept is rejected on the spot and **nothing is written**, so
 the customer finds out on the settings screen rather than on a real document at 3am.
 
@@ -314,10 +318,10 @@ Carmen's screen can render them inline without a second code path:
                 "message": "uri hostname not allowed" } ] }
 ```
 
-`invalid_uri` means the URL failed the same SSRF check `/auth/exchange` applies: https
-only, no loopback or private address (whether written literally or reached through DNS),
-and the host allowlist when one is configured. Sending no `carmen_uri` at all is the
-normal case — we default to `https://<host>` and validate that too.
+`invalid_uri` means `https://<host>` failed the same SSRF check `/auth/exchange` applies:
+https only, no loopback or private address (whether written literally or reached through
+DNS), and the host allowlist when one is configured. A `host` that logged in normally
+cannot fail it; the gate stays because the origin is a URL we make server-side requests to.
 
 Every error body also carries a top-level `detail` string (the first message, for logs and
 for clients that do not read `errors`). Render from `errors`; treat `detail` as a fallback.

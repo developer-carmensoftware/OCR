@@ -174,7 +174,7 @@ async def _resolve(db: AsyncSession, caller: Caller, host: str, bu: str) -> Tena
     if caller.carmen_token is None:
         return tenant
 
-    uri = await _safe_carmen_uri(None, tenant)
+    uri = await _safe_carmen_uri(tenant)
     key = _rejection_key(caller.carmen_token, uri)
     if _recently_rejected(key):
         raise HTTPException(
@@ -190,8 +190,12 @@ async def _resolve(db: AsyncSession, caller: Caller, host: str, bu: str) -> Tena
     return tenant
 
 
-async def _safe_carmen_uri(uri: str | None, tenant: Tenant) -> str:
+async def _safe_carmen_uri(tenant: Tenant) -> str:
     """SSRF gate. Every server-side request we make on a caller's behalf goes through it.
+
+    The origin is derived, never taken from the payload: `tenants.host` was itself
+    produced by this same check at login, so the origin we validate a token against
+    is always the origin we later post with — one value, not two that can disagree.
 
     `_validate_uri` (routers/auth.py) is the same check `/auth/exchange` already
     applies: https only, ALLOWED_CARMEN_HOSTS allowlist, loopback/private-IP
@@ -202,7 +206,7 @@ async def _safe_carmen_uri(uri: str | None, tenant: Tenant) -> str:
     on the event loop, one hostile or merely slow DNS answer stalls every other
     request this worker is serving, not just the one that asked for it.
     """
-    candidate = (uri or f"https://{tenant.host}").strip()
+    candidate = f"https://{tenant.host}"
     try:
         return await asyncio.to_thread(_validate_uri, candidate)
     except HTTPException as exc:
@@ -253,7 +257,7 @@ async def write_token(
     rejected on the customer's own screen rather than at 3am on a real document.
     """
     tenant = await _resolve(db, caller, payload.host, payload.bu)
-    uri = await _safe_carmen_uri(payload.carmen_uri, tenant)
+    uri = await _safe_carmen_uri(tenant)
     row = await es.set_token(db, tenant, payload.token.get_secret_value(), uri, caller.actor)
     logger.info(
         "[email] Carmen token %s stored for %s/%s by %s",

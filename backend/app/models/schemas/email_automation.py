@@ -33,4 +33,6 @@ class TokenIn(BaseModel):
     host: str
     bu: str
     token: SecretStr
-    carmen_uri: str | None = None  # default: https://<tenant host>
+    # ponytail: no carmen_uri — the origin is always https://<host>. Accepting a
+    # separate one would let us validate the token against one origin and post with
+    # it to another. Extra field ignored (Pydantic default) so old callers still work.
