@@ -545,3 +545,63 @@ async def test_a_normal_request_is_unaffected_by_the_parking_buffer():
         current_tenant_id.reset(tctx)
     assert len(db.added) == 1
     assert str(db.added[0].tenant_id) == TENANT_ID
+
+
+# ── Input tax: the statement's second Carmen document ─────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_input_tax_is_posted_after_the_jv():
+    """The wizard's step 4. Email automation has no step 4, so the job does it."""
+    db = _FakeDB()
+    post_tax = AsyncMock(return_value=None)
+    with patch.object(ingest, "_post_input_tax", post_tax):
+        outcome, _ = await _run(
+            db,
+            extracted=_extracted(),
+            config=_config(),
+            carmen_result={"Code": 0, "InternalMessage": "JV-999"},
+        )
+    assert outcome == "posted"
+    post_tax.assert_awaited_once()
+    assert db.added[0].error_message is None
+
+
+@pytest.mark.asyncio
+async def test_a_failed_input_tax_never_unposts_the_jv_or_refunds():
+    """The JV is already in Carmen's books and there is no rollback.
+
+    Marking the document failed would refund a credit for work that was done and
+    hide a real JV behind a 'failed' row; the note on the ledger is what tells a
+    human to add the input tax by hand.
+    """
+    db = _FakeDB()
+    note = "JV posted; input tax not recorded: Carmen said no"
+    with patch.object(ingest, "_post_input_tax", AsyncMock(return_value=note)):
+        outcome, p = await _run(
+            db,
+            extracted=_extracted(),
+            config=_config(),
+            carmen_result={"Code": 0, "InternalMessage": "JV-999"},
+        )
+    assert outcome == "posted"
+    assert db.added[0].status == "posted"
+    assert db.added[0].jv_no == "JV-999"
+    assert db.added[0].error_message == note
+    p.refund_document.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_rejected_jv_never_reaches_the_input_tax_step():
+    """No JV, no VAT to claim against it."""
+    db = _FakeDB()
+    post_tax = AsyncMock(return_value=None)
+    with patch.object(ingest, "_post_input_tax", post_tax):
+        outcome, _ = await _run(
+            db,
+            extracted=_extracted(),
+            config=_config(),
+            carmen_result={"Code": 1, "UserMessage": "Insufficient balance"},
+        )
+    assert outcome == "failed"
+    post_tax.assert_not_awaited()

@@ -45,6 +45,7 @@ from app.context import current_carmen_uri, current_tenant_id, pending_llm_usage
 from app.database import async_session
 from app.exceptions import PdfPasswordRequired, ValidationError
 from app.models.business import CreditCard
+from app.models.catalog import Bank
 from app.models.email_automation import EmailDocument
 from app.models.identity import Tenant
 from app.models.schemas import ExtractedCreditCardData
@@ -56,8 +57,11 @@ from app.services.carmen_service import (
     CarmenAPIError,
     get_account_codes,
     get_departments,
+    get_tax_profiles,
     post_gljv,
+    post_input_tax,
 )
+from app.services.cc_input_tax import build_input_tax_payload
 from app.services.cc_jv import build_gljv_payload, build_jv_rows, unmapped_payment_types
 from app.services.credit_card_service import finalize_extraction, mark_task_failed
 from app.services.credit_service import consume_document, refund_document
@@ -426,6 +430,15 @@ async def _post_extracted(
 
         await _mark_submitted(extracted.id)
 
+        # The statement's second Carmen document (wizard step 4). Deliberately after
+        # the JV and deliberately unable to fail it: the JV is already in Carmen's
+        # books and there is no rollback, so a missing input-tax record is recorded
+        # for a human to add rather than turned into a failure that refunds a
+        # credit for work that was done.
+        tax_error = await _post_input_tax(
+            extracted, bank_code=bank_code, config=config, carmen_token=carmen_token
+        )
+
         await _finish(
             ledger_id,
             status="posted",
@@ -433,6 +446,7 @@ async def _post_extracted(
             bank_code=bank_code,
             doc_no=doc_no,
             jv_no=str(result.get("InternalMessage") or ""),
+            error=tax_error,
         )
         logger.info("[email] Posted %s (%s) for tenant %s", extracted.doc_no, filename, tenant_id)
         return "posted"
@@ -478,6 +492,57 @@ async def _post_extracted(
         )
         logger.exception("[email] Failed on %s", filename)
         return "failed"
+
+
+# ── Input tax (the statement's second Carmen document) ────────────────────────
+
+
+async def _post_input_tax(
+    extracted: ExtractedCreditCardData,
+    *,
+    bank_code: str | None,
+    config: Any,
+    carmen_token: str,
+) -> str | None:
+    """File the VAT the bank charged. Returns a note to keep on the ledger, or None.
+
+    Never raises. The JV it follows is already in Carmen's books, so the only useful
+    answers here are "done" and "someone needs to add this by hand" — turning a
+    failure into an exception would refund a credit and mark a posted document as
+    failed, which is the one outcome that is wrong twice.
+    """
+    async with async_session() as db:
+        bank = await db.get(Bank, bank_code) if bank_code else None
+
+    try:
+        payload, skipped = build_input_tax_payload(
+            extracted.details,
+            doc_no=extracted.doc_no,
+            doc_date=extracted.doc_date,
+            bank=bank,
+            branch=getattr(config, "branch", None),
+            description=getattr(config, "description", None),
+            tax_profiles_raw=await get_tax_profiles(carmen_token),
+        )
+        if payload is None:
+            if skipped:
+                # A claim that should have been made and was not. Kept on the ledger
+                # rather than only in a log line, because nothing else would ever
+                # tell the customer the VAT is theirs to add by hand.
+                logger.warning("[email] %s (%s)", skipped, extracted.doc_no)
+            return skipped
+        result = await post_input_tax(payload, carmen_token)
+    except Exception as exc:
+        logger.exception("[email] Input tax failed for %s", extracted.doc_no)
+        return f"JV posted; input tax not recorded: {exc}"
+
+    if not result or result.get("Code", -1) != 0:
+        message = str((result or {}).get("UserMessage") or "Carmen rejected the input-tax record")
+        logger.error("[email] Input tax rejected for %s: %s", extracted.doc_no, message)
+        return f"JV posted; input tax not recorded: {message}"
+
+    logger.info("[email] Input tax recorded for %s", extracted.doc_no)
+    return None
 
 
 # ── GL mapping the BU never set ───────────────────────────────────────────────
