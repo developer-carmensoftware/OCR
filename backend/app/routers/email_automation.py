@@ -2,11 +2,12 @@
 
 Contract: docs/CARMEN_INTEGRATION.md §2 (settings) and §3 (outcomes).
 
-**Carmen authenticates with the logged-in user's own Carmen token**, which its
-settings screen already holds — there is no key for us to issue and no secret for a
-customer to store. Every customer runs their own Carmen installation, so a key would
-have meant one per installation, hand-delivered, forever. This is the same mechanism
-`/auth/exchange` has used for every wizard user since day one.
+**Carmen authenticates with the logged-in user's own Carmen token**, sent the way
+every other call in their world sends it — `Authorization: <token>`, no scheme label.
+There is no key for us to issue and no secret for a customer to store. Every customer
+runs their own Carmen installation, so a key would have meant one per installation,
+hand-delivered, forever. This is the same mechanism `/auth/exchange` has used for
+every wizard user since day one.
 
 It also removes the trusted-input problem rather than checking it: `host`/`bu` in the
 payload are not a claim we verify against a scope, they are what the token is proven
@@ -125,38 +126,40 @@ async def _caller(
     request: Request,
     authorization: str | None = Header(None),
 ) -> Caller:
-    """Identify the caller. Accepts `CarmenToken …` or `Bearer <admin jwt>`.
+    """Identify the caller.
 
-    Identification only — a Carmen token is *proven* in `_resolve`, because which
-    Carmen to prove it against is not known until the payload has been read.
+    `Bearer <admin jwt>` is our own operator path. **Anything else is taken as a
+    Carmen token, verbatim** — the same `Authorization: <token>` every other call in
+    Carmen's world uses, so their developers do not have to remember a scheme that
+    exists only here. Nothing is lost by dropping the label: a prefix proves nothing,
+    and the token is proven against the customer's own Carmen in `_resolve` either way.
+
+    Identification only — the proof happens there, because which Carmen to ask is not
+    known until the payload has been read.
     """
-    scheme, _, rest = (authorization or "").partition(" ")
-    rest = rest.strip()
+    raw = (authorization or "").strip()
+    if not raw:
+        raise HTTPException(status_code=401, detail="Authorization required")
 
-    if scheme == "CarmenToken" and rest:
-        # Order matters: the free check first, then the limiters, and only then does
-        # _resolve spend a DB read and an outbound call on this request.
-        if not _token_is_plausible(rest):
-            raise HTTPException(status_code=401, detail="Malformed Carmen token")
-        _settings_limiter.check(request)
-        _probe_ceiling.check(request, key="_global_probe")
-        # partition() splits once on purpose: a Carmen token is "<hash>|<uuid>" and
-        # the value may itself contain spaces. split() would truncate the credential.
-        return Caller(actor=f"user:{extract_user_id_from_token(rest)}", carmen_token=rest)
-
-    if scheme == "Bearer" and rest:
+    if raw.startswith("Bearer "):
         try:
-            payload = decode_admin_jwt(rest, get_admin_jwt_secret())
+            payload = decode_admin_jwt(raw[7:].strip(), get_admin_jwt_secret())
         except ValueError:
             raise HTTPException(status_code=401, detail="Invalid or expired token") from None
         return Caller(
             actor=f"admin:{payload.get('username') or payload.get('aid')}", carmen_token=None
         )
 
-    raise HTTPException(
-        status_code=401,
-        detail="Authorization must be 'CarmenToken <carmen token>' or 'Bearer <admin jwt>'",
-    )
+    # Accepted with or without the label, so a client that already sends one keeps working.
+    token = raw.removeprefix("CarmenToken ").strip()
+
+    # Order matters: the free check first, then the limiters, and only then does
+    # _resolve spend a DB read and an outbound call on this request.
+    if not _token_is_plausible(token):
+        raise HTTPException(status_code=401, detail="Malformed Carmen token")
+    _settings_limiter.check(request)
+    _probe_ceiling.check(request, key="_global_probe")
+    return Caller(actor=f"user:{extract_user_id_from_token(token)}", carmen_token=token)
 
 
 async def _resolve(db: AsyncSession, caller: Caller, host: str, bu: str) -> Tenant:

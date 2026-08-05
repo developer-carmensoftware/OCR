@@ -1,12 +1,15 @@
 # Email Automation API — spec สำหรับทีม Carmen
 
-> **v1.1 · 2026-08-04 · `Authorization: CarmenToken <token ของ user>`**
+> **v1.2 · 2026-08-04 · `Authorization: <token ของ user>`**
 >
 > เอกสารนี้คือ API reference ที่เอาไปเขียนโค้ดตามได้เลย
 > เหตุผลเบื้องหลังการออกแบบอยู่ที่ [CARMEN_INTEGRATION.md](CARMEN_INTEGRATION.md)
 > ส่วนตัว machine-readable อยู่ที่ `/openapi.json` ของ service
 >
-> **เปลี่ยนจาก v1.0:** ตัด API key ทิ้งทั้งหมด ใช้ token ของ user ที่ login อยู่แทน —
+> **v1.1 → v1.2:** ไม่ต้องมี prefix `CarmenToken` แล้ว ส่ง `Authorization: <token>` ดิบ ๆ
+> เหมือนที่เรียก API อื่นของ Carmen (ของเดิมยังรับอยู่ ไม่ต้องรีบแก้)
+>
+> **v1.0 → v1.1:** ตัด API key ทิ้งทั้งหมด ใช้ token ของ user ที่ login อยู่แทน —
 > ไม่มีคีย์ให้ขอ ไม่มีอะไรให้เก็บ ไม่มีขั้นตอน onboard ต่อ installation
 
 ---
@@ -66,11 +69,14 @@ https://{ocr-host}/api/v1/carmen
 
 | Header | Value |
 |---|---|
-| `Authorization` **required** | `CarmenToken <Carmen token ของ user>` |
+| `Authorization` **required** | `<Carmen token ของ user>` — ส่งดิบ ๆ ไม่ต้องมี prefix |
 
-> ⚠️ **ส่งค่า token ทั้งก้อน** รูปแบบจริงคือ `<hash>\|<user_uuid>` และ**มีช่องว่างอยู่ข้างในได้**
-> (`direct <key>` คือรูปแบบที่ dev instance ออกให้) เราตัดที่ช่องว่างแรกครั้งเดียว —
+> ⚠️ **ใส่ค่า token ทั้งก้อนลง header ตรง ๆ** เหมือนที่เรียก API อื่นของ Carmen
+> รูปแบบจริงคือ `<hash>\|<user_uuid>` และ**มีช่องว่างอยู่ข้างในได้**
+> (`direct <key>` คือรูปแบบที่ dev instance ออกให้) — เราอ่านทั้ง header ไม่ตัดที่ช่องว่าง
 > ฝั่งที่ประกอบ header ก็อย่า trim หรือ split เพิ่ม
+>
+> ถ้ามีโค้ดเก่าที่ส่ง `CarmenToken <token>` มาแล้ว ยังใช้ได้ ไม่ต้องรีบแก้
 
 ### เราตรวจ token ยังไง
 
@@ -90,7 +96,7 @@ Carmen ของลูกค้าตอบ `200` หรือ `401` แค่�
 
 | Status | Message | Cause | ควรทำยังไง |
 |---|---|---|---|
-| `401` | `Authorization must be 'CarmenToken …' or 'Bearer …'` | ไม่ได้ส่ง header หรือ scheme ผิด | แก้โค้ด |
+| `401` | `Authorization required` | ไม่ได้ส่ง header มาเลย | แก้โค้ด |
 | `401` | `Carmen token rejected — please re-login to Carmen` | Carmen ปฏิเสธ token | **ให้ user login ใหม่** อย่า retry |
 | `502` | `Cannot reach Carmen to validate token` | เราติดต่อ Carmen ของลูกค้าไม่ได้ | **ชั่วคราว** retry ได้ |
 | `429` | — | เกิน 20 request/นาที ต่อ 1 IP | รอแล้วค่อยยิงใหม่ |

@@ -46,28 +46,38 @@ async def test_caller_missing_header_is_401():
 
 
 @pytest.mark.asyncio
-async def test_caller_unknown_scheme_is_401():
+async def test_caller_takes_a_bare_carmen_token():
+    """The form Carmen actually sends: `Authorization: <token>`, no scheme label.
+
+    Every other call in their world looks like this, so requiring a label unique to
+    our API would be one more thing to get wrong for something a prefix cannot prove.
+    """
+    caller = await _caller(_request(), authorization=CARMEN_TOKEN)
+    assert caller.carmen_token == CARMEN_TOKEN
+    assert caller.actor == "user:3fa85f64-5717-4562-b3fc-2c963f66afa6"
+
+
+@pytest.mark.asyncio
+async def test_caller_still_takes_the_labelled_form():
+    """`CarmenToken <token>` keeps working, so an early integration does not break."""
+    caller = await _caller(_request(), authorization=f"CarmenToken {CARMEN_TOKEN}")
+    assert caller.carmen_token == CARMEN_TOKEN
+
+
+@pytest.mark.asyncio
+async def test_caller_rejects_a_header_that_cannot_be_a_token():
+    """Anything not `Bearer …` is read as a Carmen token, so the shape check is what
+    turns junk away — including another scheme's credentials."""
     with pytest.raises(HTTPException) as exc:
         await _caller(_request(), authorization="Basic dXNlcjpwYXNz")
     assert exc.value.status_code == 401
+    assert exc.value.detail == "Malformed Carmen token"
 
 
 @pytest.mark.asyncio
-async def test_caller_scheme_with_no_value_is_401():
+async def test_caller_empty_header_is_401():
     with pytest.raises(HTTPException):
-        await _caller(_request(), authorization="CarmenToken   ")
-
-
-@pytest.mark.asyncio
-async def test_caller_keeps_a_carmen_token_that_contains_a_space():
-    """The whole credential, not the first word.
-
-    A naive split() would hand Carmen back half a token and every call would 401
-    with a message blaming the customer.
-    """
-    caller = await _caller(_request(), authorization=f"CarmenToken {CARMEN_TOKEN}")
-    assert caller.carmen_token == CARMEN_TOKEN
-    assert caller.actor == "user:3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        await _caller(_request(), authorization="   ")
 
 
 @pytest.mark.asyncio

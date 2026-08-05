@@ -107,7 +107,7 @@ Carmen's settings screen already holds the logged-in user's Carmen token. Send i
 
 ```http
 PUT /api/v1/carmen/settings
-Authorization: CarmenToken <the user's Carmen token>
+Authorization: <the user's Carmen token>
 Content-Type: application/json
 ```
 
@@ -286,7 +286,7 @@ should not re-transmit a secret every time.
 
 ```http
 PUT /api/v1/carmen/settings/token
-Authorization: CarmenToken <the user's Carmen token>
+Authorization: <the user's Carmen token>
 ```
 
 ```jsonc
