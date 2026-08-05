@@ -487,15 +487,17 @@ async def test_has_gl_mapping_follows_the_same_rule_the_pipeline_enforces(monkey
         "ftp://hotel.carmenwork.com",  # wrong scheme
     ],
 )
-def test_carmen_uri_rejected_before_any_outbound_request(uri):
+@pytest.mark.asyncio
+async def test_carmen_uri_rejected_before_any_outbound_request(uri):
     from app.routers.email_automation import _safe_carmen_uri
 
     with pytest.raises(FieldValidationError) as exc:
-        _safe_carmen_uri(uri, _tenant_with_host())
+        await _safe_carmen_uri(uri, _tenant_with_host())
     assert exc.value.errors[0]["field"] == "carmen_uri"
 
 
-def test_carmen_uri_defaults_to_the_tenant_host():
+@pytest.mark.asyncio
+async def test_carmen_uri_defaults_to_the_tenant_host():
     from app.routers.email_automation import _safe_carmen_uri
 
-    assert _safe_carmen_uri(None, _tenant_with_host()) == "https://hotel.carmenwork.com"
+    assert await _safe_carmen_uri(None, _tenant_with_host()) == "https://hotel.carmenwork.com"

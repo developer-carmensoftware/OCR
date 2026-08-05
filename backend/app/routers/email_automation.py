@@ -19,7 +19,10 @@ asking them for a token.
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import logging
+import time
 from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
@@ -46,9 +49,67 @@ from app.services.rate_limit_service import InMemoryRateLimiter
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/carmen", tags=["Email Automation"])
 
-# Every CarmenToken request makes an outbound call to the customer's Carmen before
-# the caller is known to be genuine. Same reason /auth/exchange is limited, same tool.
+# ── Guarding the outbound probe ───────────────────────────────────────────────
+#
+# A CarmenToken request costs us a DB read, a DNS lookup and an outbound HTTP call
+# to the customer's Carmen — all *before* the caller is known to be genuine. That is
+# the whole exposure, and these three keep it cheap:
+#
+#   1. reject anything that cannot be a Carmen token, before any of that happens
+#   2. per-IP limit, then a global ceiling — per-IP alone is the wrong axis for
+#      distributed traffic, and the global one also stops us being used to flood a
+#      customer's own Carmen
+#   3. remember rejected tokens briefly, so replaying one is free after the first
+#
+# None of this stops a volumetric DDoS; that belongs at the network edge. It stops
+# a small amount of junk traffic from costing a large amount of work.
+
 _settings_limiter = InMemoryRateLimiter(max_calls=20, window_seconds=60.0)
+_probe_ceiling = InMemoryRateLimiter(max_calls=300, window_seconds=60.0)
+
+_MAX_TOKEN_LEN = 512
+_REJECTED_TTL = 30.0
+_rejected: dict[str, float] = {}
+
+
+def _token_is_plausible(token: str) -> bool:
+    """Cheap shape check — no I/O, no allocation worth mentioning.
+
+    A Carmen token is `<hash>|<user_uuid>` (see auth.session.extract_user_id_from_token,
+    and the live dev instance issues exactly that). Requiring the separator is enough
+    to drop random junk; the UUID itself is deliberately *not* parsed, because one
+    sample is thin evidence on which to reject a real customer's credential.
+    """
+    return 0 < len(token) <= _MAX_TOKEN_LEN and "|" in token
+
+
+def _rejection_key(token: str, uri: str) -> str:
+    return hashlib.sha256(f"{uri}\x00{token}".encode()).hexdigest()
+
+
+def _recently_rejected(key: str) -> bool:
+    expires = _rejected.get(key)
+    if expires is None:
+        return False
+    if expires < time.monotonic():
+        _rejected.pop(key, None)
+        return False
+    return True
+
+
+def _remember_rejection(key: str) -> None:
+    """Negative results only — never cache a success.
+
+    A token Carmen accepted today may be revoked in a minute, and a stale yes is a
+    security hole. A stale *no* costs nothing: re-authenticating produces a different
+    token, so a real user is never held back by it.
+    """
+    now = time.monotonic()
+    if len(_rejected) > 10_000:  # flood of distinct junk — drop what has expired
+        for k, exp in list(_rejected.items()):
+            if exp < now:
+                del _rejected[k]
+    _rejected[key] = now + _REJECTED_TTL
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -73,9 +134,12 @@ async def _caller(
     rest = rest.strip()
 
     if scheme == "CarmenToken" and rest:
-        # Fire the limiter while the request is still cheap, i.e. before _resolve
-        # turns it into an outbound HTTP call to an arbitrary host.
+        # Order matters: the free check first, then the limiters, and only then does
+        # _resolve spend a DB read and an outbound call on this request.
+        if not _token_is_plausible(rest):
+            raise HTTPException(status_code=401, detail="Malformed Carmen token")
         _settings_limiter.check(request)
+        _probe_ceiling.check(request, key="_global_probe")
         # partition() splits once on purpose: a Carmen token is "<hash>|<uuid>" and
         # the value may itself contain spaces. split() would truncate the credential.
         return Caller(actor=f"user:{extract_user_id_from_token(rest)}", carmen_token=rest)
@@ -104,22 +168,40 @@ async def _resolve(db: AsyncSession, caller: Caller, host: str, bu: str) -> Tena
     propagate unchanged: Carmen's screen needs to tell those two apart.
     """
     tenant = await es.resolve_tenant(db, host, bu)
-    if caller.carmen_token is not None:
-        await _validate_token(caller.carmen_token, _safe_carmen_uri(None, tenant))
+    if caller.carmen_token is None:
+        return tenant
+
+    uri = await _safe_carmen_uri(None, tenant)
+    key = _rejection_key(caller.carmen_token, uri)
+    if _recently_rejected(key):
+        raise HTTPException(
+            status_code=401, detail="Carmen token rejected — please re-login to Carmen"
+        )
+    try:
+        await _validate_token(caller.carmen_token, uri)
+    except HTTPException as exc:
+        if exc.status_code == 401:
+            # Only a definite "no" is remembered. A 502 means we could not ask.
+            _remember_rejection(key)
+        raise
     return tenant
 
 
-def _safe_carmen_uri(uri: str | None, tenant: Tenant) -> str:
+async def _safe_carmen_uri(uri: str | None, tenant: Tenant) -> str:
     """SSRF gate. Every server-side request we make on a caller's behalf goes through it.
 
     `_validate_uri` (routers/auth.py) is the same check `/auth/exchange` already
     applies: https only, ALLOWED_CARMEN_HOSTS allowlist, loopback/private-IP
     rejection including what a hostname resolves to. Its 400 is re-raised as the
     422 field-error shape Carmen's screen already renders inline.
+
+    Run in a thread because that check ends in a blocking `socket.getaddrinfo`: left
+    on the event loop, one hostile or merely slow DNS answer stalls every other
+    request this worker is serving, not just the one that asked for it.
     """
     candidate = (uri or f"https://{tenant.host}").strip()
     try:
-        return _validate_uri(candidate)
+        return await asyncio.to_thread(_validate_uri, candidate)
     except HTTPException as exc:
         raise FieldValidationError(
             [{"field": "carmen_uri", "code": "invalid_uri", "message": str(exc.detail)}]
@@ -168,7 +250,7 @@ async def write_token(
     rejected on the customer's own screen rather than at 3am on a real document.
     """
     tenant = await _resolve(db, caller, payload.host, payload.bu)
-    uri = _safe_carmen_uri(payload.carmen_uri, tenant)
+    uri = await _safe_carmen_uri(payload.carmen_uri, tenant)
     row = await es.set_token(db, tenant, payload.token.get_secret_value(), uri, caller.actor)
     logger.info(
         "[email] Carmen token %s stored for %s/%s by %s",

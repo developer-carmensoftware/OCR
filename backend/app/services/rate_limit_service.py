@@ -11,7 +11,11 @@ logger = logging.getLogger(__name__)
 
 
 class InMemoryRateLimiter:
-    """Per-IP sliding-window rate limiter.
+    """Sliding-window rate limiter, keyed on the client IP by default.
+
+    Pass a fixed `key` to `check()` to make one limiter a *global* ceiling instead:
+    per-IP limits are the wrong axis for distributed traffic, so a path whose cost
+    lands on someone else (an outbound call, a third-party API) usually wants both.
 
     NOTE: per-process only — does not coordinate across replicas.
     Replace with Redis ZADD/ZCOUNT when deploying more than one app instance.
@@ -29,9 +33,9 @@ class InMemoryRateLimiter:
         self._prune_interval = prune_interval
         self._last_prune = 0.0
 
-    def check(self, request: Request) -> None:
+    def check(self, request: Request, key: str | None = None) -> None:
         """Raise HTTP 429 if the caller has exceeded the rate limit."""
-        ip = get_client_ip(request) or "unknown"
+        ip = key or get_client_ip(request) or "unknown"
         now = time.monotonic()
 
         if now - self._last_prune > self._prune_interval:

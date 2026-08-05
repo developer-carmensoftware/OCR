@@ -71,7 +71,7 @@ async def test_caller_keeps_a_carmen_token_that_contains_a_space():
 
 
 @pytest.mark.asyncio
-async def test_caller_rate_limits_the_carmen_token_path():
+async def test_caller_rate_limits_the_carmen_token_path(_fresh_limiters):
     """This path makes an outbound call before the caller is known to be genuine."""
     from app.routers import email_automation as mod
 
@@ -79,6 +79,103 @@ async def test_caller_rate_limits_the_carmen_token_path():
     with pytest.raises(RequestRateLimitExceeded):
         for _ in range(mod._settings_limiter._max + 1):
             await _caller(req, authorization=f"CarmenToken {CARMEN_TOKEN}")
+
+
+# ── Keeping a junk request cheap ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "token",
+    [
+        "garbage",  # no separator — cannot be a Carmen token
+        "x" * 513,  # absurd length, before we allocate anything on it
+    ],
+)
+async def test_implausible_tokens_are_rejected_before_any_work(token):
+    """The cheapest guard: no DB read, no DNS, no outbound call for random junk."""
+    with pytest.raises(HTTPException) as exc:
+        await _caller(_request(ip="198.51.100.20"), authorization=f"CarmenToken {token}")
+    assert exc.value.status_code == 401
+    assert exc.value.detail == "Malformed Carmen token"
+
+
+@pytest.fixture
+def _fresh_limiters():
+    """The limiters are module-level and shared, so a test that fills one has to
+    hand it back empty — otherwise it decides the outcome of whatever runs next."""
+    from app.routers import email_automation as mod
+
+    for limiter in (mod._settings_limiter, mod._probe_ceiling):
+        limiter._calls.clear()
+    yield
+    for limiter in (mod._settings_limiter, mod._probe_ceiling):
+        limiter._calls.clear()
+
+
+@pytest.mark.asyncio
+async def test_a_global_ceiling_limits_probes_regardless_of_source_ip(_fresh_limiters):
+    """Per-IP is the wrong axis for distributed traffic, and the outbound call lands
+    on the customer's Carmen — so there is a ceiling that ignores who is asking."""
+    from app.routers import email_automation as mod
+
+    with pytest.raises(RequestRateLimitExceeded):
+        for i in range(mod._probe_ceiling._max + 1):
+            # A different IP every time: only the global ceiling can stop this.
+            await _caller(
+                _request(ip=f"203.0.113.{i % 256}"), authorization=f"CarmenToken {CARMEN_TOKEN}"
+            )
+
+
+@pytest.mark.asyncio
+async def test_a_rejected_token_is_remembered_so_replaying_it_is_free():
+    from app.routers import email_automation as mod
+
+    mod._rejected.clear()
+    validate = AsyncMock(side_effect=HTTPException(401, "Carmen token rejected"))
+    with (
+        patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=_tenant()),
+        patch.object(mod, "_validate_token", validate),
+    ):
+        for _ in range(5):
+            with pytest.raises(HTTPException):
+                await _resolve(AsyncMock(), Caller("user:x", CARMEN_TOKEN), "h", "b")
+
+    assert validate.await_count == 1, "Carmen should be asked once, not five times"
+
+
+@pytest.mark.asyncio
+async def test_an_unreachable_carmen_is_not_remembered_as_a_rejection():
+    """502 means we could not ask — caching that would turn an outage into a lockout."""
+    from app.routers import email_automation as mod
+
+    mod._rejected.clear()
+    validate = AsyncMock(side_effect=HTTPException(502, "Cannot reach Carmen"))
+    with (
+        patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=_tenant()),
+        patch.object(mod, "_validate_token", validate),
+    ):
+        for _ in range(3):
+            with pytest.raises(HTTPException):
+                await _resolve(AsyncMock(), Caller("user:x", CARMEN_TOKEN), "h", "b")
+
+    assert validate.await_count == 3, "every attempt must reach Carmen again"
+
+
+@pytest.mark.asyncio
+async def test_a_valid_token_is_never_cached():
+    """A token Carmen accepted may be revoked a minute later; a stale yes is a hole."""
+    from app.routers import email_automation as mod
+
+    validate = AsyncMock()
+    with (
+        patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=_tenant()),
+        patch.object(mod, "_validate_token", validate),
+    ):
+        for _ in range(3):
+            await _resolve(AsyncMock(), Caller("user:x", CARMEN_TOKEN), "h", "b")
+
+    assert validate.await_count == 3
 
 
 @pytest.mark.asyncio

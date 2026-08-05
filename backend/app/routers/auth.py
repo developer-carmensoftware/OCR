@@ -11,6 +11,7 @@ Flow:
      need no DB lookup for tenant resolution.
 """
 
+import asyncio
 import ipaddress
 import logging
 import uuid
@@ -40,7 +41,9 @@ from app.services.usage_service import upsert_tenant_quota
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
 
-_VALIDATE_TIMEOUT = 10.0
+# A liveness probe, not a real query: 3s is generous for it, and it caps how long an
+# unauthenticated caller can pin a worker waiting on a host they chose.
+_VALIDATE_TIMEOUT = 3.0
 
 # Brute-force guard on the pre-auth SSO exchange. Now that get_client_ip resolves
 # the real client (trust_proxy), this is genuinely per-client — keep it tight.
@@ -203,7 +206,10 @@ async def exchange_sso_token(request: Request, body: ExchangeRequest):
     if not token or not bu:
         raise HTTPException(status_code=400, detail="token and bu are required")
 
-    carmen_uri = _validate_uri(body.uri)
+    # In a thread: _validate_uri ends in a blocking socket.getaddrinfo, and this
+    # endpoint is unauthenticated by definition — a slow DNS answer left on the event
+    # loop stalls every other request this worker is serving.
+    carmen_uri = await asyncio.to_thread(_validate_uri, body.uri)
     host = urlparse(carmen_uri).hostname or ""
 
     await _validate_token(token, carmen_uri)
