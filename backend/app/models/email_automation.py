@@ -24,7 +24,6 @@ class EmailIngestSettings(Base, TimestampMixin, WriterMixin):
     __tablename__ = "email_ingest_settings"
 
     tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True)
-    ingest_tag = Column(String(32), nullable=False, unique=True)
     enabled = Column(Boolean, nullable=False, default=False)
     tax_ids = Column(_JSON, nullable=False, default=list)
     rules = Column(_JSON, nullable=False, default=list)

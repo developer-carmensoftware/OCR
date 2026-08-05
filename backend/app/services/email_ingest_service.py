@@ -1,9 +1,19 @@
 """Email Automation — poll the ingest mailbox and post what arrives.
 
-    ocr+<tag>@…  ─┬─ tag → tenant (before any LLM call is paid for)
-                  ├─ dedupe on Message-ID
-                  ├─ extract → tax-ID gate → GL mapping
-                  └─ post the JV with that BU's Carmen token
+    one address, every BU  ─┬─ dedupe on (Message-ID, attachment)
+                            ├─ open the file (every enabled BU's passwords)
+                            ├─ extract          ← nobody owns this yet
+                            ├─ tax ID → tenant  ← routing
+                            ├─ entitled? → charge → GL mapping
+                            └─ post the JV with that BU's Carmen token
+
+**The document routes itself.** The BU is identified by the tax ID printed on the
+attachment, not by the address the mail was sent to — a `+tag` address could only
+ever work for auto-forwarded mail, because a manual forward comes from an employee's
+own client and carries no trace of the original recipient. The consequence is that
+extraction happens *before* anyone is known to be responsible for it, so a mail we
+cannot route costs us one LLM call. That is the price of supporting both arrival
+modes with one address, and `summary["unrouted"]` is how we watch it.
 
 Deliberately a plain poll loop driven by an endpoint (see routers/email_automation.py),
 not a worker process: pg_cron already calls endpoints with the internal job token, and
@@ -19,13 +29,13 @@ import asyncio
 import email
 import imaplib
 import logging
-import re
 import uuid
 from datetime import UTC, datetime
 from email.header import decode_header, make_header
 from email.message import Message
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,6 +47,7 @@ from app.exceptions import PdfPasswordRequired, ValidationError
 from app.models.business import CreditCard
 from app.models.email_automation import EmailDocument
 from app.models.identity import Tenant
+from app.models.schemas import ExtractedCreditCardData
 from app.services import email_settings_service as es
 from app.services import gl_suggestion_service as gl
 from app.services import ocr_service
@@ -59,11 +70,6 @@ from app.utils.pdf_utils import ensure_pdf_openable
 logger = logging.getLogger(__name__)
 
 ALLOWED_EXTENSIONS = (".pdf", ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".heic")
-
-# Headers that can still carry the address the mail was *delivered* to. `To:` alone
-# is not enough: an auto-forward rule often rewrites it, while Delivered-To /
-# X-Original-To survive.
-_RECIPIENT_HEADERS = ("Delivered-To", "X-Original-To", "X-Forwarded-To", "To", "Cc")
 
 
 class _Skip(Exception):
@@ -125,9 +131,6 @@ def _fetch_unseen(limit: int) -> list[dict[str, Any]]:
                     "message_id": (msg.get("Message-ID") or f"no-id-{uid}")[:500],
                     "subject": _decode(msg.get("Subject")),
                     "from": _decode(msg.get("From")),
-                    "recipients": [
-                        v for h in _RECIPIENT_HEADERS for v in (msg.get_all(h) or []) if v
-                    ],
                     "attachments": _attachments(msg),
                 }
             )
@@ -143,21 +146,13 @@ def _fetch_unseen(limit: int) -> list[dict[str, Any]]:
 # ── Routing ───────────────────────────────────────────────────────────────────
 
 
-def extract_tag(recipients: list[str], mailbox_address: str) -> str | None:
-    """`ocr+7f3a91@carmensoftware.com` → `7f3a91`, from any recipient header."""
-    user, _, domain = mailbox_address.partition("@")
-    pattern = re.compile(
-        rf"{re.escape(user)}\+([a-zA-Z0-9_-]{{1,32}})@{re.escape(domain)}", re.IGNORECASE
-    )
-    for value in recipients:
-        match = pattern.search(value)
-        if match:
-            return match.group(1).lower()
-    return None
-
-
 def match_rule(rules: list[dict], sender: str, filename: str) -> dict | None:
     """The rule this attachment belongs to, or None (→ generic prompt + auto-detect).
+
+    A rule identifies a **bank**, not a BU — "no-reply@ktc.co.th sends KTC fee
+    invoices" is equally true whoever the document belongs to. So the pool it is
+    matched against is every enabled BU's rules, and the only thing the answer is
+    used for is picking the bank-specific extraction prompt before we know the owner.
 
     Sender match is the fast path for auto-forwarded mail. A manual forward comes
     from an employee, so it falls through to the filename pattern and then to None —
@@ -185,59 +180,26 @@ async def run_ingest(limit: int | None = None) -> dict:
         return {"status": "disabled", "reason": "IMAP not configured"}
 
     messages = await asyncio.to_thread(_fetch_unseen, limit or settings.imap_batch_size)
-    summary = {"messages": len(messages), "posted": 0, "failed": 0, "skipped": 0}
+    summary = {"messages": len(messages), "posted": 0, "failed": 0, "skipped": 0, "unrouted": 0}
+
+    # Read once per poll, not per attachment: the mailbox is shared, so the pool of
+    # bank rules and PDF passwords is the same for every message in it.
+    async with async_session() as db:
+        rules, passwords = await es.ingest_pool(db)
 
     for msg in messages:
-        tag = extract_tag(msg["recipients"], settings.email_ingest_address)
-        if not tag:
-            logger.warning("[email] No ingest tag on message %s — dropped", msg["message_id"])
+        for filename, blob in msg["attachments"]:
+            outcome = await _process_attachment(
+                message_id=msg["message_id"],
+                sender=msg["from"],
+                filename=filename,
+                blob=blob,
+                rules=rules,
+                passwords=passwords,
+            )
+            summary[outcome] = summary.get(outcome, 0) + 1
+        if not msg["attachments"]:
             summary["skipped"] += 1
-            continue
-        async with async_session() as db:
-            row = await es.get_by_tag(db, tag)
-            if row is None or not row.enabled:
-                logger.warning("[email] Tag %s unknown or disabled — dropped", tag)
-                summary["skipped"] += 1
-                continue
-            # A lapsed package does not rewrite settings, so `enabled` stays true
-            # after it expires — the gate has to be here, not only on the toggle.
-            tenant = await db.get(Tenant, row.tenant_id)
-            if tenant is None or not await es.is_entitled(db, tenant):
-                logger.warning("[email] Tenant %s has no active package — dropped", row.tenant_id)
-                summary["skipped"] += 1
-                continue
-            tenant_id = str(row.tenant_id)
-            rules = list(row.rules or [])
-            tax_ids = set(row.tax_ids or [])
-            passwords = es.rule_passwords(row)
-            token, carmen_uri = await es.posting_target(db, row)
-
-        # carmen_service reads the target host from a ContextVar the request
-        # middleware normally fills in. There is no request here, so the job has to
-        # set it itself — without this every post raises and lands in the ledger
-        # under the wrong reason.
-        token_ctx = current_tenant_id.set(tenant_id)
-        uri_ctx = current_carmen_uri.set(carmen_uri)
-        try:
-            for filename, blob in msg["attachments"]:
-                outcome = await _process_attachment(
-                    tenant_id=tenant_id,
-                    message_id=msg["message_id"],
-                    sender=msg["from"],
-                    filename=filename,
-                    blob=blob,
-                    rules=rules,
-                    tax_ids=tax_ids,
-                    passwords=passwords,
-                    carmen_token=token,
-                    carmen_uri=carmen_uri,
-                )
-                summary[outcome] = summary.get(outcome, 0) + 1
-            if not msg["attachments"]:
-                summary["skipped"] += 1
-        finally:
-            current_carmen_uri.reset(uri_ctx)
-            current_tenant_id.reset(token_ctx)
 
     logger.info("[email] Poll finished: %s", summary)
     return summary
@@ -245,22 +207,109 @@ async def run_ingest(limit: int | None = None) -> dict:
 
 async def _process_attachment(
     *,
-    tenant_id: str,
     message_id: str,
     sender: str,
     filename: str,
     blob: bytes,
     rules: list[dict],
-    tax_ids: set[str],
     passwords: list[str],
-    carmen_token: str,
-    carmen_uri: str = "",
 ) -> str:
-    """Extract → verify → post one attachment. Returns 'posted' | 'failed' | 'skipped'."""
+    """Extract → route → post one attachment.
+
+    Returns 'posted' | 'failed' | 'skipped' | 'unrouted'.
+
+    Everything up to routing runs with no tenant: there is no ledger row to write
+    (it needs one) and nothing to charge, so a failure before that point is a log
+    line and a counter. The ledger and the money start once the document has named
+    its owner.
+    """
+    if await _already_seen(message_id, filename):
+        logger.info("[email] Already seen: %s / %s", message_id, filename)
+        return "skipped"
+
+    try:
+        # Before any charge: a locked or corrupt file must not cost anything.
+        password = await _open_or_fail(blob, filename, passwords)
+    except _Skip as skip:
+        logger.warning("[email] %s: %s (%s)", skip.reason_code, skip, filename)
+        return "skipped"
+
+    bank_code = (match_rule(rules, sender, filename) or {}).get("bank_code")
+    try:
+        # ponytail: task_id=None and no tenant in scope, so this call's row in
+        # llm_usage_logs has neither — nobody has been identified yet. Per-BU cost
+        # queries are unaffected (they filter on tenant_id); the org-wide total
+        # gains an unattributed slice. Fix by having log_llm_usage return the row id
+        # and back-filling it after routing, if that slice ever matters.
+        extracted = await ocr_service.extract_stateless(
+            file_bytes=blob,
+            original_filename=filename,
+            bank_code=bank_code,
+            task_id=None,
+            pdf_password=password,
+        )
+    except Exception:
+        logger.exception("[email] Could not extract %s — dropped", filename)
+        return "failed"
+
+    async with async_session() as db:
+        row = await es.resolve_by_tax_ids(db, list(extracted.tax_ids or []))
+        if row is None:
+            # We paid for that extraction and nobody owns it. Deliberate: the
+            # alternative is refusing manual forwards. Watch the counter.
+            logger.warning(
+                "[email] No BU registered for tax IDs %s (%s) — dropped",
+                extracted.tax_ids,
+                filename,
+            )
+            return "unrouted"
+        # A lapsed package does not rewrite settings, so `enabled` stays true after
+        # it expires — the gate has to be here, not only on the toggle.
+        tenant = await db.get(Tenant, row.tenant_id)
+        if tenant is None or not await es.is_entitled(db, tenant):
+            logger.warning("[email] Tenant %s has no active package — dropped", row.tenant_id)
+            return "skipped"
+        tenant_id = str(row.tenant_id)
+        carmen_token, carmen_uri = await es.posting_target(db, row)
+
+    # carmen_service reads the target host from a ContextVar the request middleware
+    # normally fills in, and consume_document/assert_module_enabled read the tenant
+    # from another. There is no request here, so the job sets both itself — and only
+    # now, because until this line there was no tenant to set them to.
+    tenant_ctx = current_tenant_id.set(tenant_id)
+    uri_ctx = current_carmen_uri.set(carmen_uri)
+    try:
+        return await _post_extracted(
+            extracted=extracted,
+            tenant_id=tenant_id,
+            message_id=message_id,
+            filename=filename,
+            bank_code=bank_code,
+            carmen_token=carmen_token,
+            carmen_uri=carmen_uri,
+        )
+    finally:
+        current_carmen_uri.reset(uri_ctx)
+        current_tenant_id.reset(tenant_ctx)
+
+
+async def _post_extracted(
+    *,
+    extracted: ExtractedCreditCardData,
+    tenant_id: str,
+    message_id: str,
+    filename: str,
+    bank_code: str | None,
+    carmen_token: str,
+    carmen_uri: str,
+) -> str:
+    """Charge, record and post a document whose owner is now known."""
     async with async_session() as db:
         ledger = await _claim(db, tenant_id, message_id, filename)
         if ledger is None:
-            logger.info("[email] Already seen: %s / %s", message_id, filename)
+            # `_already_seen` answered before the extraction; this is the atomic
+            # guard against two polls racing on the same attachment.
+            logger.info("[email] Already claimed: %s / %s", message_id, filename)
             return "skipped"
         ledger_id: uuid.UUID = ledger.id  # type: ignore[assignment]
 
@@ -269,14 +318,8 @@ async def _process_attachment(
     # Recorded on failures too: "several BUs failing on the same issuer at once"
     # is the only early warning that a bank changed its form, and it cannot be
     # computed if a failed row forgets which bank the document came from.
-    bank_code: str | None = None
     doc_no: str | None = None
     try:
-        rule = match_rule(rules, sender, filename)
-        bank_code = (rule or {}).get("bank_code")
-
-        # Before any charge: a locked or corrupt file must not cost a credit.
-        password = await _open_or_fail(blob, filename, passwords)
         await assert_module_enabled(Module.CREDIT_CARD_OCR)
         charged = await consume_document()
 
@@ -291,13 +334,6 @@ async def _process_attachment(
             task_id = str(task.id)
 
         try:
-            extracted = await ocr_service.extract_stateless(
-                file_bytes=blob,
-                original_filename=filename,
-                bank_code=bank_code,
-                task_id=task_id,
-                pdf_password=password,
-            )
             extracted = await finalize_extraction(extracted, task_id, tenant_id, bank_code, None)
         except Exception as exc:
             await mark_task_failed(task_id, exc)
@@ -316,11 +352,6 @@ async def _process_attachment(
 
         if extracted.is_duplicate:
             raise _Skip("duplicate_document", f"Document {extracted.doc_no} already submitted")
-
-        # The one check automatic posting cannot recover from (§2.4): a document
-        # belonging to another legal entity must never reach these books.
-        if not tax_ids & set(extracted.tax_ids or []):
-            raise _Skip("tax_id_mismatch", "This document belongs to a different company")
 
         async with async_session() as db:
             config = await get_accounting_config(db, tenant_id)
@@ -507,6 +538,31 @@ async def _open_or_fail(blob: bytes, filename: str, passwords: list[str]) -> str
 
 
 # ── Ledger ────────────────────────────────────────────────────────────────────
+
+
+async def _already_seen(message_id: str, filename: str) -> bool:
+    """Have we handled this (message, attachment) before, under *any* tenant?
+
+    Has to run before extraction now, and cannot name a tenant — that is the whole
+    point, we do not know one yet. Without it a re-delivered mail is re-extracted
+    (and paid for) before `_claim` gets the chance to reject it.
+
+    ponytail: the unique index starts with tenant_id, so this predicate cannot use
+    it and scans instead. `email_documents` holds one row per attachment we have
+    ever looked at, which is small for a long time; add an index on
+    `(message_id, attachment)` when it stops being.
+    """
+    async with async_session() as db:
+        return (
+            await db.scalar(
+                select(EmailDocument.id)
+                .where(
+                    EmailDocument.message_id == message_id,
+                    EmailDocument.attachment == filename[:255],
+                )
+                .limit(1)
+            )
+        ) is not None
 
 
 async def _claim(

@@ -1,6 +1,6 @@
 # Email Automation API
 
-**v1.2 · 2026-08-05** · Base URL `https://{ocr-host}/api/v1/carmen` · schema: `/openapi.json`
+**v2.0 · 2026-08-05** · Base URL `https://{ocr-host}/api/v1/carmen` · schema: `/openapi.json`
 เหตุผลเบื้องหลัง: [CARMEN_INTEGRATION.md](CARMEN_INTEGRATION.md)
 
 ---
@@ -42,7 +42,7 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
   "bu": "hq",
   "enabled": true,
   "entitled": true,                                    // มี package รายเดือนที่ยังไม่หมดอายุ
-  "ingest_address": "ocr+7f3a91@carmensoftware.com",   // null จนกว่าจะ PUT ครั้งแรก
+  "ingest_address": "ocr@carmensoftware.com",          // ค่าเดียวกันทุก BU ไม่มีวันเป็น null
   "tax_ids": ["0105536000127"],
   "rules": [
     {
@@ -68,7 +68,7 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
 |---|---|
 | `not_configured` | ยังไม่เคยตั้งค่า |
 | `not_entitled` | ไม่มี package รายเดือนที่ยังไม่หมดอายุ |
-| `no_tax_id` | ยังไม่ได้ใส่เลขผู้เสียภาษี |
+| `no_tax_id` | ยังไม่ได้ใส่เลขผู้เสียภาษี — **ไม่มีเลข = รับเมลไม่ได้เลย** เพราะเลขนี้คือตัว route (ดู ข้อควรรู้ ข้อ 4) |
 | `no_rule` | ไม่มี rule ที่ `is_active` |
 | `disabled` | `enabled` ยังเป็น false |
 
@@ -164,7 +164,7 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
 | 1 | BU ต้องเคย login เข้า OCR app ก่อน ไม่งั้น `400` ทุก endpoint |
 | 2 | `PUT /settings` ทับทั้งก้อน — ส่ง `tax_ids` + `rules` ครบทุกครั้ง |
 | 3 | `PUT /settings` กับ `PUT /settings/token` ไม่แตะข้อมูลของกันและกัน |
-| 4 | `ingest_address` ไม่มีวันเปลี่ยน — cache ได้ |
+| 4 | **ที่อยู่เดียวทุก BU** — ระบบดูเลขผู้เสียภาษีบนตัวเอกสารว่าเป็นของใคร ไม่ได้ดูที่อยู่ผู้รับ · ค่าคงที่ cache ได้ |
 | 5 | ดูว่าระบบทำงานอยู่ไหม ใช้ `status.ready` ไม่ใช่ `enabled` |
 | 6 | `DELETE /settings/token` ลบแค่สำเนาของเรา ไม่ใช่การเพิกถอน — Carmen ต้องเพิกถอนเอง |
 | 7 | แยก `401` (user ต้อง login ใหม่) กับ `502` (เราเข้าไม่ถึง host ลูกค้า) บนหน้าจอ |

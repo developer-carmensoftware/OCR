@@ -119,7 +119,7 @@ async def test_cross_tenant_tax_id_conflict_raises_conflict_error():
 
 
 @pytest.mark.asyncio
-async def test_new_row_created_with_allocated_tag_and_encrypted_password():
+async def test_new_row_created_with_encrypted_password():
     tid = _valid_tax_id()
     tenant = _tenant()
     db = AsyncMock()
@@ -127,7 +127,6 @@ async def test_new_row_created_with_allocated_tag_and_encrypted_password():
         side_effect=[
             _exec(scalars=[]),  # conflict check — no clash
             _exec(scalar_one_or_none=None),  # get_settings — no existing row
-            _exec(scalar_one_or_none=None),  # _new_tag — first candidate free
         ]
     )
     db.add = MagicMock()
@@ -145,7 +144,6 @@ async def test_new_row_created_with_allocated_tag_and_encrypted_password():
     added = db.add.call_args[0][0]
     assert added is row
     assert row.tenant_id == tenant.id
-    assert row.ingest_tag  # allocated, non-empty
     assert row.enabled is True
     assert row.tax_ids == [tid]
     assert row.rules[0]["bank_code"] == "KTC"
@@ -165,7 +163,6 @@ async def test_existing_row_rules_replace_wholesale_password_kept_or_cleared():
 
     existing = SimpleNamespace(
         tenant_id=tenant.id,
-        ingest_tag="abc123",
         enabled=False,
         tax_ids=[],
         rules=[
@@ -225,9 +222,7 @@ async def test_existing_row_rules_replace_wholesale_password_kept_or_cleared():
 
 
 def _fake_row(**overrides):
-    defaults = dict(
-        tenant_id=uuid4(), ingest_tag="abc123", enabled=True, tax_ids=["1234567890123"], rules=[]
-    )
+    defaults = dict(tenant_id=uuid4(), enabled=True, tax_ids=["1234567890123"], rules=[])
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
 
@@ -245,9 +240,22 @@ def test_to_response_ready_when_enabled_with_tax_id_and_active_rule(monkeypatch)
     monkeypatch.setattr(es.app_settings, "email_ingest_address", "ocr@carmensoftware.com")
     row = _fake_row(rules=[{"bank_code": "KTC", "is_active": True}])
     body = es.to_response(row, "host", "bu")
-    assert body["ingest_address"] == "ocr+abc123@carmensoftware.com"
+    assert body["ingest_address"] == "ocr@carmensoftware.com"
     assert body["status"]["ready"] is True
     assert body["status"]["blockers"] == []
+
+
+def test_the_ingest_address_is_the_same_constant_for_every_bu(monkeypatch):
+    """One mailbox, no per-BU tag — and never null, since there is nothing to allocate.
+
+    Carmen is told it can cache the value; that is only true if an unconfigured BU
+    gets the same string as a configured one.
+    """
+    monkeypatch.setattr(es.app_settings, "email_ingest_address", "ocr@carmensoftware.com")
+    unconfigured = es.to_response(None, "host", "bu")
+    configured = es.to_response(_fake_row(), "host", "bu")
+    assert unconfigured["ingest_address"] == configured["ingest_address"]
+    assert configured["ingest_address"] == "ocr@carmensoftware.com"
 
 
 def test_to_response_blockers_for_disabled_no_tax_id_no_active_rule():

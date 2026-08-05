@@ -1,45 +1,92 @@
+"""Unit tests for routing: which BU a document belongs to, and which rule tells us
+which bank issued it.
+
+Routing is `email_settings_service.resolve_by_tax_ids` — the tax ID printed on the
+document, not the address the mail was sent to. `match_rule` no longer identifies a
+BU at all; it only picks the extraction prompt, so it is matched against every
+enabled BU's rules at once.
 """
-Unit tests for the pure routing helpers in services/email_ingest_service.py:
-`extract_tag` (which recipient header identifies the BU) and `match_rule`
-(which configured rule an attachment belongs to). No DB, no IMAP, no mocks.
-"""
 
-from app.services.email_ingest_service import extract_tag, match_rule
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
-MAILBOX = "ocr@carmensoftware.com"
+import pytest
 
+from app.services import email_settings_service as es
+from app.services.email_ingest_service import match_rule
 
-# ── extract_tag ────────────────────────────────────────────────────────────────
-
-
-def test_extract_tag_from_to_header():
-    assert extract_tag(["ocr+7f3a91@carmensoftware.com"], MAILBOX) == "7f3a91"
+# ── resolve_by_tax_ids ─────────────────────────────────────────────────────────
 
 
-def test_extract_tag_from_delivered_to_when_to_was_rewritten_by_forward():
-    # An auto-forward rule often rewrites To: to the forwarding rule's own address —
-    # Delivered-To / X-Original-To are what actually saw the +tag.
-    recipients = ["someone@hotelgroup.com", "ocr+abc123@carmensoftware.com"]
-    assert extract_tag(recipients, MAILBOX) == "abc123"
+def _row(tenant, tax_ids, rules=(), enabled=True):
+    return SimpleNamespace(
+        tenant_id=tenant, tax_ids=list(tax_ids), rules=list(rules), enabled=enabled
+    )
 
 
-def test_extract_tag_is_case_insensitive_and_lowercases_result():
-    assert extract_tag(["OCR+ABC123@CARMENSOFTWARE.COM"], MAILBOX) == "abc123"
+def _db(rows):
+    """A db whose one SELECT (enabled settings rows) answers with `rows`."""
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = list(rows)
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=result)
+    return db
 
 
-def test_extract_tag_missing_returns_none():
-    assert extract_tag(["someone@hotelgroup.com"], MAILBOX) is None
+@pytest.mark.asyncio
+async def test_resolves_the_bu_whose_tax_id_is_on_the_document():
+    a, b = _row("bu-a", ["0105536000127"]), _row("bu-b", ["0994000165676"])
+    row = await es.resolve_by_tax_ids(_db([a, b]), ["0994000165676"])
+    assert row is b
 
 
-def test_extract_tag_empty_recipients_returns_none():
-    assert extract_tag([], MAILBOX) is None
+@pytest.mark.asyncio
+async def test_any_one_of_several_printed_tax_ids_is_enough():
+    """A document can carry the bank's tax ID as well as the hotel's."""
+    a = _row("bu-a", ["0105536000127"])
+    row = await es.resolve_by_tax_ids(_db([a]), ["0107537000521", "0105536000127"])
+    assert row is a
 
 
-def test_extract_tag_ignores_a_lookalike_address_on_a_different_domain():
-    assert extract_tag(["ocr+abc123@not-carmensoftware.com"], MAILBOX) is None
+@pytest.mark.asyncio
+async def test_an_unknown_tax_id_routes_nowhere():
+    a = _row("bu-a", ["0105536000127"])
+    assert await es.resolve_by_tax_ids(_db([a]), ["9999999999999"]) is None
 
 
-# ── match_rule ─────────────────────────────────────────────────────────────────
+@pytest.mark.asyncio
+async def test_a_document_with_no_tax_id_routes_nowhere():
+    """Not a fallback case: with no number there is nothing to route on."""
+    a = _row("bu-a", ["0105536000127"])
+    assert await es.resolve_by_tax_ids(_db([a]), []) is None
+    assert await es.resolve_by_tax_ids(_db([a]), ["", "  "]) is None
+
+
+@pytest.mark.asyncio
+async def test_a_disabled_bu_is_never_selected():
+    """The query only ever asks for enabled rows — a switched-off BU cannot be routed to."""
+    db = _db([])
+    assert await es.resolve_by_tax_ids(db, ["0105536000127"]) is None
+    assert "enabled" in str(db.execute.await_args.args[0])
+
+
+# ── ingest_pool ────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_pool_gathers_rules_and_passwords_across_every_enabled_bu(monkeypatch):
+    """The mailbox is shared, so a file may need any BU's password and any BU's rule."""
+    monkeypatch.setattr(es, "rule_passwords", lambda row: row.tax_ids)  # stand-in secrets
+    a = _row("bu-a", ["pw-a"], rules=[{"bank_code": "KTC"}])
+    b = _row("bu-b", ["pw-b", "pw-a"], rules=[{"bank_code": "GHL"}])
+
+    rules, passwords = await es.ingest_pool(_db([a, b]))
+
+    assert [r["bank_code"] for r in rules] == ["KTC", "GHL"]
+    assert passwords == ["pw-a", "pw-b"]  # deduped, order preserved
+
+
+# ── match_rule — a bank hint, never a BU ───────────────────────────────────────
 
 RULES = [
     {

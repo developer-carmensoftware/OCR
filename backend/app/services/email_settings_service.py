@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import secrets
 from datetime import UTC, datetime
 from typing import Any
 
@@ -47,7 +46,7 @@ def is_valid_thai_tax_id(value: str) -> bool:
     return int(value[12]) == (11 - checksum % 11) % 10
 
 
-# ── Tenant / tag ──────────────────────────────────────────────────────────────
+# ── Tenant / routing ──────────────────────────────────────────────────────────
 
 
 async def resolve_tenant(db: AsyncSession, host: str, bu: str) -> Tenant:
@@ -66,21 +65,57 @@ async def resolve_tenant(db: AsyncSession, host: str, bu: str) -> Tenant:
     return row
 
 
-def ingest_address(tag: str) -> str:
-    """`ocr+<tag>@domain` — subaddressing, so one mailbox serves every tenant."""
-    user, _, domain = app_settings.email_ingest_address.partition("@")
-    return f"{user}+{tag}@{domain}"
+async def resolve_by_tax_ids(db: AsyncSession, tax_ids: list[str]) -> EmailIngestSettings | None:
+    """The BU a document belongs to, from the tax IDs printed on it.
+
+    This is routing, not a check. A tax ID belongs to exactly one BU system-wide —
+    that is what the `409` on write buys us — so the number on the document is a
+    routing key, and it is the only one that works for a manually forwarded mail
+    (which carries no trace of who originally received it).
+
+    ponytail: scans the enabled rows and intersects in Python. The table has one
+    row per BU using the feature; when that stops being a handful, make it a JSONB
+    containment query with a GIN index on `tax_ids`.
+    """
+    wanted = {t.strip() for t in tax_ids if t and t.strip()}
+    if not wanted:
+        return None
+    for row in await _enabled_rows(db):
+        if wanted & set(row.tax_ids or []):
+            return row
+    return None
 
 
-async def _new_tag(db: AsyncSession) -> str:
-    for _ in range(5):
-        tag = secrets.token_hex(4)
-        taken = await db.execute(
-            select(EmailIngestSettings.tenant_id).where(EmailIngestSettings.ingest_tag == tag)
-        )
-        if taken.scalar_one_or_none() is None:
-            return tag
-    raise ConflictError("Could not allocate an ingest tag")
+async def ingest_pool(db: AsyncSession) -> tuple[list[dict], list[str]]:
+    """(rules, pdf passwords) of every enabled BU, pooled — read once per poll.
+
+    Pooling is safe because a rule identifies a **bank**, never a BU: the sender
+    address and filename pattern say "this is a KTC fee invoice", which is equally
+    true whoever it belongs to. It buys the bank-specific extraction prompt back
+    for a document whose owner is not known until after it has been read.
+
+    The passwords are pooled for the same reason and are the customers' own; a file
+    still only opens with its own owner's password (§2.3).
+    """
+    rules: list[dict] = []
+    passwords: list[str] = []
+    for row in await _enabled_rows(db):
+        rules.extend(row.rules or [])
+        passwords.extend(p for p in rule_passwords(row) if p not in passwords)
+    return rules, passwords
+
+
+async def _enabled_rows(db: AsyncSession) -> list[EmailIngestSettings]:
+    return list(
+        (await db.execute(select(EmailIngestSettings).where(EmailIngestSettings.enabled.is_(True))))
+        .scalars()
+        .all()
+    )
+
+
+def ingest_address() -> str:
+    """One mailbox, one address, every BU. There is nothing per-tenant to allocate."""
+    return app_settings.email_ingest_address
 
 
 # ── Read / write ──────────────────────────────────────────────────────────────
@@ -94,12 +129,6 @@ async def get_settings(db: AsyncSession, tenant: Tenant) -> EmailIngestSettings 
     ).scalar_one_or_none()
 
 
-async def get_by_tag(db: AsyncSession, tag: str) -> EmailIngestSettings | None:
-    return (
-        await db.execute(select(EmailIngestSettings).where(EmailIngestSettings.ingest_tag == tag))
-    ).scalar_one_or_none()
-
-
 def to_response(row: EmailIngestSettings | None, host: str, bu: str) -> dict:
     """Contract §2.2 shape. Secrets become booleans; nothing sensitive is echoed."""
     if row is None:
@@ -107,7 +136,8 @@ def to_response(row: EmailIngestSettings | None, host: str, bu: str) -> dict:
             "host": host,
             "bu": bu,
             "enabled": False,
-            "ingest_address": None,
+            # Not null even before the first PUT — there is nothing to allocate.
+            "ingest_address": ingest_address(),
             "tax_ids": [],
             "rules": [],
             "status": {"ready": False, "blockers": ["not_configured"]},
@@ -124,7 +154,7 @@ def to_response(row: EmailIngestSettings | None, host: str, bu: str) -> dict:
         "host": host,
         "bu": bu,
         "enabled": bool(row.enabled),
-        "ingest_address": ingest_address(str(row.ingest_tag)),
+        "ingest_address": ingest_address(),
         "tax_ids": list(row.tax_ids or []),
         "rules": [
             {
@@ -256,7 +286,7 @@ async def save_settings(db: AsyncSession, tenant: Tenant, payload: Any) -> Email
 
     row = await get_settings(db, tenant)
     if row is None:
-        row = EmailIngestSettings(tenant_id=tenant.id, ingest_tag=await _new_tag(db))
+        row = EmailIngestSettings(tenant_id=tenant.id)
         db.add(row)
 
     existing = {(r.get("bank_code") or ""): r for r in (row.rules or [])}
@@ -390,7 +420,7 @@ async def set_token(
 
     row = await get_settings(db, tenant)
     if row is None:
-        row = EmailIngestSettings(tenant_id=tenant.id, ingest_tag=await _new_tag(db))
+        row = EmailIngestSettings(tenant_id=tenant.id)
         db.add(row)
     row.carmen_token_enc = encrypt_carmen_token(token, app_settings.session_encryption_key)
     row.carmen_uri = carmen_uri

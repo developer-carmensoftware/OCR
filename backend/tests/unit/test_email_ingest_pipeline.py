@@ -161,27 +161,27 @@ async def _run(
     fake_db,
     *,
     filename="statement.jpg",
-    tax_ids=None,
-    rules=None,
+    message_id="<msg-1@bank.co.th>",
     carmen_token="dev-tok",
     carmen_uri="https://hotel.carmenwork.com",
     **patch_kwargs,
 ):
-    """Runs _process_attachment and returns (outcome, patches) so callers can
-    assert on refund_document/consume_document calls, not just the outcome string."""
+    """Runs `_post_extracted` — everything from the ledger claim onwards, i.e. the
+    half of the pipeline that runs once the document has named its owner.
+
+    Returns (outcome, patches) so callers can assert on refund_document /
+    consume_document calls, not just the outcome string.
+    """
     with (
         patch.object(ingest, "async_session", _session_factory(fake_db)),
         _Patches(**patch_kwargs) as p,
     ):
-        outcome = await ingest._process_attachment(
+        outcome = await ingest._post_extracted(
+            extracted=p.extracted,
             tenant_id=TENANT_ID,
-            message_id="<msg-1@bank.co.th>",
-            sender="no-reply@ktc.co.th",
+            message_id=message_id,
             filename=filename,
-            blob=b"fake-image-bytes",
-            rules=rules or [],
-            tax_ids=tax_ids if tax_ids is not None else {"1234567890123"},
-            passwords=[],
+            bank_code=None,
             carmen_token=carmen_token,
             carmen_uri=carmen_uri,
         )
@@ -263,22 +263,6 @@ async def test_already_submitted_document_never_reaches_carmen():
 
 
 @pytest.mark.asyncio
-async def test_tax_id_mismatch_fails_and_refunds():
-    db = _FakeDB()
-    outcome, p = await _run(
-        db,
-        extracted=_extracted(tax_ids=["9999999999999"]),  # not the BU's registered id
-        config=_config(),
-        carmen_result={"Code": 0},
-        tax_ids={"1234567890123"},
-    )
-    assert outcome == "failed"
-    assert db.added[0].reason_code == "tax_id_mismatch"
-    assert db.added[0].status == "failed"
-    p.refund_document.assert_awaited_once()
-
-
-@pytest.mark.asyncio
 async def test_unmapped_bu_gets_ai_mappings_posts_and_saves_them():
     """A BU that never opened the mapping page must still post its first document.
 
@@ -350,26 +334,13 @@ async def test_duplicate_document_fails_and_refunds():
 @pytest.mark.asyncio
 async def test_carmen_declines_jv_fails_but_does_not_refund():
     db = _FakeDB()
-    with (
-        patch.object(ingest, "async_session", _session_factory(db)),
-        _Patches(
-            extracted=_extracted(),
-            config=_config(),
-            carmen_result={"Code": 1, "UserMessage": "Insufficient balance"},
-        ) as p,
-    ):
-        outcome = await ingest._process_attachment(
-            tenant_id=TENANT_ID,
-            message_id="<msg-2@bank.co.th>",
-            sender="no-reply@ktc.co.th",
-            filename="statement.jpg",
-            blob=b"fake",
-            rules=[],
-            tax_ids={"1234567890123"},
-            passwords=[],
-            carmen_token="dev-tok",
-            carmen_uri="https://hotel.carmenwork.com",
-        )
+    outcome, p = await _run(
+        db,
+        message_id="<msg-2@bank.co.th>",
+        extracted=_extracted(),
+        config=_config(),
+        carmen_result={"Code": 1, "UserMessage": "Insufficient balance"},
+    )
     assert outcome == "failed"
     assert db.added[0].reason_code == "carmen_rejected"
     p.refund_document.assert_not_called()  # extraction was fine — Carmen just declined
@@ -378,87 +349,133 @@ async def test_carmen_declines_jv_fails_but_does_not_refund():
 @pytest.mark.asyncio
 async def test_carmen_transport_failure_fails_but_does_not_refund():
     db = _FakeDB()
-    with (
-        patch.object(ingest, "async_session", _session_factory(db)),
-        _Patches(
-            extracted=_extracted(),
-            config=_config(),
-            carmen_result=None,
-            carmen_side_effect=CarmenAPIError(503, "upstream timeout"),
-        ) as p,
-    ):
-        outcome = await ingest._process_attachment(
-            tenant_id=TENANT_ID,
-            message_id="<msg-3@bank.co.th>",
-            sender="no-reply@ktc.co.th",
-            filename="statement.jpg",
-            blob=b"fake",
-            rules=[],
-            tax_ids={"1234567890123"},
-            passwords=[],
-            carmen_token="dev-tok",
-            carmen_uri="https://hotel.carmenwork.com",
-        )
+    outcome, p = await _run(
+        db,
+        message_id="<msg-3@bank.co.th>",
+        extracted=_extracted(),
+        config=_config(),
+        carmen_result=None,
+        carmen_side_effect=CarmenAPIError(503, "upstream timeout"),
+    )
     assert outcome == "failed"
     assert db.added[0].reason_code == "carmen_rejected"
     p.refund_document.assert_not_called()  # fate unknown — never auto-refund a maybe-posted JV
 
 
-# ── run_ingest gate: a lapsed package must stop ingestion ─────────────────────
+# ── Routing: the document names its own owner ─────────────────────────────────
 
 
-def _one_message():
-    return [
-        {
-            "message_id": "<msg-lapsed@bank.co.th>",
-            "subject": "statement",
-            "from": "no-reply@ktc.co.th",
-            "recipients": ["ocr+abc123@carmensoftware.com"],
-            "attachments": [("statement.jpg", b"fake")],
-        }
-    ]
-
-
-async def _run_ingest_with(*, entitled: bool):
-    """One poll for a configured, enabled BU whose package may or may not be live."""
-    settings_row = MagicMock(tenant_id=uuid4(), enabled=True, rules=[], tax_ids=[])
+async def _route(*, resolved, entitled=True, seen=False, extracted=None):
+    """Runs `_process_attachment` up to (and not into) the posting half."""
     db = AsyncMock()
-    db.get = AsyncMock(return_value=MagicMock())  # tenant exists
-
-    process = AsyncMock(return_value="posted")
+    db.get = AsyncMock(return_value=MagicMock())  # tenant row exists
+    post = AsyncMock(return_value="posted")
+    extract = AsyncMock(return_value=extracted if extracted is not None else _extracted())
     with (
-        patch.object(ingest.settings, "imap_host", "imap.example.com"),
-        patch.object(ingest.settings, "email_ingest_address", "ocr@carmensoftware.com"),
-        patch.object(ingest, "_fetch_unseen", lambda limit: _one_message()),
         patch.object(ingest, "async_session", _session_factory(db)),
-        patch.object(ingest.es, "get_by_tag", AsyncMock(return_value=settings_row)),
+        patch.object(ingest, "_already_seen", AsyncMock(return_value=seen)),
+        patch.object(ingest, "_open_or_fail", AsyncMock(return_value=None)),
+        patch.object(ingest.ocr_service, "extract_stateless", extract),
+        patch.object(ingest.es, "resolve_by_tax_ids", AsyncMock(return_value=resolved)),
         patch.object(ingest.es, "is_entitled", AsyncMock(return_value=entitled)),
-        patch.object(ingest.es, "rule_passwords", MagicMock(return_value=[])),
         patch.object(ingest.es, "posting_target", AsyncMock(return_value=("tok", "https://h"))),
-        patch.object(ingest, "_process_attachment", process),
+        patch.object(ingest, "_post_extracted", post),
     ):
-        summary = await ingest.run_ingest(limit=5)
-    return summary, process
+        outcome = await ingest._process_attachment(
+            message_id="<msg-route@bank.co.th>",
+            sender="no-reply@ktc.co.th",
+            filename="statement.jpg",
+            blob=b"fake",
+            rules=[],
+            passwords=[],
+        )
+    return outcome, extract, post
 
 
 @pytest.mark.asyncio
-async def test_lapsed_package_skips_the_message_without_extracting_it():
+async def test_the_tax_id_on_the_document_picks_the_bu():
+    outcome, _, post = await _route(resolved=MagicMock(tenant_id=uuid4()))
+    assert outcome == "posted"
+    assert post.await_args.kwargs["tenant_id"]
+
+
+@pytest.mark.asyncio
+async def test_a_document_belonging_to_nobody_is_dropped_without_charging_anyone():
+    """We paid for the extraction; that is the accepted price of one shared address.
+
+    What must not happen is a stranger's document costing a *customer* anything —
+    no ledger row, no credit, no JV.
+    """
+    outcome, _, post = await _route(resolved=None)
+    assert outcome == "unrouted"
+    post.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_lapsed_package_stops_the_document_after_routing():
     """Settings are not rewritten when a subscription ends, so `enabled` stays true.
 
     The gate has to be here as well as on the toggle, or a customer keeps ingesting
-    (and paying us nothing) after their package lapses.
+    after their package lapses.
     """
-    summary, process = await _run_ingest_with(entitled=False)
-    assert summary["skipped"] == 1
-    assert summary["posted"] == 0
-    process.assert_not_awaited()  # no LLM call, no credit spent
+    outcome, _, post = await _route(resolved=MagicMock(tenant_id=uuid4()), entitled=False)
+    assert outcome == "skipped"
+    post.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_active_package_lets_the_message_through():
-    summary, process = await _run_ingest_with(entitled=True)
-    assert summary["posted"] == 1
-    process.assert_awaited_once()
+async def test_a_message_seen_before_is_never_extracted_again():
+    """Dedupe moved ahead of extraction — otherwise a redelivery costs an LLM call."""
+    outcome, extract, post = await _route(resolved=MagicMock(tenant_id=uuid4()), seen=True)
+    assert outcome == "skipped"
+    extract.assert_not_awaited()
+    post.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_document_is_extracted_exactly_once():
+    """Routing needs the content, so extraction runs before the owner is known —
+    and must not be repeated once it is."""
+    _, extract, post = await _route(resolved=MagicMock(tenant_id=uuid4()))
+    extract.assert_awaited_once()
+    # the posting half receives the already-extracted document, not the bytes
+    assert "blob" not in post.await_args.kwargs
+    assert post.await_args.kwargs["extracted"] is extract.return_value
+
+
+# ── run_ingest ────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_run_ingest_reads_the_rule_and_password_pool_once_per_poll():
+    messages = [
+        {
+            "message_id": "<msg-a@bank.co.th>",
+            "subject": "statement",
+            "from": "no-reply@ktc.co.th",
+            "attachments": [("a.jpg", b"fake"), ("b.jpg", b"fake")],
+        },
+        {
+            "message_id": "<msg-b@bank.co.th>",
+            "subject": "no attachment",
+            "from": "someone@hotelgroup.com",
+            "attachments": [],
+        },
+    ]
+    pool = AsyncMock(return_value=([{"bank_code": "KTC"}], ["pw"]))
+    process = AsyncMock(side_effect=["posted", "unrouted"])
+    with (
+        patch.object(ingest.settings, "imap_host", "imap.example.com"),
+        patch.object(ingest, "_fetch_unseen", lambda limit: messages),
+        patch.object(ingest, "async_session", _session_factory(AsyncMock())),
+        patch.object(ingest.es, "ingest_pool", pool),
+        patch.object(ingest, "_process_attachment", process),
+    ):
+        summary = await ingest.run_ingest(limit=5)
+
+    pool.assert_awaited_once()  # not once per attachment
+    assert summary == {"messages": 2, "posted": 1, "failed": 0, "skipped": 1, "unrouted": 1}
+    assert process.await_args.kwargs["passwords"] == ["pw"]
 
 
 # ── Ledger dedupe (_claim in isolation) ────────────────────────────────────────
