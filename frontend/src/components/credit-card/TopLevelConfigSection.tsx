@@ -1,4 +1,5 @@
 import { BANKS } from '../../constants'
+import { BANK_CODE_MAP } from '../../constants/banks'
 import type { BankDisplayName } from '../../types/api'
 
 interface Props {
@@ -9,6 +10,8 @@ interface Props {
   fileSource: string
   description: string
   setDescription: (v: string) => void
+  bankDescriptions: Record<string, string>
+  setBankDescriptions: (v: Record<string, string>) => void
 }
 
 export default function TopLevelConfigSection({
@@ -19,7 +22,11 @@ export default function TopLevelConfigSection({
   fileSource,
   description,
   setDescription,
+  bankDescriptions,
+  setBankDescriptions,
 }: Props) {
+  const bankCode = bank ? BANK_CODE_MAP[bank] : ''
+  const bankDescription = (bankCode && bankDescriptions[bankCode]) || ''
   return (
     <div className="section">
       <div className="form-grid">
@@ -108,7 +115,15 @@ export default function TopLevelConfigSection({
           </small>
         </div>
 
-        <label htmlFor="description">Description</label>
+        <label htmlFor="description">
+          Description
+          <span
+            className="gl-help-tip"
+            title="Used on the journal voucher and the input-tax record for every bank that has no wording of its own."
+          >
+            ?
+          </span>
+        </label>
         <input
           id="description"
           type="text"
@@ -117,6 +132,40 @@ export default function TopLevelConfigSection({
           value={description}
           onChange={e => setDescription(e.target.value)}
         />
+
+        {/* Only meaningful once a bank is chosen — there is nothing to key it on
+            otherwise, and an input that silently discards what you type is worse
+            than one that is not there. */}
+        {bankCode && (
+          <>
+            <label htmlFor="bankDescription">
+              Description for {bankCode}
+              <span
+                className="gl-help-tip"
+                title={`Overrides Description for ${bankCode} documents only. Leave empty to use the Description above.`}
+              >
+                ?
+              </span>
+            </label>
+            <div>
+              <input
+                id="bankDescription"
+                type="text"
+                aria-label={`Description for ${bankCode}`}
+                placeholder={description || 'Additional details'}
+                value={bankDescription}
+                onChange={e =>
+                  setBankDescriptions({ ...bankDescriptions, [bankCode]: e.target.value })
+                }
+              />
+              <small style={{ display: 'block', marginTop: 2, color: 'var(--text-3)' }}>
+                {bankDescription
+                  ? `Only ${bankCode} documents use this`
+                  : 'Empty — falls back to Description'}
+              </small>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )

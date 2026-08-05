@@ -138,6 +138,8 @@ export interface AccountingConfigRequest {
   branch: string | null
   mappings: Record<string, FieldMapping> | null
   custom_types: string[] | null
+  /** bank_code -> description. Omit entirely to keep what the server has stored. */
+  bank_descriptions?: Record<string, string>
 }
 
 export interface AccountingConfigResponse {
@@ -148,6 +150,7 @@ export interface AccountingConfigResponse {
   branch: string | null
   mappings: Record<string, FieldMapping>
   custom_types: string[]
+  bank_descriptions?: Record<string, string>
 }
 
 // ── Shared / Utility ──────────────────────────────────────────────

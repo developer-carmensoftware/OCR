@@ -15,6 +15,9 @@ export interface BankConfigHook {
   setFileSource: React.Dispatch<React.SetStateAction<string>>
   description: string
   setDescription: React.Dispatch<React.SetStateAction<string>>
+  /** bank_code -> description, for a BU whose banks should not all read alike. */
+  bankDescriptions: Record<string, string>
+  setBankDescriptions: React.Dispatch<React.SetStateAction<Record<string, string>>>
   company: CompanyData
   setCompany: React.Dispatch<React.SetStateAction<CompanyData>>
   configLoading: boolean
@@ -30,6 +33,7 @@ export function useBankConfig(): BankConfigHook {
   const [filePrefix, setFilePrefix] = useState('IC')
   const [fileSource, setFileSource] = useState('')
   const [description, setDescription] = useState('')
+  const [bankDescriptions, setBankDescriptions] = useState<Record<string, string>>({})
   const [company, setCompany] = useState<CompanyData>({
     name: '',
     taxId: '',
@@ -67,6 +71,11 @@ export function useBankConfig(): BankConfigHook {
       setFilePrefix(normalized.finalPrefix)
       setFileSource(normalized.finalSource)
       setDescription((source.description as string) || '')
+      setBankDescriptions(
+        (source.bank_descriptions as Record<string, string>) ??
+          (source.bankDescriptions as Record<string, string>) ??
+          {}
+      )
       setCompany({
         ...normalized.companyData,
         branch: normalized.companyData.branch || ocrBranch,
@@ -131,6 +140,8 @@ export function useBankConfig(): BankConfigHook {
     setFileSource,
     description,
     setDescription,
+    bankDescriptions,
+    setBankDescriptions,
     company,
     setCompany,
     configLoading,

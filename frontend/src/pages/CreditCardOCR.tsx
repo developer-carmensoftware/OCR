@@ -216,6 +216,7 @@ export default function CreditCardOCR() {
               <InputTaxReconciliation
                 details={details}
                 headerData={headerData as Record<string, string>}
+                bank={bank}
                 onBack={() => setStep(3)}
                 onFinish={resetAll}
               />
