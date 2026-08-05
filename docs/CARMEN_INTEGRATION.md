@@ -1,9 +1,9 @@
 # Carmen ↔ OCR — Email Automation Integration Contract
 
-> **Status: agreed on the posting credential (§2.1, §2.6, §4); the rest is for review.**
-> Sections still marked **OPEN** need a decision before we can finalise them. Everything
-> else is settled on our side and will not change without notice here.
-> §5 is the short list of what we need from Carmen.
+> **Status: Part A (§1–§2) is settled, built and live-tested. Part B (§3, webhooks) is
+> still a proposal and nothing in it has been built.**
+> Everything in Part A will not change without notice here. §5 is the short list of what we
+> still need from Carmen — none of it blocks the settings API, which works today.
 >
 > Companion documents: [EMAIL_FLOW.md](EMAIL_FLOW.md) (the v1 pilot design, now superseded),
 > [Security_Trust_Overview.md](Security_Trust_Overview.md).
@@ -159,7 +159,7 @@ GET /api/v1/carmen/settings?host=hotelgroup.carmenwork.com&bu=hq
   "bu": "hq",
   "enabled": true,
   "entitled": true,                       // active monthly package — see §3.3
-  "ingest_address": "…",                  // OPEN — see §2.5
+  "ingest_address": "ocr+7f3a91@carmensoftware.com",   // display it; see §2.5
   "tax_ids": ["0105536000127"],
   "rules": [
     {
@@ -250,26 +250,33 @@ Carmen is notified.
 > **Request to the Carmen team:** confirm which field in Carmen's company/BU master
 > holds the tax ID (and branch, if separate), so we can agree the mapping.
 
-### 2.5 The forwarding address — **OPEN (tied to a decision on our side)**
+### 2.5 The forwarding address — **settled: a unique address per BU**
 
-Where the customer forwards their bank mail depends on a transport decision we are still
-making. Either way Carmen's screen only has to **display a string we return** in
-`ingest_address` and tell the user to forward to it — the field exists in the contract
-now so Carmen's UI does not change later.
+`GET /settings` returns `ingest_address`. Carmen's screen **displays that string** and tells
+the customer to forward their bank mail to it. That is the entire integration for this
+section — no action needed from Carmen beyond showing the value.
 
-| Model | What `ingest_address` contains |
-|---|---|
-| Per-BU alias *(preferred)* | a unique address we generate, e.g. `ingest-7f3a91@…` — nothing to type, nothing to verify, and one BU cannot receive another's mail |
-| Shared mailbox | one address shared by all customers; the BU is identified from the original recipient header, so the customer's own receiving address must also be registered |
+```text
+ocr+7f3a91@carmensoftware.com
+        └── unique per BU, allocated by us on the first write
+```
 
-**Supporting manual forwarding effectively decides this.** A mail forwarded by hand arrives
-from an employee's own address and carries no trace of who originally received it, so the
-address it was *sent to* is the only thing left that identifies the BU. With a shared
-mailbox we would have to register every employee who might forward something — exactly the
-kind of setup step this design is trying to remove.
+Implemented as plus-addressing on one mailbox, which matters for two reasons worth knowing:
 
-We will confirm before implementation. **No action needed from Carmen** beyond displaying
-the returned value.
+- **The tag identifies the BU before any LLM call is paid for**, so quota checks, per-tenant
+  limits and junk mail are all handled at the front door rather than after we have paid for
+  an extraction.
+- **A separate mailbox per customer would not have scaled.** Our mail admin creates those by
+  hand against a cap of roughly 30; plus-addressing has no cap and needs no administration —
+  the same reasoning that removed the API key in §2.1.
+
+The alternative — one shared address, with the BU identified from the original recipient
+header — was rejected because it cannot support **manual forwarding**. A mail forwarded by
+hand comes from an employee's own address and carries no trace of who originally received
+it, so every employee who might forward something would have to be registered first.
+
+The address is `null` until the BU's first `PUT` (the tag is allocated with the row), so read
+it from the response you already get back rather than calling `GET` again.
 
 ### 2.6 The posting credential
 
