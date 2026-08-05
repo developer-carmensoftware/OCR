@@ -144,7 +144,7 @@ our inability to reach their host is the confusing case worth avoiding.
 `Bearer <admin jwt>` is also accepted; that path is ours, for operators fixing a customer's
 settings without asking them for a token.
 
-> Nothing needs to be exchanged out-of-band any more. The webhook secret in §3.5 is now the
+> Nothing needs to be exchanged out-of-band any more. The webhook secret in §3.4 is now the
 > only shared secret in this integration.
 
 ### 2.2 Read current settings
@@ -158,7 +158,7 @@ GET /api/v1/carmen/settings?host=hotelgroup.carmenwork.com&bu=hq
   "host": "hotelgroup.carmenwork.com",
   "bu": "hq",
   "enabled": true,
-  "entitled": true,                       // active monthly package — see §3.3
+  "entitled": true,                       // active monthly package — authoritative
   "ingest_address": "ocr+7f3a91@carmensoftware.com",   // display it; see §2.5
   "tax_ids": ["0105536000127"],
   "rules": [
@@ -375,7 +375,7 @@ Every event is a `POST` with the same envelope:
 ```jsonc
 {
   "id": "evt_01J8…",                       // unique per event — use it to dedupe
-  "type": "subscription.activated",
+  "type": "notification.created",
   "occurred_at": "2026-07-31T03:15:00Z",   // UTC, ISO-8601
   "tenant": { "host": "hotelgroup.carmenwork.com", "bu": "hq" },
   "data": { }                              // per-event, see below
@@ -402,8 +402,8 @@ JSON parsing) and compare in constant time; reject if `X-OCR-Timestamp` is more 
 - Success = any `2xx`, returned within **10 seconds**. Anything else is a retry.
 - Retries use exponential backoff over roughly 24 hours; after that the event is parked
   as undeliverable and raises an alert on our side. We can replay parked events on request.
-- Ordering is **not** guaranteed. Use `occurred_at` when order matters (e.g. an
-  `activated` arriving after a `lapsed` for the same BU).
+- Ordering is **not** guaranteed. Use `occurred_at` when order matters (e.g. a
+  `document.failed` retry arriving after the `document.posted` for the same document).
 - One endpoint URL per Carmen host is enough; tell us if you would rather have one URL
   per event type.
 
@@ -430,49 +430,18 @@ notifications endpoint to fetch the full list.
 
 Current `notification_type` values: `order_created`, `order_paid`, `order_rejected`,
 `order_expired`, `credits_low`, plus the document events introduced by this feature
-(§3.4). We will add to this list over time — **treat an unknown type as "something
+(§3.3). We will add to this list over time — **treat an unknown type as "something
 happened", not as an error.**
 
-### 3.3 `subscription.activated` / `subscription.lapsed`
+> **There is no `subscription.*` event, deliberately.** Whether a BU may switch Email
+> Automation on is `entitled` in `GET /settings` (§2.2), which Carmen already reads every
+> time the settings screen opens — and which this document already declares authoritative
+> over any webhook. An event that can only ever agree with a field Carmen is about to read
+> is a second source of truth to keep in sync for no gain. The write path enforces it
+> anyway: enabling without a live package is `422 not_entitled`, and a package that lapses
+> mid-month stops the ingest loop rather than only the switch.
 
-This is what tells Carmen whether Email Automation may be switched on for a BU.
-
-```jsonc
-{
-  "type": "subscription.activated",
-  "data": {
-    "plan_code": "growth",
-    "billing_period": "monthly",           // "monthly" | "annual"
-    "doc_allowance": 500,                  // documents per month
-    "period_start": "2026-07-31T00:00:00Z",
-    "period_end":   "2026-08-30T23:59:59Z",
-    "entitlements": { "email_automation": true }
-  }
-}
-```
-
-```jsonc
-{
-  "type": "subscription.lapsed",
-  "data": {
-    "plan_code": "growth",
-    "ended_at": "2026-08-30T23:59:59Z",
-    "entitlements": { "email_automation": false }
-  }
-}
-```
-
-- `activated` fires when a package purchase is approved, and again on each renewal.
-- **`lapsed` matters as much as `activated`** — without it Carmen would leave the
-  setting switched on after the package ends. It fires from the same daily job that
-  closes an expired subscription window on our side.
-- `entitlements` is an object on purpose: more features will appear there. Read the key
-  you care about and ignore the rest.
-- The `entitled` field in `GET /settings` (§2.2) is always authoritative — if Carmen
-  ever misses an event, re-reading settings gives the current truth. Please treat the
-  webhook as an optimisation, not as the only source.
-
-### 3.4 `document.posted` / `document.failed` — **proposed**
+### 3.3 `document.posted` / `document.failed` — **proposed**
 
 Not in the original request, but with no human approval step these are the only way
 Carmen (or the customer) learns what happened to a forwarded document.
@@ -512,7 +481,7 @@ Carmen (or the customer) learns what happened to a forwarded document.
 > **Question for the Carmen team:** do you want these, and if so should they also raise
 > an in-app notification for the customer, or only feed Carmen's own screens?
 
-### 3.5 What we need to start sending
+### 3.4 What we need to start sending
 
 1. **Endpoint URL** per Carmen host (a staging URL first).
 2. **A shared secret per endpoint**, exchanged out-of-band — please do not send it over
@@ -601,9 +570,9 @@ The rest of the integration:
 
 | # | We need | Blocks |
 |---|---|---|
-| 4 | Webhook endpoint URL + secret exchange channel (§3.5) | both webhooks |
+| 4 | Webhook endpoint URL + secret exchange channel (§3.4) | every webhook |
 | 5 | Which Carmen field holds the BU tax ID (§2.4) | switching the feature on |
-| 6 | Yes/no on the proposed `document.*` events (§3.4) | outcome reporting |
+| 6 | Yes/no on the proposed `document.*` events (§3.3) | outcome reporting |
 | 7 | Confirmation that automated JVs are distinguishable in `JvhSource` (§4) | audit review |
 
 > Item 7 of the previous revision — "confirm Email Automation is gated on the monthly

@@ -144,7 +144,7 @@ def to_response(row: EmailIngestSettings | None, host: str, bu: str) -> dict:
 
 
 async def is_entitled(db: AsyncSession, tenant: Tenant) -> bool:
-    """Does this BU have a live monthly package? (§3.3)
+    """Does this BU have a live monthly package? (§2.2 `entitled`)
 
     `active_subscription` documents itself as the single source of truth for that
     question and is already window-aware, so this is a naming shim, not a rule.
@@ -225,7 +225,7 @@ async def save_settings(db: AsyncSession, tenant: Tenant, payload: Any) -> Email
                 "message": "At least one tax ID is required before enabling Email Automation",
             }
         )
-    # The feature is sold, not free (§3.3). Refusing at write time is what keeps a
+    # The feature is sold, not free (§2.2). Refusing at write time is what keeps a
     # BU from being switched on and then quietly ingesting on someone else's dime.
     if payload.enabled and not await is_entitled(db, tenant):
         errors.append(
