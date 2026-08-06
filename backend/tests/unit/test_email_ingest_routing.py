@@ -1,10 +1,13 @@
-"""Unit tests for routing: which BU a document belongs to, and which rule tells us
-which bank issued it.
+"""Unit tests for routing: which BU a document belongs to, and which rule lets it be
+extracted at all.
 
-Routing is `email_settings_service.resolve_by_tax_ids` — the tax ID printed on the
-document, not the address the mail was sent to. `match_rule` no longer identifies a
-BU at all; it only picks the extraction prompt, so it is matched against every
-enabled BU's rules at once.
+Routing is the `+tag` in the address the mail was **delivered to**
+(`email_ingest_service.tag_from_recipients` → `email_settings_service.resolve_by_tag`),
+read from the envelope before anything is extracted. The tax ID printed on the document
+is a second, independent check (`foreign_tax_id`) applied afterwards.
+
+`match_rules` still identifies a bank rather than a BU, but it is no longer only a hint:
+an attachment no rule claims is never sent to the LLM.
 """
 
 from types import SimpleNamespace
@@ -12,123 +15,305 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.services import email_ingest_service as ingest
 from app.services import email_settings_service as es
-from app.services.email_ingest_service import match_rule
+from app.services.email_ingest_service import match_rules, tag_from_recipients
 
-# ── resolve_by_tax_ids ─────────────────────────────────────────────────────────
+ADDRESS = "AIAGENT@carmensoftware.com"
 
 
-def _row(tenant, tax_ids, rules=(), enabled=True):
+@pytest.fixture(autouse=True)
+def _pin_mailbox(monkeypatch):
+    """The mailbox is env-configured (a dev .env points it at a personal inbox), so pin
+    it — otherwise these tests pass or fail depending on whose machine they run on."""
+    monkeypatch.setattr(ingest.settings, "email_ingest_address", ADDRESS)
+    monkeypatch.setattr(es.app_settings, "email_ingest_address", ADDRESS)
+
+
+def _row(tenant, tax_ids=(), rules=(), enabled=True, tag="a1b2c3d4"):
     return SimpleNamespace(
-        tenant_id=tenant, tax_ids=list(tax_ids), rules=list(rules), enabled=enabled
+        tenant_id=tenant,
+        tax_ids=list(tax_ids),
+        rules=list(rules),
+        enabled=enabled,
+        ingest_tag=tag,
     )
 
 
-def _db(rows):
-    """A db whose one SELECT (enabled settings rows) answers with `rows`."""
+def _db(rows=(), one=None):
+    """A db whose one SELECT answers with `rows` (.scalars().all()) or `one`."""
     result = MagicMock()
     result.scalars.return_value.all.return_value = list(rows)
+    result.scalar_one_or_none.return_value = one
     db = AsyncMock()
     db.execute = AsyncMock(return_value=result)
     return db
 
 
-@pytest.mark.asyncio
-async def test_resolves_the_bu_whose_tax_id_is_on_the_document():
-    a, b = _row("bu-a", ["0105536000127"]), _row("bu-b", ["0994000165676"])
-    row = await es.resolve_by_tax_ids(_db([a, b]), ["0994000165676"])
-    assert row is b
+# ── tag_from_recipients — the envelope, never `To:` ────────────────────────────
+
+
+def test_the_tag_is_read_from_delivered_to():
+    assert tag_from_recipients(["AIAGENT+a1b2c3d4@carmensoftware.com"]) == "a1b2c3d4"
+
+
+def test_the_tag_is_found_inside_a_full_delivered_to_line():
+    """Real headers are not bare addresses."""
+    header = "for <AIAGENT+a1b2c3d4@carmensoftware.com>; Wed, 6 Aug 2026 09:00:00 -0700"
+    assert tag_from_recipients([header]) == "a1b2c3d4"
+
+
+def test_the_tag_is_case_insensitive_and_normalised():
+    assert tag_from_recipients(["AIAGENT+DEADBEEF@CARMENSOFTWARE.COM"]) == "deadbeef"
+
+
+def test_a_multi_hop_forward_takes_the_first_matching_delivered_to():
+    """Several Delivered-To headers; only ours can produce a tag."""
+    values = [
+        "accounts@hotelgroup.com",
+        "AIAGENT+a1b2c3d4@carmensoftware.com",
+        "AIAGENT+ffffffff@carmensoftware.com",
+    ]
+    assert tag_from_recipients(values) == "a1b2c3d4"
+
+
+def test_the_bare_address_yields_no_tag():
+    """Mail to the untagged mailbox belongs to nobody — it is never shown to anyone."""
+    assert tag_from_recipients(["AIAGENT@carmensoftware.com"]) is None
+
+
+def test_another_domains_plus_address_is_not_our_tag():
+    assert tag_from_recipients(["AIAGENT+a1b2c3d4@example.com"]) is None
+    assert tag_from_recipients(["someoneelse+a1b2c3d4@carmensoftware.com"]) is None
+
+
+def test_no_delivery_headers_at_all_yields_no_tag():
+    assert tag_from_recipients([]) is None
+
+
+# ── _recipients — which headers the tag may come from ──────────────────────────
+#
+# The shapes below are copied from real deliveries measured against the dev mailbox on
+# 2026-08-06, because the assumption underneath this whole feature turned out to be
+# wrong in one of them.
+
+
+def _msg(raw_headers: str):
+    import email as _email
+
+    return _email.message_from_string(raw_headers + "\n\n(body)\n")
+
+
+def test_the_tag_comes_from_delivered_to():
+    msg = _msg(
+        "From: no-reply@ktc.co.th\n"
+        "To: accounts@hotelgroup.com\n"
+        "Delivered-To: AIAGENT+a1b2c3d4@carmensoftware.com\n"
+    )
+    assert tag_from_recipients(ingest._recipients(msg)) == "a1b2c3d4"
+
+
+def test_the_tag_is_found_when_gmail_omits_delivered_to_entirely():
+    """Measured, not assumed. Gmail stamps **no** `Delivered-To` when sender and
+    recipient are the same account: the mail is accepted at submission (`ESMTPSA`) and
+    never traverses the inbound MX hop that adds it. The envelope recipient is still in
+    the `Received … for` clause, which is why that is read as well.
+
+    This exact shape returned `None` — i.e. the mail would have been dropped as
+    unrouted — before the fallback existed.
+    """
+    msg = _msg(
+        "Return-Path: <boonyawat.asu@gmail.com>\n"
+        "Received: from [192.168.11.55] ([184.82.209.128]) by smtp.gmail.com with\n"
+        " ESMTPSA id d2e1a72fcca58-84f453bab29sm798975b3a.23.2026.08.06.00.31.15 for\n"
+        " <AIAGENT+a1b2c3d4@carmensoftware.com> (version=TLS1_3\n"
+        " cipher=TLS_AES_256_GCM_SHA384 bits=256/256); Thu, 06 Aug 2026 00:31:16 -0700\n"
+        "To: AIAGENT+a1b2c3d4@carmensoftware.com\n"
+    )
+    assert msg.get_all("Delivered-To") is None
+    assert tag_from_recipients(ingest._recipients(msg)) == "a1b2c3d4"
+
+
+def test_genuine_external_mail_to_the_bare_address_yields_no_tag():
+    """The other measured shape: both signals present, neither carrying a tag."""
+    msg = _msg(
+        "Delivered-To: AIAGENT@carmensoftware.com\n"
+        "Received: by 2002:a5d:6187:0:b0:47f with SMTP id j7csp2466891wru;\n"
+        " Wed, 5 Aug 2026 23:05:51 -0700 (PDT)\n"
+        "Received: from mail.facebook.com (mail.facebook.com. [66.220.155.149]) by\n"
+        " mx.google.com with ESMTPS id x1si2 for <AIAGENT@carmensoftware.com>;\n"
+        " Wed, 5 Aug 2026 23:05:50 -0700 (PDT)\n"
+        "To: AIAGENT@carmensoftware.com\n"
+    )
+    assert tag_from_recipients(ingest._recipients(msg)) is None
+
+
+def test_the_to_header_is_never_a_tag_source():
+    """`To:` is the customer's own address on an auto-forward, so reading it would pass a
+    hand-sent test and route every real auto-forward nowhere.
+
+    Pinned on behaviour rather than on the header list: a tagged `To:` with no delivery
+    header and no `Received` chain must still resolve to nothing.
+    """
+    msg = _msg("From: staff@hotelgroup.com\nTo: AIAGENT+a1b2c3d4@carmensoftware.com\n")
+    assert ingest._recipients(msg) == []
+    assert tag_from_recipients(ingest._recipients(msg)) is None
+    assert "To" not in ingest._DELIVERY_HEADERS
+
+
+def test_a_delivery_header_wins_over_a_received_clause():
+    """A forward chain's own `Received` hops are older than the delivery we care about."""
+    msg = _msg(
+        "Delivered-To: AIAGENT+a1b2c3d4@carmensoftware.com\n"
+        "Received: from relay.example (relay.example [10.0.0.1]) by mx.google.com with\n"
+        " ESMTPS id q7si9 for <AIAGENT+ffffffff@carmensoftware.com>;\n"
+        " Wed, 5 Aug 2026 23:05:50 -0700 (PDT)\n"
+    )
+    assert tag_from_recipients(ingest._recipients(msg)) == "a1b2c3d4"
+
+
+# ── resolve_by_tag ─────────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_any_one_of_several_printed_tax_ids_is_enough():
-    """A document can carry the bank's tax ID as well as the hotel's."""
-    a = _row("bu-a", ["0105536000127"])
-    row = await es.resolve_by_tax_ids(_db([a]), ["0107537000521", "0105536000127"])
-    assert row is a
+async def test_the_tag_resolves_to_its_owner():
+    row = _row("bu-a")
+    assert await es.resolve_by_tag(_db(one=row), "a1b2c3d4") is row
 
 
 @pytest.mark.asyncio
-async def test_an_unknown_tax_id_routes_nowhere():
-    a = _row("bu-a", ["0105536000127"])
-    assert await es.resolve_by_tax_ids(_db([a]), ["9999999999999"]) is None
+async def test_an_unknown_tag_resolves_to_nobody():
+    assert await es.resolve_by_tag(_db(one=None), "ffffffff") is None
 
 
 @pytest.mark.asyncio
-async def test_a_document_with_no_tax_id_routes_nowhere():
-    """Not a fallback case: with no number there is nothing to route on."""
-    a = _row("bu-a", ["0105536000127"])
-    assert await es.resolve_by_tax_ids(_db([a]), []) is None
-    assert await es.resolve_by_tax_ids(_db([a]), ["", "  "]) is None
-
-
-@pytest.mark.asyncio
-async def test_a_disabled_bu_is_never_selected():
-    """The query only ever asks for enabled rows — a switched-off BU cannot be routed to."""
-    db = _db([])
-    assert await es.resolve_by_tax_ids(db, ["0105536000127"]) is None
+async def test_only_enabled_bus_can_be_routed_to():
+    db = _db(one=None)
+    await es.resolve_by_tag(db, "a1b2c3d4")
     assert "enabled" in str(db.execute.await_args.args[0])
 
 
-# ── ingest_pool ────────────────────────────────────────────────────────────────
+# ── foreign_tax_id — verification, not routing ─────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_pool_gathers_rules_and_passwords_across_every_enabled_bu(monkeypatch):
-    """The mailbox is shared, so a file may need any BU's password and any BU's rule."""
-    monkeypatch.setattr(es, "rule_passwords", lambda row: row.tax_ids)  # stand-in secrets
-    a = _row("bu-a", ["pw-a"], rules=[{"bank_code": "KTC"}])
-    b = _row("bu-b", ["pw-b", "pw-a"], rules=[{"bank_code": "GHL"}])
-
-    rules, passwords = await es.ingest_pool(_db([a, b]))
-
-    assert [r["bank_code"] for r in rules] == ["KTC", "GHL"]
-    assert passwords == ["pw-a", "pw-b"]  # deduped, order preserved
+async def test_a_tax_id_registered_to_another_bu_is_a_conflict():
+    other = _row("bu-b", ["0994000165676"])
+    clash = await es.foreign_tax_id(_db([other]), ["0994000165676"], "bu-a")
+    assert clash == "0994000165676"
 
 
-# ── match_rule — a bank hint, never a BU ───────────────────────────────────────
+@pytest.mark.asyncio
+async def test_the_bus_own_tax_id_is_not_a_conflict():
+    mine = _row("bu-a", ["0105536000127"])
+    assert await es.foreign_tax_id(_db([mine]), ["0105536000127"], "bu-a") is None
+
+
+@pytest.mark.asyncio
+async def test_an_unrecognised_tax_id_is_not_a_conflict():
+    """Positive evidence only — a number nobody registered proves nothing."""
+    other = _row("bu-b", ["0994000165676"])
+    assert await es.foreign_tax_id(_db([other]), ["9999999999999"], "bu-a") is None
+
+
+@pytest.mark.asyncio
+async def test_a_document_printing_no_tax_id_still_passes():
+    """Some fee invoices never print the buyer's TIN. Blocking those catches nothing."""
+    other = _row("bu-b", ["0994000165676"])
+    assert await es.foreign_tax_id(_db([other]), [], "bu-a") is None
+    assert await es.foreign_tax_id(_db([other]), ["", "  "], "bu-a") is None
+
+
+@pytest.mark.asyncio
+async def test_a_disabled_bus_registered_number_still_counts_as_a_conflict():
+    """It is still another company's number, whether or not they ingest today."""
+    other = _row("bu-b", ["0994000165676"], enabled=False)
+    db = _db([other])
+    assert await es.foreign_tax_id(db, ["0994000165676"], "bu-a") == "0994000165676"
+    assert "WHERE" not in str(db.execute.await_args.args[0])  # every row, not just enabled
+
+
+# ── match_rules — a bank hint that is now also a hard gate ─────────────────────
 
 RULES = [
     {
         "bank_code": "KTC",
         "bank_sender_email": "no-reply@ktc.co.th",
-        "filename_pattern": "MDR",
+        "filename_patterns": ["MDR", "Commission"],
         "is_active": True,
     },
     {
         "bank_code": "GHL",
         "bank_sender_email": None,
-        "filename_pattern": "GHL-FEE",
+        "filename_patterns": ["GHL-FEE"],
         "is_active": True,
     },
     {
         "bank_code": "BBL",
         "bank_sender_email": "old@bbl.co.th",
-        "filename_pattern": None,
+        "filename_patterns": ["statement"],
         "is_active": False,
     },
 ]
 
 
-def test_match_rule_sender_match_wins_over_filename():
-    rule = match_rule(RULES, "no-reply@ktc.co.th", "GHL-FEE-report.pdf")
-    assert rule["bank_code"] == "KTC"  # sender pass runs first, over both rules
+def _codes(sender, filename, rules=RULES):
+    return [r["bank_code"] for r in match_rules(rules, sender, filename)]
 
 
-def test_match_rule_falls_through_to_filename_pattern():
-    rule = match_rule(RULES, "someone@hotelgroup.com", "monthly-GHL-FEE.pdf")
-    assert rule["bank_code"] == "GHL"
+def test_a_sender_hit_does_not_bypass_a_filename_miss():
+    """The bug the old early-return would have reintroduced.
+
+    Mail from KTC's address carrying a file only the GHL rule names must stop, not be
+    scanned as KTC.
+    """
+    assert _codes("no-reply@ktc.co.th", "GHL-FEE-report.pdf") == []
 
 
-def test_match_rule_inactive_rule_is_never_matched():
-    # BBL's sender would match, but is_active=False excludes it.
-    rule = match_rule(RULES, "old@bbl.co.th", "statement.pdf")
-    assert rule is None
+def test_a_sender_hit_with_its_own_filename_matches():
+    assert _codes("no-reply@ktc.co.th", "MDR-2026-08.pdf") == ["KTC"]
 
 
-def test_match_rule_no_match_returns_none_for_generic_auto_detect():
-    assert match_rule(RULES, "employee@hotelgroup.com", "scan001.pdf") is None
+def test_a_sender_matching_no_rule_leaves_every_rule_eligible():
+    """A manual forward comes from an employee, so narrowing must never empty the set."""
+    assert _codes("employee@hotelgroup.com", "monthly-GHL-FEE.pdf") == ["GHL"]
 
 
-def test_match_rule_empty_rules_returns_none():
-    assert match_rule([], "anyone@bank.com", "file.pdf") is None
+def test_any_one_pattern_in_the_list_is_enough():
+    assert _codes("no-reply@ktc.co.th", "Commission_aug.pdf") == ["KTC"]
+
+
+@pytest.mark.parametrize(
+    "filename",
+    ["MDR-report.pdf", "aug-MDR-2026.pdf", "report-MDR.pdf", "monthly_mdr_report.PDF"],
+)
+def test_a_pattern_matches_anywhere_and_case_insensitively(filename):
+    """Pins `%pattern%`, so a later refactor cannot quietly tighten it to equality —
+    banks vary their filenames and employees rename files before forwarding."""
+    assert _codes("employee@hotelgroup.com", filename) == ["KTC"]
+
+
+def test_an_attachment_no_rule_claims_matches_nothing():
+    """Empty means stop, with no LLM call — the signature-logo class of junk."""
+    assert _codes("employee@hotelgroup.com", "logo.png") == []
+
+
+def test_an_inactive_rule_is_never_matched():
+    assert _codes("old@bbl.co.th", "statement.pdf") == []
+
+
+def test_overlapping_patterns_return_every_match_so_no_bank_is_guessed():
+    rules = [
+        {"bank_code": "KTC", "filename_patterns": ["report"], "is_active": True},
+        {"bank_code": "GHL", "filename_patterns": ["report"], "is_active": True},
+    ]
+    assert _codes("employee@hotelgroup.com", "report.pdf", rules) == ["KTC", "GHL"]
+
+
+def test_no_rules_at_all_matches_nothing():
+    assert match_rules([], "anyone@bank.com", "file.pdf") == []
+
+
+def test_a_rule_with_no_patterns_matches_nothing():
+    """save_settings rejects this, but a legacy row must fail closed, not open."""
+    assert match_rules([{"bank_code": "KTC", "is_active": True}], "x@y.com", "a.pdf") == []

@@ -6,7 +6,18 @@ is a table of its own rather than a column on ocr_tasks.
 
 import uuid
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 
@@ -24,6 +35,10 @@ class EmailIngestSettings(Base, TimestampMixin, WriterMixin):
     __tablename__ = "email_ingest_settings"
 
     tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True)
+    # AIAGENT+<tag>@… — identifies the BU from the envelope, before any LLM call.
+    # Nullable: allocated on the first successful enable, so a BU that never buys
+    # anything never consumes one. Never reissued once allocated.
+    ingest_tag = Column(String(32), nullable=True)
     enabled = Column(Boolean, nullable=False, default=False)
     tax_ids = Column(_JSON, nullable=False, default=list)
     rules = Column(_JSON, nullable=False, default=list)
@@ -32,6 +47,15 @@ class EmailIngestSettings(Base, TimestampMixin, WriterMixin):
     carmen_uri = Column(Text, nullable=True)
     carmen_token_fp = Column(String(16), nullable=True)
     carmen_token_verified_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index(
+            "uq_email_ingest_tag",
+            "ingest_tag",
+            unique=True,
+            postgresql_where=text("ingest_tag is not null"),
+        ),
+    )
 
 
 class EmailDocument(Base, TenantFKMixin, TimestampMixin):

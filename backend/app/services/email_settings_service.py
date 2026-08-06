@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import secrets
 from datetime import UTC, datetime
 from typing import Any
 
@@ -56,6 +57,16 @@ async def _active_bank_codes(db: AsyncSession) -> set[str]:
     return set(rows)
 
 
+async def _bank_tax_ids(db: AsyncSession) -> set[str]:
+    """Every issuer TIN we know about — the numbers a BU may not claim as its own.
+
+    Read from `banks.tax_id` (seeded for the ACTX input-tax record) rather than a
+    second hardcoded list, so "adding a bank is an INSERT" stays true.
+    """
+    rows = (await db.execute(select(Bank.tax_id).where(Bank.tax_id.is_not(None)))).scalars()
+    return {t.strip() for t in rows if t and t.strip()}
+
+
 # ── Tax ID ────────────────────────────────────────────────────────────────────
 
 
@@ -90,57 +101,98 @@ async def resolve_tenant(db: AsyncSession, host: str, bu: str) -> Tenant:
     return row
 
 
-async def resolve_by_tax_ids(db: AsyncSession, tax_ids: list[str]) -> EmailIngestSettings | None:
-    """The BU a document belongs to, from the tax IDs printed on it.
+async def resolve_by_tag(db: AsyncSession, tag: str) -> EmailIngestSettings | None:
+    """The BU that owns this ingest tag — read from the envelope, before any LLM call.
 
-    This is routing, not a check. A tax ID belongs to exactly one BU system-wide —
-    that is what the `409` on write buys us — so the number on the document is a
-    routing key, and it is the only one that works for a manually forwarded mail
-    (which carries no trace of who originally received it).
+    This is the routing key. It costs one indexed SELECT because the tag travels in
+    the recipient address, where the tax ID it replaced could only be reached by
+    running the vision model first. Everything downstream — the ledger row, the
+    document credit, the `llm_usage_logs` row — therefore has a real `tenant_id`.
 
-    ponytail: scans the enabled rows and intersects in Python. The table has one
-    row per BU using the feature; when that stops being a handful, make it a JSONB
-    containment query with a GIN index on `tax_ids`.
+    Enabled rows only: a switched-off BU cannot be routed to. A lapsed package is a
+    separate gate (`is_entitled`), because ending a subscription does not rewrite
+    settings.
+    """
+    return (
+        await db.execute(
+            select(EmailIngestSettings).where(
+                EmailIngestSettings.ingest_tag == tag,
+                EmailIngestSettings.enabled.is_(True),
+            )
+        )
+    ).scalar_one_or_none()
+
+
+async def foreign_tax_id(db: AsyncSession, tax_ids: list[str], tenant_id: Any) -> str | None:
+    """A tax ID printed on this document that is registered to a *different* BU.
+
+    Verification, not routing — the tag already said who owns the mail. This is the
+    second factor: the envelope says who, the document says who, and disagreement
+    parks the document rather than picking a winner.
+
+    **Positive evidence only.** Nothing matching is not a conflict: some fee invoices
+    never print the buyer's TIN, and parking those would break legitimate documents to
+    catch nothing.
+
+    Disabled rows count too — a switched-off BU's registered number still identifies
+    another company. Bank TINs are refused at registration (`reserved_tax_id`), or
+    every document a bank issues would trip this.
+
+    ponytail: scans and intersects in Python, like the write-time conflict check it
+    mirrors. One row per BU using the feature; make it a JSONB containment query with
+    a GIN index on `tax_ids` when that stops being a handful.
     """
     wanted = {t.strip() for t in tax_ids if t and t.strip()}
     if not wanted:
         return None
-    for row in await _enabled_rows(db):
-        if wanted & set(row.tax_ids or []):
-            return row
+    rows = (await db.execute(select(EmailIngestSettings))).scalars().all()
+    for row in rows:
+        if str(row.tenant_id) == str(tenant_id):
+            continue
+        if clash := wanted & set(row.tax_ids or []):
+            return sorted(clash)[0]
     return None
 
 
-async def ingest_pool(db: AsyncSession) -> tuple[list[dict], list[str]]:
-    """(rules, pdf passwords) of every enabled BU, pooled — read once per poll.
+def ingest_address(tag: str | None) -> str | None:
+    """`<user>+<tag>@<domain>` — one per BU, from the one configured mailbox.
 
-    Pooling is safe because a rule identifies a **bank**, never a BU: the sender
-    address and filename pattern say "this is a KTC fee invoice", which is equally
-    true whoever it belongs to. It buys the bank-specific extraction prompt back
-    for a document whose owner is not known until after it has been read.
-
-    The passwords are pooled for the same reason and are the customers' own; a file
-    still only opens with its own owner's password (§2.3).
+    `None` until a tag is allocated (i.e. until the BU successfully enables the
+    feature). Returning null rather than the bare mailbox is deliberate: **nobody is
+    ever shown an untagged address**, so there is nothing to copy that would arrive
+    unattributable. The `disabled` / `not_configured` blockers already explain why.
     """
-    rules: list[dict] = []
-    passwords: list[str] = []
-    for row in await _enabled_rows(db):
-        rules.extend(row.rules or [])
-        passwords.extend(p for p in rule_passwords(row) if p not in passwords)
-    return rules, passwords
+    if not tag:
+        return None
+    user, _, domain = app_settings.email_ingest_address.partition("@")
+    return f"{user}+{tag}@{domain}"
 
 
-async def _enabled_rows(db: AsyncSession) -> list[EmailIngestSettings]:
-    return list(
-        (await db.execute(select(EmailIngestSettings).where(EmailIngestSettings.enabled.is_(True))))
-        .scalars()
-        .all()
-    )
+async def _fresh_tag(db: AsyncSession) -> str:
+    """A tag no BU holds. 8 hex, random, stored — never derived, never reissued.
 
+    Random rather than derived from `bu_code`, for three reasons:
+      - not unique. Tenant identity is `(host, bu_code)`; two customers each having a
+        BU called `hq` is ordinary, and the unique index would reject the second — that
+        customer simply could not enable the feature.
+      - guessable is a bypass. With bare-address mail refused, the tag *is* the
+        authorization to write into a BU's ledger. `hq` / `bkk01` / `head-office` is a
+        short dictionary; 8 hex is not.
+      - derived values drift. `tenants` is upserted on `(host, bu)`, so a BU renamed on
+        Carmen's side would change a derived address while the customer's mailbox rule
+        still points at the old one.
 
-def ingest_address() -> str:
-    """One mailbox, one address, every BU. There is nothing per-tenant to allocate."""
-    return app_settings.email_ingest_address
+    The partial unique index is the real guard; this loop only avoids discovering a
+    1-in-4-billion collision as a failed commit that would take the whole save with it.
+    """
+    for _ in range(5):
+        tag = secrets.token_hex(4)
+        taken = await db.scalar(
+            select(EmailIngestSettings.tenant_id).where(EmailIngestSettings.ingest_tag == tag)
+        )
+        if taken is None:
+            return tag
+    raise ValidationError("Could not allocate an ingest address — please try again")
 
 
 # ── Read / write ──────────────────────────────────────────────────────────────
@@ -161,8 +213,8 @@ def to_response(row: EmailIngestSettings | None, host: str, bu: str) -> dict:
             "host": host,
             "bu": bu,
             "enabled": False,
-            # Not null even before the first PUT — there is nothing to allocate.
-            "ingest_address": ingest_address(),
+            # Null until the BU successfully enables the feature and a tag is issued.
+            "ingest_address": None,
             "tax_ids": [],
             "rules": [],
             "status": {"ready": False, "blockers": ["not_configured"]},
@@ -179,13 +231,13 @@ def to_response(row: EmailIngestSettings | None, host: str, bu: str) -> dict:
         "host": host,
         "bu": bu,
         "enabled": bool(row.enabled),
-        "ingest_address": ingest_address(),
+        "ingest_address": ingest_address(row.ingest_tag),
         "tax_ids": list(row.tax_ids or []),
         "rules": [
             {
                 "bank_code": r.get("bank_code"),
                 "bank_sender_email": r.get("bank_sender_email"),
-                "filename_pattern": r.get("filename_pattern"),
+                "filename_patterns": list(r.get("filename_patterns") or []),
                 "has_password": bool(r.get("pdf_password_enc")),
                 "is_active": r.get("is_active", True),
             }
@@ -254,6 +306,11 @@ async def save_settings(db: AsyncSession, tenant: Tenant, payload: Any) -> Email
     errors: list[dict] = []
 
     tax_ids = [t.strip() for t in (payload.tax_ids or [])]
+    # The bank's own TIN is printed on the very invoice the user is reading to find
+    # theirs, one line away. Registering it would match every document that bank ever
+    # issues, for every customer — and would trip the post-extraction conflict check
+    # (`foreign_tax_id`) on all of them.
+    reserved = await _bank_tax_ids(db) if tax_ids else set()
     for i, tid in enumerate(tax_ids):
         if not is_valid_thai_tax_id(tid):
             errors.append(
@@ -263,11 +320,34 @@ async def save_settings(db: AsyncSession, tenant: Tenant, payload: Any) -> Email
                     "message": "Tax ID must be 13 digits with a valid check digit",
                 }
             )
+        elif tid in reserved:
+            errors.append(
+                {
+                    "field": f"tax_ids[{i}]",
+                    "code": "reserved_tax_id",
+                    "message": (
+                        f"{tid} is the bank's own tax ID, not your company's — "
+                        "it is printed on the same invoice"
+                    ),
+                }
+            )
     rules = payload.rules or []
     if rules:
         supported = await _active_bank_codes(db)
         seen_banks: dict[str | None, int] = {}
         for i, rule in enumerate(rules):
+            if not _clean_patterns(rule):
+                errors.append(
+                    {
+                        "field": f"rules[{i}].filename_patterns",
+                        "code": "required",
+                        "message": (
+                            "At least one filename pattern is required — an attachment "
+                            "matching none is never processed. Use '.pdf' to accept "
+                            "every PDF from this bank."
+                        ),
+                    }
+                )
             if rule.bank_code and rule.bank_code not in supported:
                 errors.append(
                     {
@@ -332,6 +412,14 @@ async def save_settings(db: AsyncSession, tenant: Tenant, payload: Any) -> Email
         row = EmailIngestSettings(tenant_id=tenant.id)
         db.add(row)
 
+    # Allocated here and only here: after the `is_entitled` gate above, so "only paying
+    # customers get an address" needs no logic of its own, and only when there is none —
+    # a tag is never reissued across disable → re-enable or a lapsed package, because the
+    # customer's mailbox rule points at it and a new one makes their documents vanish
+    # with no error anywhere.
+    if payload.enabled and not row.ingest_tag:
+        row.ingest_tag = await _fresh_tag(db)
+
     existing = {(r.get("bank_code") or ""): r for r in (row.rules or [])}
     row.enabled = bool(payload.enabled)
     row.tax_ids = tax_ids
@@ -341,12 +429,17 @@ async def save_settings(db: AsyncSession, tenant: Tenant, payload: Any) -> Email
     return row
 
 
+def _clean_patterns(incoming: Any) -> list[str]:
+    """The rule's filename patterns, stripped, blanks dropped. Empty = invalid."""
+    return [p.strip() for p in (incoming.filename_patterns or []) if p and p.strip()]
+
+
 def _merge_rule(incoming: Any, previous: dict | None) -> dict:
     """omit pdf_password = keep the stored one, "" = clear it (§2.3)."""
     rule = {
         "bank_code": incoming.bank_code,
         "bank_sender_email": incoming.bank_sender_email,
-        "filename_pattern": incoming.filename_pattern,
+        "filename_patterns": _clean_patterns(incoming),
         "is_active": incoming.is_active,
         "pdf_password_enc": (previous or {}).get("pdf_password_enc"),
     }
@@ -373,11 +466,13 @@ def _decrypt(value: str | None) -> str | None:
 
 
 def rule_passwords(row: EmailIngestSettings) -> list[str]:
-    """Every active rule's PDF password.
+    """This BU's own active-rule PDF passwords.
 
-    The issuing bank is often unknown when a protected file is opened (a manual
-    forward carries no bank identity), so we try them all — they are the
-    customer's own passwords and there is a handful at most (§2.3).
+    One BU's, never pooled across tenants — the tag names the owner before the file is
+    opened, so there is no longer any reason to try a stranger's password on a
+    stranger's file. Still every rule's rather than only the matched one's: the bank
+    may be ambiguous when two rules name the filename, and these are all the same
+    customer's passwords with a handful at most (§2.3).
     """
     out = []
     for rule in row.rules or []:

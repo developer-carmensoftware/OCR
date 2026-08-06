@@ -20,10 +20,11 @@ auto-forward rule** in their mailbox and everything after that is automatic:
 Bank ──mail──> Customer mailbox ──┬── auto-forward rule ──┐
                                   └── forwarded by hand ──┤
                                                           ▼
-                                                     OCR ingest
+                                              OCR ingest (AIAGENT+<tag>@…)
                                                           │
-                                    extract → verify the document belongs to the BU
-                                            → build the JV → post to Carmen
+                                 the tag names the BU → the bank rule admits the file
+                                        → extract → the tax ID confirms the BU
+                                        → build the JV → post to Carmen
                                                           │
                                         webhook: Carmen learns the outcome
 ```
@@ -55,21 +56,35 @@ section exists so the behaviour is not surprising.
 | | Auto-forward | Manual forward |
 |---|---|---|
 | Sender of the mail we receive | the bank | the employee who forwarded it |
-| Which BU it belongs to | **the tax ID on the document** | **the tax ID on the document** |
+| Which BU it belongs to | **the `+tag` in the address it was sent to** | **the same `+tag`** |
+| Where we read that tag | the `Delivered-To` header | the same header |
 | Which bank issued it | matched from the sender address | **detected from the document itself** |
-| Bank's DKIM signature | survives, and we check it | broken by the forward — cannot be checked |
+| Tax ID on the document | checked against the BU's register | checked the same way |
 
-Three consequences worth stating plainly:
+Four consequences worth stating plainly:
 
-- **The tax ID is what makes manual forward work at all.** A manually forwarded mail
-  carries no verifiable proof that a bank produced the attachment, and no trace of who
-  originally received it. The document's own content is the only trustworthy evidence of
-  either. This is why §2.4 is mandatory and why §2.5 is one address rather than one per BU.
+- **The address is what identifies the BU, and it works for both modes.** On an
+  auto-forward the tag survives in the delivery headers; on a manual forward the employee
+  *types* the destination, so it is whatever Carmen's screen told them to send to. Each BU
+  gets its own address — see §2.5.
+- **The tax ID is the second check, not the routing key.** The address says who owns the
+  mail; the tax ID printed on the document says who owns the document. If they disagree,
+  the document is parked rather than posted (§2.4). It costs an LLM call to read, which is
+  why it cannot be the thing that identifies the owner in the first place.
 - **A document forwarded twice is not charged twice.** If the same report arrives both
   automatically and by hand, the second one is recognised by document number and rejected
   as a duplicate, with the credit refunded.
-- **A document nobody has registered is dropped, not guessed at.** It costs us one
-  extraction and costs the customer nothing — no ledger row, no credit, no JV.
+- **Mail to an address we cannot resolve is dropped before it costs anything** — no LLM
+  call, no ledger row, no credit, no JV. There is nobody to report it to either, which is
+  the accepted trade (§2.5).
+
+> **DKIM is not checked.** An earlier version of this document said the bank's DKIM
+> signature "survives, and we check it" on auto-forwarded mail. It never did, and this
+> corrects the record. The signature is broken by a manual forward in any case, so it
+> could only ever have covered one of the two modes; the per-BU address now does the work
+> it was being credited with. If we implement it later it will be a read of the
+> `Authentication-Results` header the receiving mail server stamps, and this section will
+> say so.
 
 ---
 
@@ -161,7 +176,7 @@ GET /api/v1/carmen/settings?host=hotelgroup.carmenwork.com&bu=hq
   "bu": "hq",
   "enabled": true,
   "entitled": true,                       // active monthly package — authoritative
-  "ingest_address": "ocr@carmensoftware.com",   // the same for every BU; see §2.5
+  "ingest_address": "AIAGENT+a1b2c3d4@carmensoftware.com",  // per BU, null until enabled — §2.5
   "tax_ids": ["0105536000127"],
   "rules": [
     {
@@ -169,7 +184,7 @@ GET /api/v1/carmen/settings?host=hotelgroup.carmenwork.com&bu=hq
       "bank_code": "KTC",                 // null = "Other" (generic prompt + auto-detect)
       "bank_label": null,                 // display name, used when bank_code is null
       "bank_sender_email": "no-reply@ktc.co.th",
-      "filename_pattern": "MDR",          // case-insensitive substring; null = any file
+      "filename_patterns": ["MDR", "Commission"],  // required, ≥1 — see §2.3
       "has_password": true,               // never the password itself
       "is_active": true
     }
@@ -199,7 +214,7 @@ PUT /api/v1/carmen/settings
     {
       "bank_code": "KTC",                 // the rule's identity — required
       "bank_sender_email": "no-reply@ktc.co.th",   // optional hint, see below
-      "filename_pattern": "MDR",
+      "filename_patterns": ["MDR", "Commission"],  // REQUIRED, at least one
       "pdf_password": "1234",             // write-only: omit = keep, "" = clear
       "is_active": true
     }
@@ -208,19 +223,33 @@ PUT /api/v1/carmen/settings
 ```
 
 - The payload **replaces** the BU's rule list (send the full list, not a delta).
+- **`filename_patterns` is required and decides whether a document is processed at all.**
+  Each entry is a case-insensitive **substring** of the filename (`MDR` matches
+  `2026-08_MDR_report.pdf`), and **any one entry matching is enough**. An attachment that
+  matches no rule of this BU is **never scanned** — it is recorded in the BU's document
+  history with `no_rule_match` and costs the customer nothing.
+
+  Please present this to the user as **"start broad, narrow later"**, which is the
+  opposite of how an optional filter is normally presented. `.pdf` accepts every PDF from
+  that bank and is the intended escape hatch. It is a list because banks alternate names
+  between sends (`MDR_…` one month, `Commission_…` the next) and employees rename files
+  before forwarding — one pattern forces a choice that will eventually be wrong.
 - A rule is keyed by **`bank_code`**, not by the sender address. Manually forwarded mail
   arrives from an employee, so the issuing bank is detected from the document itself; the
   sender address is only a fast path for automatically forwarded mail. `bank_sender_email`
   may therefore be `null`, and a BU that only ever forwards by hand never has to fill it in.
 - **A rule identifies a bank, never a BU.** "`no-reply@ktc.co.th` sends KTC fee invoices" is
-  equally true whoever the document belongs to, so a rule can help pick the right extraction
-  prompt for a document whose owner is not yet known. Ownership is the tax ID's job (§2.4),
-  and only the tax ID's.
+  equally true whoever the document belongs to. Ownership is the address's job (§2.5),
+  confirmed by the tax ID (§2.4); a rule picks the bank-specific extraction prompt and
+  decides whether the attachment is a document at all.
 - `pdf_password` is accepted on write, stored encrypted, and **never returned** by any
-  endpoint. Reads expose `has_password: true/false` only. The issuing bank — and the owner —
-  are unknown at the moment a protected file is opened, so the configured passwords are
-  tried in turn. They are all customers' own, there are a handful, and a file opens only
-  with its own owner's.
+  endpoint. Reads expose `has_password: true/false` only. Only **this BU's own** passwords
+  are ever tried on its files; they are tried in turn because two overlapping rules can
+  leave the issuing bank ambiguous.
+- A rule matches only when **both** its conditions hold. Mail from KTC's address carrying
+  a file that only the BBL rule names is stopped, not scanned as KTC. A sender that matches
+  no rule leaves every rule eligible, so manual forwarding (which never carries a bank's
+  address) still works.
 - Supported `bank_code` values: `GET /api/v1/carmen/bank-codes` — the same `banks`
   registry the OCR wizard reads, so a bank added there needs no change here. `null` is
   always valid and means "anything else". A `bank_code` (including `null`) may appear
@@ -235,15 +264,23 @@ Errors are returned as `422` with a per-field list so Carmen can render them inl
 
 ### 2.4 Tax IDs — required, and why
 
-**The BU's 13-digit tax ID must be set before Email Automation can be switched on.**
-It is not a check on the side any more — **it is how a document finds its BU at all**
-(§2.5). Without one, a mail sent to the ingest address belongs to nobody and is dropped.
+**The BU's 13-digit tax ID must be set before Email Automation can be switched on.** It is
+the **second** of the two signals that decide where a document is posted: the address it
+arrived at says who owns the mail (§2.5), and the tax ID printed on the document says who
+owns the document.
 
-That it routes *and* protects is one property, not two: the document is delivered to the
-BU whose registered tax ID is printed on it, so a document belonging to another legal
-entity can never reach these books — the one failure automatic posting cannot recover
-from, and one no email-level check can detect (a correctly-addressed mail can still carry
-the wrong company's invoice, e.g. when an employee forwards the wrong message).
+Two signals exist so that they can disagree. Money in the wrong company's general ledger
+is the one failure unattended posting cannot recover from, and no email-level check can
+detect it — a correctly-addressed mail can still carry the wrong company's invoice, e.g.
+when an employee forwards the wrong message. So:
+
+- A document carrying a tax ID **registered to a different BU** is parked, not posted —
+  `reason_code: tax_id_mismatch`, credit refunded.
+- A document carrying **no recognised tax ID** still posts. Some fee invoices never print
+  the buyer's TIN, and refusing those would break legitimate documents to catch nothing.
+  The address already established the owner.
+
+Rules for the value itself:
 
 - Send **all** tax IDs that legitimately appear on this BU's bank documents (several
   branches or legal entities under one BU is fine — it is a list).
@@ -252,6 +289,10 @@ the wrong company's invoice, e.g. when an employee forwards the wrong message).
 - A tax ID may belong to **only one BU across the whole system**. A second BU claiming
   the same number is rejected with `409` — please surface that error to the user, it
   usually means a copy-paste mistake.
+- **A bank's own tax ID is rejected** — `422 reserved_tax_id`. This is not a hypothetical
+  mistake: the user is looking at a bank invoice to find "the tax ID", and the bank's is
+  printed on the same page, often one line away. Accepted, it would make every document
+  that bank issues look like a conflict.
 - **We would like Carmen to fill this automatically from its company master** rather
   than asking the user to type it. It is data Carmen already holds, and a typed number
   is a number that can be typed wrong.
@@ -259,39 +300,57 @@ the wrong company's invoice, e.g. when an employee forwards the wrong message).
 > **Request to the Carmen team:** confirm which field in Carmen's company/BU master
 > holds the tax ID (and branch, if separate), so we can agree the mapping.
 
-### 2.5 The forwarding address — **settled: one address, every BU**
+### 2.5 The forwarding address — **settled: one address per BU**
 
 `GET /settings` returns `ingest_address`. Carmen's screen **displays that string** and tells
 the customer to forward their bank mail to it. That is the entire integration for this
 section — no action needed from Carmen beyond showing the value.
 
 ```text
-ocr@carmensoftware.com
-     └── the same for every BU, every customer. Constant. Cache it.
+AIAGENT+a1b2c3d4@carmensoftware.com
+        └── issued per BU, once, when the feature is first switched on.
+            null until then. Do NOT cache it across BUs.
 ```
 
-**The BU is identified by the tax ID on the document, not by the address it was sent to.**
-That is the whole design, and it follows from supporting manual forwarding (§0.1): a mail
-forwarded by hand comes from an employee's own client, which rewrites the recipient, so
-there is nothing in the envelope left to route on. The tax ID is printed on the document,
-belongs to exactly one BU system-wide (§2.4), and is already required before the feature can
-be switched on — so routing needs nothing the customer was not already giving us.
+**The BU is identified by the tag in the address the mail was delivered to.** It is read
+from the message's delivery headers, which costs nothing, so the owner — and therefore the
+document credit, the audit row and the cost record — is known **before** anything is read
+by a model.
 
-The earlier design used a per-BU `ocr+<tag>@…` subaddress. It was dropped because it only
-ever worked for one of the two arrival modes, while costing a value that had to be
-allocated, stored, displayed and copied correctly by a human.
+This reverses an earlier decision, and the reasoning is worth recording because it was
+wrong on a point of fact. A previous version of this document dropped the per-BU tag on the
+grounds that it "only ever worked for auto-forwarded mail, because a manual forward comes
+from an employee's own client, which rewrites the recipient". The recipient is indeed
+rewritten — **to whatever the employee typed**, which is the address Carmen showed them.
+The tag survives a manual forward exactly as it survives an auto-forward. What the tag
+actually costs is one longer string to copy.
 
-Two consequences of one shared address, both accepted deliberately:
+Routing on the tax ID instead meant every attachment had to be read by the vision model
+before anyone was known to own it. That is the cost the tag removes, and it was the larger
+one.
 
-- **A document we cannot route costs us one extraction.** The tax ID is only readable after
-  the document has been read, so the LLM call happens before anyone is known to be
-  responsible for it. It costs the customer nothing. We watch the counter; if junk mail
-  becomes material we will add a sender allowlist at the mailbox.
-- **The address is not a secret and never was.** Knowing it lets someone send us a file;
-  it does not let them post anything, because posting requires a tax ID registered to a BU —
-  and a tax ID may only be claimed once (`409`), by someone holding that host's Carmen token.
+Three consequences, all accepted deliberately:
 
-The value is a constant, never `null`, and identical before and after the BU's first `PUT`.
+- **Mail to the bare, untagged address is refused.** Nobody is ever shown that address —
+  `ingest_address` is `null` until a tag exists — so there is no correct way to arrive
+  without one. A mail that does is dropped before any cost.
+- **A mistyped tag is silent.** It cannot be attributed to a tenant, so there is nobody to
+  tell. The address is copied from Carmen's screen rather than typed, which is the
+  mitigation; we watch the volume on our side. If it happens in practice, an auto-reply
+  from the ingest mailbox is the obvious next step.
+- **A multi-BU group manages one address per BU.** A 20-BU hotel group gets 20 addresses.
+  This is inherent to per-BU isolation and is the price of the guarantee in §2.4.
+
+**The tag is a capability, not a secret to protect at all costs, but it is not public
+either.** Knowing it lets someone send us a file that will be attributed to that BU; it
+does not by itself let them post anything, because the document still has to pass the
+bank-rule gate (§2.3), the tax-ID check (§2.4) and Carmen's own validation. It is 8 random
+hex characters, never derived from the BU code — a guessable value would be a short
+dictionary attack against a customer's ledger.
+
+The value is stable for the life of the BU. **It is never reissued** — not on disable and
+re-enable, not after a lapsed package — because the customer's own mailbox rule points at
+it, and a new one would make their documents disappear with no error anywhere.
 
 ### 2.6 The posting credential
 
@@ -490,11 +549,23 @@ Carmen (or the customer) learns what happened to a forwarded document.
 
 `reason_code` values (stable identifiers; the `message` is display text and may change):
 `bank_not_identified`, `mapping_incomplete`, `unbalanced_jv`, `duplicate_document`,
-`unreadable_document`, `wrong_pdf_password`, `out_of_credits`, `carmen_rejected`.
+`unreadable_document`, `wrong_pdf_password`, `out_of_credits`, `carmen_rejected`,
+`tax_id_mismatch`, `no_rule_match`.
 
-There is no `tax_id_mismatch`. The tax ID is what routes a document to a BU (§2.4), so a
-document carrying someone else's number is never delivered here in the first place — there
-is no BU to report a failure to, and nobody has been charged for it.
+The last two are worth reading closely, because they are the two ways a document that
+*arrived correctly* still does not post:
+
+- **`tax_id_mismatch`** — the document carries a tax ID registered to a different BU (§2.4).
+  The address said one owner and the document said another, so it is parked rather than
+  posted to either. The credit is refunded. This is the outcome most worth surfacing to the
+  customer: it usually means someone forwarded the wrong message.
+- **`no_rule_match`** — the attachment matched none of the BU's `filename_patterns` (§2.3),
+  so it was never scanned. Nothing was charged. Expect this for every signature logo in a
+  forwarded chain, and also when a customer's patterns are too narrow — which is why the
+  guidance in §2.3 is "start broad, narrow later".
+
+Mail sent to an address whose tag we cannot resolve produces no event at all: there is no
+BU to report it to and nobody has been charged (§2.5).
 
 > **Question for the Carmen team:** do you want these, and if so should they also raise
 > an in-app notification for the customer, or only feed Carmen's own screens?

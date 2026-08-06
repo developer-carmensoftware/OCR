@@ -4,7 +4,9 @@ PUT/GET /api/v1/carmen/settings (CARMEN_INTEGRATION.md §2.2/§2.3).
 
 Mocks db.execute per-call via side_effect (matching the credit_service.py test
 style), since save_settings issues a small, fixed sequence of queries depending
-on the scenario (conflict check → get_settings → tag allocation).
+on the scenario: bank TINs (only when tax_ids are sent) → active bank codes (only
+when rules are sent) → cross-tenant conflict check → get_settings. Tag allocation
+uses db.scalar, so it is mocked separately.
 """
 
 from types import SimpleNamespace
@@ -85,8 +87,10 @@ async def test_enabled_without_tax_ids_raises_field_validation_error():
 @pytest.mark.asyncio
 async def test_invalid_tax_id_checksum_raises_field_validation_error():
     payload = SettingsIn(host="h", bu="b", enabled=False, tax_ids=["1234567890123"], rules=[])
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[_exec(scalars=[])])  # banks.tax_id
     with pytest.raises(FieldValidationError) as exc:
-        await es.save_settings(AsyncMock(), _tenant(), payload)
+        await es.save_settings(db, _tenant(), payload)
     assert exc.value.errors[0]["field"] == "tax_ids[0]"
     assert exc.value.errors[0]["code"] == "invalid_checksum"
 
@@ -94,7 +98,11 @@ async def test_invalid_tax_id_checksum_raises_field_validation_error():
 @pytest.mark.asyncio
 async def test_unsupported_bank_code_raises_field_validation_error():
     payload = SettingsIn(
-        host="h", bu="b", enabled=False, tax_ids=[], rules=[RuleIn(bank_code="FAKEBANK")]
+        host="h",
+        bu="b",
+        enabled=False,
+        tax_ids=[],
+        rules=[RuleIn(bank_code="FAKEBANK", filename_patterns=["MDR"])],
     )
     db = AsyncMock()
     db.execute = AsyncMock(side_effect=[_exec(scalars=["BBL", "KTC"])])  # active bank codes
@@ -111,7 +119,10 @@ async def test_duplicate_bank_code_in_rules_raises_field_validation_error():
         bu="b",
         enabled=False,
         tax_ids=[],
-        rules=[RuleIn(bank_code="KTC"), RuleIn(bank_code="KTC", filename_pattern="MDR")],
+        rules=[
+            RuleIn(bank_code="KTC", filename_patterns=["MDR"]),
+            RuleIn(bank_code="KTC", filename_patterns=["MDR"]),
+        ],
     )
     db = AsyncMock()
     db.execute = AsyncMock(side_effect=[_exec(scalars=["BBL", "KTC"])])  # active bank codes
@@ -129,7 +140,10 @@ async def test_duplicate_other_rule_raises_field_validation_error():
         bu="b",
         enabled=False,
         tax_ids=[],
-        rules=[RuleIn(bank_code=None), RuleIn(bank_code=None, filename_pattern="MDR")],
+        rules=[
+            RuleIn(bank_code=None, filename_patterns=[".pdf"]),
+            RuleIn(bank_code=None, filename_patterns=["MDR"]),
+        ],
     )
     db = AsyncMock()
     db.execute = AsyncMock(side_effect=[_exec(scalars=[])])  # active bank codes
@@ -159,7 +173,12 @@ async def test_cross_tenant_tax_id_conflict_raises_conflict_error():
     tid = _valid_tax_id()
     other = SimpleNamespace(tax_ids=[tid])
     db = AsyncMock()
-    db.execute = AsyncMock(side_effect=[_exec(scalars=[other])])  # conflict check only
+    db.execute = AsyncMock(
+        side_effect=[
+            _exec(scalars=[]),  # bank TINs — none reserved
+            _exec(scalars=[other]),  # conflict check
+        ]
+    )
 
     payload = SettingsIn(host="h", bu="b", enabled=True, tax_ids=[tid], rules=[])
     with pytest.raises(ConflictError):
@@ -174,11 +193,13 @@ async def test_new_row_created_with_encrypted_password():
     db = AsyncMock()
     db.execute = AsyncMock(
         side_effect=[
+            _exec(scalars=[]),  # bank TINs — none reserved
             _exec(scalars=["KTC"]),  # active bank codes
             _exec(scalars=[]),  # conflict check — no clash
             _exec(scalar_one_or_none=None),  # get_settings — no existing row
         ]
     )
+    db.scalar = AsyncMock(return_value=None)  # the candidate tag is free
     db.add = MagicMock()
 
     payload = SettingsIn(
@@ -186,7 +207,9 @@ async def test_new_row_created_with_encrypted_password():
         bu="b",
         enabled=True,
         tax_ids=[tid],
-        rules=[RuleIn(bank_code="KTC", pdf_password="1234", is_active=True)],
+        rules=[
+            RuleIn(bank_code="KTC", filename_patterns=["MDR"], pdf_password="1234", is_active=True)
+        ],
     )
     row = await es.save_settings(db, tenant, payload)
 
@@ -197,7 +220,9 @@ async def test_new_row_created_with_encrypted_password():
     assert row.enabled is True
     assert row.tax_ids == [tid]
     assert row.rules[0]["bank_code"] == "KTC"
+    assert row.rules[0]["filename_patterns"] == ["MDR"]
     assert row.rules[0]["pdf_password_enc"]  # encrypted, non-empty
+    assert len(row.ingest_tag) == 8  # allocated on this first successful enable
     db.commit.assert_awaited_once()
     db.refresh.assert_awaited_once()
 
@@ -219,21 +244,21 @@ async def test_existing_row_rules_replace_wholesale_password_kept_or_cleared():
             {
                 "bank_code": "KTC",
                 "bank_sender_email": None,
-                "filename_pattern": None,
+                "filename_patterns": ["x"],
                 "is_active": True,
                 "pdf_password_enc": enc_ktc,
             },
             {
                 "bank_code": "BBL",
                 "bank_sender_email": None,
-                "filename_pattern": None,
+                "filename_patterns": ["x"],
                 "is_active": True,
                 "pdf_password_enc": enc_bbl,
             },
             {
                 "bank_code": "SCB",
                 "bank_sender_email": None,
-                "filename_pattern": None,
+                "filename_patterns": ["x"],
                 "is_active": True,
                 "pdf_password_enc": None,
             },
@@ -256,8 +281,12 @@ async def test_existing_row_rules_replace_wholesale_password_kept_or_cleared():
         enabled=False,
         tax_ids=[],
         rules=[
-            RuleIn(bank_code="KTC", pdf_password=None, is_active=True),  # omit = keep
-            RuleIn(bank_code="BBL", pdf_password="", is_active=True),  # "" = clear
+            RuleIn(
+                bank_code="KTC", filename_patterns=["MDR"], pdf_password=None, is_active=True
+            ),  # omit = keep
+            RuleIn(
+                bank_code="BBL", filename_patterns=["stmt"], pdf_password="", is_active=True
+            ),  # "" = clear
         ],
     )
     row = await es.save_settings(db, tenant, payload)
@@ -273,7 +302,13 @@ async def test_existing_row_rules_replace_wholesale_password_kept_or_cleared():
 
 
 def _fake_row(**overrides):
-    defaults = dict(tenant_id=uuid4(), enabled=True, tax_ids=["1234567890123"], rules=[])
+    defaults = dict(
+        tenant_id=uuid4(),
+        enabled=True,
+        tax_ids=["1234567890123"],
+        rules=[],
+        ingest_tag="a1b2c3d4",
+    )
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
 
@@ -284,29 +319,41 @@ def test_to_response_none_row_is_not_configured():
     assert body["status"]["blockers"] == ["not_configured"]
 
 
-def test_to_response_ready_when_enabled_with_tax_id_and_active_rule(monkeypatch):
-    # The mailbox is env-configured (a dev .env points it at a personal inbox), so
-    # pin it here — asserting the production default made this test pass or fail
-    # depending on whose machine it ran on.
-    monkeypatch.setattr(es.app_settings, "email_ingest_address", "ocr@carmensoftware.com")
+@pytest.fixture
+def _mailbox(monkeypatch):
+    """The mailbox is env-configured (a dev .env points it at a personal inbox), so
+    pin it — asserting the production default made these tests pass or fail depending
+    on whose machine they ran on."""
+    monkeypatch.setattr(es.app_settings, "email_ingest_address", "AIAGENT@carmensoftware.com")
+
+
+def test_to_response_ready_when_enabled_with_tax_id_and_active_rule(_mailbox):
     row = _fake_row(rules=[{"bank_code": "KTC", "is_active": True}])
     body = es.to_response(row, "host", "bu")
-    assert body["ingest_address"] == "ocr@carmensoftware.com"
+    assert body["ingest_address"] == "AIAGENT+a1b2c3d4@carmensoftware.com"
     assert body["status"]["ready"] is True
     assert body["status"]["blockers"] == []
 
 
-def test_the_ingest_address_is_the_same_constant_for_every_bu(monkeypatch):
-    """One mailbox, no per-BU tag — and never null, since there is nothing to allocate.
+def test_the_ingest_address_carries_this_bus_own_tag(_mailbox):
+    """One mailbox, one address per BU. The tag is what identifies the owner from the
+    envelope, so two BUs must never be shown the same string."""
+    a = es.to_response(_fake_row(ingest_tag="a1b2c3d4"), "host", "bu")
+    b = es.to_response(_fake_row(ingest_tag="ffffffff"), "host", "bu2")
+    assert a["ingest_address"] == "AIAGENT+a1b2c3d4@carmensoftware.com"
+    assert b["ingest_address"] == "AIAGENT+ffffffff@carmensoftware.com"
 
-    Carmen is told it can cache the value; that is only true if an unconfigured BU
-    gets the same string as a configured one.
+
+def test_the_bare_address_is_never_shown_to_anyone(_mailbox):
+    """Null until a tag exists, rather than the untagged mailbox.
+
+    Mail to the bare address cannot be attributed to a tenant, so showing it would
+    hand the customer a string whose documents vanish. The `not_configured` /
+    `disabled` blockers already say why there is nothing to copy yet.
     """
-    monkeypatch.setattr(es.app_settings, "email_ingest_address", "ocr@carmensoftware.com")
-    unconfigured = es.to_response(None, "host", "bu")
-    configured = es.to_response(_fake_row(), "host", "bu")
-    assert unconfigured["ingest_address"] == configured["ingest_address"]
-    assert configured["ingest_address"] == "ocr@carmensoftware.com"
+    assert es.to_response(None, "host", "bu")["ingest_address"] is None
+    assert es.to_response(_fake_row(ingest_tag=None), "host", "bu")["ingest_address"] is None
+    assert es.ingest_address(None) is None
 
 
 def test_to_response_blockers_for_disabled_no_tax_id_no_active_rule():
@@ -553,3 +600,118 @@ async def test_carmen_origin_is_derived_from_the_tenant_host():
     from app.routers.email_automation import _safe_carmen_uri
 
     assert await _safe_carmen_uri(_tenant_with_host()) == "https://hotel.carmenwork.com"
+
+
+# ── filename_patterns: required, and the hard gate behind it ───────────────────
+
+
+def _patterns_payload(patterns):
+    return SettingsIn(
+        host="h",
+        bu="b",
+        enabled=False,
+        tax_ids=[],
+        rules=[RuleIn(bank_code="KTC", filename_patterns=patterns)],
+    )
+
+
+@pytest.mark.parametrize("patterns", [[], ["", "   "]])
+@pytest.mark.asyncio
+async def test_a_rule_without_a_usable_filename_pattern_is_rejected(patterns):
+    """An attachment matching no pattern is never extracted, so an empty list would
+    switch the BU on and silently process nothing."""
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[_exec(scalars=["KTC"])])  # active bank codes
+    with pytest.raises(FieldValidationError) as exc:
+        await es.save_settings(db, _tenant(), _patterns_payload(patterns))
+    assert exc.value.errors[0]["field"] == "rules[0].filename_patterns"
+    assert exc.value.errors[0]["code"] == "required"
+
+
+@pytest.mark.asyncio
+async def test_patterns_are_stripped_and_blanks_dropped_before_storing():
+    existing = SimpleNamespace(tenant_id=uuid4(), enabled=False, tax_ids=[], rules=[])
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[_exec(scalars=["KTC"]), _exec(scalar_one_or_none=existing)])
+    row = await es.save_settings(db, _tenant(), _patterns_payload(["  MDR ", "", "Commission"]))
+    assert row.rules[0]["filename_patterns"] == ["MDR", "Commission"]
+
+
+# ── Phase 4: a bank's own TIN is not a BU's ───────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_registering_a_banks_own_tax_id_is_rejected():
+    """The bank's TIN is printed on the same invoice the user reads to find theirs.
+
+    Left open, one copy-paste captures every document that bank ever issues — and it
+    would trip `foreign_tax_id` on all of them.
+    """
+    bank_tin = _valid_tax_id("010753600037")
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[_exec(scalars=[bank_tin])])  # banks.tax_id
+    payload = SettingsIn(host="h", bu="b", enabled=True, tax_ids=[bank_tin], rules=[])
+
+    with pytest.raises(FieldValidationError) as exc:
+        await es.save_settings(db, _tenant(), payload)
+    assert exc.value.errors[0]["field"] == "tax_ids[0]"
+    assert exc.value.errors[0]["code"] == "reserved_tax_id"
+    db.commit.assert_not_called()
+
+
+# ── Tag lifecycle ─────────────────────────────────────────────────────────────
+
+
+async def _save(db, tenant, *, enabled, row, tax_ids=None):
+    """save_settings with no rules, so the query sequence is bank TINs → conflict →
+    get_settings (the first two only when tax_ids are sent)."""
+    tids = tax_ids if tax_ids is not None else [_valid_tax_id()]
+    seq = [_exec(scalars=[]), _exec(scalars=[])] if tids else []
+    db.execute = AsyncMock(side_effect=[*seq, _exec(scalar_one_or_none=row)])
+    db.scalar = AsyncMock(return_value=None)
+    payload = SettingsIn(host="h", bu="b", enabled=enabled, tax_ids=tids, rules=[])
+    return await es.save_settings(db, tenant, payload)
+
+
+@pytest.mark.asyncio
+async def test_a_tag_is_not_allocated_while_the_feature_stays_off():
+    """Most tenants sign in once and never buy anything — they must not consume a tag."""
+    row = _fake_row(enabled=False, tax_ids=[], ingest_tag=None)
+    saved = await _save(AsyncMock(), _tenant(), enabled=False, row=row, tax_ids=[])
+    assert saved.ingest_tag is None
+    assert es.to_response(saved, "h", "b")["ingest_address"] is None
+
+
+@pytest.mark.asyncio
+async def test_no_tag_is_allocated_without_an_active_package(monkeypatch):
+    """The entitlement gate is what makes "only paying customers get an address" true
+    with no logic of its own — allocation sits behind it."""
+    monkeypatch.setattr(es, "is_entitled", AsyncMock(return_value=False))
+    row = _fake_row(ingest_tag=None)
+    db = AsyncMock()
+    with pytest.raises(FieldValidationError):
+        await _save(db, _tenant(), enabled=True, row=row)
+    assert row.ingest_tag is None
+    db.scalar.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_tag_survives_disable_then_re_enable():
+    """Reissuing one silently breaks the customer's own mailbox rule — their documents
+    would arrive at an address nobody owns, with no error anywhere."""
+    row = _fake_row(ingest_tag="a1b2c3d4")
+    await _save(AsyncMock(), _tenant(), enabled=False, row=row, tax_ids=[])
+    assert row.ingest_tag == "a1b2c3d4"
+    await _save(AsyncMock(), _tenant(), enabled=True, row=row)
+    assert row.ingest_tag == "a1b2c3d4"
+
+
+@pytest.mark.asyncio
+async def test_the_allocator_skips_a_tag_another_bu_already_holds():
+    """The partial unique index is the real guard; this keeps a collision from arriving
+    as a failed commit that would take the whole save with it."""
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[_exec(scalar_one_or_none=None)])
+    db.scalar = AsyncMock(side_effect=["taken", "taken", None])
+    tag = await es._fresh_tag(db)
+    assert len(tag) == 8 and db.scalar.await_count == 3

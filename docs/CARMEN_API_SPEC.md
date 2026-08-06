@@ -1,6 +1,6 @@
 # Email Automation API
 
-**v2.1 · 2026-08-06** · Base URL `https://{ocr-host}/api/v1/carmen` · schema: `/openapi.json`
+**v3.0 · 2026-08-06** · Base URL `https://{ocr-host}/api/v1/carmen` · schema: `/openapi.json`
 เหตุผลเบื้องหลัง: [CARMEN_INTEGRATION.md](CARMEN_INTEGRATION.md)
 
 ---
@@ -53,13 +53,13 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
   "bu": "hq",
   "enabled": true,
   "entitled": true,                                    // มี package รายเดือนที่ยังไม่หมดอายุ
-  "ingest_address": "ocr@carmensoftware.com",          // ค่าเดียวกันทุก BU ไม่มีวันเป็น null
+  "ingest_address": "AIAGENT+a1b2c3d4@carmensoftware.com",  // ต่อ BU · null จนกว่าจะเปิดใช้สำเร็จ
   "tax_ids": ["0105536000127"],
   "rules": [
     {
       "bank_code": "KTC",
       "bank_sender_email": "no-reply@ktc.co.th",
-      "filename_pattern": "MDR",
+      "filename_patterns": ["MDR", "Commission"],
       "has_password": true,
       "is_active": true
     }
@@ -79,7 +79,7 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
 |---|---|
 | `not_configured` | ยังไม่เคยตั้งค่า |
 | `not_entitled` | ไม่มี package รายเดือนที่ยังไม่หมดอายุ |
-| `no_tax_id` | ยังไม่ได้ใส่เลขผู้เสียภาษี — **ไม่มีเลข = รับเมลไม่ได้เลย** เพราะเลขนี้คือตัว route (ดู ข้อควรรู้ ข้อ 4) |
+| `no_tax_id` | ยังไม่ได้ใส่เลขผู้เสียภาษี — จำเป็นก่อนเปิดใช้ ใช้เป็นตัว**ยืนยัน**ว่าเอกสารเป็นของ BU นี้ (ดู ข้อควรรู้ ข้อ 4) |
 | `no_rule` | ไม่มี rule ที่ `is_active` |
 | `disabled` | `enabled` ยังเป็น false |
 
@@ -101,7 +101,7 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
 |---|---|---|
 | `bank_code` | string \| null | ดูค่าที่ใช้ได้จาก `GET /bank-codes` (§0) · `null` = อื่น ๆ · **ห้ามซ้ำกันในลิสต์ `rules` เดียวกัน รวมถึง `null` ก็ได้แค่ 1 rule** |
 | `bank_sender_email` | string \| null | |
-| `filename_pattern` | string \| null | substring ของชื่อไฟล์ ไม่สนตัวพิมพ์ · `null` = ไฟล์ไหนก็ได้ |
+| `filename_patterns` **required ≥1** | string[] | substring ของชื่อไฟล์ ไม่สนตัวพิมพ์ · เข้าเงื่อนไขข้อใดข้อหนึ่งก็พอ · **ไฟล์ที่ไม่ตรง rule ไหนเลย = ไม่ถูกอ่าน ไม่ถูกคิดเงิน** · ใส่ `".pdf"` = รับ PDF ทุกไฟล์ |
 | `pdf_password` | string \| null | **write-only** · ไม่ส่ง = เก็บของเดิม · `""` = ล้างทิ้ง |
 | `is_active` | bool | default `true` |
 
@@ -113,7 +113,7 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
   "tax_ids": ["0105536000127"],
   "rules": [
     { "bank_code": "KTC", "bank_sender_email": "no-reply@ktc.co.th",
-      "filename_pattern": "MDR", "pdf_password": "1234", "is_active": true }
+      "filename_patterns": ["MDR", "Commission"], "pdf_password": "1234", "is_active": true }
   ]
 }
 ```
@@ -163,6 +163,8 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
 | `422` | `not_entitled` | `enabled: true` แต่ package หมดอายุ | ต่ออายุ (บันทึกเฉย ๆ ยังได้) |
 | `422` | `unsupported_bank` | `bank_code` ไม่อยู่ในลิสต์ (ดู `GET /bank-codes`) | ใช้ `null` |
 | `422` | `duplicate_bank` | มี 2 rules ใช้ `bank_code` เดียวกัน (รวม `null` กับ `null`) | รวมเป็น rule เดียว |
+| `422` | `required` (`rules[i].filename_patterns`) | rule ไม่มี pattern ที่ใช้ได้เลย | ใส่อย่างน้อย 1 · ไม่รู้จะใส่อะไรให้ใส่ `".pdf"` |
+| `422` | `reserved_tax_id` | เลขที่ใส่เป็น**เลขของธนาคารเอง** ไม่ใช่ของบริษัทลูกค้า | ใช้เลขบริษัท — เลขธนาคารพิมพ์อยู่บนใบเดียวกัน มักหยิบผิดบรรทัด |
 | `409` | `Tax ID … already registered` | เลขนี้ถูก BU อื่นจองแล้ว | น่าจะพิมพ์ผิด |
 | `422` | `token_rejected` | Carmen ปฏิเสธ token ที่ส่งมาเก็บ | mint ใบใหม่ |
 | `422` | `invalid_uri` | `https://{host}` ไม่ผ่าน SSRF check | แก้ `host` |
@@ -176,7 +178,8 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
 | 1 | BU ต้องเคย login เข้า OCR app ก่อน ไม่งั้น `400` ทุก endpoint |
 | 2 | `PUT /settings` ทับทั้งก้อน — ส่ง `tax_ids` + `rules` ครบทุกครั้ง |
 | 3 | `PUT /settings` กับ `PUT /settings/token` ไม่แตะข้อมูลของกันและกัน |
-| 4 | **ที่อยู่เดียวทุก BU** — ระบบดูเลขผู้เสียภาษีบนตัวเอกสารว่าเป็นของใคร ไม่ได้ดูที่อยู่ผู้รับ · ค่าคงที่ cache ได้ |
+| 4 | **ที่อยู่ 1 อันต่อ 1 BU** (`AIAGENT+<tag>@…`) — ระบบดู tag ในที่อยู่ผู้รับว่าเป็นของ BU ไหน แล้วใช้เลขผู้เสียภาษีบนเอกสาร**ยืนยัน** · เป็น `null` จนกว่าจะ `enabled: true` สำเร็จครั้งแรก · **cache แยกต่อ BU ห้าม cache ข้าม BU** · ค่านี้ไม่เปลี่ยนอีก แม้ปิด-เปิดใหม่หรือ package หมดอายุ |
+| 4b | เอกสารที่มีเลขผู้เสียภาษีของ BU **อื่น** จะไม่ถูก post (`tax_id_mismatch`, คืนเครดิต) · เอกสารที่ไม่มีเลขเลย ยัง post ปกติ (ใบ fee บางใบไม่พิมพ์เลขผู้ซื้อ) |
 | 5 | ดูว่าระบบทำงานอยู่ไหม ใช้ `status.ready` ไม่ใช่ `enabled` |
 | 6 | `DELETE /settings/token` ลบแค่สำเนาของเรา ไม่ใช่การเพิกถอน — Carmen ต้องเพิกถอนเอง |
 | 7 | แยก `401` (user ต้อง login ใหม่) กับ `502` (เราเข้าไม่ถึง host ลูกค้า) บนหน้าจอ |

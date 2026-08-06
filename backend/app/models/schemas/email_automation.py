@@ -9,7 +9,12 @@ from pydantic import BaseModel, Field, SecretStr
 class RuleIn(BaseModel):
     bank_code: str | None = None
     bank_sender_email: str | None = None
-    filename_pattern: str | None = None
+    # Required, ≥1 non-empty entry — an attachment matching no pattern is never
+    # extracted, so this field is the difference between a document being processed
+    # and dropped. A list because the likeliest real failure is a bank alternating
+    # between `MDR_…` and `Commission_…`, or an employee renaming the PDF before
+    # forwarding it. `.pdf` accepts everything of that type and is the escape hatch.
+    filename_patterns: list[str] = Field(default_factory=list)
     pdf_password: str | None = None  # write-only: omit = keep, "" = clear
     is_active: bool = True
 

@@ -335,7 +335,16 @@ async def check_token_health(
     fails. This is the substitute for an expiry date.
 
     ponytail: not scheduled yet — the ingest poll has no cron either, and both
-    belong in one migration the day the mailbox goes live. That migration is:
+    belong in one migration the day the mailbox goes live.
+
+    **Schedule the ingest poll at 10 minutes, not 5.** Attachments are processed
+    serially, so one poll of a full `imap_batch_size` batch costs roughly
+    batch × (one vision call + two Carmen posts) ≈ 3-5 minutes. Some banks send
+    commission daily, which for ~100 BUs is ~300 messages a day arriving mostly in
+    one overnight window — well inside a 10-minute poll's 2,880/day capacity, and
+    without polls routinely overlapping each other on a small instance.
+
+    Both jobs use the same shape:
 
         select cron.schedule('email-token-health', '15 2 * * *', $$
         select net.http_post(
