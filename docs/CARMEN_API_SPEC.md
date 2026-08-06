@@ -1,6 +1,6 @@
 # Email Automation API
 
-**v2.0 · 2026-08-05** · Base URL `https://{ocr-host}/api/v1/carmen` · schema: `/openapi.json`
+**v2.1 · 2026-08-06** · Base URL `https://{ocr-host}/api/v1/carmen` · schema: `/openapi.json`
 เหตุผลเบื้องหลัง: [CARMEN_INTEGRATION.md](CARMEN_INTEGRATION.md)
 
 ---
@@ -20,6 +20,7 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
 
 | # | Endpoint | ทำอะไร |
 |---|---|---|
+| 0 | `GET /bank-codes` | ลิสต์ `bank_code` ที่ใช้ได้ตอนนี้ — ไม่ผูกกับ host/bu |
 | 1 | `GET /settings?host=&bu=` | อ่านค่าที่ตั้งไว้ |
 | 2 | `PUT /settings` | เขียนค่าตั้ง |
 | 3 | `PUT /settings/token` | ส่ง token ที่ใช้ post JV |
@@ -31,6 +32,16 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
 **ลำดับเปิดใช้:** `PUT /settings/token` → `PUT /settings` → แสดง `ingest_address` จาก response ให้ลูกค้า copy
 **ปิดใช้:** เพิกถอน token ฝั่ง Carmen → `DELETE /settings/token`
 **Rotate:** `PUT /settings/token` ทับได้เลย
+
+---
+
+## 0 · `GET /bank-codes` → `200`
+
+```jsonc
+{ "banks": [ { "code": "BBL", "name": "Bangkok Bank" }, { "code": "KTC", "name": "Krungthai Card" } ] }
+```
+
+ดึงจากตาราง bank เดียวกับที่ OCR wizard ใช้ — เพิ่มธนาคารใหม่ = INSERT ไม่ต้อง deploy ใหม่ ดังนั้น**อย่า hardcode ลิสต์นี้ฝั่ง Carmen** ให้ดึงจาก endpoint นี้แทน (หรืออย่างน้อย cache แบบ refresh เป็นระยะ)
 
 ---
 
@@ -88,7 +99,7 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
 
 | Field | Type | Description |
 |---|---|---|
-| `bank_code` | string \| null | `BBL` `KBANK` `SCB` `BAY` `KTC` `GHL` `PAYPAL` `SIAMPAY` · `null` = อื่น ๆ |
+| `bank_code` | string \| null | ดูค่าที่ใช้ได้จาก `GET /bank-codes` (§0) · `null` = อื่น ๆ · **ห้ามซ้ำกันในลิสต์ `rules` เดียวกัน รวมถึง `null` ก็ได้แค่ 1 rule** |
 | `bank_sender_email` | string \| null | |
 | `filename_pattern` | string \| null | substring ของชื่อไฟล์ ไม่สนตัวพิมพ์ · `null` = ไฟล์ไหนก็ได้ |
 | `pdf_password` | string \| null | **write-only** · ไม่ส่ง = เก็บของเดิม · `""` = ล้างทิ้ง |
@@ -150,7 +161,8 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
 | `422` | `invalid_checksum` | เลขผู้เสียภาษีไม่ใช่ 13 หลัก / check digit ไม่ผ่าน | แก้เลข |
 | `422` | `required` | `enabled: true` แต่ไม่มี `tax_ids` | ใส่เลขก่อน |
 | `422` | `not_entitled` | `enabled: true` แต่ package หมดอายุ | ต่ออายุ (บันทึกเฉย ๆ ยังได้) |
-| `422` | `unsupported_bank` | `bank_code` ไม่อยู่ในลิสต์ | ใช้ `null` |
+| `422` | `unsupported_bank` | `bank_code` ไม่อยู่ในลิสต์ (ดู `GET /bank-codes`) | ใช้ `null` |
+| `422` | `duplicate_bank` | มี 2 rules ใช้ `bank_code` เดียวกัน (รวม `null` กับ `null`) | รวมเป็น rule เดียว |
 | `409` | `Tax ID … already registered` | เลขนี้ถูก BU อื่นจองแล้ว | น่าจะพิมพ์ผิด |
 | `422` | `token_rejected` | Carmen ปฏิเสธ token ที่ส่งมาเก็บ | mint ใบใหม่ |
 | `422` | `invalid_uri` | `https://{host}` ไม่ผ่าน SSRF check | แก้ `host` |

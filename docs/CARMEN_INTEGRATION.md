@@ -221,8 +221,10 @@ PUT /api/v1/carmen/settings
   are unknown at the moment a protected file is opened, so the configured passwords are
   tried in turn. They are all customers' own, there are a handful, and a file opens only
   with its own owner's.
-- Supported `bank_code` values today: `BBL`, `KBANK`, `SCB`, `BAY`, `KTC`, `GHL`,
-  `PAYPAL`, `SIAMPAY`, or `null` for anything else.
+- Supported `bank_code` values: `GET /api/v1/carmen/bank-codes` — the same `banks`
+  registry the OCR wizard reads, so a bank added there needs no change here. `null` is
+  always valid and means "anything else". A `bank_code` (including `null`) may appear
+  in **at most one** rule per BU — `422 duplicate_bank` otherwise.
 
 Errors are returned as `422` with a per-field list so Carmen can render them inline:
 

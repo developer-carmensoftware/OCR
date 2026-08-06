@@ -22,13 +22,38 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.session import decrypt_carmen_token, encrypt_carmen_token
 from app.config import settings as app_settings
 from app.exceptions import ConflictError, FieldValidationError, ValidationError
+from app.models.catalog import Bank
 from app.models.email_automation import EmailDocument, EmailIngestSettings
 from app.models.identity import Tenant
 from app.services.credit_service import active_subscription
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_BANK_CODES = {"BBL", "KBANK", "SCB", "BAY", "KTC", "GHL", "PAYPAL", "SIAMPAY"}
+
+async def list_bank_codes(db: AsyncSession) -> list[dict]:
+    """Bank codes a rule's `bank_code` (§2.3) may reference.
+
+    Same `banks` table the OCR wizard already reads — one registry, not a second
+    hardcoded list to keep in sync whenever a bank is added. Backs both the GET
+    endpoint Carmen's dropdown reads and the "unsupported_bank" check below.
+    """
+    rows = (
+        await db.execute(
+            select(Bank.code, Bank.name)
+            .where(Bank.is_active.is_(True), Bank.deleted_at.is_(None))
+            .order_by(Bank.sort_order, Bank.name)
+        )
+    ).all()
+    return [{"code": code, "name": name} for code, name in rows]
+
+
+async def _active_bank_codes(db: AsyncSession) -> set[str]:
+    rows = (
+        await db.execute(
+            select(Bank.code).where(Bank.is_active.is_(True), Bank.deleted_at.is_(None))
+        )
+    ).scalars()
+    return set(rows)
 
 
 # ── Tax ID ────────────────────────────────────────────────────────────────────
@@ -238,15 +263,33 @@ async def save_settings(db: AsyncSession, tenant: Tenant, payload: Any) -> Email
                     "message": "Tax ID must be 13 digits with a valid check digit",
                 }
             )
-    for i, rule in enumerate(payload.rules or []):
-        if rule.bank_code and rule.bank_code not in SUPPORTED_BANK_CODES:
-            errors.append(
-                {
-                    "field": f"rules[{i}].bank_code",
-                    "code": "unsupported_bank",
-                    "message": f"Unsupported bank code: {rule.bank_code}",
-                }
-            )
+    rules = payload.rules or []
+    if rules:
+        supported = await _active_bank_codes(db)
+        seen_banks: dict[str | None, int] = {}
+        for i, rule in enumerate(rules):
+            if rule.bank_code and rule.bank_code not in supported:
+                errors.append(
+                    {
+                        "field": f"rules[{i}].bank_code",
+                        "code": "unsupported_bank",
+                        "message": f"Unsupported bank code: {rule.bank_code}",
+                    }
+                )
+            if rule.bank_code in seen_banks:
+                errors.append(
+                    {
+                        "field": f"rules[{i}].bank_code",
+                        "code": "duplicate_bank",
+                        "message": (
+                            f"Bank code '{rule.bank_code}' is already used by another rule"
+                            if rule.bank_code
+                            else "Only one 'Other' rule (bank_code: null) is allowed"
+                        ),
+                    }
+                )
+            else:
+                seen_banks[rule.bank_code] = i
     if payload.enabled and not tax_ids:
         errors.append(
             {
@@ -292,7 +335,7 @@ async def save_settings(db: AsyncSession, tenant: Tenant, payload: Any) -> Email
     existing = {(r.get("bank_code") or ""): r for r in (row.rules or [])}
     row.enabled = bool(payload.enabled)
     row.tax_ids = tax_ids
-    row.rules = [_merge_rule(r, existing.get(r.bank_code or "")) for r in (payload.rules or [])]
+    row.rules = [_merge_rule(r, existing.get(r.bank_code or "")) for r in rules]
     await db.commit()
     await db.refresh(row)
     return row

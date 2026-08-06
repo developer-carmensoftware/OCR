@@ -96,10 +96,59 @@ async def test_unsupported_bank_code_raises_field_validation_error():
     payload = SettingsIn(
         host="h", bu="b", enabled=False, tax_ids=[], rules=[RuleIn(bank_code="FAKEBANK")]
     )
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[_exec(scalars=["BBL", "KTC"])])  # active bank codes
     with pytest.raises(FieldValidationError) as exc:
-        await es.save_settings(AsyncMock(), _tenant(), payload)
+        await es.save_settings(db, _tenant(), payload)
     assert exc.value.errors[0]["field"] == "rules[0].bank_code"
     assert exc.value.errors[0]["code"] == "unsupported_bank"
+
+
+@pytest.mark.asyncio
+async def test_duplicate_bank_code_in_rules_raises_field_validation_error():
+    payload = SettingsIn(
+        host="h",
+        bu="b",
+        enabled=False,
+        tax_ids=[],
+        rules=[RuleIn(bank_code="KTC"), RuleIn(bank_code="KTC", filename_pattern="MDR")],
+    )
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[_exec(scalars=["BBL", "KTC"])])  # active bank codes
+    with pytest.raises(FieldValidationError) as exc:
+        await es.save_settings(db, _tenant(), payload)
+    assert exc.value.errors[0]["field"] == "rules[1].bank_code"
+    assert exc.value.errors[0]["code"] == "duplicate_bank"
+
+
+@pytest.mark.asyncio
+async def test_duplicate_other_rule_raises_field_validation_error():
+    """bank_code: null ("Other") can only appear once too."""
+    payload = SettingsIn(
+        host="h",
+        bu="b",
+        enabled=False,
+        tax_ids=[],
+        rules=[RuleIn(bank_code=None), RuleIn(bank_code=None, filename_pattern="MDR")],
+    )
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[_exec(scalars=[])])  # active bank codes
+    with pytest.raises(FieldValidationError) as exc:
+        await es.save_settings(db, _tenant(), payload)
+    assert exc.value.errors[0]["code"] == "duplicate_bank"
+    assert "Other" in exc.value.errors[0]["message"]
+
+
+@pytest.mark.asyncio
+async def test_list_bank_codes_returns_active_banks_ordered():
+    db = AsyncMock()
+    result = MagicMock()
+    result.all.return_value = [("BBL", "Bangkok Bank"), ("KTC", "Krungthai Card")]
+    db.execute = AsyncMock(return_value=result)
+    assert await es.list_bank_codes(db) == [
+        {"code": "BBL", "name": "Bangkok Bank"},
+        {"code": "KTC", "name": "Krungthai Card"},
+    ]
 
 
 # ── save_settings — DB interaction ────────────────────────────────────────────
@@ -125,6 +174,7 @@ async def test_new_row_created_with_encrypted_password():
     db = AsyncMock()
     db.execute = AsyncMock(
         side_effect=[
+            _exec(scalars=["KTC"]),  # active bank codes
             _exec(scalars=[]),  # conflict check — no clash
             _exec(scalar_one_or_none=None),  # get_settings — no existing row
         ]
@@ -193,6 +243,7 @@ async def test_existing_row_rules_replace_wholesale_password_kept_or_cleared():
     db = AsyncMock()
     db.execute = AsyncMock(
         side_effect=[
+            _exec(scalars=["KTC", "BBL"]),  # active bank codes
             _exec(
                 scalar_one_or_none=existing
             ),  # get_settings — row exists (no tax_ids -> no conflict check)

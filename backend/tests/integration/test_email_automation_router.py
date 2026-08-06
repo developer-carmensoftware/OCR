@@ -304,3 +304,25 @@ def test_get_settings_reaches_handler_for_both_auth_styles():
             resp = client.get(f"{BASE}/settings", params={"host": "h", "bu": "b"})
     assert resp.status_code == 200
     assert resp.json()["status"]["blockers"] == ["not_configured"]
+
+
+# ── Bank codes — reference data, not tenant-scoped ─────────────────────────────
+
+
+def test_bank_codes_401_without_authorization_header():
+    with make_test_client(AsyncMock()) as client:
+        resp = client.get(f"{BASE}/bank-codes")
+    assert resp.status_code == 401
+
+
+def test_bank_codes_reaches_handler_and_returns_the_service_list():
+    from app.main import app
+    from app.services import email_settings_service as es
+
+    app.dependency_overrides[_caller] = lambda: Caller("test-actor", None)
+    banks = [{"code": "BBL", "name": "Bangkok Bank"}, {"code": "KTC", "name": "Krungthai Card"}]
+    with patch.object(es, "list_bank_codes", new_callable=AsyncMock, return_value=banks):
+        with make_test_client(AsyncMock()) as client:
+            resp = client.get(f"{BASE}/bank-codes")
+    assert resp.status_code == 200
+    assert resp.json() == {"banks": banks}

@@ -215,6 +215,20 @@ async def _safe_carmen_uri(tenant: Tenant) -> str:
         ) from exc
 
 
+# ── Reference data ────────────────────────────────────────────────────────────
+
+
+@router.get("/bank-codes")
+async def read_bank_codes(db: AsyncSession = Depends(get_db), caller: Caller = Depends(_caller)):
+    """Valid values for a rule's `bank_code` (§2.3) — not tenant-scoped, so no host/bu.
+
+    Backed by the same `banks` table the OCR wizard reads, so a bank added there
+    (an INSERT, no redeploy) shows up here immediately rather than needing this
+    list hand-maintained a second time.
+    """
+    return {"banks": await es.list_bank_codes(db)}
+
+
 # ── Settings (§2.2 / §2.3) ────────────────────────────────────────────────────
 
 
