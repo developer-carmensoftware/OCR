@@ -1,6 +1,5 @@
 import { BANKS } from '../../constants'
 import { BANK_CODE_MAP } from '../../constants/banks'
-import { descriptionForBank } from '../../lib/bankTransforms'
 import type { BankDisplayName } from '../../types/api'
 
 interface Props {
@@ -27,10 +26,13 @@ export default function TopLevelConfigSection({
   setBankDescriptions,
 }: Props) {
   const bankCode = bank ? BANK_CODE_MAP[bank] : ''
-  // Same resolution the JV, the input-tax record and the email-ingest job use, so
-  // the box shows what a document would actually carry — not a value that is only
-  // true until something falls back.
-  const effectiveDescription = descriptionForBank(description, bankDescriptions, bankCode)
+  // The box holds this bank's own wording, raw — NOT the resolved value. Feeding it
+  // the fallback makes the field impossible to clear: deleting the last character
+  // empties the per-bank entry, the fallback resolves in its place, and the old text
+  // reappears under the cursor. The fallback belongs in the placeholder, where it
+  // says what will be used without pretending to be what you typed.
+  const ownDescription = (bankCode && bankDescriptions[bankCode]) || ''
+  const fallback = description || ''
   return (
     <div className="section">
       <div className="form-grid">
@@ -139,8 +141,8 @@ export default function TopLevelConfigSection({
             id="description"
             type="text"
             aria-label="Description"
-            placeholder="Additional details"
-            value={effectiveDescription}
+            placeholder={(bankCode && fallback) || 'Additional details'}
+            value={bankCode ? ownDescription : fallback}
             onChange={e =>
               bankCode
                 ? setBankDescriptions({ ...bankDescriptions, [bankCode]: e.target.value })
@@ -148,7 +150,13 @@ export default function TopLevelConfigSection({
             }
           />
           <small style={{ display: 'block', marginTop: 2, color: 'var(--text-3)' }}>
-            {bankCode ? `Applies to ${bankCode} documents` : 'Select a bank to set this per bank'}
+            {!bankCode
+              ? 'Select a bank to set this per bank'
+              : ownDescription
+                ? `Applies to ${bankCode} documents`
+                : fallback
+                  ? `Empty — ${bankCode} documents use "${fallback}"`
+                  : `Applies to ${bankCode} documents`}
           </small>
         </div>
       </div>
