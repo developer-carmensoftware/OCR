@@ -1,5 +1,6 @@
 import { BANKS } from '../../constants'
 import { BANK_CODE_MAP } from '../../constants/banks'
+import { descriptionForBank } from '../../lib/bankTransforms'
 import type { BankDisplayName } from '../../types/api'
 
 interface Props {
@@ -26,7 +27,10 @@ export default function TopLevelConfigSection({
   setBankDescriptions,
 }: Props) {
   const bankCode = bank ? BANK_CODE_MAP[bank] : ''
-  const bankDescription = (bankCode && bankDescriptions[bankCode]) || ''
+  // Same resolution the JV, the input-tax record and the email-ingest job use, so
+  // the box shows what a document would actually carry — not a value that is only
+  // true until something falls back.
+  const effectiveDescription = descriptionForBank(description, bankDescriptions, bankCode)
   return (
     <div className="section">
       <div className="form-grid">
@@ -115,57 +119,38 @@ export default function TopLevelConfigSection({
           </small>
         </div>
 
+        {/* One field, scoped to the selected bank — the same way File Source is.
+            It shows the wording that is actually in effect: this bank's own if it
+            has one, else the value the BU set before descriptions were per-bank.
+            Editing writes it against the selected bank, which the line underneath
+            says out loud; the BU-wide value stays in place as the fallback for
+            banks nobody has got to yet, and needs no field of its own to do that. */}
         <label htmlFor="description">
           Description
           <span
             className="gl-help-tip"
-            title="Used on the journal voucher and the input-tax record for every bank that has no wording of its own."
+            title="Goes on the journal voucher and the input-tax record for this bank's documents."
           >
             ?
           </span>
         </label>
-        <input
-          id="description"
-          type="text"
-          aria-label="Description"
-          placeholder="Additional details"
-          value={description}
-          onChange={e => setDescription(e.target.value)}
-        />
-
-        {/* Only meaningful once a bank is chosen — there is nothing to key it on
-            otherwise, and an input that silently discards what you type is worse
-            than one that is not there. */}
-        {bankCode && (
-          <>
-            <label htmlFor="bankDescription">
-              Description for {bankCode}
-              <span
-                className="gl-help-tip"
-                title={`Overrides Description for ${bankCode} documents only. Leave empty to use the Description above.`}
-              >
-                ?
-              </span>
-            </label>
-            <div>
-              <input
-                id="bankDescription"
-                type="text"
-                aria-label={`Description for ${bankCode}`}
-                placeholder={description || 'Additional details'}
-                value={bankDescription}
-                onChange={e =>
-                  setBankDescriptions({ ...bankDescriptions, [bankCode]: e.target.value })
-                }
-              />
-              <small style={{ display: 'block', marginTop: 2, color: 'var(--text-3)' }}>
-                {bankDescription
-                  ? `Only ${bankCode} documents use this`
-                  : 'Empty — falls back to Description'}
-              </small>
-            </div>
-          </>
-        )}
+        <div>
+          <input
+            id="description"
+            type="text"
+            aria-label="Description"
+            placeholder="Additional details"
+            value={effectiveDescription}
+            onChange={e =>
+              bankCode
+                ? setBankDescriptions({ ...bankDescriptions, [bankCode]: e.target.value })
+                : setDescription(e.target.value)
+            }
+          />
+          <small style={{ display: 'block', marginTop: 2, color: 'var(--text-3)' }}>
+            {bankCode ? `Applies to ${bankCode} documents` : 'Select a bank to set this per bank'}
+          </small>
+        </div>
       </div>
     </div>
   )
