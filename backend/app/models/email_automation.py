@@ -47,6 +47,11 @@ class EmailIngestSettings(Base, TimestampMixin, WriterMixin):
     carmen_uri = Column(Text, nullable=True)
     carmen_token_fp = Column(String(16), nullable=True)
     carmen_token_verified_at = Column(DateTime(timezone=True), nullable=True)
+    # Gmail's forwarding confirmation code, addressed to this BU's tag. Single-use and
+    # overwritten by the next one — the settings screen shows it so the customer can
+    # finish the handshake without anyone opening the shared mailbox.
+    gmail_confirm_code = Column(String(32), nullable=True)
+    gmail_confirm_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index(

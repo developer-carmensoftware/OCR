@@ -1,5 +1,13 @@
 const TOKEN_KEY = 'ocr_access_token'
 
+/** The raw Carmen token from SSO, kept only for `/api/v1/carmen/*` (the settings API
+ *  Carmen calls). Everything else uses our own session JWT above. */
+export const CARMEN_RAW_TOKEN_KEY = 'carmen_raw_token'
+
+export function getCarmenRawToken(): string | null {
+  return sessionStorage.getItem(CARMEN_RAW_TOKEN_KEY)
+}
+
 /**
  * Backend base URL.
  *
@@ -29,6 +37,9 @@ export function storeToken(token: string): void {
 
 export function clearToken(): void {
   sessionStorage.removeItem(TOKEN_KEY)
+  // Goes with it: both came from the same login, and a Carmen token outliving the
+  // session it arrived with is a credential nobody is watching.
+  sessionStorage.removeItem(CARMEN_RAW_TOKEN_KEY)
 }
 
 export interface ApiClientOptions {

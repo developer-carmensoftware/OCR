@@ -17,7 +17,7 @@ import pytest
 
 from app.services import email_ingest_service as ingest
 from app.services import email_settings_service as es
-from app.services.email_ingest_service import match_rules, tag_from_recipients
+from app.services.email_ingest_service import gmail_confirm_code, match_rules, tag_from_recipients
 
 ADDRESS = "AIAGENT@carmensoftware.com"
 
@@ -231,6 +231,37 @@ async def test_a_disabled_bus_registered_number_still_counts_as_a_conflict():
     db = _db([other])
     assert await es.foreign_tax_id(db, ["0994000165676"], "bu-a") == "0994000165676"
     assert "WHERE" not in str(db.execute.await_args.args[0])  # every row, not just enabled
+
+
+# ── gmail_confirm_code — the one message we want that carries no document ──────
+
+_CONFIRM_SUBJECT = "(#123456789) Gmail Forwarding Confirmation - Receive Mail from x@y.com"
+
+
+def test_the_code_is_read_out_of_googles_subject():
+    assert gmail_confirm_code("forwarding-noreply@google.com", _CONFIRM_SUBJECT) == "123456789"
+
+
+def test_the_sender_is_matched_inside_a_display_name_form():
+    """Real headers are `Gmail Team <forwarding-noreply@google.com>`, not bare addresses."""
+    sender = "Gmail Team <Forwarding-Noreply@Google.com>"
+    assert gmail_confirm_code(sender, _CONFIRM_SUBJECT) == "123456789"
+
+
+def test_only_google_can_produce_a_code():
+    """`(#123456789)` is an unremarkable thing for a bank to put in a subject line, and
+    a false positive parks an invoice number on the settings screen as a 'code'."""
+    assert gmail_confirm_code("no-reply@ktc.co.th", _CONFIRM_SUBJECT) is None
+
+
+def test_googles_other_mail_yields_no_code():
+    sender = "forwarding-noreply@google.com"
+    assert gmail_confirm_code(sender, "Forwarding notice") is None
+
+
+def test_missing_sender_or_subject_is_not_a_crash():
+    assert gmail_confirm_code("", "") is None
+    assert gmail_confirm_code(None, None) is None  # type: ignore[arg-type]
 
 
 # ── match_rules — a bank hint that is now also a hard gate ─────────────────────

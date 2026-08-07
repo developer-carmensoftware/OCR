@@ -308,6 +308,8 @@ def _fake_row(**overrides):
         tax_ids=["1234567890123"],
         rules=[],
         ingest_tag="a1b2c3d4",
+        gmail_confirm_code=None,
+        gmail_confirm_at=None,
     )
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -360,6 +362,18 @@ def test_to_response_blockers_for_disabled_no_tax_id_no_active_rule():
     row = _fake_row(enabled=False, tax_ids=[], rules=[{"bank_code": "KTC", "is_active": False}])
     body = es.to_response(row, "host", "bu")
     assert set(body["status"]["blockers"]) == {"no_tax_id", "no_rule", "disabled"}
+
+
+def test_to_response_carries_a_waiting_gmail_code_and_omits_it_otherwise():
+    """The whole point of storing it: the person who can use the code is the one
+    looking at this screen, and they can never open the mailbox it was sent to."""
+    from datetime import UTC, datetime
+
+    at = datetime(2026, 8, 7, 9, 30, tzinfo=UTC)
+    body = es.to_response(_fake_row(gmail_confirm_code="123456789", gmail_confirm_at=at), "h", "b")
+    assert body["gmail_confirm"] == {"code": "123456789", "at": at.isoformat()}
+    assert es.to_response(_fake_row(), "h", "b")["gmail_confirm"] is None
+    assert es.to_response(None, "h", "b")["gmail_confirm"] is None
 
 
 def test_to_response_never_echoes_the_password_only_a_boolean():

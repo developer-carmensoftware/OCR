@@ -545,7 +545,16 @@ def _settings_row(**overrides):
     return MagicMock(**defaults)
 
 
-async def _route(*, resolved, entitled=True, recipients=(TAGGED,), attachments=None):
+async def _route(
+    *,
+    resolved,
+    entitled=True,
+    recipients=(TAGGED,),
+    attachments=None,
+    sender="no-reply@ktc.co.th",
+    subject="statement",
+    record=None,
+):
     """Runs `_process_message` — up to (and not into) the per-attachment half."""
     db = AsyncMock()
     db.get = AsyncMock(return_value=MagicMock())  # tenant row exists
@@ -558,14 +567,15 @@ async def _route(*, resolved, entitled=True, recipients=(TAGGED,), attachments=N
         patch.object(ingest.es, "is_entitled", AsyncMock(return_value=entitled)),
         patch.object(ingest.es, "rule_passwords", MagicMock(return_value=["pw"])),
         patch.object(ingest.es, "posting_target", AsyncMock(return_value=("tok", "https://h"))),
+        patch.object(ingest.es, "record_gmail_code", record or AsyncMock()),
         patch.object(ingest.ocr_service, "extract_stateless", extract),
         patch.object(ingest, "_process_attachment", process),
     ):
         outcomes = await ingest._process_message(
             {
                 "message_id": "<msg-route@bank.co.th>",
-                "subject": "statement",
-                "from": "no-reply@ktc.co.th",
+                "subject": subject,
+                "from": sender,
                 "recipients": list(recipients),
                 "attachments": (
                     [("statement.jpg", b"fake")] if attachments is None else list(attachments)
@@ -635,6 +645,61 @@ async def test_every_attachment_of_one_message_gets_its_own_outcome():
     )
     assert outcomes == ["posted", "posted"]
     assert process.await_count == 2
+
+
+# ── Gmail's forwarding confirmation ───────────────────────────────────────────
+
+_CONFIRM = "forwarding-noreply@google.com"
+_CONFIRM_SUBJECT = "(#123456789) Gmail Forwarding Confirmation - Receive Mail from x@y.com"
+
+
+@pytest.mark.asyncio
+async def test_the_gmail_confirmation_code_is_stored_against_the_tag():
+    """The mail carries no attachment, so it has to be caught before that check —
+    otherwise the code the customer is waiting for is dropped on the first line."""
+    record = AsyncMock()
+    outcomes, extract, process = await _route(
+        resolved=_settings_row(),
+        sender=_CONFIRM,
+        subject=_CONFIRM_SUBJECT,
+        attachments=[],
+        record=record,
+    )
+    assert outcomes == ["skipped"]
+    assert record.await_args.args[1:] == ("a1b2c3d4", "123456789")
+    extract.assert_not_awaited()
+    process.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_confirmation_with_no_usable_tag_is_dropped_quietly():
+    """Not `unrouted`: that counter alerts at five per poll and exists to catch real
+    documents going nowhere. An unattributable code is noise, and drowning the alert
+    is worse than losing the code."""
+    record = AsyncMock()
+    outcomes, _, _ = await _route(
+        resolved=None,
+        sender=_CONFIRM,
+        subject=_CONFIRM_SUBJECT,
+        recipients=("Delivered-To: AIAGENT@carmensoftware.com",),
+        attachments=[],
+        record=record,
+    )
+    assert outcomes == ["skipped"]
+    record.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_bank_document_is_not_diverted_by_a_hash_number_in_its_subject():
+    """`(#123456789)` is an unremarkable thing for a bank to write. Only the sender
+    decides, or a real invoice would be filed as a confirmation code and never posted."""
+    record = AsyncMock()
+    outcomes, _, process = await _route(
+        resolved=_settings_row(), subject="Invoice (#123456789)", record=record
+    )
+    assert outcomes == ["posted"]
+    record.assert_not_awaited()
+    process.assert_awaited_once()
 
 
 # ── run_ingest ────────────────────────────────────────────────────────────────

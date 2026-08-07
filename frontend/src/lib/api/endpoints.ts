@@ -48,6 +48,19 @@ export const API = {
     inputTax: `${V1}/carmen/input-tax`,
   },
 
+  // Email Automation settings. Same /carmen prefix, but a different world: these are
+  // the endpoints *Carmen* calls, authenticated with the user's raw Carmen token
+  // rather than our session JWT. See lib/api/emailAutomation.ts.
+  emailAutomation: {
+    bankCodes: `${V1}/carmen/bank-codes`,
+    settings: `${V1}/carmen/settings`,
+    settingsFor: (host: string, bu: string) =>
+      `${V1}/carmen/settings?host=${encodeURIComponent(host)}&bu=${encodeURIComponent(bu)}`,
+    token: `${V1}/carmen/settings/token`,
+    tokenFor: (host: string, bu: string) =>
+      `${V1}/carmen/settings/token?host=${encodeURIComponent(host)}&bu=${encodeURIComponent(bu)}`,
+  },
+
   config: {
     accounting: `${V1}/config/accounting`,
     apMapping: (vendorTaxId: string) =>

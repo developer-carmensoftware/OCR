@@ -257,6 +257,32 @@ def tag_from_recipients(candidates: list[str]) -> str | None:
     return None
 
 
+# Setting up an auto-forward in Gmail needs a code Google mails to the *destination*
+# and the customer types back into their own Gmail screen. The destination is this
+# shared mailbox, which no customer can open — so without this the last step of a
+# self-service setup needs one of us to read the mail out to them.
+_GMAIL_CONFIRM_SENDER = "forwarding-noreply@google.com"
+
+# "(#123456789) Gmail Forwarding Confirmation - Receive Mail from x@y"
+# ponytail: the subject only — `_fetch_unseen` does not carry the body, and the code
+# is in both. If Google ever drops it from the subject, collect the body there and
+# run this same pattern over it.
+_GMAIL_CONFIRM_CODE = re.compile(r"\(#\s*(\d{6,12})\s*\)")
+
+
+def gmail_confirm_code(sender: str, subject: str) -> str | None:
+    """The forwarding confirmation code in this message, or None if it is not one.
+
+    The sender is checked, not just the pattern: `(#123456789)` is an unremarkable
+    thing for a bank to put in a subject line, and a false positive here would park
+    a real document's worth of digits on the settings screen as a "code".
+    """
+    if _GMAIL_CONFIRM_SENDER not in (sender or "").lower():
+        return None
+    found = _GMAIL_CONFIRM_CODE.search(subject or "")
+    return found.group(1) if found else None
+
+
 def match_rules(rules: list[dict], sender: str, filename: str) -> list[dict]:
     """This BU's rules that claim this attachment. **Empty means stop** — no LLM call.
 
@@ -366,6 +392,20 @@ async def _process_message(msg: dict[str, Any]) -> list[str]:
     does its tag name a paying BU. Nothing here spends money, opens a file or writes a
     row for mail that fails either.
     """
+    # Before the attachment check, because a confirmation mail has none — it is the
+    # one message we care about that carries no document.
+    if code := gmail_confirm_code(msg["from"], msg["subject"]):
+        if tag := tag_from_recipients(msg["recipients"]):
+            async with async_session() as db:
+                await es.record_gmail_code(db, tag, code)
+        else:
+            # Deliberately not "unrouted": that counter watches for documents going
+            # nowhere and alerts on five in a poll. A confirmation code we cannot
+            # attribute is noise, and raising an alert for it would train us to
+            # ignore the one that means real money is being dropped.
+            logger.warning("[email] Gmail confirmation code with no usable tag — dropped")
+        return ["skipped"]
+
     if not msg["attachments"]:
         return ["skipped"]
 

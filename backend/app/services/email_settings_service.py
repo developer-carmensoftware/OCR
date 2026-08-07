@@ -123,6 +123,34 @@ async def resolve_by_tag(db: AsyncSession, tag: str) -> EmailIngestSettings | No
     ).scalar_one_or_none()
 
 
+async def record_gmail_code(db: AsyncSession, tag: str, code: str) -> None:
+    """Park Gmail's forwarding confirmation code where the BU's settings screen reads it.
+
+    Not filtered on `enabled`, unlike `resolve_by_tag`: a BU re-running the Gmail setup
+    while the feature is switched off is exactly the case where they need the code, and
+    the tag is unique either way.
+
+    Never raises. This runs inside a poll that is otherwise about documents, and a
+    confirmation code is a convenience — failing to store one must not take down the
+    poll that is also carrying real invoices.
+    """
+    try:
+        row = (
+            await db.execute(
+                select(EmailIngestSettings).where(EmailIngestSettings.ingest_tag == tag)
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            logger.warning("[email] Gmail confirmation code for unknown tag — dropped")
+            return
+        row.gmail_confirm_code = code
+        row.gmail_confirm_at = datetime.now(UTC)
+        await db.commit()
+        logger.info("[email] Gmail confirmation code stored for tenant %s", row.tenant_id)
+    except Exception as exc:
+        logger.error("[email] Could not store the Gmail confirmation code: %s", exc)
+
+
 async def foreign_tax_id(db: AsyncSession, tax_ids: list[str], tenant_id: Any) -> str | None:
     """A tax ID printed on this document that is registered to a *different* BU.
 
@@ -217,6 +245,7 @@ def to_response(row: EmailIngestSettings | None, host: str, bu: str) -> dict:
             "ingest_address": None,
             "tax_ids": [],
             "rules": [],
+            "gmail_confirm": None,
             "status": {"ready": False, "blockers": ["not_configured"]},
         }
     rules = list(row.rules or [])
@@ -243,6 +272,17 @@ def to_response(row: EmailIngestSettings | None, host: str, bu: str) -> dict:
             }
             for r in rules
         ],
+        # Present only while a code is waiting to be used. Not a secret — it authorises
+        # nothing on its own, and the person who needs it is the one already looking at
+        # this screen.
+        "gmail_confirm": (
+            {
+                "code": row.gmail_confirm_code,
+                "at": row.gmail_confirm_at.isoformat() if row.gmail_confirm_at else None,
+            }
+            if row.gmail_confirm_code
+            else None
+        ),
         "status": {"ready": not blockers, "blockers": blockers},
     }
 

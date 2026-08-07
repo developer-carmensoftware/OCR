@@ -64,6 +64,10 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
       "is_active": true
     }
   ],
+  "gmail_confirm": {                                   // null เมื่อไม่มีโค้ดค้างอยู่
+    "code": "123456789",                               // โค้ดยืนยัน forwarding ของ Gmail
+    "at": "2026-08-07T09:30:00Z"
+  },
   "status": {
     "ready": true,
     "blockers": [],
@@ -82,6 +86,11 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
 | `no_tax_id` | ยังไม่ได้ใส่เลขผู้เสียภาษี — จำเป็นก่อนเปิดใช้ ใช้เป็นตัว**ยืนยัน**ว่าเอกสารเป็นของ BU นี้ (ดู ข้อควรรู้ ข้อ 4) |
 | `no_rule` | ไม่มี rule ที่ `is_active` |
 | `disabled` | `enabled` ยังเป็น false |
+
+**`gmail_confirm`** — ถ้าลูกค้าใช้ Gmail ตั้ง auto-forward Google จะส่งโค้ดยืนยันไปที่
+`ingest_address` ซึ่งเป็น mailbox ที่ลูกค้าเปิดเองไม่ได้ ระบบจึงอ่านโค้ดจากเมลนั้นแล้วส่งคืนตรงนี้
+**ให้แสดงบนหน้าจอ** ลูกค้า copy ไป paste ในหน้า Gmail ของตัวเอง — เป็น `null` เมื่อไม่มีโค้ดค้าง
+และถูกทับด้วยโค้ดใหม่เสมอ (ใช้ครั้งเดียว ไม่ใช่ประวัติ)
 
 ---
 

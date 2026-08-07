@@ -352,6 +352,26 @@ The value is stable for the life of the BU. **It is never reissued** — not on 
 re-enable, not after a lapsed package — because the customer's own mailbox rule points at
 it, and a new one would make their documents disappear with no error anywhere.
 
+**Gmail's confirmation code — `gmail_confirm`, one more string to display.** Setting up an
+auto-forward in Gmail is a two-party handshake: Google mails a code **to the destination**
+and it has to be typed back into the customer's own Gmail screen. The destination is our
+shared mailbox, which no customer can open — so without help this is the one step of an
+otherwise self-service setup that needs a support call.
+
+The confirmation mail arrives at `AIAGENT+<tag>@…` like everything else, so the envelope
+already says who is waiting for it. The poll reads the code out of the subject and
+`GET /settings` returns it:
+
+```jsonc
+"gmail_confirm": { "code": "123456789", "at": "2026-08-07T09:30:00Z" }   // or null
+```
+
+Carmen's screen shows it near the forwarding address, the customer pastes it into Gmail,
+and nobody opens the shared mailbox. It is `null` when no code is waiting, overwritten by
+the next one, and not a log — a confirmation code is single-use and short-lived. Mail from
+`forwarding-noreply@google.com` is the only source; the sender is checked as well as the
+pattern, because `(#123456789)` is an unremarkable thing for a bank to put in a subject.
+
 ### 2.6 The posting credential
 
 Carmen mints a token per BU and sends it here. Deliberately **its own endpoint, not a
