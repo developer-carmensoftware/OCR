@@ -17,7 +17,12 @@ import pytest
 
 from app.services import email_ingest_service as ingest
 from app.services import email_settings_service as es
-from app.services.email_ingest_service import gmail_confirm_code, match_rules, tag_from_recipients
+from app.services.email_ingest_service import (
+    gmail_confirm_code,
+    match_rules,
+    sender_allowed,
+    tag_from_recipients,
+)
 
 ADDRESS = "AIAGENT@carmensoftware.com"
 
@@ -262,6 +267,38 @@ def test_googles_other_mail_yields_no_code():
 def test_missing_sender_or_subject_is_not_a_crash():
     assert gmail_confirm_code("", "") is None
     assert gmail_confirm_code(None, None) is None  # type: ignore[arg-type]
+
+
+# ── sender_allowed — the optional owner-address layer ─────────────────────────
+
+# From + To + Cc as the poll concatenates them, for each arrival mode.
+_AUTO = 'From: "KTC" <no-reply@ktc.co.th> To: accounting@hotelgroup.com'
+_MANUAL = "From: Somchai <somchai@hotelgroup.com> To: AIAGENT+a1b2c3d4@carmensoftware.com"
+
+
+@pytest.mark.parametrize(
+    "owners,people,allowed",
+    [
+        # Empty is the default and must never refuse anything, or switching the feature
+        # on would silently stop every BU that has not filled this in.
+        ([], _AUTO, True),
+        ([], "", True),
+        # Auto-forward: the customer is in To:, the bank is in From:.
+        (["accounting@hotelgroup.com"], _AUTO, True),
+        # Manual forward: the customer is in From: instead — one list has to cover both.
+        (["somchai@hotelgroup.com"], _MANUAL, True),
+        # Registering only the mailbox refuses the employee who forwards by hand. This is
+        # the trap the settings hint warns about, pinned so it stays deliberate.
+        (["accounting@hotelgroup.com"], _MANUAL, False),
+        # Any one of several is enough.
+        (["nobody@x.com", "accounting@hotelgroup.com"], _AUTO, True),
+        (["accounting@other.com"], _AUTO, False),
+        # Case-insensitive, and the display-name form needs no parsing.
+        (["SOMCHAI@hotelgroup.com".lower()], _MANUAL.upper(), True),
+    ],
+)
+def test_sender_allowed(owners, people, allowed):
+    assert sender_allowed(owners, people) is allowed
 
 
 # ── match_rules — a bank hint that is now also a hard gate ─────────────────────

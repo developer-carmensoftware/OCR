@@ -84,6 +84,39 @@ async def test_enabled_without_tax_ids_raises_field_validation_error():
     assert exc.value.errors[0]["code"] == "required"
 
 
+@pytest.mark.parametrize(
+    "value,ok",
+    [
+        ("accounting@hotelgroup.com", True),
+        ("a.b+tag@sub.example.co.th", True),
+        ("accounting", False),
+        ("accounting@localhost", False),  # no dot in the domain
+        ("accounting@hotelgroup.", False),
+        ("two words@x.com", False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_owner_email_is_checked_for_typos_only(value, ok):
+    """Loose on purpose — a rejected address is one the customer cannot register, which
+    costs more than a wrong one, whose only effect is refusing their own mail visibly."""
+    payload = SettingsIn(
+        host="h", bu="b", enabled=False, owner_emails=[value], tax_ids=[], rules=[]
+    )
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[_exec(scalars=[])])  # active bank codes
+    errors: list[dict] = []
+    try:
+        await es.save_settings(db, _tenant(), payload)
+    except FieldValidationError as exc:
+        errors = exc.errors
+    except Exception:
+        # The mock DB runs dry past the validation block — getting that far is a pass.
+        pass
+    assert [e["code"] for e in errors if e["field"] == "owner_emails[0]"] == (
+        [] if ok else ["invalid_email"]
+    )
+
+
 @pytest.mark.asyncio
 async def test_invalid_tax_id_checksum_raises_field_validation_error():
     payload = SettingsIn(host="h", bu="b", enabled=False, tax_ids=["1234567890123"], rules=[])
@@ -308,6 +341,7 @@ def _fake_row(**overrides):
         tax_ids=["1234567890123"],
         rules=[],
         ingest_tag="a1b2c3d4",
+        owner_emails=[],
         gmail_confirm_code=None,
         gmail_confirm_at=None,
     )

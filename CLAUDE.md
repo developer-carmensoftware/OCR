@@ -21,6 +21,14 @@ cd frontend && npm run dev
 supabase db push
 ```
 
+**Bruno API collections live outside this repo**, at `C:\Users\User\Desktop\` and
+`C:\Users\User\Documents\bruno\` (e.g. `Desktop\Email Automation` for the Carmen Settings
+API, `Documents\bruno\Carmen-AI` for the rest of Carmen's endpoints) — deliberately not
+under `docs/` or anywhere git-tracked, since these collections carry live tokens
+(`.env`, gitignored within each collection, but the point is to keep secrets off the
+repo's disk entirely, not just off the commit). When asked to add or update a Bruno
+collection, put or find it there, not inside the project directory.
+
 ---
 
 ## Changelog

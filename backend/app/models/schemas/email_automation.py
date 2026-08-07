@@ -23,6 +23,10 @@ class SettingsIn(BaseModel):
     host: str
     bu: str
     enabled: bool = False
+    # The customer's own addresses. Empty accepts any sender — "start broad, narrow
+    # later", the same shape as filename_patterns. A second layer over the envelope
+    # tag, never a replacement for it (CARMEN_INTEGRATION.md §2.5).
+    owner_emails: list[str] = Field(default_factory=list)
     tax_ids: list[str] = Field(default_factory=list)
     rules: list[RuleIn] = Field(default_factory=list)
 

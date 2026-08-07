@@ -54,6 +54,7 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
   "enabled": true,
   "entitled": true,                                    // มี package รายเดือนที่ยังไม่หมดอายุ
   "ingest_address": "AIAGENT+a1b2c3d4@carmensoftware.com",  // ต่อ BU · null จนกว่าจะเปิดใช้สำเร็จ
+  "owner_emails": ["accounting@hotelgroup.com"],       // ว่าง = รับทุก sender (ดู §2)
   "tax_ids": ["0105536000127"],
   "rules": [
     {
@@ -101,6 +102,7 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
 | `host` **required** | string | |
 | `bu` **required** | string | |
 | `enabled` | bool | default `false` |
+| `owner_emails` | string[] | อีเมลฝั่งลูกค้า · **ว่าง = รับทุก sender (default)** · ถ้าใส่ เมลต้องมีที่อยู่ใดที่อยู่หนึ่งใน `From`/`To`/`Cc` ไม่งั้นไฟล์แนบถูกบันทึก `sender_not_allowed` ไม่ถูกอ่าน ไม่คิดเงิน · `422 invalid_email` ถ้ารูปแบบเพี้ยน |
 | `tax_ids` **required ถ้า enabled** | string[] | เลข 13 หลัก ไม่มีขีด ใส่ได้หลายเลข |
 | `rules` | Rule[] | |
 

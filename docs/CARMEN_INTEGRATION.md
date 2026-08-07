@@ -250,6 +250,18 @@ PUT /api/v1/carmen/settings
   a file that only the BBL rule names is stopped, not scanned as KTC. A sender that matches
   no rule leaves every rule eligible, so manual forwarding (which never carries a bank's
   address) still works.
+- **`owner_emails` is an optional second layer, and empty is the default.** Empty accepts
+  any sender. Non-empty means a message must carry one of those addresses in `From`, `To`
+  or `Cc`, or its attachments are recorded `sender_not_allowed` and never scanned. It is
+  **not** the routing key and cannot become one: those three headers are written by
+  whoever composed the message, while the `+tag` is written by a mail server (§2.5). What
+  it catches is accidents — a personal Gmail forwarding a document, someone outside the
+  accounting team — not an attacker who already knows the tag.
+
+  Present it as **"leave empty unless you want it"**, and warn about the one way it bites:
+  the two arrival modes put the customer in *different* headers. An auto-forward has the
+  mailbox in `To:`; a manual forward has the employee in `From:`. Registering only the
+  mailbox refuses every hand-forward, so both belong in the list.
 - Supported `bank_code` values: `GET /api/v1/carmen/bank-codes` — the same `banks`
   registry the OCR wizard reads, so a bank added there needs no change here. `null` is
   always valid and means "anything else". A `bank_code` (including `null`) may appear
@@ -570,9 +582,13 @@ Carmen (or the customer) learns what happened to a forwarded document.
 `reason_code` values (stable identifiers; the `message` is display text and may change):
 `bank_not_identified`, `mapping_incomplete`, `unbalanced_jv`, `duplicate_document`,
 `unreadable_document`, `wrong_pdf_password`, `out_of_credits`, `carmen_rejected`,
-`tax_id_mismatch`, `no_rule_match`.
+`tax_id_mismatch`, `no_rule_match`, `sender_not_allowed`.
 
-The last two are worth reading closely, because they are the two ways a document that
+- **`sender_not_allowed`** — the BU set `owner_emails` (§2.3) and none of them appeared in
+  the message's `From`/`To`/`Cc`. Nothing was charged. Expect this when a colleague
+  forwards from an address nobody registered.
+
+The other two are worth reading closely, because they are the two ways a document that
 *arrived correctly* still does not post:
 
 - **`tax_id_mismatch`** — the document carries a tax ID registered to a different BU (§2.4).

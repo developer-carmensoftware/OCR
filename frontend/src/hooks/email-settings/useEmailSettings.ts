@@ -37,6 +37,7 @@ export interface EmailSettingsController {
   /** Per-input failures from `errors[]`, keyed by `field`. */
   fieldErrors: Record<string, string>
   setEnabled: (enabled: boolean) => Promise<boolean>
+  setOwnerEmails: (emails: string[]) => Promise<boolean>
   setTaxIds: (taxIds: string[]) => Promise<boolean>
   setRules: (rules: EmailRulePayload[]) => Promise<boolean>
   saveToken: (token: string) => Promise<boolean>
@@ -134,6 +135,7 @@ export function useEmailSettings(): EmailSettingsController {
           host,
           bu,
           enabled: settings?.enabled ?? false,
+          owner_emails: settings?.owner_emails || [],
           tax_ids: settings?.tax_ids || [],
           rules: toPayloadRules(settings),
           ...patch,
@@ -196,6 +198,7 @@ export function useEmailSettings(): EmailSettingsController {
     error,
     fieldErrors,
     setEnabled: enabled => put({ enabled }),
+    setOwnerEmails: owner_emails => put({ owner_emails }),
     setTaxIds: tax_ids => put({ tax_ids }),
     setRules: rules => put({ rules }),
     saveToken,

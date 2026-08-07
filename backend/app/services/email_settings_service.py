@@ -243,6 +243,7 @@ def to_response(row: EmailIngestSettings | None, host: str, bu: str) -> dict:
             "enabled": False,
             # Null until the BU successfully enables the feature and a tag is issued.
             "ingest_address": None,
+            "owner_emails": [],
             "tax_ids": [],
             "rules": [],
             "gmail_confirm": None,
@@ -261,6 +262,7 @@ def to_response(row: EmailIngestSettings | None, host: str, bu: str) -> dict:
         "bu": bu,
         "enabled": bool(row.enabled),
         "ingest_address": ingest_address(row.ingest_tag),
+        "owner_emails": list(row.owner_emails or []),
         "tax_ids": list(row.tax_ids or []),
         "rules": [
             {
@@ -341,9 +343,31 @@ async def build_settings_response(
     return body
 
 
+def _looks_like_email(value: str) -> bool:
+    """Enough to catch a typo, not an RFC 5322 parser.
+
+    Deliberately loose. A rejected address here is a real address the customer cannot
+    register, which costs more than a wrong one does: a wrong one only ever refuses the
+    customer's own mail, visibly, in their own document history.
+    """
+    local, sep, domain = value.partition("@")
+    return bool(sep and local and "." in domain and not domain.endswith(".") and " " not in value)
+
+
 async def save_settings(db: AsyncSession, tenant: Tenant, payload: Any) -> EmailIngestSettings:
     """Replace the BU's settings wholesale (contract §2.3 — full list, not a delta)."""
     errors: list[dict] = []
+
+    owner_emails = [e.strip().lower() for e in (payload.owner_emails or []) if e and e.strip()]
+    for i, addr in enumerate(owner_emails):
+        if not _looks_like_email(addr):
+            errors.append(
+                {
+                    "field": f"owner_emails[{i}]",
+                    "code": "invalid_email",
+                    "message": "That does not look like an email address",
+                }
+            )
 
     tax_ids = [t.strip() for t in (payload.tax_ids or [])]
     # The bank's own TIN is printed on the very invoice the user is reading to find
@@ -462,6 +486,7 @@ async def save_settings(db: AsyncSession, tenant: Tenant, payload: Any) -> Email
 
     existing = {(r.get("bank_code") or ""): r for r in (row.rules or [])}
     row.enabled = bool(payload.enabled)
+    row.owner_emails = owner_emails
     row.tax_ids = tax_ids
     row.rules = [_merge_rule(r, existing.get(r.bank_code or "")) for r in rules]
     await db.commit()

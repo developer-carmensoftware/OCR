@@ -40,6 +40,9 @@ export interface EmailSettings {
   enabled: boolean
   /** null until the BU successfully enables the feature and a tag is issued. */
   ingest_address: string | null
+  /** The BU's own addresses. Empty = accept any sender; non-empty = a message must
+   *  carry one of them in From/To/Cc. A second layer over the tag, never the router. */
+  owner_emails: string[]
   tax_ids: string[]
   rules: EmailRule[]
   gmail_confirm: { code: string; at: string | null } | null
@@ -56,6 +59,7 @@ export interface SettingsPayload {
   host: string
   bu: string
   enabled: boolean
+  owner_emails: string[]
   tax_ids: string[]
   rules: EmailRulePayload[]
 }

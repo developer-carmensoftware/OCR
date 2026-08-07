@@ -174,8 +174,11 @@ async def _run(
     fake_db,
     *,
     filename="statement.jpg",
+    blob=b"fake",
     message_id="<msg-1@bank.co.th>",
     sender="no-reply@ktc.co.th",
+    people=None,
+    owner_emails=None,
     rules=None,
     carmen_token="dev-tok",
     carmen_uri="https://hotel.carmenwork.com",
@@ -195,8 +198,10 @@ async def _run(
             tenant_id=TENANT_ID,
             message_id=message_id,
             sender=sender,
+            people=sender if people is None else people,
+            owner_emails=owner_emails or [],
             filename=filename,
-            blob=b"fake",
+            blob=blob,
             rules=RULES if rules is None else rules,
             passwords=[],
             carmen_token=carmen_token,
@@ -379,6 +384,46 @@ async def test_carmen_transport_failure_fails_but_does_not_refund():
     p.refund_document.assert_not_called()  # fate unknown — never auto-refund a maybe-posted JV
 
 
+# ── Gate: the optional owner-address layer ────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_mail_from_no_registered_address_is_stopped_before_any_spend():
+    """Second layer over the tag, and free. The tag still decided *whose* ledger this
+    lands in — which is why the refusal is diagnosable at all rather than silent."""
+    db = _FakeDB()
+    outcome, p = await _run(
+        db,
+        owner_emails=["accounting@hotelgroup.com"],
+        people="From: stranger@elsewhere.com To: AIAGENT+a1b2c3d4@carmensoftware.com",
+        rules=RULES,
+        extracted=_extracted(),
+        config=_config(),
+        carmen_result={"Code": 0},
+    )
+    assert outcome == "skipped"
+    assert db.added[0].reason_code == "sender_not_allowed"
+    p.extract.assert_not_awaited()
+    p.consume_document.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_empty_owner_list_refuses_nothing():
+    """The default, and it must stay open: a gate nobody filled in that silently
+    dropped real documents would be worse than no gate at all."""
+    db = _FakeDB()
+    outcome, _ = await _run(
+        db,
+        owner_emails=[],
+        people="From: stranger@elsewhere.com",
+        rules=RULES,
+        extracted=_extracted(),
+        config=_config(),
+        carmen_result={"Code": 0},
+    )
+    assert outcome == "posted"
+
+
 # ── Gate: an attachment no rule claims is never extracted ─────────────────────
 
 
@@ -540,7 +585,7 @@ TAGGED = "Delivered-To: AIAGENT+a1b2c3d4@carmensoftware.com"
 
 
 def _settings_row(**overrides):
-    defaults = dict(tenant_id=uuid4(), rules=[], tax_ids=[], ingest_tag="a1b2c3d4")
+    defaults = dict(tenant_id=uuid4(), rules=[], tax_ids=[], owner_emails=[], ingest_tag="a1b2c3d4")
     defaults.update(overrides)
     return MagicMock(**defaults)
 
@@ -576,6 +621,7 @@ async def _route(
                 "message_id": "<msg-route@bank.co.th>",
                 "subject": subject,
                 "from": sender,
+                "people": sender,
                 "recipients": list(recipients),
                 "attachments": (
                     [("statement.jpg", b"fake")] if attachments is None else list(attachments)

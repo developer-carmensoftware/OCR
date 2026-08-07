@@ -39,6 +39,13 @@
   align-items: center;
   gap: 8px 18px;
 }
+/* The owner-address block is a label over a hint over chips over an input — a column,
+   unlike the label/value pairs the other rows are. */
+.email-conn__row--stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
 .email-conn__row + .email-conn__row {
   margin-top: 12px;
   padding-top: 12px;

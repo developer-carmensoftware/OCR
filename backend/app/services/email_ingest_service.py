@@ -62,7 +62,7 @@ from app.config import settings
 from app.constants import Module
 from app.context import current_carmen_uri, current_tenant_id
 from app.database import async_session
-from app.exceptions import PdfPasswordRequired, ValidationError
+from app.exceptions import ExtractionError, PdfPasswordRequired, ValidationError
 from app.models.business import CreditCard
 from app.models.catalog import Bank
 from app.models.email_automation import EmailDocument
@@ -222,6 +222,11 @@ def _fetch_unseen(limit: int) -> list[dict[str, Any]]:
                     "message_id": (msg.get("Message-ID") or f"no-id-{uid}")[:500],
                     "subject": _decode(msg.get("Subject")),
                     "from": _decode(msg.get("From")),
+                    # For the owner-address gate only. `To`/`Cc` are display headers and
+                    # are never used to route — see `sender_allowed` and `_recipients`.
+                    "people": " ".join(
+                        _decode(v) for h in ("From", "To", "Cc") for v in (msg.get_all(h) or [])
+                    ),
                     "recipients": _recipients(msg),
                     "attachments": _attachments(msg),
                 }
@@ -281,6 +286,33 @@ def gmail_confirm_code(sender: str, subject: str) -> str | None:
         return None
     found = _GMAIL_CONFIRM_CODE.search(subject or "")
     return found.group(1) if found else None
+
+
+def sender_allowed(owner_emails: list[str], people: str) -> bool:
+    """Does this message involve one of the BU's own addresses? Empty list = yes.
+
+    `people` is `From` + `To` + `Cc` concatenated, matched as a case-insensitive
+    substring so the `"Accounting" <a@b.com>` display form needs no parsing — the same
+    way `bank_sender_email` is matched.
+
+    All three headers, because the two arrival modes put the customer somewhere
+    different: an auto-forward has them in `To:`/`Cc:` (the mailbox the bank wrote to),
+    a manual forward in `From:` (the employee who pressed Forward).
+
+    **A second layer, deliberately weaker than the tag.** These headers are composed by
+    the sender, so anyone who already knows the tag can also write an address into them;
+    the envelope tag is written by a mail server and cannot be. What this reliably stops
+    is accidents — a personal Gmail forwarding a document, someone outside the accounting
+    team, a document that landed on the wrong tag — which is the common case, not the
+    interesting one.
+
+    Empty by default and left that way on purpose: a gate nobody asked for that silently
+    refuses real documents is worse than no gate (§2.3 "start broad, narrow later").
+    """
+    if not owner_emails:
+        return True
+    haystack = people.lower()
+    return any(addr in haystack for addr in owner_emails if addr)
 
 
 def match_rules(rules: list[dict], sender: str, filename: str) -> list[dict]:
@@ -428,6 +460,7 @@ async def _process_message(msg: dict[str, Any]) -> list[str]:
             logger.warning("[email] Tenant %s has no active package — dropped", row.tenant_id)
             return ["skipped"]
         tenant_id = str(row.tenant_id)
+        owner_emails = list(row.owner_emails or [])
         rules = list(row.rules or [])
         passwords = es.rule_passwords(row)
         carmen_token, carmen_uri = await es.posting_target(db, row)
@@ -437,8 +470,10 @@ async def _process_message(msg: dict[str, Any]) -> list[str]:
             tenant_id=tenant_id,
             message_id=msg["message_id"],
             sender=msg["from"],
+            people=msg["people"],
             filename=filename,
             blob=blob,
+            owner_emails=owner_emails,
             rules=rules,
             passwords=passwords,
             carmen_token=carmen_token,
@@ -453,8 +488,10 @@ async def _process_attachment(
     tenant_id: str,
     message_id: str,
     sender: str,
+    people: str,
     filename: str,
     blob: bytes,
+    owner_emails: list[str],
     rules: list[dict],
     passwords: list[str],
     carmen_token: str,
@@ -485,8 +522,10 @@ async def _process_attachment(
             ledger_id=ledger_id,
             tenant_id=tenant_id,
             sender=sender,
+            people=people,
             filename=filename,
             blob=blob,
+            owner_emails=owner_emails,
             rules=rules,
             passwords=passwords,
             carmen_token=carmen_token,
@@ -502,8 +541,10 @@ async def _run_document(
     ledger_id: uuid.UUID,
     tenant_id: str,
     sender: str,
+    people: str,
     filename: str,
     blob: bytes,
+    owner_emails: list[str],
     rules: list[dict],
     passwords: list[str],
     carmen_token: str,
@@ -518,6 +559,15 @@ async def _run_document(
     # failed row forgets which bank the document came from.
     doc_no: str | None = None
     try:
+        # Coarsest question first, and free: is this even from someone this BU accepts?
+        # Before match_rules so mail that is not theirs at all is not filed under the
+        # narrower "your pattern was too tight" reason.
+        if not sender_allowed(owner_emails, people):
+            raise _Skip(
+                "sender_not_allowed",
+                "No registered address of this BU appears in From/To/Cc",
+                refund=False,
+            )
         matched = match_rules(rules, sender, filename)
         if not matched:
             # A too-narrow pattern silently dropped real documents before the tag named
@@ -842,6 +892,12 @@ async def _open_or_fail(blob: bytes, filename: str, passwords: list[str]) -> str
             return pwd
         except (PdfPasswordRequired, ValidationError) as exc:
             last = exc
+        except ExtractionError as exc:
+            # The bytes are wrong, not the password, so the remaining passwords cannot
+            # help. Raised as a _Skip rather than left to the generic handler, which
+            # files everything as `failed` — and nothing has been charged at this point.
+            # A junk attachment must not put a red row on the customer's screen.
+            raise _Skip("unreadable_document", str(exc), refund=False) from exc
     raise _Skip("wrong_pdf_password", str(last or "Could not open the attachment"), refund=False)
 
 

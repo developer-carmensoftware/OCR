@@ -84,12 +84,14 @@ export default function EmailSettings() {
   const { settings, fieldErrors, saving } = ctrl
 
   const [newTaxId, setNewTaxId] = useState('')
+  const [newOwnerEmail, setNewOwnerEmail] = useState('')
   const [editing, setEditing] = useState<number | 'new' | null>(null)
   const [form, setForm] = useState(EMPTY_RULE)
   const [tokenInput, setTokenInput] = useState('')
 
   const rules = settings?.rules || []
   const taxIds = settings?.tax_ids || []
+  const ownerEmails = settings?.owner_emails || []
   const status = settings?.status
   const step1Done = taxIds.length > 0
   const step2Done = rules.some(r => r.is_active)
@@ -145,6 +147,12 @@ export default function EmailSettings() {
     if (await ctrl.setTaxIds([...taxIds, value])) setNewTaxId('')
   }
 
+  const addOwnerEmail = async () => {
+    const value = newOwnerEmail.trim().toLowerCase()
+    if (!value || ownerEmails.includes(value)) return
+    if (await ctrl.setOwnerEmails([...ownerEmails, value])) setNewOwnerEmail('')
+  }
+
   if (ctrl.loading) return <Skeleton />
 
   const err = ctrl.error
@@ -193,6 +201,59 @@ export default function EmailSettings() {
           </label>
         </div>
         {fieldErrors['enabled'] && <p className="email-setup__error">{fieldErrors['enabled']}</p>}
+
+        <div className="email-conn__row email-conn__row--stack">
+          <span className="email-conn__label">Your email addresses</span>
+          <p className="email-setup__hint">
+            Optional second layer. Leave this empty and any mail reaching your address is accepted.
+            Add addresses and a message must carry one of them in From, To or Cc — anything else is
+            recorded <code>sender_not_allowed</code> and never scanned, at no cost. Add the mailbox
+            your bank mail arrives at <em>and</em> anyone who forwards by hand, or their mail will
+            be refused.
+          </p>
+          {ownerEmails.length > 0 && (
+            <div className="email-setup__chips">
+              {ownerEmails.map(addr => (
+                <span key={addr} className="email-setup__chip">
+                  {addr}
+                  <button
+                    type="button"
+                    aria-label={`Remove ${addr}`}
+                    disabled={saving}
+                    onClick={() => void ctrl.setOwnerEmails(ownerEmails.filter(x => x !== addr))}
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="email-setup__addrow">
+            <input
+              className="email-setup__input"
+              type="email"
+              placeholder="accounting@yourcompany.com"
+              value={newOwnerEmail}
+              onChange={e => setNewOwnerEmail(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && void addOwnerEmail()}
+            />
+            <button
+              type="button"
+              className="btn btn-sm btn-primary"
+              disabled={!newOwnerEmail.trim() || saving}
+              onClick={() => void addOwnerEmail()}
+            >
+              <Plus size={12} /> Add
+            </button>
+          </div>
+          {Object.entries(fieldErrors)
+            .filter(([field]) => field.startsWith('owner_emails'))
+            .map(([field, message]) => (
+              <p key={field} className="email-setup__error">
+                {message}
+              </p>
+            ))}
+        </div>
 
         <div className="email-conn__row">
           <span className="email-conn__label">Posting credential</span>
