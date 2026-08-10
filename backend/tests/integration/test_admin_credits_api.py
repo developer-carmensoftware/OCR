@@ -120,7 +120,7 @@ def make_admin_test_client(mock_db, perms=None, tenant_scope=""):
     from app.routers.admin.deps import get_current_admin
 
     if perms is None:
-        perms = {"quotas:read", "quotas:write"}
+        perms = {"quotas:read", "quotas:write", "orders:read", "orders:write"}
 
     def _admin():
         return AdminPrincipal(
@@ -667,3 +667,30 @@ def test_scoped_admin_cannot_access_other_tenants_order():
         resp = client.get(f"{BASE}/credit-orders/{order.id}/slip-url", headers=AUTH)
 
     assert resp.status_code == 403
+
+
+# ── order_reviewer role: orders:* only, never quotas:* ────────────────────────
+
+
+def test_order_reviewer_can_work_the_queue_but_not_credit_balances():
+    """
+    The `order_reviewer` role holds orders:read/write and nothing else. It must
+    reach the review queue and still be locked out of the Credits page endpoints
+    (balance / topup / adjust / ledger), which stay on quotas:*.
+    """
+    reviewer = {"orders:read", "orders:write"}
+    mock_db = make_mock_db()
+    mock_db.execute.return_value = _list_result([])
+
+    with make_admin_test_client(mock_db, perms=reviewer) as client:
+        assert client.get(f"{BASE}/credit-orders", headers=AUTH).status_code == 200
+
+        for method, path in [
+            ("get", f"/tenants/{TENANT_ID}/credits"),
+            ("get", f"/tenants/{TENANT_ID}/credits/ledger"),
+            ("post", f"/tenants/{TENANT_ID}/credits/topup"),
+            ("post", f"/tenants/{TENANT_ID}/credits/adjust"),
+        ]:
+            kwargs = {"json": {}} if method == "post" else {}
+            resp = getattr(client, method)(f"{BASE}{path}", headers=AUTH, **kwargs)
+            assert resp.status_code == 403, f"{method} {path} leaked to order_reviewer"

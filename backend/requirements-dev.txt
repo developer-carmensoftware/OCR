@@ -1,7 +1,7 @@
 # Development-only dependencies (not needed in production)
-ruff>=0.15
-mypy>=2.2.0
-pre-commit>=4.6
+ruff>=0.16.0
+mypy>=2.3.0
+pre-commit>=4.6.1
 bandit[toml]>=1.9.4
 
 # Testing

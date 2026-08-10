@@ -179,6 +179,16 @@ const en = {
   'usage.freeTrial': 'Free trial',
   'order.expires': 'Expires',
 
+  // — Header credit badge (the entry point into pricing) —
+  // "Buy", not "Top up": #/pricing sells subscription plans as well as one-time
+  // credit packs, and "top up" names only the packs. The coin icon beside it
+  // carries "credits", so the word only has to carry the verb.
+  'quota.credit': 'Credit',
+  'quota.buy': 'Buy',
+  // Commas, not dashes: screen readers handle them more predictably.
+  'quota.aria': '{n} credits remaining, open plans and credits',
+  'quota.ariaNoCount': 'Open plans and credits',
+
   // — Feature flows (marketing showcase) —
   'flows.heading': 'See how AI automates accounting work',
   'flows.sub': 'Pick a feature to see how it works',
@@ -296,7 +306,7 @@ const en = {
   'orev.credits': '{n} credits',
   'orev.verify.eyebrow': 'Match against the slip',
   'orev.verify.amount': 'Amount due',
-  'orev.verify.amountHint': 'net {sub} + VAT {vat}',
+  'orev.verify.amountHint': 'net {sub} + VAT {vat} · with 3% WHT deducted: {netWht}',
   'orev.verify.payTo': 'Pay to (our account)',
   'orev.verify.payer': 'Payer / buyer',
   'orev.verify.time': 'Transfer time',
@@ -700,6 +710,8 @@ const en = {
   'home.bankName': 'Bank Reconciliation',
   'home.bankDesc':
     'Automatically compares bank statements against ledger entries to flag discrepancies',
+  'home.plansDesc': 'Buy documents or upgrade your plan',
+  'home.plansCta': 'View plans',
 
   // — Admin dashboard (bilingual EN/TH — nav, KPIs, tables, forms, toasts) —
   'admin.chrome.skipLink': 'Skip to main content',
@@ -1345,6 +1357,12 @@ const th: Record<TKey, string> = {
   'usage.freeTrial': 'ทดลองใช้งานฟรี',
   'order.expires': 'หมดอายุ',
 
+  // — Header credit badge (the entry point into pricing) —
+  'quota.credit': 'เครดิต',
+  'quota.buy': 'ซื้อ',
+  'quota.aria': 'เหลือ {n} เครดิต เปิดหน้าแพ็กเกจและเครดิต',
+  'quota.ariaNoCount': 'เปิดหน้าแพ็กเกจและเครดิต',
+
   // — Feature flows (marketing showcase) —
   'flows.heading': 'ดูว่า AI ลดงานบัญชีได้อย่างไร',
   'flows.sub': 'เลือกฟีเจอร์เพื่อดูขั้นตอนการทำงาน',
@@ -1461,7 +1479,7 @@ const th: Record<TKey, string> = {
   'orev.credits': '{n} เครดิต',
   'orev.verify.eyebrow': 'ตรวจเทียบกับสลิป',
   'orev.verify.amount': 'ยอดที่ต้องชำระ',
-  'orev.verify.amountHint': 'ก่อนภาษี {sub} + VAT {vat}',
+  'orev.verify.amountHint': 'ก่อนภาษี {sub} + VAT {vat} · หัก ณ ที่จ่าย 3% แล้ว: {netWht}',
   'orev.verify.payTo': 'โอนเข้าบัญชี (ของเรา)',
   'orev.verify.payer': 'ผู้โอน / ผู้ซื้อ',
   'orev.verify.time': 'เวลาโอน',
@@ -1854,6 +1872,8 @@ const th: Record<TKey, string> = {
   'home.bankName': 'กระทบยอดธนาคาร',
   'home.bankDesc':
     'เปรียบเทียบรายการเดินบัญชีธนาคารกับสมุดบัญชีอัตโนมัติเพื่อตรวจหาความคลาดเคลื่อน',
+  'home.plansDesc': 'ซื้อเอกสารเพิ่มหรืออัปเกรดแพ็กเกจ',
+  'home.plansCta': 'ดูแพ็กเกจ',
 
   // — Admin dashboard (bilingual EN/TH — nav, KPIs, tables, forms, toasts) —
   'admin.chrome.skipLink': 'ข้ามไปเนื้อหาหลัก',
