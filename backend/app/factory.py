@@ -14,6 +14,7 @@ from app.exceptions import (
     ConflictError,
     DuplicateDocumentError,
     ExtractionError,
+    FieldValidationError,
     FileTooLargeError,
     InsufficientCredits,
     LLMCapacityError,
@@ -38,6 +39,7 @@ from app.routers.carmen import router as carmen_router
 from app.routers.config import router as config_router
 from app.routers.consent import router as consent_router
 from app.routers.credits import router as credits_router
+from app.routers.email_automation import router as email_automation_router
 from app.routers.feedback import router as feedback_router
 from app.routers.files import router as files_router
 from app.routers.maintenance import router as maintenance_router
@@ -54,6 +56,7 @@ _EXCEPTION_STATUS: list[tuple] = [
     (ConflictError, 409),
     (InsufficientCredits, 402),
     (FileTooLargeError, 413),
+    (FieldValidationError, 422),
     (ValidationError, 400),
     (NotFoundError, 404),
     (LLMParseError, 422),
@@ -110,6 +113,9 @@ def create_app(lifespan=None) -> FastAPI:
         error_code = getattr(exc, "code", None)
         if error_code:
             content["code"] = error_code
+        field_errors = getattr(exc, "errors", None)
+        if field_errors:
+            content["errors"] = field_errors
         if settings.app_debug:
             content["traceback"] = traceback.format_exc()
         headers: dict[str, str] | None = None
@@ -183,5 +189,6 @@ def create_app(lifespan=None) -> FastAPI:
     app.include_router(credits_router)
     app.include_router(notifications_router)
     app.include_router(maintenance_router)
+    app.include_router(email_automation_router)
 
     return app

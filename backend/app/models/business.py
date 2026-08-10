@@ -9,6 +9,7 @@ WriterMixin.created_by: stores carmen_user_id (the Carmen ERP user who acted).
 import uuid
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
     Column,
@@ -24,6 +25,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -31,6 +33,10 @@ from app.database import Base
 
 from .enums import TaskStatus
 from .mixins import SoftDeleteMixin, TenantFKMixin, TimestampMixin, WriterMixin
+
+# JSONB on Postgres, plain JSON on SQLite (the unit-test engine) — same shim as
+# models/email_automation.py.
+_JSON = JSON().with_variant(JSONB(), "postgresql")
 
 
 class OcrSession(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin):
@@ -205,6 +211,9 @@ class BUAccountingConfig(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, W
     file_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
     branch: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # bank_code -> description, for a BU whose banks should not all read alike.
+    # `description` above stays the fallback; see accounting_config_service.description_for.
+    bank_descriptions: Mapped[dict] = mapped_column(_JSON, nullable=False, default=dict)
 
     entries = relationship(
         "BUAccountingMappingEntry",

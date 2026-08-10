@@ -1,7 +1,6 @@
 import asyncio
 import base64
 import functools
-import json
 import logging
 import os
 from typing import TYPE_CHECKING, Any
@@ -23,7 +22,7 @@ from app.services.ap_vendor_history_service import (
     match_bypass,
     select_examples,
 )
-from app.utils.gl_filter import score_and_pad
+from app.utils.gl_filter import parse_default_account, score_and_pad
 from app.utils.image_processing import resize_if_needed
 from app.utils.pdf_utils import (
     MAX_PAGES_PER_CALL,
@@ -237,21 +236,6 @@ async def extract_ap_invoice_data(
     return postprocess_ap_invoice(parse_vision_json(result_text))
 
 
-def _parse_default_account(raw: Any) -> set[str]:
-    """Carmen DefaultAccount is a *stringified* JSON array of {AccCode, Description}.
-
-    Empty/absent/unparseable ⇒ empty set = no restriction (all accounts allowed).
-    """
-    if isinstance(raw, str):
-        try:
-            raw = json.loads(raw)
-        except (ValueError, TypeError):
-            return set()
-    if not isinstance(raw, list):
-        return set()
-    return {e["AccCode"] for e in raw if isinstance(e, dict) and e.get("AccCode")}
-
-
 async def suggest_for_items(
     items_payload: list[dict[str, Any]],
     accounts_raw: dict[str, Any],
@@ -281,7 +265,7 @@ async def suggest_for_items(
         {
             "code": d["DeptCode"],
             "name": d.get("Description") or "",
-            "allowed": _parse_default_account(d.get("DefaultAccount")),
+            "allowed": parse_default_account(d.get("DefaultAccount")),
         }
         for d in (depts_raw.get("Data") or [])
         if d.get("DeptCode") and d.get("DeptCode") != "CodeDep"

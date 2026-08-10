@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { exchangeSSOToken } from '../lib/api/auth'
+import { CARMEN_RAW_TOKEN_KEY } from '../lib/api/client'
 
 export interface CarmenSSOState {
   exchanging: boolean
@@ -28,6 +29,14 @@ export function useCarmenSSO(): CarmenSSOState {
     const uri = params.get('uri') || ''
 
     if (!token || !bu) return
+
+    // Carmen's own settings screen holds this exact token, and `/api/v1/carmen/*`
+    // proves it against the customer's Carmen on every call. Keeping a copy lets
+    // #/email-settings walk that real path — 401 "re-login", 502 "cannot reach
+    // Carmen", 429 — instead of the admin-JWT shortcut, which skips the probe and
+    // would therefore test none of it. sessionStorage, same lifetime and blast
+    // radius as `ocr_access_token`.
+    sessionStorage.setItem(CARMEN_RAW_TOKEN_KEY, token)
 
     const cleanHash = hash.slice(0, qIndex) || '#/'
     window.history.replaceState(null, '', window.location.pathname + cleanHash)

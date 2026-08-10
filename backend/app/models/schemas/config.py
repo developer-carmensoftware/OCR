@@ -13,6 +13,9 @@ class AccountingConfigRequest(BaseModel):
     branch: str | None = None
     mappings: dict[str, FieldMapping] | None = None
     custom_types: list[str] | None = None
+    # bank_code -> description. Omitted entirely = keep what is stored; see
+    # accounting_config_service.save_accounting_config.
+    bank_descriptions: dict[str, str] | None = None
 
 
 class AccountingConfigResponse(BaseModel):
@@ -23,3 +26,4 @@ class AccountingConfigResponse(BaseModel):
     branch: str | None = None
     mappings: dict[str, Any] = {}
     custom_types: list[str] = []
+    bank_descriptions: dict[str, str] = {}

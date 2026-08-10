@@ -42,7 +42,19 @@ async def get_accounting_config(db: AsyncSession, tenant_id: str) -> AccountingC
         branch=row.branch,
         mappings=mappings,
         custom_types=custom_types,
+        bank_descriptions=dict(row.bank_descriptions or {}),
     )
+
+
+def description_for(config: Any, bank_code: str | None) -> str | None:
+    """The description this bank's documents should carry.
+
+    A BU receiving statements from several banks can give each its own wording;
+    `description` is what everything else still falls back to, so a BU that never
+    sets one behaves exactly as it did before the column existed.
+    """
+    per_bank = getattr(config, "bank_descriptions", None) or {}
+    return (per_bank.get(bank_code or "") or "").strip() or getattr(config, "description", None)
 
 
 async def save_accounting_config(
@@ -56,6 +68,10 @@ async def save_accounting_config(
         row.file_source = req.file_source
         row.description = req.description
         row.branch = req.branch
+        # Omitted = keep. The wizard does not send this field yet, and it must not
+        # wipe per-bank wording every time someone saves a GL mapping.
+        if req.bank_descriptions is not None:
+            row.bank_descriptions = {k: v for k, v in req.bank_descriptions.items() if v}
         await db.flush()
     else:
         row = BUAccountingConfig(
@@ -65,6 +81,7 @@ async def save_accounting_config(
             file_source=req.file_source,
             description=req.description,
             branch=req.branch,
+            bank_descriptions={k: v for k, v in (req.bank_descriptions or {}).items() if v},
         )
         db.add(row)
         await db.flush()
@@ -101,6 +118,48 @@ async def save_accounting_config(
 
     await db.commit()
     logger.info("Saved accounting config for tenant=%s", tenant_id)
+
+
+async def fill_missing_mappings(
+    db: AsyncSession, tenant_id: str, mappings: dict[str, dict[str, str]]
+) -> None:
+    """Write dept/acc only where the BU has none. Never overwrites what it set.
+
+    Additive on purpose: this is called by the email job, which runs while someone
+    may have the same config open in the app. `save_accounting_config` replaces
+    every entry, so using it here would delete their work between two clicks.
+    """
+    fillable = {k: v for k, v in mappings.items() if v.get("dept") and v.get("acc")}
+    if not fillable:
+        return
+
+    row = await _get_config(db, tenant_id)
+    if row is None:
+        row = BUAccountingConfig(tenant_id=tenant_id)
+        db.add(row)
+        await db.flush()
+
+    # A custom type can already have a row with empty dept/acc — that is a gap to
+    # fill, not a value to protect.
+    existing = {str(e.field_type): e for e in await _get_entries(db, row.id)}
+    for field_type, mapping in fillable.items():
+        entry = existing.get(field_type)
+        if entry is None:
+            db.add(
+                BUAccountingMappingEntry(
+                    config_id=row.id,
+                    field_type=field_type,
+                    dept_code=mapping["dept"],
+                    acc_code=mapping["acc"],
+                    is_custom=(field_type not in _FIXED_TYPES),
+                )
+            )
+        elif not (entry.dept_code and entry.acc_code):
+            entry.dept_code = mapping["dept"]
+            entry.acc_code = mapping["acc"]
+
+    await db.commit()
+    logger.info("Filled %d GL mapping(s) for tenant=%s", len(fillable), tenant_id)
 
 
 # ── AP vendor column mapping ───────────────────────────────────────────────────
