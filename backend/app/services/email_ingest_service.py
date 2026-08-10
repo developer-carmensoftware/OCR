@@ -55,6 +55,7 @@ from email.header import decode_header, make_header
 from email.message import Message
 from typing import Any
 
+import httpx
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -171,6 +172,36 @@ def _attachments(msg: Message) -> list[tuple[str, bytes]]:
     return out
 
 
+def _confirmation_body(msg: Message) -> str:
+    """The text of a Gmail forwarding-confirmation mail, or "" for anything else.
+
+    Gated on the sender rather than decoded for every message: the only thing we read a
+    body for is the confirmation link, and a poll of bank mail is otherwise all
+    attachments — decoding each one's HTML signature block to find nothing is work the
+    ingest path does not need to do.
+    """
+    if _GMAIL_CONFIRM_SENDER not in _decode(msg.get("From")).lower():
+        return ""
+    if not msg.is_multipart():
+        return _decode_body(msg)
+    return "\n".join(
+        _decode_body(part)
+        for part in msg.walk()
+        if part.get_content_type() in ("text/plain", "text/html")
+    )
+
+
+def _decode_body(part: Message) -> str:
+    payload = part.get_payload(decode=True)
+    if not isinstance(payload, bytes):
+        return ""
+    charset = part.get_content_charset() or "utf-8"
+    try:
+        return payload.decode(charset, errors="replace")
+    except LookupError:
+        return payload.decode("utf-8", errors="replace")
+
+
 def _recipients(msg: Message) -> list[str]:
     """Every envelope-recipient candidate, delivery headers first then `Received … for`.
 
@@ -229,6 +260,9 @@ def _fetch_unseen(limit: int) -> list[dict[str, Any]]:
                     ),
                     "recipients": _recipients(msg),
                     "attachments": _attachments(msg),
+                    # Empty for everything that is not a Gmail confirmation — the only
+                    # message whose body we have any use for.
+                    "body": _confirmation_body(msg),
                 }
             )
             box.store(uid, "+FLAGS", "\\Seen")
@@ -269,10 +303,25 @@ def tag_from_recipients(candidates: list[str]) -> str | None:
 _GMAIL_CONFIRM_SENDER = "forwarding-noreply@google.com"
 
 # "(#123456789) Gmail Forwarding Confirmation - Receive Mail from x@y"
-# ponytail: the subject only — `_fetch_unseen` does not carry the body, and the code
-# is in both. If Google ever drops it from the subject, collect the body there and
-# run this same pattern over it.
+#
+# **Expect this to match nothing.** Checked against four real confirmation mails on
+# 2026-08-07 — Thai personal Gmail and English Workspace — and none carried a code, in
+# the subject or the body. Every real subject opens with a bare "(" where "#code)" used
+# to be, which is why the pattern reads as plausible: it only ever matched the fixtures
+# we wrote for ourselves. Kept because a code we cannot use costs nothing and Google
+# bringing it back costs a deploy; `auto_confirm_forwarding` is what actually works.
 _GMAIL_CONFIRM_CODE = re.compile(r"\(#\s*(\d{6,12})\s*\)")
+
+# The confirm link, and **only** the confirm link. The same mail carries an almost
+# identical `/mail/uf-…` URL that *cancels* the forward — one letter apart, and
+# following the wrong one would silently undo the setup the customer just asked for.
+# Anchored on the host and the literal `/mail/vf-` so nothing else in the body matches.
+_GMAIL_CONFIRM_LINK = re.compile(r"https://mail-settings\.google\.com/mail/vf-[A-Za-z0-9%\-_\[\]]+")
+
+# Every host the confirmation may touch: it 302s from mail-settings to mail. Checked on
+# each hop rather than trusting `follow_redirects`, which would otherwise let a
+# redirect walk this request off Google entirely.
+_GMAIL_HOSTS = frozenset({"mail-settings.google.com", "mail.google.com"})
 
 
 def gmail_confirm_code(sender: str, subject: str) -> str | None:
@@ -286,6 +335,65 @@ def gmail_confirm_code(sender: str, subject: str) -> str | None:
         return None
     found = _GMAIL_CONFIRM_CODE.search(subject or "")
     return found.group(1) if found else None
+
+
+def gmail_confirm_link(body: str) -> str | None:
+    """The `vf-` confirmation URL in this mail's body, or None.
+
+    The caller has already established the sender (`_confirmation_body` returns "" for
+    anything else), so this only has to pick the right URL out of the three Google puts
+    in the mail: the confirm link, the cancel link, and a help-centre article.
+    """
+    found = _GMAIL_CONFIRM_LINK.search(body or "")
+    return found.group(0) if found else None
+
+
+async def auto_confirm_forwarding(link: str) -> bool:
+    """Complete Gmail's handshake by following the link, the way a click would.
+
+    **This is the only mechanism that still works.** Google stopped printing a code, so
+    the "paste it into your own Gmail screen" path has nothing to paste; verified end to
+    end on 2026-08-07 against a forward that had never been confirmed, which went live
+    without anyone touching it.
+
+    Two requests, because the link is not the confirmation: it 302s to an interstitial
+    whose whole content is `<form action="" method="post">` with a single button and no
+    hidden field or CSRF token. GET renders it, POST to the same URL is the click. Both
+    run on one client so the cookies Google sets on the way in are still there.
+
+    Never raises. A poll is mostly about documents, and a confirmation that fails must
+    not take down the invoices travelling with it.
+    """
+    if httpx.URL(link).host not in _GMAIL_HOSTS:
+        logger.error("[email] Confirmation link is not a Google host — refused")
+        return False
+    try:
+        async with httpx.AsyncClient(
+            timeout=20, follow_redirects=True, headers={"User-Agent": _CONFIRM_USER_AGENT}
+        ) as client:
+            page = await client.get(link)
+            for hop in [*page.history, page]:
+                if httpx.URL(str(hop.url)).host not in _GMAIL_HOSTS:
+                    logger.error("[email] Confirmation redirect left Google — abandoned")
+                    return False
+            done = await client.post(str(page.url), data={})
+        if done.status_code >= 400:
+            logger.error("[email] Gmail refused the confirmation (HTTP %s)", done.status_code)
+            return False
+        logger.info("[email] Forwarding confirmed automatically")
+        return True
+    except Exception as exc:
+        logger.error("[email] Could not follow the confirmation link: %s", exc)
+        return False
+
+
+# Google serves the interstitial to a default httpx UA as readily as to a browser, so
+# this is not evasion — it is the plain identification a form submission is expected to
+# carry, kept because an unrecognised client is the first thing an anti-abuse rule drops.
+_CONFIRM_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+)
 
 
 def sender_allowed(owner_emails: list[str], people: str) -> bool:
@@ -426,16 +534,24 @@ async def _process_message(msg: dict[str, Any]) -> list[str]:
     """
     # Before the attachment check, because a confirmation mail has none — it is the
     # one message we care about that carries no document.
-    if code := gmail_confirm_code(msg["from"], msg["subject"]):
-        if tag := tag_from_recipients(msg["recipients"]):
-            async with async_session() as db:
-                await es.record_gmail_code(db, tag, code)
-        else:
+    link = gmail_confirm_link(msg["body"])
+    code = gmail_confirm_code(msg["from"], msg["subject"])
+    if link or code:
+        tag = tag_from_recipients(msg["recipients"])
+        if not tag:
             # Deliberately not "unrouted": that counter watches for documents going
-            # nowhere and alerts on five in a poll. A confirmation code we cannot
-            # attribute is noise, and raising an alert for it would train us to
-            # ignore the one that means real money is being dropped.
-            logger.warning("[email] Gmail confirmation code with no usable tag — dropped")
+            # nowhere and alerts on five in a poll. A confirmation we cannot attribute
+            # is noise, and raising an alert for it would train us to ignore the one
+            # that means real money is being dropped.
+            logger.warning("[email] Gmail confirmation with no usable tag — dropped")
+            return ["skipped"]
+        async with async_session() as db:
+            if code:
+                await es.record_gmail_code(db, tag, code)
+            # The link is followed even when a code came with it: the code needs a
+            # customer to act on it and this does not.
+            if link and await auto_confirm_forwarding(link):
+                await es.record_gmail_confirmed(db, tag)
         return ["skipped"]
 
     if not msg["attachments"]:

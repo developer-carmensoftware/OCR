@@ -45,6 +45,10 @@ export interface EmailSettings {
   owner_emails: string[]
   tax_ids: string[]
   rules: EmailRule[]
+  /** When the poll followed Gmail's confirmation link and Google accepted it — the
+   *  forward is live. This is normally the only signal there is: Google stopped
+   *  printing a confirmation code, so `gmail_confirm` below is usually null. */
+  gmail_confirmed_at: string | null
   gmail_confirm: { code: string; at: string | null } | null
   status: {
     ready: boolean

@@ -599,12 +599,16 @@ async def _route(
     sender="no-reply@ktc.co.th",
     subject="statement",
     record=None,
+    body="",
+    confirmed=None,
+    auto_confirm=True,
 ):
     """Runs `_process_message` — up to (and not into) the per-attachment half."""
     db = AsyncMock()
     db.get = AsyncMock(return_value=MagicMock())  # tenant row exists
     process = AsyncMock(return_value="posted")
     extract = AsyncMock(return_value=_extracted())
+    follow = AsyncMock(return_value=auto_confirm)
     with (
         patch.object(ingest.settings, "email_ingest_address", ADDRESS),
         patch.object(ingest, "async_session", _session_factory(db)),
@@ -613,6 +617,8 @@ async def _route(
         patch.object(ingest.es, "rule_passwords", MagicMock(return_value=["pw"])),
         patch.object(ingest.es, "posting_target", AsyncMock(return_value=("tok", "https://h"))),
         patch.object(ingest.es, "record_gmail_code", record or AsyncMock()),
+        patch.object(ingest.es, "record_gmail_confirmed", confirmed or AsyncMock()),
+        patch.object(ingest, "auto_confirm_forwarding", follow),
         patch.object(ingest.ocr_service, "extract_stateless", extract),
         patch.object(ingest, "_process_attachment", process),
     ):
@@ -626,6 +632,7 @@ async def _route(
                 "attachments": (
                     [("statement.jpg", b"fake")] if attachments is None else list(attachments)
                 ),
+                "body": body,
             }
         )
     return outcomes, extract, process
@@ -746,6 +753,86 @@ async def test_a_bank_document_is_not_diverted_by_a_hash_number_in_its_subject()
     assert outcomes == ["posted"]
     record.assert_not_awaited()
     process.assert_awaited_once()
+
+
+# ── Following the confirmation link ───────────────────────────────────────────
+
+# The real thing, captured from the dev mailbox on 2026-08-07 (Thai personal Gmail,
+# tokens shortened). Fabricating this fixture would have hidden the two findings it
+# carries: there is **no confirmation code anywhere in it**, and the cancel link sits
+# right beside the confirm link differing by a single letter.
+_REAL_THAI_CONFIRM_SUBJECT = "(การยืนยันการส่งต่อของ Gmail - รับอีเมลจาก mazato0987@gmail.com"
+_REAL_THAI_CONFIRM_BODY = """\
+mazato0987@gmail.com ได้ส่งคำขอส่งต่อข้อความไปยังอีเมลของคุณโดยอัตโนมัติ
+AIAGENT+a1b2c3d4@carmensoftware.com
+
+โปรดคลิกลิงก์ด้านล่างเพื่อยืนยันคำขอ
+
+https://mail-settings.google.com/mail/vf-%5BANGjdJ92YC0FaZBtOi3lREO9aOQIU%5D-6jLNz8HY
+
+หากคุณคลิกลิงก์โดยไม่ตั้งใจ ให้คลิกลิงก์นี้เพื่อยกเลิกการยืนยัน
+https://mail-settings.google.com/mail/uf-%5BANGjdJ_S1ta2CcNxmFpjPTUjZiDr%5D-6jLNz8HY
+
+ไปที่ http://support.google.com/mail/bin/answer.py?answer=184973
+"""
+
+
+def test_the_confirm_link_is_picked_and_the_cancel_link_is_not():
+    """The one mistake in this feature that silently undoes the customer's setup.
+    `vf-` confirms, `uf-` cancels, and they sit four lines apart in the same mail."""
+    link = ingest.gmail_confirm_link(_REAL_THAI_CONFIRM_BODY)
+    assert link is not None
+    assert "/mail/vf-" in link
+    assert "/mail/uf-" not in link
+
+
+def test_a_real_confirmation_mail_carries_no_code_at_all():
+    """Pins the finding the whole change rests on: the code-based flow has nothing to
+    show a customer, so the link is not a convenience, it is the only mechanism."""
+    assert ingest.gmail_confirm_code(_CONFIRM, _REAL_THAI_CONFIRM_SUBJECT) is None
+    assert ingest.gmail_confirm_link(_REAL_THAI_CONFIRM_BODY) is not None
+
+
+@pytest.mark.asyncio
+async def test_a_link_off_google_is_never_followed():
+    """The allowlist is checked before the request, not after: a body that reached us
+    from anywhere must not turn the poll into a fetcher of arbitrary URLs."""
+    assert await ingest.auto_confirm_forwarding("https://evil.example.com/mail/vf-abc") is False
+
+
+@pytest.mark.asyncio
+async def test_following_the_link_marks_the_bu_confirmed():
+    confirmed = AsyncMock()
+    outcomes, extract, process = await _route(
+        resolved=_settings_row(),
+        sender=_CONFIRM,
+        subject=_REAL_THAI_CONFIRM_SUBJECT,
+        body=_REAL_THAI_CONFIRM_BODY,
+        attachments=[],
+        confirmed=confirmed,
+    )
+    assert outcomes == ["skipped"]
+    assert confirmed.await_args.args[1] == "a1b2c3d4"
+    extract.assert_not_awaited()
+    process.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_confirmation_is_not_recorded_and_does_not_break_the_poll():
+    """Google refusing the link leaves the BU unconfirmed — the screen has to keep
+    saying so — but the poll carrying real invoices still finishes normally."""
+    confirmed = AsyncMock()
+    outcomes, _, _ = await _route(
+        resolved=_settings_row(),
+        sender=_CONFIRM,
+        subject=_REAL_THAI_CONFIRM_SUBJECT,
+        body=_REAL_THAI_CONFIRM_BODY,
+        attachments=[],
+        confirmed=confirmed,
+        auto_confirm=False,
+    )
+    assert outcomes == ["skipped"]
+    confirmed.assert_not_awaited()
 
 
 # ── run_ingest ────────────────────────────────────────────────────────────────

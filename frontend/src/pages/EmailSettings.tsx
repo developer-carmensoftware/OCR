@@ -565,16 +565,23 @@ export default function EmailSettings() {
               )
             )}
 
-            {/* Gmail's half of the handshake. The code is mailed to the address above,
-                which no customer can open — so it surfaces here instead. */}
+            {/* Gmail's half of the handshake, which we now complete ourselves: Google
+                mails the confirmation to the address above, which no customer can open,
+                so the poll follows the link in it. The code branch is the fallback —
+                Google stopped printing one, so it is normally never reached. */}
             <div
               className="email-setup__confirm"
               data-has-code={Boolean(settings?.gmail_confirm) || undefined}
             >
               <div className="email-setup__title" style={{ lineHeight: 1.4 }}>
-                Gmail confirmation code
+                Gmail confirmation
               </div>
-              {settings?.gmail_confirm ? (
+              {settings?.gmail_confirmed_at ? (
+                <p className="email-setup__hint" style={{ margin: '4px 0 0' }}>
+                  Confirmed automatically on{' '}
+                  {new Date(settings.gmail_confirmed_at).toLocaleString()} — nothing to do.
+                </p>
+              ) : settings?.gmail_confirm ? (
                 <>
                   <p className="email-setup__hint" style={{ margin: '4px 0 8px' }}>
                     Paste this into the confirmation prompt on your own Gmail forwarding screen.
@@ -596,8 +603,9 @@ export default function EmailSettings() {
                 </>
               ) : (
                 <p className="email-setup__waiting" style={{ marginTop: 4 }}>
-                  Add the forwarding address in Gmail — Google mails a code here and it appears on
-                  this screen within a minute or two.
+                  Add the forwarding address in Gmail. Google mails the confirmation here and we
+                  complete it for you within a minute or two — you should not have to click
+                  anything.
                 </p>
               )}
             </div>

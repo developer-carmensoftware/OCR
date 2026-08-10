@@ -54,8 +54,17 @@ class EmailIngestSettings(Base, TimestampMixin, WriterMixin):
     # Gmail's forwarding confirmation code, addressed to this BU's tag. Single-use and
     # overwritten by the next one — the settings screen shows it so the customer can
     # finish the handshake without anyone opening the shared mailbox.
+    #
+    # Kept, but expect it to be null: measured against four real confirmation mails on
+    # 2026-08-07 (Thai personal Gmail and English Workspace), Google no longer prints a
+    # code in the subject or the body at all — only the confirmation link. The subject
+    # still carries the vestigial "(" where "#code)" used to sit.
     gmail_confirm_code = Column(String(32), nullable=True)
     gmail_confirm_at = Column(DateTime(timezone=True), nullable=True)
+    # When the poll followed the confirmation link itself and Google accepted it. This is
+    # the handshake actually completing, which the code above no longer can — so it is
+    # what the settings screen reads to say "done" rather than "waiting for a code".
+    gmail_confirmed_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index(

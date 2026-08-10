@@ -344,6 +344,7 @@ def _fake_row(**overrides):
         owner_emails=[],
         gmail_confirm_code=None,
         gmail_confirm_at=None,
+        gmail_confirmed_at=None,
     )
     defaults.update(overrides)
     return SimpleNamespace(**defaults)

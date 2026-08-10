@@ -151,6 +151,28 @@ async def record_gmail_code(db: AsyncSession, tag: str, code: str) -> None:
         logger.error("[email] Could not store the Gmail confirmation code: %s", exc)
 
 
+async def record_gmail_confirmed(db: AsyncSession, tag: str) -> None:
+    """Mark this BU's auto-forward as live — the poll followed the link and Google took it.
+
+    Same never-raises contract as `record_gmail_code`, for the same reason: this runs
+    inside a poll that is otherwise carrying invoices.
+    """
+    try:
+        row = (
+            await db.execute(
+                select(EmailIngestSettings).where(EmailIngestSettings.ingest_tag == tag)
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            logger.warning("[email] Forwarding confirmed for an unknown tag — not recorded")
+            return
+        row.gmail_confirmed_at = datetime.now(UTC)
+        await db.commit()
+        logger.info("[email] Forwarding confirmed for tenant %s", row.tenant_id)
+    except Exception as exc:
+        logger.error("[email] Could not record the forwarding confirmation: %s", exc)
+
+
 async def foreign_tax_id(db: AsyncSession, tax_ids: list[str], tenant_id: Any) -> str | None:
     """A tax ID printed on this document that is registered to a *different* BU.
 
@@ -246,6 +268,7 @@ def to_response(row: EmailIngestSettings | None, host: str, bu: str) -> dict:
             "owner_emails": [],
             "tax_ids": [],
             "rules": [],
+            "gmail_confirmed_at": None,
             "gmail_confirm": None,
             "status": {"ready": False, "blockers": ["not_configured"]},
         }
@@ -274,6 +297,11 @@ def to_response(row: EmailIngestSettings | None, host: str, bu: str) -> dict:
             }
             for r in rules
         ],
+        # The handshake completing on its own — normally the only one of these two that
+        # is ever set, since Google no longer prints a code (see the model).
+        "gmail_confirmed_at": (
+            row.gmail_confirmed_at.isoformat() if row.gmail_confirmed_at else None
+        ),
         # Present only while a code is waiting to be used. Not a secret — it authorises
         # nothing on its own, and the person who needs it is the one already looking at
         # this screen.
