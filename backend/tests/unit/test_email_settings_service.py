@@ -77,7 +77,7 @@ def test_is_valid_thai_tax_id(value, expected):
 
 @pytest.mark.asyncio
 async def test_enabled_without_tax_ids_raises_field_validation_error():
-    payload = SettingsIn(host="h", bu="b", enabled=True, tax_ids=[], rules=[])
+    payload = SettingsIn(uri="h", bu="b", enabled=True, tax_ids=[], rules=[])
     with pytest.raises(FieldValidationError) as exc:
         await es.save_settings(AsyncMock(), _tenant(), payload)
     assert exc.value.errors[0]["field"] == "tax_ids"
@@ -99,9 +99,7 @@ async def test_enabled_without_tax_ids_raises_field_validation_error():
 async def test_owner_email_is_checked_for_typos_only(value, ok):
     """Loose on purpose — a rejected address is one the customer cannot register, which
     costs more than a wrong one, whose only effect is refusing their own mail visibly."""
-    payload = SettingsIn(
-        host="h", bu="b", enabled=False, owner_emails=[value], tax_ids=[], rules=[]
-    )
+    payload = SettingsIn(uri="h", bu="b", enabled=False, owner_emails=[value], tax_ids=[], rules=[])
     db = AsyncMock()
     db.execute = AsyncMock(side_effect=[_exec(scalars=[])])  # active bank codes
     errors: list[dict] = []
@@ -119,7 +117,7 @@ async def test_owner_email_is_checked_for_typos_only(value, ok):
 
 @pytest.mark.asyncio
 async def test_invalid_tax_id_checksum_raises_field_validation_error():
-    payload = SettingsIn(host="h", bu="b", enabled=False, tax_ids=["1234567890123"], rules=[])
+    payload = SettingsIn(uri="h", bu="b", enabled=False, tax_ids=["1234567890123"], rules=[])
     db = AsyncMock()
     db.execute = AsyncMock(side_effect=[_exec(scalars=[])])  # banks.tax_id
     with pytest.raises(FieldValidationError) as exc:
@@ -131,7 +129,7 @@ async def test_invalid_tax_id_checksum_raises_field_validation_error():
 @pytest.mark.asyncio
 async def test_unsupported_bank_code_raises_field_validation_error():
     payload = SettingsIn(
-        host="h",
+        uri="h",
         bu="b",
         enabled=False,
         tax_ids=[],
@@ -148,7 +146,7 @@ async def test_unsupported_bank_code_raises_field_validation_error():
 @pytest.mark.asyncio
 async def test_duplicate_bank_code_in_rules_raises_field_validation_error():
     payload = SettingsIn(
-        host="h",
+        uri="h",
         bu="b",
         enabled=False,
         tax_ids=[],
@@ -169,7 +167,7 @@ async def test_duplicate_bank_code_in_rules_raises_field_validation_error():
 async def test_duplicate_other_rule_raises_field_validation_error():
     """bank_code: null ("Other") can only appear once too."""
     payload = SettingsIn(
-        host="h",
+        uri="h",
         bu="b",
         enabled=False,
         tax_ids=[],
@@ -213,7 +211,7 @@ async def test_cross_tenant_tax_id_conflict_raises_conflict_error():
         ]
     )
 
-    payload = SettingsIn(host="h", bu="b", enabled=True, tax_ids=[tid], rules=[])
+    payload = SettingsIn(uri="h", bu="b", enabled=True, tax_ids=[tid], rules=[])
     with pytest.raises(ConflictError):
         await es.save_settings(db, _tenant(), payload)
     db.commit.assert_not_called()
@@ -236,7 +234,7 @@ async def test_new_row_created_with_encrypted_password():
     db.add = MagicMock()
 
     payload = SettingsIn(
-        host="h",
+        uri="h",
         bu="b",
         enabled=True,
         tax_ids=[tid],
@@ -309,7 +307,7 @@ async def test_existing_row_rules_replace_wholesale_password_kept_or_cleared():
     )
 
     payload = SettingsIn(
-        host="h",
+        uri="h",
         bu="b",
         enabled=False,
         tax_ids=[],
@@ -549,7 +547,7 @@ def test_token_status_never_contains_the_token_value():
 async def test_enabling_without_an_active_package_is_rejected(monkeypatch):
     """The feature is sold, not free — and the gate was hardcoded open until now."""
     monkeypatch.setattr(es, "is_entitled", AsyncMock(return_value=False))
-    payload = SettingsIn(host="h", bu="b", enabled=True, tax_ids=[_valid_tax_id()], rules=[])
+    payload = SettingsIn(uri="h", bu="b", enabled=True, tax_ids=[_valid_tax_id()], rules=[])
     db = AsyncMock()
     db.execute = AsyncMock(side_effect=[_exec(scalars=[])])  # conflict check only
 
@@ -563,11 +561,30 @@ async def test_enabling_without_an_active_package_is_rejected(monkeypatch):
 @pytest.mark.asyncio
 async def test_disabled_settings_may_be_saved_without_a_package():
     """Only *enabling* needs a package — a customer may still edit while lapsed."""
-    payload = SettingsIn(host="h", bu="b", enabled=False, tax_ids=[], rules=[])
+    payload = SettingsIn(uri="h", bu="b", enabled=False, tax_ids=[], rules=[])
     db = AsyncMock()
     db.execute = AsyncMock(side_effect=[_exec(scalar_one_or_none=_fake_row())])
     await es.save_settings(db, _tenant_with_host(), payload)  # no raise
     db.commit.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_response_reports_the_tenants_own_identity(monkeypatch):
+    """One tenant, one identity — whatever the request called it.
+
+    The caller names the BU with a full origin (`uri`) in any casing; what comes back
+    is the stored `(host, bu_code)` pair. Without this the body would echo whatever
+    spelling was sent and two callers would disagree about the same tenant.
+    """
+    monkeypatch.setattr(es, "is_entitled", AsyncMock(return_value=True))
+    monkeypatch.setattr(es, "document_counts", AsyncMock(return_value={"documents_total": 0}))
+
+    body = await es.build_settings_response(
+        AsyncMock(), _tenant_with_host("hotel.carmenwork.com", "hq"), _fake_row()
+    )
+
+    assert body["host"] == "hotel.carmenwork.com"
+    assert body["bu"] == "hq"
 
 
 @pytest.mark.asyncio
@@ -576,7 +593,7 @@ async def test_build_response_flags_an_unpaid_bu(monkeypatch):
     monkeypatch.setattr(es, "document_counts", AsyncMock(return_value={"documents_total": 0}))
     row = _fake_row(rules=[{"bank_code": "KTC", "is_active": True}])
 
-    body = await es.build_settings_response(AsyncMock(), _tenant_with_host(), row, "h", "b")
+    body = await es.build_settings_response(AsyncMock(), _tenant_with_host(), row)
 
     assert body["entitled"] is False
     assert body["status"]["blockers"] == ["not_entitled"]
@@ -594,7 +611,7 @@ async def test_a_bu_with_no_gl_mapping_is_still_ready(monkeypatch):
     monkeypatch.setattr(es, "document_counts", AsyncMock(return_value={"documents_total": 0}))
     row = _fake_row(rules=[{"bank_code": "KTC", "is_active": True}])
 
-    body = await es.build_settings_response(AsyncMock(), _tenant_with_host(), row, "h", "b")
+    body = await es.build_settings_response(AsyncMock(), _tenant_with_host(), row)
 
     assert body["status"]["blockers"] == []
     assert body["status"]["ready"] is True
@@ -606,7 +623,7 @@ async def test_build_response_is_ready_only_when_every_gate_passes(monkeypatch):
     monkeypatch.setattr(es, "document_counts", AsyncMock(return_value={"documents_total": 3}))
     row = _fake_row(rules=[{"bank_code": "KTC", "is_active": True}])
 
-    body = await es.build_settings_response(AsyncMock(), _tenant_with_host(), row, "h", "b")
+    body = await es.build_settings_response(AsyncMock(), _tenant_with_host(), row)
 
     assert body["entitled"] is True
     assert body["status"]["blockers"] == []
@@ -618,7 +635,7 @@ async def test_build_response_is_ready_only_when_every_gate_passes(monkeypatch):
 async def test_unconfigured_bu_reports_only_not_configured(monkeypatch):
     """row is None: the counters and the other blockers are not meaningful yet."""
     monkeypatch.setattr(es, "is_entitled", AsyncMock(return_value=True))
-    body = await es.build_settings_response(AsyncMock(), _tenant_with_host(), None, "h", "b")
+    body = await es.build_settings_response(AsyncMock(), _tenant_with_host(), None)
     assert body["status"]["blockers"] == ["not_configured"]
     assert "documents_total" not in body["status"]
 
@@ -656,7 +673,7 @@ async def test_carmen_origin_is_derived_from_the_tenant_host():
 
 def _patterns_payload(patterns):
     return SettingsIn(
-        host="h",
+        uri="h",
         bu="b",
         enabled=False,
         tax_ids=[],
@@ -699,7 +716,7 @@ async def test_registering_a_banks_own_tax_id_is_rejected():
     bank_tin = _valid_tax_id("010753600037")
     db = AsyncMock()
     db.execute = AsyncMock(side_effect=[_exec(scalars=[bank_tin])])  # banks.tax_id
-    payload = SettingsIn(host="h", bu="b", enabled=True, tax_ids=[bank_tin], rules=[])
+    payload = SettingsIn(uri="h", bu="b", enabled=True, tax_ids=[bank_tin], rules=[])
 
     with pytest.raises(FieldValidationError) as exc:
         await es.save_settings(db, _tenant(), payload)
@@ -718,7 +735,7 @@ async def _save(db, tenant, *, enabled, row, tax_ids=None):
     seq = [_exec(scalars=[]), _exec(scalars=[])] if tids else []
     db.execute = AsyncMock(side_effect=[*seq, _exec(scalar_one_or_none=row)])
     db.scalar = AsyncMock(return_value=None)
-    payload = SettingsIn(host="h", bu="b", enabled=enabled, tax_ids=tids, rules=[])
+    payload = SettingsIn(uri="h", bu="b", enabled=enabled, tax_ids=tids, rules=[])
     return await es.save_settings(db, tenant, payload)
 
 

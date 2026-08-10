@@ -1,6 +1,6 @@
 # Email Automation API
 
-**v3.0 · 2026-08-06** · Base URL `https://{ocr-host}/api/v1/carmen` · schema: `/openapi.json`
+**v4.0 · 2026-08-10** · Base URL `https://{ocr-host}/api/v1/carmen` · schema: `/openapi.json`
 เหตุผลเบื้องหลัง: [CARMEN_INTEGRATION.md](CARMEN_INTEGRATION.md)
 
 ---
@@ -20,14 +20,24 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
 
 | # | Endpoint | ทำอะไร |
 |---|---|---|
-| 0 | `GET /bank-codes` | ลิสต์ `bank_code` ที่ใช้ได้ตอนนี้ — ไม่ผูกกับ host/bu |
-| 1 | `GET /settings?host=&bu=` | อ่านค่าที่ตั้งไว้ |
+| 0 | `GET /bank-codes` | ลิสต์ `bank_code` ที่ใช้ได้ตอนนี้ — ไม่ผูกกับ uri/bu |
+| 1 | `GET /settings?uri=&bu=` | อ่านค่าที่ตั้งไว้ |
 | 2 | `PUT /settings` | เขียนค่าตั้ง |
 | 3 | `PUT /settings/token` | ส่ง token ที่ใช้ post JV |
-| 4 | `GET /settings/token?host=&bu=` | เช็คสถานะ token |
-| 5 | `DELETE /settings/token?host=&bu=` | ลบ token → `204` ไม่มี body |
+| 4 | `GET /settings/token?uri=&bu=` | เช็คสถานะ token |
+| 5 | `DELETE /settings/token?uri=&bu=` | ลบ token → `204` ไม่มี body |
 
-`host` = hostname ของ Carmen instance เช่น `hotelgroup.carmenwork.com` · `bu` = รหัส BU ตัวพิมพ์เล็ก เช่น `hq`
+> **⚠️ เปลี่ยนจาก v3.0:** ระบุ BU ด้วย **`uri`** แทน `host` แล้ว — ส่งค่าเดียวกับที่ส่งให้
+> `/auth/exchange` อยู่แล้วได้เลย ไม่ต้องแกะ hostname เอง · `host` ไม่รับแล้ว (ส่งมาก็ถูกเมิน
+> แล้วจะได้ `422` เพราะไม่มี `uri`)
+
+`uri` = origin ของ Carmen instance เช่น `https://hotelgroup.carmenwork.com` — **ค่าเดียวกับที่ส่งให้
+`/auth/exchange`** · เราดึงเฉพาะ hostname ออกมาใช้หา BU (scheme/port/path ที่เกินมาถูกตัดทิ้ง ตัวพิมพ์
+ใหญ่-เล็กไม่สำคัญ) · บน querystring ต้อง encode: `?uri=https%3A%2F%2Fhotelgroup.carmenwork.com&bu=hq`
+· `bu` = รหัส BU ตัวพิมพ์เล็ก เช่น `hq`
+
+`uri` ใช้**หา BU อย่างเดียว** ไม่ใช่ปลายทางที่เรายิงกลับ — ปลายทางจริงมาจาก host ที่เก็บไว้ตอน BU login
+ครั้งแรกเสมอ (ดู `carmen_uri` ใน §3–4 ถ้าอยากยืนยันว่าเรายิงไปที่ไหน)
 
 **ลำดับเปิดใช้:** `PUT /settings/token` → `PUT /settings` → แสดง `ingest_address` จาก response ให้ลูกค้า copy
 **ปิดใช้:** เพิกถอน token ฝั่ง Carmen → `DELETE /settings/token`
@@ -49,7 +59,7 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
 
 ```jsonc
 {
-  "host": "hotelgroup.carmenwork.com",
+  "host": "hotelgroup.carmenwork.com",                 // hostname ที่เก็บไว้ (ตัวพิมพ์เล็กเสมอ) ไม่ใช่ค่าที่ส่งมา
   "bu": "hq",
   "enabled": true,
   "entitled": true,                                    // มี package รายเดือนที่ยังไม่หมดอายุ
@@ -99,7 +109,7 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
 
 | Field | Type | Description |
 |---|---|---|
-| `host` **required** | string | |
+| `uri` **required** | string | origin ของ Carmen เช่น `https://hotelgroup.carmenwork.com` — ค่าเดียวกับที่ส่งให้ `/auth/exchange` · ใช้หา BU เท่านั้น |
 | `bu` **required** | string | |
 | `enabled` | bool | default `false` |
 | `owner_emails` | string[] | อีเมลฝั่งลูกค้า · **ว่าง = รับทุก sender (default)** · ถ้าใส่ เมลต้องมีที่อยู่ใดที่อยู่หนึ่งใน `From`/`To`/`Cc` ไม่งั้นไฟล์แนบถูกบันทึก `sender_not_allowed` ไม่ถูกอ่าน ไม่คิดเงิน · `422 invalid_email` ถ้ารูปแบบเพี้ยน |
@@ -118,7 +128,7 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
 
 ```jsonc
 {
-  "host": "hotelgroup.carmenwork.com",
+  "uri": "https://hotelgroup.carmenwork.com",
   "bu": "hq",
   "enabled": true,
   "tax_ids": ["0105536000127"],
@@ -135,12 +145,12 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
 
 | Field | Type | Description |
 |---|---|---|
-| `host` **required** | string | |
+| `uri` **required** | string | เหมือน §2 |
 | `bu` **required** | string | |
 | `token` **required** | string | **write-only** · ไม่เคยคืนค่ากลับ ไม่เคยโผล่ใน log |
 
 ก่อนเก็บ เรายิง `GET https://{host}/Carmen.API/api/interface/department` ด้วย token นั้น
-ไม่ผ่าน = ไม่เขียนอะไรลง DB เลย
+ไม่ผ่าน = ไม่เขียนอะไรลง DB เลย · `{host}` ตรงนี้คือ host ที่เก็บไว้ของ BU **ไม่ใช่** ค่าที่ส่งมาใน `uri`
 
 ## 3–4 · Response `200` (ทั้ง `PUT` และ `GET /settings/token`)
 
@@ -148,7 +158,7 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
 {
   "configured": true,                               // false = ไม่มี token → post ให้ไม่ได้
   "fingerprint": "9c1f3a2b",                        // 8 hex แรกของ sha256(token)
-  "carmen_uri": "https://hotelgroup.carmenwork.com",
+  "carmen_uri": "https://hotelgroup.carmenwork.com", // origin ที่เรา verify และจะใช้ post จริง
   "verified_at": "2026-08-04T03:15:00Z"             // null = ครั้งล่าสุดที่เช็คแล้วใช้ไม่ได้
 }
 ```
@@ -168,7 +178,8 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
 | `401` | `Carmen token rejected` | Carmen ปฏิเสธ token | ให้ user login ใหม่ อย่า retry |
 | `502` | `Cannot reach Carmen…` | ติดต่อ Carmen ของลูกค้าไม่ได้ | retry ได้ |
 | `429` | — | เกิน 20 req/นาที | รอแล้วยิงใหม่ |
-| `400` | `Unknown business unit` | BU ยังไม่เคย login เข้า OCR app | ให้ลูกค้า login 1 ครั้ง |
+| `400` | `Unknown business unit` | BU ยังไม่เคย login เข้า OCR app · หรือ `uri` ผิด/พิมพ์ตก | ให้ลูกค้า login 1 ครั้ง · เช็ค `uri` ว่าเป็น origin เดียวกับตอน login |
+| `422` | FastAPI field required | ไม่ได้ส่ง `uri` หรือ `bu` | หน้าตา error คนละแบบกับ `errors[]` ด้านบน (เป็น `detail[]` ของ FastAPI) |
 | `422` | `invalid_checksum` | เลขผู้เสียภาษีไม่ใช่ 13 หลัก / check digit ไม่ผ่าน | แก้เลข |
 | `422` | `required` | `enabled: true` แต่ไม่มี `tax_ids` | ใส่เลขก่อน |
 | `422` | `not_entitled` | `enabled: true` แต่ package หมดอายุ | ต่ออายุ (บันทึกเฉย ๆ ยังได้) |
@@ -178,7 +189,7 @@ Authorization: <Carmen token ของ user ที่ login อยู่>
 | `422` | `reserved_tax_id` | เลขที่ใส่เป็น**เลขของธนาคารเอง** ไม่ใช่ของบริษัทลูกค้า | ใช้เลขบริษัท — เลขธนาคารพิมพ์อยู่บนใบเดียวกัน มักหยิบผิดบรรทัด |
 | `409` | `Tax ID … already registered` | เลขนี้ถูก BU อื่นจองแล้ว | น่าจะพิมพ์ผิด |
 | `422` | `token_rejected` | Carmen ปฏิเสธ token ที่ส่งมาเก็บ | mint ใบใหม่ |
-| `422` | `invalid_uri` | `https://{host}` ไม่ผ่าน SSRF check | แก้ `host` |
+| `422` | `invalid_uri` (field `carmen_uri`) | origin ที่ derive จาก host ที่เก็บไว้ ไม่ผ่าน SSRF check | ไม่ใช่เรื่องของค่าที่ส่งมา — แจ้งเรา |
 
 ---
 

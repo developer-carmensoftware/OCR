@@ -212,7 +212,7 @@ async def test_caller_invalid_admin_bearer_is_401():
 
 @pytest.mark.asyncio
 async def test_resolve_proves_the_token_against_the_host_in_the_payload():
-    """host/bu are caller-supplied, so they are what the token is checked against."""
+    """uri/bu are caller-supplied, so they are what the token is checked against."""
     from app.routers import email_automation as mod
 
     tenant = _tenant()
@@ -221,7 +221,9 @@ async def test_resolve_proves_the_token_against_the_host_in_the_payload():
         patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=tenant),
         patch.object(mod, "_validate_token", validate),
     ):
-        got = await _resolve(AsyncMock(), Caller("user:x", CARMEN_TOKEN), tenant.host, "hq")
+        got = await _resolve(
+            AsyncMock(), Caller("user:x", CARMEN_TOKEN), f"https://{tenant.host}", "hq"
+        )
 
     assert got is tenant
     token, uri = validate.await_args.args
@@ -277,12 +279,89 @@ async def test_resolve_skips_the_probe_for_the_admin_path():
     validate.assert_not_awaited()
 
 
+# ── _tenant_host — the lookup key, and only that ───────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "https://hotelgroup.carmenwork.com",  # what Carmen actually sends
+        "https://hotelgroup.carmenwork.com/",
+        "https://HotelGroup.CarmenWork.com",
+        "https://hotelgroup.carmenwork.com:8443/carmen?x=1",
+        "  https://hotelgroup.carmenwork.com  ",
+        "hotelgroup.carmenwork.com",  # a bare host, i.e. an old caller
+    ],
+)
+def test_every_spelling_of_the_origin_gives_one_lookup_key(value):
+    """Scheme, case, port, path and whitespace are all noise around one hostname.
+
+    This is the same derivation `/auth/exchange` ran when it created the tenant row
+    (`urlparse(...).hostname`), which is why the two always agree.
+    """
+    from app.routers.email_automation import _tenant_host
+
+    assert _tenant_host(value) == "hotelgroup.carmenwork.com"
+
+
+@pytest.mark.parametrize("value", ["", "   ", "not a url", "https://[::1"])
+def test_a_value_that_names_no_host_is_left_to_the_lookup(value):
+    """No exception here: anything that matches no tenant is already a 400, and that
+    is the only honest answer — we cannot tell a typo from a BU that never signed in."""
+    from app.routers.email_automation import _tenant_host
+
+    assert _tenant_host(value) == value.strip().lower()
+
+
+@pytest.mark.asyncio
+async def test_the_token_is_proved_against_the_tenants_own_origin_not_the_uri_sent():
+    """The caller's `uri` stops at the lookup. **This is the case commit e870788
+    removed a payload field to prevent**: an origin from the request must never
+    reach `_validate_token`, or a token proven against one Carmen could be posted
+    to another.
+    """
+    from app.routers import email_automation as mod
+
+    tenant = _tenant()
+    validate = AsyncMock()
+    with (
+        patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=tenant),
+        patch.object(mod, "_validate_token", validate),
+    ):
+        await _resolve(AsyncMock(), Caller("user:x", CARMEN_TOKEN), "https://evil.com", "hq")
+
+    _, uri = validate.await_args.args
+    assert uri == f"https://{tenant.host}"
+    assert "evil.com" not in uri
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_origin_never_reaches_carmen():
+    """The lookup is the gate: no tenant, no outbound request at all."""
+    from app.exceptions import ValidationError
+    from app.routers import email_automation as mod
+
+    validate = AsyncMock()
+    with (
+        patch.object(
+            mod.es,
+            "resolve_tenant",
+            new_callable=AsyncMock,
+            side_effect=ValidationError("Unknown business unit"),
+        ),
+        patch.object(mod, "_validate_token", validate),
+    ):
+        with pytest.raises(ValidationError):
+            await _resolve(AsyncMock(), Caller("user:x", CARMEN_TOKEN), "https://evil.com", "hq")
+    validate.assert_not_awaited()
+
+
 # ── Routes — wiring + the un-overridden 401 path ──────────────────────────────
 
 
 def test_get_settings_401_without_authorization_header():
     with make_test_client(AsyncMock()) as client:
-        resp = client.get(f"{BASE}/settings", params={"host": "h", "bu": "b"})
+        resp = client.get(f"{BASE}/settings", params={"uri": "https://h.example.com", "bu": "b"})
     assert resp.status_code == 401
 
 
@@ -301,9 +380,50 @@ def test_get_settings_reaches_handler_for_both_auth_styles():
         patch.object(es, "build_settings_response", new_callable=AsyncMock, return_value=body),
     ):
         with make_test_client(AsyncMock()) as client:
-            resp = client.get(f"{BASE}/settings", params={"host": "h", "bu": "b"})
+            resp = client.get(
+                f"{BASE}/settings", params={"uri": "https://h.example.com", "bu": "b"}
+            )
     assert resp.status_code == 200
     assert resp.json()["status"]["blockers"] == ["not_configured"]
+
+
+def test_get_settings_without_a_uri_is_a_422():
+    """`uri` is required. FastAPI answers before the handler, which is why nothing
+    downstream has to invent a "no identity" case."""
+    from app.main import app
+
+    app.dependency_overrides[_caller] = lambda: Caller("test-actor", None)
+    with make_test_client(AsyncMock()) as client:
+        resp = client.get(f"{BASE}/settings", params={"bu": "b"})
+    assert resp.status_code == 422
+
+
+def test_storing_a_token_targets_only_the_tenants_own_origin():
+    """The credential-bearing path, end to end: whatever origin the body claims, the
+    one handed to `set_token` — and therefore stored and later posted with — is the
+    tenant's own."""
+    from app.main import app
+    from app.routers import email_automation as mod
+    from app.services import email_settings_service as es
+
+    app.dependency_overrides[_caller] = lambda: Caller("test-actor", None)
+    tenant = _tenant()
+    set_token = AsyncMock(return_value=SimpleNamespace(carmen_token_fp="abc12345"))
+    with (
+        patch.object(es, "resolve_tenant", new_callable=AsyncMock, return_value=tenant),
+        # Patched off so the assertion is about the value, not the SSRF allowlist.
+        patch.object(mod, "_validate_uri", lambda uri: uri),
+        patch.object(es, "set_token", set_token),
+        patch.object(es, "token_status", lambda row: {"configured": True}),
+    ):
+        with make_test_client(AsyncMock()) as client:
+            resp = client.put(
+                f"{BASE}/settings/token",
+                json={"uri": "https://evil.com", "bu": "hq", "token": CARMEN_TOKEN},
+            )
+
+    assert resp.status_code == 200
+    assert set_token.await_args.args[3] == f"https://{tenant.host}"
 
 
 # ── Bank codes — reference data, not tenant-scoped ─────────────────────────────

@@ -5,6 +5,11 @@ Contract: docs/CARMEN_INTEGRATION.md §2.3 (settings) and §2.6 (posting credent
 
 from pydantic import BaseModel, Field, SecretStr
 
+# The tenant is still the pair (host, bu) — `uri` is how Carmen spells the host, because
+# it is the value they already pass to `/auth/exchange`. We take its hostname and look
+# the tenant up; see `routers/email_automation._tenant_host` for why that is all it does.
+URI_DOC = "Carmen origin, e.g. https://hotelgroup.carmenwork.com — the value sent to /auth/exchange"
+
 
 class RuleIn(BaseModel):
     bank_code: str | None = None
@@ -20,7 +25,7 @@ class RuleIn(BaseModel):
 
 
 class SettingsIn(BaseModel):
-    host: str
+    uri: str = Field(description=URI_DOC)
     bu: str
     enabled: bool = False
     # The customer's own addresses. Empty accepts any sender — "start broad, narrow
@@ -39,9 +44,12 @@ class TokenIn(BaseModel):
     errors and Sentry breadcrumbs.
     """
 
-    host: str
+    uri: str = Field(description=URI_DOC)
     bu: str
     token: SecretStr
-    # ponytail: no carmen_uri — the origin is always https://<host>. Accepting a
-    # separate one would let us validate the token against one origin and post with
-    # it to another. Extra field ignored (Pydantic default) so old callers still work.
+    # ponytail: `uri` is an identity input only — we take its hostname and look the tenant
+    # up by (host, bu). The origin we verify against and post to is still derived from
+    # tenants.host (`_safe_carmen_uri`), never from anything in this payload. That is the
+    # distinction the old `carmen_uri` field failed: it let us validate a token against one
+    # origin and post it to another. Extra fields are still ignored (Pydantic default), so
+    # a caller still sending `host` or `carmen_uri` alongside `uri` keeps working.

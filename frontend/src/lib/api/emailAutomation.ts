@@ -60,7 +60,9 @@ export interface EmailSettings {
 }
 
 export interface SettingsPayload {
-  host: string
+  /** The full Carmen origin from the login exchange. The backend takes its hostname;
+   *  the response still reports the stored `host`. */
+  uri: string
   bu: string
   enabled: boolean
   owner_emails: string[]
@@ -133,8 +135,8 @@ const json = (body: unknown): RequestInit => ({
 export const getBankCodes = () =>
   call<{ banks: BankCode[] }>(API.emailAutomation.bankCodes).then(r => r.banks)
 
-export const getSettings = (host: string, bu: string) =>
-  call<EmailSettings>(API.emailAutomation.settingsFor(host, bu))
+export const getSettings = (uri: string, bu: string) =>
+  call<EmailSettings>(API.emailAutomation.settingsFor(uri, bu))
 
 /** Full replace, not a delta — `save_settings` rewrites tax IDs and rules wholesale,
  *  so every caller sends the complete current state. The response is the same body
@@ -142,11 +144,11 @@ export const getSettings = (host: string, bu: string) =>
 export const saveSettings = (payload: SettingsPayload) =>
   call<EmailSettings>(API.emailAutomation.settings, { method: 'PUT', ...json(payload) })
 
-export const getToken = (host: string, bu: string) =>
-  call<TokenStatus>(API.emailAutomation.tokenFor(host, bu))
+export const getToken = (uri: string, bu: string) =>
+  call<TokenStatus>(API.emailAutomation.tokenFor(uri, bu))
 
-export const putToken = (host: string, bu: string, token: string) =>
-  call<TokenStatus>(API.emailAutomation.token, { method: 'PUT', ...json({ host, bu, token }) })
+export const putToken = (uri: string, bu: string, token: string) =>
+  call<TokenStatus>(API.emailAutomation.token, { method: 'PUT', ...json({ uri, bu, token }) })
 
-export const deleteToken = (host: string, bu: string) =>
-  call<void>(API.emailAutomation.tokenFor(host, bu), { method: 'DELETE' })
+export const deleteToken = (uri: string, bu: string) =>
+  call<void>(API.emailAutomation.tokenFor(uri, bu), { method: 'DELETE' })

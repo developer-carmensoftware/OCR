@@ -345,7 +345,7 @@ async def document_counts(db: AsyncSession, row: EmailIngestSettings) -> dict:
 
 
 async def build_settings_response(
-    db: AsyncSession, tenant: Tenant, row: EmailIngestSettings | None, host: str, bu: str
+    db: AsyncSession, tenant: Tenant, row: EmailIngestSettings | None
 ) -> dict:
     """The §2.2 body — assembled here so GET and PUT cannot drift apart.
 
@@ -356,8 +356,12 @@ async def build_settings_response(
     A missing GL mapping is deliberately *not* a blocker: the ingest job AI-fills
     what the BU never mapped and saves the result, so a BU that has never opened the
     mapping page still posts (CARMEN_INTEGRATION.md §4).
+
+    The identity echoed back is the **tenant's**, not the caller's. The request may
+    name it as `host` or as `uri` and in any casing; one tenant reports one identity
+    either way, which is what makes a second input spelling cost nothing here.
     """
-    body = to_response(row, host, bu)
+    body = to_response(row, tenant.host, tenant.bu_code)
     body["entitled"] = await is_entitled(db, tenant)
 
     if row is None:

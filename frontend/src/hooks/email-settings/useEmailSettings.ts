@@ -56,21 +56,12 @@ function toPayloadRules(settings: EmailSettings | null): EmailRulePayload[] {
   }))
 }
 
-function hostOf(uri: string | undefined): string {
-  if (!uri) return ''
-  try {
-    return new URL(uri).hostname
-  } catch {
-    return ''
-  }
-}
-
 export function useEmailSettings(): EmailSettingsController {
   const { user } = useAuth()
-  // `uri` is the normalised `https://<host>` the backend returned at login, so this
-  // parses — but a render-time throw here would blank the page, and a missing host is
-  // already a state the screen renders ("—").
-  const host = hostOf(user?.uri)
+  // The normalised `https://<host>` the backend returned at login, sent as-is: the
+  // Settings API takes the origin and derives the hostname itself, the same way
+  // /auth/exchange did when it created the tenant row. Nothing here parses it.
+  const uri = user?.uri || ''
   const bu = user?.bu || ''
 
   const [loading, setLoading] = useState(true)
@@ -92,7 +83,7 @@ export function useEmailSettings(): EmailSettingsController {
   }, [])
 
   const reload = useCallback(async () => {
-    if (!host || !bu) {
+    if (!uri || !bu) {
       // Nothing to ask for. Stop loading rather than leaving the skeleton up forever —
       // the page renders this as an error the user can act on.
       setLoading(false)
@@ -105,9 +96,9 @@ export function useEmailSettings(): EmailSettingsController {
       // BANKS constant — CARMEN_INTEGRATION.md §2.3 is explicit that a second
       // hardcoded list is exactly what this endpoint exists to prevent.
       const [loaded, bankList, token] = await Promise.all([
-        getSettings(host, bu),
+        getSettings(uri, bu),
         getBankCodes().catch(() => [] as BankCode[]),
-        getToken(host, bu).catch(() => null),
+        getToken(uri, bu).catch(() => null),
       ])
       setSettings(loaded)
       setBanks(bankList)
@@ -119,7 +110,7 @@ export function useEmailSettings(): EmailSettingsController {
     } finally {
       setLoading(false)
     }
-  }, [host, bu, report])
+  }, [uri, bu, report])
 
   useEffect(() => {
     void reload()
@@ -128,11 +119,11 @@ export function useEmailSettings(): EmailSettingsController {
   /** Send the whole thing, with one part overridden. Returns false on failure so the
    *  caller can keep its inline form open instead of discarding what was typed. */
   const put = useCallback(
-    async (patch: Partial<Omit<SettingsPayload, 'host' | 'bu'>>): Promise<boolean> => {
+    async (patch: Partial<Omit<SettingsPayload, 'uri' | 'bu'>>): Promise<boolean> => {
       setSaving(true)
       try {
         const next = await saveSettings({
-          host,
+          uri,
           bu,
           enabled: settings?.enabled ?? false,
           owner_emails: settings?.owner_emails || [],
@@ -151,14 +142,14 @@ export function useEmailSettings(): EmailSettingsController {
         setSaving(false)
       }
     },
-    [host, bu, settings, report]
+    [uri, bu, settings, report]
   )
 
   const saveToken = useCallback(
     async (token: string) => {
       setSaving(true)
       try {
-        setTokenStatus(await putToken(host, bu, token))
+        setTokenStatus(await putToken(uri, bu, token))
         setError(null)
         return true
       } catch (err) {
@@ -168,13 +159,13 @@ export function useEmailSettings(): EmailSettingsController {
         setSaving(false)
       }
     },
-    [host, bu, report]
+    [uri, bu, report]
   )
 
   const removeToken = useCallback(async () => {
     setSaving(true)
     try {
-      await deleteToken(host, bu)
+      await deleteToken(uri, bu)
       // Not refetched: DELETE answers 204, and the cleared state is fully known.
       setTokenStatus({ configured: false, fingerprint: null, carmen_uri: null, verified_at: null })
       setError(null)
@@ -185,12 +176,14 @@ export function useEmailSettings(): EmailSettingsController {
     } finally {
       setSaving(false)
     }
-  }, [host, bu, report])
+  }, [uri, bu, report])
 
   return {
     loading,
     saving,
-    host,
+    // Reported by the server, not derived here — one tenant, one identity, whatever
+    // spelling the request used. Blank until the first load answers.
+    host: settings?.host || '',
     bu,
     settings,
     banks,

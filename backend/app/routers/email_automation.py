@@ -9,10 +9,14 @@ runs their own Carmen installation, so a key would have meant one per installati
 hand-delivered, forever. This is the same mechanism `/auth/exchange` has used for
 every wizard user since day one.
 
-It also removes the trusted-input problem rather than checking it: `host`/`bu` in the
+It also removes the trusted-input problem rather than checking it: `uri`/`bu` in the
 payload are not a claim we verify against a scope, they are what the token is proven
 *against*. Acting on a host requires a credential that host's own Carmen accepts.
 One host is always one corporate group, so that is exactly the ownership boundary.
+
+`uri` is the full Carmen origin, the same value Carmen already sends to
+`/auth/exchange`. We take its hostname and the tenant is still the pair (host, bu) —
+see `_tenant_host` for why that is all it does.
 
 The `Bearer <admin jwt>` path is ours — operators fixing a customer's settings without
 asking them for a token.
@@ -25,6 +29,7 @@ import hashlib
 import logging
 import time
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,7 +39,7 @@ from app.auth.session import extract_user_id_from_token
 from app.database import get_db
 from app.exceptions import FieldValidationError
 from app.models.identity import Tenant
-from app.models.schemas.email_automation import SettingsIn, TokenIn
+from app.models.schemas.email_automation import URI_DOC, SettingsIn, TokenIn
 from app.routers.admin.deps import require_maintenance_auth
 
 # ponytail: private imports across routers. _validate_uri / _validate_token raise
@@ -162,26 +167,60 @@ async def _caller(
     return Caller(actor=f"user:{extract_user_id_from_token(token)}", carmen_token=token)
 
 
-async def _resolve(db: AsyncSession, caller: Caller, host: str, bu: str) -> Tenant:
+def _tenant_host(uri: str) -> str:
+    """The tenant's hostname, out of the origin Carmen sends. A lookup key, never a
+    destination.
+
+    Carmen already passes a full origin to `/auth/exchange`, so this API takes the same
+    value rather than making them derive a bare hostname for one endpoint. It is parsed
+    exactly the way that endpoint parses it (`routers/auth.py` —
+    `urlparse(_validate_uri(uri)).hostname`), which is where `tenants.host` came from in
+    the first place. So for any `uri` that resolves to a tenant at all,
+    `tenant.host == hostname(uri)`; and everything outbound still starts from
+    `tenants.host` via `_safe_carmen_uri`. Nothing here ever becomes a URL we request.
+
+    Deliberately **not** `_validate_uri`: that ends in a blocking `socket.getaddrinfo`,
+    i.e. a DNS lookup driven by unauthenticated input — the exposure the limiters at the
+    top of this module exist to bound. There is nothing to validate in a value we never
+    call.
+
+    A bare hostname is accepted too (`urlparse` finds no host in it and it falls through
+    unchanged), which is what makes a caller still sending the old `host` value work. So
+    is anything else: a value that names no tenant is already a `400`, and that is the
+    only answer this function's failure mode has.
+    """
+    value = uri.strip()
+    try:
+        parsed = urlparse(value).hostname
+    except ValueError:  # e.g. "https://[::1" — urlsplit raises on a bad IPv6 literal
+        parsed = None
+    return (parsed or value).lower()
+
+
+async def _resolve(db: AsyncSession, caller: Caller, uri: str, bu: str) -> Tenant:
     """The BU this request may act on — proven, not asserted.
 
     The token is checked against the Carmen instance the payload names, so claiming
     another company's host means producing a credential that company's own Carmen
     validates. `_validate_token`'s 401 ("re-login") and 502 ("cannot reach Carmen")
     propagate unchanged: Carmen's screen needs to tell those two apart.
+
+    The caller's `uri` and the `origin` below are deliberately separate names: the
+    first is a lookup key that stops at `resolve_tenant`, the second is read back off
+    the tenant row and is the only thing that ever leaves this process.
     """
-    tenant = await es.resolve_tenant(db, host, bu)
+    tenant = await es.resolve_tenant(db, _tenant_host(uri), bu)
     if caller.carmen_token is None:
         return tenant
 
-    uri = await _safe_carmen_uri(tenant)
-    key = _rejection_key(caller.carmen_token, uri)
+    origin = await _safe_carmen_uri(tenant)
+    key = _rejection_key(caller.carmen_token, origin)
     if _recently_rejected(key):
         raise HTTPException(
             status_code=401, detail="Carmen token rejected — please re-login to Carmen"
         )
     try:
-        await _validate_token(caller.carmen_token, uri)
+        await _validate_token(caller.carmen_token, origin)
     except HTTPException as exc:
         if exc.status_code == 401:
             # Only a definite "no" is remembered. A 502 means we could not ask.
@@ -220,7 +259,7 @@ async def _safe_carmen_uri(tenant: Tenant) -> str:
 
 @router.get("/bank-codes")
 async def read_bank_codes(db: AsyncSession = Depends(get_db), caller: Caller = Depends(_caller)):
-    """Valid values for a rule's `bank_code` (§2.3) — not tenant-scoped, so no host/bu.
+    """Valid values for a rule's `bank_code` (§2.3) — not tenant-scoped, so no uri/bu.
 
     Backed by the same `banks` table the OCR wizard reads, so a bank added there
     (an INSERT, no redeploy) shows up here immediately rather than needing this
@@ -234,14 +273,14 @@ async def read_bank_codes(db: AsyncSession = Depends(get_db), caller: Caller = D
 
 @router.get("/settings")
 async def read_settings(
-    host: str = Query(...),
+    uri: str = Query(..., description=URI_DOC),
     bu: str = Query(...),
     db: AsyncSession = Depends(get_db),
     caller: Caller = Depends(_caller),
 ):
-    tenant = await _resolve(db, caller, host, bu)
+    tenant = await _resolve(db, caller, uri, bu)
     row = await es.get_settings(db, tenant)
-    return await es.build_settings_response(db, tenant, row, host, bu)
+    return await es.build_settings_response(db, tenant, row)
 
 
 @router.put("/settings")
@@ -250,10 +289,12 @@ async def write_settings(
     db: AsyncSession = Depends(get_db),
     caller: Caller = Depends(_caller),
 ):
-    tenant = await _resolve(db, caller, payload.host, payload.bu)
+    tenant = await _resolve(db, caller, payload.uri, payload.bu)
     row = await es.save_settings(db, tenant, payload)
-    logger.info("[email] Settings written for %s/%s by %s", payload.host, payload.bu, caller.actor)
-    return await es.build_settings_response(db, tenant, row, payload.host, payload.bu)
+    logger.info(
+        "[email] Settings written for %s/%s by %s", tenant.host, tenant.bu_code, caller.actor
+    )
+    return await es.build_settings_response(db, tenant, row)
 
 
 # ── The posting credential (§2.6) ─────────────────────────────────────────────
@@ -270,14 +311,14 @@ async def write_token(
     Verified against Carmen before it is stored, so a token that will not work is
     rejected on the customer's own screen rather than at 3am on a real document.
     """
-    tenant = await _resolve(db, caller, payload.host, payload.bu)
-    uri = await _safe_carmen_uri(tenant)
-    row = await es.set_token(db, tenant, payload.token.get_secret_value(), uri, caller.actor)
+    tenant = await _resolve(db, caller, payload.uri, payload.bu)
+    origin = await _safe_carmen_uri(tenant)
+    row = await es.set_token(db, tenant, payload.token.get_secret_value(), origin, caller.actor)
     logger.info(
         "[email] Carmen token %s stored for %s/%s by %s",
         row.carmen_token_fp,
-        payload.host,
-        payload.bu,
+        tenant.host,
+        tenant.bu_code,
         caller.actor,
     )
     return es.token_status(row)
@@ -285,18 +326,18 @@ async def write_token(
 
 @router.get("/settings/token")
 async def read_token(
-    host: str = Query(...),
+    uri: str = Query(..., description=URI_DOC),
     bu: str = Query(...),
     db: AsyncSession = Depends(get_db),
     caller: Caller = Depends(_caller),
 ):
-    tenant = await _resolve(db, caller, host, bu)
+    tenant = await _resolve(db, caller, uri, bu)
     return es.token_status(await es.get_settings(db, tenant))
 
 
 @router.delete("/settings/token", status_code=204)
 async def delete_token(
-    host: str = Query(...),
+    uri: str = Query(..., description=URI_DOC),
     bu: str = Query(...),
     db: AsyncSession = Depends(get_db),
     caller: Caller = Depends(_caller),
@@ -306,9 +347,11 @@ async def delete_token(
     This does NOT revoke it — only Carmen can do that, and must, because a copy we
     deleted is still a live credential everywhere else.
     """
-    tenant = await _resolve(db, caller, host, bu)
+    tenant = await _resolve(db, caller, uri, bu)
     await es.clear_token(db, tenant, caller.actor)
-    logger.info("[email] Carmen token cleared for %s/%s by %s", host, bu, caller.actor)
+    logger.info(
+        "[email] Carmen token cleared for %s/%s by %s", tenant.host, tenant.bu_code, caller.actor
+    )
     return Response(status_code=204)
 
 

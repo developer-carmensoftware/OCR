@@ -54,11 +54,13 @@ export const API = {
   emailAutomation: {
     bankCodes: `${V1}/carmen/bank-codes`,
     settings: `${V1}/carmen/settings`,
-    settingsFor: (host: string, bu: string) =>
-      `${V1}/carmen/settings?host=${encodeURIComponent(host)}&bu=${encodeURIComponent(bu)}`,
+    // `uri` is the full Carmen origin the login exchange already handed back — the
+    // backend takes its hostname. Nothing here sends a bare host.
+    settingsFor: (uri: string, bu: string) =>
+      `${V1}/carmen/settings?uri=${encodeURIComponent(uri)}&bu=${encodeURIComponent(bu)}`,
     token: `${V1}/carmen/settings/token`,
-    tokenFor: (host: string, bu: string) =>
-      `${V1}/carmen/settings/token?host=${encodeURIComponent(host)}&bu=${encodeURIComponent(bu)}`,
+    tokenFor: (uri: string, bu: string) =>
+      `${V1}/carmen/settings/token?uri=${encodeURIComponent(uri)}&bu=${encodeURIComponent(bu)}`,
   },
 
   config: {

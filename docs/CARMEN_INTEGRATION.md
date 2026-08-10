@@ -5,6 +5,10 @@
 > Everything in Part A will not change without notice here. §5 is the short list of what we
 > still need from Carmen — none of it blocks the settings API, which works today.
 >
+> **2026-08-10 — one breaking change to Part A, and this is the notice.** Requests name the
+> BU with `uri` (the full origin you already send to `/auth/exchange`) instead of `host`.
+> Nothing else moved; see §1.
+>
 > Companion documents: [EMAIL_FLOW.md](EMAIL_FLOW.md) (the v1 pilot design, now superseded),
 > [Security_Trust_Overview.md](Security_Trust_Overview.md).
 
@@ -98,10 +102,20 @@ A **tenant** in the OCR system is the pair `(host, bu)`:
 | `bu` | business-unit code, lowercased | `hq`, `bkk01` |
 
 This is the same pair `POST /api/v1/auth/exchange` already resolves today, so a BU that
-has ever logged into the OCR app already exists on our side. Every API call and every
-webhook in this document carries `host` + `bu`; there is no separate tenant id for
-Carmen to store (we return ours for logging convenience, but Carmen never needs to
+has ever logged into the OCR app already exists on our side. There is no separate tenant
+id for Carmen to store (we return ours for logging convenience, but Carmen never needs to
 send it back).
+
+**Name it with `uri` + `bu`, the way you already do at login.** Every request in §2 carries
+`uri` — the full origin (`https://hotelgroup.carmenwork.com`), the same value Carmen sends
+to `/auth/exchange` — and we take `urlparse(uri).hostname` from it. That is the identical
+derivation `/auth/exchange` ran when it created the tenant row, so the two always agree, and
+Carmen has one value to pass around instead of two spellings of it. Scheme, port, path and
+casing are ignored. Responses still report the stored `host` + `bu` pair, so one tenant has
+one identity no matter how a request spelled it.
+
+> **Changed 2026-08-10 (breaking).** §2 used to take a bare `host`. It now takes `uri` and
+> `host` is no longer read. Sending only `host` is a `422` (`uri` missing).
 
 **Naming convention:** our JSON is `snake_case`. Carmen's existing API is `PascalCase`.
 We follow each side's own convention rather than mixing.
@@ -139,18 +153,23 @@ needs no action from anyone.
 answers `200` or `401`; that is the whole check. This is not a new mechanism — it is exactly
 what `/auth/exchange` has done for every OCR wizard user since day one.
 
-**What that buys beyond convenience.** `host`/`bu` in the payload stop being a claim we have
+**What that buys beyond convenience.** `uri`/`bu` in the payload stop being a claim we have
 to check and become the thing the token is *verified against*: acting on a host means holding
 a credential that host's own Carmen accepts. Since one host is always one corporate group, a
 valid token for host X may manage any BU under X — which is the ownership boundary, and the
 same thing a host-scoped key would have granted.
+
+Sending the origin as `uri` does not weaken that. It is parsed into a hostname and used only
+to find the tenant row; the origin the token is then verified against is read back off that
+row, so `tenant.host == hostname(uri)` holds by construction — and where it cannot, the
+lookup is a `400` before anything is sent anywhere.
 
 | Status | When |
 |---|---|
 | `401` | header missing or malformed; or Carmen rejected the token → **re-login**, do not retry |
 | `502` | we could not reach that Carmen to check → **transient**, retry |
 | `429` | more than 20 requests a minute from one IP (each one costs an outbound call to you) |
-| `400` | unknown `(host, bu)` — that BU has never signed into the OCR app |
+| `400` | unknown `(host, bu)` — that BU has never signed into the OCR app, or `uri` names a host we have no tenant for |
 | `409` | tax ID already registered to another BU (§2.4) |
 | `422` | per-field validation, see the `errors[]` shape |
 
@@ -167,12 +186,12 @@ settings without asking them for a token.
 ### 2.2 Read current settings
 
 ```http
-GET /api/v1/carmen/settings?host=hotelgroup.carmenwork.com&bu=hq
+GET /api/v1/carmen/settings?uri=https%3A%2F%2Fhotelgroup.carmenwork.com&bu=hq
 ```
 
 ```jsonc
 {
-  "host": "hotelgroup.carmenwork.com",
+  "host": "hotelgroup.carmenwork.com",    // the stored pair, always — not the spelling sent
   "bu": "hq",
   "enabled": true,
   "entitled": true,                       // active monthly package — authoritative
@@ -206,7 +225,7 @@ PUT /api/v1/carmen/settings
 
 ```jsonc
 {
-  "host": "hotelgroup.carmenwork.com",
+  "uri": "https://hotelgroup.carmenwork.com",   // the origin sent to /auth/exchange — §1
   "bu": "hq",
   "enabled": true,
   "tax_ids": ["0105536000127"],           // REQUIRED — see §2.4
@@ -409,16 +428,20 @@ Authorization: <the user's Carmen token>
 
 ```jsonc
 {
-  "host": "hotelgroup.carmenwork.com",
+  "uri": "https://hotelgroup.carmenwork.com",    // the origin sent to /auth/exchange — §1
   "bu": "hq",
   "token": "…"                                   // write-only, never returned
 }
 ```
 
-There is no `carmen_uri` field. The origin is always `https://<host>` — `tenants.host` was
-itself derived from the URI Carmen sent at login, and the token is validated against that
-same origin, so a second field could only ever disagree with the first: verify against one
-Carmen, post to another. An old caller still sending one is ignored, not rejected.
+**`uri` names the BU; it does not name the Carmen we talk to.** We take
+`urlparse(uri).hostname`, find the tenant by `(host, bu)`, and discard it. The origin we
+verify the token against — and later post JVs to — is always `https://<tenants.host>`, the
+host that row was created with at login by that same derivation. One value does both jobs,
+so they can never disagree: verify against one Carmen, post to another. That is why a
+`carmen_uri` payload field existed once and was removed, and why `uri` does not bring it
+back — a lookup key that finds no tenant stops the request; it cannot redirect it. The
+response returns the origin we used in `carmen_uri`, so you can always see which one it was.
 
 **We verify the token against Carmen before storing it** — we call
 `GET https://<host>/Carmen.API/api/interface/department` with it, an ordinary authenticated
@@ -436,7 +459,10 @@ Carmen's screen can render them inline without a second code path:
                 "message": "uri hostname not allowed" } ] }
 ```
 
-`invalid_uri` means `https://<host>` failed the same SSRF check `/auth/exchange` applies:
+`invalid_uri` is reported against the field `carmen_uri`, never against the `uri` you sent:
+it means the origin *we derived from the stored host* failed the check, which is not
+something a caller can cause or fix. A `uri` that names no tenant is a `400` instead.
+It means `https://<host>` failed the same SSRF check `/auth/exchange` applies:
 https only, no loopback or private address (whether written literally or reached through
 DNS), and the host allowlist when one is configured. A `host` that logged in normally
 cannot fail it; the gate stays because the origin is a URL we make server-side requests to.
@@ -457,8 +483,8 @@ show, and never the value:
 ```
 
 ```http
-GET    /api/v1/carmen/settings/token?host=…&bu=…    → the same status block
-DELETE /api/v1/carmen/settings/token?host=…&bu=…    → 204
+GET    /api/v1/carmen/settings/token?uri=…&bu=…    → the same status block
+DELETE /api/v1/carmen/settings/token?uri=…&bu=…    → 204
 ```
 
 Four things worth stating plainly:
