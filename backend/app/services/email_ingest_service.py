@@ -217,6 +217,26 @@ def _recipients(msg: Message) -> list[str]:
     return out
 
 
+def _quoted_folder(name: str) -> str:
+    """The mailbox name as an IMAP quoted-string.
+
+    `imaplib` passes command arguments through raw — `_command` concatenates them with
+    spaces and quotes nothing — so a Gmail label with a space in it (`AR Agent`, the
+    label a filter routes the ingest alias into) would go out as `SELECT AR Agent` and
+    the server would reject the whole command. Every poll fails, no document is read,
+    and the only symptom is a FAILED row on `#/admin/jobs`.
+
+    Quoted unconditionally: `SELECT "INBOX"` is as valid as `SELECT INBOX`, so there is
+    no case to branch on. Surrounding quotes are stripped first, because a value typed
+    into a dashboard as `"AR Agent"` and one typed as `AR Agent` must mean the same
+    folder — a `.env` file strips them and Render does not.
+
+    ponytail: no escaping of `"` or `\\` inside the name. A Gmail label containing a
+    quote character is not a thing anyone has; add it the day someone proves otherwise.
+    """
+    return f'"{name.strip().strip(chr(34))}"'
+
+
 def _fetch_unseen(limit: int) -> list[dict[str, Any]]:
     """Pull unseen mail and mark it seen in the same connection.
 
@@ -232,7 +252,7 @@ def _fetch_unseen(limit: int) -> list[dict[str, Any]]:
     box = imaplib.IMAP4_SSL(settings.imap_host, settings.imap_port)
     try:
         box.login(settings.imap_user, settings.imap_password)
-        box.select(settings.imap_folder)
+        box.select(_quoted_folder(settings.imap_folder))
         max_octets = str(settings.max_file_size_mb * 1024 * 1024)
         try:
             _, data = box.search(None, "UNSEEN", "SMALLER", max_octets)

@@ -996,3 +996,33 @@ def test_a_forward_as_attachment_still_yields_the_inner_pdf():
     found = ingest._attachments(outer)
     assert [f for f, _ in found] == ["MDR-aug.pdf"]
     assert found[0][1] == b"%PDF-1.4 inner"
+
+
+# ── Selecting the mailbox ─────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "configured,sent",
+    [
+        ("AR Agent", '"AR Agent"'),  # a Gmail label routed to by a filter
+        ("INBOX", '"INBOX"'),
+        ('"AR Agent"', '"AR Agent"'),  # already quoted in the dashboard
+        ("  AR Agent  ", '"AR Agent"'),
+    ],
+)
+def test_the_mailbox_name_is_quoted_before_select(configured, sent):
+    """`imaplib` quotes nothing — it concatenates command arguments with spaces — so an
+    unquoted `AR Agent` goes out as `SELECT AR Agent` and the server rejects the whole
+    command. Every poll then fails with nothing read and no symptom but a FAILED row."""
+    assert ingest._quoted_folder(configured) == sent
+
+
+def test_fetch_unseen_selects_the_configured_folder_quoted(monkeypatch):
+    """The wiring, not just the helper: a poll must reach SELECT with a usable name."""
+    box = MagicMock()
+    box.search.return_value = ("OK", [b""])
+    monkeypatch.setattr(ingest.imaplib, "IMAP4_SSL", lambda host, port: box)
+    monkeypatch.setattr(ingest.settings, "imap_folder", "AR Agent")
+
+    assert ingest._fetch_unseen(10) == []
+    box.select.assert_called_once_with('"AR Agent"')
