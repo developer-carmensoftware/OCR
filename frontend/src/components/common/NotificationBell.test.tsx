@@ -96,3 +96,24 @@ describe('NotificationBell — release notes', () => {
     expect(markRead).toHaveBeenCalledWith(['uuid-1'])
   })
 })
+
+// Inline styles beat media queries, so the phone layout in notification-bell.css
+// only works if the component stops setting `right` below 480px.
+describe('NotificationBell — panel anchoring', () => {
+  const setWidth = (w: number) => {
+    Object.defineProperty(window, 'innerWidth', { value: w, configurable: true })
+  }
+
+  it('anchors to the bell on desktop', () => {
+    setWidth(1280)
+    openPanel()
+    expect(screen.getByRole('dialog').style.right).not.toBe('')
+  })
+
+  it('leaves `right` to CSS on phones so the panel can be a full-width sheet', () => {
+    setWidth(390)
+    openPanel()
+    expect(screen.getByRole('dialog').style.right).toBe('')
+    expect(screen.getByRole('dialog').style.top).not.toBe('')
+  })
+})

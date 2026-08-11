@@ -18,6 +18,9 @@ const en = {
   'nav.plans': 'Plans',
   'nav.history': 'History',
   'nav.back': 'Back',
+  'nav.moreActions': 'More actions',
+  'nav.themeDark': 'Dark mode',
+  'nav.themeLight': 'Light mode',
 
   // — Pricing hero + top-up section —
   'pricing.title': 'Automate your accounting entries',
@@ -1200,6 +1203,9 @@ const th: Record<TKey, string> = {
   'nav.plans': 'แพ็กเกจ',
   'nav.history': 'ประวัติ',
   'nav.back': 'กลับ',
+  'nav.moreActions': 'ตัวเลือกเพิ่มเติม',
+  'nav.themeDark': 'โหมดมืด',
+  'nav.themeLight': 'โหมดสว่าง',
 
   // — Pricing hero + top-up section —
   'pricing.title': 'เริ่มใช้ AI ลงบัญชีอัตโนมัติฟรี',
