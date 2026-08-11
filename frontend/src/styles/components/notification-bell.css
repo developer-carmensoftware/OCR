@@ -62,7 +62,9 @@
   flex-direction: column;
   width: 340px;
   max-width: calc(100vw - 1.5rem);
-  max-height: min(72vh, 30rem);
+  /* dvh, not vh: on mobile browsers vh is the *large* viewport, so the last rows
+     of the list sit under the collapsing URL bar and can't be reached. */
+  max-height: min(72dvh, 30rem);
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -86,6 +88,28 @@
 @media (prefers-reduced-motion: reduce) {
   .notif-bell__panel {
     animation: none;
+  }
+}
+
+/* ── Phones: a 340px popover pinned to the right edge of a 36px button leaves a
+      sliver of gutter on one side and none on the other, and the bell itself is
+      near the viewport edge — so stop anchoring horizontally and let the panel
+      be a full-width sheet on the same 0.75rem gutter as .app-container. The
+      component drops its inline `right` under this same 480px breakpoint;
+      without that, inline style would win here. ── */
+@media (max-width: 480px) {
+  .notif-bell__panel {
+    left: 0.75rem;
+    right: 0.75rem;
+    width: auto;
+    max-width: none;
+    /* Bounded by the room actually below the header, so the sheet can't run off
+       the bottom of a short (landscape) viewport. --header-popover-top (layout.css,
+       ≤640px band) is exactly the `rect.bottom + 8` this panel is positioned at,
+       so the sheet ends a clean 0.75rem above the fold. It replaced
+       --header-bottom, which overshot by 16px and disagreed with the ⋯ menu. */
+    max-height: calc(100dvh - var(--header-popover-top) - 0.75rem);
+    transform-origin: top center;
   }
 }
 

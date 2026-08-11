@@ -75,10 +75,13 @@ export default function NotificationBell() {
   useLayoutEffect(() => {
     if (!open || !btnRef.current) return
     const r = btnRef.current.getBoundingClientRect()
-    setPanelStyle({
-      top: r.bottom + 8,
-      right: Math.max(12, window.innerWidth - r.right),
-    })
+    const style: React.CSSProperties = { top: r.bottom + 8 }
+    // Only the vertical anchor is set on phones: below 480px the panel is a
+    // full-width sheet whose left/right come from CSS, and an inline `right`
+    // here would beat that media query. Keep the breakpoint in sync with
+    // notification-bell.css.
+    if (window.innerWidth > 480) style.right = Math.max(12, window.innerWidth - r.right)
+    setPanelStyle(style)
   }, [open])
 
   // Close on outside-click / Escape / resize / scroll-outside. The panel is
