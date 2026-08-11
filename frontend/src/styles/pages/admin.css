@@ -1015,75 +1015,80 @@ body:has(.admin-login-page) {
 
 /* ─── LOGIN PAGE ───────────────────────────────────────────────────────── */
 
+/* No background of its own: the page sits on the app's own body surface, in both
+   themes. The two Carmen-blue radial washes that used to live here were raw-hex
+   decorative brand gradients (banned by DESIGN.md §2) and they cost real contrast
+   — they dragged --text-3 down to 3.2:1, below AA. Removing them is the fix.
+   No font-family either: inherit the body stack so this page can't drift from it. */
 .admin-login-page {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem 1rem;
-  background:
-    radial-gradient(
-      ellipse 50% 40% at 50% 20%,
-      oklch(0.4714 0.1794 258.7 / 0.18) 0%,
-      transparent 70%
-    ),
-    radial-gradient(
-      ellipse 40% 30% at 80% 90%,
-      oklch(0.5852 0.1706 253.27 / 0.15) 0%,
-      transparent 60%
-    ),
-    oklch(0.96 0.008 258.7);
-  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
+  padding: var(--space-6) var(--space-4);
 }
 
-[data-theme='dark'] .admin-login-page {
-  background:
-    radial-gradient(
-      ellipse 50% 40% at 50% 20%,
-      oklch(0.5852 0.1706 253.27 / 0.22) 0%,
-      transparent 70%
-    ),
-    radial-gradient(
-      ellipse 40% 30% at 80% 90%,
-      oklch(0.4714 0.1794 258.7 / 0.18) 0%,
-      transparent 60%
-    ),
-    oklch(0.14 0.018 258.7);
-}
-
-.admin-login-card {
+/* No card: the brand lockup and the form are the whole page. The inputs carry the
+   visual weight — .admin-form-input already has a solid --card-bg and a focus ring,
+   which is what lets the card chrome go away without the fields dissolving. */
+.admin-login-inner {
   width: 100%;
-  max-width: 400px;
-  background: var(--glass-bg);
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-xl);
-  padding: var(--space-7) var(--space-6);
-  box-shadow: var(--shadow-xl);
-  animation: modalScaleIn 0.4s var(--ease) both;
-}
-
-.admin-login-header {
+  max-width: 340px;
   text-align: center;
-  margin-bottom: var(--space-6);
+  animation: modalScaleIn 0.4s var(--ease) both;
+  /* ponytail: one `zoom` instead of re-typing every size at 1.25x. It scales the
+     measured compensations (the logo's -0.35rem optical centring, the reveal's
+     offsets) by the same factor, so the tuning survives; bumping values by hand
+     would quietly break them. Turn it into a per-value pass only if the ratios
+     ever need to change independently. */
+  zoom: 1.25;
 }
 
-/* Same flat icon-chip language as .kpi-icon / .ui-card-icon — one consistent
-   accent treatment across the redesign, not a bespoke gradient badge. */
-.admin-login-icon {
+/* Below 480px the zoomed column (340 x 1.25 = 425px) no longer clears the
+   viewport minus page padding, and `width: 100%` would push it into horizontal
+   overflow. Phones get the unscaled layout, which is already sized for them. */
+@media (max-width: 480px) {
+  .admin-login-inner {
+    zoom: 1;
+  }
+}
+
+/* logo.png is a 2250x2250 canvas whose ink occupies only the middle 71.6% —
+   ~14% transparent padding per side (measured off the alpha channel, not guessed).
+   Every declared size is therefore ~40% larger than what the eye sees, and the
+   built-in padding fakes a gap the wordmark never asked for. Both have to be
+   compensated or the mark reads small and floats away from the text.
+   40px box => 28.6px of visible mark: 1.4x the app header's 20px, which is the
+   right step up for a full-page moment vs a compact bar.
+   Gap: 5.7px of built-in padding + --space-1 => ~10px of optical space. */
+.admin-login-brand {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 56px;
-  height: 56px;
-  border-radius: var(--radius-lg);
-  background: var(--primary-light);
-  color: var(--primary);
-  margin-bottom: var(--space-4);
+  gap: var(--space-1);
+  margin-bottom: var(--space-5);
 }
-.admin-login-icon svg {
-  display: block;
+/* The negative margin is what stops the lockup looking crooked under
+   `text-align: center`. Centring centres the element BOX, but the box's left
+   edge is 5.7px of transparent padding while its right edge is a real glyph —
+   so the ink lands ~2.4px right of true centre and reads as tilted against the
+   title below. Pulling the phantom padding off the left makes the box equal the
+   visible lockup, and centre means centre. The right-hand padding stays: there
+   it is doing real work as part of the gap. */
+.admin-login-brand-logo {
+  width: 40px;
+  height: 40px;
+  margin-left: -0.35rem;
+  object-fit: contain;
+}
+.admin-login-brand-text {
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--text-2);
+  letter-spacing: 0.01em;
+}
+.admin-login-brand-highlight {
+  color: var(--primary);
+  font-weight: 700;
 }
 
 .admin-login-title {
@@ -1094,18 +1099,131 @@ body:has(.admin-login-page) {
   color: var(--text);
 }
 
+/* --text-2, not --text-3: off a white card and onto the body surface, --text-3
+   measures 4.29:1 here, under the 4.5 floor. DESIGN.md flags exactly this. */
 .admin-login-subtitle {
   font-size: 0.82rem;
-  color: var(--text-3);
-  margin: 0;
+  color: var(--text-2);
+  margin: 0 0 var(--space-6);
+  text-wrap: balance;
 }
 
+.admin-login-form {
+  text-align: left;
+}
+
+/* `disabled` on the set is what freezes the form mid-request; the element itself
+   must contribute nothing visually. */
+.admin-login-fields {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+/* .admin-form-input sets its own color and background, which beat the UA's
+   disabled styling — without this the frozen form looks fully editable. */
+.admin-login-fields:disabled .admin-form-input,
+.admin-login-fields:disabled .admin-login-reveal {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Full border + tint, never a side stripe (DESIGN.md §6). --rose-text is the AA
+   foreground tier; bare --rose here would be 3.86:1. */
+.admin-login-error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  padding: 0.6rem 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  text-wrap: pretty;
+  color: var(--rose-text);
+  background: var(--rose-light);
+  border: 1px solid var(--rose-mid);
+  border-radius: var(--radius-md);
+}
+.admin-login-error svg {
+  flex-shrink: 0;
+  /* Optical: align the glyph to the first line's cap, not its box. */
+  margin-top: 0.1em;
+}
 .admin-login-form .admin-form-input {
+  width: 100%;
   padding: 0.7rem 0.9rem;
   font-size: 0.9rem;
 }
 
+.admin-login-field {
+  position: relative;
+  display: flex;
+}
+.admin-login-form .admin-form-input--with-reveal {
+  padding-right: 2.5rem;
+}
+/* Hide Edge/IE's built-in reveal + clear controls so they don't duplicate ours —
+   same fix as `.modal-input` in components.css. Scoped to --with-reveal on
+   purpose: bare password inputs elsewhere in admin have no custom button, and
+   hiding the native eye there would take away their only reveal affordance. */
+.admin-login-form .admin-form-input--with-reveal::-ms-reveal,
+.admin-login-form .admin-form-input--with-reveal::-ms-clear {
+  display: none;
+}
+/* --text-3, not --text-4: a control icon needs 3:1, and --text-4 on the white
+   input face is 2.67:1. --text-3 is 4.65:1. */
+/* Centred with auto margins, NOT translateY(-50%): base.css has a global
+   `button:active { transform: scale(0.97) }`, and transform is one property —
+   the press state would replace the centring and drop the button half its
+   height on every click. Keeping transform free lets that press feedback work. */
+.admin-login-reveal {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0.35rem;
+  margin-block: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--text-3);
+  cursor: pointer;
+  /* transform restated: a bare `transition: color` would drop the global
+     button transition and make the press snap instead of ease. */
+  transition:
+    color 0.15s var(--ease),
+    transform var(--dur-fast) var(--ease-out);
+}
+.admin-login-reveal:hover,
+.admin-login-reveal:focus-visible {
+  color: var(--text);
+}
+
+.admin-login-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+/* --amber-text is the AA foreground tier; bare --amber is a fill/border value
+   and measures 1.5:1 as text here. */
+.admin-login-caps {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--amber-text);
+}
+
 .admin-login-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
   width: 100%;
   padding: 0.75rem;
   background: var(--primary);
@@ -1133,6 +1251,25 @@ body:has(.admin-login-page) {
   opacity: 0.55;
   cursor: not-allowed;
   box-shadow: none;
+}
+
+/* 44px tap targets on mobile, per DESIGN.md — this form is used on tablets. The
+   reveal grows with them, so the input's right padding has to clear it. */
+@media (max-width: 768px) {
+  .admin-login-form .admin-form-input {
+    min-height: 44px;
+  }
+  .admin-login-form .admin-form-input--with-reveal {
+    padding-right: 3rem;
+  }
+  .admin-login-reveal {
+    width: 44px;
+    height: 44px;
+    right: 0.15rem;
+  }
+  .admin-login-btn {
+    min-height: 44px;
+  }
 }
 
 /* ─── DARK MODE OVERRIDES (tokens already cascade; only fine-tune extras) ── */
