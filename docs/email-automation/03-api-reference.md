@@ -25,7 +25,17 @@ appear in no other document.
 Two callers are accepted (`_caller()`, `email_automation.py:130`):
 
 1. **`Bearer <admin JWT>`** — our own operator path, for fixing a customer's settings
-   without asking them for a token. Decoded with `decode_admin_jwt`.
+   without asking them for a token. Decoded with `decode_admin_principal`
+   (`admin/deps.py`), then held to the same two checks every other admin surface applies:
+   - the principal must carry **`configs:write`** — on the reads too. Deliberately not
+     `configs:read`, because the seeded `viewer` role holds every `*:read` permission and
+     a GET here returns the BU's `ingest_address`, which *is* the capability to post a
+     document into that BU's Carmen books (`_fresh_tag`, "guessable is a bypass").
+   - `tenant_scope` is enforced in `_resolve()`: a scoped operator may act on that tenant
+     and no other. `tenant_scope == ""` is global, unchanged.
+
+   A signed token on its own authorises nothing. This path proves nothing against Carmen —
+   there is no customer token to prove — so the permission and the scope *are* its boundary.
 2. **Anything else, taken verbatim as a Carmen token** — the same
    `Authorization: <token>` shape every other call in Carmen's world uses, with an optional
    `CarmenToken ` prefix stripped for compatibility. There is no API key: the token *is*
