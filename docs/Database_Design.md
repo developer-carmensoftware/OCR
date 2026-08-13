@@ -260,6 +260,39 @@ User-submitted bug report from the frontend. Append-only in practice; `status` s
 | `status` | Triage workflow state |
 | `carmen_user_id` | Reporter |
 
+### `email_ingest_settings`
+
+One row per BU — what Carmen wrote through `PUT /api/v1/carmen/settings`. `tenant_id` is
+the primary key (1:1 with `tenants`).
+
+| Key columns | Notes |
+|---|---|
+| `ingest_tag` | Random 8-hex, nullable, partial-unique `WHERE ingest_tag is not null`. Issued once on first successful enable, never reissued |
+| `enabled` | Feature toggle |
+| `owner_emails`, `tax_ids`, `rules` | `jsonb`; `rules[].pdf_password_enc` is Fernet-encrypted |
+| `carmen_token_enc`, `carmen_uri`, `carmen_token_fp`, `carmen_token_verified_at` | The per-BU Carmen posting credential — encrypted, never returned by any endpoint |
+| `gmail_confirm_code`/`_at`, `gmail_confirmed_at` | Gmail auto-forward handshake state |
+
+Full column reference, migration lineage and the reason the `ingest_tag` column's
+nullability changed twice: [`docs/email-automation/04-data-model.md`](email-automation/04-data-model.md#email_ingest_settings).
+
+### `email_documents`
+
+The seen-message ledger for Email Automation — one row per `(message, attachment)` ever
+looked at by the ingest job, whether or not it was ever charged.
+
+| Key columns | Notes |
+|---|---|
+| `task_id` FK → ocr_tasks | Null for anything that failed before a task was created |
+| `status` | `received` / `posted` / `failed` / `skipped` |
+| `reason_code` | Stable failure/skip identifier — see the taxonomy in the linked doc |
+| `attempts` | Always `1` today — no retry sweep exists |
+
+Unique on `(tenant_id, message_id, attachment)` — **this index is the dedupe**, checked
+before anything is opened or extracted. Full `reason_code` taxonomy (which are charged,
+which refund) and why this table exists separately from `ocr_tasks`:
+[`docs/email-automation/04-data-model.md`](email-automation/04-data-model.md#email_documents).
+
 ---
 
 ## 6. Observability Tables
@@ -602,6 +635,12 @@ All scheduled work runs **inside Postgres** via pg_cron (UTC). Two classes: pure
 | `pricing-sync` | every 8 h | pg_net → `POST /api/v1/admin/pricing/sync` |
 | `hold-expired-orders` | hourly | SQL `fn_hold_expired_orders()` — 14-day proforma window |
 | `lapse-subscriptions` | 00:12 daily | SQL `fn_lapse_expired_subscriptions()` |
+| `email-ingest` | **not scheduled yet** | pg_net → `POST /api/v1/carmen/email-ingest/run` — target `*/10 * * * *` |
+| `email-token-health` | **not scheduled yet** | pg_net → `POST /api/v1/carmen/email-ingest/health` — target `15 2 * * *` |
+
+The two email jobs are built and tested but have no `cron.schedule` call in any migration —
+in production, nothing polls the ingest mailbox until one is added. Ready-to-run SQL and the
+10-minute-not-5 reasoning: [`docs/email-automation/05-operations.md`](email-automation/05-operations.md#scheduling).
 
 ---
 
