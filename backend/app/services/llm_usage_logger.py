@@ -39,7 +39,7 @@ async def log_llm_usage(
 
     Note: `count_quota` is retained for API compatibility but is a no-op —
     quota consumption is performed atomically at the start of each extract
-    endpoint via `consume_quota()`.
+    endpoint via `consume_document()`.
     """
     from app.context import current_carmen_user_id, current_ocr_session_id
 

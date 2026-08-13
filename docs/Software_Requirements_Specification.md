@@ -702,7 +702,7 @@ Readiness probe (ตรวจ DB connection): `GET /readyz`
 | :--- | :--- | :--- |
 | POST | `/api/v1/auth/exchange` | `{token, bu, uri}` → validate กับ Carmen → UPSERT `tenants` (host, bu) → สร้าง `ocr_sessions` → คืน OCR JWT (`tid`/`cuid`/`bu` claims) |
 | DELETE | `/api/v1/auth/session` | revoke session ปัจจุบัน (`is_active = false`) |
-| GET | `/api/v1/auth/usage` | ยอด quota/credit คงเหลือของ tenant ปัจจุบัน |
+| GET | `/api/v1/auth/usage` | ยอดโควตาแพ็กเกจ + เครดิตคงเหลือของ tenant ปัจจุบัน |
 
 > `uri` ถูกตรวจกับ `ALLOWED_CARMEN_HOSTS` allowlist (กัน SSRF) — ทุก endpoint อื่นใช้ `Authorization: Bearer <jwt>` และ `get_current_session()` validate ว่า session ยัง active
 
@@ -780,8 +780,7 @@ Business flow ฉบับเต็ม: [Billing_Purchase_Flow.md](./Billing_Pur
 | Admin RBAC | `admin_users`, `roles`, `permissions`, `role_permissions`, `admin_user_roles` | |
 | Modules / Bank CMS | `modules`, `tenant_modules`, `banks`, `prompt_templates` | bank = INSERT row, ไม่ใช่ enum |
 | Config | `system_configs`, `tenant_config_overrides`, `feature_flags`, `bu_accounting_configs`, `bu_accounting_mapping_entries`, `ap_vendor_column_mappings`, `ap_vendor_field_mapping_entries` | |
-| Quotas | `quotas`, `quota_usage` | `consume_quota()` atomic check-and-increment |
-| Billing | `credit_packs`, `tenant_credits`, `credit_ledger`, `credit_orders`, `billing_documents`, `tenant_subscriptions`, `ar_customer_profiles`, `document_sequences` | ดู Billing_Purchase_Flow.md |
+| Billing | `credit_packs`, `tenant_credits`, `credit_ledger`, `credit_orders`, `billing_documents`, `tenant_subscriptions`, `ar_customer_profiles`, `document_sequences` | `consume_document()` ตัดโควตาแพ็กเกจก่อน แล้วจึงเครดิต (ทดลองฟรี 30 ใบ = `signup_grant`); ดู Billing_Purchase_Flow.md |
 | Business data | `ocr_sessions`, `ocr_tasks`, `credit_cards`, `ap_invoices`, `correction_feedback`, `bug_reports` | soft delete เสมอ |
 | Observability | `llm_usage_logs`, `audit_logs`, `performance_logs`, `outbound_call_logs` | partitioned monthly (pg_partman) |
 | Analytics | `daily_usage_summary`, `daily_model_cost`, `monthly_usage_summary`, `anomaly_alerts`, `job_runs` | สร้างโดย pg_cron |

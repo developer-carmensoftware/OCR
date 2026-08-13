@@ -36,16 +36,6 @@ function funnel(rows: TenantRow[]) {
   }
 }
 
-function metricLabel(t: ReturnType<typeof useT>['t'], metric: string): string {
-  const METRIC_LABELS: Record<string, string> = {
-    calls: t('admin.tenants.metric.calls'),
-    tokens: t('admin.tenants.metric.tokens'),
-    cost_usd: t('admin.tenants.metric.cost'),
-    documents: t('admin.tenants.metric.documents'),
-  }
-  return METRIC_LABELS[metric] ?? metric
-}
-
 const quotaTier = (pct: number) => (pct >= 100 ? 'over' : pct >= 80 ? 'warn' : '')
 
 const TENANTS_LIMIT = 500
@@ -349,6 +339,8 @@ function TenantDetailPanel({
   detail: TenantDetail
   t: ReturnType<typeof useT>['t']
 }) {
+  const sub = detail.subscription
+  const subPct = sub && sub.allowance > 0 ? Math.round((sub.used / sub.allowance) * 100) : 0
   return (
     <div className="tenant-detail">
       <div className="tenant-detail-meta">
@@ -385,28 +377,34 @@ function TenantDetailPanel({
 
       <section className="tenant-detail-section">
         <h4>{t('admin.tenants.detail.quotas')}</h4>
-        {detail.quotas.length === 0 ? (
-          <span className="admin-sub-text">{t('admin.tenants.detail.noQuotas')}</span>
-        ) : (
-          <div className="tenant-quota-list">
-            {detail.quotas.map(q => (
-              <div key={q.id} className="tenant-quota">
-                <div className="tenant-quota-label">
-                  {q.period} · {metricLabel(t, q.metric)}
-                  <span className="admin-mono admin-sub-text">
-                    {q.used} / {q.limit} ({q.pct}%)
-                  </span>
-                </div>
-                <div className="tenant-quota-bar">
-                  <div
-                    className={`tenant-quota-fill ${quotaTier(q.pct)}`.trim()}
-                    style={{ width: `${Math.min(q.pct, 100)}%` }}
-                  />
-                </div>
+        <div className="tenant-quota-list">
+          {/* The two pools a scan is charged to, in charge order. The allowance has a
+              denominator so it gets the bar; the balance is just a number. */}
+          {detail.subscription && (
+            <div className="tenant-quota">
+              <div className="tenant-quota-label">
+                {t('admin.quotas.bucket.subscription')}
+                <span className="admin-mono admin-sub-text">
+                  {detail.subscription.used} / {detail.subscription.allowance} ({subPct}%)
+                </span>
               </div>
-            ))}
+              <div className="tenant-quota-bar">
+                <div
+                  className={`tenant-quota-fill ${quotaTier(subPct)}`.trim()}
+                  style={{ width: `${Math.min(subPct, 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
+          <div className="tenant-quota">
+            <div className="tenant-quota-label">
+              {t('admin.quotas.bucket.credit')}
+              <span className="admin-mono admin-sub-text">
+                {t('admin.quotas.credits', { count: detail.credit_balance })}
+              </span>
+            </div>
           </div>
-        )}
+        </div>
       </section>
 
       <section className="tenant-detail-section">

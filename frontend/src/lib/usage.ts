@@ -1,13 +1,15 @@
 import type { UsageData } from './api/auth'
 
 export type UsageStats = UsageData['usage'] & {
+  /** Documents still available across both pools. */
+  remaining: number
   isLow: boolean
 }
 
 /**
- * Fold the tenant's pools into the header badge stats. REMAIN is the whole
+ * Fold the tenant's pools into the header badge stats. `remaining` is the whole
  * available pool — the same one `consume_document` charges (subscription window
- * → free trial → top-up credits) — so a purchase is reflected immediately.
+ * → credits) — so a purchase is reflected immediately.
  *
  * Used to also return `usedPercentage` and a threshold `color` for a progress
  * bar under the badge. The bar is gone (at real plan sizes it rendered ~1px
@@ -17,13 +19,12 @@ export type UsageStats = UsageData['usage'] & {
  */
 export function computeUsageStats(usage: UsageData['usage'] | null): UsageStats | null {
   if (!usage) return null
-  const { monthly_calls, max_monthly_calls, remaining_calls, credit_balance, subscription } = usage
-  const totalRemaining = (subscription?.docs_remaining ?? 0) + remaining_calls + credit_balance
+  const { credit_balance, subscription } = usage
+  const remaining = (subscription?.docs_remaining ?? 0) + credit_balance
   return {
-    monthly_calls,
-    max_monthly_calls,
-    remaining_calls: totalRemaining,
     credit_balance,
-    isLow: totalRemaining <= 5,
+    subscription,
+    remaining,
+    isLow: remaining <= 5,
   }
 }

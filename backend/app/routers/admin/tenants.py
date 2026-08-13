@@ -13,7 +13,7 @@ from app.models.business import OcrSession
 from app.models.catalog import Module, TenantModule
 from app.models.identity import Tenant
 from app.models.observability import LLMUsageLog
-from app.services.quota_service import get_quota_summary
+from app.services.credit_service import active_subscription_map, get_credit_balance
 from app.services.usage_analytics_service import get_tenant_engagement_map
 
 from .deps import require_permission
@@ -103,7 +103,7 @@ async def list_tenants(
 
         # Enabled-module count per tenant. tenant_modules is OPT-OUT: a row exists only
         # when an admin explicitly toggled a module, so "no row" means enabled, not
-        # disabled (same rule as quota_service.is_module_enabled and the Quotas page).
+        # disabled (same rule as quota_service.assert_module_enabled and the Quotas page).
         # Counting enabled rows read 0 for every tenant nobody had ever touched.
         catalog_count = (
             await db.execute(
@@ -162,7 +162,7 @@ async def get_tenant_detail(
     db: AsyncSession = Depends(get_db),
     admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
 ):
-    """Tenant detail: core fields + enabled modules + quotas + last 10 sessions."""
+    """Tenant detail: core fields + enabled modules + document pools + last 10 sessions."""
     if not admin.is_global and str(admin.tenant_scope) != tenant_id:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
@@ -203,8 +203,9 @@ async def get_tenant_detail(
     ]
     modules_disabled = [r.id for r in mod_rows if r.enabled is False]
 
-    # Quotas — reuse the shared summary (opens its own session)
-    quotas = (await get_quota_summary(tenant_id)).get("quotas", [])
+    # The two pools a scan is charged to, in charge order (subscription → credits).
+    subscription = (await active_subscription_map(db, [tid])).get(tenant_id)
+    credit_balance = await get_credit_balance(tenant_id)
 
     # Last 10 sessions (same query shape as the sessions endpoint)
     sess_rows = (
@@ -243,6 +244,7 @@ async def get_tenant_detail(
         "created_at": tenant.created_at.isoformat() if tenant.created_at else None,
         "modules": modules,
         "modules_disabled": modules_disabled,
-        "quotas": quotas,
+        "subscription": subscription,
+        "credit_balance": credit_balance,
         "recent_sessions": recent_sessions,
     }

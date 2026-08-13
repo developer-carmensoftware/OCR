@@ -2,8 +2,6 @@ from .admin import AdminUser, AdminUserRole, APIKey, APIKeyUsage, Permission, Ro
 from .billing import (
     FeatureFlag,
     LLMModelPricing,
-    Quota,
-    QuotaUsage,
     SystemConfig,
     TenantConfigOverride,
 )
@@ -29,8 +27,6 @@ from .enums import (
     JobStatus,
     PromptStatus,
     PromptType,
-    QuotaMetric,
-    QuotaPeriod,
     TaskStatus,
     TenantPlan,
 )
@@ -72,8 +68,6 @@ __all__ = [
     "JobStatus",
     "PromptType",
     "PromptStatus",
-    "QuotaPeriod",
-    "QuotaMetric",
     "TenantPlan",
     # Identity
     "Plan",
@@ -95,8 +89,6 @@ __all__ = [
     "SystemConfig",
     "TenantConfigOverride",
     "FeatureFlag",
-    "Quota",
-    "QuotaUsage",
     "LLMModelPricing",
     # Business
     "OcrSession",

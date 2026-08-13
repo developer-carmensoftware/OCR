@@ -31,6 +31,9 @@ class AuditAction:
     BANK_UPDATE = "BANK_UPDATE"
     PROMPT_PUBLISH = "PROMPT_PUBLISH"
     API_KEY_REVOKE = "API_KEY_REVOKE"
+    # No longer written (the quota editor went away with the free-trial counter),
+    # but audit_logs rows carrying these actions are kept for 5 years — the values
+    # have to stay readable.
     QUOTA_UPDATE = "QUOTA_UPDATE"
     QUOTA_RESET = "QUOTA_RESET"
     MODULE_TOGGLE = "MODULE_TOGGLE"

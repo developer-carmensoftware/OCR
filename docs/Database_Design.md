@@ -21,7 +21,6 @@
 │  modules · tenant_modules                                           │
 │  banks · prompt_templates                                           │
 │  system_configs · tenant_config_overrides · feature_flags           │
-│  quotas · quota_usage                                               │
 │  model_pricing                                                      │
 │  credit_packs · tenant_credits · credit_ledger · credit_orders     │
 │  billing_documents · tenant_subscriptions · ar_customer_profiles   │
@@ -381,8 +380,6 @@ Built nightly (idempotent re-aggregation of the current month). Answers long-ter
 |---|---|
 | `cost_spike` (LLM cost > 3× 7d avg) | `warn` |
 | `error_spike` (API error rate > 3× 7d avg) | `warn` |
-| `quota_warning` (≥ 80% monthly quota) | `warn` |
-| `quota_exhausted` (≥ 100% monthly quota) | `critical` |
 
 `resolved_at = NULL` = open alert. One open alert per `(tenant_id, metric)` to prevent duplicates.
 
@@ -514,35 +511,25 @@ Boolean toggles with gradual rollout.
 
 ---
 
-### Quota Engine
+### Quota Engine — retired
 
-#### `quotas`
-Multiple rules per tenant (e.g., monthly calls + monthly cost).
+`quotas` and `quota_usage` implemented the free-trial counter. Migration
+`20260813000100` moved every tenant's unused free documents into `tenant_credits`
+and soft-deleted the rules, so nothing reads or writes these tables any more; they
+are kept for one release as history and then dropped. Documents are charged by
+`credit_service.consume_document()` — see **Billing & Credits** below.
 
-| Key columns | Notes |
-|---|---|
-| `module` | NULL = all modules combined |
-| `period` | daily / monthly / yearly |
-| `metric` | calls / tokens / cost_usd / documents |
-| `limit_value` | |
-| `soft_warn_pct` | 0.80 = warn at 80% |
-| `is_hard` | true = block; false = warn only |
-
-Unique: `(tenant_id, module, period, metric)`
-
-#### `quota_usage`
-Real-time counter, incremented by `usage_service.increment_quota()`.
-
-`period_key`: `2026-05` (monthly), `2026-05-14` (daily)
+The one survivor of that module is `quota_service.assert_module_enabled()`, which
+gates a scan on `tenant_modules` and never touched quotas in the first place.
 
 ---
 
 ### Billing & Credits
 
-How consumption is funded: every tenant has a free monthly document quota (the `quotas` MONTHLY/CALLS rule). Beyond that, extraction consumes either the active **subscription** allowance or the persistent **top-up** credit balance. Purchases go through the pricing page → proforma → bank-transfer slip → admin approval flow (see [Billing_Purchase_Flow.md](./Billing_Purchase_Flow.md)). ORM: `backend/app/models/billing.py`.
+How consumption is funded: a scan is charged to the active **subscription** allowance first (monthly, use-it-or-lose-it), then to the persistent **credit balance** (never expires). A new tenant is granted 30 credits at tenant creation (`credit_ledger.reason = 'signup_grant'`) — that grant is the free trial; there is no third pool. Purchases go through the pricing page → proforma → bank-transfer slip → admin approval flow (see [Billing_Purchase_Flow.md](./Billing_Purchase_Flow.md)). ORM: `backend/app/models/billing.py`.
 
 #### `credit_packs`
-Purchasable catalog (CMS-editable like banks). `kind` = `subscription` (monthly document tier: `sub_starter`, `sub_growth`, `sub_pro`) or `topup` (one-time non-expiring credits). The free 30 docs/month tier is NOT a pack — it lives in `quotas`.
+Purchasable catalog (CMS-editable like banks). `kind` = `subscription` (monthly document tier: `sub_starter`, `sub_growth`, `sub_pro`) or `topup` (one-time non-expiring credits). The 30 free documents a new tenant starts with are NOT a pack — they are a `signup_grant` ledger row.
 
 #### `tenant_credits` / `credit_ledger`
 `tenant_credits` is the runtime top-up balance (one row per tenant). `credit_ledger` is the append-only audit of every balance change — `delta`, `balance_after`, `reason` (`topup` / `consumption` / `admin_adjust` / `refund`), `ref` (task/order id).
@@ -651,8 +638,8 @@ in production, nothing polls the ingest mailbox until one is added. Ready-to-run
 2. Create ORM models inheriting TenantFKMixin + TimestampMixin + SoftDeleteMixin
 3. Add migrations (`supabase migration new <name>` → DDL → `supabase db push`)
 4. Add module_id to OCRTask creation in the new router
-5. Add check_quota("my_module") at start of extract endpoint
-6. Add quota tracking in log_llm_usage calls
+5. Add assert_module_enabled("my_module") + consume_document() at start of extract endpoint
+6. Pass module_id="my_module" to log_llm_usage calls
 7. Extend summary_service.py aggregation if needed
 ```
 

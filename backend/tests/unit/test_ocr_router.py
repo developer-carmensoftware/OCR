@@ -49,7 +49,7 @@ class TestExtractCard:
         mock_extract_stateless,
         mock_create_task,
         mock_get_hints,
-        mock_check_quota,
+        mock_consume_document,
         mock_session,
     ):
         ctx_mock, db_mock = mock_session
@@ -115,7 +115,7 @@ class TestExtractCard:
         mock_extract_stateless,
         mock_create_task,
         mock_get_hints,
-        mock_check_quota,
+        mock_consume_document,
         mock_session,
     ):
         ctx_mock, db_mock = mock_session
@@ -173,7 +173,7 @@ class TestExtractCard:
         mock_extract_stateless,
         mock_create_task,
         mock_get_hints,
-        mock_check_quota,
+        mock_consume_document,
         mock_session,
     ):
         ctx_mock, db_mock = mock_session
@@ -358,7 +358,7 @@ class TestExtractCard:
         mock_extract_stateless,
         mock_create_task,
         mock_get_hints,
-        mock_check_quota,
+        mock_consume_document,
         mock_session,
     ):
         """Core regression: when no bank_code query param is sent, finalize_extraction
@@ -432,7 +432,7 @@ class TestExtractCard:
         mock_extract_stateless,
         mock_create_task,
         mock_get_hints,
-        mock_check_quota,
+        mock_consume_document,
         mock_session,
     ):
         """When a bank_code is explicitly passed (reprocess path), it overrides detection."""

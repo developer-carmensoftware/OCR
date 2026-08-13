@@ -41,6 +41,9 @@ describe('classify', () => {
 
   it('buckets upstream and quota failures', () => {
     expect(classify('LLM provider unavailable: timed out')).toBe('llmUnavailable')
+    expect(classify('No documents left — the credit balance is empty.')).toBe('quotaExhausted')
+    // Rows written before the free quota merged into credits keep the old wording,
+    // and this page never rewrites history — both must still land in the bucket.
     expect(classify('Free trial document quota exhausted')).toBe('quotaExhausted')
     expect(classify('Carmen token rejected')).toBe('carmenDown')
   })

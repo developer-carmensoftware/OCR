@@ -8,7 +8,7 @@ Groups and limits (per 60 seconds):
 
 This is a first line of defence against flooding / runaway clients.
 Business-level quotas (max OCR calls per period) are enforced separately
-by check_quota() in each router.
+by consume_document() in each router.
 
 Note: in-memory store — limits reset on process restart and are not shared
 across multiple worker processes. For multi-process deployments, replace

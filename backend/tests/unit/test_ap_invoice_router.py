@@ -61,7 +61,7 @@ class TestExtractAPInvoice:
         mock_has_submitted,
         mock_extract_data,
         mock_create_task,
-        mock_check_quota,
+        mock_consume_document,
         mock_session,
     ):
         ctx_mock, db_mock = mock_session
@@ -116,7 +116,7 @@ class TestExtractAPInvoice:
         mock_has_submitted,
         mock_extract_data,
         mock_create_task,
-        mock_check_quota,
+        mock_consume_document,
         mock_session,
     ):
         ctx_mock, db_mock = mock_session
@@ -168,7 +168,7 @@ class TestExtractAPInvoice:
         self,
         mock_extract_data,
         mock_create_task,
-        mock_check_quota,
+        mock_consume_document,
         mock_session,
     ):
         ctx_mock, db_mock = mock_session
