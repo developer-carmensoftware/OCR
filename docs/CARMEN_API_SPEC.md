@@ -55,7 +55,7 @@ Authorization: <token>
 | 3 | `PUT /settings/token` | เก็บ token ที่ใช้ post JV | `200` |
 | 4 | `GET /settings/token?uri=&bu=` | เช็คสถานะ token | `200` |
 | 5 | `DELETE /settings/token?uri=&bu=` | ลบสำเนา token ของเรา | `204` no body |
-| 6 | `GET /notifications?uri=&bu=&since=` | มี noti ใหม่ไหม → `{"has_new": bool}` เอาไว้จุด badge — **ชั่วคราวแทน webhook** (ดู §6) | `200` |
+| 6 | `GET /notifications?uri=&bu=&since=` | มี noti ใหม่ไหม → `{"has_notification": bool}` เอาไว้จุด badge — **ชั่วคราวแทน webhook** (ดู §6) | `200` |
 
 > **⚠️ เปลี่ยนจาก v4.1:** เพิ่ม endpoint #6 (`GET /notifications`) — ไม่มี breaking change กับ
 > endpoint เดิม
@@ -265,7 +265,7 @@ curl -X DELETE "https://{ocr-host}/api/v1/carmen/settings/token?uri=https%3A%2F%
 **มีอะไรใหม่ไหม — แค่นั้น** ไว้จุด badge/dot บนหน้าจอ Carmen
 
 ```jsonc
-{ "has_new": true }
+{ "has_notification": true }
 ```
 
 **ชั่วคราวแทน webhook** — [CARMEN_INTEGRATION.md §3](CARMEN_INTEGRATION.md)

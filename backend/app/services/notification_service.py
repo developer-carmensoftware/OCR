@@ -53,7 +53,7 @@ async def list_notifications(
     return items, unread
 
 
-async def has_new(
+async def has_notification(
     db: AsyncSession,
     tenant_id: _uuid.UUID,
     since: datetime | None = None,

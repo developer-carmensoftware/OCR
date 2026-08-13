@@ -310,7 +310,8 @@ async def read_notifications(
     our app goes true on the first document and stays true forever.
     """
     tenant = await _resolve(db, caller, uri, bu)
-    return {"has_new": await notification_service.has_new(db, tenant.id, since)}  # type: ignore[arg-type]
+    has = await notification_service.has_notification(db, tenant.id, since)  # type: ignore[arg-type]
+    return {"has_notification": has}
 
 
 @router.put("/settings")

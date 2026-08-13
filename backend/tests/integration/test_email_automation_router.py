@@ -419,14 +419,16 @@ def test_get_notifications_reaches_handler_and_answers_a_bare_bool():
     app.dependency_overrides[_caller] = lambda: Caller("test-actor", None)
     with (
         patch.object(es, "resolve_tenant", new_callable=AsyncMock, return_value=_tenant()),
-        patch.object(notification_service, "has_new", new_callable=AsyncMock, return_value=True),
+        patch.object(
+            notification_service, "has_notification", new_callable=AsyncMock, return_value=True
+        ),
     ):
         with make_test_client(AsyncMock()) as client:
             resp = client.get(
                 f"{BASE}/notifications", params={"uri": "https://h.example.com", "bu": "b"}
             )
     assert resp.status_code == 200
-    assert resp.json() == {"has_new": True}
+    assert resp.json() == {"has_notification": True}
 
 
 def test_get_notifications_passes_since_through_to_the_service():
@@ -437,10 +439,10 @@ def test_get_notifications_passes_since_through_to_the_service():
     from app.services import notification_service
 
     app.dependency_overrides[_caller] = lambda: Caller("test-actor", None)
-    has_new = AsyncMock(return_value=False)
+    has_notification = AsyncMock(return_value=False)
     with (
         patch.object(es, "resolve_tenant", new_callable=AsyncMock, return_value=_tenant()),
-        patch.object(notification_service, "has_new", has_new),
+        patch.object(notification_service, "has_notification", has_notification),
     ):
         with make_test_client(AsyncMock()) as client:
             resp = client.get(
@@ -452,8 +454,8 @@ def test_get_notifications_passes_since_through_to_the_service():
                 },
             )
     assert resp.status_code == 200
-    assert resp.json() == {"has_new": False}
-    assert has_new.await_args.args[2] == datetime(2026, 8, 13, 3, 15, tzinfo=UTC)
+    assert resp.json() == {"has_notification": False}
+    assert has_notification.await_args.args[2] == datetime(2026, 8, 13, 3, 15, tzinfo=UTC)
 
 
 def test_storing_a_token_targets_only_the_tenants_own_origin():

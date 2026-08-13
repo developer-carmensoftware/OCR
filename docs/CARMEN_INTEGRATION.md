@@ -515,7 +515,7 @@ log line or an error message.
 ## 3. Part B — Webhooks (OCR → Carmen)
 
 > **In the meantime, §3.2's badge is available as a poll today:**
-> `GET /api/v1/carmen/notifications?uri=&bu=&since=` → `{"has_new": true}`. Same auth as
+> `GET /api/v1/carmen/notifications?uri=&bu=&since=` → `{"has_notification": true}`. Same auth as
 > §2. It answers only the question the badge asks — which is all §3.2's payload carries
 > anyway — so it is not a replacement for the delivery guarantees below, or for the
 > per-document detail in §3.3. **Pass `since`**: without it "new" means unread, and unread

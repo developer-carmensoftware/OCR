@@ -73,22 +73,22 @@ async def test_list_returns_tenant_items_and_unread_count():
     assert unread == 1
 
 
-# ── has_new() ────────────────────────────────────────────────────────────────
+# ── has_notification() ───────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("exists_row, expected", [(True, True), (None, False)])
-async def test_has_new_returns_a_bool_not_a_row(exists_row, expected):
+async def test_has_notification_returns_a_bool_not_a_row(exists_row, expected):
     db = AsyncMock()
     result = MagicMock()
     result.scalar.return_value = exists_row
     db.execute.return_value = result
 
-    assert await notification_service.has_new(db, uuid.uuid4()) is expected
+    assert await notification_service.has_notification(db, uuid.uuid4()) is expected
 
 
 @pytest.mark.asyncio
-async def test_has_new_filters_on_created_at_when_since_is_given():
+async def test_has_notification_filters_on_created_at_when_since_is_given():
     """The two modes compile to different SQL — `since` must not silently fall back
     to the unread filter, which is the one that never clears for an unattended BU."""
     db = AsyncMock()
@@ -96,10 +96,10 @@ async def test_has_new_filters_on_created_at_when_since_is_given():
     result.scalar.return_value = True
     db.execute.return_value = result
 
-    await notification_service.has_new(db, uuid.uuid4(), datetime(2026, 8, 13, tzinfo=UTC))
+    await notification_service.has_notification(db, uuid.uuid4(), datetime(2026, 8, 13, tzinfo=UTC))
     with_since = str(db.execute.await_args.args[0])
 
-    await notification_service.has_new(db, uuid.uuid4())
+    await notification_service.has_notification(db, uuid.uuid4())
     without = str(db.execute.await_args.args[0])
 
     assert "created_at >" in with_since and "read_at IS NULL" not in with_since
