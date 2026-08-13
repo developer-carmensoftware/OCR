@@ -9,8 +9,10 @@
 > BU with `uri` (the full origin you already send to `/auth/exchange`) instead of `host`.
 > Nothing else moved; see §1.
 >
-> Companion documents: [EMAIL_FLOW.md](EMAIL_FLOW.md) (the v1 pilot design, now superseded),
-> [Security_Trust_Overview.md](Security_Trust_Overview.md).
+> Companion documents: [email-automation/](email-automation/README.md) (our own engineering
+> docs — architecture, data model, operations, decision log), [Security_Trust_Overview.md](Security_Trust_Overview.md).
+> The v1 pilot design (human-approval step, own admin UI) is superseded and lives only on
+> the unmerged `feat/email-flow` branch — see `email-automation/06-decision-log.md §17`.
 
 ---
 
