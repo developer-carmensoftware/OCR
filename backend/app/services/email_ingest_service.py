@@ -71,7 +71,7 @@ from app.models.enums import AlertSeverity, JobStatus
 from app.models.identity import Tenant
 from app.models.observability import JobRun
 from app.models.schemas import ExtractedCreditCardData
-from app.services import anomaly_service, ocr_service
+from app.services import anomaly_service, notification_service, ocr_service
 from app.services import email_settings_service as es
 from app.services import gl_suggestion_service as gl
 from app.services.accounting_config_service import (
@@ -1113,4 +1113,24 @@ async def _finish(
         row.jv_no = jv_no or None  # type: ignore[assignment]
         row.reason_code = reason_code  # type: ignore[assignment]
         row.error_message = error  # type: ignore[assignment]
+        if status in ("posted", "failed"):
+            # "skipped" is deliberately excluded — it's the customer's own filename/
+            # sender rules saying "not this file", not a failure worth a notification
+            # (see the _Skip handler above).
+            notification_service.notify(
+                db,
+                tenant_id=row.tenant_id,  # type: ignore[arg-type]
+                order_id=None,
+                type_=f"document_{status}",
+                payload={
+                    "document_id": str(row.id),
+                    "bank_code": bank_code,
+                    "doc_no": doc_no,
+                    **(
+                        {"jv_no": jv_no}
+                        if status == "posted"
+                        else {"reason_code": reason_code, "message": (error or "")[:500]}
+                    ),
+                },
+            )
         await db.commit()

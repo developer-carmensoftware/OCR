@@ -21,6 +21,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.exc import IntegrityError
 
+from app.models.billing import UserNotification
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.config import AccountingConfigResponse
 from app.models.schemas.ocr import ExtractedDetailRow
@@ -229,6 +230,47 @@ async def test_happy_path_posts_and_records_ledger():
     assert ledger.jv_no == "JV-999"
     assert ledger.reason_code is None
     p.refund_document.assert_not_called()
+
+    notifications = [o for o in db.added if isinstance(o, UserNotification)]
+    assert len(notifications) == 1
+    assert str(notifications[0].tenant_id) == TENANT_ID
+    assert notifications[0].type == "document_posted"
+    assert notifications[0].payload["doc_no"] == "INV-001"
+    assert notifications[0].payload["jv_no"] == "JV-999"
+
+
+@pytest.mark.asyncio
+async def test_failed_jv_records_document_failed_notification():
+    db = _FakeDB()
+    await _run(
+        db,
+        extracted=_extracted(),
+        config=_config(),
+        carmen_result={"Code": 1, "UserMessage": "Insufficient balance"},
+    )
+    notifications = [o for o in db.added if isinstance(o, UserNotification)]
+    assert len(notifications) == 1
+    assert notifications[0].type == "document_failed"
+    assert notifications[0].payload["reason_code"] == "carmen_rejected"
+
+
+@pytest.mark.asyncio
+async def test_skipped_document_does_not_notify():
+    """A gate the customer's own config tripped (charged is None, so status="skipped")
+    is not a failure worth a notification — see the rationale in `_finish`'s caller."""
+    db = _FakeDB()
+    outcome, p = await _run(
+        db,
+        owner_emails=["accounting@hotelgroup.com"],
+        people="From: stranger@elsewhere.com To: AIAGENT+a1b2c3d4@carmensoftware.com",
+        rules=RULES,
+        extracted=_extracted(),
+        config=_config(),
+        carmen_result={"Code": 0},
+    )
+    assert outcome == "skipped"
+    notifications = [o for o in db.added if isinstance(o, UserNotification)]
+    assert notifications == []
 
 
 @pytest.mark.asyncio

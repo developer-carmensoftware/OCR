@@ -1,6 +1,6 @@
 # Email Automation API
 
-**v4.1 · 2026-08-11** · Base URL `https://{ocr-host}/api/v1/carmen` · schema: `/openapi.json`
+**v4.2 · 2026-08-13** · Base URL `https://{ocr-host}/api/v1/carmen` · schema: `/openapi.json`
 เหตุผลเบื้องหลัง: [CARMEN_INTEGRATION.md](CARMEN_INTEGRATION.md)
 
 หน้านี้คือสัญญาสำหรับหน้าจอ **Email Automation Settings** ฝั่ง Carmen — Carmen เป็นเจ้าของ UI,
@@ -55,7 +55,11 @@ Authorization: <token>
 | 3 | `PUT /settings/token` | เก็บ token ที่ใช้ post JV | `200` |
 | 4 | `GET /settings/token?uri=&bu=` | เช็คสถานะ token | `200` |
 | 5 | `DELETE /settings/token?uri=&bu=` | ลบสำเนา token ของเรา | `204` no body |
+| 6 | `GET /notifications?uri=&bu=` | โพล noti ของ BU นั้น — **ชั่วคราวแทน webhook** (ดู §6) | `200` |
 
+> **⚠️ เปลี่ยนจาก v4.1:** เพิ่ม endpoint #6 (`GET /notifications`) — ไม่มี breaking change กับ
+> endpoint เดิม
+>
 > **⚠️ เปลี่ยนจาก v3.0:** ระบุ BU ด้วย **`uri`** แทน `host` แล้ว — ส่งค่าเดียวกับที่ส่งให้
 > `/auth/exchange` อยู่แล้วได้เลย ไม่ต้องแกะ hostname เอง · `host` ไม่รับแล้ว (ส่งมาก็ถูกเมิน
 > แล้วจะได้ `422` เพราะไม่มี `uri`)
@@ -253,6 +257,50 @@ curl -X DELETE "https://{ocr-host}/api/v1/carmen/settings/token?uri=https%3A%2F%
 
 ⚠ **นี่ไม่ใช่การเพิกถอน token** — สำเนาที่อื่นยังใช้ได้อยู่ Carmen ต้องเพิกถอนฝั่งตัวเอง
 ลำดับที่ถูกคือ **เพิกถอนที่ Carmen ก่อน → แล้วค่อย DELETE**
+
+---
+
+## 6 · `GET /notifications?uri=&bu=` → `200`
+
+**ชั่วคราวแทน webhook** — [CARMEN_INTEGRATION.md §3](CARMEN_INTEGRATION.md) (`notification.created`,
+`document.posted`/`document.failed`) ยังเป็นแค่ proposal ยังไม่มีใครสร้างจริง ระหว่างรอ endpoint
+นี้คือทางที่ใช้ได้วันนี้ — **โพล ไม่ push** ดังนั้นไม่มี delivery guarantee แบบ webhook (retry,
+signature ฯลฯ) ฝั่ง Carmen ต้องกำหนดเองว่าจะโพลถี่แค่ไหน
+
+```jsonc
+{
+  "items": [
+    {
+      "id": "a91c1234-…",
+      "order_id": null,
+      "type": "document_posted",              // หรือ "document_failed", หรือ order-lifecycle เดิม (approved/rejected/on_hold/missing_slip)
+      "payload": {
+        "document_id": "d41f5678-…",
+        "bank_code": "KTC",
+        "doc_no": "INV-2026-0001",
+        "jv_no": "JV-999"                      // มีเฉพาะ document_posted
+      },
+      "read_at": null,
+      "created_at": "2026-08-13T03:15:00Z"
+    }
+  ],
+  "unread_count": 3
+}
+```
+
+| Field | Type | หมายเหตุ |
+|---|---|---|
+| `items[].type` | string | `document_posted` \| `document_failed` (จาก email automation) หรือ event เดิมของระบบ order · **ไม่รู้จัก type ไหนให้ถือว่า "มีอะไรเกิดขึ้น" ไม่ใช่ error** เหมือนที่ §3.2 ของ integration contract บอกไว้ |
+| `items[].payload.reason_code` | string | มีเฉพาะ `document_failed` — ดูค่าที่เป็นไปได้ใน CARMEN_INTEGRATION.md §3.3 |
+| `unread_count` | int | นับจาก `read_at IS NULL` ของทั้ง BU — endpoint นี้**ไม่ mark ว่าอ่านแล้ว** ยิงซ้ำกี่ครั้งค่าก็ไม่ขยับเอง |
+
+Auth และ rate limit เหมือน endpoint อื่นทุกประการ (ดู §Auth ด้านบน) — ใช้ token เดียวกับที่ใช้เปิด
+หน้า settings ได้เลย ไม่มี credential แยก
+
+```bash
+curl "https://{ocr-host}/api/v1/carmen/notifications?uri=https%3A%2F%2Fhotelgroup.carmenwork.com&bu=hq" \
+     -H "Authorization: <carmen-token>"
+```
 
 ---
 
