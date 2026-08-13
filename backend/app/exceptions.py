@@ -97,18 +97,18 @@ class RateLimitExceeded(RuntimeError):
 
 
 class InsufficientCredits(RuntimeError):
-    """Free trial quota exhausted and no top-up credits remain. → 402
+    """Subscription allowance spent (or absent) and the credit balance is empty. → 402
 
-    Distinct from RateLimitExceeded (429): this signals the tenant should buy a
-    top-up credit pack, not that they are being throttled. The free quota is a
-    one-time lifetime trial allowance, not a monthly reset.
+    Distinct from RateLimitExceeded (429): this signals the tenant should buy
+    documents, not that they are being throttled. Nothing here resets on its own —
+    the balance only moves when someone tops up.
     """
 
     def __init__(self, tenant_id: str):
         self.tenant_id = tenant_id
         super().__init__(
-            "Free trial document quota exhausted and no top-up credits remain. "
-            "Purchase a credit pack to continue."
+            "No documents left — the plan allowance is spent and the credit balance "
+            "is empty. Purchase a plan or a credit pack to continue."
         )
 
 

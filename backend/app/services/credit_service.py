@@ -1,15 +1,20 @@
 """
 Credit Service — top-up credit balance, ledger, and document consumption.
 
-Billing model:
-  - Every tenant has a free trial quota (the LIFETIME/CALLS rule in `quotas`,
-    limit 30). It never resets — used once, then gone.
-  - When the free trial is exhausted, a document consumes one persistent top-up
-    credit (table `tenant_credits`). Credits never expire — they roll over.
+Billing model — two pools, and only two:
+  - An active subscription's monthly allowance. Use-it-or-lose-it: it resets each
+    cycle and never rolls over.
+  - `tenant_credits.balance`. Never expires. A new tenant is granted 30 of these
+    (SIGNUP_GRANT_CREDITS) when their tenant row is created — that grant IS the
+    free trial; there is no separate free-quota counter.
 
-  consume_document()   — free-quota-first, then credits; atomic; → InsufficientCredits
-  grant_credits()      — add/subtract credits + write ledger (caller owns txn)
-  get_credit_balance() — current balance for a tenant (for /auth/usage)
+  A document is charged to the expiring pool first, so nothing a tenant paid for
+  or was given can be stranded by the order of the checks.
+
+  consume_document()     — subscription-first, then credits; atomic; → InsufficientCredits
+  grant_credits()        — add/subtract credits + write ledger (caller owns txn)
+  grant_signup_credits() — the one-time new-tenant grant (caller owns txn)
+  get_credit_balance()   — current balance for a tenant (for /auth/usage)
 """
 
 import logging
@@ -21,24 +26,16 @@ from sqlalchemy import case, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.context import current_document_ref
+from app.context import current_document_ref, current_tenant_id
 from app.database import async_session
 from app.exceptions import ConflictError, InsufficientCredits, NotFoundError, ValidationError
-from app.models.enums import CreditLedgerReason, CreditOrderStatus, QuotaPeriod, SubscriptionStatus
+from app.models.enums import CreditLedgerReason, CreditOrderStatus, SubscriptionStatus
 from app.models.orm import (
     CreditLedger,
     CreditOrder,
     CreditPack,
-    QuotaUsage,
     TenantCredit,
     TenantSubscription,
-)
-from app.services.quota_service import (
-    _CachedQuota,
-    _ctx,
-    _get_cached_quota_rules,
-    _utcnow,
-    period_key,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,6 +43,15 @@ logger = logging.getLogger(__name__)
 # Annual = 10% off 12 months. The ONLY place the discount lives;
 # /packs and create_order both call annual_price().
 ANNUAL_DISCOUNT = Decimal("0.10")
+
+# What a brand-new tenant is given, once, when their tenant row is created.
+# This is the free trial: 30 documents that never expire (was the LIFETIME/CALLS
+# quota rule until migration 20260813000100 folded it into the balance).
+SIGNUP_GRANT_CREDITS = 30
+
+
+def _ctx() -> str:
+    return current_tenant_id.get() or ""
 
 
 def annual_price(monthly: Decimal | float | str) -> Decimal:
@@ -94,28 +100,6 @@ def purchase_block_reason(
             "Choose an annual plan or wait until it expires."
         )
     return None
-
-
-async def _try_consume_free(db: AsyncSession, quota: _CachedQuota, increment: int) -> bool:
-    """
-    Atomically increment the monthly free-quota usage, but only while it stays
-    within the limit. Returns True if a free slot was consumed, False if the
-    free quota is already exhausted for this period.
-    """
-    key = period_key(quota.period)
-    stmt = (
-        pg_insert(QuotaUsage)
-        .values(quota_id=quota.id, period_key=key, used=increment)
-        .on_conflict_do_update(
-            index_elements=["quota_id", "period_key"],
-            set_={"used": QuotaUsage.used + increment, "last_updated_at": _utcnow()},
-            # On conflict, only bump usage if it stays at/under the free limit.
-            where=QuotaUsage.used + increment <= quota.limit_value,
-        )
-        .returning(QuotaUsage.used)
-    )
-    result = await db.execute(stmt)
-    return result.first() is not None
 
 
 async def _try_consume_subscription(db: AsyncSession, tenant_id: str, increment: int) -> bool:
@@ -208,39 +192,31 @@ async def _consume_credits(db: AsyncSession, tenant_id: str, increment: int) -> 
 
 async def consume_document(increment: int = 1) -> str | None:
     """
-    Charge one document against the current tenant, in priority order:
-    active subscription allowance → free trial quota → top-up credits. Raises
-    InsufficientCredits (→ 402) when all three are spent.
+    Charge one document against the current tenant: active subscription allowance
+    first, then the credit balance. Raises InsufficientCredits (→ 402) when both
+    are spent.
 
-    Returns what was charged — "subscription", "free", "credit", or None
-    (nothing charged: fail-open / no enforceable quota). Pass the return value to
+    The expiring pool is charged first on purpose. A subscription's monthly
+    allowance is use-it-or-lose-it while credits never expire, so taking credits
+    first would quietly burn a tenant's permanent balance and let the allowance
+    they already paid for evaporate at the cycle boundary.
+
+    Returns what was charged — "subscription", "credit", or None (nothing charged:
+    no tenant in context, or fail-open on an infra error). Pass the return value to
     refund_document() to reverse the charge if the extraction later fails.
 
-    Fail-open on missing quota / infra errors (mirrors consume_quota) so a
-    transient DB issue never blocks extraction — only an explicit out-of-credits
-    condition raises.
+    Fail-open on infra errors so a transient DB issue never blocks extraction —
+    only an explicit out-of-credits condition raises.
     """
     tenant_id = _ctx()
     if not tenant_id:
         return None
     try:
-        rules = await _get_cached_quota_rules(tenant_id)
-        monthly = next((q for q in rules if q.period == QuotaPeriod.LIFETIME), None)
-        if monthly is None or monthly.limit_value <= 0:
-            return None  # no enforceable free quota → fail-open (legacy no-quota behavior)
-
         async with async_session() as db:
             async with db.begin():
                 if await _try_consume_subscription(db, tenant_id, increment):
                     logger.info("subscription doc consumed: tenant=%s", tenant_id)
                     return "subscription"
-                if await _try_consume_free(db, monthly, increment):
-                    logger.info(
-                        "free slot consumed: tenant=%s limit=%.0f",
-                        tenant_id,
-                        monthly.limit_value,
-                    )
-                    return "free"
                 await _consume_credits(db, tenant_id, increment)
                 return "credit"
     except InsufficientCredits:
@@ -248,21 +224,6 @@ async def consume_document(increment: int = 1) -> str | None:
     except Exception as exc:
         logger.exception("consume_document failed: %s", exc)
         return None
-
-
-async def _refund_free(db: AsyncSession, tenant_id: str, increment: int) -> None:
-    """Give back a free slot consumed this period (floored at 0)."""
-    rules = await _get_cached_quota_rules(tenant_id)
-    monthly = next((q for q in rules if q.period == QuotaPeriod.LIFETIME), None)
-    if monthly is None:
-        return
-    await db.execute(
-        update(QuotaUsage)
-        .where(
-            QuotaUsage.quota_id == monthly.id, QuotaUsage.period_key == period_key(monthly.period)
-        )
-        .values(used=func.greatest(QuotaUsage.used - increment, 0), last_updated_at=_utcnow())
-    )
 
 
 async def refund_document(charged: str | None, increment: int = 1) -> None:
@@ -284,7 +245,11 @@ async def refund_document(charged: str | None, increment: int = 1) -> None:
                 if charged == "subscription":
                     await _refund_subscription(db, tenant_id, increment)
                 elif charged == "free":
-                    await _refund_free(db, tenant_id, increment)
+                    # Only reachable for a request the pre-merge code charged mid-deploy.
+                    # Nothing to give back: the free-quota counter it incremented no
+                    # longer gates anything (migration 20260813000100 retired the rule),
+                    # so the tenant is already whole.
+                    logger.info("refund_document: legacy 'free' charge — nothing to reverse")
                 elif charged == "credit":
                     await grant_credits(
                         db,
@@ -322,7 +287,11 @@ async def grant_credits(
     The caller owns the transaction — this does not commit. Raises
     ValidationError if the result would be negative.
     """
-    purchased_delta = max(0, amount)
+    # `credits_purchased` means money received, so a signup grant must not touch it:
+    # purchased credits are a prepaid liability and given ones are not, and the two
+    # became indistinguishable in `balance` the moment the free trial moved in here.
+    # The ledger reason stays the only place that distinction lives.
+    purchased_delta = 0 if reason == CreditLedgerReason.SIGNUP_GRANT else max(0, amount)
     consumed_delta = max(0, -amount)
     stmt = (
         pg_insert(TenantCredit)
@@ -357,6 +326,26 @@ async def grant_credits(
         )
     )
     return new_balance
+
+
+async def grant_signup_credits(db: AsyncSession, tenant_id: str) -> int:
+    """Give a brand-new tenant their free-trial credits. Returns the new balance.
+
+    Call this ONLY on the transaction that inserted the tenant row, and let that
+    transaction carry it: the grant then lives or dies with the tenant, which is
+    what makes it a one-time grant without any bookkeeping of its own. A rollback
+    takes the tenant with it, so the next login recreates both.
+
+    `uq_credit_ledger_one_signup_grant` is the backstop — a second grant for the
+    same tenant raises IntegrityError rather than quietly doubling the balance.
+    """
+    return await grant_credits(
+        db,
+        tenant_id,
+        SIGNUP_GRANT_CREDITS,
+        CreditLedgerReason.SIGNUP_GRANT,
+        note="free trial",
+    )
 
 
 async def get_credit_balance(tenant_id: str) -> int:

@@ -4,11 +4,9 @@ import type { UsageData } from '../../lib/api/auth'
 
 type Usage = UsageData['usage']
 
+// A tenant on the free trial: the 30 signup credits, 3 spent.
 const base: Usage = {
-  monthly_calls: 3,
-  max_monthly_calls: 30,
-  remaining_calls: 27,
-  credit_balance: 0,
+  credit_balance: 27,
 }
 
 describe('computeUsageStats', () => {
@@ -29,35 +27,40 @@ describe('computeUsageStats', () => {
         status: 'active',
       },
     })
-    // 1500 plan + 27 free + 0 credit
-    expect(stats?.remaining_calls).toBe(1527)
+    // 1500 plan + 27 credits
+    expect(stats?.remaining).toBe(1527)
     expect(stats?.isLow).toBe(false)
   })
 
-  it('free-only (no subscription) = free remaining + credits', () => {
-    const stats = computeUsageStats({ ...base, credit_balance: 5 })
-    expect(stats?.remaining_calls).toBe(32) // 27 + 5
+  it('credits alone carry REMAIN when there is no subscription', () => {
+    expect(computeUsageStats({ credit_balance: 32 })?.remaining).toBe(32)
   })
 
   it('flags low when the whole pool is nearly spent', () => {
-    const stats = computeUsageStats({
-      monthly_calls: 30,
-      max_monthly_calls: 30,
-      remaining_calls: 0,
-      credit_balance: 2,
-    })
-    expect(stats?.remaining_calls).toBe(2)
+    const stats = computeUsageStats({ credit_balance: 2 })
+    expect(stats?.remaining).toBe(2)
     expect(stats?.isLow).toBe(true)
   })
 
   it('does not flag low one credit above the threshold', () => {
-    const stats = computeUsageStats({
-      monthly_calls: 24,
-      max_monthly_calls: 30,
-      remaining_calls: 6,
-      credit_balance: 0,
-    })
-    expect(stats?.remaining_calls).toBe(6)
+    const stats = computeUsageStats({ credit_balance: 6 })
+    expect(stats?.remaining).toBe(6)
     expect(stats?.isLow).toBe(false)
+  })
+
+  it('an exhausted subscription still shows the credits behind it', () => {
+    const stats = computeUsageStats({
+      credit_balance: 9,
+      subscription: {
+        plan_code: 'sub_starter',
+        doc_allowance: 100,
+        docs_used: 100,
+        docs_remaining: 0,
+        period_start: null,
+        period_end: null,
+        status: 'active',
+      },
+    })
+    expect(stats?.remaining).toBe(9)
   })
 })

@@ -77,7 +77,7 @@ a version.
 ```text
 useOcrWizard hook
   → POST /api/v1/credit-card/extract
-      routers/ocr.py           check_quota("credit_card_ocr") → vision LLM → ExtractedCreditCardData
+      routers/ocr.py           consume_document() → vision LLM → ExtractedCreditCardData
       llm/prompts/__init__.py  _REGISTRY dict maps bank_code → prompt file (code-based, pending CMS)
   → POST /api/v1/credit-card/mapping/suggest
       services/gl_suggestion_service.py  LLM suggests GL dept/acc for fixed fields + payment types
@@ -91,7 +91,7 @@ useOcrWizard hook
 ```text
 useAPInvoice hook
   → POST /api/v1/ap-invoice/extract
-      routers/ap_invoice.py    check_quota("ap_invoice") → vision LLM
+      routers/ap_invoice.py    consume_document() → vision LLM
       ap_invoice_postprocess   tax-type detection, footer discount distribution, per-line totals
       llm_usage_logger.log_llm_usage()  silent-failure token logging → llm_usage_logs
   → Step 2: column→field mapping  persisted to localStorage per vendor name
@@ -113,7 +113,7 @@ answered, purely because nobody knew they were there.
 | Is the pilot working? | `#/admin/tenants` | per-BU engagement: scanned vs **posted to Carmen**, active weeks, days idle, + adoption funnel |
 | | `#/admin/usage` | date×module×tenant docs/calls/tokens/cost |
 | | `#/admin/tenant-ranking` | rank by cost/error rate/latency/volume |
-| | `#/admin/quota-modules` | **who is at the quota wall, and edits the limit** |
+| | `#/admin/quota-modules` | **who is about to run out of documents**, per-module usage, module on/off |
 | Why isn't it working? | `#/admin/extractions` | **why an extraction failed** — `ocr_tasks.error_message`, grouped by cause |
 | | `#/admin/errors` | error *counts* — `ocr_tasks` by module, `performance_logs` 5xx by tenant/endpoint |
 | | `#/admin/performance` | request latency |
@@ -154,7 +154,7 @@ items 11–14 — useful for cross-checking a page against the raw numbers.
 - **Bank code not enum** — `credit_cards.bank_code` FK → `banks.code` VARCHAR. No hardcoded `BankType` enum in the DB; adding a bank is an INSERT (pending Admin Dashboard for zero-redeploy).
 - **Credit card line items are NOT persisted** — like AP invoices, credit-card transactions follow the extract-display-only pattern (Carmen ERP is source of truth). Only `credit_cards` header data is stored; line items live transiently in the API response (`CreditCardTransactionSchema`).
 - **Soft delete everywhere** — Business tables never hard-delete. Always filter `WHERE deleted_at IS NULL`.
-- **Quota engine** — `check_quota(module_id)` at start of every extract endpoint. Quotas stored in `quotas` + `quota_usage` tables; replaces legacy flat `bu_usage`.
+- **Two document pools, not three** — a scan is charged by `consume_document()` (`services/credit_service.py`): the active subscription's monthly allowance first (use-it-or-lose-it), then `tenant_credits.balance` (never expires). The free trial is not a third pool — a new tenant is granted 30 credits (`signup_grant` ledger reason) in the same transaction that creates their tenant row, which is what makes it a one-time grant. The old `quotas`/`quota_usage` counter engine was retired by migration `20260813000100`; the tables are kept for one release and then dropped.
 - **module_id on every LLM call** — `log_llm_usage(module_id="credit_card_ocr")` instead of old `usage_type` string. Enables per-module cost breakdown in `daily_usage_summary`.
 - **Shared LLM client** — `llm/client.py` is the sole `AsyncOpenAI` factory. Never construct it elsewhere.
 - **LLM privacy is enforced per-request, not via dashboard** — `_provider_prefs()` in `llm/client.py` attaches `extra_body={"provider": {"data_collection": "deny", ...}}` to EVERY OpenRouter call (vision + text). This is the technical enforcement of the consent-modal no-training promise (`UserConsentModal.tsx`); it does not rely on the OpenRouter account dashboard toggles (which can drift silently). `LLM_TEXT_PROVIDER_ALLOWLIST` additionally pins the non-Google suggestion model to US-jurisdiction providers. Prod logs CRITICAL if `LLM_DATA_COLLECTION != "deny"`. The dashboard's Google-ZDR toggle (disable AI Studio, keep Vertex) is a manual second layer — see `docs/SECURITY_PDPA_CHECKLIST.md`.
@@ -167,7 +167,7 @@ items 11–14 — useful for cross-checking a page against the raw numbers.
 - **localStorage** — credit card: `accountingConfig`, `accountMappingAmount`. AP invoice: field mappings keyed by vendor name.
 - **Service layer contract** — services never raise `HTTPException`; they raise typed exceptions from `app/exceptions.py`. The global handler in `factory.py` maps these to HTTP status codes.
 - **App factory** — `app/factory.py` builds the FastAPI instance (middleware + exception handlers + routers). `app/lifecycle.py` owns lifespan (startup/shutdown + background tasks). `app/sentry.py` owns Sentry init. `app/main.py` is the thin entrypoint.
-- **Quota enforcement** — `consume_quota()` in `services/quota_service.py` is the atomic check-and-increment used at every extract endpoint. `check_quota()` is read-only (pre-check only). Never call both.
+- **Charge before the LLM, refund on failure** — `consume_document()` runs at every extract endpoint AFTER `ensure_pdf_openable` and `assert_module_enabled` (so a locked PDF or a disabled module never costs a document) and returns what it charged; pass that to `refund_document()` for the files that failed. Both fail open on infra errors — only a real out-of-credits raises `InsufficientCredits` (402).
 - **Hook directory convention** — Feature hooks live in subdirectories: `hooks/ap-invoice/`, `hooks/credit-card/`, `hooks/mapping/`. Cross-cutting hooks (`useModal`, `useDarkMode`, `useCarmenSSO`) stay at top level. Each subdir has an `index.ts` barrel. All localStorage access goes through the tenant-aware `lib/storage.ts` (`appKey()`).
 - **Pydantic schemas** — All request/response schemas in `app/models/schemas/` package. Never define `class X(BaseModel)` inside a router file.
 
@@ -190,7 +190,7 @@ items 11–14 — useful for cross-checking a page against the raw numbers.
 1. `INSERT INTO modules (id, display_name) VALUES ('my_module', 'My Module')`
 2. Create ORM models with `TenantFKMixin + TimestampMixin + SoftDeleteMixin + WriterMixin`
 3. Create a new migration: `supabase migration new <name>` then add DDL
-4. In the new router: `check_quota("my_module")` before LLM call
+4. In the new router: `assert_module_enabled("my_module")` then `consume_document()` before the LLM call
 5. Pass `module_id="my_module"` to `log_llm_usage()`
 
 ---
@@ -255,7 +255,7 @@ FILE_SERVICE_API_KEY=fsc_...        # X-Api-Key client access key
 | Modules | `modules`, `tenant_modules` |
 | Bank CMS | `banks`, `prompt_templates` |
 | Config | `system_configs`, `tenant_config_overrides`, `feature_flags`, `bu_accounting_configs`, `bu_accounting_mapping_entries`, `ap_vendor_column_mappings`, `ap_vendor_field_mapping_entries` |
-| Quotas | `quotas`, `quota_usage` |
+| Quotas | `quotas`, `quota_usage` — **retired** (rows soft-deleted 2026-08-13, tables drop next release) |
 | Billing | `credit_packs`, `tenant_credits`, `credit_ledger`, `credit_orders`, `billing_documents`, `tenant_subscriptions`, `ar_customer_profiles`, `document_sequences` |
 | Reference | `model_pricing` |
 | Business data | `ocr_sessions`, `ocr_tasks`, `credit_cards`, `ap_invoices`, `correction_feedback`, `bug_reports`, `consent_logs` |

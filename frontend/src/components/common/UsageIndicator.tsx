@@ -96,9 +96,7 @@ export default function UsageIndicator() {
       <a
         href="#/pricing"
         aria-busy={loading || undefined}
-        aria-label={
-          hasCount ? t('quota.aria', { n: stats.remaining_calls }) : t('quota.ariaNoCount')
-        }
+        aria-label={hasCount ? t('quota.aria', { n: stats.remaining }) : t('quota.ariaNoCount')}
         className={`ui-quota ui-quota--link${stats?.isLow ? ' is-low' : ''}`}
       >
         <div className="ui-quota-col col-remain">
@@ -106,7 +104,7 @@ export default function UsageIndicator() {
           {loading ? (
             <span className="ui-quota-value-sk sk-block" aria-hidden="true" />
           ) : (
-            <span className="ui-quota-value">{stats ? stats.remaining_calls : '–'}</span>
+            <span className="ui-quota-value">{stats ? stats.remaining : '–'}</span>
           )}
         </div>
         <CtaHalf t={t} />

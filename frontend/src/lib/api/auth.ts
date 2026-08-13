@@ -16,9 +16,8 @@ export interface ActiveSubscription {
 export interface UsageData {
   bu: string
   usage: {
-    monthly_calls: number
-    max_monthly_calls: number
-    remaining_calls: number
+    /** Non-expiring credits. Includes the 30 a new tenant is granted at signup —
+     *  the free trial lives here, not in a separate pool. */
     credit_balance: number
     subscription?: ActiveSubscription | null
   }

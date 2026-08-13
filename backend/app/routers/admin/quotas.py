@@ -1,4 +1,4 @@
-"""Admin quota + module management — cross-tenant overview, edit limit, reset usage, toggle module."""
+"""Admin allowance + module management — cross-tenant overview, toggle module."""
 
 import logging
 from datetime import UTC, date, datetime
@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
 from app.exceptions import ValidationError
-from app.models.schemas import ModuleToggleRequest, QuotaLimitUpdateRequest
+from app.models.schemas import ModuleToggleRequest
 from app.services import quota_admin_service as svc
 
 from .deps import require_permission
@@ -59,29 +59,6 @@ async def get_quota_overview(
     if not admin.is_global:
         result["data"] = [t for t in result["data"] if t["id"] == admin.tenant_scope]
     return {"from": str(from_date), "to": str(to_date), **result}
-
-
-@router.put("/tenants/{tenant_id}/quotas/{quota_id}")
-async def update_quota_limit(
-    tenant_id: str,
-    quota_id: str,
-    body: QuotaLimitUpdateRequest,
-    db: AsyncSession = Depends(get_db),
-    admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
-):
-    _assert_scope(admin, tenant_id)
-    return await svc.update_quota_limit(db, tenant_id, quota_id, body.limit_value, admin)
-
-
-@router.post("/tenants/{tenant_id}/quotas/{quota_id}/reset")
-async def reset_quota_usage(
-    tenant_id: str,
-    quota_id: str,
-    db: AsyncSession = Depends(get_db),
-    admin: AdminPrincipal = Depends(require_permission("quotas", "write")),
-):
-    _assert_scope(admin, tenant_id)
-    return await svc.reset_quota_usage(db, tenant_id, quota_id, admin)
 
 
 @router.put("/tenants/{tenant_id}/modules/{module_id}")

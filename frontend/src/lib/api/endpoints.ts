@@ -141,10 +141,6 @@ export const API = {
     arProfile: (id: string) => `${V1}/admin/ar-customer-profiles/${id}`,
     arProfilesSync: `${V1}/admin/ar-customer-profiles/sync`,
     quotaOverview: `${V1}/admin/quotas/overview`,
-    tenantQuota: (tenantId: string, quotaId: string) =>
-      `${V1}/admin/tenants/${tenantId}/quotas/${quotaId}`,
-    tenantQuotaReset: (tenantId: string, quotaId: string) =>
-      `${V1}/admin/tenants/${tenantId}/quotas/${quotaId}/reset`,
     tenantModule: (tenantId: string, moduleId: string) =>
       `${V1}/admin/tenants/${tenantId}/modules/${moduleId}`,
     adminUsers: `${V1}/admin/admin-users`,

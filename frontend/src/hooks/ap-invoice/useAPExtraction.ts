@@ -309,7 +309,7 @@ export function useAPExtraction({ setStep, setModal, loadVendors }: APExtraction
           type: 'warning',
           title: 'Out of Documents',
           message:
-            "You've used all 30 documents in your one-time free trial and have no top-up credits left. Buy a credit pack to continue — credits never expire.",
+            'You have no documents left — your plan allowance is spent and your credit balance is empty. Buy a credit pack to continue — credits never expire.',
           confirmText: 'Buy Credits',
           onConfirm: () => {
             setModal({ show: false })

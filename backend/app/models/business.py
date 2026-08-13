@@ -88,7 +88,7 @@ class OCRTask(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin):
         # legal retention), so it had no composite index matching that actual query
         # shape, only 5 unrelated single-column indexes. Partial on the near-universal
         # `deleted_at IS NULL` filter, matching this codebase's existing partial-index
-        # convention (see Quota, PromptTemplate).
+        # convention (see CreditOrder, PromptTemplate).
         Index(
             "ix_ocr_tasks_created_module_tenant_active",
             "created_at",

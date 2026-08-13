@@ -1581,10 +1581,6 @@ body:has(.admin-login-page) {
   text-transform: capitalize;
   min-width: 140px;
 }
-.quota-limit-input {
-  width: 110px;
-}
-
 .module-toggle-list {
   display: flex;
   flex-wrap: wrap;

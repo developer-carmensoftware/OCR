@@ -1,4 +1,4 @@
-"""Control plane — System Config, Feature Flags, Quotas, LLM Pricing."""
+"""Control plane — System Config, Feature Flags, Billing, LLM Pricing."""
 
 import uuid
 
@@ -25,8 +25,6 @@ from .enums import (
     BillingDocumentType,
     CreditLedgerReason,
     CreditOrderStatus,
-    QuotaMetric,
-    QuotaPeriod,
     SubscriptionStatus,
 )
 from .mixins import SoftDeleteMixin, TimestampMixin, WriterMixin
@@ -77,55 +75,6 @@ class FeatureFlag(Base, TimestampMixin, WriterMixin):
     rollout_pct = Column(Integer, default=0, nullable=False)
 
 
-class Quota(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
-    """
-    Quota rule per tenant — shared pool across ALL modules.
-    is_hard = True → block at limit; False → warn only.
-    """
-
-    __tablename__ = "quotas"
-
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
-    period: Column = Column(
-        SAEnum(QuotaPeriod, values_callable=lambda o: [e.value for e in o]), nullable=False
-    )
-    metric: Column = Column(
-        SAEnum(QuotaMetric, values_callable=lambda o: [e.value for e in o]), nullable=False
-    )
-    limit_value = Column(Numeric(18, 4), nullable=False)
-    soft_warn_pct = Column(Numeric(3, 2), default=0.80, nullable=False)
-    is_hard = Column(Boolean, default=True, nullable=False)
-    is_custom = Column(Boolean, default=False, nullable=False)
-
-    __table_args__ = (
-        Index(
-            "uq_quota_tenant_period_metric_active",
-            "tenant_id",
-            "period",
-            "metric",
-            unique=True,
-            postgresql_where=text("deleted_at IS NULL"),
-        ),
-    )
-
-
-class QuotaUsage(Base, TimestampMixin):
-    """
-    Running counter incremented in real-time.
-    period_key format: '2026-05' (monthly) | '2026-05-14' (daily)
-    """
-
-    __tablename__ = "quota_usage"
-
-    quota_id = Column(PGUUID(as_uuid=True), ForeignKey("quotas.id"), primary_key=True)
-    period_key = Column(String(10), primary_key=True)
-    used = Column(Numeric(18, 4), default=0, nullable=False)
-    last_updated_at = Column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )
-
-
 class LLMModelPricing(Base, TimestampMixin):
     """LLM model pricing synced from OpenRouter API every 8h."""
 
@@ -138,18 +87,19 @@ class LLMModelPricing(Base, TimestampMixin):
     price_verified_at = Column(DateTime(timezone=True), nullable=True)
 
 
-# ── Top-up credits ────────────────────────────────────────────────────────────
-# Every tenant gets a free monthly document quota (the `quotas` MONTHLY/CALLS
-# rule). When that is exhausted, extraction consumes from a persistent top-up
-# credit balance that never expires (rolls over month to month). These tables
-# implement that balance, its audit ledger, the purchasable pack catalog, and a
-# stub order table so a payment gateway can plug in later.
+# ── Credits ───────────────────────────────────────────────────────────────────
+# A document is charged to the active subscription's monthly allowance first, then
+# to a persistent credit balance that never expires. The free trial is part of that
+# balance: a new tenant is granted 30 credits (`signup_grant`) when their tenant row
+# is created. These tables implement the balance, its audit ledger, the purchasable
+# pack catalog, and the order table behind the purchase flow.
 
 
 class CreditPack(Base, TimestampMixin, WriterMixin):
     """
-    Purchasable top-up pack catalog (CMS-editable like banks/plans).
-    The free 30 docs/month tier is NOT a pack — it lives in the quotas table.
+    Purchasable pack catalog (CMS-editable like banks/plans).
+    The 30 free documents a new tenant starts with are NOT a pack — they are a
+    `signup_grant` ledger row, granted at tenant creation.
     """
 
     __tablename__ = "credit_packs"

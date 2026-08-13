@@ -1,28 +1,28 @@
-"""Admin quota + module management — cross-tenant overview, edit limit, reset usage, toggle module.
+"""Admin allowance + module management — cross-tenant overview, toggle module.
 
 Business logic for routers/admin/quotas.py. The overview is one bulk pass across all
-tenants (not N+1 per-tenant queries); the three mutations are narrow, single-tenant ops.
+tenants (not N+1 per-tenant queries); the mutation is a narrow, single-tenant op.
+
+The per-tenant limit editor that used to live here went away with the free-trial
+quota (migration 20260813000100): the lever on a tenant's document allowance is now
+`POST /admin/tenants/{id}/credits/adjust`.
 """
 
 import uuid
 from datetime import UTC, datetime
-from decimal import Decimal
-from typing import cast
 
-from sqlalchemy import case, func, select, text, tuple_
+from sqlalchemy import case, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.admin_session import AdminPrincipal
-from app.exceptions import NotFoundError, ValidationError
-from app.models.billing import Quota, QuotaUsage, TenantCredit
+from app.exceptions import NotFoundError
+from app.models.billing import TenantCredit
 from app.models.catalog import Module, TenantModule
-from app.models.enums import QuotaPeriod
 from app.models.identity import Tenant
 from app.models.observability import LLMUsageLog
 from app.services.audit_service import AuditAction, log_admin_action
 from app.services.credit_service import active_subscription_map
-from app.services.quota_service import period_key
 
 
 async def get_tenants_quota_overview(
@@ -32,7 +32,8 @@ async def get_tenants_quota_overview(
     to_dt: datetime,
     limit: int = 200,
 ) -> dict:
-    """All tenants with quota usage, enabled modules, and per-module usage in one bulk pass."""
+    """All tenants with their document pools, enabled modules, and per-module usage
+    in one bulk pass."""
     all_modules = (
         (
             await db.execute(
@@ -55,47 +56,6 @@ async def get_tenants_quota_overview(
 
     tenant_ids = [t.id for t in tenants]
     tenant_ids_str = [str(t.id) for t in tenants]
-
-    # Quotas + current-period usage, bulk (mirrors quota_service.get_quota_summary, batched)
-    quotas = (
-        (
-            await db.execute(
-                select(Quota)
-                .where(Quota.tenant_id.in_(tenant_ids), Quota.deleted_at.is_(None))
-                # Deterministic: the page renders quotas[0] as the headline bar.
-                .order_by(Quota.period, Quota.metric)
-            )
-        )
-        .scalars()
-        .all()
-    )
-    quota_keys = {q.id: period_key(cast(QuotaPeriod, q.period)) for q in quotas}
-    usage_pairs = [(q.id, quota_keys[q.id]) for q in quotas]
-    usage_map: dict[str, float] = {}
-    if usage_pairs:
-        usage_rows = await db.execute(
-            select(QuotaUsage.quota_id, QuotaUsage.used).where(
-                tuple_(QuotaUsage.quota_id, QuotaUsage.period_key).in_(usage_pairs)
-            )
-        )
-        usage_map = {str(qid): float(cast(Decimal, used)) for qid, used in usage_rows.all()}
-
-    quotas_by_tenant: dict[str, list[dict]] = {}
-    for q in quotas:
-        used = usage_map.get(str(q.id), 0.0)
-        limit_value = float(cast(Decimal, q.limit_value))
-        quotas_by_tenant.setdefault(str(q.tenant_id), []).append(
-            {
-                "id": str(q.id),
-                "period": q.period,
-                "metric": q.metric,
-                "used": used,
-                "limit": limit_value,
-                "pct": round(used / limit_value * 100, 1) if limit_value else 0,
-                "is_hard": q.is_hard,
-                "period_key": quota_keys[q.id],
-            }
-        )
 
     # Module rows per tenant, bulk — BOTH enabled states. Enforcement is opt-out: a
     # module is available unless there is an explicit enabled=False row, so the UI needs
@@ -151,9 +111,9 @@ async def get_tenants_quota_overview(
             }
         )
 
-    # The page charges subscription → free → top-up, so a subscribed tenant's free quota
-    # bar is frozen while real usage lands on the subscription. Surface both extra buckets
-    # so the moving one is visible. Bulk, keyed by str(tenant_id).
+    # Scans are charged subscription → credits, so a subscribed tenant's credit balance
+    # sits still while real usage lands on the allowance. Surface both so the page can
+    # show which one is moving. Bulk, keyed by str(tenant_id).
     subs_by_tenant = await active_subscription_map(db, tenant_ids)
     credit_rows = (
         await db.execute(
@@ -172,7 +132,6 @@ async def get_tenants_quota_overview(
             "name": t.name,
             "plan": t.plan,
             "is_active": t.is_active,
-            "quotas": quotas_by_tenant.get(str(t.id), []),
             "modules_enabled": modules_by_tenant.get(str(t.id), []),
             "modules_disabled": modules_disabled_by_tenant.get(str(t.id), []),
             "usage_by_module": usage_by_tenant.get(str(t.id), []),
@@ -182,71 +141,6 @@ async def get_tenants_quota_overview(
         for t in tenants
     ]
     return {"data": data, "modules": modules_catalog}
-
-
-async def _get_tenant_quota(db: AsyncSession, tenant_id: str, quota_id: str) -> Quota:
-    try:
-        uuid.UUID(tenant_id)
-        uuid.UUID(quota_id)
-    except ValueError:
-        raise NotFoundError("Quota not found") from None
-
-    quota = (
-        await db.execute(
-            select(Quota).where(
-                Quota.id == quota_id, Quota.tenant_id == tenant_id, Quota.deleted_at.is_(None)
-            )
-        )
-    ).scalar_one_or_none()
-    if not quota:
-        raise NotFoundError("Quota not found")
-    return quota
-
-
-async def update_quota_limit(
-    db: AsyncSession, tenant_id: str, quota_id: str, limit_value: float, admin: AdminPrincipal
-) -> dict:
-    if limit_value <= 0:
-        raise ValidationError("limit_value must be greater than 0")
-
-    quota = await _get_tenant_quota(db, tenant_id, quota_id)
-    before = float(cast(Decimal, quota.limit_value))
-    quota.limit_value = limit_value
-    await db.commit()
-
-    await log_admin_action(
-        admin_user_id=admin.admin_id,
-        action=AuditAction.QUOTA_UPDATE,
-        resource="quotas",
-        target_id=str(quota.id),
-        before_value={"limit_value": before},
-        after_value={"limit_value": limit_value},
-    )
-    return {"id": str(quota.id), "limit_value": limit_value}
-
-
-async def reset_quota_usage(
-    db: AsyncSession, tenant_id: str, quota_id: str, admin: AdminPrincipal
-) -> dict:
-    quota = await _get_tenant_quota(db, tenant_id, quota_id)
-    key = period_key(cast(QuotaPeriod, quota.period))
-    await db.execute(
-        text(
-            "UPDATE quota_usage SET used=0, last_updated_at=NOW() "
-            "WHERE quota_id=:qid AND period_key=:key"
-        ),
-        {"qid": str(quota.id), "key": key},
-    )
-    await db.commit()
-
-    await log_admin_action(
-        admin_user_id=admin.admin_id,
-        action=AuditAction.QUOTA_RESET,
-        resource="quotas",
-        target_id=str(quota.id),
-        after_value={"period_key": key, "used": 0},
-    )
-    return {"id": str(quota.id), "period_key": key, "used": 0.0}
 
 
 async def toggle_module(

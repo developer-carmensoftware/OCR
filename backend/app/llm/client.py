@@ -373,7 +373,7 @@ async def call_vision_llm(
     """
     Send a multimodal (vision) request to OpenRouter.
     Returns the raw text content from the LLM response.
-    Quota check is the caller's responsibility (done in routers via check_quota()).
+    Charging a document is the caller's responsibility (routers call consume_document()).
     """
     from app.context import current_request_id
     from app.services.outbound_log_service import log_outbound
