@@ -29,6 +29,7 @@ import hashlib
 import logging
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
@@ -40,7 +41,6 @@ from app.database import get_db
 from app.exceptions import FieldValidationError
 from app.models.identity import Tenant
 from app.models.schemas.email_automation import URI_DOC, SettingsIn, TokenIn
-from app.models.schemas.notifications import NotificationListResponse, NotificationResponse
 from app.routers.admin.deps import require_maintenance_auth
 
 # ponytail: private imports across routers. _validate_uri / _validate_token raise
@@ -289,21 +289,29 @@ async def read_settings(
 async def read_notifications(
     uri: str = Query(..., description=URI_DOC),
     bu: str = Query(...),
+    since: datetime | None = Query(
+        None,
+        description="ISO-8601. Anything created after it counts as new. Omit and 'new' "
+        "means unread, which only our own in-app bell can clear.",
+    ),
     db: AsyncSession = Depends(get_db),
     caller: Caller = Depends(_caller),
-) -> NotificationListResponse:
-    """Interim poll substitute for the unbuilt §3.2/§3.3 webhook (CARMEN_INTEGRATION.md).
+) -> dict[str, bool]:
+    """Is there anything new for this BU? Interim poll substitute for the unbuilt
+    §3.2 webhook (CARMEN_INTEGRATION.md).
 
-    Read-only — does not mark anything read, same as the in-app bell it shares
-    `user_notifications` with. Includes `document_posted`/`document_failed` events
-    from the email-ingest pipeline alongside the existing credit-order events.
+    A badge, not a feed — §3.2's own payload deliberately carries no message text
+    either. The full list is the in-app bell's job (`GET /api/v1/notifications`),
+    and duplicating it here would be a second copy of that contract to keep in sync
+    for a caller that only wants to light up a dot.
+
+    Read-only: polling never marks anything read. **Pass `since`** — without it the
+    answer is "has unread", which for a BU whose staff live in Carmen and never open
+    our app goes true on the first document and stays true forever.
     """
     tenant = await _resolve(db, caller, uri, bu)
-    items, unread = await notification_service.list_notifications(db, tenant.id)  # type: ignore[arg-type]
-    return NotificationListResponse(
-        items=[NotificationResponse.model_validate(i) for i in items],
-        unread_count=unread,
-    )
+    has = await notification_service.has_notification(db, tenant.id, since)  # type: ignore[arg-type]
+    return {"has_notification": has}
 
 
 @router.put("/settings")

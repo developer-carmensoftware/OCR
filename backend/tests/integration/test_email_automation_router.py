@@ -8,6 +8,7 @@ actually proven. The route-level tests then override `_caller` to prove the rout
 wired to it, plus one real 401 to prove a bad header is rejected before any handler runs.
 """
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -409,28 +410,17 @@ def test_get_notifications_401_without_authorization_header():
     assert resp.status_code == 401
 
 
-def test_get_notifications_reaches_handler_for_both_auth_styles():
+def test_get_notifications_reaches_handler_and_answers_a_bare_bool():
+    """A badge, not a feed — the full list stays the in-app bell's endpoint."""
     from app.main import app
     from app.services import email_settings_service as es
     from app.services import notification_service
 
     app.dependency_overrides[_caller] = lambda: Caller("test-actor", None)
-    tenant = _tenant()
-    notif = SimpleNamespace(
-        id=uuid4(),
-        order_id=None,
-        type="document_posted",
-        payload={"doc_no": "INV-001"},
-        read_at=None,
-        created_at=None,
-    )
     with (
-        patch.object(es, "resolve_tenant", new_callable=AsyncMock, return_value=tenant),
+        patch.object(es, "resolve_tenant", new_callable=AsyncMock, return_value=_tenant()),
         patch.object(
-            notification_service,
-            "list_notifications",
-            new_callable=AsyncMock,
-            return_value=([notif], 1),
+            notification_service, "has_notification", new_callable=AsyncMock, return_value=True
         ),
     ):
         with make_test_client(AsyncMock()) as client:
@@ -438,9 +428,34 @@ def test_get_notifications_reaches_handler_for_both_auth_styles():
                 f"{BASE}/notifications", params={"uri": "https://h.example.com", "bu": "b"}
             )
     assert resp.status_code == 200
-    body = resp.json()
-    assert body["unread_count"] == 1
-    assert body["items"][0]["type"] == "document_posted"
+    assert resp.json() == {"has_notification": True}
+
+
+def test_get_notifications_passes_since_through_to_the_service():
+    """The cursor is the caller's, so it has to survive the route unchanged —
+    without it the answer is 'has unread', which never clears for an unattended BU."""
+    from app.main import app
+    from app.services import email_settings_service as es
+    from app.services import notification_service
+
+    app.dependency_overrides[_caller] = lambda: Caller("test-actor", None)
+    has_notification = AsyncMock(return_value=False)
+    with (
+        patch.object(es, "resolve_tenant", new_callable=AsyncMock, return_value=_tenant()),
+        patch.object(notification_service, "has_notification", has_notification),
+    ):
+        with make_test_client(AsyncMock()) as client:
+            resp = client.get(
+                f"{BASE}/notifications",
+                params={
+                    "uri": "https://h.example.com",
+                    "bu": "b",
+                    "since": "2026-08-13T03:15:00Z",
+                },
+            )
+    assert resp.status_code == 200
+    assert resp.json() == {"has_notification": False}
+    assert has_notification.await_args.args[2] == datetime(2026, 8, 13, 3, 15, tzinfo=UTC)
 
 
 def test_storing_a_token_targets_only_the_tenants_own_origin():
