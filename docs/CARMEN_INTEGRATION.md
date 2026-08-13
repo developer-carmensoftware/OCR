@@ -514,6 +514,12 @@ log line or an error message.
 
 ## 3. Part B — Webhooks (OCR → Carmen)
 
+> **In the meantime: `GET /api/v1/carmen/notifications?uri=&bu=` is live today** — same
+> auth as §2, same `user_notifications` rows the in-app bell reads, including
+> `document_posted`/`document_failed` from §3.3. It's a poll, not a push, so it's not a
+> replacement for the delivery guarantees below — just something Carmen can call right now
+> instead of waiting on §3.4. See `email-automation/03-api-reference.md`.
+
 ### 3.1 Envelope, signing and delivery
 
 Every event is a `POST` with the same envelope:

@@ -1,9 +1,10 @@
 # API Reference
 
 All routes live in `backend/app/routers/email_automation.py`, prefix `/api/v1/carmen`,
-OpenAPI tag `Email Automation`. Six are the Settings API Carmen calls (also documented,
-in Thai, for Carmen's own developers in [`../CARMEN_API_SPEC.md`](../CARMEN_API_SPEC.md));
-the two ingest routes are cron-only and appear in no other document.
+OpenAPI tag `Email Automation`. Seven are the Settings/notifications API Carmen calls (six
+also documented, in Thai, for Carmen's own developers in
+[`../CARMEN_API_SPEC.md`](../CARMEN_API_SPEC.md)); the two ingest routes are cron-only and
+appear in no other document.
 
 ## Endpoints
 
@@ -15,6 +16,7 @@ the two ingest routes are cron-only and appear in no other document.
 | PUT | `/api/v1/carmen/settings/token` | Caller | Store the Carmen posting credential (its own endpoint, not part of a settings edit) |
 | GET | `/api/v1/carmen/settings/token?uri=&bu=` | Caller | Credential status — never the value |
 | DELETE | `/api/v1/carmen/settings/token?uri=&bu=` | Caller | Drop our copy (does **not** revoke it on Carmen's side) |
+| GET | `/api/v1/carmen/notifications?uri=&bu=` | Caller | **Interim poll substitute** for the unbuilt webhook (`../CARMEN_INTEGRATION.md §3`) — same `user_notifications` rows as the in-app bell, including `document_posted`/`document_failed` |
 | POST | `/api/v1/carmen/email-ingest/run?limit=1..100` | `require_maintenance_auth` | Run one mailbox poll |
 | POST | `/api/v1/carmen/email-ingest/health` | `require_maintenance_auth` | Re-verify every enabled BU's stored credential |
 

@@ -40,6 +40,7 @@ from app.database import get_db
 from app.exceptions import FieldValidationError
 from app.models.identity import Tenant
 from app.models.schemas.email_automation import URI_DOC, SettingsIn, TokenIn
+from app.models.schemas.notifications import NotificationListResponse, NotificationResponse
 from app.routers.admin.deps import require_maintenance_auth
 
 # ponytail: private imports across routers. _validate_uri / _validate_token raise
@@ -49,6 +50,7 @@ from app.routers.admin.deps import require_maintenance_auth
 from app.routers.auth import _validate_token, _validate_uri
 from app.services import email_ingest_service as ingest
 from app.services import email_settings_service as es
+from app.services import notification_service
 from app.services.admin_auth_service import get_admin_jwt_secret
 from app.services.rate_limit_service import InMemoryRateLimiter
 
@@ -281,6 +283,27 @@ async def read_settings(
     tenant = await _resolve(db, caller, uri, bu)
     row = await es.get_settings(db, tenant)
     return await es.build_settings_response(db, tenant, row)
+
+
+@router.get("/notifications")
+async def read_notifications(
+    uri: str = Query(..., description=URI_DOC),
+    bu: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+    caller: Caller = Depends(_caller),
+) -> NotificationListResponse:
+    """Interim poll substitute for the unbuilt §3.2/§3.3 webhook (CARMEN_INTEGRATION.md).
+
+    Read-only — does not mark anything read, same as the in-app bell it shares
+    `user_notifications` with. Includes `document_posted`/`document_failed` events
+    from the email-ingest pipeline alongside the existing credit-order events.
+    """
+    tenant = await _resolve(db, caller, uri, bu)
+    items, unread = await notification_service.list_notifications(db, tenant.id)  # type: ignore[arg-type]
+    return NotificationListResponse(
+        items=[NotificationResponse.model_validate(i) for i in items],
+        unread_count=unread,
+    )
 
 
 @router.put("/settings")

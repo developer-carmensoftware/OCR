@@ -398,6 +398,51 @@ def test_get_settings_without_a_uri_is_a_422():
     assert resp.status_code == 422
 
 
+# ── Notifications — interim poll substitute for the unbuilt webhook ───────────
+
+
+def test_get_notifications_401_without_authorization_header():
+    with make_test_client(AsyncMock()) as client:
+        resp = client.get(
+            f"{BASE}/notifications", params={"uri": "https://h.example.com", "bu": "b"}
+        )
+    assert resp.status_code == 401
+
+
+def test_get_notifications_reaches_handler_for_both_auth_styles():
+    from app.main import app
+    from app.services import email_settings_service as es
+    from app.services import notification_service
+
+    app.dependency_overrides[_caller] = lambda: Caller("test-actor", None)
+    tenant = _tenant()
+    notif = SimpleNamespace(
+        id=uuid4(),
+        order_id=None,
+        type="document_posted",
+        payload={"doc_no": "INV-001"},
+        read_at=None,
+        created_at=None,
+    )
+    with (
+        patch.object(es, "resolve_tenant", new_callable=AsyncMock, return_value=tenant),
+        patch.object(
+            notification_service,
+            "list_notifications",
+            new_callable=AsyncMock,
+            return_value=([notif], 1),
+        ),
+    ):
+        with make_test_client(AsyncMock()) as client:
+            resp = client.get(
+                f"{BASE}/notifications", params={"uri": "https://h.example.com", "bu": "b"}
+            )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["unread_count"] == 1
+    assert body["items"][0]["type"] == "document_posted"
+
+
 def test_storing_a_token_targets_only_the_tenants_own_origin():
     """The credential-bearing path, end to end: whatever origin the body claims, the
     one handed to `set_token` — and therefore stored and later posted with — is the
