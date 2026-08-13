@@ -19,7 +19,10 @@ One host is always one corporate group, so that is exactly the ownership boundar
 see `_tenant_host` for why that is all it does.
 
 The `Bearer <admin jwt>` path is ours — operators fixing a customer's settings without
-asking them for a token.
+asking them for a token. It has no Carmen to prove anything against, so its boundary is
+the ordinary admin one instead: `configs:write` (checked in `_caller`) and `tenant_scope`
+(checked in `_resolve`, the one place a request becomes a concrete tenant). A signed
+token is authentication; on its own it authorises nothing here, same as under `/admin`.
 """
 
 from __future__ import annotations
@@ -35,13 +38,13 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.admin_session import decode_admin_jwt
+from app.auth.admin_session import AdminPrincipal
 from app.auth.session import extract_user_id_from_token
 from app.database import get_db
 from app.exceptions import FieldValidationError
 from app.models.identity import Tenant
 from app.models.schemas.email_automation import URI_DOC, SettingsIn, TokenIn
-from app.routers.admin.deps import require_maintenance_auth
+from app.routers.admin.deps import decode_admin_principal, require_maintenance_auth
 
 # ponytail: private imports across routers. _validate_uri / _validate_token raise
 # HTTPException and the login path depends on those exact codes, so extracting them
@@ -51,7 +54,6 @@ from app.routers.auth import _validate_token, _validate_uri
 from app.services import email_ingest_service as ingest
 from app.services import email_settings_service as es
 from app.services import notification_service
-from app.services.admin_auth_service import get_admin_jwt_secret
 from app.services.rate_limit_service import InMemoryRateLimiter
 
 logger = logging.getLogger(__name__)
@@ -123,10 +125,24 @@ def _remember_rejection(key: str) -> None:
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 
+# The operator path's permission, on the reads as well as the writes. Deliberately
+# **not** `configs:read`: the `viewer` role holds every `*:read` permission there is
+# (20260615000002_seed_control_plane.sql), and a GET here hands back the BU's
+# `ingest_address` — which `email_settings_service._fresh_tag` documents as *being* the
+# authorization to write a document into that BU's ledger, and from there into their
+# Carmen books. Reading it is a config-administration act, not a dashboard glance.
+_ADMIN_PERM = "configs:write"
+
+
 @dataclass(frozen=True)
 class Caller:
     actor: str  # audit trail: "user:<carmen uuid>" or "admin:<name>"
     carmen_token: str | None  # None = admin JWT, our own operator path
+    # Set on, and only on, the admin path — `_resolve` needs `tenant_scope` to know
+    # which BUs this operator may touch. `carmen_token is None and admin is None` is
+    # therefore not a state `_caller` can produce, and `_resolve` refuses it rather
+    # than reading the missing scope as "unrestricted".
+    admin: AdminPrincipal | None = None
 
 
 async def _caller(
@@ -141,20 +157,22 @@ async def _caller(
     exists only here. Nothing is lost by dropping the label: a prefix proves nothing,
     and the token is proven against the customer's own Carmen in `_resolve` either way.
 
-    Identification only — the proof happens there, because which Carmen to ask is not
-    known until the payload has been read.
+    For the Carmen path this is identification only — the proof happens in `_resolve`,
+    because which Carmen to ask is not known until the payload has been read. For the
+    admin path the whole check is here and in `_resolve`'s scope test: a signed token
+    is *authentication*, and on its own it authorises nothing, exactly as everywhere
+    else under `/admin` (`require_permission`, `require_maintenance_auth`).
     """
     raw = (authorization or "").strip()
     if not raw:
         raise HTTPException(status_code=401, detail="Authorization required")
 
     if raw.startswith("Bearer "):
-        try:
-            payload = decode_admin_jwt(raw[7:].strip(), get_admin_jwt_secret())
-        except ValueError:
-            raise HTTPException(status_code=401, detail="Invalid or expired token") from None
+        admin = decode_admin_principal(raw[7:].strip())
+        if not admin.has_perm(_ADMIN_PERM):
+            raise HTTPException(status_code=403, detail=f"Permission denied: {_ADMIN_PERM}")
         return Caller(
-            actor=f"admin:{payload.get('username') or payload.get('aid')}", carmen_token=None
+            actor=f"admin:{admin.username or admin.admin_id}", carmen_token=None, admin=admin
         )
 
     # Accepted with or without the label, so a client that already sends one keeps working.
@@ -199,6 +217,21 @@ def _tenant_host(uri: str) -> str:
     return (parsed or value).lower()
 
 
+def _assert_in_scope(admin: AdminPrincipal | None, tenant: Tenant) -> None:
+    """A tenant-scoped operator may act on that tenant and no other.
+
+    `tenant_scope == ""` is global (`AdminPrincipal.is_global`) and passes. A missing
+    principal is refused rather than waved through: on the admin path `_caller` always
+    sets one, so `None` here means a `Caller` was built somewhere that never proved
+    anything — and a scope check that reads "no scope recorded" as "every tenant" is
+    the same bug this function exists to close.
+    """
+    if admin is None:
+        raise HTTPException(status_code=403, detail="Caller has no proven identity")
+    if not admin.is_global and admin.tenant_scope != str(tenant.id):
+        raise HTTPException(status_code=403, detail="Outside this admin's tenant scope")
+
+
 async def _resolve(db: AsyncSession, caller: Caller, uri: str, bu: str) -> Tenant:
     """The BU this request may act on — proven, not asserted.
 
@@ -210,9 +243,14 @@ async def _resolve(db: AsyncSession, caller: Caller, uri: str, bu: str) -> Tenan
     The caller's `uri` and the `origin` below are deliberately separate names: the
     first is a lookup key that stops at `resolve_tenant`, the second is read back off
     the tenant row and is the only thing that ever leaves this process.
+
+    The operator path proves nothing against Carmen — there is no customer token to
+    prove — so its boundary is `tenant_scope` instead, checked here because this is
+    the one place a request's `uri`/`bu` becomes a concrete tenant.
     """
     tenant = await es.resolve_tenant(db, _tenant_host(uri), bu)
     if caller.carmen_token is None:
+        _assert_in_scope(caller.admin, tenant)
         return tenant
 
     origin = await _safe_carmen_uri(tenant)

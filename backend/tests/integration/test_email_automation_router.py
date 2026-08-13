@@ -16,6 +16,7 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
+from app.auth.admin_session import AdminPrincipal
 from app.exceptions import RequestRateLimitExceeded
 from app.routers.email_automation import Caller, _caller, _resolve
 from tests.integration.conftest import make_test_client
@@ -34,6 +35,24 @@ def _request(ip: str = "203.0.113.9"):
 
 def _tenant(host="hotelgroup.carmenwork.com", bu="hq"):
     return SimpleNamespace(id=uuid4(), host=host, bu_code=bu)
+
+
+def _admin(perms=("configs:write",), tenant_scope=""):
+    """An operator principal. Defaults to what the real `admin` role carries: the
+    permission this API requires, and no tenant scope (i.e. global)."""
+    return AdminPrincipal(
+        admin_id="a-1",
+        username="alice",
+        roles=["admin"],
+        perms=set(perms),
+        tenant_scope=tenant_scope,
+    )
+
+
+def _admin_caller(**kwargs):
+    """What `_caller` returns for a permitted operator — the shape route tests need,
+    since `_resolve` now refuses a `Caller` that carries no proven identity at all."""
+    return Caller("admin:alice", None, _admin(**kwargs))
 
 
 # ── _caller ────────────────────────────────────────────────────────────────────
@@ -191,21 +210,47 @@ async def test_a_valid_token_is_never_cached():
 
 @pytest.mark.asyncio
 async def test_caller_valid_admin_bearer_returns_actor():
-    with patch(
-        "app.routers.email_automation.decode_admin_jwt",
-        return_value={"aid": "a-1", "username": "alice"},
-    ):
+    with patch("app.routers.email_automation.decode_admin_principal", return_value=_admin()):
         caller = await _caller(_request(), authorization="Bearer sometoken")
     assert caller.actor == "admin:alice"
     assert caller.carmen_token is None  # operator path — nothing to prove against Carmen
+    assert caller.admin is not None  # …so `tenant_scope` has to travel with it
 
 
 @pytest.mark.asyncio
 async def test_caller_invalid_admin_bearer_is_401():
-    with patch("app.routers.email_automation.decode_admin_jwt", side_effect=ValueError("bad")):
+    with patch(
+        "app.routers.email_automation.decode_admin_principal",
+        side_effect=HTTPException(401, "Invalid or expired admin token"),
+    ):
         with pytest.raises(HTTPException) as exc:
             await _caller(_request(), authorization="Bearer garbage")
     assert exc.value.status_code == 401
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "perms",
+    [
+        (),  # a token with no permissions at all
+        ("configs:read", "tenants:read", "audit:read"),  # the seeded `viewer` role
+        ("orders:read", "orders:write"),  # `order_reviewer` — write, but not this write
+    ],
+)
+async def test_a_signed_admin_token_authorises_nothing_on_its_own(perms):
+    """Authentication is not authorisation.
+
+    A GET here returns the BU's `ingest_address`, which *is* the capability to post a
+    document into that BU's Carmen books — so `viewer`'s read-only permissions must not
+    reach it either. That is why the gate is `configs:write` and not `configs:read`.
+    """
+    with patch(
+        "app.routers.email_automation.decode_admin_principal", return_value=_admin(perms=perms)
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await _caller(_request(), authorization="Bearer sometoken")
+    assert exc.value.status_code == 403
+    assert "configs:write" in exc.value.detail
 
 
 # ── _resolve — where a Carmen token is actually proven ─────────────────────────
@@ -276,8 +321,59 @@ async def test_resolve_skips_the_probe_for_the_admin_path():
         patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=_tenant()),
         patch.object(mod, "_validate_token", validate),
     ):
-        await _resolve(AsyncMock(), Caller("admin:root", None), "h", "b")
+        await _resolve(AsyncMock(), _admin_caller(), "h", "b")
     validate.assert_not_awaited()
+
+
+# ── The operator path's own boundary: tenant_scope ────────────────────────────
+#
+# There is no Carmen token to prove on this path, so `tenant_scope` is the whole of
+# it. Skipping the check here would let a support admin scoped to one customer read
+# every other customer's ingest address and rewrite their posting credential.
+
+
+@pytest.mark.asyncio
+async def test_resolve_refuses_a_scoped_admin_reaching_another_tenant():
+    from app.routers import email_automation as mod
+
+    tenant = _tenant()
+    with patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=tenant):
+        with pytest.raises(HTTPException) as exc:
+            await _resolve(AsyncMock(), _admin_caller(tenant_scope=str(uuid4())), "h", "b")
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_resolve_allows_a_scoped_admin_on_its_own_tenant():
+    from app.routers import email_automation as mod
+
+    tenant = _tenant()
+    with patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=tenant):
+        got = await _resolve(AsyncMock(), _admin_caller(tenant_scope=str(tenant.id)), "h", "b")
+    assert got is tenant
+
+
+@pytest.mark.asyncio
+async def test_resolve_allows_a_global_admin_anywhere():
+    """`tenant_scope == ""` is what `AdminPrincipal.is_global` means — unchanged."""
+    from app.routers import email_automation as mod
+
+    tenant = _tenant()
+    with patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=tenant):
+        got = await _resolve(AsyncMock(), _admin_caller(), "h", "b")
+    assert got is tenant
+
+
+@pytest.mark.asyncio
+async def test_resolve_refuses_an_admin_caller_carrying_no_principal():
+    """No scope recorded must never read as "every tenant" — that is the failure mode
+    the whole fix is about, so the missing-principal case is refused, not defaulted."""
+    from app.routers import email_automation as mod
+
+    with patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=_tenant()):
+        with pytest.raises(HTTPException) as exc:
+            await _resolve(AsyncMock(), Caller("admin:root", None), "h", "b")
+    assert exc.value.status_code == 403
 
 
 # ── _tenant_host — the lookup key, and only that ───────────────────────────────
@@ -373,7 +469,7 @@ def test_get_settings_reaches_handler_for_both_auth_styles():
 
     # make_test_client() clears dependency_overrides itself on exit, so no manual
     # cleanup is needed (and would double-clear / KeyError if attempted here).
-    app.dependency_overrides[_caller] = lambda: Caller("test-actor", None)
+    app.dependency_overrides[_caller] = lambda: _admin_caller()
     body = {"status": {"ready": False, "blockers": ["not_configured"]}, "entitled": True}
     with (
         patch.object(es, "resolve_tenant", new_callable=AsyncMock, return_value=MagicMock()),
@@ -393,7 +489,7 @@ def test_get_settings_without_a_uri_is_a_422():
     downstream has to invent a "no identity" case."""
     from app.main import app
 
-    app.dependency_overrides[_caller] = lambda: Caller("test-actor", None)
+    app.dependency_overrides[_caller] = lambda: _admin_caller()
     with make_test_client(AsyncMock()) as client:
         resp = client.get(f"{BASE}/settings", params={"bu": "b"})
     assert resp.status_code == 422
@@ -416,7 +512,7 @@ def test_get_notifications_reaches_handler_and_answers_a_bare_bool():
     from app.services import email_settings_service as es
     from app.services import notification_service
 
-    app.dependency_overrides[_caller] = lambda: Caller("test-actor", None)
+    app.dependency_overrides[_caller] = lambda: _admin_caller()
     with (
         patch.object(es, "resolve_tenant", new_callable=AsyncMock, return_value=_tenant()),
         patch.object(
@@ -438,7 +534,7 @@ def test_get_notifications_passes_since_through_to_the_service():
     from app.services import email_settings_service as es
     from app.services import notification_service
 
-    app.dependency_overrides[_caller] = lambda: Caller("test-actor", None)
+    app.dependency_overrides[_caller] = lambda: _admin_caller()
     has_notification = AsyncMock(return_value=False)
     with (
         patch.object(es, "resolve_tenant", new_callable=AsyncMock, return_value=_tenant()),
@@ -466,7 +562,7 @@ def test_storing_a_token_targets_only_the_tenants_own_origin():
     from app.routers import email_automation as mod
     from app.services import email_settings_service as es
 
-    app.dependency_overrides[_caller] = lambda: Caller("test-actor", None)
+    app.dependency_overrides[_caller] = lambda: _admin_caller()
     tenant = _tenant()
     set_token = AsyncMock(return_value=SimpleNamespace(carmen_token_fp="abc12345"))
     with (
@@ -499,7 +595,7 @@ def test_bank_codes_reaches_handler_and_returns_the_service_list():
     from app.main import app
     from app.services import email_settings_service as es
 
-    app.dependency_overrides[_caller] = lambda: Caller("test-actor", None)
+    app.dependency_overrides[_caller] = lambda: _admin_caller()
     banks = [{"code": "BBL", "name": "Bangkok Bank"}, {"code": "KTC", "name": "Krungthai Card"}]
     with patch.object(es, "list_bank_codes", new_callable=AsyncMock, return_value=banks):
         with make_test_client(AsyncMock()) as client:
