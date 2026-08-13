@@ -514,11 +514,13 @@ log line or an error message.
 
 ## 3. Part B — Webhooks (OCR → Carmen)
 
-> **In the meantime: `GET /api/v1/carmen/notifications?uri=&bu=` is live today** — same
-> auth as §2, same `user_notifications` rows the in-app bell reads, including
-> `document_posted`/`document_failed` from §3.3. It's a poll, not a push, so it's not a
-> replacement for the delivery guarantees below — just something Carmen can call right now
-> instead of waiting on §3.4. See `email-automation/03-api-reference.md`.
+> **In the meantime, §3.2's badge is available as a poll today:**
+> `GET /api/v1/carmen/notifications?uri=&bu=&since=` → `{"has_new": true}`. Same auth as
+> §2. It answers only the question the badge asks — which is all §3.2's payload carries
+> anyway — so it is not a replacement for the delivery guarantees below, or for the
+> per-document detail in §3.3. **Pass `since`**: without it "new" means unread, and unread
+> is only ever cleared by someone opening our own app, which an unattended BU never does.
+> See `email-automation/03-api-reference.md`.
 
 ### 3.1 Envelope, signing and delivery
 

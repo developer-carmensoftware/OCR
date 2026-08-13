@@ -53,6 +53,28 @@ async def list_notifications(
     return items, unread
 
 
+async def has_new(
+    db: AsyncSession,
+    tenant_id: _uuid.UUID,
+    since: datetime | None = None,
+) -> bool:
+    """Is there anything worth putting a badge on? EXISTS, not a count.
+
+    `since` given → anything created after it. That is the form that keeps working
+    for a BU nobody ever opens our app for: the caller owns the cursor, so the badge
+    clears when *they* decide it was seen.
+
+    `since` omitted → anything unread, which only ever clears through `mark_read`
+    (our own bell). Fine for a caller that shares that bell, permanently true for one
+    that does not.
+    """
+    q = select(UserNotification.id).where(UserNotification.tenant_id == tenant_id)
+    q = q.where(
+        UserNotification.created_at > since if since else UserNotification.read_at.is_(None)
+    )
+    return bool((await db.execute(select(q.exists()))).scalar())
+
+
 async def mark_read(
     db: AsyncSession,
     tenant_id: _uuid.UUID,

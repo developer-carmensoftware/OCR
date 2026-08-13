@@ -16,7 +16,7 @@ appear in no other document.
 | PUT | `/api/v1/carmen/settings/token` | Caller | Store the Carmen posting credential (its own endpoint, not part of a settings edit) |
 | GET | `/api/v1/carmen/settings/token?uri=&bu=` | Caller | Credential status — never the value |
 | DELETE | `/api/v1/carmen/settings/token?uri=&bu=` | Caller | Drop our copy (does **not** revoke it on Carmen's side) |
-| GET | `/api/v1/carmen/notifications?uri=&bu=` | Caller | **Interim poll substitute** for the unbuilt webhook (`../CARMEN_INTEGRATION.md §3`) — same `user_notifications` rows as the in-app bell, including `document_posted`/`document_failed` |
+| GET | `/api/v1/carmen/notifications?uri=&bu=&since=` | Caller | `{"has_new": bool}` — a badge, not a feed. **Interim poll substitute** for the unbuilt webhook (`../CARMEN_INTEGRATION.md §3.2`) |
 | POST | `/api/v1/carmen/email-ingest/run?limit=1..100` | `require_maintenance_auth` | Run one mailbox poll |
 | POST | `/api/v1/carmen/email-ingest/health` | `require_maintenance_auth` | Re-verify every enabled BU's stored credential |
 

@@ -55,7 +55,7 @@ Authorization: <token>
 | 3 | `PUT /settings/token` | เก็บ token ที่ใช้ post JV | `200` |
 | 4 | `GET /settings/token?uri=&bu=` | เช็คสถานะ token | `200` |
 | 5 | `DELETE /settings/token?uri=&bu=` | ลบสำเนา token ของเรา | `204` no body |
-| 6 | `GET /notifications?uri=&bu=` | โพล noti ของ BU นั้น — **ชั่วคราวแทน webhook** (ดู §6) | `200` |
+| 6 | `GET /notifications?uri=&bu=&since=` | มี noti ใหม่ไหม → `{"has_new": bool}` เอาไว้จุด badge — **ชั่วคราวแทน webhook** (ดู §6) | `200` |
 
 > **⚠️ เปลี่ยนจาก v4.1:** เพิ่ม endpoint #6 (`GET /notifications`) — ไม่มี breaking change กับ
 > endpoint เดิม
@@ -260,47 +260,49 @@ curl -X DELETE "https://{ocr-host}/api/v1/carmen/settings/token?uri=https%3A%2F%
 
 ---
 
-## 6 · `GET /notifications?uri=&bu=` → `200`
+## 6 · `GET /notifications?uri=&bu=&since=` → `200`
 
-**ชั่วคราวแทน webhook** — [CARMEN_INTEGRATION.md §3](CARMEN_INTEGRATION.md) (`notification.created`,
-`document.posted`/`document.failed`) ยังเป็นแค่ proposal ยังไม่มีใครสร้างจริง ระหว่างรอ endpoint
-นี้คือทางที่ใช้ได้วันนี้ — **โพล ไม่ push** ดังนั้นไม่มี delivery guarantee แบบ webhook (retry,
-signature ฯลฯ) ฝั่ง Carmen ต้องกำหนดเองว่าจะโพลถี่แค่ไหน
+**มีอะไรใหม่ไหม — แค่นั้น** ไว้จุด badge/dot บนหน้าจอ Carmen
 
 ```jsonc
-{
-  "items": [
-    {
-      "id": "a91c1234-…",
-      "order_id": null,
-      "type": "document_posted",              // หรือ "document_failed", หรือ order-lifecycle เดิม (approved/rejected/on_hold/missing_slip)
-      "payload": {
-        "document_id": "d41f5678-…",
-        "bank_code": "KTC",
-        "doc_no": "INV-2026-0001",
-        "jv_no": "JV-999"                      // มีเฉพาะ document_posted
-      },
-      "read_at": null,
-      "created_at": "2026-08-13T03:15:00Z"
-    }
-  ],
-  "unread_count": 3
-}
+{ "has_new": true }
 ```
 
-| Field | Type | หมายเหตุ |
+**ชั่วคราวแทน webhook** — [CARMEN_INTEGRATION.md §3](CARMEN_INTEGRATION.md)
+(`notification.created`) ยังเป็นแค่ proposal ยังไม่มีใครสร้างจริง ระหว่างรอ endpoint นี้คือทางที่ใช้ได้
+วันนี้ — **โพล ไม่ push** ไม่มี delivery guarantee แบบ webhook (retry, signature ฯลฯ) Carmen
+กำหนดเองว่าจะโพลถี่แค่ไหน
+
+> **ทำไมไม่คืนรายการเอกสาร** — §3.2 ของ integration contract ตั้งใจไม่ใส่ข้อความใน payload
+> อยู่แล้ว (ข้อความเปลี่ยนบ่อย + ต่างภาษา) สิ่งที่ badge ต้องรู้มีแค่ "มี/ไม่มี" · รายการเต็มเป็นงานของ
+> bell ในแอป OCR (`GET /api/v1/notifications`) ถ้าก๊อปมาไว้ที่นี่ด้วยจะกลายเป็น contract ซ้อนกัน
+> 2 ที่ที่ต้องคอย sync ให้ตรงกัน เพื่อ caller ที่แค่อยากจุดไฟดวงเดียว
+
+| Query | Type | หมายเหตุ |
 |---|---|---|
-| `items[].type` | string | `document_posted` \| `document_failed` (จาก email automation) หรือ event เดิมของระบบ order · **ไม่รู้จัก type ไหนให้ถือว่า "มีอะไรเกิดขึ้น" ไม่ใช่ error** เหมือนที่ §3.2 ของ integration contract บอกไว้ |
-| `items[].payload.reason_code` | string | มีเฉพาะ `document_failed` — ดูค่าที่เป็นไปได้ใน CARMEN_INTEGRATION.md §3.3 |
-| `unread_count` | int | นับจาก `read_at IS NULL` ของทั้ง BU — endpoint นี้**ไม่ mark ว่าอ่านแล้ว** ยิงซ้ำกี่ครั้งค่าก็ไม่ขยับเอง |
+| `uri` **required** | string | เหมือนทุก endpoint |
+| `bu` **required** | string | |
+| `since` | ISO-8601 | **ควรส่ง** — อะไรที่เกิดหลังเวลานี้นับว่าใหม่ |
+
+⚠ **`since` สำคัญกว่าที่คิด** — ถ้าไม่ส่ง คำว่า "ใหม่" จะแปลว่า "ยังไม่ถูกอ่าน" ซึ่งล้างได้ทางเดียว
+คือมีคนเปิด bell ในแอป OCR · BU ที่ทำงานอยู่ใน Carmen อย่างเดียวไม่เคยเปิดแอปเรา (ซึ่งคือเคสปกติของ
+email automation เพราะมันตั้งใจให้ไม่ต้องมีคนดู) **badge จะติดค้าง `true` ตลอดตั้งแต่เอกสารใบแรก**
+· วิธีที่ถูกคือ Carmen เก็บเวลาที่ user เปิดดูล่าสุดไว้เอง แล้วส่งมาเป็น `since` — cursor เป็นของ
+Carmen, ฝั่งเราไม่เก็บ state อะไรเลย
+
+endpoint นี้**ไม่ mark ว่าอ่านแล้ว** ยิงกี่ครั้งก็ไม่เปลี่ยนอะไรใน DB
 
 Auth และ rate limit เหมือน endpoint อื่นทุกประการ (ดู §Auth ด้านบน) — ใช้ token เดียวกับที่ใช้เปิด
 หน้า settings ได้เลย ไม่มี credential แยก
 
 ```bash
-curl "https://{ocr-host}/api/v1/carmen/notifications?uri=https%3A%2F%2Fhotelgroup.carmenwork.com&bu=hq" \
+curl "https://{ocr-host}/api/v1/carmen/notifications?uri=https%3A%2F%2Fhotelgroup.carmenwork.com&bu=hq&since=2026-08-13T03%3A15%3A00Z" \
      -H "Authorization: <carmen-token>"
 ```
+
+อยากรู้ว่า *อะไร* เกิดขึ้น (เอกสารไหน post สำเร็จ/ล้มเพราะอะไร) — นั่นคือ `document.posted` /
+`document.failed` ใน §3.3 ของ integration contract ซึ่งยังรอ Carmen ยืนยันว่าต้องการ แล้วค่อยทำ
+เป็น webhook จริง
 
 ---
 
