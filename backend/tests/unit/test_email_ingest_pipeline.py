@@ -1047,6 +1047,90 @@ def test_a_forward_as_attachment_still_yields_the_inner_pdf():
     assert found[0][1] == b"%PDF-1.4 inner"
 
 
+# ── Zip: the shape banks actually deliver ─────────────────────────────────────
+
+
+def _zip(entries, **kwargs):
+    """A zip archive in memory. `entries` is [(name, payload)]."""
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", **kwargs) as z:
+        for name, payload in entries:
+            z.writestr(name, payload)
+    return buf.getvalue()
+
+
+def test_a_bank_zip_is_expanded_into_the_documents_inside_it():
+    """Measured against a real delivery: one `.zip` holding the e-tax invoice PDF, a
+    summary PDF and a CSV. The inner names are what the BU's `filename_patterns` see,
+    so the customer decides which of them is worth a credit — same as a direct
+    attachment. Before this, the whole mail counted as "no attachment" and vanished
+    with no ledger row at all."""
+    blob = _zip(
+        [
+            ("E-TAX_INVOICE_CARD_451005282039001.PDF", b"%PDF-1.4 invoice"),
+            ("TAX_SUMMARY_BY_TAX_ID_CSV_0835553001610.csv", b"\xef\xbb\xbfM,1"),
+            ("KB1P554V2_SUM_451005282039001.pdf", b"%PDF-1.4 summary"),
+        ]
+    )
+    found = ingest._attachments(_mime([("451005282039001_Card_20260721.zip", blob)]))
+    assert [f for f, _ in found] == [
+        "E-TAX_INVOICE_CARD_451005282039001.PDF",
+        "KB1P554V2_SUM_451005282039001.pdf",
+    ]
+    assert found[0][1] == b"%PDF-1.4 invoice"
+
+
+def test_zip_entries_keep_only_their_filename():
+    """The rules match a filename, not a path — and a zip entry carries the path it was
+    archived under."""
+    blob = _zip([("2026/07/statement.pdf", b"%PDF-1.4")])
+    assert [f for f, _ in ingest._attachments(_mime([("mail.zip", blob)]))] == ["statement.pdf"]
+
+
+def test_an_oversized_member_is_skipped_before_it_is_read():
+    """The zip-bomb guard: the declared size is checked before `read()` inflates it, and
+    against the same ceiling the mail itself is held to."""
+    big = b"%PDF-1.4" + b"\0" * (ingest.settings.max_file_size_mb * 1024 * 1024 + 1)
+    blob = _zip([("huge.pdf", big), ("small.pdf", b"%PDF-1.4 ok")])
+    assert [f for f, _ in ingest._attachments(_mime([("mail.zip", blob)]))] == ["small.pdf"]
+
+
+def test_zip_contents_count_against_the_attachment_cap():
+    blob = _zip(
+        [(f"doc{i}.pdf", b"%PDF-1.4") for i in range(ingest.MAX_ATTACHMENTS_PER_MESSAGE + 5)]
+    )
+    found = ingest._attachments(_mime([("mail.zip", blob)]))
+    assert len(found) == ingest.MAX_ATTACHMENTS_PER_MESSAGE
+
+
+def test_a_zip_we_cannot_open_is_logged_not_raised():
+    """A poll carrying real invoices must not die on one corrupt archive."""
+    assert ingest._attachments(_mime([("broken.zip", b"PK\x03\x04 not really")])) == []
+
+
+def test_an_unreadable_member_is_skipped_and_the_rest_still_arrive(monkeypatch):
+    """`RuntimeError` is what `zipfile` raises for an encrypted member, and no tenant is
+    resolved this early, so the BU's configured passwords are not available to try. One
+    bad member must not cost the other documents in the same archive."""
+    import zipfile
+
+    blob = _zip([("locked.pdf", b"%PDF-1.4 a"), ("open.pdf", b"%PDF-1.4 b")])
+    real_read = zipfile.ZipFile.read
+
+    def refuse(self, member, pwd=None):
+        name = member if isinstance(member, str) else member.filename
+        if name == "locked.pdf":
+            raise RuntimeError("File locked.pdf is encrypted, password required")
+        return real_read(self, member, pwd)
+
+    monkeypatch.setattr(zipfile.ZipFile, "read", refuse)
+    found = ingest._attachments(_mime([("mail.zip", blob)]))
+    assert [f for f, _ in found] == ["open.pdf"]
+
+
 # ── Selecting the mailbox ─────────────────────────────────────────────────────
 
 

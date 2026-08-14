@@ -47,9 +47,11 @@ from __future__ import annotations
 import asyncio
 import email
 import imaplib
+import io
 import logging
 import re
 import uuid
+import zipfile
 from datetime import UTC, datetime
 from email.header import decode_header, make_header
 from email.message import Message
@@ -171,23 +173,76 @@ def _decode(value: str | None) -> str:
         return value
 
 
+def _unzip(archive_name: str, blob: bytes, room: int) -> list[tuple[str, bytes]]:
+    """The documents inside a bank's zip, as if each had been attached on its own.
+
+    Banks deliver this way — the measured example is one `.zip` holding the e-tax
+    invoice PDF, a summary PDF and a CSV. Opening it here rather than deeper in the
+    pipeline is what keeps the rest of the feature unchanged: the BU's
+    `filename_patterns` then match the *inner* names, so the customer decides which of
+    them is a document worth a credit, exactly as they do for a direct attachment.
+
+    Only the archive is opened; a zip inside the zip is left alone (ponytail: no bank
+    has been seen doing that, and recursion is where zip bombs live).
+    """
+    max_bytes = settings.max_file_size_mb * 1024 * 1024
+    out: list[tuple[str, bytes]] = []
+    try:
+        with zipfile.ZipFile(io.BytesIO(blob)) as archive:
+            for info in archive.infolist():
+                if len(out) >= room:
+                    break
+                # Zip entries carry paths; the rules match on a filename.
+                name = info.filename.replace("\\", "/").rsplit("/", 1)[-1]
+                if info.is_dir() or not name.lower().endswith(ALLOWED_EXTENSIONS):
+                    continue
+                # Declared size, checked before reading: this is the zip-bomb guard, and
+                # it is the same ceiling the mail itself is held to.
+                if info.file_size > max_bytes:
+                    logger.warning("[email] %s in %s exceeds the size cap", name, archive_name)
+                    continue
+                try:
+                    data = archive.read(info)
+                except (RuntimeError, zipfile.BadZipFile, OSError) as exc:
+                    # Encrypted member, most likely. No tenant is resolved this early, so
+                    # the BU's configured passwords are not available here.
+                    logger.warning("[email] Could not read %s in %s: %s", name, archive_name, exc)
+                    continue
+                if data:
+                    out.append((name, data))
+    except (zipfile.BadZipFile, OSError) as exc:
+        logger.warning("[email] %s is not a readable zip: %s", archive_name, exc)
+    return out
+
+
 def _attachments(msg: Message) -> list[tuple[str, bytes]]:
     """Every allowed-extension part, capped. `walk()` recurses into a message/rfc822
-    part, so a forward-as-attachment still yields the inner PDF under its own name."""
+    part, so a forward-as-attachment still yields the inner PDF under its own name.
+
+    A `.zip` is expanded in place — see `_unzip`. It is not itself a document, so it
+    never reaches the cap as one; its contents do.
+    """
     out: list[tuple[str, bytes]] = []
     for part in msg.walk():
         if part.get_content_maintype() == "multipart":
             continue
         filename = _decode(part.get_filename())
-        if not filename or not filename.lower().endswith(ALLOWED_EXTENSIONS):
+        if not filename:
+            continue
+        is_zip = filename.lower().endswith(".zip")
+        if not is_zip and not filename.lower().endswith(ALLOWED_EXTENSIONS):
             continue
         payload = part.get_payload(decode=True)
-        if isinstance(payload, bytes) and payload:
+        if not isinstance(payload, bytes) or not payload:
+            continue
+        if is_zip:
+            out.extend(_unzip(filename, payload, MAX_ATTACHMENTS_PER_MESSAGE - len(out)))
+        else:
             out.append((filename, payload))
         if len(out) >= MAX_ATTACHMENTS_PER_MESSAGE:
             logger.warning("[email] More than %d attachments — rest ignored", len(out))
             break
-    return out
+    return out[:MAX_ATTACHMENTS_PER_MESSAGE]
 
 
 def _confirmation_body(msg: Message) -> str:
