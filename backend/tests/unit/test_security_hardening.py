@@ -195,6 +195,23 @@ class TestCORSHardening:
         for good in ("", None, r"^https://app\.example\.com$", r"^https://.+\.vercel\.app$"):
             assert is_wildcard_origin_regex(good) is False, good
 
+    def test_normalize_origin_regex_strips_paste_artifacts(self):
+        """A trailing newline compiles fine and matches nothing — the silent killer."""
+        import re
+
+        from app.config import normalize_origin_regex
+
+        clean = r"^https://([a-z0-9-]+\.)*carmenwork\.com$"
+        for raw in (
+            clean,
+            clean + "\n",
+            "  " + clean + "  ",
+            f'"{clean}"',
+            f"ALLOWED_ORIGIN_REGEX={clean}\n",
+        ):
+            assert normalize_origin_regex(raw) == clean, repr(raw)
+            assert re.compile(normalize_origin_regex(raw)).fullmatch("https://app.carmenwork.com")
+
     @contextmanager
     def _app_with_cors(self, origins: str, regex: str):
         from app.config import settings

@@ -279,13 +279,22 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Normalize CORS allowed_origin_regex to strip accidentally pasted prefix
+
+def normalize_origin_regex(raw: str) -> str:
+    """Clean a CORS origin regex pasted into a .env / hosting dashboard field.
+
+    Strips an accidentally pasted `KEY=` prefix, surrounding quotes, and — the one
+    that actually bit us — whitespace. A trailing newline compiles fine and then
+    matches NOTHING, so every origin is silently blocked with no error logged.
+    """
+    raw = raw.strip()
+    if raw.startswith("ALLOWED_ORIGIN_REGEX="):
+        raw = raw[len("ALLOWED_ORIGIN_REGEX=") :]
+    return raw.strip().strip("'\"").strip()
+
+
 if settings.allowed_origin_regex:
-    if settings.allowed_origin_regex.startswith("ALLOWED_ORIGIN_REGEX="):
-        settings.allowed_origin_regex = settings.allowed_origin_regex[
-            len("ALLOWED_ORIGIN_REGEX=") :
-        ]
-    settings.allowed_origin_regex = settings.allowed_origin_regex.strip("'\"")
+    settings.allowed_origin_regex = normalize_origin_regex(settings.allowed_origin_regex)
 
 # Validate regex compiles — a bad pattern crashes the entire app on first request.
 if settings.allowed_origin_regex:
