@@ -18,9 +18,22 @@ const en = {
   'nav.plans': 'Plans',
   'nav.history': 'History',
   'nav.back': 'Back',
+  'nav.tutorial': 'Tutorial',
   'nav.moreActions': 'More actions',
   'nav.themeDark': 'Dark mode',
   'nav.themeLight': 'Light mode',
+
+  // — Tutorial modal — chrome shared by every module's tour. The narration
+  //   itself lives in content/tutorials/.
+  'tutorial.title': 'How to buy a package',
+  'tutorial.stepOf': 'Step {n} / {total}',
+  'tutorial.prev': 'Back',
+  'tutorial.next': 'Next',
+  'tutorial.done': 'Done',
+  'tutorial.close': 'Close tutorial',
+  'tutorial.calm': 'Calm',
+  'tutorial.calmHint': 'Turn off the zoom between steps',
+  'tutorial.buyPackage': 'Buy a package',
 
   // — Pricing hero + top-up section —
   'pricing.title': 'Automate your accounting entries',
@@ -1200,9 +1213,21 @@ const th: Record<TKey, string> = {
   'nav.plans': 'แพ็กเกจ',
   'nav.history': 'ประวัติ',
   'nav.back': 'กลับ',
+  'nav.tutorial': 'คู่มือการซื้อ',
   'nav.moreActions': 'ตัวเลือกเพิ่มเติม',
   'nav.themeDark': 'โหมดมืด',
   'nav.themeLight': 'โหมดสว่าง',
+
+  // — Tutorial modal —
+  'tutorial.title': 'คู่มือการซื้อแพ็กเกจ',
+  'tutorial.stepOf': 'ขั้นตอนที่ {n} / {total}',
+  'tutorial.prev': 'ย้อนกลับ',
+  'tutorial.next': 'ถัดไป',
+  'tutorial.done': 'เสร็จสิ้น',
+  'tutorial.close': 'ปิดคู่มือ',
+  'tutorial.calm': 'ลดการเคลื่อนไหว',
+  'tutorial.calmHint': 'ปิดการซูมระหว่างเปลี่ยนขั้นตอน',
+  'tutorial.buyPackage': 'ซื้อ Package',
 
   // — Pricing hero + top-up section —
   'pricing.title': 'เริ่มใช้ AI ลงบัญชีอัตโนมัติฟรี',
