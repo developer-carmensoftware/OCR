@@ -5,12 +5,13 @@ Flow:
   1. Frontend sends Carmen token + bu + carmen_uri.
   2. We validate the token against the Carmen API.
   3. Upsert Tenant (by host + bu pair) — auto-registers first-time tenants
-     without any admin intervention.
+     without any admin intervention, granting them the free-trial credits.
   4. Create OcrSession with the tenant FK.
   5. Issue a short-lived OCR JWT that embeds tenant_id so subsequent requests
      need no DB lookup for tenant resolution.
 """
 
+import asyncio
 import ipaddress
 import logging
 import uuid
@@ -34,13 +35,15 @@ from app.constants import BlockedHosts
 from app.database import async_session, get_db, provision_tenant
 from app.models.orm import OcrSession, Tenant
 from app.models.schemas import ExchangeRequest, ExchangeResponse
+from app.services.credit_service import grant_signup_credits
 from app.services.rate_limit_service import InMemoryRateLimiter
-from app.services.usage_service import upsert_tenant_quota
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
 
-_VALIDATE_TIMEOUT = 10.0
+# A liveness probe, not a real query: 3s is generous for it, and it caps how long an
+# unauthenticated caller can pin a worker waiting on a host they chose.
+_VALIDATE_TIMEOUT = 3.0
 
 # Brute-force guard on the pre-auth SSO exchange. Now that get_client_ip resolves
 # the real client (trust_proxy), this is genuinely per-client — keep it tight.
@@ -134,17 +137,21 @@ def _active_tenant_query(host: str, bu_code: str):
     )
 
 
-async def _upsert_tenant(db: AsyncSession, host: str, bu_code: str) -> Tenant:
-    """Return existing Tenant for this (host, bu_code), or create one on first encounter.
+async def _upsert_tenant(db: AsyncSession, host: str, bu_code: str) -> tuple[Tenant, bool]:
+    """Return (tenant, created) for this (host, bu_code), creating one on first encounter.
 
     The create path is race-safe: a Core INSERT ... ON CONFLICT DO NOTHING against the
     partial unique index uq_tenants_host_bu_active means two concurrent first-logins for
     the same (host, bu_code) both resolve to a single tenant row, instead of one of them
     failing the whole /exchange with an IntegrityError.
+
+    `created` is True only for the caller that actually inserted the row — the loser of
+    that race gets False. It gates the signup credit grant, so exactly one grant per
+    tenant follows from the same guarantee that gives exactly one tenant row.
     """
     tenant = (await db.execute(_active_tenant_query(host, bu_code))).scalar_one_or_none()
     if tenant:
-        return tenant
+        return tenant, False
 
     ins = (
         pg_insert(Tenant)
@@ -168,7 +175,8 @@ async def _upsert_tenant(db: AsyncSession, host: str, bu_code: str) -> Tenant:
 
     # Re-select so we return a session-managed ORM Tenant — this covers both the row we
     # just inserted and a row a concurrent transaction may have committed first.
-    return (await db.execute(_active_tenant_query(host, bu_code))).scalar_one()
+    tenant = (await db.execute(_active_tenant_query(host, bu_code))).scalar_one()
+    return tenant, created is not None
 
 
 async def _validate_token(token: str, carmen_uri: str) -> None:
@@ -203,7 +211,10 @@ async def exchange_sso_token(request: Request, body: ExchangeRequest):
     if not token or not bu:
         raise HTTPException(status_code=400, detail="token and bu are required")
 
-    carmen_uri = _validate_uri(body.uri)
+    # In a thread: _validate_uri ends in a blocking socket.getaddrinfo, and this
+    # endpoint is unauthenticated by definition — a slow DNS answer left on the event
+    # loop stalls every other request this worker is serving.
+    carmen_uri = await asyncio.to_thread(_validate_uri, body.uri)
     host = urlparse(carmen_uri).hostname or ""
 
     await _validate_token(token, carmen_uri)
@@ -219,8 +230,12 @@ async def exchange_sso_token(request: Request, body: ExchangeRequest):
         raise HTTPException(status_code=500, detail="Session creation failed")
 
     async with async_session() as db:
-        tenant = await _upsert_tenant(db, host, bu)
-        await upsert_tenant_quota(db, str(tenant.id), str(tenant.plan))
+        tenant, created = await _upsert_tenant(db, host, bu)
+        if created:
+            # Same transaction as the tenant INSERT on purpose: the free trial exists
+            # exactly as long as the tenant does, so it can neither be granted twice
+            # nor be lost by a tenant that survived a half-failed login.
+            await grant_signup_credits(db, str(tenant.id))
 
         session_id = uuid.uuid4()
         db.add(
@@ -287,22 +302,10 @@ async def revoke_session(
 
 @router.get("/usage")
 async def get_usage(_session: SessionInfo = Depends(get_current_session)):
-    """Get quota usage + top-up credit balance + active subscription for the tenant."""
+    """Get credit balance + active subscription for the tenant — the two pools
+    consume_document() charges, in the order it charges them."""
     from app.services.credit_service import get_active_subscription, get_credit_balance
-    from app.services.usage_service import get_quota_summary
 
-    summary = await get_quota_summary(_session.tenant_id)
-
-    monthly = next(
-        (
-            q
-            for q in summary.get("quotas", [])
-            if q["period"] == "lifetime" and q["metric"] == "calls"
-        ),
-        None,
-    )
-    used = int(monthly["used"]) if monthly else 0
-    limit = int(monthly["limit"]) if monthly else 0
     credit_balance = await get_credit_balance(_session.tenant_id)
 
     sub = await get_active_subscription(_session.tenant_id)
@@ -323,9 +326,6 @@ async def get_usage(_session: SessionInfo = Depends(get_current_session)):
 
     return {
         "usage": {
-            "monthly_calls": used,
-            "max_monthly_calls": limit,
-            "remaining_calls": max(0, limit - used),
             "credit_balance": credit_balance,
             "subscription": subscription,
         }

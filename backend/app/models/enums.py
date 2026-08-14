@@ -40,20 +40,6 @@ class PromptStatus(str, Enum):
     ARCHIVED = "archived"
 
 
-class QuotaPeriod(str, Enum):
-    DAILY = "daily"
-    MONTHLY = "monthly"  # kept (disabled) — monthly reset rows still in DB
-    YEARLY = "yearly"
-    LIFETIME = "lifetime"  # free trial, never resets
-
-
-class QuotaMetric(str, Enum):
-    CALLS = "calls"
-    TOKENS = "tokens"
-    COST_USD = "cost_usd"
-    DOCUMENTS = "documents"
-
-
 class FieldName(str, Enum):
     date_processed = "date_processed"
     bank_name = "bank_name"
@@ -81,6 +67,10 @@ class CreditLedgerReason(str, Enum):
     CONSUMPTION = "consumption"
     ADMIN_ADJUST = "admin_adjust"
     REFUND = "refund"
+    # The one-time new-tenant free-trial grant. Kept apart from TOPUP so "money
+    # received" stays answerable from the ledger now that free and purchased
+    # credits share one balance.
+    SIGNUP_GRANT = "signup_grant"
 
 
 class CreditOrderStatus(str, Enum):

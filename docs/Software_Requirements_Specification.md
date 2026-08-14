@@ -173,10 +173,10 @@ sequenceDiagram
     participant Client as llm/client
     participant LLM as OpenRouter (Vision LLM)
 
-    User->>Router: POST /api/v1/credit-card/extract (files[], bank_code, selected_pages?, pdf_password?)
+    User->>Router: POST /api/v1/credit-card/extract (files[], bank_code, pdf_password?)
     activate Router
 
-    Note over Router: validate files + consume_document()<br/>(quota/credit) ก่อนเรียก LLM
+    Note over Router: validate files + consume_document(increment=จำนวนไฟล์)<br/>ก่อนเรียก LLM
     Router->>CorrSvc: get_correction_hints(bank_code, db)
     CorrSvc->>DB: COUNT credit_cards submitted (bank, 90d)
     CorrSvc->>DB: COUNT corrections per field (bank, 90d)
@@ -356,10 +356,11 @@ sequenceDiagram
 | :--- | :--- | :--- | :--- |
 | `files` | Binary[] (multipart) | Yes | ไฟล์ภาพหรือ PDF หนึ่งไฟล์ขึ้นไป (max 5MB ต่อไฟล์) |
 | `bank_code` | String (query) | No | รหัสธนาคาร: `BBL` `KBANK` `SCB` `BAY` `KTC` `GHL` `PAYPAL` `SIAMPAY` (ไม่ระบุ = generic prompt) |
-| `selected_pages` | String (form) | No | JSON array ของ 0-based page indices สำหรับ PDF เช่น `"[0,1,2]"` (สูงสุด 5 หน้า) |
 | `pdf_password` | String (form) | No | รหัสผ่านสำหรับ PDF ที่เข้ารหัส |
 
-> ระบบ validate ไฟล์ + เปิด PDF ให้ได้ก่อน แล้วจึง `consume_document()` (ตัด quota/credit) — ไฟล์เสียหรือรหัสผิดจะไม่เสีย credit
+> ระบบ validate ไฟล์ + เปิด PDF ให้ได้ก่อน แล้วจึง `consume_document()` (ตัดเครดิต) — ไฟล์เสียหรือรหัสผิดจะไม่เสีย credit
+>
+> **บัตรเครดิตคิด 1 เอกสารต่อ 1 ไฟล์** (ไม่ว่าจะกี่หน้า สูงสุด 5 หน้าแรก) — ต่างจาก AP Invoice ที่คิดตามจำนวนหน้า
 
 **JSON Response** (Array — หนึ่ง object ต่อไฟล์) — `ExtractedCreditCardData`:
 
@@ -702,7 +703,7 @@ Readiness probe (ตรวจ DB connection): `GET /readyz`
 | :--- | :--- | :--- |
 | POST | `/api/v1/auth/exchange` | `{token, bu, uri}` → validate กับ Carmen → UPSERT `tenants` (host, bu) → สร้าง `ocr_sessions` → คืน OCR JWT (`tid`/`cuid`/`bu` claims) |
 | DELETE | `/api/v1/auth/session` | revoke session ปัจจุบัน (`is_active = false`) |
-| GET | `/api/v1/auth/usage` | ยอด quota/credit คงเหลือของ tenant ปัจจุบัน |
+| GET | `/api/v1/auth/usage` | ยอดโควตาแพ็กเกจ + เครดิตคงเหลือของ tenant ปัจจุบัน |
 
 > `uri` ถูกตรวจกับ `ALLOWED_CARMEN_HOSTS` allowlist (กัน SSRF) — ทุก endpoint อื่นใช้ `Authorization: Bearer <jwt>` และ `get_current_session()` validate ว่า session ยัง active
 
@@ -714,7 +715,7 @@ Readiness probe (ตรวจ DB connection): `GET /readyz`
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| POST | `/api/v1/ap-invoice/extract` | multipart `files` + `selected_pages?` + `pdf_password?` → vision LLM → post-process (`ap_invoice_postprocess`: tax-type detection, footer-discount distribution, per-line totals) → header + line items (display-only) |
+| POST | `/api/v1/ap-invoice/extract` | multipart `file` + `selected_pages?` + `pdf_password?` → vision LLM → post-process (`ap_invoice_postprocess`: tax-type detection, footer-discount distribution, per-line totals) → header + line items (display-only). **คิดเครดิต 1 เอกสารต่อ 1 หน้าที่ส่งเข้า LLM** (`billable_pages()` — เลือก 2 หน้า = 2 เอกสาร, ไม่เลือก = ทุกหน้าแต่ไม่เกิน 5); ล้มเหลวคืนเท่าที่ตัดไป |
 | POST | `/api/v1/ap-invoice/suggest` | `SuggestGLRequest` (line items + master data) → LLM แนะนำ `deptCode`/`accountCode` ต่อรายการ (pre-filter เฉพาะ expense accounts; ประวัติ vendor จาก Carmen ใช้ก่อนถาม AI) |
 
 Submit เข้า Carmen ผ่าน `POST /api/v1/carmen/invoice` (proxy) — column→field mapping ต่อ vendor เก็บใน localStorage ฝั่ง frontend
@@ -780,8 +781,7 @@ Business flow ฉบับเต็ม: [Billing_Purchase_Flow.md](./Billing_Pur
 | Admin RBAC | `admin_users`, `roles`, `permissions`, `role_permissions`, `admin_user_roles` | |
 | Modules / Bank CMS | `modules`, `tenant_modules`, `banks`, `prompt_templates` | bank = INSERT row, ไม่ใช่ enum |
 | Config | `system_configs`, `tenant_config_overrides`, `feature_flags`, `bu_accounting_configs`, `bu_accounting_mapping_entries`, `ap_vendor_column_mappings`, `ap_vendor_field_mapping_entries` | |
-| Quotas | `quotas`, `quota_usage` | `consume_quota()` atomic check-and-increment |
-| Billing | `credit_packs`, `tenant_credits`, `credit_ledger`, `credit_orders`, `billing_documents`, `tenant_subscriptions`, `ar_customer_profiles`, `document_sequences` | ดู Billing_Purchase_Flow.md |
+| Billing | `credit_packs`, `tenant_credits`, `credit_ledger`, `credit_orders`, `billing_documents`, `tenant_subscriptions`, `ar_customer_profiles`, `document_sequences` | `consume_document()` ตัดโควตาแพ็กเกจก่อน แล้วจึงเครดิต (ทดลองฟรี 30 ใบ = `signup_grant`); ดู Billing_Purchase_Flow.md |
 | Business data | `ocr_sessions`, `ocr_tasks`, `credit_cards`, `ap_invoices`, `correction_feedback`, `bug_reports` | soft delete เสมอ |
 | Observability | `llm_usage_logs`, `audit_logs`, `performance_logs`, `outbound_call_logs` | partitioned monthly (pg_partman) |
 | Analytics | `daily_usage_summary`, `daily_model_cost`, `monthly_usage_summary`, `anomaly_alerts`, `job_runs` | สร้างโดย pg_cron |

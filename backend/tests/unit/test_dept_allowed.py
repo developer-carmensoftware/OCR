@@ -2,8 +2,8 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.ap_invoice_service import _parse_default_account
 from app.services.gl_suggestion_service import _dept_allowed_map, _pair_ok, _validate_codes
+from app.utils.gl_filter import parse_default_account
 from tests.conftest import make_mock_db
 from tests.integration.conftest import make_test_client
 
@@ -11,18 +11,18 @@ from tests.integration.conftest import make_test_client
 class TestParseDefaultAccount:
     def test_stringified_json(self):
         raw = '[{"AccCode":"4010001","Description":"Room Revenue"},{"AccCode":"4010002","Description":"Extra"}]'
-        assert _parse_default_account(raw) == {"4010001", "4010002"}
+        assert parse_default_account(raw) == {"4010001", "4010002"}
 
     def test_empty_string_array_is_wildcard(self):
-        assert _parse_default_account("[]") == set()
+        assert parse_default_account("[]") == set()
 
     def test_garbage_and_none_are_wildcard(self):
-        assert _parse_default_account("not json") == set()
-        assert _parse_default_account(None) == set()
-        assert _parse_default_account(42) == set()
+        assert parse_default_account("not json") == set()
+        assert parse_default_account(None) == set()
+        assert parse_default_account(42) == set()
 
     def test_native_list_also_accepted(self):
-        assert _parse_default_account([{"AccCode": "1"}, {"nope": True}]) == {"1"}
+        assert parse_default_account([{"AccCode": "1"}, {"nope": True}]) == {"1"}
 
 
 class TestDeptAllowedMap:

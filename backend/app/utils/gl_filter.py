@@ -1,4 +1,21 @@
+import json
 from collections.abc import Iterable
+from typing import Any
+
+
+def parse_default_account(raw: Any) -> set[str]:
+    """Carmen DefaultAccount is a *stringified* JSON array of {AccCode, Description}.
+
+    Empty/absent/unparseable ⇒ empty set = no restriction (all accounts allowed).
+    """
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (ValueError, TypeError):
+            return set()
+    if not isinstance(raw, list):
+        return set()
+    return {e["AccCode"] for e in raw if isinstance(e, dict) and e.get("AccCode")}
 
 
 def score_and_pad(

@@ -37,6 +37,15 @@ def open_pdf(pdf_bytes: bytes, password: str | None = None) -> "fitz.Document":
 
     The caller owns the returned document and must close() it.
     """
+    # PyMuPDF does not validate the header when `filetype` is forced: measured
+    # 2026-08-07, `fitz.open(stream=b"GIF89a…", filetype="pdf")` returns a document
+    # reporting **one page**, and only the later render says "is no PDF". That defeats
+    # the whole point of this function — `ensure_pdf_openable` is what stands between a
+    # disguised attachment and `consume_document()`, and it was waving them through to
+    # be charged, extracted and then failed. The header check has to be ours.
+    # `%PDF` may legally sit behind a few bytes of preamble, hence the window.
+    if b"%PDF" not in pdf_bytes[:1024]:
+        raise ExtractionError("Unable to read PDF — the file may be corrupted.")
     try:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     except Exception as exc:
@@ -136,12 +145,16 @@ def render_pdf_thumbnails(
 
 async def ensure_pdf_openable(
     file_bytes: bytes, filename: str, password: str | None = None
-) -> None:
+) -> int | None:
     """For a PDF file, open it once off-thread so an encrypted/corrupt PDF raises
     PdfPasswordRequired / ExtractionError *before* the caller commits side effects
-    (e.g. consuming a document credit). No-op for non-PDF files."""
+    (e.g. consuming a document credit). No-op for non-PDF files.
+
+    Returns the page count (None for a non-PDF) — it is counted here anyway, and
+    callers that price a scan per page (AP invoice) would otherwise have to open
+    the document a second time to learn it."""
     if not filename.lower().endswith(".pdf"):
-        return
-    await asyncio.get_running_loop().run_in_executor(
+        return None
+    return await asyncio.get_running_loop().run_in_executor(
         None, functools.partial(get_pdf_page_count, file_bytes, password)
     )

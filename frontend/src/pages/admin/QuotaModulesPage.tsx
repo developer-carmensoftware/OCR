@@ -12,21 +12,16 @@ import DataTable, { type Column } from '../../components/admin/DataTable'
 import DateRangePicker from '../../components/admin/DateRangePicker'
 import MetricChart from '../../components/admin/MetricChart'
 import KPICard from '../../components/admin/KPICard'
-import CustomModal from '../../components/common/CustomModal'
 import PageHeader from '../../components/admin/ui/PageHeader'
 import Card from '../../components/admin/ui/Card'
 import Tabs from '../../components/admin/ui/Tabs'
 import Switch from '../../components/admin/ui/Switch'
-import Button from '../../components/admin/ui/Button'
 import EmptyState from '../../components/admin/ui/EmptyState'
 import {
   fetchQuotaOverview,
-  updateQuotaLimit,
-  resetQuotaUsage,
   toggleTenantModule,
   type TenantQuotaOverviewRow,
   type ModuleCatalogEntry,
-  type QuotaRow,
 } from '../../lib/api/adminClient'
 import { useT } from '../../i18n/LanguageContext'
 
@@ -40,33 +35,16 @@ function monthStartStr() {
 
 const quotaTier = (pct: number) => (pct >= 100 ? 'over' : pct >= 80 ? 'warn' : '')
 
-interface ActiveBucket {
-  bucket: 'subscription' | 'free'
-  used: number
-  limit: number
-  pct: number
+/** Documents left before the next scan is refused — both pools, since consume_document
+ *  falls through from the allowance to the balance. */
+function remainingDocs(row: TenantQuotaOverviewRow): number {
+  const sub = row.subscription
+  const left = sub ? Math.max(0, sub.allowance - sub.used) : 0
+  return left + row.credit_balance
 }
 
-/**
- * The bucket a tenant's scans currently land on. Consumption order is
- * subscription → free → top-up, so an active subscription is what actually moves;
- * the free quota only moves once the subscription lapses. Returns null only when the
- * tenant has neither (no plan and no free quota row).
- */
-function activeBucket(row: TenantQuotaOverviewRow): ActiveBucket | null {
-  if (row.subscription) {
-    const { used, allowance } = row.subscription
-    return {
-      bucket: 'subscription',
-      used,
-      limit: allowance,
-      pct: allowance > 0 ? Math.round((used / allowance) * 100) : 0,
-    }
-  }
-  const q = row.quotas[0]
-  if (!q) return null
-  return { bucket: 'free', used: q.used, limit: q.limit, pct: q.pct }
-}
+/** Below this, the tenant is about to be blocked and someone should know. */
+const NEAR_LIMIT_DOCS = 5
 
 function getTabs(t: ReturnType<typeof useT>['t']) {
   return [
@@ -85,9 +63,6 @@ export default function QuotaModulesPage() {
   const [modulesCatalog, setModulesCatalog] = useState<ModuleCatalogEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [limitDrafts, setLimitDrafts] = useState<Record<string, string>>({})
-  const [savingId, setSavingId] = useState<string | null>(null)
-  const [resetTarget, setResetTarget] = useState<{ tenantId: string; quotaId: string } | null>(null)
 
   const load = () => {
     setLoading(true)
@@ -107,38 +82,6 @@ export default function QuotaModulesPage() {
 
   const toggleRow = (id: string) => setExpandedId(prev => (prev === id ? null : id))
 
-  const handleSaveLimit = async (tenantId: string, quota: QuotaRow) => {
-    const raw = limitDrafts[quota.id] ?? String(quota.limit)
-    const value = Number(raw)
-    if (!Number.isFinite(value) || value <= 0) {
-      toast.error(t('admin.quotas.toast.limitInvalid'))
-      return
-    }
-    setSavingId(quota.id)
-    try {
-      await updateQuotaLimit(tenantId, quota.id, value)
-      toast.success(t('admin.quotas.toast.limitUpdated'))
-      load()
-    } catch (e) {
-      toast.error((e as Error).message)
-    } finally {
-      setSavingId(null)
-    }
-  }
-
-  const handleReset = async () => {
-    if (!resetTarget) return
-    const { tenantId, quotaId } = resetTarget
-    setResetTarget(null)
-    try {
-      await resetQuotaUsage(tenantId, quotaId)
-      toast.success(t('admin.quotas.toast.usageReset'))
-      load()
-    } catch (e) {
-      toast.error((e as Error).message)
-    }
-  }
-
   const handleToggleModule = async (tenantId: string, moduleId: string, enabled: boolean) => {
     try {
       await toggleTenantModule(tenantId, moduleId, enabled)
@@ -153,12 +96,9 @@ export default function QuotaModulesPage() {
 
   // ── Overview-tab stats, derived client-side from the same fetch as the table ──
   const tenantsCount = rows.length
-  // Near limit on the bucket actually being charged. Testing free quota alone missed a
-  // subscribed tenant at 95% of their plan (their free quota is frozen low, never "near").
-  const nearLimitCount = rows.filter(r => {
-    const a = activeBucket(r)
-    return a !== null && a.pct >= 80
-  }).length
+  // Documents left, not percent-of-plan: a tenant at 95% of a 100-doc plan with 500
+  // credits behind it is not near anything, and one with 3 credits and no plan is.
+  const nearLimitCount = rows.filter(r => remainingDocs(r) <= NEAR_LIMIT_DOCS).length
   // Under opt-out, "modules enabled" summed across tenants is meaningless (everyone has
   // everything). The signal that matters is how many tenants have a module turned off.
   const modulesRestrictedCount = rows.filter(r => r.modules_disabled.length > 0).length
@@ -202,39 +142,48 @@ export default function QuotaModulesPage() {
       key: 'quotas',
       label: t('admin.quotas.col.quota'),
       render: r => {
-        const active = activeBucket(r)
-        if (!active) return <span className="admin-sub-text">{t('admin.quotas.noQuota')}</span>
+        const sub = r.subscription
+        const credits = r.credit_balance
 
-        // Reserve = the buckets NOT currently being charged, shown small. A subscribed
-        // tenant's free quota is a frozen reserve; an unsubscribed tenant's reserve is
-        // just top-up credits. This is what stops the headline bar looking "stuck".
-        const reserve: string[] = []
-        const freeQuota = r.quotas[0]
-        if (active.bucket === 'subscription' && freeQuota) {
-          reserve.push(`${t('admin.quotas.bucket.free')} ${freeQuota.used}/${freeQuota.limit}`)
-        }
-        if (r.credit_balance > 0) {
-          reserve.push(t('admin.quotas.credits', { count: r.credit_balance }))
+        // No plan: credits are what every scan is charged to. A balance has no
+        // denominator, so there is no bar to draw — the number is the whole story.
+        if (!sub) {
+          if (credits === 0) {
+            return <span className="admin-sub-text">{t('admin.quotas.noQuota')}</span>
+          }
+          return (
+            <div className="tenant-quota quota-cell">
+              <span className="admin-mono" title={t('admin.quotas.quotaHint')}>
+                {t('admin.quotas.credits', { count: credits })}
+              </span>
+              <span className="admin-sub-text">{t('admin.quotas.bucket.credit')}</span>
+            </div>
+          )
         }
 
+        // With a plan, the allowance is the pool being charged and the balance behind it
+        // is the reserve — shown small so the headline bar never looks "stuck".
+        const pct = sub.allowance > 0 ? Math.round((sub.used / sub.allowance) * 100) : 0
         return (
           <div className="tenant-quota quota-cell">
             <div className="tenant-quota-label">
               <span className="admin-mono" title={t('admin.quotas.quotaHint')}>
-                {active.used} / {active.limit}
+                {sub.used} / {sub.allowance}
               </span>
-              <span className="admin-sub-text">{active.pct}%</span>
+              <span className="admin-sub-text">{pct}%</span>
             </div>
             <div className="tenant-quota-bar">
               <div
-                className={`tenant-quota-fill ${quotaTier(active.pct)}`.trim()}
-                style={{ width: `${Math.min(active.pct, 100)}%` }}
+                className={`tenant-quota-fill ${quotaTier(pct)}`.trim()}
+                style={{ width: `${Math.min(pct, 100)}%` }}
               />
             </div>
-            <span className="admin-sub-text">{t(`admin.quotas.bucket.${active.bucket}`)}</span>
-            {reserve.length > 0 && (
+            <span className="admin-sub-text">{t('admin.quotas.bucket.subscription')}</span>
+            {credits > 0 && (
               <span className="admin-sub-text">
-                {t('admin.quotas.reserve', { items: reserve.join(' · ') })}
+                {t('admin.quotas.reserve', {
+                  items: t('admin.quotas.credits', { count: credits }),
+                })}
               </span>
             )}
           </div>
@@ -305,44 +254,6 @@ export default function QuotaModulesPage() {
                   {t('admin.quotas.detail.tokens', { count: u.tokens.toLocaleString() })}
                 </span>
                 <span className="admin-mono admin-sub-text">${u.cost_usd.toFixed(4)}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="tenant-detail-section">
-        <h4>{t('admin.quotas.detail.quotas')}</h4>
-        {row.quotas.length === 0 ? (
-          <span className="admin-sub-text">{t('admin.quotas.detail.noQuotas')}</span>
-        ) : (
-          <div className="quota-manage-list">
-            {row.quotas.map(q => (
-              <div key={q.id} className="quota-manage-row">
-                <span className="admin-sub-text quota-manage-meta">
-                  {q.period} · {q.metric}
-                </span>
-                <input
-                  type="number"
-                  className="admin-form-input quota-limit-input"
-                  value={limitDrafts[q.id] ?? String(q.limit)}
-                  onChange={e => setLimitDrafts(prev => ({ ...prev, [q.id]: e.target.value }))}
-                  min={1}
-                  aria-label={t('admin.quotas.detail.quotaLimitAria', { metric: q.metric })}
-                />
-                <Button
-                  variant="outline"
-                  disabled={savingId === q.id}
-                  onClick={() => handleSaveLimit(row.id, q)}
-                >
-                  {t('admin.quotas.detail.save')}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setResetTarget({ tenantId: row.id, quotaId: q.id })}
-                >
-                  {t('admin.quotas.detail.resetUsage')}
-                </Button>
               </div>
             ))}
           </div>
@@ -468,17 +379,6 @@ export default function QuotaModulesPage() {
           )}
         </>
       )}
-
-      <CustomModal
-        show={resetTarget !== null}
-        title={t('admin.quotas.modal.resetTitle')}
-        message={t('admin.quotas.modal.resetMessage')}
-        type="warning"
-        confirmText={t('admin.quotas.modal.resetConfirm')}
-        cancelText={t('admin.quotas.modal.cancel')}
-        onConfirm={handleReset}
-        onCancel={() => setResetTarget(null)}
-      />
     </div>
   )
 }

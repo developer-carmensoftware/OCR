@@ -23,7 +23,7 @@ from app.services.task_service import create_task, mark_failed
 from app.utils.client_ip import get_client_ip
 from app.utils.date_parsing import parse_doc_date
 from app.utils.db_helpers import has_submitted_doc
-from app.utils.pages import parse_selected_pages
+from app.utils.pages import billable_pages, parse_selected_pages
 from app.utils.pdf_utils import ensure_pdf_openable
 
 logger = logging.getLogger(__name__)
@@ -70,12 +70,19 @@ async def extract_ap_invoice(
 
     # Open the PDF before consuming a credit so an encrypted/corrupt PDF fails first
     # (PdfPasswordRequired → 400 / ExtractionError → 422) without burning a credit.
-    await ensure_pdf_openable(file_bytes, filename, pdf_password)
+    # The page count comes back from the same open — it is what the scan is priced on.
+    page_count = await ensure_pdf_openable(file_bytes, filename, pdf_password)
 
     # Access gate before any charge — 403 if an admin disabled this module.
     await assert_module_enabled(Module.AP_INVOICE)
 
-    charged = await consume_document()
+    # One credit per page sent to the LLM: a 3-page selection costs 3, not 1. Bounded
+    # by MAX_PAGES_PER_CALL, the same cap the extraction itself truncates to.
+    # ponytail: the whole N is charged to a single pool (subscription OR credits) —
+    # a tenant with 3 allowance left scanning 5 pages pays 5 credits and strands the 3.
+    # Split across pools inside consume_document if that is ever reported.
+    pages = billable_pages(page_count, parsed_pages)
+    charged = await consume_document(increment=pages)
 
     # Past this point the credit is charged; refund it if anything below fails so a
     # failed document (LLM error/timeout) never costs the user.
@@ -89,6 +96,8 @@ async def extract_ap_invoice(
                 module_id=Module.AP_INVOICE,
                 original_filename=filename,
                 carmen_user_id=session.carmen_user_id,
+                # `charged` is None when consume_document failed open — nothing was taken.
+                charged_docs=pages if charged else 0,
             )
             task_id = str(task.id)
 
@@ -143,7 +152,7 @@ async def extract_ap_invoice(
 
     except Exception as exc:
         logger.error("Failed to process AP Invoice OCR task %s: %s", task_id, exc)
-        await refund_document(charged)
+        await refund_document(charged, increment=pages)
         if task_id is not None:
             async with async_session() as db:
                 await mark_failed(db, task_id, str(exc))

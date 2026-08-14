@@ -2,8 +2,6 @@ from .admin import AdminUser, AdminUserRole, APIKey, APIKeyUsage, Permission, Ro
 from .billing import (
     FeatureFlag,
     LLMModelPricing,
-    Quota,
-    QuotaUsage,
     SystemConfig,
     TenantConfigOverride,
 )
@@ -21,6 +19,7 @@ from .business import (
     OCRTask,
 )
 from .catalog import Bank, Module, PromptTemplate, TenantModule
+from .email_automation import EmailDocument, EmailIngestSettings
 from .enums import (
     AlertSeverity,
     DocumentType,
@@ -28,8 +27,6 @@ from .enums import (
     JobStatus,
     PromptStatus,
     PromptType,
-    QuotaMetric,
-    QuotaPeriod,
     TaskStatus,
     TenantPlan,
 )
@@ -71,8 +68,6 @@ __all__ = [
     "JobStatus",
     "PromptType",
     "PromptStatus",
-    "QuotaPeriod",
-    "QuotaMetric",
     "TenantPlan",
     # Identity
     "Plan",
@@ -94,8 +89,6 @@ __all__ = [
     "SystemConfig",
     "TenantConfigOverride",
     "FeatureFlag",
-    "Quota",
-    "QuotaUsage",
     "LLMModelPricing",
     # Business
     "OcrSession",
@@ -109,6 +102,9 @@ __all__ = [
     "BUAccountingMappingEntry",
     "APVendorColumnMapping",
     "APVendorFieldMappingEntry",
+    # Email Automation
+    "EmailIngestSettings",
+    "EmailDocument",
     # Observability
     "LLMUsageLog",
     "AuditLog",

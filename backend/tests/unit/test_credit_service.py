@@ -1,5 +1,5 @@
 """
-Unit tests for services/credit_service.py — free-quota-first then top-up credits.
+Unit tests for services/credit_service.py — subscription allowance first, then credits.
 Mocks DB session, transaction, and context vars.
 """
 
@@ -9,21 +9,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.exceptions import InsufficientCredits, ValidationError
-from app.models.enums import CreditLedgerReason, QuotaPeriod, SubscriptionStatus
+from app.models.enums import CreditLedgerReason, SubscriptionStatus
 from app.models.orm import CreditLedger, TenantSubscription
 from app.services import credit_service
-from app.services.quota_service import _CachedQuota
 from tests.conftest import set_context
-
-
-def _monthly_quota(limit=30):
-    return _CachedQuota(
-        id="quota-1",
-        period=QuotaPeriod.LIFETIME,
-        limit_value=float(limit),
-        soft_warn_pct=0.8,
-        is_hard=True,
-    )
 
 
 def _result(first=None, scalar=None):
@@ -47,21 +36,6 @@ def _session_ctx(mock_db):
     ctx.__aenter__.return_value = mock_db
     ctx.__aexit__.return_value = None
     return ctx
-
-
-# ── _try_consume_free ─────────────────────────────────────────────────────────
-
-
-class TestTryConsumeFree:
-    async def test_returns_true_when_row_updated(self):
-        db = AsyncMock()
-        db.execute.return_value = _result(first=(1,))  # RETURNING used
-        assert await credit_service._try_consume_free(db, _monthly_quota(), 1) is True
-
-    async def test_returns_false_when_limit_blocks_update(self):
-        db = AsyncMock()
-        db.execute.return_value = _result(first=None)  # WHERE excluded the row
-        assert await credit_service._try_consume_free(db, _monthly_quota(), 1) is False
 
 
 # ── _try_consume_subscription ─────────────────────────────────────────────────
@@ -115,90 +89,43 @@ class TestConsumeDocument:
             await credit_service.consume_document()
             sess.assert_not_called()
 
-    async def test_no_monthly_quota_is_fail_open(self):
-        set_context("t-001")
-        with (
-            patch.object(credit_service, "_get_cached_quota_rules", AsyncMock(return_value=[])),
-            patch.object(credit_service, "async_session") as sess,
-        ):
-            await credit_service.consume_document()  # must not raise
-            sess.assert_not_called()  # never opens a txn
-
-    async def test_subscription_consumed_first_skips_free_and_credits(self):
-        """Priority: an active subscription is charged before free or credits."""
+    async def test_subscription_consumed_first_skips_credits(self):
+        """Priority: the expiring allowance is charged before the permanent balance."""
         set_context("t-001")
         db = AsyncMock()
         db.begin = MagicMock(return_value=_begin_ctx())
         with (
-            patch.object(
-                credit_service,
-                "_get_cached_quota_rules",
-                AsyncMock(return_value=[_monthly_quota()]),
-            ),
             patch.object(credit_service, "async_session", return_value=_session_ctx(db)),
             patch.object(credit_service, "_try_consume_subscription", AsyncMock(return_value=True)),
-            patch.object(credit_service, "_try_consume_free", AsyncMock()) as tf,
             patch.object(credit_service, "_consume_credits", AsyncMock()) as cc,
         ):
             assert await credit_service.consume_document() == "subscription"
-            tf.assert_not_called()
             cc.assert_not_called()
 
-    async def test_free_path_does_not_touch_credits(self):
+    async def test_falls_back_to_credits_when_allowance_exhausted(self):
         set_context("t-001")
         db = AsyncMock()
         db.begin = MagicMock(return_value=_begin_ctx())
         with (
-            patch.object(
-                credit_service,
-                "_get_cached_quota_rules",
-                AsyncMock(return_value=[_monthly_quota()]),
-            ),
             patch.object(credit_service, "async_session", return_value=_session_ctx(db)),
             patch.object(
                 credit_service, "_try_consume_subscription", AsyncMock(return_value=False)
             ),
-            patch.object(credit_service, "_try_consume_free", AsyncMock(return_value=True)),
             patch.object(credit_service, "_consume_credits", AsyncMock()) as cc,
         ):
-            await credit_service.consume_document()
-            cc.assert_not_called()
-
-    async def test_falls_back_to_credits_when_free_exhausted(self):
-        set_context("t-001")
-        db = AsyncMock()
-        db.begin = MagicMock(return_value=_begin_ctx())
-        with (
-            patch.object(
-                credit_service,
-                "_get_cached_quota_rules",
-                AsyncMock(return_value=[_monthly_quota()]),
-            ),
-            patch.object(credit_service, "async_session", return_value=_session_ctx(db)),
-            patch.object(
-                credit_service, "_try_consume_subscription", AsyncMock(return_value=False)
-            ),
-            patch.object(credit_service, "_try_consume_free", AsyncMock(return_value=False)),
-            patch.object(credit_service, "_consume_credits", AsyncMock()) as cc,
-        ):
-            await credit_service.consume_document()
+            assert await credit_service.consume_document() == "credit"
             cc.assert_awaited_once()
 
     async def test_insufficient_credits_propagates(self):
+        """Both pools spent -> 402, never a silent free scan."""
         set_context("t-001")
         db = AsyncMock()
         db.begin = MagicMock(return_value=_begin_ctx())
         with (
-            patch.object(
-                credit_service,
-                "_get_cached_quota_rules",
-                AsyncMock(return_value=[_monthly_quota()]),
-            ),
             patch.object(credit_service, "async_session", return_value=_session_ctx(db)),
             patch.object(
                 credit_service, "_try_consume_subscription", AsyncMock(return_value=False)
             ),
-            patch.object(credit_service, "_try_consume_free", AsyncMock(return_value=False)),
             patch.object(
                 credit_service,
                 "_consume_credits",
@@ -208,42 +135,25 @@ class TestConsumeDocument:
             with pytest.raises(InsufficientCredits):
                 await credit_service.consume_document()
 
-    async def test_returns_free_token_on_free_path(self):
+    async def test_infra_error_is_fail_open(self):
+        """A DB hiccup must not block a scan — only a real out-of-credits does."""
         set_context("t-001")
-        db = AsyncMock()
-        db.begin = MagicMock(return_value=_begin_ctx())
-        with (
-            patch.object(
-                credit_service,
-                "_get_cached_quota_rules",
-                AsyncMock(return_value=[_monthly_quota()]),
-            ),
-            patch.object(credit_service, "async_session", return_value=_session_ctx(db)),
-            patch.object(
-                credit_service, "_try_consume_subscription", AsyncMock(return_value=False)
-            ),
-            patch.object(credit_service, "_try_consume_free", AsyncMock(return_value=True)),
-        ):
-            assert await credit_service.consume_document() == "free"
+        with patch.object(credit_service, "async_session", side_effect=RuntimeError("db down")):
+            assert await credit_service.consume_document() is None
 
-    async def test_returns_credit_token_on_credit_path(self):
+    async def test_batch_charges_every_file(self):
         set_context("t-001")
         db = AsyncMock()
         db.begin = MagicMock(return_value=_begin_ctx())
         with (
-            patch.object(
-                credit_service,
-                "_get_cached_quota_rules",
-                AsyncMock(return_value=[_monthly_quota()]),
-            ),
             patch.object(credit_service, "async_session", return_value=_session_ctx(db)),
             patch.object(
                 credit_service, "_try_consume_subscription", AsyncMock(return_value=False)
             ),
-            patch.object(credit_service, "_try_consume_free", AsyncMock(return_value=False)),
-            patch.object(credit_service, "_consume_credits", AsyncMock()),
+            patch.object(credit_service, "_consume_credits", AsyncMock()) as cc,
         ):
-            assert await credit_service.consume_document() == "credit"
+            await credit_service.consume_document(increment=30)
+            assert cc.call_args[0][2] == 30
 
 
 # ── refund_document ───────────────────────────────────────────────────────────
@@ -262,26 +172,11 @@ class TestRefundDocument:
         with (
             patch.object(credit_service, "async_session", return_value=_session_ctx(db)),
             patch.object(credit_service, "grant_credits", AsyncMock()) as gc,
-            patch.object(credit_service, "_refund_free", AsyncMock()) as rf,
         ):
             await credit_service.refund_document("credit")
             gc.assert_awaited_once()
             assert gc.call_args[0][2] == 1  # increment
             assert gc.call_args[0][3] == CreditLedgerReason.REFUND
-            rf.assert_not_called()
-
-    async def test_free_refund_restores_slot(self):
-        set_context("t-001")
-        db = AsyncMock()
-        db.begin = MagicMock(return_value=_begin_ctx())
-        with (
-            patch.object(credit_service, "async_session", return_value=_session_ctx(db)),
-            patch.object(credit_service, "grant_credits", AsyncMock()) as gc,
-            patch.object(credit_service, "_refund_free", AsyncMock()) as rf,
-        ):
-            await credit_service.refund_document("free")
-            rf.assert_awaited_once()
-            gc.assert_not_called()
 
     async def test_subscription_refund_decrements_docs_used(self):
         set_context("t-001")
@@ -291,12 +186,25 @@ class TestRefundDocument:
             patch.object(credit_service, "async_session", return_value=_session_ctx(db)),
             patch.object(credit_service, "_refund_subscription", AsyncMock()) as rs,
             patch.object(credit_service, "grant_credits", AsyncMock()) as gc,
-            patch.object(credit_service, "_refund_free", AsyncMock()) as rf,
         ):
             await credit_service.refund_document("subscription")
             rs.assert_awaited_once()
             gc.assert_not_called()
-            rf.assert_not_called()
+
+    async def test_legacy_free_charge_gives_nothing_back(self):
+        """A charge the pre-merge code made mid-deploy: the counter it moved no longer
+        gates anything, so the refund must be a no-op rather than a free credit."""
+        set_context("t-001")
+        db = AsyncMock()
+        db.begin = MagicMock(return_value=_begin_ctx())
+        with (
+            patch.object(credit_service, "async_session", return_value=_session_ctx(db)),
+            patch.object(credit_service, "grant_credits", AsyncMock()) as gc,
+            patch.object(credit_service, "_refund_subscription", AsyncMock()) as rs,
+        ):
+            await credit_service.refund_document("free")
+            gc.assert_not_called()
+            rs.assert_not_called()
 
     async def test_refund_failure_is_swallowed(self):
         set_context("t-001")
@@ -329,6 +237,23 @@ class TestGrantCredits:
         with pytest.raises(ValidationError):
             await credit_service.grant_credits(db, "t-001", -50, CreditLedgerReason.ADMIN_ADJUST)
         db.add.assert_not_called()
+
+    async def test_signup_grant_is_not_counted_as_purchased(self):
+        """Given credits are not money received: `credits_purchased` must not move,
+        or "how much have they paid us" stops being answerable from the balance."""
+        db = AsyncMock()
+        db.add = MagicMock()
+        db.execute.return_value = _result(scalar=30)
+
+        balance = await credit_service.grant_signup_credits(db, "t-new")
+
+        assert balance == credit_service.SIGNUP_GRANT_CREDITS
+        ledger = db.add.call_args[0][0]
+        assert ledger.delta == credit_service.SIGNUP_GRANT_CREDITS
+        assert ledger.reason == CreditLedgerReason.SIGNUP_GRANT
+        # The upsert leaves the purchased counter alone for a grant.
+        params = db.execute.call_args[0][0].compile().params
+        assert params["credits_purchased"] == 0
 
 
 # ── get_active_subscription — display-reset on cycle roll ────────────────────

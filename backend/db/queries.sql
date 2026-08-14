@@ -134,7 +134,8 @@ WITH t AS (
       AND NOT (host = 'dev.carmen4.com' AND bu_code = 'carmencloud')
 ),
 k AS (
-    SELECT tenant_id, COUNT(*) AS n, MAX(created_at) AS last_at
+    -- documents, not scans: an AP scan of 3 pages is 3 (see ocr_tasks.charged_docs)
+    SELECT tenant_id, SUM(charged_docs) AS n, MAX(created_at) AS last_at
     FROM ocr_tasks
     WHERE deleted_at IS NULL
     GROUP BY tenant_id
@@ -158,8 +159,8 @@ LEFT JOIN k ON k.tenant_id = t.id;
 -- 12. Usage per BU — the main table
 -- Read posted_to_carmen (not tried): extract-without-submit means they tried it
 -- and did not trust the result. active_weeks = 1 means a one-day look, never a
--- habit. failed counts against quota too — consume_quota() decrements before the
--- LLM call, so a BU with many failures never really had its full allowance.
+-- habit. failed scans are refunded (refund_document), so a BU with many failures
+-- keeps its allowance — but the wasted attempts are still in `tried`.
 WITH k AS (
     SELECT
         tenant_id,
@@ -212,31 +213,40 @@ WHERE t.deleted_at IS NULL
   AND NOT (t.host = 'dev.carmen4.com' AND t.bu_code = 'carmencloud')
 ORDER BY COALESCE(k.tried, 0) DESC, t.created_at;
 
--- 13. Who is hitting the quota ceiling
--- Nobody near 80% means the cap is not the constraint — adoption is.
+-- 13. Who is running out of documents
+-- Nobody near empty means the cap is not the constraint — adoption is.
+-- Two pools, charged in this order: the subscription's monthly allowance (resets each
+-- cycle, never rolls over), then tenant_credits.balance (never expires; the 30 free
+-- trial documents are granted into it at signup).
 SELECT
     t.name,
     t.bu_code,
-    q.period,
-    q.metric,
-    u.period_key,
-    u.used,
-    q.limit_value,
-    ROUND(100 * u.used / NULLIF(q.limit_value, 0), 0) AS pct,
-    u.last_updated_at
-FROM quota_usage u
-JOIN quotas  q ON q.id = u.quota_id AND q.deleted_at IS NULL
-JOIN tenants t ON t.id = q.tenant_id AND t.deleted_at IS NULL
-WHERE NOT (t.host = 'dev.carmen4.com' AND t.bu_code = 'carmencloud')
-ORDER BY pct DESC NULLS LAST;
+    s.plan_code,
+    s.doc_allowance,
+    s.docs_used,
+    GREATEST(COALESCE(s.doc_allowance - s.docs_used, 0), 0) AS allowance_left,
+    COALESCE(c.balance, 0)                                  AS credits,
+    GREATEST(COALESCE(s.doc_allowance - s.docs_used, 0), 0)
+        + COALESCE(c.balance, 0)                            AS docs_left,
+    s.period_end
+FROM tenants t
+LEFT JOIN tenant_subscriptions s
+       ON s.tenant_id = t.id
+      AND s.status = 'active'
+      AND s.period_start <= NOW()
+      AND s.period_end   >  NOW()
+LEFT JOIN tenant_credits c ON c.tenant_id = t.id
+WHERE t.deleted_at IS NULL
+  AND NOT (t.host = 'dev.carmen4.com' AND t.bu_code = 'carmencloud')
+ORDER BY docs_left ASC;
 
 -- 14. Weekly usage curve — is adoption growing or decaying
 -- active_bu falling week over week is curiosity, not adoption.
 SELECT
     DATE_TRUNC('week', k.created_at)::DATE AS week,
     COUNT(DISTINCT k.tenant_id)            AS active_bu,
-    COUNT(*)                               AS docs,
-    ROUND(COUNT(*)::NUMERIC / NULLIF(COUNT(DISTINCT k.tenant_id), 0), 1) AS docs_per_bu
+    SUM(k.charged_docs)                    AS docs,
+    ROUND(SUM(k.charged_docs)::NUMERIC / NULLIF(COUNT(DISTINCT k.tenant_id), 0), 1) AS docs_per_bu
 FROM ocr_tasks k
 JOIN tenants t ON t.id = k.tenant_id
 WHERE k.deleted_at IS NULL

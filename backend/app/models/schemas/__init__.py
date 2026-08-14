@@ -35,6 +35,7 @@ from app.models.schemas.credits import (
     SlipUploadResponse,
     TopupRequest,
 )
+from app.models.schemas.email_automation import RuleIn, SettingsIn, TokenIn
 from app.models.schemas.maintenance import (
     ScheduleMaintenanceRequest,
     TenantMaintenanceRequest,
@@ -59,11 +60,15 @@ from app.models.schemas.ocr import (
     OCRTaskResponse,
     OCRUploadResponse,
 )
-from app.models.schemas.quotas import ModuleToggleRequest, QuotaLimitUpdateRequest
+from app.models.schemas.quotas import ModuleToggleRequest
 
 __all__ = [
     # common
     "FieldMapping",
+    # email automation
+    "RuleIn",
+    "SettingsIn",
+    "TokenIn",
     # maintenance
     "ScheduleMaintenanceRequest",
     "TenantMaintenanceRequest",
@@ -102,7 +107,6 @@ __all__ = [
     "PostArResponse",
     "KpiSummaryResponse",
     # quotas
-    "QuotaLimitUpdateRequest",
     "ModuleToggleRequest",
     # ap_invoice
     "SuggestGLItem",

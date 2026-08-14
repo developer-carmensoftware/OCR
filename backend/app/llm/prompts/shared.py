@@ -29,6 +29,9 @@ Header fields to extract:
 - doc_no           : document number
 - merchant_name    : MERCHANT NAME as shown in the merchant section
 - merchant_id      : MERCHANT NUMBER / MERCHANT ID from the document HEADER section — numeric code only (NOT from a table column)
+- tax_ids          : array of EVERY 13-digit tax id printed anywhere on the document (เลขประจำตัวผู้เสียภาษี /
+                     TAX ID / TIN), digits only, no dashes or spaces. Include BOTH the bank's own and the
+                     merchant's. Empty array if none is printed — never invent one.
 
 Detail row fields (one object per card/payment type row):
 - transaction  : card type / payment type label per row (e.g. "Visa", "Master", "VSA-INT-P"), OR a terminal/merchant ID code if the bank uses numeric codes per row instead of card-type names — use whatever appears in the first data column of the table
@@ -40,7 +43,7 @@ Detail row fields (one object per card/payment type row):
 - total        : net amount credited to merchant per row (AMOUNT CREDIT TO MERCHANT / จำนวนเงินสุทธิ)
 
 Output structure:
-{"bank_company_name":…,"branch_no":…,"bank_name":…,"doc_name":…,"company_name":…,"doc_date":…,"doc_no":…,"merchant_name":…,"merchant_id":…,"details":[{"transaction":…,"pay_amt":…,"commis_amt":…,"tax_amt":…,"total":…}]}
+{"bank_company_name":…,"branch_no":…,"bank_name":…,"doc_name":…,"company_name":…,"doc_date":…,"doc_no":…,"merchant_name":…,"merchant_id":…,"tax_ids":[…],"details":[{"transaction":…,"pay_amt":…,"commis_amt":…,"tax_amt":…,"total":…}]}
 """
 
 _BASE_INTRO = (

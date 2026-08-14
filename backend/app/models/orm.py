@@ -6,7 +6,7 @@ New code should import directly from the domain modules:
   app.models.identity     — Plan, Tenant
   app.models.admin        — AdminUser, Role, Permission, RolePermission, AdminUserRole, APIKey, APIKeyUsage
   app.models.catalog      — Module, TenantModule, Bank, PromptTemplate
-  app.models.billing      — SystemConfig, TenantConfigOverride, FeatureFlag, Quota, QuotaUsage, LLMModelPricing,
+  app.models.billing      — SystemConfig, TenantConfigOverride, FeatureFlag, LLMModelPricing,
                             CreditPack, TenantCredit, CreditLedger, CreditOrder, BillingDocument, DocumentSequence
   app.models.business     — OcrSession, OCRTask, CreditCard, APInvoice,
                             CorrectionFeedback, BUAccountingConfig,
@@ -25,8 +25,6 @@ from .billing import (
     DocumentSequence,
     FeatureFlag,
     LLMModelPricing,
-    Quota,
-    QuotaUsage,
     SystemConfig,
     TenantConfigOverride,
     TenantCredit,
@@ -49,8 +47,6 @@ from .enums import (
     JobStatus,
     PromptStatus,
     PromptType,
-    QuotaMetric,
-    QuotaPeriod,
     TaskStatus,
 )
 from .identity import Plan, Tenant
@@ -73,8 +69,6 @@ __all__ = [
     "JobStatus",
     "PromptStatus",
     "PromptType",
-    "QuotaMetric",
-    "QuotaPeriod",
     "TaskStatus",
     # Mixins
     "TimestampMixin",
@@ -101,8 +95,6 @@ __all__ = [
     "SystemConfig",
     "TenantConfigOverride",
     "FeatureFlag",
-    "Quota",
-    "QuotaUsage",
     "LLMModelPricing",
     "CreditPack",
     "TenantCredit",

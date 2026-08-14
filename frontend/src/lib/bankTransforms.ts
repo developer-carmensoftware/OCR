@@ -79,3 +79,18 @@ export function normalizeConfigShape(
 
   return { isApi, rawBank, finalBank, finalPrefix, finalSource, companyData }
 }
+
+/** The description this bank's documents carry, with the BU-wide one as fallback.
+ *
+ * Twin of `description_for` in backend/app/services/accounting_config_service.py —
+ * the email-ingest job resolves it there, the wizard here, and the two must agree
+ * or the same statement posts under two different descriptions depending on which
+ * route it took. A blank per-bank entry is not an override. */
+export function descriptionForBank(
+  description: string | null | undefined,
+  bankDescriptions: Record<string, string> | null | undefined,
+  bankCode: string | null | undefined
+): string {
+  const own = (bankDescriptions ?? {})[bankCode || '']
+  return (own || '').trim() || description || ''
+}

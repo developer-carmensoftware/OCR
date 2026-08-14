@@ -95,6 +95,34 @@ def test_corrupt_bytes_raise_extraction_error():
         get_pdf_page_count(b"%PDF-1.4 this is not a real pdf")
 
 
+@pytest.mark.parametrize(
+    "blob",
+    [
+        b"GIF89a" + b"\0" * 400,
+        b"\x89PNG\r\n\x1a\n" + b"\0" * 400,
+        b"just some text, at length. " * 40,
+    ],
+)
+def test_bytes_with_no_pdf_header_are_refused(blob):
+    """Regression, found by the e2e run on 2026-08-07.
+
+    The case above keeps its `%PDF-1.4` prefix, so PyMuPDF recognised the format and
+    raised on the damage. Without any header it does not raise at all: forcing
+    `filetype="pdf"` on `b"GIF89a…"` returned a document reporting **one page**, and only
+    the later render said "is no PDF".
+
+    That is load-bearing. `ensure_pdf_openable` is the gate standing between an
+    attachment and `consume_document()`, and it was waving these through to be charged,
+    extracted, and only then failed — the one thing its docstring promises it prevents.
+    `validate_magic_bytes` does not cover it either: GIF *is* a supported signature, and
+    it never checks the content against the extension.
+    """
+    with pytest.raises(ExtractionError):
+        get_pdf_page_count(blob)
+    with pytest.raises(ExtractionError):
+        asyncio.run(ensure_pdf_openable(blob, "statement.pdf"))
+
+
 def test_pdf_password_required_carries_code():
     # The frontend keys off this machine-readable code to show the password prompt.
     assert PdfPasswordRequired.code == "pdf_password_required"

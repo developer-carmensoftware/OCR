@@ -1,4 +1,5 @@
 import { BANKS } from '../../constants'
+import { BANK_CODE_MAP } from '../../constants/banks'
 import type { BankDisplayName } from '../../types/api'
 
 interface Props {
@@ -9,6 +10,8 @@ interface Props {
   fileSource: string
   description: string
   setDescription: (v: string) => void
+  bankDescriptions: Record<string, string>
+  setBankDescriptions: (v: Record<string, string>) => void
 }
 
 export default function TopLevelConfigSection({
@@ -19,7 +22,17 @@ export default function TopLevelConfigSection({
   fileSource,
   description,
   setDescription,
+  bankDescriptions,
+  setBankDescriptions,
 }: Props) {
+  const bankCode = bank ? BANK_CODE_MAP[bank] : ''
+  // The box holds this bank's own wording, raw — NOT the resolved value. Feeding it
+  // the fallback makes the field impossible to clear: deleting the last character
+  // empties the per-bank entry, the fallback resolves in its place, and the old text
+  // reappears under the cursor. The fallback belongs in the placeholder, where it
+  // says what will be used without pretending to be what you typed.
+  const ownDescription = (bankCode && bankDescriptions[bankCode]) || ''
+  const fallback = description || ''
   return (
     <div className="section">
       <div className="form-grid">
@@ -108,15 +121,44 @@ export default function TopLevelConfigSection({
           </small>
         </div>
 
-        <label htmlFor="description">Description</label>
-        <input
-          id="description"
-          type="text"
-          aria-label="Description"
-          placeholder="Additional details"
-          value={description}
-          onChange={e => setDescription(e.target.value)}
-        />
+        {/* One field, scoped to the selected bank — the same way File Source is.
+            It shows the wording that is actually in effect: this bank's own if it
+            has one, else the value the BU set before descriptions were per-bank.
+            Editing writes it against the selected bank, which the line underneath
+            says out loud; the BU-wide value stays in place as the fallback for
+            banks nobody has got to yet, and needs no field of its own to do that. */}
+        <label htmlFor="description">
+          Description
+          <span
+            className="gl-help-tip"
+            title="Goes on the journal voucher and the input-tax record for this bank's documents."
+          >
+            ?
+          </span>
+        </label>
+        <div>
+          <input
+            id="description"
+            type="text"
+            aria-label="Description"
+            placeholder={(bankCode && fallback) || 'Additional details'}
+            value={bankCode ? ownDescription : fallback}
+            onChange={e =>
+              bankCode
+                ? setBankDescriptions({ ...bankDescriptions, [bankCode]: e.target.value })
+                : setDescription(e.target.value)
+            }
+          />
+          <small style={{ display: 'block', marginTop: 2, color: 'var(--text-3)' }}>
+            {!bankCode
+              ? 'Select a bank to set this per bank'
+              : ownDescription
+                ? `Applies to ${bankCode} documents`
+                : fallback
+                  ? `Empty — ${bankCode} documents use "${fallback}"`
+                  : `Applies to ${bankCode} documents`}
+          </small>
+        </div>
       </div>
     </div>
   )

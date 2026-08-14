@@ -190,6 +190,21 @@ class Settings(BaseSettings):
     # NEVER put the real value in system_configs DB table — secrets in .env only.
     internal_job_token: str = ""
 
+    # ── Email Automation (bank commission mail → auto-posted JV) ────────────────
+    # One mailbox for every tenant; the BU is identified by the +tag subaddress,
+    # so `email_ingest_address` is the bare mailbox and each BU gets ocr+<tag>@…
+    email_ingest_address: str = "ocr@carmensoftware.com"
+    imap_host: str = ""  # empty = ingestion disabled (dev default)
+    imap_port: int = 993
+    imap_user: str = ""
+    imap_password: str = ""
+    imap_folder: str = "INBOX"
+    imap_batch_size: int = 20  # messages processed per poll — each may cost LLM calls
+
+    # Carmen posting credential used when a BU has none of its own. Dev only:
+    # in production Carmen supplies a per-BU token through PUT /carmen/settings.
+    carmen_dev_token: str = ""
+
     # ── OneApp FileService (slip upload) — SECRETS, never put in system_configs ──
     # Required for slip upload/download. Leave empty to disable slip storage (dev).
     # base URL e.g. https://host/Api/v1/External/FileService
@@ -264,13 +279,22 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Normalize CORS allowed_origin_regex to strip accidentally pasted prefix
+
+def normalize_origin_regex(raw: str) -> str:
+    """Clean a CORS origin regex pasted into a .env / hosting dashboard field.
+
+    Strips an accidentally pasted `KEY=` prefix, surrounding quotes, and — the one
+    that actually bit us — whitespace. A trailing newline compiles fine and then
+    matches NOTHING, so every origin is silently blocked with no error logged.
+    """
+    raw = raw.strip()
+    if raw.startswith("ALLOWED_ORIGIN_REGEX="):
+        raw = raw[len("ALLOWED_ORIGIN_REGEX=") :]
+    return raw.strip().strip("'\"").strip()
+
+
 if settings.allowed_origin_regex:
-    if settings.allowed_origin_regex.startswith("ALLOWED_ORIGIN_REGEX="):
-        settings.allowed_origin_regex = settings.allowed_origin_regex[
-            len("ALLOWED_ORIGIN_REGEX=") :
-        ]
-    settings.allowed_origin_regex = settings.allowed_origin_regex.strip("'\"")
+    settings.allowed_origin_regex = normalize_origin_regex(settings.allowed_origin_regex)
 
 # Validate regex compiles — a bad pattern crashes the entire app on first request.
 if settings.allowed_origin_regex:

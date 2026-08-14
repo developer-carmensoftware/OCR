@@ -20,11 +20,14 @@ import { parseNum, fmt, round2 } from '../../lib/format'
 import { useT } from '../../i18n/LanguageContext'
 import { useAccountingConfig } from '../../hooks/credit-card'
 import { resolveTaxProfileForRate } from '../../lib/apTax'
+import { descriptionForBank } from '../../lib/bankTransforms'
+import type { BankCode } from '../../types/api'
 import type { DetailRow } from './DetailTable'
 
 interface Props {
   details: DetailRow[]
   headerData: Record<string, string>
+  bank?: BankCode | ''
   onBack: () => void
   onFinish: () => void
 }
@@ -32,6 +35,7 @@ interface Props {
 export default function InputTaxReconciliation({
   details,
   headerData,
+  bank,
   onBack: _onBack,
   onFinish,
 }: Props) {
@@ -77,8 +81,16 @@ export default function InputTaxReconciliation({
     return parts.length === 3 ? `${parts[1]}/${normalizeYearToCE(parts[2])}` : ''
   })()
 
-  const description = (config as Record<string, unknown>)?.description
-    ? `${(config as Record<string, unknown>).description}${headerData.DocDate ? ` - ${headerData.DocDate}` : ''}`
+  // Same resolution the JV uses (useOcrSubmission) and the same the email-ingest job
+  // uses server-side — two documents from one statement must not disagree about what
+  // they are.
+  const resolvedDescription = descriptionForBank(
+    config?.description,
+    config?.bankDescriptions,
+    bank
+  )
+  const description = resolvedDescription
+    ? `${resolvedDescription}${headerData.DocDate ? ` - ${headerData.DocDate}` : ''}`
     : ''
 
   const hasData = netAmount > 0 || taxAmount > 0

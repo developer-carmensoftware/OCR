@@ -9,6 +9,7 @@ WriterMixin.created_by: stores carmen_user_id (the Carmen ERP user who acted).
 import uuid
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
     Column,
@@ -18,12 +19,14 @@ from sqlalchemy import (
     Identity,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
     func,
     text,
 )
 from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -31,6 +34,10 @@ from app.database import Base
 
 from .enums import TaskStatus
 from .mixins import SoftDeleteMixin, TenantFKMixin, TimestampMixin, WriterMixin
+
+# JSONB on Postgres, plain JSON on SQLite (the unit-test engine) — same shim as
+# models/email_automation.py.
+_JSON = JSON().with_variant(JSONB(), "postgresql")
 
 
 class OcrSession(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin):
@@ -71,6 +78,10 @@ class OCRTask(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin):
     error_message = Column(Text, nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     carmen_user_id = Column(String(36), nullable=True, index=True)
+    # What this task cost, in documents — AP invoice charges one per page sent to the
+    # LLM, credit card one per file, 0 when consume_document failed open. COUNT(*) over
+    # this table stopped meaning "documents consumed" the day pages became the unit.
+    charged_docs = Column(SmallInteger, nullable=False, default=1, server_default=text("1"))
 
     credit_card = relationship("CreditCard", back_populates="task", uselist=False)
     ap_invoice = relationship("APInvoice", back_populates="task", uselist=False)
@@ -82,7 +93,7 @@ class OCRTask(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin):
         # legal retention), so it had no composite index matching that actual query
         # shape, only 5 unrelated single-column indexes. Partial on the near-universal
         # `deleted_at IS NULL` filter, matching this codebase's existing partial-index
-        # convention (see Quota, PromptTemplate).
+        # convention (see CreditOrder, PromptTemplate).
         Index(
             "ix_ocr_tasks_created_module_tenant_active",
             "created_at",
@@ -205,6 +216,9 @@ class BUAccountingConfig(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, W
     file_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
     branch: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # bank_code -> description, for a BU whose banks should not all read alike.
+    # `description` above stays the fallback; see accounting_config_service.description_for.
+    bank_descriptions: Mapped[dict] = mapped_column(_JSON, nullable=False, default=dict)
 
     entries = relationship(
         "BUAccountingMappingEntry",

@@ -21,7 +21,6 @@
 │  modules · tenant_modules                                           │
 │  banks · prompt_templates                                           │
 │  system_configs · tenant_config_overrides · feature_flags           │
-│  quotas · quota_usage                                               │
 │  model_pricing                                                      │
 │  credit_packs · tenant_credits · credit_ledger · credit_orders     │
 │  billing_documents · tenant_subscriptions · ar_customer_profiles   │
@@ -162,8 +161,15 @@ Parent job record for every uploaded file.
 | `status` | pending / processing / completed / failed |
 | `carmen_user_id` | Carmen user who uploaded |
 | `completed_at` | |
+| `charged_docs` | documents this task cost — AP invoice = pages sent to the LLM, credit card = 1, `0` if the charge failed open |
 
 Relationships: `→ credit_cards` (1:1), `→ ap_invoices` (1:1)
+
+`charged_docs` is the **only** per-scan record of cost: a subscription-funded scan writes no
+`credit_ledger` row at all (just `tenant_subscriptions.docs_used += N`), and a credit-funded one
+sets `ledger.ref` to the *filename* — the charge happens before `create_task`, so there is no task
+id to reference yet. Count documents with `SUM(charged_docs)`, never `COUNT(*)`; net of refunds is
+`SUM(charged_docs) FILTER (WHERE status <> 'failed')`, since a failed task is always refunded.
 
 ---
 
@@ -260,6 +266,39 @@ User-submitted bug report from the frontend. Append-only in practice; `status` s
 | `status` | Triage workflow state |
 | `carmen_user_id` | Reporter |
 
+### `email_ingest_settings`
+
+One row per BU — what Carmen wrote through `PUT /api/v1/carmen/settings`. `tenant_id` is
+the primary key (1:1 with `tenants`).
+
+| Key columns | Notes |
+|---|---|
+| `ingest_tag` | Random 8-hex, nullable, partial-unique `WHERE ingest_tag is not null`. Issued once on first successful enable, never reissued |
+| `enabled` | Feature toggle |
+| `owner_emails`, `tax_ids`, `rules` | `jsonb`; `rules[].pdf_password_enc` is Fernet-encrypted |
+| `carmen_token_enc`, `carmen_uri`, `carmen_token_fp`, `carmen_token_verified_at` | The per-BU Carmen posting credential — encrypted, never returned by any endpoint |
+| `gmail_confirm_code`/`_at`, `gmail_confirmed_at` | Gmail auto-forward handshake state |
+
+Full column reference, migration lineage and the reason the `ingest_tag` column's
+nullability changed twice: [`docs/email-automation/04-data-model.md`](email-automation/04-data-model.md#email_ingest_settings).
+
+### `email_documents`
+
+The seen-message ledger for Email Automation — one row per `(message, attachment)` ever
+looked at by the ingest job, whether or not it was ever charged.
+
+| Key columns | Notes |
+|---|---|
+| `task_id` FK → ocr_tasks | Null for anything that failed before a task was created |
+| `status` | `received` / `posted` / `failed` / `skipped` |
+| `reason_code` | Stable failure/skip identifier — see the taxonomy in the linked doc |
+| `attempts` | Always `1` today — no retry sweep exists |
+
+Unique on `(tenant_id, message_id, attachment)` — **this index is the dedupe**, checked
+before anything is opened or extracted. Full `reason_code` taxonomy (which are charged,
+which refund) and why this table exists separately from `ocr_tasks`:
+[`docs/email-automation/04-data-model.md`](email-automation/04-data-model.md#email_documents).
+
 ---
 
 ## 6. Observability Tables
@@ -348,8 +387,6 @@ Built nightly (idempotent re-aggregation of the current month). Answers long-ter
 |---|---|
 | `cost_spike` (LLM cost > 3× 7d avg) | `warn` |
 | `error_spike` (API error rate > 3× 7d avg) | `warn` |
-| `quota_warning` (≥ 80% monthly quota) | `warn` |
-| `quota_exhausted` (≥ 100% monthly quota) | `critical` |
 
 `resolved_at = NULL` = open alert. One open alert per `(tenant_id, metric)` to prevent duplicates.
 
@@ -481,35 +518,25 @@ Boolean toggles with gradual rollout.
 
 ---
 
-### Quota Engine
+### Quota Engine — retired
 
-#### `quotas`
-Multiple rules per tenant (e.g., monthly calls + monthly cost).
+`quotas` and `quota_usage` implemented the free-trial counter. Migration
+`20260813000100` moved every tenant's unused free documents into `tenant_credits`
+and soft-deleted the rules, so nothing reads or writes these tables any more; they
+are kept for one release as history and then dropped. Documents are charged by
+`credit_service.consume_document()` — see **Billing & Credits** below.
 
-| Key columns | Notes |
-|---|---|
-| `module` | NULL = all modules combined |
-| `period` | daily / monthly / yearly |
-| `metric` | calls / tokens / cost_usd / documents |
-| `limit_value` | |
-| `soft_warn_pct` | 0.80 = warn at 80% |
-| `is_hard` | true = block; false = warn only |
-
-Unique: `(tenant_id, module, period, metric)`
-
-#### `quota_usage`
-Real-time counter, incremented by `usage_service.increment_quota()`.
-
-`period_key`: `2026-05` (monthly), `2026-05-14` (daily)
+The one survivor of that module is `quota_service.assert_module_enabled()`, which
+gates a scan on `tenant_modules` and never touched quotas in the first place.
 
 ---
 
 ### Billing & Credits
 
-How consumption is funded: every tenant has a free monthly document quota (the `quotas` MONTHLY/CALLS rule). Beyond that, extraction consumes either the active **subscription** allowance or the persistent **top-up** credit balance. Purchases go through the pricing page → proforma → bank-transfer slip → admin approval flow (see [Billing_Purchase_Flow.md](./Billing_Purchase_Flow.md)). ORM: `backend/app/models/billing.py`.
+How consumption is funded: a scan is charged to the active **subscription** allowance first (monthly, use-it-or-lose-it), then to the persistent **credit balance** (never expires). *How much* a scan costs is per-module: credit card charges one document per file, AP invoice one per page sent to the LLM (`billable_pages()`, max 5) — a `credit_ledger` row of `delta = -3` for a single AP task is a 3-page invoice, not a bug. A new tenant is granted 30 credits at tenant creation (`credit_ledger.reason = 'signup_grant'`) — that grant is the free trial; there is no third pool. Purchases go through the pricing page → proforma → bank-transfer slip → admin approval flow (see [Billing_Purchase_Flow.md](./Billing_Purchase_Flow.md)). ORM: `backend/app/models/billing.py`.
 
 #### `credit_packs`
-Purchasable catalog (CMS-editable like banks). `kind` = `subscription` (monthly document tier: `sub_starter`, `sub_growth`, `sub_pro`) or `topup` (one-time non-expiring credits). The free 30 docs/month tier is NOT a pack — it lives in `quotas`.
+Purchasable catalog (CMS-editable like banks). `kind` = `subscription` (monthly document tier: `sub_starter`, `sub_growth`, `sub_pro`) or `topup` (one-time non-expiring credits). The 30 free documents a new tenant starts with are NOT a pack — they are a `signup_grant` ledger row.
 
 #### `tenant_credits` / `credit_ledger`
 `tenant_credits` is the runtime top-up balance (one row per tenant). `credit_ledger` is the append-only audit of every balance change — `delta`, `balance_after`, `reason` (`topup` / `consumption` / `admin_adjust` / `refund`), `ref` (task/order id).
@@ -602,6 +629,12 @@ All scheduled work runs **inside Postgres** via pg_cron (UTC). Two classes: pure
 | `pricing-sync` | every 8 h | pg_net → `POST /api/v1/admin/pricing/sync` |
 | `hold-expired-orders` | hourly | SQL `fn_hold_expired_orders()` — 14-day proforma window |
 | `lapse-subscriptions` | 00:12 daily | SQL `fn_lapse_expired_subscriptions()` |
+| `email-ingest` | **not scheduled yet** | pg_net → `POST /api/v1/carmen/email-ingest/run` — target `*/10 * * * *` |
+| `email-token-health` | **not scheduled yet** | pg_net → `POST /api/v1/carmen/email-ingest/health` — target `15 2 * * *` |
+
+The two email jobs are built and tested but have no `cron.schedule` call in any migration —
+in production, nothing polls the ingest mailbox until one is added. Ready-to-run SQL and the
+10-minute-not-5 reasoning: [`docs/email-automation/05-operations.md`](email-automation/05-operations.md#scheduling).
 
 ---
 
@@ -612,8 +645,8 @@ All scheduled work runs **inside Postgres** via pg_cron (UTC). Two classes: pure
 2. Create ORM models inheriting TenantFKMixin + TimestampMixin + SoftDeleteMixin
 3. Add migrations (`supabase migration new <name>` → DDL → `supabase db push`)
 4. Add module_id to OCRTask creation in the new router
-5. Add check_quota("my_module") at start of extract endpoint
-6. Add quota tracking in log_llm_usage calls
+5. Add assert_module_enabled("my_module") + consume_document() at start of extract endpoint
+6. Pass module_id="my_module" to log_llm_usage calls
 7. Extend summary_service.py aggregation if needed
 ```
 

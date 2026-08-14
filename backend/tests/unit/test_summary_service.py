@@ -103,6 +103,14 @@ async def test_aggregate_all_normalizes_uuid_tenant_id_to_string():
     assert row["tenant_id"] == tenant_str
     assert isinstance(row["tenant_id"], str)
 
+    # The daily rollup must count documents, not tasks — one AP task can be several
+    # pages, each charged as its own document. This query is raw SQL (no ORM to catch a
+    # rename), and it is the source of every historical number on #/admin/usage, so the
+    # column it sums is worth pinning.
+    doc_sql = " ".join(str(mock_db.execute.call_args_list[0].args[0]).split())
+    assert "SUM(charged_docs)" in doc_sql
+    assert "FROM ocr_tasks" in doc_sql
+
     # Verify values merged correctly across string and UUID keys
     assert row["total_documents"] == 5
     assert row["total_submissions"] == 2

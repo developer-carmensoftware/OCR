@@ -48,6 +48,21 @@ export const API = {
     inputTax: `${V1}/carmen/input-tax`,
   },
 
+  // Email Automation settings. Same /carmen prefix, but a different world: these are
+  // the endpoints *Carmen* calls, authenticated with the user's raw Carmen token
+  // rather than our session JWT. See lib/api/emailAutomation.ts.
+  emailAutomation: {
+    bankCodes: `${V1}/carmen/bank-codes`,
+    settings: `${V1}/carmen/settings`,
+    // `uri` is the full Carmen origin the login exchange already handed back — the
+    // backend takes its hostname. Nothing here sends a bare host.
+    settingsFor: (uri: string, bu: string) =>
+      `${V1}/carmen/settings?uri=${encodeURIComponent(uri)}&bu=${encodeURIComponent(bu)}`,
+    token: `${V1}/carmen/settings/token`,
+    tokenFor: (uri: string, bu: string) =>
+      `${V1}/carmen/settings/token?uri=${encodeURIComponent(uri)}&bu=${encodeURIComponent(bu)}`,
+  },
+
   config: {
     accounting: `${V1}/config/accounting`,
     apMapping: (vendorTaxId: string) =>
@@ -126,10 +141,6 @@ export const API = {
     arProfile: (id: string) => `${V1}/admin/ar-customer-profiles/${id}`,
     arProfilesSync: `${V1}/admin/ar-customer-profiles/sync`,
     quotaOverview: `${V1}/admin/quotas/overview`,
-    tenantQuota: (tenantId: string, quotaId: string) =>
-      `${V1}/admin/tenants/${tenantId}/quotas/${quotaId}`,
-    tenantQuotaReset: (tenantId: string, quotaId: string) =>
-      `${V1}/admin/tenants/${tenantId}/quotas/${quotaId}/reset`,
     tenantModule: (tenantId: string, moduleId: string) =>
       `${V1}/admin/tenants/${tenantId}/modules/${moduleId}`,
     adminUsers: `${V1}/admin/admin-users`,

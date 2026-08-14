@@ -67,6 +67,18 @@ class ValidationError(RuntimeError):
     """Request data failed business-level validation. → 400"""
 
 
+class FieldValidationError(ValidationError):
+    """One or more per-field failures → 422 with an `errors` list.
+
+    Distinct from ValidationError (a single 400 message) because Carmen's settings
+    screen renders these inline against the field that caused them.
+    """
+
+    def __init__(self, errors: list[dict]):
+        self.errors = errors
+        super().__init__("; ".join(e.get("message", "") for e in errors) or "Validation failed")
+
+
 class NotFoundError(RuntimeError):
     """Requested resource does not exist (or is soft-deleted). → 404"""
 
@@ -85,18 +97,18 @@ class RateLimitExceeded(RuntimeError):
 
 
 class InsufficientCredits(RuntimeError):
-    """Free trial quota exhausted and no top-up credits remain. → 402
+    """Subscription allowance spent (or absent) and the credit balance is empty. → 402
 
-    Distinct from RateLimitExceeded (429): this signals the tenant should buy a
-    top-up credit pack, not that they are being throttled. The free quota is a
-    one-time lifetime trial allowance, not a monthly reset.
+    Distinct from RateLimitExceeded (429): this signals the tenant should buy
+    documents, not that they are being throttled. Nothing here resets on its own —
+    the balance only moves when someone tops up.
     """
 
     def __init__(self, tenant_id: str):
         self.tenant_id = tenant_id
         super().__init__(
-            "Free trial document quota exhausted and no top-up credits remain. "
-            "Purchase a credit pack to continue."
+            "No documents left — the plan allowance is spent and the credit balance "
+            "is empty. Purchase a plan or a credit pack to continue."
         )
 
 

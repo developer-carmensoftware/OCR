@@ -72,6 +72,7 @@ const APInvoice = lazy(() => import('./pages/APInvoice'))
 const Pricing = lazy(() => import('./pages/Pricing'))
 const OrderHistory = lazy(() => import('./pages/OrderHistory'))
 const WhatsNew = lazy(() => import('./pages/WhatsNew'))
+const EmailSettings = lazy(() => import('./pages/EmailSettings'))
 
 // Admin pages
 const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'))
@@ -228,6 +229,10 @@ function Router() {
     Page = <APInvoice />
   } else if (route === 'whats-new') {
     Page = <WhatsNew />
+  } else if (route === 'email-settings') {
+    // Our copy of the screen Carmen builds — reachable by URL only, deliberately not
+    // linked from Home while it is a test surface.
+    Page = <EmailSettings />
   } else if (route === 'pricing/orders') {
     Page = <OrderHistory />
   } else if (route.startsWith('pricing')) {

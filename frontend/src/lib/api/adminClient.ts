@@ -52,6 +52,24 @@ export interface LoginResponse {
   mfa_required: boolean
 }
 
+/**
+ * Login failure that keeps its HTTP status, so the UI can tell "wrong password"
+ * (retry) from "locked out" (wait) from "no access" (call someone) instead of
+ * printing one English string for all three.
+ */
+export class AdminLoginError extends Error {
+  readonly status: number
+  /** Seconds until the 423 lockout lifts, when the server told us. */
+  readonly retryAfterSec?: number
+
+  constructor(message: string, status: number, retryAfterSec?: number) {
+    super(message)
+    this.name = 'AdminLoginError'
+    this.status = status
+    this.retryAfterSec = retryAfterSec
+  }
+}
+
 export async function adminLogin(username: string, password: string): Promise<LoginResponse> {
   const res = await adminFetch(API.admin.login, {
     method: 'POST',
@@ -60,7 +78,12 @@ export async function adminLogin(username: string, password: string): Promise<Lo
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Login failed' }))
-    throw new Error(err.detail || 'Login failed')
+    const detail: string = err.detail || 'Login failed'
+    // The lockout duration only exists inside the message ("Try again in 842s.").
+    // Parsed here rather than at the call site; if the wording ever changes we
+    // simply lose the countdown, not the error.
+    const secs = res.status === 423 ? Number(/(\d+)\s*s/.exec(detail)?.[1]) : NaN
+    throw new AdminLoginError(detail, res.status, Number.isFinite(secs) ? secs : undefined)
   }
   return res.json()
 }
@@ -203,17 +226,6 @@ export interface ExtractionFailureRow {
   model: string | null
 }
 
-export interface TenantQuota {
-  id: string
-  period: string
-  metric: string
-  used: number
-  limit: number
-  pct: number
-  is_hard: boolean
-  period_key: string
-}
-
 export interface TenantModuleRow {
   id: string
   display_name: string
@@ -241,7 +253,10 @@ export interface TenantDetail {
   created_at: string | null
   modules: TenantModuleRow[]
   modules_disabled: string[]
-  quotas: TenantQuota[]
+  /** The active paid plan, charged first. null when none is in-window. */
+  subscription: TenantSubscriptionSummary | null
+  /** Non-expiring credits, charged once the allowance is spent. */
+  credit_balance: number
   recent_sessions: TenantSessionRow[]
 }
 
@@ -559,18 +574,7 @@ export async function fetchKpi(): Promise<KpiSummary> {
   return res.json()
 }
 
-// ── Quota & Module overview ───────────────────────────────────────────────
-
-export interface QuotaRow {
-  id: string
-  period: string
-  metric: string
-  used: number
-  limit: number
-  pct: number
-  is_hard: boolean
-  period_key: string
-}
+// ── Allowance & Module overview ───────────────────────────────────────────────
 
 export interface ModuleUsageRow {
   module_id: string
@@ -605,15 +609,14 @@ export interface TenantQuotaOverviewRow {
   name: string | null
   plan: string | null
   is_active: boolean
-  quotas: QuotaRow[]
   modules_enabled: ModuleCatalogEntry[]
   /** Module ids with an explicit enabled=false row. Enforcement is opt-out: everything
    *  not in this list is available, whether or not a row exists. */
   modules_disabled: string[]
   usage_by_module: ModuleUsageRow[]
-  /** The active paid plan, charged before free quota. null when none is in-window. */
+  /** The active paid plan, charged first. null when none is in-window. */
   subscription: TenantSubscriptionSummary | null
-  /** Non-expiring top-up credits, charged after subscription and free are spent. */
+  /** Non-expiring credits, charged once the allowance is spent. */
   credit_balance: number
 }
 
@@ -627,29 +630,6 @@ export interface QuotaOverviewResponse {
 export async function fetchQuotaOverview(params: QueryParams = {}): Promise<QuotaOverviewResponse> {
   const res = await adminFetch(`${API.admin.quotaOverview}${buildQs(params)}`)
   if (!res.ok) throw new Error(await unwrapDetail(res, 'Failed to fetch quota overview'))
-  return res.json()
-}
-
-export async function updateQuotaLimit(
-  tenantId: string,
-  quotaId: string,
-  limitValue: number
-): Promise<{ id: string; limit_value: number }> {
-  const res = await adminFetch(API.admin.tenantQuota(tenantId, quotaId), {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ limit_value: limitValue }),
-  })
-  if (!res.ok) throw new Error(await unwrapDetail(res, 'Failed to update quota limit'))
-  return res.json()
-}
-
-export async function resetQuotaUsage(
-  tenantId: string,
-  quotaId: string
-): Promise<{ id: string; period_key: string; used: number }> {
-  const res = await adminFetch(API.admin.tenantQuotaReset(tenantId, quotaId), { method: 'POST' })
-  if (!res.ok) throw new Error(await unwrapDetail(res, 'Failed to reset quota usage'))
   return res.json()
 }
 

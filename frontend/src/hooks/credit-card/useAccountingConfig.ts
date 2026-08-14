@@ -8,6 +8,8 @@ export interface AccountingConfig {
   filePrefix?: string
   fileSource?: string
   description?: string
+  /** bank_code -> description; see descriptionForBank in lib/bankTransforms. */
+  bankDescriptions?: Record<string, string>
   company?: {
     name?: string
     taxId?: string
@@ -25,6 +27,7 @@ export interface AccountingConfigHook {
   filePrefix: string
   fileSource: string
   description: string
+  bankDescriptions: Record<string, string>
   company: AccountingConfig['company']
   mappings: Record<string, FieldMapping>
   bank: string
@@ -111,6 +114,7 @@ export function useAccountingConfig(): AccountingConfigHook {
           filePrefix: apiData.file_prefix || '',
           fileSource: apiData.file_source || '',
           description: apiData.description || '',
+          bankDescriptions: apiData.bank_descriptions || {},
           company: { ...lsCompany, ...(apiData.branch ? { branch: apiData.branch } : {}) },
           mappings,
           paymentAmount,
@@ -136,6 +140,7 @@ export function useAccountingConfig(): AccountingConfigHook {
     filePrefix: config?.filePrefix || '',
     fileSource: config?.fileSource || '',
     description: config?.description || '',
+    bankDescriptions: config?.bankDescriptions || {},
     company: config?.company || {},
     mappings: config?.mappings || {},
     bank: config?.bank || '',

@@ -128,6 +128,8 @@ export default function Mapping() {
           fileSource={mappingCtrl.fileSource}
           description={mappingCtrl.description}
           setDescription={mappingCtrl.setDescription}
+          bankDescriptions={mappingCtrl.bankDescriptions}
+          setBankDescriptions={mappingCtrl.setBankDescriptions}
         />
 
         <CompanyInfoSection

@@ -66,6 +66,15 @@ class Bank(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     sort_order = Column(Integer, default=0)
     icon_url = Column(String(500), nullable=True)
 
+    # The issuer's identity as it appears on the tax invoice it sends. `name` above is
+    # the short label a UI shows; these three go verbatim into the Carmen input-tax
+    # (ACTX) record, so they are the bank's registered details, not a display string.
+    # `address` is stored exactly as the bank prints it — Thai when the invoice is
+    # Thai — because it is copied, never parsed.
+    legal_name = Column(String(200), nullable=True)
+    tax_id = Column(String(20), nullable=True)
+    address = Column(String(500), nullable=True)
+
 
 class PromptTemplate(Base, TimestampMixin, SoftDeleteMixin, WriterMixin):
     """

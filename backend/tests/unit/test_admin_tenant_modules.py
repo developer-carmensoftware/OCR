@@ -67,9 +67,12 @@ def _db_for(mod_rows):
 
 
 async def _detail(mod_rows):
-    with patch(
-        "app.routers.admin.tenants.get_quota_summary",
-        AsyncMock(return_value={"quotas": []}),
+    with (
+        patch(
+            "app.routers.admin.tenants.active_subscription_map",
+            AsyncMock(return_value={}),
+        ),
+        patch("app.routers.admin.tenants.get_credit_balance", AsyncMock(return_value=0)),
     ):
         return await get_tenant_detail(str(TID), db=_db_for(mod_rows), admin=_make_admin())
 

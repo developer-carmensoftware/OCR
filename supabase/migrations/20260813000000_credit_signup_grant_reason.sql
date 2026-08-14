@@ -1,0 +1,13 @@
+-- Add 'signup_grant' to creditledgerreason.
+--
+-- The free trial (30 documents) stops being its own currency: instead of a
+-- `quotas` LIFETIME/CALLS rule with a counter, a new tenant is simply granted 30
+-- credits. `signup_grant` is what keeps that grant separable from money forever —
+-- purchased credits are a prepaid liability, granted ones are not, and only the
+-- ledger reason can tell them apart once they share a balance.
+--
+-- Postgres can't add an enum value and use it in the same transaction, so the
+-- value is added here on its own; the backfill that writes rows with it lives in
+-- the next migration (a separate transaction via the CLI). Same split as
+-- 20260701070739_add_on_hold_status.sql.
+alter type creditledgerreason add value if not exists 'signup_grant';

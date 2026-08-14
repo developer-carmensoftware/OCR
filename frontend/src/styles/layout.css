@@ -210,41 +210,62 @@
   flex-shrink: 0;
 }
 
-/* ─── MODULE THEMING ─── */
-.app-header[data-module='credit-card'] {
-  --module-accent: oklch(0.4714 0.1794 258.7);
-  --module-accent-soft: oklch(0.95 0.014 258.7);
+/* The action cluster. At ≥641px this is just an inline continuation of the row;
+   below that AppHeader turns the same node into a popover (see the compact
+   block at the end of this file) so the title keeps its width.
+
+   `:not([popover])` is load-bearing, not defensive. The browser hides a closed
+   popover through the UA rule `[popover]:not(:popover-open) { display: none }`,
+   and an author `display` beats the UA sheet — so declaring `display: flex`
+   unconditionally here leaves the panel laid out inline in the header row even
+   when closed, on top of the title. Only the non-popover (desktop) node gets a
+   display value; the open panel gets its own below. */
+.app-header-menu:not([popover]) {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
 }
 
-.app-header[data-module='ap-invoice'] {
-  --module-accent: oklch(0.5852 0.1706 253.27);
-  --module-accent-soft: oklch(0.95 0.014 253.27);
+/* `⋯` — rendered only in compact mode. Matches .notif-bell__trigger so the two
+   buttons that sit side by side on a phone read as one pair. */
+.app-header-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  color: var(--text-2);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition:
+    color 150ms var(--ease-out-premium),
+    background 150ms var(--ease-out-premium),
+    border-color 150ms var(--ease-out-premium);
 }
 
-.app-header[data-module='mapping'] {
-  --module-accent: oklch(0.56 0.1 188.43);
-  --module-accent-soft: oklch(0.95 0.018 188.43);
+.app-header-more:hover {
+  color: var(--text);
+  background: var(--muted);
+}
+
+/* Open reads as active, same language as .notif-bell__trigger[data-active] */
+.app-header-more:has(+ .app-header-menu:popover-open) {
+  color: var(--primary);
+  background: var(--primary-light);
+  border-color: var(--primary);
 }
 
 [data-theme='dark'] .app-header {
+  /* --primary-fill is the same saturated blue used for filled buttons elsewhere
+     in dark mode (base.css) — keeps the badge on-brand instead of gray. Same
+     accent for every module now — see --module-accent above for the light one. */
+  --module-accent: var(--primary-fill);
+  --module-accent-soft: oklch(0.28 0.03 253.27);
   box-shadow:
     inset 0 1px 0 oklch(1 0 0 / 0.04),
     var(--shadow-md);
-}
-
-[data-theme='dark'] .app-header[data-module='credit-card'] {
-  --module-accent: oklch(0.62 0.05 258.7);
-  --module-accent-soft: oklch(0.26 0.015 258.7);
-}
-
-[data-theme='dark'] .app-header[data-module='ap-invoice'] {
-  --module-accent: oklch(0.62 0.05 253.27);
-  --module-accent-soft: oklch(0.26 0.015 253.27);
-}
-
-[data-theme='dark'] .app-header[data-module='mapping'] {
-  --module-accent: oklch(0.62 0.04 188.43);
-  --module-accent-soft: oklch(0.24 0.012 188.43);
 }
 
 [data-theme='dark'] .app-header-back {
@@ -391,7 +412,194 @@
   }
 }
 
+/* ─── COMPACT HEADER (phones) ───
+   The full row needs ~559px of content width: back 32 + sep + logo 38 + title
+   ~130 + bell 36 + credits ~150 + language 64 + theme 36, plus gaps. A 640px
+   viewport clears that by ~25px; below it the row used to break badly, because
+   `.app-header-actions` is `flex-shrink: 0` while `.brand` is `flex: 1 1 0` —
+   so the brand collapsed to zero width and its `flex-shrink: 0` logo spilled
+   out of the collapsed box and landed under the bell.
+
+   Fix is structural, not a squeeze: the three preference/status controls move
+   into the `⋯` popover (AppHeader.tsx) and the bell stays in the row, so the
+   title keeps ~162px at 360px and every target reaches the 44px this system
+   mandates on mobile. Nothing is removed — the menu is one tap away. */
+@media (max-width: 640px) {
+  :root {
+    /* Where a popover hanging off the app header starts, and the gutter it lines
+       up with. Derived from the real compact header rather than --header-bottom:
+       the header's tallest child is the 44px control below, its vertical padding
+       is --compact-header-pad, and 0.5rem is the gap the bell panel already uses
+       (NotificationBell measures `rect.bottom + 8`). --header-bottom's trailing
+       0.75rem is a *content* gap, which left this menu sitting 4-8px lower than
+       the bell — two popovers on one header, not agreeing. */
+    --compact-header-pad: 1.25rem; /* .app-header padding-block × 2 at ≤768px */
+    --header-popover-top: calc(var(--header-top) + var(--compact-header-pad) + 44px + 0.5rem);
+    --header-gutter: 1rem; /* .app-container padding at ≤768px */
+    /* Container gutter + the header's own inline padding = the x where the
+       header's content ends, i.e. the ⋯ trigger's right edge. Aligning the menu
+       here rather than to the gutter is the difference between a dropdown that
+       hangs off its button and one that overshoots it by ~10px. */
+    --header-popover-right: calc(var(--header-gutter) + 0.75rem);
+  }
+
+  /* Decoration yields to the title: the module accent still reads from the
+     ::after line and the back button, so the logo tile is the cheapest 50px. */
+  .app-header .logo-box,
+  .app-header-sep {
+    display: none;
+  }
+
+  .app-header-back,
+  .app-header-more,
+  .app-header .notif-bell__trigger {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .app-header-actions {
+    gap: 0.375rem;
+  }
+
+  /* ── The `⋯` menu ──
+     A vertical list of rows, not a tray of pills. Panel chrome deliberately
+     matches .notif-bell__panel: these are the two popovers hanging off the same
+     header, and the bell's is the established one.
+
+     Top layer, so it escapes .app-header's overflow: hidden and its
+     backdrop-filter containing block — no portal or measuring needed. */
+  .app-header-menu:popover-open {
+    position: fixed;
+    /* Same y as the bell panel; right edge flush with the ⋯ trigger */
+    top: var(--header-popover-top);
+    right: var(--header-popover-right);
+    left: auto;
+    bottom: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    /* Adjacent rows, no gap — how a menu behaves, and how .notif-bell__list
+       stacks its items. Hover is what separates one row from the next. */
+    gap: 0;
+    /* Fixed, not max-content: the credit count changes width with its digits
+       (711 → 1,250), which would slide the trailing Buy CTA every time the
+       balance changed. A stable trailing edge is the point of a menu. */
+    width: 16rem;
+    /* Never past the opposite gutter */
+    max-width: calc(100vw - var(--header-popover-right) - var(--header-gutter));
+    margin: 0.1rem; /* resets the UA popover's `margin: auto` centering */
+    padding: 0.25rem; /* matches .notif-bell__list */
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    animation: fadeDown 0.16s var(--ease) both;
+  }
+
+  /* Each control becomes a row: pill chrome off (a bordered pill inside a
+     bordered panel is a nested card), full width, left-aligned, 44px tall.
+     The controls keep their own icons and text, so nothing has to be rebuilt —
+     only the frame around them changes. */
+  .app-header-menu:popover-open > *,
+  .app-header-menu:popover-open > * > .ui-quota {
+    width: 100%;
+  }
+
+  .app-header-menu:popover-open .lang-toggle,
+  .app-header-menu:popover-open .theme-toggle,
+  .app-header-menu:popover-open .ui-quota {
+    justify-content: flex-start;
+    gap: 0.625rem;
+    min-height: 44px;
+    /* 0.5rem + the panel's 0.25rem = a 12px text inset, the same as
+       .notif-bell__item inside .notif-bell__list */
+    padding: 0 0.5rem;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-md);
+    box-shadow: none;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  /* Hover/active is the row, matching .notif-bell__item */
+  .app-header-menu:popover-open .lang-toggle:hover,
+  .app-header-menu:popover-open .theme-toggle:hover,
+  .app-header-menu:popover-open .ui-quota:hover {
+    background: var(--muted);
+    transform: none;
+  }
+
+  /* The credit badge is two columns by construction; flatten it into one row and
+     push the CTA to the right edge like a menu row's trailing value. */
+  .app-header-menu:popover-open .ui-quota {
+    align-items: center;
+    overflow: visible;
+  }
+  .app-header-menu:popover-open .ui-quota-col {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0;
+    background: none;
+    border: none;
+  }
+  .app-header-menu:popover-open .ui-quota-col.col-cta {
+    margin-left: auto;
+    color: var(--primary);
+  }
+  /* The count is a value the user verifies — keep it mono per the data rule. */
+  .app-header-menu:popover-open .ui-quota-value {
+    font-family: var(--font-mono);
+  }
+  /* Re-show what the 480px badge rule hides: in a row there is space for the
+     word, and "Buy" reads as the action where a lone coin does not. */
+  .app-header-menu:popover-open .ui-quota-cta-text,
+  .app-header-menu:popover-open .ui-quota-cta-chevron {
+    display: inline;
+  }
+
+  .app-header-menu::backdrop {
+    background: transparent;
+  }
+}
+
+/* ─── Menu-row labels on the two toggles ───
+   Each toggle renders both a compact and a worded form; the frame picks one, so
+   the header row keeps its 36px squares while the `⋯` menu gets rows that read
+   as words. Scoped to :popover-open, not .app-header-menu — on desktop that same
+   node IS the inline header row, where a label would widen the buttons. */
+.theme-toggle__label,
+.lang-toggle__name {
+  display: none;
+}
+
+.app-header-menu:popover-open .theme-toggle__label,
+.app-header-menu:popover-open .lang-toggle__name {
+  display: inline;
+}
+
+.app-header-menu:popover-open .lang-toggle__code {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-header-menu:popover-open {
+    animation: none;
+  }
+}
+
 @media (max-width: 480px) {
+  :root {
+    /* Every input to the popover anchor shrinks in this band, so all three are
+       restated — otherwise the menu drifts 4px below the bell panel and 4px past
+       the ⋯ trigger again. */
+    --compact-header-pad: 1rem; /* .app-header padding-block × 2 below */
+    --header-gutter: 0.75rem; /* .app-container padding at ≤480px */
+    --header-popover-right: calc(var(--header-gutter) + 0.625rem);
+  }
+
   .app-header {
     gap: 0.5rem;
     border-radius: var(--radius-lg);
