@@ -7,12 +7,15 @@ interface Props {
   thumbnails: string[]
   onConfirm: (selectedPages: number[]) => void
   onCancel: () => void
+  /** Documents the tenant has left. Each selected page costs one. Undefined when the
+   *  usage lookup failed — then we never block; the backend's 402 stays the backstop. */
+  remaining?: number
 }
 
 // Mirror of backend MAX_PAGES_PER_CALL — the LLM call only accepts this many pages.
 const MAX_PAGES = 5
 
-export default function PDFPageSelector({ thumbnails, onConfirm, onCancel }: Props) {
+export default function PDFPageSelector({ thumbnails, onConfirm, onCancel, remaining }: Props) {
   const [selected, setSelected] = useState<Set<number>>(
     () => new Set(thumbnails.map((_, i) => i).slice(0, MAX_PAGES))
   )
@@ -47,6 +50,10 @@ export default function PDFPageSelector({ thumbnails, onConfirm, onCancel }: Pro
   const overLimit = sortedSelected.length > MAX_PAGES
   const effectiveSet = new Set(sortedSelected.slice(0, MAX_PAGES))
   const effectiveSelection = [...effectiveSet].sort((a, b) => a - b)
+  // Every page sent costs a document, so the scan is only affordable if the whole
+  // selection fits in what's left. Stop it here rather than letting the backend 402
+  // after the user has already committed to a document.
+  const notEnough = remaining !== undefined && effectiveSelection.length > remaining
 
   return createPortal(
     <m.div
@@ -108,12 +115,21 @@ export default function PDFPageSelector({ thumbnails, onConfirm, onCancel }: Pro
             >
               Clear all
             </button>
-            {thumbnails.length > MAX_PAGES && (
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-4)' }}>
-                Max {MAX_PAGES} pages per scan
-              </span>
-            )}
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-4)' }}>
+              {thumbnails.length > MAX_PAGES && `Max ${MAX_PAGES} pages per scan · `}
+              Each page uses 1 document
+            </span>
           </div>
+
+          {notEnough && (
+            <div className="pdf-selector-alert">
+              <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+              <span>
+                Not enough documents — this scan needs {effectiveSelection.length}, you have{' '}
+                {remaining} left. Select fewer pages or buy a credit pack.
+              </span>
+            </div>
+          )}
 
           {overLimit && (
             <div className="pdf-selector-alert">
@@ -272,7 +288,7 @@ export default function PDFPageSelector({ thumbnails, onConfirm, onCancel }: Pro
           <button
             type="button"
             className="btn btn-primary"
-            disabled={effectiveSelection.length === 0}
+            disabled={effectiveSelection.length === 0 || notEnough}
             onClick={() => onConfirm(effectiveSelection)}
           >
             Continue

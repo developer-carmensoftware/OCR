@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
 import type React from 'react'
 import { useT } from '../../i18n/LanguageContext'
-import { apiFetch, fetchTimeout } from '../../lib/api/client'
+import { apiFetch, fetchTimeout, getStoredToken } from '../../lib/api/client'
 import { API } from '../../lib/api/endpoints'
+import { getUsage } from '../../lib/api/auth'
+import { computeUsageStats } from '../../lib/usage'
 import { getAPVendorMapping } from '../../lib/api/config'
 import {
   getPdfInfo,
@@ -138,6 +140,8 @@ export function useAPExtraction({ setStep, setModal, loadVendors }: APExtraction
   const [pdfSelector, setPdfSelector] = useState<{
     thumbnails: string[]
     pendingFile: File
+    /** Documents left — filled in a beat after the selector opens. */
+    remaining?: number
   } | null>(null)
   const [selectedPageThumbs, setSelectedPageThumbs] = useState<
     { thumb: string; pageNum: number }[] | null
@@ -181,6 +185,26 @@ export function useAPExtraction({ setStep, setModal, loadVendors }: APExtraction
     }
     imageThumbsRef.current.forEach(u => URL.revokeObjectURL(u))
     imageThumbsRef.current = []
+  }
+
+  /**
+   * Show the page picker. Each selected page costs a document, so the picker also needs
+   * to know what's left — fetched after opening, not before, so a slow /usage never
+   * delays the picker. A failed lookup leaves `remaining` undefined and the picker
+   * simply doesn't gate; the backend's 402 is still the real guard.
+   */
+  const openPageSelector = (thumbnails: string[], pendingFile: File) => {
+    setPdfSelector({ thumbnails, pendingFile })
+    void (async () => {
+      try {
+        const token = getStoredToken()
+        if (!token) return
+        const remaining = computeUsageStats((await getUsage(token)).usage)?.remaining
+        if (remaining !== undefined) setPdfSelector(s => (s ? { ...s, remaining } : s))
+      } catch {
+        /* usage unknown — don't gate */
+      }
+    })()
   }
 
   const runOCR = async (fileObj: File, selectedPages?: number[], password?: string) => {
@@ -309,7 +333,7 @@ export function useAPExtraction({ setStep, setModal, loadVendors }: APExtraction
           type: 'warning',
           title: 'Out of Documents',
           message:
-            'You have no documents left — your plan allowance is spent and your credit balance is empty. Buy a credit pack to continue — credits never expire.',
+            'You do not have enough documents left for this scan — each page of the document uses one. Buy a credit pack to continue — credits never expire.',
           confirmText: 'Buy Credits',
           onConfirm: () => {
             setModal({ show: false })
@@ -504,7 +528,7 @@ export function useAPExtraction({ setStep, setModal, loadVendors }: APExtraction
       getPdfInfo(f)
         .then(info => {
           if (info.page_count > 1) {
-            setPdfSelector({ thumbnails: info.thumbnails, pendingFile: f })
+            openPageSelector(info.thumbnails, f)
           } else {
             runOCR(f)
           }
@@ -538,7 +562,7 @@ export function useAPExtraction({ setStep, setModal, loadVendors }: APExtraction
         }
         const info = result as PdfInfoResult
         if (info.page_count > 1) {
-          setPdfSelector({ thumbnails: info.thumbnails, pendingFile: file })
+          openPageSelector(info.thumbnails, file)
         } else {
           runOCR(file, undefined, password)
         }

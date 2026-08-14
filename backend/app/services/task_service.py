@@ -18,8 +18,15 @@ async def create_task(
     module_id: str,
     original_filename: str,
     carmen_user_id: str | None = None,
+    charged_docs: int = 1,
 ) -> OCRTask:
-    """Create, persist, and return an OCRTask in PROCESSING state."""
+    """Create, persist, and return an OCRTask in PROCESSING state.
+
+    `charged_docs` is what the caller's consume_document() actually took for this task
+    (AP invoice: one per page; credit card: one per file; 0 when the charge failed open).
+    It is stored because nothing else can answer it — a subscription-funded scan writes
+    no ledger row, and a credit-funded one refers to the file by name, not by task.
+    """
     task = OCRTask(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
@@ -28,6 +35,7 @@ async def create_task(
         status=TaskStatus.PROCESSING,
         ocr_engine=settings.ocr_engine,
         carmen_user_id=carmen_user_id or None,
+        charged_docs=charged_docs,
     )
     db.add(task)
     await db.commit()

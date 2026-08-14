@@ -161,8 +161,15 @@ Parent job record for every uploaded file.
 | `status` | pending / processing / completed / failed |
 | `carmen_user_id` | Carmen user who uploaded |
 | `completed_at` | |
+| `charged_docs` | documents this task cost — AP invoice = pages sent to the LLM, credit card = 1, `0` if the charge failed open |
 
 Relationships: `→ credit_cards` (1:1), `→ ap_invoices` (1:1)
+
+`charged_docs` is the **only** per-scan record of cost: a subscription-funded scan writes no
+`credit_ledger` row at all (just `tenant_subscriptions.docs_used += N`), and a credit-funded one
+sets `ledger.ref` to the *filename* — the charge happens before `create_task`, so there is no task
+id to reference yet. Count documents with `SUM(charged_docs)`, never `COUNT(*)`; net of refunds is
+`SUM(charged_docs) FILTER (WHERE status <> 'failed')`, since a failed task is always refunded.
 
 ---
 
@@ -526,7 +533,7 @@ gates a scan on `tenant_modules` and never touched quotas in the first place.
 
 ### Billing & Credits
 
-How consumption is funded: a scan is charged to the active **subscription** allowance first (monthly, use-it-or-lose-it), then to the persistent **credit balance** (never expires). A new tenant is granted 30 credits at tenant creation (`credit_ledger.reason = 'signup_grant'`) — that grant is the free trial; there is no third pool. Purchases go through the pricing page → proforma → bank-transfer slip → admin approval flow (see [Billing_Purchase_Flow.md](./Billing_Purchase_Flow.md)). ORM: `backend/app/models/billing.py`.
+How consumption is funded: a scan is charged to the active **subscription** allowance first (monthly, use-it-or-lose-it), then to the persistent **credit balance** (never expires). *How much* a scan costs is per-module: credit card charges one document per file, AP invoice one per page sent to the LLM (`billable_pages()`, max 5) — a `credit_ledger` row of `delta = -3` for a single AP task is a 3-page invoice, not a bug. A new tenant is granted 30 credits at tenant creation (`credit_ledger.reason = 'signup_grant'`) — that grant is the free trial; there is no third pool. Purchases go through the pricing page → proforma → bank-transfer slip → admin approval flow (see [Billing_Purchase_Flow.md](./Billing_Purchase_Flow.md)). ORM: `backend/app/models/billing.py`.
 
 #### `credit_packs`
 Purchasable catalog (CMS-editable like banks). `kind` = `subscription` (monthly document tier: `sub_starter`, `sub_growth`, `sub_pro`) or `topup` (one-time non-expiring credits). The 30 free documents a new tenant starts with are NOT a pack — they are a `signup_grant` ledger row.

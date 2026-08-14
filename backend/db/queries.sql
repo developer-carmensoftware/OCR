@@ -134,7 +134,8 @@ WITH t AS (
       AND NOT (host = 'dev.carmen4.com' AND bu_code = 'carmencloud')
 ),
 k AS (
-    SELECT tenant_id, COUNT(*) AS n, MAX(created_at) AS last_at
+    -- documents, not scans: an AP scan of 3 pages is 3 (see ocr_tasks.charged_docs)
+    SELECT tenant_id, SUM(charged_docs) AS n, MAX(created_at) AS last_at
     FROM ocr_tasks
     WHERE deleted_at IS NULL
     GROUP BY tenant_id
@@ -244,8 +245,8 @@ ORDER BY docs_left ASC;
 SELECT
     DATE_TRUNC('week', k.created_at)::DATE AS week,
     COUNT(DISTINCT k.tenant_id)            AS active_bu,
-    COUNT(*)                               AS docs,
-    ROUND(COUNT(*)::NUMERIC / NULLIF(COUNT(DISTINCT k.tenant_id), 0), 1) AS docs_per_bu
+    SUM(k.charged_docs)                    AS docs,
+    ROUND(SUM(k.charged_docs)::NUMERIC / NULLIF(COUNT(DISTINCT k.tenant_id), 0), 1) AS docs_per_bu
 FROM ocr_tasks k
 JOIN tenants t ON t.id = k.tenant_id
 WHERE k.deleted_at IS NULL

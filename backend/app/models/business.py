@@ -19,6 +19,7 @@ from sqlalchemy import (
     Identity,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
     func,
@@ -77,6 +78,10 @@ class OCRTask(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin):
     error_message = Column(Text, nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     carmen_user_id = Column(String(36), nullable=True, index=True)
+    # What this task cost, in documents — AP invoice charges one per page sent to the
+    # LLM, credit card one per file, 0 when consume_document failed open. COUNT(*) over
+    # this table stopped meaning "documents consumed" the day pages became the unit.
+    charged_docs = Column(SmallInteger, nullable=False, default=1, server_default=text("1"))
 
     credit_card = relationship("CreditCard", back_populates="task", uselist=False)
     ap_invoice = relationship("APInvoice", back_populates="task", uselist=False)

@@ -64,7 +64,10 @@ async def get_usage_summary(
             cast(OCRTask.created_at, SADate).label("task_date"),
             OCRTask.module_id.label("task_module"),
             OCRTask.tenant_id.label("task_tenant"),
-            func.count(OCRTask.id).label("doc_count"),
+            # Documents, not tasks — one AP task can be several pages, each its own
+            # document (see billable_pages). error_count stays a task count: a failed
+            # 3-page scan is one failure, not three.
+            func.sum(OCRTask.charged_docs).label("doc_count"),
             func.sum(case((OCRTask.status == TaskStatus.FAILED, 1), else_=0)).label("error_count"),
         )
         .where(
@@ -78,7 +81,7 @@ async def get_usage_summary(
         task_count_q = task_count_q.where(OCRTask.module_id == module_id)
     task_stats_map: dict[tuple, tuple[int, int]] = {
         (str(r["task_date"]), r["task_module"], str(r["task_tenant"])): (
-            int(r["doc_count"]),
+            int(r["doc_count"] or 0),
             int(r["error_count"] or 0),
         )
         for r in (await db.execute(task_count_q)).mappings().all()
@@ -187,7 +190,8 @@ async def get_usage_totals(
     llm_row = (await db.execute(llm_q)).mappings().fetchone() or {}
 
     task_q = select(
-        func.count(OCRTask.id).label("total_documents"),
+        # Documents consumed, not tasks run — see get_usage_summary.
+        func.sum(OCRTask.charged_docs).label("total_documents"),
         func.sum(case((OCRTask.status == TaskStatus.FAILED, 1), else_=0)).label("total_errors"),
     ).where(
         OCRTask.created_at >= from_dt, OCRTask.created_at <= to_dt, OCRTask.deleted_at.is_(None)
