@@ -114,6 +114,7 @@ export default function APInvoice() {
           thumbnails={pdfSelector.thumbnails}
           onConfirm={confirmPageSelection}
           onCancel={cancelPageSelection}
+          remaining={pdfSelector.remaining}
         />
       )}
       <CustomModal

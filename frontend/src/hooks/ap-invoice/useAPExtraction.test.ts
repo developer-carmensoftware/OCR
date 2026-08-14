@@ -7,8 +7,16 @@ vi.mock('../../lib/api/client', () => ({
   // Real fetchTimeout returns { signal, clear }; the hook destructures both on
   // every runOCR call, so the mock must too or it throws before apiFetch runs.
   fetchTimeout: vi.fn(() => ({ signal: new AbortController().signal, clear: vi.fn() })),
+  getStoredToken: vi.fn(() => 'test-token'),
 }))
 vi.mock('../../lib/api/config', () => ({ getAPVendorMapping: vi.fn() }))
+vi.mock('../../lib/api/auth', () => ({ getUsage: vi.fn() }))
+// Only getPdfInfo is stubbed — PDF_PASSWORD_REQUIRED and the rest stay real so the
+// error-code branches keep testing the real marker.
+vi.mock('../../lib/api/ocr', async importOriginal => ({
+  ...(await importOriginal<typeof import('../../lib/api/ocr')>()),
+  getPdfInfo: vi.fn(),
+}))
 vi.mock('../../lib/toast', () => ({
   showToast: vi.fn(),
   toast: {
@@ -44,11 +52,15 @@ vi.mock('../../constants/apInvoice', () => ({
 
 import { apiFetch as realApiFetch } from '../../lib/api/client'
 import { getAPVendorMapping as realGetAPVendorMapping } from '../../lib/api/config'
+import { getUsage as realGetUsage } from '../../lib/api/auth'
+import { getPdfInfo as realGetPdfInfo } from '../../lib/api/ocr'
 import { toast } from '../../lib/toast'
 import { appKey } from '../../lib/storage'
 
 const apiFetch = vi.mocked(realApiFetch)
 const getAPVendorMapping = vi.mocked(realGetAPVendorMapping)
+const getUsage = vi.mocked(realGetUsage)
+const getPdfInfo = vi.mocked(realGetPdfInfo)
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -108,6 +120,8 @@ describe('useAPExtraction', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     window.localStorage.clear()
+    // Single-page by default: handleFileChange extracts straight away, no picker.
+    getPdfInfo.mockResolvedValue({ page_count: 1, thumbnails: [] })
     vi.stubGlobal('URL', {
       createObjectURL: vi.fn(() => 'blob:http://localhost/fake'),
       revokeObjectURL: vi.fn(),
@@ -481,6 +495,52 @@ describe('useAPExtraction', () => {
         result.current.updateItem(0, 'deptCode', 'NEW')
       })
       expect(result.current.lineItems[0]._suggestDept).toBeUndefined()
+    })
+  })
+
+  // ── F8: page selector affordability ──────────────────────────────────────────
+  //
+  // Every selected page costs a document, so the picker has to know what's left. The
+  // lookup is deliberately non-blocking: the picker opens first, and a failed /usage
+  // leaves `remaining` undefined so the picker never blocks a scan the backend would
+  // have allowed.
+
+  describe('F8: page selector — documents remaining', () => {
+    const multiPage = () =>
+      getPdfInfo.mockResolvedValue({ page_count: 3, thumbnails: ['a', 'b', 'c'] })
+
+    it('opens the picker for a multi-page PDF and fills in documents remaining', async () => {
+      multiPage()
+      getUsage.mockResolvedValue({
+        usage: { credit_balance: 4, subscription: { docs_remaining: 2 } },
+      } as unknown as Awaited<ReturnType<typeof realGetUsage>>)
+
+      const props = makeProps()
+      const { result } = renderHook(() => useAPExtraction(props))
+      await act(async () => {
+        result.current.handleFileChange({ target: { files: [MOCK_FILE] } })
+        await new Promise(r => setTimeout(r, 0))
+      })
+
+      await waitFor(() => expect(result.current.pdfSelector?.remaining).toBe(6))
+      expect(result.current.pdfSelector?.thumbnails).toHaveLength(3)
+      // The picker is a gate, not an extraction — nothing charged yet.
+      expect(apiFetch).not.toHaveBeenCalled()
+    })
+
+    it('leaves remaining undefined when the usage lookup fails — never blocks the scan', async () => {
+      multiPage()
+      getUsage.mockRejectedValue(new Error('offline'))
+
+      const props = makeProps()
+      const { result } = renderHook(() => useAPExtraction(props))
+      await act(async () => {
+        result.current.handleFileChange({ target: { files: [MOCK_FILE] } })
+        await new Promise(r => setTimeout(r, 0))
+      })
+
+      await waitFor(() => expect(result.current.pdfSelector).not.toBeNull())
+      expect(result.current.pdfSelector?.remaining).toBeUndefined()
     })
   })
 

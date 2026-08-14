@@ -173,10 +173,10 @@ sequenceDiagram
     participant Client as llm/client
     participant LLM as OpenRouter (Vision LLM)
 
-    User->>Router: POST /api/v1/credit-card/extract (files[], bank_code, selected_pages?, pdf_password?)
+    User->>Router: POST /api/v1/credit-card/extract (files[], bank_code, pdf_password?)
     activate Router
 
-    Note over Router: validate files + consume_document()<br/>(quota/credit) ก่อนเรียก LLM
+    Note over Router: validate files + consume_document(increment=จำนวนไฟล์)<br/>ก่อนเรียก LLM
     Router->>CorrSvc: get_correction_hints(bank_code, db)
     CorrSvc->>DB: COUNT credit_cards submitted (bank, 90d)
     CorrSvc->>DB: COUNT corrections per field (bank, 90d)
@@ -356,10 +356,11 @@ sequenceDiagram
 | :--- | :--- | :--- | :--- |
 | `files` | Binary[] (multipart) | Yes | ไฟล์ภาพหรือ PDF หนึ่งไฟล์ขึ้นไป (max 5MB ต่อไฟล์) |
 | `bank_code` | String (query) | No | รหัสธนาคาร: `BBL` `KBANK` `SCB` `BAY` `KTC` `GHL` `PAYPAL` `SIAMPAY` (ไม่ระบุ = generic prompt) |
-| `selected_pages` | String (form) | No | JSON array ของ 0-based page indices สำหรับ PDF เช่น `"[0,1,2]"` (สูงสุด 5 หน้า) |
 | `pdf_password` | String (form) | No | รหัสผ่านสำหรับ PDF ที่เข้ารหัส |
 
-> ระบบ validate ไฟล์ + เปิด PDF ให้ได้ก่อน แล้วจึง `consume_document()` (ตัด quota/credit) — ไฟล์เสียหรือรหัสผิดจะไม่เสีย credit
+> ระบบ validate ไฟล์ + เปิด PDF ให้ได้ก่อน แล้วจึง `consume_document()` (ตัดเครดิต) — ไฟล์เสียหรือรหัสผิดจะไม่เสีย credit
+>
+> **บัตรเครดิตคิด 1 เอกสารต่อ 1 ไฟล์** (ไม่ว่าจะกี่หน้า สูงสุด 5 หน้าแรก) — ต่างจาก AP Invoice ที่คิดตามจำนวนหน้า
 
 **JSON Response** (Array — หนึ่ง object ต่อไฟล์) — `ExtractedCreditCardData`:
 
@@ -714,7 +715,7 @@ Readiness probe (ตรวจ DB connection): `GET /readyz`
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| POST | `/api/v1/ap-invoice/extract` | multipart `files` + `selected_pages?` + `pdf_password?` → vision LLM → post-process (`ap_invoice_postprocess`: tax-type detection, footer-discount distribution, per-line totals) → header + line items (display-only) |
+| POST | `/api/v1/ap-invoice/extract` | multipart `file` + `selected_pages?` + `pdf_password?` → vision LLM → post-process (`ap_invoice_postprocess`: tax-type detection, footer-discount distribution, per-line totals) → header + line items (display-only). **คิดเครดิต 1 เอกสารต่อ 1 หน้าที่ส่งเข้า LLM** (`billable_pages()` — เลือก 2 หน้า = 2 เอกสาร, ไม่เลือก = ทุกหน้าแต่ไม่เกิน 5); ล้มเหลวคืนเท่าที่ตัดไป |
 | POST | `/api/v1/ap-invoice/suggest` | `SuggestGLRequest` (line items + master data) → LLM แนะนำ `deptCode`/`accountCode` ต่อรายการ (pre-filter เฉพาะ expense accounts; ประวัติ vendor จาก Carmen ใช้ก่อนถาม AI) |
 
 Submit เข้า Carmen ผ่าน `POST /api/v1/carmen/invoice` (proxy) — column→field mapping ต่อ vendor เก็บใน localStorage ฝั่ง frontend

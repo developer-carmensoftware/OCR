@@ -145,12 +145,16 @@ def render_pdf_thumbnails(
 
 async def ensure_pdf_openable(
     file_bytes: bytes, filename: str, password: str | None = None
-) -> None:
+) -> int | None:
     """For a PDF file, open it once off-thread so an encrypted/corrupt PDF raises
     PdfPasswordRequired / ExtractionError *before* the caller commits side effects
-    (e.g. consuming a document credit). No-op for non-PDF files."""
+    (e.g. consuming a document credit). No-op for non-PDF files.
+
+    Returns the page count (None for a non-PDF) — it is counted here anyway, and
+    callers that price a scan per page (AP invoice) would otherwise have to open
+    the document a second time to learn it."""
     if not filename.lower().endswith(".pdf"):
-        return
-    await asyncio.get_running_loop().run_in_executor(
+        return None
+    return await asyncio.get_running_loop().run_in_executor(
         None, functools.partial(get_pdf_page_count, file_bytes, password)
     )

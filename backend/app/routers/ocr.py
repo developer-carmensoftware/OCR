@@ -125,6 +125,9 @@ async def extract_card(
                     module_id=Module.CREDIT_CARD_OCR,
                     original_filename=filename,
                     carmen_user_id=session.carmen_user_id,
+                    # One document per file here (pages don't matter for a card statement).
+                    # None means consume_document failed open and nothing was taken.
+                    charged_docs=1 if charged else 0,
                 )
                 task_records.append((filename, file_bytes, str(task.id)))
     except Exception:

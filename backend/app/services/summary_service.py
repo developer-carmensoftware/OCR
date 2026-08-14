@@ -68,10 +68,12 @@ async def build_daily_summary(target_date: date | None = None) -> dict:
 async def _aggregate_all(db, params: dict) -> list[dict]:
     """Return one dict per (tenant_id, module_id) with all metrics."""
 
-    # Documents per tenant × module
+    # Documents per tenant × module. SUM(charged_docs), not COUNT(*): one AP task can be
+    # several documents since pages became the unit (`billable_pages`). Historical rows
+    # carry the column default of 1, so this matches the old count for every past day.
     doc_result = await db.execute(
         text("""
-        SELECT tenant_id, module_id, COUNT(*) AS cnt
+        SELECT tenant_id, module_id, COALESCE(SUM(charged_docs), 0) AS cnt
         FROM ocr_tasks
         WHERE created_at >= :start AND created_at < :end
           AND deleted_at IS NULL

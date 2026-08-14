@@ -728,6 +728,7 @@ async def _run_document(
                 module_id=Module.CREDIT_CARD_OCR,
                 original_filename=filename,
                 carmen_user_id=None,
+                charged_docs=1 if charged else 0,
             )
             task_id = str(task.id)
 
