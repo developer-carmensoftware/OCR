@@ -17,6 +17,7 @@
 @import './styles/components/sonner.css';
 @import './styles/components/page-skeleton.css';
 @import './styles/components/maintenance.css';
+@import './styles/components/tutorial.css';
 @import './styles/tailwind.css';
 @import './styles/pages/ap-invoice.css';
 @import './styles/pages/admin.css';
