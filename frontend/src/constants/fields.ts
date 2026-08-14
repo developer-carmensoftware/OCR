@@ -18,6 +18,9 @@ export const HEADER_LABELS: Record<string, string> = {
   MerchantName:
     'Merchant Name<br><span style="font-size: 0.8em; color: #666;">Merchant name</span>',
   MerchantId: 'Merchant ID<br><span style="font-size: 0.8em; color: #666;">Merchant ID</span>',
+  BankCompanyName:
+    'Bank Company Name<br><span style="font-size: 0.8em; color: #666;">Bank Company Name</span>',
+  BranchNo: 'Branch No<br><span style="font-size: 0.8em; color: #666;">Branch No</span>',
 }
 
 export const DETAIL_LABELS: Record<DetailColumn, string> = {
