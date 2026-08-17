@@ -21,6 +21,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.exc import IntegrityError
 
+from app.exceptions import InsufficientCredits
 from app.models.billing import UserNotification
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.config import AccountingConfigResponse
@@ -624,6 +625,7 @@ async def test_claim_dedupes_on_integrity_error_second_attempt():
 
 ADDRESS = "AIAGENT@carmensoftware.com"
 TAGGED = "Delivered-To: AIAGENT+a1b2c3d4@carmensoftware.com"
+TAG = "a1b2c3d4"
 
 
 def _settings_row(**overrides):
@@ -644,17 +646,21 @@ async def _route(
     body="",
     confirmed=None,
     auto_confirm=True,
+    exhausted=None,
+    process=None,
+    resolve=None,
 ):
     """Runs `_process_message` — up to (and not into) the per-attachment half."""
     db = AsyncMock()
     db.get = AsyncMock(return_value=MagicMock())  # tenant row exists
-    process = AsyncMock(return_value="posted")
+    process = process or AsyncMock(return_value="posted")
+    resolve = resolve or AsyncMock(return_value=resolved)
     extract = AsyncMock(return_value=_extracted())
     follow = AsyncMock(return_value=auto_confirm)
     with (
         patch.object(ingest.settings, "email_ingest_address", ADDRESS),
         patch.object(ingest, "async_session", _session_factory(db)),
-        patch.object(ingest.es, "resolve_by_tag", AsyncMock(return_value=resolved)),
+        patch.object(ingest.es, "resolve_by_tag", resolve),
         patch.object(ingest.es, "is_entitled", AsyncMock(return_value=entitled)),
         patch.object(ingest.es, "rule_passwords", MagicMock(return_value=["pw"])),
         patch.object(ingest.es, "posting_target", AsyncMock(return_value=("tok", "https://h"))),
@@ -675,7 +681,8 @@ async def _route(
                     [("statement.jpg", b"fake")] if attachments is None else list(attachments)
                 ),
                 "body": body,
-            }
+            },
+            exhausted,
         )
     return outcomes, extract, process
 
@@ -1063,8 +1070,254 @@ def test_fetch_unseen_selects_the_configured_folder_quoted(monkeypatch):
     """The wiring, not just the helper: a poll must reach SELECT with a usable name."""
     box = MagicMock()
     box.search.return_value = ("OK", [b""])
-    monkeypatch.setattr(ingest.imaplib, "IMAP4_SSL", lambda host, port: box)
+    monkeypatch.setattr(ingest.imaplib, "IMAP4_SSL", lambda host, port, timeout=None: box)
     monkeypatch.setattr(ingest.settings, "imap_folder", "AR Agent")
 
     assert ingest._fetch_unseen(10) == []
     box.select.assert_called_once_with('"AR Agent"')
+
+
+def test_every_mailbox_connection_carries_a_socket_timeout(monkeypatch):
+    """Without it a mailbox that accepts the connection and then goes quiet blocks the
+    worker thread forever — and `asyncio.to_thread` cannot be cancelled. At the
+    confirmation sweep's one-minute cadence those threads would accumulate."""
+    box = MagicMock()
+    monkeypatch.setattr(ingest.imaplib, "IMAP4_SSL", MagicMock(return_value=box))
+
+    assert ingest._connect() is box
+    assert ingest.imaplib.IMAP4_SSL.call_args.kwargs["timeout"] == ingest.IMAP_TIMEOUT_SECONDS
+
+
+# ── Gmail confirmation sweep (the 1-minute job) ───────────────────────────────
+
+CONFIRM_LINK = "https://mail-settings.google.com/mail/vf-%5BABC-123%5D"
+INGEST_ADDR = "aragent@carmensoftware.com"
+
+
+def _confirmation(uid: str = "7", tag: str = "abc12345") -> dict:
+    return {
+        "uid": uid,
+        "subject": "(Gmail Forwarding Confirmation",
+        "from": "Gmail Team <forwarding-noreply@google.com>",
+        "recipients": [f"aragent+{tag}@carmensoftware.com"],
+        "body": f"Click here: {CONFIRM_LINK} to confirm",
+    }
+
+
+@asynccontextmanager
+async def _null_session():
+    yield _FakeDB()
+
+
+@pytest.mark.asyncio
+async def test_the_sweep_opens_no_mailbox_when_nobody_is_setting_up(monkeypatch):
+    """The whole reason this can run every minute. `gmail_confirmed_at is null` is true
+    forever for a BU that never sets up forwarding, so without the freshness window this
+    would log into Gmail 1,440 times a day to find the same nothing."""
+    box = MagicMock()
+    monkeypatch.setattr(ingest.imaplib, "IMAP4_SSL", box)
+    with (
+        patch.object(ingest.settings, "imap_host", "imap.example.com"),
+        patch.object(ingest, "async_session", _null_session),
+        patch.object(ingest.es, "tags_awaiting_confirmation", AsyncMock(return_value=set())),
+    ):
+        result = await ingest.sweep_confirmations()
+
+    assert result == {"checked": 0, "confirmed": 0, "waiting": 0}
+    box.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_the_sweep_follows_the_link_and_records_the_confirmation():
+    """The gap this job exists to close: the customer is watching Gmail's
+    'Awaiting verification' screen and nobody is going to click this for them."""
+    confirm, record, seen, run = AsyncMock(return_value=True), AsyncMock(), MagicMock(), AsyncMock()
+    with (
+        patch.object(ingest.settings, "imap_host", "imap.example.com"),
+        patch.object(ingest.settings, "email_ingest_address", INGEST_ADDR),
+        patch.object(ingest, "async_session", _null_session),
+        patch.object(ingest.es, "tags_awaiting_confirmation", AsyncMock(return_value={"abc12345"})),
+        patch.object(ingest, "_fetch_confirmations", lambda: [_confirmation()]),
+        patch.object(ingest, "auto_confirm_forwarding", confirm),
+        patch.object(ingest.es, "record_gmail_confirmed", record),
+        patch.object(ingest, "_mark_seen", seen),
+        patch.object(ingest, "_record_run", run),
+    ):
+        result = await ingest.sweep_confirmations()
+
+    assert result == {"checked": 1, "confirmed": 1, "waiting": 1}
+    confirm.assert_awaited_once_with(CONFIRM_LINK)
+    assert record.await_args.args[1] == "abc12345"
+    seen.assert_called_once_with(["7"])
+    assert run.await_args.kwargs["job_name"] == "email-confirm"
+
+
+@pytest.mark.asyncio
+async def test_a_confirmation_google_refuses_is_still_marked_seen_and_writes_no_job_run():
+    """A link we cannot follow is almost always a dead one. Leaving it unseen would mean
+    1,440 requests to Google a day for a forward the customer can re-trigger themselves
+    with Gmail's own 'Resend email' button."""
+    seen, run = MagicMock(), AsyncMock()
+    with (
+        patch.object(ingest.settings, "imap_host", "imap.example.com"),
+        patch.object(ingest.settings, "email_ingest_address", INGEST_ADDR),
+        patch.object(ingest, "async_session", _null_session),
+        patch.object(ingest.es, "tags_awaiting_confirmation", AsyncMock(return_value={"abc12345"})),
+        patch.object(ingest, "_fetch_confirmations", lambda: [_confirmation()]),
+        patch.object(ingest, "auto_confirm_forwarding", AsyncMock(return_value=False)),
+        patch.object(ingest.es, "record_gmail_confirmed", AsyncMock()),
+        patch.object(ingest, "_mark_seen", seen),
+        patch.object(ingest, "_record_run", run),
+    ):
+        result = await ingest.sweep_confirmations()
+
+    assert result["confirmed"] == 0
+    seen.assert_called_once_with(["7"])
+    run.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_confirmation_for_a_tag_outside_the_window_is_left_for_the_document_poll():
+    """Not ours to consume: a BU that saved settings last week is out of the sweep's
+    window, and marking their confirmation seen here would destroy the only copy."""
+    seen, confirm = MagicMock(), AsyncMock(return_value=True)
+    with (
+        patch.object(ingest.settings, "imap_host", "imap.example.com"),
+        patch.object(ingest.settings, "email_ingest_address", INGEST_ADDR),
+        patch.object(ingest, "async_session", _null_session),
+        patch.object(ingest.es, "tags_awaiting_confirmation", AsyncMock(return_value={"someone"})),
+        patch.object(ingest, "_fetch_confirmations", lambda: [_confirmation()]),
+        patch.object(ingest, "auto_confirm_forwarding", confirm),
+        patch.object(ingest, "_mark_seen", seen),
+        patch.object(ingest, "_record_run", AsyncMock()),
+    ):
+        result = await ingest.sweep_confirmations()
+
+    assert result == {"checked": 1, "confirmed": 0, "waiting": 1}
+    confirm.assert_not_awaited()
+    seen.assert_called_once_with([])
+
+
+@pytest.mark.asyncio
+async def test_a_sweep_already_in_flight_is_skipped_not_queued():
+    """One minute is shorter than a pathological IMAP call. The tick that finds the lock
+    held would only be looking at the same mailbox."""
+    async with ingest._sweep_lock:
+        with patch.object(ingest.settings, "imap_host", "imap.example.com"):
+            assert await ingest.sweep_confirmations() == {"status": "busy"}
+
+
+# ── Running out of documents mid-backlog ──────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_running_out_of_documents_releases_the_claim():
+    """The claim row IS the dedupe. Left behind, this (message, attachment) reads as
+    'already handled' for ever — so a customer who runs out mid-backlog would lose every
+    remaining statement, and this feature has no retry anywhere to save them."""
+    release = AsyncMock()
+    with (
+        patch.object(ingest, "async_session", _session_factory(_FakeDB())),
+        patch.object(ingest, "_release", release),
+        patch.object(ingest, "_run_document", AsyncMock(side_effect=InsufficientCredits("out"))),
+        pytest.raises(InsufficientCredits),
+    ):
+        await ingest._process_attachment(
+            tenant_id=TENANT_ID,
+            message_id="<msg-broke@bank.co.th>",
+            sender="no-reply@ktc.co.th",
+            people="no-reply@ktc.co.th",
+            filename="statement.pdf",
+            blob=b"fake",
+            owner_emails=[],
+            rules=[],
+            passwords=[],
+            carmen_token="tok",
+            carmen_uri="https://h",
+        )
+    release.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_the_rest_of_the_message_is_handed_back_not_hammered():
+    """Second attachment onwards would each fail the same way, one wasted
+    `consume_document` at a time. What already posted keeps its ledger row."""
+    exhausted: set[str] = set()
+    process = AsyncMock(side_effect=["posted", InsufficientCredits("out")])
+    outcomes, _, _ = await _route(
+        resolved=_settings_row(),
+        attachments=[("a.pdf", b"x"), ("b.pdf", b"y")],
+        process=process,
+        exhausted=exhausted,
+    )
+    assert outcomes == ["posted", "retry_later"]
+    assert exhausted == {TAG}
+
+
+@pytest.mark.asyncio
+async def test_a_bu_that_ran_out_is_skipped_without_even_a_lookup():
+    """Checked against the tag, which the envelope already gave us — so the rest of that
+    BU's backlog costs not even the one SELECT that resolving it would. Another BU's mail
+    in the same batch is untouched."""
+    resolve = AsyncMock(return_value=_settings_row())
+    outcomes, extract, process = await _route(resolved=None, resolve=resolve, exhausted={TAG})
+    assert outcomes == ["retry_later"]
+    resolve.assert_not_awaited()
+    extract.assert_not_awaited()
+    process.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_poll_clears_seen_on_everything_it_handed_back():
+    """`_fetch_unseen` flags the whole batch on the way in. Out-of-credits is not a
+    verdict on the mail, so the flag has to come back off or the document is gone."""
+    unmark = MagicMock()
+    messages = [
+        {"uid": "7", "message_id": "<a>", "subject": "s", "from": "f", "recipients": []},
+        {"uid": "8", "message_id": "<b>", "subject": "s", "from": "f", "recipients": []},
+    ]
+    with (
+        patch.object(ingest.settings, "imap_host", "imap.example.com"),
+        patch.object(ingest, "_fetch_unseen", lambda limit: messages),
+        patch.object(
+            ingest, "_process_message", AsyncMock(side_effect=[["posted"], ["retry_later"]])
+        ),
+        patch.object(ingest, "_unmark_seen", unmark),
+        patch.object(ingest, "_record_run", AsyncMock()),
+    ):
+        summary = await ingest.run_ingest()
+
+    assert summary["retry_later"] == 1
+    unmark.assert_called_once_with(["8"])
+
+
+@pytest.mark.asyncio
+async def test_a_poll_already_running_is_skipped_not_stacked():
+    """A slow batch outlasting its 10-minute interval must not put a second poll on top:
+    the work would dedupe, but the DB connections would not — the pool is 15 for the
+    whole application."""
+    async with ingest._poll_lock:
+        with patch.object(ingest.settings, "imap_host", "imap.example.com"):
+            assert await ingest.run_ingest() == {"status": "busy"}
+
+
+# ── job_runs is written only when there is something to say ───────────────────
+
+
+@pytest.mark.asyncio
+async def test_an_idle_poll_writes_no_job_run():
+    """`job_runs` has no retention and #/admin/jobs shows the newest 100 with no
+    job-name filter — a poll on a schedule would bury every other job within hours."""
+    db = _FakeDB()
+    with patch.object(ingest, "async_session", _session_factory(db)):
+        await ingest._record_run(datetime.now(UTC), {"messages": 0, "posted": 0})
+    assert db.added == []
+
+
+@pytest.mark.asyncio
+async def test_a_failed_poll_writes_a_job_run_even_with_no_mail():
+    db = _FakeDB()
+    with patch.object(ingest, "async_session", _session_factory(db)):
+        await ingest._record_run(datetime.now(UTC), {"messages": 0}, error="IMAP login refused")
+    assert len(db.added) == 1
+    assert db.added[0].error_message == "IMAP login refused"

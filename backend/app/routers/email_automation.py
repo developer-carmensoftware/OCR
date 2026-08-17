@@ -436,6 +436,30 @@ async def run_email_ingest(
     return await ingest.run_ingest(limit)
 
 
+@router.post("/email-ingest/confirmations")
+async def sweep_forwarding_confirmations(_auth=Depends(require_maintenance_auth)):
+    """Follow any Gmail forwarding-confirmation link sitting in the mailbox.
+
+    Scheduled **every minute**, unlike the document poll, and cheap enough to be: it
+    searches the mailbox by sender, parses no attachment, and opens IMAP at all only
+    while some BU is mid-setup. The customer is watching Gmail's "Awaiting verification"
+    screen when this runs, so ten minutes of latency would read as broken.
+
+        select cron.schedule('email-confirm', '* * * * *', $$
+        select net.http_post(
+            url     := (select value #>> '{}' from system_configs
+                         where key_name = 'app.base_url' limit 1)
+                       || '/api/v1/carmen/email-ingest/confirmations',
+            headers := jsonb_build_object(
+                'Content-Type', 'application/json',
+                'Authorization', 'Bearer ' || (select decrypted_secret
+                    from vault.decrypted_secrets where name = 'internal_job_token' limit 1)),
+            body    := '{}'::jsonb);
+        $$);
+    """
+    return await ingest.sweep_confirmations()
+
+
 @router.post("/email-ingest/health")
 async def check_token_health(
     db: AsyncSession = Depends(get_db),
