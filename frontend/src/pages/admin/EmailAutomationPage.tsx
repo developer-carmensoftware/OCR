@@ -107,6 +107,24 @@ function cronTone(job: { active: boolean; last_status: string | null } | undefin
   return 'green' as const
 }
 
+/**
+ * "3 min ago", not "2026-08-17 15:40:00".
+ *
+ * The tile answers one question — is this still running — and an absolute timestamp
+ * makes the reader do the subtraction. It is also 19 characters of 1.6rem/800 type in
+ * a 200px tile, which is how the card came to overflow in the first place. The exact
+ * time stays one hover away in `title`.
+ */
+export function relativeAge(iso: string | null | undefined, now = Date.now()) {
+  if (!iso) return null
+  const minutes = Math.floor((now - new Date(iso).getTime()) / 60000)
+  if (minutes < 1) return { key: 'admin.email.age.now' as TKey, vars: undefined }
+  if (minutes < 60) return { key: 'admin.email.age.min' as TKey, vars: { n: minutes } }
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return { key: 'admin.email.age.hour' as TKey, vars: { n: hours } }
+  return { key: 'admin.email.age.day' as TKey, vars: { n: Math.floor(hours / 24) } }
+}
+
 function daysAgo(n: number) {
   const d = new Date()
   d.setDate(d.getDate() - n)
@@ -185,6 +203,10 @@ export default function EmailAutomationPage() {
   const cron = health?.cron ?? {}
   const ingest = cron['email-ingest']
   const confirm = cron['email-confirm']
+  const ageLabel = (iso: string | null | undefined) => {
+    const age = relativeAge(iso)
+    return age ? t(age.key, age.vars) : null
+  }
   const posted24 = health?.documents_24h?.posted ?? 0
   const failed24 = health?.documents_24h?.failed ?? 0
 
@@ -208,12 +230,24 @@ export default function EmailAutomationPage() {
     {
       key: 'tenant_name',
       label: t('admin.email.col.bu'),
-      render: r => r.tenant_name ?? r.tenant_id,
+      // "dev.carmen4.com/carmencloud (carmencloud)" — 41 characters of host plus bu.
+      render: r => (
+        <span className="admin-cell-clip admin-cell-clip--sm" title={r.tenant_name ?? r.tenant_id}>
+          {r.tenant_name ?? r.tenant_id}
+        </span>
+      ),
     },
     {
       key: 'attachment',
       label: t('admin.email.col.attachment'),
-      render: r => <span title={r.attachment}>{r.attachment || '—'}</span>,
+      // Bank filenames run past 60 characters (`E-TAX_INVOICE_CARD_4510…_20260721.PDF`),
+      // and `.admin-td` is nowrap, so one of them decided the width of the whole table.
+      // Clipped with the full name on hover and in the expanded row.
+      render: r => (
+        <span className="admin-cell-clip" title={r.attachment}>
+          {r.attachment || '—'}
+        </span>
+      ),
     },
     {
       key: 'status',
@@ -240,7 +274,15 @@ export default function EmailAutomationPage() {
   ]
 
   const unitCols: Column<EmailBusinessUnitRow>[] = [
-    { key: 'tenant_name', label: t('admin.email.col.bu') },
+    {
+      key: 'tenant_name',
+      label: t('admin.email.col.bu'),
+      render: r => (
+        <span className="admin-cell-clip admin-cell-clip--sm" title={r.tenant_name}>
+          {r.tenant_name}
+        </span>
+      ),
+    },
     {
       key: 'enabled',
       label: t('admin.email.col.enabled'),
@@ -253,7 +295,11 @@ export default function EmailAutomationPage() {
     {
       key: 'ingest_address',
       label: t('admin.email.col.address'),
-      render: r => r.ingest_address ?? '—',
+      render: r => (
+        <span className="admin-cell-clip admin-mono" title={r.ingest_address ?? ''}>
+          {r.ingest_address ?? '—'}
+        </span>
+      ),
     },
     {
       key: 'gmail_confirmed_at',
@@ -336,7 +382,7 @@ export default function EmailAutomationPage() {
       <div className="kpi-grid">
         <KPICard
           label={t('admin.email.kpi.poll')}
-          value={ingest ? fmtDateTime(ingest.last_run) : t('admin.email.kpi.notScheduled')}
+          value={ageLabel(ingest?.last_run) ?? t('admin.email.kpi.notScheduled')}
           sub={ingest ? t('admin.email.kpi.every', { schedule: ingest.schedule }) : undefined}
           accent={cronTone(ingest)}
           icon={<Timer size={16} />}
@@ -344,7 +390,7 @@ export default function EmailAutomationPage() {
         />
         <KPICard
           label={t('admin.email.kpi.confirm')}
-          value={confirm ? fmtDateTime(confirm.last_run) : t('admin.email.kpi.notScheduled')}
+          value={ageLabel(confirm?.last_run) ?? t('admin.email.kpi.notScheduled')}
           sub={
             health ? t('admin.email.kpi.awaiting', { n: health.awaiting_confirmation }) : undefined
           }
@@ -354,8 +400,10 @@ export default function EmailAutomationPage() {
         />
         <KPICard
           label={t('admin.email.kpi.mailbox')}
-          value={health?.mailbox.address ?? t('admin.email.kpi.noMailbox')}
-          sub={health?.mailbox.folder ?? undefined}
+          // Folder, not address: it is the short half, and it is the half that answers
+          // "are we watching the right place". The address goes in `sub`.
+          value={health?.mailbox.folder ?? t('admin.email.kpi.noMailbox')}
+          sub={health?.mailbox.address ?? undefined}
           accent={health?.mailbox.configured ? 'default' : 'red'}
           icon={<Mailbox size={16} />}
           loading={!health}

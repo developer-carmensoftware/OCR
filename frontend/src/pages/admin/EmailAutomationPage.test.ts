@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pollMessage, statusTone } from './EmailAutomationPage'
+import { pollMessage, relativeAge, statusTone } from './EmailAutomationPage'
 
 /**
  * The poll answers with four different shapes and only one of them is a summary. The
@@ -46,6 +46,28 @@ describe('pollMessage', () => {
     })
     // Nothing to confirm is not a success — there was no work to do.
     expect(pollMessage({ checked: 0, confirmed: 0, waiting: 0 }).tone).toBe('info')
+  })
+})
+
+describe('relativeAge', () => {
+  const now = Date.parse('2026-08-17T12:00:00Z')
+  const ago = (minutes: number) => new Date(now - minutes * 60000).toISOString()
+
+  it('answers "is it still running" in the unit a person reads at a glance', () => {
+    expect(relativeAge(ago(0), now)).toEqual({ key: 'admin.email.age.now', vars: undefined })
+    expect(relativeAge(ago(9), now)).toEqual({ key: 'admin.email.age.min', vars: { n: 9 } })
+    expect(relativeAge(ago(150), now)).toEqual({ key: 'admin.email.age.hour', vars: { n: 2 } })
+    expect(relativeAge(ago(60 * 24 * 3), now)).toEqual({
+      key: 'admin.email.age.day',
+      vars: { n: 3 },
+    })
+  })
+
+  it('returns null for a job that has never run, so the tile can say so in its own words', () => {
+    // REGRESSION GUARD: this used to render a 19-character timestamp at 1.6rem/800 in
+    // a 200px tile, which ran straight out past the card border.
+    expect(relativeAge(null)).toBeNull()
+    expect(relativeAge(undefined)).toBeNull()
   })
 })
 
