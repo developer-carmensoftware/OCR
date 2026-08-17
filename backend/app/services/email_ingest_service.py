@@ -63,7 +63,12 @@ from app.config import settings
 from app.constants import Module
 from app.context import current_carmen_uri, current_tenant_id
 from app.database import async_session
-from app.exceptions import ExtractionError, PdfPasswordRequired, ValidationError
+from app.exceptions import (
+    ExtractionError,
+    InsufficientCredits,
+    PdfPasswordRequired,
+    ValidationError,
+)
 from app.models.business import CreditCard
 from app.models.catalog import Bank
 from app.models.email_automation import EmailDocument
@@ -111,6 +116,19 @@ MAX_ATTACHMENTS_PER_MESSAGE = 10
 # anyone, so nobody can be told about it. A handful is a mistyped address; a poll full
 # of them is someone using the mailbox as a drop box.
 UNROUTED_ALERT_THRESHOLD = 5
+
+# Socket timeout for every IMAP call — see `_connect`. Generous enough for a slow FETCH
+# of a 5 MB attachment, short enough that a dead mailbox frees the thread this minute
+# rather than never.
+IMAP_TIMEOUT_SECONDS = 60
+
+# How recently a BU must have touched its settings to count as "setting up forwarding
+# right now". The gate on the confirmation sweep — see `es.tags_awaiting_confirmation`.
+CONFIRM_WINDOW_HOURS = 24
+
+# Google sends one confirmation per forward. More than a handful unseen at once means
+# something other than a customer finishing a setup, and it is not this job's problem.
+MAX_CONFIRMATIONS_PER_SWEEP = 5
 
 # Envelope headers only. **Never `To:`** — on an auto-forward that is still the
 # customer's own address, so reading it would pass a hand-sent test and route every
@@ -237,6 +255,20 @@ def _quoted_folder(name: str) -> str:
     return f'"{name.strip().strip(chr(34))}"'
 
 
+def _connect() -> imaplib.IMAP4_SSL:
+    """A logged-in mailbox connection, with a socket timeout.
+
+    The timeout is the point. `imaplib` defaults to the global socket timeout, which
+    nothing in this app sets, so a mailbox that accepts the TCP connection and then stops
+    answering blocks forever — and every IMAP call here runs under `asyncio.to_thread`,
+    which cannot be cancelled. One wedged poll would hold a worker thread for the life of
+    the process; on the 1-minute confirmation sweep they would accumulate.
+    """
+    box = imaplib.IMAP4_SSL(settings.imap_host, settings.imap_port, timeout=IMAP_TIMEOUT_SECONDS)
+    box.login(settings.imap_user, settings.imap_password)
+    return box
+
+
 def _fetch_unseen(limit: int) -> list[dict[str, Any]]:
     """Pull unseen mail and mark it seen in the same connection.
 
@@ -249,9 +281,8 @@ def _fetch_unseen(limit: int) -> list[dict[str, Any]]:
     ledger row to record it, so the IMAP flag is the only thing stopping it from being
     re-read on every poll forever.
     """
-    box = imaplib.IMAP4_SSL(settings.imap_host, settings.imap_port)
+    box = _connect()
     try:
-        box.login(settings.imap_user, settings.imap_password)
         box.select(_quoted_folder(settings.imap_folder))
         max_octets = str(settings.max_file_size_mb * 1024 * 1024)
         try:
@@ -270,6 +301,9 @@ def _fetch_unseen(limit: int) -> list[dict[str, Any]]:
             msg = email.message_from_bytes(fetched[0][1])
             messages.append(
                 {
+                    # Carried so the poll can hand a message back (un-`\Seen`) when the
+                    # reason it stopped was ours, not the mail's — see `_unmark_seen`.
+                    "uid": uid,
                     "message_id": (msg.get("Message-ID") or f"no-id-{uid}")[:500],
                     "subject": _decode(msg.get("Subject")),
                     "from": _decode(msg.get("From")),
@@ -292,6 +326,76 @@ def _fetch_unseen(limit: int) -> list[dict[str, Any]]:
             box.logout()
         except OSError:
             pass
+
+
+def _fetch_confirmations(limit: int = MAX_CONFIRMATIONS_PER_SWEEP) -> list[dict[str, Any]]:
+    """Unseen Gmail forwarding-confirmation mail only — the cheap half of `_fetch_unseen`.
+
+    Narrowed at the server by sender, so a mailbox full of bank statements costs one
+    SEARCH that matches nothing. No `SMALLER` (a confirmation has no attachment), no
+    `_attachments()` parse, and **nothing is marked seen here** — the flag is a decision
+    the async caller makes after it knows whether the link was followed.
+    """
+    box = _connect()
+    try:
+        box.select(_quoted_folder(settings.imap_folder))
+        _, data = box.search(None, "UNSEEN", "FROM", _GMAIL_CONFIRM_SENDER)
+        out = []
+        for uid in [u.decode() for u in (data[0] or b"").split()[:limit]]:
+            _, fetched = box.fetch(uid, "(RFC822)")
+            if not fetched or not isinstance(fetched[0], tuple):
+                continue
+            msg = email.message_from_bytes(fetched[0][1])
+            out.append(
+                {
+                    "uid": uid,
+                    "subject": _decode(msg.get("Subject")),
+                    "from": _decode(msg.get("From")),
+                    "recipients": _recipients(msg),
+                    "body": _confirmation_body(msg),
+                }
+            )
+        return out
+    finally:
+        try:
+            box.logout()
+        except OSError:
+            pass
+
+
+def _set_seen(uids: list[str], *, seen: bool) -> None:
+    """Add or remove `\\Seen` on messages we have decided about. Never raises."""
+    if not uids:
+        return
+    try:
+        box = _connect()
+        try:
+            box.select(_quoted_folder(settings.imap_folder))
+            for uid in uids:
+                box.store(uid, "+FLAGS" if seen else "-FLAGS", "\\Seen")
+        finally:
+            try:
+                box.logout()
+            except OSError:
+                pass
+    except Exception as exc:  # noqa: BLE001 — a flag we could not set is not an outage
+        logger.error("[email] Could not set \\Seen=%s on %d message(s): %s", seen, len(uids), exc)
+
+
+def _mark_seen(uids: list[str]) -> None:
+    """Flag the messages the sweep has finished with."""
+    _set_seen(uids, seen=True)
+
+
+def _unmark_seen(uids: list[str]) -> None:
+    """Put mail back the way we found it, so a later poll gets another go at it.
+
+    `_fetch_unseen` flags the whole batch on the way in, which is right for everything
+    the pipeline reaches a verdict on — but "this BU is out of documents" is not a
+    verdict about the mail. Left flagged, a customer who runs out mid-backlog silently
+    loses every remaining statement, with no retry anywhere in this feature to save them.
+    """
+    _set_seen(uids, seen=False)
 
 
 # ── Routing ───────────────────────────────────────────────────────────────────
@@ -481,31 +585,134 @@ def match_rules(rules: list[dict], sender: str, filename: str) -> list[dict]:
 
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 
+# One poll at a time per process — see `run_ingest`.
+_poll_lock = asyncio.Lock()
+
 
 async def run_ingest(limit: int | None = None) -> dict:
-    """One poll. Returns a summary the job endpoint echoes back."""
+    """One poll. Returns a summary the job endpoint echoes back.
+
+    Serialised against itself. A batch whose documents are slow can outlast the poll
+    interval, and a second poll starting on top of it would not duplicate work — the
+    `\\Seen` flag and `_claim` both dedupe — but it would double this job's share of a
+    connection pool capped at 15 for the whole application. Skipping is free and the
+    backlog is still there in ten minutes.
+    """
     if not settings.imap_host:
         return {"status": "disabled", "reason": "IMAP not configured"}
+    if _poll_lock.locked():
+        logger.info("[email] Poll still running — this tick skipped")
+        return {"status": "busy"}
 
-    started = datetime.now(UTC)
-    summary = {"messages": 0, "posted": 0, "failed": 0, "skipped": 0, "unrouted": 0}
-    try:
-        messages = await asyncio.to_thread(_fetch_unseen, limit or settings.imap_batch_size)
-        summary["messages"] = len(messages)
+    async with _poll_lock:
+        started = datetime.now(UTC)
+        summary = {"messages": 0, "posted": 0, "failed": 0, "skipped": 0, "unrouted": 0}
+        # Tags that ran out of documents mid-batch, and the mail to hand back for them.
+        exhausted: set[str] = set()
+        retry: list[str] = []
+        try:
+            messages = await asyncio.to_thread(_fetch_unseen, limit or settings.imap_batch_size)
+            summary["messages"] = len(messages)
+            for msg in messages:
+                outcomes = await _process_message(msg, exhausted)
+                if "retry_later" in outcomes:
+                    retry.append(msg["uid"])
+                for outcome in outcomes:
+                    summary[outcome] = summary.get(outcome, 0) + 1
+        except Exception as exc:
+            logger.exception("[email] Poll failed")
+            await asyncio.to_thread(_unmark_seen, retry)
+            await _record_run(started, summary, error=str(exc))
+            raise
+
+        # One IMAP round trip for the whole batch, and only when something was left
+        # undone — the common poll never reaches it.
+        await asyncio.to_thread(_unmark_seen, retry)
+        logger.info("[email] Poll finished: %s", summary)
+        await _record_run(started, summary)
+        return summary
+
+
+# Per process, which is what "no overlapping sweeps" means on a single Render instance.
+# A second replica would sweep concurrently; harmless — both read the same mailbox and
+# `record_gmail_confirmed` is idempotent.
+_sweep_lock = asyncio.Lock()
+
+
+async def sweep_confirmations() -> dict:
+    """Follow any Gmail forwarding-confirmation link waiting in the mailbox. Cheap by design.
+
+    Split out of `run_ingest` and scheduled every minute because the two jobs have nothing
+    in common but the mailbox: a document poll processes attachments serially and a full
+    batch runs minutes, while this is a search that usually matches nothing. The customer
+    is standing in Gmail's "Awaiting verification" screen when this matters, so latency is
+    the whole feature — a confirmation that lands ten minutes later is a customer who has
+    already given up and called someone.
+
+    Never spends money: no attachment is parsed, no document charged, no model called.
+
+    Steady-state cost is one indexed-enough SELECT. The mailbox is only opened when a BU
+    is actually mid-setup (`tags_awaiting_confirmation`), and a tick that finds the previous
+    sweep still running does nothing at all rather than queueing behind it.
+    """
+    if not settings.imap_host:
+        return {"status": "disabled", "reason": "IMAP not configured"}
+    if _sweep_lock.locked():
+        # A minute is shorter than a pathological IMAP call. Skipping is correct: the
+        # sweep in flight is looking at the same mailbox this one would.
+        return {"status": "busy"}
+
+    async with _sweep_lock:
+        started = datetime.now(UTC)
+        async with async_session() as db:
+            waiting = await es.tags_awaiting_confirmation(db, CONFIRM_WINDOW_HOURS)
+        if not waiting:
+            return {"checked": 0, "confirmed": 0, "waiting": 0}
+
+        try:
+            messages = await asyncio.to_thread(_fetch_confirmations)
+        except Exception as exc:
+            logger.exception("[email] Confirmation sweep failed")
+            await _record_run(started, {"messages": 0}, error=str(exc), job_name="email-confirm")
+            raise
+
+        confirmed, handled = 0, []
         for msg in messages:
-            for outcome in await _process_message(msg):
-                summary[outcome] = summary.get(outcome, 0) + 1
-    except Exception as exc:
-        logger.exception("[email] Poll failed")
-        await _record_run(started, summary, error=str(exc))
-        raise
+            tag = tag_from_recipients(msg["recipients"])
+            if not tag or tag not in waiting:
+                # Someone else's confirmation, or one for a BU that went quiet. The
+                # document poll picks it up; leaving it unseen is what lets that happen.
+                continue
+            handled.append(msg["uid"])
+            async with async_session() as db:
+                if code := gmail_confirm_code(msg["from"], msg["subject"]):
+                    await es.record_gmail_code(db, tag, code)
+                link = gmail_confirm_link(msg["body"])
+                if link and await auto_confirm_forwarding(link):
+                    await es.record_gmail_confirmed(db, tag)
+                    confirmed += 1
+                else:
+                    logger.warning("[email] Could not confirm forwarding for tag %s", tag)
 
-    logger.info("[email] Poll finished: %s", summary)
-    await _record_run(started, summary)
-    return summary
+        # Seen whether or not Google took it: a link we failed to follow is almost always
+        # a dead one, and retrying it every minute for a day is 1 440 requests to Google
+        # for a forward the customer can re-trigger with Gmail's own "Resend email".
+        await asyncio.to_thread(_mark_seen, handled)
+
+        if confirmed:
+            await _record_run(
+                started, {"messages": len(messages)}, job_name="email-confirm", rows=confirmed
+            )
+        return {"checked": len(messages), "confirmed": confirmed, "waiting": len(waiting)}
 
 
-async def _record_run(started: datetime, summary: dict, error: str | None = None) -> None:
+async def _record_run(
+    started: datetime,
+    summary: dict,
+    error: str | None = None,
+    job_name: str = "email-ingest",
+    rows: int | None = None,
+) -> None:
     """Persist the poll as a `job_runs` row so `#/admin/jobs` reports this job at all.
 
     Until now `run_ingest` returned a dict to whoever called the endpoint and wrote
@@ -515,22 +722,29 @@ async def _record_run(started: datetime, summary: dict, error: str | None = None
     Also raises one alert when a poll is mostly mail we cannot attribute — the counter
     §2.5 of the contract promises we watch. Never raises: a failed bookkeeping write
     must not turn a successful poll into a failed one.
+
+    **A poll that found no mail writes no row.** `job_runs` has no retention and no
+    partitioning, and `#/admin/jobs` shows the newest 100 rows with no way to filter by
+    job name — so a poll on a schedule would bury every other job's history under its own
+    idle ticks within hours. A failure always writes, and so does any poll that actually
+    carried mail; "the poller is alive on a quiet day" is what `keep-warm` is for.
     """
-    try:
-        async with async_session() as db:
-            db.add(
-                JobRun(
-                    job_name="email-ingest",
-                    started_at=started,
-                    completed_at=datetime.now(UTC),
-                    status=JobStatus.FAILED if error else JobStatus.SUCCESS,
-                    rows_affected=summary.get("posted", 0),
-                    error_message=error,
+    if error or summary.get("messages", 0):
+        try:
+            async with async_session() as db:
+                db.add(
+                    JobRun(
+                        job_name=job_name,
+                        started_at=started,
+                        completed_at=datetime.now(UTC),
+                        status=JobStatus.FAILED if error else JobStatus.SUCCESS,
+                        rows_affected=summary.get("posted", 0) if rows is None else rows,
+                        error_message=error,
+                    )
                 )
-            )
-            await db.commit()
-    except Exception as exc:
-        logger.error("[email] Could not record the job run: %s", exc)
+                await db.commit()
+        except Exception as exc:
+            logger.error("[email] Could not record the job run: %s", exc)
 
     if summary.get("unrouted", 0) >= UNROUTED_ALERT_THRESHOLD:
         await anomaly_service.open_alert_if_absent(
@@ -545,12 +759,17 @@ async def _record_run(started: datetime, summary: dict, error: str | None = None
         )
 
 
-async def _process_message(msg: dict[str, Any]) -> list[str]:
+async def _process_message(msg: dict[str, Any], exhausted: set[str] | None = None) -> list[str]:
     """One message → one outcome per attachment (or a single message-level outcome).
 
     Everything expensive is behind two free checks: does it carry a file at all, and
     does its tag name a paying BU. Nothing here spends money, opens a file or writes a
     row for mail that fails either.
+
+    `exhausted` collects the tags that ran out of documents earlier in this same poll.
+    It is checked against the tag, not the tenant, so the rest of that BU's backlog is
+    skipped without even the one SELECT that resolving it would cost — while another
+    BU's mail in the same batch is unaffected.
     """
     # Before the attachment check, because a confirmation mail has none — it is the
     # one message we care about that carries no document.
@@ -581,6 +800,8 @@ async def _process_message(msg: dict[str, Any]) -> list[str]:
     if not tag:
         logger.warning("[email] No ingest tag on %s — dropped", msg["message_id"])
         return ["unrouted"]
+    if exhausted is not None and tag in exhausted:
+        return ["retry_later"]
 
     async with async_session() as db:
         row = await es.resolve_by_tag(db, tag)
@@ -601,22 +822,33 @@ async def _process_message(msg: dict[str, Any]) -> list[str]:
         passwords = es.rule_passwords(row)
         carmen_token, carmen_uri = await es.posting_target(db, row)
 
-    return [
-        await _process_attachment(
-            tenant_id=tenant_id,
-            message_id=msg["message_id"],
-            sender=msg["from"],
-            people=msg["people"],
-            filename=filename,
-            blob=blob,
-            owner_emails=owner_emails,
-            rules=rules,
-            passwords=passwords,
-            carmen_token=carmen_token,
-            carmen_uri=carmen_uri,
-        )
-        for filename, blob in msg["attachments"]
-    ]
+    outcomes = []
+    for filename, blob in msg["attachments"]:
+        try:
+            outcomes.append(
+                await _process_attachment(
+                    tenant_id=tenant_id,
+                    message_id=msg["message_id"],
+                    sender=msg["from"],
+                    people=msg["people"],
+                    filename=filename,
+                    blob=blob,
+                    owner_emails=owner_emails,
+                    rules=rules,
+                    passwords=passwords,
+                    carmen_token=carmen_token,
+                    carmen_uri=carmen_uri,
+                )
+            )
+        except InsufficientCredits:
+            # The remaining attachments would each fail the same way, one wasted
+            # `consume_document` at a time. Hand the whole message back instead: the
+            # attachments already posted keep their ledger rows, and re-delivery of
+            # this message dedupes on those, so nothing is charged twice.
+            if exhausted is not None:
+                exhausted.add(tag)
+            return [*outcomes, "retry_later"]
+    return outcomes
 
 
 async def _process_attachment(
@@ -654,19 +886,26 @@ async def _process_attachment(
     tenant_ctx = current_tenant_id.set(tenant_id)
     uri_ctx = current_carmen_uri.set(carmen_uri)
     try:
-        return await _run_document(
-            ledger_id=ledger_id,
-            tenant_id=tenant_id,
-            sender=sender,
-            people=people,
-            filename=filename,
-            blob=blob,
-            owner_emails=owner_emails,
-            rules=rules,
-            passwords=passwords,
-            carmen_token=carmen_token,
-            carmen_uri=carmen_uri,
-        )
+        try:
+            return await _run_document(
+                ledger_id=ledger_id,
+                tenant_id=tenant_id,
+                sender=sender,
+                people=people,
+                filename=filename,
+                blob=blob,
+                owner_emails=owner_emails,
+                rules=rules,
+                passwords=passwords,
+                carmen_token=carmen_token,
+                carmen_uri=carmen_uri,
+            )
+        except InsufficientCredits:
+            # Not a verdict on this document — the BU simply has nothing left to spend.
+            # Drop the claim so a poll after they top up can take it again; the caller
+            # hands the mail itself back by clearing \Seen.
+            await _release(ledger_id)
+            raise
     finally:
         current_carmen_uri.reset(uri_ctx)
         current_tenant_id.reset(tenant_ctx)
@@ -858,6 +1097,13 @@ async def _run_document(
         )
         logger.warning("[email] %s: %s (%s)", skip.reason_code, skip, filename)
         return status
+    except InsufficientCredits:
+        # Out before the generic handler below, which would file this as
+        # `unreadable_document` — sending whoever debugs it to look at a PDF that is
+        # perfectly fine while the real answer is "this BU has run out of documents".
+        # Nothing was charged, so there is nothing to refund and no row to finish.
+        logger.warning("[email] Tenant %s is out of documents — batch stopped", tenant_id)
+        raise
     except CarmenAPIError as exc:
         # Transport failure — the JV's fate is unknown, so do NOT refund and do not
         # retry automatically; a human decides after checking Carmen.
@@ -1064,6 +1310,23 @@ async def _claim(
         await db.rollback()
         return None
     return row
+
+
+async def _release(ledger_id: uuid.UUID) -> None:
+    """Undo the claim, so the next poll can take this (message, attachment) again.
+
+    The ledger row IS the dedupe — a row that stays behind means "already handled" for
+    ever. Deleting it is only correct for a stop that says nothing about the document
+    itself (out of credits); every real verdict goes through `_finish` and stays.
+    """
+    try:
+        async with async_session() as db:
+            row = await db.get(EmailDocument, ledger_id)
+            if row is not None:
+                await db.delete(row)
+                await db.commit()
+    except Exception as exc:  # noqa: BLE001 — worst case the retry dedupes instead
+        logger.error("[email] Could not release the ledger claim: %s", exc)
 
 
 async def _mark_submitted(card_id: str | None) -> None:

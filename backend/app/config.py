@@ -199,7 +199,11 @@ class Settings(BaseSettings):
     imap_user: str = ""
     imap_password: str = ""
     imap_folder: str = "INBOX"
-    imap_batch_size: int = 20  # messages processed per poll — each may cost LLM calls
+    # Messages per poll, each of which may cost LLM calls. Also the memory ceiling:
+    # `_fetch_unseen` holds the whole batch, attachment bytes included, before the first
+    # one is processed — so this × MAX_FILE_SIZE_MB is resident at the peak (10 × 5 MB).
+    # At a 10-minute schedule it still clears 1,440 documents/day.
+    imap_batch_size: int = 10
 
     # Carmen posting credential used when a BU has none of its own. Dev only:
     # in production Carmen supplies a per-BU token through PUT /carmen/settings.

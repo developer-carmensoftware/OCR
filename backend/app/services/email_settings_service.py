@@ -14,7 +14,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import secrets
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, select
@@ -121,6 +121,34 @@ async def resolve_by_tag(db: AsyncSession, tag: str) -> EmailIngestSettings | No
             )
         )
     ).scalar_one_or_none()
+
+
+async def tags_awaiting_confirmation(db: AsyncSession, hours: int) -> set[str]:
+    """Tags of BUs plausibly mid-setup right now — the gate on the 1-minute sweep.
+
+    `gmail_confirmed_at is null` on its own is true forever for every BU that never sets
+    up an auto-forward, which would mean an IMAP login every minute for the life of the
+    deployment. The `updated_at` window is what makes the sweep quiescent: a BU enters it
+    by saving settings and leaves it either by confirming or by going quiet, so the steady
+    state is an empty set and no mailbox connection at all.
+
+    A customer who saves settings today and gets to Gmail next week falls out of the
+    window; their confirmation is picked up by the 10-minute document poll instead, which
+    handles the same branch. Losing a minute of latency in that case is the price of not
+    holding a mailbox connection open forever for it.
+
+    Not filtered on `enabled` — same reason `record_gmail_code` is not: a BU redoing the
+    Gmail handshake with the feature switched off still needs the forward to go live.
+    """
+    since = datetime.now(UTC) - timedelta(hours=hours)
+    rows = await db.execute(
+        select(EmailIngestSettings.ingest_tag).where(
+            EmailIngestSettings.ingest_tag.is_not(None),
+            EmailIngestSettings.gmail_confirmed_at.is_(None),
+            EmailIngestSettings.updated_at > since,
+        )
+    )
+    return {tag for tag in rows.scalars() if tag}
 
 
 async def record_gmail_code(db: AsyncSession, tag: str, code: str) -> None:
