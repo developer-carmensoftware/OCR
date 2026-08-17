@@ -59,6 +59,9 @@ function readCalm(): boolean | null {
  */
 const EXIT_MS = 180
 
+/** Smallest corner the highlight will draw, in stage px. */
+const MIN_RADIUS = 12
+
 interface Props {
   open: boolean
   onClose: () => void
@@ -280,7 +283,10 @@ export default function TutorialModal({ open, onClose, title, steps, finish }: P
               className="tut-highlight"
               aria-hidden="true"
               data-spot-active={step.spot}
-              style={{ borderRadius: radius * view.scale }}
+              // The highlight copies the target's corners, but a square-cornered
+              // target (a bare <section>, a toolbar) gets a floor: in stage px,
+              // so it stays the same softness at every zoom.
+              style={{ borderRadius: Math.max(radius * view.scale, MIN_RADIUS) }}
               initial={{ ...frame, opacity: 0 }}
               animate={{ ...frame, opacity: 1 }}
               transition={glide}
