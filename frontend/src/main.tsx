@@ -87,6 +87,7 @@ const ErrorsPage = lazy(() => import('./pages/admin/ErrorsPage'))
 const ExtractionsPage = lazy(() => import('./pages/admin/ExtractionsPage'))
 const AnomaliesPage = lazy(() => import('./pages/admin/AnomaliesPage'))
 const JobsPage = lazy(() => import('./pages/admin/JobsPage'))
+const EmailAutomationPage = lazy(() => import('./pages/admin/EmailAutomationPage'))
 const MaintenancePage = lazy(() => import('./pages/admin/MaintenancePage'))
 const SessionsPage = lazy(() => import('./pages/admin/SessionsPage'))
 const CreditsPage = lazy(() => import('./pages/admin/CreditsPage'))
@@ -146,6 +147,8 @@ function AdminRouter() {
     AdminPage = <AnomaliesPage />
   } else if (route === 'admin/jobs') {
     AdminPage = <JobsPage />
+  } else if (route === 'admin/email') {
+    AdminPage = <EmailAutomationPage />
   } else if (route === 'admin/maintenance') {
     AdminPage = <MaintenancePage />
   } else if (route === 'admin/tenants') {

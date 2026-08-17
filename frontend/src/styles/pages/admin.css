@@ -440,6 +440,11 @@ body:has(.admin-login-page) {
   line-height: 1.05;
   letter-spacing: -0.025em;
   font-feature-settings: 'tnum';
+  /* The tile is 200px at its narrowest and this type is 1.6rem/800, so one
+     unbreakable token — an email address, a fingerprint — used to run straight out
+     past the card border. A value that long is a design mistake in the tile, but it
+     must not become a visual break in the page while someone fixes it. */
+  overflow-wrap: anywhere;
 }
 
 .kpi-trend {
@@ -457,6 +462,7 @@ body:has(.admin-login-page) {
   font-size: 0.72rem;
   color: var(--text-4);
   margin-top: 0.35rem;
+  overflow-wrap: anywhere;
 }
 
 /* ─── TABLE ────────────────────────────────────────────────────────────── */
@@ -1858,4 +1864,40 @@ body:has(.admin-login-page) {
   background: var(--gray-100);
   color: var(--text-3);
   border: 1px solid var(--border-hi);
+}
+
+/* A cell whose content is one long unbreakable token (a bank's 60-character
+   filename). `.admin-td` is nowrap, so without a cap one of these sets the width of
+   the entire table and the horizontal scrollbar becomes permanent. The full value
+   stays in `title` and in the expanded row. */
+.admin-cell-clip {
+  display: inline-block;
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+.admin-cell-clip--sm {
+  max-width: 13rem;
+}
+
+/* Expanded row detail on #/admin/email — the fields too long for a cell (the error
+   sentence, the RFC-822 Message-ID) without pushing the table into horizontal scroll.
+   A definition list rather than a nested table: these are labelled values, not rows. */
+.admin-detail-list {
+  display: grid;
+  grid-template-columns: minmax(7rem, max-content) 1fr;
+  gap: 0.35rem var(--space-4);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  font-size: 0.8rem;
+}
+.admin-detail-list dt {
+  color: var(--text-3);
+  font-weight: 600;
+}
+.admin-detail-list dd {
+  margin: 0;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
 }

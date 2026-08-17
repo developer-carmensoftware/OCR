@@ -11,6 +11,7 @@ import {
   Gauge,
   LayoutDashboard,
   LogOut,
+  Mail,
   Settings,
   Shield,
   Trophy,
@@ -144,6 +145,11 @@ function getNavSections(t: ReturnType<typeof useT>['t']): NavSection[] {
           label: t('admin.nav.item.jobs'),
           hash: '/admin/jobs',
           icon: <Settings size={ICON_SIZE} strokeWidth={2} />,
+        },
+        {
+          label: t('admin.nav.item.email'),
+          hash: '/admin/email',
+          icon: <Mail size={ICON_SIZE} strokeWidth={2} />,
         },
         {
           label: t('admin.nav.item.maintenance'),
