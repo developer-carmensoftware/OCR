@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from .admin_users import router as admin_users_router
 from .auth import router as auth_router
 from .credits import router as credits_router
+from .email_ingest import router as email_ingest_router
 from .maintenance import router as maintenance_router
 from .monitoring import router as monitoring_router
 from .quotas import router as quotas_router
@@ -23,3 +24,4 @@ router.include_router(tenants_router)
 router.include_router(credits_router)
 router.include_router(quotas_router)
 router.include_router(admin_users_router)
+router.include_router(email_ingest_router)
