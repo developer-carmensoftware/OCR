@@ -358,6 +358,8 @@ export interface EmailPollResult {
   skipped?: number
   unrouted?: number
   retry_later?: number
+  /** Unseen mail already older than IMAP_HOLD_DAYS — no poll will ever see it again. */
+  beyond_window?: number
   checked?: number
   confirmed?: number
   waiting?: number

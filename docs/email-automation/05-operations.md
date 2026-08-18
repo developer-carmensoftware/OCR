@@ -37,9 +37,11 @@ address).
 
 ## Scheduling
 
-**Neither job is scheduled today.** `git grep cron.schedule` across
-`supabase/migrations/` turns up no `email-*` job. The exact SQL to run is documented as a
-docstring on `check_token_health()` (`routers/email_automation.py:392-402`):
+**Both jobs are scheduled** by `supabase/migrations/20260817000000_email_ingest_cron.sql`:
+`email-ingest` every 10 minutes and `email-confirm` every minute. `email-token-health` is
+the one still unscheduled. The SQL below is what the migration runs — reproduced because it
+is also what you re-issue by hand when the launcher cache goes stale (see below), and it is
+documented as a docstring on `check_token_health()` (`routers/email_automation.py`):
 
 ```sql
 select cron.schedule('email-ingest', '*/10 * * * *', $$
@@ -90,11 +92,16 @@ call directly from the Supabase SQL Editor.
 |---|---|
 | `#/admin/jobs` | One row per poll, `job_name = "email-ingest"`, `rows_affected` = documents posted that poll |
 | `#/admin/anomalies` | `email_ingest_unrouted` — WARN, tenant `"system"`, raised when a single poll has ≥5 messages with no resolvable tag |
+| `#/admin/anomalies` | `email_ingest_beyond_window` — WARN, tenant `"system"`, raised when any unseen mail is already older than `IMAP_HOLD_DAYS`. Deduped while the alert is open, so a standing backlog raises one alert, not one per poll. This is the only signal that a poller outage longer than the window ate real mail |
 | `GET /api/v1/carmen/settings` | Per-BU `status.documents_total` / `status.last_received_at` (an aggregate `COUNT`/`MAX` over `email_documents`) |
 
-**The honest gap: `email_documents` is write-only.** No router reads individual rows — the
-only read anywhere is the aggregate above. There is no list, no filter by `status` or
-`reason_code`, and no way to see *which* message failed or why without SQL:
+**`#/admin/email` reads `email_documents`** — list, filter by `status` / `reason_code` /
+tenant / date, per-row detail (error, Message-ID, bank, task), and the two manual buttons
+(Poll documents, Check confirmations). The `held` and `beyond-window` counts appear in the
+poll toast; neither leaves a row in the table, so the toast is where a growing backlog is
+visible at all.
+
+Straight to SQL only when you need something the page does not group by:
 
 ```sql
 select message_id, attachment, status, reason_code, error_message, created_at
@@ -103,8 +110,6 @@ where tenant_id = :tenant_id
 order by created_at desc
 limit 50;
 ```
-
-There is also no admin-side email-ingest page at all — see [Known gaps](#known-gaps--roadmap).
 
 ## Runbook
 
@@ -117,6 +122,7 @@ There is also no admin-side email-ingest page at all — see [Known gaps](#known
 | A previously-working BU starts failing with `carmen_rejected` | Carmen token was rotated or revoked on Carmen's side without the OFF/ON cycle | Run `POST /email-ingest/health`; check `verified_at` on `GET /settings/token` |
 | `gmail_confirmed_at` stays null despite the customer insisting they set up the forward | Google changed the confirmation link format — `auto_confirm_forwarding()` targets an undocumented interface | Check application logs for `"Could not follow the confirmation link"`; this is the one failure mode that breaks silently by design |
 | A BU switched the feature back on and nothing arrives | Their mail was held unread while off, and `IMAP_HOLD_DAYS` has since passed — or it was read by a person or a Gmail filter, which makes it invisible to `SEARCH UNSEEN` for good | The messages are still in the mailbox: mark them unread and poll. Held mail writes no `email_documents` row by design (a ledger row would dedupe it out of ever being retried), so the only live signal is the `held` count in the poll toast on `#/admin/email` |
+| A customer forwarded something and there is no row at all | Their attachment was a type this module cannot read (`.xlsx`, `.rar`, a `.zip` of CSVs), or the mail named no file whatsoever | Filter `#/admin/email` on reason `unsupported_attachment` — since 2026-08-18 a mail whose every attachment was refused writes one `skipped` row per rejected filename, free. **Still no row?** Then the mail named no file at all (a "your statement is ready" notice), or it never reached us: check `unrouted` on that poll and the raw `Delivered-To` header |
 | A credit was charged but nothing posted | Look at the `email_documents` row for that message — `reason_code` explains exactly which post-charge gate stopped it | Query as above; cross-reference against [04-data-model.md's taxonomy](04-data-model.md#reason_code-taxonomy) for whether it should have refunded |
 
 ## Testing
@@ -124,7 +130,7 @@ There is also no admin-side email-ingest page at all — see [Known gaps](#known
 | Suite | Covers |
 |---|---|
 | `backend/tests/unit/test_email_ingest_routing.py` | Tag extraction (incl. the Gmail-omits-`Delivered-To` case), `To:` never used as a source, `resolve_by_tag`, `foreign_tax_id`, `gmail_confirm_code`, `sender_allowed`, `match_rules` |
-| `backend/tests/unit/test_email_ingest_pipeline.py` | Happy path, `submitted_at` stamping, AI GL-mapping fill, refund behaviour, Carmen decline vs. transport failure, owner-address gate, no-rule-match cost, tax-ID parking, atomic claim dedupe, tag routing, Gmail confirm + off-Google link refusal, `run_ingest` summary/`job_runs`/unrouted alert, magic-byte gate, attachment cap, folder quoting |
+| `backend/tests/unit/test_email_ingest_pipeline.py` | Happy path, `submitted_at` stamping, AI GL-mapping fill, refund behaviour, Carmen decline vs. transport failure, owner-address gate, no-rule-match cost, tax-ID parking, atomic claim dedupe, tag routing, Gmail confirm + off-Google link refusal, `run_ingest` summary/`job_runs`/unrouted alert, magic-byte gate, attachment cap, folder quoting, UID-not-sequence-number addressing, crash-mid-poll hand-back, unsupported-attachment rows, duplicate-filename disambiguation, beyond-window counting |
 | `backend/tests/unit/test_email_settings_service.py` | Validation matrix, encrypted-password round trip, dev-token-only-in-debug, token never echoed, entitlement gates, SSRF origin, pattern requirement, bank-TIN rejection, tag lifecycle |
 | `backend/tests/integration/test_email_automation_router.py` | `_caller` shapes, rate limiting, rejection memoization, `_resolve` proof semantics, `_tenant_host` spellings, route wiring |
 | `scripts/email_multibu_loadtest.py` | Many documents from many BUs in one batch, against the dev DB and a real LLM: per-BU attribution of every row written, exact charging, tokens and USD per document, serial poll throughput vs the 10-minute tick, a concurrency probe, and the overlapping-poll guard. Carmen is a dry run — five `carmen_service` calls are patched, nothing is posted |
@@ -173,12 +179,13 @@ with `statement_cache_size=0` rather than raising the app's own pool size.
 Everything below is a real, currently-absent piece — flagged here so it isn't rediscovered
 by surprise.
 
-- **Neither cron job is scheduled** — see [Scheduling](#scheduling).
+- **`email-token-health` is not scheduled** — the other two are. See
+  [Scheduling](#scheduling).
 - **No webhooks to Carmen.** `../CARMEN_INTEGRATION.md §3` (`document.posted`,
   `document.failed`) is a proposal; nothing in this repo sends a signed outbound POST.
 - **No retry of a failed document.** Single pass, one attempt, a human has to re-forward.
-- **No admin UI over `email_documents`.** An operator debugging a specific BU's failures
-  today has to run SQL — see [Observability today](#observability-today).
+- **No retention or soft delete on `email_documents`**, against the project's convention
+  for business tables. It grows for ever.
 - **The admin-JWT auth path is unreachable from any UI.** `_caller()` accepts
   `Bearer <admin JWT>` specifically so operators can fix a customer's settings without a
   Carmen token, but `EmailSettings.tsx` only ever sends the raw Carmen token — there's no

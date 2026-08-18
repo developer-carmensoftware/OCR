@@ -993,6 +993,8 @@ const en = {
     'This tab shows each BU’s ingest address, which is what lets anyone send documents into that BU’s ledger.',
   'admin.email.toast.polled':
     'Read {messages} message(s): {posted} posted, {failed} failed, {skipped} skipped, {held} held unread',
+  'admin.email.toast.beyondWindow':
+    '{n} unread message(s) are older than the hold window and will never be polled again — mark them unread in the mailbox and poll, or they stay lost',
   'admin.email.toast.noMail': 'No unread mail in the mailbox',
   'admin.email.toast.confirmed': 'Confirmed {confirmed} of {checked} forwarding request(s)',
   'admin.email.toast.busy': 'A poll is already running. Refresh in a moment.',
@@ -2259,6 +2261,8 @@ const th: Record<TKey, string> = {
     'แท็บนี้แสดงที่อยู่สำหรับ forward ของแต่ละ BU ซึ่งเป็นสิ่งที่ทำให้ส่งเอกสารเข้าบัญชีของ BU นั้นได้',
   'admin.email.toast.polled':
     'อ่านเมล {messages} ฉบับ: โพสต์ {posted} · ล้มเหลว {failed} · ข้าม {skipped} · พักไว้ {held}',
+  'admin.email.toast.beyondWindow':
+    'มีเมลที่ยังไม่ได้อ่าน {n} ฉบับเก่ากว่าช่วงที่ระบบจะย้อนไปดึง และจะไม่ถูกดึงอีกแล้ว — ต้องไปตั้งเป็นยังไม่ได้อ่านในกล่องเมลแล้วสั่งดึงใหม่ ไม่อย่างนั้นจะหายไปเลย',
   'admin.email.toast.noMail': 'ไม่มีเมลที่ยังไม่ได้อ่านในกล่อง',
   'admin.email.toast.confirmed': 'ยืนยัน forward สำเร็จ {confirmed} จาก {checked} ฉบับ',
   'admin.email.toast.busy': 'มีรอบดึงเมลทำงานอยู่แล้ว อีกสักครู่ค่อยรีเฟรช',

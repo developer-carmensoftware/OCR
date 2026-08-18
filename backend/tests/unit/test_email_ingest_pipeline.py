@@ -656,10 +656,13 @@ async def _route(
     exhausted=None,
     process=None,
     resolve=None,
+    rejected=(),
+    db=None,
 ):
     """Runs `_process_message` — up to (and not into) the per-attachment half."""
-    db = AsyncMock()
-    db.get = AsyncMock(return_value=MagicMock())  # tenant row exists
+    if db is None:
+        db = AsyncMock()
+        db.get = AsyncMock(return_value=MagicMock())  # tenant row exists
     process = process or AsyncMock(return_value="posted")
     resolve = resolve or AsyncMock(return_value=resolved)
     extract = AsyncMock(return_value=_extracted())
@@ -687,6 +690,7 @@ async def _route(
                 "attachments": (
                     [("statement.jpg", b"fake")] if attachments is None else list(attachments)
                 ),
+                "rejected": list(rejected),
                 "body": body,
             },
             exhausted,
@@ -786,6 +790,91 @@ async def test_every_attachment_of_one_message_gets_its_own_outcome():
     )
     assert outcomes == ["posted", "posted"]
     assert process.await_count == 2
+
+
+# ── An attachment we cannot read is not the same as no attachment ─────────────
+
+
+class _RoutingDB(_FakeDB):
+    """`_FakeDB` that also answers the tenant lookup `_process_message` makes."""
+
+    async def get(self, model, ident):
+        from app.models.identity import Tenant
+
+        return MagicMock() if model is Tenant else await super().get(model, ident)
+
+
+@pytest.mark.asyncio
+async def test_an_unsupported_attachment_leaves_a_row_instead_of_vanishing():
+    """The customer forwards an `.xlsx` and it is gone: mail marked `\\Seen`, dropped on
+    the attachment check before the tag was even resolved, no ledger row, no
+    notification, nothing for `#/admin/email` to show when they ask on Thursday where
+    Tuesday's document went. This is the case the ledger table was created for."""
+    db = _RoutingDB()
+    outcomes, extract, process = await _route(
+        resolved=_settings_row(), attachments=[], rejected=["commission.xlsx"], db=db
+    )
+    assert outcomes == ["skipped"]
+    ledger = db.added[0]
+    assert ledger.status == "skipped"
+    assert ledger.reason_code == "unsupported_attachment"
+    assert ledger.attachment == "commission.xlsx"
+    # Free: this is far ahead of consume_document, so there is nothing to refund either.
+    extract.assert_not_awaited()
+    process.assert_not_awaited()
+    assert [o for o in db.added if isinstance(o, UserNotification)] == []
+
+
+@pytest.mark.asyncio
+async def test_a_message_naming_no_file_at_all_still_writes_nothing():
+    """A bank's "your statement is ready" notice. A ledger row for every one of those
+    buries the rows that mean something."""
+    db = _RoutingDB()
+    outcomes, _, _ = await _route(resolved=_settings_row(), attachments=[], db=db)
+    assert outcomes == ["skipped"]
+    assert db.added == []
+
+
+@pytest.mark.asyncio
+async def test_two_attachments_with_the_same_name_are_both_processed():
+    """`_claim` dedupes on (tenant, message, attachment), so the second `report.pdf` used
+    to violate the unique index and be filed "already handled" without being looked at.
+
+    Not hypothetical: `_unzip` strips directories, so a bank's `2026/01/report.pdf` and
+    `2026/02/report.pdf` arrive as two identical names in one message.
+    """
+    outcomes, _, process = await _route(
+        resolved=_settings_row(), attachments=[("report.pdf", b"x"), ("report.pdf", b"y")]
+    )
+    assert outcomes == ["posted", "posted"]
+    assert [c.kwargs["filename"] for c in process.await_args_list] == [
+        "report.pdf",
+        "report (2).pdf",
+    ]
+    # The blobs stay with their own names.
+    assert [c.kwargs["blob"] for c in process.await_args_list] == [b"x", b"y"]
+
+
+def test_the_disambiguating_suffix_goes_before_the_extension():
+    """`validate_magic_bytes()` and `match_rules()` both read the extension, so a
+    `report.pdf~2` form would fail the magic-byte gate on a perfectly good PDF."""
+    assert ingest._unique_names(["a.pdf", "a.pdf", "a.pdf", "b.pdf"]) == [
+        "a.pdf",
+        "a (2).pdf",
+        "a (3).pdf",
+        "b.pdf",
+    ]
+    assert ingest._unique_names(["noext", "noext"]) == ["noext", "noext (2)"]
+
+
+def test_disambiguation_never_lands_on_a_name_the_message_already_uses():
+    """Otherwise the third file collides with the literal `a (2).pdf` and is dropped —
+    exactly the failure this function exists to prevent."""
+    assert ingest._unique_names(["a.pdf", "a (2).pdf", "a.pdf"]) == [
+        "a.pdf",
+        "a (2).pdf",
+        "a (3).pdf",
+    ]
 
 
 # ── Gmail's forwarding confirmation ───────────────────────────────────────────
@@ -939,7 +1028,7 @@ async def test_run_ingest_summarises_every_message_and_records_the_job_run():
     process = AsyncMock(side_effect=[["posted"], ["unrouted"]])
     with (
         patch.object(ingest.settings, "imap_host", "imap.example.com"),
-        patch.object(ingest, "_fetch_unseen", lambda limit: messages),
+        patch.object(ingest, "_fetch_unseen", lambda limit: (messages, 0)),
         patch.object(ingest, "_process_message", process),
         patch.object(ingest, "_record_run", record),
     ):
@@ -952,6 +1041,7 @@ async def test_run_ingest_summarises_every_message_and_records_the_job_run():
         "skipped": 0,
         "unrouted": 1,
         "retry_later": 0,
+        "beyond_window": 0,
     }
     record.assert_awaited_once()
     assert record.await_args.args[1] == summary
@@ -1066,16 +1156,22 @@ def _mime(parts):
     return outer
 
 
+def _accepted(msg) -> list[str]:
+    """The filenames `_attachments` kept. It returns `(accepted, rejected)` — see the
+    unsupported-attachment tests below for the other half."""
+    return [f for f, _ in ingest._attachments(msg)[0]]
+
+
 def test_attachments_are_capped_per_message():
     """`imap_batch_size` caps messages per poll, not attachments per message — and a
     forwarded chain's signature logos are each their own MIME part."""
     msg = _mime([(f"logo{i}.png", b"x") for i in range(ingest.MAX_ATTACHMENTS_PER_MESSAGE + 5)])
-    assert len(ingest._attachments(msg)) == ingest.MAX_ATTACHMENTS_PER_MESSAGE
+    assert len(_accepted(msg)) == ingest.MAX_ATTACHMENTS_PER_MESSAGE
 
 
 def test_files_with_an_unsupported_extension_are_ignored():
     msg = _mime([("notes.txt", b"x"), ("report.pdf", b"%PDF-1.4")])
-    assert [f for f, _ in ingest._attachments(msg)] == ["report.pdf"]
+    assert _accepted(msg) == ["report.pdf"]
 
 
 def test_a_forward_as_attachment_still_yields_the_inner_pdf():
@@ -1088,7 +1184,7 @@ def test_a_forward_as_attachment_still_yields_the_inner_pdf():
     outer = _mime([])
     outer.attach(MIMEMessage(inner))
 
-    found = ingest._attachments(outer)
+    found, _ = ingest._attachments(outer)
     assert [f for f, _ in found] == ["MDR-aug.pdf"]
     assert found[0][1] == b"%PDF-1.4 inner"
 
@@ -1121,7 +1217,7 @@ def test_a_bank_zip_is_expanded_into_the_documents_inside_it():
             ("KB1P554V2_SUM_451005282039001.pdf", b"%PDF-1.4 summary"),
         ]
     )
-    found = ingest._attachments(_mime([("451005282039001_Card_20260721.zip", blob)]))
+    found, _ = ingest._attachments(_mime([("451005282039001_Card_20260721.zip", blob)]))
     assert [f for f, _ in found] == [
         "E-TAX_INVOICE_CARD_451005282039001.PDF",
         "KB1P554V2_SUM_451005282039001.pdf",
@@ -1133,7 +1229,7 @@ def test_zip_entries_keep_only_their_filename():
     """The rules match a filename, not a path — and a zip entry carries the path it was
     archived under."""
     blob = _zip([("2026/07/statement.pdf", b"%PDF-1.4")])
-    assert [f for f, _ in ingest._attachments(_mime([("mail.zip", blob)]))] == ["statement.pdf"]
+    assert _accepted(_mime([("mail.zip", blob)])) == ["statement.pdf"]
 
 
 def test_an_oversized_member_is_skipped_before_it_is_read():
@@ -1141,20 +1237,23 @@ def test_an_oversized_member_is_skipped_before_it_is_read():
     against the same ceiling the mail itself is held to."""
     big = b"%PDF-1.4" + b"\0" * (ingest.settings.max_file_size_mb * 1024 * 1024 + 1)
     blob = _zip([("huge.pdf", big), ("small.pdf", b"%PDF-1.4 ok")])
-    assert [f for f, _ in ingest._attachments(_mime([("mail.zip", blob)]))] == ["small.pdf"]
+    assert _accepted(_mime([("mail.zip", blob)])) == ["small.pdf"]
 
 
 def test_zip_contents_count_against_the_attachment_cap():
     blob = _zip(
         [(f"doc{i}.pdf", b"%PDF-1.4") for i in range(ingest.MAX_ATTACHMENTS_PER_MESSAGE + 5)]
     )
-    found = ingest._attachments(_mime([("mail.zip", blob)]))
-    assert len(found) == ingest.MAX_ATTACHMENTS_PER_MESSAGE
+    assert len(_accepted(_mime([("mail.zip", blob)]))) == ingest.MAX_ATTACHMENTS_PER_MESSAGE
 
 
 def test_a_zip_we_cannot_open_is_logged_not_raised():
-    """A poll carrying real invoices must not die on one corrupt archive."""
-    assert ingest._attachments(_mime([("broken.zip", b"PK\x03\x04 not really")])) == []
+    """A poll carrying real invoices must not die on one corrupt archive — but it is
+    reported under the archive's own name, or the customer who forwarded it gets no
+    answer at all."""
+    accepted, rejected = ingest._attachments(_mime([("broken.zip", b"PK\x03\x04 not really")]))
+    assert accepted == []
+    assert rejected == ["broken.zip"]
 
 
 def test_an_unreadable_member_is_skipped_and_the_rest_still_arrive(monkeypatch):
@@ -1173,8 +1272,7 @@ def test_an_unreadable_member_is_skipped_and_the_rest_still_arrive(monkeypatch):
         return real_read(self, member, pwd)
 
     monkeypatch.setattr(zipfile.ZipFile, "read", refuse)
-    found = ingest._attachments(_mime([("mail.zip", blob)]))
-    assert [f for f, _ in found] == ["open.pdf"]
+    assert _accepted(_mime([("mail.zip", blob)])) == ["open.pdf"]
 
 
 # ── Selecting the mailbox ─────────────────────────────────────────────────────
@@ -1198,21 +1296,61 @@ def test_the_mailbox_name_is_quoted_before_select(configured, sent):
 
 def test_fetch_unseen_selects_the_configured_folder_quoted(monkeypatch):
     """The wiring, not just the helper: a poll must reach SELECT with a usable name."""
-    box = MagicMock()
-    box.search.return_value = ("OK", [b""])
-    monkeypatch.setattr(ingest.imaplib, "IMAP4_SSL", lambda host, port, timeout=None: box)
+    box = _searching_box(monkeypatch, b"")
     monkeypatch.setattr(ingest.settings, "imap_folder", "AR Agent")
 
-    assert ingest._fetch_unseen(10) == []
+    assert ingest._fetch_unseen(10) == ([], 0)
     box.select.assert_called_once_with('"AR Agent"')
 
 
-def _searching_box(monkeypatch, uids: bytes):
+def _searching_box(monkeypatch, uids: bytes, *, unbounded: bytes | None = None):
+    """A mailbox whose UID SEARCH answers `uids`, and whose UID FETCH yields nothing.
+
+    The second search of a poll is the unbounded one (`beyond_window`); it answers
+    `unbounded` when given, otherwise the same set as the first.
+    """
     box = MagicMock()
-    box.search.return_value = ("OK", [uids])
-    box.fetch.return_value = ("OK", [None])  # not a tuple → every uid is skipped
+    answers = [("OK", [uids]), ("OK", [unbounded if unbounded is not None else uids])]
+
+    def _uid(command, *args):
+        if command == "SEARCH":
+            return answers.pop(0) if answers else ("OK", [b""])
+        return ("OK", [None])  # FETCH: not a tuple → every uid is skipped
+
+    box.uid.side_effect = _uid
     monkeypatch.setattr(ingest.imaplib, "IMAP4_SSL", lambda host, port, timeout=None: box)
     return box
+
+
+def _uid_calls(box, command: str) -> list[tuple]:
+    return [c.args[1:] for c in box.uid.call_args_list if c.args[0] == command]
+
+
+def test_the_poll_addresses_mail_by_uid_not_sequence_number(monkeypatch):
+    """The bug that made every hand-back a coin flip.
+
+    `box.search`/`fetch`/`store` speak sequence numbers, which are per-session and shift
+    down on any expunge — so a number captured here named a *different* message by the
+    time `_set_seen` opened its own connection minutes later: the held mail stayed `\\Seen`
+    (lost) while an unrelated one was silently marked unread. Invisible to any test that
+    only checks the arguments, which is why this asserts on the method.
+    """
+    box = _searching_box(monkeypatch, b"1 2")
+    ingest._fetch_unseen(10)
+    assert _uid_calls(box, "SEARCH")
+    assert [c[0] for c in _uid_calls(box, "FETCH")] == ["1", "2"]
+    box.search.assert_not_called()
+    box.fetch.assert_not_called()
+    box.store.assert_not_called()
+
+
+def test_setting_the_seen_flag_addresses_mail_by_uid(monkeypatch):
+    """The connection that made UIDs mandatory: `_set_seen` opens its own, minutes after
+    the one that read the mail."""
+    box = _searching_box(monkeypatch, b"")
+    ingest._unmark_seen(["11", "12"])
+    assert _uid_calls(box, "STORE") == [("11", "-FLAGS", "\\Seen"), ("12", "-FLAGS", "\\Seen")]
+    box.store.assert_not_called()
 
 
 def test_a_poll_takes_the_newest_mail_not_the_oldest(monkeypatch):
@@ -1225,7 +1363,7 @@ def test_a_poll_takes_the_newest_mail_not_the_oldest(monkeypatch):
     """
     box = _searching_box(monkeypatch, b"1 2 3 4 5")
     ingest._fetch_unseen(2)
-    assert [call.args[0] for call in box.fetch.call_args_list] == ["4", "5"]
+    assert [c[0] for c in _uid_calls(box, "FETCH")] == ["4", "5"]
 
 
 def test_a_poll_looks_no_further_back_than_the_hold_window(monkeypatch):
@@ -1235,15 +1373,31 @@ def test_a_poll_looks_no_further_back_than_the_hold_window(monkeypatch):
     monkeypatch.setattr(ingest.settings, "imap_hold_days", 14)
     ingest._fetch_unseen(10)
 
-    args = box.search.call_args.args
-    assert args[1] == "UNSEEN"
-    assert args[2] == "SINCE"
+    args = _uid_calls(box, "SEARCH")[0]
+    assert args[0] == "UNSEEN"
+    assert args[1] == "SINCE"
     # IMAP dates are ASCII English whatever the host's locale is set to.
-    assert args[3] == ingest._since_arg()
+    assert args[2] == ingest._since_arg()
     assert (
-        datetime.strptime(args[3], "%d-%b-%Y").date()
+        datetime.strptime(args[2], "%d-%b-%Y").date()
         == (datetime.now(UTC) - timedelta(days=14)).date()
     )
+
+
+def test_mail_past_the_hold_window_is_counted_even_though_it_is_never_fetched(monkeypatch):
+    """The window is right, but past it a message drops out of every poll silently — so a
+    poller outage longer than IMAP_HOLD_DAYS loses real mail with no symptom at all. The
+    second search costs one round trip on the connection already open and no FETCH."""
+    box = _searching_box(monkeypatch, b"4 5", unbounded=b"1 2 3 4 5")
+    messages, beyond = ingest._fetch_unseen(10)
+
+    assert messages == []
+    assert beyond == 3
+    bounded, unbounded = _uid_calls(box, "SEARCH")
+    assert "SINCE" in bounded and "SINCE" not in unbounded
+    # SMALLER stays, or an oversized *recent* message is miscounted as beyond-window.
+    assert unbounded.count("SMALLER") == bounded.count("SMALLER") == 1
+    assert len(_uid_calls(box, "FETCH")) == 2  # only the bounded set is pulled
 
 
 def test_every_mailbox_connection_carries_a_socket_timeout(monkeypatch):
@@ -1491,7 +1645,7 @@ async def test_the_poll_clears_seen_on_everything_it_handed_back():
     ]
     with (
         patch.object(ingest.settings, "imap_host", "imap.example.com"),
-        patch.object(ingest, "_fetch_unseen", lambda limit: messages),
+        patch.object(ingest, "_fetch_unseen", lambda limit: (messages, 0)),
         patch.object(
             ingest, "_process_message", AsyncMock(side_effect=[["posted"], ["retry_later"]])
         ),
@@ -1502,6 +1656,65 @@ async def test_the_poll_clears_seen_on_everything_it_handed_back():
 
     assert summary["retry_later"] == 1
     unmark.assert_called_once_with(["8"])
+
+
+@pytest.mark.asyncio
+async def test_a_crash_mid_poll_hands_back_everything_it_never_looked_at():
+    """One DB blip on message 2 of 3 used to leave message 3 `\\Seen`, unprocessed and
+    gone — it never reached `_claim`, so nothing anywhere recorded that it existed.
+
+    The message that actually raised stays flagged on purpose: handing it back would
+    re-crash the next poll on it forever, and the FAILED `job_runs` row is its trail.
+    """
+    unmark = MagicMock()
+    messages = [
+        {"uid": str(u), "message_id": f"<{u}>", "subject": "s", "from": "f", "recipients": []}
+        for u in (7, 8, 9)
+    ]
+    with (
+        patch.object(ingest.settings, "imap_host", "imap.example.com"),
+        patch.object(ingest, "_fetch_unseen", lambda limit: (messages, 0)),
+        patch.object(
+            ingest,
+            "_process_message",
+            AsyncMock(side_effect=[["posted"], RuntimeError("connection reset"), ["posted"]]),
+        ),
+        patch.object(ingest, "_unmark_seen", unmark),
+        patch.object(ingest, "_record_run", AsyncMock()),
+        pytest.raises(RuntimeError),
+    ):
+        await ingest.run_ingest()
+
+    unmark.assert_called_once_with(["9"])
+
+
+@pytest.mark.asyncio
+async def test_mail_beyond_the_hold_window_reaches_the_summary_and_an_alert():
+    """The only signal that a poller outage longer than IMAP_HOLD_DAYS ate real mail."""
+    alert = AsyncMock()
+    with (
+        patch.object(ingest.settings, "imap_host", "imap.example.com"),
+        patch.object(ingest, "_fetch_unseen", lambda limit: ([], 4)),
+        patch.object(ingest, "_unmark_seen", MagicMock()),
+        patch.object(ingest, "async_session", _session_factory(_FakeDB())),
+        patch.object(ingest.anomaly_service, "open_alert_if_absent", alert),
+    ):
+        summary = await ingest.run_ingest()
+
+    assert summary["beyond_window"] == 4
+    assert alert.await_args.kwargs["metric"] == "email_ingest_beyond_window"
+    assert alert.await_args.kwargs["tenant_id"] == "system"
+
+
+@pytest.mark.asyncio
+async def test_a_poll_with_nothing_past_the_window_raises_no_alert():
+    alert = AsyncMock()
+    with (
+        patch.object(ingest, "async_session", _session_factory(_FakeDB())),
+        patch.object(ingest.anomaly_service, "open_alert_if_absent", alert),
+    ):
+        await ingest._record_run(datetime.now(UTC), {"posted": 1, "beyond_window": 0})
+    alert.assert_not_awaited()
 
 
 @pytest.mark.asyncio
