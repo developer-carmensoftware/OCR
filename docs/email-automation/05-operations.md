@@ -12,7 +12,8 @@ All in `backend/app/config.py:193-206`, documented at `backend/.env.example:126-
 | `IMAP_USER` | `""` | |
 | `IMAP_PASSWORD` | `""` | |
 | `IMAP_FOLDER` | `INBOX` | Quoted automatically before use (`_quoted_folder()`) so a folder name containing a space works |
-| `IMAP_BATCH_SIZE` | `20` | Messages per poll, not per day. Sets the practical floor on the cron interval — see [Scheduling](#scheduling) |
+| `IMAP_BATCH_SIZE` | `10` | Messages per poll, not per day. Sets the practical floor on the cron interval — see [Scheduling](#scheduling). The batch is taken from the **newest** matching UIDs, so held-back mail can never crowd out mail arriving now |
+| `IMAP_HOLD_DAYS` | `14` | How far back `SEARCH … SINCE` looks, i.e. the retry window for mail handed back unread (BU switched off, package lapsed, module disabled, out of credits). Switch back on inside the window and the backlog replays; past it a held message drops out of every poll and stays in the mailbox for a person to find. Raising it also lengthens how long unwanted mail is re-fetched each poll; lowering it below the longest plausible poller outage means real mail can age out |
 | `CARMEN_DEV_TOKEN` | `""` | Read **only** when `APP_DEBUG=true`. Never used in production — one shared credential would post every BU's JVs under the same identity, exactly what the per-BU token exists to avoid |
 
 Shared vars this feature also depends on:
@@ -115,6 +116,7 @@ There is also no admin-side email-ingest page at all — see [Known gaps](#known
 | A BU's documents are all `no_rule_match` | `filename_patterns` too narrow for how this bank actually names its files | Point the customer at "start broad, narrow later" — `.pdf` accepts everything from that bank as an escape hatch |
 | A previously-working BU starts failing with `carmen_rejected` | Carmen token was rotated or revoked on Carmen's side without the OFF/ON cycle | Run `POST /email-ingest/health`; check `verified_at` on `GET /settings/token` |
 | `gmail_confirmed_at` stays null despite the customer insisting they set up the forward | Google changed the confirmation link format — `auto_confirm_forwarding()` targets an undocumented interface | Check application logs for `"Could not follow the confirmation link"`; this is the one failure mode that breaks silently by design |
+| A BU switched the feature back on and nothing arrives | Their mail was held unread while off, and `IMAP_HOLD_DAYS` has since passed — or it was read by a person or a Gmail filter, which makes it invisible to `SEARCH UNSEEN` for good | The messages are still in the mailbox: mark them unread and poll. Held mail writes no `email_documents` row by design (a ledger row would dedupe it out of ever being retried), so the only live signal is the `held` count in the poll toast on `#/admin/email` |
 | A credit was charged but nothing posted | Look at the `email_documents` row for that message — `reason_code` explains exactly which post-charge gate stopped it | Query as above; cross-reference against [04-data-model.md's taxonomy](04-data-model.md#reason_code-taxonomy) for whether it should have refunded |
 
 ## Testing
@@ -125,6 +127,25 @@ There is also no admin-side email-ingest page at all — see [Known gaps](#known
 | `backend/tests/unit/test_email_ingest_pipeline.py` | Happy path, `submitted_at` stamping, AI GL-mapping fill, refund behaviour, Carmen decline vs. transport failure, owner-address gate, no-rule-match cost, tax-ID parking, atomic claim dedupe, tag routing, Gmail confirm + off-Google link refusal, `run_ingest` summary/`job_runs`/unrouted alert, magic-byte gate, attachment cap, folder quoting |
 | `backend/tests/unit/test_email_settings_service.py` | Validation matrix, encrypted-password round trip, dev-token-only-in-debug, token never echoed, entitlement gates, SSRF origin, pattern requirement, bank-TIN rejection, tag lifecycle |
 | `backend/tests/integration/test_email_automation_router.py` | `_caller` shapes, rate limiting, rejection memoization, `_resolve` proof semantics, `_tenant_host` spellings, route wiring |
+| `scripts/email_multibu_loadtest.py` | Many documents from many BUs in one batch, against the dev DB and a real LLM: per-BU attribution of every row written, exact charging, tokens and USD per document, serial poll throughput vs the 10-minute tick, a concurrency probe, and the overlapping-poll guard. Carmen is a dry run — five `carmen_service` calls are patched, nothing is posted |
+
+### Multi-BU load test
+
+```bash
+# 1. put real bank documents in backend/example_field/  (gitignored)
+# 2. stop uvicorn — Supavisor caps the project at 15 connections
+python scripts/email_multibu_loadtest.py --mode batch --bus 5 --gates --dry-check   # free rehearsal
+python scripts/email_multibu_loadtest.py --mode batch --bus 5 --gates > report.md   # real LLM
+python scripts/email_multibu_loadtest.py --mode concurrent --levels 1,2,4,8
+python scripts/email_multibu_loadtest.py --mode overlap
+python scripts/email_multibu_loadtest.py --mode cleanup     # only if a run died mid-way
+```
+
+`--dry-check` swaps both LLM calls for canned answers, so the harness itself can be proven
+before any money is spent. Mail goes to a `LoadTest` folder the script creates — never
+`AR Agent`, which the deployed cron is polling. Scratch tenants and their rows are deleted
+in a `finally`, after the numbers have been printed. The script refuses to start if
+`DATABASE_URL` points at production.
 
 Run the whole feature's test surface:
 

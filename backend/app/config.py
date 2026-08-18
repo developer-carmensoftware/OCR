@@ -204,6 +204,14 @@ class Settings(BaseSettings):
     # one is processed — so this × MAX_FILE_SIZE_MB is resident at the peak (10 × 5 MB).
     # At a 10-minute schedule it still clears 1,440 documents/day.
     imap_batch_size: int = 10
+    # How far back a poll looks (IMAP `SEARCH … SINCE`). This is the retry window for
+    # mail the pipeline hands back unread — a BU that is switched off, out of package or
+    # has the module disabled keeps its mail unseen, so switching back on within this
+    # many days replays the backlog instead of losing it. Bounded because unseen mail
+    # nobody will ever accept would otherwise be re-fetched on every poll for ever.
+    # The cost of the bound: if the poller itself is down longer than this, real mail
+    # ages out too (`#/admin/email` cron health is what catches that).
+    imap_hold_days: int = 14
 
     # Carmen posting credential used when a BU has none of its own. Dev only:
     # in production Carmen supplies a per-BU token through PUT /carmen/settings.

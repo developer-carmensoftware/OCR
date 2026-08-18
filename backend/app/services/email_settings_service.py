@@ -109,17 +109,15 @@ async def resolve_by_tag(db: AsyncSession, tag: str) -> EmailIngestSettings | No
     running the vision model first. Everything downstream — the ledger row, the
     document credit, the `llm_usage_logs` row — therefore has a real `tenant_id`.
 
-    Enabled rows only: a switched-off BU cannot be routed to. A lapsed package is a
-    separate gate (`is_entitled`), because ending a subscription does not rewrite
-    settings.
+    **Identity only — this does not decide whether we may act.** `enabled` is checked by
+    the caller (`email_ingest_service._process_message`), together with `is_entitled`,
+    because "no such tag" and "known tag, switched off" need opposite answers: the first
+    is mail nobody can be told about and is dropped, the second is a pause and the mail is
+    handed back unread. A `None` for both cannot express that difference. Filtering here
+    would also be the wrong shape for the same reason `record_gmail_code` does not.
     """
     return (
-        await db.execute(
-            select(EmailIngestSettings).where(
-                EmailIngestSettings.ingest_tag == tag,
-                EmailIngestSettings.enabled.is_(True),
-            )
-        )
+        await db.execute(select(EmailIngestSettings).where(EmailIngestSettings.ingest_tag == tag))
     ).scalar_one_or_none()
 
 

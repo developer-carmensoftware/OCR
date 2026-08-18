@@ -14,14 +14,14 @@ check correctly refuses; the gate itself is tested separately below.
 """
 
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.exceptions import InsufficientCredits
+from app.exceptions import InsufficientCredits, ModuleDisabled
 from app.models.billing import UserNotification
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.config import AccountingConfigResponse
@@ -629,7 +629,14 @@ TAG = "a1b2c3d4"
 
 
 def _settings_row(**overrides):
-    defaults = dict(tenant_id=uuid4(), rules=[], tax_ids=[], owner_emails=[], ingest_tag="a1b2c3d4")
+    defaults = dict(
+        tenant_id=uuid4(),
+        rules=[],
+        tax_ids=[],
+        owner_emails=[],
+        ingest_tag="a1b2c3d4",
+        enabled=True,
+    )
     defaults.update(overrides)
     return MagicMock(**defaults)
 
@@ -732,12 +739,44 @@ async def test_a_lapsed_package_stops_the_message_before_any_extraction():
     """Settings are not rewritten when a subscription ends, so `enabled` stays true.
 
     The gate has to be here as well as on the toggle, or a customer keeps ingesting
-    after their package lapses.
+    after their package lapses. `retry_later`, not `skipped`: renewing is a thing they
+    can do, and the mail that arrived meanwhile should still be there when they do.
     """
-    outcomes, extract, process = await _route(resolved=_settings_row(), entitled=False)
-    assert outcomes == ["skipped"]
+    exhausted: set[str] = set()
+    outcomes, extract, process = await _route(
+        resolved=_settings_row(), entitled=False, exhausted=exhausted
+    )
+    assert outcomes == ["retry_later"]
+    assert exhausted == {TAG}
     extract.assert_not_awaited()
     process.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_switched_off_bu_keeps_its_mail_instead_of_losing_it():
+    """The toggle is a pause, not a verdict on the mail.
+
+    `_fetch_unseen` flags the whole batch before anyone knows who it belongs to, so
+    anything short of handing it back means a BU that switches the feature off for a
+    week has that week's statements destroyed — with no ledger row, no notification and
+    nothing to re-run.
+    """
+    exhausted: set[str] = set()
+    outcomes, extract, process = await _route(
+        resolved=_settings_row(enabled=False), exhausted=exhausted
+    )
+    assert outcomes == ["retry_later"]
+    assert exhausted == {TAG}  # the rest of this BU's mail in the batch, without a SELECT
+    extract.assert_not_awaited()
+    process.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_tag_is_still_dropped_not_held():
+    """Nobody to hold it for. Distinguishing this from a paused BU is the whole reason
+    `resolve_by_tag` stopped filtering on `enabled`."""
+    outcomes, _, _ = await _route(resolved=None)
+    assert outcomes == ["unrouted"]
 
 
 @pytest.mark.asyncio
@@ -906,7 +945,14 @@ async def test_run_ingest_summarises_every_message_and_records_the_job_run():
     ):
         summary = await ingest.run_ingest(limit=5)
 
-    assert summary == {"messages": 2, "posted": 1, "failed": 0, "skipped": 0, "unrouted": 1}
+    assert summary == {
+        "messages": 2,
+        "posted": 1,
+        "failed": 0,
+        "skipped": 0,
+        "unrouted": 1,
+        "retry_later": 0,
+    }
     record.assert_awaited_once()
     assert record.await_args.args[1] == summary
 
@@ -1161,6 +1207,45 @@ def test_fetch_unseen_selects_the_configured_folder_quoted(monkeypatch):
     box.select.assert_called_once_with('"AR Agent"')
 
 
+def _searching_box(monkeypatch, uids: bytes):
+    box = MagicMock()
+    box.search.return_value = ("OK", [uids])
+    box.fetch.return_value = ("OK", [None])  # not a tuple → every uid is skipped
+    monkeypatch.setattr(ingest.imaplib, "IMAP4_SSL", lambda host, port, timeout=None: box)
+    return box
+
+
+def test_a_poll_takes_the_newest_mail_not_the_oldest(monkeypatch):
+    """Held-back mail is by definition older than anything arriving now.
+
+    SEARCH answers in ascending UID order, so slicing from the front would park a
+    switched-off BU's backlog at the head of the queue for ever — `imap_batch_size` is 10,
+    and one BU whose bank mails daily fills that within ten days, silently starving every
+    other tenant. Taking the tail means a backlog can only use capacity nothing else wants.
+    """
+    box = _searching_box(monkeypatch, b"1 2 3 4 5")
+    ingest._fetch_unseen(2)
+    assert [call.args[0] for call in box.fetch.call_args_list] == ["4", "5"]
+
+
+def test_a_poll_looks_no_further_back_than_the_hold_window(monkeypatch):
+    """The other half of handing mail back: without a floor, mail nobody will ever accept
+    is re-fetched on every poll for the life of the deployment."""
+    box = _searching_box(monkeypatch, b"")
+    monkeypatch.setattr(ingest.settings, "imap_hold_days", 14)
+    ingest._fetch_unseen(10)
+
+    args = box.search.call_args.args
+    assert args[1] == "UNSEEN"
+    assert args[2] == "SINCE"
+    # IMAP dates are ASCII English whatever the host's locale is set to.
+    assert args[3] == ingest._since_arg()
+    assert (
+        datetime.strptime(args[3], "%d-%b-%Y").date()
+        == (datetime.now(UTC) - timedelta(days=14)).date()
+    )
+
+
 def test_every_mailbox_connection_carries_a_socket_timeout(monkeypatch):
     """Without it a mailbox that accepts the connection and then goes quiet blocks the
     worker thread forever — and `asyncio.to_thread` cannot be cancelled. At the
@@ -1320,6 +1405,50 @@ async def test_running_out_of_documents_releases_the_claim():
             carmen_uri="https://h",
         )
     release.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_disabled_module_holds_the_mail_instead_of_failing_the_document():
+    """`assert_module_enabled` is our switch, not a fault of the customer's PDF.
+
+    Left to the generic handler it lands as `failed` / `unreadable_document` — a red row
+    on the customer's screen and a `document_failed` in their bell for a module we
+    switched off ourselves, pointing whoever debugs it at a file that is perfectly fine.
+    """
+    release = AsyncMock()
+    with (
+        patch.object(ingest, "async_session", _session_factory(_FakeDB())),
+        patch.object(ingest, "_release", release),
+        patch.object(ingest, "_run_document", AsyncMock(side_effect=ModuleDisabled("off"))),
+        pytest.raises(ModuleDisabled),
+    ):
+        await ingest._process_attachment(
+            tenant_id=TENANT_ID,
+            message_id="<msg-off@bank.co.th>",
+            sender="no-reply@ktc.co.th",
+            people="no-reply@ktc.co.th",
+            filename="statement.pdf",
+            blob=b"fake",
+            owner_emails=[],
+            rules=[],
+            passwords=[],
+            carmen_token="tok",
+            carmen_uri="https://h",
+        )
+    release.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_disabled_module_hands_the_whole_message_back():
+    exhausted: set[str] = set()
+    outcomes, _, _ = await _route(
+        resolved=_settings_row(),
+        attachments=[("a.pdf", b"x")],
+        process=AsyncMock(side_effect=ModuleDisabled("off")),
+        exhausted=exhausted,
+    )
+    assert outcomes == ["retry_later"]
+    assert exhausted == {TAG}
 
 
 @pytest.mark.asyncio
