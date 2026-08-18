@@ -38,6 +38,37 @@ const orderRow: BellItem = {
   created_at: new Date().toISOString(),
 }
 
+const failedRow: BellItem = {
+  id: 'uuid-2',
+  order_id: null,
+  type: 'document_failed',
+  payload: {
+    document_id: 'doc-1',
+    attachment: 'ktc-fee-2026-08.pdf',
+    bank_code: 'KTC',
+    doc_no: 'INV-001',
+    reason_code: 'carmen_rejected',
+    message: 'Code 1: Insufficient balance',
+  },
+  read_at: null,
+  created_at: new Date().toISOString(),
+}
+
+const postedRow: BellItem = {
+  id: 'uuid-3',
+  order_id: null,
+  type: 'document_posted',
+  payload: {
+    document_id: 'doc-2',
+    attachment: 'bay-2026-08.pdf',
+    bank_code: 'BAY',
+    doc_no: '265-0850661',
+    jv_no: '982',
+  },
+  read_at: null,
+  created_at: new Date().toISOString(),
+}
+
 function openPanel() {
   render(<NotificationBell />)
   fireEvent.click(screen.getByRole('button', { name: /notification/i }))
@@ -94,6 +125,53 @@ describe('NotificationBell — release notes', () => {
     fireEvent.click(screen.getByText(/Order approved/i))
     expect(window.location.hash).toBe('#/pricing/orders?id=order-1')
     expect(markRead).toHaveBeenCalledWith(['uuid-1'])
+  })
+})
+
+// These carry no order_id, so before the detail dialog existed they dumped the
+// user on the credit-order history page — an unrelated surface.
+describe('NotificationBell — email automation rows', () => {
+  beforeEach(() => {
+    items = [failedRow]
+    unreadCount = 1
+  })
+
+  it('names the document instead of rendering the raw type', () => {
+    openPanel()
+    expect(screen.getByText(/ktc-fee-2026-08\.pdf/)).toBeInTheDocument()
+    expect(screen.queryByText('document_failed')).not.toBeInTheDocument()
+  })
+
+  it('opens the detail dialog in place rather than navigating', () => {
+    openPanel()
+    fireEvent.click(screen.getByText(/ktc-fee-2026-08\.pdf/))
+    expect(window.location.hash).toBe('#/apinvoice')
+    expect(markRead).toHaveBeenCalledWith(['uuid-2'])
+    expect(screen.getByText('Could not post')).toBeInTheDocument()
+  })
+
+  it('shows the document, bank and reason, and keeps the raw error', () => {
+    openPanel()
+    fireEvent.click(screen.getByText(/ktc-fee-2026-08\.pdf/))
+    expect(screen.getByText('Krungthai Card (KTC)')).toBeInTheDocument()
+    expect(screen.getByText('INV-001')).toBeInTheDocument()
+    expect(screen.getByText('Carmen declined the journal voucher.')).toBeInTheDocument()
+    expect(screen.getByText('Code 1: Insufficient balance')).toBeInTheDocument()
+  })
+
+  it('offers the JV in Carmen once a document posted', () => {
+    items = [postedRow]
+    openPanel()
+    fireEvent.click(screen.getByText(/bay-2026-08\.pdf/))
+    const jv = screen.getByRole('link', { name: /Open JV in Carmen/i })
+    expect(jv).toHaveAttribute('href', expect.stringContaining('/glJv/982/show'))
+    expect(jv).toHaveAttribute('target', '_blank')
+  })
+
+  it('has no JV link on a failure', () => {
+    openPanel()
+    fireEvent.click(screen.getByText(/ktc-fee-2026-08\.pdf/))
+    expect(screen.queryByRole('link', { name: /Open JV/i })).not.toBeInTheDocument()
   })
 })
 

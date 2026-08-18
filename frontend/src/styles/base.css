@@ -511,6 +511,11 @@ textarea:focus-visible {
 
   --emerald: oklch(0.72 0.1 188.43);
   --emerald-light: oklch(0.26 0.025 188.43);
+  /* Was missing, so every `var(--emerald-mid)` fell through to the LIGHT theme's
+     oklch(0.88 0.05 145) — a pale mint, at the wrong hue (145 vs 188) and far too
+     bright. It reads as a halo on `.status-badge.success`, `.modal-icon.success`
+     and `.btn-success`, whose hover fill it also is. */
+  --emerald-mid: oklch(0.4 0.06 188.43);
 
   --text: oklch(0.9 0.003 var(--neutral-h));
   --text-2: oklch(0.78 0.004 var(--neutral-h));
@@ -701,6 +706,23 @@ textarea:focus-visible {
   background: oklch(0.62 0.14 253.27) !important;
   box-shadow: 0 4px 14px oklch(0.58 0.14 253.27 / 0.35) !important;
 }
+/* Light theme's --emerald is a dark green (L 0.62) so white sits on it; dark
+   theme's is a LIGHT teal (L 0.72), where white lands at 2.4:1 — unreadable.
+   Ink on the fill instead: 7.9:1 base, 6.1:1 hovered. Specificity alone beats
+   the base rule and its hover, so no !important is needed here. */
+[data-theme='dark'] .btn-success {
+  background: var(--emerald);
+  color: oklch(0.18 0.01 188.43);
+  border-color: var(--emerald);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  [data-theme='dark'] .btn-success:hover {
+    background: var(--teal-hover);
+    border-color: var(--teal-hover);
+  }
+}
+
 [data-theme='dark'] .btn-icon {
   border-color: var(--border);
   color: var(--text-3);

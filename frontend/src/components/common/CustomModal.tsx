@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, CSSProperties } from 'react'
+import { useEffect, useRef, useState, CSSProperties, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { m, AnimatePresence, useAnimationControls, useReducedMotion } from 'framer-motion'
 import { CheckCircle2, AlertTriangle, XCircle, Info, Loader2, Eye, EyeOff } from 'lucide-react'
@@ -32,6 +32,8 @@ interface Props {
   busy?: boolean
   /** Bump this to a new value to flag the input as invalid: shakes it and turns it red. */
   errorNonce?: number
+  /** Extra body content between the message and the actions (read-only detail, a list). */
+  children?: ReactNode
 }
 
 export default function CustomModal({
@@ -51,6 +53,7 @@ export default function CustomModal({
   inputType = 'text',
   busy = false,
   errorNonce = 0,
+  children,
 }: Props) {
   const confirmRef = useRef<HTMLButtonElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
@@ -203,6 +206,8 @@ export default function CustomModal({
             <p className="modal-msg" id="modal-desc">
               {message}
             </p>
+
+            {children}
 
             {inputLabel && (
               <m.div className="modal-input-group" animate={shakeControls}>
