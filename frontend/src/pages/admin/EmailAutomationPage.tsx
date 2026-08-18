@@ -198,6 +198,11 @@ export default function EmailAutomationPage() {
       const result = which === 'poll' ? await pollEmailNow() : await sweepEmailConfirmations()
       const { tone, key, vars } = pollMessage(result)
       toast[tone === 'error' ? 'error' : tone === 'success' ? 'success' : 'info'](t(key, vars))
+      // Its own toast rather than another number in the line above: mail past the hold
+      // window is never coming back on any poll, which is a different kind of news from
+      // "held, will replay". The standing signal is the anomaly alert the poll raises.
+      if (result.beyond_window)
+        toast.warning(t('admin.email.toast.beyondWindow', { n: result.beyond_window }))
       loadDocuments()
       fetchEmailHealth()
         .then(setHealth)

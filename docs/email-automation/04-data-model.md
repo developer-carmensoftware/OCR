@@ -76,10 +76,17 @@ From the migration header (`20260803000000_email_automation.sql:1-8`):
 > trace anywhere — and the next poll would pick it up again forever. This table is the
 > "we have seen this message" ledger, keyed on the RFC-822 Message-ID.
 
-Concretely: `sender_not_allowed`, `no_rule_match`, `unreadable_document` and
-`wrong_pdf_password` all happen *before* `consume_document()` — if the only record of a
-message were `ocr_tasks`, none of those four outcomes would ever be written down, and the
-same doomed attachment would be re-fetched and re-rejected on every poll indefinitely.
+Concretely: `unsupported_attachment`, `sender_not_allowed`, `no_rule_match`,
+`unreadable_document` and `wrong_pdf_password` all happen *before* `consume_document()` — if
+the only record of a message were `ocr_tasks`, none of those five outcomes would ever be
+written down, and the same doomed attachment would be re-fetched and re-rejected on every
+poll indefinitely.
+
+`unsupported_attachment` is the one the migration header named and the code did not raise
+until 2026-08-18: a mail whose every attachment was refused (an `.xlsx`, a `.rar`, a `.zip`
+of CSVs) left `_process_message` on the same line as a mail carrying no file at all, so
+nothing was written anywhere. A message that names **no file at all** is still a free silent
+skip — a bank's "your statement is ready" notice must not fill the ledger.
 
 ## Relationships
 
@@ -105,6 +112,7 @@ every raise site in `_run_document()` / `_open_or_fail()` and the three `except`
 
 | `reason_code` | Raised from | Charged first? | Refunded? | Final `status` |
 |---|---|---|---|---|
+| `unsupported_attachment` | `_attachments()` refused every named part — wrong extension, an empty part, or a `.zip` holding nothing readable | No | — | `skipped` |
 | `sender_not_allowed` | `sender_allowed()` fails | No | — | `skipped` |
 | `no_rule_match` | `match_rules()` returns empty | No | — | `skipped` |
 | `unreadable_document` | `_open_or_fail()` — bad magic bytes or corrupt PDF | No | — | `skipped` |
