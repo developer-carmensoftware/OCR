@@ -96,7 +96,16 @@ export function pollMessage(r: EmailPollResult): {
   return {
     tone: 'success',
     key: 'admin.email.toast.polled',
-    vars: { messages, posted: r.posted ?? 0, failed: r.failed ?? 0, skipped: r.skipped ?? 0 },
+    vars: {
+      messages,
+      posted: r.posted ?? 0,
+      failed: r.failed ?? 0,
+      skipped: r.skipped ?? 0,
+      // Mail put back unread because the BU is switched off, out of package or has the
+      // module disabled. It is the only outcome that leaves no row in the table below,
+      // so the count here is the only place a growing backlog is visible at all.
+      held: r.retry_later ?? 0,
+    },
   }
 }
 

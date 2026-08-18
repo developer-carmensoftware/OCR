@@ -992,7 +992,7 @@ const en = {
   'admin.email.units.denied.description':
     'This tab shows each BU’s ingest address, which is what lets anyone send documents into that BU’s ledger.',
   'admin.email.toast.polled':
-    'Read {messages} message(s): {posted} posted, {failed} failed, {skipped} skipped',
+    'Read {messages} message(s): {posted} posted, {failed} failed, {skipped} skipped, {held} held unread',
   'admin.email.toast.noMail': 'No unread mail in the mailbox',
   'admin.email.toast.confirmed': 'Confirmed {confirmed} of {checked} forwarding request(s)',
   'admin.email.toast.busy': 'A poll is already running. Refresh in a moment.',
@@ -2258,7 +2258,7 @@ const th: Record<TKey, string> = {
   'admin.email.units.denied.description':
     'แท็บนี้แสดงที่อยู่สำหรับ forward ของแต่ละ BU ซึ่งเป็นสิ่งที่ทำให้ส่งเอกสารเข้าบัญชีของ BU นั้นได้',
   'admin.email.toast.polled':
-    'อ่านเมล {messages} ฉบับ: โพสต์ {posted} · ล้มเหลว {failed} · ข้าม {skipped}',
+    'อ่านเมล {messages} ฉบับ: โพสต์ {posted} · ล้มเหลว {failed} · ข้าม {skipped} · พักไว้ {held}',
   'admin.email.toast.noMail': 'ไม่มีเมลที่ยังไม่ได้อ่านในกล่อง',
   'admin.email.toast.confirmed': 'ยืนยัน forward สำเร็จ {confirmed} จาก {checked} ฉบับ',
   'admin.email.toast.busy': 'มีรอบดึงเมลทำงานอยู่แล้ว อีกสักครู่ค่อยรีเฟรช',

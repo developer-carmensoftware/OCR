@@ -7,10 +7,25 @@ import { pollMessage, relativeAge, statusTone } from './EmailAutomationPage'
  */
 describe('pollMessage', () => {
   it('reports a poll that carried mail, with the counts that decide what to do next', () => {
-    const m = pollMessage({ messages: 3, posted: 1, failed: 1, skipped: 1, unrouted: 0 })
+    const m = pollMessage({
+      messages: 4,
+      posted: 1,
+      failed: 1,
+      skipped: 1,
+      unrouted: 0,
+      retry_later: 1,
+    })
     expect(m.tone).toBe('success')
     expect(m.key).toBe('admin.email.toast.polled')
-    expect(m.vars).toEqual({ messages: 3, posted: 1, failed: 1, skipped: 1 })
+    expect(m.vars).toEqual({ messages: 4, posted: 1, failed: 1, skipped: 1, held: 1 })
+  })
+
+  it('surfaces mail held unread — the one outcome that leaves no row in the table', () => {
+    // REGRESSION GUARD: a switched-off BU (or one out of package, or with the module
+    // disabled) has its mail handed back unread and writes nothing to `email_documents`.
+    // If this count is not in the toast, a backlog piling up is invisible everywhere.
+    const m = pollMessage({ messages: 2, posted: 0, failed: 0, skipped: 0, retry_later: 2 })
+    expect(m.vars?.held).toBe(2)
   })
 
   it('separates "nothing to read" from "something went wrong"', () => {
