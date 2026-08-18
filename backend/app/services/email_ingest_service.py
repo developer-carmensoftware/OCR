@@ -50,6 +50,7 @@ import imaplib
 import io
 import logging
 import re
+import time
 import uuid
 import zipfile
 from datetime import UTC, datetime, timedelta
@@ -402,6 +403,28 @@ def _since_arg() -> str:
     return f"{day.day:02d}-{_IMAP_MONTHS[day.month - 1]}-{day.year}"
 
 
+def _arrived_at(fetched: list) -> float | None:
+    """A FETCH response's INTERNALDATE as epoch seconds, or None if it carried none.
+
+    Scanned across **every** chunk of the response, not read out of `fetched[0][0]`:
+    RFC 3501 lets a server return the data items of one FETCH in any order, and Gmail
+    measurably answers `(INTERNALDATE RFC822)` with the RFC822 literal first and
+    `INTERNALDATE "…"` in the trailing chunk. Reading only the first chunk returned None
+    for every message on the real mailbox — the `enabled_at` filter was inert and no test
+    against a hand-built response could see it (measured 2026-08-18, imap.gmail.com).
+
+    None is not a failure: the caller treats it as "do not filter", which processes the
+    mail. Guessing an arrival time in either direction would drop real documents.
+    """
+    for part in fetched:
+        chunk = part[0] if isinstance(part, tuple) else part
+        if isinstance(chunk, bytes) and (stamp := imaplib.Internaldate2tuple(chunk)):
+            # Internaldate2tuple normalises the server's offset to local time, which is
+            # what mktime reads back — so the epoch is right whatever zone either side is in.
+            return time.mktime(stamp)
+    return None
+
+
 def _uid_search(box: imaplib.IMAP4_SSL, *terms: str) -> list[str]:
     """`UID SEARCH <terms>` as a list of UID strings.
 
@@ -473,7 +496,7 @@ def _fetch_unseen(limit: int) -> tuple[list[dict[str, Any]], int]:
         # backlog can only ever use capacity nothing newer wants.
         messages = []
         for uid in found[-limit:]:
-            _, fetched = box.uid("FETCH", uid, "(RFC822)")
+            _, fetched = box.uid("FETCH", uid, "(INTERNALDATE RFC822)")
             if not fetched or not isinstance(fetched[0], tuple):
                 continue
             msg = email.message_from_bytes(fetched[0][1])
@@ -492,6 +515,10 @@ def _fetch_unseen(limit: int) -> tuple[list[dict[str, Any]], int]:
                         _decode(v) for h in ("From", "To", "Cc") for v in (msg.get_all(h) or [])
                     ),
                     "recipients": _recipients(msg),
+                    # Epoch seconds, compared against `email_ingest_settings.enabled_at`.
+                    # INTERNALDATE, not the `Date:` header: arrival at *our* mailbox, which
+                    # the sender cannot compose, and what `SEARCH … SINCE` already matches.
+                    "arrived_at": _arrived_at(fetched),
                     "attachments": accepted,
                     # The names we refused. Carried so a mail whose every attachment is
                     # unsupported still leaves a ledger row — see `_process_message`.
@@ -1080,6 +1107,7 @@ async def _process_message(msg: dict[str, Any], exhausted: set[str] | None = Non
                 exhausted.add(tag)  # the rest of this BU's mail in this batch too
             return ["retry_later"]
         tenant_id = str(row.tenant_id)
+        enabled_at = row.enabled_at
         owner_emails = list(row.owner_emails or [])
         rules = list(row.rules or [])
         passwords = es.rule_passwords(row)
@@ -1093,24 +1121,36 @@ async def _process_message(msg: dict[str, Any], exhausted: set[str] | None = Non
     accepted = list(zip(names[: len(blobs)], blobs, strict=True))
     unreadable = names[len(blobs) :]
 
-    outcomes = []
-    for name in unreadable:
-        # A file the customer forwarded and we cannot read. Before this it left no trace
-        # anywhere — the mail was marked `\Seen`, dropped on the attachment check, and
-        # "I forwarded it on Tuesday" had nothing to answer it with. Costs nothing: this
-        # is far ahead of `consume_document`, so there is nothing to refund either.
-        async with async_session() as db:
-            ledger = await _claim(db, tenant_id, msg["message_id"], name)
-        if ledger is None:
-            outcomes.append("skipped")
-            continue
-        await _finish(
-            ledger.id,  # type: ignore[arg-type]
-            status="skipped",
-            reason_code="unsupported_attachment",
-            error=f"{name} is not a file type this module can read",
+    # **The toggle is not the same kind of pause as the two above it.** A BU that switches
+    # the feature off is telling us they are keying these documents themselves — and a
+    # document keyed straight into Carmen writes no `credit_cards` row, so the duplicate
+    # guard cannot see it and the whole held backlog would post a second time the moment
+    # the toggle goes back on. Mail older than the switch-on is therefore dropped rather
+    # than replayed, and left `\Seen`. It still gets a ledger row per attachment: the
+    # customer needs the list of what arrived while they were off, or this fix would just
+    # trade duplicate posts for silent loss. Message-level because arrival time is a fact
+    # about the mail — nothing here enters the money path.
+    arrived_at = msg.get("arrived_at")
+    if enabled_at and arrived_at and arrived_at < enabled_at.timestamp():
+        return await _skip_all(
+            tenant_id,
+            msg["message_id"],
+            names,
+            "ingest_paused",
+            "Arrived while Email Automation was switched off — key this one by hand",
         )
-        outcomes.append("skipped")
+
+    # A file the customer forwarded and we cannot read. Before this it left no trace
+    # anywhere — the mail was marked `\Seen`, dropped on the attachment check, and "I
+    # forwarded it on Tuesday" had nothing to answer it with. Costs nothing: this is far
+    # ahead of `consume_document`, so there is nothing to refund either.
+    outcomes = await _skip_all(
+        tenant_id,
+        msg["message_id"],
+        unreadable,
+        "unsupported_attachment",
+        "{name} is not a file type this module can read",
+    )
 
     for filename, blob in accepted:
         try:
@@ -1137,6 +1177,40 @@ async def _process_message(msg: dict[str, Any], exhausted: set[str] | None = Non
             if exhausted is not None:
                 exhausted.add(tag)
             return [*outcomes, "retry_later"]
+    return outcomes
+
+
+async def _skip_all(
+    tenant_id: str,
+    message_id: str,
+    names: list[str],
+    reason_code: str,
+    error: str,
+) -> list[str]:
+    """Record every one of `names` as skipped, and charge for none of them.
+
+    The two callers that stop a whole message before it costs anything: an attachment we
+    cannot read, and mail that arrived while the BU had automation switched off. Both need
+    the *row* more than the outcome — it is the customer's answer to "where did my document
+    go", and `#/admin/email` is where they read it.
+
+    `error` is a template so the per-file case can name the file; a message-level reason
+    simply carries no `{name}`.
+    """
+    outcomes = []
+    for name in names:
+        async with async_session() as db:
+            ledger = await _claim(db, tenant_id, message_id, name)
+        if ledger is None:
+            outcomes.append("skipped")
+            continue
+        await _finish(
+            ledger.id,  # type: ignore[arg-type]
+            status="skipped",
+            reason_code=reason_code,
+            error=error.format(name=name),
+        )
+        outcomes.append("skipped")
     return outcomes
 
 

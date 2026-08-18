@@ -129,18 +129,17 @@ async def proxy_gljv(
                 raise DuplicateDocumentError(
                     f"Document number {eff_doc or ''} has already been submitted to Carmen."
                 )
-            # (b) a different card with the same (tenant, bank, doc_no) already submitted
-            eff_bank = bank_code or card.bank_code
-            if (
-                eff_bank
-                and eff_doc
-                and await has_submitted_doc(
-                    db,
-                    CreditCard,
-                    tenant_id=tenant_uuid,
-                    bank_code=eff_bank,
-                    doc_no=eff_doc,
-                )
+            # (b) a different card with the same (tenant, doc_no, doc_date) already
+            # submitted. bank_code used to be in this key and in this guard's condition,
+            # which meant a card with no detected bank skipped the check entirely and a
+            # document the email job filed under a different bank was never seen as the
+            # same document — see finalize_extraction for the whole story.
+            if eff_doc and await has_submitted_doc(
+                db,
+                CreditCard,
+                tenant_id=tenant_uuid,
+                doc_no=eff_doc,
+                doc_date=card.doc_date,
             ):
                 raise DuplicateDocumentError(
                     f"Document number {eff_doc} has already been submitted to Carmen."

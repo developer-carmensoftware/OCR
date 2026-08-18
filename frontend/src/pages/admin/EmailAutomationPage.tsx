@@ -34,7 +34,7 @@ import { fmtDateTime } from '../../lib/dates'
  * Both questions used to end at a SQL client.
  */
 
-/** The eight the pipeline actually writes. CARMEN_INTEGRATION §3.3 lists three more
+/** The ten the pipeline actually writes. CARMEN_INTEGRATION §3.3 lists three more
  *  (`out_of_credits`, `bank_not_identified`, `unbalanced_jv`) that it never emits —
  *  offering them as filters would promise rows that cannot exist. */
 const REASON_CODES = [
@@ -46,6 +46,8 @@ const REASON_CODES = [
   'duplicate_document',
   'mapping_incomplete',
   'carmen_rejected',
+  'unsupported_attachment',
+  'ingest_paused',
 ] as const
 
 /** A code the pipeline writes maps to a label; anything else shows as itself, so a
