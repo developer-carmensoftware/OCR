@@ -12,7 +12,8 @@
  * Everything is rendered inside the modal's `inert` canvas: no click, no focus,
  * no keyboard. That is what stops ProformaDocument's Print button, SlipUpload's
  * file picker and the banner's cancel action from doing anything real — do not
- * rely on `disabled` props here.
+ * rely on `disabled` props here. It is also why a figure that needs a component
+ * in a post-interaction state has to be handed it (`DEMO_SLIP`).
  *
  * The canvas is pinned to the real page width and scaled to fit the stage, so
  * these lay out exactly as they do at `#/pricing` on a desktop.
@@ -23,7 +24,6 @@ import { PlanCard, EnterpriseCard } from '../PlanCard'
 import PackList from '../PackList'
 import PendingOrderBanner from '../PendingOrderBanner'
 import ProformaDocument from '../ProformaDocument'
-import SlipUpload from '../SlipUpload'
 import StepWizard from '../../common/StepWizard'
 import { Spot } from '../../tutorial'
 import { useT } from '../../../i18n/LanguageContext'
@@ -31,13 +31,13 @@ import { PLAN_META } from '../../../constants/billing'
 import { formatThb } from '../../../lib/money'
 import logo from '../../../assets/logo.png'
 import {
-  asyncNoop,
   DEMO_BUYER,
   DEMO_ORDER,
   DEMO_PACKS,
   DEMO_PAYMENT_INFO,
   DEMO_PLANS,
   DEMO_PROFORMA,
+  DEMO_SLIP,
   noop,
 } from './fixtures'
 
@@ -344,13 +344,14 @@ function BillingFigure() {
   )
 }
 
-/* ── 4 · the payment step: invoice above, slip upload below ────────────────── */
+/* ── 4 · the payment step: the proforma to print and pay ───────────────────── */
 
 /**
- * The real `pay` phase of CheckoutFlow: the proforma **and** the slip card, one
- * under the other. Paying and attaching the slip happen on this one screen —
- * the pending-order banner (figure 5) is the path back for someone who left
- * before doing it, not the normal way through.
+ * The `pay` phase of CheckoutFlow, minus its slip card. The real screen does
+ * render one under the invoice, but a buyer prints the proforma here and pays
+ * days later through their own finance process, so the tour teaches attaching
+ * the slip on the pending-order banner (figure 5) and shows nothing here that it
+ * never explains.
  */
 function PaymentFigure() {
   const { t } = useT()
@@ -370,14 +371,6 @@ function PaymentFigure() {
               redrawing it. */}
           <div className="checkout-pay">
             <ProformaDocument doc={DEMO_PROFORMA} paymentInfo={DEMO_PAYMENT_INFO} />
-
-            <Spot id="pay-slip">
-              <div className="panel-card checkout-slip-card">
-                <h3 className="checkout-section-title">{t('checkout.confirmPayment')}</h3>
-                <p className="checkout-pay-sub">{t('checkout.confirmSub')}</p>
-                <SlipUpload onUpload={asyncNoop} uploading={false} />
-              </div>
-            </Spot>
           </div>
         </div>
       </div>
@@ -385,12 +378,15 @@ function PaymentFigure() {
   )
 }
 
-/* ── 5 · the way back, if the slip was never attached ──────────────────────── */
+/* ── 5 · back on the catalog: attach the slip and confirm ──────────────────── */
 
 /**
- * The pending-order banner on the catalog page. This is the RECOVERY path: a
- * buyer who closed the checkout before uploading finds their order here. The
- * normal way through is figure 4, where the slip card sits under the invoice.
+ * The pending-order banner on the catalog page — where the buyer lands when they
+ * come back from paying, and where the tour teaches attaching the slip.
+ *
+ * `DEMO_SLIP` seeds the banner's SlipUpload with a chosen file so the figure
+ * shows the **Confirm payment** button rather than an empty drop zone; the
+ * canvas is `inert`, so nothing here could pick one.
  */
 function ResumeFigure() {
   return (
@@ -404,6 +400,7 @@ function ResumeFigure() {
             orders={[DEMO_ORDER]}
             onChanged={noop}
             paymentInfo={DEMO_PAYMENT_INFO}
+            initialSlipFile={DEMO_SLIP}
           />
         </Spot>
       </main>

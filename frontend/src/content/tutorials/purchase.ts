@@ -10,16 +10,25 @@
  * this feature. English follows it sentence for sentence but nobody has
  * proofread it; treat it as a first pass.
  *
+ * **Quote a button by the name the reader sees.** The figure renders in the
+ * reader's language, so the Thai copy names the Thai label ("ยืนยันการชำระเงิน",
+ * not "Confirm payment") — the string `i18n/dict.ts` gives that key under `th`.
+ * Untranslated by design: Carmen, the plan tiers (Starter / Growth /
+ * Professional) and "Proforma Invoice", which is printed in English on the
+ * document itself.
+ *
  * The tour has more steps than that copy was written against: each screen opens
- * with an overview before its details, and the slip is attached on the payment
- * screen rather than after a detour to Plans. The approved sentences are kept
- * intact on the step they describe, and the added steps are written in the same
- * voice.
+ * with an overview before its details. The approved sentences are kept intact on
+ * the step they describe, and the added steps are written in the same voice.
+ *
+ * Attaching the slip is taught **once**, on the last step: the buyer prints the
+ * proforma, pays days later through their own finance process and comes back, so
+ * the pending-order banner is the path they actually use — not the slip card the
+ * checkout still renders under the invoice.
  */
 
 import {
   CalendarCheck,
-  CircleCheck,
   Coins,
   CloudUpload,
   FileText,
@@ -70,10 +79,10 @@ export const PURCHASE_TUTORIAL: PurchaseStep[] = [
       ],
     },
     th: {
-      title: 'คลิกปุ่ม Buy',
-      heading: 'คลิกปุ่ม Buy เพื่อเข้าสู่หน้า Plans & Credits',
+      title: 'คลิกปุ่ม ซื้อ',
+      heading: 'คลิกปุ่ม ซื้อ เพื่อเข้าสู่หน้าแพ็กเกจและเครดิต',
       body: [
-        'เมื่อต้องการบริหารจัดการโควตาการประมวลผลเอกสาร ให้คลิกปุ่ม **Buy >** ที่แถบเมนูด้านบนขวาของหน้าจอ Carmen เพื่อเข้าสู่หน้า **Plans & Credits**',
+        'เมื่อต้องการบริหารจัดการโควตาการประมวลผลเอกสาร ให้คลิกปุ่ม **ซื้อ >** ที่แถบเมนูด้านบนขวาของหน้าจอ Carmen เพื่อเข้าสู่หน้า **แพ็กเกจและเครดิต**',
       ],
     },
   },
@@ -92,8 +101,8 @@ export const PURCHASE_TUTORIAL: PurchaseStep[] = [
       title: 'เลือกแบบไหนดี?',
       heading: 'เลือกแบบไหนดี?',
       body: [
-        '• **Monthly Plans:** เหมาะกับโรงแรมที่มีเอกสารเข้าประจำ ต้องการวางแผนค่าใช้จ่ายรายเดือนได้ชัดเจน',
-        '• **Top-Up Credits:** เหมาะกับปริมาณเอกสารที่ไม่แน่นอน หรือต้องการซื้อเครดิตสำรองไว้ใช้งาน',
+        '• **แพ็กเกจรายเดือน:** เหมาะกับโรงแรมที่มีเอกสารเข้าประจำ ต้องการวางแผนค่าใช้จ่ายรายเดือนได้ชัดเจน',
+        '• **เติมเครดิต:** เหมาะกับปริมาณเอกสารที่ไม่แน่นอน หรือต้องการซื้อเครดิตสำรองไว้ใช้งาน',
       ],
     },
   },
@@ -113,8 +122,8 @@ export const PURCHASE_TUTORIAL: PurchaseStep[] = [
       ],
     },
     th: {
-      title: 'Monthly Plans',
-      heading: 'เลือก Monthly Plans (แพ็กเกจรายเดือน)',
+      title: 'แพ็กเกจรายเดือน',
+      heading: 'เลือกแพ็กเกจรายเดือน',
       body: [
         'ระบบจะตัดยอดและรีเซ็ตโควตาใหม่ทุกเดือน (ไม่มีการทบยอดคงเหลือ)',
         '• **ส่วนลด:** การเลือกชำระล่วงหน้าแบบรายปี จะได้รับส่วนลด **10%**',
@@ -139,13 +148,13 @@ export const PURCHASE_TUTORIAL: PurchaseStep[] = [
       ],
     },
     th: {
-      title: 'Top-Up Credits',
-      heading: 'เลือก Top-Up Credits (แพ็กเกจเติมโควตา)',
+      title: 'เติมเครดิต',
+      heading: 'เลือกแพ็กเกจเติมเครดิต',
       body: [
-        'ซื้อโควตาแบบครั้งเดียว ไม่มีวันหมดอายุ (โดย 1 Credit เท่ากับเอกสาร 1 หน้า)',
-        '• **500 Credits:** ฿2,000 (เฉลี่ย ฿4.00/หน้า)',
-        '• **2,500 Credits:** ฿7,500 (เฉลี่ย ฿3.00/หน้า)',
-        '• **10,000 Credits:** ฿20,000 (เฉลี่ย ฿2.00/หน้า)',
+        'ซื้อโควตาแบบครั้งเดียว ไม่มีวันหมดอายุ (โดย 1 เครดิต เท่ากับเอกสาร 1 หน้า)',
+        '• **500 เครดิต:** ฿2,000 (เฉลี่ย ฿4.00/หน้า)',
+        '• **2,500 เครดิต:** ฿7,500 (เฉลี่ย ฿3.00/หน้า)',
+        '• **10,000 เครดิต:** ฿20,000 (เฉลี่ย ฿2.00/หน้า)',
       ],
     },
   },
@@ -157,8 +166,8 @@ export const PURCHASE_TUTORIAL: PurchaseStep[] = [
       title: 'Billing information',
       heading: 'Fill in the billing details and continue',
       body: [
-        'Check and complete the **Billing Information** section, which is what the tax documents are issued against (Company Name, Tax ID, Branch, Address, Purchaser Name, Tel, Email).',
-        'Check that the **Subtotal** in the **Order Summary** on the right is correct.',
+        'Check and complete the **Billing information** section, which is what the tax documents are issued against (Company / buyer name, Tax ID, Branch, Address, Purchaser name, Tel., Email).',
+        'Check that the **Subtotal (excl. VAT)** in the **Order summary** on the right is correct.',
         'Click **Continue to payment** to issue the Proforma Invoice.',
       ],
     },
@@ -166,9 +175,9 @@ export const PURCHASE_TUTORIAL: PurchaseStep[] = [
       title: 'ข้อมูลออกใบแจ้งหนี้',
       heading: 'กรอกข้อมูลการออกใบแจ้งหนี้และดำเนินการต่อ',
       body: [
-        'ตรวจสอบและกรอกข้อมูลในส่วน **Billing Information** สำหรับการออกเอกสารทางภาษี (Company Name, Tax ID, Branch, Address, Purchaser Name, Tel, Email)',
-        'ตรวจสอบความถูกต้องของยอดรวม (Subtotal) ในส่วน **Order Summary** ทางขวามือ',
-        'คลิกปุ่ม **Continue to payment** เพื่อสร้างใบแจ้งหนี้ Proforma Invoice',
+        'ตรวจสอบและกรอกข้อมูลในส่วน **ข้อมูลสำหรับการเรียกเก็บเงิน** สำหรับการออกเอกสารทางภาษี (ชื่อบริษัท / ผู้ซื้อ, เลขประจำตัวผู้เสียภาษี, สาขา, ที่อยู่, ชื่อผู้สั่งซื้อ, โทร., อีเมล)',
+        'ตรวจสอบความถูกต้องของ **ยอดก่อนภาษี (ไม่รวม VAT)** ในส่วน **สรุปคำสั่งซื้อ** ทางขวามือ',
+        'คลิกปุ่ม **ดำเนินการชำระเงิน** เพื่อสร้างใบแจ้งหนี้ Proforma Invoice',
       ],
     },
   },
@@ -207,48 +216,29 @@ export const PURCHASE_TUTORIAL: PurchaseStep[] = [
       title: 'บันทึก / พิมพ์เอกสาร',
       heading: 'บันทึกเอกสารเพื่อนำไปดำเนินการเบิกจ่าย',
       body: [
-        'คลิก **Print / Save PDF** ที่มุมขวาบน เพื่อบันทึกเอกสารและนำไปดำเนินการเบิกจ่ายตามระเบียบของโรงแรม',
-      ],
-    },
-  },
-  {
-    screen: 4,
-    spot: 'pay-slip',
-    icon: CloudUpload,
-    en: {
-      title: 'Attach the slip and confirm',
-      heading: 'Attach proof of payment, then confirm',
-      body: [
-        'Once the transfer is made, drag the file or click to attach your proof of payment in the **Upload payment slip** box below the invoice, on this same screen.',
-        'Check the attached file, then click **Confirm payment**. The details go to the Carmen team, who will add the credits to your account.',
-      ],
-    },
-    th: {
-      title: 'แนบสลิปและยืนยัน',
-      heading: 'แนบหลักฐานการชำระเงินและยืนยัน',
-      body: [
-        'เมื่อดำเนินการชำระเงินแล้ว ให้ลากไฟล์หรือคลิกเพื่อแนบหลักฐานการโอนเงินที่ช่อง **Upload payment slip** ใต้ใบแจ้งหนี้ในหน้าจอเดียวกันนี้',
-        'ตรวจสอบความถูกต้องของไฟล์ที่แนบ จากนั้นคลิกปุ่ม **Confirm payment** ระบบจะส่งข้อมูลไปยังทีมงาน Carmen และจะดำเนินการเพิ่มเครดิตลงในบัญชีของท่าน',
+        'คลิก **พิมพ์ / บันทึก PDF** ที่มุมขวาบน เพื่อบันทึกเอกสารและนำไปดำเนินการเบิกจ่ายตามระเบียบของโรงแรม',
       ],
     },
   },
   {
     screen: 5,
     spot: 'pending-order',
-    icon: CircleCheck,
+    icon: CloudUpload,
     en: {
-      title: 'If the slip is not attached yet',
-      heading: 'Closed the page first? Finish it from Plans & Credits',
+      title: 'Attach the slip and confirm',
+      heading: 'Attach proof of payment, then confirm',
       body: [
-        'If you left before attaching the slip, return to the **Plans & Credits** page in Carmen. The system shows a **"You have an unfinished order"** notice — drag the file or click to attach your proof of payment in the **Upload payment slip** box, then confirm as usual.',
+        'Once the transfer is made, return to the **Plans & Credits** page in Carmen. The system shows a **"You have an unfinished order"** notice — drag the file or click to attach your proof of payment in the **Upload payment slip** box.',
+        'Check the attached file, then click **Confirm payment**. The details go to the Carmen team, who will add the credits to your account.',
         "**Ready to buy for real?** Press **'Buy a package'** below to close this guide and choose your plan.",
       ],
     },
     th: {
-      title: 'หากยังไม่ได้แนบสลิป',
-      heading: 'ปิดหน้าจอไปก่อน? กลับมาทำต่อได้ที่หน้า Plans & Credits',
+      title: 'แนบสลิปและยืนยัน',
+      heading: 'แนบหลักฐานการชำระเงินและยืนยัน',
       body: [
-        'หากปิดหน้าจอไปก่อนแนบหลักฐาน ให้กลับมาที่หน้า **Plans & Credits** ในระบบ Carmen ระบบจะแสดงข้อความแจ้งเตือน **"You have an unfinished order"** ให้ทำการลากไฟล์หรือคลิกเพื่อแนบหลักฐานการโอนเงินที่ช่อง **Upload payment slip** แล้วยืนยันได้เช่นเดิม',
+        'เมื่อดำเนินการชำระเงินแล้ว ให้กลับมาที่หน้า **แพ็กเกจและเครดิต** ในระบบ Carmen ระบบจะแสดงข้อความแจ้งเตือน **"คุณมีคำสั่งซื้อที่ยังไม่เสร็จ"** ให้ลากไฟล์หรือคลิกเพื่อแนบหลักฐานการโอนเงินที่ช่อง **อัปโหลดสลิปการชำระเงิน**',
+        'ตรวจสอบความถูกต้องของไฟล์ที่แนบ จากนั้นคลิกปุ่ม **ยืนยันการชำระเงิน** ระบบจะส่งข้อมูลไปยังทีมงาน Carmen และจะดำเนินการเพิ่มเครดิตลงในบัญชีของท่าน',
         "**พร้อมสั่งซื้อจริงแล้วใช่ไหม?** กดปุ่ม **'ซื้อ Package'** ด้านล่าง เพื่อปิดคู่มือและเลือกแพ็กเกจได้ทันที",
       ],
     },

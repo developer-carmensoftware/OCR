@@ -55,9 +55,16 @@ describe('purchase tutorial figures', () => {
     expect(container.querySelector('.pf-toolbar')).not.toBeNull()
   })
 
-  it('renders the real pending-order banner with its slip drop zone', () => {
+  /**
+   * The last step narrates "check the file, then Confirm payment", so the figure
+   * has to be past the drop zone — that only happens because `DEMO_SLIP` seeds
+   * SlipUpload (the canvas is inert; nothing there can pick a file).
+   */
+  it('renders the pending-order banner with the slip already attached', () => {
     const { container } = render(<SpotProvider value="">{PURCHASE_FIGURES[4]}</SpotProvider>)
     expect(container.querySelector('.order-pending-banner')).not.toBeNull()
-    expect(container.querySelector('.slip-drop')).not.toBeNull()
+    expect(container.querySelector('.slip-chosen')).not.toBeNull()
+    expect(container.querySelector('.slip-submit')).not.toBeNull()
+    expect(container.querySelector('.slip-drop')).toBeNull()
   })
 })
