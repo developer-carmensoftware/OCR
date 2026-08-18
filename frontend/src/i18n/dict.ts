@@ -696,6 +696,30 @@ const en = {
   'notif.rejected': 'Order rejected: {reason}',
   'notif.onHold': 'Your order was placed on hold (payment window expired)',
   'notif.missingSlip': 'Reminder: payment slip not yet uploaded',
+  'notif.docPosted': 'Posted to Carmen · {doc}',
+  'notif.docFailed': 'Could not post · {doc}',
+
+  // Detail dialog for the two email-automation rows. They open here rather than
+  // navigating: there is no tenant-facing email document page to navigate to,
+  // and the payload already carries everything worth showing.
+  'notif.detail.postedTitle': 'Posted to Carmen',
+  'notif.detail.failedTitle': 'Could not post',
+  'notif.detail.postedMsg': 'Journal voucher {jv} was created in Carmen.',
+  'notif.detail.postedMsgNoJv': 'The document was posted to Carmen.',
+  'notif.detail.document': 'Document',
+  'notif.detail.bank': 'Bank',
+  'notif.detail.docNo': 'Doc no.',
+  'notif.detail.jvNo': 'JV no.',
+  'notif.detail.time': 'Processed',
+  'notif.detail.openJv': 'Open JV in Carmen',
+  'notif.detail.close': 'Close',
+  // reason_code taxonomy — docs/email-automation/04-data-model.md
+  'notif.reason.taxIdMismatch': "The document's tax ID does not match this business unit.",
+  'notif.reason.duplicateDocument': 'This document had already been posted.',
+  'notif.reason.mappingIncomplete': 'GL mapping for this bank is still incomplete.',
+  'notif.reason.unreadableDocument': 'The document could not be read.',
+  'notif.reason.carmenRejected': 'Carmen declined the journal voucher.',
+  'notif.reason.unknown': 'The document could not be processed.',
 
   // What's New — release history page (#/whats-new), entered from the bell.
   // The release copy itself is data in content/releaseNotes.ts, not keys.
@@ -1952,6 +1976,26 @@ const th: Record<TKey, string> = {
   'notif.rejected': 'คำสั่งซื้อถูกปฏิเสธ: {reason}',
   'notif.onHold': 'คำสั่งซื้อของคุณถูกระงับ (หมดเวลาชำระเงิน)',
   'notif.missingSlip': 'เตือนความจำ: ยังไม่ได้อัปโหลดหลักฐานการชำระเงิน',
+  'notif.docPosted': 'ส่งเข้า Carmen แล้ว · {doc}',
+  'notif.docFailed': 'ส่งเข้า Carmen ไม่สำเร็จ · {doc}',
+
+  'notif.detail.postedTitle': 'ส่งเข้า Carmen แล้ว',
+  'notif.detail.failedTitle': 'ส่งเข้า Carmen ไม่สำเร็จ',
+  'notif.detail.postedMsg': 'สร้างใบสำคัญ {jv} ใน Carmen เรียบร้อยแล้ว',
+  'notif.detail.postedMsgNoJv': 'ส่งเอกสารเข้า Carmen เรียบร้อยแล้ว',
+  'notif.detail.document': 'เอกสาร',
+  'notif.detail.bank': 'ธนาคาร',
+  'notif.detail.docNo': 'เลขที่เอกสาร',
+  'notif.detail.jvNo': 'เลขที่ JV',
+  'notif.detail.time': 'เวลาที่ประมวลผล',
+  'notif.detail.openJv': 'เปิด JV ใน Carmen',
+  'notif.detail.close': 'ปิด',
+  'notif.reason.taxIdMismatch': 'เลขประจำตัวผู้เสียภาษีในเอกสารไม่ตรงกับหน่วยธุรกิจนี้',
+  'notif.reason.duplicateDocument': 'เอกสารนี้ถูกส่งเข้าระบบไปแล้ว',
+  'notif.reason.mappingIncomplete': 'การผูกผังบัญชีของธนาคารนี้ยังไม่ครบ',
+  'notif.reason.unreadableDocument': 'อ่านข้อมูลจากเอกสารนี้ไม่ได้',
+  'notif.reason.carmenRejected': 'Carmen ปฏิเสธการบันทึกใบสำคัญ',
+  'notif.reason.unknown': 'ประมวลผลเอกสารนี้ไม่สำเร็จ',
 
   'whatsnew.title': 'มีอะไรใหม่',
   'whatsnew.subtitle': 'การอัปเดตของ Carmen AI Automation เรียงจากล่าสุด',

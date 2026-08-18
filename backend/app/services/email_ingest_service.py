@@ -1443,6 +1443,10 @@ async def _finish(
                 type_=f"document_{status}",
                 payload={
                     "document_id": str(row.id),
+                    # The attachment filename is the only identity the customer
+                    # recognises when the document never got far enough to have a
+                    # bank_code or doc_no — which is exactly the failure case.
+                    "attachment": row.attachment,
                     "bank_code": bank_code,
                     "doc_no": doc_no,
                     **(
