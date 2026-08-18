@@ -113,6 +113,12 @@ export const DEMO_ORDER: CreditOrder = {
   expires_at: '2026-08-28T03:00:00Z',
 }
 
+/**
+ * A slip the buyer has already picked, so the banner's SlipUpload renders its
+ * chosen-file state — the one with the **Confirm payment** button. Empty on
+ * purpose: only the name is ever drawn.
+ */
+export const DEMO_SLIP = new File([], 'payment-slip.jpg', { type: 'image/jpeg' })
+
 /** Callbacks the figures pass to real components. Nothing here should ever run. */
 export const noop = () => {}
-export const asyncNoop = async () => {}
