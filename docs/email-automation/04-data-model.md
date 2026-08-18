@@ -13,6 +13,7 @@ One row per BU (`tenant_id` is the primary key). What Carmen wrote through
 | `tenant_id` | `uuid` PK, FK → `tenants(id)` | `20260803000000` | The BU this row belongs to |
 | `ingest_tag` | `varchar(32)`, **nullable** | `20260803000000`, dropped `20260805000000`, re-added nullable `20260806000000` | The `+tag` in the ingest address. See [Schema drift](#schema-drift-worth-knowing) below |
 | `enabled` | `boolean not null default false` | `20260803000000` | Whether the feature is switched on |
+| `enabled_at` | `timestamptz`, nullable | `20260818010000` | The last off→on edge. Mail that arrived before it is `skipped / ingest_paused` instead of replayed — switching off means the BU is keying those documents by hand. Null = no filtering |
 | `owner_emails` | `jsonb not null default '[]'` | `20260807010000` | Optional sender allow-list — empty accepts any sender |
 | `tax_ids` | `jsonb not null default '[]'` | `20260803000000` | This BU's registered tax IDs — unique across all BUs |
 | `rules` | `jsonb not null default '[]'` | `20260803000000` | Bank → filename-pattern rules; `pdf_password_enc` inside each is Fernet-encrypted |
@@ -113,6 +114,7 @@ every raise site in `_run_document()` / `_open_or_fail()` and the three `except`
 | `reason_code` | Raised from | Charged first? | Refunded? | Final `status` |
 |---|---|---|---|---|
 | `unsupported_attachment` | `_attachments()` refused every named part — wrong extension, an empty part, or a `.zip` holding nothing readable | No | — | `skipped` |
+| `ingest_paused` | The message arrived before `email_ingest_settings.enabled_at` — the BU had automation switched off and was keying those documents by hand | No | — | `skipped` |
 | `sender_not_allowed` | `sender_allowed()` fails | No | — | `skipped` |
 | `no_rule_match` | `match_rules()` returns empty | No | — | `skipped` |
 | `unreadable_document` | `_open_or_fail()` — bad magic bytes or corrupt PDF | No | — | `skipped` |

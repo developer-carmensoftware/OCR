@@ -543,6 +543,12 @@ async def save_settings(db: AsyncSession, tenant: Tenant, payload: Any) -> Email
         row.ingest_tag = await _fresh_tag(db)
 
     existing = {(r.get("bank_code") or ""): r for r in (row.rules or [])}
+    # The off→on edge only. Mail older than this is skipped rather than replayed (see
+    # `_process_message`), so re-saving unrelated settings while already on must not move
+    # it — that would discard mail the poll simply had not reached yet. A fresh row is
+    # `enabled=False`, so the first-ever enable stamps it too.
+    if payload.enabled and not row.enabled:
+        row.enabled_at = datetime.now(UTC)
     row.enabled = bool(payload.enabled)
     row.owner_emails = owner_emails
     row.tax_ids = tax_ids

@@ -14,7 +14,7 @@ check correctly refuses; the gate itself is tested separately below.
 """
 
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -636,6 +636,9 @@ def _settings_row(**overrides):
         owner_emails=[],
         ingest_tag="a1b2c3d4",
         enabled=True,
+        # Explicit: a MagicMock attribute is truthy by default, which would silently arm
+        # the arrived-before-switch-on filter in every routing test.
+        enabled_at=None,
     )
     defaults.update(overrides)
     return MagicMock(**defaults)
@@ -658,6 +661,7 @@ async def _route(
     resolve=None,
     rejected=(),
     db=None,
+    arrived_at=None,
 ):
     """Runs `_process_message` — up to (and not into) the per-attachment half."""
     if db is None:
@@ -687,6 +691,7 @@ async def _route(
                 "from": sender,
                 "people": sender,
                 "recipients": list(recipients),
+                "arrived_at": arrived_at,
                 "attachments": (
                     [("statement.jpg", b"fake")] if attachments is None else list(attachments)
                 ),
@@ -781,6 +786,53 @@ async def test_an_unknown_tag_is_still_dropped_not_held():
     `resolve_by_tag` stopped filtering on `enabled`."""
     outcomes, _, _ = await _route(resolved=None)
     assert outcomes == ["unrouted"]
+
+
+@pytest.mark.asyncio
+async def test_mail_from_the_off_period_is_skipped_not_replayed_on_switch_on():
+    """Held mail replaying is right for a lapsed package and wrong for the toggle.
+
+    Switching the feature off means the customer is keying those statements into Carmen
+    by hand — and a manual Carmen entry writes no `credit_cards` row, so `is_duplicate`
+    cannot see it. Replaying the backlog therefore posted every one of them a second time.
+    The row still gets written: they need the list of what they owe Carmen, or this would
+    trade duplicate posts for silent loss.
+    """
+    db = _RoutingDB()
+    switched_on = datetime.now(UTC)
+    outcomes, extract, process = await _route(
+        resolved=_settings_row(enabled_at=switched_on),
+        arrived_at=(switched_on - timedelta(days=2)).timestamp(),
+        db=db,
+    )
+    assert outcomes == ["skipped"]
+    assert db.added[0].reason_code == "ingest_paused"
+    assert db.added[0].status == "skipped"
+    extract.assert_not_awaited()
+    process.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_mail_that_arrived_after_the_switch_on_still_posts():
+    """The other half: the filter is a date comparison, not a second off switch."""
+    switched_on = datetime.now(UTC)
+    outcomes, _, process = await _route(
+        resolved=_settings_row(enabled_at=switched_on),
+        arrived_at=(switched_on + timedelta(minutes=5)).timestamp(),
+    )
+    assert outcomes == ["posted"]
+    process.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_internaldate_processes_the_mail_rather_than_dropping_it():
+    """Fail open. A duplicate draft in Carmen is something a human deletes; a document
+    dropped because one IMAP server answered in an unexpected shape is gone."""
+    outcomes, _, process = await _route(
+        resolved=_settings_row(enabled_at=datetime.now(UTC)), arrived_at=None
+    )
+    assert outcomes == ["posted"]
+    process.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -1303,11 +1355,12 @@ def test_fetch_unseen_selects_the_configured_folder_quoted(monkeypatch):
     box.select.assert_called_once_with('"AR Agent"')
 
 
-def _searching_box(monkeypatch, uids: bytes, *, unbounded: bytes | None = None):
+def _searching_box(monkeypatch, uids: bytes, *, unbounded: bytes | None = None, fetch=None):
     """A mailbox whose UID SEARCH answers `uids`, and whose UID FETCH yields nothing.
 
     The second search of a poll is the unbounded one (`beyond_window`); it answers
-    `unbounded` when given, otherwise the same set as the first.
+    `unbounded` when given, otherwise the same set as the first. `fetch` overrides the
+    FETCH answer for the tests that care what comes back.
     """
     box = MagicMock()
     answers = [("OK", [uids]), ("OK", [unbounded if unbounded is not None else uids])]
@@ -1315,7 +1368,7 @@ def _searching_box(monkeypatch, uids: bytes, *, unbounded: bytes | None = None):
     def _uid(command, *args):
         if command == "SEARCH":
             return answers.pop(0) if answers else ("OK", [b""])
-        return ("OK", [None])  # FETCH: not a tuple → every uid is skipped
+        return fetch or ("OK", [None])  # FETCH: not a tuple → every uid is skipped
 
     box.uid.side_effect = _uid
     monkeypatch.setattr(ingest.imaplib, "IMAP4_SSL", lambda host, port, timeout=None: box)
@@ -1324,6 +1377,50 @@ def _searching_box(monkeypatch, uids: bytes, *, unbounded: bytes | None = None):
 
 def _uid_calls(box, command: str) -> list[tuple]:
     return [c.args[1:] for c in box.uid.call_args_list if c.args[0] == command]
+
+
+_RAW = b"Subject: statement\r\nFrom: bank@ktc.co.th\r\n\r\nno attachment\r\n"
+_WHEN = datetime(2026, 8, 18, 9, 30, tzinfo=timezone(timedelta(hours=7))).timestamp()
+
+
+@pytest.mark.parametrize(
+    "fetched",
+    [
+        # **The shape imap.gmail.com actually returns** (measured 2026-08-18): the RFC822
+        # literal first, INTERNALDATE in the trailing chunk. Reading it out of the first
+        # chunk — which the original hand-built fixture looked like — yielded None for
+        # every real message, leaving the enabled_at filter inert against the one server
+        # this product runs on while the test suite stayed green.
+        [
+            (b"51 (UID 52 RFC822 {%d}" % len(_RAW), _RAW),
+            b' INTERNALDATE "18-Aug-2026 09:30:00 +0700" FLAGS (\\Seen))',
+        ],
+        # The other legal order — RFC 3501 fixes neither, so both have to work.
+        [(b'1 (INTERNALDATE "18-Aug-2026 09:30:00 +0700" RFC822 {%d}' % len(_RAW), _RAW)],
+    ],
+    ids=["internaldate-last", "internaldate-first"],
+)
+def test_the_poll_records_when_each_message_arrived(monkeypatch, fetched):
+    """`email_ingest_settings.enabled_at` is compared against this value, so it has to be
+    arrival at *our* mailbox: INTERNALDATE, which the server stamps and nobody can compose.
+    The `Date:` header is written by whoever sent the mail."""
+    box = _searching_box(monkeypatch, b"1", fetch=("OK", fetched))
+
+    messages, _ = ingest._fetch_unseen(10)
+
+    assert _uid_calls(box, "FETCH")[0][1] == "(INTERNALDATE RFC822)"
+    assert messages[0]["arrived_at"] == _WHEN
+
+
+def test_an_internaldate_the_server_answers_oddly_leaves_the_arrival_unknown(monkeypatch):
+    """Unknown, not "now" and not zero — the caller treats it as "do not filter", which
+    processes the mail. Guessing a time in either direction would drop real documents."""
+    box = _searching_box(monkeypatch, b"1", fetch=("OK", [(b"1 (RFC822 {26}", _RAW), b")"]))
+
+    messages, _ = ingest._fetch_unseen(10)
+
+    assert messages[0]["arrived_at"] is None
+    box.uid.assert_any_call("STORE", "1", "+FLAGS", "\\Seen")
 
 
 def test_the_poll_addresses_mail_by_uid_not_sequence_number(monkeypatch):

@@ -1,6 +1,6 @@
 """Email Automation — end-to-end pipeline test against the real mailbox and dev DB.
 
-    python scripts/email_ingest_e2e.py            # 17 free cases, no credit/LLM/Carmen
+    python scripts/email_ingest_e2e.py            # 19 free cases, no credit/LLM/Carmen
     python scripts/email_ingest_e2e.py --paid     # + 3 cases that extract and post
 
 Fixtures are **APPENDed** into the IMAP folder rather than sent over SMTP: `Delivered-To`
@@ -31,6 +31,7 @@ import os
 import sys
 import time
 from dataclasses import dataclass, field
+from datetime import UTC, date, datetime
 from email.message import EmailMessage
 from pathlib import Path
 
@@ -51,6 +52,10 @@ BARE = os.environ["EMAIL_INGEST_ADDRESS"]
 USER, _, DOMAIN = BARE.partition("@")
 INGEST = f"{USER}+{TAG}@{DOMAIN}"
 FOLDER = os.environ["IMAP_FOLDER"]
+# `imaplib` quotes nothing — it concatenates command arguments with spaces — so every
+# command naming the folder needs this once the folder is `AR Agent`. SELECT and APPEND
+# both failed with `BAD Could not parse command` until they used it.
+QUOTED = f'"{FOLDER}"' if " " in FOLDER and not FOLDER.startswith('"') else FOLDER
 DSN = os.environ["DATABASE_URL"].replace(":5432/", ":6543/")
 
 RUN = str(int(time.time()))  # every fixture id is unique to this run, so reruns never dedupe
@@ -81,6 +86,9 @@ class Case:
     attachments: list[tuple[str, bytes]] = field(default_factory=list)
     #: How many ledger rows to expect, when it is not one-per-fixture.
     rows: int = 1
+    #: APPEND's INTERNALDATE, epoch seconds. None = now. The `enabled_at` gate compares
+    #: against this and nothing else, so it is the only way to fake "arrived last week".
+    arrived: float | None = None
 
     @property
     def message_id(self) -> str:
@@ -168,7 +176,7 @@ def free_cases(bbl_pdf: bytes, locked_pdf: bytes) -> tuple[list[Case], list[Case
 def connect() -> imaplib.IMAP4_SSL:
     box = imaplib.IMAP4_SSL(os.environ["IMAP_HOST"], int(os.environ["IMAP_PORT"]))
     box.login(os.environ["IMAP_USER"], os.environ["IMAP_PASSWORD"])
-    box.select(FOLDER)
+    box.select(QUOTED)
     return box
 
 
@@ -202,15 +210,21 @@ def pick(pdfs: dict[str, bytes], *, bbl: bool) -> bytes | None:
 
 def append(box: imaplib.IMAP4_SSL, cases: list[Case], extra: list[Case] = ()) -> None:
     for case in [*cases, *extra]:
-        box.append(FOLDER, "", imaplib.Time2Internaldate(time.time()), case.build())
+        stamp = imaplib.Time2Internaldate(case.arrived or time.time())
+        box.append(QUOTED, "", stamp, case.build())
         print(f"  + {case.id:4} {case.why}")
 
 
 def unseen_ids(box: imaplib.IMAP4_SSL) -> set[str]:
     out = set()
     for uid in (box.search(None, "UNSEEN")[1][0] or b"").split():
-        raw = box.fetch(uid, "(BODY.PEEK[HEADER])")[1][0][1]
-        out.add(email.message_from_bytes(raw).get("Message-ID") or "")
+        fetched = box.fetch(uid, "(BODY.PEEK[HEADER])")[1]
+        # Same guard the poll itself keeps: a server may answer a FETCH with a bare `)`
+        # rather than a (header, body) tuple — for a message expunged between the SEARCH
+        # and the FETCH, most often. Indexing it blindly crashed the run.
+        if not fetched or not isinstance(fetched[0], tuple):
+            continue
+        out.add(email.message_from_bytes(fetched[0][1]).get("Message-ID") or "")
     return out
 
 
@@ -231,6 +245,15 @@ async def set_owner_emails(value: list[str]) -> None:
     await sql(
         "update email_ingest_settings set owner_emails = $1::jsonb where tenant_id = $2::uuid",
         json.dumps(value),
+        TENANT,
+    )
+
+
+async def set_enabled_at(value) -> None:
+    """`null` = the pre-2026-08-18 behaviour (no filtering)."""
+    await sql(
+        "update email_ingest_settings set enabled_at = $1 where tenant_id = $2::uuid",
+        value,
         TENANT,
     )
 
@@ -334,11 +357,78 @@ async def free_run(box, report: Report, pdfs: dict[str, bytes]) -> None:
         TENANT))[0]["gmail_confirm_code"]
     report.check("P4b", "confirmation code parked on the settings", "987654321", code)
 
+    print("\n── Phase A2 · enabled_at — the toggle is not a queue ────────────")
+    # Switching Email Automation off means the BU is keying those statements into Carmen
+    # by hand, and a manual Carmen entry writes no `credit_cards` row — so the duplicate
+    # guard cannot see it and replaying the held backlog posted everything twice. The two
+    # fixtures differ in exactly one thing: the INTERNALDATE the server stamps on APPEND.
+    switched_on = time.time()
+    await set_enabled_at(datetime.fromtimestamp(switched_on, UTC))
+    window = [
+        Case("P21", "arrived while the BU was switched off", "ingest_paused",
+             arrived=switched_on - 2 * 86400,
+             attachments=[("signature-logo.pdf", NOT_A_PDF)]),
+        Case("P22", "same mail, arrived after they switched it on", "no_rule_match",
+             arrived=switched_on + 60,
+             attachments=[("signature-logo.pdf", NOT_A_PDF)]),
+    ]
+    append(box, window)
+    await run_poll("A2")
+    await verify(report, window)
+    await set_enabled_at(None)
+
     print("\n── Phase B · owner_emails = [%s] ──" % OWNER)
     await set_owner_emails([OWNER])
     append(box, gated)
     await run_poll("B")
     await verify(report, gated)
+
+
+async def dedupe_key_check(report: Report) -> None:
+    """The duplicate guard, run against a document this DB really has posted. Read-only.
+
+    Both entry paths reach `has_submitted_doc`, and both used to key on `bank_code` —
+    which the wizard fills from the user's dropdown and the email job from the matched
+    ingest rule. One disagreement made the same document two rows that never matched, and
+    both posted. The third assertion below is that exact bug, still reproducible by
+    handing the old key a bank_code the row does not carry.
+    """
+    print("\n── Phase D · the duplicate key, on real posted data ─────────────")
+    from app.database import async_session
+    from app.models.orm import CreditCard
+    from app.utils.db_helpers import has_submitted_doc
+
+    found = await sql(
+        "select tenant_id, doc_no, doc_date, bank_code from credit_cards"
+        " where submitted_at is not null and deleted_at is null and doc_no is not null"
+        " and doc_date is not null order by created_at desc limit 1"
+    )
+    if not found:
+        print("  !! no submitted credit_cards row in this DB — Phase D skipped")
+        return
+    row = dict(found[0])
+    print(f"  using {row['doc_no']} / {row['doc_date']} / bank={row['bank_code']!r}")
+
+    async with async_session() as db:
+        hit = await has_submitted_doc(
+            db, CreditCard, tenant_id=row["tenant_id"], doc_no=row["doc_no"],
+            doc_date=row["doc_date"],
+        )
+        report.check("D1", "the new key finds it without a bank_code", True, hit)
+
+        narrow = await has_submitted_doc(
+            db, CreditCard, tenant_id=row["tenant_id"], doc_no=row["doc_no"],
+            doc_date=date(1999, 1, 1),
+        )
+        report.check("D2", "doc_date still narrows (no false positive)", False, narrow)
+
+        # The old key, with the bank_code the *other* path would have resolved.
+        wrong = "ZZZ" if row["bank_code"] != "ZZZ" else "YYY"
+        missed = await has_submitted_doc(
+            db, CreditCard, tenant_id=row["tenant_id"], doc_no=row["doc_no"],
+            bank_code=wrong,
+        )
+        report.check("D3", f"the old key misses it under bank_code={wrong}", False, missed)
 
 
 def make_locked_pdf() -> bytes:
@@ -434,6 +524,7 @@ async def make_unpaid_bu() -> None:
 
 async def teardown() -> None:
     await set_owner_emails([])
+    await set_enabled_at(None)
     await drop_catchall_rule()
     await sql("delete from email_ingest_settings where tenant_id = any($1::uuid[])",
               [UNPAID_TENANT, OTHER_TENANT])
@@ -442,7 +533,8 @@ async def teardown() -> None:
         " where tenant_id = $1::uuid and gmail_confirm_code = '987654321'",
         TENANT,
     )
-    print("\ncleanup: owner_emails=[] · catch-all rule dropped · scratch BUs removed")
+    print("\ncleanup: owner_emails=[] · enabled_at=null · catch-all rule dropped"
+          " · scratch BUs removed")
 
 
 async def main() -> int:
@@ -459,6 +551,7 @@ async def main() -> int:
         print(f"real documents in {FOLDER}: {list(pdfs)}")
         await make_unpaid_bu()
         await free_run(box, report, pdfs)
+        await dedupe_key_check(report)
 
         spend = await spend_since(started)
         report.check("$0", "the free run charged nothing", {"llm": 0, "tasks": 0, "ledger": 0},
