@@ -8,9 +8,9 @@
      · stage — the app itself, at page size, scaled down to fit
 
    The figures mount real components, so they inherit the product's tokens,
-   type, spacing and dark mode with nothing to keep in sync. If you ever put
-   Tailwind utility markup in a figure, remember preflight is off here
-   (styles/tailwind.css) and headings and lists will arrive with UA margins.
+   type, spacing and dark mode with nothing to keep in sync. There is no CSS
+   reset beyond base.css, so headings and lists arrive with UA margins — style
+   them explicitly rather than assuming a normalize layer.
    ═══════════════════════════════════════════ */
 
 .tut {

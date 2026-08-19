@@ -63,8 +63,8 @@ def _set_created_by(mapper, connection, target):
     actor = _current_actor()
     if actor:
         if not target.created_by:
-            target.created_by = actor  # type: ignore[assignment]
-        target.updated_by = actor  # type: ignore[assignment]
+            target.created_by = actor
+        target.updated_by = actor
 
 
 @event.listens_for(Base, "before_update", propagate=True)
@@ -72,4 +72,4 @@ def _set_updated_by(mapper, connection, target):
     if isinstance(target, WriterMixin):
         actor = _current_actor()
         if actor:
-            target.updated_by = actor  # type: ignore[assignment]
+            target.updated_by = actor
