@@ -463,12 +463,16 @@ directions.
 | `email-ingest` | `*/10 * * * *` | yes | yes | 144 / 0 |
 | `keep-warm` | `*/10 * * * *` | yes | yes | 144 / 0 |
 | `hold-expired-orders` | `7 * * * *` | yes | yes | 24 / 0 |
-| `session-purge` | `0 * * * *` | yes | yes | 24 / 0 |
+| `session-purge` | `0 * * * *` † | yes | yes | 24 / 0 |
 | `pricing-sync` | `0 */8 * * *` | yes | yes | 3 / 0 |
 | `daily-summary` / `daily-model-cost` / `anomaly-detection` / `anomaly-alerts-purge` / `partman-maintain` / `lapse-subscriptions` | nightly | yes | yes | 1 / 0 each |
 | `monthly-summary` | `32 1 1 * *` | yes | yes | 0 / 0 (monthly — correct) |
 
 Zero failures across every job in 24 h.
+
+† `session-purge` was changed to `0 19 * * *` (02:00 ICT) later on 2026-08-19 by
+`20260819010000_session_scrub_follows_jwt_ttl.sql` — the hourly run was logging active users
+out. The row above records what was measured, not drift.
 
 ### 3.6c The F3 404 storm — measured, and already over (item 22)
 
