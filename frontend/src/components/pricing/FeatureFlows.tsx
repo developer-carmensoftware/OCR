@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { m, AnimatePresence } from 'framer-motion'
 import { useT } from '../../i18n/LanguageContext'
+import { BANKS } from '../../constants'
 import type { TKey } from '../../i18n/dict'
 import {
   CreditCard,
@@ -131,6 +132,34 @@ const FEATURES = [
 
 const CC_TIMELINE = [850, 2050] as const
 
+const CC_SUPPORT = [
+  { kind: 'bank', labelKey: 'flows.cc.sup.bank' },
+  { kind: 'gateway', labelKey: 'flows.cc.sup.gateway' },
+] as const satisfies ReadonlyArray<{ kind: 'bank' | 'gateway'; labelKey: TKey }>
+
+/** Layouts the extractor actually ships prompts for — read straight off BANKS,
+ * so adding a bank there is the only edit this list needs. */
+function SupportedLayouts() {
+  const { t } = useT()
+  return (
+    <div className="flow-support">
+      <span className="flow-support-h">{t('flows.cc.sup.h')}</span>
+      {CC_SUPPORT.map(g => (
+        <div key={g.kind} className="flow-support-row">
+          <span className="flow-support-label">{t(g.labelKey)}</span>
+          <span className="flow-support-chips">
+            {BANKS.filter(b => b.kind === g.kind).map(b => (
+              <span key={b.value} className="flow-chip">
+                {b.label}
+              </span>
+            ))}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function CreditCardDetail({ active }: { active: boolean }) {
   const { t } = useT()
   const { ref, phase } = useInViewSequence(CC_TIMELINE, active)
@@ -202,6 +231,7 @@ function CreditCardDetail({ active }: { active: boolean }) {
         </span>
         <p>{t('flows.cc.result')}</p>
       </div>
+      <SupportedLayouts />
     </article>
   )
 }
