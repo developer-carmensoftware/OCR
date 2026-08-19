@@ -143,6 +143,16 @@ Gotchas worth knowing before trusting a number:
 The SQL behind the adoption views lives in [`backend/db/queries.sql`](backend/db/queries.sql)
 items 11–14 — useful for cross-checking a page against the raw numbers.
 
+**Before claiming anything is slow, read [`docs/SQL_PERFORMANCE_AUDIT.md`](docs/SQL_PERFORMANCE_AUDIT.md).**
+Measured 2026-08-19: the whole database executes **18.5 minutes of SQL per 68 days** (0.019%
+duty cycle), the largest business table holds 342 rows, and no application query appears in
+the top 20 CPU consumers. Endpoint p50 *has* tripled since June, but SQL is ≤3% of that wall
+time and the instance still answers a request in 1 ms — so latency work belongs in the app
+layer, not in query tuning (§3.1e lists the leads, strongest being **3.2 pooler
+authentications per HTTP request**). `queries.sql` items **15–24** are the measurement pack;
+re-run them and diff rather than re-deriving. Run them **only from the Supabase SQL Editor** —
+an ad-hoc script while `uvicorn` is up hits the 15-connection Supavisor cap.
+
 ---
 
 ## Key Design Decisions
