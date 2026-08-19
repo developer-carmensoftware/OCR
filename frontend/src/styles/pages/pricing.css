@@ -6,6 +6,15 @@
 .pricing-page {
   max-width: 1080px;
   margin: 0 auto;
+
+  /* Skeleton sweep highlight. Every shimmer on this page ran `--muted → --gray-100`,
+     which only reads as a sweep in light mode: in dark, --gray-100 (L 0.24) sits BELOW
+     --muted (L 0.25), so the highlight was darker than the base and the shimmer vanished. */
+  --skeleton-hi: var(--gray-100);
+}
+
+[data-theme='dark'] .pricing-page {
+  --skeleton-hi: oklch(0.34 0.008 258.7);
 }
 
 /* ─── Header action links ─── */
@@ -75,11 +84,30 @@
   box-shadow: var(--shadow-xs);
 }
 
+/* Loading placeholders: the real box, its content hidden. No height here on purpose —
+   `visibility: hidden` keeps the children's geometry, so the placeholder measures exactly
+   what will replace it and nothing below it moves on swap. */
+.usage-strip--skeleton,
+.order-row.orders-skeleton-row {
+  background: linear-gradient(
+    100deg,
+    var(--muted) 30%,
+    var(--skeleton-hi, var(--gray-100)) 50%,
+    var(--muted) 70%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.usage-strip--skeleton *,
+.orders-skeleton-row * {
+  visibility: hidden;
+}
+
 .usage-strip--skeleton {
   width: 280px;
-  height: 44px;
-  background: var(--muted);
-  border-color: transparent;
 }
 
 .usage-strip.is-low {
@@ -1367,7 +1395,12 @@
 .pricing-skeleton-card {
   height: 430px;
   border-radius: var(--radius-lg);
-  background: linear-gradient(100deg, var(--muted) 30%, var(--gray-100) 50%, var(--muted) 70%);
+  background: linear-gradient(
+    100deg,
+    var(--muted) 30%,
+    var(--skeleton-hi, var(--gray-100)) 50%,
+    var(--muted) 70%
+  );
   background-size: 200% 100%;
   animation: shimmer 1.4s linear infinite;
 }
@@ -2310,6 +2343,18 @@
   margin: 0 0 1.25rem;
 }
 
+/* the placeholder already holds the height, so this only fades the swap
+   (:not keeps it off the skeleton, which owns `animation` for its shimmer) */
+.plan-strip:not(.usage-strip--skeleton) {
+  animation: plan-strip-in var(--dur-base) var(--ease-out-premium, ease-out);
+}
+
+@keyframes plan-strip-in {
+  from {
+    opacity: 0;
+  }
+}
+
 .order-list {
   list-style: none;
   display: flex;
@@ -2347,7 +2392,10 @@
 
 .order-row-head {
   display: grid;
-  grid-template-columns: 10rem 1fr auto auto auto;
+  /* ponytail: amount + status get fixed tracks, not `auto`. With `auto` the status
+     label's own width ("Void" vs "กำลังดำเนินการ") set the column, so the 1fr timeline
+     started at a different x on every row and the cards looked misaligned. */
+  grid-template-columns: 10rem 1fr 6.5rem 9rem auto;
   align-items: center;
   gap: 1.25rem;
   width: 100%;
@@ -2451,6 +2499,13 @@
   font-size: 1rem;
   font-weight: 700;
   color: var(--text);
+  text-align: right;
+}
+
+/* keep the pill at its natural width inside the fixed status track */
+.order-row-head > .status-badge {
+  justify-self: start;
+  white-space: nowrap;
 }
 
 .order-row-chevron {
@@ -2629,20 +2684,6 @@
   text-decoration: none;
 }
 
-.orders-skeleton {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-}
-
-.orders-skeleton-row {
-  height: 64px;
-  border-radius: var(--radius-md);
-  background: linear-gradient(100deg, var(--muted) 30%, var(--gray-100) 50%, var(--muted) 70%);
-  background-size: 200% 100%;
-  animation: shimmer 1.4s linear infinite;
-}
-
 /* ═══ RESPONSIVE ══════════════════════════════════════ */
 @media (max-width: 860px) {
   .checkout-grid {
@@ -2686,10 +2727,6 @@
   .order-row-head {
     grid-template-columns: 1fr auto;
     gap: 0.5rem 1rem;
-  }
-
-  .order-row-amount {
-    text-align: right;
   }
 
   .checkout-done-actions {
