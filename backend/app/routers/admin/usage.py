@@ -71,6 +71,10 @@ async def get_usage_totals(
         from_date = date.today().replace(day=1)
     if not to_date:
         to_date = date.today()
+    # Same cap as /usage-summary above — this endpoint aggregates the same partitioned
+    # tables and had been accepting any range at all, so ?from=2020-01-01 pruned no
+    # partition and summed the full retention window.
+    _assert_date_range(from_date, to_date)
     tid = _resolve_tenant(admin, tenant_id)
     totals = await svc.get_usage_totals(db, from_date, to_date, tid)
     return {"tenant_id": tid, "from": str(from_date), "to": str(to_date), "totals": totals}
