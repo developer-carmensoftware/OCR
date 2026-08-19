@@ -750,7 +750,7 @@ All four DB changes ship in one migration,
 
 | # | Change | Metric | Before | After (verify post-push) |
 |---|---|---|---|---|
-| N1 | `fn_purge_cron_history()` + `cron-history-purge` daily at 03:40 UTC — 14-day retention | table size | 17 MB, ~2,880 rows/day | ≪ 17 MB after first run |
+| N1 | `fn_purge_cron_history()` + `cron-history-purge` daily at 03:40 UTC — 14-day retention | **rows** older than 14 days (not bytes — §6.3) | 27,290 rows; table 17 MB and growing ~2,880 rows/day | ≈ 0 after the first run; size plateaus at ~17 MB |
 | F3 | `cron.unschedule('carmen-webhook-push')` in a migration | repo/prod drift | scheduled in repo, absent in prod | absent in both |
 | N4 | `cron.unschedule('probe')` | runs/day | 1,440 × `select 1` | 0 |
 | F7 | `drop index ix_performance_logs_endpoint` (parent — cascades to partitions) | index bytes never read | 1,128 kB across 3 partitions | index gone |
@@ -770,7 +770,7 @@ migration could have been silently wrong rather than loudly broken.
 | Check | Result | What it rules out |
 |---|---|---|
 | pg_partman template indexes on `performance_logs` | **no rows** | Dropping the parent index is sufficient — partman holds no template index that would hand `endpoint` back to every new monthly partition. |
-| `cron.job_run_details` rows older than 14 days | **27,290** | The table is reachable by the migration role, and this is N1's "before" number: the first 03:40 run has 27,290 rows to reclaim. |
+| `cron.job_run_details` rows older than 14 days | **27,290** | The table is reachable by the migration role, and this is N1's "before" number — but see §6.3: the metric that moves is the row count, not the byte size. |
 | `ix_performance_logs_endpoint` parent check | `indrelid = performance_logs` | It is an index on the partitioned parent, so `drop index` cascades to every partition instead of leaving orphans behind. |
 
 ### 6.1 Why these four DB changes and not others
@@ -791,6 +791,37 @@ migration could have been silently wrong rather than loudly broken.
   tenant selector, so cold-for-89-days is weaker evidence there. **Left in place.** The
   16 kB `deleted_at` / `created_by` stubs are left too — 105 of them are worth ~1.7 MB
   combined, and each drop is a migration line plus an ORM change for no measurable return.
+
+### 6.3 Correcting the verification metric for N1
+
+The first draft of this section said `pg_total_relation_size('cron.job_run_details')` would
+be "well under 17 MB" after the purge. **That will never happen, and it was the wrong metric.**
+
+`DELETE` in Postgres marks tuples dead; autovacuum then makes that space available for
+*reuse* by the same table. It is not returned to the operating system, so the size does not
+fall — the table plateaus around 17 MB instead of growing past it. Plateauing *is* the fix:
+N1 was never "this table is too big", it was "this table grows forever with nothing to bound
+it". But an expectation that cannot come true is a verification step that fails for the wrong
+reason and teaches the reader to ignore it.
+
+**The metric that moves is the row count:**
+
+```sql
+-- expect ~0 after the first 03:40 UTC run, and to stay near zero thereafter
+select count(*) from cron.job_run_details where end_time < now() - interval '14 days';
+
+-- expect this to stop climbing week over week; it will not fall
+select pg_size_pretty(pg_total_relation_size('cron.job_run_details'));
+```
+
+Reclaiming the bytes would need `vacuum full cron.job_run_details` (an ACCESS EXCLUSIVE lock
+on a table pg_cron writes to every minute) or `pg_repack`. For 17 MB that is not worth doing;
+run it once only if the table has already grown far past this point before the retention job
+lands.
+
+**Timing note.** The job fires at 03:40 UTC. A migration applied after that hour on a given
+day sees its first run the following day — so a 17 MB reading taken minutes after `db push`
+is the expected value, not a failure.
 
 ### 6.2 Deliberately not done
 
