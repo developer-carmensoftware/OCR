@@ -157,6 +157,39 @@ function ActivePlanBanner({ sub }: { sub: ActiveSubscription }) {
   )
 }
 
+// The loading placeholders are the REAL boxes with their content hidden (`visibility`
+// keeps the geometry), so the skeleton is exactly as tall as what replaces it. A guessed
+// pixel height is what made the page jolt: 64px stand-ins for ~83px rows, and a 44px
+// stand-in for the plan strip.
+function StripSkeleton() {
+  return (
+    // a plain div, not the banner's <output>: a placeholder must not be a live region
+    <div className="usage-strip plan-strip usage-strip--skeleton" aria-hidden="true">
+      <div className="usage-stat">
+        <CalendarClock size={15} className="usage-stat-icon" />
+        <span className="usage-stat-value">&nbsp;</span>
+        <span className="usage-stat-unit">&nbsp;</span>
+      </div>
+    </div>
+  )
+}
+
+function RowSkeleton() {
+  return (
+    <li className="order-row orders-skeleton-row" aria-hidden="true">
+      <div className="order-row-head">
+        <span className="order-timeline">
+          <span className="ot-step">
+            <span className="ot-dot" />
+            <span className="ot-label">&nbsp;</span>
+            <span className="ot-date">&nbsp;</span>
+          </span>
+        </span>
+      </div>
+    </li>
+  )
+}
+
 // A notification deep-links as #/pricing/orders?id=<order_id>; pull that id out.
 function parseFocusId(): string | null {
   const q = window.location.hash.split('?')[1]
@@ -168,6 +201,9 @@ export default function OrderHistory() {
   const { orders, loading, error, reload } = useOrderHistory()
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
   const [sub, setSub] = useState<ActiveSubscription | null>(null)
+  // /usage answers later than the order list, so the strip used to mount after the rows had
+  // painted and shove the page down. Both loads now gate one skeleton: the page paints once.
+  const [subLoading, setSubLoading] = useState(() => !!getStoredToken())
   const [focusId, setFocusId] = useState(parseFocusId)
 
   // Re-read the focus id if the hash changes while already on this page.
@@ -177,6 +213,10 @@ export default function OrderHistory() {
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
+  // ponytail: one gate for both fetches. A top-up-only tenant (no subscription) still sees
+  // the strip's slot collapse once when /usage comes back empty — cache the last answer per
+  // tenant if that ever matters more than the extra storage key.
+  const busy = loading || subLoading
   const openOrders = orders.filter(o => OPEN_ORDER_STATUSES.includes(o.status))
   const history = orders.filter(o => !OPEN_ORDER_STATUSES.includes(o.status))
 
@@ -189,6 +229,7 @@ export default function OrderHistory() {
       getUsage(token)
         .then(d => setSub(d.usage.subscription ?? null))
         .catch(() => setSub(null))
+        .finally(() => setSubLoading(false))
     }
   }, [])
 
@@ -232,7 +273,7 @@ export default function OrderHistory() {
         <LanguageToggle />
       </AppHeader>
 
-      <main className="orders-main">
+      <main className="orders-main" aria-busy={busy}>
         <div className="orders-head">
           <h1 className="orders-title">{t('order.title')}</h1>
           <a className="btn btn-outline orders-buy-link" href="#/pricing">
@@ -240,18 +281,18 @@ export default function OrderHistory() {
           </a>
         </div>
 
-        {sub && <ActivePlanBanner sub={sub} />}
+        {busy ? <StripSkeleton /> : sub && <ActivePlanBanner sub={sub} />}
 
         <PendingOrderBanner orders={openOrders} onChanged={reload} paymentInfo={paymentInfo} />
 
         {error ? (
           <div className="pricing-error">{t('order.loadError', { error })}</div>
-        ) : loading ? (
-          <div className="orders-skeleton" aria-hidden="true">
+        ) : busy ? (
+          <ul className="order-list">
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="orders-skeleton-row" />
+              <RowSkeleton key={i} />
             ))}
-          </div>
+          </ul>
         ) : history.length === 0 ? (
           openOrders.length === 0 && (
             <div className="orders-empty">
