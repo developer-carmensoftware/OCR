@@ -105,27 +105,9 @@
   background: var(--primary-hover);
 }
 
-/* ─── LANG TOGGLE ─── */
-.lang-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.4rem 0.9rem;
-  background: var(--primary-light);
-  border: 1px solid var(--primary-mid);
-  border-radius: 100px;
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--primary);
-  cursor: pointer;
-  transition: all var(--dur-base);
-  letter-spacing: 0.04em;
-}
-.lang-toggle:hover {
-  background: var(--primary);
-  color: white;
-  border-color: var(--primary);
-}
+/* .lang-toggle now lives in components.css — it is a shared header control, and
+   this file is loaded globally from index.css, so styling it here silently
+   restyled the toggle everywhere else too. */
 
 /* ─── VENDOR SEARCH BOX ─── */
 .vendor-search-wrap {

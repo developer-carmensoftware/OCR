@@ -7,7 +7,7 @@ import TenantSelector from '../../components/admin/TenantSelector'
 import DateRangePicker from '../../components/admin/DateRangePicker'
 import PageHeader from '../../components/admin/ui/PageHeader'
 import Tabs from '../../components/admin/ui/Tabs'
-import Badge from '../../components/admin/ui/Badge'
+import Badge from '../../components/common/Badge'
 import EmptyState from '../../components/admin/ui/EmptyState'
 import {
   fetchEmailBusinessUnits,
@@ -268,7 +268,7 @@ export default function EmailAutomationPage() {
     {
       key: 'status',
       label: t('admin.email.col.status'),
-      render: r => <Badge status={statusTone(r.status)}>{r.status}</Badge>,
+      render: r => <Badge variant={statusTone(r.status)}>{r.status}</Badge>,
     },
     {
       key: 'reason_code',
@@ -303,7 +303,7 @@ export default function EmailAutomationPage() {
       key: 'enabled',
       label: t('admin.email.col.enabled'),
       render: r => (
-        <Badge status={r.enabled ? 'ok' : 'neutral'}>
+        <Badge variant={r.enabled ? 'ok' : 'neutral'}>
           {r.enabled ? t('admin.email.on') : t('admin.email.off')}
         </Badge>
       ),
@@ -322,9 +322,9 @@ export default function EmailAutomationPage() {
       label: t('admin.email.col.forwarding'),
       render: r =>
         r.gmail_confirmed_at ? (
-          <Badge status="ok">{fmtDateTime(r.gmail_confirmed_at)}</Badge>
+          <Badge variant="ok">{fmtDateTime(r.gmail_confirmed_at)}</Badge>
         ) : (
-          <Badge status="warn">{t('admin.email.notConfirmed')}</Badge>
+          <Badge variant="warn">{t('admin.email.notConfirmed')}</Badge>
         ),
     },
     {
@@ -334,7 +334,7 @@ export default function EmailAutomationPage() {
         r.token.configured ? (
           <span className="admin-mono">{r.token.fingerprint ?? '—'}</span>
         ) : (
-          <Badge status="error">{t('admin.email.noToken')}</Badge>
+          <Badge variant="error">{t('admin.email.noToken')}</Badge>
         ),
     },
     {
