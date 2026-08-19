@@ -7,6 +7,31 @@
      - components.css → Shared UI component styles
 
    Page-specific styles live in styles/pages/
+
+   ⚠ LOAD ORDER IS LOAD-BEARING, and two "pages/" sheets below are actually global.
+   ap-invoice.css and admin.css are imported here, not from their page components, so
+   they load app-wide AFTER components.css and silently win same-specificity conflicts
+   everywhere. Three shared classes are currently defined twice with *different* designs
+   (not accidental copies — deleting either side changes the UI):
+
+     .status-badge   components.css:1357 (inline-flex, .info/.success)
+                     vs pages/admin.css:715 (inline-block, uppercase, .ok/.warn/.error)
+                     Root cause: two Badge components emit the same base class —
+                     components/common/Badge.tsx and components/admin/ui/Badge.tsx —
+                     with disjoint variant vocabularies. Merge them, then keep one rule.
+
+     .lang-toggle    components.css:3054 (neutral, --card-bg)
+                     vs pages/ap-invoice.css:109 (primary-colored). The ap-invoice
+                     version currently wins in the admin sidebar and on #/pricing too.
+
+     .mapping-modal* components.css:1782 vs pages/mapping.css:289. Both are superseded
+                     by the newer .pm-* rules in components/payment-modal.css, EXCEPT
+                     components.css's `[data-theme='dark'] .mapping-modal-content`, which
+                     outranks .pm-dialog on specificity. The real fix is dropping the
+                     vestigial mapping-modal* class names from PaymentTypeModal.tsx (the
+                     only file using them), then deleting both blocks.
+
+   Each fix needs the page checked in light AND dark before the losing rule is removed.
 */
 
 @import './styles/base.css';
@@ -18,6 +43,5 @@
 @import './styles/components/page-skeleton.css';
 @import './styles/components/maintenance.css';
 @import './styles/components/tutorial.css';
-@import './styles/tailwind.css';
 @import './styles/pages/ap-invoice.css';
 @import './styles/pages/admin.css';

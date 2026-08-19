@@ -22,7 +22,7 @@ import {
 } from '../../lib/api/adminClient'
 import { useT } from '../../i18n/LanguageContext'
 import type { TKey } from '../../i18n/dict'
-import { fmtDateTime } from '../../lib/dates'
+import { fmtDateTime } from '../../lib/date'
 
 /**
  * What happened to the mail a customer forwarded.

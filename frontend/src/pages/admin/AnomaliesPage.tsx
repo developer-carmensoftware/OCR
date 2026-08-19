@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import TenantSelector from '../../components/admin/TenantSelector'
 import { fetchAlerts, resolveAlert } from '../../lib/api/adminClient'
 import { useT } from '../../i18n/LanguageContext'
-import { fmtDateTime } from '../../lib/dates'
+import { fmtDateTime } from '../../lib/date'
 
 interface Alert {
   id: number

@@ -100,7 +100,7 @@ from app.services.cc_input_tax import build_input_tax_payload
 from app.services.cc_jv import build_gljv_payload, build_jv_rows, unmapped_payment_types
 from app.services.credit_card_service import finalize_extraction, mark_task_failed
 from app.services.credit_service import consume_document, refund_document
-from app.services.quota_service import assert_module_enabled
+from app.services.module_gate import assert_module_enabled
 from app.services.task_service import create_task
 from app.utils.bank_detect import detect_bank_code
 from app.utils.gl_filter import parse_default_account

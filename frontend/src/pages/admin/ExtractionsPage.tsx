@@ -9,7 +9,7 @@ import Tabs from '../../components/admin/ui/Tabs'
 import EmptyState from '../../components/admin/ui/EmptyState'
 import { fetchExtractionFailures, type ExtractionFailureRow } from '../../lib/api/adminClient'
 import { useT } from '../../i18n/LanguageContext'
-import { fmtDateTime } from '../../lib/dates'
+import { fmtDateTime } from '../../lib/date'
 
 /**
  * Why an extraction failed. /error-breakdown reports how MANY failed; this reports
@@ -84,7 +84,6 @@ function groupByCause(rows: ExtractionFailureRow[]): FailureGroup[] {
     .sort((a, b) => b.failures - a.failures)
 }
 
-const fmtDate = fmtDateTime
 const monthStart = () => {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
@@ -112,7 +111,7 @@ function getListCols(t: ReturnType<typeof useT>['t']): Column<ExtractionFailureR
       key: 'created_at',
       label: t('admin.extractions.col.time'),
       sortable: true,
-      render: r => fmtDate(r.created_at),
+      render: r => fmtDateTime(r.created_at),
     },
     {
       key: 'tenant_name',
@@ -225,13 +224,13 @@ export default function ExtractionsPage() {
       key: 'first_seen',
       label: t('admin.extractions.col.firstSeen'),
       sortable: true,
-      render: g => fmtDate(g.first_seen),
+      render: g => fmtDateTime(g.first_seen),
     },
     {
       key: 'last_seen',
       label: t('admin.extractions.col.lastSeen'),
       sortable: true,
-      render: g => fmtDate(g.last_seen),
+      render: g => fmtDateTime(g.last_seen),
     },
   ]
 

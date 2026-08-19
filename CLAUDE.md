@@ -102,7 +102,7 @@ useAPInvoice hook
 
 ### Admin dashboard (`#/admin/*`) — check here before writing SQL
 
-16 pages already exist. **Read this table before hand-querying the DB** — on 2026-07-16
+18 pages already exist. **Read this table before hand-querying the DB** — on 2026-07-16
 a full day went into ad-hoc SQL to answer questions that four of these pages already
 answered, purely because nobody knew they were there.
 
@@ -112,6 +112,7 @@ answered, purely because nobody knew they were there.
 | | `#/admin/anomalies` | `anomaly_alerts` (+ resolve) |
 | Is the pilot working? | `#/admin/tenants` | per-BU engagement: scanned vs **posted to Carmen**, active weeks, days idle, + adoption funnel |
 | | `#/admin/usage` | date×module×tenant docs/calls/tokens/cost |
+| | `#/admin/user-usage` | same, broken down by **individual Carmen user** rather than BU |
 | | `#/admin/tenant-ranking` | rank by cost/error rate/latency/volume |
 | | `#/admin/quota-modules` | **who is about to run out of documents**, per-module usage, module on/off |
 | Why isn't it working? | `#/admin/extractions` | **why an extraction failed** — `ocr_tasks.error_message`, grouped by cause |
@@ -119,6 +120,8 @@ answered, purely because nobody knew they were there.
 | | `#/admin/performance` | request latency |
 | Who pays / what does it cost? | `#/admin/credits`, `#/admin/credit-orders`, `#/admin/llm-logs` | balances & ledger, order queue, per-call cost |
 | Is the machine running? | `#/admin/sessions`, `#/admin/jobs` | live sessions (+revoke), **`job_runs` cron health** |
+| | `#/admin/email` | email-ingestion runs + cron health (POC) |
+| | `#/admin/maintenance` | maintenance-mode flag + window (what `MaintenanceGate` reads) |
 | Who can touch it? | `#/admin/admin-users` | RBAC |
 
 Gotchas worth knowing before trusting a number:
@@ -154,7 +157,7 @@ items 11–14 — useful for cross-checking a page against the raw numbers.
 - **Bank code not enum** — `credit_cards.bank_code` FK → `banks.code` VARCHAR. No hardcoded `BankType` enum in the DB; adding a bank is an INSERT (pending Admin Dashboard for zero-redeploy).
 - **Credit card line items are NOT persisted** — like AP invoices, credit-card transactions follow the extract-display-only pattern (Carmen ERP is source of truth). Only `credit_cards` header data is stored; line items live transiently in the API response (`CreditCardTransactionSchema`).
 - **Soft delete everywhere** — Business tables never hard-delete. Always filter `WHERE deleted_at IS NULL`.
-- **Two document pools, not three** — a scan is charged by `consume_document()` (`services/credit_service.py`): the active subscription's monthly allowance first (use-it-or-lose-it), then `tenant_credits.balance` (never expires). The free trial is not a third pool — a new tenant is granted 30 credits (`signup_grant` ledger reason) in the same transaction that creates their tenant row, which is what makes it a one-time grant. The old `quotas`/`quota_usage` counter engine was retired by migration `20260813000100`; the tables are kept for one release and then dropped.
+- **Two document pools, not three** — a scan is charged by `consume_document()` (`services/credit_service.py`): the active subscription's monthly allowance first (use-it-or-lose-it), then `tenant_credits.balance` (never expires). The free trial is not a third pool — a new tenant is granted 30 credits (`signup_grant` ledger reason) in the same transaction that creates their tenant row, which is what makes it a one-time grant. The old `quotas`/`quota_usage` counter engine was retired by migration `20260813000100`; the tables are kept for one release and then dropped. What survived that retirement is only `assert_module_enabled()`, which now lives in `services/module_gate.py` (renamed from `quota_service.py` 2026-08-18 — the old name described an engine that no longer exists). `supabase/schemas/40_quotas.sql` still declares the tables; delete it in the same change that drops them.
 - **module_id on every LLM call** — `log_llm_usage(module_id="credit_card_ocr")` instead of old `usage_type` string. Enables per-module cost breakdown in `daily_usage_summary`.
 - **Shared LLM client** — `llm/client.py` is the sole `AsyncOpenAI` factory. Never construct it elsewhere.
 - **LLM privacy is enforced per-request, not via dashboard** — `_provider_prefs()` in `llm/client.py` attaches `extra_body={"provider": {"data_collection": "deny", ...}}` to EVERY OpenRouter call (vision + text). This is the technical enforcement of the consent-modal no-training promise (`UserConsentModal.tsx`); it does not rely on the OpenRouter account dashboard toggles (which can drift silently). `LLM_TEXT_PROVIDER_ALLOWLIST` additionally pins the non-Google suggestion model to US-jurisdiction providers. Prod logs CRITICAL if `LLM_DATA_COLLECTION != "deny"`. The dashboard's Google-ZDR toggle (disable AI Studio, keep Vertex) is a manual second layer — see `docs/SECURITY_PDPA_CHECKLIST.md`.
@@ -217,6 +220,15 @@ Subsequent requests:
 
 ## Environment Variables (`backend/.env`)
 
+**[`backend/.env.example`](backend/.env.example) is the complete list (48 vars) and the source
+of truth.** Below is only the annotated subset whose *values* carry a decision worth explaining —
+if a var isn't here, read `.env.example`, don't assume it doesn't exist.
+
+**These hard-fail prod boot if unset or left at a dev default** (see `app/config.py` validators):
+`ADMIN_JWT_SECRET`, `OCR_JWT_SECRET`, `SESSION_ENCRYPTION_KEY`, `ALLOWED_ORIGINS` (no wildcard),
+`ALLOWED_CARMEN_HOSTS`. `TRUST_PROXY` + `TRUSTED_PROXY_HOPS` must match the actual proxy depth or
+client-IP logging and rate limiting read a spoofable header.
+
 ```env
 OPENROUTER_API_KEY=sk-or-v1-...
 OPENROUTER_OCR_MODEL=google/gemini-2.5-flash-lite
@@ -238,6 +250,15 @@ INTERNAL_JOB_TOKEN=<hex-64-chars>   # must match vault.secrets where name='inter
                                      # generate: python -c "import secrets; print(secrets.token_hex(32))"
 FILE_SERVICE_URL=https://host/Api/v1/External/FileService  # OneApp FileService (slip upload)
 FILE_SERVICE_API_KEY=fsc_...        # X-Api-Key client access key
+# Email ingestion (POC — feature itself is deliberately not documented here yet).
+# IMAP_HOST empty = ingestion disabled, which is the correct default everywhere it
+# isn't deliberately switched on. Set the rest only alongside it.
+IMAP_HOST=                          # empty = disabled
+IMAP_PORT=993
+IMAP_USER=
+IMAP_PASSWORD=
+IMAP_FOLDER=INBOX
+EMAIL_INGEST_ADDRESS=ocr@carmensoftware.com   # bare mailbox; per-BU routing uses ocr+<tag>@…
 ```
 
 ---
@@ -256,7 +277,7 @@ FILE_SERVICE_API_KEY=fsc_...        # X-Api-Key client access key
 | Modules | `modules`, `tenant_modules` |
 | Bank CMS | `banks`, `prompt_templates` |
 | Config | `system_configs`, `tenant_config_overrides`, `feature_flags`, `bu_accounting_configs`, `bu_accounting_mapping_entries`, `ap_vendor_column_mappings`, `ap_vendor_field_mapping_entries` |
-| Quotas | `quotas`, `quota_usage` — **retired** (rows soft-deleted 2026-08-13, tables drop next release) |
+| Quotas | `quotas`, `quota_usage` — **retired** (rows soft-deleted 2026-08-13, tables + `schemas/40_quotas.sql` drop next release; still standing as of 2026-08-18) |
 | Billing | `credit_packs`, `tenant_credits`, `credit_ledger`, `credit_orders`, `billing_documents`, `tenant_subscriptions`, `ar_customer_profiles`, `document_sequences` |
 | Reference | `model_pricing` |
 | Business data | `ocr_sessions`, `ocr_tasks`, `credit_cards`, `ap_invoices`, `correction_feedback`, `bug_reports`, `consent_logs` |

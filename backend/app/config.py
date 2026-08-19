@@ -262,8 +262,7 @@ class Settings(BaseSettings):
             # OPENROUTER_API_KEY=key1,key2 works without setting OPENROUTER_API_KEYS.
             keys = [k.strip() for k in self.openrouter_api_key.split(",") if k.strip()]
         # De-dup, preserve order.
-        seen: set[str] = set()
-        deduped = [k for k in keys if not (k in seen or seen.add(k))]
+        deduped = list(dict.fromkeys(keys))
         return deduped or [self.openrouter_api_key]
 
     @property

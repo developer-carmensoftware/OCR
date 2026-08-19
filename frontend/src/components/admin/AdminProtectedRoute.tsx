@@ -5,7 +5,21 @@ export default function AdminProtectedRoute({ children }: { children: ReactNode 
   const { isAuthenticated, loading } = useAdminAuth()
 
   if (loading) {
-    return <div className="flex h-screen items-center justify-center text-gray-400">Loading…</div>
+    // ponytail: inline styles — this is the only full-screen loader in the app,
+    // and a one-use CSS class costs more to find than to read here.
+    return (
+      <div
+        style={{
+          display: 'flex',
+          height: '100vh',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--text-4)',
+        }}
+      >
+        Loading…
+      </div>
+    )
   }
 
   if (!isAuthenticated) {
