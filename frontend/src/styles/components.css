@@ -860,6 +860,22 @@ input[type='text'].detail-input:focus {
   transform: scale(0.97);
 }
 
+/* Paired with components/common/SwapLabel.tsx: both labels occupy the same grid cell, so
+   the control keeps the width of the wider one and does not resize when the label swaps
+   mid-action. `visibility` (not `display: none`) is what keeps the hidden one measurable. */
+.swap-label {
+  display: inline-grid;
+}
+
+.swap-label > * {
+  grid-area: 1 / 1;
+  text-align: center;
+}
+
+.swap-label > [aria-hidden='true'] {
+  visibility: hidden;
+}
+
 .btn-submit {
   display: inline-flex;
   align-items: center;

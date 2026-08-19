@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import AccountMappingTable from './AccountMappingTable'
 import { useT } from '../../i18n/LanguageContext'
+import SwapLabel from '../common/SwapLabel'
 import type { APLineItem } from '../../hooks/ap-invoice/useAPExtraction'
 import type { Vendor } from '../../hooks/ap-invoice/useAPVendor'
 import type { APInvoiceHeader } from '../../constants/apInvoice'
@@ -288,7 +289,8 @@ export default function APAccountMappingStep({
             onClick={onGenerate}
             disabled={!allMapped || isSubmitting}
           >
-            <Save size={14} /> {isSubmitting ? t('ap.sending') : t('ap.generateInv')}
+            <Save size={14} />{' '}
+            <SwapLabel active={isSubmitting} idle={t('ap.generateInv')} busy={t('ap.sending')} />
           </button>
         </div>
       </div>

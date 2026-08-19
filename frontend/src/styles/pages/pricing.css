@@ -2592,15 +2592,19 @@
   padding: 1rem 1.25rem;
 }
 
+/* Same fix as .order-row-head: the amount and the "View invoice" toggle had `auto`
+   tracks, so with more than one open order each banner sized them from its own content —
+   and the toggle's label is i18n text, so both columns moved on the language switch. */
 .pending-order-head {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr 6.5rem 9rem;
   align-items: center;
   gap: 1.25rem;
   margin-bottom: 0.75rem;
 }
 
 .pending-order-toggle {
+  justify-self: start;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
