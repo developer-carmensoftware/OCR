@@ -22,6 +22,7 @@ import { useAccountingConfig } from '../../hooks/credit-card'
 import { buildJvRows } from '../../lib/ccJv'
 import { GROUP_DEBIT_BY_TRANSACTION } from '../../constants/banks'
 import { codeToSource, descriptionForBank } from '../../lib/bankTransforms'
+import SwapLabel from '../common/SwapLabel'
 import type { DetailRow } from './DetailTable'
 import type { JvRow } from '../../hooks/credit-card/useOcrSubmission'
 import type { BankCode } from '../../types/api'
@@ -324,7 +325,7 @@ export default function AccountingReview({
             ) : (
               <UploadCloud size={14} />
             )}
-            {submitting ? t('cc.submitting') : t('cc.confirmSubmit')}
+            <SwapLabel active={submitting} idle={t('cc.confirmSubmit')} busy={t('cc.submitting')} />
           </button>
         </div>
       </Card>

@@ -522,6 +522,20 @@ body:has(.admin-login-page) {
 .admin-th-sort:hover {
   color: var(--primary);
 }
+
+.admin-th-sort:disabled {
+  cursor: default;
+}
+
+/* Fixed slot, always present. The arrow only renders on the sorted column, and
+   `.admin-table` is auto-layout, so letting it size the cell re-flowed every column
+   in the table on each sort click. */
+.sort-icon {
+  display: inline-block;
+  width: 0.85em;
+  margin-left: 0.25em;
+  text-align: center;
+}
 .admin-th.text-right {
   text-align: right;
 }
