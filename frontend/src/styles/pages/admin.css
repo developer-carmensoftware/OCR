@@ -712,30 +712,9 @@ body:has(.admin-login-page) {
 
 /* ─── BADGES & HELPERS ─────────────────────────────────────────────────── */
 
-.status-badge {
-  display: inline-block;
-  padding: 0.18rem 0.65rem;
-  border-radius: 100px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-.status-badge.ok {
-  background: var(--emerald-light);
-  color: var(--emerald);
-  border: 1px solid var(--emerald-mid);
-}
-.status-badge.error {
-  background: var(--rose-light);
-  color: var(--destructive);
-  border: 1px solid var(--rose-mid);
-}
-.status-badge.warn {
-  background: var(--amber-light);
-  color: var(--amber-text);
-  border: 1px solid var(--amber-mid);
-}
+/* .status-badge and its tones now live in components.css — this file is loaded
+   globally from index.css, so defining a shared component's base rule here made
+   the whole app's badges depend on import order. */
 
 .text-red {
   color: var(--rose);
@@ -1854,18 +1833,6 @@ body:has(.admin-login-page) {
 [data-theme='dark'] .ui-switch {
   background: var(--gray-300);
 }
-[data-theme='dark'] .status-badge.neutral {
-  background: var(--gray-100);
-  color: var(--text-3);
-  border: 1px solid var(--border);
-}
-
-.status-badge.neutral {
-  background: var(--gray-100);
-  color: var(--text-3);
-  border: 1px solid var(--border-hi);
-}
-
 /* A cell whose content is one long unbreakable token (a bank's 60-character
    filename). `.admin-td` is nowrap, so without a cap one of these sets the width of
    the entire table and the horizontal scrollbar becomes permanent. The full value

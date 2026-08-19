@@ -8,30 +8,24 @@
 
    Page-specific styles live in styles/pages/
 
-   ⚠ LOAD ORDER IS LOAD-BEARING, and two "pages/" sheets below are actually global.
-   ap-invoice.css and admin.css are imported here, not from their page components, so
-   they load app-wide AFTER components.css and silently win same-specificity conflicts
-   everywhere. Three shared classes are currently defined twice with *different* designs
-   (not accidental copies — deleting either side changes the UI):
+   ⚠ LOAD ORDER IS LOAD-BEARING. ap-invoice.css and admin.css are imported here, not
+   from their page components, so despite the "pages/" name they load app-wide after
+   components.css and win same-specificity conflicts everywhere. That is a trap: a rule
+   written for one page silently restyles the whole app, and which rule wins depends on
+   the order below rather than on anything a reader can see at the call site.
 
-     .status-badge   components.css:1357 (inline-flex, .info/.success)
-                     vs pages/admin.css:715 (inline-block, uppercase, .ok/.warn/.error)
-                     Root cause: two Badge components emit the same base class —
-                     components/common/Badge.tsx and components/admin/ui/Badge.tsx —
-                     with disjoint variant vocabularies. Merge them, then keep one rule.
+   Four shared controls had been caught by it and are now consolidated in
+   components.css — do not move them back into a pages/ sheet:
 
-     .lang-toggle    components.css:3054 (neutral, --card-bg)
-                     vs pages/ap-invoice.css:109 (primary-colored). The ap-invoice
-                     version currently wins in the admin sidebar and on #/pricing too.
+     .status-badge   base was split between components.css and pages/admin.css, one half
+                     supplying line-height and the other display/size/casing.
+     .lang-toggle    same split with pages/ap-invoice.css (colours there, height here).
+     .btn-confirm    base lived only in pages/mapping.css, so the eight other places
+                     using it rendered unshaped unless #/mapping had been visited first.
+     .btn-cancel     pages/mapping.css overrode it with a hardcoded `background: white`
+                     and no dark counterpart.
 
-     .mapping-modal* components.css:1782 vs pages/mapping.css:289. Both are superseded
-                     by the newer .pm-* rules in components/payment-modal.css, EXCEPT
-                     components.css's `[data-theme='dark'] .mapping-modal-content`, which
-                     outranks .pm-dialog on specificity. The real fix is dropping the
-                     vestigial mapping-modal* class names from PaymentTypeModal.tsx (the
-                     only file using them), then deleting both blocks.
-
-   Each fix needs the page checked in light AND dark before the losing rule is removed.
+   Before adding a rule to a pages/ sheet, check the class is not used outside that page.
 */
 
 @import './styles/base.css';
