@@ -1,18 +1,8 @@
 import { useState, useEffect } from 'react'
-import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
-import {
-  FileText,
-  Scale,
-  Flag,
-  AlertCircle,
-  X,
-  Check,
-  Loader2,
-  ArrowLeft,
-  PlusCircle,
-} from 'lucide-react'
+import { FileText, Scale, Flag, AlertCircle, X, PlusCircle } from 'lucide-react'
 import { SkeletonRow } from '../common/Skeleton'
+import CustomModal from '../common/CustomModal'
 import { submitInputTax, fetchTaxProfiles } from '../../lib/api/carmen'
 import type { TaxProfileItem } from '../../lib/api/carmen'
 import { normalizeYearToCE } from '../../lib/date'
@@ -249,13 +239,17 @@ export default function InputTaxReconciliation({
         )}
 
         <div className="form-actions">
-          <button type="button" className="btn-danger" onClick={() => setShowDiscardConfirm(true)}>
+          <button
+            type="button"
+            className="btn btn-danger"
+            onClick={() => setShowDiscardConfirm(true)}
+          >
             <X size={14} /> {t('cc.discard')}
           </button>
           <div className="form-actions-sep" />
           <button
             type="button"
-            className="btn-submit"
+            className="btn btn-primary"
             onClick={() => {
               setSubmitError(null)
               setShowConfirm(true)
@@ -267,92 +261,51 @@ export default function InputTaxReconciliation({
         </div>
       </div>
 
-      {showConfirm &&
-        createPortal(
-          <div className="cc-modal-overlay-container">
-            <div className="modal-box">
-              <div className="cc-modal-icon-teal">
-                <FileText size={36} />
-              </div>
-              <div className="cc-modal-title">{t('cc.addInputTaxTitle')}</div>
-              <p className="cc-modal-body-text">{t('cc.addInputTaxBody')}</p>
-              <div className="cc-modal-info-box-teal">
-                <Flag size={14} className="cc-info-icon-flag" />
-                <span>{t('cc.addInputTaxInfo')}</span>
-              </div>
-              {submitError && (
-                <div className="cc-modal-error-box">
-                  <AlertCircle size={14} className="cc-error-icon-alert" /> {submitError}
-                </div>
-              )}
-              <div className="modal-actions">
-                <button
-                  type="button"
-                  className="btn-cancel"
-                  onClick={() => setShowConfirm(false)}
-                  disabled={submitting}
-                >
-                  {t('modal.cancel')}
-                </button>
-                <button
-                  type="button"
-                  className="btn-submit"
-                  onClick={handleAddInputTax}
-                  disabled={submitting}
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 size={14} className="animate-spin" /> {t('cc.sending')}
-                    </>
-                  ) : (
-                    <>
-                      <Check size={14} /> {t('cc.confirm')}
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>,
-          document.body
+      {/* Both dialogs were hand-rolled portals until this pass: no focus trap, no Escape,
+          no aria-modal, no reduced-motion path. CustomModal supplies all of that; the
+          bodies that were bespoke live in its `children` slot. */}
+      <CustomModal
+        show={showConfirm}
+        type="info"
+        title={t('cc.addInputTaxTitle')}
+        message={t('cc.addInputTaxBody')}
+        confirmText={submitting ? t('cc.sending') : t('cc.confirm')}
+        cancelText={t('modal.cancel')}
+        busy={submitting}
+        onConfirm={handleAddInputTax}
+        onCancel={() => setShowConfirm(false)}
+      >
+        <div className="cc-modal-info-box-teal">
+          <Flag size={14} className="cc-info-icon-flag" />
+          <span>{t('cc.addInputTaxInfo')}</span>
+        </div>
+        {submitError && (
+          <div className="cc-modal-error-box">
+            <AlertCircle size={14} className="cc-error-icon-alert" /> {submitError}
+          </div>
         )}
+      </CustomModal>
 
-      {showDiscardConfirm &&
-        createPortal(
-          <div className="cc-modal-overlay-container">
-            <div className="modal-box">
-              <div className="cc-modal-icon-rose">
-                <Flag size={36} />
-              </div>
-              <div className="cc-modal-title">{t('cc.skipTitle')}</div>
-              <p className="cc-modal-body-text">{t('cc.skipBody')}</p>
-              <div className="cc-modal-info-box-rose">
-                <Flag size={14} className="cc-info-icon-flag" />
-                <span>{t('cc.skipInfo')}</span>
-              </div>
-              <div className="modal-actions">
-                <button
-                  type="button"
-                  className="btn-cancel"
-                  onClick={() => setShowDiscardConfirm(false)}
-                >
-                  <ArrowLeft size={14} /> {t('cc.backToReview')}
-                </button>
-                <button
-                  type="button"
-                  className="btn-danger cc-btn-danger-rose"
-                  onClick={() => {
-                    setShowDiscardConfirm(false)
-                    toast.info(t('cc.processedNoTax'))
-                    onFinish()
-                  }}
-                >
-                  <X size={14} /> {t('cc.confirmDiscard')}
-                </button>
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
+      <CustomModal
+        show={showDiscardConfirm}
+        type="warning"
+        title={t('cc.skipTitle')}
+        message={t('cc.skipBody')}
+        confirmText={t('cc.confirmDiscard')}
+        cancelText={t('cc.backToReview')}
+        confirmVariant="danger"
+        onConfirm={() => {
+          setShowDiscardConfirm(false)
+          toast.info(t('cc.processedNoTax'))
+          onFinish()
+        }}
+        onCancel={() => setShowDiscardConfirm(false)}
+      >
+        <div className="cc-modal-info-box-rose">
+          <Flag size={14} className="cc-info-icon-flag" />
+          <span>{t('cc.skipInfo')}</span>
+        </div>
+      </CustomModal>
     </div>
   )
 }

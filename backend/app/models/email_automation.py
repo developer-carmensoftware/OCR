@@ -40,6 +40,11 @@ class EmailIngestSettings(Base, TimestampMixin, WriterMixin):
     # anything never consumes one. Never reissued once allocated.
     ingest_tag = Column(String(32), nullable=True)
     enabled = Column(Boolean, nullable=False, default=False)
+    # The off→on edge, stamped by `save_settings`. Mail that arrived before it is skipped
+    # (`ingest_paused`) instead of replayed: switching the feature off means the customer
+    # is keying those documents by hand, and a manual Carmen entry is invisible to the
+    # duplicate guard. Null = no filtering. See the migration for the full reasoning.
+    enabled_at = Column(DateTime(timezone=True), nullable=True)
     # The customer's own addresses. Empty = accept any sender; non-empty = the message
     # must carry one of them in From/To/Cc. A second layer, not the routing key — these
     # headers are composed by the sender, unlike the envelope tag. See the migration.

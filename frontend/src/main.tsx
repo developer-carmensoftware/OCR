@@ -2,8 +2,9 @@ import React, { useState, useEffect, lazy, Suspense } from 'react'
 import * as Sentry from '@sentry/react'
 import { LazyMotion, domAnimation } from 'framer-motion'
 
-// Apply persisted theme before first paint (avoids a light→dark flash).
-document.documentElement.dataset.theme = localStorage.getItem('theme') === 'dark' ? 'dark' : 'light'
+// Theme is applied by an inline script in index.html, which runs before the static loader
+// paints — early enough that dark-mode users never see the light loader. Nothing to do
+// here; useDarkMode reads and toggles document.documentElement.dataset.theme from now on.
 
 if (import.meta.env.VITE_SENTRY_DSN) {
   // The one-time Carmen SSO token arrives in the URL hash (#/…?token=…) and is only
@@ -87,6 +88,7 @@ const ErrorsPage = lazy(() => import('./pages/admin/ErrorsPage'))
 const ExtractionsPage = lazy(() => import('./pages/admin/ExtractionsPage'))
 const AnomaliesPage = lazy(() => import('./pages/admin/AnomaliesPage'))
 const JobsPage = lazy(() => import('./pages/admin/JobsPage'))
+const EmailAutomationPage = lazy(() => import('./pages/admin/EmailAutomationPage'))
 const MaintenancePage = lazy(() => import('./pages/admin/MaintenancePage'))
 const SessionsPage = lazy(() => import('./pages/admin/SessionsPage'))
 const CreditsPage = lazy(() => import('./pages/admin/CreditsPage'))
@@ -146,6 +148,8 @@ function AdminRouter() {
     AdminPage = <AnomaliesPage />
   } else if (route === 'admin/jobs') {
     AdminPage = <JobsPage />
+  } else if (route === 'admin/email') {
+    AdminPage = <EmailAutomationPage />
   } else if (route === 'admin/maintenance') {
     AdminPage = <MaintenancePage />
   } else if (route === 'admin/tenants') {

@@ -192,10 +192,18 @@ async def test_an_unknown_tag_resolves_to_nobody():
 
 
 @pytest.mark.asyncio
-async def test_only_enabled_bus_can_be_routed_to():
-    db = _db(one=None)
-    await es.resolve_by_tag(db, "a1b2c3d4")
-    assert "enabled" in str(db.execute.await_args.args[0])
+async def test_a_switched_off_bu_still_resolves_here():
+    """Identity, not permission — see the docstring.
+
+    A switched-off BU has to come back as itself so the caller can tell "known tag,
+    paused" from "no such tag" and hand the mail back unread instead of dropping it.
+    The gate itself lives in `_process_message` and is tested there.
+    """
+    row = _row("bu-a", enabled=False)
+    db = _db(one=row)
+    assert await es.resolve_by_tag(db, "a1b2c3d4") is row
+    where = str(db.execute.await_args.args[0]).split("WHERE", 1)[1]
+    assert "enabled" not in where  # the column is still selected, just not filtered on
 
 
 # ── foreign_tax_id — verification, not routing ─────────────────────────────────

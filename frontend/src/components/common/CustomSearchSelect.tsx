@@ -252,7 +252,7 @@ export default function CustomSearchSelect({
                         fontWeight: 700,
                         color: topBadge.color,
                         fontSize: '0.85rem',
-                        fontFamily: "'DM Mono', monospace",
+                        fontFamily: "'IBM Plex Mono', monospace",
                       }}
                     >
                       {topChoice.code}{' '}
@@ -328,7 +328,7 @@ export default function CustomSearchSelect({
                     fontWeight: 600,
                     color: 'var(--primary)',
                     fontSize: '0.85rem',
-                    fontFamily: "'DM Mono', monospace",
+                    fontFamily: "'IBM Plex Mono', monospace",
                   }}
                 >
                   {opt.code}{' '}

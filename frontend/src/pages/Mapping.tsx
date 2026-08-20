@@ -7,6 +7,7 @@ import TopLevelConfigSection from '../components/credit-card/TopLevelConfigSecti
 import CompanyInfoSection from '../components/credit-card/CompanyInfoSection'
 import MainMappingTable from '../components/credit-card/MainMappingTable'
 import PaymentTypeModal from '../components/credit-card/PaymentTypeModal'
+import SwapLabel from '../components/common/SwapLabel'
 import type { ModalConfig } from '../hooks/useModal'
 
 function MappingSkeleton() {
@@ -174,7 +175,7 @@ export default function Mapping() {
             ) : (
               <CheckCircle2 size={18} />
             )}
-            {mappingCtrl.saving ? t('cc.saving') : t('cc.saveClose')}
+            <SwapLabel active={mappingCtrl.saving} idle={t('cc.saveClose')} busy={t('cc.saving')} />
           </button>
         </div>
       </div>

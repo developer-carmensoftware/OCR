@@ -94,22 +94,56 @@ export default function DataTable<T = Record<string, unknown>>({
     }
   }
 
+  // One header for both the loading and the loaded table. Rendering a plainer <th> while
+  // loading gave the skeleton different column widths than the data that replaced it.
+  const head = (
+    <thead>
+      <tr>
+        {columns.map(col => {
+          const isSorted = sortKey === String(col.key)
+          return (
+            <th
+              key={String(col.key)}
+              className={`admin-th${col.sortable ? ' sortable' : ''}${col.align === 'right' ? ' text-right' : ''}`}
+              aria-sort={
+                col.sortable
+                  ? isSorted
+                    ? sortAsc
+                      ? 'ascending'
+                      : 'descending'
+                    : 'none'
+                  : undefined
+              }
+            >
+              {col.sortable ? (
+                <button
+                  type="button"
+                  className="admin-th-sort"
+                  onClick={() => handleSort(String(col.key))}
+                  disabled={loading}
+                >
+                  {col.label}
+                  {/* always rendered: the arrow used to appear only on the sorted column,
+                      and in an auto-layout table that re-flowed every column per sort click */}
+                  <span className="sort-icon" aria-hidden="true">
+                    {isSorted ? (sortAsc ? '↑' : '↓') : ''}
+                  </span>
+                </button>
+              ) : (
+                col.label
+              )}
+            </th>
+          )
+        })}
+      </tr>
+    </thead>
+  )
+
   if (loading) {
     return (
       <div className="admin-table-wrap">
         <table className="admin-table">
-          <thead>
-            <tr>
-              {columns.map(col => (
-                <th
-                  key={String(col.key)}
-                  className={`admin-th${col.align === 'right' ? ' text-right' : ''}`}
-                >
-                  {col.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
+          {head}
           <tbody>
             {Array.from({ length: 7 }).map((_, i) => (
               <tr key={i} className="admin-tr skeleton-row" role="presentation">
@@ -136,41 +170,7 @@ export default function DataTable<T = Record<string, unknown>>({
   return (
     <div className="admin-table-wrap">
       <table className="admin-table">
-        <thead>
-          <tr>
-            {columns.map(col => {
-              const isSorted = sortKey === String(col.key)
-              return (
-                <th
-                  key={String(col.key)}
-                  className={`admin-th${col.sortable ? ' sortable' : ''}${col.align === 'right' ? ' text-right' : ''}`}
-                  aria-sort={
-                    col.sortable
-                      ? isSorted
-                        ? sortAsc
-                          ? 'ascending'
-                          : 'descending'
-                        : 'none'
-                      : undefined
-                  }
-                >
-                  {col.sortable ? (
-                    <button
-                      type="button"
-                      className="admin-th-sort"
-                      onClick={() => handleSort(String(col.key))}
-                    >
-                      {col.label}
-                      {isSorted && <span className="sort-icon">{sortAsc ? ' ↑' : ' ↓'}</span>}
-                    </button>
-                  ) : (
-                    col.label
-                  )}
-                </th>
-              )
-            })}
-          </tr>
-        </thead>
+        {head}
         <tbody>
           {paginated.length === 0 ? (
             <tr>

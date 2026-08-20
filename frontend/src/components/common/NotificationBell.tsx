@@ -8,6 +8,8 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock,
+  FileCheck2,
+  FileWarning,
   Sparkles,
   XCircle,
 } from 'lucide-react'
@@ -19,14 +21,19 @@ import { useNotifications } from '../../hooks/notifications'
 import { WHATS_NEW_RETURN_KEY } from '../../lib/releaseNotesSeen'
 import type { BellItem } from '../../lib/api/notifications'
 import type { ReleaseNoteCopy } from '../../content/releaseNotes'
+import NotificationDetailModal from './NotificationDetailModal'
 
 // Per-type presentation: icon + tone class (tone drives the tinted icon container).
+// The email-automation pair is file-shaped where the order pair is circle-shaped,
+// so the two success rows stay distinguishable at a glance.
 const TYPE_META: Record<string, { icon: LucideIcon; tone: string }> = {
   approved: { icon: CheckCircle2, tone: 'success' },
   rejected: { icon: XCircle, tone: 'error' },
   on_hold: { icon: Clock, tone: 'warning' },
   missing_slip: { icon: AlertCircle, tone: 'warning' },
   release_note: { icon: Sparkles, tone: 'info' },
+  document_posted: { icon: FileCheck2, tone: 'success' },
+  document_failed: { icon: FileWarning, tone: 'error' },
 }
 
 type TFn = (key: TKey, vars?: Record<string, string | number>) => string
@@ -35,6 +42,13 @@ type TFn = (key: TKey, vars?: Record<string, string | number>) => string
 // ships the note in the same PR as the change without touching dict.ts.
 function releaseCopy(n: BellItem, lang: Lang): ReleaseNoteCopy {
   return (n.payload as Record<Lang, ReleaseNoteCopy>)[lang]
+}
+
+// How an email-automation row names its document. The filename is what the
+// customer recognises; a document that failed before extraction has no bank_code
+// or doc_no to fall back on, which is why the filename leads.
+function docLabel(p: Record<string, unknown>): string {
+  return String(p.attachment || '') || [p.bank_code, p.doc_no].filter(Boolean).join(' ') || '—'
 }
 
 function notifText(n: BellItem, t: TFn): string {
@@ -48,6 +62,10 @@ function notifText(n: BellItem, t: TFn): string {
       return t('notif.onHold')
     case 'missing_slip':
       return t('notif.missingSlip')
+    case 'document_posted':
+      return t('notif.docPosted', { doc: docLabel(p) })
+    case 'document_failed':
+      return t('notif.docFailed', { doc: docLabel(p) })
     default:
       return n.type
   }
@@ -66,6 +84,7 @@ export default function NotificationBell() {
   const { t, lang } = useT()
   const { items, unreadCount, markRead } = useNotifications()
   const [open, setOpen] = useState(false)
+  const [detail, setDetail] = useState<BellItem | null>(null)
   const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({})
   const btnRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -116,10 +135,17 @@ export default function NotificationBell() {
       window.location.hash = '#/whats-new'
       return
     }
-    // Deep-link to the specific order when we have it, so the row opens/scrolls
-    // into view; the orders route ignores the query suffix when matching.
-    window.location.hash = n.order_id ? `#/pricing/orders?id=${n.order_id}` : '#/pricing/orders'
-    // Navigate first; marking read is best-effort and must not block it.
+    // Email-automation rows open in place. They carry no order_id, so the order
+    // history below would be the wrong page, and there is no right page to send
+    // them to — the payload is already the whole story.
+    if (n.type === 'document_posted' || n.type === 'document_failed') {
+      setDetail(n)
+    } else {
+      // Deep-link to the specific order when we have it, so the row opens/scrolls
+      // into view; the orders route ignores the query suffix when matching.
+      window.location.hash = n.order_id ? `#/pricing/orders?id=${n.order_id}` : '#/pricing/orders'
+    }
+    // Act first; marking read is best-effort and must not block it.
     if (!n.read_at) void markRead([n.id])
   }
 
@@ -209,6 +235,8 @@ export default function NotificationBell() {
           </div>,
           document.body
         )}
+
+      <NotificationDetailModal item={detail} onClose={() => setDetail(null)} />
     </div>
   )
 }

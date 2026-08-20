@@ -379,13 +379,18 @@
     flex-wrap: wrap;
     flex-direction: row;
   }
-  .form-actions > .btn-submit,
+  /* The primary action goes full-width and first on narrow screens; the neutral ones
+     share the row below it. Keyed on .btn-primary/.btn-outline since .btn-submit and
+     .btn-cancel were retired in favour of the generic .btn variants. */
+  .form-actions > .btn-primary,
+  .form-actions > .btn-confirm,
   .form-actions > .btn-danger {
     width: 100%;
     order: -1;
     justify-content: center;
   }
-  .form-actions > .btn-cancel {
+  .form-actions > .btn-outline,
+  .form-actions > .btn-secondary {
     flex: 1;
     justify-content: center;
     margin-right: 0 !important;
