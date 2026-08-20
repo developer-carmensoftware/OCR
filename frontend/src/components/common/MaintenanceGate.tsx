@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { CalendarClock, Wrench, X } from 'lucide-react'
 import { getStoredToken, resolveUrl } from '../../lib/api/client'
 import { useT } from '../../i18n/LanguageContext'
@@ -91,17 +91,16 @@ export function MaintenanceGate({ children }: Props) {
   const wasActive = useRef(false)
   const retryRef = useRef<HTMLButtonElement>(null)
 
+  const check = useCallback(async () => {
+    // Skip the network poll while the tab is hidden; resume on visibility.
+    if (document.hidden) return
+    const res = await probe()
+    if (!res.active && wasActive.current) return window.location.reload()
+    wasActive.current = res.active
+    setStatus(res)
+  }, [])
+
   useEffect(() => {
-    let alive = true
-    const check = async () => {
-      // Skip the network poll while the tab is hidden; resume on visibility.
-      if (document.hidden) return
-      const res = await probe()
-      if (!alive) return
-      if (!res.active && wasActive.current) return window.location.reload()
-      wasActive.current = res.active
-      setStatus(res)
-    }
     const onEvent = () => {
       wasActive.current = true
       setStatus(s => ({ ...s, active: true }))
@@ -113,19 +112,28 @@ export function MaintenanceGate({ children }: Props) {
     check()
     window.addEventListener('ocr:maintenance', onEvent)
     window.addEventListener('hashchange', onHash)
+    window.addEventListener('focus', check)
     document.addEventListener('visibilitychange', onVisible)
-    // 30s poll doubles as the countdown re-render tick.
-    const id = window.setInterval(check, 30_000)
     return () => {
-      alive = false
       window.removeEventListener('ocr:maintenance', onEvent)
       window.removeEventListener('hashchange', onHash)
+      window.removeEventListener('focus', check)
       document.removeEventListener('visibilitychange', onVisible)
-      window.clearInterval(id)
     }
-  }, [])
+  }, [check])
 
   const { active, message, window_start, window_end } = status
+
+  // ponytail: tick only when there is something to watch — a wall to clear, or a
+  // countdown to run down. An idle tab polls zero times; the `ocr:maintenance`
+  // event (any 503) raises the wall instantly, and focus/visibility picks up a
+  // window scheduled while the tab sat idle.
+  const needsTick = active || (!!window_start && new Date(window_start).getTime() > Date.now())
+  useEffect(() => {
+    if (!needsTick) return
+    const id = window.setInterval(check, 30_000)
+    return () => window.clearInterval(id)
+  }, [needsTick, check])
   const upcoming =
     !active && window_start && window_end && new Date(window_start).getTime() > Date.now()
   // Never gate the admin plane — admins must always reach the toggle.

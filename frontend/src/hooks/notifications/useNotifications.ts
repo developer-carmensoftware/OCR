@@ -9,7 +9,10 @@ import {
 import { RELEASE_NOTES } from '../../content/releaseNotes'
 import { markReleaseSeen, readReleaseSeen, RELEASE_SEEN_EVENT } from '../../lib/releaseNotesSeen'
 
-const POLL_MS = 60_000
+// ponytail: 5 min, not 60s. Nothing here is time-critical — a bell row appears
+// only after an admin touches an order — and the focus listener below already
+// refreshes the moment the user comes back to the tab.
+const POLL_MS = 300_000
 
 const RELEASE_ID_PREFIX = 'release:'
 
