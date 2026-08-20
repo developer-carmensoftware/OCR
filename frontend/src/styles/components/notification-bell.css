@@ -202,15 +202,15 @@
 
 .notif-bell__icon--success {
   background: var(--emerald-light);
-  color: var(--emerald);
+  color: var(--emerald-text);
 }
 .notif-bell__icon--error {
   background: var(--rose-light);
-  color: var(--rose);
+  color: var(--rose-text);
 }
 .notif-bell__icon--warning {
   background: var(--amber-light);
-  color: var(--amber);
+  color: var(--amber-text);
 }
 .notif-bell__icon--info {
   background: var(--primary-light);

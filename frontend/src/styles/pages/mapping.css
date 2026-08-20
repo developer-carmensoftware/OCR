@@ -241,7 +241,7 @@ input[type='text']:focus {
   color: var(--primary);
 }
 .type-credit {
-  color: var(--rose);
+  color: var(--rose-text);
 }
 
 .btn-save {
@@ -299,7 +299,7 @@ button.mapping-label.clickable:hover {
 }
 [data-theme='dark'] .search-input {
   background: var(--muted);
-  border-color: var(--border);
+  border-color: var(--border-input);
   color: var(--text);
 }
 

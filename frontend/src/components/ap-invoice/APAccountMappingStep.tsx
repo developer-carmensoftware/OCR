@@ -283,9 +283,13 @@ export default function APAccountMappingStep({
               <AlertTriangle size={13} /> {t('ap.mappingWarning')}
             </span>
           )}
+          {/* btn-primary, not btn-success: this posts to Carmen, it does not confirm that
+              anything succeeded. The credit-card wizard's equivalent submit is already
+              primary — same action, same colour. Green is reserved for genuinely
+              post-completion actions now (DESIGN.md §5). */}
           <button
             type="button"
-            className="btn btn-success"
+            className="btn btn-primary"
             onClick={onGenerate}
             disabled={!allMapped || isSubmitting}
           >
