@@ -194,7 +194,7 @@ async def get_performance_logs(
                 "tenant_name": names.get(r.tenant_id),
                 "endpoint": r.endpoint,
                 "method": r.method,
-                "duration_ms": round(float(r.duration_ms or 0), 1),
+                "duration_ms": round(float(r.duration_ms or 0), 1),  # type: ignore[arg-type]
                 "status_code": r.status_code,
                 "carmen_user_id": r.carmen_user_id,
                 "resource_id": r.resource_id,

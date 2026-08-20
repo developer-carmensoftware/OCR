@@ -27,7 +27,7 @@ from app.services.correction_service import get_correction_hints
 from app.services.credit_card_service import finalize_extraction, mark_task_failed
 from app.services.credit_service import consume_document, refund_document
 from app.services.file_service import file_service
-from app.services.module_gate import assert_module_enabled
+from app.services.quota_service import assert_module_enabled
 from app.services.task_service import create_task
 from app.utils.client_ip import get_client_ip
 from app.utils.date_parsing import format_doc_date

@@ -98,7 +98,7 @@ body:has(.orev-app) {
 }
 
 .orev-app-logout:hover {
-  color: var(--rose-text);
+  color: var(--rose);
   border-color: oklch(from var(--rose) l c h / 0.4);
 }
 
@@ -234,7 +234,7 @@ body:has(.orev-app) {
   color: var(--warning-fg);
 }
 [data-theme='dark'] .orev-ar-chip.is-ok {
-  color: var(--emerald-text);
+  color: var(--emerald);
 }
 
 /* Per-status count badge on queue tabs. */
@@ -361,7 +361,7 @@ body:has(.orev-app) {
   border-color: oklch(from var(--emerald) l c h / 0.3);
 }
 .orev-badge.is-bad {
-  color: var(--rose-text);
+  color: var(--rose);
   background: oklch(from var(--rose) l c h / 0.12);
   border-color: oklch(from var(--rose) l c h / 0.28);
 }
@@ -372,10 +372,10 @@ body:has(.orev-app) {
 }
 
 [data-theme='dark'] .orev-badge.is-hold {
-  color: var(--amber-text);
+  color: var(--amber);
 }
 [data-theme='dark'] .orev-badge.is-ok {
-  color: var(--emerald-text);
+  color: var(--emerald);
 }
 
 /* ─── Verify + contact cards ───────────────────────────────────── */
@@ -493,7 +493,7 @@ body:has(.orev-app) {
 }
 .orev-copy-btn.is-copied {
   border-color: var(--emerald-mid);
-  color: var(--emerald-text);
+  color: var(--emerald);
   background: var(--emerald-light);
 }
 
@@ -957,17 +957,17 @@ body:has(.orev-app) {
   color: oklch(from var(--emerald) 0.45 c h);
 }
 .orev-outcome.is-bad {
-  color: var(--rose-text);
+  color: var(--rose);
 }
 .orev-outcome.is-warn {
   color: var(--amber-text);
 }
 [data-theme='dark'] .orev-outcome.is-ok {
-  color: var(--emerald-text);
+  color: var(--emerald);
 }
 
 .btn.orev-danger {
-  color: var(--rose-text);
+  color: var(--rose);
 }
 .btn.orev-mini {
   padding: 0.4rem 0.7rem;
@@ -1020,7 +1020,7 @@ body:has(.orev-app) {
   width: 100%;
   margin-top: 0.4rem;
   padding: 0.55rem 0.7rem;
-  border: 1px solid var(--border-input);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--card-bg);
   font: inherit;
@@ -1176,10 +1176,10 @@ body:has(.orev-app) {
   font-size: 1.35rem;
 }
 .orev-kpi-amt--ok {
-  color: var(--emerald-text);
+  color: var(--emerald);
 }
 .orev-kpi-amt--warn {
-  color: var(--amber-text);
+  color: var(--amber);
 }
 .orev-kpi-desc {
   font-size: 0.72rem;
@@ -1315,7 +1315,7 @@ body:has(.orev-app) {
 }
 .orev-search-wrap input {
   padding: 0.375rem 0.75rem 0.375rem 2rem;
-  border: 1px solid var(--border-input);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   font-size: 0.75rem;
   background: var(--card-bg);
@@ -1377,7 +1377,7 @@ body:has(.orev-app) {
 }
 .orev-ar-missing {
   font-weight: 600;
-  color: var(--rose-text);
+  color: var(--rose);
   font-size: 0.7rem;
 }
 .orev-ar-input {
@@ -1700,7 +1700,7 @@ body:has(.orev-app) {
 }
 .orev-batchbar-clear:hover {
   background: oklch(from var(--rose) l c h / 0.12);
-  color: var(--rose-text);
+  color: var(--rose);
   border-color: oklch(from var(--rose) l c h / 0.3);
 }
 

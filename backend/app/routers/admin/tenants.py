@@ -103,7 +103,7 @@ async def list_tenants(
 
         # Enabled-module count per tenant. tenant_modules is OPT-OUT: a row exists only
         # when an admin explicitly toggled a module, so "no row" means enabled, not
-        # disabled (same rule as module_gate.assert_module_enabled and the Quotas page).
+        # disabled (same rule as quota_service.assert_module_enabled and the Quotas page).
         # Counting enabled rows read 0 for every tenant nobody had ever touched.
         catalog_count = (
             await db.execute(

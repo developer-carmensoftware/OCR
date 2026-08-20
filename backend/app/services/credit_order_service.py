@@ -188,7 +188,7 @@ async def approve(db: AsyncSession, order: CreditOrder) -> str:
             db,
             str(order.tenant_id),
             str(order.pack_code),
-            int(order.credits),  # per-month allowance (both periods)
+            int(order.credits),  # type: ignore[arg-type]  # per-month allowance (both periods)
             str(order.id),
             billing_period=str(order.billing_period),
         )
@@ -516,7 +516,7 @@ async def post_ar_batch(
             )
             order.status = CreditOrderStatus.COMPLETE  # type: ignore[assignment]
             order.carmen_ar_posted_at = datetime.now(UTC)  # type: ignore[assignment]
-            order.carmen_ar_ref = resp["carmen_ar_ref"]
+            order.carmen_ar_ref = resp["carmen_ar_ref"]  # type: ignore[assignment]
             results.append(
                 PostArResultItem(order_id=oid, success=True, carmen_ar_ref=resp["carmen_ar_ref"])
             )

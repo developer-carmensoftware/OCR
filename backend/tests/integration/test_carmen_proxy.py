@@ -10,7 +10,7 @@ Covers:
 
 import uuid
 from contextlib import contextmanager
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import app.routers.carmen as _carmen_router
@@ -145,16 +145,15 @@ def test_gljv_forwards_409():
 # ── POST /gljv — duplicate-submit guard ──────────────────────────────────────
 
 
-def _card(*, submitted: bool, bank_code: str | None = "KBANK"):
+def _card(*, submitted: bool):
     """A CreditCard row as the locked pre-post lookup would return it."""
     from app.models.orm import CreditCard
 
     return CreditCard(
         id=uuid.uuid4(),
         tenant_id=uuid.UUID(_TENANT_UUID),
-        bank_code=bank_code,
+        bank_code="KBANK",
         doc_no="INV-123",
-        doc_date=date(2026, 7, 31),
         submitted_at=datetime.now(UTC) if submitted else None,
     )
 
@@ -179,38 +178,8 @@ def test_gljv_rejects_resubmit_of_an_already_submitted_card():
 
 
 def test_gljv_rejects_a_second_document_with_the_same_doc_no():
-    """A different draft of an already-submitted (tenant, doc_no, doc_date) is a duplicate."""
+    """A different draft of an already-submitted (tenant, bank, doc_no) is a duplicate."""
     card = _card(submitted=False)
-    mock_db = make_mock_db(execute_rows=[card])
-    post = _ok({"Code": 0, "InternalMessage": "JV-9"})
-    dup = AsyncMock(return_value=True)
-
-    with (
-        _patch_service("post_gljv", post),
-        _patch_service("has_submitted_doc", dup),
-        make_test_client(mock_db) as client,
-    ):
-        _use_uuid_tenant_session()
-        resp = client.post(
-            f"{BASE}/gljv?credit_card_id={card.id}&doc_no=INV-123&bank_code=KBANK",
-            json={"JvhSeq": -1, "Detail": []},
-            headers=AUTH,
-        )
-
-    assert resp.status_code == 409
-    post.assert_not_awaited()
-    # **bank_code is deliberately not in the key.** The wizard fills it from the user's
-    # dropdown and the email job from the matched rule, so keying on it let one document
-    # exist as two rows and post twice. doc_date keeps the key specific instead.
-    assert "bank_code" not in dup.await_args.kwargs
-    assert dup.await_args.kwargs["doc_date"] == date(2026, 7, 31)
-
-
-def test_gljv_guards_a_card_whose_bank_was_never_identified():
-    """The guard used to require a bank_code to run at all, so a card the detector could
-    not name skipped the duplicate check entirely — the one case most likely to be
-    re-scanned by a confused user."""
-    card = _card(submitted=False, bank_code=None)
     mock_db = make_mock_db(execute_rows=[card])
     post = _ok({"Code": 0, "InternalMessage": "JV-9"})
 
@@ -221,7 +190,7 @@ def test_gljv_guards_a_card_whose_bank_was_never_identified():
     ):
         _use_uuid_tenant_session()
         resp = client.post(
-            f"{BASE}/gljv?credit_card_id={card.id}&doc_no=INV-123",
+            f"{BASE}/gljv?credit_card_id={card.id}&doc_no=INV-123&bank_code=KBANK",
             json={"JvhSeq": -1, "Detail": []},
             headers=AUTH,
         )

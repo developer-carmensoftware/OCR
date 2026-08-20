@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import CustomModal from '../../components/common/CustomModal'
-import SwapLabel from '../../components/common/SwapLabel'
 import {
   endMaintenanceNow,
   fetchMaintenance,
@@ -272,11 +271,7 @@ export default function MaintenancePage() {
                     )}
                     onClick={() => toggleTenant(tenant.id, !down)}
                   >
-                    <SwapLabel
-                      active={down}
-                      idle={t('admin.maintenance.takeOffline')}
-                      busy={t('admin.maintenance.bringOnline')}
-                    />
+                    {down ? t('admin.maintenance.bringOnline') : t('admin.maintenance.takeOffline')}
                   </button>
                 </span>
               </div>

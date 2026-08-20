@@ -10,9 +10,6 @@ export interface BankEntry {
   value: BankCode
   label: string
   full: BankDisplayName
-  /** Card-issuing bank vs payment gateway/processor — drives the "what we support"
-   * list on #/pricing. Layout-wise BAY is a statement, the gateways are fee invoices. */
-  kind: 'bank' | 'gateway'
 }
 
 /** Bank metadata: company info, GL mappings.
@@ -203,12 +200,12 @@ export function detectBankFromExtracted(
 export const GROUP_DEBIT_BY_TRANSACTION = false
 
 export const BANKS: BankEntry[] = [
-  { value: 'BBL', label: 'Bangkok Bank', full: 'Bangkok Bank (BBL)', kind: 'bank' },
-  { value: 'KBANK', label: 'Kasikornbank', full: 'Kasikornbank (KBANK)', kind: 'bank' },
-  { value: 'SCB', label: 'Siam Commercial Bank', full: 'Siam Commercial Bank (SCB)', kind: 'bank' },
-  { value: 'BAY', label: 'Krungsri', full: 'Krungsri (BAY)', kind: 'bank' },
-  { value: 'KTC', label: 'Krungthai Card', full: 'Krungthai Card (KTC)', kind: 'gateway' },
-  { value: 'GHL', label: 'GHL (NTT DATA)', full: 'GHL (NTT DATA)', kind: 'gateway' },
-  { value: 'PAYPAL', label: 'PayPal', full: 'PayPal (PAYPAL)', kind: 'gateway' },
-  { value: 'SIAMPAY', label: 'SiamPay', full: 'SiamPay (SIAMPAY)', kind: 'gateway' },
+  { value: 'BBL', label: 'Bangkok Bank', full: 'Bangkok Bank (BBL)' },
+  { value: 'KBANK', label: 'Kasikornbank', full: 'Kasikornbank (KBANK)' },
+  { value: 'SCB', label: 'Siam Commercial Bank', full: 'Siam Commercial Bank (SCB)' },
+  { value: 'BAY', label: 'Krungsri', full: 'Krungsri (BAY)' },
+  { value: 'KTC', label: 'Krungthai Card', full: 'Krungthai Card (KTC)' },
+  { value: 'GHL', label: 'GHL (NTT DATA)', full: 'GHL (NTT DATA)' },
+  { value: 'PAYPAL', label: 'PayPal', full: 'PayPal (PAYPAL)' },
+  { value: 'SIAMPAY', label: 'SiamPay', full: 'SiamPay (SIAMPAY)' },
 ]

@@ -105,9 +105,27 @@
   background: var(--primary-hover);
 }
 
-/* .lang-toggle now lives in components.css — it is a shared header control, and
-   this file is loaded globally from index.css, so styling it here silently
-   restyled the toggle everywhere else too. */
+/* ─── LANG TOGGLE ─── */
+.lang-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.9rem;
+  background: var(--primary-light);
+  border: 1px solid var(--primary-mid);
+  border-radius: 100px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--primary);
+  cursor: pointer;
+  transition: all var(--dur-base);
+  letter-spacing: 0.04em;
+}
+.lang-toggle:hover {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
 
 /* ─── VENDOR SEARCH BOX ─── */
 .vendor-search-wrap {
@@ -233,12 +251,12 @@
 
 .vendor-badge.mapped {
   background: var(--emerald-light);
-  color: var(--emerald-text);
+  color: var(--emerald);
   border: 1px solid var(--emerald-mid);
 }
 .vendor-badge.unmapped {
   background: var(--amber-light);
-  color: var(--amber-text);
+  color: var(--amber);
   border: 1px solid var(--amber-mid);
 }
 
@@ -583,7 +601,7 @@
 .ap-group-modal-row.is-conflict .ap-group-modal-row-profile {
   background: var(--card-bg);
   border-color: var(--rose-mid);
-  color: var(--rose-text);
+  color: var(--rose);
 }
 .ap-group-modal-row-amt {
   font-family: 'IBM Plex Mono', monospace;
@@ -615,7 +633,7 @@
   color: var(--text-3);
 }
 .ap-group-modal-summary-hint--error {
-  color: var(--rose-text);
+  color: var(--rose);
   font-weight: 500;
 }
 .ap-group-modal-summary-hint--info {
@@ -668,7 +686,7 @@
   padding: 0.55rem 0.7rem;
   background: var(--card-bg);
   color: var(--text);
-  border: 1px solid var(--border-input);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   font-size: 0.9rem;
   transition:
@@ -676,7 +694,7 @@
     box-shadow var(--dur-fast) var(--ease);
 }
 .ap-group-modal-input::placeholder {
-  color: var(--text-3);
+  color: var(--text-4);
 }
 .ap-group-modal-input:focus {
   outline: none;
@@ -692,7 +710,7 @@
 .ap-group-modal-warn {
   margin-top: 0.45rem;
   font-size: 0.78rem;
-  color: var(--rose-text);
+  color: var(--rose);
 }
 .ap-group-modal-footer {
   display: flex;
@@ -725,7 +743,7 @@
   transition: all var(--dur-fast);
 }
 .ap-edit-input:hover {
-  border-color: var(--border-input);
+  border-color: var(--border);
   background: white;
 }
 .ap-edit-input:focus {
@@ -765,7 +783,7 @@
   background: var(--amber-light);
   border: 1px solid var(--amber-mid);
   border-radius: var(--radius-md);
-  color: var(--amber-text);
+  color: var(--amber);
   font-size: 0.85rem;
   font-weight: 600;
 }
@@ -846,7 +864,7 @@
   text-align: right;
 }
 .ap-sum-from-table.diff {
-  color: var(--rose-text);
+  color: var(--rose);
   font-weight: 700;
 }
 
@@ -871,7 +889,7 @@
 .ap-sum-from-doc.diff {
   border-color: var(--rose-mid);
   background: var(--rose-light);
-  color: var(--rose-text);
+  color: var(--rose);
 }
 
 .ap-adjust-btn {
@@ -998,7 +1016,7 @@
   background: var(--rose-light);
   border: 1px solid var(--rose-mid);
   border-radius: var(--radius-md);
-  color: var(--rose-text);
+  color: var(--rose);
   font-size: 0.85rem;
   font-weight: 600;
 }
@@ -1038,7 +1056,7 @@
 }
 .ap-account-icon.green {
   background: var(--emerald-light);
-  color: var(--emerald-text);
+  color: var(--emerald);
 }
 .ap-account-icon.violet {
   background: var(--primary-light);
@@ -1168,7 +1186,7 @@
   justify-content: center;
   margin: 0 auto 1.5rem;
   font-size: 2.2rem;
-  color: var(--emerald-text);
+  color: var(--emerald);
   box-shadow: 0 0 0 12px oklch(from var(--emerald) l c h / 0.08);
   /* single spring-pop on a real completion — the brand's one earned moment */
   animation: success-pop 480ms var(--ease-spring-premium) both;
@@ -1198,7 +1216,7 @@
   display: inline-block;
   font-family: 'IBM Plex Mono', monospace;
   background: var(--emerald-light);
-  color: var(--emerald-text);
+  color: var(--emerald);
   padding: 0.25rem 0.75rem;
   border-radius: var(--radius-sm);
   font-weight: 700;
@@ -1274,7 +1292,7 @@
   margin-top: 0.75rem;
 }
 .ap-error-box i {
-  color: var(--rose-text);
+  color: var(--rose);
   font-size: 1.1rem;
   margin-top: 0.1rem;
   flex-shrink: 0;
@@ -1282,7 +1300,7 @@
 .ap-error-title {
   font-size: 0.87rem;
   font-weight: 700;
-  color: var(--rose-text);
+  color: var(--rose);
   margin-bottom: 0.3rem;
 }
 .ap-error-msg {
@@ -1457,7 +1475,7 @@
 }
 
 .ap-taxtype-select:hover {
-  border-color: var(--border-input);
+  border-color: var(--border);
   background-color: white;
 }
 
@@ -1482,7 +1500,7 @@
     background 0.15s;
 }
 .ap-delete-item-btn:hover:not(:disabled) {
-  color: var(--rose-text);
+  color: var(--rose);
   background: var(--rose-light);
 }
 .ap-delete-item-btn:disabled {
@@ -1716,7 +1734,7 @@
   border: 1px solid var(--primary-mid);
 }
 .ttd-option-badge[data-value='None'] {
-  color: var(--emerald-text);
+  color: var(--emerald);
   background: var(--ap-none-bg);
   border: 1px solid var(--emerald-mid);
 }
@@ -1805,12 +1823,12 @@
 
 .ap-total-val-emerald {
   text-align: right;
-  color: var(--emerald-text);
+  color: var(--emerald);
 }
 
 .ap-total-val-rose-bold {
   text-align: right;
-  color: var(--rose-text);
+  color: var(--rose);
   font-weight: 800;
 }
 
@@ -1915,7 +1933,7 @@
 }
 
 .ap-success-summary-val.color-rose {
-  color: var(--rose-text);
+  color: var(--rose);
 }
 
 .ap-success-summary-divider {
@@ -1936,7 +1954,7 @@
 .ap-success-total-val {
   font-family: 'IBM Plex Mono', monospace;
   font-weight: 800;
-  color: var(--emerald-text);
+  color: var(--emerald);
   font-size: 1.05rem;
 }
 
@@ -2012,7 +2030,7 @@
 }
 
 .ap-static-field.highlight-emerald {
-  color: var(--emerald-text);
+  color: var(--emerald);
   font-weight: 700;
 }
 
@@ -2149,10 +2167,10 @@
     transform var(--dur-fast) var(--ease);
 }
 .ai-suggest-bar__accept-btn:hover {
-  background: var(--emerald-fill);
+  background: var(--emerald);
   color: oklch(1 0 0);
-  border-color: var(--emerald-fill);
-  box-shadow: 0 2px 8px oklch(from var(--emerald-fill) l c h / 0.25);
+  border-color: var(--emerald);
+  box-shadow: 0 2px 8px oklch(from var(--emerald) l c h / 0.25);
 }
 .ai-suggest-bar__accept-btn:focus-visible {
   outline: 2.5px solid var(--primary);
@@ -2292,7 +2310,7 @@
 }
 
 .ap-sum-discount-no-diff {
-  color: var(--rose-text) !important;
+  color: var(--rose) !important;
 }
 
 .ap-grand-total-label {
@@ -2337,10 +2355,10 @@
   border-color: var(--btn-ok-border);
 }
 .ap-suggest-btn--ok:hover {
-  background: var(--emerald-fill);
+  background: var(--emerald);
   color: oklch(1 0 0);
-  border-color: var(--emerald-fill);
-  box-shadow: 0 1px 6px oklch(from var(--emerald-fill) l c h / 0.3);
+  border-color: var(--emerald);
+  box-shadow: 0 1px 6px oklch(from var(--emerald) l c h / 0.3);
 }
 
 .ap-suggest-btn--err {
@@ -2349,10 +2367,10 @@
   border-color: var(--btn-err-border);
 }
 .ap-suggest-btn--err:hover {
-  background: var(--rose-fill);
+  background: var(--rose);
   color: oklch(1 0 0);
-  border-color: var(--rose-fill);
-  box-shadow: 0 1px 6px oklch(from var(--rose-fill) l c h / 0.3);
+  border-color: var(--rose);
+  box-shadow: 0 1px 6px oklch(from var(--rose) l c h / 0.3);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2397,7 +2415,7 @@
 }
 
 .ap-grand-total-table-val.diff {
-  color: var(--rose-text);
+  color: var(--rose);
 }
 
 .ap-sum-from-doc.grand-total {

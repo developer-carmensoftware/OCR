@@ -23,14 +23,12 @@ export default function FormActions({ onCancel, onBack, onSubmit, submitLabel, s
           <ArrowLeft size={14} /> {t('common.back')}
         </button>
       )}
-      {/* btn-outline, not btn-secondary: this is the same "neutral action beside the
-          primary" slot that AccountingReview and both AP step-navs use. One vocabulary. */}
-      <button type="button" className="btn btn-outline" onClick={onCancel}>
+      <button type="button" className="btn btn-secondary" onClick={onCancel}>
         <X size={14} /> {t('common.cancel')}
       </button>
       <div className="form-actions-sep" />
       <button type="button" className="btn btn-primary" onClick={onSubmit}>
-        {submitLabel || t('common.submitData')} <ArrowRight size={14} />
+        <ArrowRight size={14} /> {submitLabel || t('common.submitData')}
       </button>
     </div>
   )

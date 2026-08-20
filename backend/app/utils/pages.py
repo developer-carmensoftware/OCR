@@ -43,7 +43,8 @@ def parse_selected_pages(raw: str | None) -> list[int] | None:
         pages.append(p)
 
     # De-duplicate while preserving order.
-    deduped = list(dict.fromkeys(pages))
+    seen: set[int] = set()
+    deduped = [p for p in pages if not (p in seen or seen.add(p))]
 
     if len(deduped) > MAX_SELECTED_PAGES:
         raise ValueError(f"selected_pages cannot exceed {MAX_SELECTED_PAGES} pages")

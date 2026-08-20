@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, CSSProperties, ReactNode } from 'react'
+import { useEffect, useRef, useState, CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { m, AnimatePresence, useAnimationControls, useReducedMotion } from 'framer-motion'
 import { CheckCircle2, AlertTriangle, XCircle, Info, Loader2, Eye, EyeOff } from 'lucide-react'
@@ -32,14 +32,6 @@ interface Props {
   busy?: boolean
   /** Bump this to a new value to flag the input as invalid: shakes it and turns it red. */
   errorNonce?: number
-  /** Extra body content between the message and the actions (read-only detail, a list). */
-  children?: ReactNode
-  /**
-   * Colour of the confirm button. `'danger'` for confirmations that destroy or abandon
-   * work — the label still says what happens, this only stops the destructive path from
-   * wearing the same blue as every ordinary OK.
-   */
-  confirmVariant?: 'confirm' | 'danger'
 }
 
 export default function CustomModal({
@@ -59,8 +51,6 @@ export default function CustomModal({
   inputType = 'text',
   busy = false,
   errorNonce = 0,
-  children,
-  confirmVariant = 'confirm',
 }: Props) {
   const confirmRef = useRef<HTMLButtonElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
@@ -117,27 +107,6 @@ export default function CustomModal({
     if (inputErrored) setInputErrored(false)
     onInputChange?.(v)
   }
-
-  /**
-   * Open/close side effects. Deliberately keyed on `show` ALONE: the keydown effect below
-   * re-subscribes whenever `busy` or a handler identity changes, and if focus restore
-   * lived there, flipping `busy` mid-submit would run the cleanup and yank focus back to
-   * the button behind the still-open dialog.
-   */
-  useEffect(() => {
-    if (!show) return
-    // Whatever had focus when the dialog opened gets it back when the dialog closes.
-    // Without this, dismissing a modal drops focus to <body> and a keyboard user
-    // restarts their tab journey from the top of the page.
-    const returnFocusTo = document.activeElement as HTMLElement | null
-    // Background scroll behind a fixed overlay reads as the dialog itself drifting.
-    const priorOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = priorOverflow
-      returnFocusTo?.focus?.()
-    }
-  }, [show])
 
   useEffect(() => {
     if (!show) return
@@ -235,8 +204,6 @@ export default function CustomModal({
               {message}
             </p>
 
-            {children}
-
             {inputLabel && (
               <m.div className="modal-input-group" animate={shakeControls}>
                 <label className="modal-input-label">{inputLabel}</label>
@@ -293,7 +260,7 @@ export default function CustomModal({
               <button
                 ref={confirmRef}
                 type="button"
-                className={`btn btn-${confirmVariant}`}
+                className="btn btn-confirm"
                 onClick={onConfirm}
                 disabled={busy}
               >

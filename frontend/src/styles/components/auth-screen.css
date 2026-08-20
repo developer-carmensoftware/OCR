@@ -117,7 +117,7 @@
 .auth-icon-container--error {
   background: var(--rose-light);
   border: 1.5px solid var(--rose-mid);
-  color: var(--rose-text);
+  color: var(--rose);
 }
 
 /* Expiry is amber, not rose — nothing failed, a clock simply ran out. */
@@ -159,7 +159,7 @@
 }
 
 .auth-badge--error {
-  color: var(--rose-text);
+  color: var(--rose);
   background: var(--rose-light);
   border: 1px solid var(--rose-mid);
 }

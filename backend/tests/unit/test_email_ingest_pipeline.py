@@ -14,14 +14,13 @@ check correctly refuses; the gate itself is tested separately below.
 """
 
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.exceptions import InsufficientCredits, ModuleDisabled
 from app.models.billing import UserNotification
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.config import AccountingConfigResponse
@@ -625,21 +624,10 @@ async def test_claim_dedupes_on_integrity_error_second_attempt():
 
 ADDRESS = "AIAGENT@carmensoftware.com"
 TAGGED = "Delivered-To: AIAGENT+a1b2c3d4@carmensoftware.com"
-TAG = "a1b2c3d4"
 
 
 def _settings_row(**overrides):
-    defaults = dict(
-        tenant_id=uuid4(),
-        rules=[],
-        tax_ids=[],
-        owner_emails=[],
-        ingest_tag="a1b2c3d4",
-        enabled=True,
-        # Explicit: a MagicMock attribute is truthy by default, which would silently arm
-        # the arrived-before-switch-on filter in every routing test.
-        enabled_at=None,
-    )
+    defaults = dict(tenant_id=uuid4(), rules=[], tax_ids=[], owner_emails=[], ingest_tag="a1b2c3d4")
     defaults.update(overrides)
     return MagicMock(**defaults)
 
@@ -656,25 +644,17 @@ async def _route(
     body="",
     confirmed=None,
     auto_confirm=True,
-    exhausted=None,
-    process=None,
-    resolve=None,
-    rejected=(),
-    db=None,
-    arrived_at=None,
 ):
     """Runs `_process_message` — up to (and not into) the per-attachment half."""
-    if db is None:
-        db = AsyncMock()
-        db.get = AsyncMock(return_value=MagicMock())  # tenant row exists
-    process = process or AsyncMock(return_value="posted")
-    resolve = resolve or AsyncMock(return_value=resolved)
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=MagicMock())  # tenant row exists
+    process = AsyncMock(return_value="posted")
     extract = AsyncMock(return_value=_extracted())
     follow = AsyncMock(return_value=auto_confirm)
     with (
         patch.object(ingest.settings, "email_ingest_address", ADDRESS),
         patch.object(ingest, "async_session", _session_factory(db)),
-        patch.object(ingest.es, "resolve_by_tag", resolve),
+        patch.object(ingest.es, "resolve_by_tag", AsyncMock(return_value=resolved)),
         patch.object(ingest.es, "is_entitled", AsyncMock(return_value=entitled)),
         patch.object(ingest.es, "rule_passwords", MagicMock(return_value=["pw"])),
         patch.object(ingest.es, "posting_target", AsyncMock(return_value=("tok", "https://h"))),
@@ -691,14 +671,11 @@ async def _route(
                 "from": sender,
                 "people": sender,
                 "recipients": list(recipients),
-                "arrived_at": arrived_at,
                 "attachments": (
                     [("statement.jpg", b"fake")] if attachments is None else list(attachments)
                 ),
-                "rejected": list(rejected),
                 "body": body,
-            },
-            exhausted,
+            }
         )
     return outcomes, extract, process
 
@@ -748,91 +725,12 @@ async def test_a_lapsed_package_stops_the_message_before_any_extraction():
     """Settings are not rewritten when a subscription ends, so `enabled` stays true.
 
     The gate has to be here as well as on the toggle, or a customer keeps ingesting
-    after their package lapses. `retry_later`, not `skipped`: renewing is a thing they
-    can do, and the mail that arrived meanwhile should still be there when they do.
+    after their package lapses.
     """
-    exhausted: set[str] = set()
-    outcomes, extract, process = await _route(
-        resolved=_settings_row(), entitled=False, exhausted=exhausted
-    )
-    assert outcomes == ["retry_later"]
-    assert exhausted == {TAG}
-    extract.assert_not_awaited()
-    process.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_a_switched_off_bu_keeps_its_mail_instead_of_losing_it():
-    """The toggle is a pause, not a verdict on the mail.
-
-    `_fetch_unseen` flags the whole batch before anyone knows who it belongs to, so
-    anything short of handing it back means a BU that switches the feature off for a
-    week has that week's statements destroyed — with no ledger row, no notification and
-    nothing to re-run.
-    """
-    exhausted: set[str] = set()
-    outcomes, extract, process = await _route(
-        resolved=_settings_row(enabled=False), exhausted=exhausted
-    )
-    assert outcomes == ["retry_later"]
-    assert exhausted == {TAG}  # the rest of this BU's mail in the batch, without a SELECT
-    extract.assert_not_awaited()
-    process.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_an_unknown_tag_is_still_dropped_not_held():
-    """Nobody to hold it for. Distinguishing this from a paused BU is the whole reason
-    `resolve_by_tag` stopped filtering on `enabled`."""
-    outcomes, _, _ = await _route(resolved=None)
-    assert outcomes == ["unrouted"]
-
-
-@pytest.mark.asyncio
-async def test_mail_from_the_off_period_is_skipped_not_replayed_on_switch_on():
-    """Held mail replaying is right for a lapsed package and wrong for the toggle.
-
-    Switching the feature off means the customer is keying those statements into Carmen
-    by hand — and a manual Carmen entry writes no `credit_cards` row, so `is_duplicate`
-    cannot see it. Replaying the backlog therefore posted every one of them a second time.
-    The row still gets written: they need the list of what they owe Carmen, or this would
-    trade duplicate posts for silent loss.
-    """
-    db = _RoutingDB()
-    switched_on = datetime.now(UTC)
-    outcomes, extract, process = await _route(
-        resolved=_settings_row(enabled_at=switched_on),
-        arrived_at=(switched_on - timedelta(days=2)).timestamp(),
-        db=db,
-    )
+    outcomes, extract, process = await _route(resolved=_settings_row(), entitled=False)
     assert outcomes == ["skipped"]
-    assert db.added[0].reason_code == "ingest_paused"
-    assert db.added[0].status == "skipped"
     extract.assert_not_awaited()
     process.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_mail_that_arrived_after_the_switch_on_still_posts():
-    """The other half: the filter is a date comparison, not a second off switch."""
-    switched_on = datetime.now(UTC)
-    outcomes, _, process = await _route(
-        resolved=_settings_row(enabled_at=switched_on),
-        arrived_at=(switched_on + timedelta(minutes=5)).timestamp(),
-    )
-    assert outcomes == ["posted"]
-    process.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_an_unreadable_internaldate_processes_the_mail_rather_than_dropping_it():
-    """Fail open. A duplicate draft in Carmen is something a human deletes; a document
-    dropped because one IMAP server answered in an unexpected shape is gone."""
-    outcomes, _, process = await _route(
-        resolved=_settings_row(enabled_at=datetime.now(UTC)), arrived_at=None
-    )
-    assert outcomes == ["posted"]
-    process.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -842,91 +740,6 @@ async def test_every_attachment_of_one_message_gets_its_own_outcome():
     )
     assert outcomes == ["posted", "posted"]
     assert process.await_count == 2
-
-
-# ── An attachment we cannot read is not the same as no attachment ─────────────
-
-
-class _RoutingDB(_FakeDB):
-    """`_FakeDB` that also answers the tenant lookup `_process_message` makes."""
-
-    async def get(self, model, ident):
-        from app.models.identity import Tenant
-
-        return MagicMock() if model is Tenant else await super().get(model, ident)
-
-
-@pytest.mark.asyncio
-async def test_an_unsupported_attachment_leaves_a_row_instead_of_vanishing():
-    """The customer forwards an `.xlsx` and it is gone: mail marked `\\Seen`, dropped on
-    the attachment check before the tag was even resolved, no ledger row, no
-    notification, nothing for `#/admin/email` to show when they ask on Thursday where
-    Tuesday's document went. This is the case the ledger table was created for."""
-    db = _RoutingDB()
-    outcomes, extract, process = await _route(
-        resolved=_settings_row(), attachments=[], rejected=["commission.xlsx"], db=db
-    )
-    assert outcomes == ["skipped"]
-    ledger = db.added[0]
-    assert ledger.status == "skipped"
-    assert ledger.reason_code == "unsupported_attachment"
-    assert ledger.attachment == "commission.xlsx"
-    # Free: this is far ahead of consume_document, so there is nothing to refund either.
-    extract.assert_not_awaited()
-    process.assert_not_awaited()
-    assert [o for o in db.added if isinstance(o, UserNotification)] == []
-
-
-@pytest.mark.asyncio
-async def test_a_message_naming_no_file_at_all_still_writes_nothing():
-    """A bank's "your statement is ready" notice. A ledger row for every one of those
-    buries the rows that mean something."""
-    db = _RoutingDB()
-    outcomes, _, _ = await _route(resolved=_settings_row(), attachments=[], db=db)
-    assert outcomes == ["skipped"]
-    assert db.added == []
-
-
-@pytest.mark.asyncio
-async def test_two_attachments_with_the_same_name_are_both_processed():
-    """`_claim` dedupes on (tenant, message, attachment), so the second `report.pdf` used
-    to violate the unique index and be filed "already handled" without being looked at.
-
-    Not hypothetical: `_unzip` strips directories, so a bank's `2026/01/report.pdf` and
-    `2026/02/report.pdf` arrive as two identical names in one message.
-    """
-    outcomes, _, process = await _route(
-        resolved=_settings_row(), attachments=[("report.pdf", b"x"), ("report.pdf", b"y")]
-    )
-    assert outcomes == ["posted", "posted"]
-    assert [c.kwargs["filename"] for c in process.await_args_list] == [
-        "report.pdf",
-        "report (2).pdf",
-    ]
-    # The blobs stay with their own names.
-    assert [c.kwargs["blob"] for c in process.await_args_list] == [b"x", b"y"]
-
-
-def test_the_disambiguating_suffix_goes_before_the_extension():
-    """`validate_magic_bytes()` and `match_rules()` both read the extension, so a
-    `report.pdf~2` form would fail the magic-byte gate on a perfectly good PDF."""
-    assert ingest._unique_names(["a.pdf", "a.pdf", "a.pdf", "b.pdf"]) == [
-        "a.pdf",
-        "a (2).pdf",
-        "a (3).pdf",
-        "b.pdf",
-    ]
-    assert ingest._unique_names(["noext", "noext"]) == ["noext", "noext (2)"]
-
-
-def test_disambiguation_never_lands_on_a_name_the_message_already_uses():
-    """Otherwise the third file collides with the literal `a (2).pdf` and is dropped —
-    exactly the failure this function exists to prevent."""
-    assert ingest._unique_names(["a.pdf", "a (2).pdf", "a.pdf"]) == [
-        "a.pdf",
-        "a (2).pdf",
-        "a (3).pdf",
-    ]
 
 
 # ── Gmail's forwarding confirmation ───────────────────────────────────────────
@@ -1080,21 +893,13 @@ async def test_run_ingest_summarises_every_message_and_records_the_job_run():
     process = AsyncMock(side_effect=[["posted"], ["unrouted"]])
     with (
         patch.object(ingest.settings, "imap_host", "imap.example.com"),
-        patch.object(ingest, "_fetch_unseen", lambda limit: (messages, 0)),
+        patch.object(ingest, "_fetch_unseen", lambda limit: messages),
         patch.object(ingest, "_process_message", process),
         patch.object(ingest, "_record_run", record),
     ):
         summary = await ingest.run_ingest(limit=5)
 
-    assert summary == {
-        "messages": 2,
-        "posted": 1,
-        "failed": 0,
-        "skipped": 0,
-        "unrouted": 1,
-        "retry_later": 0,
-        "beyond_window": 0,
-    }
+    assert summary == {"messages": 2, "posted": 1, "failed": 0, "skipped": 0, "unrouted": 1}
     record.assert_awaited_once()
     assert record.await_args.args[1] == summary
 
@@ -1208,22 +1013,16 @@ def _mime(parts):
     return outer
 
 
-def _accepted(msg) -> list[str]:
-    """The filenames `_attachments` kept. It returns `(accepted, rejected)` — see the
-    unsupported-attachment tests below for the other half."""
-    return [f for f, _ in ingest._attachments(msg)[0]]
-
-
 def test_attachments_are_capped_per_message():
     """`imap_batch_size` caps messages per poll, not attachments per message — and a
     forwarded chain's signature logos are each their own MIME part."""
     msg = _mime([(f"logo{i}.png", b"x") for i in range(ingest.MAX_ATTACHMENTS_PER_MESSAGE + 5)])
-    assert len(_accepted(msg)) == ingest.MAX_ATTACHMENTS_PER_MESSAGE
+    assert len(ingest._attachments(msg)) == ingest.MAX_ATTACHMENTS_PER_MESSAGE
 
 
 def test_files_with_an_unsupported_extension_are_ignored():
     msg = _mime([("notes.txt", b"x"), ("report.pdf", b"%PDF-1.4")])
-    assert _accepted(msg) == ["report.pdf"]
+    assert [f for f, _ in ingest._attachments(msg)] == ["report.pdf"]
 
 
 def test_a_forward_as_attachment_still_yields_the_inner_pdf():
@@ -1236,95 +1035,9 @@ def test_a_forward_as_attachment_still_yields_the_inner_pdf():
     outer = _mime([])
     outer.attach(MIMEMessage(inner))
 
-    found, _ = ingest._attachments(outer)
+    found = ingest._attachments(outer)
     assert [f for f, _ in found] == ["MDR-aug.pdf"]
     assert found[0][1] == b"%PDF-1.4 inner"
-
-
-# ── Zip: the shape banks actually deliver ─────────────────────────────────────
-
-
-def _zip(entries, **kwargs):
-    """A zip archive in memory. `entries` is [(name, payload)]."""
-    import io
-    import zipfile
-
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", **kwargs) as z:
-        for name, payload in entries:
-            z.writestr(name, payload)
-    return buf.getvalue()
-
-
-def test_a_bank_zip_is_expanded_into_the_documents_inside_it():
-    """Measured against a real delivery: one `.zip` holding the e-tax invoice PDF, a
-    summary PDF and a CSV. The inner names are what the BU's `filename_patterns` see,
-    so the customer decides which of them is worth a credit — same as a direct
-    attachment. Before this, the whole mail counted as "no attachment" and vanished
-    with no ledger row at all."""
-    blob = _zip(
-        [
-            ("E-TAX_INVOICE_CARD_451005282039001.PDF", b"%PDF-1.4 invoice"),
-            ("TAX_SUMMARY_BY_TAX_ID_CSV_0835553001610.csv", b"\xef\xbb\xbfM,1"),
-            ("KB1P554V2_SUM_451005282039001.pdf", b"%PDF-1.4 summary"),
-        ]
-    )
-    found, _ = ingest._attachments(_mime([("451005282039001_Card_20260721.zip", blob)]))
-    assert [f for f, _ in found] == [
-        "E-TAX_INVOICE_CARD_451005282039001.PDF",
-        "KB1P554V2_SUM_451005282039001.pdf",
-    ]
-    assert found[0][1] == b"%PDF-1.4 invoice"
-
-
-def test_zip_entries_keep_only_their_filename():
-    """The rules match a filename, not a path — and a zip entry carries the path it was
-    archived under."""
-    blob = _zip([("2026/07/statement.pdf", b"%PDF-1.4")])
-    assert _accepted(_mime([("mail.zip", blob)])) == ["statement.pdf"]
-
-
-def test_an_oversized_member_is_skipped_before_it_is_read():
-    """The zip-bomb guard: the declared size is checked before `read()` inflates it, and
-    against the same ceiling the mail itself is held to."""
-    big = b"%PDF-1.4" + b"\0" * (ingest.settings.max_file_size_mb * 1024 * 1024 + 1)
-    blob = _zip([("huge.pdf", big), ("small.pdf", b"%PDF-1.4 ok")])
-    assert _accepted(_mime([("mail.zip", blob)])) == ["small.pdf"]
-
-
-def test_zip_contents_count_against_the_attachment_cap():
-    blob = _zip(
-        [(f"doc{i}.pdf", b"%PDF-1.4") for i in range(ingest.MAX_ATTACHMENTS_PER_MESSAGE + 5)]
-    )
-    assert len(_accepted(_mime([("mail.zip", blob)]))) == ingest.MAX_ATTACHMENTS_PER_MESSAGE
-
-
-def test_a_zip_we_cannot_open_is_logged_not_raised():
-    """A poll carrying real invoices must not die on one corrupt archive — but it is
-    reported under the archive's own name, or the customer who forwarded it gets no
-    answer at all."""
-    accepted, rejected = ingest._attachments(_mime([("broken.zip", b"PK\x03\x04 not really")]))
-    assert accepted == []
-    assert rejected == ["broken.zip"]
-
-
-def test_an_unreadable_member_is_skipped_and_the_rest_still_arrive(monkeypatch):
-    """`RuntimeError` is what `zipfile` raises for an encrypted member, and no tenant is
-    resolved this early, so the BU's configured passwords are not available to try. One
-    bad member must not cost the other documents in the same archive."""
-    import zipfile
-
-    blob = _zip([("locked.pdf", b"%PDF-1.4 a"), ("open.pdf", b"%PDF-1.4 b")])
-    real_read = zipfile.ZipFile.read
-
-    def refuse(self, member, pwd=None):
-        name = member if isinstance(member, str) else member.filename
-        if name == "locked.pdf":
-            raise RuntimeError("File locked.pdf is encrypted, password required")
-        return real_read(self, member, pwd)
-
-    monkeypatch.setattr(zipfile.ZipFile, "read", refuse)
-    assert _accepted(_mime([("mail.zip", blob)])) == ["open.pdf"]
 
 
 # ── Selecting the mailbox ─────────────────────────────────────────────────────
@@ -1348,499 +1061,10 @@ def test_the_mailbox_name_is_quoted_before_select(configured, sent):
 
 def test_fetch_unseen_selects_the_configured_folder_quoted(monkeypatch):
     """The wiring, not just the helper: a poll must reach SELECT with a usable name."""
-    box = _searching_box(monkeypatch, b"")
+    box = MagicMock()
+    box.search.return_value = ("OK", [b""])
+    monkeypatch.setattr(ingest.imaplib, "IMAP4_SSL", lambda host, port: box)
     monkeypatch.setattr(ingest.settings, "imap_folder", "AR Agent")
 
-    assert ingest._fetch_unseen(10) == ([], 0)
+    assert ingest._fetch_unseen(10) == []
     box.select.assert_called_once_with('"AR Agent"')
-
-
-def _searching_box(monkeypatch, uids: bytes, *, unbounded: bytes | None = None, fetch=None):
-    """A mailbox whose UID SEARCH answers `uids`, and whose UID FETCH yields nothing.
-
-    The second search of a poll is the unbounded one (`beyond_window`); it answers
-    `unbounded` when given, otherwise the same set as the first. `fetch` overrides the
-    FETCH answer for the tests that care what comes back.
-    """
-    box = MagicMock()
-    answers = [("OK", [uids]), ("OK", [unbounded if unbounded is not None else uids])]
-
-    def _uid(command, *args):
-        if command == "SEARCH":
-            return answers.pop(0) if answers else ("OK", [b""])
-        return fetch or ("OK", [None])  # FETCH: not a tuple → every uid is skipped
-
-    box.uid.side_effect = _uid
-    monkeypatch.setattr(ingest.imaplib, "IMAP4_SSL", lambda host, port, timeout=None: box)
-    return box
-
-
-def _uid_calls(box, command: str) -> list[tuple]:
-    return [c.args[1:] for c in box.uid.call_args_list if c.args[0] == command]
-
-
-_RAW = b"Subject: statement\r\nFrom: bank@ktc.co.th\r\n\r\nno attachment\r\n"
-_WHEN = datetime(2026, 8, 18, 9, 30, tzinfo=timezone(timedelta(hours=7))).timestamp()
-
-
-@pytest.mark.parametrize(
-    "fetched",
-    [
-        # **The shape imap.gmail.com actually returns** (measured 2026-08-18): the RFC822
-        # literal first, INTERNALDATE in the trailing chunk. Reading it out of the first
-        # chunk — which the original hand-built fixture looked like — yielded None for
-        # every real message, leaving the enabled_at filter inert against the one server
-        # this product runs on while the test suite stayed green.
-        [
-            (b"51 (UID 52 RFC822 {%d}" % len(_RAW), _RAW),
-            b' INTERNALDATE "18-Aug-2026 09:30:00 +0700" FLAGS (\\Seen))',
-        ],
-        # The other legal order — RFC 3501 fixes neither, so both have to work.
-        [(b'1 (INTERNALDATE "18-Aug-2026 09:30:00 +0700" RFC822 {%d}' % len(_RAW), _RAW)],
-    ],
-    ids=["internaldate-last", "internaldate-first"],
-)
-def test_the_poll_records_when_each_message_arrived(monkeypatch, fetched):
-    """`email_ingest_settings.enabled_at` is compared against this value, so it has to be
-    arrival at *our* mailbox: INTERNALDATE, which the server stamps and nobody can compose.
-    The `Date:` header is written by whoever sent the mail."""
-    box = _searching_box(monkeypatch, b"1", fetch=("OK", fetched))
-
-    messages, _ = ingest._fetch_unseen(10)
-
-    assert _uid_calls(box, "FETCH")[0][1] == "(INTERNALDATE RFC822)"
-    assert messages[0]["arrived_at"] == _WHEN
-
-
-def test_an_internaldate_the_server_answers_oddly_leaves_the_arrival_unknown(monkeypatch):
-    """Unknown, not "now" and not zero — the caller treats it as "do not filter", which
-    processes the mail. Guessing a time in either direction would drop real documents."""
-    box = _searching_box(monkeypatch, b"1", fetch=("OK", [(b"1 (RFC822 {26}", _RAW), b")"]))
-
-    messages, _ = ingest._fetch_unseen(10)
-
-    assert messages[0]["arrived_at"] is None
-    box.uid.assert_any_call("STORE", "1", "+FLAGS", "\\Seen")
-
-
-def test_the_poll_addresses_mail_by_uid_not_sequence_number(monkeypatch):
-    """The bug that made every hand-back a coin flip.
-
-    `box.search`/`fetch`/`store` speak sequence numbers, which are per-session and shift
-    down on any expunge — so a number captured here named a *different* message by the
-    time `_set_seen` opened its own connection minutes later: the held mail stayed `\\Seen`
-    (lost) while an unrelated one was silently marked unread. Invisible to any test that
-    only checks the arguments, which is why this asserts on the method.
-    """
-    box = _searching_box(monkeypatch, b"1 2")
-    ingest._fetch_unseen(10)
-    assert _uid_calls(box, "SEARCH")
-    assert [c[0] for c in _uid_calls(box, "FETCH")] == ["1", "2"]
-    box.search.assert_not_called()
-    box.fetch.assert_not_called()
-    box.store.assert_not_called()
-
-
-def test_setting_the_seen_flag_addresses_mail_by_uid(monkeypatch):
-    """The connection that made UIDs mandatory: `_set_seen` opens its own, minutes after
-    the one that read the mail."""
-    box = _searching_box(monkeypatch, b"")
-    ingest._unmark_seen(["11", "12"])
-    assert _uid_calls(box, "STORE") == [("11", "-FLAGS", "\\Seen"), ("12", "-FLAGS", "\\Seen")]
-    box.store.assert_not_called()
-
-
-def test_a_poll_takes_the_newest_mail_not_the_oldest(monkeypatch):
-    """Held-back mail is by definition older than anything arriving now.
-
-    SEARCH answers in ascending UID order, so slicing from the front would park a
-    switched-off BU's backlog at the head of the queue for ever — `imap_batch_size` is 10,
-    and one BU whose bank mails daily fills that within ten days, silently starving every
-    other tenant. Taking the tail means a backlog can only use capacity nothing else wants.
-    """
-    box = _searching_box(monkeypatch, b"1 2 3 4 5")
-    ingest._fetch_unseen(2)
-    assert [c[0] for c in _uid_calls(box, "FETCH")] == ["4", "5"]
-
-
-def test_a_poll_looks_no_further_back_than_the_hold_window(monkeypatch):
-    """The other half of handing mail back: without a floor, mail nobody will ever accept
-    is re-fetched on every poll for the life of the deployment."""
-    box = _searching_box(monkeypatch, b"")
-    monkeypatch.setattr(ingest.settings, "imap_hold_days", 14)
-    ingest._fetch_unseen(10)
-
-    args = _uid_calls(box, "SEARCH")[0]
-    assert args[0] == "UNSEEN"
-    assert args[1] == "SINCE"
-    # IMAP dates are ASCII English whatever the host's locale is set to.
-    assert args[2] == ingest._since_arg()
-    assert (
-        datetime.strptime(args[2], "%d-%b-%Y").date()
-        == (datetime.now(UTC) - timedelta(days=14)).date()
-    )
-
-
-def test_mail_past_the_hold_window_is_counted_even_though_it_is_never_fetched(monkeypatch):
-    """The window is right, but past it a message drops out of every poll silently — so a
-    poller outage longer than IMAP_HOLD_DAYS loses real mail with no symptom at all. The
-    second search costs one round trip on the connection already open and no FETCH."""
-    box = _searching_box(monkeypatch, b"4 5", unbounded=b"1 2 3 4 5")
-    messages, beyond = ingest._fetch_unseen(10)
-
-    assert messages == []
-    assert beyond == 3
-    bounded, unbounded = _uid_calls(box, "SEARCH")
-    assert "SINCE" in bounded and "SINCE" not in unbounded
-    # SMALLER stays, or an oversized *recent* message is miscounted as beyond-window.
-    assert unbounded.count("SMALLER") == bounded.count("SMALLER") == 1
-    assert len(_uid_calls(box, "FETCH")) == 2  # only the bounded set is pulled
-
-
-def test_every_mailbox_connection_carries_a_socket_timeout(monkeypatch):
-    """Without it a mailbox that accepts the connection and then goes quiet blocks the
-    worker thread forever — and `asyncio.to_thread` cannot be cancelled. At the
-    confirmation sweep's one-minute cadence those threads would accumulate."""
-    box = MagicMock()
-    monkeypatch.setattr(ingest.imaplib, "IMAP4_SSL", MagicMock(return_value=box))
-
-    assert ingest._connect() is box
-    assert ingest.imaplib.IMAP4_SSL.call_args.kwargs["timeout"] == ingest.IMAP_TIMEOUT_SECONDS
-
-
-# ── Gmail confirmation sweep (the 1-minute job) ───────────────────────────────
-
-CONFIRM_LINK = "https://mail-settings.google.com/mail/vf-%5BABC-123%5D"
-INGEST_ADDR = "aragent@carmensoftware.com"
-
-
-def _confirmation(uid: str = "7", tag: str = "abc12345") -> dict:
-    return {
-        "uid": uid,
-        "subject": "(Gmail Forwarding Confirmation",
-        "from": "Gmail Team <forwarding-noreply@google.com>",
-        "recipients": [f"aragent+{tag}@carmensoftware.com"],
-        "body": f"Click here: {CONFIRM_LINK} to confirm",
-    }
-
-
-@asynccontextmanager
-async def _null_session():
-    yield _FakeDB()
-
-
-@pytest.mark.asyncio
-async def test_the_sweep_opens_no_mailbox_when_nobody_is_setting_up(monkeypatch):
-    """The whole reason this can run every minute. `gmail_confirmed_at is null` is true
-    forever for a BU that never sets up forwarding, so without the freshness window this
-    would log into Gmail 1,440 times a day to find the same nothing."""
-    box = MagicMock()
-    monkeypatch.setattr(ingest.imaplib, "IMAP4_SSL", box)
-    with (
-        patch.object(ingest.settings, "imap_host", "imap.example.com"),
-        patch.object(ingest, "async_session", _null_session),
-        patch.object(ingest.es, "tags_awaiting_confirmation", AsyncMock(return_value=set())),
-    ):
-        result = await ingest.sweep_confirmations()
-
-    assert result == {"checked": 0, "confirmed": 0, "waiting": 0}
-    box.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_the_sweep_follows_the_link_and_records_the_confirmation():
-    """The gap this job exists to close: the customer is watching Gmail's
-    'Awaiting verification' screen and nobody is going to click this for them."""
-    confirm, record, seen, run = AsyncMock(return_value=True), AsyncMock(), MagicMock(), AsyncMock()
-    with (
-        patch.object(ingest.settings, "imap_host", "imap.example.com"),
-        patch.object(ingest.settings, "email_ingest_address", INGEST_ADDR),
-        patch.object(ingest, "async_session", _null_session),
-        patch.object(ingest.es, "tags_awaiting_confirmation", AsyncMock(return_value={"abc12345"})),
-        patch.object(ingest, "_fetch_confirmations", lambda: [_confirmation()]),
-        patch.object(ingest, "auto_confirm_forwarding", confirm),
-        patch.object(ingest.es, "record_gmail_confirmed", record),
-        patch.object(ingest, "_mark_seen", seen),
-        patch.object(ingest, "_record_run", run),
-    ):
-        result = await ingest.sweep_confirmations()
-
-    assert result == {"checked": 1, "confirmed": 1, "waiting": 1}
-    confirm.assert_awaited_once_with(CONFIRM_LINK)
-    assert record.await_args.args[1] == "abc12345"
-    seen.assert_called_once_with(["7"])
-    assert run.await_args.kwargs["job_name"] == "email-confirm"
-
-
-@pytest.mark.asyncio
-async def test_a_confirmation_google_refuses_is_still_marked_seen_and_writes_no_job_run():
-    """A link we cannot follow is almost always a dead one. Leaving it unseen would mean
-    1,440 requests to Google a day for a forward the customer can re-trigger themselves
-    with Gmail's own 'Resend email' button."""
-    seen, run = MagicMock(), AsyncMock()
-    with (
-        patch.object(ingest.settings, "imap_host", "imap.example.com"),
-        patch.object(ingest.settings, "email_ingest_address", INGEST_ADDR),
-        patch.object(ingest, "async_session", _null_session),
-        patch.object(ingest.es, "tags_awaiting_confirmation", AsyncMock(return_value={"abc12345"})),
-        patch.object(ingest, "_fetch_confirmations", lambda: [_confirmation()]),
-        patch.object(ingest, "auto_confirm_forwarding", AsyncMock(return_value=False)),
-        patch.object(ingest.es, "record_gmail_confirmed", AsyncMock()),
-        patch.object(ingest, "_mark_seen", seen),
-        patch.object(ingest, "_record_run", run),
-    ):
-        result = await ingest.sweep_confirmations()
-
-    assert result["confirmed"] == 0
-    seen.assert_called_once_with(["7"])
-    run.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_a_confirmation_for_a_tag_outside_the_window_is_left_for_the_document_poll():
-    """Not ours to consume: a BU that saved settings last week is out of the sweep's
-    window, and marking their confirmation seen here would destroy the only copy."""
-    seen, confirm = MagicMock(), AsyncMock(return_value=True)
-    with (
-        patch.object(ingest.settings, "imap_host", "imap.example.com"),
-        patch.object(ingest.settings, "email_ingest_address", INGEST_ADDR),
-        patch.object(ingest, "async_session", _null_session),
-        patch.object(ingest.es, "tags_awaiting_confirmation", AsyncMock(return_value={"someone"})),
-        patch.object(ingest, "_fetch_confirmations", lambda: [_confirmation()]),
-        patch.object(ingest, "auto_confirm_forwarding", confirm),
-        patch.object(ingest, "_mark_seen", seen),
-        patch.object(ingest, "_record_run", AsyncMock()),
-    ):
-        result = await ingest.sweep_confirmations()
-
-    assert result == {"checked": 1, "confirmed": 0, "waiting": 1}
-    confirm.assert_not_awaited()
-    seen.assert_called_once_with([])
-
-
-@pytest.mark.asyncio
-async def test_a_sweep_already_in_flight_is_skipped_not_queued():
-    """One minute is shorter than a pathological IMAP call. The tick that finds the lock
-    held would only be looking at the same mailbox."""
-    async with ingest._sweep_lock:
-        with patch.object(ingest.settings, "imap_host", "imap.example.com"):
-            assert await ingest.sweep_confirmations() == {"status": "busy"}
-
-
-# ── Running out of documents mid-backlog ──────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_running_out_of_documents_releases_the_claim():
-    """The claim row IS the dedupe. Left behind, this (message, attachment) reads as
-    'already handled' for ever — so a customer who runs out mid-backlog would lose every
-    remaining statement, and this feature has no retry anywhere to save them."""
-    release = AsyncMock()
-    with (
-        patch.object(ingest, "async_session", _session_factory(_FakeDB())),
-        patch.object(ingest, "_release", release),
-        patch.object(ingest, "_run_document", AsyncMock(side_effect=InsufficientCredits("out"))),
-        pytest.raises(InsufficientCredits),
-    ):
-        await ingest._process_attachment(
-            tenant_id=TENANT_ID,
-            message_id="<msg-broke@bank.co.th>",
-            sender="no-reply@ktc.co.th",
-            people="no-reply@ktc.co.th",
-            filename="statement.pdf",
-            blob=b"fake",
-            owner_emails=[],
-            rules=[],
-            passwords=[],
-            carmen_token="tok",
-            carmen_uri="https://h",
-        )
-    release.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_a_disabled_module_holds_the_mail_instead_of_failing_the_document():
-    """`assert_module_enabled` is our switch, not a fault of the customer's PDF.
-
-    Left to the generic handler it lands as `failed` / `unreadable_document` — a red row
-    on the customer's screen and a `document_failed` in their bell for a module we
-    switched off ourselves, pointing whoever debugs it at a file that is perfectly fine.
-    """
-    release = AsyncMock()
-    with (
-        patch.object(ingest, "async_session", _session_factory(_FakeDB())),
-        patch.object(ingest, "_release", release),
-        patch.object(ingest, "_run_document", AsyncMock(side_effect=ModuleDisabled("off"))),
-        pytest.raises(ModuleDisabled),
-    ):
-        await ingest._process_attachment(
-            tenant_id=TENANT_ID,
-            message_id="<msg-off@bank.co.th>",
-            sender="no-reply@ktc.co.th",
-            people="no-reply@ktc.co.th",
-            filename="statement.pdf",
-            blob=b"fake",
-            owner_emails=[],
-            rules=[],
-            passwords=[],
-            carmen_token="tok",
-            carmen_uri="https://h",
-        )
-    release.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_a_disabled_module_hands_the_whole_message_back():
-    exhausted: set[str] = set()
-    outcomes, _, _ = await _route(
-        resolved=_settings_row(),
-        attachments=[("a.pdf", b"x")],
-        process=AsyncMock(side_effect=ModuleDisabled("off")),
-        exhausted=exhausted,
-    )
-    assert outcomes == ["retry_later"]
-    assert exhausted == {TAG}
-
-
-@pytest.mark.asyncio
-async def test_the_rest_of_the_message_is_handed_back_not_hammered():
-    """Second attachment onwards would each fail the same way, one wasted
-    `consume_document` at a time. What already posted keeps its ledger row."""
-    exhausted: set[str] = set()
-    process = AsyncMock(side_effect=["posted", InsufficientCredits("out")])
-    outcomes, _, _ = await _route(
-        resolved=_settings_row(),
-        attachments=[("a.pdf", b"x"), ("b.pdf", b"y")],
-        process=process,
-        exhausted=exhausted,
-    )
-    assert outcomes == ["posted", "retry_later"]
-    assert exhausted == {TAG}
-
-
-@pytest.mark.asyncio
-async def test_a_bu_that_ran_out_is_skipped_without_even_a_lookup():
-    """Checked against the tag, which the envelope already gave us — so the rest of that
-    BU's backlog costs not even the one SELECT that resolving it would. Another BU's mail
-    in the same batch is untouched."""
-    resolve = AsyncMock(return_value=_settings_row())
-    outcomes, extract, process = await _route(resolved=None, resolve=resolve, exhausted={TAG})
-    assert outcomes == ["retry_later"]
-    resolve.assert_not_awaited()
-    extract.assert_not_awaited()
-    process.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_the_poll_clears_seen_on_everything_it_handed_back():
-    """`_fetch_unseen` flags the whole batch on the way in. Out-of-credits is not a
-    verdict on the mail, so the flag has to come back off or the document is gone."""
-    unmark = MagicMock()
-    messages = [
-        {"uid": "7", "message_id": "<a>", "subject": "s", "from": "f", "recipients": []},
-        {"uid": "8", "message_id": "<b>", "subject": "s", "from": "f", "recipients": []},
-    ]
-    with (
-        patch.object(ingest.settings, "imap_host", "imap.example.com"),
-        patch.object(ingest, "_fetch_unseen", lambda limit: (messages, 0)),
-        patch.object(
-            ingest, "_process_message", AsyncMock(side_effect=[["posted"], ["retry_later"]])
-        ),
-        patch.object(ingest, "_unmark_seen", unmark),
-        patch.object(ingest, "_record_run", AsyncMock()),
-    ):
-        summary = await ingest.run_ingest()
-
-    assert summary["retry_later"] == 1
-    unmark.assert_called_once_with(["8"])
-
-
-@pytest.mark.asyncio
-async def test_a_crash_mid_poll_hands_back_everything_it_never_looked_at():
-    """One DB blip on message 2 of 3 used to leave message 3 `\\Seen`, unprocessed and
-    gone — it never reached `_claim`, so nothing anywhere recorded that it existed.
-
-    The message that actually raised stays flagged on purpose: handing it back would
-    re-crash the next poll on it forever, and the FAILED `job_runs` row is its trail.
-    """
-    unmark = MagicMock()
-    messages = [
-        {"uid": str(u), "message_id": f"<{u}>", "subject": "s", "from": "f", "recipients": []}
-        for u in (7, 8, 9)
-    ]
-    with (
-        patch.object(ingest.settings, "imap_host", "imap.example.com"),
-        patch.object(ingest, "_fetch_unseen", lambda limit: (messages, 0)),
-        patch.object(
-            ingest,
-            "_process_message",
-            AsyncMock(side_effect=[["posted"], RuntimeError("connection reset"), ["posted"]]),
-        ),
-        patch.object(ingest, "_unmark_seen", unmark),
-        patch.object(ingest, "_record_run", AsyncMock()),
-        pytest.raises(RuntimeError),
-    ):
-        await ingest.run_ingest()
-
-    unmark.assert_called_once_with(["9"])
-
-
-@pytest.mark.asyncio
-async def test_mail_beyond_the_hold_window_reaches_the_summary_and_an_alert():
-    """The only signal that a poller outage longer than IMAP_HOLD_DAYS ate real mail."""
-    alert = AsyncMock()
-    with (
-        patch.object(ingest.settings, "imap_host", "imap.example.com"),
-        patch.object(ingest, "_fetch_unseen", lambda limit: ([], 4)),
-        patch.object(ingest, "_unmark_seen", MagicMock()),
-        patch.object(ingest, "async_session", _session_factory(_FakeDB())),
-        patch.object(ingest.anomaly_service, "open_alert_if_absent", alert),
-    ):
-        summary = await ingest.run_ingest()
-
-    assert summary["beyond_window"] == 4
-    assert alert.await_args.kwargs["metric"] == "email_ingest_beyond_window"
-    assert alert.await_args.kwargs["tenant_id"] == "system"
-
-
-@pytest.mark.asyncio
-async def test_a_poll_with_nothing_past_the_window_raises_no_alert():
-    alert = AsyncMock()
-    with (
-        patch.object(ingest, "async_session", _session_factory(_FakeDB())),
-        patch.object(ingest.anomaly_service, "open_alert_if_absent", alert),
-    ):
-        await ingest._record_run(datetime.now(UTC), {"posted": 1, "beyond_window": 0})
-    alert.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_a_poll_already_running_is_skipped_not_stacked():
-    """A slow batch outlasting its 10-minute interval must not put a second poll on top:
-    the work would dedupe, but the DB connections would not — the pool is 15 for the
-    whole application."""
-    async with ingest._poll_lock:
-        with patch.object(ingest.settings, "imap_host", "imap.example.com"):
-            assert await ingest.run_ingest() == {"status": "busy"}
-
-
-# ── job_runs is written only when there is something to say ───────────────────
-
-
-@pytest.mark.asyncio
-async def test_an_idle_poll_writes_no_job_run():
-    """`job_runs` has no retention and #/admin/jobs shows the newest 100 with no
-    job-name filter — a poll on a schedule would bury every other job within hours."""
-    db = _FakeDB()
-    with patch.object(ingest, "async_session", _session_factory(db)):
-        await ingest._record_run(datetime.now(UTC), {"messages": 0, "posted": 0})
-    assert db.added == []
-
-
-@pytest.mark.asyncio
-async def test_a_failed_poll_writes_a_job_run_even_with_no_mail():
-    db = _FakeDB()
-    with patch.object(ingest, "async_session", _session_factory(db)):
-        await ingest._record_run(datetime.now(UTC), {"messages": 0}, error="IMAP login refused")
-    assert len(db.added) == 1
-    assert db.added[0].error_message == "IMAP login refused"

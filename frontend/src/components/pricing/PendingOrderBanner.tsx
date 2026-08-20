@@ -79,12 +79,10 @@ function OrderRow({
   order,
   onChanged,
   paymentInfo,
-  initialSlipFile,
 }: {
   order: CreditOrder
   onChanged: () => void
   paymentInfo: PaymentInfo | null
-  initialSlipFile?: File | null
 }) {
   const { t } = useT()
   const isOnHold = order.status === 'on_hold'
@@ -182,9 +180,7 @@ function OrderRow({
         ) : null)}
 
       <div className="pending-order-actions">
-        {!isReviewing && (
-          <SlipUpload onUpload={handleSlip} uploading={uploading} initialFile={initialSlipFile} />
-        )}
+        {!isReviewing && <SlipUpload onUpload={handleSlip} uploading={uploading} />}
         <button
           type="button"
           className="btn btn-outline pending-order-cancel"
@@ -218,13 +214,10 @@ export default function PendingOrderBanner({
   orders,
   onChanged,
   paymentInfo,
-  initialSlipFile,
 }: {
   orders: CreditOrder[]
   onChanged: () => void
   paymentInfo: PaymentInfo | null
-  /** ponytail: tutorial figure only — see `SlipUpload`'s `initialFile`. */
-  initialSlipFile?: File | null
 }) {
   const { t } = useT()
   if (orders.length === 0) return null
@@ -255,13 +248,7 @@ export default function PendingOrderBanner({
       </div>
       <div className="pending-order-list">
         {orders.map(o => (
-          <OrderRow
-            key={o.id}
-            order={o}
-            onChanged={onChanged}
-            paymentInfo={paymentInfo}
-            initialSlipFile={initialSlipFile}
-          />
+          <OrderRow key={o.id} order={o} onChanged={onChanged} paymentInfo={paymentInfo} />
         ))}
       </div>
     </div>

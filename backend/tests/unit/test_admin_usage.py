@@ -290,19 +290,6 @@ class TestGetUsageTotals:
         result = await self._call(db)
         assert result["totals"]["submissions"] == 5
 
-    async def test_A2_rejects_date_range_over_92_days(self):
-        """The 92-day cap applies here too, not just to /usage-summary.
-
-        This endpoint aggregates the same partitioned tables as its sibling but had no
-        guard at all, so an unbounded `from` pruned no partition and summed the whole
-        retention window. Guarding one of a pair and not the other is the bug class this
-        covers — assert on both if a third sibling ever appears.
-        """
-        from app.exceptions import ValidationError
-
-        with pytest.raises(ValidationError):
-            await self._call(_make_db(), from_date=date(2020, 1, 1), to_date=date.today())
-
 
 # ── get_llm_usage ─────────────────────────────────────────────────────────────
 

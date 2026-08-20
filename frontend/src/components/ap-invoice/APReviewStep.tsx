@@ -323,15 +323,9 @@ export default function APReviewStep({ ctrl }: Props) {
               {t('ap.warnSelectVendor')}
             </span>
           )}
-          {/* Always primary — the button does not change colour with validity. It was
-              btn-success when invalid, which put the reassuring colour on the riskier
-              route; making it outline instead just produced two identical grey buttons
-              with no forward action. What the document's state actually needs is already
-              said three times over: the validation checklist above, the warnings beside
-              this button, and the label itself ("Proceed" vs "Proceed anyway"). */}
           <button
             type="button"
-            className={`btn ${!vendorMapped ? 'btn-disabled' : 'btn-primary'}`}
+            className={`btn ${!vendorMapped ? 'btn-disabled' : isValid ? 'btn-primary' : 'btn-success'}`}
             onClick={vendorMapped ? goToAccount : undefined}
             disabled={!vendorMapped}
           >

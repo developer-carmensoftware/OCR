@@ -177,17 +177,17 @@
 }
 
 .uc-ibullet-icon--emerald {
-  color: var(--emerald-text);
+  color: var(--emerald);
 }
 .uc-ibullet-icon--rose {
-  color: var(--rose-text);
+  color: var(--rose);
 }
 .uc-ibullet-icon--primary {
   color: var(--primary);
 }
 
 .uc-bullet-highlight {
-  color: var(--rose-text);
+  color: var(--rose);
   font-weight: 600;
 }
 

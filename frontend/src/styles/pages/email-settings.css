@@ -235,7 +235,7 @@
 }
 .email-setup__chip button:hover {
   background: var(--rose-light);
-  color: var(--rose-text);
+  color: var(--rose);
 }
 .email-setup__addrow {
   display: flex;

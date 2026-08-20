@@ -1,14 +1,14 @@
 # Web Framework
 fastapi==0.141.1
-uvicorn[standard]==0.52.3
+uvicorn[standard]==0.52.1
 python-multipart==0.0.32
 
 # Database
-sqlalchemy==2.0.52
+sqlalchemy==2.0.51
 asyncpg==0.31.0
 
 # LLM via OpenRouter (OpenAI-compatible SDK)
-openai==3.0.0
+openai==2.53.0
 
 # Image Processing
 Pillow==12.3.0
@@ -28,4 +28,4 @@ cryptography==50.0.0
 bcrypt==5.0.0
 
 # Observability
-sentry-sdk[fastapi]==2.68.0
+sentry-sdk[fastapi]==2.66.1

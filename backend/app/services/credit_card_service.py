@@ -610,10 +610,11 @@ async def finalize_extraction(
     carmen_user_id: str | None,
 ) -> ExtractedCreditCardData:
     """Duplicate check, persist CreditCard row, mark task COMPLETED. Returns updated extracted."""
-    # Resolve bank_code from the extracted fields when the caller passed none — the same
-    # detection the frontend uses — so the stored draft and the submit step agree. It is
-    # stored and it drives the normalizer below, but it is deliberately NOT part of the
-    # duplicate key: see the `has_submitted_doc` call.
+    # bank_code is unknown at extract time (the frontend never passes one), so the
+    # duplicate key would otherwise always compare NULL against a submitted row's
+    # real bank_code and never match. Resolve it from the extracted fields — the
+    # same detection the frontend uses — so the stored draft and the submit step
+    # carry a consistent bank_code.
     resolved_bank_code = bank_code or detect_bank_code(
         bank_company_name=extracted.bank_company_name,
         bank_name=extracted.bank_name,
@@ -631,27 +632,19 @@ async def finalize_extraction(
         # their own, so drop any summary / WHT row the LLM leaked into details.
         _strip_noncard_rows(extracted)
 
-    parsed_date = parse_doc_date(extracted.doc_date)
-
     async with async_session() as db:
         if extracted.doc_no:
-            # **bank_code is not in this key.** The two entry paths fill it from different
-            # authorities — the wizard from the user's dropdown, the email job from the
-            # matched rule (`email_ingest_service._run_document`) — so one disagreement
-            # over the same document produced two rows and both posted to Carmen.
-            # doc_date keeps the key specific enough that two banks reusing a doc_no do
-            # not collide: a false positive here refuses a real document as "already
-            # posted", which is worse than the duplicate draft this guard exists to stop.
             extracted.is_duplicate = await has_submitted_doc(
                 db,
                 CreditCard,
                 tenant_id=tenant_id,
+                bank_code=resolved_bank_code,
                 doc_no=extracted.doc_no,
-                doc_date=parsed_date,
             )
 
         if not extracted.is_duplicate:
             card_id = uuid.uuid4()
+            parsed_date = parse_doc_date(extracted.doc_date)
             card = CreditCard(
                 id=card_id,
                 task_id=uuid.UUID(task_id),

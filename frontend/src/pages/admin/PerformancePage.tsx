@@ -4,7 +4,7 @@ import DataTable, { type Column } from '../../components/admin/DataTable'
 import TenantSelector from '../../components/admin/TenantSelector'
 import { fetchPerformanceLogs } from '../../lib/api/adminClient'
 import { useT } from '../../i18n/LanguageContext'
-import { fmtDateTime } from '../../lib/date'
+import { fmtDateTime } from '../../lib/dates'
 
 interface PerfRow {
   id: string

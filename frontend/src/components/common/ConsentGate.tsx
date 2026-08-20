@@ -9,14 +9,14 @@ interface Props {
 
 export function ConsentGate({ children }: Props) {
   const { user } = useAuth()
-  const { showConsent, giveConsent } = useUserConsent(user)
+  const { hasConsented, giveConsent } = useUserConsent(user)
 
   return (
     <>
       {children}
       <UserConsentModal
-        key={showConsent ? 'open' : 'closed'}
-        show={showConsent}
+        key={!!user && !hasConsented ? 'open' : 'closed'}
+        show={!!user && !hasConsented}
         onConfirm={giveConsent}
       />
     </>

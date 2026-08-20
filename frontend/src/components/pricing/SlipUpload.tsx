@@ -10,19 +10,13 @@ const MAX_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 interface Props {
   onUpload: (file: File) => Promise<void>
   uploading: boolean
-  /**
-   * ponytail: starts in the chosen-file state instead of the drop zone. Exists so
-   * the purchase tutorial's figure can show the Confirm button — its canvas is
-   * `inert`, so nothing there can pick a file.
-   */
-  initialFile?: File | null
 }
 
 /** Payment-slip drop zone — reuses the signature upload-drop visual language. */
-export default function SlipUpload({ onUpload, uploading, initialFile }: Props) {
+export default function SlipUpload({ onUpload, uploading }: Props) {
   const { t } = useT()
   const inputRef = useRef<HTMLInputElement>(null)
-  const [file, setFile] = useState<File | null>(initialFile ?? null)
+  const [file, setFile] = useState<File | null>(null)
   const [dragging, setDragging] = useState(false)
 
   const accept = (f: File | undefined) => {

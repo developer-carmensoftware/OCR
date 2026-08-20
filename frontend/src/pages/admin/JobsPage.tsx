@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import DataTable, { type Column } from '../../components/admin/DataTable'
 import { fetchJobs } from '../../lib/api/adminClient'
 import { useT } from '../../i18n/LanguageContext'
-import { fmtDateTime } from '../../lib/date'
+import { fmtDateTime } from '../../lib/dates'
 
 interface JobRow {
   id: string

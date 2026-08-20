@@ -1,8 +1,5 @@
 <!DOCTYPE html>
-<!-- "en" to match readLang()'s default in i18n/LanguageContext, which then keeps this
-     attribute in sync with the toggle. It said "th" while the app defaulted to English,
-     so every screen reader started the page in the wrong voice. -->
-<html lang="en">
+<html lang="th">
 
 <head>
   <meta charset="UTF-8">
@@ -14,23 +11,9 @@
   <meta name="theme-color" content="#2c6fb3" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <!-- The ONLY font request in the app. This used to fetch DM Sans (variable, roman AND
-       italic, opsz 9..40, wght 100..1000) and DM Mono, neither of which the UI used, while
-       base.css separately @imported Inter + IBM Plex Mono + a SECOND copy of IBM Plex Sans
-       Thai — and the @import, being inside a stylesheet, could not start until that
-       stylesheet had parsed. Three faces, one request, no waterfall. Keep it that way:
-       adding an @import to any CSS file re-introduces the serialised round trip. -->
   <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap"
     rel="stylesheet">
-
-  <!-- Theme before first paint. The loader below is painted from parsed HTML, long before
-       any module script runs, so reading localStorage here is what stops a dark-mode user
-       seeing a white flash on every full load. -->
-  <script>
-    document.documentElement.dataset.theme =
-      localStorage.getItem('theme') === 'dark' ? 'dark' : 'light'
-  </script>
 
   <style>
     /* ── Initial loading UI (visible before React mounts) ── */
@@ -46,21 +29,6 @@
           oklch(0.4714 0.1794 258.7 / 0.08) 0%,
           transparent 100%);
       transition: opacity 0.25s ease, visibility 0.25s ease;
-    }
-
-    /* Literals, not tokens: base.css has not loaded yet at this point. These match
-       --body-bg-oklch, --text-3 and --primary under [data-theme='dark']. */
-    html[data-theme='dark'] #app-loader {
-      background-color: #2f2e2b;
-    }
-
-    html[data-theme='dark'] #app-loader-wordmark {
-      color: #8a8783;
-    }
-
-    html[data-theme='dark'] #app-loader-ring {
-      border-color: rgba(255, 255, 255, 0.14);
-      border-top-color: #6f9fd8;
     }
 
     #app-loader.done {
@@ -126,7 +94,7 @@
 
     /* Wordmark */
     #app-loader-wordmark {
-      font-family: 'Inter', -apple-system, sans-serif;
+      font-family: 'DM Sans', 'Inter', -apple-system, sans-serif;
       font-size: 15px;
       font-weight: 600;
       letter-spacing: 0.08em;

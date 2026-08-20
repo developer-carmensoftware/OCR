@@ -1,0 +1,7 @@
+/* Tailwind CSS utilities — no preflight (kept off to avoid conflicts with
+   the app's own vanilla CSS), but the theme layer is required so
+   palette/spacing-dependent utilities (e.g. text-gray-400) can resolve. */
+@import 'tailwindcss/theme' layer(theme);
+@import 'tailwindcss/utilities' layer(utilities);
+@source '../../index.html';
+@source '../**/*.{js,ts,jsx,tsx}';

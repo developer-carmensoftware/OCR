@@ -243,17 +243,15 @@ Active Carmen ERP user session.
 | `carmen_token_encrypted` | Fernet-encrypted; decrypted per request |
 | `carmen_user_id` | |
 | `carmen_uri` | Full origin URI of the Carmen instance |
-| `is_active` | False = revoked (explicit logout, admin revoke, or the nightly scrub) |
+| `is_active` | False = revoked (explicit logout, admin revoke, or the hourly scrub) |
 | `last_used_at` | Updated each request |
 
 **Session lifecycle:** the JWT's own `exp` ends the session. A Carmen 401 does **not** —
 Carmen's token is a separate 30-minute clock that expires mid-wizard on its own schedule,
 so an upstream 401 is not evidence our session is dead (`carmen_service._on_response`).
-**Cleanup:** `fn_purge_inactive_sessions()`, nightly pg_cron (19:00 UTC = 02:00 ICT) — blanks
-the credential and sets `is_active = false` at `created_at + SESSION_TTL_HOURS` (8 h; the
-interval is hardcoded in the migration and must be changed with the env var), deletes the row
-at 90 days (the row is kept as the only `carmen_user_id → username` mapping in the schema).
-It ran hourly at `created_at + 1h` until 2026-08-19, which logged active users out mid-work.
+**Cleanup:** `fn_purge_inactive_sessions()`, hourly pg_cron — blanks the credential and sets
+`is_active = false` at `created_at + 1h`, deletes the row at 90 days (the row is kept as the
+only `carmen_user_id → username` mapping in the schema).
 
 ---
 
@@ -598,7 +596,7 @@ Retention runs **inside Postgres** (pg_cron + pg_partman) — no Python retentio
 
 | Table | Action |
 |---|---|
-| `ocr_sessions` | Nightly pg_cron `fn_purge_inactive_sessions()` — credential scrubbed at `created_at + SESSION_TTL_HOURS` (8 h), row deleted at 90 days |
+| `ocr_sessions` | Hourly pg_cron `fn_purge_inactive_sessions()` — credential scrubbed at 1h, row deleted at 90 days |
 | Log tables (`llm_usage_logs`, `performance_logs`, `outbound_call_logs`) | pg_partman drops partitions older than 12 months (nightly `partman-maintain`) |
 | `audit_logs` | pg_partman, 24-month retention (compliance) |
 
@@ -626,7 +624,7 @@ All scheduled work runs **inside Postgres** via pg_cron (UTC). Two classes: pure
 | `daily-model-cost` | 01:22 daily | SQL `fn_build_daily_model_cost()` |
 | `monthly-summary` | 01:32, 1st of month | SQL `fn_build_monthly_summary()` |
 | `anomaly-detection` | 01:40 daily | pg_net → `POST /api/v1/admin/anomaly/run` |
-| `session-purge` | 19:00 daily (= 02:00 ICT) | SQL `fn_purge_inactive_sessions()` |
+| `session-purge` | hourly | SQL `fn_purge_inactive_sessions()` |
 | `partman-maintain` | 02:23 daily | `partman.run_maintenance_proc()` |
 | `pricing-sync` | every 8 h | pg_net → `POST /api/v1/admin/pricing/sync` |
 | `hold-expired-orders` | hourly | SQL `fn_hold_expired_orders()` — 14-day proforma window |

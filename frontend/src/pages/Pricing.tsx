@@ -1,6 +1,6 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { m, AnimatePresence } from 'framer-motion'
-import { X, MessageCircle, Phone, Mail, GraduationCap } from 'lucide-react'
+import { X, MessageCircle, Phone, Mail } from 'lucide-react'
 import AppHeader from '../components/common/AppHeader'
 import LanguageToggle from '../components/common/LanguageToggle'
 import { useT } from '../i18n/LanguageContext'
@@ -108,10 +108,6 @@ function ContactDialog({ onClose }: { onClose: () => void }) {
   )
 }
 
-// Six mock screens of the whole purchase flow — a lot of markup for something
-// most visits never open. Loaded when the Tutorial button is pressed.
-const PurchaseTutorial = lazy(() => import('../components/pricing/tutorial/PurchaseTutorial'))
-
 const containerVariants = {
   hidden: { opacity: 0 },
   show: {
@@ -154,7 +150,6 @@ export default function Pricing() {
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly')
   const [selectedPeriod, setSelectedPeriod] = useState<BillingPeriod>('monthly')
   const [showContact, setShowContact] = useState(false)
-  const [showTutorial, setShowTutorial] = useState(false)
   const [activeSub, setActiveSub] = useState<ActiveSubscription | null>(null)
   const enter = useEntrance('pricing')
   // Annual subscribers can only buy annual mid-term (monthly would forfeit prepaid value).
@@ -227,13 +222,6 @@ export default function Pricing() {
             }}
           />
         </div>
-        <button
-          type="button"
-          className="btn btn-sm btn-outline"
-          onClick={() => setShowTutorial(true)}
-        >
-          <GraduationCap size={14} /> {t('nav.tutorial')}
-        </button>
         <LanguageToggle />
       </AppHeader>
 
@@ -399,12 +387,6 @@ export default function Pricing() {
       <AnimatePresence>
         {showContact && <ContactDialog onClose={() => setShowContact(false)} />}
       </AnimatePresence>
-
-      {showTutorial && (
-        <Suspense fallback={null}>
-          <PurchaseTutorial open onClose={() => setShowTutorial(false)} />
-        </Suspense>
-      )}
     </div>
   )
 }

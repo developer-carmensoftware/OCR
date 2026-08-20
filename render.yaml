@@ -118,8 +118,6 @@ services:
         value: "5"
       # Code default is 0.5h; 8h matches .env.example and keeps a user from losing
       # in-progress wizard work to a mid-session expiry.
-      # Changing this needs a matching migration: fn_purge_inactive_sessions() scrubs
-      # the session (is_active=false) at created_at + this value, hardcoded in SQL.
       - key: SESSION_TTL_HOURS
         value: "8"
       - key: LOG_JSON

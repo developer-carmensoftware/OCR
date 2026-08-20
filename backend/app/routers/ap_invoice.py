@@ -18,7 +18,7 @@ from app.services.audit_service import AuditAction
 from app.services.carmen_service import CarmenAPIError, get_account_codes, get_departments
 from app.services.credit_service import consume_document, refund_document
 from app.services.file_service import file_service
-from app.services.module_gate import assert_module_enabled
+from app.services.quota_service import assert_module_enabled
 from app.services.task_service import create_task, mark_failed
 from app.utils.client_ip import get_client_ip
 from app.utils.date_parsing import parse_doc_date

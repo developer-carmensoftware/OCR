@@ -254,7 +254,7 @@ body:has(.admin-login-page) {
 .admin-logout-btn:hover {
   background: var(--rose-light);
   border-color: var(--rose-mid);
-  color: var(--rose-text);
+  color: var(--rose);
 }
 
 /* ─── MAIN ─────────────────────────────────────────────────────────────── */
@@ -413,15 +413,15 @@ body:has(.admin-login-page) {
 }
 .kpi-card--green .kpi-icon {
   background: var(--emerald-light);
-  color: var(--emerald-text);
+  color: var(--emerald);
 }
 .kpi-card--red .kpi-icon {
   background: var(--rose-light);
-  color: var(--rose-text);
+  color: var(--rose);
 }
 .kpi-card--yellow .kpi-icon {
   background: var(--amber-light);
-  color: var(--amber-text);
+  color: var(--amber);
 }
 
 .kpi-label {
@@ -440,11 +440,6 @@ body:has(.admin-login-page) {
   line-height: 1.05;
   letter-spacing: -0.025em;
   font-feature-settings: 'tnum';
-  /* The tile is 200px at its narrowest and this type is 1.6rem/800, so one
-     unbreakable token — an email address, a fingerprint — used to run straight out
-     past the card border. A value that long is a design mistake in the tile, but it
-     must not become a visual break in the page while someone fixes it. */
-  overflow-wrap: anywhere;
 }
 
 .kpi-trend {
@@ -452,17 +447,16 @@ body:has(.admin-login-page) {
   margin-left: 0.3rem;
 }
 .kpi-trend--up {
-  color: var(--emerald-text);
+  color: var(--emerald);
 }
 .kpi-trend--down {
-  color: var(--rose-text);
+  color: var(--rose);
 }
 
 .kpi-sub {
   font-size: 0.72rem;
   color: var(--text-4);
   margin-top: 0.35rem;
-  overflow-wrap: anywhere;
 }
 
 /* ─── TABLE ────────────────────────────────────────────────────────────── */
@@ -521,20 +515,6 @@ body:has(.admin-login-page) {
 }
 .admin-th-sort:hover {
   color: var(--primary);
-}
-
-.admin-th-sort:disabled {
-  cursor: default;
-}
-
-/* Fixed slot, always present. The arrow only renders on the sorted column, and
-   `.admin-table` is auto-layout, so letting it size the cell re-flowed every column
-   in the table on each sort click. */
-.sort-icon {
-  display: inline-block;
-  width: 0.85em;
-  margin-left: 0.25em;
-  text-align: center;
 }
 .admin-th.text-right {
   text-align: right;
@@ -726,15 +706,36 @@ body:has(.admin-login-page) {
 
 /* ─── BADGES & HELPERS ─────────────────────────────────────────────────── */
 
-/* .status-badge and its tones now live in components.css — this file is loaded
-   globally from index.css, so defining a shared component's base rule here made
-   the whole app's badges depend on import order. */
+.status-badge {
+  display: inline-block;
+  padding: 0.18rem 0.65rem;
+  border-radius: 100px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.status-badge.ok {
+  background: var(--emerald-light);
+  color: var(--emerald);
+  border: 1px solid var(--emerald-mid);
+}
+.status-badge.error {
+  background: var(--rose-light);
+  color: var(--destructive);
+  border: 1px solid var(--rose-mid);
+}
+.status-badge.warn {
+  background: var(--amber-light);
+  color: var(--amber-text);
+  border: 1px solid var(--amber-mid);
+}
 
 .text-red {
-  color: var(--rose-text);
+  color: var(--rose);
 }
 .text-yellow {
-  color: var(--amber-text);
+  color: var(--amber);
 }
 
 .admin-mono {
@@ -767,12 +768,12 @@ body:has(.admin-login-page) {
 .admin-btn-danger-sm {
   border: 1px solid var(--rose-mid);
   background: var(--card-bg);
-  color: var(--rose-text);
+  color: var(--rose);
 }
 .admin-btn-danger-sm:hover {
-  background: var(--rose-fill);
+  background: var(--rose);
   color: white;
-  border-color: var(--rose-fill);
+  border-color: var(--rose);
 }
 
 .alert-resolve-btn {
@@ -847,7 +848,7 @@ body:has(.admin-login-page) {
   color: oklch(0.42 0.13 75);
 }
 [data-theme='dark'] .alert-severity--critical {
-  color: var(--rose-text);
+  color: var(--rose);
 }
 [data-theme='dark'] .alert-severity--warn {
   color: var(--amber-text);
@@ -1480,7 +1481,7 @@ body:has(.admin-login-page) {
   color: oklch(0.45 0.18 24.11);
 }
 [data-theme='dark'] .tenant-chip.danger {
-  color: var(--rose-text);
+  color: var(--rose);
 }
 
 .tenant-quota-list {
@@ -1847,38 +1848,14 @@ body:has(.admin-login-page) {
 [data-theme='dark'] .ui-switch {
   background: var(--gray-300);
 }
-/* A cell whose content is one long unbreakable token (a bank's 60-character
-   filename). `.admin-td` is nowrap, so without a cap one of these sets the width of
-   the entire table and the horizontal scrollbar becomes permanent. The full value
-   stays in `title` and in the expanded row. */
-.admin-cell-clip {
-  display: inline-block;
-  max-width: 22rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  vertical-align: bottom;
-}
-.admin-cell-clip--sm {
-  max-width: 13rem;
+[data-theme='dark'] .status-badge.neutral {
+  background: var(--gray-100);
+  color: var(--text-3);
+  border: 1px solid var(--border);
 }
 
-/* Expanded row detail on #/admin/email — the fields too long for a cell (the error
-   sentence, the RFC-822 Message-ID) without pushing the table into horizontal scroll.
-   A definition list rather than a nested table: these are labelled values, not rows. */
-.admin-detail-list {
-  display: grid;
-  grid-template-columns: minmax(7rem, max-content) 1fr;
-  gap: 0.35rem var(--space-4);
-  margin: 0;
-  padding: var(--space-3) var(--space-4);
-  font-size: 0.8rem;
-}
-.admin-detail-list dt {
+.status-badge.neutral {
+  background: var(--gray-100);
   color: var(--text-3);
-  font-weight: 600;
-}
-.admin-detail-list dd {
-  margin: 0;
-  color: var(--text-2);
-  overflow-wrap: anywhere;
+  border: 1px solid var(--border-hi);
 }

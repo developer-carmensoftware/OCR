@@ -14,7 +14,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import secrets
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, select
@@ -109,44 +109,18 @@ async def resolve_by_tag(db: AsyncSession, tag: str) -> EmailIngestSettings | No
     running the vision model first. Everything downstream — the ledger row, the
     document credit, the `llm_usage_logs` row — therefore has a real `tenant_id`.
 
-    **Identity only — this does not decide whether we may act.** `enabled` is checked by
-    the caller (`email_ingest_service._process_message`), together with `is_entitled`,
-    because "no such tag" and "known tag, switched off" need opposite answers: the first
-    is mail nobody can be told about and is dropped, the second is a pause and the mail is
-    handed back unread. A `None` for both cannot express that difference. Filtering here
-    would also be the wrong shape for the same reason `record_gmail_code` does not.
+    Enabled rows only: a switched-off BU cannot be routed to. A lapsed package is a
+    separate gate (`is_entitled`), because ending a subscription does not rewrite
+    settings.
     """
     return (
-        await db.execute(select(EmailIngestSettings).where(EmailIngestSettings.ingest_tag == tag))
-    ).scalar_one_or_none()
-
-
-async def tags_awaiting_confirmation(db: AsyncSession, hours: int) -> set[str]:
-    """Tags of BUs plausibly mid-setup right now — the gate on the 1-minute sweep.
-
-    `gmail_confirmed_at is null` on its own is true forever for every BU that never sets
-    up an auto-forward, which would mean an IMAP login every minute for the life of the
-    deployment. The `updated_at` window is what makes the sweep quiescent: a BU enters it
-    by saving settings and leaves it either by confirming or by going quiet, so the steady
-    state is an empty set and no mailbox connection at all.
-
-    A customer who saves settings today and gets to Gmail next week falls out of the
-    window; their confirmation is picked up by the 10-minute document poll instead, which
-    handles the same branch. Losing a minute of latency in that case is the price of not
-    holding a mailbox connection open forever for it.
-
-    Not filtered on `enabled` — same reason `record_gmail_code` is not: a BU redoing the
-    Gmail handshake with the feature switched off still needs the forward to go live.
-    """
-    since = datetime.now(UTC) - timedelta(hours=hours)
-    rows = await db.execute(
-        select(EmailIngestSettings.ingest_tag).where(
-            EmailIngestSettings.ingest_tag.is_not(None),
-            EmailIngestSettings.gmail_confirmed_at.is_(None),
-            EmailIngestSettings.updated_at > since,
+        await db.execute(
+            select(EmailIngestSettings).where(
+                EmailIngestSettings.ingest_tag == tag,
+                EmailIngestSettings.enabled.is_(True),
+            )
         )
-    )
-    return {tag for tag in rows.scalars() if tag}
+    ).scalar_one_or_none()
 
 
 async def record_gmail_code(db: AsyncSession, tag: str, code: str) -> None:
@@ -543,12 +517,6 @@ async def save_settings(db: AsyncSession, tenant: Tenant, payload: Any) -> Email
         row.ingest_tag = await _fresh_tag(db)
 
     existing = {(r.get("bank_code") or ""): r for r in (row.rules or [])}
-    # The off→on edge only. Mail older than this is skipped rather than replayed (see
-    # `_process_message`), so re-saving unrelated settings while already on must not move
-    # it — that would discard mail the poll simply had not reached yet. A fresh row is
-    # `enabled=False`, so the first-ever enable stamps it too.
-    if payload.enabled and not row.enabled:
-        row.enabled_at = datetime.now(UTC)
     row.enabled = bool(payload.enabled)
     row.owner_emails = owner_emails
     row.tax_ids = tax_ids

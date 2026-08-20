@@ -34,9 +34,11 @@ known-first-party = ["app"]
 quote-style = "double"
 indent-style = "space"
 
-# ── coverage ─────────────────────────────────────────────────────────────────
-# pytest config lives in pytest.ini, NOT here — pytest.ini takes precedence over
-# pyproject, so a second copy in this file would be silently dead config.
+# ── pytest / coverage ────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
 [tool.coverage.run]
 source = ["app"]
 omit = ["app/migrations/*", "*/scratch/*"]
@@ -59,10 +61,9 @@ check_untyped_defs = false
 
 # Strict only on business logic layers — expand this list one module at a time.
 # Target: full app/ coverage by end of v1.x.
-# This list is the ONLY place the strict set is declared — CI runs plain `mypy app/`
-# and lets these overrides decide. Don't re-list modules in ci.yml.
 [[tool.mypy.overrides]]
 module = [
+    "app.tools.*",
     "app.services.ap_invoice_postprocess_service",
     "app.services.usage_service",
     "app.services.audit_service",

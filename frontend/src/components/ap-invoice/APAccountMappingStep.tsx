@@ -13,7 +13,6 @@ import {
 } from 'lucide-react'
 import AccountMappingTable from './AccountMappingTable'
 import { useT } from '../../i18n/LanguageContext'
-import SwapLabel from '../common/SwapLabel'
 import type { APLineItem } from '../../hooks/ap-invoice/useAPExtraction'
 import type { Vendor } from '../../hooks/ap-invoice/useAPVendor'
 import type { APInvoiceHeader } from '../../constants/apInvoice'
@@ -283,18 +282,13 @@ export default function APAccountMappingStep({
               <AlertTriangle size={13} /> {t('ap.mappingWarning')}
             </span>
           )}
-          {/* btn-primary, not btn-success: this posts to Carmen, it does not confirm that
-              anything succeeded. The credit-card wizard's equivalent submit is already
-              primary — same action, same colour. Green is reserved for genuinely
-              post-completion actions now (DESIGN.md §5). */}
           <button
             type="button"
-            className="btn btn-primary"
+            className="btn btn-success"
             onClick={onGenerate}
             disabled={!allMapped || isSubmitting}
           >
-            <Save size={14} />{' '}
-            <SwapLabel active={isSubmitting} idle={t('ap.generateInv')} busy={t('ap.sending')} />
+            <Save size={14} /> {isSubmitting ? t('ap.sending') : t('ap.generateInv')}
           </button>
         </div>
       </div>

@@ -35,9 +35,11 @@ export default function UploadSection({
     }
   }
 
-  // No JS truncation: .upload-label ellipsises in CSS, which respects grapheme
-  // boundaries (slice() cut Thai clusters in half) and adapts to the actual width.
-  const displayLabel = fileName || t('cc.dropHint')
+  const displayLabel = fileName
+    ? fileName.length > 32
+      ? fileName.slice(0, 29) + '…'
+      : fileName
+    : t('cc.dropHint')
 
   return (
     <div style={{ maxWidth: 560, margin: '0 auto' }}>
@@ -84,9 +86,7 @@ export default function UploadSection({
             <div className="upload-icon">
               <UploadCloud size={40} />
             </div>
-            <div className="upload-label" title={fileName || undefined}>
-              {displayLabel}
-            </div>
+            <div className="upload-label">{displayLabel}</div>
             <div className="upload-hint">{t('cc.uploadSupports')}</div>
             <span
               className="btn btn-primary"

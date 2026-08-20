@@ -94,10 +94,10 @@ export default function PaymentTypeModal({
   }
 
   return ReactDOM.createPortal(
-    <div className="pm-overlay">
+    <div className="pm-overlay mapping-modal">
       <button
         type="button"
-        className="pm-backdrop"
+        className="pm-backdrop mapping-modal-overlay"
         aria-label="Close payment type modal"
         onClick={cancelAmountSelection}
         onKeyDown={e => {
@@ -107,8 +107,8 @@ export default function PaymentTypeModal({
           }
         }}
       />
-      <div className="pm-dialog" onClick={e => e.stopPropagation()}>
-        <div className="pm-header">
+      <div className="pm-dialog mapping-modal-content" onClick={e => e.stopPropagation()}>
+        <div className="pm-header mapping-modal-header">
           <div className="pm-header-top">
             <span>Map Payment Types</span>
             {activeScan.paymentTypes.size > 0 && (
@@ -131,7 +131,7 @@ export default function PaymentTypeModal({
           </div>
         </div>
 
-        <div className="pm-body table-wrapper">
+        <div className="pm-body mapping-modal-body table-wrapper">
           <div className="pm-inner">
             {attemptedOk && illegalTypes.length > 0 && (
               <div
@@ -384,11 +384,11 @@ export default function PaymentTypeModal({
           </div>
         </div>
 
-        <div className="pm-footer">
-          <button type="button" className="btn btn-outline" onClick={cancelAmountSelection}>
+        <div className="pm-footer mapping-modal-footer">
+          <button type="button" className="btn-cancel" onClick={cancelAmountSelection}>
             Cancel
           </button>
-          <button type="button" className="btn btn-confirm" onClick={handleOk}>
+          <button type="button" className="btn-confirm" onClick={handleOk}>
             OK
           </button>
         </div>

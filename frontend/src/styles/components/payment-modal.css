@@ -110,25 +110,15 @@ button.pm-backdrop {
 
 .pm-inner {
   min-width: 700px;
-
-  /* One template for the header and every row, so they cannot drift apart.
-     The last track is fixed, not `auto`: it holds the accept/reject pair, which renders
-     only on rows that have a suggestion. As `auto` it was 0 on the header and on rows
-     without one, so the Dept/Account columns landed at three different widths — and
-     acting on a suggestion resized that row under the cursor.
-     4.75rem = two 35px icon buttons (13px glyph + 10px padding + 1px border) + 0.3rem gap. */
-  --pm-cols: minmax(120px, 1fr) 1fr 1fr 4.75rem;
 }
 
 .pm-grid-header {
   display: grid;
-  grid-template-columns: var(--pm-cols);
+  grid-template-columns: minmax(120px, 1fr) 1fr 1fr auto;
   gap: 1rem;
   font-weight: bold;
   margin-bottom: 1rem;
-  /* matches .pm-row's padding + state border so labels sit over their own column */
-  padding: 0.4rem;
-  border: 1px solid transparent;
+  padding-right: 0.5rem;
 }
 
 .pm-section-label {
@@ -143,6 +133,15 @@ button.pm-backdrop {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.pm-divider {
+  margin: 1.5rem 0 1rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--gray-400);
 }
 
 .pm-additional-toggle {
@@ -181,7 +180,7 @@ button.pm-backdrop {
 
 .pm-row {
   display: grid;
-  grid-template-columns: var(--pm-cols);
+  grid-template-columns: minmax(120px, 1fr) 1fr 1fr auto;
   gap: 1rem;
   margin-bottom: 0.5rem;
   align-items: center;
@@ -227,12 +226,12 @@ button.pm-backdrop {
 }
 
 .pm-type-badge--pending {
-  background: var(--rose-fill);
+  background: var(--rose);
   color: white;
 }
 
 .pm-type-badge--ok {
-  background: var(--emerald-fill);
+  background: var(--emerald);
   color: white;
 }
 
@@ -242,11 +241,17 @@ button.pm-backdrop {
   border: 1px solid var(--btn-ok-border);
 }
 
+.pm-type-badge--scan {
+  background: var(--primary-light);
+  color: var(--primary);
+  border: 1px solid var(--primary-mid);
+}
+
 .pm-remove-btn {
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--rose-text);
+  color: var(--rose);
   font-size: 0.9rem;
   padding: 0.2rem;
   line-height: 1;
@@ -285,6 +290,53 @@ button.pm-backdrop {
   align-items: center;
   gap: 0.3rem;
   font-weight: 600;
+}
+
+.pm-add-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 1fr 1fr auto;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--border);
+  align-items: center;
+}
+
+.pm-add-input-wrap {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.pm-add-input {
+  flex: 1;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-family: 'DM Mono', monospace;
+  text-transform: uppercase;
+  outline: none;
+}
+
+.pm-add-btn {
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.4rem 0.7rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.pm-add-hint {
+  font-size: 0.8rem;
+  color: var(--text-4);
+  grid-column: span 2;
 }
 
 .pm-footer {

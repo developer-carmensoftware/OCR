@@ -188,7 +188,7 @@ body.has-maint-banner .app-header {
   width: 3.5rem;
   height: 3.5rem;
   border-radius: 999px;
-  color: var(--amber-text);
+  color: var(--amber);
   background: oklch(0.76 0.13 78 / 0.14);
   animation: maint-pulse 2.6s ease-in-out infinite;
 }
