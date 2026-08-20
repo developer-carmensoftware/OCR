@@ -421,7 +421,7 @@
 
 .plan-icon--standard {
   background: var(--teal-light);
-  color: var(--teal);
+  color: var(--teal-text);
 }
 
 .plan-icon--pro {
@@ -501,7 +501,7 @@
 }
 
 .plan-save {
-  color: var(--teal);
+  color: var(--teal-text);
   font-weight: 700;
 }
 
@@ -524,7 +524,7 @@
   padding: 0.05rem 0.4rem;
   border-radius: 99px;
   background: color-mix(in srgb, var(--teal) 16%, transparent);
-  color: var(--teal);
+  color: var(--teal-text);
   font-size: 0.72rem;
   font-weight: 700;
   line-height: 1.5;
@@ -1326,7 +1326,7 @@
   font-weight: 700;
   letter-spacing: 0.03em;
   white-space: nowrap;
-  color: var(--emerald);
+  color: var(--emerald-text);
   background: var(--emerald-light);
   border-radius: var(--radius-pill);
 }
@@ -1408,7 +1408,7 @@
 .pricing-error {
   padding: 1.5rem;
   text-align: center;
-  color: var(--rose);
+  color: var(--rose-text);
   background: var(--rose-light);
   border: 1px solid var(--rose-mid);
   border-radius: var(--radius-md);
@@ -1470,7 +1470,7 @@
   padding: 0.22rem 0.6rem;
   font-size: 0.7rem;
   font-weight: 600;
-  color: var(--emerald);
+  color: var(--emerald-text);
   background: var(--emerald-light);
   border-radius: var(--radius-pill);
 }
@@ -1516,7 +1516,7 @@
   font-size: 0.9rem;
   color: var(--text);
   background: var(--card-bg);
-  border: 1.5px solid var(--border);
+  border: 1.5px solid var(--border-input);
   border-radius: var(--radius-sm);
   transition:
     border-color var(--dur-base) var(--ease),
@@ -1723,7 +1723,7 @@
 }
 
 .slip-chosen-icon {
-  color: var(--emerald);
+  color: var(--emerald-text);
   flex-shrink: 0;
 }
 
@@ -1749,7 +1749,7 @@
 
 .slip-chosen-clear:hover {
   background: var(--card-bg);
-  color: var(--rose);
+  color: var(--rose-text);
 }
 
 .slip-submit {
@@ -1790,7 +1790,7 @@
   margin: 0 auto 1.25rem;
   border-radius: var(--radius-pill);
   background: var(--emerald-light);
-  color: var(--emerald);
+  color: var(--emerald-text);
 }
 
 .checkout-done-title {
@@ -2535,7 +2535,7 @@
 }
 
 .order-rejected-note {
-  color: var(--rose);
+  color: var(--rose-text);
   margin-bottom: 0.85rem;
 }
 

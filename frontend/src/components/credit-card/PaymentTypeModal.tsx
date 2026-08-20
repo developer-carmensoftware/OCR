@@ -385,7 +385,7 @@ export default function PaymentTypeModal({
         </div>
 
         <div className="pm-footer">
-          <button type="button" className="btn-cancel" onClick={cancelAmountSelection}>
+          <button type="button" className="btn btn-outline" onClick={cancelAmountSelection}>
             Cancel
           </button>
           <button type="button" className="btn btn-confirm" onClick={handleOk}>

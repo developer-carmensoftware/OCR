@@ -298,10 +298,10 @@ export default function AccountingReview({
         </div>
 
         <div className="form-actions">
-          <button type="button" className="btn-cancel" onClick={onBack}>
+          <button type="button" className="btn btn-outline" onClick={onBack}>
             <ArrowLeft size={14} /> {t('cc.back')}
           </button>
-          <button type="button" className="btn-cancel cc-mr-auto" onClick={onGoMapping}>
+          <button type="button" className="btn btn-outline cc-mr-auto" onClick={onGoMapping}>
             <Settings size={14} /> {t('cc.mappingSettings')}
           </button>
           <button
@@ -316,7 +316,7 @@ export default function AccountingReview({
           <div className="form-actions-sep" />
           <button
             type="button"
-            className="btn-submit"
+            className="btn btn-primary"
             disabled={rows.length === 0 || submitting || isImbalanced}
             onClick={() => (hasMissing ? setWarningModal(true) : onSubmit(rows))}
           >

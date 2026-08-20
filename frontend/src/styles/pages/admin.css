@@ -254,7 +254,7 @@ body:has(.admin-login-page) {
 .admin-logout-btn:hover {
   background: var(--rose-light);
   border-color: var(--rose-mid);
-  color: var(--rose);
+  color: var(--rose-text);
 }
 
 /* ─── MAIN ─────────────────────────────────────────────────────────────── */
@@ -413,15 +413,15 @@ body:has(.admin-login-page) {
 }
 .kpi-card--green .kpi-icon {
   background: var(--emerald-light);
-  color: var(--emerald);
+  color: var(--emerald-text);
 }
 .kpi-card--red .kpi-icon {
   background: var(--rose-light);
-  color: var(--rose);
+  color: var(--rose-text);
 }
 .kpi-card--yellow .kpi-icon {
   background: var(--amber-light);
-  color: var(--amber);
+  color: var(--amber-text);
 }
 
 .kpi-label {
@@ -452,10 +452,10 @@ body:has(.admin-login-page) {
   margin-left: 0.3rem;
 }
 .kpi-trend--up {
-  color: var(--emerald);
+  color: var(--emerald-text);
 }
 .kpi-trend--down {
-  color: var(--rose);
+  color: var(--rose-text);
 }
 
 .kpi-sub {
@@ -731,10 +731,10 @@ body:has(.admin-login-page) {
    the whole app's badges depend on import order. */
 
 .text-red {
-  color: var(--rose);
+  color: var(--rose-text);
 }
 .text-yellow {
-  color: var(--amber);
+  color: var(--amber-text);
 }
 
 .admin-mono {
@@ -767,12 +767,12 @@ body:has(.admin-login-page) {
 .admin-btn-danger-sm {
   border: 1px solid var(--rose-mid);
   background: var(--card-bg);
-  color: var(--rose);
+  color: var(--rose-text);
 }
 .admin-btn-danger-sm:hover {
-  background: var(--rose);
+  background: var(--rose-fill);
   color: white;
-  border-color: var(--rose);
+  border-color: var(--rose-fill);
 }
 
 .alert-resolve-btn {
@@ -847,7 +847,7 @@ body:has(.admin-login-page) {
   color: oklch(0.42 0.13 75);
 }
 [data-theme='dark'] .alert-severity--critical {
-  color: var(--rose);
+  color: var(--rose-text);
 }
 [data-theme='dark'] .alert-severity--warn {
   color: var(--amber-text);
@@ -1480,7 +1480,7 @@ body:has(.admin-login-page) {
   color: oklch(0.45 0.18 24.11);
 }
 [data-theme='dark'] .tenant-chip.danger {
-  color: var(--rose);
+  color: var(--rose-text);
 }
 
 .tenant-quota-list {

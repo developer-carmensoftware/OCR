@@ -34,6 +34,12 @@ interface Props {
   errorNonce?: number
   /** Extra body content between the message and the actions (read-only detail, a list). */
   children?: ReactNode
+  /**
+   * Colour of the confirm button. `'danger'` for confirmations that destroy or abandon
+   * work — the label still says what happens, this only stops the destructive path from
+   * wearing the same blue as every ordinary OK.
+   */
+  confirmVariant?: 'confirm' | 'danger'
 }
 
 export default function CustomModal({
@@ -54,6 +60,7 @@ export default function CustomModal({
   busy = false,
   errorNonce = 0,
   children,
+  confirmVariant = 'confirm',
 }: Props) {
   const confirmRef = useRef<HTMLButtonElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
@@ -110,6 +117,27 @@ export default function CustomModal({
     if (inputErrored) setInputErrored(false)
     onInputChange?.(v)
   }
+
+  /**
+   * Open/close side effects. Deliberately keyed on `show` ALONE: the keydown effect below
+   * re-subscribes whenever `busy` or a handler identity changes, and if focus restore
+   * lived there, flipping `busy` mid-submit would run the cleanup and yank focus back to
+   * the button behind the still-open dialog.
+   */
+  useEffect(() => {
+    if (!show) return
+    // Whatever had focus when the dialog opened gets it back when the dialog closes.
+    // Without this, dismissing a modal drops focus to <body> and a keyboard user
+    // restarts their tab journey from the top of the page.
+    const returnFocusTo = document.activeElement as HTMLElement | null
+    // Background scroll behind a fixed overlay reads as the dialog itself drifting.
+    const priorOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = priorOverflow
+      returnFocusTo?.focus?.()
+    }
+  }, [show])
 
   useEffect(() => {
     if (!show) return
@@ -265,7 +293,7 @@ export default function CustomModal({
               <button
                 ref={confirmRef}
                 type="button"
-                className="btn btn-confirm"
+                className={`btn btn-${confirmVariant}`}
                 onClick={onConfirm}
                 disabled={busy}
               >

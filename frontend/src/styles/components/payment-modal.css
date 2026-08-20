@@ -227,12 +227,12 @@ button.pm-backdrop {
 }
 
 .pm-type-badge--pending {
-  background: var(--rose);
+  background: var(--rose-fill);
   color: white;
 }
 
 .pm-type-badge--ok {
-  background: var(--emerald);
+  background: var(--emerald-fill);
   color: white;
 }
 
@@ -246,7 +246,7 @@ button.pm-backdrop {
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--rose);
+  color: var(--rose-text);
   font-size: 0.9rem;
   padding: 0.2rem;
   line-height: 1;

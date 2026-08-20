@@ -40,7 +40,9 @@
   border-radius: var(--radius-pill);
   font-size: 0.8rem;
   font-weight: 500;
-  color: var(--text-4);
+  /* "What step am I on, what is next" is core state (DESIGN.md principle 5), so the
+     upcoming steps sit on --text-3 rather than the --text-4 decorative tier. */
+  color: var(--text-3);
   transition:
     color var(--dur-base) var(--ease),
     background-color var(--dur-base) var(--ease);
@@ -56,7 +58,7 @@
 }
 
 .step.done {
-  color: var(--emerald);
+  color: var(--emerald-text);
   font-weight: 500;
 }
 
@@ -292,6 +294,14 @@
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--text-3);
+  /* Truncation is the browser's job. The JS slice() this replaced counted UTF-16 units,
+     so it split Thai grapheme clusters mid-character; CSS breaks on grapheme boundaries.
+     The full name stays reachable via the title attribute. */
+  max-width: 100%;
+  padding: 0 1rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .upload-drop:hover .upload-label {
@@ -300,7 +310,9 @@
 
 .upload-hint {
   font-size: 0.72rem;
-  color: var(--text-4);
+  /* --text-3, not --text-4: at 0.72rem this is the only place the supported file types
+     are stated, so it has to clear AA rather than the large-text floor. */
+  color: var(--text-3);
   margin-top: 0.3rem;
   font-family: 'IBM Plex Mono', monospace;
 }
@@ -334,13 +346,13 @@
 .how-step-num.gold {
   background: var(--amber-light);
   border: 1px solid var(--amber-mid);
-  color: var(--amber);
+  color: var(--amber-text);
 }
 
 .how-step-num.teal {
   background: var(--teal-light);
   border: 1px solid var(--teal-mid);
-  color: var(--teal);
+  color: var(--teal-text);
 }
 
 .how-to-item span {
@@ -439,7 +451,7 @@
   gap: 0.3rem;
   font-size: 0.72rem;
   font-weight: 700;
-  color: var(--rose);
+  color: var(--rose-text);
   background: var(--rose-light);
   border: 1px solid var(--rose-mid);
   border-radius: var(--radius-sm);
@@ -707,7 +719,7 @@
 .form-field input {
   background: transparent;
   border: none;
-  border-bottom: 1.5px solid var(--border);
+  border-bottom: 1.5px solid var(--border-input);
   border-radius: 0;
   padding: 0.45rem 0;
   font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
@@ -724,7 +736,7 @@
 }
 
 .form-field input::placeholder {
-  color: var(--text-4);
+  color: var(--text-3);
 }
 
 /* ─── DATA TABLE ─── */
@@ -810,7 +822,7 @@ input[type='text'].detail-input {
 }
 
 input[type='text'].detail-input:hover {
-  border-color: var(--border);
+  border-color: var(--border-input);
   background: var(--gray-100);
 }
 
@@ -830,35 +842,11 @@ input[type='text'].detail-input:focus {
   background: var(--gray-50);
 }
 
-.btn-cancel {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.65rem 1.25rem;
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  color: var(--text-3);
-  font-size: 0.85rem;
-  font-weight: 500;
-  box-shadow: var(--shadow-xs);
-  transition:
-    background-color var(--dur-fast) var(--ease),
-    color var(--dur-fast) var(--ease),
-    border-color var(--dur-fast) var(--ease),
-    transform var(--dur-fast) var(--ease);
-  cursor: pointer;
-}
-
-.btn-cancel:hover {
-  border-color: var(--border-hi);
-  color: var(--text-2);
-  background: var(--gray-50);
-}
-
-.btn-cancel:active {
-  transform: scale(0.97);
-}
+/* `.btn-cancel` and `.btn-submit` used to live here: a second, parallel button vocabulary
+   that only the credit-card components used, so the same footer role rendered three
+   different ways across two sibling wizards. They are gone — every call site is on the
+   generic `.btn` + variant system below. Do not reintroduce a standalone button class;
+   add a variant. */
 
 /* Paired with components/common/SwapLabel.tsx: both labels occupy the same grid cell, so
    the control keeps the width of the wider one and does not resize when the label swaps
@@ -874,43 +862,6 @@ input[type='text'].detail-input:focus {
 
 .swap-label > [aria-hidden='true'] {
   visibility: hidden;
-}
-
-.btn-submit {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.65rem 1.5rem;
-  background: var(--primary);
-  border: 1px solid var(--primary-dark);
-  border-radius: var(--radius-md);
-  color: white;
-  font-size: 0.85rem;
-  font-weight: 600;
-  box-shadow: var(--shadow-sm);
-  transition:
-    background-color var(--dur-fast) var(--ease),
-    box-shadow var(--dur-base) var(--ease),
-    transform var(--dur-fast) var(--ease);
-  cursor: pointer;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .btn-submit:hover {
-    background: var(--primary-hover);
-    box-shadow: var(--shadow-sm);
-  }
-}
-
-.btn-submit:active {
-  transform: scale(0.97);
-}
-
-.btn-submit:disabled {
-  opacity: 0.42;
-  cursor: not-allowed;
-  transform: none !important;
-  box-shadow: none !important;
 }
 
 /* Generic btn system */
@@ -942,10 +893,15 @@ input[type='text'].detail-input:focus {
   transform: scale(0.97);
 }
 
+/* 0.45, not 0.65: the retired .btn-submit disabled at 0.42 and DESIGN.md §6 documents
+   0.42–0.55 for the whole system. At 0.65 a disabled submit reads as still pressable,
+   which on the button that posts to the GL is the wrong impression. */
 .btn:disabled {
-  opacity: 0.65;
-  cursor: default;
+  opacity: 0.45;
+  cursor: not-allowed;
   pointer-events: none;
+  transform: none !important;
+  box-shadow: none !important;
 }
 
 .btn-sm {
@@ -1000,16 +956,20 @@ input[type='text'].detail-input:focus {
   transform: scale(0.97);
 }
 
+/* Reserved for post-COMPLETION actions ("View JV in Carmen"), never for the submit that
+   does the posting — see DESIGN.md §5. Fill comes from --emerald-fill, not --emerald:
+   the hover used to be --emerald-mid, a pale mint, which put the white label at 1.41:1. */
 .btn-success {
-  background: var(--emerald);
+  background: var(--emerald-fill);
   color: white;
-  border: 1px solid var(--emerald-mid);
+  border: 1px solid var(--emerald-fill);
   box-shadow: var(--shadow-sm);
 }
 
 @media (hover: hover) and (pointer: fine) {
   .btn-success:hover {
-    background: var(--emerald-mid);
+    background: var(--emerald-fill-hover);
+    border-color: var(--emerald-fill-hover);
     box-shadow: var(--shadow-sm);
   }
 }
@@ -1040,12 +1000,12 @@ input[type='text'].detail-input:focus {
   align-items: center;
   gap: 0.45rem;
   padding: 0.65rem 1.4rem;
-  background: var(--rose);
+  background: var(--rose-fill);
   border-radius: var(--radius-md);
   color: white;
   font-size: 0.85rem;
   font-weight: 600;
-  box-shadow: 0 2px 10px oklch(from var(--rose) l c h / 0.2);
+  box-shadow: 0 2px 10px oklch(from var(--rose-fill) l c h / 0.2);
   transition:
     background-color var(--dur-fast) var(--ease),
     box-shadow var(--dur-fast) var(--ease),
@@ -1055,7 +1015,7 @@ input[type='text'].detail-input:focus {
 
 @media (hover: hover) and (pointer: fine) {
   .btn-overwrite:hover {
-    background: var(--rose-hover);
+    background: var(--rose-fill-hover);
     transform: translateY(-1px);
   }
 }
@@ -1072,7 +1032,7 @@ input[type='text'].detail-input:focus {
   background: var(--rose-light);
   border: 1px solid var(--rose-mid);
   border-radius: var(--radius-md);
-  color: var(--rose);
+  color: var(--rose-text);
   font-size: 0.85rem;
   font-weight: 500;
   transition:
@@ -1086,9 +1046,9 @@ input[type='text'].detail-input:focus {
 
 @media (hover: hover) and (pointer: fine) {
   .btn-danger:hover {
-    background: var(--rose);
+    background: var(--rose-fill);
     color: white;
-    border-color: var(--rose);
+    border-color: var(--rose-fill);
     transform: translateY(-1px);
   }
 }
@@ -1186,7 +1146,7 @@ input[type='text'].detail-input:focus {
 }
 
 .toast.success i {
-  color: var(--emerald);
+  color: var(--emerald-text);
 }
 
 .toast.error {
@@ -1195,7 +1155,7 @@ input[type='text'].detail-input:focus {
 }
 
 .toast.error i {
-  color: var(--rose);
+  color: var(--rose-text);
 }
 
 .toast.info {
@@ -1213,7 +1173,7 @@ input[type='text'].detail-input:focus {
 }
 
 .toast.warning i {
-  color: var(--amber);
+  color: var(--amber-text);
 }
 
 /* ─── MODAL ─── */
@@ -1243,19 +1203,19 @@ input[type='text'].detail-input:focus {
 .modal-icon.error {
   background: var(--rose-light);
   border: 1px solid var(--rose-mid);
-  color: var(--rose);
+  color: var(--rose-text);
 }
 
 .modal-icon.warning {
   background: var(--amber-light);
   border: 1px solid var(--amber-mid);
-  color: var(--amber);
+  color: var(--amber-text);
 }
 
 .modal-icon.success {
   background: var(--emerald-light);
   border: 1px solid var(--emerald-mid);
-  color: var(--emerald);
+  color: var(--emerald-text);
 }
 
 .modal-icon.info {
@@ -1316,7 +1276,7 @@ input[type='text'].detail-input:focus {
 }
 
 .missing-cell {
-  color: var(--rose);
+  color: var(--rose-text);
   background: var(--rose-light);
   font-weight: 700;
   border: 1px dashed var(--rose-mid) !important;
@@ -1413,13 +1373,13 @@ input[type='text'].detail-input:focus {
 
 .status-badge.success {
   background: var(--emerald-light);
-  color: var(--emerald);
+  color: var(--emerald-text);
   border: 1px solid var(--emerald-mid);
 }
 
 .status-badge.ok {
   background: var(--emerald-light);
-  color: var(--emerald);
+  color: var(--emerald-text);
   border: 1px solid var(--emerald-mid);
 }
 
@@ -1501,13 +1461,8 @@ input[type='text'].detail-input:focus {
   color: var(--text-2);
 }
 
-/* ─── DISABLED BUTTON STATE ─── */
-.btn-cancel:disabled {
-  background: var(--gray-100);
-  color: var(--text-4);
-  border-color: var(--border);
-  cursor: not-allowed;
-}
+/* ─── DISABLED BUTTON STATE ───
+   `.btn:disabled` above covers every button now that .btn-cancel is retired. */
 
 /* ─── STATUS BADGE VARIANTS ─── */
 .status-badge.gray {
@@ -1773,9 +1728,8 @@ input[type='text'].detail-input:focus {
   .btn {
     min-height: 44px;
   }
-  .btn-cancel,
-  .btn-submit,
-  .btn-danger,
+  /* .btn-overwrite is the last standalone button class; everything else composes .btn,
+     which already picks up the 44px rule above. */
   .btn-overwrite {
     min-height: 44px;
   }
@@ -2124,7 +2078,7 @@ input[type='text'].detail-input:focus {
   box-sizing: border-box;
   padding: 0.55rem 0.85rem;
   font-size: 0.9rem;
-  border: 1.5px solid var(--border);
+  border: 1.5px solid var(--border-input);
   border-radius: var(--radius-md);
   background: var(--muted);
   color: var(--text);
@@ -2199,44 +2153,36 @@ input[type='text'].detail-input:focus {
   opacity: 0.45;
 }
 
+/* The ICON carries the semantic; the confirm button does not.
+   Each type used to recolour `.btn-confirm` too — green, mustard, rose — which meant the
+   most common dialog in the app (32 `type: 'warning'` call sites) had a solid amber OK
+   button, in direct violation of the system's own rule that Caution Amber is "never used
+   as an action color" (DESIGN.md §2). Dark mode never showed those colours anyway: its
+   `.btn-confirm` rule is `!important` and painted all four blue, so light and dark
+   disagreed. Confirm is Carmen Blue everywhere now. A dialog that genuinely destroys
+   something opts in with CustomModal's `confirmVariant="danger"`. */
 .modal-info .modal-icon-wrapper {
   background: var(--primary-light);
   border-color: var(--primary);
   color: var(--primary);
 }
-.modal-info .btn-confirm {
-  background: var(--primary);
-  color: white;
-}
 
 .modal-success .modal-icon-wrapper {
   background: var(--emerald-light);
   border-color: var(--emerald);
-  color: var(--emerald);
-}
-.modal-success .btn-confirm {
-  background: var(--emerald);
-  color: white;
+  color: var(--emerald-text);
 }
 
 .modal-warning .modal-icon-wrapper {
   background: var(--amber-light);
   border-color: var(--amber);
-  color: var(--amber);
-}
-.modal-warning .btn-confirm {
-  background: var(--amber);
-  color: white;
+  color: var(--amber-text);
 }
 
 .modal-error .modal-icon-wrapper {
   background: var(--rose-light);
   border-color: var(--rose);
-  color: var(--rose);
-}
-.modal-error .btn-confirm {
-  background: var(--rose);
-  color: white;
+  color: var(--rose-text);
 }
 
 /* Credit Card OCR / Mapping Components Custom Classes */
@@ -2345,7 +2291,7 @@ input[type='text'].detail-input:focus {
 }
 
 .cc-mapping-type-debit {
-  color: var(--amber);
+  color: var(--amber-text);
   background: var(--ap-include-bg, var(--caution-amber-light, var(--amber-light)));
   padding: 0.2rem 0.5rem;
   border-radius: var(--radius-xs);
@@ -2392,12 +2338,12 @@ input[type='text'].detail-input:focus {
 }
 
 .cc-map-ar-count.missing {
-  color: var(--rose);
+  color: var(--rose-text);
   background: var(--btn-err-bg, var(--rose-light));
 }
 
 .cc-map-ar-count.ready {
-  color: var(--teal);
+  color: var(--teal-text);
   background: var(--teal-light);
 }
 
@@ -2427,13 +2373,13 @@ input[type='text'].detail-input:focus {
 }
 
 .cc-mapping-status.missing {
-  color: var(--rose);
+  color: var(--rose-text);
   background: var(--btn-err-bg, var(--rose-light));
   border-color: var(--rose-mid);
 }
 
 .cc-mapping-status.ready {
-  color: var(--teal);
+  color: var(--teal-text);
   background: var(--teal-light);
   border-color: var(--teal);
 }
@@ -2464,7 +2410,7 @@ input[type='text'].detail-input:focus {
 
 .cc-history-badge {
   font-size: 0.75rem;
-  color: var(--emerald);
+  color: var(--emerald-text);
   background: var(--emerald-light);
   padding: 3px 8px;
   border-radius: var(--radius-xs);
@@ -2483,7 +2429,7 @@ input[type='text'].detail-input:focus {
 .cc-btn-accept {
   padding: 0.25rem 0.65rem;
   background: var(--emerald-light);
-  color: var(--emerald);
+  color: var(--emerald-text);
   border: 1px solid var(--emerald-mid);
   border-radius: var(--radius-sm);
   cursor: pointer;
@@ -2517,15 +2463,15 @@ input[type='text'].detail-input:focus {
 }
 
 .cc-btn-reject:hover {
-  background: var(--rose);
+  background: var(--rose-fill);
   color: white;
-  border-color: var(--rose);
+  border-color: var(--rose-fill);
 }
 
 .cc-btn-accept:hover {
-  background: var(--emerald);
+  background: var(--emerald-fill);
   color: white;
-  border-color: var(--emerald);
+  border-color: var(--emerald-fill);
 }
 
 .cc-btn-accept:focus-visible,
@@ -2579,7 +2525,7 @@ input[type='text'].detail-input:focus {
 
 .cc-badge-teal-bold {
   background: var(--teal-light);
-  color: var(--teal);
+  color: var(--teal-text);
   border: 1px solid var(--teal-mid);
   border-radius: var(--radius-xs);
   padding: 0.15rem 0.5rem;
@@ -2627,7 +2573,7 @@ input[type='text'].detail-input:focus {
 .cc-mono-bold-teal {
   font-family: 'IBM Plex Mono', monospace;
   font-weight: 700;
-  color: var(--teal);
+  color: var(--teal-text);
 }
 
 .cc-font-bold {
@@ -2639,42 +2585,10 @@ input[type='text'].detail-input:focus {
   font-weight: 700;
 }
 
-.cc-modal-overlay-container {
-  position: fixed;
-  inset: 0;
-  background: var(--modal-overlay-bg, rgba(0, 0, 0, 0.45));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: var(--z-modal-backdrop);
-}
-
-.cc-modal-icon-teal {
-  margin-bottom: 0.75rem;
-  color: var(--teal);
-  display: flex;
-  justify-content: center;
-}
-
-.cc-modal-icon-rose {
-  margin-bottom: 0.75rem;
-  color: var(--rose);
-  display: flex;
-  justify-content: center;
-}
-
-.cc-modal-title {
-  font-size: 1.1rem;
-  font-weight: 700;
-  margin-bottom: 0.65rem;
-}
-
-.cc-modal-body-text {
-  color: var(--text-2);
-  font-size: 0.92rem;
-  margin-bottom: 1rem;
-  line-height: 1.7;
-}
+/* The overlay/icon/title/body shell that used to live here belonged to two hand-rolled
+   portals in InputTaxReconciliation. Those are CustomModal now, so the shell comes from
+   .modal-overlay / .modal-box / .modal-title / .modal-msg. Only the two info boxes and
+   the error box below are still bespoke — they are CustomModal `children`. */
 
 .cc-modal-info-box-teal {
   background: var(--teal-light);
@@ -2682,7 +2596,7 @@ input[type='text'].detail-input:focus {
   border-radius: var(--radius-sm);
   padding: 0.55rem 0.85rem;
   margin-bottom: 1.25rem;
-  color: var(--teal);
+  color: var(--teal-text);
   font-size: 0.83rem;
   text-align: left;
   display: flex;
@@ -2725,11 +2639,6 @@ input[type='text'].detail-input:focus {
   flex-shrink: 0;
 }
 
-.cc-btn-danger-rose {
-  background: var(--rose) !important;
-  color: white !important;
-}
-
 /* ─── DATE INPUT (react-day-picker) ─── */
 .date-input {
   position: relative;
@@ -2743,7 +2652,7 @@ input[type='text'].detail-input:focus {
   width: 100%;
   background: transparent;
   border: none;
-  border-bottom: 1.5px solid var(--border);
+  border-bottom: 1.5px solid var(--border-input);
   border-radius: 0;
   padding: 0.45rem 0;
   font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
@@ -3196,7 +3105,7 @@ input[type='text'].detail-input:focus {
     border-color 180ms var(--ease-out),
     background-color 180ms var(--ease-out),
     color 180ms var(--ease-out);
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .custom-search-select-top {
