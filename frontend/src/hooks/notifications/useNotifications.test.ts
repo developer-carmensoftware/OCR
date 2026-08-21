@@ -34,9 +34,14 @@ const SERVER_ROW = {
   created_at: '2026-07-19T03:00:00Z',
 }
 
+/** The paged envelope the API returns, around a fixed set of rows. */
+function page(rows: (typeof SERVER_ROW)[], unread: number, total = rows.length) {
+  return { total, limit: 8, offset: 0, data: rows, unread_count: unread }
+}
+
 /** Mount with one unread server notification and wait for the first poll. */
 async function setup() {
-  listNotifications.mockResolvedValue({ items: [SERVER_ROW], unread_count: 1 })
+  listNotifications.mockResolvedValue(page([SERVER_ROW], 1))
   markNotificationsRead.mockResolvedValue(undefined)
   const hook = renderHook(() => useNotifications())
   await waitFor(() => expect(hook.result.current.items.length).toBe(2))
@@ -106,7 +111,7 @@ describe('useNotifications — release notes', () => {
 
   it('mark-all clears both sides', async () => {
     const { result } = await setup()
-    listNotifications.mockResolvedValue({ items: [], unread_count: 0 })
+    listNotifications.mockResolvedValue(page([], 0))
     await act(async () => {
       await result.current.markRead()
     })
@@ -119,5 +124,31 @@ describe('useNotifications — release notes', () => {
     localStorage.setItem('releaseNotesSeen', '2026-07-20')
     const { result } = await setup()
     expect(result.current.unreadCount).toBe(1)
+  })
+})
+
+describe('useNotifications — paging', () => {
+  it('offers more only while the server says rows are left', async () => {
+    listNotifications.mockResolvedValue(page([SERVER_ROW], 1, 30))
+    const { result } = renderHook(() => useNotifications())
+    await waitFor(() => expect(result.current.hasMore).toBe(true))
+
+    // total===1 row loaded: the synthetic release row must not count towards it,
+    // or the bell would offer "show older" with nothing older to show.
+    listNotifications.mockResolvedValue(page([SERVER_ROW], 1, 1))
+    await act(async () => {
+      await result.current.refresh()
+    })
+    expect(result.current.hasMore).toBe(false)
+  })
+
+  it('loadMore re-requests a bigger window rather than an offset page', async () => {
+    listNotifications.mockResolvedValue(page([SERVER_ROW], 1, 30))
+    const { result } = renderHook(() => useNotifications())
+    await waitFor(() => expect(listNotifications).toHaveBeenCalledWith(8))
+    await act(async () => {
+      result.current.loadMore()
+    })
+    await waitFor(() => expect(listNotifications).toHaveBeenCalledWith(16))
   })
 })

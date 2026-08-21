@@ -163,6 +163,24 @@
   min-height: 0;
 }
 
+.notif-bell__more {
+  width: 100%;
+  padding: 0.5rem;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-md);
+  color: var(--muted-fg);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms var(--ease-out-premium);
+}
+
+.notif-bell__more:hover {
+  background: var(--muted);
+  color: var(--fg);
+}
+
 .notif-bell__item {
   display: flex;
   align-items: flex-start;

@@ -2369,6 +2369,12 @@
   overflow: hidden;
 }
 
+.orders-more {
+  display: flex;
+  justify-content: center;
+  padding-top: 0.25rem;
+}
+
 /* Deep-linked from a notification — a one-shot ring pulse to orient the user. */
 .order-row--focus {
   border-color: var(--primary);

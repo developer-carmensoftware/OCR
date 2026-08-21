@@ -82,7 +82,7 @@ function timeAgo(iso: string, t: TFn): string {
 
 export default function NotificationBell() {
   const { t, lang } = useT()
-  const { items, unreadCount, markRead } = useNotifications()
+  const { items, unreadCount, hasMore, loadMore, markRead } = useNotifications()
   const [open, setOpen] = useState(false)
   const [detail, setDetail] = useState<BellItem | null>(null)
   const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({})
@@ -230,6 +230,13 @@ export default function NotificationBell() {
                     </li>
                   )
                 })}
+                {hasMore && (
+                  <li>
+                    <button type="button" className="notif-bell__more" onClick={loadMore}>
+                      {t('notif.loadMore')}
+                    </button>
+                  </li>
+                )}
               </ul>
             )}
           </div>,

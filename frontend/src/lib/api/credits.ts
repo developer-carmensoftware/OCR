@@ -1,5 +1,6 @@
 import { apiFetch } from './client'
 import { API } from './endpoints'
+import type { Page } from './page'
 
 // ── Catalog ───────────────────────────────────────────────────────────────────
 
@@ -176,11 +177,27 @@ export async function cancelOrder(orderId: string): Promise<CreditOrder> {
   return res.json() as Promise<CreditOrder>
 }
 
-/** This tenant's orders, newest first. */
-export async function listOrders(): Promise<CreditOrder[]> {
-  const res = await apiFetch(API.credits.orders)
+/**
+ * One page of this tenant's orders, newest first.
+ *
+ * `openOnly` splits the two lists server-side: the pending banner needs *every* open
+ * order (an on_hold one from three weeks ago still needs the customer to act, and
+ * would fall off a page of newest-first rows), while the settled history is paged.
+ */
+export async function listOrders(
+  opts: {
+    openOnly?: boolean
+    limit?: number
+    offset?: number
+  } = {}
+): Promise<Page<CreditOrder>> {
+  const q = new URLSearchParams()
+  if (opts.openOnly !== undefined) q.set('open_only', String(opts.openOnly))
+  if (opts.limit !== undefined) q.set('limit', String(opts.limit))
+  if (opts.offset) q.set('offset', String(opts.offset))
+  const res = await apiFetch(`${API.credits.orders}?${q}`)
   if (!res.ok) throw new Error(`Failed to load order history (${res.status})`)
-  return res.json() as Promise<CreditOrder[]>
+  return res.json() as Promise<Page<CreditOrder>>
 }
 
 /** All billing documents (proforma + tax invoice) issued for an order. */

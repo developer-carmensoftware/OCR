@@ -13,7 +13,6 @@ import { useOrderHistory } from '../hooks/credits'
 import {
   getOrderDocuments,
   getPaymentInfo,
-  OPEN_ORDER_STATUSES,
   type BillingDocument,
   type CreditOrder,
   type PaymentInfo,
@@ -198,7 +197,7 @@ function parseFocusId(): string | null {
 
 export default function OrderHistory() {
   const { t } = useT()
-  const { orders, loading, error, reload } = useOrderHistory()
+  const { openOrders, history, historyTotal, loading, error, reload, loadMore } = useOrderHistory()
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
   const [sub, setSub] = useState<ActiveSubscription | null>(null)
   // /usage answers later than the order list, so the strip used to mount after the rows had
@@ -217,8 +216,6 @@ export default function OrderHistory() {
   // the strip's slot collapse once when /usage comes back empty — cache the last answer per
   // tenant if that ever matters more than the extra storage key.
   const busy = loading || subLoading
-  const openOrders = orders.filter(o => OPEN_ORDER_STATUSES.includes(o.status))
-  const history = orders.filter(o => !OPEN_ORDER_STATUSES.includes(o.status))
 
   useEffect(() => {
     getPaymentInfo()
@@ -316,6 +313,13 @@ export default function OrderHistory() {
                 focus={order.id === focusId}
               />
             ))}
+            {history.length < historyTotal && (
+              <li className="orders-more">
+                <button type="button" className="btn btn-outline" onClick={loadMore}>
+                  {t('order.loadMore', { n: historyTotal - history.length })}
+                </button>
+              </li>
+            )}
           </ul>
         )}
       </main>

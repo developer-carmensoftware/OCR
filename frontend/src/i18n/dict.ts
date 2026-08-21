@@ -152,6 +152,7 @@ const en = {
   'order.empty': 'No orders yet',
   'order.emptySub': 'Pick a monthly plan or top up credits to keep working past your free quota.',
   'order.viewAllPlans': 'View all plans',
+  'order.loadMore': 'Show {n} older orders',
   'order.pendingNote':
     "No slip uploaded yet. If you've already paid, upload the slip for our team to review.",
   'order.pendingBanner.title': 'You have an unfinished order',
@@ -695,6 +696,7 @@ const en = {
   'notif.title': 'Notifications',
   'notif.empty': 'No notifications yet',
   'notif.markAllRead': 'Mark all read',
+  'notif.loadMore': 'Show older',
   'notif.approved': 'Order approved — {credits} credits added',
   'notif.rejected': 'Order rejected: {reason}',
   'notif.onHold': 'Your order was placed on hold (payment window expired)',
@@ -1452,6 +1454,7 @@ const th: Record<TKey, string> = {
   'order.empty': 'ยังไม่มีคำสั่งซื้อ',
   'order.emptySub': 'เลือกแพ็กเกจรายเดือนหรือเติมเครดิตเพื่อใช้งานต่อหลังหมดโควตาฟรี',
   'order.viewAllPlans': 'ดูแพ็กเกจทั้งหมด',
+  'order.loadMore': 'ดูคำสั่งซื้อเก่ากว่าอีก {n} รายการ',
   'order.pendingNote': 'ยังไม่ได้อัปโหลดสลิป หากชำระเงินแล้ว กรุณาอัปโหลดสลิปให้ทีมงานตรวจสอบ',
   'order.pendingBanner.title': 'คุณมีคำสั่งซื้อที่ยังไม่เสร็จ',
   'order.pendingBanner.body':
@@ -1982,6 +1985,7 @@ const th: Record<TKey, string> = {
   'notif.title': 'การแจ้งเตือน',
   'notif.empty': 'ยังไม่มีการแจ้งเตือน',
   'notif.markAllRead': 'ทำเครื่องหมายว่าอ่านทั้งหมด',
+  'notif.loadMore': 'ดูรายการเก่ากว่า',
   'notif.approved': 'อนุมัติคำสั่งซื้อแล้ว — เพิ่ม {credits} เครดิต',
   'notif.rejected': 'คำสั่งซื้อถูกปฏิเสธ: {reason}',
   'notif.onHold': 'คำสั่งซื้อของคุณถูกระงับ (หมดเวลาชำระเงิน)',

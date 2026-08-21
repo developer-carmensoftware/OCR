@@ -19,7 +19,6 @@ import {
 import { PLAN_META, SALES_CONTACT } from '../constants/billing'
 import {
   getPaymentInfo,
-  OPEN_ORDER_STATUSES,
   type BillingPeriod,
   type CreditPack,
   type PaymentInfo,
@@ -138,8 +137,7 @@ const cardVariants = {
 export default function Pricing() {
   const { t } = useT()
   const { plans, packs, loading, error } = usePricingCatalog()
-  const { orders, reload } = useOrderHistory()
-  const openOrders = orders.filter(o => OPEN_ORDER_STATUSES.includes(o.status))
+  const { openOrders, reload } = useOrderHistory()
   const hasOpenOrder = openOrders.length > 0
   // Savings % for the toggle badge — derived from the catalog (same for every tier).
   const annualSavePct = (() => {

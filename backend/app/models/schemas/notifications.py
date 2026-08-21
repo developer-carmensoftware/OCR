@@ -6,6 +6,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from app.models.schemas.common import Page
+
 
 class NotificationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -23,8 +25,13 @@ class NotificationResponse(BaseModel):
         return str(v) if v is not None else None
 
 
-class NotificationListResponse(BaseModel):
-    items: list[NotificationResponse]
+class NotificationListResponse(Page[NotificationResponse]):
+    """The standard page envelope plus the badge count.
+
+    `unread_count` spans every notification, not just this page — the bell's badge is
+    wrong the moment it only counts the window.
+    """
+
     unread_count: int
 
 

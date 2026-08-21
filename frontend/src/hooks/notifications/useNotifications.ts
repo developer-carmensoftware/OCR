@@ -14,6 +14,9 @@ import { markReleaseSeen, readReleaseSeen, RELEASE_SEEN_EVENT } from '../../lib/
 // refreshes the moment the user comes back to the tab.
 const POLL_MS = 300_000
 
+// The bell is a dropdown, not an inbox: a first screenful, then "load more".
+const PAGE_SIZE = 8
+
 const RELEASE_ID_PREFIX = 'release:'
 
 /**
@@ -42,20 +45,26 @@ function releaseRow(seen: string): BellItem[] {
 export function useNotifications() {
   const { isAuthenticated } = useAuth()
   const [items, setItems] = useState<Notification[]>([])
+  const [total, setTotal] = useState(0)
   const [unreadCount, setUnreadCount] = useState(0)
   const [seen, setSeen] = useState(readReleaseSeen)
+  // ponytail: "load more" grows the window instead of appending an offset page. The
+  // list is then still one request the poll can refresh wholesale — an offset merge
+  // would need dedup and would drift as new rows shift the windows underneath it.
+  const [limit, setLimit] = useState(PAGE_SIZE)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const refresh = useCallback(async () => {
     if (!isAuthenticated) return
     try {
-      const data = await listNotifications()
-      setItems(data.items)
-      setUnreadCount(data.unread_count)
+      const page = await listNotifications(limit)
+      setItems(page.data)
+      setTotal(page.total)
+      setUnreadCount(page.unread_count)
     } catch {
       // silent — bell just shows stale data
     }
-  }, [isAuthenticated])
+  }, [isAuthenticated, limit])
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -115,5 +124,13 @@ export function useNotifications() {
     [refresh]
   )
 
-  return { items: merged, unreadCount: unreadCount + unseenReleases, markRead, refresh }
+  return {
+    items: merged,
+    unreadCount: unreadCount + unseenReleases,
+    // The release row is client-side, so it is not part of the server's `total`.
+    hasMore: items.length < total,
+    loadMore: useCallback(() => setLimit(n => n + PAGE_SIZE), []),
+    markRead,
+    refresh,
+  }
 }

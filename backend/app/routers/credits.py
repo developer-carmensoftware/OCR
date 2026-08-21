@@ -5,7 +5,7 @@ Tenant-facing top-up credit endpoints.
   GET  /api/v1/credits/company-profile     — prefill buyer info (Carmen or last-invoice)
   POST /api/v1/credits/orders              — create order + PromptPay QR + proforma
   POST /api/v1/credits/orders/{id}/slip    — upload payment slip → awaiting_review
-  GET  a              — list tenant's own orders
+  GET  /api/v1/credits/orders              — list tenant's own orders (paged)
   GET  /api/v1/credits/orders/{id}         — single order detail
 """
 
@@ -13,7 +13,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +29,7 @@ from app.models.schemas import (
     CreateOrderResponse,
     CreditOrderResponse,
     CreditPackResponse,
+    Page,
     PaymentInfoResponse,
     QrPayloadResponse,
     SlipUploadResponse,
@@ -43,6 +44,7 @@ from app.services.credit_service import (
 from app.services.file_service import FileService
 from app.services.storage_service import StorageError
 from app.utils.image_processing import resize_if_needed
+from app.utils.pagination import paginate
 from app.utils.tax import vat_on_top
 
 # Slips only need to be legible (read the digits) — not archival quality. Downscale +
@@ -376,28 +378,39 @@ async def cancel_order(
     return CreditOrderResponse.model_validate(order)
 
 
-@router.get("/orders", response_model=list[CreditOrderResponse])
+@router.get("/orders", response_model=Page[CreditOrderResponse])
 async def list_orders(
+    open_only: bool | None = Query(
+        None,
+        description="None = every order; true = only open (in_progress/on_hold); false = only settled.",
+    ),
+    limit: int = Query(8, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     session: SessionInfo = Depends(get_current_session),
     db: AsyncSession = Depends(get_db),
 ):
-    """List this tenant's credit orders, newest first."""
-    rows = (
-        (
-            await db.execute(
-                select(CreditOrder)
-                .where(
-                    CreditOrder.tenant_id == session.tenant_id,
-                    CreditOrder.deleted_at.is_(None),
-                )
-                .order_by(CreditOrder.created_at.desc())
-                .limit(100)
-            )
-        )
-        .scalars()
-        .all()
+    """List this tenant's credit orders, newest first.
+
+    `open_only` is a boolean rather than a free `status` filter because the only split
+    the UI makes is open-vs-settled, and `_OPEN_STATUSES` is defined here. Exposing raw
+    statuses would make the frontend re-declare that set and drift from it.
+    """
+    stmt = select(CreditOrder).where(
+        CreditOrder.tenant_id == session.tenant_id,
+        CreditOrder.deleted_at.is_(None),
     )
-    return [CreditOrderResponse.model_validate(r) for r in rows]
+    if open_only is True:
+        stmt = stmt.where(CreditOrder.status.in_(_OPEN_STATUSES))
+    elif open_only is False:
+        stmt = stmt.where(CreditOrder.status.not_in(_OPEN_STATUSES))
+
+    rows, total = await paginate(db, stmt.order_by(CreditOrder.created_at.desc()), limit, offset)
+    return Page(
+        total=total,
+        limit=limit,
+        offset=offset,
+        data=[CreditOrderResponse.model_validate(r) for r in rows],
+    )
 
 
 @router.get("/orders/{order_id}", response_model=CreditOrderResponse)
