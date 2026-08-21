@@ -5,6 +5,7 @@
 
 import { createApiClient } from './client'
 import { API } from './endpoints'
+import type { Page } from './page'
 
 const ADMIN_TOKEN_KEY = 'ocr_admin_token'
 
@@ -583,14 +584,20 @@ async function unwrapDetail(res: Response, fallback: string): Promise<string> {
 /**
  * Order queue across companies (scoped admins see only their own).
  * `status='all'` returns every status; `tenantId` narrows to one company's history.
+ *
+ * Asks for the endpoint's own cap (200) in one go and pages client-side, because the
+ * table's company search filters what is already loaded — a server window would make
+ * search only ever look at the page on screen. `total` is what tells the UI to say so
+ * when even 200 was not everything.
  */
 export async function listCreditOrders(
   status: AdminOrderStatus | 'all' = 'in_progress',
   tenantId?: string,
-  hasSlip?: boolean
-): Promise<AdminCreditOrder[]> {
+  hasSlip?: boolean,
+  limit = 200
+): Promise<Page<AdminCreditOrder>> {
   const res = await adminFetch(
-    `${API.admin.creditOrders}${buildQs({ status, tenant_id: tenantId, has_slip: hasSlip })}`
+    `${API.admin.creditOrders}${buildQs({ status, tenant_id: tenantId, has_slip: hasSlip, limit })}`
   )
   if (!res.ok) throw new Error('Failed to load credit orders')
   return res.json()

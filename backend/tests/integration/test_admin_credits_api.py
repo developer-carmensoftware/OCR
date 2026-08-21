@@ -140,39 +140,53 @@ def make_admin_test_client(mock_db, perms=None, tenant_scope=""):
 # ── GET /admin/credit-orders ──────────────────────────────────────────────────
 
 
-def _list_result(orders):
-    """The list endpoint reads (order, tenant_name, proforma_number, buyer_name, ar_code) tuples."""
-    execute_result = MagicMock()
-    execute_result.all.return_value = [
-        (o, "Acme Co", "PI-202606-0001", "Acme Co.,Ltd.", "AR-ACME01") for o in orders
-    ]
-    return execute_result
+def _paged_list_db(orders, total=None):
+    """Mock AsyncSession for the paged list endpoint: COUNT(*) first, then the rows.
+
+    The rows are (order, tenant_name, proforma_number, buyer_name, ar_code) tuples —
+    the endpoint selects five entities, not one.
+    """
+    calls = []
+
+    async def fake_execute(_stmt):
+        result = MagicMock()
+        calls.append(_stmt)
+        if len(calls) == 1:  # count_rows()
+            result.scalar_one.return_value = total if total is not None else len(orders)
+        else:
+            result.all.return_value = [
+                (o, "Acme Co", "PI-202606-0001", "Acme Co.,Ltd.", "AR-ACME01") for o in orders
+            ]
+        return result
+
+    mock_db = make_mock_db()
+    mock_db.execute = fake_execute
+    return mock_db
 
 
 def test_list_credit_orders_returns_in_progress_by_default():
     orders = [_order(status="in_progress"), _order(status="in_progress")]
-    mock_db = make_mock_db()
-    mock_db.execute = AsyncMock(return_value=_list_result(orders))
+    mock_db = _paged_list_db(orders)
 
     with make_admin_test_client(mock_db) as client:
         resp = client.get(f"{BASE}/credit-orders", headers=AUTH)
 
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body) == 2
-    assert body[0]["tenant_name"] == "Acme Co"
+    assert len(body["data"]) == 2
+    assert body["total"] == 2
+    assert body["data"][0]["tenant_name"] == "Acme Co"
 
 
 def test_list_credit_orders_with_explicit_status_filter():
     orders = [_order(status="complete")]
-    mock_db = make_mock_db()
-    mock_db.execute = AsyncMock(return_value=_list_result(orders))
+    mock_db = _paged_list_db(orders)
 
     with make_admin_test_client(mock_db) as client:
         resp = client.get(f"{BASE}/credit-orders?status=complete", headers=AUTH)
 
     assert resp.status_code == 200
-    assert len(resp.json()) == 1
+    assert len(resp.json()["data"]) == 1
 
 
 # ── GET /admin/credit-orders/{id}/slip-url ────────────────────────────────────
@@ -510,16 +524,36 @@ def test_kpi_returns_funnel_amounts():
 
 def test_list_credit_orders_carries_proforma_and_ar_code():
     orders = [_order(status="paid")]
-    mock_db = make_mock_db()
-    mock_db.execute = AsyncMock(return_value=_list_result(orders))
+    mock_db = _paged_list_db(orders)
 
     with make_admin_test_client(mock_db) as client:
         resp = client.get(f"{BASE}/credit-orders?status=paid", headers=AUTH)
 
     assert resp.status_code == 200
-    row = resp.json()[0]
+    row = resp.json()["data"][0]
     assert row["proforma_number"] == "PI-202606-0001"
     assert row["carmen_ar_code"] == "AR-ACME01"
+
+
+def test_list_credit_orders_total_is_the_full_count_not_the_window():
+    """The queue used to truncate at `limit` with nothing on screen saying so."""
+    mock_db = _paged_list_db([_order(status="paid")], total=137)
+
+    with make_admin_test_client(mock_db) as client:
+        resp = client.get(f"{BASE}/credit-orders?status=all&limit=1&offset=8", headers=AUTH)
+
+    body = resp.json()
+    assert body["total"] == 137
+    assert body["offset"] == 8
+    assert len(body["data"]) == 1
+
+
+def test_list_credit_orders_rejects_a_limit_past_the_cap():
+    mock_db = _paged_list_db([])
+
+    with make_admin_test_client(mock_db) as client:
+        assert client.get(f"{BASE}/credit-orders?limit=201", headers=AUTH).status_code == 422
+        assert client.get(f"{BASE}/credit-orders?offset=-1", headers=AUTH).status_code == 422
 
 
 # ── AR customer profiles ──────────────────────────────────────────────────────
@@ -679,8 +713,7 @@ def test_order_reviewer_can_work_the_queue_but_not_credit_balances():
     (balance / topup / adjust / ledger), which stay on quotas:*.
     """
     reviewer = {"orders:read", "orders:write"}
-    mock_db = make_mock_db()
-    mock_db.execute.return_value = _list_result([])
+    mock_db = _paged_list_db([])
 
     with make_admin_test_client(mock_db, perms=reviewer) as client:
         assert client.get(f"{BASE}/credit-orders", headers=AUTH).status_code == 200

@@ -1882,3 +1882,12 @@ body:has(.admin-login-page) {
   color: var(--text-2);
   overflow-wrap: anywhere;
 }
+
+/* Says so when the fetch was capped, rather than letting the queue end silently. */
+.orev-truncated {
+  margin: 0;
+  padding: 0 0.5rem 0.5rem;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--muted-fg);
+}

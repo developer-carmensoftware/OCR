@@ -17,6 +17,20 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
+async def count_rows(db: AsyncSession, stmt: Select[Any]) -> int:
+    """Total rows the statement matches, ignoring any LIMIT/OFFSET on it.
+
+    Returning `len(rows)` instead is a real bug this repo has already shipped twice
+    (see the comment on `GET /admin/tenants`): the caller then has no way to know the
+    list was truncated, and a pager built on it can never render "page 1 of N".
+    """
+    # order_by(None): ORDER BY is meaningless inside a COUNT and Postgres would have to
+    # sort rows it is only going to tally.
+    return (
+        await db.execute(select(func.count()).select_from(stmt.order_by(None).subquery()))
+    ).scalar_one()
+
+
 async def paginate(
     db: AsyncSession,
     stmt: Select[Any],
@@ -25,15 +39,10 @@ async def paginate(
 ) -> tuple[list[Any], int]:
     """Return (rows for this window, total matching rows).
 
-    `total` is counted off the *unlimited* statement. Returning `len(rows)` instead is
-    a real bug this repo has already shipped twice (see the comment on
-    `GET /admin/tenants`): the caller then has no way to know the list was truncated,
-    and a pager built on it can never render "page 1 of N".
+    For a statement selecting one entity. A multi-entity select (`select(A, B)`) returns
+    tuples, which `.scalars()` would flatten to just `A` — those callers pair
+    `count_rows()` with their own `.all()` instead.
     """
-    # order_by(None): ORDER BY is meaningless inside a COUNT and Postgres would have to
-    # sort rows it is only going to tally.
-    total = (
-        await db.execute(select(func.count()).select_from(stmt.order_by(None).subquery()))
-    ).scalar_one()
+    total = await count_rows(db, stmt)
     rows = (await db.execute(stmt.limit(limit).offset(offset))).scalars().all()
     return list(rows), total

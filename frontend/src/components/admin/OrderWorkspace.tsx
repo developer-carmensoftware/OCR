@@ -399,7 +399,7 @@ export default function OrderWorkspace({
       .catch(() => alive && dispatch({ type: 'SET_DOCS_ERR' }))
     if (order.tenant_id) {
       listCreditOrders('all', order.tenant_id)
-        .then(rows => alive && dispatch({ type: 'SET_HISTORY', history: rows }))
+        .then(page => alive && dispatch({ type: 'SET_HISTORY', history: page.data }))
         .catch(() => {})
     }
     return () => {

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   AlertTriangle,
   Check,
@@ -10,6 +10,8 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { orderStage, type AdminCreditOrder, type OrderStage } from '../../lib/api/adminClient'
+import Pager from '../common/Pager'
+import { useFitRows } from '../../hooks/useFitRows'
 import { formatThb } from '../../lib/money'
 import { formatDateToDDMMYYYY } from '../../lib/date'
 import { useT } from '../../i18n/LanguageContext'
@@ -98,6 +100,8 @@ interface Props {
   selectedId: string | null
   // Row click opens the single deep-review drawer — the only way to see the slip
   // itself, the proforma, and order history; most day-to-day decisions don't need it.
+  /** Every matching order server-side; > orders.length means the fetch was capped. */
+  ordersTotal: number
   onSelect: (o: AdminCreditOrder) => void
   checked: string[]
   onToggleCheck: (id: string) => void
@@ -117,6 +121,7 @@ export default function OrderTable({
   search,
   onSearch,
   orders,
+  ordersTotal,
   counts,
   loading,
   selectedId,
@@ -134,9 +139,21 @@ export default function OrderTable({
   const { t } = useT()
   const [voidOpen, setVoidOpen] = useState(false)
   const q = search.trim().toLowerCase()
-  const visible = q ? orders.filter(o => companyOf(o).toLowerCase().includes(q)) : orders
+  const matching = q ? orders.filter(o => companyOf(o).toLowerCase().includes(q)) : orders
+
+  // Rows per page measured off the rendered table, same as DataTable and the two
+  // customer-facing lists. Searching filters everything loaded, then this pages it.
+  const [perPage, bodyRef] = useFitRows('.orev-row', 6)
+  const [offset, setOffset] = useState(0)
+  // A new tab or a new search term means a different result set; page 4 of the old one
+  // is meaningless against it.
+  useEffect(() => setOffset(0), [tab, q])
+  const start = Math.min(offset, Math.max(0, (Math.ceil(matching.length / perPage) - 1) * perPage))
+  const visible = matching.slice(start, start + perPage)
   const batchActions = BATCH_ACTIONS_FOR_TAB[tab] ?? []
-  const checkableIds = visible.filter(o => isCheckable(o, batchActions)).map(o => o.id)
+  // `matching`, not `visible`: "select all" means everything the search matched, not
+  // whichever page happens to be on screen.
+  const checkableIds = matching.filter(o => isCheckable(o, batchActions)).map(o => o.id)
   const allChecked = checkableIds.length > 0 && checkableIds.every(id => checked.includes(id))
   const RUN: Record<BatchAction, () => void> = {
     approve: onApproveBatch,
@@ -233,7 +250,7 @@ export default function OrderTable({
               <th>{t('orev.col.arCode')}</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody ref={bodyRef}>
             {loading ? (
               Array.from({ length: 6 }).map((_, i) => (
                 <tr key={i} className="orev-row is-skeleton" aria-hidden="true">
@@ -244,7 +261,7 @@ export default function OrderTable({
                   ))}
                 </tr>
               ))
-            ) : visible.length === 0 ? (
+            ) : matching.length === 0 ? (
               <tr>
                 <td colSpan={8} className="orev-list-empty">
                   {q ? t('orev.list.noMatch') : t('orev.list.empty')}
@@ -302,6 +319,14 @@ export default function OrderTable({
           </tbody>
         </table>
       </div>
+
+      <Pager offset={start} limit={perPage} total={matching.length} onChange={setOffset} />
+
+      {ordersTotal > orders.length && (
+        <p className="orev-truncated" role="status">
+          {t('orev.list.truncated', { n: orders.length, total: ordersTotal })}
+        </p>
+      )}
     </section>
   )
 }
