@@ -128,27 +128,48 @@ describe('useNotifications — release notes', () => {
 })
 
 describe('useNotifications — paging', () => {
-  it('offers more only while the server says rows are left', async () => {
+  it('asks for the window the pager points at', async () => {
     listNotifications.mockResolvedValue(page([SERVER_ROW], 1, 30))
     const { result } = renderHook(() => useNotifications())
-    await waitFor(() => expect(result.current.hasMore).toBe(true))
+    await waitFor(() => expect(listNotifications).toHaveBeenCalledWith(8, 0))
 
-    // total===1 row loaded: the synthetic release row must not count towards it,
-    // or the bell would offer "show older" with nothing older to show.
-    listNotifications.mockResolvedValue(page([SERVER_ROW], 1, 1))
     await act(async () => {
-      await result.current.refresh()
+      result.current.setOffset(8)
     })
-    expect(result.current.hasMore).toBe(false)
+    await waitFor(() => expect(listNotifications).toHaveBeenCalledWith(8, 8))
+    expect(result.current.offset).toBe(8)
   })
 
-  it('loadMore re-requests a bigger window rather than an offset page', async () => {
+  it('pins the release row to page 1 only', async () => {
     listNotifications.mockResolvedValue(page([SERVER_ROW], 1, 30))
     const { result } = renderHook(() => useNotifications())
-    await waitFor(() => expect(listNotifications).toHaveBeenCalledWith(8))
+    await waitFor(() => expect(result.current.items.length).toBe(2))
+    expect(result.current.items[0].id).toBe('release:2026-07-20')
+
     await act(async () => {
-      result.current.loadMore()
+      result.current.setOffset(8)
     })
-    await waitFor(() => expect(listNotifications).toHaveBeenCalledWith(16))
+    // On page 2 it would read as a third release rather than the newest one.
+    await waitFor(() => expect(result.current.items.map(i => i.id)).toEqual(['uuid-1']))
+  })
+
+  it('keeps the badge global when the reader pages away', async () => {
+    listNotifications.mockResolvedValue(page([SERVER_ROW], 1, 30))
+    const { result } = renderHook(() => useNotifications())
+    await waitFor(() => expect(result.current.unreadCount).toBe(2)) // 1 server + 1 release
+
+    await act(async () => {
+      result.current.setOffset(8)
+    })
+    // The release row leaves the page but not the count — the badge counts everything.
+    await waitFor(() => expect(result.current.offset).toBe(8))
+    expect(result.current.unreadCount).toBe(2)
+  })
+
+  it('reports the server total, which excludes the synthetic release row', async () => {
+    listNotifications.mockResolvedValue(page([SERVER_ROW], 1, 30))
+    const { result } = renderHook(() => useNotifications())
+    await waitFor(() => expect(result.current.total).toBe(30))
+    expect(result.current.limit).toBe(8)
   })
 })

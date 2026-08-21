@@ -8,11 +8,14 @@ interface OrderHistoryState {
   openOrders: CreditOrder[]
   /** One page of settled orders, newest first. */
   history: CreditOrder[]
+  /** Pager state for `history` — open orders are never paged. */
+  historyOffset: number
+  historyLimit: number
   historyTotal: number
+  setHistoryOffset: (offset: number) => void
   loading: boolean
   error: string | null
   reload: () => void
-  loadMore: () => void
 }
 
 const POLL_MS = 20_000
@@ -37,9 +40,10 @@ export function useOrderHistory(): OrderHistoryState {
   const [historyTotal, setHistoryTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  // ponytail: "load more" grows the window instead of appending an offset page, so the
-  // poll below can keep refreshing the whole list in one request with no dedup.
-  const [limit, setLimit] = useState(PAGE_SIZE)
+  // One window at a time, moved by the pager. ponytail: offset paging — a settled order
+  // arriving while the reader sits on page 2 shifts what page 2 holds. Rare and harmless
+  // for a list this size; keyset on (created_at, id) if it ever bites.
+  const [offset, setOffset] = useState(0)
   // Previous status by order id; null until the first load (so we don't toast on mount).
   const prevStatus = useRef<Map<string, string> | null>(null)
 
@@ -51,11 +55,14 @@ export function useOrderHistory(): OrderHistoryState {
         // Open orders are bounded by the one-open-order-per-pack lock, so `limit` here
         // is a sanity cap, not a window the UI pages through.
         listOrders({ openOnly: true, limit: 100 }),
-        listOrders({ openOnly: false, limit }),
+        listOrders({ openOnly: false, limit: PAGE_SIZE, offset }),
       ])
         .then(([open, settled]) => {
           const prev = prevStatus.current
           if (prev) {
+            // ponytail: only what is currently on screen can flip visibly. A decision
+            // reached while the reader is on page 3 lands on settled page 1 and skips
+            // its toast — the bell still notifies, so nothing is actually lost.
             for (const o of [...open.data, ...settled.data]) {
               const was = prev.get(o.id)
               // Compare against the open-status set (not a single string) so a
@@ -79,7 +86,7 @@ export function useOrderHistory(): OrderHistoryState {
           if (!silent) setLoading(false)
         })
     },
-    [t, limit]
+    [t, offset]
   )
 
   useEffect(() => {
@@ -111,10 +118,12 @@ export function useOrderHistory(): OrderHistoryState {
   return {
     openOrders,
     history,
+    historyOffset: offset,
+    historyLimit: PAGE_SIZE,
     historyTotal,
+    setHistoryOffset: setOffset,
     loading,
     error,
     reload: load,
-    loadMore: useCallback(() => setLimit(n => n + PAGE_SIZE), []),
   }
 }

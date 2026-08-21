@@ -22,6 +22,7 @@ import { WHATS_NEW_RETURN_KEY } from '../../lib/releaseNotesSeen'
 import type { BellItem } from '../../lib/api/notifications'
 import type { ReleaseNoteCopy } from '../../content/releaseNotes'
 import NotificationDetailModal from './NotificationDetailModal'
+import Pager from './Pager'
 
 // Per-type presentation: icon + tone class (tone drives the tinted icon container).
 // The email-automation pair is file-shaped where the order pair is circle-shaped,
@@ -82,7 +83,7 @@ function timeAgo(iso: string, t: TFn): string {
 
 export default function NotificationBell() {
   const { t, lang } = useT()
-  const { items, unreadCount, hasMore, loadMore, markRead } = useNotifications()
+  const { items, unreadCount, offset, limit, total, setOffset, markRead } = useNotifications()
   const [open, setOpen] = useState(false)
   const [detail, setDetail] = useState<BellItem | null>(null)
   const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({})
@@ -230,15 +231,11 @@ export default function NotificationBell() {
                     </li>
                   )
                 })}
-                {hasMore && (
-                  <li>
-                    <button type="button" className="notif-bell__more" onClick={loadMore}>
-                      {t('notif.loadMore')}
-                    </button>
-                  </li>
-                )}
               </ul>
             )}
+
+            {/* Outside the scrolling list, so the arrows stay put while rows scroll. */}
+            <Pager offset={offset} limit={limit} total={total} onChange={setOffset} />
           </div>,
           document.body
         )}

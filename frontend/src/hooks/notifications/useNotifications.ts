@@ -14,7 +14,7 @@ import { markReleaseSeen, readReleaseSeen, RELEASE_SEEN_EVENT } from '../../lib/
 // refreshes the moment the user comes back to the tab.
 const POLL_MS = 300_000
 
-// The bell is a dropdown, not an inbox: a first screenful, then "load more".
+// The bell is a dropdown, not an inbox: one screenful per page.
 const PAGE_SIZE = 8
 
 const RELEASE_ID_PREFIX = 'release:'
@@ -48,23 +48,23 @@ export function useNotifications() {
   const [total, setTotal] = useState(0)
   const [unreadCount, setUnreadCount] = useState(0)
   const [seen, setSeen] = useState(readReleaseSeen)
-  // ponytail: "load more" grows the window instead of appending an offset page. The
-  // list is then still one request the poll can refresh wholesale — an offset merge
-  // would need dedup and would drift as new rows shift the windows underneath it.
-  const [limit, setLimit] = useState(PAGE_SIZE)
+  // One window at a time, moved by the pager. ponytail: offset paging, so a row
+  // arriving while the reader sits on page 2 shifts what page 2 holds. Harmless for
+  // an append-only bell at our volumes; keyset on (created_at, id) if it ever bites.
+  const [offset, setOffset] = useState(0)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const refresh = useCallback(async () => {
     if (!isAuthenticated) return
     try {
-      const page = await listNotifications(limit)
+      const page = await listNotifications(PAGE_SIZE, offset)
       setItems(page.data)
       setTotal(page.total)
       setUnreadCount(page.unread_count)
     } catch {
       // silent — bell just shows stale data
     }
-  }, [isAuthenticated, limit])
+  }, [isAuthenticated, offset])
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -93,10 +93,16 @@ export function useNotifications() {
   // date and a server timestamp are two different clocks, and sorting them together
   // buries a fresh release under the morning's order notifications.
   const releases = useMemo(() => releaseRow(seen), [seen])
-  const merged = useMemo<BellItem[]>(() => [...releases, ...items], [releases, items])
+  // Page 1 only: the row is pinned to the top of the LIST, not repeated at the top of
+  // every page — on page 3 it would read as a third release.
+  const merged = useMemo<BellItem[]>(
+    () => (offset === 0 ? [...releases, ...items] : items),
+    [releases, items, offset]
+  )
 
-  // Derived, never stored: refresh() overwrites unreadCount from the server every
-  // 60s, so folding the release delta INTO that state would drift on a timer.
+  // Derived, never stored: refresh() overwrites unreadCount from the server on every
+  // poll, so folding the release delta INTO that state would drift on a timer. Counted
+  // off `releases`, not `merged` — the badge is global, so paging must not change it.
   const unseenReleases = releases.reduce((n, r) => n + (r.read_at ? 0 : 1), 0)
 
   const markRead = useCallback(
@@ -127,9 +133,12 @@ export function useNotifications() {
   return {
     items: merged,
     unreadCount: unreadCount + unseenReleases,
-    // The release row is client-side, so it is not part of the server's `total`.
-    hasMore: items.length < total,
-    loadMore: useCallback(() => setLimit(n => n + PAGE_SIZE), []),
+    // Pager state: `total` counts server rows only, which is what `offset` indexes —
+    // the release row is client-side and never part of it.
+    offset,
+    limit: PAGE_SIZE,
+    total,
+    setOffset,
     markRead,
     refresh,
   }

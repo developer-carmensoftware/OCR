@@ -1,0 +1,43 @@
+/* Offset pager: prev / range / next. Sized by its container, so the same component
+   sits in the bell dropdown and under a full-width order list without a variant. */
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+}
+
+.pager__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  color: var(--fg);
+  cursor: pointer;
+  transition:
+    background 120ms var(--ease-out-premium),
+    border-color 120ms var(--ease-out-premium);
+}
+
+.pager__btn:hover:not(:disabled) {
+  background: var(--muted);
+  border-color: var(--fg);
+}
+
+.pager__btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pager__range {
+  font-size: 0.75rem;
+  color: var(--muted-fg);
+  min-width: 7ch;
+  text-align: center;
+}

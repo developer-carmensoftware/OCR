@@ -3,6 +3,7 @@ import { ChevronDown, ShoppingBag, ArrowRight, Loader2, CalendarClock } from 'lu
 import { toast } from 'sonner'
 import AppHeader from '../components/common/AppHeader'
 import LanguageToggle from '../components/common/LanguageToggle'
+import Pager from '../components/common/Pager'
 import { useT } from '../i18n/LanguageContext'
 import OrderStatusBadge from '../components/pricing/OrderStatusBadge'
 import PendingOrderBanner from '../components/pricing/PendingOrderBanner'
@@ -197,7 +198,17 @@ function parseFocusId(): string | null {
 
 export default function OrderHistory() {
   const { t } = useT()
-  const { openOrders, history, historyTotal, loading, error, reload, loadMore } = useOrderHistory()
+  const {
+    openOrders,
+    history,
+    historyOffset,
+    historyLimit,
+    historyTotal,
+    setHistoryOffset,
+    loading,
+    error,
+    reload,
+  } = useOrderHistory()
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
   const [sub, setSub] = useState<ActiveSubscription | null>(null)
   // /usage answers later than the order list, so the strip used to mount after the rows had
@@ -304,23 +315,24 @@ export default function OrderHistory() {
             </div>
           )
         ) : (
-          <ul className="order-list">
-            {history.map(order => (
-              <OrderRow
-                key={order.id}
-                order={order}
-                paymentInfo={paymentInfo}
-                focus={order.id === focusId}
-              />
-            ))}
-            {history.length < historyTotal && (
-              <li className="orders-more">
-                <button type="button" className="btn btn-outline" onClick={loadMore}>
-                  {t('order.loadMore', { n: historyTotal - history.length })}
-                </button>
-              </li>
-            )}
-          </ul>
+          <>
+            <ul className="order-list">
+              {history.map(order => (
+                <OrderRow
+                  key={order.id}
+                  order={order}
+                  paymentInfo={paymentInfo}
+                  focus={order.id === focusId}
+                />
+              ))}
+            </ul>
+            <Pager
+              offset={historyOffset}
+              limit={historyLimit}
+              total={historyTotal}
+              onChange={setHistoryOffset}
+            />
+          </>
         )}
       </main>
     </div>

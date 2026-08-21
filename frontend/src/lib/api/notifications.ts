@@ -28,8 +28,8 @@ export interface NotificationList extends Page<Notification> {
   unread_count: number
 }
 
-export async function listNotifications(limit = 8): Promise<NotificationList> {
-  const res = await apiFetch(`${API.notifications.list}?limit=${limit}`)
+export async function listNotifications(limit = 8, offset = 0): Promise<NotificationList> {
+  const res = await apiFetch(`${API.notifications.list}?limit=${limit}&offset=${offset}`)
   if (!res.ok) throw new Error(`Notifications fetch failed (${res.status})`)
   return res.json() as Promise<NotificationList>
 }
