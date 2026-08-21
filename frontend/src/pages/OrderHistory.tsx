@@ -3,6 +3,8 @@ import { ChevronDown, ShoppingBag, ArrowRight, Loader2, CalendarClock } from 'lu
 import { toast } from 'sonner'
 import AppHeader from '../components/common/AppHeader'
 import LanguageToggle from '../components/common/LanguageToggle'
+import Pager from '../components/common/Pager'
+import { useFitRows } from '../hooks/useFitRows'
 import { useT } from '../i18n/LanguageContext'
 import OrderStatusBadge from '../components/pricing/OrderStatusBadge'
 import PendingOrderBanner from '../components/pricing/PendingOrderBanner'
@@ -13,7 +15,6 @@ import { useOrderHistory } from '../hooks/credits'
 import {
   getOrderDocuments,
   getPaymentInfo,
-  OPEN_ORDER_STATUSES,
   type BillingDocument,
   type CreditOrder,
   type PaymentInfo,
@@ -190,6 +191,9 @@ function RowSkeleton() {
   )
 }
 
+// Mirrors the cap FastAPI enforces on GET /api/v1/credits/orders (422 above it).
+const MAX_PAGE = 100
+
 // A notification deep-links as #/pricing/orders?id=<order_id>; pull that id out.
 function parseFocusId(): string | null {
   const q = window.location.hash.split('?')[1]
@@ -198,7 +202,21 @@ function parseFocusId(): string | null {
 
 export default function OrderHistory() {
   const { t } = useT()
-  const { orders, loading, error, reload } = useOrderHistory()
+  // Page size = however many rows fit above the fold. Measured off `.order-row-head`,
+  // the part of a row whose height is fixed — an expanded row is arbitrarily tall.
+  // Capped at the backend's /credits/orders limit.
+  const [fits, listRef] = useFitRows('.order-row-head', 4)
+  const historyLimit = Math.min(fits, MAX_PAGE)
+  const {
+    openOrders,
+    history,
+    historyOffset,
+    historyTotal,
+    setHistoryOffset,
+    loading,
+    error,
+    reload,
+  } = useOrderHistory(historyLimit)
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
   const [sub, setSub] = useState<ActiveSubscription | null>(null)
   // /usage answers later than the order list, so the strip used to mount after the rows had
@@ -217,8 +235,6 @@ export default function OrderHistory() {
   // the strip's slot collapse once when /usage comes back empty — cache the last answer per
   // tenant if that ever matters more than the extra storage key.
   const busy = loading || subLoading
-  const openOrders = orders.filter(o => OPEN_ORDER_STATUSES.includes(o.status))
-  const history = orders.filter(o => !OPEN_ORDER_STATUSES.includes(o.status))
 
   useEffect(() => {
     getPaymentInfo()
@@ -288,7 +304,7 @@ export default function OrderHistory() {
         {error ? (
           <div className="pricing-error">{t('order.loadError', { error })}</div>
         ) : busy ? (
-          <ul className="order-list">
+          <ul className="order-list" ref={listRef}>
             {Array.from({ length: 3 }).map((_, i) => (
               <RowSkeleton key={i} />
             ))}
@@ -307,16 +323,24 @@ export default function OrderHistory() {
             </div>
           )
         ) : (
-          <ul className="order-list">
-            {history.map(order => (
-              <OrderRow
-                key={order.id}
-                order={order}
-                paymentInfo={paymentInfo}
-                focus={order.id === focusId}
-              />
-            ))}
-          </ul>
+          <>
+            <ul className="order-list" ref={listRef}>
+              {history.map(order => (
+                <OrderRow
+                  key={order.id}
+                  order={order}
+                  paymentInfo={paymentInfo}
+                  focus={order.id === focusId}
+                />
+              ))}
+            </ul>
+            <Pager
+              offset={historyOffset}
+              limit={historyLimit}
+              total={historyTotal}
+              onChange={setHistoryOffset}
+            />
+          </>
         )}
       </main>
     </div>

@@ -28,6 +28,7 @@ from app.models.schemas import (
     HoldBatchResponse,
     HoldRequest,
     KpiSummaryResponse,
+    Page,
     PaymentInfoResponse,
     PostArRequest,
     PostArResponse,
@@ -125,7 +126,7 @@ async def ledger(
 # ── Slip review queue ─────────────────────────────────────────────────────────
 
 
-@router.get("/credit-orders", response_model=list[CreditOrderResponse])
+@router.get("/credit-orders", response_model=Page[CreditOrderResponse])
 async def list_credit_orders(
     status: str | None = Query(
         None, description="Status filter; omit → awaiting_review queue, 'all' → every status"
@@ -135,7 +136,8 @@ async def list_credit_orders(
         description="Split in_progress by slip: true → To Review queue, false → Awaiting Payment",
     ),
     tenant_id: str | None = Query(None, description="Limit to one company's orders (history)"),
-    limit: int = Query(50, le=200),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     admin: AdminPrincipal = Depends(require_permission("orders", "read")),
 ):
@@ -144,15 +146,17 @@ async def list_credit_orders(
     Default view is the slip-review queue (awaiting_review); `status=all` returns
     every status; `tenant_id` narrows to one company's order history.
     """
-    return await credit_order_service.list_orders(
+    rows, total = await credit_order_service.list_orders(
         db,
         status=status,
         has_slip=has_slip,
         tenant_id=tenant_id,
         limit=limit,
+        offset=offset,
         is_global=admin.is_global,
         tenant_scope=admin.tenant_scope,
     )
+    return Page(total=total, limit=limit, offset=offset, data=rows)
 
 
 @router.get("/payment-info", response_model=PaymentInfoResponse)

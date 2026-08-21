@@ -485,17 +485,56 @@ def test_cancel_non_in_progress_order_returns_409():
 # ── GET /credits/orders ───────────────────────────────────────────────────────
 
 
+def _paged_orders_db(orders, total):
+    """Mock AsyncSession for the paged /orders route: COUNT(*) first, then the rows."""
+    calls = []
+
+    async def fake_execute(_stmt):
+        result = MagicMock()
+        calls.append(_stmt)
+        if len(calls) == 1:  # paginate's COUNT(*)
+            result.scalar_one.return_value = total
+        else:
+            result.scalars.return_value.all.return_value = orders
+        return result
+
+    mock_db = make_mock_db()
+    mock_db.execute = fake_execute
+    return mock_db
+
+
 def test_list_orders_returns_tenants_orders():
     orders = [_order(status="in_progress"), _order(status="paid")]
-    scalars_result = MagicMock()
-    scalars_result.all.return_value = orders
-    execute_result = MagicMock()
-    execute_result.scalars.return_value = scalars_result
-    mock_db = make_mock_db()
-    mock_db.execute = AsyncMock(return_value=execute_result)
+    mock_db = _paged_orders_db(orders, total=2)
 
     with make_test_client(mock_db) as client:
         resp = client.get(f"{BASE}/orders", headers=AUTH)
 
     assert resp.status_code == 200
-    assert len(resp.json()) == 2
+    body = resp.json()
+    assert len(body["data"]) == 2
+    assert body["total"] == 2
+    assert body["limit"] == 8
+    assert body["offset"] == 0
+
+
+def test_list_orders_total_is_the_full_count_not_the_page():
+    """A pager needs to know there are 57 orders while holding 8 of them."""
+    mock_db = _paged_orders_db([_order(status="paid")], total=57)
+
+    with make_test_client(mock_db) as client:
+        resp = client.get(f"{BASE}/orders?limit=1&offset=8", headers=AUTH)
+
+    body = resp.json()
+    assert body["total"] == 57
+    assert body["offset"] == 8
+    assert len(body["data"]) == 1
+
+
+def test_list_orders_rejects_an_out_of_range_limit():
+    """The cap is the point — an unbounded limit re-opens the unbounded query."""
+    mock_db = _paged_orders_db([], total=0)
+
+    with make_test_client(mock_db) as client:
+        assert client.get(f"{BASE}/orders?limit=101", headers=AUTH).status_code == 422
+        assert client.get(f"{BASE}/orders?offset=-1", headers=AUTH).status_code == 422

@@ -45,3 +45,12 @@ if (dialog && !dialog.showModal) {
     this.dispatchEvent(new Event('close'))
   }
 }
+
+// jsdom has no ResizeObserver, and useFitRows measures with one. Nothing lays out
+// under jsdom anyway (every box is 0×0), so a stub that never fires is honest: the
+// hook falls back to its initial row count, which is what the tests assert against.
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as unknown as typeof ResizeObserver

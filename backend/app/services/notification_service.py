@@ -10,6 +10,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.billing import UserNotification
+from app.utils.pagination import paginate
 
 
 def notify(
@@ -35,22 +36,26 @@ def notify(
 async def list_notifications(
     db: AsyncSession,
     tenant_id: _uuid.UUID,
-    limit: int = 50,
-) -> tuple[list[UserNotification], int]:
-    """Return (newest-first items, unread_count) for the tenant."""
-    rows_q = (
+    limit: int = 8,
+    offset: int = 0,
+) -> tuple[list[UserNotification], int, int]:
+    """Return (newest-first window, total, unread_count) for the tenant.
+
+    `unread_count` deliberately ignores the window: the bell's badge must report every
+    unread notification, not just the unread ones that happen to be on this page.
+    """
+    stmt = (
         select(UserNotification)
         .where(UserNotification.tenant_id == tenant_id)
         .order_by(UserNotification.created_at.desc())
-        .limit(limit)
     )
+    items, total = await paginate(db, stmt, limit, offset)
     unread_q = select(func.count()).where(
         UserNotification.tenant_id == tenant_id,
         UserNotification.read_at.is_(None),
     )
-    items = list((await db.execute(rows_q)).scalars().all())
     unread = (await db.execute(unread_q)).scalar_one()
-    return items, unread
+    return items, total, unread
 
 
 async def has_notification(

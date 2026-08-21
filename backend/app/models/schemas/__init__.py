@@ -7,7 +7,7 @@ from app.models.schemas.admin_users import (
 )
 from app.models.schemas.ap_invoice import SuggestGLItem, SuggestGLRequest
 from app.models.schemas.auth import ExchangeRequest, ExchangeResponse
-from app.models.schemas.common import FieldMapping
+from app.models.schemas.common import FieldMapping, Page
 from app.models.schemas.config import AccountingConfigRequest, AccountingConfigResponse
 from app.models.schemas.consent import ConsentRequest, ConsentStatusResponse
 from app.models.schemas.credits import (
@@ -65,6 +65,7 @@ from app.models.schemas.quotas import ModuleToggleRequest
 __all__ = [
     # common
     "FieldMapping",
+    "Page",
     # email automation
     "RuleIn",
     "SettingsIn",

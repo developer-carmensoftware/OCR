@@ -431,7 +431,9 @@ describe('useAPExtraction', () => {
       })
       expect(result.current.file).toBe(MOCK_FILE)
       // previewUrl is produced asynchronously now (auto-print stripping); wait for it.
-      await waitFor(() => expect(result.current.previewUrl).toBeTruthy())
+      // 10s, not the 1s default: the pdf-lib parse behind it takes seconds when the
+      // whole suite runs in parallel. Flaked in CI at the default.
+      await waitFor(() => expect(result.current.previewUrl).toBeTruthy(), { timeout: 10_000 })
     })
 
     it('sets previewType=pdf for PDF files', async () => {

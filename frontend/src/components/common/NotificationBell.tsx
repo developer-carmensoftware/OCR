@@ -22,6 +22,11 @@ import { WHATS_NEW_RETURN_KEY } from '../../lib/releaseNotesSeen'
 import type { BellItem } from '../../lib/api/notifications'
 import type { ReleaseNoteCopy } from '../../content/releaseNotes'
 import NotificationDetailModal from './NotificationDetailModal'
+import Pager from './Pager'
+import { useFitRows } from '../../hooks/useFitRows'
+
+// Mirrors the cap FastAPI enforces on GET /api/v1/notifications (422 above it).
+const MAX_PAGE = 50
 
 // Per-type presentation: icon + tone class (tone drives the tinted icon container).
 // The email-automation pair is file-shaped where the order pair is circle-shaped,
@@ -82,7 +87,11 @@ function timeAgo(iso: string, t: TFn): string {
 
 export default function NotificationBell() {
   const { t, lang } = useT()
-  const { items, unreadCount, markRead } = useNotifications()
+  // Page size = whatever fills the panel, capped at the backend's /notifications limit.
+  // Only the first open measures: the count survives the panel unmounting on close.
+  const [fits, listRef] = useFitRows('li', 4)
+  const limit = Math.min(fits, MAX_PAGE)
+  const { items, unreadCount, offset, total, setOffset, markRead } = useNotifications(limit)
   const [open, setOpen] = useState(false)
   const [detail, setDetail] = useState<BellItem | null>(null)
   const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({})
@@ -196,7 +205,7 @@ export default function NotificationBell() {
                 <span>{t('notif.empty')}</span>
               </div>
             ) : (
-              <ul className="notif-bell__list">
+              <ul className="notif-bell__list" ref={listRef}>
                 {items.map(n => {
                   const meta = TYPE_META[n.type] ?? { icon: Bell, tone: 'info' }
                   const Icon = meta.icon
@@ -232,6 +241,9 @@ export default function NotificationBell() {
                 })}
               </ul>
             )}
+
+            {/* Outside the scrolling list, so the arrows stay put while rows scroll. */}
+            <Pager offset={offset} limit={limit} total={total} onChange={setOffset} />
           </div>,
           document.body
         )}

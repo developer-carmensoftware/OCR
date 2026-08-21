@@ -1,5 +1,6 @@
 import { apiFetch } from './client'
 import { API } from './endpoints'
+import type { Page } from './page'
 
 export interface Notification {
   id: string
@@ -22,13 +23,13 @@ export interface BellItem extends Omit<Notification, 'type'> {
   type: Notification['type'] | 'release_note'
 }
 
-export interface NotificationList {
-  items: Notification[]
+/** A page of notifications plus the badge count, which spans every row, not the page. */
+export interface NotificationList extends Page<Notification> {
   unread_count: number
 }
 
-export async function listNotifications(): Promise<NotificationList> {
-  const res = await apiFetch(API.notifications.list)
+export async function listNotifications(limit = 8, offset = 0): Promise<NotificationList> {
+  const res = await apiFetch(`${API.notifications.list}?limit=${limit}&offset=${offset}`)
   if (!res.ok) throw new Error(`Notifications fetch failed (${res.status})`)
   return res.json() as Promise<NotificationList>
 }
