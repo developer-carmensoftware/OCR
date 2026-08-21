@@ -1,6 +1,24 @@
 import { useCallback, useLayoutEffect, useState } from 'react'
 
 /**
+ * Height of what sits under a list and must not be covered: its own following siblings,
+ * plus its parent's. Two levels because that is what the real shapes need — a pager
+ * next to the list (`<ul>` then `<nav>`), and one a level out (`<tbody>` inside
+ * `<table>`, pager after the table). Measured, never a guessed pixel reserve.
+ */
+function spaceBelow(el: HTMLElement): number {
+  let h = 0
+  for (const start of [el, el.parentElement]) {
+    let sib = start?.nextElementSibling
+    while (sib) {
+      h += (sib as HTMLElement).offsetHeight
+      sib = sib.nextElementSibling
+    }
+  }
+  return h
+}
+
+/**
  * How many rows fit in the space a list actually has on screen.
  *
  * Nothing here hardcodes a row height or a page size: it measures a rendered row and
@@ -35,10 +53,9 @@ export function useFitRows(
     // bounded by what is left between its top and the bottom of the window, minus
     // whatever sits under it — measured off the next sibling (the pager), not guessed.
     const scrolls = style.overflowY === 'auto' || style.overflowY === 'scroll'
-    const below = (el.nextElementSibling as HTMLElement | null)?.offsetHeight ?? 0
     const avail = scrolls
       ? el.clientHeight
-      : window.innerHeight - el.getBoundingClientRect().top - below
+      : window.innerHeight - el.getBoundingClientRect().top - spaceBelow(el)
 
     // +gap on both sides: n rows carry n-1 gaps, so the gap belongs to every row but
     // the last one.

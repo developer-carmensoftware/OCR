@@ -1,5 +1,6 @@
 import { Fragment, useState } from 'react'
 import { useT } from '../../i18n/LanguageContext'
+import { useFitRows } from '../../hooks/useFitRows'
 
 const SKELETON_WIDTHS = [
   'sk-w-72',
@@ -23,6 +24,8 @@ export interface Column<T> {
 export interface DataTableProps<T = Record<string, unknown>> {
   columns: Column<T>[]
   rows: T[]
+  /** Fixed rows per page. Omit to fit the viewport — only pass it for a table that is
+   *  not viewport-bound, such as one nested inside an expanded row. */
   pageSize?: number
   emptyText?: string
   loading?: boolean
@@ -49,7 +52,7 @@ function getCell(row: unknown, key: string): unknown {
 export default function DataTable<T = Record<string, unknown>>({
   columns,
   rows,
-  pageSize = 50,
+  pageSize,
   emptyText,
   loading = false,
   expandedRowId,
@@ -59,6 +62,10 @@ export default function DataTable<T = Record<string, unknown>>({
   // so every admin page rendered "‹ Prev / Next › / of" untranslated no matter what
   // the language toggle said. Fixing it here fixes all 11 callers at once.
   const { t } = useT()
+  // Rows per page is measured off the rendered table, not decided here: a laptop and a
+  // 4K panel should not both get 50. An explicit `pageSize` still wins — see the prop.
+  const [fits, bodyRef] = useFitRows('tr', 7)
+  const perPage = pageSize ?? fits
   const [page, setPage] = useState(0)
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortAsc, setSortAsc] = useState(true)
@@ -81,9 +88,12 @@ export default function DataTable<T = Record<string, unknown>>({
     : rows
 
   const total = sorted.length
-  const start = page * pageSize
-  const paginated = sorted.slice(start, start + pageSize)
-  const pages = Math.ceil(total / pageSize)
+  const pages = Math.ceil(total / perPage)
+  // A resize can make the current page index point past the end (fewer, taller pages);
+  // clamp rather than render a blank table the reader has to click their way out of.
+  const safePage = Math.min(page, Math.max(0, pages - 1))
+  const start = safePage * perPage
+  const paginated = sorted.slice(start, start + perPage)
 
   const handleSort = (key: string) => {
     if (sortKey === key) setSortAsc(v => !v)
@@ -144,7 +154,7 @@ export default function DataTable<T = Record<string, unknown>>({
       <div className="admin-table-wrap">
         <table className="admin-table">
           {head}
-          <tbody>
+          <tbody ref={bodyRef}>
             {Array.from({ length: 7 }).map((_, i) => (
               <tr key={i} className="admin-tr skeleton-row" role="presentation">
                 {columns.map((col, j) => (
@@ -171,7 +181,7 @@ export default function DataTable<T = Record<string, unknown>>({
     <div className="admin-table-wrap">
       <table className="admin-table">
         {head}
-        <tbody>
+        <tbody ref={bodyRef}>
           {paginated.length === 0 ? (
             <tr>
               <td colSpan={columns.length} className="admin-td-empty">
@@ -215,22 +225,22 @@ export default function DataTable<T = Record<string, unknown>>({
           <span className="pagination-info">
             {t('admin.common.table.range', {
               from: start + 1,
-              to: Math.min(start + pageSize, total),
+              to: Math.min(start + perPage, total),
               total,
             })}
           </span>
           <button
             type="button"
-            disabled={page === 0}
-            onClick={() => setPage(p => p - 1)}
+            disabled={safePage === 0}
+            onClick={() => setPage(safePage - 1)}
             className="pagination-btn"
           >
             {t('admin.common.table.prev')}
           </button>
           <button
             type="button"
-            disabled={page >= pages - 1}
-            onClick={() => setPage(p => p + 1)}
+            disabled={safePage >= pages - 1}
+            onClick={() => setPage(safePage + 1)}
             className="pagination-btn"
           >
             {t('admin.common.table.next')}
