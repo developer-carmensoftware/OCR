@@ -43,7 +43,7 @@ function page(rows: (typeof SERVER_ROW)[], unread: number, total = rows.length) 
 async function setup() {
   listNotifications.mockResolvedValue(page([SERVER_ROW], 1))
   markNotificationsRead.mockResolvedValue(undefined)
-  const hook = renderHook(() => useNotifications())
+  const hook = renderHook(() => useNotifications(8))
   await waitFor(() => expect(hook.result.current.items.length).toBe(2))
   return hook
 }
@@ -130,7 +130,7 @@ describe('useNotifications — release notes', () => {
 describe('useNotifications — paging', () => {
   it('asks for the window the pager points at', async () => {
     listNotifications.mockResolvedValue(page([SERVER_ROW], 1, 30))
-    const { result } = renderHook(() => useNotifications())
+    const { result } = renderHook(() => useNotifications(8))
     await waitFor(() => expect(listNotifications).toHaveBeenCalledWith(8, 0))
 
     await act(async () => {
@@ -142,7 +142,7 @@ describe('useNotifications — paging', () => {
 
   it('pins the release row to page 1 only', async () => {
     listNotifications.mockResolvedValue(page([SERVER_ROW], 1, 30))
-    const { result } = renderHook(() => useNotifications())
+    const { result } = renderHook(() => useNotifications(8))
     await waitFor(() => expect(result.current.items.length).toBe(2))
     expect(result.current.items[0].id).toBe('release:2026-07-20')
 
@@ -155,7 +155,7 @@ describe('useNotifications — paging', () => {
 
   it('keeps the badge global when the reader pages away', async () => {
     listNotifications.mockResolvedValue(page([SERVER_ROW], 1, 30))
-    const { result } = renderHook(() => useNotifications())
+    const { result } = renderHook(() => useNotifications(8))
     await waitFor(() => expect(result.current.unreadCount).toBe(2)) // 1 server + 1 release
 
     await act(async () => {
@@ -168,8 +168,7 @@ describe('useNotifications — paging', () => {
 
   it('reports the server total, which excludes the synthetic release row', async () => {
     listNotifications.mockResolvedValue(page([SERVER_ROW], 1, 30))
-    const { result } = renderHook(() => useNotifications())
+    const { result } = renderHook(() => useNotifications(8))
     await waitFor(() => expect(result.current.total).toBe(30))
-    expect(result.current.limit).toBe(8)
   })
 })

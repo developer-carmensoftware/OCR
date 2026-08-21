@@ -100,10 +100,15 @@ describe('useFileUpload', () => {
         result.current.handleFileChange(makeChangeEvent([makePDFFile()]))
       })
       expect(result.current.previewType).toBe('pdf')
-      await waitFor(() => {
-        expect(result.current.previewUrl).not.toBeNull()
-        expect(result.current.previewUrl).toContain('view=FitH')
-      })
+      // 10s, not the 1s default: this waits on a pdf-lib parse, which takes seconds
+      // when the whole suite runs in parallel. Flaked in CI at the default.
+      await waitFor(
+        () => {
+          expect(result.current.previewUrl).not.toBeNull()
+          expect(result.current.previewUrl).toContain('view=FitH')
+        },
+        { timeout: 10_000 }
+      )
     })
 
     it('sets previewType to uppercase extension for unsupported file types', () => {

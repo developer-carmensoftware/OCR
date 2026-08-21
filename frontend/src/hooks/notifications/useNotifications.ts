@@ -14,9 +14,6 @@ import { markReleaseSeen, readReleaseSeen, RELEASE_SEEN_EVENT } from '../../lib/
 // refreshes the moment the user comes back to the tab.
 const POLL_MS = 300_000
 
-// The bell is a dropdown, not an inbox: one screenful per page.
-const PAGE_SIZE = 8
-
 const RELEASE_ID_PREFIX = 'release:'
 
 /**
@@ -42,7 +39,8 @@ function releaseRow(seen: string): BellItem[] {
   ]
 }
 
-export function useNotifications() {
+/** `limit` is measured from the panel — see `useFitRows` — not a fixed page size. */
+export function useNotifications(limit: number) {
   const { isAuthenticated } = useAuth()
   const [items, setItems] = useState<Notification[]>([])
   const [total, setTotal] = useState(0)
@@ -57,14 +55,14 @@ export function useNotifications() {
   const refresh = useCallback(async () => {
     if (!isAuthenticated) return
     try {
-      const page = await listNotifications(PAGE_SIZE, offset)
+      const page = await listNotifications(limit, offset)
       setItems(page.data)
       setTotal(page.total)
       setUnreadCount(page.unread_count)
     } catch {
       // silent — bell just shows stale data
     }
-  }, [isAuthenticated, offset])
+  }, [isAuthenticated, limit, offset])
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -136,7 +134,6 @@ export function useNotifications() {
     // Pager state: `total` counts server rows only, which is what `offset` indexes —
     // the release row is client-side and never part of it.
     offset,
-    limit: PAGE_SIZE,
     total,
     setOffset,
     markRead,

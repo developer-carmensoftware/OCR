@@ -137,7 +137,9 @@ const cardVariants = {
 export default function Pricing() {
   const { t } = useT()
   const { plans, packs, loading, error } = usePricingCatalog()
-  const { openOrders, reload } = useOrderHistory()
+  // limit 1: this page only ever reads `openOrders`, which is never paged. Asking for
+  // one settled row is the cheapest way to satisfy the shared hook's second fetch.
+  const { openOrders, reload } = useOrderHistory(1)
   const hasOpenOrder = openOrders.length > 0
   // Savings % for the toggle badge — derived from the catalog (same for every tier).
   const annualSavePct = (() => {

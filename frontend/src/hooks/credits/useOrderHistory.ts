@@ -10,7 +10,6 @@ interface OrderHistoryState {
   history: CreditOrder[]
   /** Pager state for `history` — open orders are never paged. */
   historyOffset: number
-  historyLimit: number
   historyTotal: number
   setHistoryOffset: (offset: number) => void
   loading: boolean
@@ -19,7 +18,6 @@ interface OrderHistoryState {
 }
 
 const POLL_MS = 20_000
-const PAGE_SIZE = 8
 // Widened to Set<string>: compared against plain-string map values below (`was`).
 const OPEN_STATUSES: Set<string> = new Set(OPEN_ORDER_STATUSES)
 
@@ -33,7 +31,7 @@ const OPEN_STATUSES: Set<string> = new Set(OPEN_ORDER_STATUSES)
  * still needs the customer to act, and would fall off a page of newest-first rows —
  * while the settled history is the part that grows without bound and gets paged.
  */
-export function useOrderHistory(): OrderHistoryState {
+export function useOrderHistory(limit: number): OrderHistoryState {
   const { t } = useT()
   const [openOrders, setOpenOrders] = useState<CreditOrder[]>([])
   const [history, setHistory] = useState<CreditOrder[]>([])
@@ -55,7 +53,7 @@ export function useOrderHistory(): OrderHistoryState {
         // Open orders are bounded by the one-open-order-per-pack lock, so `limit` here
         // is a sanity cap, not a window the UI pages through.
         listOrders({ openOnly: true, limit: 100 }),
-        listOrders({ openOnly: false, limit: PAGE_SIZE, offset }),
+        listOrders({ openOnly: false, limit, offset }),
       ])
         .then(([open, settled]) => {
           const prev = prevStatus.current
@@ -86,7 +84,7 @@ export function useOrderHistory(): OrderHistoryState {
           if (!silent) setLoading(false)
         })
     },
-    [t, offset]
+    [t, limit, offset]
   )
 
   useEffect(() => {
@@ -119,7 +117,6 @@ export function useOrderHistory(): OrderHistoryState {
     openOrders,
     history,
     historyOffset: offset,
-    historyLimit: PAGE_SIZE,
     historyTotal,
     setHistoryOffset: setOffset,
     loading,

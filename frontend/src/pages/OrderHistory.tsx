@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import AppHeader from '../components/common/AppHeader'
 import LanguageToggle from '../components/common/LanguageToggle'
 import Pager from '../components/common/Pager'
+import { useFitRows } from '../hooks/useFitRows'
 import { useT } from '../i18n/LanguageContext'
 import OrderStatusBadge from '../components/pricing/OrderStatusBadge'
 import PendingOrderBanner from '../components/pricing/PendingOrderBanner'
@@ -190,6 +191,9 @@ function RowSkeleton() {
   )
 }
 
+// Mirrors the cap FastAPI enforces on GET /api/v1/credits/orders (422 above it).
+const MAX_PAGE = 100
+
 // A notification deep-links as #/pricing/orders?id=<order_id>; pull that id out.
 function parseFocusId(): string | null {
   const q = window.location.hash.split('?')[1]
@@ -198,17 +202,21 @@ function parseFocusId(): string | null {
 
 export default function OrderHistory() {
   const { t } = useT()
+  // Page size = however many rows fit above the fold. Measured off `.order-row-head`,
+  // the part of a row whose height is fixed — an expanded row is arbitrarily tall.
+  // Capped at the backend's /credits/orders limit.
+  const [fits, listRef] = useFitRows('.order-row-head', 4)
+  const historyLimit = Math.min(fits, MAX_PAGE)
   const {
     openOrders,
     history,
     historyOffset,
-    historyLimit,
     historyTotal,
     setHistoryOffset,
     loading,
     error,
     reload,
-  } = useOrderHistory()
+  } = useOrderHistory(historyLimit)
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
   const [sub, setSub] = useState<ActiveSubscription | null>(null)
   // /usage answers later than the order list, so the strip used to mount after the rows had
@@ -296,7 +304,7 @@ export default function OrderHistory() {
         {error ? (
           <div className="pricing-error">{t('order.loadError', { error })}</div>
         ) : busy ? (
-          <ul className="order-list">
+          <ul className="order-list" ref={listRef}>
             {Array.from({ length: 3 }).map((_, i) => (
               <RowSkeleton key={i} />
             ))}
@@ -316,7 +324,7 @@ export default function OrderHistory() {
           )
         ) : (
           <>
-            <ul className="order-list">
+            <ul className="order-list" ref={listRef}>
               {history.map(order => (
                 <OrderRow
                   key={order.id}
