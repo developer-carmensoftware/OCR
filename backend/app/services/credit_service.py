@@ -37,6 +37,8 @@ from app.models.orm import (
     TenantCredit,
     TenantSubscription,
 )
+from app.utils.list_query import ListQuery, apply_list_query
+from app.utils.pagination import paginate
 
 logger = logging.getLogger(__name__)
 
@@ -420,21 +422,39 @@ async def adjust_balance(db: AsyncSession, tenant_id: str, delta: int, note: str
     )
 
 
-async def get_ledger(db: AsyncSession, tenant_id: str, limit: int) -> list[CreditLedger]:
-    """Audit history of credit changes for a tenant, newest first."""
-    rows = (
-        (
-            await db.execute(
-                select(CreditLedger)
-                .where(CreditLedger.tenant_id == tenant_id)
-                .order_by(CreditLedger.created_at.desc())
-                .limit(limit)
-            )
-        )
-        .scalars()
-        .all()
+async def get_ledger(
+    db: AsyncSession,
+    tenant_id: str,
+    lq: ListQuery,
+    from_date: datetime | None = None,
+    to_date: datetime | None = None,
+) -> tuple[list[CreditLedger], int]:
+    """Audit history of credit changes for a tenant, newest first.
+
+    Paged and counted rather than capped: this used to return a flat newest-100 with no
+    date filter and nothing saying there was more, so a tenant's 101st ledger entry was
+    unreachable from the admin UI — on the one table that exists to be audited.
+    """
+    q = select(CreditLedger).where(CreditLedger.tenant_id == tenant_id)
+    if from_date:
+        q = q.where(CreditLedger.created_at >= from_date)
+    if to_date:
+        q = q.where(CreditLedger.created_at <= to_date)
+
+    q = apply_list_query(
+        q,
+        lq,
+        sortable={
+            "created_at": CreditLedger.created_at,
+            "reason": CreditLedger.reason,
+            "delta": CreditLedger.delta,
+            "balance_after": CreditLedger.balance_after,
+        },
+        tiebreak=CreditLedger.id,
+        default_sort="created_at",
+        searchable=(CreditLedger.reason, CreditLedger.note, CreditLedger.ref),
     )
-    return list(rows)
+    return await paginate(db, q, lq.limit, lq.offset)
 
 
 # ── Subscriptions ─────────────────────────────────────────────────────────────

@@ -16,15 +16,30 @@ from app.models.observability import OutboundCallLog
 from app.services import usage_analytics_service as svc
 from app.services.tenant_lookup import username_map
 
+from ._query import ListQuery, list_query
 from .deps import require_permission
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# This endpoint returns one row per date×tenant×module with no row limit at all —
-# bounding the date range is the only lever that bounds it (llm_usage_logs is
-# retained 12 months anyway via pg_partman, so nothing wider was fully meaningful).
-_MAX_DATE_RANGE_DAYS = 92
+# Row-bounded endpoints (extraction-failures, quotas/overview) carry their own `limit`,
+# so the date range only has to stay inside what the partitions actually hold —
+# llm_usage_logs is retained 12 months via pg_partman.
+_MAX_DATE_RANGE_DAYS = 366
+
+# /usage-summary at daily granularity returns one row per date×tenant×module with no row
+# limit at all, so the range is the only lever that bounds it. Ask for longer and you get
+# `granularity=month`, which reads the monthly rollup instead.
+_MAX_DAILY_RANGE_DAYS = 92
+
+# The monthly rollup is tiny (one row per month×tenant×module, kept indefinitely), so this
+# guard is about typos — ?from=1970-01-01 — not about cost.
+_MAX_MONTHLY_RANGE_DAYS = 366 * 5
+
+# The two endpoints that still window by hours instead of dates. Derived from the day
+# ceiling rather than written as 8760: a UI range of "365 days ago 00:00 → today 23:59"
+# is 366 days of hours, so a bare year here made the picker's own 12-month preset 422.
+_MAX_PERIOD_HOURS = _MAX_DATE_RANGE_DAYS * 24
 
 
 def _resolve_tenant(admin: AdminPrincipal, tenant_id: str | None) -> str | None:
@@ -33,11 +48,22 @@ def _resolve_tenant(admin: AdminPrincipal, tenant_id: str | None) -> str | None:
     return tenant_id or None
 
 
-def _assert_date_range(from_date: date, to_date: date) -> None:
+def _assert_date_range(
+    from_date: date, to_date: date, max_days: int = _MAX_DATE_RANGE_DAYS
+) -> None:
     if to_date < from_date:
         raise ValidationError("'to' must not be before 'from'")
-    if (to_date - from_date).days > _MAX_DATE_RANGE_DAYS:
-        raise ValidationError(f"Date range too wide — max {_MAX_DATE_RANGE_DAYS} days")
+    if (to_date - from_date).days > max_days:
+        raise ValidationError(f"Date range too wide — max {max_days} days")
+
+
+def _assert_usage_range(from_date: date, to_date: date, granularity: str) -> None:
+    """Daily rows are unbounded per day×tenant×module; monthly rows are a tiny rollup."""
+    _assert_date_range(
+        from_date,
+        to_date,
+        _MAX_MONTHLY_RANGE_DAYS if granularity == "month" else _MAX_DAILY_RANGE_DAYS,
+    )
 
 
 @router.get("/usage-summary")
@@ -46,6 +72,9 @@ async def get_usage_summary(
     to_date: date | None = Query(None, alias="to"),
     module_id: str | None = Query(None),
     tenant_id: str | None = Query(None),
+    granularity: Literal["day", "month"] = Query(
+        "day", description="'month' reads the monthly rollup, which has no 92-day ceiling"
+    ),
     db: AsyncSession = Depends(get_db),
     admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
 ):
@@ -53,10 +82,19 @@ async def get_usage_summary(
         from_date = date.today().replace(day=1)
     if not to_date:
         to_date = date.today()
-    _assert_date_range(from_date, to_date)
+    _assert_usage_range(from_date, to_date, granularity)
     tid = _resolve_tenant(admin, tenant_id)
-    result = await svc.get_usage_summary(db, from_date, to_date, tid, module_id)
-    return {"tenant_id": tid, "from": str(from_date), "to": str(to_date), **result}
+    if granularity == "month":
+        result = await svc.get_monthly_usage_summary(db, from_date, to_date, tid, module_id)
+    else:
+        result = await svc.get_usage_summary(db, from_date, to_date, tid, module_id)
+    return {
+        "tenant_id": tid,
+        "from": str(from_date),
+        "to": str(to_date),
+        "granularity": granularity,
+        **result,
+    }
 
 
 @router.get("/usage-summary/totals")
@@ -64,6 +102,7 @@ async def get_usage_totals(
     from_date: date | None = Query(None, alias="from"),
     to_date: date | None = Query(None, alias="to"),
     tenant_id: str | None = Query(None),
+    granularity: Literal["day", "month"] = Query("day"),
     db: AsyncSession = Depends(get_db),
     admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
 ):
@@ -73,11 +112,21 @@ async def get_usage_totals(
         to_date = date.today()
     # Same cap as /usage-summary above — this endpoint aggregates the same partitioned
     # tables and had been accepting any range at all, so ?from=2020-01-01 pruned no
-    # partition and summed the full retention window.
-    _assert_date_range(from_date, to_date)
+    # partition and summed the full retention window. `granularity=month` reads the
+    # rollup instead, which is what makes a year-long range answerable at all.
+    _assert_usage_range(from_date, to_date, granularity)
     tid = _resolve_tenant(admin, tenant_id)
-    totals = await svc.get_usage_totals(db, from_date, to_date, tid)
-    return {"tenant_id": tid, "from": str(from_date), "to": str(to_date), "totals": totals}
+    if granularity == "month":
+        totals = await svc.get_monthly_usage_totals(db, from_date, to_date, tid)
+    else:
+        totals = await svc.get_usage_totals(db, from_date, to_date, tid)
+    return {
+        "tenant_id": tid,
+        "from": str(from_date),
+        "to": str(to_date),
+        "granularity": granularity,
+        "totals": totals,
+    }
 
 
 @router.get("/llm-usage")
@@ -86,16 +135,19 @@ async def get_llm_usage(
     to_date: datetime | None = Query(None, alias="to"),
     module_id: str | None = Query(None),
     tenant_id: str | None = Query(None),
-    order_by: Literal["cost_usd", "duration_ms", "total_tokens", "created_at"] = Query(
-        "created_at"
-    ),
-    limit: int = Query(100, le=1000),
+    lq: ListQuery = Depends(list_query),
     db: AsyncSession = Depends(get_db),
     admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
 ):
+    """Every LLM call, sorted and windowed by the database.
+
+    The old `order_by` literal is gone: `?sort=&dir=` covers it and more, and the page
+    that used to carry both a sort dropdown *and* clickable headers no longer disagrees
+    with itself. `total` is the real count, so "highest cost" now means highest cost.
+    """
     tid = _resolve_tenant(admin, tenant_id)
-    data = await svc.get_llm_usage(db, tid, from_date, to_date, module_id, order_by, limit)
-    return {"count": len(data), "has_more": len(data) == limit, "data": data}
+    data, total = await svc.get_llm_usage(db, tid, from_date, to_date, module_id, lq)
+    return {"total": total, "limit": lq.limit, "offset": lq.offset, "data": data}
 
 
 @router.get("/llm-routing")
@@ -168,7 +220,10 @@ async def get_llm_routing(
 @router.get("/tenant-ranking")
 async def tenant_ranking(
     metric: Literal["error_rate", "latency", "cost", "volume"] = Query("error_rate"),
-    period_hours: int = Query(24, ge=1, le=720),
+    # ponytail: a full year scans llm_usage_logs / performance_logs unaggregated. Fine at
+    # the measured 0.019% duty cycle (docs/SQL_PERFORMANCE_AUDIT.md); if it ever bites,
+    # read daily_usage_summary for ranges past ~92 days rather than capping the UI again.
+    period_hours: int = Query(24, ge=1, le=_MAX_PERIOD_HOURS),
     limit: int = Query(20, le=100),
     db: AsyncSession = Depends(get_db),
     admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
@@ -185,8 +240,7 @@ async def user_usage(
     from_date: datetime | None = Query(None, alias="from"),
     to_date: datetime | None = Query(None, alias="to"),
     tenant_id: str | None = Query(None),
-    order_by: Literal["calls", "tokens", "cost"] = Query("calls"),
-    limit: int = Query(50, le=200),
+    lq: ListQuery = Depends(list_query),
     db: AsyncSession = Depends(get_db),
     admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
 ):
@@ -195,7 +249,7 @@ async def user_usage(
     if not to_date:
         to_date = datetime.now(UTC)
     tid = _resolve_tenant(admin, tenant_id)
-    data = await svc.get_user_usage(db, tid, from_date, to_date, order_by, limit)
+    data, total = await svc.get_user_usage(db, tid, from_date, to_date, lq)
     # llm_usage_logs stores only the opaque carmen_user_id; the name lives in ocr_sessions.
     names = await username_map(db, [r["carmen_user_id"] for r in data])
     for row in data:
@@ -203,7 +257,9 @@ async def user_usage(
     return {
         "from": from_date.isoformat(),
         "to": to_date.isoformat(),
-        "total_users": len(data),
+        "total": total,
+        "limit": lq.limit,
+        "offset": lq.offset,
         "data": data,
     }
 
@@ -211,7 +267,8 @@ async def user_usage(
 @router.get("/error-breakdown")
 async def error_breakdown(
     group_by: Literal["module", "tenant", "endpoint"] = Query("module"),
-    period_hours: int = Query(24, ge=1, le=720),
+    # See /tenant-ranking above for why a year is allowed here.
+    period_hours: int = Query(24, ge=1, le=_MAX_PERIOD_HOURS),
     tenant_id: str | None = Query(None),
     limit: int = Query(50, le=200),
     db: AsyncSession = Depends(get_db),

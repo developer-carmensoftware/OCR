@@ -845,12 +845,23 @@ const en = {
   'admin.common.table.range': '{from}–{to} of {total}',
   'admin.common.table.prev': '‹ Prev',
   'admin.common.table.next': 'Next ›',
+  'admin.common.table.searchPlaceholder': 'Search…',
+  'admin.common.table.noMatch': 'Nothing matches “{q}”',
   'admin.common.dateRange.from': 'From',
   'admin.common.dateRange.to': 'To',
-  'admin.overview.description': 'Usage, cost, and health across your tenants for the last 30 days.',
+  'admin.common.period.label': 'Period',
+  'admin.common.period.24h': 'Last 24 hours',
+  'admin.common.period.7d': 'Last 7 days',
+  'admin.common.period.30d': 'Last 30 days',
+  'admin.common.period.90d': 'Last 90 days',
+  'admin.common.period.12mo': 'Last 12 months',
+  'admin.common.period.custom': 'Custom range…',
+  'admin.common.period.monthlyNote': 'Monthly totals — daily rows go back 92 days.',
+  'admin.overview.description':
+    'Usage, cost, and health across your tenants over the selected period.',
   'admin.overview.title': 'Overview',
-  'admin.overview.kpi.llmCalls': 'LLM Calls (MTD)',
-  'admin.overview.kpi.cost': 'Cost (MTD)',
+  'admin.overview.kpi.llmCalls': 'LLM Calls',
+  'admin.overview.kpi.cost': 'Cost',
   'admin.overview.kpi.errorRate': 'Error Rate',
   'admin.overview.kpi.openAlerts': 'Open Alerts',
   'admin.overview.kpi.documents': 'Documents (MTD)',
@@ -900,6 +911,7 @@ const en = {
   'admin.anomalies.toast.loadFailed': 'Alerts: {error}',
 
   'admin.sessions.title': 'Sessions',
+  'admin.sessions.searchPlaceholder': 'Search user…',
   'admin.sessions.activeOnly': 'Active only',
   'admin.sessions.col.user': 'User',
   'admin.sessions.col.tenant': 'Tenant',
@@ -918,6 +930,7 @@ const en = {
   'admin.sessions.toast.loadFailed': 'Sessions: {error}',
 
   'admin.jobs.title': 'Job Runs',
+  'admin.jobs.searchPlaceholder': 'Search job name or error…',
   'admin.jobs.statusFilterAria': 'Job status filter',
   'admin.jobs.status.all': 'All',
   'admin.jobs.status.running': 'Running',
@@ -934,6 +947,7 @@ const en = {
 
   // Email Automation
   'admin.email.title': 'Email Automation',
+  'admin.email.searchPlaceholder': 'Search attachment, doc no, or JV…',
   'admin.email.description':
     'Every mail the ingest pipeline reached a verdict on, and the schedules behind it.',
   'admin.email.action.poll': 'Poll documents',
@@ -1013,6 +1027,7 @@ const en = {
   'admin.email.toast.loadFailed': 'Email documents: {error}',
 
   'admin.performance.title': 'Performance Logs',
+  'admin.performance.searchPlaceholder': 'Search endpoint or user…',
   'admin.performance.minDurationAria': 'Minimum duration in milliseconds',
   'admin.performance.minDurationPlaceholder': 'Min ms (e.g. 1000)',
   'admin.performance.col.time': 'Time',
@@ -1025,6 +1040,7 @@ const en = {
   'admin.performance.toast.loadFailed': 'Performance: {error}',
 
   'admin.usage.title': 'Usage',
+  'admin.usage.searchPlaceholder': 'Search BU or module…',
   'admin.usage.chartTitle': 'LLM Calls by Module',
   'admin.usage.series.creditCardOcr': 'Credit Card OCR',
   'admin.usage.series.apInvoice': 'AP Invoice',
@@ -1042,11 +1058,7 @@ const en = {
   'admin.usage.toast.loadFailed': 'Usage: {error}',
 
   'admin.llmLogs.title': 'LLM Logs',
-  'admin.llmLogs.sortAria': 'Sort order',
-  'admin.llmLogs.sort.newest': 'Newest first',
-  'admin.llmLogs.sort.highestCost': 'Highest cost',
-  'admin.llmLogs.sort.slowest': 'Slowest',
-  'admin.llmLogs.sort.mostTokens': 'Most tokens',
+  'admin.llmLogs.searchPlaceholder': 'Search model, module, task…',
   'admin.llmLogs.col.time': 'Time',
   'admin.llmLogs.col.tenant': 'Tenant',
   'admin.llmLogs.col.module': 'Module',
@@ -1061,6 +1073,9 @@ const en = {
   'admin.llmLogs.toast.loadFailed': 'LLM logs: {error}',
 
   'admin.extractions.title': 'Extractions',
+  'admin.extractions.searchPlaceholder': 'Search file, error, or BU…',
+  'admin.extractions.truncationNote':
+    'Showing {shown} of {total} failures — the cause counts above are a sample. Narrow the date range for a complete picture.',
   'admin.extractions.description':
     'Why document extractions failed. Covers failures after a document credit is charged — a PDF rejected before that (password-protected or corrupt) returns 400 and appears under Performance.',
   'admin.extractions.tab.grouped': 'By cause',
@@ -1117,6 +1132,7 @@ const en = {
   'admin.errors.toast.loadFailed': 'Errors: {error}',
 
   'admin.credits.title': 'Credits',
+  'admin.credits.searchPlaceholder': 'Search reason, note, or reference…',
   'admin.credits.selectTenant': 'Select a tenant to manage top-up credits.',
   'admin.credits.balanceLabel': 'Top-up balance',
   'admin.credits.topupTitle': 'Top up a pack',
@@ -1144,6 +1160,7 @@ const en = {
   'admin.credits.toast.nonZero': 'Enter a non-zero amount',
 
   'admin.tenantRanking.title': 'Tenant Ranking',
+  'admin.tenantRanking.searchPlaceholder': 'Search tenant…',
   'admin.tenantRanking.metricAria': 'Ranking metric',
   'admin.tenantRanking.metric.cost': 'By Cost',
   'admin.tenantRanking.metric.errorRate': 'By Error Rate',
@@ -1182,6 +1199,7 @@ const en = {
   'admin.userUsage.toast.loadFailed': 'User usage: {error}',
 
   'admin.tenants.title': 'Tenants',
+  'admin.tenants.searchPlaceholder': 'Search host, BU, or name…',
   'admin.tenants.activeOnly': 'Active only',
   'admin.tenants.expandRow': 'Expand row',
   'admin.tenants.expand': 'Expand',
@@ -1229,6 +1247,7 @@ const en = {
   'admin.tenants.detail.status.revoked': 'Revoked',
 
   'admin.quotas.title': 'Quota & Modules',
+  'admin.quotas.searchPlaceholder': 'Search BU or host…',
   'admin.quotas.description':
     'Free-trial quota is consumed in order: subscription → free documents → top-up credits. Quota counts documents charged (net of refunds); Usage counts scans in the period — a failed scan is refunded from quota but still counted, so the two rarely match.',
   'admin.quotas.tab.overview': 'Overview',
@@ -1271,6 +1290,7 @@ const en = {
   'admin.quotas.toast.moduleDisabled': 'Module disabled',
 
   'admin.adminUsers.title': 'Admin Users',
+  'admin.adminUsers.searchPlaceholder': 'Search username or name…',
   'admin.adminUsers.description':
     'Manage who has access to this admin dashboard, and what they can do.',
   'admin.adminUsers.newUser': '+ New Admin User',
@@ -2128,13 +2148,23 @@ const th: Record<TKey, string> = {
   'admin.common.table.range': '{from}–{to} จาก {total}',
   'admin.common.table.prev': '‹ ก่อนหน้า',
   'admin.common.table.next': 'ถัดไป ›',
+  'admin.common.table.searchPlaceholder': 'ค้นหา…',
+  'admin.common.table.noMatch': 'ไม่พบรายการที่ตรงกับ “{q}”',
   'admin.common.dateRange.from': 'จาก',
   'admin.common.dateRange.to': 'ถึง',
+  'admin.common.period.label': 'ช่วงเวลา',
+  'admin.common.period.24h': '24 ชั่วโมงล่าสุด',
+  'admin.common.period.7d': '7 วันล่าสุด',
+  'admin.common.period.30d': '30 วันล่าสุด',
+  'admin.common.period.90d': '90 วันล่าสุด',
+  'admin.common.period.12mo': '12 เดือนล่าสุด',
+  'admin.common.period.custom': 'กำหนดเอง…',
+  'admin.common.period.monthlyNote': 'ยอดรวมรายเดือน — ข้อมูลรายวันย้อนหลังได้ 92 วัน',
   'admin.overview.description':
-    'การใช้งาน ค่าใช้จ่าย และสถานะระบบของ Tenant ทั้งหมดในช่วง 30 วันที่ผ่านมา',
+    'การใช้งาน ค่าใช้จ่าย และสถานะระบบของ Tenant ทั้งหมดในช่วงเวลาที่เลือก',
   'admin.overview.title': 'ภาพรวม',
-  'admin.overview.kpi.llmCalls': 'จำนวนการเรียก LLM (เดือนนี้)',
-  'admin.overview.kpi.cost': 'ค่าใช้จ่าย (เดือนนี้)',
+  'admin.overview.kpi.llmCalls': 'จำนวนการเรียก LLM',
+  'admin.overview.kpi.cost': 'ค่าใช้จ่าย',
   'admin.overview.kpi.errorRate': 'อัตราข้อผิดพลาด',
   'admin.overview.kpi.openAlerts': 'การแจ้งเตือนที่ยังเปิดอยู่',
   'admin.overview.kpi.documents': 'เอกสาร (เดือนนี้)',
@@ -2180,6 +2210,7 @@ const th: Record<TKey, string> = {
   'admin.anomalies.toast.loadFailed': 'การแจ้งเตือน: {error}',
 
   'admin.sessions.title': 'เซสชัน',
+  'admin.sessions.searchPlaceholder': 'ค้นหาผู้ใช้…',
   'admin.sessions.activeOnly': 'ที่ใช้งานอยู่เท่านั้น',
   'admin.sessions.col.user': 'ผู้ใช้',
   'admin.sessions.col.tenant': ' Tenant ',
@@ -2197,6 +2228,7 @@ const th: Record<TKey, string> = {
   'admin.sessions.toast.loadFailed': 'เซสชัน: {error}',
 
   'admin.jobs.title': 'งานที่ประมวลผล',
+  'admin.jobs.searchPlaceholder': 'ค้นหาชื่องานหรือข้อความผิดพลาด…',
   'admin.jobs.statusFilterAria': 'ตัวกรองสถานะงาน',
   'admin.jobs.status.all': 'ทั้งหมด',
   'admin.jobs.status.running': 'กำลังทำงาน',
@@ -2213,6 +2245,7 @@ const th: Record<TKey, string> = {
 
   // Email Automation
   'admin.email.title': 'อีเมลอัตโนมัติ',
+  'admin.email.searchPlaceholder': 'ค้นหาไฟล์แนบ เลขเอกสาร หรือ JV…',
   'admin.email.description':
     'ทุกฉบับที่ระบบอ่านเมลตัดสินผลแล้ว พร้อมสถานะตารางเวลาที่อยู่เบื้องหลัง',
   'admin.email.action.poll': 'ดึงเอกสารเดี๋ยวนี้',
@@ -2291,6 +2324,7 @@ const th: Record<TKey, string> = {
   'admin.email.toast.loadFailed': 'เอกสารอีเมล: {error}',
 
   'admin.performance.title': 'บันทึกประสิทธิภาพ',
+  'admin.performance.searchPlaceholder': 'ค้นหา endpoint หรือผู้ใช้…',
   'admin.performance.minDurationAria': 'ระยะเวลาขั้นต่ำ (มิลลิวินาที)',
   'admin.performance.minDurationPlaceholder': 'มิลลิวินาทีขั้นต่ำ (เช่น 1000)',
   'admin.performance.col.time': 'เวลา',
@@ -2303,6 +2337,7 @@ const th: Record<TKey, string> = {
   'admin.performance.toast.loadFailed': 'ประสิทธิภาพ: {error}',
 
   'admin.usage.title': 'การใช้งาน',
+  'admin.usage.searchPlaceholder': 'ค้นหา BU หรือโมดูล…',
   'admin.usage.chartTitle': 'จำนวนการเรียก LLM แยกตามโมดูล',
   'admin.usage.series.creditCardOcr': 'OCR บัตรเครดิต',
   'admin.usage.series.apInvoice': 'ใบแจ้งหนี้ AP',
@@ -2320,11 +2355,7 @@ const th: Record<TKey, string> = {
   'admin.usage.toast.loadFailed': 'การใช้งาน: {error}',
 
   'admin.llmLogs.title': 'บันทึก LLM',
-  'admin.llmLogs.sortAria': 'ลำดับการเรียง',
-  'admin.llmLogs.sort.newest': 'ล่าสุดก่อน',
-  'admin.llmLogs.sort.highestCost': 'ค่าใช้จ่ายสูงสุด',
-  'admin.llmLogs.sort.slowest': 'ช้าที่สุด',
-  'admin.llmLogs.sort.mostTokens': 'โทเคนมากที่สุด',
+  'admin.llmLogs.searchPlaceholder': 'ค้นหาโมเดล โมดูล หรือรหัสงาน…',
   'admin.llmLogs.col.time': 'เวลา',
   'admin.llmLogs.col.tenant': ' Tenant ',
   'admin.llmLogs.col.module': 'โมดูล',
@@ -2339,6 +2370,9 @@ const th: Record<TKey, string> = {
   'admin.llmLogs.toast.loadFailed': 'บันทึก LLM: {error}',
 
   'admin.extractions.title': 'การอ่านเอกสาร',
+  'admin.extractions.searchPlaceholder': 'ค้นหาไฟล์ ข้อความผิดพลาด หรือ BU…',
+  'admin.extractions.truncationNote':
+    'แสดง {shown} จาก {total} รายการ — ยอดตามสาเหตุด้านบนเป็นเพียงตัวอย่าง ลดช่วงวันที่เพื่อดูภาพรวมทั้งหมด',
   'admin.extractions.description':
     'สาเหตุที่ระบบอ่านเอกสารไม่สำเร็จ ครอบคลุมเฉพาะที่พังหลังตัดเครดิตแล้ว — ไฟล์ PDF ที่ถูกปฏิเสธก่อนหน้านั้น (ล็อกรหัสผ่านหรือไฟล์เสีย) จะตอบ 400 และไปปรากฏที่หน้าประสิทธิภาพแทน',
   'admin.extractions.tab.grouped': 'ตามสาเหตุ',
@@ -2395,6 +2429,7 @@ const th: Record<TKey, string> = {
   'admin.errors.toast.loadFailed': 'ข้อผิดพลาด: {error}',
 
   'admin.credits.title': 'เครดิต',
+  'admin.credits.searchPlaceholder': 'ค้นหาเหตุผล บันทึก หรือเลขอ้างอิง…',
   'admin.credits.selectTenant': 'เลือก Tenant เพื่อจัดการเครดิตเติมเงิน',
   'admin.credits.balanceLabel': 'ยอดเครดิตเติมเงิน',
   'admin.credits.topupTitle': 'เติมแพ็กเครดิต',
@@ -2422,6 +2457,7 @@ const th: Record<TKey, string> = {
   'admin.credits.toast.nonZero': 'กรุณาระบุจำนวนที่ไม่เป็นศูนย์',
 
   'admin.tenantRanking.title': 'อันดับ Tenant ',
+  'admin.tenantRanking.searchPlaceholder': 'ค้นหา Tenant…',
   'admin.tenantRanking.metricAria': 'ตัวชี้วัดการจัดอันดับ',
   'admin.tenantRanking.metric.cost': 'ตามค่าใช้จ่าย',
   'admin.tenantRanking.metric.errorRate': 'ตามอัตราข้อผิดพลาด',
@@ -2460,6 +2496,7 @@ const th: Record<TKey, string> = {
   'admin.userUsage.toast.loadFailed': 'การใช้งานรายผู้ใช้: {error}',
 
   'admin.tenants.title': ' Tenant ',
+  'admin.tenants.searchPlaceholder': 'ค้นหาโฮสต์ BU หรือชื่อ…',
   'admin.tenants.activeOnly': 'ที่ใช้งานอยู่เท่านั้น',
   'admin.tenants.expandRow': 'ขยายแถว',
   'admin.tenants.expand': 'ขยาย',
@@ -2507,6 +2544,7 @@ const th: Record<TKey, string> = {
   'admin.tenants.detail.status.revoked': 'ถูกเพิกถอน',
 
   'admin.quotas.title': 'โควตาและโมดูล',
+  'admin.quotas.searchPlaceholder': 'ค้นหา BU หรือโฮสต์…',
   'admin.quotas.description':
     'โควตาถูกตัดตามลำดับ: แพ็กเกจรายเดือน → เอกสารฟรี → เครดิตเติมเงิน โควตานับเอกสารที่ตัดจริง (หักคืนแล้ว) ส่วนการใช้งานนับจำนวนสแกนในช่วงเวลา — สแกนที่พังจะถูกคืนโควตาแต่ยังถูกนับ สองค่านี้จึงมักไม่เท่ากัน',
   'admin.quotas.tab.overview': 'ภาพรวม',
@@ -2548,6 +2586,7 @@ const th: Record<TKey, string> = {
   'admin.quotas.toast.moduleDisabled': 'ปิดใช้งานโมดูลแล้ว',
 
   'admin.adminUsers.title': 'ผู้ดูแลระบบ',
+  'admin.adminUsers.searchPlaceholder': 'ค้นหาชื่อผู้ใช้หรือชื่อ…',
   'admin.adminUsers.description':
     'จัดการสิทธิ์เข้าถึงแดชบอร์ดผู้ดูแลระบบนี้ และกำหนดสิ่งที่แต่ละคนทำได้',
   'admin.adminUsers.newUser': '+ เพิ่มผู้ดูแลระบบ',

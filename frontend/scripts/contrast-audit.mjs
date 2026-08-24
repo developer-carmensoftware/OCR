@@ -163,6 +163,10 @@ const PAIRS = [
   ['step wizard: done', 'var(--emerald-text)', 'var(--muted)', 'text'],
   ['step wizard: active', 'var(--primary)', 'var(--card-bg)', 'text'],
   ['text-4 (decorative tier)', 'var(--text-4)', 'var(--card-bg)', 'ui'],
+  // The idle ⇅ on a sortable column header sits on the muted table-header fill, and it
+  // is the only thing saying the header is a control — so it is held to the 3:1 UI
+  // floor, not treated as decoration it happens to share a token with.
+  ['sort affordance: idle', 'var(--text-4)', 'var(--muted)', 'ui'],
   ['text-4 on muted', 'var(--text-4)', 'var(--muted)', 'ui'],
   ['input border on card', 'var(--border-input)', 'var(--card-bg)', 'ui'],
   ['input border on muted', 'var(--border-input)', 'var(--muted)', 'ui'],

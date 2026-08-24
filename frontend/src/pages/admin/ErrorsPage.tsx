@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import DataTable, { type Column } from '../../components/admin/DataTable'
 import MetricChart from '../../components/admin/MetricChart'
 import TenantSelector from '../../components/admin/TenantSelector'
+import PeriodPicker, { lastDays, periodHours } from '../../components/admin/PeriodPicker'
 import { fetchErrorBreakdown } from '../../lib/api/adminClient'
 import { useT } from '../../i18n/LanguageContext'
 
@@ -20,16 +22,19 @@ interface ErrorRow {
 export default function ErrorsPage() {
   const { t } = useT()
   const [groupBy, setGroupBy] = useState<GroupBy>('module')
-  const [period, setPeriod] = useState(24)
+  // The old dropdown stopped at 7 days — narrower even than the 30 the API allowed, and
+  // both are now a year. "Has this module ever failed?" was unanswerable here.
+  const [period, setPeriod] = useState(() => lastDays(7))
   const [tenantId, setTenantId] = useState('')
   const [rows, setRows] = useState<ErrorRow[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const hours = periodHours(period)
 
   useEffect(() => {
     setLoading(true)
     fetchErrorBreakdown({
       group_by: groupBy,
-      period_hours: period,
+      period_hours: hours,
       tenant_id: tenantId || undefined,
     })
       .then(r => setRows(r.data ?? []))
@@ -38,7 +43,56 @@ export default function ErrorsPage() {
       )
       .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupBy, period, tenantId])
+  }, [groupBy, hours, tenantId])
+
+  // Was a hand-rolled <table> with no sorting at all — on the page whose whole job is
+  // "which module is failing", the one thing you could not do was order by error rate.
+  const columns: Column<ErrorRow>[] = [
+    {
+      key: 'group',
+      label: t('admin.errors.col.group'),
+      sortable: true,
+      render: r => r.group_label ?? r.group ?? '—',
+    },
+    {
+      key: 'total_tasks',
+      label: t('admin.errors.col.total'),
+      sortable: true,
+      align: 'right',
+      render: r => String(r.total_tasks ?? r.total_requests ?? 0),
+    },
+    {
+      key: 'errors',
+      label: t('admin.errors.col.errors'),
+      sortable: true,
+      align: 'right',
+      render: r => <span className={r.errors > 0 ? 'text-red' : ''}>{r.errors}</span>,
+    },
+    {
+      key: 'error_rate_pct',
+      label: t('admin.errors.col.errorPct'),
+      sortable: true,
+      align: 'right',
+      render: r => (
+        <span
+          className={r.error_rate_pct > 5 ? 'text-red' : r.error_rate_pct > 1 ? 'text-yellow' : ''}
+        >
+          {r.error_rate_pct}%
+        </span>
+      ),
+    },
+    ...(groupBy === 'module'
+      ? []
+      : [
+          {
+            key: 'avg_latency_ms',
+            label: t('admin.errors.col.avgLatency'),
+            sortable: true,
+            align: 'right' as const,
+            render: (r: ErrorRow) => (r.avg_latency_ms != null ? `${r.avg_latency_ms}ms` : '—'),
+          },
+        ]),
+  ]
 
   const chartData = rows.map(r => ({
     group: r.group_label ?? r.group ?? '—',
@@ -61,16 +115,7 @@ export default function ErrorsPage() {
             <option value="tenant">{t('admin.errors.group.tenant')}</option>
             <option value="endpoint">{t('admin.errors.group.endpoint')}</option>
           </select>
-          <select
-            className="admin-select"
-            aria-label={t('admin.errors.periodAria')}
-            value={period}
-            onChange={e => setPeriod(Number(e.target.value))}
-          >
-            <option value={1}>{t('admin.errors.period.1h')}</option>
-            <option value={24}>{t('admin.errors.period.24h')}</option>
-            <option value={168}>{t('admin.errors.period.7d')}</option>
-          </select>
+          <PeriodPicker value={period} onChange={setPeriod} />
           <TenantSelector value={tenantId} onChange={setTenantId} />
         </div>
       </div>
@@ -90,62 +135,12 @@ export default function ErrorsPage() {
       )}
 
       <div className="admin-card">
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th className="admin-th">{t('admin.errors.col.group')}</th>
-              <th className="admin-th text-right">{t('admin.errors.col.total')}</th>
-              <th className="admin-th text-right">{t('admin.errors.col.errors')}</th>
-              <th className="admin-th text-right">{t('admin.errors.col.errorPct')}</th>
-              {groupBy !== 'module' && (
-                <th className="admin-th text-right">{t('admin.errors.col.avgLatency')}</th>
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={5} className="admin-td-empty">
-                  {t('admin.errors.loading')}
-                </td>
-              </tr>
-            ) : rows.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="admin-td-empty">
-                  {t('admin.errors.empty')}
-                </td>
-              </tr>
-            ) : (
-              rows.map(r => (
-                <tr key={r.group} className="admin-tr">
-                  <td className="admin-td">{r.group_label ?? r.group ?? '—'}</td>
-                  <td className="admin-td text-right">{r.total_tasks ?? r.total_requests ?? 0}</td>
-                  <td className="admin-td text-right">
-                    <span className={r.errors > 0 ? 'text-red' : ''}>{r.errors}</span>
-                  </td>
-                  <td className="admin-td text-right">
-                    <span
-                      className={
-                        r.error_rate_pct > 5
-                          ? 'text-red'
-                          : r.error_rate_pct > 1
-                            ? 'text-yellow'
-                            : ''
-                      }
-                    >
-                      {r.error_rate_pct}%
-                    </span>
-                  </td>
-                  {groupBy !== 'module' && (
-                    <td className="admin-td text-right">
-                      {r.avg_latency_ms != null ? `${r.avg_latency_ms}ms` : '—'}
-                    </td>
-                  )}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+        <DataTable
+          columns={columns}
+          rows={rows}
+          loading={loading}
+          emptyText={t('admin.errors.empty')}
+        />
       </div>
     </div>
   )

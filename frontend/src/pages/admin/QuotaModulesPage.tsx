@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import DataTable, { type Column } from '../../components/admin/DataTable'
-import DateRangePicker from '../../components/admin/DateRangePicker'
+import PeriodPicker from '../../components/admin/PeriodPicker'
 import MetricChart from '../../components/admin/MetricChart'
 import KPICard from '../../components/admin/KPICard'
 import PageHeader from '../../components/admin/ui/PageHeader'
@@ -57,8 +57,9 @@ export default function QuotaModulesPage() {
   const { t } = useT()
   const [tab, setTab] = useState<'overview' | 'details'>('overview')
   const [activeOnly, setActiveOnly] = useState(true)
-  const [from, setFrom] = useState(monthStartStr)
-  const [to, setTo] = useState(todayStr)
+  const [period, setPeriod] = useState({ from: monthStartStr(), to: todayStr() })
+  const [search, setSearch] = useState('')
+  const { from, to } = period
   const [rows, setRows] = useState<TenantQuotaOverviewRow[]>([])
   const [modulesCatalog, setModulesCatalog] = useState<ModuleCatalogEntry[]>([])
   const [loading, setLoading] = useState(false)
@@ -128,7 +129,9 @@ export default function QuotaModulesPage() {
       ),
     },
     {
-      key: 'host',
+      // `name`, not `host`: the cell leads with the name, so sorting by host produced
+      // an order that did not match the column the reader was looking at.
+      key: 'name',
       label: t('admin.quotas.col.tenant'),
       sortable: true,
       render: r => (
@@ -292,14 +295,7 @@ export default function QuotaModulesPage() {
         />
         {t('admin.quotas.activeOnly')}
       </label>
-      <DateRangePicker
-        from={from}
-        to={to}
-        onChange={(f, newTo) => {
-          setFrom(f)
-          setTo(newTo)
-        }}
-      />
+      <PeriodPicker value={period} onChange={setPeriod} />
     </>
   )
 
@@ -374,6 +370,11 @@ export default function QuotaModulesPage() {
                 emptyText={t('admin.quotas.empty')}
                 expandedRowId={expandedId}
                 renderExpandedRow={renderExpandedRow}
+                search={{
+                  value: search,
+                  onChange: setSearch,
+                  placeholder: t('admin.quotas.searchPlaceholder'),
+                }}
               />
             </Card>
           )}

@@ -111,6 +111,7 @@ function getListCols(t: ReturnType<typeof useT>['t']): Column<ExtractionFailureR
       key: 'created_at',
       label: t('admin.extractions.col.time'),
       sortable: true,
+      defaultDesc: true,
       render: r => fmtDateTime(r.created_at),
     },
     {
@@ -167,7 +168,11 @@ export default function ExtractionsPage() {
   const [tenantId, setTenantId] = useState('')
   const [moduleId, setModuleId] = useState('')
   const [tab, setTab] = useState('grouped')
+  const [search, setSearch] = useState('')
   const [rows, setRows] = useState<ExtractionFailureRow[]>([])
+  // What the range really holds. Over the endpoint's 500-row cap the grouped tab's
+  // cause counts are a sample, not a census, and the banner below says so.
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
@@ -180,7 +185,10 @@ export default function ExtractionsPage() {
       tenant_id: tenantId || undefined,
       module_id: moduleId || undefined,
     })
-      .then(r => setRows(r.data ?? []))
+      .then(r => {
+        setRows(r.data ?? [])
+        setTotal(r.total ?? 0)
+      })
       .catch(e =>
         toast.error(
           t('admin.extractions.toast.loadFailed', { error: e?.message ?? 'failed to load' })
@@ -275,6 +283,12 @@ export default function ExtractionsPage() {
         onChange={setTab}
       />
 
+      {total > rows.length && (
+        <p className="admin-sub-text admin-truncation-note" role="status">
+          {t('admin.extractions.truncationNote', { shown: rows.length, total })}
+        </p>
+      )}
+
       {empty ? (
         <EmptyState title={t('admin.extractions.empty')} />
       ) : tab === 'grouped' ? (
@@ -288,7 +302,16 @@ export default function ExtractionsPage() {
           )}
         />
       ) : (
-        <DataTable columns={getListCols(t)} rows={rows} loading={loading} />
+        <DataTable
+          columns={getListCols(t)}
+          rows={rows}
+          loading={loading}
+          search={{
+            value: search,
+            onChange: setSearch,
+            placeholder: t('admin.extractions.searchPlaceholder'),
+          }}
+        />
       )}
     </div>
   )
