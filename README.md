@@ -60,7 +60,7 @@ SESSION_ENCRYPTION_KEY=<fernet-key>
 INTERNAL_JOB_TOKEN=<hex-64-chars>   # must match vault.secrets 'internal_job_token'
 
 APP_PORT=8010
-MAX_FILE_SIZE_MB=20
+MAX_FILE_SIZE_MB=5
 ```
 
 Production additionally requires `ALLOWED_ORIGINS` (no wildcard), `ALLOWED_CARMEN_HOSTS`, and `TRUST_PROXY` — see [render.yaml](render.yaml) and CLAUDE.md.

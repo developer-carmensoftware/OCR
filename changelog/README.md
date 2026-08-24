@@ -22,5 +22,9 @@ the in-app notification bell.
   and nothing there. That restraint is what keeps the cost near zero.
 - **2-4 bullets, one line each**, describing what the user can now do or will now see.
 - **Both EN and TH.** TypeScript will not compile with one missing.
-- **The date is the identity** and matches this folder's file for that day and the `v2026.07.20`
-  git tag `deploy.yml` cuts. One entry per date — ship twice in a day and you edit that day's entry.
+- **The date is the identity** and matches this folder's file for that day. One entry per date —
+  ship twice in a day and you edit that day's entry.
+- **The version is a separate job from the date.** An entry's `version:` must equal the repo-root
+  [`VERSION`](../VERSION) file in the same commit — `releaseNotes.test.ts` fails the PR if they
+  disagree, and `deploy.yml` cuts the GitHub Release tag as `v$(cat VERSION)`. A date is never a
+  version.
