@@ -168,8 +168,17 @@ Relationships: `→ credit_cards` (1:1), `→ ap_invoices` (1:1)
 `charged_docs` is the **only** per-scan record of cost: a subscription-funded scan writes no
 `credit_ledger` row at all (just `tenant_subscriptions.docs_used += N`), and a credit-funded one
 sets `ledger.ref` to the *filename* — the charge happens before `create_task`, so there is no task
-id to reference yet. Count documents with `SUM(charged_docs)`, never `COUNT(*)`; net of refunds is
-`SUM(charged_docs) FILTER (WHERE status <> 'failed')`, since a failed task is always refunded.
+id to reference yet. Count documents with `SUM(charged_docs)`, never `COUNT(*)`.
+
+**Do not net out failed tasks.** `status <> 'failed'` was once a usable proxy for "net of
+refunds", but it no longer is: a refund follows the *vision call*, not the outcome. A task can be
+`failed` and still fully charged — a duplicate, a mismatched tax ID, an incomplete GL mapping and
+a Carmen refusal are all decisions taken about a document that was read successfully (email
+ingest states this explicitly as its **refund boundary**; see
+[`docs/email-automation/04-data-model.md`](email-automation/04-data-model.md#reason_code-taxonomy)).
+Only a task whose extraction never produced a result is refunded, and nothing on `ocr_tasks`
+distinguishes that from the others. For a true net figure, subtract the refund rows in
+`credit_ledger` (`reason = 'refund'`) rather than filtering on task status.
 
 ---
 

@@ -233,31 +233,41 @@ flowchart TD
     G2 -- yes --> G3{"file opens?\n(magic bytes + passwords)"}
     G3 -- no, bad bytes / password --> S3["skipped\nunreadable_document / wrong_pdf_password\nnot charged"]
     G3 -- yes --> Charge(["consume_document() — CHARGED"])
-    Charge --> Extract["extract_stateless()"]
-    Extract --> G4{"foreign_tax_id conflict?"}
-    G4 -- yes --> F1["failed\ntax_id_mismatch\nREFUNDED"]
+    Charge --> Boundary{"create_task + extract_stateless\n+ finalize_extraction succeed?"}
+    Boundary -- "no — the model never ran" --> F7["failed\nunreadable_document\nREFUNDED — the only refund left"]
+    Boundary -- yes --> G4{"foreign_tax_id conflict?"}
+    G4 -- yes --> F1["failed\ntax_id_mismatch\ncharged"]
     G4 -- no --> G5{"is_duplicate?"}
-    G5 -- yes --> F2["failed\nduplicate_document\nREFUNDED"]
+    G5 -- yes --> F2["failed\nduplicate_document\ncharged"]
     G5 -- no --> G6{"GL mapping complete\n(incl. AI fill)?"}
-    G6 -- no --> F3["failed\nmapping_incomplete\nREFUNDED"]
+    G6 -- no --> F3["failed\nmapping_incomplete\ncharged"]
     G6 -- yes --> G7{"build_jv_rows has\npostable amounts?"}
-    G7 -- no --> F4["failed\nunreadable_document\nREFUNDED"]
+    G7 -- no --> F4["failed\nunreadable_document\ncharged"]
     G7 -- yes --> G8{"post_gljv succeeds?"}
-    G8 -- "Carmen declines (Code != 0)" --> F5["failed\ncarmen_rejected\nNOT refunded — extraction was fine"]
-    G8 -- "transport error" --> F6["failed\ncarmen_rejected\nNOT refunded — JV's fate unknown"]
+    G8 -- "Carmen declines (Code != 0)" --> F5["failed\ncarmen_rejected\ncharged"]
+    G8 -- "transport error" --> F6["failed\ncarmen_rejected\ncharged"]
     G8 -- yes --> Posted(["posted\ninput-tax record attempted, cannot fail this"])
-    Extract -- "any other exception" --> F7["failed\nunreadable_document\nREFUNDED"]
 
     style Charge fill:#f5c542,color:#000
+    style Boundary fill:#f5c542,color:#000
     style Posted fill:#5cb85c,color:#000
 ```
 
-The rule stated once: **pre-charge exits are the customer's own configuration saying "not
-this file"**, and file as `skipped` — never `failed`, because a failed row would put a red
-line on Carmen's screen for what might just be a signature logo in a forwarded chain.
-**A Carmen decline is never refunded**, because the extraction itself was fine — only the
-ERP's business rules rejected it. **A transport failure is never refunded**, because the
-JV's fate is unknown; refunding could double-post if it actually went through.
+The rule stated once: **the charge follows the vision call, not the outcome.** Pre-charge
+exits are the customer's own configuration saying "not this file", and file as `skipped` —
+never `failed`, because a failed row would put a red line on Carmen's screen for what might
+just be a signature logo in a forwarded chain.
+
+Past the boundary the document is charged whatever happens next. A duplicate, a foreign tax
+ID, an unmappable account and a Carmen refusal are all decisions taken *about a document we
+successfully read* — the model ran, OpenRouter billed us, and the customer received the
+work. **The one refund left** is the boundary itself: `create_task` +
+`extract_stateless` + `finalize_extraction` failing means the model never ran, which is our
+failure to deliver rather than an outcome the customer bought.
+
+This matches the wizard, which has always charged for a duplicate (`finalize_extraction`
+sets an `is_duplicate` flag rather than raising). Before 2026-08-24 ingest refunded that
+same event, so the two pipelines disagreed about what one document costs.
 
 ## Diagram 8 — ledger state machine
 
