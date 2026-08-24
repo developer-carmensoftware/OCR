@@ -69,11 +69,13 @@ describe('AppHeader — compact action menu', () => {
     expect(screen.queryByRole('button', { name: /more actions/i })).not.toBeInTheDocument()
   })
 
-  it('renders no menu wrapper when the page passes no controls', () => {
+  it('carries language and theme even when the page passes no controls', () => {
     mockViewport(360)
     render(<AppHeader moduleName="AI JV Automation" />)
-    expect(document.querySelector('.app-header-menu')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /more actions/i })).not.toBeInTheDocument()
+    expect(document.querySelector('.app-header-menu')).toBeInTheDocument()
+    expect(document.querySelector('.lang-toggle')).toBeInTheDocument()
+    expect(document.querySelector('.theme-toggle')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /more actions/i })).toBeInTheDocument()
   })
 })
 

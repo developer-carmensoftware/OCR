@@ -510,6 +510,7 @@
     width: 100%;
   }
 
+  .app-header-menu:popover-open > .btn,
   .app-header-menu:popover-open .lang-toggle,
   .app-header-menu:popover-open .theme-toggle,
   .app-header-menu:popover-open .ui-quota {
@@ -529,6 +530,7 @@
   }
 
   /* Hover/active is the row, matching .notif-bell__item */
+  .app-header-menu:popover-open > .btn:hover,
   .app-header-menu:popover-open .lang-toggle:hover,
   .app-header-menu:popover-open .theme-toggle:hover,
   .app-header-menu:popover-open .ui-quota:hover {

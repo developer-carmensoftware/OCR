@@ -2,7 +2,6 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { m, AnimatePresence } from 'framer-motion'
 import { X, MessageCircle, Phone, Mail, GraduationCap } from 'lucide-react'
 import AppHeader from '../components/common/AppHeader'
-import LanguageToggle from '../components/common/LanguageToggle'
 import { useT } from '../i18n/LanguageContext'
 import { PlanCard, EnterpriseCard } from '../components/pricing/PlanCard'
 import PackList from '../components/pricing/PackList'
@@ -200,6 +199,13 @@ export default function Pricing() {
           window.location.hash = sessionStorage.getItem('pricing:returnTo') || '#/'
         }}
       >
+        <button
+          type="button"
+          className="btn btn-sm btn-outline"
+          onClick={() => setShowTutorial(true)}
+        >
+          <GraduationCap size={14} /> {t('nav.tutorial')}
+        </button>
         <div className="segmented-control" style={{ margin: 0, maxHeight: 36, width: 'auto' }}>
           <button
             type="button"
@@ -227,14 +233,6 @@ export default function Pricing() {
             }}
           />
         </div>
-        <button
-          type="button"
-          className="btn btn-sm btn-outline"
-          onClick={() => setShowTutorial(true)}
-        >
-          <GraduationCap size={14} /> {t('nav.tutorial')}
-        </button>
-        <LanguageToggle />
       </AppHeader>
 
       <AnimatePresence mode="wait">

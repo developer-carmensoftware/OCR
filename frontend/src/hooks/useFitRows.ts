@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 
 /**
  * Height of what sits under a list and must not be covered: its own following siblings,
@@ -33,6 +33,14 @@ function spaceBelow(el: HTMLElement): number {
  * `fallback` and the real count lands one render later. Point the ref at the skeleton
  * list too where there is one — skeletons are built to the same geometry, so the
  * measurement is already right by the time the first page arrives.
+ *
+ * The count only ever GROWS for a given viewport. Where it feeds a fetch, the rows it
+ * asks for change the space left below the list, so a smaller measurement is usually
+ * this hook reacting to its own output: 8 rows leave room measuring 7, 7 leave room
+ * measuring 8, and the caller fetches forever (Order History and the notification bell
+ * both hit the API's rate limit this way). A real resize clears the mark and the list
+ * re-measures from scratch; a shrink we caused ourselves is ignored, which is what
+ * makes the sequence terminate.
  */
 export function useFitRows(
   rowSelector: string,
@@ -40,6 +48,7 @@ export function useFitRows(
 ): [rows: number, ref: (el: HTMLElement | null) => void] {
   const [el, setEl] = useState<HTMLElement | null>(null)
   const [rows, setRows] = useState(fallback)
+  const mark = useRef({ viewport: '', rows: 0 })
 
   const measure = useCallback(() => {
     const row = el?.querySelector<HTMLElement>(rowSelector)
@@ -59,7 +68,13 @@ export function useFitRows(
 
     // +gap on both sides: n rows carry n-1 gaps, so the gap belongs to every row but
     // the last one.
-    setRows(Math.max(1, Math.floor((avail + gap) / (rowH + gap))))
+    const fits = Math.max(1, Math.floor((avail + gap) / (rowH + gap)))
+
+    const viewport = `${window.innerWidth}x${window.innerHeight}`
+    if (mark.current.viewport !== viewport) mark.current = { viewport, rows: 0 }
+    if (fits <= mark.current.rows) return
+    mark.current.rows = fits
+    setRows(fits)
   }, [el, rowSelector])
 
   useLayoutEffect(() => {
