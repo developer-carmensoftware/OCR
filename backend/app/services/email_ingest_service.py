@@ -161,11 +161,16 @@ _RECEIVED_FOR = re.compile(r"\bfor\s+<([^>]+)>")
 
 
 class _Skip(Exception):
-    """Not an error — this document will not be posted. Carries a contract reason_code."""
+    """Not an error — this document will not be posted. Carries a contract reason_code.
 
-    def __init__(self, reason_code: str, message: str, refund: bool = True):
+    Carries no refund flag on purpose: once the vision model has run, the document is
+    charged whatever happens next. Every `_Skip` is raised either before the charge (so
+    there is nothing to refund) or after extraction succeeded (so the LLM cost is already
+    real) — see the refund boundary in `_run_document`.
+    """
+
+    def __init__(self, reason_code: str, message: str):
         self.reason_code = reason_code
-        self.refund = refund
         super().__init__(message)
 
 
@@ -1305,7 +1310,6 @@ async def _run_document(
             raise _Skip(
                 "sender_not_allowed",
                 "No registered address of this BU appears in From/To/Cc",
-                refund=False,
             )
         matched = match_rules(rules, sender, filename)
         if not matched:
@@ -1313,7 +1317,7 @@ async def _run_document(
             # the tenant. Now the miss is a row in *this BU's* ledger, diagnosable from
             # #/admin — and it costs nothing, which is what removes the whole
             # signature-logo class of junk from the spend.
-            raise _Skip("no_rule_match", f"No rule matches {filename}", refund=False)
+            raise _Skip("no_rule_match", f"No rule matches {filename}")
         # Overlapping patterns: don't guess the prompt, let detect_bank_code read the
         # document. A wrong bank prompt is worse than the generic one.
         bank_code = matched[0].get("bank_code") if len(matched) == 1 else None
@@ -1324,21 +1328,34 @@ async def _run_document(
         await assert_module_enabled(Module.CREDIT_CARD_OCR)
         charged = await consume_document()
 
-        async with async_session() as db:
-            task = await create_task(
-                db,
-                tenant_id=tenant_id,
-                module_id=Module.CREDIT_CARD_OCR,
-                original_filename=filename,
-                carmen_user_id=None,
-                charged_docs=1 if charged else 0,
-            )
-            task_id = str(task.id)
-
-        # The first money of the document, and the tenant and task are already known —
-        # so `log_llm_usage` inserts a fully attributed row rather than needing the
-        # tenant-less parking buffer the tax-ID design forced on it.
+        # ── The refund boundary ───────────────────────────────────────────────
+        #
+        # This block is the ONLY place in the pipeline that refunds. Everything in it
+        # can fail without the model ever having run — a dead pool connection on
+        # `create_task`, an OpenRouter socket that never opened — and that is our
+        # failure to deliver, not work the customer received. So it is given back.
+        #
+        # Once `finalize_extraction` returns, the vision call has been made and billed
+        # to us. From there on the document is charged whatever happens next: a
+        # duplicate, a foreign tax ID, an unmappable GL account and a Carmen refusal
+        # are all decisions taken *about a document we successfully read*, not failures
+        # to read it. That is the whole rule, and it is why `_Skip` carries no refund
+        # flag — see the handlers at the bottom of this function.
         try:
+            async with async_session() as db:
+                task = await create_task(
+                    db,
+                    tenant_id=tenant_id,
+                    module_id=Module.CREDIT_CARD_OCR,
+                    original_filename=filename,
+                    carmen_user_id=None,
+                    charged_docs=1 if charged else 0,
+                )
+                task_id = str(task.id)
+
+            # The first money of the document, and the tenant and task are already known —
+            # so `log_llm_usage` inserts a fully attributed row rather than needing the
+            # tenant-less parking buffer the tax-ID design forced on it.
             extracted = await ocr_service.extract_stateless(
                 file_bytes=blob,
                 original_filename=filename,
@@ -1348,7 +1365,10 @@ async def _run_document(
             )
             extracted = await finalize_extraction(extracted, task_id, tenant_id, bank_code, None)
         except Exception as exc:
-            await mark_task_failed(task_id, exc)
+            if charged:
+                await refund_document(charged)
+            if task_id is not None:
+                await mark_task_failed(task_id, exc)
             raise
 
         # A manual forward carries no bank identity, and overlapping rules name no one
@@ -1397,8 +1417,8 @@ async def _run_document(
 
         rows = build_jv_rows(extracted.details, config.mappings or {})
         if not rows or not any(r["credit"] for r in rows):
-            # Zero-total document: posting an empty JV is worse than absorbing the
-            # extraction cost, so refund and stop.
+            # Zero-total document: posting an empty JV is worse than stopping here.
+            # The read itself succeeded, so the charge stands.
             raise _Skip("unreadable_document", "Document has no postable amounts")
 
         if not carmen_token:
@@ -1417,7 +1437,6 @@ async def _run_document(
             raise _Skip(
                 "carmen_rejected",
                 str((result or {}).get("UserMessage") or "Carmen rejected the JV"),
-                refund=False,  # the extraction was fine; the ERP declined it
             )
 
         await _mark_submitted(extracted.id)
@@ -1425,8 +1444,8 @@ async def _run_document(
         # The statement's second Carmen document (wizard step 4). Deliberately after
         # the JV and deliberately unable to fail it: the JV is already in Carmen's
         # books and there is no rollback, so a missing input-tax record is recorded
-        # for a human to add rather than turned into a failure that refunds a
-        # credit for work that was done.
+        # for a human to add rather than turned into a failure on a document that
+        # posted successfully.
         tax_error = await _post_input_tax(
             extracted, bank_code=bank_code, config=config, carmen_token=carmen_token
         )
@@ -1444,8 +1463,11 @@ async def _run_document(
         return "posted"
 
     except _Skip as skip:
-        if skip.refund and charged:
-            await refund_document(charged)
+        # No refund here, ever. A `_Skip` raised before the charge has nothing to give
+        # back; one raised after it comes from a document the model already read, and
+        # that reading is what the credit paid for. The refund boundary above owns the
+        # only case where money goes back.
+        #
         # The gates that run before a credit is charged are the customer's own
         # configuration answering "not this file", not a failure of ours. Filing them as
         # `failed` would put a red row on Carmen's screen for a signature logo.
@@ -1483,8 +1505,10 @@ async def _run_document(
         )
         return "failed"
     except Exception as exc:
-        if charged:
-            await refund_document(charged)
+        # Anything reaching here from *inside* the refund boundary was already refunded
+        # and re-raised there; refunding again would hand back a second credit for one
+        # document. Anything reaching here from after it is post-extraction and keeps
+        # its charge like every other late failure.
         await _finish(
             ledger_id,
             status="failed",
@@ -1512,8 +1536,8 @@ async def _post_input_tax(
 
     Never raises. The JV it follows is already in Carmen's books, so the only useful
     answers here are "done" and "someone needs to add this by hand" — turning a
-    failure into an exception would refund a credit and mark a posted document as
-    failed, which is the one outcome that is wrong twice.
+    failure into an exception would mark a document Carmen has already accepted as
+    failed, which is the one outcome that is plainly wrong.
     """
     async with async_session() as db:
         bank = await db.get(Bank, bank_code) if bank_code else None
@@ -1631,7 +1655,7 @@ async def _open_or_fail(blob: bytes, filename: str, passwords: list[str]) -> str
     try:
         validate_magic_bytes(blob, filename)
     except ValueError as exc:
-        raise _Skip("unreadable_document", str(exc), refund=False) from exc
+        raise _Skip("unreadable_document", str(exc)) from exc
 
     last: Exception | None = None
     for pwd in [None, *passwords]:
@@ -1645,8 +1669,8 @@ async def _open_or_fail(blob: bytes, filename: str, passwords: list[str]) -> str
             # help. Raised as a _Skip rather than left to the generic handler, which
             # files everything as `failed` — and nothing has been charged at this point.
             # A junk attachment must not put a red row on the customer's screen.
-            raise _Skip("unreadable_document", str(exc), refund=False) from exc
-    raise _Skip("wrong_pdf_password", str(last or "Could not open the attachment"), refund=False)
+            raise _Skip("unreadable_document", str(exc)) from exc
+    raise _Skip("wrong_pdf_password", str(last or "Could not open the attachment"))
 
 
 # ── Ledger ────────────────────────────────────────────────────────────────────
