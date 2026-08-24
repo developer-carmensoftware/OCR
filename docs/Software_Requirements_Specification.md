@@ -4,6 +4,16 @@
 **Date:** 7 July 2026 (v3.0)
 **Author:** Intern Team
 
+> ⚠️ **Authoritative as of v3.0 (7 July 2026) only.** This document has not been revised for
+> anything shipped since. For current behaviour read [`../CLAUDE.md`](../CLAUDE.md),
+> [`email-automation/`](email-automation/), [`Database_Design.md`](Database_Design.md) and
+> [`../changelog/`](../changelog/) — where those disagree with this file, they are right.
+>
+> Known omissions: email ingestion (built and merged); the free-trial → credit merge (`quotas`
+> retired, 30-credit `signup_grant`); AP invoice charged **per page** plus `ocr_tasks.charged_docs`;
+> `consent_logs`; in-app notifications; the `Page[T]` pagination envelope on every list endpoint;
+> and SemVer via the repo-root `VERSION` file.
+
 ---
 
 ## 0. ประวัติการแก้ไขเอกสาร (Version History)
@@ -820,7 +830,7 @@ SESSION_ENCRYPTION_KEY=<fernet-key>
 INTERNAL_JOB_TOKEN=<hex-64-chars>  # ต้องตรงกับ vault.secrets 'internal_job_token'
 
 # File Upload Configuration
-MAX_FILE_SIZE_MB=20
+MAX_FILE_SIZE_MB=5
 
 # API Configuration
 APP_PORT=8010
@@ -972,7 +982,7 @@ ALLOWED_CARMEN_HOSTS=carmen.example.com
 
 ### 10.3 CSS Architecture & Design System
 
-ระบบใช้ layered CSS (plain CSS เป็นหลัก + Tailwind utilities เฉพาะ AR Invoice module):
+ระบบใช้ layered CSS — plain CSS ล้วน ไม่มี utility framework (Tailwind ถูกถอดออกทั้งหมด 2026-08-19):
 
 | File | Role |
 | :--- | :--- |
@@ -980,7 +990,6 @@ ALLOWED_CARMEN_HOSTS=carmen.example.com
 | `src/styles/layout.css` | App container, header, main grid, responsive breakpoints |
 | `src/styles/components.css` | All reusable components: buttons, cards, tables, modals, step wizard, toast |
 | `src/styles/pages/` | Per-page styles: `home.css`, `mapping.css`, `ap-invoice.css`, `pricing.css`, `admin.css` |
-| `src/styles/tailwind.css` | Tailwind utilities — ใช้เฉพาะ AR Invoice module |
 
 **Design Tokens:**
 

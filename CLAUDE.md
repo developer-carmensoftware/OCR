@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-For coding principles and standards, please refer to [skill.md](file:///c:/Users/User/Desktop/OCR/skill.md).
+For coding principles and standards, please refer to [skill.md](skill.md).
 
 Full database design documentation: [docs/Database_Design.md](docs/Database_Design.md)
 
@@ -100,6 +100,28 @@ useAPInvoice hook
   → POST /api/v1/carmen/invoice  submit to Carmen ERP
 ```
 
+### Email ingestion (no wizard — nobody reviews before it posts)
+
+Built, merged, live-tested end to end. **Full docs: [`docs/email-automation/`](docs/email-automation/)**
+(requirements → architecture → API → data model → operations → decision log). Read those
+before changing anything here; the block below is only the shape.
+
+```text
+pg_cron → POST /api/v1/email/ingest  (internal job token)
+  services/email_ingest_service.py
+      AIAGENT+<tag>@…   tag from the envelope → tenant     ← routing, costs nothing
+      email_documents   claim the row (dedupe: message × attachment)
+      email_ingest_settings  filename must match one of this BU's rules; this BU's PDF passwords
+      consume_document() → same extract → GL-map → POST JV path as the Credit Card wizard
+      tax ID vs this BU's register  ← verification, not routing; parks only on positive conflict
+```
+
+Two properties that make it unlike the wizards: the tag is read **before any LLM call**, so
+an unowned message costs nothing; and there is no human between extraction and posting, so a
+`warnings` field that merely draws an amber banner in a wizard has no reader here. Neither
+cron job (`email-ingest`, `email-token-health`) is scheduled in production yet — see
+[`05-operations.md`](docs/email-automation/05-operations.md#scheduling).
+
 ### Admin dashboard (`#/admin/*`) — check here before writing SQL
 
 18 pages already exist. **Read this table before hand-querying the DB** — on 2026-07-16
@@ -120,7 +142,7 @@ answered, purely because nobody knew they were there.
 | | `#/admin/performance` | request latency |
 | Who pays / what does it cost? | `#/admin/credits`, `#/admin/credit-orders`, `#/admin/llm-logs` | balances & ledger, order queue, per-call cost |
 | Is the machine running? | `#/admin/sessions`, `#/admin/jobs` | live sessions (+revoke), **`job_runs` cron health** |
-| | `#/admin/email` | email-ingestion runs + cron health (POC) |
+| | `#/admin/email` | email-ingestion runs + cron health |
 | | `#/admin/maintenance` | maintenance-mode flag + window (what `MaintenanceGate` reads) |
 | Who can touch it? | `#/admin/admin-users` | RBAC |
 
@@ -138,7 +160,29 @@ Gotchas worth knowing before trusting a number:
   off by default because `TenantSelector` calls the same endpoint on five other pages.
 - Adding a page = 4 edits: `lazy()` in `main.tsx`, an `else if` in `AdminRouter`, a `NavItem`
   in `AdminLayout.getNavSections`, and `admin.nav.item.*` in **both** `en` and `th` of
-  `i18n/dict.ts` (TS fails the build if TH is missing).
+  `i18n/dict.ts` (TS fails the build if TH is missing). For the table itself, follow the
+  pattern below rather than inventing per-page state.
+
+**The admin table pattern** (`hooks/admin/useTableQuery.ts` + `components/admin/DataTable.tsx`):
+
+- `useTableQuery` owns filters, sort, and page, and keeps them **in the URL** (after the
+  route hash, `replaceState`, defaults omitted) so a view survives navigation and can be
+  pasted to a colleague. `.server(total)` hands straight to `<DataTable server={…} />`.
+- `DataTable` has a **server mode** (`server` prop set — API sorts, filters, and pages) and a
+  **client mode** (rows already in hand). Four endpoints are deliberately client-side:
+  `/usage-summary`, `/quotas/overview`, `/tenant-ranking`, `/error-breakdown` return small
+  *complete* sets, so browser sorting is truthful there. Extractions stays unpaged (it groups
+  failures by cause; grouping one page reports wrong counts) and Credit Orders loads the
+  endpoint's cap in one go (its search must reach past the visible page). Don't "fix" these
+  into server mode — each shows a real `total` so a bitten cap is visible.
+- **Page size is measured, not configured** — `hooks/useFitRows.ts` fits rows to the
+  viewport; `pageSize` survives only as an override for tables that aren't viewport-bound.
+- ⚠️ **In server mode the measured size feeds the fetch, so the measurement must never
+  shrink in response to its own rows.** 15 rows leave room that measures as 17, 17 leave
+  room that measures as 15, and the tab fetches forever. `DataTable` keeps a monotonic
+  high-water mark per viewport size (a real resize clears it); `DataTable.fetchloop.test.tsx`
+  is the regression test, and reverting the guard makes it hang. This shipped as a bug on
+  2026-08-24 — read that changelog entry before touching the measurement.
 
 The SQL behind the adoption views lives in [`backend/db/queries.sql`](backend/db/queries.sql)
 items 11–14 — useful for cross-checking a page against the raw numbers.
@@ -182,8 +226,9 @@ an ad-hoc script while `uvicorn` is up hits the 15-connection Supavisor cap.
 - **App factory** — `app/factory.py` builds the FastAPI instance (middleware + exception handlers + routers). `app/lifecycle.py` owns lifespan (startup/shutdown + background tasks). `app/sentry.py` owns Sentry init. `app/main.py` is the thin entrypoint.
 - **Charge before the LLM, refund on failure** — `consume_document()` runs at every extract endpoint AFTER `ensure_pdf_openable` and `assert_module_enabled` (so a locked PDF or a disabled module never costs a document) and returns what it charged; pass that to `refund_document()` for the files that failed. Both fail open on infra errors — only a real out-of-credits raises `InsufficientCredits` (402).
 - **What one document costs differs per module** — credit card charges **per file** (`increment=len(file_data)`), AP invoice charges **per page sent to the LLM** (`billable_pages()` in `utils/pages.py`, capped at `MAX_PAGES_PER_CALL`=5): a 3-page selection costs 3, and 3 images merged client-side into one PDF cost 3. `ensure_pdf_openable()` returns the page count for exactly this. The whole N is charged to one pool — a tenant with 3 subscription docs left scanning 5 pages pays 5 credits and strands the 3. **`ocr_tasks.charged_docs` records what each task cost** — nothing else can (a subscription-funded scan writes no ledger row; `credit_ledger.ref` is the filename, since the charge precedes `create_task`). Count documents with `SUM(charged_docs)`, never `COUNT(ocr_tasks)`.
-- **Hook directory convention** — Feature hooks live in subdirectories: `hooks/ap-invoice/`, `hooks/credit-card/`, `hooks/mapping/`. Cross-cutting hooks (`useModal`, `useDarkMode`, `useCarmenSSO`) stay at top level. Each subdir has an `index.ts` barrel. All localStorage access goes through the tenant-aware `lib/storage.ts` (`appKey()`).
+- **Hook directory convention** — Feature hooks live in subdirectories, one per feature: `hooks/admin/`, `hooks/ap-invoice/`, `hooks/credit-card/`, `hooks/credits/`, `hooks/email-settings/`, `hooks/mapping/`, `hooks/notifications/`. Cross-cutting hooks (`useModal`, `useDarkMode`, `useCarmenSSO`, `useFitRows`) stay at top level. Each subdir has an `index.ts` barrel. All localStorage access goes through the tenant-aware `lib/storage.ts` (`appKey()`).
 - **Pydantic schemas** — All request/response schemas in `app/models/schemas/` package. Never define `class X(BaseModel)` inside a router file.
+- **Every list endpoint answers the same envelope** — `Page[T]` = `{total, limit, offset, data}` (`models/schemas/common.py`), built by `paginate()` (`utils/pagination.py`), mirrored on the frontend by `lib/api/page.ts`. `total` is counted off the **unlimited** statement with `ORDER BY` stripped, so a truncated window can always say *"showing 200 of 340"* instead of ending silently — `len(data)` as a total is the bug class this exists to kill. A query selecting several entities uses `count_rows()` + its own `.all()` instead, because `paginate()`'s `.scalars()` would flatten each row to the first entity.
 
 ---
 
@@ -260,7 +305,7 @@ INTERNAL_JOB_TOKEN=<hex-64-chars>   # must match vault.secrets where name='inter
                                      # generate: python -c "import secrets; print(secrets.token_hex(32))"
 FILE_SERVICE_URL=https://host/Api/v1/External/FileService  # OneApp FileService (slip upload)
 FILE_SERVICE_API_KEY=fsc_...        # X-Api-Key client access key
-# Email ingestion (POC — feature itself is deliberately not documented here yet).
+# Email ingestion — full var table in docs/email-automation/05-operations.md.
 # IMAP_HOST empty = ingestion disabled, which is the correct default everywhere it
 # isn't deliberately switched on. Set the rest only alongside it.
 IMAP_HOST=                          # empty = disabled
@@ -268,7 +313,8 @@ IMAP_PORT=993
 IMAP_USER=
 IMAP_PASSWORD=
 IMAP_FOLDER=INBOX
-EMAIL_INGEST_ADDRESS=ocr@carmensoftware.com   # bare mailbox; per-BU routing uses ocr+<tag>@…
+EMAIL_INGEST_ADDRESS=ocr@carmensoftware.com   # dev default; per-BU routing uses <user>+<tag>@…
+                                     # prod is AIAGENT@carmensoftware.com, not this mailbox
 ```
 
 ---
@@ -287,10 +333,11 @@ EMAIL_INGEST_ADDRESS=ocr@carmensoftware.com   # bare mailbox; per-BU routing use
 | Modules | `modules`, `tenant_modules` |
 | Bank CMS | `banks`, `prompt_templates` |
 | Config | `system_configs`, `tenant_config_overrides`, `feature_flags`, `bu_accounting_configs`, `bu_accounting_mapping_entries`, `ap_vendor_column_mappings`, `ap_vendor_field_mapping_entries` |
-| Quotas | `quotas`, `quota_usage` — **retired** (rows soft-deleted 2026-08-13, tables + `schemas/40_quotas.sql` drop next release; still standing as of 2026-08-18) |
+| Quotas | `quotas`, `quota_usage` — **retired** (rows soft-deleted 2026-08-13; tables + `schemas/40_quotas.sql` drop next release). Nothing reads them — check for a drop migration rather than assuming either way |
 | Billing | `credit_packs`, `tenant_credits`, `credit_ledger`, `credit_orders`, `billing_documents`, `tenant_subscriptions`, `ar_customer_profiles`, `document_sequences` |
 | Reference | `model_pricing` |
-| Business data | `ocr_sessions`, `ocr_tasks`, `credit_cards`, `ap_invoices`, `correction_feedback`, `bug_reports`, `consent_logs` |
+| Business data | `ocr_sessions`, `ocr_tasks`, `credit_cards`, `ap_invoices`, `correction_feedback`, `bug_reports`, `consent_logs`, `user_notifications` |
+| Email ingestion | `email_ingest_settings` (per-BU tag, rules, PDF passwords, posting credential), `email_documents` (one row per message×attachment — dedupe key **and** audit trail) — see [`docs/email-automation/04-data-model.md`](docs/email-automation/04-data-model.md) |
 | Observability | `llm_usage_logs`, `audit_logs`, `performance_logs`, `outbound_call_logs` |
 | Analytics | `daily_usage_summary`, `daily_model_cost`, `monthly_usage_summary`, `anomaly_alerts`, `job_runs` |
 | Migration tracker | `_supabase_migrations` (Supabase CLI tracking) |

@@ -528,8 +528,10 @@ and soft-deleted the rules, so nothing reads or writes these tables any more; th
 are kept for one release as history and then dropped. Documents are charged by
 `credit_service.consume_document()` — see **Billing & Credits** below.
 
-The one survivor of that module is `quota_service.assert_module_enabled()`, which
-gates a scan on `tenant_modules` and never touched quotas in the first place.
+The one survivor of that module is `assert_module_enabled()`, which gates a scan on
+`tenant_modules` and never touched quotas in the first place. It moved to
+`services/module_gate.py` on 2026-08-18 — the old `quota_service` name described an
+engine that no longer exists.
 
 ---
 
