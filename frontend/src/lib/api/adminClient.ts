@@ -439,8 +439,11 @@ export async function fetchCreditBalance(tenantId: string): Promise<CreditBalanc
   return res.json()
 }
 
-export async function fetchCreditLedger(tenantId: string): Promise<CreditLedgerEntry[]> {
-  const res = await adminFetch(API.admin.tenantCreditsLedger(tenantId))
+export async function fetchCreditLedger(
+  tenantId: string,
+  params: QueryParams = {}
+): Promise<Page<CreditLedgerEntry>> {
+  const res = await adminFetch(`${API.admin.tenantCreditsLedger(tenantId)}${buildQs(params)}`)
   if (!res.ok) throw new Error('Failed to fetch credit ledger')
   return res.json()
 }

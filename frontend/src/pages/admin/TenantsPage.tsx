@@ -44,6 +44,11 @@ export default function TenantsPage() {
   const { t } = useT()
   const [activeOnly, setActiveOnly] = useState(true)
   const [neverExtracted, setNeverExtracted] = useState(false)
+  // Client-side: this endpoint returns every tenant the admin can see (capped at 500,
+  // with the note below saying so), and the engagement columns are assembled in Python
+  // after the query — so there is nothing here for Postgres to search or sort that it
+  // would do more truthfully than the browser.
+  const [search, setSearch] = useState('')
   const [rows, setRows] = useState<TenantRow[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -163,6 +168,7 @@ export default function TenantsPage() {
       key: 'last_use',
       label: t('admin.tenants.col.lastActive'),
       sortable: true,
+      defaultDesc: true,
       // last_use (tasks) over last_used_at (llm_usage_logs): the latter has no row
       // when the call never reached the model, so it silently skips failed attempts
       // and overstates idleness for exactly the BUs that churned on failures.
@@ -261,6 +267,11 @@ export default function TenantsPage() {
           emptyText={t('admin.tenants.empty')}
           expandedRowId={expandedId}
           renderExpandedRow={renderExpandedRow}
+          search={{
+            value: search,
+            onChange: setSearch,
+            placeholder: t('admin.tenants.searchPlaceholder'),
+          }}
         />
       </div>
       {!loading && total > rows.length && (

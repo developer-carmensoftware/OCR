@@ -27,6 +27,7 @@ export default function AdminUsersPage() {
   const [rows, setRows] = useState<AdminUserRow[]>([])
   const [roles, setRoles] = useState<RoleOption[]>([])
   const [loading, setLoading] = useState(false)
+  const [search, setSearch] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const [showCreate, setShowCreate] = useState(false)
@@ -380,6 +381,11 @@ export default function AdminUsersPage() {
             emptyText={t('admin.adminUsers.empty')}
             expandedRowId={expandedId}
             renderExpandedRow={renderExpandedRow}
+            search={{
+              value: search,
+              onChange: setSearch,
+              placeholder: t('admin.adminUsers.searchPlaceholder'),
+            }}
           />
         </Card>
       )}

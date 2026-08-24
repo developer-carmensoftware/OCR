@@ -260,10 +260,12 @@ function CompanyPanel({
 
   const load = () => {
     loadedRef.current = true
-    Promise.all([fetchCreditBalance(tenantId), fetchCreditLedger(tenantId)])
+    // A glance at the last handful of entries inside the order drawer, not the audit
+    // view — that lives on the Credits page, which pages and searches the whole ledger.
+    Promise.all([fetchCreditBalance(tenantId), fetchCreditLedger(tenantId, { limit: 10 })])
       .then(([b, l]) => {
         setBalance(b.balance)
-        setLedger(l)
+        setLedger(l.data ?? [])
       })
       .catch(e => toast.error((e as Error).message))
   }

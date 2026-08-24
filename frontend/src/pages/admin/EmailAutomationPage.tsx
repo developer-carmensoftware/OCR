@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import DataTable, { type Column } from '../../components/admin/DataTable'
 import KPICard from '../../components/admin/KPICard'
 import TenantSelector from '../../components/admin/TenantSelector'
-import DateRangePicker from '../../components/admin/DateRangePicker'
+import PeriodPicker from '../../components/admin/PeriodPicker'
 import PageHeader from '../../components/admin/ui/PageHeader'
 import Tabs from '../../components/admin/ui/Tabs'
 import Badge from '../../components/common/Badge'
@@ -157,6 +157,7 @@ export default function EmailAutomationPage() {
   const [tenantId, setTenantId] = useState('')
   const [status, setStatus] = useState('')
   const [reason, setReason] = useState('')
+  const [docSearch, setDocSearch] = useState('')
   const [from, setFrom] = useState(daysAgo(7))
   const [to, setTo] = useState(daysAgo(0))
 
@@ -242,10 +243,19 @@ export default function EmailAutomationPage() {
         </button>
       ),
     },
-    { key: 'created_at', label: t('admin.email.col.time'), render: r => fmtDateTime(r.created_at) },
+    // Nine columns, none of them sortable until now — on a queue whose two real
+    // questions are "what came in last" and "what keeps failing".
+    {
+      key: 'created_at',
+      label: t('admin.email.col.time'),
+      sortable: true,
+      defaultDesc: true,
+      render: r => fmtDateTime(r.created_at),
+    },
     {
       key: 'tenant_name',
       label: t('admin.email.col.bu'),
+      sortable: true,
       // "dev.carmen4.com/carmencloud (carmencloud)" — 41 characters of host plus bu.
       render: r => (
         <span className="admin-cell-clip admin-cell-clip--sm" title={r.tenant_name ?? r.tenant_id}>
@@ -256,6 +266,7 @@ export default function EmailAutomationPage() {
     {
       key: 'attachment',
       label: t('admin.email.col.attachment'),
+      sortable: true,
       // Bank filenames run past 60 characters (`E-TAX_INVOICE_CARD_4510…_20260721.PDF`),
       // and `.admin-td` is nowrap, so one of them decided the width of the whole table.
       // Clipped with the full name on hover and in the expanded row.
@@ -268,22 +279,30 @@ export default function EmailAutomationPage() {
     {
       key: 'status',
       label: t('admin.email.col.status'),
+      sortable: true,
       render: r => <Badge variant={statusTone(r.status)}>{r.status}</Badge>,
     },
     {
       key: 'reason_code',
       label: t('admin.email.col.reason'),
+      sortable: true,
       render: r => {
         if (!r.reason_code) return '—'
         const key = reasonKey(r.reason_code)
         return key ? t(key) : r.reason_code
       },
     },
-    { key: 'doc_no', label: t('admin.email.col.docNo'), render: r => r.doc_no ?? '—' },
-    { key: 'jv_no', label: t('admin.email.col.jv'), render: r => r.jv_no ?? '—' },
+    {
+      key: 'doc_no',
+      label: t('admin.email.col.docNo'),
+      sortable: true,
+      render: r => r.doc_no ?? '—',
+    },
+    { key: 'jv_no', label: t('admin.email.col.jv'), sortable: true, render: r => r.jv_no ?? '—' },
     {
       key: 'charged_docs',
       label: t('admin.email.col.charged'),
+      sortable: true,
       align: 'right',
       render: r => (r.charged_docs == null ? '—' : r.charged_docs),
     },
@@ -474,12 +493,11 @@ export default function EmailAutomationPage() {
                 </option>
               ))}
             </select>
-            <DateRangePicker
-              from={from}
-              to={to}
-              onChange={(f, tt) => {
-                setFrom(f)
-                setTo(tt)
+            <PeriodPicker
+              value={{ from, to }}
+              onChange={p => {
+                setFrom(p.from)
+                setTo(p.to)
               }}
             />
           </div>
@@ -494,6 +512,11 @@ export default function EmailAutomationPage() {
               columns={docCols}
               rows={rows.map(r => ({ ...r, id: r.id }))}
               loading={loading}
+              search={{
+                value: docSearch,
+                onChange: setDocSearch,
+                placeholder: t('admin.email.searchPlaceholder'),
+              }}
               expandedRowId={expandedId}
               renderExpandedRow={r => {
                 const row = r as EmailDocumentRow

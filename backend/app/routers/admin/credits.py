@@ -10,6 +10,7 @@ services/credit_order_service.py (credit-orders queue, AR profiles, AR posting, 
 """
 
 import logging
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,6 +57,7 @@ from app.services.storage_service import StorageError
 # "app.routers.admin.credits.{ar_posting_service,storage_service}.*" — patching a
 # module attribute mutates the shared module object, so it still takes effect
 # wherever credit_order_service calls it.
+from ._query import ListQuery, list_query
 from .deps import require_permission
 
 logger = logging.getLogger(__name__)
@@ -110,17 +112,24 @@ async def adjust(
     return CreditBalanceResponse(tenant_id=tenant_id, balance=balance)
 
 
-@router.get("/tenants/{tenant_id}/credits/ledger", response_model=list[CreditLedgerEntry])
+@router.get("/tenants/{tenant_id}/credits/ledger", response_model=Page[CreditLedgerEntry])
 async def ledger(
     tenant_id: str,
-    limit: int = Query(100, le=500),
+    from_date: datetime | None = Query(None, alias="from"),
+    to_date: datetime | None = Query(None, alias="to"),
+    lq: ListQuery = Depends(list_query),
     db: AsyncSession = Depends(get_db),
     admin: AdminPrincipal = Depends(require_permission("quotas", "read")),
 ):
     """Audit history of credit changes for a tenant, newest first."""
     _assert_scope(admin, tenant_id)
-    rows = await get_ledger(db, tenant_id, limit)
-    return [CreditLedgerEntry.model_validate(r) for r in rows]
+    rows, total = await get_ledger(db, tenant_id, lq, from_date, to_date)
+    return Page[CreditLedgerEntry](
+        total=total,
+        limit=lq.limit,
+        offset=lq.offset,
+        data=[CreditLedgerEntry.model_validate(r) for r in rows],
+    )
 
 
 # ── Slip review queue ─────────────────────────────────────────────────────────

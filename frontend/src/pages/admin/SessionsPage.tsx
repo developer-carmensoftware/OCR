@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import DataTable, { type Column } from '../../components/admin/DataTable'
 import TenantSelector from '../../components/admin/TenantSelector'
+import PeriodPicker, { daysAgo, endOfDay, today } from '../../components/admin/PeriodPicker'
 import { fetchSessions, revokeSession } from '../../lib/api/adminClient'
+import { useTableQuery } from '../../hooks/admin/useTableQuery'
 import { useT } from '../../i18n/LanguageContext'
 import { fmtDateTime } from '../../lib/date'
 
@@ -18,15 +21,33 @@ interface SessionRow {
 
 export default function SessionsPage() {
   const { t } = useT()
-  const [tenantId, setTenantId] = useState('')
-  const [activeOnly, setActiveOnly] = useState(false)
+  // Was a hand-rolled <table>: no sorting, no paging, no search, and a flat 100-row
+  // ceiling over what is really 30 days of login history. DataTable brings all four.
+  const { params, set, server } = useTableQuery({
+    defaultSort: 'last_used_at',
+    filters: { tenant_id: '', active_only: '', from: daysAgo(30), to: today() },
+  })
   const [rows, setRows] = useState<SessionRow[]>([])
-  const [loading, setLoading] = useState(false)
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
 
   const load = () => {
     setLoading(true)
-    fetchSessions({ tenant_id: tenantId || undefined, active_only: activeOnly, limit: 100 })
-      .then(r => setRows(r.data ?? []))
+    fetchSessions({
+      tenant_id: params.tenant_id || undefined,
+      active_only: params.active_only === '1',
+      from: params.from,
+      to: endOfDay(params.to),
+      q: params.q || undefined,
+      sort: params.sort,
+      dir: params.dir,
+      limit: params.limit,
+      offset: params.offset,
+    })
+      .then(r => {
+        setRows(r.data ?? [])
+        setTotal(r.total ?? 0)
+      })
       .catch(e =>
         toast.error(t('admin.sessions.toast.loadFailed', { error: e?.message ?? 'failed to load' }))
       )
@@ -34,7 +55,7 @@ export default function SessionsPage() {
   }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(load, [tenantId, activeOnly])
+  useEffect(load, [params])
 
   const handleRevoke = async (id: string) => {
     try {
@@ -46,6 +67,60 @@ export default function SessionsPage() {
     }
   }
 
+  const columns: Column<SessionRow>[] = [
+    {
+      key: 'username',
+      label: t('admin.sessions.col.user'),
+      sortable: true,
+      render: r => (
+        <div>
+          <div>{r.username || '—'}</div>
+          <div className="admin-sub-text admin-mono">{r.carmen_user_id}</div>
+        </div>
+      ),
+    },
+    {
+      // Displays the name, never sorts by it: the name is not a column on ocr_sessions.
+      key: 'tenant_name',
+      label: t('admin.sessions.col.tenant'),
+      render: r => r.tenant_name ?? r.tenant_id,
+    },
+    {
+      key: 'is_active',
+      label: t('admin.sessions.col.status'),
+      sortable: true,
+      render: r => (
+        <span className={`status-badge ${r.is_active ? 'ok' : 'error'}`}>
+          {r.is_active ? t('admin.sessions.status.active') : t('admin.sessions.status.revoked')}
+        </span>
+      ),
+    },
+    {
+      key: 'last_used_at',
+      label: t('admin.sessions.col.lastUsed'),
+      sortable: true,
+      defaultDesc: true,
+      render: r => fmtDateTime(r.last_used_at),
+    },
+    {
+      key: 'created_at',
+      label: t('admin.sessions.col.created'),
+      sortable: true,
+      defaultDesc: true,
+      render: r => fmtDateTime(r.created_at),
+    },
+    {
+      key: '_actions',
+      label: <span className="sr-only">{t('admin.sessions.actionsAria')}</span>,
+      render: r =>
+        r.is_active ? (
+          <button type="button" className="admin-btn-danger-sm" onClick={() => handleRevoke(r.id)}>
+            {t('admin.sessions.revoke')}
+          </button>
+        ) : null,
+    },
+  ]
+
   return (
     <div className="admin-page">
       <div className="admin-page-header">
@@ -54,73 +129,32 @@ export default function SessionsPage() {
           <label className="admin-checkbox-label">
             <input
               type="checkbox"
-              checked={activeOnly}
-              onChange={e => setActiveOnly(e.target.checked)}
+              checked={params.active_only === '1'}
+              onChange={e => set({ active_only: e.target.checked ? '1' : '' })}
             />
             {t('admin.sessions.activeOnly')}
           </label>
-          <TenantSelector value={tenantId} onChange={setTenantId} />
+          <PeriodPicker
+            value={{ from: params.from, to: params.to }}
+            onChange={p => set({ from: p.from, to: p.to })}
+          />
+          <TenantSelector value={params.tenant_id} onChange={v => set({ tenant_id: v })} />
         </div>
       </div>
 
       <div className="admin-card">
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th className="admin-th">{t('admin.sessions.col.user')}</th>
-              <th className="admin-th">{t('admin.sessions.col.tenant')}</th>
-              <th className="admin-th">{t('admin.sessions.col.status')}</th>
-              <th className="admin-th">{t('admin.sessions.col.lastUsed')}</th>
-              <th className="admin-th">{t('admin.sessions.col.created')}</th>
-              <th className="admin-th" aria-label={t('admin.sessions.actionsAria')}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={6} className="admin-td-empty">
-                  {t('admin.sessions.loading')}
-                </td>
-              </tr>
-            ) : rows.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="admin-td-empty">
-                  {t('admin.sessions.empty')}
-                </td>
-              </tr>
-            ) : (
-              rows.map(r => (
-                <tr key={r.id} className="admin-tr">
-                  <td className="admin-td">
-                    <div>{r.username || '—'}</div>
-                    <div className="admin-sub-text admin-mono">{r.carmen_user_id}</div>
-                  </td>
-                  <td className="admin-td">{r.tenant_name ?? r.tenant_id}</td>
-                  <td className="admin-td">
-                    <span className={`status-badge ${r.is_active ? 'ok' : 'error'}`}>
-                      {r.is_active
-                        ? t('admin.sessions.status.active')
-                        : t('admin.sessions.status.revoked')}
-                    </span>
-                  </td>
-                  <td className="admin-td">{fmtDateTime(r.last_used_at)}</td>
-                  <td className="admin-td">{fmtDateTime(r.created_at)}</td>
-                  <td className="admin-td">
-                    {r.is_active && (
-                      <button
-                        type="button"
-                        className="admin-btn-danger-sm"
-                        onClick={() => handleRevoke(r.id)}
-                      >
-                        {t('admin.sessions.revoke')}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+        <DataTable
+          columns={columns}
+          rows={rows}
+          loading={loading}
+          emptyText={t('admin.sessions.empty')}
+          server={server(total)}
+          search={{
+            value: params.q,
+            onChange: q => set({ q }),
+            placeholder: t('admin.sessions.searchPlaceholder'),
+          }}
+        />
       </div>
     </div>
   )

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import DataTable, { type Column } from '../../components/admin/DataTable'
+import PeriodPicker, { lastDays, periodHours } from '../../components/admin/PeriodPicker'
 import { fetchTenantRanking } from '../../lib/api/adminClient'
 import { useT } from '../../i18n/LanguageContext'
 
@@ -73,13 +74,18 @@ function getColsPerf(t: ReturnType<typeof useT>['t']): Column<RankRow>[] {
 export default function TenantRankingPage() {
   const { t } = useT()
   const [metric, setMetric] = useState<Metric>('cost')
-  const [period, setPeriod] = useState(24)
+  // 30 days used to be the ceiling here, in the API as well as the dropdown.
+  const [period, setPeriod] = useState(() => lastDays(30))
+  const [search, setSearch] = useState('')
   const [rows, setRows] = useState<RankRow[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const hours = periodHours(period)
 
   useEffect(() => {
     setLoading(true)
-    fetchTenantRanking({ metric, period_hours: period })
+    // The endpoint's own maximum. It defaulted to 20, so a ranking of "every tenant"
+    // silently stopped at the twentieth with nothing saying so.
+    fetchTenantRanking({ metric, period_hours: hours, limit: 100 })
       .then(r => setRows(r.data ?? []))
       .catch(e =>
         toast.error(
@@ -88,7 +94,7 @@ export default function TenantRankingPage() {
       )
       .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [metric, period])
+  }, [metric, hours])
 
   return (
     <div className="admin-page">
@@ -106,17 +112,7 @@ export default function TenantRankingPage() {
             <option value="latency">{t('admin.tenantRanking.metric.latency')}</option>
             <option value="volume">{t('admin.tenantRanking.metric.volume')}</option>
           </select>
-          <select
-            className="admin-select"
-            aria-label={t('admin.tenantRanking.periodAria')}
-            value={period}
-            onChange={e => setPeriod(Number(e.target.value))}
-          >
-            <option value={1}>{t('admin.tenantRanking.period.1h')}</option>
-            <option value={24}>{t('admin.tenantRanking.period.24h')}</option>
-            <option value={168}>{t('admin.tenantRanking.period.7d')}</option>
-            <option value={720}>{t('admin.tenantRanking.period.30d')}</option>
-          </select>
+          <PeriodPicker value={period} onChange={setPeriod} />
         </div>
       </div>
       <div className="admin-card">
@@ -125,6 +121,11 @@ export default function TenantRankingPage() {
           rows={rows}
           loading={loading}
           emptyText={t('admin.tenantRanking.empty')}
+          search={{
+            value: search,
+            onChange: setSearch,
+            placeholder: t('admin.tenantRanking.searchPlaceholder'),
+          }}
         />
       </div>
     </div>

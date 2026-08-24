@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import DataTable, { type Column } from '../../components/admin/DataTable'
+import PeriodPicker, { daysAgo, endOfDay, today } from '../../components/admin/PeriodPicker'
 import { fetchJobs } from '../../lib/api/adminClient'
+import { useTableQuery } from '../../hooks/admin/useTableQuery'
 import { useT } from '../../i18n/LanguageContext'
 import { fmtDateTime } from '../../lib/date'
 
@@ -22,6 +24,7 @@ function getCols(t: ReturnType<typeof useT>['t']): Column<JobRow>[] {
       key: 'started_at',
       label: t('admin.jobs.col.started'),
       sortable: true,
+      defaultDesc: true,
       render: r => fmtDateTime(r.started_at),
     },
     { key: 'job_name', label: t('admin.jobs.col.job'), sortable: true },
@@ -46,6 +49,7 @@ function getCols(t: ReturnType<typeof useT>['t']): Column<JobRow>[] {
     {
       key: 'rows_affected',
       label: t('admin.jobs.col.rows'),
+      sortable: true,
       align: 'right',
       render: r => (r.rows_affected != null ? String(r.rows_affected) : '—'),
     },
@@ -66,20 +70,36 @@ function getCols(t: ReturnType<typeof useT>['t']): Column<JobRow>[] {
 
 export default function JobsPage() {
   const { t } = useT()
-  const [status, setStatus] = useState('')
+  const { params, set, server } = useTableQuery({
+    defaultSort: 'started_at',
+    filters: { status: '', from: daysAgo(7), to: today() },
+  })
   const [rows, setRows] = useState<JobRow[]>([])
-  const [loading, setLoading] = useState(false)
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     setLoading(true)
-    fetchJobs({ status: status || undefined, limit: 100 })
-      .then(r => setRows(r.data ?? []))
+    fetchJobs({
+      status: params.status || undefined,
+      from: params.from,
+      to: endOfDay(params.to),
+      q: params.q || undefined,
+      sort: params.sort,
+      dir: params.dir,
+      limit: params.limit,
+      offset: params.offset,
+    })
+      .then(r => {
+        setRows(r.data ?? [])
+        setTotal(r.total ?? 0)
+      })
       .catch(e =>
         toast.error(t('admin.jobs.toast.loadFailed', { error: e?.message ?? 'failed to load' }))
       )
       .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status])
+  }, [params])
 
   return (
     <div className="admin-page">
@@ -89,14 +109,18 @@ export default function JobsPage() {
           <select
             className="admin-select"
             aria-label={t('admin.jobs.statusFilterAria')}
-            value={status}
-            onChange={e => setStatus(e.target.value)}
+            value={params.status}
+            onChange={e => set({ status: e.target.value })}
           >
             <option value="">{t('admin.jobs.status.all')}</option>
             <option value="running">{t('admin.jobs.status.running')}</option>
             <option value="success">{t('admin.jobs.status.success')}</option>
             <option value="failed">{t('admin.jobs.status.failed')}</option>
           </select>
+          <PeriodPicker
+            value={{ from: params.from, to: params.to }}
+            onChange={p => set({ from: p.from, to: p.to })}
+          />
         </div>
       </div>
       <div className="admin-card">
@@ -105,6 +129,12 @@ export default function JobsPage() {
           rows={rows}
           loading={loading}
           emptyText={t('admin.jobs.empty')}
+          server={server(total)}
+          search={{
+            value: params.q,
+            onChange: q => set({ q }),
+            placeholder: t('admin.jobs.searchPlaceholder'),
+          }}
         />
       </div>
     </div>

@@ -139,7 +139,16 @@ export default function OrderTable({
   const { t } = useT()
   const [voidOpen, setVoidOpen] = useState(false)
   const q = search.trim().toLowerCase()
-  const matching = q ? orders.filter(o => companyOf(o).toLowerCase().includes(q)) : orders
+  // Company *and* proforma number: an admin chasing a specific order has the proforma
+  // number in front of them (it is on the slip and in the customer's email), and the
+  // search box used to silently ignore it and answer "no orders".
+  const matching = q
+    ? orders.filter(o =>
+        [companyOf(o), o.proforma_number, o.pack_code].some(v =>
+          (v ?? '').toLowerCase().includes(q)
+        )
+      )
+    : orders
 
   // Rows per page measured off the rendered table, same as DataTable and the two
   // customer-facing lists. Searching filters everything loaded, then this pages it.

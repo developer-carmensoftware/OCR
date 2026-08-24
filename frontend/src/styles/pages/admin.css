@@ -536,6 +536,95 @@ body:has(.admin-login-page) {
   margin-left: 0.25em;
   text-align: center;
 }
+/* Unsorted columns carry a quiet ⇅ so "this column sorts" survives without a hover
+   state, which a tablet never produces.
+
+   --text-4 and no `opacity`: the quiet tier measures 3.45:1 on card, which is what
+   WCAG 1.4.11 asks of a control affordance. An `opacity` on top would composite it
+   below that floor — and `npm run contrast` reads tokens, so it could never have told
+   us. The idle/active difference is carried by the glyph (⇅ vs ↑ ↓), not by fading. */
+.sort-icon--idle {
+  color: var(--text-4);
+}
+.admin-th-sort:hover .sort-icon--idle,
+.admin-th-sort:focus-visible .sort-icon--idle {
+  color: var(--primary);
+}
+
+/* Type-ahead tenant filter. Wears .admin-select so it lines up with the real selects
+   beside it; the extra rules undo what a <select>'s own chrome supplied. */
+.admin-tenant-input {
+  min-width: 13rem;
+  background-image: none;
+}
+.admin-tenant-input::placeholder {
+  color: var(--text-3);
+}
+
+/* ─── PERIOD PICKER ────────────────────────────────────────────────────────── */
+
+.admin-period {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.admin-period-note {
+  font-size: 0.75rem;
+  color: var(--text-3);
+}
+
+/* ─── TABLE TOOLBAR (search) ───────────────────────────────────────────────── */
+
+.admin-table-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.admin-table-search {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 0 0.6rem;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md, 9px);
+  background: var(--card-bg);
+  color: var(--text-3);
+  transition: border-color 0.15s var(--ease);
+}
+.admin-table-search:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+.admin-table-search input {
+  width: 15rem;
+  max-width: 100%;
+  min-height: 2.1rem;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.83rem;
+  color: var(--text-1);
+}
+.admin-table-search input:focus {
+  outline: none;
+}
+/* The placeholder is read as often as the value; the muted default lands under 4.5:1. */
+.admin-table-search input::placeholder {
+  color: var(--text-3);
+}
+@media (max-width: 768px) {
+  .admin-table-search input {
+    width: 100%;
+    min-height: 44px;
+  }
+  .admin-table-toolbar {
+    justify-content: stretch;
+  }
+}
 .admin-th.text-right {
   text-align: right;
 }
