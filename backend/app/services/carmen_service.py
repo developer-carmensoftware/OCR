@@ -308,6 +308,12 @@ async def post_input_tax(body: dict, carmen_token: str) -> Any:
         resp = await get_http_client().post(
             f"{_base_url()}/inputTaxRec", json=body, headers=_headers(carmen_token)
         )
+        # A rejection with a JSON body used to be returned as if it were the created
+        # record — the wizard then toasted success over a document Carmen never filed.
+        # Both callers cope with the raise: the router maps it through _carmen_errors,
+        # and email_ingest_service._post_input_tax catches it and parks the reason.
+        if resp.status_code >= 400:
+            raise CarmenAPIError(resp.status_code, resp.text)
         try:
             return resp.json()
         except ValueError:
