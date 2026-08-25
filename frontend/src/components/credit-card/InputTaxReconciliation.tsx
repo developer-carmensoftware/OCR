@@ -11,6 +11,7 @@ import { useT } from '../../i18n/LanguageContext'
 import { useAccountingConfig } from '../../hooks/credit-card'
 import { resolveTaxProfileForRate } from '../../lib/apTax'
 import { descriptionForBank } from '../../lib/bankTransforms'
+import { BANK_INFO, OCR_BANK_MAP } from '../../constants/banks'
 import type { BankCode } from '../../types/api'
 import type { DetailRow } from './DetailTable'
 
@@ -47,6 +48,21 @@ export default function InputTaxReconciliation({
   }, [])
 
   const company = (config?.company ?? {}) as Record<string, string>
+  // The vendor on an ACTX record is the bank that issued the tax invoice, so its identity
+  // follows the *document's* bank — same resolution the email job does server-side
+  // (`db.get(Bank, bank_code)` in email_ingest_service._post_input_tax).
+  //
+  // accountingConfig.company is the fallback only. It cannot be the primary source: it lives
+  // in localStorage alone (saveAccountingConfig persists just `branch`), clearAppStorage()
+  // wipes it on every session drop / logout / tenant switch, and useOcrExtraction then
+  // rebuilds it from the document with a name and a branch but no tax id — which posted
+  // TaxId:"" and had Carmen silently reject the record.
+  const bankInfo = bank ? BANK_INFO[OCR_BANK_MAP[bank]] : undefined
+  const vendor = {
+    name: bankInfo?.name || company.name || '',
+    taxId: bankInfo?.taxId || company.taxId || '',
+    address: bankInfo?.address || company.address || '',
+  }
   const netAmount = details.reduce((s, d) => s + parseNum(d.CommisAmt), 0)
   const taxAmount = details.reduce((s, d) => s + parseNum(d.TaxAmt), 0)
   const total = netAmount + taxAmount
@@ -84,6 +100,9 @@ export default function InputTaxReconciliation({
     : ''
 
   const hasData = netAmount > 0 || taxAmount > 0
+  // Carmen rejects a record with no vendor identity, and it does so *after* accepting the
+  // request — so this has to be caught here rather than read off the response.
+  const identityMissing = !vendor.taxId || !vendor.name
   // Company / tax-profile cells are populated from the accounting config and the
   // tax-profile list — show a skeleton until both resolve instead of flashing "—".
   const isLoading = configLoading || profilesLoading
@@ -112,22 +131,30 @@ export default function InputTaxReconciliation({
       InvhTInvNo: headerData.DocNo || '',
       InvhTInvDt: invhTInvDt,
       InvhDesc: description || '',
-      VnName: company.name || '',
+      VnName: vendor.name,
       TaxProfileCode: resolvedProfileCode || `VAT0${Math.round(taxRate)}`,
       BfTaxAmt: round2(netAmount).toFixed(2),
       TaxRate: displayRate,
       TaxAmt: round2(taxAmount),
       TotalAmt: round2(total).toFixed(2),
-      TaxId: company.taxId || '',
+      TaxId: vendor.taxId,
+      // Branch is the one identity field that comes off the document, not the registry.
       BranchNo: company.branch || '',
-      Address: company.address || '',
+      Address: vendor.address,
       UserModified: 'admin',
       TaxProfileDesc: resolvedProfileItem?.desc ?? `VAT ${Math.round(taxRate)}%`,
       VnCode: '',
     }
 
     try {
-      await submitInputTax(payload)
+      // Carmen answers HTTP 200 with its verdict in the body, so the transport succeeding
+      // says nothing about the record existing. Same check as the JV (useOcrSubmission) and
+      // the email job (email_ingest_service._post_input_tax); this step was the only Carmen
+      // post that skipped it and toasted success over a rejection.
+      const res = (await submitInputTax(payload)) as { Code?: number; UserMessage?: string }
+      if (res?.Code !== 0) {
+        throw new Error(res?.UserMessage || `Carmen error (Code: ${res?.Code})`)
+      }
       setShowConfirm(false)
       toast.success(t('cc.inputTaxAdded'))
       onFinish()
@@ -201,8 +228,8 @@ export default function InputTaxReconciliation({
                     </td>
                     <td className="cc-mono-text">{headerData.DocNo || '—'}</td>
                     <td>{headerData.DocDate || '—'}</td>
-                    <td className="cc-max-w-160-wrap">{company.name || '—'}</td>
-                    <td className="cc-mono-text">{company.taxId || '—'}</td>
+                    <td className="cc-max-w-160-wrap">{vendor.name || '—'}</td>
+                    <td className="cc-mono-text">{vendor.taxId || '—'}</td>
                     <td>{company.branch || '—'}</td>
                     <td className="cc-desc-cell">{description || '—'}</td>
                     <td>
@@ -231,6 +258,13 @@ export default function InputTaxReconciliation({
           </div>
         </div>
 
+        {hasData && !isLoading && identityMissing && (
+          <div className="mapping-alert is-danger">
+            <AlertCircle size={16} />
+            <span className="cc-alert-text">{t('cc.inputTaxNoVendor')}</span>
+          </div>
+        )}
+
         {hasData && effectiveRateOff && (
           <div className="mapping-alert is-danger">
             <AlertCircle size={16} />
@@ -254,7 +288,7 @@ export default function InputTaxReconciliation({
               setSubmitError(null)
               setShowConfirm(true)
             }}
-            disabled={!hasData || isLoading}
+            disabled={!hasData || isLoading || identityMissing}
           >
             <PlusCircle size={14} /> {t('cc.addInputTax')}
           </button>

@@ -618,3 +618,43 @@ SELECT
 FROM pg_stat_user_tables
 WHERE n_dead_tup > 1000
 ORDER BY n_dead_tup DESC;
+
+
+-- ============================================================
+-- INPUT TAX (ACTX) COVERAGE (item 25)
+-- ============================================================
+
+
+-- ────────────────────────────────────────────────────────────
+-- 25. Did the input-tax record follow the JV?
+--
+-- One credit-card statement should produce TWO Carmen documents: the GLJV, then
+-- the ACTX input-tax record claiming the VAT the bank charged. A day where
+-- jv_posts > actx_posts is a day some VAT was not claimed.
+--
+-- This is the baseline for the 2026-08-25 fix (blank TaxId + rejections reported
+-- as success). Run it once over the weeks BEFORE the deploy, then again after —
+-- the gap should shrink toward the statements that genuinely carry no VAT.
+--
+-- Two things it cannot tell you, both by design of what is logged:
+--   * Carmen answers HTTP 200 and puts its verdict in the body, which
+--     outbound_call_logs does not store. A rejected ACTX still counts as a post
+--     here, so this UNDERSTATES the gap.
+--   * A user pressing "Discard" on step 6 and a blocked/failed post look the
+--     same — both are simply an absent call.
+-- A zero-VAT statement legitimately has no ACTX, so the gap is never expected to
+-- reach zero. Watch the trend, not the absolute.
+SELECT
+    DATE_TRUNC('week', created_at)::DATE AS week,
+    COUNT(*) FILTER (WHERE url LIKE '%/gljv' AND method = 'POST')        AS jv_posts,
+    COUNT(*) FILTER (WHERE url LIKE '%/inputTaxRec' AND method = 'POST') AS actx_posts,
+    COUNT(*) FILTER (WHERE url LIKE '%/gljv' AND method = 'POST')
+      - COUNT(*) FILTER (WHERE url LIKE '%/inputTaxRec' AND method = 'POST') AS gap,
+    -- After the fix a non-2xx here is a real rejection surfaced by post_input_tax
+    -- rather than a body nobody read; before it, this column is all zeroes.
+    COUNT(*) FILTER (WHERE url LIKE '%/inputTaxRec' AND status_code >= 400) AS actx_http_errors
+FROM outbound_call_logs
+WHERE service = 'carmen'
+  AND created_at >= NOW() - INTERVAL '90 days'
+GROUP BY 1
+ORDER BY 1;

@@ -651,6 +651,8 @@ const en = {
   'cc.skipInfo': 'This action will complete the entire process and return to the start page.',
   'cc.backToReview': 'Back to review',
   'cc.confirmDiscard': 'Confirm Discard',
+  'cc.inputTaxNoVendor':
+    "The issuing bank's tax ID could not be resolved, so Carmen would reject this record. Select the bank in Mapping Settings, then return to this step.",
   'cc.inputTaxAdded': 'Input Tax Reconciliation added successfully',
   'cc.inputTaxFailed': 'Failed to add Input Tax: {msg}',
   'cc.processedNoTax': 'Process completed without adding Input Tax',
@@ -1962,6 +1964,8 @@ const th: Record<TKey, string> = {
   'cc.skipInfo': 'การดำเนินการนี้จะทำกระบวนการทั้งหมดให้เสร็จและกลับไปหน้าเริ่มต้น',
   'cc.backToReview': 'กลับไปตรวจสอบ',
   'cc.confirmDiscard': 'ยืนยันการยกเลิก',
+  'cc.inputTaxNoVendor':
+    'ไม่พบเลขประจำตัวผู้เสียภาษีของธนาคารผู้ออกใบกำกับภาษี ระบบ Carmen จะไม่รับรายการนี้ กรุณาเลือกธนาคารในหน้าตั้งค่าการจับคู่ แล้วกลับมาที่ขั้นตอนนี้อีกครั้ง',
   'cc.inputTaxAdded': 'เพิ่มการกระทบยอดภาษีซื้อสำเร็จ',
   'cc.inputTaxFailed': 'เพิ่มภาษีซื้อไม่สำเร็จ: {msg}',
   'cc.processedNoTax': 'ดำเนินการเสร็จสิ้นโดยไม่เพิ่มภาษีซื้อ',
