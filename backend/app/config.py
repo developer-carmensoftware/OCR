@@ -363,7 +363,7 @@ if not settings.app_debug:
     if not settings.allowed_carmen_hosts_list:
         # Intentionally empty in many deployments: tenants self-host Carmen on
         # arbitrary domains with no common pattern, so a host allowlist isn't
-        # practical. SSRF is still contained by _validate_uri's DNS resolution +
+        # practical. SSRF is still contained by validate_uri's DNS resolution +
         # internal-IP block (private/loopback/link-local/metadata all rejected).
         # Residual is blind SSRF to public hosts only (no response body returned).
         _config_logger.warning(

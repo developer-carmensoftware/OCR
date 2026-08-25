@@ -158,12 +158,23 @@ Gotchas worth knowing before trusting a number:
   never reached the model. The Tenants page renders task-derived `last_use` instead.
 - **`GET /admin/tenants` needs `include_engagement=true`** for the engagement fields. It is
   off by default because `TenantSelector` calls the same endpoint on five other pages.
-- Adding a page = 4 edits: `lazy()` in `main.tsx`, an `else if` in `AdminRouter`, a `NavItem`
-  in `AdminLayout.getNavSections`, and `admin.nav.item.*` in **both** `en` and `th` of
-  `i18n/dict.ts` (TS fails the build if TH is missing). For the table itself, follow the
-  pattern below rather than inventing per-page state.
+- Adding a page = **2 edits**: an entry in `NAV_SECTIONS` (`pages/admin/routes.tsx`) with
+  its `hash`, `icon`, `labelKey` and `component: lazy(() => import(...))`, and that
+  `admin.nav.item.*` key in **both** `en` and `th` of `i18n/dict.ts` (TS fails the build if
+  TH is missing). `routes.tsx` is the single list: the sidebar reads it and `ADMIN_ROUTES`
+  (hash → page, used by `pages/admin/AdminRouter.tsx`) is derived from it, so a page cannot
+  have a nav entry without a route or the reverse. `main.tsx` knows only that `#/admin*`
+  belongs to `AdminRouter`, which keeps the whole dashboard out of the main bundle.
+  For the table itself, follow the pattern below rather than inventing per-page state.
 
-**The admin table pattern** (`hooks/admin/useTableQuery.ts` + `components/admin/DataTable.tsx`):
+**The admin table pattern** (`hooks/admin/useTableQuery.ts` + `hooks/admin/useTableData.ts`
++ `components/admin/DataTable.tsx`):
+
+- `useTableData(fetcher, deps, errorKey)` owns the fetch: `{ rows, total, loading, reload }`,
+  the failure toast, and a monotonic request guard so a slow early response cannot repaint
+  the table after a newer one (typing in the search box fires one request per keystroke).
+  Don't hand-roll the `useState`×3 + `useEffect` block again — eight pages had it, each with
+  its own `eslint-disable exhaustive-deps`.
 
 - `useTableQuery` owns filters, sort, and page, and keeps them **in the URL** (after the
   route hash, `replaceState`, defaults omitted) so a view survives navigation and can be

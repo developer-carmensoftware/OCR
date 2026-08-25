@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import DataTable, { type Column } from '../../components/admin/DataTable'
 import TenantSelector from '../../components/admin/TenantSelector'
 import PeriodPicker, { daysAgo, endOfDay, today } from '../../components/admin/PeriodPicker'
 import { fetchSessions, revokeSession } from '../../lib/api/adminClient'
 import { useTableQuery } from '../../hooks/admin/useTableQuery'
+import { useTableData } from '../../hooks/admin/useTableData'
 import { useT } from '../../i18n/LanguageContext'
 import { fmtDateTime } from '../../lib/date'
 
@@ -27,41 +27,28 @@ export default function SessionsPage() {
     defaultSort: 'last_used_at',
     filters: { tenant_id: '', active_only: '', from: daysAgo(30), to: today() },
   })
-  const [rows, setRows] = useState<SessionRow[]>([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
-
-  const load = () => {
-    setLoading(true)
-    fetchSessions({
-      tenant_id: params.tenant_id || undefined,
-      active_only: params.active_only === '1',
-      from: params.from,
-      to: endOfDay(params.to),
-      q: params.q || undefined,
-      sort: params.sort,
-      dir: params.dir,
-      limit: params.limit,
-      offset: params.offset,
-    })
-      .then(r => {
-        setRows(r.data ?? [])
-        setTotal(r.total ?? 0)
-      })
-      .catch(e =>
-        toast.error(t('admin.sessions.toast.loadFailed', { error: e?.message ?? 'failed to load' }))
-      )
-      .finally(() => setLoading(false))
-  }
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(load, [params])
+  const { rows, total, loading, reload } = useTableData<SessionRow>(
+    () =>
+      fetchSessions({
+        tenant_id: params.tenant_id || undefined,
+        active_only: params.active_only === '1',
+        from: params.from,
+        to: endOfDay(params.to),
+        q: params.q || undefined,
+        sort: params.sort,
+        dir: params.dir,
+        limit: params.limit,
+        offset: params.offset,
+      }),
+    [params],
+    'admin.sessions.toast.loadFailed'
+  )
 
   const handleRevoke = async (id: string) => {
     try {
       await revokeSession(id)
       toast.success(t('admin.sessions.toast.revoked'))
-      load()
+      reload()
     } catch {
       toast.error(t('admin.sessions.toast.revokeFailed'))
     }

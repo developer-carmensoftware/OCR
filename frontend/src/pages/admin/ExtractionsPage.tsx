@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { toast } from 'sonner'
 import DataTable, { type Column } from '../../components/admin/DataTable'
 import TenantSelector from '../../components/admin/TenantSelector'
 import DateRangePicker from '../../components/admin/DateRangePicker'
@@ -8,6 +7,7 @@ import PageHeader from '../../components/admin/ui/PageHeader'
 import Tabs from '../../components/admin/ui/Tabs'
 import EmptyState from '../../components/admin/ui/EmptyState'
 import { fetchExtractionFailures, type ExtractionFailureRow } from '../../lib/api/adminClient'
+import { useTableData } from '../../hooks/admin/useTableData'
 import { useT } from '../../i18n/LanguageContext'
 import { fmtDateTime } from '../../lib/date'
 
@@ -169,34 +169,22 @@ export default function ExtractionsPage() {
   const [moduleId, setModuleId] = useState('')
   const [tab, setTab] = useState('grouped')
   const [search, setSearch] = useState('')
-  const [rows, setRows] = useState<ExtractionFailureRow[]>([])
-  // What the range really holds. Over the endpoint's 500-row cap the grouped tab's
-  // cause counts are a sample, not a census, and the banner below says so.
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
-  // Not keyed on `tab` — both tabs render from this one array.
-  useEffect(() => {
-    setLoading(true)
-    fetchExtractionFailures({
-      from,
-      to,
-      tenant_id: tenantId || undefined,
-      module_id: moduleId || undefined,
-    })
-      .then(r => {
-        setRows(r.data ?? [])
-        setTotal(r.total ?? 0)
-      })
-      .catch(e =>
-        toast.error(
-          t('admin.extractions.toast.loadFailed', { error: e?.message ?? 'failed to load' })
-        )
-      )
-      .finally(() => setLoading(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [from, to, tenantId, moduleId])
+  // Not keyed on `tab` — both tabs render from this one array. `total` is what the
+  // range really holds: over the endpoint's 500-row cap the grouped tab's cause counts
+  // are a sample, not a census, and the banner below says so.
+  const { rows, total, loading } = useTableData<ExtractionFailureRow>(
+    () =>
+      fetchExtractionFailures({
+        from,
+        to,
+        tenant_id: tenantId || undefined,
+        module_id: moduleId || undefined,
+      }),
+    [from, to, tenantId, moduleId],
+    'admin.extractions.toast.loadFailed'
+  )
 
   const groups = useMemo(() => groupByCause(rows), [rows])
 

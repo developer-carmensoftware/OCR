@@ -8,7 +8,7 @@ import logging
 
 from app.database import async_session
 from app.models.orm import LLMUsageLog
-from app.services.pricing_cache_service import _estimate_cost, _get_pricing
+from app.services.pricing_cache_service import estimate_cost, get_pricing
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +46,8 @@ async def log_llm_usage(
     tenant_id = _ctx()
 
     try:
-        rates = await _get_pricing(model)
-        cost_usd = _estimate_cost(prompt_tokens, completion_tokens, rates) if rates else None
+        rates = await get_pricing(model)
+        cost_usd = estimate_cost(prompt_tokens, completion_tokens, rates) if rates else None
 
         async with async_session() as db:
             db.add(

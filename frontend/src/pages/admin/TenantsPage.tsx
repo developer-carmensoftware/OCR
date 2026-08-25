@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { toast } from 'sonner'
 import DataTable, { type Column } from '../../components/admin/DataTable'
 import KPICard from '../../components/admin/KPICard'
 import {
@@ -9,6 +8,7 @@ import {
   type TenantRow,
   type TenantDetail,
 } from '../../lib/api/adminClient'
+import { useTableData } from '../../hooks/admin/useTableData'
 import { useT } from '../../i18n/LanguageContext'
 import { fmtDateTime as fmtDate } from '../../lib/date'
 
@@ -49,29 +49,16 @@ export default function TenantsPage() {
   // after the query — so there is nothing here for Postgres to search or sort that it
   // would do more truthfully than the browser.
   const [search, setSearch] = useState('')
-  const [rows, setRows] = useState<TenantRow[]>([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [details, setDetails] = useState<Record<string, TenantDetail>>({})
   const [loadingIds, setLoadingIds] = useState<Record<string, boolean>>({})
   const [detailErrors, setDetailErrors] = useState<Record<string, string>>({})
 
-  const load = () => {
-    setLoading(true)
-    fetchTenants({ active_only: activeOnly, limit: TENANTS_LIMIT, include_engagement: true })
-      .then(r => {
-        setRows(r.data ?? [])
-        setTotal(r.total ?? 0)
-      })
-      .catch(e =>
-        toast.error(t('admin.tenants.toast.loadFailed', { error: e?.message ?? 'failed to load' }))
-      )
-      .finally(() => setLoading(false))
-  }
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(load, [activeOnly])
+  const { rows, total, loading } = useTableData<TenantRow>(
+    () => fetchTenants({ active_only: activeOnly, limit: TENANTS_LIMIT, include_engagement: true }),
+    [activeOnly],
+    'admin.tenants.toast.loadFailed'
+  )
 
   // Keyed per-tenant-id (not a single scalar) so an in-flight fetch for one row
   // can't clear the loading indicator of a different row expanded afterward.

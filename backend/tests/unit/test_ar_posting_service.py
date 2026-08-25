@@ -39,7 +39,7 @@ def _mock_resp(json_body):
 async def test_code_zero_succeeds_and_maps_payload():
     client = MagicMock()
     client.post = AsyncMock(return_value=_mock_resp({"Code": 0, "MoreInfo": "AR000123"}))
-    with patch.object(ar_posting_service, "_get_client", return_value=client):
+    with patch.object(ar_posting_service, "get_http_client", return_value=client):
         out = await ar_posting_service.post_ar_entry(**_kwargs())
 
     assert out == {"success": True, "carmen_ar_ref": "AR000123"}
@@ -59,7 +59,7 @@ async def test_code_zero_succeeds_and_maps_payload():
 async def test_nonzero_code_raises_with_user_message():
     client = MagicMock()
     client.post = AsyncMock(return_value=_mock_resp({"Code": 1, "UserMessage": "Invalid AR code"}))
-    with patch.object(ar_posting_service, "_get_client", return_value=client):
+    with patch.object(ar_posting_service, "get_http_client", return_value=client):
         with pytest.raises(RuntimeError, match="Invalid AR code"):
             await ar_posting_service.post_ar_entry(**_kwargs())
 
@@ -69,6 +69,6 @@ async def test_nonzero_code_raises_with_user_message():
 async def test_ref_falls_back_to_ar_code_when_no_more_info():
     client = MagicMock()
     client.post = AsyncMock(return_value=_mock_resp({"Code": 0}))
-    with patch.object(ar_posting_service, "_get_client", return_value=client):
+    with patch.object(ar_posting_service, "get_http_client", return_value=client):
         out = await ar_posting_service.post_ar_entry(**_kwargs())
     assert out["carmen_ar_ref"] == "AR-ACME01"

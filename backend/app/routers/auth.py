@@ -66,7 +66,7 @@ def _is_internal_ip(addr: "ipaddress.IPv4Address | ipaddress.IPv6Address") -> bo
     )
 
 
-def _validate_uri(uri: str) -> str:
+def validate_uri(uri: str) -> str:
     """
     Validate and normalise the Carmen origin URI against SSRF.
     - HTTPS only
@@ -179,11 +179,11 @@ async def _upsert_tenant(db: AsyncSession, host: str, bu_code: str) -> tuple[Ten
     return tenant, created is not None
 
 
-async def _validate_token(token: str, carmen_uri: str) -> None:
-    from app.services.carmen_service import _get_client
+async def validate_token(token: str, carmen_uri: str) -> None:
+    from app.services.carmen_service import get_http_client
 
     headers = {"Authorization": token, "User-Agent": "OCR-SSO-Validator"}
-    resp = await _get_client().get(
+    resp = await get_http_client().get(
         f"{_carmen_base(carmen_uri)}/department",
         headers=headers,
         timeout=_VALIDATE_TIMEOUT,
@@ -211,13 +211,13 @@ async def exchange_sso_token(request: Request, body: ExchangeRequest):
     if not token or not bu:
         raise HTTPException(status_code=400, detail="token and bu are required")
 
-    # In a thread: _validate_uri ends in a blocking socket.getaddrinfo, and this
+    # In a thread: validate_uri ends in a blocking socket.getaddrinfo, and this
     # endpoint is unauthenticated by definition — a slow DNS answer left on the event
     # loop stalls every other request this worker is serving.
-    carmen_uri = await asyncio.to_thread(_validate_uri, body.uri)
+    carmen_uri = await asyncio.to_thread(validate_uri, body.uri)
     host = urlparse(carmen_uri).hostname or ""
 
-    await _validate_token(token, carmen_uri)
+    await validate_token(token, carmen_uri)
     await provision_tenant()
 
     carmen_user_id = extract_user_id_from_token(token)

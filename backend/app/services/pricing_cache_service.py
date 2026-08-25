@@ -1,8 +1,8 @@
 """
 Pricing Cache Service — LLM model pricing lookup and OpenRouter sync.
 
-  _get_pricing()           — async lookup from DB (with in-memory cache)
-  _estimate_cost()         — token cost calc
+  get_pricing()           — async lookup from DB (with in-memory cache)
+  estimate_cost()         — token cost calc
   fetch_openrouter_pricing() — 8h sync cron
   list_model_pricing()     — admin listing
 """
@@ -31,7 +31,7 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-async def _get_pricing(model_name: str) -> tuple[Decimal, Decimal] | None:
+async def get_pricing(model_name: str) -> tuple[Decimal, Decimal] | None:
     if model_name in _PRICING_CACHE:
         return _PRICING_CACHE[model_name]
     try:
@@ -55,7 +55,7 @@ async def _get_pricing(model_name: str) -> tuple[Decimal, Decimal] | None:
     return None
 
 
-def _estimate_cost(prompt_tokens: int, completion_tokens: int, rates: tuple) -> Decimal:
+def estimate_cost(prompt_tokens: int, completion_tokens: int, rates: tuple) -> Decimal:
     input_rate, output_rate = rates
     return Decimal(
         str(round((prompt_tokens * input_rate + completion_tokens * output_rate) / 1_000_000, 6))

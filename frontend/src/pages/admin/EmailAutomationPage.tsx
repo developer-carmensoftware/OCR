@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import DataTable, { type Column } from '../../components/admin/DataTable'
 import KPICard from '../../components/admin/KPICard'
 import TenantSelector from '../../components/admin/TenantSelector'
-import PeriodPicker from '../../components/admin/PeriodPicker'
+import PeriodPicker, { daysAgo } from '../../components/admin/PeriodPicker'
 import PageHeader from '../../components/admin/ui/PageHeader'
 import Tabs from '../../components/admin/ui/Tabs'
 import Badge from '../../components/common/Badge'
@@ -134,12 +134,6 @@ export function relativeAge(iso: string | null | undefined, now = Date.now()) {
   const hours = Math.floor(minutes / 60)
   if (hours < 24) return { key: 'admin.email.age.hour' as TKey, vars: { n: hours } }
   return { key: 'admin.email.age.day' as TKey, vars: { n: Math.floor(hours / 24) } }
-}
-
-function daysAgo(n: number) {
-  const d = new Date()
-  d.setDate(d.getDate() - n)
-  return d.toISOString().slice(0, 10)
 }
 
 export default function EmailAutomationPage() {

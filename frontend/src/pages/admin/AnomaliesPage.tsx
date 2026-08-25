@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import TenantSelector from '../../components/admin/TenantSelector'
 import PeriodPicker, { daysAgo, endOfDay, today } from '../../components/admin/PeriodPicker'
 import Pager from '../../components/common/Pager'
 import { fetchAlerts, resolveAlert } from '../../lib/api/adminClient'
 import { useTableQuery } from '../../hooks/admin/useTableQuery'
+import { useTableData } from '../../hooks/admin/useTableData'
 import { useT } from '../../i18n/LanguageContext'
 import { fmtDateTime } from '../../lib/date'
 
@@ -33,40 +33,30 @@ export default function AnomaliesPage() {
     defaultSort: 'created_at',
     filters: { status: 'open', tenant_id: '', from: daysAgo(30), to: today() },
   })
-  const [alerts, setAlerts] = useState<Alert[]>([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
-
-  const load = () => {
-    setLoading(true)
-    fetchAlerts({
-      status: params.status,
-      tenant_id: params.tenant_id || undefined,
-      from: params.from,
-      to: endOfDay(params.to),
-      limit: PER_PAGE,
-      offset: params.offset,
-    })
-      .then(r => {
-        setAlerts(r.data ?? [])
-        setTotal(r.total ?? 0)
-      })
-      .catch(e =>
-        toast.error(
-          t('admin.anomalies.toast.loadFailed', { error: e?.message ?? 'failed to load' })
-        )
-      )
-      .finally(() => setLoading(false))
-  }
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(load, [params])
+  const {
+    rows: alerts,
+    total,
+    loading,
+    reload,
+  } = useTableData<Alert>(
+    () =>
+      fetchAlerts({
+        status: params.status,
+        tenant_id: params.tenant_id || undefined,
+        from: params.from,
+        to: endOfDay(params.to),
+        limit: PER_PAGE,
+        offset: params.offset,
+      }),
+    [params],
+    'admin.anomalies.toast.loadFailed'
+  )
 
   const handleResolve = async (id: number) => {
     try {
       await resolveAlert(id)
       toast.success(t('admin.anomalies.toast.resolved'))
-      load()
+      reload()
     } catch {
       toast.error(t('admin.anomalies.toast.resolveFailed'))
     }

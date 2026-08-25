@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react'
-import { toast } from 'sonner'
 import DataTable, { type Column } from '../../components/admin/DataTable'
 import PeriodPicker, { daysAgo, endOfDay, today } from '../../components/admin/PeriodPicker'
 import { fetchJobs } from '../../lib/api/adminClient'
 import { useTableQuery } from '../../hooks/admin/useTableQuery'
+import { useTableData } from '../../hooks/admin/useTableData'
 import { useT } from '../../i18n/LanguageContext'
 import { fmtDateTime } from '../../lib/date'
 
@@ -74,32 +73,21 @@ export default function JobsPage() {
     defaultSort: 'started_at',
     filters: { status: '', from: daysAgo(7), to: today() },
   })
-  const [rows, setRows] = useState<JobRow[]>([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    setLoading(true)
-    fetchJobs({
-      status: params.status || undefined,
-      from: params.from,
-      to: endOfDay(params.to),
-      q: params.q || undefined,
-      sort: params.sort,
-      dir: params.dir,
-      limit: params.limit,
-      offset: params.offset,
-    })
-      .then(r => {
-        setRows(r.data ?? [])
-        setTotal(r.total ?? 0)
-      })
-      .catch(e =>
-        toast.error(t('admin.jobs.toast.loadFailed', { error: e?.message ?? 'failed to load' }))
-      )
-      .finally(() => setLoading(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params])
+  const { rows, total, loading } = useTableData<JobRow>(
+    () =>
+      fetchJobs({
+        status: params.status || undefined,
+        from: params.from,
+        to: endOfDay(params.to),
+        q: params.q || undefined,
+        sort: params.sort,
+        dir: params.dir,
+        limit: params.limit,
+        offset: params.offset,
+      }),
+    [params],
+    'admin.jobs.toast.loadFailed'
+  )
 
   return (
     <div className="admin-page">

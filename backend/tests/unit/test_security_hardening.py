@@ -129,9 +129,9 @@ class TestIDORTenantScoping:
 
 class TestSSRFHardening:
     def _validate(self, uri: str):
-        from app.routers.auth import _validate_uri
+        from app.routers.auth import validate_uri
 
-        return _validate_uri(uri)
+        return validate_uri(uri)
 
     def test_host_not_on_allowlist_is_rejected(self):
         from app.config import settings
@@ -177,7 +177,7 @@ class TestSSRFHardening:
         from app.services import carmen_service
 
         carmen_service._SHARED_CLIENT = None  # force fresh build
-        client = carmen_service._get_client()
+        client = carmen_service.get_http_client()
         assert client.follow_redirects is False
 
 
