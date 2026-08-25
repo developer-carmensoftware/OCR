@@ -2965,6 +2965,26 @@ input[type='text'].detail-input:focus {
   white-space: nowrap;
 }
 
+/* A .btn dropped into the header row wears the header's geometry and colour —
+   36px pill, same surface as .theme-toggle — so it reads as one control set. */
+.app-header-menu > .btn {
+  height: 36px;
+  padding: 0 0.9rem;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  border-radius: var(--radius-pill);
+  color: var(--text-2);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+
+.app-header-menu > .btn:hover {
+  color: var(--text);
+  background: var(--muted);
+  border-color: var(--border);
+}
+
 /* Compact single-button language switch (header action).
 
    Same story as .status-badge: this was split between here and

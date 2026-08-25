@@ -3,7 +3,6 @@ import { m, AnimatePresence } from 'framer-motion'
 import { AlertCircle, RotateCw } from 'lucide-react'
 import CustomModal from '../components/common/CustomModal'
 import StepWizard from '../components/common/StepWizard'
-import DarkModeToggle from '../components/common/DarkModeToggle'
 import ExtractionSkeleton from '../components/common/ExtractionSkeleton'
 import SplitLayout from '../components/common/SplitLayout'
 import UsageIndicator from '../components/common/UsageIndicator'
@@ -16,7 +15,6 @@ import APAccountMappingStep from '../components/ap-invoice/APAccountMappingStep'
 import APSuccessStep from '../components/ap-invoice/APSuccessStep'
 import { useAPInvoice } from '../hooks/ap-invoice'
 import { useT } from '../i18n/LanguageContext'
-import LanguageToggle from '../components/common/LanguageToggle'
 import { AP_STEPS } from '../constants/apInvoice'
 import type { APColumnKey, APFieldKey } from '../constants/apInvoice'
 
@@ -157,8 +155,6 @@ export default function APInvoice() {
           backPath="/apInvoice"
         >
           <UsageIndicator />
-          <LanguageToggle />
-          <DarkModeToggle />
         </AppHeader>
 
         <StepWizard

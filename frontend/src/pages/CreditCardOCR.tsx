@@ -5,12 +5,10 @@ import { useOcrWizard } from '../hooks/credit-card'
 import StepWizard from '../components/common/StepWizard'
 import FormActions from '../components/common/FormActions'
 import CustomModal from '../components/common/CustomModal'
-import DarkModeToggle from '../components/common/DarkModeToggle'
 import ExtractionSkeleton from '../components/common/ExtractionSkeleton'
 import SplitLayout from '../components/common/SplitLayout'
 import UsageIndicator from '../components/common/UsageIndicator'
 import AppHeader from '../components/common/AppHeader'
-import LanguageToggle from '../components/common/LanguageToggle'
 import { useT } from '../i18n/LanguageContext'
 import { appKey } from '../lib/storage'
 import UploadSection from '../components/credit-card/UploadSection'
@@ -123,8 +121,6 @@ export default function CreditCardOCR() {
           backPath="/glJv"
         >
           <UsageIndicator />
-          <LanguageToggle />
-          <DarkModeToggle />
         </AppHeader>
 
         <StepWizard step={step} onStepClick={n => !loading && !submitting && handleStepClick(n)} />

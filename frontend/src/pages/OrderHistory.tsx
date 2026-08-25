@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, ShoppingBag, ArrowRight, Loader2, CalendarClock } from 'lucide-react'
 import { toast } from 'sonner'
 import AppHeader from '../components/common/AppHeader'
-import LanguageToggle from '../components/common/LanguageToggle'
 import Pager from '../components/common/Pager'
 import { useFitRows } from '../hooks/useFitRows'
 import { useT } from '../i18n/LanguageContext'
@@ -286,15 +285,11 @@ export default function OrderHistory() {
             }}
           />
         </div>
-        <LanguageToggle />
       </AppHeader>
 
       <main className="orders-main" aria-busy={busy}>
         <div className="orders-head">
           <h1 className="orders-title">{t('order.title')}</h1>
-          <a className="btn btn-outline orders-buy-link" href="#/pricing">
-            {t('order.buyPlan')} <ArrowRight size={14} />
-          </a>
         </div>
 
         {busy ? <StripSkeleton /> : sub && <ActivePlanBanner sub={sub} />}
