@@ -2,36 +2,17 @@ import { useRef, useState } from 'react'
 import { submitToCarmen } from '../../lib/api/carmen'
 import { logCorrections, diffCorrections } from '../../lib/api/feedback'
 import { getAccountingConfig } from '../../lib/api/config'
-import { codeToSource, descriptionForBank } from '../../lib/bankTransforms'
 import { getCarmenUrl } from '../../lib/url'
-import { normalizeYearToCE } from '../../lib/date'
+import { buildGljvPayload } from '../../lib/ccJv'
 import { showToast } from '../../lib/toast'
 import { appKey } from '../../lib/storage'
-import { round2 } from '../../lib/format'
 import type { ModalConfig } from '../useModal'
 
-/**
- * Parse a "DD/MM/YYYY" or "DD/MM/BBBB" (Buddhist Era) date string into an
- * ISO-8601 timestamp. Falls back to the current timestamp when the input is
- * absent, malformed, or results in an invalid Date.
- */
-function parseJvhDate(docDate: string | undefined): string {
-  if (docDate) {
-    const [d, m, y] = docDate.split('/')
-    const normalizedY = normalizeYearToCE(y)
-    const parsed = new Date(`${normalizedY}-${m}-${d}`)
-    if (!isNaN(parsed.getTime())) return parsed.toISOString()
-  }
-  return new Date().toISOString()
-}
-
-export interface JvRow {
-  dept: string
-  acc: string
-  desc: string
-  debit: number
-  credit: number
-}
+// JvRow and the JV body itself both live in lib/ccJv.ts, next to the row builder and
+// the contract test that pins them to the Python twin. Re-exported so the wizard's
+// existing importers keep one place to reach for it.
+import type { JvRow } from '../../lib/ccJv'
+export type { JvRow }
 
 interface OcrSubmissionProps {
   showModal: (config: Omit<ModalConfig, 'show'>) => void
@@ -113,50 +94,22 @@ export function useOcrSubmission({
           }
         })
         const cfg = carmenConfig as Record<string, string>
-        // Per-bank wording when the BU set one. The API returns snake_case and the
-        // localStorage fallback holds the camelCase shape useMapping writes, so both
-        // are read — this is the same value the email-ingest job resolves server-side.
-        const perBank =
-          (carmenConfig as Record<string, unknown>).bank_descriptions ??
-          (carmenConfig as Record<string, unknown>).bankDescriptions
-        const jvDescription = descriptionForBank(
-          cfg.description,
-          perBank as Record<string, string> | undefined,
-          bank
-        )
-        const carmenPayload = {
-          JvhSeq: -1,
-          JvhDate: parseJvhDate(headerData.DocDate),
-          Prefix: cfg.file_prefix || cfg.filePrefix || '',
-          JvhNo: 'Auto',
-          // Source follows the scanned bank (single authority), not stale saved
-          // config; fall back to stored config only when the bank is unknown.
-          JvhSource: (bank && codeToSource(bank)) || cfg.file_source || cfg.fileSource || '',
-          Status: 'Draft',
-          Description: jvDescription
-            ? `${jvDescription}${headerData.DocDate ? ` - ${headerData.DocDate}` : ''}`
-            : '',
-          // Drop display-only zero legs (e.g. gateway net=0.00 shown in Step 3 for a
-          // standard layout) — never post empty GL lines to Carmen.
-          Detail: rows
-            .filter(r => r.debit || r.credit)
-            .map(r => ({
-              JvhSeq: -1,
-              JvdSeq: -1,
-              DeptCode: r.dept,
-              AccCode: r.acc,
-              Description: r.desc,
-              CurCode: 'THB',
-              CurRate: 1,
-              CrAmount: round2(r.credit),
-              CrBase: round2(r.credit),
-              DrAmount: round2(r.debit),
-              DrBase: round2(r.debit),
-              DimList: {},
-            })),
-          DimHList: { Dim: [] },
-          UserModified: '',
-        }
+        // The API returns snake_case and the localStorage fallback holds the camelCase
+        // shape useMapping writes, so both are read here. Normalising at this boundary
+        // is what lets buildGljvPayload take one clean shape — and lets the contract
+        // test compare it against the server twin, which reads an ORM row.
+        const carmenPayload = buildGljvPayload(rows, {
+          docDate: headerData.DocDate,
+          bankCode: bank,
+          config: {
+            filePrefix: cfg.file_prefix || cfg.filePrefix,
+            fileSource: cfg.file_source || cfg.fileSource,
+            description: cfg.description,
+            bankDescriptions: ((carmenConfig as Record<string, unknown>).bank_descriptions ??
+              (carmenConfig as Record<string, unknown>).bankDescriptions) as
+              Record<string, string> | undefined,
+          },
+        })
         const metadata = {
           doc_no: headerData.DocNo || undefined,
           company_name: headerData.CompanyName || undefined,
