@@ -211,7 +211,7 @@ an ad-hoc script while `uvicorn` is up hits the 15-connection Supavisor cap.
 - **Bank code not enum** — `credit_cards.bank_code` FK → `banks.code` VARCHAR. No hardcoded `BankType` enum in the DB; adding a bank is an INSERT (pending Admin Dashboard for zero-redeploy).
 - **Credit card line items are NOT persisted** — like AP invoices, credit-card transactions follow the extract-display-only pattern (Carmen ERP is source of truth). Only `credit_cards` header data is stored; line items live transiently in the API response (`CreditCardTransactionSchema`).
 - **Soft delete everywhere** — Business tables never hard-delete. Always filter `WHERE deleted_at IS NULL`.
-- **Two document pools, not three** — a scan is charged by `consume_document()` (`services/credit_service.py`): the active subscription's monthly allowance first (use-it-or-lose-it), then `tenant_credits.balance` (never expires). The free trial is not a third pool — a new tenant is granted 30 credits (`signup_grant` ledger reason) in the same transaction that creates their tenant row, which is what makes it a one-time grant. The old `quotas`/`quota_usage` counter engine was retired by migration `20260813000100`; the tables are kept for one release and then dropped. What survived that retirement is only `assert_module_enabled()`, which now lives in `services/module_gate.py` (renamed from `quota_service.py` 2026-08-18 — the old name described an engine that no longer exists). `supabase/schemas/40_quotas.sql` still declares the tables; delete it in the same change that drops them.
+- **Two document pools, not three** — a scan is charged by `consume_document()` (`services/credit_service.py`): the active subscription's monthly allowance first (use-it-or-lose-it), then `tenant_credits.balance` (never expires). The free trial is not a third pool — a new tenant is granted 30 credits (`signup_grant` ledger reason) in the same transaction that creates their tenant row, which is what makes it a one-time grant. The old `quotas`/`quota_usage` counter engine was retired by migration `20260813000100` and the tables were dropped by `20260825000000`. What survived that retirement is only `assert_module_enabled()`, which now lives in `services/module_gate.py` (renamed from `quota_service.py` 2026-08-18 — the old name described an engine that no longer exists).
 - **module_id on every LLM call** — `log_llm_usage(module_id="credit_card_ocr")` instead of old `usage_type` string. Enables per-module cost breakdown in `daily_usage_summary`.
 - **Shared LLM client** — `llm/client.py` is the sole `AsyncOpenAI` factory. Never construct it elsewhere.
 - **LLM privacy is enforced per-request, not via dashboard** — `_provider_prefs()` in `llm/client.py` attaches `extra_body={"provider": {"data_collection": "deny", ...}}` to EVERY OpenRouter call (vision + text). This is the technical enforcement of the consent-modal no-training promise (`UserConsentModal.tsx`); it does not rely on the OpenRouter account dashboard toggles (which can drift silently). `LLM_TEXT_PROVIDER_ALLOWLIST` additionally pins the non-Google suggestion model to US-jurisdiction providers. Prod logs CRITICAL if `LLM_DATA_COLLECTION != "deny"`. The dashboard's Google-ZDR toggle (disable AI Studio, keep Vertex) is a manual second layer — see `docs/SECURITY_PDPA_CHECKLIST.md`.
@@ -297,7 +297,6 @@ LLM_VISION_PROVIDER_ALLOWLIST=      # vision is Google-only already
 LLM_EXPECTED_PROVIDERS=Google,DeepInfra,Fireworks,DigitalOcean  # alert if routed elsewhere (llm_provider_out_of_policy)
 DATABASE_URL=postgresql+asyncpg://user:password@host/dbname?sslmode=require
 MAX_FILE_SIZE_MB=5
-APP_PORT=8010
 # Secrets — NEVER put these in system_configs DB table
 OCR_JWT_SECRET=<strong-random-secret>
 SESSION_ENCRYPTION_KEY=<fernet-key>
@@ -333,7 +332,6 @@ EMAIL_INGEST_ADDRESS=ocr@carmensoftware.com   # dev default; per-BU routing uses
 | Modules | `modules`, `tenant_modules` |
 | Bank CMS | `banks`, `prompt_templates` |
 | Config | `system_configs`, `tenant_config_overrides`, `feature_flags`, `bu_accounting_configs`, `bu_accounting_mapping_entries`, `ap_vendor_column_mappings`, `ap_vendor_field_mapping_entries` |
-| Quotas | `quotas`, `quota_usage` — **retired** (rows soft-deleted 2026-08-13; tables + `schemas/40_quotas.sql` drop next release). Nothing reads them — check for a drop migration rather than assuming either way |
 | Billing | `credit_packs`, `tenant_credits`, `credit_ledger`, `credit_orders`, `billing_documents`, `tenant_subscriptions`, `ar_customer_profiles`, `document_sequences` |
 | Reference | `model_pricing` |
 | Business data | `ocr_sessions`, `ocr_tasks`, `credit_cards`, `ap_invoices`, `correction_feedback`, `bug_reports`, `consent_logs`, `user_notifications` |

@@ -59,7 +59,6 @@ ADMIN_JWT_SECRET=<different-strong-random-secret>   # must differ from OCR_JWT_S
 SESSION_ENCRYPTION_KEY=<fernet-key>
 INTERNAL_JOB_TOKEN=<hex-64-chars>   # must match vault.secrets 'internal_job_token'
 
-APP_PORT=8010
 MAX_FILE_SIZE_MB=5
 ```
 
