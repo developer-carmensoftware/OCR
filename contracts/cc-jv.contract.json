@@ -1,0 +1,245 @@
+{
+  "$comment": [
+    "CONTRACT FIXTURE — the credit-card JV body, pinned across two implementations.",
+    "",
+    "The wizard builds its JV in the browser (frontend/src/lib/ccJv.ts +",
+    "hooks/credit-card/useOcrSubmission.ts) because a human reviews it there. Email",
+    "automation has no browser, so backend/app/services/cc_jv.py builds the same body.",
+    "Both suites tested their own side; nothing tested that the two agreed, and drift",
+    "there posts wrong money silently. This file is the single source both read.",
+    "",
+    "Readers:",
+    "  backend/tests/unit/test_cc_jv.py::test_contract_fixture",
+    "  frontend/src/lib/ccJv.contract.test.ts",
+    "",
+    "SHAPE NOTE — the two builders take mappings differently, which is why this file",
+    "keeps them apart instead of pre-merging:",
+    "  TS      buildJvRows(details, { mappings, paymentAmount: paymentTypes })",
+    "  Python  build_jv_rows(details, { **mappings, **paymentTypes })",
+    "",
+    "DELIBERATE DIFFERENCES, asserted per-side rather than ignored:",
+    "  UserModified  empty from the wizard, 'OCR-EMAIL' from email ingest. The field",
+    "                exists precisely to tell a machine-posted JV from a reviewed one",
+    "                (CARMEN_INTEGRATION.md section 4 point 3), so it is NOT in",
+    "                `expected` — each test asserts its own side's value.",
+    "  JvhDate       Python emits '+00:00', JS emits '.000Z' — same instant, different",
+    "                string. Compare as instants, never as strings.",
+    "  fuzzy match   canonical_payment_type()'s Thai-diacritic folding is backend-only:",
+    "                the wizard has a human to fix a misread, email ingest does not.",
+    "                Every payment-type key below matches exactly, so folding never",
+    "                engages and the shared arithmetic is what gets compared.",
+    "",
+    "PADDING IS LOAD-BEARING. docDate must be zero-padded DD/MM/YYYY. Unpadded,",
+    "new Date('2026-8-5') is parsed as LOCAL time by JS and lands on the previous day",
+    "in UTC (verified: 2026-08-04T17:00:00Z at ICT), while Python datetime(2026,8,5)",
+    "does not move. Both producers pad today — normalizeDateStringToCE() at extraction",
+    "and formatDateToDDMMYYYY() in the date picker — so the divergence is unreachable.",
+    "Keep it that way."
+  ],
+
+  "bankSourceMap": {
+    "$comment": "Bank code to Carmen GL source. A third copy of this table lives in frontend/src/constants/banks.ts (BANK_SOURCE_MAP, keyed by display name via OCR_BANK_MAP) and a second in cc_jv.py. Both tests assert their own map reproduces this one.",
+    "BBL": "ACBB",
+    "KBANK": "ACKB",
+    "SCB": "ACSC",
+    "BAY": "ACBY",
+    "KTC": "ACKC",
+    "GHL": "ACGH",
+    "PAYPAL": "ACPP",
+    "SIAMPAY": "ACSP"
+  },
+
+  "cases": [
+    {
+      "name": "bank statement — two payment types, VAT, net settlement",
+      "why": "The main path. Credit legs stay one per payment type; the debit side collapses to the three canonical buckets, summed. Total debit must equal total credit (15000.00).",
+      "bankCode": "BBL",
+      "docDate": "25/08/2026",
+      "config": {
+        "filePrefix": "IC",
+        "fileSource": "ACZZ",
+        "description": "Credit card settlement",
+        "bankDescriptions": {}
+      },
+      "mappings": {
+        "commission": { "dept": "1000", "acc": "5310" },
+        "tax": { "dept": "1000", "acc": "1180" },
+        "net": { "dept": "1000", "acc": "1110" }
+      },
+      "paymentTypes": {
+        "VISA": { "dept": "1000", "acc": "1210" },
+        "MASTERCARD": { "dept": "1000", "acc": "1211" }
+      },
+      "details": [
+        {
+          "Transaction": "VISA",
+          "PayAmt": "10,000.00",
+          "CommisAmt": "200.00",
+          "TaxAmt": "14.00",
+          "Total": "9,786.00"
+        },
+        {
+          "Transaction": "MASTERCARD",
+          "PayAmt": "5,000.00",
+          "CommisAmt": "100.00",
+          "TaxAmt": "7.00",
+          "Total": "4,893.00"
+        }
+      ],
+      "expectedJvhDateUtc": "2026-08-25T00:00:00.000Z",
+      "expected": {
+        "JvhSeq": -1,
+        "Prefix": "IC",
+        "JvhNo": "Auto",
+        "JvhSource": "ACBB",
+        "Status": "Draft",
+        "Description": "Credit card settlement - 25/08/2026",
+        "Detail": [
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "1000", "AccCode": "1210", "Description": "VISA", "CurCode": "THB", "CurRate": 1, "CrAmount": 10000, "CrBase": 10000, "DrAmount": 0, "DrBase": 0, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "1000", "AccCode": "1211", "Description": "MASTERCARD", "CurCode": "THB", "CurRate": 1, "CrAmount": 5000, "CrBase": 5000, "DrAmount": 0, "DrBase": 0, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "1000", "AccCode": "5310", "Description": "Credit card commission", "CurCode": "THB", "CurRate": 1, "CrAmount": 0, "CrBase": 0, "DrAmount": 300, "DrBase": 300, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "1000", "AccCode": "1180", "Description": "Input Tax", "CurCode": "THB", "CurRate": 1, "CrAmount": 0, "CrBase": 0, "DrAmount": 21, "DrBase": 21, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "1000", "AccCode": "1110", "Description": "Bank Account", "CurCode": "THB", "CurRate": 1, "CrAmount": 0, "CrBase": 0, "DrAmount": 14679, "DrBase": 14679, "DimList": {} }
+        ],
+        "DimHList": { "Dim": [] }
+      }
+    },
+
+    {
+      "name": "gateway fee invoice — net = 0, per-bank description",
+      "why": "A processor fee invoice settles nothing, so the Bank Account leg is 0.00. Step 3 still SHOWS that row for a uniform layout, but it must never reach Carmen as an empty GL line — Detail has 3 entries, not 4. Also pins the per-bank description override winning over the BU default.",
+      "bankCode": "PAYPAL",
+      "docDate": "01/07/2026",
+      "config": {
+        "filePrefix": "IC",
+        "fileSource": "",
+        "description": "Gateway fees",
+        "bankDescriptions": { "PAYPAL": "PayPal monthly fees" }
+      },
+      "mappings": {
+        "commission": { "dept": "2000", "acc": "5320" },
+        "tax": { "dept": "2000", "acc": "1180" },
+        "net": { "dept": "2000", "acc": "1110" }
+      },
+      "paymentTypes": {
+        "PayPal Fee": { "dept": "2000", "acc": "1220" }
+      },
+      "details": [
+        {
+          "Transaction": "PayPal Fee",
+          "PayAmt": "1,070.00",
+          "CommisAmt": "1,000.00",
+          "TaxAmt": "70.00",
+          "Total": "0.00"
+        }
+      ],
+      "expectedJvhDateUtc": "2026-07-01T00:00:00.000Z",
+      "expected": {
+        "JvhSeq": -1,
+        "Prefix": "IC",
+        "JvhNo": "Auto",
+        "JvhSource": "ACPP",
+        "Status": "Draft",
+        "Description": "PayPal monthly fees - 01/07/2026",
+        "Detail": [
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "2000", "AccCode": "1220", "Description": "PayPal Fee", "CurCode": "THB", "CurRate": 1, "CrAmount": 1070, "CrBase": 1070, "DrAmount": 0, "DrBase": 0, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "2000", "AccCode": "5320", "Description": "Credit card commission", "CurCode": "THB", "CurRate": 1, "CrAmount": 0, "CrBase": 0, "DrAmount": 1000, "DrBase": 1000, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "2000", "AccCode": "1180", "Description": "Input Tax", "CurCode": "THB", "CurRate": 1, "CrAmount": 0, "CrBase": 0, "DrAmount": 70, "DrBase": 70, "DimList": {} }
+        ],
+        "DimHList": { "Dim": [] }
+      }
+    },
+
+    {
+      "name": "unknown bank code + no description — both fallbacks",
+      "why": "JvhSource falls back to the saved config only when the bank code is not in the source map, and an empty description must stay empty rather than becoming a bare ' - 31/12/2026'.",
+      "bankCode": "XXX",
+      "docDate": "31/12/2026",
+      "config": {
+        "filePrefix": "",
+        "fileSource": "ACZZ",
+        "description": "",
+        "bankDescriptions": {}
+      },
+      "mappings": {
+        "commission": { "dept": "3000", "acc": "5310" },
+        "tax": { "dept": "3000", "acc": "1180" },
+        "net": { "dept": "3000", "acc": "1110" }
+      },
+      "paymentTypes": {
+        "UNKNOWN": { "dept": "3000", "acc": "1210" }
+      },
+      "details": [
+        {
+          "Transaction": "UNKNOWN",
+          "PayAmt": "100.00",
+          "CommisAmt": "10.00",
+          "TaxAmt": "0.70",
+          "Total": "89.30"
+        }
+      ],
+      "expectedJvhDateUtc": "2026-12-31T00:00:00.000Z",
+      "expected": {
+        "JvhSeq": -1,
+        "Prefix": "",
+        "JvhNo": "Auto",
+        "JvhSource": "ACZZ",
+        "Status": "Draft",
+        "Description": "",
+        "Detail": [
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "3000", "AccCode": "1210", "Description": "UNKNOWN", "CurCode": "THB", "CurRate": 1, "CrAmount": 100, "CrBase": 100, "DrAmount": 0, "DrBase": 0, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "3000", "AccCode": "5310", "Description": "Credit card commission", "CurCode": "THB", "CurRate": 1, "CrAmount": 0, "CrBase": 0, "DrAmount": 10, "DrBase": 10, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "3000", "AccCode": "1180", "Description": "Input Tax", "CurCode": "THB", "CurRate": 1, "CrAmount": 0, "CrBase": 0, "DrAmount": 0.7, "DrBase": 0.7, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "3000", "AccCode": "1110", "Description": "Bank Account", "CurCode": "THB", "CurRate": 1, "CrAmount": 0, "CrBase": 0, "DrAmount": 89.3, "DrBase": 89.3, "DimList": {} }
+        ],
+        "DimHList": { "Dim": [] }
+      }
+    },
+
+    {
+      "name": "Buddhist-era date",
+      "why": "Both sides convert a year > 2400 by subtracting 543. A drift here dates every JV 543 years out. Note the Description keeps the BE string verbatim — only JvhDate is converted.",
+      "bankCode": "KBANK",
+      "docDate": "25/08/2569",
+      "config": {
+        "filePrefix": "IC",
+        "fileSource": "",
+        "description": "BE date",
+        "bankDescriptions": {}
+      },
+      "mappings": {
+        "commission": { "dept": "1000", "acc": "5310" },
+        "tax": { "dept": "1000", "acc": "1180" },
+        "net": { "dept": "1000", "acc": "1110" }
+      },
+      "paymentTypes": {
+        "VISA": { "dept": "1000", "acc": "1210" }
+      },
+      "details": [
+        {
+          "Transaction": "VISA",
+          "PayAmt": "1,000.00",
+          "CommisAmt": "20.00",
+          "TaxAmt": "1.40",
+          "Total": "978.60"
+        }
+      ],
+      "expectedJvhDateUtc": "2026-08-25T00:00:00.000Z",
+      "expected": {
+        "JvhSeq": -1,
+        "Prefix": "IC",
+        "JvhNo": "Auto",
+        "JvhSource": "ACKB",
+        "Status": "Draft",
+        "Description": "BE date - 25/08/2569",
+        "Detail": [
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "1000", "AccCode": "1210", "Description": "VISA", "CurCode": "THB", "CurRate": 1, "CrAmount": 1000, "CrBase": 1000, "DrAmount": 0, "DrBase": 0, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "1000", "AccCode": "5310", "Description": "Credit card commission", "CurCode": "THB", "CurRate": 1, "CrAmount": 0, "CrBase": 0, "DrAmount": 20, "DrBase": 20, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "1000", "AccCode": "1180", "Description": "Input Tax", "CurCode": "THB", "CurRate": 1, "CrAmount": 0, "CrBase": 0, "DrAmount": 1.4, "DrBase": 1.4, "DimList": {} },
+          { "JvhSeq": -1, "JvdSeq": -1, "DeptCode": "1000", "AccCode": "1110", "Description": "Bank Account", "CurCode": "THB", "CurRate": 1, "CrAmount": 0, "CrBase": 0, "DrAmount": 978.6, "DrBase": 978.6, "DimList": {} }
+        ],
+        "DimHList": { "Dim": [] }
+      }
+    }
+  ]
+}

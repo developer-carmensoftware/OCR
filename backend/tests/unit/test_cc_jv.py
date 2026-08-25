@@ -5,8 +5,19 @@ user would build by hand. Cases mirror frontend/src/lib/ccJv.test.ts so the two
 implementations stay provably in sync.
 """
 
+import json
+from datetime import datetime
+from pathlib import Path
+from types import SimpleNamespace
+
 from app.models.schemas.ocr import ExtractedDetailRow
-from app.services.cc_jv import build_jv_rows, canonical_payment_type, unmapped_payment_types
+from app.services.cc_jv import (
+    BANK_SOURCE_MAP,
+    build_gljv_payload,
+    build_jv_rows,
+    canonical_payment_type,
+    unmapped_payment_types,
+)
 
 CONFIG = {
     "commission": {"dept": "GEN", "acc": "5100"},
@@ -193,3 +204,75 @@ def test_genuinely_new_type_still_parks():
         )
     ]
     assert unmapped_payment_types(details, THAI_CONFIG) == ["Alipay"]
+
+
+# ── Cross-language contract ───────────────────────────────────────────────────
+#
+# Everything above pins the Python side against hand-written expectations. That was
+# never enough: the wizard builds the same Carmen body in TypeScript
+# (frontend/src/lib/ccJv.ts + hooks/credit-card/useOcrSubmission.ts), the module
+# docstring says the two are "kept deliberately in step", and nothing checked that
+# they were. A drift posts wrong money and no test goes red.
+#
+# contracts/cc-jv.contract.json is the shared source of truth.
+# frontend/src/lib/ccJv.contract.test.ts asserts the other half against the same file.
+# Change an expectation there and this fails too — that is the whole point.
+
+CONTRACT = json.loads(
+    (Path(__file__).parents[3] / "contracts" / "cc-jv.contract.json").read_text(encoding="utf-8")
+)
+
+
+def test_contract_bank_source_map_matches_fixture():
+    """The code→source table is copied three times (here, constants/banks.ts, the
+    fixture). Pin ours to the fixture; the TS test pins the other."""
+    expected = {k: v for k, v in CONTRACT["bankSourceMap"].items() if not k.startswith("$")}
+    assert BANK_SOURCE_MAP == expected
+
+
+def _config(case: dict) -> SimpleNamespace:
+    cfg = case["config"]
+    return SimpleNamespace(
+        file_prefix=cfg["filePrefix"],
+        file_source=cfg["fileSource"],
+        description=cfg["description"],
+        bank_descriptions=cfg["bankDescriptions"],
+    )
+
+
+def test_contract_fixture():
+    for case in CONTRACT["cases"]:
+        # The TS builder takes fixed types and payment types as two dicts; ours takes
+        # one merged dict. Merging here (rather than in the fixture) keeps that
+        # difference visible instead of baking one side's shape into the shared file.
+        mappings = {**case["mappings"], **case["paymentTypes"]}
+        details = [
+            ExtractedDetailRow(
+                transaction=d["Transaction"],
+                pay_amt=d["PayAmt"],
+                commis_amt=d["CommisAmt"],
+                tax_amt=d["TaxAmt"],
+                total=d["Total"],
+            )
+            for d in case["details"]
+        ]
+
+        body = build_gljv_payload(
+            build_jv_rows(details, mappings),
+            doc_date=case["docDate"],
+            bank_code=case["bankCode"],
+            config=_config(case),
+        )
+
+        # JvhDate is compared as an instant: Python emits '+00:00' and JS '.000Z' for
+        # the same moment, so a string compare would fail on a difference Carmen
+        # does not see.
+        assert datetime.fromisoformat(body.pop("JvhDate")) == datetime.fromisoformat(
+            case["expectedJvhDateUtc"].replace("Z", "+00:00")
+        ), f"{case['name']}: JvhDate"
+
+        # Deliberately outside the shared contract — the field exists to tell a
+        # machine-posted JV from a reviewed one, so the two sides MUST differ here.
+        assert body.pop("UserModified") == "OCR-EMAIL", f"{case['name']}: UserModified"
+
+        assert body == case["expected"], f"{case['name']}"

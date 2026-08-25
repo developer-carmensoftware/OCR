@@ -5,7 +5,11 @@ Email automation has no browser, so the same two steps live here: detail rows +
 accounting config → JV rows → the Carmen `gljv` body.
 
 Kept deliberately in step with ccJv.ts + useOcrSubmission.ts. If the consolidated
-layout changes there, change it here — test_cc_jv.py pins the arithmetic.
+layout changes there, change it here — test_cc_jv.py pins the arithmetic, and
+`contracts/cc-jv.contract.json` pins this body so the two can no longer drift
+silently: each side is asserted against that one file, so changing a field here
+reddens THIS suite (and changing ccJv.ts reddens the frontend one). The fix is to
+change both implementations, not to edit the contract to match one of them.
 """
 
 from __future__ import annotations
