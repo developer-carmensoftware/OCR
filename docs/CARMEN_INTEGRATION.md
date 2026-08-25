@@ -77,9 +77,13 @@ Four consequences worth stating plainly:
   mail; the tax ID printed on the document says who owns the document. If they disagree,
   the document is parked rather than posted (§2.4). It costs an LLM call to read, which is
   why it cannot be the thing that identifies the owner in the first place.
-- **A document forwarded twice is not charged twice.** If the same report arrives both
+- **A document forwarded twice is not *posted* twice.** If the same report arrives both
   automatically and by hand, the second one is recognised by document number and rejected
-  as a duplicate, with the credit refunded.
+  as a duplicate — but it **is** charged, because recognising it required reading it. The
+  duplicate can only be spotted after the document number has been extracted, so the LLM
+  call has already happened and been billed to us. Tell customers to pick one arrival mode:
+  auto-forward *or* manual forward, not both. A redelivered copy of the *same* message is
+  still free — that one is caught by message ID, before anything is charged.
 - **Mail to an address we cannot resolve is dropped before it costs anything** — no LLM
   call, no ledger row, no credit, no JV. There is nobody to report it to either, which is
   the accepted trade (§2.5).
@@ -308,7 +312,8 @@ detect it — a correctly-addressed mail can still carry the wrong company's inv
 when an employee forwards the wrong message. So:
 
 - A document carrying a tax ID **registered to a different BU** is parked, not posted —
-  `reason_code: tax_id_mismatch`, credit refunded.
+  `reason_code: tax_id_mismatch`. It is charged: the tax ID is only knowable after the
+  document has been read.
 - A document carrying **no recognised tax ID** still posts. Some fee invoices never print
   the buyer's TIN, and refusing those would break legitimate documents to catch nothing.
   The address already established the owner.
@@ -622,7 +627,7 @@ Carmen (or the customer) learns what happened to a forwarded document.
     "document_id": "d41f…",
     "reason_code": "duplicate_document",
     "message": "This document has already been posted.",
-    "credit_refunded": true
+    "credit_refunded": false
   }
 }
 ```
@@ -641,8 +646,9 @@ The other two are worth reading closely, because they are the two ways a documen
 
 - **`tax_id_mismatch`** — the document carries a tax ID registered to a different BU (§2.4).
   The address said one owner and the document said another, so it is parked rather than
-  posted to either. The credit is refunded. This is the outcome most worth surfacing to the
-  customer: it usually means someone forwarded the wrong message.
+  posted to either. The credit is **not** refunded — reading the tax ID is what cost it.
+  This is the outcome most worth surfacing to the customer: it usually means someone
+  forwarded the wrong message.
 - **`no_rule_match`** — the attachment matched none of the BU's `filename_patterns` (§2.3),
   so it was never scanned. Nothing was charged. Expect this for every signature logo in a
   forwarded chain, and also when a customer's patterns are too narrow — which is why the

@@ -137,8 +137,8 @@ Two Carmen documents are posted per statement: the GL JV, then a separate input-
 (ACTX) record. Deliberately posted in that order and deliberately unable to fail the first:
 the JV is already in Carmen's books with no rollback available once posted, so a failed
 input-tax post is recorded as a note on an otherwise `posted` row for a human to add by
-hand — never turned into an exception that would refund a credit for work that was
-genuinely done.
+hand — never turned into an exception that would mark a document Carmen has already
+accepted as `failed`.
 
 ## 13. No retry of a failed document
 
@@ -176,7 +176,41 @@ also forge these). Left empty by default: a gate nobody explicitly asked for tha
 refuses real documents is a worse failure mode than no gate at all — "start broad, narrow
 later," the same posture `filename_patterns` and `bank_sender_email` both take.
 
-## 17. Superseded designs, and where they live
+## 17. The charge follows the vision call, not the outcome (2026-08-24)
+
+Until this date, six post-charge exits refunded the credit: `duplicate_document`,
+`tax_id_mismatch`, `mapping_incomplete`, `unreadable_document` (no postable amounts), and
+the two `carmen_rejected` cases for a missing credential or unknown host. Only a Carmen
+decline or a transport failure kept the charge.
+
+That split was hard to state in one sentence, and it disagreed with the wizard on the same
+event. `finalize_extraction` sets an `is_duplicate` flag rather than raising, so the Credit
+Card wizard has **always** charged for a duplicate — the identical document cost 1 credit
+through one path and 0 through the other, which is not a distinction either pipeline could
+justify to a customer.
+
+The rule now: **once `finalize_extraction` returns, the document is charged.** The vision
+call has been made and billed to us, and the customer has received the work. A duplicate, a
+foreign tax ID, an unmappable account and a Carmen refusal are decisions taken *about a
+document we successfully read* — not failures to read it.
+
+Mechanically this became one **refund boundary** in `_run_document()`: the `try` wrapping
+`create_task` + `extract_stateless` + `finalize_extraction`, now the only place in the
+pipeline that calls `refund_document()`. `create_task` moved inside it (it had been outside,
+relying on the outer handler). `_Skip` lost its `refund` parameter entirely — every raise
+site was either pre-charge or post-extraction, so the flag had no live value left. Both
+outer handlers stopped refunding; leaving it in the generic `except Exception` as well would
+have handed back two credits for one document, since the boundary re-raises into it.
+
+**The trade-off, accepted knowingly:** a BU that configures both auto-forward *and* manual
+forward now pays twice for each report, where the second copy used to be refunded. §0.1 of
+`../CARMEN_INTEGRATION.md` promises both arrival modes work, and they still do — but the
+guidance is now to pick one. A redelivered copy of the *same* message stays free: the ledger
+key `(tenant, message_id, attachment)` catches it before any charge. Only a genuinely
+different email carrying the same document costs twice, which in practice means the
+double-forward setup and little else.
+
+## 18. Superseded designs, and where they live
 
 - **`feat/email-flow`** — the v1 design: a human-approval review step before posting, its
   own admin UI, `email_flow_*` migrations. Deliberately never merged; kept only as

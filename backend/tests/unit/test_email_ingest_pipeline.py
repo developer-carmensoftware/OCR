@@ -321,7 +321,7 @@ async def test_already_submitted_document_never_reaches_carmen():
     assert outcome == "failed"
     assert db.added[0].reason_code == "duplicate_document"
     p.mark_submitted.assert_not_awaited()
-    p.refund_document.assert_awaited_once()
+    p.refund_document.assert_not_called()  # the model read it — the charge stands
 
 
 # ── Gates ──────────────────────────────────────────────────────────────────────
@@ -350,7 +350,7 @@ async def test_unmapped_bu_gets_ai_mappings_posts_and_saves_them():
 
 
 @pytest.mark.asyncio
-async def test_mapping_incomplete_fails_and_refunds_when_ai_cannot_fill_it():
+async def test_mapping_incomplete_fails_and_keeps_the_charge_when_ai_cannot_fill_it():
     """The fallback: no LLM answer, or Carmen's GL master was unreachable."""
     db = _FakeDB()
     outcome, p = await _run(
@@ -362,7 +362,7 @@ async def test_mapping_incomplete_fails_and_refunds_when_ai_cannot_fill_it():
     )
     assert outcome == "failed"
     assert db.added[0].reason_code == "mapping_incomplete"
-    p.refund_document.assert_awaited_once()
+    p.refund_document.assert_not_called()  # extraction succeeded — the charge stands
 
 
 @pytest.mark.asyncio
@@ -380,7 +380,13 @@ async def test_a_fully_mapped_bu_never_calls_the_suggester():
 
 
 @pytest.mark.asyncio
-async def test_duplicate_document_fails_and_refunds():
+async def test_duplicate_document_fails_and_keeps_the_charge():
+    """A duplicate is a decision about a document we read, not a failure to read it.
+
+    The vision call has already been made and billed to us by the time `is_duplicate`
+    is knowable, so the credit stays spent — the same answer the wizard has always
+    given for the same document.
+    """
     db = _FakeDB()
     outcome, p = await _run(
         db,
@@ -390,7 +396,29 @@ async def test_duplicate_document_fails_and_refunds():
     )
     assert outcome == "failed"
     assert db.added[0].reason_code == "duplicate_document"
-    p.refund_document.assert_awaited_once()
+    p.refund_document.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_extraction_failure_is_the_one_case_that_still_refunds():
+    """The refund boundary, guarded from both sides.
+
+    Everything after a successful extraction keeps its charge, but a document the model
+    never managed to read is work the customer did not receive — and OpenRouter did not
+    bill us for a call that never completed. Move the refund out of the try block that
+    wraps `create_task` + `extract_stateless` and this test goes red.
+    """
+    db = _FakeDB()
+    outcome, p = await _run(
+        db,
+        extracted=_extracted(),
+        config=_config(),
+        carmen_result={"Code": 0},
+        extract_side_effect=RuntimeError("openrouter unreachable"),
+    )
+    assert outcome == "failed"
+    assert db.added[0].reason_code == "unreadable_document"
+    p.refund_document.assert_awaited_once()  # exactly once — never double-refunded
 
 
 # ── Carmen outcomes ────────────────────────────────────────────────────────────
@@ -575,7 +603,7 @@ async def test_a_document_whose_tax_id_belongs_to_another_bu_is_parked():
     )
     assert outcome == "failed"
     assert db.added[0].reason_code == "tax_id_mismatch"
-    p.refund_document.assert_awaited_once()
+    p.refund_document.assert_not_called()  # extraction succeeded — the charge stands
 
 
 @pytest.mark.asyncio
