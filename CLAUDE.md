@@ -108,7 +108,10 @@ before changing anything here; the block below is only the shape.
 
 ```text
 pg_cron → POST /api/v1/email/ingest  (internal job token)
-  services/email_ingest_service.py
+  services/email_imap.py           ← transport only: IMAP, MIME, zips, tag parsing.
+                                     No DB, no session, no tenant. Blocking, so the
+                                     pipeline calls it via asyncio.to_thread.
+  services/email_ingest_service.py ← everything that decides meaning and cost
       AIAGENT+<tag>@…   tag from the envelope → tenant     ← routing, costs nothing
       email_documents   claim the row (dedupe: message × attachment)
       email_ingest_settings  filename must match one of this BU's rules; this BU's PDF passwords

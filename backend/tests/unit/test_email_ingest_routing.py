@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.services import email_imap as imap
 from app.services import email_ingest_service as ingest
 from app.services import email_settings_service as es
 from app.services.email_ingest_service import (
@@ -115,7 +116,7 @@ def test_the_tag_comes_from_delivered_to():
         "To: accounts@hotelgroup.com\n"
         "Delivered-To: AIAGENT+a1b2c3d4@carmensoftware.com\n"
     )
-    assert tag_from_recipients(ingest._recipients(msg)) == "a1b2c3d4"
+    assert tag_from_recipients(imap._recipients(msg)) == "a1b2c3d4"
 
 
 def test_the_tag_is_found_when_gmail_omits_delivered_to_entirely():
@@ -136,7 +137,7 @@ def test_the_tag_is_found_when_gmail_omits_delivered_to_entirely():
         "To: AIAGENT+a1b2c3d4@carmensoftware.com\n"
     )
     assert msg.get_all("Delivered-To") is None
-    assert tag_from_recipients(ingest._recipients(msg)) == "a1b2c3d4"
+    assert tag_from_recipients(imap._recipients(msg)) == "a1b2c3d4"
 
 
 def test_genuine_external_mail_to_the_bare_address_yields_no_tag():
@@ -150,7 +151,7 @@ def test_genuine_external_mail_to_the_bare_address_yields_no_tag():
         " Wed, 5 Aug 2026 23:05:50 -0700 (PDT)\n"
         "To: AIAGENT@carmensoftware.com\n"
     )
-    assert tag_from_recipients(ingest._recipients(msg)) is None
+    assert tag_from_recipients(imap._recipients(msg)) is None
 
 
 def test_the_to_header_is_never_a_tag_source():
@@ -161,9 +162,9 @@ def test_the_to_header_is_never_a_tag_source():
     header and no `Received` chain must still resolve to nothing.
     """
     msg = _msg("From: staff@hotelgroup.com\nTo: AIAGENT+a1b2c3d4@carmensoftware.com\n")
-    assert ingest._recipients(msg) == []
-    assert tag_from_recipients(ingest._recipients(msg)) is None
-    assert "To" not in ingest._DELIVERY_HEADERS
+    assert imap._recipients(msg) == []
+    assert tag_from_recipients(imap._recipients(msg)) is None
+    assert "To" not in imap._DELIVERY_HEADERS
 
 
 def test_a_delivery_header_wins_over_a_received_clause():
@@ -174,7 +175,7 @@ def test_a_delivery_header_wins_over_a_received_clause():
         " ESMTPS id q7si9 for <AIAGENT+ffffffff@carmensoftware.com>;\n"
         " Wed, 5 Aug 2026 23:05:50 -0700 (PDT)\n"
     )
-    assert tag_from_recipients(ingest._recipients(msg)) == "a1b2c3d4"
+    assert tag_from_recipients(imap._recipients(msg)) == "a1b2c3d4"
 
 
 # ── resolve_by_tag ─────────────────────────────────────────────────────────────

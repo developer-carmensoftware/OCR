@@ -26,6 +26,7 @@ from app.models.billing import UserNotification
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.config import AccountingConfigResponse
 from app.models.schemas.ocr import ExtractedDetailRow
+from app.services import email_imap as imap
 from app.services import email_ingest_service as ingest
 from app.services.carmen_service import CarmenAPIError
 
@@ -793,7 +794,7 @@ async def test_a_lapsed_package_stops_the_message_before_any_extraction():
 async def test_a_switched_off_bu_keeps_its_mail_instead_of_losing_it():
     """The toggle is a pause, not a verdict on the mail.
 
-    `_fetch_unseen` flags the whole batch before anyone knows who it belongs to, so
+    `fetch_unseen` flags the whole batch before anyone knows who it belongs to, so
     anything short of handing it back means a BU that switches the feature off for a
     week has that week's statements destroyed — with no ledger row, no notification and
     nothing to re-run.
@@ -938,19 +939,19 @@ async def test_two_attachments_with_the_same_name_are_both_processed():
 def test_the_disambiguating_suffix_goes_before_the_extension():
     """`validate_magic_bytes()` and `match_rules()` both read the extension, so a
     `report.pdf~2` form would fail the magic-byte gate on a perfectly good PDF."""
-    assert ingest._unique_names(["a.pdf", "a.pdf", "a.pdf", "b.pdf"]) == [
+    assert ingest.unique_names(["a.pdf", "a.pdf", "a.pdf", "b.pdf"]) == [
         "a.pdf",
         "a (2).pdf",
         "a (3).pdf",
         "b.pdf",
     ]
-    assert ingest._unique_names(["noext", "noext"]) == ["noext", "noext (2)"]
+    assert ingest.unique_names(["noext", "noext"]) == ["noext", "noext (2)"]
 
 
 def test_disambiguation_never_lands_on_a_name_the_message_already_uses():
     """Otherwise the third file collides with the literal `a (2).pdf` and is dropped —
     exactly the failure this function exists to prevent."""
-    assert ingest._unique_names(["a.pdf", "a (2).pdf", "a.pdf"]) == [
+    assert ingest.unique_names(["a.pdf", "a (2).pdf", "a.pdf"]) == [
         "a.pdf",
         "a (2).pdf",
         "a (3).pdf",
@@ -1108,7 +1109,7 @@ async def test_run_ingest_summarises_every_message_and_records_the_job_run():
     process = AsyncMock(side_effect=[["posted"], ["unrouted"]])
     with (
         patch.object(ingest.settings, "imap_host", "imap.example.com"),
-        patch.object(ingest, "_fetch_unseen", lambda limit: (messages, 0)),
+        patch.object(ingest, "fetch_unseen", lambda limit: (messages, 0)),
         patch.object(ingest, "_process_message", process),
         patch.object(ingest, "_record_run", record),
     ):
@@ -1239,14 +1240,14 @@ def _mime(parts):
 def _accepted(msg) -> list[str]:
     """The filenames `_attachments` kept. It returns `(accepted, rejected)` — see the
     unsupported-attachment tests below for the other half."""
-    return [f for f, _ in ingest._attachments(msg)[0]]
+    return [f for f, _ in imap._attachments(msg)[0]]
 
 
 def test_attachments_are_capped_per_message():
     """`imap_batch_size` caps messages per poll, not attachments per message — and a
     forwarded chain's signature logos are each their own MIME part."""
-    msg = _mime([(f"logo{i}.png", b"x") for i in range(ingest.MAX_ATTACHMENTS_PER_MESSAGE + 5)])
-    assert len(_accepted(msg)) == ingest.MAX_ATTACHMENTS_PER_MESSAGE
+    msg = _mime([(f"logo{i}.png", b"x") for i in range(imap.MAX_ATTACHMENTS_PER_MESSAGE + 5)])
+    assert len(_accepted(msg)) == imap.MAX_ATTACHMENTS_PER_MESSAGE
 
 
 def test_files_with_an_unsupported_extension_are_ignored():
@@ -1264,7 +1265,7 @@ def test_a_forward_as_attachment_still_yields_the_inner_pdf():
     outer = _mime([])
     outer.attach(MIMEMessage(inner))
 
-    found, _ = ingest._attachments(outer)
+    found, _ = imap._attachments(outer)
     assert [f for f, _ in found] == ["MDR-aug.pdf"]
     assert found[0][1] == b"%PDF-1.4 inner"
 
@@ -1297,7 +1298,7 @@ def test_a_bank_zip_is_expanded_into_the_documents_inside_it():
             ("KB1P554V2_SUM_451005282039001.pdf", b"%PDF-1.4 summary"),
         ]
     )
-    found, _ = ingest._attachments(_mime([("451005282039001_Card_20260721.zip", blob)]))
+    found, _ = imap._attachments(_mime([("451005282039001_Card_20260721.zip", blob)]))
     assert [f for f, _ in found] == [
         "E-TAX_INVOICE_CARD_451005282039001.PDF",
         "KB1P554V2_SUM_451005282039001.pdf",
@@ -1321,17 +1322,15 @@ def test_an_oversized_member_is_skipped_before_it_is_read():
 
 
 def test_zip_contents_count_against_the_attachment_cap():
-    blob = _zip(
-        [(f"doc{i}.pdf", b"%PDF-1.4") for i in range(ingest.MAX_ATTACHMENTS_PER_MESSAGE + 5)]
-    )
-    assert len(_accepted(_mime([("mail.zip", blob)]))) == ingest.MAX_ATTACHMENTS_PER_MESSAGE
+    blob = _zip([(f"doc{i}.pdf", b"%PDF-1.4") for i in range(imap.MAX_ATTACHMENTS_PER_MESSAGE + 5)])
+    assert len(_accepted(_mime([("mail.zip", blob)]))) == imap.MAX_ATTACHMENTS_PER_MESSAGE
 
 
 def test_a_zip_we_cannot_open_is_logged_not_raised():
     """A poll carrying real invoices must not die on one corrupt archive — but it is
     reported under the archive's own name, or the customer who forwarded it gets no
     answer at all."""
-    accepted, rejected = ingest._attachments(_mime([("broken.zip", b"PK\x03\x04 not really")]))
+    accepted, rejected = imap._attachments(_mime([("broken.zip", b"PK\x03\x04 not really")]))
     assert accepted == []
     assert rejected == ["broken.zip"]
 
@@ -1371,7 +1370,7 @@ def test_the_mailbox_name_is_quoted_before_select(configured, sent):
     """`imaplib` quotes nothing — it concatenates command arguments with spaces — so an
     unquoted `AR Agent` goes out as `SELECT AR Agent` and the server rejects the whole
     command. Every poll then fails with nothing read and no symptom but a FAILED row."""
-    assert ingest._quoted_folder(configured) == sent
+    assert imap._quoted_folder(configured) == sent
 
 
 def test_fetch_unseen_selects_the_configured_folder_quoted(monkeypatch):
@@ -1379,7 +1378,7 @@ def test_fetch_unseen_selects_the_configured_folder_quoted(monkeypatch):
     box = _searching_box(monkeypatch, b"")
     monkeypatch.setattr(ingest.settings, "imap_folder", "AR Agent")
 
-    assert ingest._fetch_unseen(10) == ([], 0)
+    assert ingest.fetch_unseen(10) == ([], 0)
     box.select.assert_called_once_with('"AR Agent"')
 
 
@@ -1399,7 +1398,7 @@ def _searching_box(monkeypatch, uids: bytes, *, unbounded: bytes | None = None, 
         return fetch or ("OK", [None])  # FETCH: not a tuple → every uid is skipped
 
     box.uid.side_effect = _uid
-    monkeypatch.setattr(ingest.imaplib, "IMAP4_SSL", lambda host, port, timeout=None: box)
+    monkeypatch.setattr(imap.imaplib, "IMAP4_SSL", lambda host, port, timeout=None: box)
     return box
 
 
@@ -1434,7 +1433,7 @@ def test_the_poll_records_when_each_message_arrived(monkeypatch, fetched):
     The `Date:` header is written by whoever sent the mail."""
     box = _searching_box(monkeypatch, b"1", fetch=("OK", fetched))
 
-    messages, _ = ingest._fetch_unseen(10)
+    messages, _ = ingest.fetch_unseen(10)
 
     assert _uid_calls(box, "FETCH")[0][1] == "(INTERNALDATE RFC822)"
     assert messages[0]["arrived_at"] == _WHEN
@@ -1445,7 +1444,7 @@ def test_an_internaldate_the_server_answers_oddly_leaves_the_arrival_unknown(mon
     processes the mail. Guessing a time in either direction would drop real documents."""
     box = _searching_box(monkeypatch, b"1", fetch=("OK", [(b"1 (RFC822 {26}", _RAW), b")"]))
 
-    messages, _ = ingest._fetch_unseen(10)
+    messages, _ = ingest.fetch_unseen(10)
 
     assert messages[0]["arrived_at"] is None
     box.uid.assert_any_call("STORE", "1", "+FLAGS", "\\Seen")
@@ -1461,7 +1460,7 @@ def test_the_poll_addresses_mail_by_uid_not_sequence_number(monkeypatch):
     only checks the arguments, which is why this asserts on the method.
     """
     box = _searching_box(monkeypatch, b"1 2")
-    ingest._fetch_unseen(10)
+    ingest.fetch_unseen(10)
     assert _uid_calls(box, "SEARCH")
     assert [c[0] for c in _uid_calls(box, "FETCH")] == ["1", "2"]
     box.search.assert_not_called()
@@ -1473,7 +1472,7 @@ def test_setting_the_seen_flag_addresses_mail_by_uid(monkeypatch):
     """The connection that made UIDs mandatory: `_set_seen` opens its own, minutes after
     the one that read the mail."""
     box = _searching_box(monkeypatch, b"")
-    ingest._unmark_seen(["11", "12"])
+    ingest.unmark_seen(["11", "12"])
     assert _uid_calls(box, "STORE") == [("11", "-FLAGS", "\\Seen"), ("12", "-FLAGS", "\\Seen")]
     box.store.assert_not_called()
 
@@ -1487,7 +1486,7 @@ def test_a_poll_takes_the_newest_mail_not_the_oldest(monkeypatch):
     other tenant. Taking the tail means a backlog can only use capacity nothing else wants.
     """
     box = _searching_box(monkeypatch, b"1 2 3 4 5")
-    ingest._fetch_unseen(2)
+    ingest.fetch_unseen(2)
     assert [c[0] for c in _uid_calls(box, "FETCH")] == ["4", "5"]
 
 
@@ -1496,13 +1495,13 @@ def test_a_poll_looks_no_further_back_than_the_hold_window(monkeypatch):
     is re-fetched on every poll for the life of the deployment."""
     box = _searching_box(monkeypatch, b"")
     monkeypatch.setattr(ingest.settings, "imap_hold_days", 14)
-    ingest._fetch_unseen(10)
+    ingest.fetch_unseen(10)
 
     args = _uid_calls(box, "SEARCH")[0]
     assert args[0] == "UNSEEN"
     assert args[1] == "SINCE"
     # IMAP dates are ASCII English whatever the host's locale is set to.
-    assert args[2] == ingest._since_arg()
+    assert args[2] == imap.since_arg()
     assert (
         datetime.strptime(args[2], "%d-%b-%Y").date()
         == (datetime.now(UTC) - timedelta(days=14)).date()
@@ -1514,7 +1513,7 @@ def test_mail_past_the_hold_window_is_counted_even_though_it_is_never_fetched(mo
     poller outage longer than IMAP_HOLD_DAYS loses real mail with no symptom at all. The
     second search costs one round trip on the connection already open and no FETCH."""
     box = _searching_box(monkeypatch, b"4 5", unbounded=b"1 2 3 4 5")
-    messages, beyond = ingest._fetch_unseen(10)
+    messages, beyond = ingest.fetch_unseen(10)
 
     assert messages == []
     assert beyond == 3
@@ -1530,10 +1529,10 @@ def test_every_mailbox_connection_carries_a_socket_timeout(monkeypatch):
     worker thread forever — and `asyncio.to_thread` cannot be cancelled. At the
     confirmation sweep's one-minute cadence those threads would accumulate."""
     box = MagicMock()
-    monkeypatch.setattr(ingest.imaplib, "IMAP4_SSL", MagicMock(return_value=box))
+    monkeypatch.setattr(imap.imaplib, "IMAP4_SSL", MagicMock(return_value=box))
 
-    assert ingest._connect() is box
-    assert ingest.imaplib.IMAP4_SSL.call_args.kwargs["timeout"] == ingest.IMAP_TIMEOUT_SECONDS
+    assert imap._connect() is box
+    assert imap.imaplib.IMAP4_SSL.call_args.kwargs["timeout"] == imap.IMAP_TIMEOUT_SECONDS
 
 
 # ── Gmail confirmation sweep (the 1-minute job) ───────────────────────────────
@@ -1563,7 +1562,7 @@ async def test_the_sweep_opens_no_mailbox_when_nobody_is_setting_up(monkeypatch)
     forever for a BU that never sets up forwarding, so without the freshness window this
     would log into Gmail 1,440 times a day to find the same nothing."""
     box = MagicMock()
-    monkeypatch.setattr(ingest.imaplib, "IMAP4_SSL", box)
+    monkeypatch.setattr(imap.imaplib, "IMAP4_SSL", box)
     with (
         patch.object(ingest.settings, "imap_host", "imap.example.com"),
         patch.object(ingest, "async_session", _null_session),
@@ -1585,10 +1584,10 @@ async def test_the_sweep_follows_the_link_and_records_the_confirmation():
         patch.object(ingest.settings, "email_ingest_address", INGEST_ADDR),
         patch.object(ingest, "async_session", _null_session),
         patch.object(ingest.es, "tags_awaiting_confirmation", AsyncMock(return_value={"abc12345"})),
-        patch.object(ingest, "_fetch_confirmations", lambda: [_confirmation()]),
+        patch.object(ingest, "fetch_confirmations", lambda: [_confirmation()]),
         patch.object(ingest, "auto_confirm_forwarding", confirm),
         patch.object(ingest.es, "record_gmail_confirmed", record),
-        patch.object(ingest, "_mark_seen", seen),
+        patch.object(ingest, "mark_seen", seen),
         patch.object(ingest, "_record_run", run),
     ):
         result = await ingest.sweep_confirmations()
@@ -1611,10 +1610,10 @@ async def test_a_confirmation_google_refuses_is_still_marked_seen_and_writes_no_
         patch.object(ingest.settings, "email_ingest_address", INGEST_ADDR),
         patch.object(ingest, "async_session", _null_session),
         patch.object(ingest.es, "tags_awaiting_confirmation", AsyncMock(return_value={"abc12345"})),
-        patch.object(ingest, "_fetch_confirmations", lambda: [_confirmation()]),
+        patch.object(ingest, "fetch_confirmations", lambda: [_confirmation()]),
         patch.object(ingest, "auto_confirm_forwarding", AsyncMock(return_value=False)),
         patch.object(ingest.es, "record_gmail_confirmed", AsyncMock()),
-        patch.object(ingest, "_mark_seen", seen),
+        patch.object(ingest, "mark_seen", seen),
         patch.object(ingest, "_record_run", run),
     ):
         result = await ingest.sweep_confirmations()
@@ -1634,9 +1633,9 @@ async def test_a_confirmation_for_a_tag_outside_the_window_is_left_for_the_docum
         patch.object(ingest.settings, "email_ingest_address", INGEST_ADDR),
         patch.object(ingest, "async_session", _null_session),
         patch.object(ingest.es, "tags_awaiting_confirmation", AsyncMock(return_value={"someone"})),
-        patch.object(ingest, "_fetch_confirmations", lambda: [_confirmation()]),
+        patch.object(ingest, "fetch_confirmations", lambda: [_confirmation()]),
         patch.object(ingest, "auto_confirm_forwarding", confirm),
-        patch.object(ingest, "_mark_seen", seen),
+        patch.object(ingest, "mark_seen", seen),
         patch.object(ingest, "_record_run", AsyncMock()),
     ):
         result = await ingest.sweep_confirmations()
@@ -1761,7 +1760,7 @@ async def test_a_bu_that_ran_out_is_skipped_without_even_a_lookup():
 
 @pytest.mark.asyncio
 async def test_the_poll_clears_seen_on_everything_it_handed_back():
-    """`_fetch_unseen` flags the whole batch on the way in. Out-of-credits is not a
+    """`fetch_unseen` flags the whole batch on the way in. Out-of-credits is not a
     verdict on the mail, so the flag has to come back off or the document is gone."""
     unmark = MagicMock()
     messages = [
@@ -1770,11 +1769,11 @@ async def test_the_poll_clears_seen_on_everything_it_handed_back():
     ]
     with (
         patch.object(ingest.settings, "imap_host", "imap.example.com"),
-        patch.object(ingest, "_fetch_unseen", lambda limit: (messages, 0)),
+        patch.object(ingest, "fetch_unseen", lambda limit: (messages, 0)),
         patch.object(
             ingest, "_process_message", AsyncMock(side_effect=[["posted"], ["retry_later"]])
         ),
-        patch.object(ingest, "_unmark_seen", unmark),
+        patch.object(ingest, "unmark_seen", unmark),
         patch.object(ingest, "_record_run", AsyncMock()),
     ):
         summary = await ingest.run_ingest()
@@ -1798,13 +1797,13 @@ async def test_a_crash_mid_poll_hands_back_everything_it_never_looked_at():
     ]
     with (
         patch.object(ingest.settings, "imap_host", "imap.example.com"),
-        patch.object(ingest, "_fetch_unseen", lambda limit: (messages, 0)),
+        patch.object(ingest, "fetch_unseen", lambda limit: (messages, 0)),
         patch.object(
             ingest,
             "_process_message",
             AsyncMock(side_effect=[["posted"], RuntimeError("connection reset"), ["posted"]]),
         ),
-        patch.object(ingest, "_unmark_seen", unmark),
+        patch.object(ingest, "unmark_seen", unmark),
         patch.object(ingest, "_record_run", AsyncMock()),
         pytest.raises(RuntimeError),
     ):
@@ -1819,8 +1818,8 @@ async def test_mail_beyond_the_hold_window_reaches_the_summary_and_an_alert():
     alert = AsyncMock()
     with (
         patch.object(ingest.settings, "imap_host", "imap.example.com"),
-        patch.object(ingest, "_fetch_unseen", lambda limit: ([], 4)),
-        patch.object(ingest, "_unmark_seen", MagicMock()),
+        patch.object(ingest, "fetch_unseen", lambda limit: ([], 4)),
+        patch.object(ingest, "unmark_seen", MagicMock()),
         patch.object(ingest, "async_session", _session_factory(_FakeDB())),
         patch.object(ingest.anomaly_service, "open_alert_if_absent", alert),
     ):
