@@ -96,15 +96,10 @@ class Settings(BaseSettings):
     # we need to distinguish them. Empty = alerting disabled.
     llm_expected_providers: str = "Google,DeepInfra,Fireworks,DigitalOcean"
 
-    # Master API key for service-to-service auth
-    master_api_key: str = ""
-
     # OCR engine label (informational — actual engine is the OpenRouter vision LLM)
     ocr_engine: str = "openrouter_vision"
 
     # Application
-    app_host: str = "0.0.0.0"
-    app_port: int = 8010
     app_debug: bool = False
     # Empty default = no regex origin matching. NEVER default to ".*" — combined with
     # allow_credentials it would let any site call the API with cookies/auth.
@@ -166,7 +161,6 @@ class Settings(BaseSettings):
     # Leave empty to fall back to ocr_jwt_secret (dev only; set in production).
     # Generate: python -c "import secrets; print(secrets.token_hex(32))"
     admin_jwt_secret: str = ""
-    admin_jwt_ttl_hours: int = 8
 
     # Admin bootstrap credentials — read by `python -m app.bootstrap_admin`.
     # Never leave these set in production after bootstrapping.

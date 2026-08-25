@@ -832,8 +832,6 @@ INTERNAL_JOB_TOKEN=<hex-64-chars>  # ต้องตรงกับ vault.secret
 # File Upload Configuration
 MAX_FILE_SIZE_MB=5
 
-# API Configuration
-APP_PORT=8010
 
 # Security (production required)
 ALLOWED_ORIGINS=https://your-frontend-domain.com
@@ -854,7 +852,6 @@ ALLOWED_CARMEN_HOSTS=carmen.example.com
 | `SESSION_ENCRYPTION_KEY` | Yes | - | Fernet key สำหรับ session encryption |
 | `INTERNAL_JOB_TOKEN` | Yes (prod) | - | Bearer token สำหรับ pg_cron → FastAPI callbacks (pricing-sync, anomaly) |
 | `MAX_FILE_SIZE_MB` | No | 5 | ขนาดไฟล์สูงสุด (MB) |
-| `APP_PORT` | No | 8010 | Port ของ FastAPI server |
 | `ALLOWED_ORIGINS` | Yes (prod) | - | CORS allowed origins (wildcard ใช้ได้บน dev เท่านั้น) |
 | `ALLOWED_CARMEN_HOSTS` | Yes (prod) | - | Whitelist hostname ของ Carmen ERP (SSRF protection) |
 

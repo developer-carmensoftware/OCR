@@ -13,7 +13,7 @@ import DateRangePicker from './DateRangePicker'
  * with `periodHours()`.
  */
 
-export const DAY_MS = 86_400_000
+const DAY_MS = 86_400_000
 
 /** Past this, /usage-summary answers from the monthly rollup — see `granularityFor`. */
 export const MAX_DAILY_RANGE_DAYS = 92
