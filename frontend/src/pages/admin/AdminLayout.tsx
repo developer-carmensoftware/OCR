@@ -1,175 +1,11 @@
 import type { ReactNode } from 'react'
-import {
-  AlertCircle,
-  BarChart3,
-  Bell,
-  Bot,
-  Building2,
-  ClipboardCheck,
-  Coins,
-  FileWarning,
-  Gauge,
-  LayoutDashboard,
-  LogOut,
-  Mail,
-  Settings,
-  Shield,
-  Trophy,
-  UserCog,
-  Users,
-  Wrench,
-  Zap,
-} from 'lucide-react'
+import { LogOut, Shield } from 'lucide-react'
 import { useAdminAuth } from '../../contexts/AdminAuthContext'
 import DarkModeToggle from '../../components/common/DarkModeToggle'
 import LanguageToggle from '../../components/common/LanguageToggle'
 import { useT } from '../../i18n/LanguageContext'
-
-interface NavItem {
-  label: string
-  hash: string
-  icon: ReactNode
-}
-
-interface NavSection {
-  label: string
-  items: NavItem[]
-}
-
-const ICON_SIZE = 17
-
-/**
- * Grouped by the question you are asking, not the table the page reads.
- *
- * The old "Analytics" and "Management" sections were named after shelves, so
- * finding the page that answers a question meant already knowing which page that
- * was. Errors (performance_logs) and Extractions (ocr_tasks) read different tables
- * and sit together, because "why isn't it working" is one question.
- */
-function getNavSections(t: ReturnType<typeof useT>['t']): NavSection[] {
-  return [
-    {
-      label: t('admin.nav.section.overview'),
-      items: [
-        {
-          label: t('admin.nav.item.overview'),
-          hash: '/admin',
-          icon: <LayoutDashboard size={ICON_SIZE} strokeWidth={2} />,
-        },
-        {
-          label: t('admin.nav.item.anomalies'),
-          hash: '/admin/anomalies',
-          icon: <Bell size={ICON_SIZE} strokeWidth={2} />,
-        },
-      ],
-    },
-    {
-      label: t('admin.nav.section.adoption'),
-      items: [
-        {
-          label: t('admin.nav.item.tenants'),
-          hash: '/admin/tenants',
-          icon: <Building2 size={ICON_SIZE} strokeWidth={2} />,
-        },
-        {
-          label: t('admin.nav.item.usage'),
-          hash: '/admin/usage',
-          icon: <BarChart3 size={ICON_SIZE} strokeWidth={2} />,
-        },
-        {
-          label: t('admin.nav.item.userUsage'),
-          hash: '/admin/user-usage',
-          icon: <Users size={ICON_SIZE} strokeWidth={2} />,
-        },
-        {
-          label: t('admin.nav.item.tenantRanking'),
-          hash: '/admin/tenant-ranking',
-          icon: <Trophy size={ICON_SIZE} strokeWidth={2} />,
-        },
-        {
-          label: t('admin.nav.item.quotaModules'),
-          hash: '/admin/quota-modules',
-          icon: <Gauge size={ICON_SIZE} strokeWidth={2} />,
-        },
-      ],
-    },
-    {
-      label: t('admin.nav.section.quality'),
-      items: [
-        {
-          label: t('admin.nav.item.extractions'),
-          hash: '/admin/extractions',
-          icon: <FileWarning size={ICON_SIZE} strokeWidth={2} />,
-        },
-        {
-          label: t('admin.nav.item.errors'),
-          hash: '/admin/errors',
-          icon: <AlertCircle size={ICON_SIZE} strokeWidth={2} />,
-        },
-        {
-          label: t('admin.nav.item.performance'),
-          hash: '/admin/performance',
-          icon: <Zap size={ICON_SIZE} strokeWidth={2} />,
-        },
-      ],
-    },
-    {
-      label: t('admin.nav.section.billing'),
-      items: [
-        {
-          label: t('admin.nav.item.credits'),
-          hash: '/admin/credits',
-          icon: <Coins size={ICON_SIZE} strokeWidth={2} />,
-        },
-        {
-          label: t('admin.nav.item.orderQueue'),
-          hash: '/admin/credit-orders',
-          icon: <ClipboardCheck size={ICON_SIZE} strokeWidth={2} />,
-        },
-        {
-          label: t('admin.nav.item.llmLogs'),
-          hash: '/admin/llm-logs',
-          icon: <Bot size={ICON_SIZE} strokeWidth={2} />,
-        },
-      ],
-    },
-    {
-      label: t('admin.nav.section.operations'),
-      items: [
-        {
-          label: t('admin.nav.item.sessions'),
-          hash: '/admin/sessions',
-          icon: <Users size={ICON_SIZE} strokeWidth={2} />,
-        },
-        {
-          label: t('admin.nav.item.jobs'),
-          hash: '/admin/jobs',
-          icon: <Settings size={ICON_SIZE} strokeWidth={2} />,
-        },
-        {
-          label: t('admin.nav.item.email'),
-          hash: '/admin/email',
-          icon: <Mail size={ICON_SIZE} strokeWidth={2} />,
-        },
-        {
-          label: t('admin.nav.item.maintenance'),
-          hash: '/admin/maintenance',
-          icon: <Wrench size={ICON_SIZE} strokeWidth={2} />,
-        },
-      ],
-    },
-    {
-      label: t('admin.nav.section.accessControl'),
-      items: [
-        {
-          label: t('admin.nav.item.adminUsers'),
-          hash: '/admin/admin-users',
-          icon: <UserCog size={ICON_SIZE} strokeWidth={2} />,
-        },
-      ],
-    },
-  ]
-}
+// One list, two readers: the sidebar below and the route map in AdminRouter.
+import { NAV_SECTIONS } from './routes'
 
 function getActiveHash(): string {
   return window.location.hash.split('?')[0].replace(/^#\/?/, '')
@@ -179,7 +15,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const { admin, logout } = useAdminAuth()
   const { t } = useT()
   const active = getActiveHash()
-  const navSections = getNavSections(t)
 
   const handleLogout = async () => {
     await logout()
@@ -201,9 +36,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         </div>
 
         <nav className="admin-nav">
-          {navSections.map(section => (
-            <div className="admin-nav-section" key={section.label}>
-              <div className="admin-nav-section-label">{section.label}</div>
+          {NAV_SECTIONS.map(section => (
+            <div className="admin-nav-section" key={section.labelKey}>
+              <div className="admin-nav-section-label">{t(section.labelKey)}</div>
               {section.items.map(item => {
                 const itemPath = item.hash.replace(/^\//, '')
                 const isActive =
@@ -218,7 +53,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                     <span className="admin-nav-icon" aria-hidden="true">
                       {item.icon}
                     </span>
-                    <span>{item.label}</span>
+                    <span>{t(item.labelKey)}</span>
                   </a>
                 )
               })}

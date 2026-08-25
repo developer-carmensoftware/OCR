@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { toast } from 'sonner'
 import DataTable, { type Column } from '../../components/admin/DataTable'
 import TenantSelector from '../../components/admin/TenantSelector'
 import PeriodPicker, { daysAgo, endOfDay, today } from '../../components/admin/PeriodPicker'
 import { fetchPerformanceLogs } from '../../lib/api/adminClient'
 import { useTableQuery } from '../../hooks/admin/useTableQuery'
+import { useTableData } from '../../hooks/admin/useTableData'
 import { useT } from '../../i18n/LanguageContext'
 import { fmtDateTime } from '../../lib/date'
 
@@ -73,9 +73,6 @@ export default function PerformancePage() {
   })
   const { t } = useT()
   const [minMsInput, setMinMsInput] = useState(params.min_duration_ms)
-  const [rows, setRows] = useState<PerfRow[]>([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
 
   // Debounce the free-text filter — without this, typing "1500" fired 4 separate
   // full requests, one per keystroke.
@@ -85,31 +82,22 @@ export default function PerformancePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minMsInput])
 
-  useEffect(() => {
-    setLoading(true)
-    fetchPerformanceLogs({
-      tenant_id: params.tenant_id || undefined,
-      min_duration_ms: params.min_duration_ms ? Number(params.min_duration_ms) : undefined,
-      from: params.from,
-      to: endOfDay(params.to),
-      q: params.q || undefined,
-      sort: params.sort,
-      dir: params.dir,
-      limit: params.limit,
-      offset: params.offset,
-    })
-      .then(r => {
-        setRows(r.data ?? [])
-        setTotal(r.total ?? 0)
-      })
-      .catch(e =>
-        toast.error(
-          t('admin.performance.toast.loadFailed', { error: e?.message ?? 'failed to load' })
-        )
-      )
-      .finally(() => setLoading(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params])
+  const { rows, total, loading } = useTableData<PerfRow>(
+    () =>
+      fetchPerformanceLogs({
+        tenant_id: params.tenant_id || undefined,
+        min_duration_ms: params.min_duration_ms ? Number(params.min_duration_ms) : undefined,
+        from: params.from,
+        to: endOfDay(params.to),
+        q: params.q || undefined,
+        sort: params.sort,
+        dir: params.dir,
+        limit: params.limit,
+        offset: params.offset,
+      }),
+    [params],
+    'admin.performance.toast.loadFailed'
+  )
 
   return (
     <div className="admin-page">

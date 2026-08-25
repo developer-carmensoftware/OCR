@@ -24,6 +24,7 @@ import type { ReleaseNoteCopy } from '../../content/releaseNotes'
 import NotificationDetailModal from './NotificationDetailModal'
 import Pager from './Pager'
 import { useFitRows } from '../../hooks/useFitRows'
+import { timeAgo } from '../../lib/orderHelpers'
 
 // Mirrors the cap FastAPI enforces on GET /api/v1/notifications (422 above it).
 const MAX_PAGE = 50
@@ -74,15 +75,6 @@ function notifText(n: BellItem, t: TFn): string {
     default:
       return n.type
   }
-}
-
-// Localized relative time, reusing the admin Order-Review time keys (bilingual).
-function timeAgo(iso: string, t: TFn): string {
-  const s = (Date.now() - new Date(iso).getTime()) / 1000
-  if (s < 60) return t('orev.time.justNow')
-  if (s < 3600) return t('orev.time.mAgo', { n: Math.floor(s / 60) })
-  if (s < 86400) return t('orev.time.hAgo', { n: Math.floor(s / 3600) })
-  return t('orev.time.dAgo', { n: Math.floor(s / 86400) })
 }
 
 export default function NotificationBell() {

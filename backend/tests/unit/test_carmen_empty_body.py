@@ -40,11 +40,11 @@ def _mock_resp(status=200, body=b"", json_data=None):
 
 
 def _patch_carmen(resp):
-    """Patch _get_client + _base_url + _headers so we skip context vars."""
+    """Patch get_http_client + _base_url + _headers so we skip context vars."""
     client = AsyncMock()
     client.get.return_value = resp
     return [
-        patch(f"{SVC}._get_client", return_value=client),
+        patch(f"{SVC}.get_http_client", return_value=client),
         patch(f"{SVC}._base_url", return_value="http://fake"),
         patch(f"{SVC}._headers", return_value={"Authorization": "Bearer tok"}),
     ]
@@ -162,7 +162,7 @@ async def test_fetch_vendor_history_invalid_json_graceful(ctx):
     resp.text = "not-json"
     resp.json.side_effect = JSONDecodeError("Expecting value", "not-json", 0)
     patches = [
-        patch(f"{SVC}._get_client", return_value=AsyncMock(get=AsyncMock(return_value=resp))),
+        patch(f"{SVC}.get_http_client", return_value=AsyncMock(get=AsyncMock(return_value=resp))),
         patch(f"{SVC}._base_url", return_value="http://fake"),
         patch(f"{SVC}._headers", return_value={}),
     ]

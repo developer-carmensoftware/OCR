@@ -1,10 +1,9 @@
-import { useEffect, useState } from 'react'
-import { toast } from 'sonner'
 import DataTable, { type Column } from '../../components/admin/DataTable'
 import TenantSelector from '../../components/admin/TenantSelector'
 import PeriodPicker, { daysAgo, endOfDay, today } from '../../components/admin/PeriodPicker'
 import { fetchLLMLogs } from '../../lib/api/adminClient'
 import { useTableQuery } from '../../hooks/admin/useTableQuery'
+import { useTableData } from '../../hooks/admin/useTableData'
 import { useT } from '../../i18n/LanguageContext'
 import { fmtDateTime } from '../../lib/date'
 
@@ -76,32 +75,21 @@ export default function LLMLogsPage() {
     defaultSort: 'created_at',
     filters: { tenant_id: '', from: daysAgo(30), to: today() },
   })
-  const [rows, setRows] = useState<LogRow[]>([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    setLoading(true)
-    fetchLLMLogs({
-      tenant_id: params.tenant_id || undefined,
-      from: params.from,
-      to: endOfDay(params.to),
-      q: params.q || undefined,
-      sort: params.sort,
-      dir: params.dir,
-      limit: params.limit,
-      offset: params.offset,
-    })
-      .then(r => {
-        setRows(r.data ?? [])
-        setTotal(r.total ?? 0)
-      })
-      .catch(e =>
-        toast.error(t('admin.llmLogs.toast.loadFailed', { error: e?.message ?? 'failed to load' }))
-      )
-      .finally(() => setLoading(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params])
+  const { rows, total, loading } = useTableData<LogRow>(
+    () =>
+      fetchLLMLogs({
+        tenant_id: params.tenant_id || undefined,
+        from: params.from,
+        to: endOfDay(params.to),
+        q: params.q || undefined,
+        sort: params.sort,
+        dir: params.dir,
+        limit: params.limit,
+        offset: params.offset,
+      }),
+    [params],
+    'admin.llmLogs.toast.loadFailed'
+  )
 
   return (
     <div className="admin-page">

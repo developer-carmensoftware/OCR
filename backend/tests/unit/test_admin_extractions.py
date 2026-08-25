@@ -327,7 +327,7 @@ class TestCallTypeSplit:
 
         with (
             patch("app.services.llm_usage_logger.async_session", _Session),
-            patch("app.services.llm_usage_logger._get_pricing", AsyncMock(return_value=None)),
+            patch("app.services.llm_usage_logger.get_pricing", AsyncMock(return_value=None)),
             patch("app.services.llm_usage_logger._ctx", return_value="t-1"),
         ):
             await log_llm_usage(

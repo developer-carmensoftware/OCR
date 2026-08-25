@@ -37,7 +37,7 @@ if (import.meta.env.VITE_SENTRY_DSN) {
 import ReactDOM from 'react-dom/client'
 import { Toaster } from 'sonner'
 import { AuthProvider } from './contexts/AuthContext'
-import { AdminAuthProvider, useAdminAuth } from './contexts/AdminAuthContext'
+import { AdminAuthProvider } from './contexts/AdminAuthContext'
 import { LanguageProvider } from './i18n/LanguageContext'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import { ConsentGate } from './components/common/ConsentGate'
@@ -76,26 +76,7 @@ const WhatsNew = lazy(() => import('./pages/WhatsNew'))
 const EmailSettings = lazy(() => import('./pages/EmailSettings'))
 
 // Admin pages
-const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'))
-const AdminLayout = lazy(() => import('./pages/admin/AdminLayout'))
-const Overview = lazy(() => import('./pages/admin/Overview'))
-const UsagePage = lazy(() => import('./pages/admin/UsagePage'))
-const TenantRankingPage = lazy(() => import('./pages/admin/TenantRankingPage'))
-const UserUsagePage = lazy(() => import('./pages/admin/UserUsagePage'))
-const LLMLogsPage = lazy(() => import('./pages/admin/LLMLogsPage'))
-const PerformancePage = lazy(() => import('./pages/admin/PerformancePage'))
-const ErrorsPage = lazy(() => import('./pages/admin/ErrorsPage'))
-const ExtractionsPage = lazy(() => import('./pages/admin/ExtractionsPage'))
-const AnomaliesPage = lazy(() => import('./pages/admin/AnomaliesPage'))
-const JobsPage = lazy(() => import('./pages/admin/JobsPage'))
-const EmailAutomationPage = lazy(() => import('./pages/admin/EmailAutomationPage'))
-const MaintenancePage = lazy(() => import('./pages/admin/MaintenancePage'))
-const SessionsPage = lazy(() => import('./pages/admin/SessionsPage'))
-const CreditsPage = lazy(() => import('./pages/admin/CreditsPage'))
-const TenantsPage = lazy(() => import('./pages/admin/TenantsPage'))
-const QuotaModulesPage = lazy(() => import('./pages/admin/QuotaModulesPage'))
-const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'))
-const CreditOrdersPage = lazy(() => import('./pages/admin/CreditOrdersPage'))
+const AdminRouter = lazy(() => import('./pages/admin/AdminRouter'))
 
 // Order Review — standalone page (own shell, reuses admin auth)
 const OrderReviewShell = lazy(() => import('./pages/order-review/OrderReviewShell'))
@@ -103,78 +84,6 @@ const OrderReviewShell = lazy(() => import('./pages/order-review/OrderReviewShel
 function getRoute(): string {
   const hash = window.location.hash.split('?')[0]
   return hash.replace(/^#\/?/, '').toLowerCase()
-}
-
-function AdminRouter() {
-  const [route, setRoute] = useState(getRoute)
-  const { admin } = useAdminAuth()
-
-  useEffect(() => {
-    const onHashChange = () => setRoute(getRoute())
-    window.addEventListener('hashchange', onHashChange)
-    return () => window.removeEventListener('hashchange', onHashChange)
-  }, [])
-
-  if (route === 'admin/login') {
-    return <AdminLogin />
-  }
-
-  // ponytail: `tenants:read` gates the entire dashboard — every page here needs it
-  // except the order queue, which has its own shell. Cheaper and stricter than
-  // filtering the nav per item. The backend 403s regardless; this is the UX half.
-  if (admin && !admin.permissions.includes('tenants:read')) {
-    window.location.hash = '/order-review'
-    return null
-  }
-
-  let AdminPage: React.ReactElement
-  if (route === 'admin' || route === 'admin/') {
-    AdminPage = <Overview />
-  } else if (route === 'admin/usage') {
-    AdminPage = <UsagePage />
-  } else if (route === 'admin/tenant-ranking') {
-    AdminPage = <TenantRankingPage />
-  } else if (route === 'admin/user-usage') {
-    AdminPage = <UserUsagePage />
-  } else if (route === 'admin/llm-logs') {
-    AdminPage = <LLMLogsPage />
-  } else if (route === 'admin/performance') {
-    AdminPage = <PerformancePage />
-  } else if (route === 'admin/errors') {
-    AdminPage = <ErrorsPage />
-  } else if (route === 'admin/extractions') {
-    AdminPage = <ExtractionsPage />
-  } else if (route === 'admin/anomalies') {
-    AdminPage = <AnomaliesPage />
-  } else if (route === 'admin/jobs') {
-    AdminPage = <JobsPage />
-  } else if (route === 'admin/email') {
-    AdminPage = <EmailAutomationPage />
-  } else if (route === 'admin/maintenance') {
-    AdminPage = <MaintenancePage />
-  } else if (route === 'admin/tenants') {
-    AdminPage = <TenantsPage />
-  } else if (route === 'admin/quota-modules') {
-    AdminPage = <QuotaModulesPage />
-  } else if (route === 'admin/admin-users') {
-    AdminPage = <AdminUsersPage />
-  } else if (route === 'admin/sessions') {
-    AdminPage = <SessionsPage />
-  } else if (route === 'admin/credits') {
-    AdminPage = <CreditsPage />
-  } else if (route === 'admin/credit-orders') {
-    // Same page as the standalone #/order-review shell, mounted inside the admin
-    // sidebar so it is reachable from the nav at all. #/order-review still works.
-    AdminPage = <CreditOrdersPage />
-  } else {
-    AdminPage = <Overview />
-  }
-
-  return (
-    <AdminProtectedRoute>
-      <AdminLayout>{AdminPage}</AdminLayout>
-    </AdminProtectedRoute>
-  )
 }
 
 function Router() {

@@ -165,7 +165,7 @@ async def test_a_rejected_token_is_remembered_so_replaying_it_is_free():
     validate = AsyncMock(side_effect=HTTPException(401, "Carmen token rejected"))
     with (
         patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=_tenant()),
-        patch.object(mod, "_validate_token", validate),
+        patch.object(mod, "validate_token", validate),
     ):
         for _ in range(5):
             with pytest.raises(HTTPException):
@@ -183,7 +183,7 @@ async def test_an_unreachable_carmen_is_not_remembered_as_a_rejection():
     validate = AsyncMock(side_effect=HTTPException(502, "Cannot reach Carmen"))
     with (
         patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=_tenant()),
-        patch.object(mod, "_validate_token", validate),
+        patch.object(mod, "validate_token", validate),
     ):
         for _ in range(3):
             with pytest.raises(HTTPException):
@@ -200,7 +200,7 @@ async def test_a_valid_token_is_never_cached():
     validate = AsyncMock()
     with (
         patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=_tenant()),
-        patch.object(mod, "_validate_token", validate),
+        patch.object(mod, "validate_token", validate),
     ):
         for _ in range(3):
             await _resolve(AsyncMock(), Caller("user:x", CARMEN_TOKEN), "h", "b")
@@ -265,7 +265,7 @@ async def test_resolve_proves_the_token_against_the_host_in_the_payload():
     validate = AsyncMock()
     with (
         patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=tenant),
-        patch.object(mod, "_validate_token", validate),
+        patch.object(mod, "validate_token", validate),
     ):
         got = await _resolve(
             AsyncMock(), Caller("user:x", CARMEN_TOKEN), f"https://{tenant.host}", "hq"
@@ -285,7 +285,7 @@ async def test_resolve_rejects_a_token_carmen_does_not_accept():
         patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=_tenant()),
         patch.object(
             mod,
-            "_validate_token",
+            "validate_token",
             AsyncMock(side_effect=HTTPException(401, "Carmen token rejected")),
         ),
     ):
@@ -303,7 +303,7 @@ async def test_resolve_keeps_unreachable_carmen_distinct_from_a_bad_token():
         patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=_tenant()),
         patch.object(
             mod,
-            "_validate_token",
+            "validate_token",
             AsyncMock(side_effect=HTTPException(502, "Cannot reach Carmen")),
         ),
     ):
@@ -319,7 +319,7 @@ async def test_resolve_skips_the_probe_for_the_admin_path():
     validate = AsyncMock()
     with (
         patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=_tenant()),
-        patch.object(mod, "_validate_token", validate),
+        patch.object(mod, "validate_token", validate),
     ):
         await _resolve(AsyncMock(), _admin_caller(), "h", "b")
     validate.assert_not_awaited()
@@ -414,7 +414,7 @@ def test_a_value_that_names_no_host_is_left_to_the_lookup(value):
 async def test_the_token_is_proved_against_the_tenants_own_origin_not_the_uri_sent():
     """The caller's `uri` stops at the lookup. **This is the case commit e870788
     removed a payload field to prevent**: an origin from the request must never
-    reach `_validate_token`, or a token proven against one Carmen could be posted
+    reach `validate_token`, or a token proven against one Carmen could be posted
     to another.
     """
     from app.routers import email_automation as mod
@@ -423,7 +423,7 @@ async def test_the_token_is_proved_against_the_tenants_own_origin_not_the_uri_se
     validate = AsyncMock()
     with (
         patch.object(mod.es, "resolve_tenant", new_callable=AsyncMock, return_value=tenant),
-        patch.object(mod, "_validate_token", validate),
+        patch.object(mod, "validate_token", validate),
     ):
         await _resolve(AsyncMock(), Caller("user:x", CARMEN_TOKEN), "https://evil.com", "hq")
 
@@ -446,7 +446,7 @@ async def test_an_unknown_origin_never_reaches_carmen():
             new_callable=AsyncMock,
             side_effect=ValidationError("Unknown business unit"),
         ),
-        patch.object(mod, "_validate_token", validate),
+        patch.object(mod, "validate_token", validate),
     ):
         with pytest.raises(ValidationError):
             await _resolve(AsyncMock(), Caller("user:x", CARMEN_TOKEN), "https://evil.com", "hq")
@@ -568,7 +568,7 @@ def test_storing_a_token_targets_only_the_tenants_own_origin():
     with (
         patch.object(es, "resolve_tenant", new_callable=AsyncMock, return_value=tenant),
         # Patched off so the assertion is about the value, not the SSRF allowlist.
-        patch.object(mod, "_validate_uri", lambda uri: uri),
+        patch.object(mod, "validate_uri", lambda uri: uri),
         patch.object(es, "set_token", set_token),
         patch.object(es, "token_status", lambda row: {"configured": True}),
     ):

@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.models.schemas import ExtractedDetailRow
-from app.services.cc_jv import _num, _r2
+from app.services.cc_jv import num, r2
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +93,8 @@ def build_input_tax_payload(
     is a VAT claim quietly lost — the caller puts it on the ledger. `None, None`
     means there was genuinely nothing to claim, which needs no announcement.
     """
-    net = _r2(sum(_num(d.commis_amt) for d in details))
-    tax = _r2(sum(_num(d.tax_amt) for d in details))
+    net = r2(sum(num(d.commis_amt) for d in details))
+    tax = r2(sum(num(d.tax_amt) for d in details))
     if tax <= 0 or net <= 0:
         return None, None  # no VAT on this document — nothing was lost
 
@@ -133,7 +133,7 @@ def build_input_tax_payload(
         "BfTaxAmt": f"{net:.2f}",
         "TaxRate": profile["rate"],
         "TaxAmt": tax,
-        "TotalAmt": f"{_r2(net + tax):.2f}",
+        "TotalAmt": f"{r2(net + tax):.2f}",
         "TaxId": getattr(bank, "tax_id", None) or "",
         "BranchNo": branch or "",
         "Address": getattr(bank, "address", None) or "",

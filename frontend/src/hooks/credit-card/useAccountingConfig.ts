@@ -1,24 +1,11 @@
 import { useEffect, useState, useCallback } from 'react'
 import { getAccountingConfig } from '../../lib/api/config'
-import { appKey } from '../../lib/storage'
+import { appKey, readAccountingConfig, type AccountingConfig } from '../../lib/storage'
 import type { FieldMapping } from '../../types/api'
 
-export interface AccountingConfig {
-  bank?: string
-  filePrefix?: string
-  fileSource?: string
-  description?: string
-  /** bank_code -> description; see descriptionForBank in lib/bankTransforms. */
-  bankDescriptions?: Record<string, string>
-  company?: {
-    name?: string
-    taxId?: string
-    branch?: string
-    address?: string
-  }
-  mappings?: Record<string, FieldMapping>
-  paymentAmount?: Record<string, FieldMapping>
-}
+// Shape and storage key live together in lib/storage; re-exported because several
+// credit-card modules already import the type from here.
+export type { AccountingConfig }
 
 export interface AccountingConfigHook {
   config: AccountingConfig | null
@@ -101,14 +88,7 @@ export function useAccountingConfig(): AccountingConfigHook {
         if (!hasData) throw new Error('empty')
 
         const { mappings, paymentAmount } = splitMappings(apiData.mappings || {})
-        const lsCompany = (() => {
-          try {
-            const raw = localStorage.getItem(appKey('accountingConfig'))
-            return raw ? ((JSON.parse(raw) as AccountingConfig).company ?? {}) : {}
-          } catch {
-            return {}
-          }
-        })()
+        const lsCompany = readAccountingConfig().company ?? {}
         setConfigState({
           bank: apiData.bank_code || '',
           filePrefix: apiData.file_prefix || '',

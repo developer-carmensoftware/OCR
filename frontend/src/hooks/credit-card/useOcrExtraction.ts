@@ -7,7 +7,7 @@ import {
 } from '../../constants'
 import { extractFromFile } from '../../lib/api/ocr'
 import { showToast } from '../../lib/toast'
-import { appKey } from '../../lib/storage'
+import { appKey, readAccountingConfig, writeAccountingConfig } from '../../lib/storage'
 import type { ModalConfig } from '../useModal'
 import type { BankCode } from '../../types/api'
 import { normalizeDateStringToCE } from '../../lib/date'
@@ -113,25 +113,13 @@ function _persistOcrLocalStorage(ext: Record<string, unknown>, detailsList: Deta
   }
 
   if (ext.bank_company_name || ext.branch_no) {
-    try {
-      const existing = JSON.parse(
-        localStorage.getItem(appKey('accountingConfig')) || '{}'
-      ) as Record<string, unknown>
-      const existingCompany = (existing.company as Record<string, string> | undefined) || {}
-      const updatedCompany: Record<string, unknown> = {
-        ...(existingCompany as Record<string, unknown>),
-      }
-      if (ext.bank_company_name) updatedCompany.name = ext.bank_company_name as string
-      if (ext.branch_no) updatedCompany.branch = ext.branch_no as string
-      existing.company = updatedCompany
-      // detectBankFromCompanyName already returns the display name accountingConfig.bank stores
-      // (a stale BANK_CODE_TO_NAME[code] lookup here previously never matched, so this was dead).
-      const detectedBankName = detectBankFromCompanyName(ext.bank_company_name as string)
-      if (detectedBankName) existing.bank = detectedBankName
-      localStorage.setItem(appKey('accountingConfig'), JSON.stringify(existing))
-    } catch {
-      /* ignore */
-    }
+    const company = { ...(readAccountingConfig().company ?? {}) }
+    if (ext.bank_company_name) company.name = ext.bank_company_name as string
+    if (ext.branch_no) company.branch = ext.branch_no as string
+    // detectBankFromCompanyName already returns the display name accountingConfig.bank stores
+    // (a stale BANK_CODE_TO_NAME[code] lookup here previously never matched, so this was dead).
+    const detectedBankName = detectBankFromCompanyName(ext.bank_company_name as string)
+    writeAccountingConfig({ company, ...(detectedBankName ? { bank: detectedBankName } : {}) })
   }
 }
 

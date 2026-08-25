@@ -632,7 +632,7 @@ async def posting_target(db: AsyncSession, row: EmailIngestSettings) -> tuple[st
     if not uri:
         tenant_host = await db.scalar(select(Tenant.host).where(Tenant.id == row.tenant_id))
         # ponytail: tenants.host is the normalised origin minus scheme (routers/auth.py
-        # `_validate_uri`), so this rebuilds it — except for a non-443 port, which no
+        # `validate_uri`), so this rebuilds it — except for a non-443 port, which no
         # Carmen deployment uses. Carmen sends carmen_uri with the token anyway.
         uri = f"https://{tenant_host}" if tenant_host else ""
     return token or "", uri
@@ -680,7 +680,7 @@ async def set_token(
     """Store the posting credential. Rejects one Carmen will not accept.
 
     `carmen_uri` must already have been through the SSRF validation in
-    `routers/auth._validate_uri` — we are about to make a server-side request to
+    `routers/auth.validate_uri` — we are about to make a server-side request to
     it carrying a credential, so this function never accepts a raw caller value.
     """
     await verify_token(token, carmen_uri)

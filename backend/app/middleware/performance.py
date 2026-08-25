@@ -58,7 +58,7 @@ async def flush_perf_buffer() -> None:
         logger.error("flush_perf_buffer failed (dropped %d rows): %s", len(batch), exc)
 
 
-def _decode_jwt_claims(request: Request) -> dict:
+def decode_jwt_claims(request: Request) -> dict:
     """Decode JWT payload without DB — never raises. Returns {} on failure."""
     try:
         auth = request.headers.get("authorization", "")
@@ -82,7 +82,7 @@ class PerformanceMiddleware(BaseHTTPMiddleware):
             response.headers["X-Request-ID"] = request_id
             return response
 
-        claims = _decode_jwt_claims(request)
+        claims = decode_jwt_claims(request)
         tenant_id = claims.get("tid", "")
         carmen_user_id = claims.get("cuid", "")
         carmen_uri_val = claims.get("carmen_uri", "")
