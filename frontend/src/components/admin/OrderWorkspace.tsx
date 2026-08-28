@@ -260,10 +260,12 @@ function CompanyPanel({
 
   const load = () => {
     loadedRef.current = true
-    Promise.all([fetchCreditBalance(tenantId), fetchCreditLedger(tenantId)])
+    // A glance at the last handful of entries inside the order drawer, not the audit
+    // view — that lives on the Credits page, which pages and searches the whole ledger.
+    Promise.all([fetchCreditBalance(tenantId), fetchCreditLedger(tenantId, { limit: 10 })])
       .then(([b, l]) => {
         setBalance(b.balance)
-        setLedger(l)
+        setLedger(l.data ?? [])
       })
       .catch(e => toast.error((e as Error).message))
   }
@@ -399,7 +401,7 @@ export default function OrderWorkspace({
       .catch(() => alive && dispatch({ type: 'SET_DOCS_ERR' }))
     if (order.tenant_id) {
       listCreditOrders('all', order.tenant_id)
-        .then(rows => alive && dispatch({ type: 'SET_HISTORY', history: rows }))
+        .then(page => alive && dispatch({ type: 'SET_HISTORY', history: page.data }))
         .catch(() => {})
     }
     return () => {

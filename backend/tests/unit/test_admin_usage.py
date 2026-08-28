@@ -19,6 +19,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.exceptions import ValidationError
+from app.utils.list_query import ListQuery
+
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -290,6 +293,19 @@ class TestGetUsageTotals:
         result = await self._call(db)
         assert result["totals"]["submissions"] == 5
 
+    async def test_A2_rejects_date_range_over_92_days(self):
+        """The 92-day cap applies here too, not just to /usage-summary.
+
+        This endpoint aggregates the same partitioned tables as its sibling but had no
+        guard at all, so an unbounded `from` pruned no partition and summed the whole
+        retention window. Guarding one of a pair and not the other is the bug class this
+        covers — assert on both if a third sibling ever appears.
+        """
+        from app.exceptions import ValidationError
+
+        with pytest.raises(ValidationError):
+            await self._call(_make_db(), from_date=date(2020, 1, 1), to_date=date.today())
+
 
 # ── get_llm_usage ─────────────────────────────────────────────────────────────
 
@@ -311,6 +327,19 @@ class TestGetLlmUsage:
         row.created_at = kwargs.get("created_at", datetime(2024, 1, 15, 10, 0))
         return row
 
+    def _db(self, rows, total=None):
+        """paginate() runs COUNT first, then the windowed rows — answer in that order."""
+        count_result = MagicMock()
+        count_result.scalar_one.return_value = len(rows) if total is None else total
+        rows_result = MagicMock()
+        rows_result.scalars.return_value.all.return_value = rows
+        # tenant_name_map() is the third call; an empty mapping is a fine answer.
+        names_result = MagicMock()
+        names_result.all.return_value = []
+        db = AsyncMock()
+        db.execute.side_effect = [count_result, rows_result, names_result]
+        return db
+
     async def _call(self, db, **kwargs):
         from app.routers.admin.usage import get_llm_usage
 
@@ -319,40 +348,32 @@ class TestGetLlmUsage:
             to_date=kwargs.get("to_date"),
             module_id=kwargs.get("module_id"),
             tenant_id=kwargs.get("tenant_id"),
-            order_by=kwargs.get("order_by", "created_at"),
-            limit=kwargs.get("limit", 100),
+            lq=ListQuery(
+                q=kwargs.get("q"),
+                sort=kwargs.get("sort"),
+                dir=kwargs.get("dir", "desc"),
+                limit=kwargs.get("limit", 100),
+                offset=kwargs.get("offset", 0),
+            ),
             db=db,
             admin=_make_admin(),
         )
 
-    async def test_A3_returns_count_and_has_more(self):
-        result_mock = MagicMock()
-        result_mock.scalars.return_value.all.return_value = [self._make_log_row()]
-        db = AsyncMock()
-        db.execute.return_value = result_mock
+    async def test_A3_returns_the_page_envelope(self):
+        result = await self._call(self._db([self._make_log_row()]))
+        assert result["total"] == 1
+        assert result["limit"] == 100
+        assert result["offset"] == 0
 
-        result = await self._call(db)
-        assert "count" in result
-        assert "has_more" in result
-        assert result["count"] == 1
-        assert result["has_more"] is False  # 1 < limit(100)
-
-    async def test_A3_has_more_true_when_rows_equal_limit(self):
-        result_mock = MagicMock()
-        result_mock.scalars.return_value.all.return_value = [self._make_log_row() for _ in range(5)]
-        db = AsyncMock()
-        db.execute.return_value = result_mock
-
-        result = await self._call(db, limit=5)
-        assert result["has_more"] is True
+    async def test_A3_total_is_the_whole_match_not_the_page(self):
+        # The reason this endpoint moved to server-side sorting at all: a page of 5 out
+        # of 340 must say 340, or the UI cannot tell the reader what it is hiding.
+        result = await self._call(self._db([self._make_log_row() for _ in range(5)], total=340))
+        assert result["total"] == 340
+        assert len(result["data"]) == 5
 
     async def test_A3_data_contains_expected_fields(self):
-        result_mock = MagicMock()
-        result_mock.scalars.return_value.all.return_value = [self._make_log_row()]
-        db = AsyncMock()
-        db.execute.return_value = result_mock
-
-        result = await self._call(db)
+        result = await self._call(self._db([self._make_log_row()]))
         row = result["data"][0]
         for field in (
             "id",
@@ -367,14 +388,13 @@ class TestGetLlmUsage:
             assert field in row, f"Missing field: {field}"
 
     async def test_A3_empty_result_returns_empty_data(self):
-        result_mock = MagicMock()
-        result_mock.scalars.return_value.all.return_value = []
-        db = AsyncMock()
-        db.execute.return_value = result_mock
-
-        result = await self._call(db)
+        result = await self._call(self._db([]))
         assert result["data"] == []
-        assert result["count"] == 0
+        assert result["total"] == 0
+
+    async def test_A3_unknown_sort_key_is_refused(self):
+        with pytest.raises(ValidationError):
+            await self._call(self._db([]), sort="cost")
 
 
 # ── tenant_ranking ────────────────────────────────────────────────────────────
@@ -500,23 +520,31 @@ class TestUserUsage:
             from_date=kwargs.get("from_date"),
             to_date=kwargs.get("to_date"),
             tenant_id=kwargs.get("tenant_id"),
-            order_by=kwargs.get("order_by", "calls"),
-            limit=kwargs.get("limit", 50),
+            lq=ListQuery(
+                q=None,
+                sort=kwargs.get("sort"),
+                dir=kwargs.get("dir", "desc"),
+                limit=kwargs.get("limit", 50),
+                offset=kwargs.get("offset", 0),
+            ),
             db=db,
             admin=_make_admin(),
         )
 
     @staticmethod
-    def _db(usage_rows, session_rows=()):
-        """Two executes: the llm_usage_logs aggregate, then the username lookup."""
+    def _db(usage_rows, session_rows=(), total=None):
+        """Three executes: the COUNT, the windowed aggregate, then the username lookup."""
 
         def _res(rows):
             m = MagicMock()
             m.mappings.return_value.all.return_value = list(rows)
             return m
 
+        count_result = MagicMock()
+        count_result.scalar_one.return_value = len(usage_rows) if total is None else total
+
         db = AsyncMock()
-        db.execute.side_effect = [_res(usage_rows), _res(session_rows)]
+        db.execute.side_effect = [count_result, _res(usage_rows), _res(session_rows)]
         return db
 
     @staticmethod
@@ -531,10 +559,14 @@ class TestUserUsage:
             }
         )
 
-    async def test_A5_empty_returns_zero_total_users(self):
+    async def test_A5_empty_returns_zero_total(self):
         result = await self._call(self._db([]))
-        assert result["total_users"] == 0
+        assert result["total"] == 0
         assert result["data"] == []
+
+    async def test_A5_total_counts_every_user_not_the_page(self):
+        result = await self._call(self._db([self._usage_row()], total=87))
+        assert result["total"] == 87
 
     async def test_A5_data_contains_carmen_user_id(self):
         result = await self._call(self._db([self._usage_row()]))

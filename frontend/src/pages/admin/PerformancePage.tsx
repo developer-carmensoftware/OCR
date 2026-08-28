@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
-import { toast } from 'sonner'
 import DataTable, { type Column } from '../../components/admin/DataTable'
 import TenantSelector from '../../components/admin/TenantSelector'
+import PeriodPicker, { daysAgo, endOfDay, today } from '../../components/admin/PeriodPicker'
 import { fetchPerformanceLogs } from '../../lib/api/adminClient'
+import { useTableQuery } from '../../hooks/admin/useTableQuery'
+import { useTableData } from '../../hooks/admin/useTableData'
 import { useT } from '../../i18n/LanguageContext'
-import { fmtDateTime } from '../../lib/dates'
+import { fmtDateTime } from '../../lib/date'
 
 interface PerfRow {
   id: string
@@ -24,6 +26,7 @@ function getCols(t: ReturnType<typeof useT>['t']): Column<PerfRow>[] {
       key: 'created_at',
       label: t('admin.performance.col.time'),
       sortable: true,
+      defaultDesc: true,
       render: r => fmtDateTime(r.created_at),
     },
     { key: 'method', label: t('admin.performance.col.method'), sortable: true },
@@ -54,45 +57,47 @@ function getCols(t: ReturnType<typeof useT>['t']): Column<PerfRow>[] {
       ),
     },
     {
-      key: 'tenant_id',
+      // Displays the name; not sortable. See LLMLogsPage for why — the name is not a
+      // column on this partitioned log table, and the tenant dropdown covers the need.
+      key: 'tenant_name',
       label: t('admin.performance.col.tenant'),
-      sortable: true,
       render: r => r.tenant_name ?? r.tenant_id,
     },
   ]
 }
 
 export default function PerformancePage() {
+  const { params, set, server } = useTableQuery({
+    defaultSort: 'created_at',
+    filters: { tenant_id: '', min_duration_ms: '', from: daysAgo(7), to: today() },
+  })
   const { t } = useT()
-  const [tenantId, setTenantId] = useState('')
-  const [minMsInput, setMinMsInput] = useState('')
-  const [minMs, setMinMs] = useState('')
-  const [rows, setRows] = useState<PerfRow[]>([])
-  const [loading, setLoading] = useState(false)
+  const [minMsInput, setMinMsInput] = useState(params.min_duration_ms)
 
   // Debounce the free-text filter — without this, typing "1500" fired 4 separate
   // full requests, one per keystroke.
   useEffect(() => {
-    const id = setTimeout(() => setMinMs(minMsInput), 300)
+    const id = setTimeout(() => set({ min_duration_ms: minMsInput }), 300)
     return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minMsInput])
 
-  useEffect(() => {
-    setLoading(true)
-    fetchPerformanceLogs({
-      tenant_id: tenantId || undefined,
-      min_duration_ms: minMs ? Number(minMs) : undefined,
-      limit: 300,
-    })
-      .then(r => setRows(r.data ?? []))
-      .catch(e =>
-        toast.error(
-          t('admin.performance.toast.loadFailed', { error: e?.message ?? 'failed to load' })
-        )
-      )
-      .finally(() => setLoading(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, minMs])
+  const { rows, total, loading } = useTableData<PerfRow>(
+    () =>
+      fetchPerformanceLogs({
+        tenant_id: params.tenant_id || undefined,
+        min_duration_ms: params.min_duration_ms ? Number(params.min_duration_ms) : undefined,
+        from: params.from,
+        to: endOfDay(params.to),
+        q: params.q || undefined,
+        sort: params.sort,
+        dir: params.dir,
+        limit: params.limit,
+        offset: params.offset,
+      }),
+    [params],
+    'admin.performance.toast.loadFailed'
+  )
 
   return (
     <div className="admin-page">
@@ -108,7 +113,11 @@ export default function PerformancePage() {
             onChange={e => setMinMsInput(e.target.value)}
             style={{ width: 160 }}
           />
-          <TenantSelector value={tenantId} onChange={setTenantId} />
+          <PeriodPicker
+            value={{ from: params.from, to: params.to }}
+            onChange={p => set({ from: p.from, to: p.to })}
+          />
+          <TenantSelector value={params.tenant_id} onChange={v => set({ tenant_id: v })} />
         </div>
       </div>
       <div className="admin-card">
@@ -117,6 +126,12 @@ export default function PerformancePage() {
           rows={rows}
           loading={loading}
           emptyText={t('admin.performance.empty')}
+          server={server(total)}
+          search={{
+            value: params.q,
+            onChange: q => set({ q }),
+            placeholder: t('admin.performance.searchPlaceholder'),
+          }}
         />
       </div>
     </div>

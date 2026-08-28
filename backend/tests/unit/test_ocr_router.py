@@ -3,6 +3,7 @@ Unit tests for app/routers/ocr.py (Credit Card OCR Router).
 """
 
 import uuid
+from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -362,10 +363,9 @@ class TestExtractCard:
         mock_session,
     ):
         """Core regression: when no bank_code query param is sent, finalize_extraction
-        must detect it from bank_company_name and persist a non-NULL bank_code row.
-        This is the root cause of the broken duplicate check — without this, every
-        stored draft has bank_code=NULL while submitted rows have bank_code='SCB',
-        so the duplicate key never matches."""
+        must detect it from bank_company_name and persist a non-NULL bank_code row —
+        it selects the normalizer and it is what the wizard and Carmen bookkeeping read.
+        It is no longer part of the duplicate key (see the assertion below)."""
         ctx_mock, db_mock = mock_session
         mock_get_hints.return_value = {}
 
@@ -416,10 +416,15 @@ class TestExtractCard:
             f"Expected 'KBANK' resolved from bank_company_name, got {added_card.bank_code!r}"
         )
 
-        # has_submitted_doc must have been called with the resolved bank_code, not None
+        # **bank_code is not in the duplicate key.** The wizard resolves it from the user's
+        # dropdown and the email job from the matched ingest rule, so a disagreement over
+        # one document produced two rows and both posted. Keyed on the document's own
+        # identity instead: (tenant, doc_no, doc_date).
         mock_has_submitted.assert_called_once()
         call_kwargs = mock_has_submitted.call_args[1]
-        assert call_kwargs["bank_code"] == "KBANK"
+        assert "bank_code" not in call_kwargs
+        assert call_kwargs["doc_no"] == "INV-456"
+        assert call_kwargs["doc_date"] == date(2024, 3, 15)
 
     @patch("app.routers.ocr.consume_document", new_callable=AsyncMock)
     @patch("app.routers.ocr.get_correction_hints", new_callable=AsyncMock)
@@ -478,7 +483,10 @@ class TestExtractCard:
         assert resp.status_code == 200
         added_card = db_mock.add.call_args[0][0]
         assert added_card.bank_code == "BBL"  # explicit param wins
-        assert mock_has_submitted.call_args[1]["bank_code"] == "BBL"
+        # …for what is *stored* (the normalizer, the wizard, Carmen bookkeeping). It does
+        # not reach the duplicate key: precedence differs between the wizard and the email
+        # job, which is what let one document be filed as two rows and post twice.
+        assert "bank_code" not in mock_has_submitted.call_args[1]
 
 
 # ── GET /tasks ────────────────────────────────────────────────────────────────

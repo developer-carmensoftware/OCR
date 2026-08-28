@@ -1,10 +1,13 @@
 import { apiFetch } from './client'
 import { API } from './endpoints'
+import type { Page } from './page'
 
 export interface Notification {
   id: string
   order_id: string | null
-  type: 'approved' | 'rejected' | 'on_hold' | 'missing_slip'
+  // Order lifecycle first, then the email-automation outcomes (emitted by
+  // `_finish` in email_ingest_service.py — "skipped" deliberately does not notify).
+  type: 'approved' | 'rejected' | 'on_hold' | 'missing_slip' | 'document_posted' | 'document_failed'
   payload: Record<string, unknown>
   read_at: string | null
   created_at: string
@@ -20,13 +23,13 @@ export interface BellItem extends Omit<Notification, 'type'> {
   type: Notification['type'] | 'release_note'
 }
 
-export interface NotificationList {
-  items: Notification[]
+/** A page of notifications plus the badge count, which spans every row, not the page. */
+export interface NotificationList extends Page<Notification> {
   unread_count: number
 }
 
-export async function listNotifications(): Promise<NotificationList> {
-  const res = await apiFetch(API.notifications.list)
+export async function listNotifications(limit = 8, offset = 0): Promise<NotificationList> {
+  const res = await apiFetch(`${API.notifications.list}?limit=${limit}&offset=${offset}`)
   if (!res.ok) throw new Error(`Notifications fetch failed (${res.status})`)
   return res.json() as Promise<NotificationList>
 }

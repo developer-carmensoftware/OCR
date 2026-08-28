@@ -2,7 +2,7 @@
 Unit tests for app/routers/auth.py
 
 Covers:
-  - _validate_uri: SSRF protection (private IPs, loopback, non-https, edge cases)
+  - validate_uri: SSRF protection (private IPs, loopback, non-https, edge cases)
   - _carmen_base: URL construction
   - InMemoryRateLimiter: per-IP sliding window, expiry, null client
   - ExchangeRequest: schema validation, optional fields
@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-# ── _validate_uri ─────────────────────────────────────────────────────────────
+# ── validate_uri ─────────────────────────────────────────────────────────────
 
 
 class TestValidateUri:
@@ -26,10 +26,10 @@ class TestValidateUri:
 
     def _call(self, uri: str, app_debug: bool = True):
         from app.config import settings
-        from app.routers.auth import _validate_uri
+        from app.routers.auth import validate_uri
 
         with patch.object(settings, "app_debug", app_debug):
-            return _validate_uri(uri)
+            return validate_uri(uri)
 
     # ── Happy path ────────────────────────────────────────────────────────────
 

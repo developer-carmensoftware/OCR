@@ -9,7 +9,10 @@ import {
 import { RELEASE_NOTES } from '../../content/releaseNotes'
 import { markReleaseSeen, readReleaseSeen, RELEASE_SEEN_EVENT } from '../../lib/releaseNotesSeen'
 
-const POLL_MS = 60_000
+// ponytail: 5 min, not 60s. Nothing here is time-critical — a bell row appears
+// only after an admin touches an order — and the focus listener below already
+// refreshes the moment the user comes back to the tab.
+const POLL_MS = 300_000
 
 const RELEASE_ID_PREFIX = 'release:'
 
@@ -36,23 +39,30 @@ function releaseRow(seen: string): BellItem[] {
   ]
 }
 
-export function useNotifications() {
+/** `limit` is measured from the panel — see `useFitRows` — not a fixed page size. */
+export function useNotifications(limit: number) {
   const { isAuthenticated } = useAuth()
   const [items, setItems] = useState<Notification[]>([])
+  const [total, setTotal] = useState(0)
   const [unreadCount, setUnreadCount] = useState(0)
   const [seen, setSeen] = useState(readReleaseSeen)
+  // One window at a time, moved by the pager. ponytail: offset paging, so a row
+  // arriving while the reader sits on page 2 shifts what page 2 holds. Harmless for
+  // an append-only bell at our volumes; keyset on (created_at, id) if it ever bites.
+  const [offset, setOffset] = useState(0)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const refresh = useCallback(async () => {
     if (!isAuthenticated) return
     try {
-      const data = await listNotifications()
-      setItems(data.items)
-      setUnreadCount(data.unread_count)
+      const page = await listNotifications(limit, offset)
+      setItems(page.data)
+      setTotal(page.total)
+      setUnreadCount(page.unread_count)
     } catch {
       // silent — bell just shows stale data
     }
-  }, [isAuthenticated])
+  }, [isAuthenticated, limit, offset])
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -81,10 +91,16 @@ export function useNotifications() {
   // date and a server timestamp are two different clocks, and sorting them together
   // buries a fresh release under the morning's order notifications.
   const releases = useMemo(() => releaseRow(seen), [seen])
-  const merged = useMemo<BellItem[]>(() => [...releases, ...items], [releases, items])
+  // Page 1 only: the row is pinned to the top of the LIST, not repeated at the top of
+  // every page — on page 3 it would read as a third release.
+  const merged = useMemo<BellItem[]>(
+    () => (offset === 0 ? [...releases, ...items] : items),
+    [releases, items, offset]
+  )
 
-  // Derived, never stored: refresh() overwrites unreadCount from the server every
-  // 60s, so folding the release delta INTO that state would drift on a timer.
+  // Derived, never stored: refresh() overwrites unreadCount from the server on every
+  // poll, so folding the release delta INTO that state would drift on a timer. Counted
+  // off `releases`, not `merged` — the badge is global, so paging must not change it.
   const unseenReleases = releases.reduce((n, r) => n + (r.read_at ? 0 : 1), 0)
 
   const markRead = useCallback(
@@ -112,5 +128,15 @@ export function useNotifications() {
     [refresh]
   )
 
-  return { items: merged, unreadCount: unreadCount + unseenReleases, markRead, refresh }
+  return {
+    items: merged,
+    unreadCount: unreadCount + unseenReleases,
+    // Pager state: `total` counts server rows only, which is what `offset` indexes —
+    // the release row is client-side and never part of it.
+    offset,
+    total,
+    setOffset,
+    markRead,
+    refresh,
+  }
 }

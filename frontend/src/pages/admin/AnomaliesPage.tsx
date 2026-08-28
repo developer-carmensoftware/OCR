@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import TenantSelector from '../../components/admin/TenantSelector'
+import PeriodPicker, { daysAgo, endOfDay, today } from '../../components/admin/PeriodPicker'
+import Pager from '../../components/common/Pager'
 import { fetchAlerts, resolveAlert } from '../../lib/api/adminClient'
+import { useTableQuery } from '../../hooks/admin/useTableQuery'
+import { useTableData } from '../../hooks/admin/useTableData'
 import { useT } from '../../i18n/LanguageContext'
-import { fmtDateTime } from '../../lib/dates'
+import { fmtDateTime } from '../../lib/date'
 
 interface Alert {
   id: number
@@ -19,33 +22,41 @@ interface Alert {
   resolved_at: string | null
 }
 
+/** A card, not a table row — so this list pages on its own rather than via DataTable. */
+const PER_PAGE = 20
+
 export default function AnomaliesPage() {
   const { t } = useT()
-  const [status, setStatus] = useState<'open' | 'resolved' | 'all'>('open')
-  const [tenantId, setTenantId] = useState('')
-  const [alerts, setAlerts] = useState<Alert[]>([])
-  const [loading, setLoading] = useState(false)
-
-  const load = () => {
-    setLoading(true)
-    fetchAlerts({ status, tenant_id: tenantId || undefined, limit: 100 })
-      .then(r => setAlerts(r.data ?? []))
-      .catch(e =>
-        toast.error(
-          t('admin.anomalies.toast.loadFailed', { error: e?.message ?? 'failed to load' })
-        )
-      )
-      .finally(() => setLoading(false))
-  }
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(load, [status, tenantId])
+  // 'all' as the default status would drown the open ones; the period filter is what
+  // makes a resolved alert from two months ago reachable at all.
+  const { params, set } = useTableQuery({
+    defaultSort: 'created_at',
+    filters: { status: 'open', tenant_id: '', from: daysAgo(30), to: today() },
+  })
+  const {
+    rows: alerts,
+    total,
+    loading,
+    reload,
+  } = useTableData<Alert>(
+    () =>
+      fetchAlerts({
+        status: params.status,
+        tenant_id: params.tenant_id || undefined,
+        from: params.from,
+        to: endOfDay(params.to),
+        limit: PER_PAGE,
+        offset: params.offset,
+      }),
+    [params],
+    'admin.anomalies.toast.loadFailed'
+  )
 
   const handleResolve = async (id: number) => {
     try {
       await resolveAlert(id)
       toast.success(t('admin.anomalies.toast.resolved'))
-      load()
+      reload()
     } catch {
       toast.error(t('admin.anomalies.toast.resolveFailed'))
     }
@@ -59,14 +70,18 @@ export default function AnomaliesPage() {
           <select
             className="admin-select"
             aria-label={t('admin.anomalies.statusFilterAria')}
-            value={status}
-            onChange={e => setStatus(e.target.value as typeof status)}
+            value={params.status}
+            onChange={e => set({ status: e.target.value })}
           >
             <option value="open">{t('admin.anomalies.status.open')}</option>
             <option value="resolved">{t('admin.anomalies.status.resolved')}</option>
             <option value="all">{t('admin.anomalies.status.all')}</option>
           </select>
-          <TenantSelector value={tenantId} onChange={setTenantId} />
+          <PeriodPicker
+            value={{ from: params.from, to: params.to }}
+            onChange={p => set({ from: p.from, to: p.to })}
+          />
+          <TenantSelector value={params.tenant_id} onChange={v => set({ tenant_id: v })} />
         </div>
       </div>
 
@@ -115,6 +130,12 @@ export default function AnomaliesPage() {
           </div>
         )}
       </div>
+      <Pager
+        offset={params.offset}
+        limit={PER_PAGE}
+        total={total}
+        onChange={offset => set({ offset })}
+      />
     </div>
   )
 }

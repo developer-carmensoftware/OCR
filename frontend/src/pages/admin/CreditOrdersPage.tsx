@@ -53,6 +53,8 @@ export default function CreditOrdersPage() {
   const [workflowTab, setWorkflowTab] = useState<TabKey>('all')
   const [search, setSearch] = useState('')
   const [orders, setOrders] = useState<AdminCreditOrder[]>([])
+  // Every matching order, which can exceed what was fetched — the table says so.
+  const [ordersTotal, setOrdersTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<AdminCreditOrder | null>(null)
   const [kpi, setKpi] = useState<KpiSummary | null>(null)
@@ -66,13 +68,16 @@ export default function CreditOrdersPage() {
   // Reload the current stage; when `preferIds` is given, re-point `selected` at the
   // fresh (enriched) row so the drawer keeps proforma_number / carmen_ar_code — or
   // closes if the order left this stage after an action.
-  // ponytail: All tab fetches every order; add server pagination if history grows large.
+  // Fetches the endpoint's cap in one go; the table pages and searches what it holds.
+  // `total` covers the rest — see listCreditOrders for why the window is not server-side.
   const loadList = (wt: TabKey, preferIds: (string | undefined)[] = []) => {
     setLoading(true)
     const q = STAGE_QUERY[wt]
     listCreditOrders(q.status, undefined, q.hasSlip)
-      .then(rows => {
+      .then(page => {
+        const rows = page.data
         setOrders(rows)
+        setOrdersTotal(page.total)
         if (preferIds.length) {
           const pick = preferIds.map(id => rows.find(o => o.id === id)).find(Boolean)
           setSelected(pick ?? null)
@@ -279,6 +284,7 @@ export default function CreditOrdersPage() {
             search={search}
             onSearch={setSearch}
             orders={orders}
+            ordersTotal={ordersTotal}
             counts={kpi?.status_counts ?? {}}
             loading={loading}
             selectedId={selected?.id ?? null}

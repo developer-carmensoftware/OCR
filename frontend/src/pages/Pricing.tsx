@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { m, AnimatePresence } from 'framer-motion'
-import { X, MessageCircle, Phone, Mail } from 'lucide-react'
+import { X, MessageCircle, Phone, Mail, GraduationCap } from 'lucide-react'
 import AppHeader from '../components/common/AppHeader'
-import LanguageToggle from '../components/common/LanguageToggle'
 import { useT } from '../i18n/LanguageContext'
 import { PlanCard, EnterpriseCard } from '../components/pricing/PlanCard'
 import PackList from '../components/pricing/PackList'
@@ -19,7 +18,6 @@ import {
 import { PLAN_META, SALES_CONTACT } from '../constants/billing'
 import {
   getPaymentInfo,
-  OPEN_ORDER_STATUSES,
   type BillingPeriod,
   type CreditPack,
   type PaymentInfo,
@@ -108,6 +106,10 @@ function ContactDialog({ onClose }: { onClose: () => void }) {
   )
 }
 
+// Six mock screens of the whole purchase flow — a lot of markup for something
+// most visits never open. Loaded when the Tutorial button is pressed.
+const PurchaseTutorial = lazy(() => import('../components/pricing/tutorial/PurchaseTutorial'))
+
 const containerVariants = {
   hidden: { opacity: 0 },
   show: {
@@ -134,8 +136,9 @@ const cardVariants = {
 export default function Pricing() {
   const { t } = useT()
   const { plans, packs, loading, error } = usePricingCatalog()
-  const { orders, reload } = useOrderHistory()
-  const openOrders = orders.filter(o => OPEN_ORDER_STATUSES.includes(o.status))
+  // limit 1: this page only ever reads `openOrders`, which is never paged. Asking for
+  // one settled row is the cheapest way to satisfy the shared hook's second fetch.
+  const { openOrders, reload } = useOrderHistory(1)
   const hasOpenOrder = openOrders.length > 0
   // Savings % for the toggle badge — derived from the catalog (same for every tier).
   const annualSavePct = (() => {
@@ -150,6 +153,7 @@ export default function Pricing() {
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly')
   const [selectedPeriod, setSelectedPeriod] = useState<BillingPeriod>('monthly')
   const [showContact, setShowContact] = useState(false)
+  const [showTutorial, setShowTutorial] = useState(false)
   const [activeSub, setActiveSub] = useState<ActiveSubscription | null>(null)
   const enter = useEntrance('pricing')
   // Annual subscribers can only buy annual mid-term (monthly would forfeit prepaid value).
@@ -195,6 +199,13 @@ export default function Pricing() {
           window.location.hash = sessionStorage.getItem('pricing:returnTo') || '#/'
         }}
       >
+        <button
+          type="button"
+          className="btn btn-sm btn-outline"
+          onClick={() => setShowTutorial(true)}
+        >
+          <GraduationCap size={14} /> {t('nav.tutorial')}
+        </button>
         <div className="segmented-control" style={{ margin: 0, maxHeight: 36, width: 'auto' }}>
           <button
             type="button"
@@ -222,7 +233,6 @@ export default function Pricing() {
             }}
           />
         </div>
-        <LanguageToggle />
       </AppHeader>
 
       <AnimatePresence mode="wait">
@@ -387,6 +397,12 @@ export default function Pricing() {
       <AnimatePresence>
         {showContact && <ContactDialog onClose={() => setShowContact(false)} />}
       </AnimatePresence>
+
+      {showTutorial && (
+        <Suspense fallback={null}>
+          <PurchaseTutorial open onClose={() => setShowTutorial(false)} />
+        </Suspense>
+      )}
     </div>
   )
 }

@@ -8,22 +8,22 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.services.usage_service import _estimate_cost
+from app.services.usage_service import estimate_cost
 from tests.conftest import set_context
 
-# ── _estimate_cost ────────────────────────────────────────────────────────────
+# ── estimate_cost ────────────────────────────────────────────────────────────
 
 
 class TestEstimateCost:
     def test_calculates_cost_per_million_tokens(self):
         # $1 per 1M prompt, $2 per 1M completion
         rates = (Decimal("1.0"), Decimal("2.0"))
-        cost = _estimate_cost(1_000_000, 1_000_000, rates)
+        cost = estimate_cost(1_000_000, 1_000_000, rates)
         assert float(cost) == pytest.approx(3.0, rel=1e-3)
 
     def test_zero_tokens_returns_zero(self):
         rates = (Decimal("1.0"), Decimal("2.0"))
-        cost = _estimate_cost(0, 0, rates)
+        cost = estimate_cost(0, 0, rates)
         assert float(cost) == 0.0
 
 
@@ -46,7 +46,7 @@ class TestLogLlmUsage:
 
         with (
             patch.object(llm_usage_logger, "async_session", return_value=ctx),
-            patch("app.services.llm_usage_logger._get_pricing", AsyncMock(return_value=None)),
+            patch("app.services.llm_usage_logger.get_pricing", AsyncMock(return_value=None)),
         ):
             await llm_usage_logger.log_llm_usage(
                 model="test-model",
@@ -79,7 +79,7 @@ class TestLogLlmUsage:
 
         with (
             patch.object(llm_usage_logger, "async_session", return_value=ctx),
-            patch("app.services.llm_usage_logger._get_pricing", AsyncMock(return_value=None)),
+            patch("app.services.llm_usage_logger.get_pricing", AsyncMock(return_value=None)),
         ):
             await llm_usage_logger.log_llm_usage(
                 model="m",

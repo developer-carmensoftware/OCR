@@ -32,30 +32,33 @@ function cacheConsent(user: AuthUser): void {
 }
 
 export function useUserConsent(user: AuthUser | null): {
-  hasConsented: boolean
+  showConsent: boolean
   giveConsent: () => void
 } {
-  const [hasConsented, setHasConsented] = useState(() => readCached(user))
+  // null = not known yet (server check in flight). Ask first, show second: rendering
+  // the modal before the check resolved made it flash on every load for tenants that
+  // had already consented.
+  const [consented, setConsented] = useState<boolean | null>(() => (readCached(user) ? true : null))
 
   useEffect(() => {
     // Fast path: locally cached, or unauthenticated → no network.
     if (readCached(user) || !user) {
-      setHasConsented(true)
+      setConsented(true)
       return
     }
     // No local cache (new device / cleared storage): the org may already have a
-    // server-side consent record — ask before re-prompting. Show the modal in the
-    // meantime (safe direction: never skip the gate for a genuinely non-consented user).
-    setHasConsented(false)
+    // server-side consent record — ask before prompting, and stay silent meanwhile.
+    setConsented(null)
     let cancelled = false
     getConsentStatus(CONSENT_VERSION)
-      .then(consented => {
-        if (cancelled || !consented) return
-        cacheConsent(user)
-        setHasConsented(true)
+      .then(ok => {
+        if (cancelled) return
+        if (ok) cacheConsent(user)
+        setConsented(ok)
       })
       .catch(() => {
-        // Network failure — leave the modal up; the user can still consent manually.
+        // Can't prove consent — prompt rather than silently skip the gate.
+        if (!cancelled) setConsented(false)
       })
     return () => {
       cancelled = true
@@ -72,8 +75,8 @@ export function useUserConsent(user: AuthUser | null): {
       .catch(() => {
         // swallow — record retried next session
       })
-      .finally(() => setHasConsented(true))
+      .finally(() => setConsented(true))
   }, [user])
 
-  return { hasConsented, giveConsent }
+  return { showConsent: consented === false, giveConsent }
 }

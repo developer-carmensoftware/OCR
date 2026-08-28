@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { toast } from 'sonner'
 import DataTable, { type Column } from '../../components/admin/DataTable'
 import KPICard from '../../components/admin/KPICard'
 import {
@@ -9,8 +8,9 @@ import {
   type TenantRow,
   type TenantDetail,
 } from '../../lib/api/adminClient'
+import { useTableData } from '../../hooks/admin/useTableData'
 import { useT } from '../../i18n/LanguageContext'
-import { fmtDateTime as fmtDate } from '../../lib/dates'
+import { fmtDateTime as fmtDate } from '../../lib/date'
 
 /** Days after which a BU that once used the product reads as gone quiet. */
 const IDLE_WARN_DAYS = 14
@@ -44,29 +44,21 @@ export default function TenantsPage() {
   const { t } = useT()
   const [activeOnly, setActiveOnly] = useState(true)
   const [neverExtracted, setNeverExtracted] = useState(false)
-  const [rows, setRows] = useState<TenantRow[]>([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(false)
+  // Client-side: this endpoint returns every tenant the admin can see (capped at 500,
+  // with the note below saying so), and the engagement columns are assembled in Python
+  // after the query — so there is nothing here for Postgres to search or sort that it
+  // would do more truthfully than the browser.
+  const [search, setSearch] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [details, setDetails] = useState<Record<string, TenantDetail>>({})
   const [loadingIds, setLoadingIds] = useState<Record<string, boolean>>({})
   const [detailErrors, setDetailErrors] = useState<Record<string, string>>({})
 
-  const load = () => {
-    setLoading(true)
-    fetchTenants({ active_only: activeOnly, limit: TENANTS_LIMIT, include_engagement: true })
-      .then(r => {
-        setRows(r.data ?? [])
-        setTotal(r.total ?? 0)
-      })
-      .catch(e =>
-        toast.error(t('admin.tenants.toast.loadFailed', { error: e?.message ?? 'failed to load' }))
-      )
-      .finally(() => setLoading(false))
-  }
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(load, [activeOnly])
+  const { rows, total, loading } = useTableData<TenantRow>(
+    () => fetchTenants({ active_only: activeOnly, limit: TENANTS_LIMIT, include_engagement: true }),
+    [activeOnly],
+    'admin.tenants.toast.loadFailed'
+  )
 
   // Keyed per-tenant-id (not a single scalar) so an in-flight fetch for one row
   // can't clear the loading indicator of a different row expanded afterward.
@@ -163,6 +155,7 @@ export default function TenantsPage() {
       key: 'last_use',
       label: t('admin.tenants.col.lastActive'),
       sortable: true,
+      defaultDesc: true,
       // last_use (tasks) over last_used_at (llm_usage_logs): the latter has no row
       // when the call never reached the model, so it silently skips failed attempts
       // and overstates idleness for exactly the BUs that churned on failures.
@@ -261,6 +254,11 @@ export default function TenantsPage() {
           emptyText={t('admin.tenants.empty')}
           expandedRowId={expandedId}
           renderExpandedRow={renderExpandedRow}
+          search={{
+            value: search,
+            onChange: setSearch,
+            placeholder: t('admin.tenants.searchPlaceholder'),
+          }}
         />
       </div>
       {!loading && total > rows.length && (

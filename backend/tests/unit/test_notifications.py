@@ -50,27 +50,63 @@ def test_notify_empty_payload_defaults():
 # ── list_notifications() ─────────────────────────────────────────────────────
 
 
-@pytest.mark.asyncio
-async def test_list_returns_tenant_items_and_unread_count():
-    tid = uuid.uuid4()
-    items = [_notif(tid), _notif(tid, read_at=datetime.now(UTC))]
+def _paged_db(items, total, unread):
+    """Mock AsyncSession for list_notifications: total, then rows, then unread."""
+    calls = []
 
-    async def fake_execute(stmt):
+    async def fake_execute(_stmt):
         result = MagicMock()
-        # first call → rows, second call → unread count
-        if not hasattr(fake_execute, "_called"):
-            fake_execute._called = True
+        calls.append(_stmt)
+        if len(calls) == 1:  # paginate's COUNT(*)
+            result.scalar_one.return_value = total
+        elif len(calls) == 2:  # paginate's windowed rows
             result.scalars.return_value.all.return_value = items
-        else:
-            result.scalar_one.return_value = 1
+        else:  # unread COUNT(*)
+            result.scalar_one.return_value = unread
         return result
 
     db = AsyncMock()
     db.execute = fake_execute
+    return db
 
-    rows, unread = await notification_service.list_notifications(db, tid)
+
+@pytest.mark.asyncio
+async def test_list_returns_tenant_items_and_unread_count():
+    tid = uuid.uuid4()
+    items = [_notif(tid), _notif(tid, read_at=datetime.now(UTC))]
+    db = _paged_db(items, total=2, unread=1)
+
+    rows, total, unread = await notification_service.list_notifications(db, tid)
     assert rows == items
+    assert total == 2
     assert unread == 1
+
+
+@pytest.mark.asyncio
+async def test_unread_count_spans_every_page_not_just_the_window():
+    """The badge counts all unread notifications, not the unread ones on this page.
+
+    A bell showing "2 unread" while page 1 holds 5 unread rows is the bug this guards.
+    """
+    tid = uuid.uuid4()
+    window = [_notif(tid), _notif(tid)]
+    db = _paged_db(window, total=40, unread=17)
+
+    rows, total, unread = await notification_service.list_notifications(db, tid, limit=2)
+    assert len(rows) == 2
+    assert total == 40  # not len(rows) — otherwise a pager can't render "page 1 of N"
+    assert unread == 17  # not bounded by limit
+
+
+@pytest.mark.asyncio
+async def test_offset_past_the_end_is_an_empty_page_not_an_error():
+    tid = uuid.uuid4()
+    db = _paged_db([], total=3, unread=0)
+
+    rows, total, unread = await notification_service.list_notifications(db, tid, offset=999)
+    assert rows == []
+    assert total == 3  # the caller can still tell how far to clamp back
+    assert unread == 0
 
 
 # ── has_notification() ───────────────────────────────────────────────────────

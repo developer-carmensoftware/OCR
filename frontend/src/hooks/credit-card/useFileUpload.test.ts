@@ -19,6 +19,13 @@ function makeChangeEvent(files: File[]) {
   } as unknown as React.ChangeEvent<HTMLInputElement>
 }
 
+/**
+ * Vitest's own per-test timeout is 5s, which killed the PDF test before the 10s
+ * `waitFor` budget below could ever be spent — so the 2026-08-21 flake fix never took
+ * effect in a full-suite run. Both numbers are needed; raising only one does nothing.
+ */
+const PDF_PARSE_TIMEOUT_MS = 15_000
+
 // ─── tests ────────────────────────────────────────────────────────────────────
 
 describe('useFileUpload', () => {
@@ -91,20 +98,29 @@ describe('useFileUpload', () => {
       expect(result.current.previewType).toBe('image')
     })
 
-    it('sets previewType=pdf and appends #view=FitH for PDF files', async () => {
-      // The PDF preview now extracts only page 1 (credit card is single-page).
-      // In the test env pdf-lib can't parse the tiny stub, so the fallback path
-      // produces #page=1&view=FitH.
-      const { result } = renderHook(() => useFileUpload())
-      act(() => {
-        result.current.handleFileChange(makeChangeEvent([makePDFFile()]))
-      })
-      expect(result.current.previewType).toBe('pdf')
-      await waitFor(() => {
-        expect(result.current.previewUrl).not.toBeNull()
-        expect(result.current.previewUrl).toContain('view=FitH')
-      })
-    })
+    it(
+      'sets previewType=pdf and appends #view=FitH for PDF files',
+      async () => {
+        // The PDF preview now extracts only page 1 (credit card is single-page).
+        // In the test env pdf-lib can't parse the tiny stub, so the fallback path
+        // produces #page=1&view=FitH.
+        const { result } = renderHook(() => useFileUpload())
+        act(() => {
+          result.current.handleFileChange(makeChangeEvent([makePDFFile()]))
+        })
+        expect(result.current.previewType).toBe('pdf')
+        // 10s, not the 1s default: this waits on a pdf-lib parse, which takes seconds
+        // when the whole suite runs in parallel. Flaked in CI at the default.
+        await waitFor(
+          () => {
+            expect(result.current.previewUrl).not.toBeNull()
+            expect(result.current.previewUrl).toContain('view=FitH')
+          },
+          { timeout: 10_000 }
+        )
+      },
+      PDF_PARSE_TIMEOUT_MS
+    )
 
     it('sets previewType to uppercase extension for unsupported file types', () => {
       const { result } = renderHook(() => useFileUpload())

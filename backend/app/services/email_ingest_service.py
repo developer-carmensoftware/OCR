@@ -45,17 +45,11 @@ backlog visible in `job_runs`.
 from __future__ import annotations
 
 import asyncio
-import email
-import imaplib
 import logging
-import re
 import uuid
 from datetime import UTC, datetime
-from email.header import decode_header, make_header
-from email.message import Message
 from typing import Any
 
-import httpx
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -63,7 +57,13 @@ from app.config import settings
 from app.constants import Module
 from app.context import current_carmen_uri, current_tenant_id
 from app.database import async_session
-from app.exceptions import ExtractionError, PdfPasswordRequired, ValidationError
+from app.exceptions import (
+    ExtractionError,
+    InsufficientCredits,
+    ModuleDisabled,
+    PdfPasswordRequired,
+    ValidationError,
+)
 from app.models.business import CreditCard
 from app.models.catalog import Bank
 from app.models.email_automation import EmailDocument
@@ -91,7 +91,20 @@ from app.services.cc_input_tax import build_input_tax_payload
 from app.services.cc_jv import build_gljv_payload, build_jv_rows, unmapped_payment_types
 from app.services.credit_card_service import finalize_extraction, mark_task_failed
 from app.services.credit_service import consume_document, refund_document
-from app.services.quota_service import assert_module_enabled
+from app.services.email_imap import (
+    auto_confirm_forwarding,
+    fetch_confirmations,
+    fetch_unseen,
+    gmail_confirm_code,
+    gmail_confirm_link,
+    mark_seen,
+    match_rules,
+    sender_allowed,
+    tag_from_recipients,
+    unique_names,
+    unmark_seen,
+)
+from app.services.module_gate import assert_module_enabled
 from app.services.task_service import create_task
 from app.utils.bank_detect import detect_bank_code
 from app.utils.gl_filter import parse_default_account
@@ -100,412 +113,202 @@ from app.utils.pdf_utils import ensure_pdf_openable
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_EXTENSIONS = (".pdf", ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".heic")
-
-# A legitimate bank mail carries one report, occasionally a few. The cap is against a
-# forwarded chain whose signature logos are each their own MIME part — `imap_batch_size`
-# limits messages per poll, not attachments per message.
-MAX_ATTACHMENTS_PER_MESSAGE = 10
+# The stops that say nothing about the document itself: the BU has nothing left to spend,
+# or the module is switched off for them. Both are somebody's to reverse, so both hand the
+# mail back unread rather than spending a ledger row — and a ledger row is exactly what
+# would make it unrecoverable, since `_claim` dedupes on (tenant, message, attachment).
+_HOLD = (InsufficientCredits, ModuleDisabled)
 
 # Per poll, not per day: mail to an unknown or missing tag cannot be attributed to
 # anyone, so nobody can be told about it. A handful is a mistyped address; a poll full
 # of them is someone using the mailbox as a drop box.
 UNROUTED_ALERT_THRESHOLD = 5
 
-# Envelope headers only. **Never `To:`** — on an auto-forward that is still the
-# customer's own address, so reading it would pass a hand-sent test and route every
-# real auto-forward nowhere. `Delivered-To` is Gmail's; the other two are for relays
-# that do not set it. A multi-hop forward produces several, hence all values, in order.
-_DELIVERY_HEADERS = ("Delivered-To", "X-Original-To", "Envelope-To")
-
-# `Received: … for <addr>` records the envelope recipient at the hop that accepted the
-# mail, and it is the fallback because **`Delivered-To` is not guaranteed**: measured
-# against the live dev mailbox on 2026-08-06, Gmail omits `Delivered-To` entirely when
-# sender and recipient are the same account — the mail is accepted at submission
-# (`ESMTPSA`) and never traverses the inbound MX hop that stamps it — while the `for`
-# clause carried the tagged address verbatim. Genuine external mail had both.
-#
-# Same trust level as `Delivered-To`: written by a mail server, not by whoever composed
-# the message, which is the distinction that keeps `To:` out. An upstream sender can
-# fabricate either one, and gains nothing by it — the tag is the capability, so anyone
-# who knows one can simply address the mail to it.
-_RECEIVED_FOR = re.compile(r"\bfor\s+<([^>]+)>")
+# How recently a BU must have touched its settings to count as "setting up forwarding
+# right now". The gate on the confirmation sweep — see `es.tags_awaiting_confirmation`.
+CONFIRM_WINDOW_HOURS = 24
 
 
 class _Skip(Exception):
-    """Not an error — this document will not be posted. Carries a contract reason_code."""
+    """Not an error — this document will not be posted. Carries a contract reason_code.
 
-    def __init__(self, reason_code: str, message: str, refund: bool = True):
+    Carries no refund flag on purpose: once the vision model has run, the document is
+    charged whatever happens next. Every `_Skip` is raised either before the charge (so
+    there is nothing to refund) or after extraction succeeded (so the LLM cost is already
+    real) — see the refund boundary in `_run_document`.
+    """
+
+    def __init__(self, reason_code: str, message: str):
         self.reason_code = reason_code
-        self.refund = refund
         super().__init__(message)
-
-
-# ── IMAP (blocking, run in a thread) ──────────────────────────────────────────
-
-
-def _decode(value: str | None) -> str:
-    if not value:
-        return ""
-    try:
-        return str(make_header(decode_header(value)))
-    except (UnicodeDecodeError, LookupError, ValueError):
-        return value
-
-
-def _attachments(msg: Message) -> list[tuple[str, bytes]]:
-    """Every allowed-extension part, capped. `walk()` recurses into a message/rfc822
-    part, so a forward-as-attachment still yields the inner PDF under its own name."""
-    out: list[tuple[str, bytes]] = []
-    for part in msg.walk():
-        if part.get_content_maintype() == "multipart":
-            continue
-        filename = _decode(part.get_filename())
-        if not filename or not filename.lower().endswith(ALLOWED_EXTENSIONS):
-            continue
-        payload = part.get_payload(decode=True)
-        if isinstance(payload, bytes) and payload:
-            out.append((filename, payload))
-        if len(out) >= MAX_ATTACHMENTS_PER_MESSAGE:
-            logger.warning("[email] More than %d attachments — rest ignored", len(out))
-            break
-    return out
-
-
-def _confirmation_body(msg: Message) -> str:
-    """The text of a Gmail forwarding-confirmation mail, or "" for anything else.
-
-    Gated on the sender rather than decoded for every message: the only thing we read a
-    body for is the confirmation link, and a poll of bank mail is otherwise all
-    attachments — decoding each one's HTML signature block to find nothing is work the
-    ingest path does not need to do.
-    """
-    if _GMAIL_CONFIRM_SENDER not in _decode(msg.get("From")).lower():
-        return ""
-    if not msg.is_multipart():
-        return _decode_body(msg)
-    return "\n".join(
-        _decode_body(part)
-        for part in msg.walk()
-        if part.get_content_type() in ("text/plain", "text/html")
-    )
-
-
-def _decode_body(part: Message) -> str:
-    payload = part.get_payload(decode=True)
-    if not isinstance(payload, bytes):
-        return ""
-    charset = part.get_content_charset() or "utf-8"
-    try:
-        return payload.decode(charset, errors="replace")
-    except LookupError:
-        return payload.decode("utf-8", errors="replace")
-
-
-def _recipients(msg: Message) -> list[str]:
-    """Every envelope-recipient candidate, delivery headers first then `Received … for`.
-
-    Order matters only for a multi-hop forward, where the first match wins; both sources
-    are the receiving server's own record of the address it accepted the mail for.
-    """
-    out = [_decode(v) for h in _DELIVERY_HEADERS for v in (msg.get_all(h) or [])]
-    out += [
-        found.group(1)
-        for value in (msg.get_all("Received") or [])
-        if (found := _RECEIVED_FOR.search(" ".join(value.split())))
-    ]
-    return out
-
-
-def _quoted_folder(name: str) -> str:
-    """The mailbox name as an IMAP quoted-string.
-
-    `imaplib` passes command arguments through raw — `_command` concatenates them with
-    spaces and quotes nothing — so a Gmail label with a space in it (`AR Agent`, the
-    label a filter routes the ingest alias into) would go out as `SELECT AR Agent` and
-    the server would reject the whole command. Every poll fails, no document is read,
-    and the only symptom is a FAILED row on `#/admin/jobs`.
-
-    Quoted unconditionally: `SELECT "INBOX"` is as valid as `SELECT INBOX`, so there is
-    no case to branch on. Surrounding quotes are stripped first, because a value typed
-    into a dashboard as `"AR Agent"` and one typed as `AR Agent` must mean the same
-    folder — a `.env` file strips them and Render does not.
-
-    ponytail: no escaping of `"` or `\\` inside the name. A Gmail label containing a
-    quote character is not a thing anyone has; add it the day someone proves otherwise.
-    """
-    return f'"{name.strip().strip(chr(34))}"'
-
-
-def _fetch_unseen(limit: int) -> list[dict[str, Any]]:
-    """Pull unseen mail and mark it seen in the same connection.
-
-    `SMALLER` filters at the server, before `FETCH` pulls the whole message — including
-    every attachment — into this process's memory. That is the byte-size cap the ingest
-    path never had: `MAX_FILE_SIZE_MB` is enforced in `file_service.py`, which only the
-    interactive upload path calls.
-
-    Marked seen even when it turns out to be junk: an unattributable message has no
-    ledger row to record it, so the IMAP flag is the only thing stopping it from being
-    re-read on every poll forever.
-    """
-    box = imaplib.IMAP4_SSL(settings.imap_host, settings.imap_port)
-    try:
-        box.login(settings.imap_user, settings.imap_password)
-        box.select(_quoted_folder(settings.imap_folder))
-        max_octets = str(settings.max_file_size_mb * 1024 * 1024)
-        try:
-            _, data = box.search(None, "UNSEEN", "SMALLER", max_octets)
-        except imaplib.IMAP4.error as exc:
-            # SMALLER is RFC 3501 mandatory, but a broken server refusing it must not
-            # silently mean "no mail today" — that is a total outage with no symptom.
-            logger.warning("[email] IMAP SMALLER refused (%s) — searching without it", exc)
-            _, data = box.search(None, "UNSEEN")
-        uids = [u.decode() for u in (data[0] or b"").split()[:limit]]
-        messages = []
-        for uid in uids:
-            _, fetched = box.fetch(uid, "(RFC822)")
-            if not fetched or not isinstance(fetched[0], tuple):
-                continue
-            msg = email.message_from_bytes(fetched[0][1])
-            messages.append(
-                {
-                    "message_id": (msg.get("Message-ID") or f"no-id-{uid}")[:500],
-                    "subject": _decode(msg.get("Subject")),
-                    "from": _decode(msg.get("From")),
-                    # For the owner-address gate only. `To`/`Cc` are display headers and
-                    # are never used to route — see `sender_allowed` and `_recipients`.
-                    "people": " ".join(
-                        _decode(v) for h in ("From", "To", "Cc") for v in (msg.get_all(h) or [])
-                    ),
-                    "recipients": _recipients(msg),
-                    "attachments": _attachments(msg),
-                    # Empty for everything that is not a Gmail confirmation — the only
-                    # message whose body we have any use for.
-                    "body": _confirmation_body(msg),
-                }
-            )
-            box.store(uid, "+FLAGS", "\\Seen")
-        return messages
-    finally:
-        try:
-            box.logout()
-        except OSError:
-            pass
-
-
-# ── Routing ───────────────────────────────────────────────────────────────────
-
-
-def tag_from_recipients(candidates: list[str]) -> str | None:
-    """The `+tag` on the address this mail was delivered to, or None.
-
-    Matched against our own configured mailbox, so no other address in the headers can
-    produce a tag — including the customer's own, which is what `To:` holds on an
-    auto-forward and why `To:` is not among the headers collected.
-    """
-    user, _, domain = settings.email_ingest_address.partition("@")
-    if not domain:
-        return None
-    pattern = re.compile(
-        rf"{re.escape(user)}\+([A-Za-z0-9]{{1,32}})@{re.escape(domain)}", re.IGNORECASE
-    )
-    for value in candidates:
-        if found := pattern.search(value):
-            return found.group(1).lower()
-    return None
-
-
-# Setting up an auto-forward in Gmail needs a code Google mails to the *destination*
-# and the customer types back into their own Gmail screen. The destination is this
-# shared mailbox, which no customer can open — so without this the last step of a
-# self-service setup needs one of us to read the mail out to them.
-_GMAIL_CONFIRM_SENDER = "forwarding-noreply@google.com"
-
-# "(#123456789) Gmail Forwarding Confirmation - Receive Mail from x@y"
-#
-# **Expect this to match nothing.** Checked against four real confirmation mails on
-# 2026-08-07 — Thai personal Gmail and English Workspace — and none carried a code, in
-# the subject or the body. Every real subject opens with a bare "(" where "#code)" used
-# to be, which is why the pattern reads as plausible: it only ever matched the fixtures
-# we wrote for ourselves. Kept because a code we cannot use costs nothing and Google
-# bringing it back costs a deploy; `auto_confirm_forwarding` is what actually works.
-_GMAIL_CONFIRM_CODE = re.compile(r"\(#\s*(\d{6,12})\s*\)")
-
-# The confirm link, and **only** the confirm link. The same mail carries an almost
-# identical `/mail/uf-…` URL that *cancels* the forward — one letter apart, and
-# following the wrong one would silently undo the setup the customer just asked for.
-# Anchored on the host and the literal `/mail/vf-` so nothing else in the body matches.
-_GMAIL_CONFIRM_LINK = re.compile(r"https://mail-settings\.google\.com/mail/vf-[A-Za-z0-9%\-_\[\]]+")
-
-# Every host the confirmation may touch: it 302s from mail-settings to mail. Checked on
-# each hop rather than trusting `follow_redirects`, which would otherwise let a
-# redirect walk this request off Google entirely.
-_GMAIL_HOSTS = frozenset({"mail-settings.google.com", "mail.google.com"})
-
-
-def gmail_confirm_code(sender: str, subject: str) -> str | None:
-    """The forwarding confirmation code in this message, or None if it is not one.
-
-    The sender is checked, not just the pattern: `(#123456789)` is an unremarkable
-    thing for a bank to put in a subject line, and a false positive here would park
-    a real document's worth of digits on the settings screen as a "code".
-    """
-    if _GMAIL_CONFIRM_SENDER not in (sender or "").lower():
-        return None
-    found = _GMAIL_CONFIRM_CODE.search(subject or "")
-    return found.group(1) if found else None
-
-
-def gmail_confirm_link(body: str) -> str | None:
-    """The `vf-` confirmation URL in this mail's body, or None.
-
-    The caller has already established the sender (`_confirmation_body` returns "" for
-    anything else), so this only has to pick the right URL out of the three Google puts
-    in the mail: the confirm link, the cancel link, and a help-centre article.
-    """
-    found = _GMAIL_CONFIRM_LINK.search(body or "")
-    return found.group(0) if found else None
-
-
-async def auto_confirm_forwarding(link: str) -> bool:
-    """Complete Gmail's handshake by following the link, the way a click would.
-
-    **This is the only mechanism that still works.** Google stopped printing a code, so
-    the "paste it into your own Gmail screen" path has nothing to paste; verified end to
-    end on 2026-08-07 against a forward that had never been confirmed, which went live
-    without anyone touching it.
-
-    Two requests, because the link is not the confirmation: it 302s to an interstitial
-    whose whole content is `<form action="" method="post">` with a single button and no
-    hidden field or CSRF token. GET renders it, POST to the same URL is the click. Both
-    run on one client so the cookies Google sets on the way in are still there.
-
-    Never raises. A poll is mostly about documents, and a confirmation that fails must
-    not take down the invoices travelling with it.
-    """
-    if httpx.URL(link).host not in _GMAIL_HOSTS:
-        logger.error("[email] Confirmation link is not a Google host — refused")
-        return False
-    try:
-        async with httpx.AsyncClient(
-            timeout=20, follow_redirects=True, headers={"User-Agent": _CONFIRM_USER_AGENT}
-        ) as client:
-            page = await client.get(link)
-            for hop in [*page.history, page]:
-                if httpx.URL(str(hop.url)).host not in _GMAIL_HOSTS:
-                    logger.error("[email] Confirmation redirect left Google — abandoned")
-                    return False
-            done = await client.post(str(page.url), data={})
-        if done.status_code >= 400:
-            logger.error("[email] Gmail refused the confirmation (HTTP %s)", done.status_code)
-            return False
-        logger.info("[email] Forwarding confirmed automatically")
-        return True
-    except Exception as exc:
-        logger.error("[email] Could not follow the confirmation link: %s", exc)
-        return False
-
-
-# Google serves the interstitial to a default httpx UA as readily as to a browser, so
-# this is not evasion — it is the plain identification a form submission is expected to
-# carry, kept because an unrecognised client is the first thing an anti-abuse rule drops.
-_CONFIRM_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
-)
-
-
-def sender_allowed(owner_emails: list[str], people: str) -> bool:
-    """Does this message involve one of the BU's own addresses? Empty list = yes.
-
-    `people` is `From` + `To` + `Cc` concatenated, matched as a case-insensitive
-    substring so the `"Accounting" <a@b.com>` display form needs no parsing — the same
-    way `bank_sender_email` is matched.
-
-    All three headers, because the two arrival modes put the customer somewhere
-    different: an auto-forward has them in `To:`/`Cc:` (the mailbox the bank wrote to),
-    a manual forward in `From:` (the employee who pressed Forward).
-
-    **A second layer, deliberately weaker than the tag.** These headers are composed by
-    the sender, so anyone who already knows the tag can also write an address into them;
-    the envelope tag is written by a mail server and cannot be. What this reliably stops
-    is accidents — a personal Gmail forwarding a document, someone outside the accounting
-    team, a document that landed on the wrong tag — which is the common case, not the
-    interesting one.
-
-    Empty by default and left that way on purpose: a gate nobody asked for that silently
-    refuses real documents is worse than no gate (§2.3 "start broad, narrow later").
-    """
-    if not owner_emails:
-        return True
-    haystack = people.lower()
-    return any(addr in haystack for addr in owner_emails if addr)
-
-
-def match_rules(rules: list[dict], sender: str, filename: str) -> list[dict]:
-    """This BU's rules that claim this attachment. **Empty means stop** — no LLM call.
-
-    A rule identifies a bank. Both of its conditions must hold, which is stricter than
-    either alone: mail from KTC's address carrying a file only the BBL rule names stops
-    rather than being scanned as BBL.
-
-        narrow by bank_sender_email  →  matched nothing? keep every rule. A manual
-                                        forward carries no bank sender, so this step
-                                        must never empty the set.
-        filter by filename_patterns  →  nothing left → the caller stops.
-
-    Sender **narrows**, it does not short-circuit: returning on a sender hit without
-    looking at the filename would walk straight past the gate.
-
-    Several matches means the BU's patterns overlap. The list is returned rather than a
-    winner so the caller can decline to guess the extraction prompt and let the document
-    itself say which bank issued it.
-    """
-    active = [r for r in rules if r.get("is_active", True)]
-    sender_l, filename_l = sender.lower(), filename.lower()
-    by_sender = [
-        r
-        for r in active
-        if (addr := (r.get("bank_sender_email") or "").lower()) and addr in sender_l
-    ]
-    # Substring, case-insensitive — `%pattern%`, so the word may sit anywhere in the
-    # filename. Deliberately not equality: banks vary their names and employees rename
-    # files before forwarding.
-    return [
-        r
-        for r in (by_sender or active)
-        if any(p.lower() in filename_l for p in (r.get("filename_patterns") or []) if p)
-    ]
 
 
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 
+# One poll at a time per process — see `run_ingest`.
+_poll_lock = asyncio.Lock()
+
 
 async def run_ingest(limit: int | None = None) -> dict:
-    """One poll. Returns a summary the job endpoint echoes back."""
+    """One poll. Returns a summary the job endpoint echoes back.
+
+    Serialised against itself. A batch whose documents are slow can outlast the poll
+    interval, and a second poll starting on top of it would not duplicate work — the
+    `\\Seen` flag and `_claim` both dedupe — but it would double this job's share of a
+    connection pool capped at 15 for the whole application. Skipping is free and the
+    backlog is still there in ten minutes.
+    """
     if not settings.imap_host:
         return {"status": "disabled", "reason": "IMAP not configured"}
+    if _poll_lock.locked():
+        logger.info("[email] Poll still running — this tick skipped")
+        return {"status": "busy"}
 
-    started = datetime.now(UTC)
-    summary = {"messages": 0, "posted": 0, "failed": 0, "skipped": 0, "unrouted": 0}
-    try:
-        messages = await asyncio.to_thread(_fetch_unseen, limit or settings.imap_batch_size)
-        summary["messages"] = len(messages)
+    async with _poll_lock:
+        started = datetime.now(UTC)
+        # `retry_later` is in the initial shape rather than only appearing when it happens:
+        # it is the counter that says "mail is piling up unread because someone switched
+        # something off", and a key that vanishes on the healthy path is one the admin page
+        # cannot render honestly.
+        summary = {
+            "messages": 0,
+            "posted": 0,
+            "failed": 0,
+            "skipped": 0,
+            "unrouted": 0,
+            "retry_later": 0,
+            # Unseen mail already past `IMAP_HOLD_DAYS` — no poll will ever see it again.
+            # In the initial shape for the same reason as `retry_later`: a key that only
+            # appears when things are wrong is one the admin page cannot render honestly.
+            "beyond_window": 0,
+        }
+        # Tags that cannot be spent against right now, and the mail to hand back for them.
+        exhausted: set[str] = set()
+        retry: list[str] = []
+        # How many of `messages` have been decided about. `fetch_unseen` flagged the whole
+        # batch on the way in, so anything this loop never reached is `\Seen`, unprocessed
+        # and — having never got as far as `_claim` — recorded nowhere at all.
+        messages: list[dict[str, Any]] = []
+        done = 0
+        try:
+            messages, beyond = await asyncio.to_thread(
+                fetch_unseen, limit or settings.imap_batch_size
+            )
+            summary["messages"] = len(messages)
+            summary["beyond_window"] = beyond
+            for msg in messages:
+                outcomes = await _process_message(msg, exhausted)
+                if "retry_later" in outcomes:
+                    retry.append(msg["uid"])
+                for outcome in outcomes:
+                    summary[outcome] = summary.get(outcome, 0) + 1
+                done += 1
+        except Exception as exc:
+            logger.exception("[email] Poll failed")
+            # Everything the loop never attempted goes back unread. `messages[done]` — the
+            # one that actually raised — stays `\Seen` on purpose: handing it back would
+            # re-crash the next poll on it forever, and the FAILED `job_runs` row plus the
+            # traceback above is the trail for that one message.
+            retry.extend(m["uid"] for m in messages[done + 1 :])
+            await asyncio.to_thread(unmark_seen, retry)
+            await _record_run(started, summary, error=str(exc))
+            raise
+
+        if summary.get("beyond_window"):
+            logger.warning(
+                "[email] %d unseen message(s) are older than the %d-day hold window and "
+                "will never be polled again",
+                summary["beyond_window"],
+                settings.imap_hold_days,
+            )
+        # One IMAP round trip for the whole batch, and only when something was left
+        # undone — the common poll never reaches it.
+        await asyncio.to_thread(unmark_seen, retry)
+        logger.info("[email] Poll finished: %s", summary)
+        await _record_run(started, summary)
+        return summary
+
+
+# Per process, which is what "no overlapping sweeps" means on a single Render instance.
+# A second replica would sweep concurrently; harmless — both read the same mailbox and
+# `record_gmail_confirmed` is idempotent.
+_sweep_lock = asyncio.Lock()
+
+
+async def sweep_confirmations() -> dict:
+    """Follow any Gmail forwarding-confirmation link waiting in the mailbox. Cheap by design.
+
+    Split out of `run_ingest` and scheduled every minute because the two jobs have nothing
+    in common but the mailbox: a document poll processes attachments serially and a full
+    batch runs minutes, while this is a search that usually matches nothing. The customer
+    is standing in Gmail's "Awaiting verification" screen when this matters, so latency is
+    the whole feature — a confirmation that lands ten minutes later is a customer who has
+    already given up and called someone.
+
+    Never spends money: no attachment is parsed, no document charged, no model called.
+
+    Steady-state cost is one indexed-enough SELECT. The mailbox is only opened when a BU
+    is actually mid-setup (`tags_awaiting_confirmation`), and a tick that finds the previous
+    sweep still running does nothing at all rather than queueing behind it.
+    """
+    if not settings.imap_host:
+        return {"status": "disabled", "reason": "IMAP not configured"}
+    if _sweep_lock.locked():
+        # A minute is shorter than a pathological IMAP call. Skipping is correct: the
+        # sweep in flight is looking at the same mailbox this one would.
+        return {"status": "busy"}
+
+    async with _sweep_lock:
+        started = datetime.now(UTC)
+        async with async_session() as db:
+            waiting = await es.tags_awaiting_confirmation(db, CONFIRM_WINDOW_HOURS)
+        if not waiting:
+            return {"checked": 0, "confirmed": 0, "waiting": 0}
+
+        try:
+            messages = await asyncio.to_thread(fetch_confirmations)
+        except Exception as exc:
+            logger.exception("[email] Confirmation sweep failed")
+            await _record_run(started, {"messages": 0}, error=str(exc), job_name="email-confirm")
+            raise
+
+        confirmed, handled = 0, []
         for msg in messages:
-            for outcome in await _process_message(msg):
-                summary[outcome] = summary.get(outcome, 0) + 1
-    except Exception as exc:
-        logger.exception("[email] Poll failed")
-        await _record_run(started, summary, error=str(exc))
-        raise
+            tag = tag_from_recipients(msg["recipients"])
+            if not tag or tag not in waiting:
+                # Someone else's confirmation, or one for a BU that went quiet. The
+                # document poll picks it up; leaving it unseen is what lets that happen.
+                continue
+            handled.append(msg["uid"])
+            async with async_session() as db:
+                if code := gmail_confirm_code(msg["from"], msg["subject"]):
+                    await es.record_gmail_code(db, tag, code)
+                link = gmail_confirm_link(msg["body"])
+                if link and await auto_confirm_forwarding(link):
+                    await es.record_gmail_confirmed(db, tag)
+                    confirmed += 1
+                else:
+                    logger.warning("[email] Could not confirm forwarding for tag %s", tag)
 
-    logger.info("[email] Poll finished: %s", summary)
-    await _record_run(started, summary)
-    return summary
+        # Seen whether or not Google took it: a link we failed to follow is almost always
+        # a dead one, and retrying it every minute for a day is 1 440 requests to Google
+        # for a forward the customer can re-trigger with Gmail's own "Resend email".
+        await asyncio.to_thread(mark_seen, handled)
+
+        if confirmed:
+            await _record_run(
+                started, {"messages": len(messages)}, job_name="email-confirm", rows=confirmed
+            )
+        return {"checked": len(messages), "confirmed": confirmed, "waiting": len(waiting)}
 
 
-async def _record_run(started: datetime, summary: dict, error: str | None = None) -> None:
+async def _record_run(
+    started: datetime,
+    summary: dict,
+    error: str | None = None,
+    job_name: str = "email-ingest",
+    rows: int | None = None,
+) -> None:
     """Persist the poll as a `job_runs` row so `#/admin/jobs` reports this job at all.
 
     Until now `run_ingest` returned a dict to whoever called the endpoint and wrote
@@ -515,22 +318,29 @@ async def _record_run(started: datetime, summary: dict, error: str | None = None
     Also raises one alert when a poll is mostly mail we cannot attribute — the counter
     §2.5 of the contract promises we watch. Never raises: a failed bookkeeping write
     must not turn a successful poll into a failed one.
+
+    **A poll that found no mail writes no row.** `job_runs` has no retention and no
+    partitioning, and `#/admin/jobs` shows the newest 100 rows with no way to filter by
+    job name — so a poll on a schedule would bury every other job's history under its own
+    idle ticks within hours. A failure always writes, and so does any poll that actually
+    carried mail; "the poller is alive on a quiet day" is what `keep-warm` is for.
     """
-    try:
-        async with async_session() as db:
-            db.add(
-                JobRun(
-                    job_name="email-ingest",
-                    started_at=started,
-                    completed_at=datetime.now(UTC),
-                    status=JobStatus.FAILED if error else JobStatus.SUCCESS,
-                    rows_affected=summary.get("posted", 0),
-                    error_message=error,
+    if error or summary.get("messages", 0):
+        try:
+            async with async_session() as db:
+                db.add(
+                    JobRun(
+                        job_name=job_name,
+                        started_at=started,
+                        completed_at=datetime.now(UTC),
+                        status=JobStatus.FAILED if error else JobStatus.SUCCESS,
+                        rows_affected=summary.get("posted", 0) if rows is None else rows,
+                        error_message=error,
+                    )
                 )
-            )
-            await db.commit()
-    except Exception as exc:
-        logger.error("[email] Could not record the job run: %s", exc)
+                await db.commit()
+        except Exception as exc:
+            logger.error("[email] Could not record the job run: %s", exc)
 
     if summary.get("unrouted", 0) >= UNROUTED_ALERT_THRESHOLD:
         await anomaly_service.open_alert_if_absent(
@@ -544,13 +354,40 @@ async def _record_run(started: datetime, summary: dict, error: str | None = None
             actual=summary["unrouted"],
         )
 
+    if summary.get("beyond_window", 0):
+        # A toast on #/admin/email is seen by whoever clicked Poll; this is for the case
+        # nobody clicked anything — a poller outage longer than IMAP_HOLD_DAYS, which
+        # loses real mail with no other symptom whatsoever. `open_alert_if_absent` dedupes
+        # on (tenant, metric) while the alert is open, so a standing backlog raises one
+        # alert, not one every ten minutes.
+        await anomaly_service.open_alert_if_absent(
+            tenant_id="system",
+            module_id=Module.CREDIT_CARD_OCR,
+            metric="email_ingest_beyond_window",
+            severity=AlertSeverity.WARN,
+            description=(
+                f"{summary['beyond_window']} unseen message(s) are older than the "
+                f"{settings.imap_hold_days}-day hold window and will never be polled again"
+            ),
+            actual=summary["beyond_window"],
+        )
 
-async def _process_message(msg: dict[str, Any]) -> list[str]:
+
+async def _process_message(msg: dict[str, Any], exhausted: set[str] | None = None) -> list[str]:
     """One message → one outcome per attachment (or a single message-level outcome).
 
-    Everything expensive is behind two free checks: does it carry a file at all, and
-    does its tag name a paying BU. Nothing here spends money, opens a file or writes a
-    row for mail that fails either.
+    Everything expensive is behind two free checks: does it name a file at all, and
+    does its tag name a paying BU. Nothing here spends money or opens a file for mail
+    that fails either.
+
+    An attachment we cannot read is not the same as no attachment: it gets a ledger row
+    (`skipped` / `unsupported_attachment`) so the customer who forwarded an `.xlsx` has
+    an answer, while a mail with no named part at all is still a free silent skip.
+
+    `exhausted` collects the tags that ran out of documents earlier in this same poll.
+    It is checked against the tag, not the tenant, so the rest of that BU's backlog is
+    skipped without even the one SELECT that resolving it would cost — while another
+    BU's mail in the same batch is unaffected.
     """
     # Before the attachment check, because a confirmation mail has none — it is the
     # one message we care about that carries no document.
@@ -574,49 +411,149 @@ async def _process_message(msg: dict[str, Any]) -> list[str]:
                 await es.record_gmail_confirmed(db, tag)
         return ["skipped"]
 
-    if not msg["attachments"]:
+    rejected = list(msg.get("rejected") or [])
+    if not msg["attachments"] and not rejected:
+        # Nothing named at all — a "your statement is ready" notice, a bare reply. Free
+        # and silent on purpose: a ledger row for every one of those buries the ones that
+        # matter. A mail that *did* carry files we could not read falls through instead.
         return ["skipped"]
 
     tag = tag_from_recipients(msg["recipients"])
     if not tag:
         logger.warning("[email] No ingest tag on %s — dropped", msg["message_id"])
         return ["unrouted"]
+    if exhausted is not None and tag in exhausted:
+        return ["retry_later"]
 
     async with async_session() as db:
         row = await es.resolve_by_tag(db, tag)
-        if row is None:
-            # Nobody to notify: an unresolvable tag cannot be attributed to a tenant.
-            # `_record_run` makes the volume visible to us instead.
+        # Nobody to notify, and nobody to hold the mail for: an unresolvable tag cannot be
+        # attributed to a tenant. `_record_run` makes the volume visible to us instead.
+        # A missing tenant row is the same answer — a broken FK, not a temporary state.
+        tenant = await db.get(Tenant, row.tenant_id) if row is not None else None
+        if row is None or tenant is None:
             logger.warning("[email] Unknown ingest tag on %s — dropped", msg["message_id"])
             return ["unrouted"]
-        # A lapsed package does not rewrite settings, so `enabled` stays true after it
-        # expires — the gate has to be here, not only on the toggle.
-        tenant = await db.get(Tenant, row.tenant_id)
-        if tenant is None or not await es.is_entitled(db, tenant):
-            logger.warning("[email] Tenant %s has no active package — dropped", row.tenant_id)
-            return ["skipped"]
+        # **Switched off is a pause, not a verdict on the mail.** All three of these are
+        # conditions the customer can reverse — the toggle, the module, an expired package
+        # (which never rewrites settings, so `enabled` stays true after it lapses) — so the
+        # message goes back unread and replays on the poll after they fix it, exactly as
+        # `InsufficientCredits` already does. `since_arg` bounds how long that offer lasts.
+        if not row.enabled or not await es.is_entitled(db, tenant):
+            logger.info(
+                "[email] Tenant %s is %s — mail held unread",
+                row.tenant_id,
+                "switched off" if not row.enabled else "out of package",
+            )
+            if exhausted is not None:
+                exhausted.add(tag)  # the rest of this BU's mail in this batch too
+            return ["retry_later"]
         tenant_id = str(row.tenant_id)
+        enabled_at = row.enabled_at
         owner_emails = list(row.owner_emails or [])
         rules = list(row.rules or [])
         passwords = es.rule_passwords(row)
         carmen_token, carmen_uri = await es.posting_target(db, row)
 
-    return [
-        await _process_attachment(
-            tenant_id=tenant_id,
-            message_id=msg["message_id"],
-            sender=msg["from"],
-            people=msg["people"],
-            filename=filename,
-            blob=blob,
-            owner_emails=owner_emails,
-            rules=rules,
-            passwords=passwords,
-            carmen_token=carmen_token,
-            carmen_uri=carmen_uri,
+    # One name per attachment, across both lists at once: they share the ledger's unique
+    # index, so disambiguating them separately would still let a rejected `report.pdf`
+    # collide with an accepted one. See `unique_names`.
+    blobs = [blob for _, blob in msg["attachments"]]
+    names = unique_names([f for f, _ in msg["attachments"]] + rejected)
+    accepted = list(zip(names[: len(blobs)], blobs, strict=True))
+    unreadable = names[len(blobs) :]
+
+    # **The toggle is not the same kind of pause as the two above it.** A BU that switches
+    # the feature off is telling us they are keying these documents themselves — and a
+    # document keyed straight into Carmen writes no `credit_cards` row, so the duplicate
+    # guard cannot see it and the whole held backlog would post a second time the moment
+    # the toggle goes back on. Mail older than the switch-on is therefore dropped rather
+    # than replayed, and left `\Seen`. It still gets a ledger row per attachment: the
+    # customer needs the list of what arrived while they were off, or this fix would just
+    # trade duplicate posts for silent loss. Message-level because arrival time is a fact
+    # about the mail — nothing here enters the money path.
+    arrived_at = msg.get("arrived_at")
+    if enabled_at and arrived_at and arrived_at < enabled_at.timestamp():
+        return await _skip_all(
+            tenant_id,
+            msg["message_id"],
+            names,
+            "ingest_paused",
+            "Arrived while Email Automation was switched off — key this one by hand",
         )
-        for filename, blob in msg["attachments"]
-    ]
+
+    # A file the customer forwarded and we cannot read. Before this it left no trace
+    # anywhere — the mail was marked `\Seen`, dropped on the attachment check, and "I
+    # forwarded it on Tuesday" had nothing to answer it with. Costs nothing: this is far
+    # ahead of `consume_document`, so there is nothing to refund either.
+    outcomes = await _skip_all(
+        tenant_id,
+        msg["message_id"],
+        unreadable,
+        "unsupported_attachment",
+        "{name} is not a file type this module can read",
+    )
+
+    for filename, blob in accepted:
+        try:
+            outcomes.append(
+                await _process_attachment(
+                    tenant_id=tenant_id,
+                    message_id=msg["message_id"],
+                    sender=msg["from"],
+                    people=msg["people"],
+                    filename=filename,
+                    blob=blob,
+                    owner_emails=owner_emails,
+                    rules=rules,
+                    passwords=passwords,
+                    carmen_token=carmen_token,
+                    carmen_uri=carmen_uri,
+                )
+            )
+        except _HOLD:
+            # The remaining attachments would each fail the same way, one wasted
+            # `consume_document` at a time. Hand the whole message back instead: the
+            # attachments already posted keep their ledger rows, and re-delivery of
+            # this message dedupes on those, so nothing is charged twice.
+            if exhausted is not None:
+                exhausted.add(tag)
+            return [*outcomes, "retry_later"]
+    return outcomes
+
+
+async def _skip_all(
+    tenant_id: str,
+    message_id: str,
+    names: list[str],
+    reason_code: str,
+    error: str,
+) -> list[str]:
+    """Record every one of `names` as skipped, and charge for none of them.
+
+    The two callers that stop a whole message before it costs anything: an attachment we
+    cannot read, and mail that arrived while the BU had automation switched off. Both need
+    the *row* more than the outcome — it is the customer's answer to "where did my document
+    go", and `#/admin/email` is where they read it.
+
+    `error` is a template so the per-file case can name the file; a message-level reason
+    simply carries no `{name}`.
+    """
+    outcomes = []
+    for name in names:
+        async with async_session() as db:
+            ledger = await _claim(db, tenant_id, message_id, name)
+        if ledger is None:
+            outcomes.append("skipped")
+            continue
+        await _finish(
+            ledger.id,  # type: ignore[arg-type]
+            status="skipped",
+            reason_code=reason_code,
+            error=error.format(name=name),
+        )
+        outcomes.append("skipped")
+    return outcomes
 
 
 async def _process_attachment(
@@ -654,19 +591,27 @@ async def _process_attachment(
     tenant_ctx = current_tenant_id.set(tenant_id)
     uri_ctx = current_carmen_uri.set(carmen_uri)
     try:
-        return await _run_document(
-            ledger_id=ledger_id,
-            tenant_id=tenant_id,
-            sender=sender,
-            people=people,
-            filename=filename,
-            blob=blob,
-            owner_emails=owner_emails,
-            rules=rules,
-            passwords=passwords,
-            carmen_token=carmen_token,
-            carmen_uri=carmen_uri,
-        )
+        try:
+            return await _run_document(
+                ledger_id=ledger_id,
+                tenant_id=tenant_id,
+                sender=sender,
+                people=people,
+                filename=filename,
+                blob=blob,
+                owner_emails=owner_emails,
+                rules=rules,
+                passwords=passwords,
+                carmen_token=carmen_token,
+                carmen_uri=carmen_uri,
+            )
+        except _HOLD:
+            # Not a verdict on this document — the BU has nothing left to spend, or the
+            # module is switched off for them. Drop the claim so a poll after that is
+            # fixed can take it again; the caller hands the mail itself back by clearing
+            # \Seen.
+            await _release(ledger_id)
+            raise
     finally:
         current_carmen_uri.reset(uri_ctx)
         current_tenant_id.reset(tenant_ctx)
@@ -702,7 +647,6 @@ async def _run_document(
             raise _Skip(
                 "sender_not_allowed",
                 "No registered address of this BU appears in From/To/Cc",
-                refund=False,
             )
         matched = match_rules(rules, sender, filename)
         if not matched:
@@ -710,7 +654,7 @@ async def _run_document(
             # the tenant. Now the miss is a row in *this BU's* ledger, diagnosable from
             # #/admin — and it costs nothing, which is what removes the whole
             # signature-logo class of junk from the spend.
-            raise _Skip("no_rule_match", f"No rule matches {filename}", refund=False)
+            raise _Skip("no_rule_match", f"No rule matches {filename}")
         # Overlapping patterns: don't guess the prompt, let detect_bank_code read the
         # document. A wrong bank prompt is worse than the generic one.
         bank_code = matched[0].get("bank_code") if len(matched) == 1 else None
@@ -721,21 +665,34 @@ async def _run_document(
         await assert_module_enabled(Module.CREDIT_CARD_OCR)
         charged = await consume_document()
 
-        async with async_session() as db:
-            task = await create_task(
-                db,
-                tenant_id=tenant_id,
-                module_id=Module.CREDIT_CARD_OCR,
-                original_filename=filename,
-                carmen_user_id=None,
-                charged_docs=1 if charged else 0,
-            )
-            task_id = str(task.id)
-
-        # The first money of the document, and the tenant and task are already known —
-        # so `log_llm_usage` inserts a fully attributed row rather than needing the
-        # tenant-less parking buffer the tax-ID design forced on it.
+        # ── The refund boundary ───────────────────────────────────────────────
+        #
+        # This block is the ONLY place in the pipeline that refunds. Everything in it
+        # can fail without the model ever having run — a dead pool connection on
+        # `create_task`, an OpenRouter socket that never opened — and that is our
+        # failure to deliver, not work the customer received. So it is given back.
+        #
+        # Once `finalize_extraction` returns, the vision call has been made and billed
+        # to us. From there on the document is charged whatever happens next: a
+        # duplicate, a foreign tax ID, an unmappable GL account and a Carmen refusal
+        # are all decisions taken *about a document we successfully read*, not failures
+        # to read it. That is the whole rule, and it is why `_Skip` carries no refund
+        # flag — see the handlers at the bottom of this function.
         try:
+            async with async_session() as db:
+                task = await create_task(
+                    db,
+                    tenant_id=tenant_id,
+                    module_id=Module.CREDIT_CARD_OCR,
+                    original_filename=filename,
+                    carmen_user_id=None,
+                    charged_docs=1 if charged else 0,
+                )
+                task_id = str(task.id)
+
+            # The first money of the document, and the tenant and task are already known —
+            # so `log_llm_usage` inserts a fully attributed row rather than needing the
+            # tenant-less parking buffer the tax-ID design forced on it.
             extracted = await ocr_service.extract_stateless(
                 file_bytes=blob,
                 original_filename=filename,
@@ -745,7 +702,10 @@ async def _run_document(
             )
             extracted = await finalize_extraction(extracted, task_id, tenant_id, bank_code, None)
         except Exception as exc:
-            await mark_task_failed(task_id, exc)
+            if charged:
+                await refund_document(charged)
+            if task_id is not None:
+                await mark_task_failed(task_id, exc)
             raise
 
         # A manual forward carries no bank identity, and overlapping rules name no one
@@ -794,8 +754,8 @@ async def _run_document(
 
         rows = build_jv_rows(extracted.details, config.mappings or {})
         if not rows or not any(r["credit"] for r in rows):
-            # Zero-total document: posting an empty JV is worse than absorbing the
-            # extraction cost, so refund and stop.
+            # Zero-total document: posting an empty JV is worse than stopping here.
+            # The read itself succeeded, so the charge stands.
             raise _Skip("unreadable_document", "Document has no postable amounts")
 
         if not carmen_token:
@@ -814,7 +774,6 @@ async def _run_document(
             raise _Skip(
                 "carmen_rejected",
                 str((result or {}).get("UserMessage") or "Carmen rejected the JV"),
-                refund=False,  # the extraction was fine; the ERP declined it
             )
 
         await _mark_submitted(extracted.id)
@@ -822,8 +781,8 @@ async def _run_document(
         # The statement's second Carmen document (wizard step 4). Deliberately after
         # the JV and deliberately unable to fail it: the JV is already in Carmen's
         # books and there is no rollback, so a missing input-tax record is recorded
-        # for a human to add rather than turned into a failure that refunds a
-        # credit for work that was done.
+        # for a human to add rather than turned into a failure on a document that
+        # posted successfully.
         tax_error = await _post_input_tax(
             extracted, bank_code=bank_code, config=config, carmen_token=carmen_token
         )
@@ -841,8 +800,11 @@ async def _run_document(
         return "posted"
 
     except _Skip as skip:
-        if skip.refund and charged:
-            await refund_document(charged)
+        # No refund here, ever. A `_Skip` raised before the charge has nothing to give
+        # back; one raised after it comes from a document the model already read, and
+        # that reading is what the credit paid for. The refund boundary above owns the
+        # only case where money goes back.
+        #
         # The gates that run before a credit is charged are the customer's own
         # configuration answering "not this file", not a failure of ours. Filing them as
         # `failed` would put a red row on Carmen's screen for a signature logo.
@@ -858,6 +820,14 @@ async def _run_document(
         )
         logger.warning("[email] %s: %s (%s)", skip.reason_code, skip, filename)
         return status
+    except _HOLD as stop:
+        # Out before the generic handler below, which would file this as
+        # `unreadable_document` — sending whoever debugs it to look at a PDF that is
+        # perfectly fine, and putting a red `document_failed` in the customer's bell for
+        # a module *we* switched off. Nothing was charged at either point (both gates run
+        # ahead of `consume_document`), so there is nothing to refund and no row to finish.
+        logger.warning("[email] Tenant %s: %s — mail held unread", tenant_id, stop)
+        raise
     except CarmenAPIError as exc:
         # Transport failure — the JV's fate is unknown, so do NOT refund and do not
         # retry automatically; a human decides after checking Carmen.
@@ -872,8 +842,10 @@ async def _run_document(
         )
         return "failed"
     except Exception as exc:
-        if charged:
-            await refund_document(charged)
+        # Anything reaching here from *inside* the refund boundary was already refunded
+        # and re-raised there; refunding again would hand back a second credit for one
+        # document. Anything reaching here from after it is post-extraction and keeps
+        # its charge like every other late failure.
         await _finish(
             ledger_id,
             status="failed",
@@ -901,8 +873,8 @@ async def _post_input_tax(
 
     Never raises. The JV it follows is already in Carmen's books, so the only useful
     answers here are "done" and "someone needs to add this by hand" — turning a
-    failure into an exception would refund a credit and mark a posted document as
-    failed, which is the one outcome that is wrong twice.
+    failure into an exception would mark a document Carmen has already accepted as
+    failed, which is the one outcome that is plainly wrong.
     """
     async with async_session() as db:
         bank = await db.get(Bank, bank_code) if bank_code else None
@@ -1020,7 +992,7 @@ async def _open_or_fail(blob: bytes, filename: str, passwords: list[str]) -> str
     try:
         validate_magic_bytes(blob, filename)
     except ValueError as exc:
-        raise _Skip("unreadable_document", str(exc), refund=False) from exc
+        raise _Skip("unreadable_document", str(exc)) from exc
 
     last: Exception | None = None
     for pwd in [None, *passwords]:
@@ -1034,8 +1006,8 @@ async def _open_or_fail(blob: bytes, filename: str, passwords: list[str]) -> str
             # help. Raised as a _Skip rather than left to the generic handler, which
             # files everything as `failed` — and nothing has been charged at this point.
             # A junk attachment must not put a red row on the customer's screen.
-            raise _Skip("unreadable_document", str(exc), refund=False) from exc
-    raise _Skip("wrong_pdf_password", str(last or "Could not open the attachment"), refund=False)
+            raise _Skip("unreadable_document", str(exc)) from exc
+    raise _Skip("wrong_pdf_password", str(last or "Could not open the attachment"))
 
 
 # ── Ledger ────────────────────────────────────────────────────────────────────
@@ -1064,6 +1036,23 @@ async def _claim(
         await db.rollback()
         return None
     return row
+
+
+async def _release(ledger_id: uuid.UUID) -> None:
+    """Undo the claim, so the next poll can take this (message, attachment) again.
+
+    The ledger row IS the dedupe — a row that stays behind means "already handled" for
+    ever. Deleting it is only correct for a stop that says nothing about the document
+    itself (out of credits); every real verdict goes through `_finish` and stays.
+    """
+    try:
+        async with async_session() as db:
+            row = await db.get(EmailDocument, ledger_id)
+            if row is not None:
+                await db.delete(row)
+                await db.commit()
+    except Exception as exc:  # noqa: BLE001 — worst case the retry dedupes instead
+        logger.error("[email] Could not release the ledger claim: %s", exc)
 
 
 async def _mark_submitted(card_id: str | None) -> None:
@@ -1125,6 +1114,10 @@ async def _finish(
                 type_=f"document_{status}",
                 payload={
                     "document_id": str(row.id),
+                    # The attachment filename is the only identity the customer
+                    # recognises when the document never got far enough to have a
+                    # bank_code or doc_no — which is exactly the failure case.
+                    "attachment": row.attachment,
                     "bank_code": bank_code,
                     "doc_no": doc_no,
                     **(

@@ -13,6 +13,7 @@ One row per BU (`tenant_id` is the primary key). What Carmen wrote through
 | `tenant_id` | `uuid` PK, FK → `tenants(id)` | `20260803000000` | The BU this row belongs to |
 | `ingest_tag` | `varchar(32)`, **nullable** | `20260803000000`, dropped `20260805000000`, re-added nullable `20260806000000` | The `+tag` in the ingest address. See [Schema drift](#schema-drift-worth-knowing) below |
 | `enabled` | `boolean not null default false` | `20260803000000` | Whether the feature is switched on |
+| `enabled_at` | `timestamptz`, nullable | `20260818010000` | The last off→on edge. Mail that arrived before it is `skipped / ingest_paused` instead of replayed — switching off means the BU is keying those documents by hand. Null = no filtering |
 | `owner_emails` | `jsonb not null default '[]'` | `20260807010000` | Optional sender allow-list — empty accepts any sender |
 | `tax_ids` | `jsonb not null default '[]'` | `20260803000000` | This BU's registered tax IDs — unique across all BUs |
 | `rules` | `jsonb not null default '[]'` | `20260803000000` | Bank → filename-pattern rules; `pdf_password_enc` inside each is Fernet-encrypted |
@@ -76,10 +77,17 @@ From the migration header (`20260803000000_email_automation.sql:1-8`):
 > trace anywhere — and the next poll would pick it up again forever. This table is the
 > "we have seen this message" ledger, keyed on the RFC-822 Message-ID.
 
-Concretely: `sender_not_allowed`, `no_rule_match`, `unreadable_document` and
-`wrong_pdf_password` all happen *before* `consume_document()` — if the only record of a
-message were `ocr_tasks`, none of those four outcomes would ever be written down, and the
-same doomed attachment would be re-fetched and re-rejected on every poll indefinitely.
+Concretely: `unsupported_attachment`, `sender_not_allowed`, `no_rule_match`,
+`unreadable_document` and `wrong_pdf_password` all happen *before* `consume_document()` — if
+the only record of a message were `ocr_tasks`, none of those five outcomes would ever be
+written down, and the same doomed attachment would be re-fetched and re-rejected on every
+poll indefinitely.
+
+`unsupported_attachment` is the one the migration header named and the code did not raise
+until 2026-08-18: a mail whose every attachment was refused (an `.xlsx`, a `.rar`, a `.zip`
+of CSVs) left `_process_message` on the same line as a mail carrying no file at all, so
+nothing was written anywhere. A message that names **no file at all** is still a free silent
+skip — a bank's "your statement is ready" notice must not fill the ledger.
 
 ## Relationships
 
@@ -105,23 +113,40 @@ every raise site in `_run_document()` / `_open_or_fail()` and the three `except`
 
 | `reason_code` | Raised from | Charged first? | Refunded? | Final `status` |
 |---|---|---|---|---|
+| `unsupported_attachment` | `_attachments()` refused every named part — wrong extension, an empty part, or a `.zip` holding nothing readable | No | — | `skipped` |
+| `ingest_paused` | The message arrived before `email_ingest_settings.enabled_at` — the BU had automation switched off and was keying those documents by hand | No | — | `skipped` |
 | `sender_not_allowed` | `sender_allowed()` fails | No | — | `skipped` |
 | `no_rule_match` | `match_rules()` returns empty | No | — | `skipped` |
 | `unreadable_document` | `_open_or_fail()` — bad magic bytes or corrupt PDF | No | — | `skipped` |
 | `wrong_pdf_password` | `_open_or_fail()` — every password tried, none worked | No | — | `skipped` |
-| `tax_id_mismatch` | `foreign_tax_id()` finds a conflict | Yes | Yes | `failed` |
-| `duplicate_document` | `extracted.is_duplicate` | Yes | Yes | `failed` |
-| `mapping_incomplete` | GL mapping still missing after the AI-fill attempt | Yes | Yes | `failed` |
-| `unreadable_document` | `build_jv_rows()` produces no postable amount | Yes | Yes | `failed` |
-| `carmen_rejected` | `post_gljv()` returns a non-zero `Code` | Yes | **No** — the extraction was fine, Carmen's own rules declined it | `failed` |
-| `carmen_rejected` | `CarmenAPIError` — transport/network failure | Yes | **No** — the JV's fate is unknown; refunding risks a double-post if it actually landed | `failed` |
-| `unreadable_document` | Any other unexpected exception | Yes | Yes | `failed` |
+| `unreadable_document` | `create_task` / `extract_stateless` / `finalize_extraction` threw — **inside the refund boundary** | Yes | **Yes** — the only refund left in the pipeline | `failed` |
+| `tax_id_mismatch` | `foreign_tax_id()` finds a conflict | Yes | No | `failed` |
+| `duplicate_document` | `extracted.is_duplicate` | Yes | No | `failed` |
+| `mapping_incomplete` | GL mapping still missing after the AI-fill attempt | Yes | No | `failed` |
+| `unreadable_document` | `build_jv_rows()` produces no postable amount | Yes | No | `failed` |
+| `carmen_rejected` | No posting credential, or no Carmen host known for the BU | Yes | No | `failed` |
+| `carmen_rejected` | `post_gljv()` returns a non-zero `Code` | Yes | No | `failed` |
+| `carmen_rejected` | `CarmenAPIError` — transport/network failure | Yes | No | `failed` |
 | *(none)* | Full pipeline completes | Yes | — | `posted` |
 
-The rule, stated once: a pre-charge exit is the customer's own configuration answering "not
-this file" and is filed `skipped`; everything after `consume_document()` is `failed` on
-exit; a Carmen-side decision (accept or decline) is never refunded either way once the JV
-call has actually been made.
+The rule, stated once: **the charge follows the vision call, not the outcome.** A pre-charge
+exit is the customer's own configuration answering "not this file" and is filed `skipped`.
+Once `finalize_extraction` has returned, the model has run and been billed to us, so the
+document keeps its charge no matter what happens next — a duplicate, a foreign tax ID, an
+unmappable account and a Carmen refusal are all decisions taken *about a document we
+successfully read*, not failures to read it.
+
+The single exception is the **refund boundary** in `_run_document()`: the `try` wrapping
+`create_task` + `extract_stateless` + `finalize_extraction`. Everything in it can fail
+without the model ever running — a dead pool connection, an OpenRouter socket that never
+opened — and that is our failure to deliver, so the credit goes back. `_Skip` therefore
+carries no refund flag at all; if you find yourself wanting one, the case belongs inside
+that boundary instead.
+
+This deliberately matches the wizard, which has always charged for a duplicate:
+`finalize_extraction` sets an `is_duplicate` flag rather than raising, so the wizard user
+pays for the read and sees the warning. Ingest used to refund the same event, which made
+one pipeline disagree with the other about what a document costs.
 
 **Published but not currently raised.** `../CARMEN_INTEGRATION.md §3.3` lists
 `out_of_credits`, `bank_not_identified` and `unbalanced_jv` alongside the codes above as the

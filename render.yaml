@@ -9,7 +9,7 @@
 #   2. In Render dashboard → New → Blueprint → connect this repo.
 #   3. Render auto-detects render.yaml and prompts for secret env vars.
 #   4. Set DATABASE_URL (Supabase pooler), OPENROUTER_API_KEY, SESSION_ENCRYPTION_KEY,
-#      MASTER_API_KEY, ALLOWED_ORIGINS, ALLOWED_CARMEN_HOSTS.
+#      ALLOWED_ORIGINS, ALLOWED_CARMEN_HOSTS.
 
 services:
   # ════════════════════════════════════════════════════════════════════════════
@@ -56,8 +56,6 @@ services:
       - key: ADMIN_JWT_SECRET
         generateValue: true
       - key: SESSION_ENCRYPTION_KEY
-        sync: false
-      - key: MASTER_API_KEY
         sync: false
 
       # ── CORS ────────────────────────────────────────────────────────────────
@@ -118,6 +116,8 @@ services:
         value: "5"
       # Code default is 0.5h; 8h matches .env.example and keeps a user from losing
       # in-progress wizard work to a mid-session expiry.
+      # Changing this needs a matching migration: fn_purge_inactive_sessions() scrubs
+      # the session (is_active=false) at created_at + this value, hardcoded in SQL.
       - key: SESSION_TTL_HOURS
         value: "8"
       - key: LOG_JSON

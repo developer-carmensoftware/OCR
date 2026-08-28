@@ -3,6 +3,8 @@ import { toast } from 'sonner'
 import { Coins } from 'lucide-react'
 import DataTable, { type Column } from '../../components/admin/DataTable'
 import TenantSelector from '../../components/admin/TenantSelector'
+import PeriodPicker, { daysAgo, endOfDay, today } from '../../components/admin/PeriodPicker'
+import { useTableQuery } from '../../hooks/admin/useTableQuery'
 import {
   adjustCredits,
   fetchCreditBalance,
@@ -28,6 +30,7 @@ function getCols(t: ReturnType<typeof useT>['t']): Column<CreditLedgerEntry>[] {
       key: 'created_at',
       label: t('admin.credits.col.when'),
       sortable: true,
+      defaultDesc: true,
       render: r => (r.created_at ? new Date(r.created_at).toLocaleString() : '—'),
     },
     { key: 'reason', label: t('admin.credits.col.reason'), sortable: true },
@@ -47,9 +50,16 @@ function getCols(t: ReturnType<typeof useT>['t']): Column<CreditLedgerEntry>[] {
 export default function CreditsPage() {
   const { t } = useT()
   const PACKS = getPacks(t)
-  const [tenantId, setTenantId] = useState('')
+  // The ledger used to be a flat newest-100 with no date filter and no note — on the
+  // one table whose entire purpose is being auditable, entry #101 was unreachable.
+  const { params, set, server } = useTableQuery({
+    defaultSort: 'created_at',
+    filters: { tenant_id: '', from: daysAgo(90), to: today() },
+  })
+  const tenantId = params.tenant_id
   const [balance, setBalance] = useState<number | null>(null)
   const [ledger, setLedger] = useState<CreditLedgerEntry[]>([])
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [packCode, setPackCode] = useState(PACKS[0].code)
@@ -60,13 +70,26 @@ export default function CreditsPage() {
     if (!tenantId) {
       setBalance(null)
       setLedger([])
+      setTotal(0)
       return
     }
     setLoading(true)
-    Promise.all([fetchCreditBalance(tenantId), fetchCreditLedger(tenantId)])
+    Promise.all([
+      fetchCreditBalance(tenantId),
+      fetchCreditLedger(tenantId, {
+        from: params.from,
+        to: endOfDay(params.to),
+        q: params.q || undefined,
+        sort: params.sort,
+        dir: params.dir,
+        limit: params.limit,
+        offset: params.offset,
+      }),
+    ])
       .then(([b, l]) => {
         setBalance(b.balance)
-        setLedger(l)
+        setLedger(l.data ?? [])
+        setTotal(l.total ?? 0)
       })
       .catch(e =>
         toast.error(t('admin.credits.toast.loadFailed', { error: e?.message ?? 'failed to load' }))
@@ -75,7 +98,7 @@ export default function CreditsPage() {
   }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(refresh, [tenantId])
+  useEffect(refresh, [params])
 
   const handleTopup = async () => {
     setBusy(true)
@@ -117,7 +140,11 @@ export default function CreditsPage() {
       <div className="admin-page-header">
         <h2 className="admin-page-title">{t('admin.credits.title')}</h2>
         <div className="admin-page-controls">
-          <TenantSelector value={tenantId} onChange={setTenantId} />
+          <PeriodPicker
+            value={{ from: params.from, to: params.to }}
+            onChange={p => set({ from: p.from, to: p.to })}
+          />
+          <TenantSelector value={tenantId} onChange={v => set({ tenant_id: v })} />
         </div>
       </div>
 
@@ -196,6 +223,12 @@ export default function CreditsPage() {
               rows={ledger}
               loading={loading}
               emptyText={t('admin.credits.emptyLedger')}
+              server={server(total)}
+              search={{
+                value: params.q,
+                onChange: q => set({ q }),
+                placeholder: t('admin.credits.searchPlaceholder'),
+              }}
             />
           </div>
         </>

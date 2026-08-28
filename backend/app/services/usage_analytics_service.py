@@ -14,8 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.business import APInvoice, CreditCard, OCRTask
 from app.models.enums import TaskStatus
-from app.models.observability import LLMUsageLog, PerformanceLog
+from app.models.observability import LLMUsageLog, MonthlyUsageSummary, PerformanceLog
 from app.services.tenant_lookup import tenant_name_map
+from app.utils.list_query import ListQuery, apply_list_query
+from app.utils.pagination import count_rows, paginate
 
 
 async def get_usage_summary(
@@ -230,15 +232,137 @@ async def get_usage_totals(
     }
 
 
+# ── Monthly rollup readers ────────────────────────────────────────────────────
+#
+# get_usage_summary/_totals above aggregate llm_usage_logs and ocr_tasks live, which is
+# why they are capped at 92 days. monthly_usage_summary is a nightly rollup kept
+# indefinitely (fn_build_monthly_summary, cron 'monthly-summary'), so a year of history
+# costs one small indexed scan. The row shape below deliberately matches the daily one so
+# the admin table renders both without branching — except extract_calls / suggest_calls,
+# which the rollup never captured and which surface as None ("—" in the UI).
+
+
+def _month_floor(d: date) -> date:
+    return d.replace(day=1)
+
+
+async def get_monthly_usage_summary(
+    db: AsyncSession,
+    from_date: date,
+    to_date: date,
+    tenant_id: str | None,
+    module_id: str | None,
+) -> dict[str, Any]:
+    q = (
+        select(
+            MonthlyUsageSummary.summary_date,
+            MonthlyUsageSummary.module_id,
+            MonthlyUsageSummary.tenant_id,
+            MonthlyUsageSummary.total_documents,
+            MonthlyUsageSummary.total_submissions,
+            MonthlyUsageSummary.total_llm_calls,
+            MonthlyUsageSummary.total_tokens,
+            MonthlyUsageSummary.total_cost_usd,
+            MonthlyUsageSummary.total_errors,
+            MonthlyUsageSummary.avg_llm_latency_ms,
+        )
+        .where(
+            MonthlyUsageSummary.summary_date >= _month_floor(from_date),
+            MonthlyUsageSummary.summary_date <= to_date,
+        )
+        .order_by(MonthlyUsageSummary.summary_date.desc())
+    )
+    if tenant_id:
+        q = q.where(MonthlyUsageSummary.tenant_id == tenant_id)
+    if module_id:
+        q = q.where(MonthlyUsageSummary.module_id == module_id)
+    rows = (await db.execute(q)).mappings().all()
+    names = await tenant_name_map(db, [r["tenant_id"] for r in rows])
+
+    return {
+        "days": len(rows),
+        "data": [
+            {
+                "date": str(r["summary_date"]),
+                "module_id": r["module_id"],
+                "tenant_id": r["tenant_id"],
+                "tenant_name": names.get(r["tenant_id"]) if r["tenant_id"] else None,
+                "documents": int(r["total_documents"] or 0),
+                "submissions": int(r["total_submissions"] or 0),
+                "llm_calls": int(r["total_llm_calls"] or 0),
+                # Not in the rollup — see the note above. None, not 0: a zero here would
+                # read as "nobody ran an extraction that month", which is a different claim.
+                "extract_calls": None,
+                "suggest_calls": None,
+                "tokens": int(r["total_tokens"] or 0),
+                "cost_usd": float(str(r["total_cost_usd"] or 0)),
+                "errors": int(r["total_errors"] or 0),
+                "avg_llm_latency_ms": round(float(r["avg_llm_latency_ms"] or 0), 2),
+            }
+            for r in rows
+        ],
+    }
+
+
+async def get_monthly_usage_totals(
+    db: AsyncSession,
+    from_date: date,
+    to_date: date,
+    tenant_id: str | None,
+) -> dict[str, Any]:
+    q = select(
+        func.sum(MonthlyUsageSummary.total_documents).label("documents"),
+        func.sum(MonthlyUsageSummary.total_submissions).label("submissions"),
+        func.sum(MonthlyUsageSummary.total_llm_calls).label("llm_calls"),
+        func.sum(MonthlyUsageSummary.total_tokens).label("tokens"),
+        func.sum(MonthlyUsageSummary.total_cost_usd).label("cost_usd"),
+        func.sum(MonthlyUsageSummary.total_errors).label("errors"),
+        # Weighted by calls, not a mean of means: a month with 4000 calls and one with 3
+        # must not carry equal weight in a single latency figure.
+        (
+            func.sum(MonthlyUsageSummary.avg_llm_latency_ms * MonthlyUsageSummary.total_llm_calls)
+            / func.nullif(func.sum(MonthlyUsageSummary.total_llm_calls), 0)
+        ).label("avg_llm_latency_ms"),
+    ).where(
+        MonthlyUsageSummary.summary_date >= _month_floor(from_date),
+        MonthlyUsageSummary.summary_date <= to_date,
+    )
+    if tenant_id:
+        q = q.where(MonthlyUsageSummary.tenant_id == tenant_id)
+    row = (await db.execute(q)).mappings().fetchone() or {}
+
+    return {
+        "documents": int(row.get("documents") or 0),
+        "submissions": int(row.get("submissions") or 0),
+        "llm_calls": int(row.get("llm_calls") or 0),
+        "extract_calls": None,
+        "suggest_calls": None,
+        "tokens": int(row.get("tokens") or 0),
+        "cost_usd": float(row.get("cost_usd") or 0),
+        "avg_llm_latency_ms": round(float(row.get("avg_llm_latency_ms") or 0), 2),
+        "errors": int(row.get("errors") or 0),
+    }
+
+
+LLM_USAGE_SORTABLE = {
+    "created_at": LLMUsageLog.created_at,
+    "cost_usd": LLMUsageLog.cost_usd,
+    "duration_ms": LLMUsageLog.duration_ms,
+    "total_tokens": LLMUsageLog.total_tokens,
+    "module_id": LLMUsageLog.module_id,
+    "model": LLMUsageLog.model,
+}
+LLM_USAGE_SEARCHABLE = (LLMUsageLog.model, LLMUsageLog.module_id, LLMUsageLog.task_id)
+
+
 async def get_llm_usage(
     db: AsyncSession,
     tenant_id: str | None,
     from_date: datetime | None,
     to_date: datetime | None,
     module_id: str | None,
-    order_by: Literal["cost_usd", "duration_ms", "total_tokens", "created_at"],
-    limit: int,
-) -> list[dict[str, Any]]:
+    lq: ListQuery,
+) -> tuple[list[dict[str, Any]], int]:
     q = select(LLMUsageLog)
     if tenant_id:
         q = q.where(LLMUsageLog.tenant_id == tenant_id)
@@ -249,16 +373,18 @@ async def get_llm_usage(
     if module_id:
         q = q.where(LLMUsageLog.module_id == module_id)
 
-    order_col = {
-        "cost_usd": LLMUsageLog.cost_usd,
-        "duration_ms": LLMUsageLog.duration_ms,
-        "total_tokens": LLMUsageLog.total_tokens,
-        "created_at": LLMUsageLog.created_at,
-    }[order_by]
-    rows = (await db.execute(q.order_by(order_col.desc()).limit(limit))).scalars().all()
+    q = apply_list_query(
+        q,
+        lq,
+        sortable=LLM_USAGE_SORTABLE,
+        tiebreak=LLMUsageLog.id,
+        default_sort="created_at",
+        searchable=LLM_USAGE_SEARCHABLE,
+    )
+    rows, total = await paginate(db, q, lq.limit, lq.offset)
     names = await tenant_name_map(db, [r.tenant_id for r in rows])
 
-    return [
+    data = [
         {
             "id": r.id,
             "tenant_id": r.tenant_id,
@@ -278,6 +404,7 @@ async def get_llm_usage(
         }
         for r in rows
     ]
+    return data, total
 
 
 async def get_tenant_ranking(
@@ -363,15 +490,19 @@ async def get_user_usage(
     tenant_id: str | None,
     from_date: datetime,
     to_date: datetime,
-    order_by: Literal["calls", "tokens", "cost"],
-    limit: int,
-) -> list[dict[str, Any]]:
+    lq: ListQuery,
+) -> tuple[list[dict[str, Any]], int]:
+    calls = func.count(LLMUsageLog.id)
+    tokens = func.sum(LLMUsageLog.total_tokens)
+    cost = func.sum(LLMUsageLog.cost_usd)
+    latency = func.avg(LLMUsageLog.duration_ms)
+
     q = select(
         LLMUsageLog.carmen_user_id.label("uid"),
-        func.count(LLMUsageLog.id).label("total_calls"),
-        func.sum(LLMUsageLog.total_tokens).label("total_tokens"),
-        func.sum(LLMUsageLog.cost_usd).label("total_cost"),
-        func.avg(LLMUsageLog.duration_ms).label("avg_latency"),
+        calls.label("total_calls"),
+        tokens.label("total_tokens"),
+        cost.label("total_cost"),
+        latency.label("avg_latency"),
     ).where(
         LLMUsageLog.created_at >= from_date,
         LLMUsageLog.created_at <= to_date,
@@ -379,15 +510,26 @@ async def get_user_usage(
     )
     if tenant_id:
         q = q.where(LLMUsageLog.tenant_id == tenant_id)
-
     q = q.group_by(LLMUsageLog.carmen_user_id)
-    order_map = {
-        "calls": func.count(LLMUsageLog.id).desc(),
-        "tokens": func.sum(LLMUsageLog.total_tokens).desc(),
-        "cost": func.sum(LLMUsageLog.cost_usd).desc(),
-    }
-    rows = (await db.execute(q.order_by(order_map[order_by]).limit(limit))).mappings().all()
-    return [
+
+    # Ordering the aggregates, not the raw columns: "who cost the most" has to compare
+    # the sums, and the old three-way `order_by` literal could only ever answer three of
+    # the five questions the table's headers appear to offer.
+    q = apply_list_query(
+        q,
+        lq,
+        sortable={
+            "total_calls": calls,
+            "total_tokens": tokens,
+            "total_cost_usd": cost,
+            "avg_latency_ms": latency,
+        },
+        tiebreak=LLMUsageLog.carmen_user_id,
+        default_sort="total_calls",
+    )
+    total = await count_rows(db, q)
+    rows = (await db.execute(q.limit(lq.limit).offset(lq.offset))).mappings().all()
+    data = [
         {
             "carmen_user_id": r["uid"],
             "total_calls": int(r["total_calls"] or 0),
@@ -399,6 +541,7 @@ async def get_user_usage(
         }
         for r in rows
     ]
+    return data, total
 
 
 async def get_error_breakdown(
@@ -490,24 +633,26 @@ async def get_extraction_failures(
     from_dt = datetime.combine(from_date, time_type.min, tzinfo=UTC)
     to_dt = datetime.combine(to_date, time_type.max, tzinfo=UTC)
 
-    q = (
-        select(OCRTask)
-        .where(
-            OCRTask.status == TaskStatus.FAILED,
-            OCRTask.deleted_at.is_(None),
-            OCRTask.created_at >= from_dt,
-            OCRTask.created_at <= to_dt,
-        )
-        .order_by(OCRTask.created_at.desc())
-        .limit(limit)
+    q = select(OCRTask).where(
+        OCRTask.status == TaskStatus.FAILED,
+        OCRTask.deleted_at.is_(None),
+        OCRTask.created_at >= from_dt,
+        OCRTask.created_at <= to_dt,
     )
     if tenant_id:
         q = q.where(OCRTask.tenant_id == tenant_id)
     if module_id:
         q = q.where(OCRTask.module_id == module_id)
-    tasks = (await db.execute(q)).scalars().all()
+
+    # No offset window: the page groups these by cause client-side, and grouping one
+    # page of failures would report cause counts that are simply wrong. What the caller
+    # needs instead is to know when the cap bit, which `len(data)` could never tell it —
+    # so `total` is the real count and the page says so when the two differ.
+    q = q.order_by(OCRTask.created_at.desc())
+    total = await count_rows(db, q)
+    tasks = (await db.execute(q.limit(limit))).scalars().all()
     if not tasks:
-        return {"total": 0, "data": []}
+        return {"total": total, "data": []}
 
     # LLM stats are fetched separately and merged in Python rather than joined:
     # llm_usage_logs.task_id is VARCHAR(36) against a PGUUID, is unindexed, and the
@@ -567,7 +712,7 @@ async def get_extraction_failures(
                 "model": llm[3] if llm else None,
             }
         )
-    return {"total": len(data), "data": data}
+    return {"total": total, "data": data}
 
 
 async def get_tenant_engagement_map(

@@ -8,6 +8,8 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock,
+  FileCheck2,
+  FileWarning,
   Sparkles,
   XCircle,
 } from 'lucide-react'
@@ -19,14 +21,25 @@ import { useNotifications } from '../../hooks/notifications'
 import { WHATS_NEW_RETURN_KEY } from '../../lib/releaseNotesSeen'
 import type { BellItem } from '../../lib/api/notifications'
 import type { ReleaseNoteCopy } from '../../content/releaseNotes'
+import NotificationDetailModal from './NotificationDetailModal'
+import Pager from './Pager'
+import { useFitRows } from '../../hooks/useFitRows'
+import { timeAgo } from '../../lib/orderHelpers'
+
+// Mirrors the cap FastAPI enforces on GET /api/v1/notifications (422 above it).
+const MAX_PAGE = 50
 
 // Per-type presentation: icon + tone class (tone drives the tinted icon container).
+// The email-automation pair is file-shaped where the order pair is circle-shaped,
+// so the two success rows stay distinguishable at a glance.
 const TYPE_META: Record<string, { icon: LucideIcon; tone: string }> = {
   approved: { icon: CheckCircle2, tone: 'success' },
   rejected: { icon: XCircle, tone: 'error' },
   on_hold: { icon: Clock, tone: 'warning' },
   missing_slip: { icon: AlertCircle, tone: 'warning' },
   release_note: { icon: Sparkles, tone: 'info' },
+  document_posted: { icon: FileCheck2, tone: 'success' },
+  document_failed: { icon: FileWarning, tone: 'error' },
 }
 
 type TFn = (key: TKey, vars?: Record<string, string | number>) => string
@@ -35,6 +48,13 @@ type TFn = (key: TKey, vars?: Record<string, string | number>) => string
 // ships the note in the same PR as the change without touching dict.ts.
 function releaseCopy(n: BellItem, lang: Lang): ReleaseNoteCopy {
   return (n.payload as Record<Lang, ReleaseNoteCopy>)[lang]
+}
+
+// How an email-automation row names its document. The filename is what the
+// customer recognises; a document that failed before extraction has no bank_code
+// or doc_no to fall back on, which is why the filename leads.
+function docLabel(p: Record<string, unknown>): string {
+  return String(p.attachment || '') || [p.bank_code, p.doc_no].filter(Boolean).join(' ') || '—'
 }
 
 function notifText(n: BellItem, t: TFn): string {
@@ -48,24 +68,24 @@ function notifText(n: BellItem, t: TFn): string {
       return t('notif.onHold')
     case 'missing_slip':
       return t('notif.missingSlip')
+    case 'document_posted':
+      return t('notif.docPosted', { doc: docLabel(p) })
+    case 'document_failed':
+      return t('notif.docFailed', { doc: docLabel(p) })
     default:
       return n.type
   }
 }
 
-// Localized relative time, reusing the admin Order-Review time keys (bilingual).
-function timeAgo(iso: string, t: TFn): string {
-  const s = (Date.now() - new Date(iso).getTime()) / 1000
-  if (s < 60) return t('orev.time.justNow')
-  if (s < 3600) return t('orev.time.mAgo', { n: Math.floor(s / 60) })
-  if (s < 86400) return t('orev.time.hAgo', { n: Math.floor(s / 3600) })
-  return t('orev.time.dAgo', { n: Math.floor(s / 86400) })
-}
-
 export default function NotificationBell() {
   const { t, lang } = useT()
-  const { items, unreadCount, markRead } = useNotifications()
+  // Page size = whatever fills the panel, capped at the backend's /notifications limit.
+  // Only the first open measures: the count survives the panel unmounting on close.
+  const [fits, listRef] = useFitRows('li', 4)
+  const limit = Math.min(fits, MAX_PAGE)
+  const { items, unreadCount, offset, total, setOffset, markRead } = useNotifications(limit)
   const [open, setOpen] = useState(false)
+  const [detail, setDetail] = useState<BellItem | null>(null)
   const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({})
   const btnRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -116,10 +136,17 @@ export default function NotificationBell() {
       window.location.hash = '#/whats-new'
       return
     }
-    // Deep-link to the specific order when we have it, so the row opens/scrolls
-    // into view; the orders route ignores the query suffix when matching.
-    window.location.hash = n.order_id ? `#/pricing/orders?id=${n.order_id}` : '#/pricing/orders'
-    // Navigate first; marking read is best-effort and must not block it.
+    // Email-automation rows open in place. They carry no order_id, so the order
+    // history below would be the wrong page, and there is no right page to send
+    // them to — the payload is already the whole story.
+    if (n.type === 'document_posted' || n.type === 'document_failed') {
+      setDetail(n)
+    } else {
+      // Deep-link to the specific order when we have it, so the row opens/scrolls
+      // into view; the orders route ignores the query suffix when matching.
+      window.location.hash = n.order_id ? `#/pricing/orders?id=${n.order_id}` : '#/pricing/orders'
+    }
+    // Act first; marking read is best-effort and must not block it.
     if (!n.read_at) void markRead([n.id])
   }
 
@@ -170,7 +197,7 @@ export default function NotificationBell() {
                 <span>{t('notif.empty')}</span>
               </div>
             ) : (
-              <ul className="notif-bell__list">
+              <ul className="notif-bell__list" ref={listRef}>
                 {items.map(n => {
                   const meta = TYPE_META[n.type] ?? { icon: Bell, tone: 'info' }
                   const Icon = meta.icon
@@ -206,9 +233,14 @@ export default function NotificationBell() {
                 })}
               </ul>
             )}
+
+            {/* Outside the scrolling list, so the arrows stay put while rows scroll. */}
+            <Pager offset={offset} limit={limit} total={total} onChange={setOffset} />
           </div>,
           document.body
         )}
+
+      <NotificationDetailModal item={detail} onClose={() => setDetail(null)} />
     </div>
   )
 }

@@ -33,18 +33,18 @@ typography:
     lineHeight: 1.2
     letterSpacing: "-0.01em"
   title:
-    fontFamily: "Inter, Sarabun, -apple-system, sans-serif"
+    fontFamily: "Inter, IBM Plex Sans Thai, -apple-system, sans-serif"
     fontSize: "0.9rem"
     fontWeight: 700
     lineHeight: 1.3
     letterSpacing: "-0.015em"
   body:
-    fontFamily: "Inter, Sarabun, -apple-system, sans-serif"
+    fontFamily: "Inter, IBM Plex Sans Thai, -apple-system, sans-serif"
     fontSize: "0.875rem"
     fontWeight: 400
     lineHeight: 1.65
   label:
-    fontFamily: "Inter, Sarabun, sans-serif"
+    fontFamily: "Inter, IBM Plex Sans Thai, sans-serif"
     fontSize: "0.68rem"
     fontWeight: 700
     lineHeight: 1.3
@@ -125,11 +125,11 @@ Carmen AI Automation is a tool where the stakes are real: extracted numbers go d
 
 The system rejects the SaaS playbook entirely. There are no gradient text treatments, no hero metrics with big numbers and gradient accents, no celebratory animations for routine accounting tasks, and no enterprise-legacy chrome (thick borders, beige fills, Sage-era form controls). The palette is restrained: one brand accent used as a state indicator, not an identity statement. Color communicates "this needs your attention" or "this is confirmed" — never "look how polished we are."
 
-Thai and English are equally considered. Sarabun sits alongside Inter in every font stack. Vendor names, GL labels, and invoice text arrive in Thai; every layout decision accounts for it. A field that truncates English properly must truncate Thai properly too, with matching line-height and line-break behavior.
+Thai and English are equally considered. IBM Plex Sans Thai sits alongside Inter in every font stack. Vendor names, GL labels, and invoice text arrive in Thai; every layout decision accounts for it. A field that truncates English properly must truncate Thai properly too, with matching line-height and line-break behavior.
 
 **Key Characteristics:**
 - Surfaces recede; data leads. Card chrome is minimal so extracted values stand forward.
-- Mono for amounts, Inter/Sarabun for everything else. The distinction is structural.
+- Mono for amounts, Inter/IBM Plex Sans Thai for everything else. The distinction is structural.
 - Color = state. Carmen Blue signals the active action or current step. Teal, Emerald, Rose, and Amber signal AP module context, success, error, and caution respectively. None of them decorate.
 - Dark mode is first-class. Every token has a dark variant; no surfaces use raw hex that breaks at night.
 - Workflow-first layout. Every screen belongs to a step in the document-processing flow. Navigation exists to move users forward, not to expose surface area.
@@ -171,23 +171,41 @@ The gray scale is not pure gray — every neutral carries a trace of Carmen Blue
 - **Ink Primary** (`oklch(0.16 0.02 258.7)`): Headings, module card names, modal titles, confirmed-value text. Near-black with a hint of brand hue.
 - **Ink Secondary** (`oklch(0.33 0.018 258.7)`): Card title text, body copy in cards, data table cell values. Slightly lighter than primary ink.
 - **Ink Tertiary** (`oklch(0.56 0.016 258.7)`): Subtitles, helper text, placeholder equivalents, table header labels, bank option names. Verify against surface-card (white): passes WCAG AA at ≥4.5:1.
-- **Ink Quaternary** (`oklch(0.7 0.014 258.7)`): The quietest text layer. Used for version strings, elapsed-time readouts, secondary metadata. Verify on every background; border on WCAG AA for body text — use only for non-essential information at 14px+ sizes.
-- **Border Subtle** (`oklch(0.91 0.008 258.7)`): Standard card borders, table cell separators, input borders at rest, separator lines. Low-contrast by design; structure, not decoration.
+- **Ink Quaternary** (`--text-4`, `oklch(0.64 0.014 258.7)`): The quietest text layer. Version strings, elapsed-time readouts, secondary metadata. **This tier tops out at ~3.2:1 and can never reach AA** — it was `oklch(0.7 …)` and measured 2.67:1 across 70+ call sites until 2026-08-19. Anything a user actually has to read belongs on Ink Tertiary; treat Quaternary as decorative-only.
+- **Border Subtle** (`--border`): Card borders, table cell separators, separator lines. Low-contrast by design (1.19:1); structure, not decoration. **No longer used for form controls** — see Border Input.
+- **Border Input** (`--border-input`, `oklch(0.16 0.02 258.7 / 0.46)`): Form-control boundaries only — inputs, selects, textareas, the bottom-border fields, and the hover-revealed border on ledger inputs. 3.21:1 on card, which is what WCAG 1.4.11 requires of a control boundary. Deliberately louder than Border Subtle: a field the user must find is not a divider.
 - **Border Raised** (`oklch(0.84 0.01 258.7)`): Emphasized borders — outline button edges, modal outline, step separator borders. Slightly darker than subtle, used to mark interactive boundaries.
 
 **The One Voice Rule.** Carmen Blue appears on ≤15% of any given screen. When every action and every active state wears the same color, that color retains its signal value. Do not use Carmen Blue for decorative gradients, section dividers, or inactive-state backgrounds.
 
 **The No-Raw-Hex Rule.** All color values must reference a CSS custom property from `:root`. Never hardcode a hex or OKLCH value directly in component code. Dark mode works because every token has a `[data-theme='dark']` override.
 
+**The Three Tiers Rule.** Every semantic color has up to three tiers, and picking the wrong one is how this system breaks. Bare `--rose` / `--amber` / `--emerald` / `--teal` are **surface and border** values: chips, badge borders, icons, indicator dots. `--*-text` is the **foreground** tier for text on the matching `-light` surface. `--*-fill` is the **solid-button** tier, dark enough to carry white in *both* themes.
+
+**Amber has no fill tier, and must not be given one.** Caution Amber is never an action color (see Tertiary above), so nothing should ever need a solid amber button. If you find yourself reaching for one, the button is the mistake.
+
+The tiers are not interchangeable, and the failure is silent. Before 2026-08-19 four filled buttons used the bare tier as their background:
+
+| Button | Was | Fix |
+| --- | --- | --- |
+| `.btn-success` hover ("Generate Invoice → Carmen") | **1.41:1** | `--emerald-fill`, 7.01:1 |
+| `.btn-primary` in dark mode | **3.23:1** | `--primary-fill`, 4.88:1 |
+| `.btn-overwrite`, `.btn-danger:hover` | 4.27:1 | `--rose-fill`, 5.98:1 |
+| `.modal-warning .btn-confirm` | **2.18:1** | button colour deleted — see below |
+
+**Modal confirm buttons are Carmen Blue, whatever the modal's type.** The 56px icon carries success / warning / error; the action does not repeat it. Each type used to recolor `.btn-confirm` as well, which gave the app's most common dialog (32 `type: 'warning'` call sites) a solid amber OK button — and dark mode never showed any of it, because its `.btn-confirm` rule is `!important` and painted all four blue. A dialog that genuinely destroys or abandons work opts in with `CustomModal`'s `confirmVariant="danger"`.
+
+`npm run contrast` (`frontend/scripts/contrast-audit.mjs`) parses these tokens straight out of `base.css` and exits non-zero if any pair drops under its floor — 4.5:1 for text and button labels, 3:1 for control boundaries and large text. **Add a row to it whenever you add a tier.** Reading a swatch cannot catch this; measuring can.
+
 ---
 
 ## 3. Typography
 
 **Body Font:** Inter (300/400/500/600/700/800), -apple-system, sans-serif
-**Thai Body Font:** Sarabun (300/400/500/600) — loaded alongside Inter; applies to Thai-script content via the shared font stack
+**Thai Body Font:** IBM Plex Sans Thai (300/400/500/600/700) — loaded alongside Inter; applies to Thai-script content via the shared font stack. All three faces come from the single Google Fonts `<link>` in `index.html`; there is no `@import` anywhere in the CSS, and adding one puts the whole type system a round trip behind the page.
 **Data/Mono Font:** IBM Plex Mono (400/500)
 
-**Character:** Inter carries the interface — navigation, labels, body, buttons. IBM Plex Mono carries the data — amounts, account codes, document numbers, elapsed times. The pairing is functional, not expressive: the switch from proportional to monospaced type is a signal that "this is a number you should verify," not a style choice. Sarabun matches Inter's weight range and humanist feel; it doesn't compete or clash when Thai and Latin text appear in the same line.
+**Character:** Inter carries the interface — navigation, labels, body, buttons. IBM Plex Mono carries the data — amounts, account codes, document numbers, elapsed times. The pairing is functional, not expressive: the switch from proportional to monospaced type is a signal that "this is a number you should verify," not a style choice. IBM Plex Sans Thai matches Inter's weight range and humanist feel; it doesn't compete or clash when Thai and Latin text appear in the same line.
 
 ### Hierarchy
 
@@ -233,7 +251,7 @@ Buttons use a 9px radius (rounded.md) across all variants. The shape is consiste
 - **Submit** (`.btn-submit`): Identical to primary; used specifically in form-actions footers. Padding 0.65rem/1.5rem. Always the rightmost button in form-actions.
 - **Outline** (`.btn-outline`): White card-bg fill, border-raised border, ink-secondary text. Hover: carmen-blue-light fill, carmen-blue text, carmen-blue-mid border. The secondary action on any given screen.
 - **Cancel** (`.btn-cancel`): White fill, border-raised border, ink-tertiary text. Hover: gray-50 fill, gray-400 border, ink-secondary text. Never carries a shadow.
-- **Success/Teal** (`.btn-success`): Process Teal fill, white text, shadow-teal glow. Used exclusively for post-submission actions ("Return to Carmen", "Submit to GL"). Not for generic "confirm" flows.
+- **Success** (`.btn-success`): `--emerald-fill` fill, white text, shadow-sm. Used exclusively for post-**completion** actions — the ones a user reaches *after* the posting succeeded ("View JV in Carmen", "Return to Carmen"). **Not** for the submit that does the posting: both wizards' submit-to-Carmen buttons are `.btn-primary`, because a button that is about to attempt something must not wear the colour that means it worked. Its fill comes from `--emerald-fill`, not `--emerald` — the bare tier is for badges, icons and borders and is far too light to carry white.
 - **Danger** (`.btn-danger`): Alert-rose-light fill, alert-rose text, alert-rose-mid border. Hover: fills to solid rose with white text. For destructive confirmation actions (overwrite, delete row).
 - **Destructive Solid** (`.btn-overwrite`): Alert-rose fill, white text. For the most severe destructive action on a given screen where danger-soft would be insufficient. Used sparingly — one per destructive flow at most.
 - **Icon** (`.btn-icon`): 36×36px, rounded.md, white fill, border-raised border. Hover: primary-light fill, carmen-blue text and border. Used for toolbar actions, re-extract, and secondary controls within cards.
@@ -261,7 +279,7 @@ Two card species: **panel-card** (user works inside it, interactive content) and
 
 Two input paradigms coexist:
 
-- **Bottom-border field** (`.form-field input`): Transparent background, no box, `border-bottom: 1.5px solid border-subtle`. Focus: border-bottom shifts to carmen-blue. Inter/Sarabun 0.9rem, 500 weight, ink-primary text. Used in the header form section (company info, dates, document number) where the data feels more like filling in a form than using an input control.
+- **Bottom-border field** (`.form-field input`): Transparent background, no box, `border-bottom: 1.5px solid border-subtle`. Focus: border-bottom shifts to carmen-blue. Inter/IBM Plex Sans Thai 0.9rem, 500 weight, ink-primary text. Used in the header form section (company info, dates, document number) where the data feels more like filling in a form than using an input control.
 - **Bordered table input** (`.detail-input`): transparent fill, transparent border at rest, rounded.sm. Hover: border-subtle border appears, white fill. Focus: carmen-blue border, carmen-blue-light fill. IBM Plex Mono 0.83rem. Used inside the review data table so values feel like they live in a ledger, not a form.
 - **Modal input** (`.modal-input`): Bordered with 8px radius, 1.5px border-subtle border. Focus: carmen-blue border, `0 0 0 3px carmen-blue-light` focus ring. Background `var(--bg-2, #f9fafb)`.
 
@@ -270,7 +288,7 @@ All inputs use the same focus treatment: carmen-blue border + (where applicable)
 ### Navigation
 
 - **App Header** (`.app-header`): Sticky at `top: 0.75rem`, z-index 50. Backdrop-blur 14px + saturate 1.4 over a semi-transparent card-bg fill. Rounded.xl. Contains: back button (pill shape, muted-bg, scales to module-accent on hover), separator, logo box (38×38px rounded.md in module-accent color, white logo SVG), brand text (eyebrow label + module title), and actions slot. A 1px gradient line at the bottom edge traces from transparent to module-accent back to transparent — a subtle module-identity marker.
-- **Step Wizard** (`.step-wizard`): Sticky pill bar below the header. Card-bg fill, rounded.xl, border-subtle border, shadow-sm. Steps show: number (22px circle in IBM Plex Mono), label (hidden on mobile except active). Active step: Framer Motion animated pill in Carmen Blue wraps the active step; text is white. Done step: emerald text, gradient-filled step-num circle. Separator: 2px border-subtle line, max 40px wide.
+- **Step Wizard** (`.step-wizard`): Pill bar below the header. It is **not** sticky: `.step-wizard-wrap` is an `overflow-x: auto` scroller so the steps can slide horizontally on narrow screens, and `position: sticky` does not survive inside a scroll container. Making it stick means restructuring the wrapper first. Card-bg fill, rounded.xl, border-subtle border, shadow-sm. Steps show: number (22px circle in IBM Plex Mono), label (hidden on mobile except active). Active step: Framer Motion animated pill in Carmen Blue wraps the active step; text is white. Done step: emerald text, gradient-filled step-num circle. Separator: 2px border-subtle line, max 40px wide.
 - **Back Button** (`.app-header-back`): Pill (100px radius), 32px height, muted-bg fill. Hover: fills with module-accent-soft, text and border shift to module-accent, arrow icon slides 2px left.
 
 ### Signature: Upload Drop Zone
@@ -301,7 +319,7 @@ The OCR loading overlay (`.ocr-loading-overlay`) uses `backdrop-filter: blur(8px
 - **Do** treat the step wizard as the primary navigation metaphor. Users are always in a step; the current step is always visible. New screens must integrate with the wizard, not work around it.
 - **Do** verify Ink Tertiary (`oklch(0.56 0.016 258.7)`) against its background on every new surface. It passes AA on white but approaches the floor; anything smaller than 14px or lighter than 500 weight needs a darker ink value.
 - **Do** include all five button states in every new button variant: default, hover, focus-visible, active (scale 0.97), and disabled (0.42–0.55 opacity, no shadow, no pointer cursor).
-- **Do** use the Sarabun font stack (not just Inter) on every text element that may contain Thai script — vendor names, GL labels, invoice descriptions, bank names.
+- **Do** use the full `'Inter', 'IBM Plex Sans Thai'` stack (not just Inter) on every text element that may contain Thai script — vendor names, GL labels, invoice descriptions, bank names.
 
 ### Don't:
 - **Don't** add `background-clip: text` with a gradient background. Gradient text is prohibited. Use a single solid color; emphasis through weight or size.

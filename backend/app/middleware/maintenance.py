@@ -4,7 +4,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from app.middleware.performance import _decode_jwt_claims
+from app.middleware.performance import decode_jwt_claims
 from app.services import maintenance_service
 
 # Always reachable, even during maintenance: health (Render restarts the service
@@ -27,7 +27,7 @@ class MaintenanceMiddleware(BaseHTTPMiddleware):
         if path.startswith(_ALLOW_PREFIXES):
             return await call_next(request)
 
-        tenant_id = _decode_jwt_claims(request).get("tid", "")
+        tenant_id = decode_jwt_claims(request).get("tid", "")
         active, message = await maintenance_service.is_maintenance(tenant_id or None)
         if active:
             return JSONResponse(

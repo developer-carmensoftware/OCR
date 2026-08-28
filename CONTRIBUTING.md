@@ -54,12 +54,20 @@ npm run test
 
 ## Branch strategy
 
+Trunk-based: branch off `main`, open a PR, merge back into `main`. There is no long-lived
+integration branch.
+
 | Branch | Purpose |
 |--------|---------|
-| `main` | Production-ready. CI must pass before merge. |
-| `dev` | Integration branch for ongoing work. |
-| `feat/...` | Feature branches — merge into `dev` via PR. |
-| `fix/...` | Bug fix branches. |
+| `main` | Production-ready, and the only merge target. CI must pass; pushing here deploys. |
+| `feat/...` | New capability. |
+| `fix/...` | Bug fix. |
+| `chore/...` `refactor/...` `test/...` `docs/...` | Housekeeping — no user-visible change. |
+| `perf/...` `polish/...` | Faster, or better-looking, but the same behaviour. |
+
+[`deploy.yml`](.github/workflows/deploy.yml) maps `dev` → staging and `main` → production.
+`dev` does not currently exist; create it only if you actually want a staging deploy target,
+and expect it to be short-lived.
 
 ## Commit conventions
 
@@ -73,17 +81,28 @@ docs: update CONTRIBUTING
 
 ## Pull request checklist
 
-- [ ] `pre-commit run --all-files` passes
-- [ ] `pytest tests/` passes locally
 - [ ] New code has tests (especially for business logic in `services/`)
 - [ ] No secrets committed (`.env` stays local)
-- [ ] `mypy` warnings addressed for any new code in strict modules
-- [ ] `changelog/<today>.md` updated — **CI-enforced**: the `changelog-check` job fails any PR that touches no `changelog/` file (see [changelog/README.md](changelog/README.md))
+- [ ] `changelog/<today>.md` updated — in the **same commit as the change**, not after CI complains
+
+### What CI actually gates on
+
+`pre-commit run --all-files` and `pytest tests/` are the fast local proxy, but
+[`ci.yml`](.github/workflows/ci.yml) checks more than they do. Run the ones your change
+touches before pushing — every item below fails the PR:
+
+| Job | Fails on |
+|-----|----------|
+| Backend | `ruff check`, `ruff format --check`, **`mypy app/`**, **`bandit -c pyproject.toml -r app/ -ll`**, `pytest` + coverage |
+| Frontend | `npm run lint`, `npm run format:check`, **`npm run type-check`** (tsc), `npm run test`, **`npm run build`** (vite) |
+| Migrations | every `supabase/migrations/*.sql` applied to an ephemeral DB — a migration that only works against the current remote state fails here |
+| Secret scan | `gitleaks` over the whole tree ([.gitleaks.toml](.gitleaks.toml)) |
+| Changelog | the PR touches no file under `changelog/` (escape hatch: the `skip-changelog` label) |
 
 ## mypy strict modules
 
 These modules are type-checked strictly — authoritative list in `[[tool.mypy.overrides]]` in [backend/pyproject.toml](backend/pyproject.toml):
-`app/tools/`, `app/auth/session.py`, `app/exceptions.py`, `app/constants.py`, `app/context.py`, `app/config.py`, `app/llm/client.py`, `app/middleware/rate_limit.py`, `app/middleware/performance.py`, and services `ap_invoice_postprocess_service` / `usage_service` / `audit_service` / `llm_service`.
+`app/auth/session.py`, `app/exceptions.py`, `app/constants.py`, `app/context.py`, `app/config.py`, `app/llm/client.py`, `app/middleware/rate_limit.py`, `app/middleware/performance.py`, and services `ap_invoice_postprocess_service` / `usage_service` / `audit_service` / `llm_service`.
 
 When adding new modules, add them to `[[tool.mypy.overrides]]` in `pyproject.toml`.
 

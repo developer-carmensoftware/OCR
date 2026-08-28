@@ -172,18 +172,3 @@ async def ensure_db() -> None:
 
 async def provision_tenant(_tenant: str = "") -> None:
     await ensure_db()
-
-
-async def get_all_tenants() -> list[str]:
-    """Return all active tenant IDs from the tenants table."""
-    try:
-        engine = _get_engine()
-        async with engine.begin() as conn:
-            rows = await conn.execute(
-                text("SELECT id FROM tenants WHERE is_active = true AND deleted_at IS NULL")
-            )
-            ids = [row[0] for row in rows.fetchall()]
-            return ids if ids else []
-    except Exception as exc:
-        logger.exception("get_all_tenants failed: %s", exc)
-        return []

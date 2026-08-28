@@ -143,6 +143,11 @@ export const API = {
     quotaOverview: `${V1}/admin/quotas/overview`,
     tenantModule: (tenantId: string, moduleId: string) =>
       `${V1}/admin/tenants/${tenantId}/modules/${moduleId}`,
+    emailDocuments: `${V1}/admin/email-ingest/documents`,
+    emailHealth: `${V1}/admin/email-ingest/health`,
+    emailBusinessUnits: `${V1}/admin/email-ingest/business-units`,
+    emailPoll: `${V1}/admin/email-ingest/poll`,
+    emailConfirmations: `${V1}/admin/email-ingest/confirmations`,
     adminUsers: `${V1}/admin/admin-users`,
     adminUser: (userId: string) => `${V1}/admin/admin-users/${userId}`,
     adminUserPasswordReset: (userId: string) => `${V1}/admin/admin-users/${userId}/password-reset`,

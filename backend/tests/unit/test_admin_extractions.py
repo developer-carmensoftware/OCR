@@ -46,6 +46,21 @@ def _make_db(*batches):
     return db
 
 
+def _make_failures_db(*batches, total=None):
+    """`_make_db` plus the leading COUNT that get_extraction_failures now runs.
+
+    `total` used to be len(rows), which could never reveal that the 500-row cap had
+    bitten and left the page's grouped cause counts describing a sample.
+    """
+    db = AsyncMock()
+    count_first = MagicMock()
+    count_first.scalar_one.return_value = (
+        total if total is not None else (len(batches[0]) if batches else 0)
+    )
+    db.execute.side_effect = [count_first, *(_result(b) for b in batches)]
+    return db
+
+
 def _task(task_id, *, error="boom", filename="doc.pdf", tenant=None, module="credit_card_ocr"):
     t = MagicMock()
     t.id = task_id
@@ -75,21 +90,29 @@ class TestExtractionFailuresEndpoint:
             admin=admin or _make_admin(),
         )
 
-    async def test_rejects_range_wider_than_92_days(self):
-        # The guard must fire before any query runs — an unbounded range over a
-        # partitioned table is the whole reason _MAX_DATE_RANGE_DAYS exists.
-        db = _make_db()
-        with pytest.raises(ValidationError, match="max 92 days"):
-            await self._call(db, from_date=date(2026, 1, 1), to_date=date(2026, 4, 10))
+    async def test_rejects_range_wider_than_a_year(self):
+        # The guard must fire before any query runs. The ceiling is a year, not the old
+        # 92 days: this endpoint is bounded by its own row limit, and the reason the cap
+        # existed (an unbounded row count) only ever applied to /usage-summary.
+        db = _make_failures_db()
+        with pytest.raises(ValidationError, match="max 366 days"):
+            await self._call(db, from_date=date(2025, 1, 1), to_date=date(2026, 4, 10))
         db.execute.assert_not_called()
 
+    async def test_accepts_a_full_year(self):
+        # The complaint this whole change answers: a range past 30-ish days used to come
+        # back as a red toast instead of data.
+        db = _make_failures_db([])
+        result = await self._call(db, from_date=date(2026, 1, 1), to_date=date(2026, 7, 1))
+        assert result["from"] == "2026-01-01"
+
     async def test_rejects_inverted_range(self):
-        db = _make_db()
+        db = _make_failures_db()
         with pytest.raises(ValidationError):
             await self._call(db, from_date=date(2026, 7, 10), to_date=date(2026, 7, 1))
 
     async def test_defaults_to_month_to_date(self):
-        db = _make_db([])
+        db = _make_failures_db([])
         result = await self._call(db)
         today = date.today()
         assert result["from"] == str(today.replace(day=1))
@@ -98,7 +121,7 @@ class TestExtractionFailuresEndpoint:
     async def test_scoped_admin_cannot_read_another_tenant(self):
         # Filenames and carmen_user_id are in the payload, so tenant scoping is a
         # privacy boundary here, not just a filter.
-        db = _make_db([])
+        db = _make_failures_db([])
         result = await self._call(
             db, admin=_make_admin(is_global=False, tenant_scope="t-owned"), tenant_id="t-other"
         )
@@ -122,16 +145,17 @@ class TestGetExtractionFailures:
         )
 
     async def test_no_failures_short_circuits(self):
-        # No tasks → no point querying llm_usage_logs or tenant names.
-        db = _make_db([])
+        # No tasks → no point querying llm_usage_logs or tenant names. Two executes,
+        # not one: the COUNT runs first so `total` can report a truncated window.
+        db = _make_failures_db([])
         result = await self._call(db)
         assert result == {"total": 0, "data": []}
-        assert db.execute.await_count == 1
+        assert db.execute.await_count == 2
 
     async def test_llm_stats_merged_onto_task(self):
         tid = uuid.uuid4()
         task = _task(tid, error="Unterminated string starting at: line 34 column 22 (char 839)")
-        db = _make_db(
+        db = _make_failures_db(
             [task],
             [
                 {
@@ -157,7 +181,7 @@ class TestGetExtractionFailures:
         # total_tokens == 0 means it was called and returned nothing. Collapsing
         # both to 0 destroys the signal.
         task = _task(uuid.uuid4(), error="document closed or encrypted")
-        db = _make_db([task], [], [])
+        db = _make_failures_db([task], [], [])
         row = (await self._call(db))["data"][0]
         assert row["llm_calls"] is None
         assert row["total_tokens"] is None
@@ -167,7 +191,7 @@ class TestGetExtractionFailures:
     async def test_tenant_name_resolved_and_id_stringified(self):
         tenant = uuid.uuid4()
         task = _task(uuid.uuid4(), tenant=tenant)
-        db = _make_db(
+        db = _make_failures_db(
             [task],
             [],
             [{"id": tenant, "name": "Pilot BU", "bu_code": "pilot"}],
@@ -175,6 +199,15 @@ class TestGetExtractionFailures:
         row = (await self._call(db))["data"][0]
         assert row["tenant_id"] == str(tenant)
         assert row["tenant_name"] == "Pilot BU (pilot)"
+
+    async def test_total_is_the_whole_match_so_the_page_can_admit_it_truncated(self):
+        # The page groups these by cause client-side. Over the cap those cause counts
+        # describe a sample, and len(data) could never have revealed that.
+        task = _task(uuid.uuid4())
+        db = _make_failures_db([task], [], [], total=843)
+        result = await self._call(db)
+        assert result["total"] == 843
+        assert len(result["data"]) == 1
 
 
 # ── get_tenant_engagement_map ────────────────────────────────────────────────
@@ -294,7 +327,7 @@ class TestCallTypeSplit:
 
         with (
             patch("app.services.llm_usage_logger.async_session", _Session),
-            patch("app.services.llm_usage_logger._get_pricing", AsyncMock(return_value=None)),
+            patch("app.services.llm_usage_logger.get_pricing", AsyncMock(return_value=None)),
             patch("app.services.llm_usage_logger._ctx", return_value="t-1"),
         ):
             await log_llm_usage(

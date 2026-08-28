@@ -26,7 +26,17 @@ _REF_PATTERN = re.compile(
 
 # ── Performance log buffer ────────────────────────────────────────────────────
 # Requests append here; a background task (main.py) flushes every 10 seconds.
-# Reduces per-request DB writes from O(n requests) → O(1 batch per 10s).
+#
+# The saving is O(n) → O(1) *transactions*, not statements. Measured 2026-08-19
+# (docs/SQL_PERFORMANCE_AUDIT.md §3.2): 84,355 INSERT statements for 84,376 rows —
+# db.add_all() still emits one statement per row, so a 500-row flush is 500 round trips
+# inside a single commit. That costs the database almost nothing (8.2% of a 68-day total
+# that is itself only 18.5 minutes, i.e. ~1.3 s/day), which is why it has not been changed.
+#
+# What is NOT ruled out is the Python side: building and compiling 500 statements is CPU
+# that blocks the event loop, and this app runs on 0.1 vCPU (render.yaml plan: free). If
+# the endpoint-latency investigation in that report's §3.1e goes looking, collapsing this
+# into one multi-row INSERT is the first thing to try — and to measure before and after.
 _PERF_BUFFER: list[dict] = []
 _FLUSH_SIZE = 500  # also flush immediately when buffer reaches this size
 # Hard cap — if flushes keep failing (e.g. DB down), drop the oldest rows
@@ -48,7 +58,7 @@ async def flush_perf_buffer() -> None:
         logger.error("flush_perf_buffer failed (dropped %d rows): %s", len(batch), exc)
 
 
-def _decode_jwt_claims(request: Request) -> dict:
+def decode_jwt_claims(request: Request) -> dict:
     """Decode JWT payload without DB — never raises. Returns {} on failure."""
     try:
         auth = request.headers.get("authorization", "")
@@ -72,7 +82,7 @@ class PerformanceMiddleware(BaseHTTPMiddleware):
             response.headers["X-Request-ID"] = request_id
             return response
 
-        claims = _decode_jwt_claims(request)
+        claims = decode_jwt_claims(request)
         tenant_id = claims.get("tid", "")
         carmen_user_id = claims.get("cuid", "")
         carmen_uri_val = claims.get("carmen_uri", "")

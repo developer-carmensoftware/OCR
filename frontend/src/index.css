@@ -7,6 +7,25 @@
      - components.css → Shared UI component styles
 
    Page-specific styles live in styles/pages/
+
+   ⚠ LOAD ORDER IS LOAD-BEARING. ap-invoice.css and admin.css are imported here, not
+   from their page components, so despite the "pages/" name they load app-wide after
+   components.css and win same-specificity conflicts everywhere. That is a trap: a rule
+   written for one page silently restyles the whole app, and which rule wins depends on
+   the order below rather than on anything a reader can see at the call site.
+
+   Four shared controls had been caught by it and are now consolidated in
+   components.css — do not move them back into a pages/ sheet:
+
+     .status-badge   base was split between components.css and pages/admin.css, one half
+                     supplying line-height and the other display/size/casing.
+     .lang-toggle    same split with pages/ap-invoice.css (colours there, height here).
+     .btn-confirm    base lived only in pages/mapping.css, so the eight other places
+                     using it rendered unshaped unless #/mapping had been visited first.
+     .btn-cancel     pages/mapping.css overrode it with a hardcoded `background: white`
+                     and no dark counterpart.
+
+   Before adding a rule to a pages/ sheet, check the class is not used outside that page.
 */
 
 @import './styles/base.css';
@@ -17,6 +36,6 @@
 @import './styles/components/sonner.css';
 @import './styles/components/page-skeleton.css';
 @import './styles/components/maintenance.css';
-@import './styles/tailwind.css';
+@import './styles/components/tutorial.css';
 @import './styles/pages/ap-invoice.css';
 @import './styles/pages/admin.css';

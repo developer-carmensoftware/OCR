@@ -5,7 +5,11 @@ Email automation has no browser, so the same two steps live here: detail rows +
 accounting config → JV rows → the Carmen `gljv` body.
 
 Kept deliberately in step with ccJv.ts + useOcrSubmission.ts. If the consolidated
-layout changes there, change it here — test_cc_jv.py pins the arithmetic.
+layout changes there, change it here — test_cc_jv.py pins the arithmetic, and
+`contracts/cc-jv.contract.json` pins this body so the two can no longer drift
+silently: each side is asserted against that one file, so changing a field here
+reddens THIS suite (and changing ccJv.ts reddens the frontend one). The fix is to
+change both implementations, not to edit the contract to match one of them.
 """
 
 from __future__ import annotations
@@ -65,7 +69,7 @@ def canonical_payment_type(pay_type: str, mappings: dict[str, Any]) -> str:
     return hits[0] if len(hits) == 1 else pay_type
 
 
-def _num(value: str | None) -> float:
+def num(value: str | None) -> float:
     """'10,342.12' → 10342.12. Anything unparseable is 0, as parseNum does."""
     if not value:
         return 0.0
@@ -75,7 +79,7 @@ def _num(value: str | None) -> float:
         return 0.0
 
 
-def _r2(x: float) -> float:
+def r2(x: float) -> float:
     return round(x + 0.0, 2)
 
 
@@ -100,7 +104,7 @@ def build_jv_rows(details: list[ExtractedDetailRow], mappings: dict[str, Any]) -
 
     rows: list[dict] = []
     for d in details:
-        amt = _num(d.pay_amt)
+        amt = num(d.pay_amt)
         if not amt:
             continue
         # The canonical key is also the description: it is the wording the BU
@@ -110,7 +114,7 @@ def build_jv_rows(details: list[ExtractedDetailRow], mappings: dict[str, Any]) -
     if not rows:
         return rows  # degenerate document — nothing to post
 
-    total = lambda field: _r2(sum(_num(getattr(d, field)) for d in details))  # noqa: E731
+    total = lambda field: r2(sum(num(getattr(d, field)) for d in details))  # noqa: E731
     rows.append(leg(fixed["commission"], "Credit card commission", total("commis_amt"), 0.0))
     rows.append(leg(fixed["tax"], "Input Tax", total("tax_amt"), 0.0))
     rows.append(leg(fixed["net"], "Bank Account", total("total"), 0.0))
@@ -127,7 +131,7 @@ def unmapped_payment_types(
     """
     missing = []
     for d in details:
-        if not _num(d.pay_amt):
+        if not num(d.pay_amt):
             continue
         pay_type = canonical_payment_type(d.transaction or "UNKNOWN", mappings)
         cfg = mappings.get(pay_type) or {}
@@ -176,10 +180,10 @@ def build_gljv_payload(
                 "Description": r["desc"],
                 "CurCode": "THB",
                 "CurRate": 1,
-                "CrAmount": _r2(r["credit"]),
-                "CrBase": _r2(r["credit"]),
-                "DrAmount": _r2(r["debit"]),
-                "DrBase": _r2(r["debit"]),
+                "CrAmount": r2(r["credit"]),
+                "CrBase": r2(r["credit"]),
+                "DrAmount": r2(r["debit"]),
+                "DrBase": r2(r["debit"]),
                 "DimList": {},
             }
             # Display-only zero legs (a gateway invoice's net=0) never reach Carmen.

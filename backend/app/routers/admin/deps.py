@@ -8,17 +8,6 @@ from app.auth.admin_session import AdminPrincipal, decode_admin_jwt
 from app.config import settings
 from app.services.admin_auth_service import get_admin_jwt_secret
 
-# ── Legacy master-key guard (backward-compat during migration, remove in Phase 2) ──
-
-
-def require_admin_key(x_admin_key: str = Header(..., alias="X-Admin-Key")) -> None:
-    """Header-based master key check — kept as escape hatch; prefer JWT auth."""
-    if not settings.master_api_key:
-        raise HTTPException(status_code=503, detail="Admin access not configured")
-    if x_admin_key != settings.master_api_key:
-        raise HTTPException(status_code=403, detail="Invalid admin key")
-
-
 # ── JWT-based admin auth ──────────────────────────────────────────────────────
 
 
@@ -113,21 +102,3 @@ def require_maintenance_auth(
     if not admin.has_perm("configs:write"):
         raise HTTPException(status_code=403, detail="Permission denied: configs:write")
     return admin
-
-
-# ── Backward-compat alias (used by maintenance.py which has no session dep) ──
-
-
-def require_admin(
-    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
-) -> AdminPrincipal | None:
-    """
-    Accept EITHER a master API key (X-Admin-Key header) OR nothing — returns None
-    for the master-key path.  New code should use get_current_admin() or
-    require_permission() instead.
-    """
-    if x_admin_key:
-        if not settings.master_api_key or x_admin_key != settings.master_api_key:
-            raise HTTPException(status_code=403, detail="Invalid admin key")
-        return None
-    raise HTTPException(status_code=401, detail="Authentication required")

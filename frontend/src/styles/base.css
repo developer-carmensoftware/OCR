@@ -2,7 +2,9 @@
    BASE — Variables, Resets, Typography, Animations
    ═══════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap');
+/* Fonts are requested from index.html, not from here. A CSS @import cannot start until
+   the importing stylesheet has downloaded and parsed, which put the whole type system one
+   round trip behind the page. Do not add one back. */
 
 /* Language-switch crossfade (View Transitions API — see i18n/LanguageContext) */
 ::view-transition-old(root),
@@ -51,6 +53,9 @@
   --teal-light: oklch(0.96 0.015 195);
   --teal-mid: oklch(0.88 0.04 195);
   --teal-hover: oklch(0.5 0.14 195);
+  /* AA foreground tier (same role --rose-text plays for rose). Bare --teal on
+     --teal-light measures 3.39:1; this is 6.92:1 there and 7.74:1 on the card face. */
+  --teal-text: oklch(0.42 0.1 200);
 
   --rose: oklch(0.6 0.16 25);
   --rose-light: oklch(0.97 0.02 25);
@@ -60,16 +65,32 @@
      value: as text on --rose-light it measures 3.86:1, under the 4.5 floor.
      This is 7.3:1 on --rose-light and 7.5:1 on the body background. */
   --rose-text: oklch(0.45 0.16 25);
+  /* Solid-fill tier for .btn-overwrite, the same split --emerald-fill makes: white on
+     bare --rose is 4.27:1, under AA for 0.85rem/600. These are 5.98:1 and 8.09:1. */
+  --rose-fill: oklch(0.52 0.16 25);
+  --rose-fill-hover: oklch(0.45 0.16 25);
 
   --amber: oklch(0.76 0.13 78);
   --amber-light: oklch(0.97 0.02 78);
   --amber-mid: oklch(0.92 0.05 78);
   --amber-text: oklch(0.42 0.11 70);
+  /* Amber has NO fill tier, deliberately. "Caution Amber is never used as an action
+     color" (§2) — so nothing should ever need a solid amber button. The one that existed
+     (the warning modal's OK) was white on bare --amber at 2.18:1; the fix was deleting
+     the button colour, not darkening it into a mustard slab. */
 
   --emerald: oklch(0.62 0.15 145);
   --emerald-light: oklch(0.96 0.015 145);
   --emerald-mid: oklch(0.88 0.05 145);
   --emerald-end: oklch(0.55 0.15 155);
+  /* AA foreground tier. Bare --emerald on --emerald-light is 3.07:1; this is 7.19:1
+     there and 8.04:1 on the card face. */
+  --emerald-text: oklch(0.42 0.11 150);
+  /* Button fill tier, separate from --emerald so badges/borders keep the lighter value.
+     .btn-success used to hover to --emerald-mid, a pale mint, under the inherited
+     `color: white` — 1.41:1, the label vanished. These are 5.17:1 and 7.01:1. */
+  --emerald-fill: oklch(0.52 0.15 145);
+  --emerald-fill-hover: oklch(0.45 0.14 145);
 
   /* ── Neutrals ── */
   --gray-50: oklch(0.985 0.003 258.7);
@@ -86,10 +107,18 @@
   --text: oklch(0.16 0.02 258.7);
   --text-2: oklch(0.33 0.018 258.7);
   --text-3: oklch(0.56 0.016 258.7);
-  --text-4: oklch(0.7 0.014 258.7);
+  /* Was 0.7, which measured 2.67:1 on the card face — under the 3:1 floor even for
+     non-essential text, across 70+ call sites. 0.64 is 3.36:1 on card / 3.13:1 on muted,
+     the most this tier can take without collapsing into --text-3. It is still a
+     large-text-only value: anything a user must actually read belongs on --text-3. */
+  --text-4: oklch(0.64 0.014 258.7);
 
   --border: oklch(0.16 0.02 258.7 / 0.08);
   --border-hi: oklch(0.16 0.02 258.7 / 0.15);
+  /* Form-control boundaries only (WCAG 1.4.11 wants 3:1; --border is 1.19:1). Dividers,
+     card edges and table rules stay on --border — the receding-surface look depends on
+     them staying quiet. This is 3.21:1 on card. */
+  --border-input: oklch(0.16 0.02 258.7 / 0.46);
 
   /* ── Spacing scale (systematic — new admin/ui kit composes from these) ── */
   --space-1: 0.25rem;
@@ -482,8 +511,12 @@ textarea:focus-visible {
   --accent: oklch(0.29 0.006 var(--neutral-h));
 
   /* ponytail: --primary-fill is the saturated version for filled buttons;
-     --primary is the toned-down version used everywhere else (text, border) */
-  --primary-fill: oklch(0.58 0.14 253.27);
+     --primary is the toned-down version used everywhere else (text, border).
+     Was 0.58, which put white at 4.30:1 — just under AA for 0.85rem/600 button text.
+     0.55 is 4.88:1, and the hover darkens the way the light theme's does (6.2:1)
+     rather than lightening, which white text cannot survive here. */
+  --primary-fill: oklch(0.55 0.15 253.27);
+  --primary-fill-hover: oklch(0.49 0.15 253.27);
   --primary: oklch(0.65 0.12 253.27);
   --primary-light: oklch(0.29 0.02 253.27);
   --primary-mid: oklch(0.34 0.03 253.27);
@@ -495,12 +528,17 @@ textarea:focus-visible {
   --teal-light: oklch(0.26 0.025 188.43);
   --teal-mid: oklch(0.4 0.06 188.43);
   --teal-hover: oklch(0.65 0.09 188.43);
+  --teal-text: oklch(0.8 0.08 195);
 
   --rose: oklch(0.68 0.12 24.11);
   --rose-light: oklch(0.28 0.03 24.11);
   --rose-mid: oklch(0.4 0.06 24.11);
   --rose-hover: oklch(0.75 0.12 24.11);
   --rose-text: oklch(0.8 0.1 24.11);
+  /* Destructive fills stay dark in this theme — white on dark's --rose (0.68 L) is
+     3.04:1. These are 6.01:1 and 7.79:1. */
+  --rose-fill: oklch(0.52 0.17 25);
+  --rose-fill-hover: oklch(0.46 0.17 25);
 
   --amber: oklch(0.8 0.1 75);
   --amber-light: oklch(0.28 0.03 75);
@@ -511,14 +549,29 @@ textarea:focus-visible {
 
   --emerald: oklch(0.72 0.1 188.43);
   --emerald-light: oklch(0.26 0.025 188.43);
+  /* Was missing, so every `var(--emerald-mid)` fell through to the LIGHT theme's
+     oklch(0.88 0.05 145) — a pale mint, at the wrong hue (145 vs 188) and far too
+     bright. It reads as a halo on `.status-badge.success`, `.modal-icon.success`
+     and `.btn-success`, whose hover fill it also is. */
+  --emerald-mid: oklch(0.4 0.06 188.43);
+  --emerald-text: oklch(0.8 0.08 145);
+  /* Dark's --emerald is a LIGHT teal (0.72 L) where white lands at 2.4:1, so the fill
+     tier does NOT follow it — it stays a real green, dark enough for white (5.65:1 /
+     7.35:1) and still 3.03:1 against the card so the button reads as a shape. The
+     invariant that matters: --*-fill always carries white, in either theme. Nothing
+     downstream should have to special-case a filled button per theme again. */
+  --emerald-fill: oklch(0.5 0.13 150);
+  --emerald-fill-hover: oklch(0.44 0.12 150);
 
   --text: oklch(0.9 0.003 var(--neutral-h));
   --text-2: oklch(0.78 0.004 var(--neutral-h));
   --text-3: oklch(0.62 0.006 var(--neutral-h));
-  --text-4: oklch(0.5 0.005 var(--neutral-h));
+  /* Was 0.5 → 2.67:1 on the card face. 0.545 is 3.45:1. Same caveat as light. */
+  --text-4: oklch(0.545 0.005 var(--neutral-h));
 
   --border: oklch(0.9 0.003 var(--neutral-h) / 0.12);
   --border-hi: oklch(0.9 0.003 var(--neutral-h) / 0.2);
+  --border-input: oklch(0.9 0.003 var(--neutral-h) / 0.45);
 
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.12);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08), 0 3px 8px rgba(0, 0, 0, 0.15);
@@ -641,13 +694,15 @@ textarea:focus-visible {
 [data-theme='dark'] select,
 [data-theme='dark'] textarea {
   background: var(--card-bg);
-  border-color: var(--border);
+  border-color: var(--border-input);
   color: var(--text);
   color-scheme: dark;
 }
+/* --text-3, not --text-4: a placeholder is the only hint of what a field wants, so it
+   has to be readable rather than merely present. */
 [data-theme='dark'] input::placeholder,
 [data-theme='dark'] textarea::placeholder {
-  color: var(--text-4);
+  color: var(--text-3);
 }
 [data-theme='dark'] .field-input,
 [data-theme='dark'] .tbl-input,
@@ -659,7 +714,7 @@ textarea:focus-visible {
 [data-theme='dark'] .ap-sum-from-doc,
 [data-theme='dark'] .ap-search-input-wrap input {
   background: var(--card-bg) !important;
-  border-color: var(--border) !important;
+  border-color: var(--border-input) !important;
   color: var(--text) !important;
 }
 
@@ -681,26 +736,34 @@ textarea:focus-visible {
 }
 
 /* Buttons */
-[data-theme='dark'] .btn-outline,
-[data-theme='dark'] .btn-cancel {
+[data-theme='dark'] .btn-outline {
   border-color: var(--border-hi) !important;
   color: var(--text-2) !important;
   background: transparent !important;
 }
-[data-theme='dark'] .btn-outline:hover,
-[data-theme='dark'] .btn-cancel:hover {
+[data-theme='dark'] .btn-outline:hover {
   background: rgba(255, 255, 255, 0.06) !important;
 }
-[data-theme='dark'] .btn-confirm {
+/* --primary is deliberately toned down in dark (0.65 L) so it reads as text and border.
+   Filled buttons need --primary-fill instead, or white lands at 3.23:1. .btn-confirm had
+   this rule from the start; .btn-primary was simply never added to it, which left the
+   app's most-used button failing AA in dark mode. */
+[data-theme='dark'] .btn-confirm,
+[data-theme='dark'] .btn-primary {
   background: var(--primary-fill) !important;
   color: oklch(0.98 0 0) !important;
   border-color: var(--primary-fill) !important;
-  box-shadow: 0 2px 8px oklch(0.58 0.14 253.27 / 0.25) !important;
+  box-shadow: 0 2px 8px oklch(0.55 0.15 253.27 / 0.25) !important;
 }
-[data-theme='dark'] .btn-confirm:hover {
-  background: oklch(0.62 0.14 253.27) !important;
-  box-shadow: 0 4px 14px oklch(0.58 0.14 253.27 / 0.35) !important;
+[data-theme='dark'] .btn-confirm:hover,
+[data-theme='dark'] .btn-primary:hover {
+  background: var(--primary-fill-hover) !important;
+  box-shadow: 0 4px 14px oklch(0.55 0.15 253.27 / 0.35) !important;
 }
+/* .btn-success needs no dark override any more: --emerald-fill is a real green in both
+   themes and carries white in both. The rule that used to live here flipped the label to
+   ink because the fill followed dark's light-teal --emerald. */
+
 [data-theme='dark'] .btn-icon {
   border-color: var(--border);
   color: var(--text-3);
@@ -766,7 +829,7 @@ textarea:focus-visible {
 
 [data-theme='dark'] .mapping-table th select {
   background: var(--card-bg) !important;
-  border-color: var(--border) !important;
+  border-color: var(--border-input) !important;
   color: var(--text) !important;
 }
 

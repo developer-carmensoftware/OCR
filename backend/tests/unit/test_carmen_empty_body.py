@@ -39,12 +39,12 @@ def _mock_resp(status=200, body=b"", json_data=None):
     return resp
 
 
-def _patch_carmen(resp):
-    """Patch _get_client + _base_url + _headers so we skip context vars."""
+def _patch_carmen(resp, method="get"):
+    """Patch get_http_client + _base_url + _headers so we skip context vars."""
     client = AsyncMock()
-    client.get.return_value = resp
+    getattr(client, method).return_value = resp
     return [
-        patch(f"{SVC}._get_client", return_value=client),
+        patch(f"{SVC}.get_http_client", return_value=client),
         patch(f"{SVC}._base_url", return_value="http://fake"),
         patch(f"{SVC}._headers", return_value={"Authorization": "Bearer tok"}),
     ]
@@ -133,6 +133,44 @@ async def test_jv_by_source_valid_json():
             p.stop()
 
 
+# ── post_input_tax ──────────────────────────────────────────────────────────
+#
+# A rejection with a JSON body used to be handed back as if it were the created record,
+# so the wizard toasted "Input Tax added" over a document Carmen never filed.
+
+
+@pytest.mark.asyncio
+async def test_post_input_tax_rejection_with_json_body_raises():
+    from app.services.carmen_service import CarmenAPIError, post_input_tax
+
+    patches = _patch_carmen(
+        _mock_resp(400, json_data={"Code": -1, "UserMessage": "TaxId required"}), method="post"
+    )
+    for p in patches:
+        p.start()
+    try:
+        with pytest.raises(CarmenAPIError):
+            await post_input_tax({"TaxId": ""}, "tok")
+    finally:
+        for p in patches:
+            p.stop()
+
+
+@pytest.mark.asyncio
+async def test_post_input_tax_success_returns_body():
+    from app.services.carmen_service import post_input_tax
+
+    data = {"Code": 0, "InternalMessage": "42"}
+    patches = _patch_carmen(_mock_resp(json_data=data), method="post")
+    for p in patches:
+        p.start()
+    try:
+        assert await post_input_tax({"TaxId": "0107536000315"}, "tok") == data
+    finally:
+        for p in patches:
+            p.stop()
+
+
 # ── fetch_vendor_history ─────────────────────────────────────────────────────
 
 
@@ -162,7 +200,7 @@ async def test_fetch_vendor_history_invalid_json_graceful(ctx):
     resp.text = "not-json"
     resp.json.side_effect = JSONDecodeError("Expecting value", "not-json", 0)
     patches = [
-        patch(f"{SVC}._get_client", return_value=AsyncMock(get=AsyncMock(return_value=resp))),
+        patch(f"{SVC}.get_http_client", return_value=AsyncMock(get=AsyncMock(return_value=resp))),
         patch(f"{SVC}._base_url", return_value="http://fake"),
         patch(f"{SVC}._headers", return_value={}),
     ]

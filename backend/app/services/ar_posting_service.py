@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from httpx import RequestError
 
 from app.config import settings
-from app.services.carmen_service import _get_client, _wrap_network_error
+from app.services.carmen_service import get_http_client, wrap_network_error
 
 logger = logging.getLogger(__name__)
 
@@ -58,11 +58,11 @@ async def post_ar_entry(
     }
 
     try:
-        resp = await _get_client().post(
+        resp = await get_http_client().post(
             url, json=payload, headers={"Authorization": token, "User-Agent": "FastAPI-Proxy"}
         )
     except RequestError as exc:
-        raise RuntimeError(_wrap_network_error(exc).detail) from exc
+        raise RuntimeError(wrap_network_error(exc).detail) from exc
 
     try:
         data = resp.json()

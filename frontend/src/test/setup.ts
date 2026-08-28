@@ -27,3 +27,30 @@ const makeStorage = () => {
 Object.defineProperty(window, 'localStorage', { value: makeStorage(), writable: true })
 Object.defineProperty(window, 'sessionStorage', { value: makeStorage(), writable: true })
 Object.defineProperty(window, 'open', { value: vi.fn(), writable: true })
+
+// jsdom (v30) ships no <dialog> methods at all. Without these a modal dialog
+// never gets its `open` attribute, so everything inside it is display:none and
+// invisible to getByRole. The top layer and ::backdrop are the browser's; what
+// matters under test is that the content is there and reachable.
+const dialog = window.HTMLDialogElement?.prototype
+if (dialog && !dialog.showModal) {
+  dialog.showModal = function showModal(this: HTMLDialogElement) {
+    this.setAttribute('open', '')
+  }
+  dialog.show = function show(this: HTMLDialogElement) {
+    this.setAttribute('open', '')
+  }
+  dialog.close = function close(this: HTMLDialogElement) {
+    this.removeAttribute('open')
+    this.dispatchEvent(new Event('close'))
+  }
+}
+
+// jsdom has no ResizeObserver, and useFitRows measures with one. Nothing lays out
+// under jsdom anyway (every box is 0×0), so a stub that never fires is honest: the
+// hook falls back to its initial row count, which is what the tests assert against.
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as unknown as typeof ResizeObserver

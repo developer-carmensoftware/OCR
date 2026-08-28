@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { saveAccountingConfig } from '../../lib/api/config'
-import { appKey } from '../../lib/storage'
+import { appKey, writeAccountingConfig } from '../../lib/storage'
 import { isAccountAllowed, mergeSuggestion } from '../../lib/deptAccounts'
 import { parseNum } from '../../lib/format'
 import { BANK_INFO, BANK_CODE_MAP, BANK_SOURCE_MAP } from '../../constants/banks'
@@ -275,7 +275,7 @@ export function useMapping() {
         mappings,
         paymentAmount: paymentTypes.paymentAmount,
       }
-      localStorage.setItem(appKey('accountingConfig'), JSON.stringify(config))
+      writeAccountingConfig(config)
 
       const allMappings: Record<string, FieldMapping> = { ...mappings }
       Object.entries(paymentTypes.paymentAmount).forEach(([type, val]) => {

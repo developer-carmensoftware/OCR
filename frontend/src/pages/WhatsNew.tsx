@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import AppHeader from '../components/common/AppHeader'
-import LanguageToggle from '../components/common/LanguageToggle'
 import { useT } from '../i18n/LanguageContext'
 import { RELEASE_NOTES } from '../content/releaseNotes'
 import { markReleaseSeen, readReleaseSeen, WHATS_NEW_RETURN_KEY } from '../lib/releaseNotesSeen'
@@ -30,9 +29,7 @@ export default function WhatsNew() {
         onBack={() => {
           window.location.hash = sessionStorage.getItem(WHATS_NEW_RETURN_KEY) || '#/'
         }}
-      >
-        <LanguageToggle />
-      </AppHeader>
+      />
 
       <main className="whatsnew-main">
         <h1 className="whatsnew-title">{t('whatsnew.title')}</h1>

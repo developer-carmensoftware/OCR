@@ -4,6 +4,7 @@ import { Bell, Bot, Coins, FileText, AlertCircle, Send, TrendingUp, BarChart3 } 
 import KPICard from '../../components/admin/KPICard'
 import MetricChart from '../../components/admin/MetricChart'
 import TenantSelector from '../../components/admin/TenantSelector'
+import PeriodPicker, { granularityFor, lastDays } from '../../components/admin/PeriodPicker'
 import PageHeader from '../../components/admin/ui/PageHeader'
 import Card from '../../components/admin/ui/Card'
 import { fetchAlerts, fetchUsageSummary, fetchUsageTotals } from '../../lib/api/adminClient'
@@ -20,19 +21,23 @@ function fmtNum(v: number) {
 export default function Overview() {
   const { t } = useT()
   const [tenantId, setTenantId] = useState('')
+  // One range for the whole screen. The KPI cards used to call /usage-summary/totals
+  // with no dates at all — month-to-date — while the charts below them passed the last
+  // 30 days, so on the 2nd of the month the cards described one day and the charts a
+  // month, with nothing on screen saying which was which.
+  const [period, setPeriod] = useState(() => lastDays(30))
   const [totals, setTotals] = useState<Record<string, number>>({})
   const [trend, setTrend] = useState<Record<string, unknown>[]>([])
   const [openAlerts, setOpenAlerts] = useState(0)
   const [loading, setLoading] = useState(true)
+  const { from, to } = period
+  const granularity = granularityFor(period)
 
   useEffect(() => {
-    const today = new Date().toISOString().slice(0, 10)
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400e3).toISOString().slice(0, 10)
-
     setLoading(true)
     Promise.allSettled([
-      fetchUsageTotals({ tenant_id: tenantId || undefined }),
-      fetchUsageSummary({ from: thirtyDaysAgo, to: today, tenant_id: tenantId || undefined }),
+      fetchUsageTotals({ from, to, granularity, tenant_id: tenantId || undefined }),
+      fetchUsageSummary({ from, to, granularity, tenant_id: tenantId || undefined }),
       fetchAlerts({ status: 'open', limit: 1 }),
     ])
       .then(([totRes, sumRes, alertsRes]) => {
@@ -67,7 +72,7 @@ export default function Overview() {
       })
       .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId])
+  }, [from, to, granularity, tenantId])
 
   // errors counts FAILED ocr_tasks, so the denominator must be documents. It used to be
   // llm_calls, which is extract + GL-suggestion calls: the suggestions inflated the
@@ -80,7 +85,12 @@ export default function Overview() {
       <PageHeader
         title={t('admin.overview.title')}
         description={t('admin.overview.description')}
-        actions={<TenantSelector value={tenantId} onChange={setTenantId} />}
+        actions={
+          <>
+            <PeriodPicker value={period} onChange={setPeriod} showGranularityNote />
+            <TenantSelector value={tenantId} onChange={setTenantId} />
+          </>
+        }
       />
 
       <div className="kpi-grid">

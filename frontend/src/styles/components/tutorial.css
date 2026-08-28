@@ -1,0 +1,454 @@
+/* ═══════════════════════════════════════════
+   TUTORIAL — the guided-tour modal (components/tutorial/)
+   Shared chrome for every module's tutorial, so a second one costs copy and
+   figures, not layout.
+
+   Two panes with different jobs:
+     · narration — the tour's own chrome
+     · stage — the app itself, at page size, scaled down to fit
+
+   The figures mount real components, so they inherit the product's tokens,
+   type, spacing and dark mode with nothing to keep in sync. There is no CSS
+   reset beyond base.css, so headings and lists arrive with UA margins — style
+   them explicitly rather than assuming a normalize layer.
+   ═══════════════════════════════════════════ */
+
+.tut {
+  /* Sized around the figure, not around the text. The stage is at its most
+     faithful when it can give the 1080px canvas its full width: 1080 + the
+     stage's padding + the 22rem narration lands at ~1520px, and past that the
+     modal would only be adding empty margin — the figure stops growing at 1:1.
+     Height is the opposite: every extra pixel is more of the page in view, so
+     it takes what the viewport has and leaves a margin to sit in.
+     `inset: 0; margin: auto` centres it explicitly instead of trusting the UA
+     dialog styles, which is where the off-centre look came from. */
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(1520px, 92vw);
+  max-width: none;
+  height: min(1040px, 92vh);
+  max-height: none;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--card-bg);
+  color: var(--text);
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+/* Opening and closing: a fade, and a scale small enough to read as depth rather
+   than movement. No translate — a full-viewport surface sliding is exactly what
+   the Calm switch exists to stop, so the default should not need it either. */
+.tut[open] {
+  animation: tut-in 0.22s var(--ease-out) both;
+}
+
+.tut.is-closing {
+  animation: tut-out 0.18s var(--ease-out) both;
+  pointer-events: none;
+}
+
+.tut::backdrop {
+  background: rgba(8, 6, 20, 0.6);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+
+.tut[open]::backdrop {
+  animation: tut-veil-in 0.22s var(--ease-out) both;
+}
+
+.tut.is-closing::backdrop {
+  animation: tut-veil-out 0.18s var(--ease-out) both;
+}
+
+@keyframes tut-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+}
+
+@keyframes tut-out {
+  to {
+    opacity: 0;
+    transform: scale(0.99);
+  }
+}
+
+@keyframes tut-veil-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes tut-veil-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* ─── Head ─── */
+
+.tut-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.9rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.tut-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--text);
+}
+
+.tut-count {
+  margin-right: auto;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-pill);
+  background: var(--primary-light);
+  color: var(--primary);
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Reduce-motion switch. In the tour's own header, not buried in settings: the
+   person who needs it is feeling ill right now, and a preference they cannot
+   find is not a preference. Pressed = animation off. */
+.tut-calm {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-3);
+  font-size: 0.72rem;
+  font-weight: 600;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.tut-calm:hover {
+  background: var(--gray-100);
+  color: var(--text);
+}
+
+.tut-calm.is-on {
+  border-color: var(--primary-mid);
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.tut-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-3);
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.tut-close:hover {
+  background: var(--gray-100);
+  color: var(--text);
+}
+
+/* ─── Body: narration beside the stage ─── */
+
+.tut-body {
+  display: grid;
+  /* The narration gives width back to the stage as the window shrinks: every
+     pixel it yields is a pixel the figure is drawn at, and 16rem still holds a
+     comfortable measure at this size. */
+  grid-template-columns: minmax(0, clamp(16rem, 24%, 22rem)) minmax(0, 1fr);
+  min-height: 0;
+}
+
+/* Card surface against the stage's muted one — two neutral layers, so the
+   reading pane and the picture read as different kinds of thing. */
+.tut-narration {
+  padding: 1.5rem 1.5rem 1.75rem;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.tut-narration-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin-bottom: 0.85rem;
+  border-radius: var(--radius-md);
+  background: var(--primary);
+  color: oklch(1 0 0);
+}
+
+.tut-heading {
+  margin: 0 0 0.65rem;
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  text-wrap: balance;
+}
+
+.tut-line {
+  margin: 0 0 0.5rem;
+  max-width: 46ch;
+  font-size: 0.845rem;
+  line-height: 1.7;
+  color: var(--text-2);
+  text-wrap: pretty;
+}
+
+.tut-line strong {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.tut-line--bullet {
+  position: relative;
+  padding-left: 0.9rem;
+}
+
+.tut-line--bullet::before {
+  content: '';
+  position: absolute;
+  left: 0.1rem;
+  top: 0.72em;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+.tut-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.9rem;
+  padding: 0.55rem 1rem;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--primary);
+  color: oklch(1 0 0);
+  font-size: 0.82rem;
+  font-weight: 700;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+.tut-cta:hover {
+  background: var(--primary-dark, var(--primary));
+}
+
+/* ─── Stage: a viewport onto a page-sized picture ───
+   The figures mount the real components at the real page width (1080px, the
+   same max-width .pricing-page uses); the camera in useCamera.ts frames them.
+   They are not laid out against the stage's own width — that reflows them into
+   an arrangement the user never sees, a subtler lie than squeezing.
+
+   Nothing here scrolls. An overview step fits the whole page, a focus step
+   zooms to one part of it, and the reader never has to go looking. */
+
+.tut-stage {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--muted);
+  /* The highlight dims its surroundings with a viewport-sized shadow; this keeps
+     that dimming inside the stage instead of over the whole app. */
+  contain: paint;
+}
+
+/* Crossfade layer. Owns opacity only — see the note at its call site. */
+.tut-canvas-fade {
+  position: absolute;
+  inset: 0;
+}
+
+/* The page itself, at life size. The camera's transform is the only thing that
+   moves it, so everything inside believes it is on a 1080px page — which, as
+   far as layout is concerned, it is. */
+.tut-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+  will-change: transform;
+}
+
+/* ─── Spotlight ───
+   One rect that travels with the camera, rather than a ring per element: with a
+   ring each, moving from Monthly Plans to Top-Up Credits is a blink; with one,
+   it is a move. <Spot> only marks the target; this draws it.
+
+   It lives in the stage's coordinates, not the page's, so the ring keeps the
+   same weight at every zoom instead of being scaled along with the figure. */
+
+/* A marker, not a box: no radius, no border, nothing that changes the figure. */
+.tut-spot {
+  display: contents;
+}
+
+.tut-highlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  box-shadow:
+    0 0 0 100vmax rgb(15 23 42 / 0.5),
+    0 0 0 3px var(--primary),
+    0 0 22px 4px oklch(0.5 0.17 260 / 0.45);
+}
+
+/* ─── Foot: where you are, and how to move ─── */
+
+.tut-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 1.5rem;
+  border-top: 1px solid var(--border);
+  background: var(--card-bg);
+}
+
+.tut-pips {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tut-pip {
+  position: relative;
+  display: block;
+  width: 0.5rem;
+  height: 0.5rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--border-hi);
+  transition:
+    width 0.25s var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+
+/* The dot is 8px; the target is not. Vertical only — widening it horizontally
+   would overlap the neighbouring pips, which is worse than a small target. */
+.tut-pip::after {
+  content: '';
+  position: absolute;
+  inset: -1.1rem -0.2rem;
+}
+
+.tut-pip:hover {
+  background: var(--primary-mid);
+}
+
+.tut-pip.is-done {
+  background: var(--primary-mid);
+}
+
+.tut-pip.is-current {
+  width: 1.5rem;
+  background: var(--primary);
+}
+
+.tut-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ─── Narrow: one column ───
+   Stacking at 68.75rem (1100px) rather than waiting for a phone: the narration
+   costs the stage 20rem, and below this the figure would have to shrink past
+   the point where it still reads as the app. Stacked, the stage keeps the full
+   modal width and the scale stays high. */
+
+@media (max-width: 68.75rem) {
+  .tut-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .tut-narration {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+}
+
+@media (max-width: 62rem) {
+  .tut {
+    width: 100vw;
+    height: 100dvh;
+    max-height: none;
+    border: none;
+    border-radius: 0;
+  }
+
+  .tut-stage {
+    padding: 0.75rem;
+  }
+
+  /* Seven 8px dots can't carry a 44px touch target without overlapping each
+     other. The header's "Step 3 / 7" already says where you are, and Back/Next
+     are full-size buttons. */
+  .tut-pips {
+    display: none;
+  }
+
+  .tut-foot {
+    justify-content: flex-end;
+  }
+}
+
+/* The step-to-step motion is framer's, driven by the same flag as `.is-calm`;
+   these cover the CSS half — the modal's entrance and the pip stretch. Both the
+   system setting and the in-tour switch land here. */
+.tut.is-calm[open],
+.tut.is-calm[open]::backdrop {
+  animation: none;
+}
+
+.tut.is-calm .tut-pip {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tut[open],
+  .tut[open]::backdrop,
+  .tut.is-closing,
+  .tut.is-closing::backdrop {
+    animation: none;
+  }
+
+  .tut-pip {
+    transition: none;
+  }
+}

@@ -5,14 +5,16 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select, text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.admin_session import AdminPrincipal
 from app.database import get_db
 from app.models.observability import AnomalyAlert, JobRun, PerformanceLog
 from app.services.tenant_lookup import tenant_name_map
+from app.utils.pagination import paginate
 
+from ._query import ListQuery, apply_list_query, list_query
 from .deps import require_permission
 
 logger = logging.getLogger(__name__)
@@ -33,37 +35,43 @@ async def list_alerts(
     tenant_id: str | None = Query(None),
     from_date: datetime | None = Query(None, alias="from"),
     to_date: datetime | None = Query(None, alias="to"),
-    limit: int = Query(50, le=500),
+    lq: ListQuery = Depends(list_query),
     db: AsyncSession = Depends(get_db),
     admin: AdminPrincipal = Depends(require_permission("alerts", "read")),
 ):
-    def _apply_filters(stmt):
-        stmt = _maybe_filter_tenant(stmt, AnomalyAlert.tenant_id, admin, tenant_id)
-        if status == "open":
-            stmt = stmt.where(AnomalyAlert.resolved_at.is_(None))
-        elif status == "resolved":
-            stmt = stmt.where(AnomalyAlert.resolved_at.isnot(None))
-        if severity:
-            stmt = stmt.where(AnomalyAlert.severity == severity)
-        if from_date:
-            stmt = stmt.where(AnomalyAlert.created_at >= from_date)
-        if to_date:
-            stmt = stmt.where(AnomalyAlert.created_at <= to_date)
-        return stmt
+    q = _maybe_filter_tenant(select(AnomalyAlert), AnomalyAlert.tenant_id, admin, tenant_id)
+    if status == "open":
+        q = q.where(AnomalyAlert.resolved_at.is_(None))
+    elif status == "resolved":
+        q = q.where(AnomalyAlert.resolved_at.isnot(None))
+    if severity:
+        q = q.where(AnomalyAlert.severity == severity)
+    if from_date:
+        q = q.where(AnomalyAlert.created_at >= from_date)
+    if to_date:
+        q = q.where(AnomalyAlert.created_at <= to_date)
 
-    # Real count, independent of `limit` — the old code returned len(rows) from the
-    # already-limited data query, so "total" was silently capped at `limit` (Overview's
-    # KPI card calls this with limit=1, so it could only ever show 0 or 1).
-    total = (
-        await db.execute(_apply_filters(select(func.count()).select_from(AnomalyAlert)))
-    ).scalar_one()
-
-    q = _apply_filters(select(AnomalyAlert)).order_by(AnomalyAlert.created_at.desc()).limit(limit)
-    result = await db.execute(q)
-    rows = result.scalars().all()
+    q = apply_list_query(
+        q,
+        lq,
+        sortable={
+            "created_at": AnomalyAlert.created_at,
+            "severity": AnomalyAlert.severity,
+            "metric": AnomalyAlert.metric,
+            "resolved_at": AnomalyAlert.resolved_at,
+        },
+        tiebreak=AnomalyAlert.id,
+        default_sort="created_at",
+        searchable=(AnomalyAlert.metric, AnomalyAlert.description, AnomalyAlert.module_id),
+    )
+    # `total` comes off the unlimited statement — Overview's KPI card calls this with
+    # limit=1, and counting the returned rows could only ever have answered 0 or 1.
+    rows, total = await paginate(db, q, lq.limit, lq.offset)
     names = await tenant_name_map(db, [r.tenant_id for r in rows])
     return {
         "total": total,
+        "limit": lq.limit,
+        "offset": lq.offset,
         "data": [
             {
                 "id": r.id,
@@ -119,7 +127,7 @@ async def list_jobs(
     job_name: str | None = Query(None),
     from_date: datetime | None = Query(None, alias="from"),
     to_date: datetime | None = Query(None, alias="to"),
-    limit: int = Query(50, le=200),
+    lq: ListQuery = Depends(list_query),
     db: AsyncSession = Depends(get_db),
     _admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
 ):
@@ -132,12 +140,25 @@ async def list_jobs(
         q = q.where(JobRun.started_at >= from_date)
     if to_date:
         q = q.where(JobRun.started_at <= to_date)
-    q = q.order_by(JobRun.started_at.desc()).limit(limit)
 
-    result = await db.execute(q)
-    rows = result.scalars().all()
+    q = apply_list_query(
+        q,
+        lq,
+        sortable={
+            "started_at": JobRun.started_at,
+            "job_name": JobRun.job_name,
+            "status": JobRun.status,
+            "rows_affected": JobRun.rows_affected,
+        },
+        tiebreak=JobRun.id,
+        default_sort="started_at",
+        searchable=(JobRun.job_name, JobRun.error_message),
+    )
+    rows, total = await paginate(db, q, lq.limit, lq.offset)
     return {
-        "total": len(rows),
+        "total": total,
+        "limit": lq.limit,
+        "offset": lq.offset,
         "data": [
             {
                 "id": r.id,
@@ -164,7 +185,7 @@ async def get_performance_logs(
     status_code: int | None = Query(None),
     min_duration_ms: float | None = Query(None),
     tenant_id: str | None = Query(None),
-    limit: int = Query(100, le=1000),
+    lq: ListQuery = Depends(list_query),
     db: AsyncSession = Depends(get_db),
     admin: AdminPrincipal = Depends(require_permission("tenants", "read")),
 ):
@@ -180,13 +201,27 @@ async def get_performance_logs(
         q = q.where(PerformanceLog.status_code == status_code)
     if min_duration_ms is not None:
         q = q.where(PerformanceLog.duration_ms >= min_duration_ms)
-    q = q.order_by(PerformanceLog.created_at.desc()).limit(limit)
 
-    result = await db.execute(q)
-    rows = result.scalars().all()
+    q = apply_list_query(
+        q,
+        lq,
+        sortable={
+            "created_at": PerformanceLog.created_at,
+            "endpoint": PerformanceLog.endpoint,
+            "method": PerformanceLog.method,
+            "status_code": PerformanceLog.status_code,
+            "duration_ms": PerformanceLog.duration_ms,
+        },
+        tiebreak=PerformanceLog.id,
+        default_sort="created_at",
+        searchable=(PerformanceLog.endpoint, PerformanceLog.carmen_user_id),
+    )
+    rows, total = await paginate(db, q, lq.limit, lq.offset)
     names = await tenant_name_map(db, [r.tenant_id for r in rows])
     return {
-        "total": len(rows),
+        "total": total,
+        "limit": lq.limit,
+        "offset": lq.offset,
         "data": [
             {
                 "id": r.id,
@@ -194,7 +229,7 @@ async def get_performance_logs(
                 "tenant_name": names.get(r.tenant_id),
                 "endpoint": r.endpoint,
                 "method": r.method,
-                "duration_ms": round(float(r.duration_ms or 0), 1),  # type: ignore[arg-type]
+                "duration_ms": round(float(r.duration_ms or 0), 1),
                 "status_code": r.status_code,
                 "carmen_user_id": r.carmen_user_id,
                 "resource_id": r.resource_id,

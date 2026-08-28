@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-For coding principles and standards, please refer to [skill.md](file:///c:/Users/User/Desktop/OCR/skill.md).
+For coding principles and standards, please refer to [skill.md](skill.md).
 
 Full database design documentation: [docs/Database_Design.md](docs/Database_Design.md)
 
@@ -100,9 +100,34 @@ useAPInvoice hook
   → POST /api/v1/carmen/invoice  submit to Carmen ERP
 ```
 
+### Email ingestion (no wizard — nobody reviews before it posts)
+
+Built, merged, live-tested end to end. **Full docs: [`docs/email-automation/`](docs/email-automation/)**
+(requirements → architecture → API → data model → operations → decision log). Read those
+before changing anything here; the block below is only the shape.
+
+```text
+pg_cron → POST /api/v1/email/ingest  (internal job token)
+  services/email_imap.py           ← transport only: IMAP, MIME, zips, tag parsing.
+                                     No DB, no session, no tenant. Blocking, so the
+                                     pipeline calls it via asyncio.to_thread.
+  services/email_ingest_service.py ← everything that decides meaning and cost
+      AIAGENT+<tag>@…   tag from the envelope → tenant     ← routing, costs nothing
+      email_documents   claim the row (dedupe: message × attachment)
+      email_ingest_settings  filename must match one of this BU's rules; this BU's PDF passwords
+      consume_document() → same extract → GL-map → POST JV path as the Credit Card wizard
+      tax ID vs this BU's register  ← verification, not routing; parks only on positive conflict
+```
+
+Two properties that make it unlike the wizards: the tag is read **before any LLM call**, so
+an unowned message costs nothing; and there is no human between extraction and posting, so a
+`warnings` field that merely draws an amber banner in a wizard has no reader here. Neither
+cron job (`email-ingest`, `email-token-health`) is scheduled in production yet — see
+[`05-operations.md`](docs/email-automation/05-operations.md#scheduling).
+
 ### Admin dashboard (`#/admin/*`) — check here before writing SQL
 
-16 pages already exist. **Read this table before hand-querying the DB** — on 2026-07-16
+18 pages already exist. **Read this table before hand-querying the DB** — on 2026-07-16
 a full day went into ad-hoc SQL to answer questions that four of these pages already
 answered, purely because nobody knew they were there.
 
@@ -112,6 +137,7 @@ answered, purely because nobody knew they were there.
 | | `#/admin/anomalies` | `anomaly_alerts` (+ resolve) |
 | Is the pilot working? | `#/admin/tenants` | per-BU engagement: scanned vs **posted to Carmen**, active weeks, days idle, + adoption funnel |
 | | `#/admin/usage` | date×module×tenant docs/calls/tokens/cost |
+| | `#/admin/user-usage` | same, broken down by **individual Carmen user** rather than BU |
 | | `#/admin/tenant-ranking` | rank by cost/error rate/latency/volume |
 | | `#/admin/quota-modules` | **who is about to run out of documents**, per-module usage, module on/off |
 | Why isn't it working? | `#/admin/extractions` | **why an extraction failed** — `ocr_tasks.error_message`, grouped by cause |
@@ -119,6 +145,8 @@ answered, purely because nobody knew they were there.
 | | `#/admin/performance` | request latency |
 | Who pays / what does it cost? | `#/admin/credits`, `#/admin/credit-orders`, `#/admin/llm-logs` | balances & ledger, order queue, per-call cost |
 | Is the machine running? | `#/admin/sessions`, `#/admin/jobs` | live sessions (+revoke), **`job_runs` cron health** |
+| | `#/admin/email` | email-ingestion runs + cron health |
+| | `#/admin/maintenance` | maintenance-mode flag + window (what `MaintenanceGate` reads) |
 | Who can touch it? | `#/admin/admin-users` | RBAC |
 
 Gotchas worth knowing before trusting a number:
@@ -133,12 +161,55 @@ Gotchas worth knowing before trusting a number:
   never reached the model. The Tenants page renders task-derived `last_use` instead.
 - **`GET /admin/tenants` needs `include_engagement=true`** for the engagement fields. It is
   off by default because `TenantSelector` calls the same endpoint on five other pages.
-- Adding a page = 4 edits: `lazy()` in `main.tsx`, an `else if` in `AdminRouter`, a `NavItem`
-  in `AdminLayout.getNavSections`, and `admin.nav.item.*` in **both** `en` and `th` of
-  `i18n/dict.ts` (TS fails the build if TH is missing).
+- Adding a page = **2 edits**: an entry in `NAV_SECTIONS` (`pages/admin/routes.tsx`) with
+  its `hash`, `icon`, `labelKey` and `component: lazy(() => import(...))`, and that
+  `admin.nav.item.*` key in **both** `en` and `th` of `i18n/dict.ts` (TS fails the build if
+  TH is missing). `routes.tsx` is the single list: the sidebar reads it and `ADMIN_ROUTES`
+  (hash → page, used by `pages/admin/AdminRouter.tsx`) is derived from it, so a page cannot
+  have a nav entry without a route or the reverse. `main.tsx` knows only that `#/admin*`
+  belongs to `AdminRouter`, which keeps the whole dashboard out of the main bundle.
+  For the table itself, follow the pattern below rather than inventing per-page state.
+
+**The admin table pattern** (`hooks/admin/useTableQuery.ts` + `hooks/admin/useTableData.ts`
++ `components/admin/DataTable.tsx`):
+
+- `useTableData(fetcher, deps, errorKey)` owns the fetch: `{ rows, total, loading, reload }`,
+  the failure toast, and a monotonic request guard so a slow early response cannot repaint
+  the table after a newer one (typing in the search box fires one request per keystroke).
+  Don't hand-roll the `useState`×3 + `useEffect` block again — eight pages had it, each with
+  its own `eslint-disable exhaustive-deps`.
+
+- `useTableQuery` owns filters, sort, and page, and keeps them **in the URL** (after the
+  route hash, `replaceState`, defaults omitted) so a view survives navigation and can be
+  pasted to a colleague. `.server(total)` hands straight to `<DataTable server={…} />`.
+- `DataTable` has a **server mode** (`server` prop set — API sorts, filters, and pages) and a
+  **client mode** (rows already in hand). Four endpoints are deliberately client-side:
+  `/usage-summary`, `/quotas/overview`, `/tenant-ranking`, `/error-breakdown` return small
+  *complete* sets, so browser sorting is truthful there. Extractions stays unpaged (it groups
+  failures by cause; grouping one page reports wrong counts) and Credit Orders loads the
+  endpoint's cap in one go (its search must reach past the visible page). Don't "fix" these
+  into server mode — each shows a real `total` so a bitten cap is visible.
+- **Page size is measured, not configured** — `hooks/useFitRows.ts` fits rows to the
+  viewport; `pageSize` survives only as an override for tables that aren't viewport-bound.
+- ⚠️ **In server mode the measured size feeds the fetch, so the measurement must never
+  shrink in response to its own rows.** 15 rows leave room that measures as 17, 17 leave
+  room that measures as 15, and the tab fetches forever. `DataTable` keeps a monotonic
+  high-water mark per viewport size (a real resize clears it); `DataTable.fetchloop.test.tsx`
+  is the regression test, and reverting the guard makes it hang. This shipped as a bug on
+  2026-08-24 — read that changelog entry before touching the measurement.
 
 The SQL behind the adoption views lives in [`backend/db/queries.sql`](backend/db/queries.sql)
 items 11–14 — useful for cross-checking a page against the raw numbers.
+
+**Before claiming anything is slow, read [`docs/SQL_PERFORMANCE_AUDIT.md`](docs/SQL_PERFORMANCE_AUDIT.md).**
+Measured 2026-08-19: the whole database executes **18.5 minutes of SQL per 68 days** (0.019%
+duty cycle), the largest business table holds 342 rows, and no application query appears in
+the top 20 CPU consumers. Endpoint p50 *has* tripled since June, but SQL is ≤3% of that wall
+time and the instance still answers a request in 1 ms — so latency work belongs in the app
+layer, not in query tuning (§3.1e lists the leads, strongest being **3.2 pooler
+authentications per HTTP request**). `queries.sql` items **15–24** are the measurement pack;
+re-run them and diff rather than re-deriving. Run them **only from the Supabase SQL Editor** —
+an ad-hoc script while `uvicorn` is up hits the 15-connection Supavisor cap.
 
 ---
 
@@ -154,7 +225,7 @@ items 11–14 — useful for cross-checking a page against the raw numbers.
 - **Bank code not enum** — `credit_cards.bank_code` FK → `banks.code` VARCHAR. No hardcoded `BankType` enum in the DB; adding a bank is an INSERT (pending Admin Dashboard for zero-redeploy).
 - **Credit card line items are NOT persisted** — like AP invoices, credit-card transactions follow the extract-display-only pattern (Carmen ERP is source of truth). Only `credit_cards` header data is stored; line items live transiently in the API response (`CreditCardTransactionSchema`).
 - **Soft delete everywhere** — Business tables never hard-delete. Always filter `WHERE deleted_at IS NULL`.
-- **Two document pools, not three** — a scan is charged by `consume_document()` (`services/credit_service.py`): the active subscription's monthly allowance first (use-it-or-lose-it), then `tenant_credits.balance` (never expires). The free trial is not a third pool — a new tenant is granted 30 credits (`signup_grant` ledger reason) in the same transaction that creates their tenant row, which is what makes it a one-time grant. The old `quotas`/`quota_usage` counter engine was retired by migration `20260813000100`; the tables are kept for one release and then dropped.
+- **Two document pools, not three** — a scan is charged by `consume_document()` (`services/credit_service.py`): the active subscription's monthly allowance first (use-it-or-lose-it), then `tenant_credits.balance` (never expires). The free trial is not a third pool — a new tenant is granted 30 credits (`signup_grant` ledger reason) in the same transaction that creates their tenant row, which is what makes it a one-time grant. The old `quotas`/`quota_usage` counter engine was retired by migration `20260813000100` and the tables were dropped by `20260825000000`. What survived that retirement is only `assert_module_enabled()`, which now lives in `services/module_gate.py` (renamed from `quota_service.py` 2026-08-18 — the old name described an engine that no longer exists).
 - **module_id on every LLM call** — `log_llm_usage(module_id="credit_card_ocr")` instead of old `usage_type` string. Enables per-module cost breakdown in `daily_usage_summary`.
 - **Shared LLM client** — `llm/client.py` is the sole `AsyncOpenAI` factory. Never construct it elsewhere.
 - **LLM privacy is enforced per-request, not via dashboard** — `_provider_prefs()` in `llm/client.py` attaches `extra_body={"provider": {"data_collection": "deny", ...}}` to EVERY OpenRouter call (vision + text). This is the technical enforcement of the consent-modal no-training promise (`UserConsentModal.tsx`); it does not rely on the OpenRouter account dashboard toggles (which can drift silently). `LLM_TEXT_PROVIDER_ALLOWLIST` additionally pins the non-Google suggestion model to US-jurisdiction providers. Prod logs CRITICAL if `LLM_DATA_COLLECTION != "deny"`. The dashboard's Google-ZDR toggle (disable AI Studio, keep Vertex) is a manual second layer — see `docs/SECURITY_PDPA_CHECKLIST.md`.
@@ -167,10 +238,11 @@ items 11–14 — useful for cross-checking a page against the raw numbers.
 - **localStorage** — credit card: `accountingConfig`, `accountMappingAmount`. AP invoice: field mappings keyed by vendor name.
 - **Service layer contract** — services never raise `HTTPException`; they raise typed exceptions from `app/exceptions.py`. The global handler in `factory.py` maps these to HTTP status codes.
 - **App factory** — `app/factory.py` builds the FastAPI instance (middleware + exception handlers + routers). `app/lifecycle.py` owns lifespan (startup/shutdown + background tasks). `app/sentry.py` owns Sentry init. `app/main.py` is the thin entrypoint.
-- **Charge before the LLM, refund on failure** — `consume_document()` runs at every extract endpoint AFTER `ensure_pdf_openable` and `assert_module_enabled` (so a locked PDF or a disabled module never costs a document) and returns what it charged; pass that to `refund_document()` for the files that failed. Both fail open on infra errors — only a real out-of-credits raises `InsufficientCredits` (402).
+- **Charge before the LLM, refund only when the LLM never ran** — `consume_document()` runs at every extract endpoint AFTER `ensure_pdf_openable` and `assert_module_enabled` (so a locked PDF or a disabled module never costs a document) and returns what it charged; pass that to `refund_document()` for the files that failed. Both fail open on infra errors — only a real out-of-credits raises `InsufficientCredits` (402). **The refund test is "did the vision call happen", not "did the document post".** In the wizards every refund site is an extraction that threw, so the user got nothing back. Email ingest states the same rule explicitly: `_run_document()` has a single **refund boundary** (`email_ingest_service.py`) wrapping `create_task` + `extract_stateless` + `finalize_extraction`, and it is the only place in that pipeline that refunds — once extraction returns, the document is charged whatever happens next (`duplicate_document`, `tax_id_mismatch`, `mapping_incomplete`, any `carmen_rejected`). That is why `_Skip` carries no refund flag. Ingest deliberately matches the wizard here, which has always charged for a duplicate because `finalize_extraction` only sets an `is_duplicate` flag rather than raising.
 - **What one document costs differs per module** — credit card charges **per file** (`increment=len(file_data)`), AP invoice charges **per page sent to the LLM** (`billable_pages()` in `utils/pages.py`, capped at `MAX_PAGES_PER_CALL`=5): a 3-page selection costs 3, and 3 images merged client-side into one PDF cost 3. `ensure_pdf_openable()` returns the page count for exactly this. The whole N is charged to one pool — a tenant with 3 subscription docs left scanning 5 pages pays 5 credits and strands the 3. **`ocr_tasks.charged_docs` records what each task cost** — nothing else can (a subscription-funded scan writes no ledger row; `credit_ledger.ref` is the filename, since the charge precedes `create_task`). Count documents with `SUM(charged_docs)`, never `COUNT(ocr_tasks)`.
-- **Hook directory convention** — Feature hooks live in subdirectories: `hooks/ap-invoice/`, `hooks/credit-card/`, `hooks/mapping/`. Cross-cutting hooks (`useModal`, `useDarkMode`, `useCarmenSSO`) stay at top level. Each subdir has an `index.ts` barrel. All localStorage access goes through the tenant-aware `lib/storage.ts` (`appKey()`).
+- **Hook directory convention** — Feature hooks live in subdirectories, one per feature: `hooks/admin/`, `hooks/ap-invoice/`, `hooks/credit-card/`, `hooks/credits/`, `hooks/email-settings/`, `hooks/mapping/`, `hooks/notifications/`. Cross-cutting hooks (`useModal`, `useDarkMode`, `useCarmenSSO`, `useFitRows`) stay at top level. Each subdir has an `index.ts` barrel. All localStorage access goes through the tenant-aware `lib/storage.ts` (`appKey()`).
 - **Pydantic schemas** — All request/response schemas in `app/models/schemas/` package. Never define `class X(BaseModel)` inside a router file.
+- **Every list endpoint answers the same envelope** — `Page[T]` = `{total, limit, offset, data}` (`models/schemas/common.py`), built by `paginate()` (`utils/pagination.py`), mirrored on the frontend by `lib/api/page.ts`. `total` is counted off the **unlimited** statement with `ORDER BY` stripped, so a truncated window can always say *"showing 200 of 340"* instead of ending silently — `len(data)` as a total is the bug class this exists to kill. A query selecting several entities uses `count_rows()` + its own `.all()` instead, because `paginate()`'s `.scalars()` would flatten each row to the first entity.
 
 ---
 
@@ -217,6 +289,15 @@ Subsequent requests:
 
 ## Environment Variables (`backend/.env`)
 
+**[`backend/.env.example`](backend/.env.example) is the complete list (48 vars) and the source
+of truth.** Below is only the annotated subset whose *values* carry a decision worth explaining —
+if a var isn't here, read `.env.example`, don't assume it doesn't exist.
+
+**These hard-fail prod boot if unset or left at a dev default** (see `app/config.py` validators):
+`ADMIN_JWT_SECRET`, `OCR_JWT_SECRET`, `SESSION_ENCRYPTION_KEY`, `ALLOWED_ORIGINS` (no wildcard),
+`ALLOWED_CARMEN_HOSTS`. `TRUST_PROXY` + `TRUSTED_PROXY_HOPS` must match the actual proxy depth or
+client-IP logging and rate limiting read a spoofable header.
+
 ```env
 OPENROUTER_API_KEY=sk-or-v1-...
 OPENROUTER_OCR_MODEL=google/gemini-2.5-flash-lite
@@ -230,7 +311,6 @@ LLM_VISION_PROVIDER_ALLOWLIST=      # vision is Google-only already
 LLM_EXPECTED_PROVIDERS=Google,DeepInfra,Fireworks,DigitalOcean  # alert if routed elsewhere (llm_provider_out_of_policy)
 DATABASE_URL=postgresql+asyncpg://user:password@host/dbname?sslmode=require
 MAX_FILE_SIZE_MB=5
-APP_PORT=8010
 # Secrets — NEVER put these in system_configs DB table
 OCR_JWT_SECRET=<strong-random-secret>
 SESSION_ENCRYPTION_KEY=<fernet-key>
@@ -238,6 +318,16 @@ INTERNAL_JOB_TOKEN=<hex-64-chars>   # must match vault.secrets where name='inter
                                      # generate: python -c "import secrets; print(secrets.token_hex(32))"
 FILE_SERVICE_URL=https://host/Api/v1/External/FileService  # OneApp FileService (slip upload)
 FILE_SERVICE_API_KEY=fsc_...        # X-Api-Key client access key
+# Email ingestion — full var table in docs/email-automation/05-operations.md.
+# IMAP_HOST empty = ingestion disabled, which is the correct default everywhere it
+# isn't deliberately switched on. Set the rest only alongside it.
+IMAP_HOST=                          # empty = disabled
+IMAP_PORT=993
+IMAP_USER=
+IMAP_PASSWORD=
+IMAP_FOLDER=INBOX
+EMAIL_INGEST_ADDRESS=ocr@carmensoftware.com   # dev default; per-BU routing uses <user>+<tag>@…
+                                     # prod is AIAGENT@carmensoftware.com, not this mailbox
 ```
 
 ---
@@ -256,10 +346,10 @@ FILE_SERVICE_API_KEY=fsc_...        # X-Api-Key client access key
 | Modules | `modules`, `tenant_modules` |
 | Bank CMS | `banks`, `prompt_templates` |
 | Config | `system_configs`, `tenant_config_overrides`, `feature_flags`, `bu_accounting_configs`, `bu_accounting_mapping_entries`, `ap_vendor_column_mappings`, `ap_vendor_field_mapping_entries` |
-| Quotas | `quotas`, `quota_usage` — **retired** (rows soft-deleted 2026-08-13, tables drop next release) |
 | Billing | `credit_packs`, `tenant_credits`, `credit_ledger`, `credit_orders`, `billing_documents`, `tenant_subscriptions`, `ar_customer_profiles`, `document_sequences` |
 | Reference | `model_pricing` |
-| Business data | `ocr_sessions`, `ocr_tasks`, `credit_cards`, `ap_invoices`, `correction_feedback`, `bug_reports`, `consent_logs` |
+| Business data | `ocr_sessions`, `ocr_tasks`, `credit_cards`, `ap_invoices`, `correction_feedback`, `bug_reports`, `consent_logs`, `user_notifications` |
+| Email ingestion | `email_ingest_settings` (per-BU tag, rules, PDF passwords, posting credential), `email_documents` (one row per message×attachment — dedupe key **and** audit trail) — see [`docs/email-automation/04-data-model.md`](docs/email-automation/04-data-model.md) |
 | Observability | `llm_usage_logs`, `audit_logs`, `performance_logs`, `outbound_call_logs` |
 | Analytics | `daily_usage_summary`, `daily_model_cost`, `monthly_usage_summary`, `anomaly_alerts`, `job_runs` |
 | Migration tracker | `_supabase_migrations` (Supabase CLI tracking) |

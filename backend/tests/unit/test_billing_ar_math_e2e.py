@@ -72,7 +72,7 @@ async def test_starter_pack_posts_524_30_not_double_vated_561():
 
     client = MagicMock()
     client.post = AsyncMock(return_value=_mock_resp({"Code": 0, "MoreInfo": "AR000999"}))
-    with patch.object(ar_posting_service, "_get_client", return_value=client):
+    with patch.object(ar_posting_service, "get_http_client", return_value=client):
         # Mirrors exactly what routers/admin/credits.py's post_ar now sends —
         # sourced entirely from the proforma, no internal tax invoice involved.
         await ar_posting_service.post_ar_entry(

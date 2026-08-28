@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { toast } from 'sonner'
 import DataTable, { type Column } from '../../components/admin/DataTable'
 import TenantSelector from '../../components/admin/TenantSelector'
 import DateRangePicker from '../../components/admin/DateRangePicker'
@@ -8,8 +7,9 @@ import PageHeader from '../../components/admin/ui/PageHeader'
 import Tabs from '../../components/admin/ui/Tabs'
 import EmptyState from '../../components/admin/ui/EmptyState'
 import { fetchExtractionFailures, type ExtractionFailureRow } from '../../lib/api/adminClient'
+import { useTableData } from '../../hooks/admin/useTableData'
 import { useT } from '../../i18n/LanguageContext'
-import { fmtDateTime } from '../../lib/dates'
+import { fmtDateTime } from '../../lib/date'
 
 /**
  * Why an extraction failed. /error-breakdown reports how MANY failed; this reports
@@ -84,7 +84,6 @@ function groupByCause(rows: ExtractionFailureRow[]): FailureGroup[] {
     .sort((a, b) => b.failures - a.failures)
 }
 
-const fmtDate = fmtDateTime
 const monthStart = () => {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
@@ -112,7 +111,8 @@ function getListCols(t: ReturnType<typeof useT>['t']): Column<ExtractionFailureR
       key: 'created_at',
       label: t('admin.extractions.col.time'),
       sortable: true,
-      render: r => fmtDate(r.created_at),
+      defaultDesc: true,
+      render: r => fmtDateTime(r.created_at),
     },
     {
       key: 'tenant_name',
@@ -168,28 +168,23 @@ export default function ExtractionsPage() {
   const [tenantId, setTenantId] = useState('')
   const [moduleId, setModuleId] = useState('')
   const [tab, setTab] = useState('grouped')
-  const [rows, setRows] = useState<ExtractionFailureRow[]>([])
-  const [loading, setLoading] = useState(false)
+  const [search, setSearch] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
-  // Not keyed on `tab` — both tabs render from this one array.
-  useEffect(() => {
-    setLoading(true)
-    fetchExtractionFailures({
-      from,
-      to,
-      tenant_id: tenantId || undefined,
-      module_id: moduleId || undefined,
-    })
-      .then(r => setRows(r.data ?? []))
-      .catch(e =>
-        toast.error(
-          t('admin.extractions.toast.loadFailed', { error: e?.message ?? 'failed to load' })
-        )
-      )
-      .finally(() => setLoading(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [from, to, tenantId, moduleId])
+  // Not keyed on `tab` — both tabs render from this one array. `total` is what the
+  // range really holds: over the endpoint's 500-row cap the grouped tab's cause counts
+  // are a sample, not a census, and the banner below says so.
+  const { rows, total, loading } = useTableData<ExtractionFailureRow>(
+    () =>
+      fetchExtractionFailures({
+        from,
+        to,
+        tenant_id: tenantId || undefined,
+        module_id: moduleId || undefined,
+      }),
+    [from, to, tenantId, moduleId],
+    'admin.extractions.toast.loadFailed'
+  )
 
   const groups = useMemo(() => groupByCause(rows), [rows])
 
@@ -225,13 +220,13 @@ export default function ExtractionsPage() {
       key: 'first_seen',
       label: t('admin.extractions.col.firstSeen'),
       sortable: true,
-      render: g => fmtDate(g.first_seen),
+      render: g => fmtDateTime(g.first_seen),
     },
     {
       key: 'last_seen',
       label: t('admin.extractions.col.lastSeen'),
       sortable: true,
-      render: g => fmtDate(g.last_seen),
+      render: g => fmtDateTime(g.last_seen),
     },
   ]
 
@@ -276,6 +271,12 @@ export default function ExtractionsPage() {
         onChange={setTab}
       />
 
+      {total > rows.length && (
+        <p className="admin-sub-text admin-truncation-note" role="status">
+          {t('admin.extractions.truncationNote', { shown: rows.length, total })}
+        </p>
+      )}
+
       {empty ? (
         <EmptyState title={t('admin.extractions.empty')} />
       ) : tab === 'grouped' ? (
@@ -289,7 +290,16 @@ export default function ExtractionsPage() {
           )}
         />
       ) : (
-        <DataTable columns={getListCols(t)} rows={rows} loading={loading} />
+        <DataTable
+          columns={getListCols(t)}
+          rows={rows}
+          loading={loading}
+          search={{
+            value: search,
+            onChange: setSearch,
+            placeholder: t('admin.extractions.searchPlaceholder'),
+          }}
+        />
       )}
     </div>
   )

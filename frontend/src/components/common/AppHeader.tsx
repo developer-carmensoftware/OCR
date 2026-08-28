@@ -5,6 +5,8 @@ import { getCarmenUrl } from '../../lib/url'
 import { useAuth } from '../../contexts/AuthContext'
 import { useT } from '../../i18n/LanguageContext'
 import NotificationBell from './NotificationBell'
+import LanguageToggle from './LanguageToggle'
+import DarkModeToggle from './DarkModeToggle'
 
 interface Props {
   module?: string
@@ -80,28 +82,28 @@ export default function AppHeader({
         {/* The bell stays in the row at every width: it is the one control that
             carries state (unread count) rather than a preference. */}
         {isAuthenticated && <NotificationBell />}
-        {children && (
-          <>
-            {compact && (
-              <button
-                type="button"
-                className="app-header-more"
-                aria-label={t('nav.moreActions')}
-                // Native popover gives light-dismiss, Escape, and top-layer
-                // painting for free — the last one matters because .app-header
-                // sets backdrop-filter, which would otherwise make it the
-                // containing block for a fixed panel and clip it to
-                // overflow: hidden.
-                popoverTarget={MENU_ID}
-              >
-                <MoreHorizontal size={18} strokeWidth={2} />
-              </button>
-            )}
-            <div id={MENU_ID} className="app-header-menu" popover={compact ? 'auto' : undefined}>
-              {children}
-            </div>
-          </>
+        {compact && (
+          <button
+            type="button"
+            className="app-header-more"
+            aria-label={t('nav.moreActions')}
+            // Native popover gives light-dismiss, Escape, and top-layer
+            // painting for free — the last one matters because .app-header
+            // sets backdrop-filter, which would otherwise make it the
+            // containing block for a fixed panel and clip it to
+            // overflow: hidden.
+            popoverTarget={MENU_ID}
+          >
+            <MoreHorizontal size={18} strokeWidth={2} />
+          </button>
         )}
+        {/* Language and theme are header furniture, not a per-page choice: every
+            page that renders AppHeader gets them, page `children` sit before. */}
+        <div id={MENU_ID} className="app-header-menu" popover={compact ? 'auto' : undefined}>
+          {children}
+          <LanguageToggle />
+          <DarkModeToggle />
+        </div>
       </div>
     </header>
   )

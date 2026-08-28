@@ -62,14 +62,8 @@ async def load_admin_roles_and_perms(
       - else the first non-empty tenant_id wins (admins are typically scoped to one)
     """
     now = datetime.now(UTC)
-    rows = await db.execute(
-        select(AdminUserRole).where(AdminUserRole.user_id == admin_id)  # type: ignore[arg-type]
-    )
-    grants = [
-        g
-        for g in rows.scalars().all()
-        if g.expires_at is None or g.expires_at > now  # type: ignore[operator]
-    ]
+    rows = await db.execute(select(AdminUserRole).where(AdminUserRole.user_id == admin_id))
+    grants = [g for g in rows.scalars().all() if g.expires_at is None or g.expires_at > now]
     if not grants:
         return [], [], ""
 
@@ -118,7 +112,7 @@ async def login(
 
     if not admin:
         raise invalid_credentials
-    if not admin.is_active:  # type: ignore[truthy-function]
+    if not admin.is_active:
         raise AdminAuthError("Account disabled", status_code=403)
 
     now = datetime.now(UTC)
@@ -132,7 +126,7 @@ async def login(
 
     password_hash: str = str(admin.password_hash)
     if not verify_password(password, password_hash):
-        current_attempts: int = int(admin.failed_login_attempts or 0)  # type: ignore[arg-type]
+        current_attempts: int = int(admin.failed_login_attempts or 0)
         admin.failed_login_attempts = current_attempts + 1  # type: ignore[assignment]
         if current_attempts + 1 >= MAX_FAILED_ATTEMPTS:
             admin.locked_until = now + timedelta(minutes=LOCKOUT_MINUTES)  # type: ignore[assignment]
@@ -165,7 +159,7 @@ async def login(
         secret=get_admin_jwt_secret(),
         ttl_hours=DEFAULT_TTL_HOURS,
         tenant_scope=tenant_scope,
-        mfa_passed=admin.mfa_secret is None,  # type: ignore[operator]
+        mfa_passed=admin.mfa_secret is None,
     )
     return admin, token, roles, perms, tenant_scope
 

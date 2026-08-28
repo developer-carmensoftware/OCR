@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react'
-import { toast } from 'sonner'
 import DataTable, { type Column } from '../../components/admin/DataTable'
 import TenantSelector from '../../components/admin/TenantSelector'
+import PeriodPicker, { daysAgo, endOfDay, today } from '../../components/admin/PeriodPicker'
 import { fetchUserUsage } from '../../lib/api/adminClient'
+import { useTableQuery } from '../../hooks/admin/useTableQuery'
+import { useTableData } from '../../hooks/admin/useTableData'
 import { useT } from '../../i18n/LanguageContext'
-
-type OrderBy = 'calls' | 'tokens' | 'cost'
 
 interface UserRow {
   carmen_user_id: string
@@ -20,9 +19,10 @@ interface UserRow {
 function getCols(t: ReturnType<typeof useT>['t']): Column<UserRow>[] {
   return [
     {
+      // Not sortable: the name is looked up from ocr_sessions after the aggregate runs,
+      // so ordering by it could only ever order the page against itself.
       key: 'username',
       label: t('admin.userUsage.col.user'),
-      sortable: true,
       render: r => (
         <div>
           <div>{r.username ?? '—'}</div>
@@ -51,52 +51,38 @@ function getCols(t: ReturnType<typeof useT>['t']): Column<UserRow>[] {
 
 export default function UserUsagePage() {
   const { t } = useT()
-  const [tenantId, setTenantId] = useState('')
-  const [orderBy, setOrderBy] = useState<OrderBy>('calls')
-  const [days, setDays] = useState(30)
-  const [rows, setRows] = useState<UserRow[]>([])
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    setLoading(true)
-    const from = new Date(Date.now() - days * 86400_000).toISOString()
-    fetchUserUsage({ tenant_id: tenantId || undefined, order_by: orderBy, from, limit: 200 })
-      .then(r => setRows(r.data ?? []))
-      .catch(e =>
-        toast.error(
-          t('admin.userUsage.toast.loadFailed', { error: e?.message ?? 'failed to load' })
-        )
-      )
-      .finally(() => setLoading(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, orderBy, days])
+  // The "order by" dropdown is gone — it offered three of the five orders the column
+  // headers appear to promise, and the headers used to disagree with it anyway. Both
+  // now drive the same server-side sort over the whole aggregate.
+  const { params, set, server } = useTableQuery({
+    defaultSort: 'total_calls',
+    filters: { tenant_id: '', from: daysAgo(30), to: today() },
+  })
+  const { rows, total, loading } = useTableData<UserRow>(
+    () =>
+      fetchUserUsage({
+        tenant_id: params.tenant_id || undefined,
+        from: params.from,
+        to: endOfDay(params.to),
+        sort: params.sort,
+        dir: params.dir,
+        limit: params.limit,
+        offset: params.offset,
+      }),
+    [params],
+    'admin.userUsage.toast.loadFailed'
+  )
 
   return (
     <div className="admin-page">
       <div className="admin-page-header">
         <h2 className="admin-page-title">{t('admin.userUsage.title')}</h2>
         <div className="admin-page-controls">
-          <select
-            className="admin-select"
-            aria-label={t('admin.userUsage.orderAria')}
-            value={orderBy}
-            onChange={e => setOrderBy(e.target.value as OrderBy)}
-          >
-            <option value="calls">{t('admin.userUsage.order.calls')}</option>
-            <option value="tokens">{t('admin.userUsage.order.tokens')}</option>
-            <option value="cost">{t('admin.userUsage.order.cost')}</option>
-          </select>
-          <select
-            className="admin-select"
-            aria-label={t('admin.userUsage.periodAria')}
-            value={days}
-            onChange={e => setDays(Number(e.target.value))}
-          >
-            <option value={7}>{t('admin.userUsage.period.7d')}</option>
-            <option value={30}>{t('admin.userUsage.period.30d')}</option>
-            <option value={90}>{t('admin.userUsage.period.90d')}</option>
-          </select>
-          <TenantSelector value={tenantId} onChange={setTenantId} />
+          <PeriodPicker
+            value={{ from: params.from, to: params.to }}
+            onChange={p => set({ from: p.from, to: p.to })}
+          />
+          <TenantSelector value={params.tenant_id} onChange={v => set({ tenant_id: v })} />
         </div>
       </div>
       <div className="admin-card">
@@ -105,6 +91,7 @@ export default function UserUsagePage() {
           rows={rows}
           loading={loading}
           emptyText={t('admin.userUsage.empty')}
+          server={server(total)}
         />
       </div>
     </div>

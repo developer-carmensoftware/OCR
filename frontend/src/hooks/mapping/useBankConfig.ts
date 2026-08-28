@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { getAccountingConfig } from '../../lib/api/config'
 import { detectBankFromCompanyName, BANK_INFO, BANK_SOURCE_MAP } from '../../constants/banks'
 import { normalizeConfigShape, codeToDisplayName } from '../../lib/bankTransforms'
-import { appKey } from '../../lib/storage'
+import { appKey, readAccountingConfig } from '../../lib/storage'
 import type { BankDisplayName, FieldMapping } from '../../types/api'
 import type { CompanyData } from '../../lib/bankTransforms'
 
@@ -54,16 +54,9 @@ export function useBankConfig(): BankConfigHook {
     } catch {
       /* ignore */
     }
-    try {
-      // Branch comes off the document (useOcrExtraction writes it here); the saved
-      // accounting config has no branch of its own, so it must not blank this out.
-      const cfg = JSON.parse(localStorage.getItem(appKey('accountingConfig')) || '{}') as {
-        company?: { branch?: string }
-      }
-      ocrBranch = cfg.company?.branch || ''
-    } catch {
-      /* ignore */
-    }
+    // Branch comes off the document (useOcrExtraction writes it here); the saved
+    // accounting config has no branch of its own, so it must not blank this out.
+    ocrBranch = readAccountingConfig().company?.branch || ''
 
     const applyConfig = (source: Record<string, unknown>) => {
       const normalized = normalizeConfigShape(source, ocrBank, detectBankFromCompanyName)

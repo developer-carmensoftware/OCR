@@ -254,7 +254,7 @@ body:has(.admin-login-page) {
 .admin-logout-btn:hover {
   background: var(--rose-light);
   border-color: var(--rose-mid);
-  color: var(--rose);
+  color: var(--rose-text);
 }
 
 /* ─── MAIN ─────────────────────────────────────────────────────────────── */
@@ -413,15 +413,15 @@ body:has(.admin-login-page) {
 }
 .kpi-card--green .kpi-icon {
   background: var(--emerald-light);
-  color: var(--emerald);
+  color: var(--emerald-text);
 }
 .kpi-card--red .kpi-icon {
   background: var(--rose-light);
-  color: var(--rose);
+  color: var(--rose-text);
 }
 .kpi-card--yellow .kpi-icon {
   background: var(--amber-light);
-  color: var(--amber);
+  color: var(--amber-text);
 }
 
 .kpi-label {
@@ -440,6 +440,11 @@ body:has(.admin-login-page) {
   line-height: 1.05;
   letter-spacing: -0.025em;
   font-feature-settings: 'tnum';
+  /* The tile is 200px at its narrowest and this type is 1.6rem/800, so one
+     unbreakable token — an email address, a fingerprint — used to run straight out
+     past the card border. A value that long is a design mistake in the tile, but it
+     must not become a visual break in the page while someone fixes it. */
+  overflow-wrap: anywhere;
 }
 
 .kpi-trend {
@@ -447,16 +452,17 @@ body:has(.admin-login-page) {
   margin-left: 0.3rem;
 }
 .kpi-trend--up {
-  color: var(--emerald);
+  color: var(--emerald-text);
 }
 .kpi-trend--down {
-  color: var(--rose);
+  color: var(--rose-text);
 }
 
 .kpi-sub {
   font-size: 0.72rem;
   color: var(--text-4);
   margin-top: 0.35rem;
+  overflow-wrap: anywhere;
 }
 
 /* ─── TABLE ────────────────────────────────────────────────────────────── */
@@ -515,6 +521,109 @@ body:has(.admin-login-page) {
 }
 .admin-th-sort:hover {
   color: var(--primary);
+}
+
+.admin-th-sort:disabled {
+  cursor: default;
+}
+
+/* Fixed slot, always present. The arrow only renders on the sorted column, and
+   `.admin-table` is auto-layout, so letting it size the cell re-flowed every column
+   in the table on each sort click. */
+.sort-icon {
+  display: inline-block;
+  width: 0.85em;
+  margin-left: 0.25em;
+  text-align: center;
+}
+/* Unsorted columns carry a quiet ⇅ so "this column sorts" survives without a hover
+   state, which a tablet never produces.
+
+   --text-4 and no `opacity`: the quiet tier measures 3.45:1 on card, which is what
+   WCAG 1.4.11 asks of a control affordance. An `opacity` on top would composite it
+   below that floor — and `npm run contrast` reads tokens, so it could never have told
+   us. The idle/active difference is carried by the glyph (⇅ vs ↑ ↓), not by fading. */
+.sort-icon--idle {
+  color: var(--text-4);
+}
+.admin-th-sort:hover .sort-icon--idle,
+.admin-th-sort:focus-visible .sort-icon--idle {
+  color: var(--primary);
+}
+
+/* Type-ahead tenant filter. Wears .admin-select so it lines up with the real selects
+   beside it; the extra rules undo what a <select>'s own chrome supplied. */
+.admin-tenant-input {
+  min-width: 13rem;
+  background-image: none;
+}
+.admin-tenant-input::placeholder {
+  color: var(--text-3);
+}
+
+/* ─── PERIOD PICKER ────────────────────────────────────────────────────────── */
+
+.admin-period {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.admin-period-note {
+  font-size: 0.75rem;
+  color: var(--text-3);
+}
+
+/* ─── TABLE TOOLBAR (search) ───────────────────────────────────────────────── */
+
+.admin-table-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.admin-table-search {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 0 0.6rem;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md, 9px);
+  background: var(--card-bg);
+  color: var(--text-3);
+  transition: border-color 0.15s var(--ease);
+}
+.admin-table-search:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+.admin-table-search input {
+  width: 15rem;
+  max-width: 100%;
+  min-height: 2.1rem;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.83rem;
+  color: var(--text-1);
+}
+.admin-table-search input:focus {
+  outline: none;
+}
+/* The placeholder is read as often as the value; the muted default lands under 4.5:1. */
+.admin-table-search input::placeholder {
+  color: var(--text-3);
+}
+@media (max-width: 768px) {
+  .admin-table-search input {
+    width: 100%;
+    min-height: 44px;
+  }
+  .admin-table-toolbar {
+    justify-content: stretch;
+  }
 }
 .admin-th.text-right {
   text-align: right;
@@ -706,36 +815,15 @@ body:has(.admin-login-page) {
 
 /* ─── BADGES & HELPERS ─────────────────────────────────────────────────── */
 
-.status-badge {
-  display: inline-block;
-  padding: 0.18rem 0.65rem;
-  border-radius: 100px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-.status-badge.ok {
-  background: var(--emerald-light);
-  color: var(--emerald);
-  border: 1px solid var(--emerald-mid);
-}
-.status-badge.error {
-  background: var(--rose-light);
-  color: var(--destructive);
-  border: 1px solid var(--rose-mid);
-}
-.status-badge.warn {
-  background: var(--amber-light);
-  color: var(--amber-text);
-  border: 1px solid var(--amber-mid);
-}
+/* .status-badge and its tones now live in components.css — this file is loaded
+   globally from index.css, so defining a shared component's base rule here made
+   the whole app's badges depend on import order. */
 
 .text-red {
-  color: var(--rose);
+  color: var(--rose-text);
 }
 .text-yellow {
-  color: var(--amber);
+  color: var(--amber-text);
 }
 
 .admin-mono {
@@ -768,12 +856,12 @@ body:has(.admin-login-page) {
 .admin-btn-danger-sm {
   border: 1px solid var(--rose-mid);
   background: var(--card-bg);
-  color: var(--rose);
+  color: var(--rose-text);
 }
 .admin-btn-danger-sm:hover {
-  background: var(--rose);
+  background: var(--rose-fill);
   color: white;
-  border-color: var(--rose);
+  border-color: var(--rose-fill);
 }
 
 .alert-resolve-btn {
@@ -848,7 +936,7 @@ body:has(.admin-login-page) {
   color: oklch(0.42 0.13 75);
 }
 [data-theme='dark'] .alert-severity--critical {
-  color: var(--rose);
+  color: var(--rose-text);
 }
 [data-theme='dark'] .alert-severity--warn {
   color: var(--amber-text);
@@ -1481,7 +1569,7 @@ body:has(.admin-login-page) {
   color: oklch(0.45 0.18 24.11);
 }
 [data-theme='dark'] .tenant-chip.danger {
-  color: var(--rose);
+  color: var(--rose-text);
 }
 
 .tenant-quota-list {
@@ -1848,14 +1936,47 @@ body:has(.admin-login-page) {
 [data-theme='dark'] .ui-switch {
   background: var(--gray-300);
 }
-[data-theme='dark'] .status-badge.neutral {
-  background: var(--gray-100);
-  color: var(--text-3);
-  border: 1px solid var(--border);
+/* A cell whose content is one long unbreakable token (a bank's 60-character
+   filename). `.admin-td` is nowrap, so without a cap one of these sets the width of
+   the entire table and the horizontal scrollbar becomes permanent. The full value
+   stays in `title` and in the expanded row. */
+.admin-cell-clip {
+  display: inline-block;
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+.admin-cell-clip--sm {
+  max-width: 13rem;
 }
 
-.status-badge.neutral {
-  background: var(--gray-100);
+/* Expanded row detail on #/admin/email — the fields too long for a cell (the error
+   sentence, the RFC-822 Message-ID) without pushing the table into horizontal scroll.
+   A definition list rather than a nested table: these are labelled values, not rows. */
+.admin-detail-list {
+  display: grid;
+  grid-template-columns: minmax(7rem, max-content) 1fr;
+  gap: 0.35rem var(--space-4);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  font-size: 0.8rem;
+}
+.admin-detail-list dt {
   color: var(--text-3);
-  border: 1px solid var(--border-hi);
+  font-weight: 600;
+}
+.admin-detail-list dd {
+  margin: 0;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+/* Says so when the fetch was capped, rather than letting the queue end silently. */
+.orev-truncated {
+  margin: 0;
+  padding: 0 0.5rem 0.5rem;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--muted-fg);
 }

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, ShoppingBag, ArrowRight, Loader2, CalendarClock } from 'lucide-react'
 import { toast } from 'sonner'
 import AppHeader from '../components/common/AppHeader'
-import LanguageToggle from '../components/common/LanguageToggle'
+import Pager from '../components/common/Pager'
+import { useFitRows } from '../hooks/useFitRows'
 import { useT } from '../i18n/LanguageContext'
 import OrderStatusBadge from '../components/pricing/OrderStatusBadge'
 import PendingOrderBanner from '../components/pricing/PendingOrderBanner'
@@ -13,7 +14,6 @@ import { useOrderHistory } from '../hooks/credits'
 import {
   getOrderDocuments,
   getPaymentInfo,
-  OPEN_ORDER_STATUSES,
   type BillingDocument,
   type CreditOrder,
   type PaymentInfo,
@@ -157,6 +157,42 @@ function ActivePlanBanner({ sub }: { sub: ActiveSubscription }) {
   )
 }
 
+// The loading placeholders are the REAL boxes with their content hidden (`visibility`
+// keeps the geometry), so the skeleton is exactly as tall as what replaces it. A guessed
+// pixel height is what made the page jolt: 64px stand-ins for ~83px rows, and a 44px
+// stand-in for the plan strip.
+function StripSkeleton() {
+  return (
+    // a plain div, not the banner's <output>: a placeholder must not be a live region
+    <div className="usage-strip plan-strip usage-strip--skeleton" aria-hidden="true">
+      <div className="usage-stat">
+        <CalendarClock size={15} className="usage-stat-icon" />
+        <span className="usage-stat-value">&nbsp;</span>
+        <span className="usage-stat-unit">&nbsp;</span>
+      </div>
+    </div>
+  )
+}
+
+function RowSkeleton() {
+  return (
+    <li className="order-row orders-skeleton-row" aria-hidden="true">
+      <div className="order-row-head">
+        <span className="order-timeline">
+          <span className="ot-step">
+            <span className="ot-dot" />
+            <span className="ot-label">&nbsp;</span>
+            <span className="ot-date">&nbsp;</span>
+          </span>
+        </span>
+      </div>
+    </li>
+  )
+}
+
+// Mirrors the cap FastAPI enforces on GET /api/v1/credits/orders (422 above it).
+const MAX_PAGE = 100
+
 // A notification deep-links as #/pricing/orders?id=<order_id>; pull that id out.
 function parseFocusId(): string | null {
   const q = window.location.hash.split('?')[1]
@@ -165,9 +201,26 @@ function parseFocusId(): string | null {
 
 export default function OrderHistory() {
   const { t } = useT()
-  const { orders, loading, error, reload } = useOrderHistory()
+  // Page size = however many rows fit above the fold. Measured off `.order-row-head`,
+  // the part of a row whose height is fixed — an expanded row is arbitrarily tall.
+  // Capped at the backend's /credits/orders limit.
+  const [fits, listRef] = useFitRows('.order-row-head', 4)
+  const historyLimit = Math.min(fits, MAX_PAGE)
+  const {
+    openOrders,
+    history,
+    historyOffset,
+    historyTotal,
+    setHistoryOffset,
+    loading,
+    error,
+    reload,
+  } = useOrderHistory(historyLimit)
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null)
   const [sub, setSub] = useState<ActiveSubscription | null>(null)
+  // /usage answers later than the order list, so the strip used to mount after the rows had
+  // painted and shove the page down. Both loads now gate one skeleton: the page paints once.
+  const [subLoading, setSubLoading] = useState(() => !!getStoredToken())
   const [focusId, setFocusId] = useState(parseFocusId)
 
   // Re-read the focus id if the hash changes while already on this page.
@@ -177,8 +230,10 @@ export default function OrderHistory() {
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
-  const openOrders = orders.filter(o => OPEN_ORDER_STATUSES.includes(o.status))
-  const history = orders.filter(o => !OPEN_ORDER_STATUSES.includes(o.status))
+  // ponytail: one gate for both fetches. A top-up-only tenant (no subscription) still sees
+  // the strip's slot collapse once when /usage comes back empty — cache the last answer per
+  // tenant if that ever matters more than the extra storage key.
+  const busy = loading || subLoading
 
   useEffect(() => {
     getPaymentInfo()
@@ -189,6 +244,7 @@ export default function OrderHistory() {
       getUsage(token)
         .then(d => setSub(d.usage.subscription ?? null))
         .catch(() => setSub(null))
+        .finally(() => setSubLoading(false))
     }
   }, [])
 
@@ -229,29 +285,25 @@ export default function OrderHistory() {
             }}
           />
         </div>
-        <LanguageToggle />
       </AppHeader>
 
-      <main className="orders-main">
+      <main className="orders-main" aria-busy={busy}>
         <div className="orders-head">
           <h1 className="orders-title">{t('order.title')}</h1>
-          <a className="btn btn-outline orders-buy-link" href="#/pricing">
-            {t('order.buyPlan')} <ArrowRight size={14} />
-          </a>
         </div>
 
-        {sub && <ActivePlanBanner sub={sub} />}
+        {busy ? <StripSkeleton /> : sub && <ActivePlanBanner sub={sub} />}
 
         <PendingOrderBanner orders={openOrders} onChanged={reload} paymentInfo={paymentInfo} />
 
         {error ? (
           <div className="pricing-error">{t('order.loadError', { error })}</div>
-        ) : loading ? (
-          <div className="orders-skeleton" aria-hidden="true">
+        ) : busy ? (
+          <ul className="order-list" ref={listRef}>
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="orders-skeleton-row" />
+              <RowSkeleton key={i} />
             ))}
-          </div>
+          </ul>
         ) : history.length === 0 ? (
           openOrders.length === 0 && (
             <div className="orders-empty">
@@ -266,16 +318,24 @@ export default function OrderHistory() {
             </div>
           )
         ) : (
-          <ul className="order-list">
-            {history.map(order => (
-              <OrderRow
-                key={order.id}
-                order={order}
-                paymentInfo={paymentInfo}
-                focus={order.id === focusId}
-              />
-            ))}
-          </ul>
+          <>
+            <ul className="order-list" ref={listRef}>
+              {history.map(order => (
+                <OrderRow
+                  key={order.id}
+                  order={order}
+                  paymentInfo={paymentInfo}
+                  focus={order.id === focusId}
+                />
+              ))}
+            </ul>
+            <Pager
+              offset={historyOffset}
+              limit={historyLimit}
+              total={historyTotal}
+              onChange={setHistoryOffset}
+            />
+          </>
         )}
       </main>
     </div>

@@ -2,6 +2,10 @@ import { useEffect, useReducer, useRef } from 'react'
 import { AlertTriangle, Check, Loader2, Pause, PauseCircle, Send, X } from 'lucide-react'
 import type { AdminCreditOrder } from '../../lib/api/adminClient'
 import { useT } from '../../i18n/LanguageContext'
+import { fmtDateTime } from '../../lib/date'
+
+// Re-exported: several order-review components import it from here.
+export { fmtDateTime }
 
 // Reject reasons are shown to the (Thai-default) buyer, so they stay Thai
 // regardless of the reviewer's UI language.
@@ -12,10 +16,6 @@ export const REJECT_PRESETS = [
   'สลิปนี้ถูกใช้ยืนยันการชำระไปแล้ว',
 ]
 export const REJECT_OTHER = 'อื่น ๆ (ระบุเหตุผล)'
-
-export function fmtDateTime(s: string | null): string {
-  return s ? new Date(s).toLocaleString() : '—'
-}
 
 interface ActionsState {
   mode: 'idle' | 'reject' | 'hold'

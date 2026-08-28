@@ -241,7 +241,7 @@ input[type='text']:focus {
   color: var(--primary);
 }
 .type-credit {
-  color: var(--rose);
+  color: var(--rose-text);
 }
 
 .btn-save {
@@ -285,178 +285,21 @@ button.mapping-label.clickable:hover {
   color: var(--primary-hover);
 }
 
-/* Modal Styling */
-.mapping-modal {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-modal-backdrop);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  visibility: visible;
-  opacity: 1;
-  transition: all 0.3s var(--ease);
-}
-
-.mapping-modal.hidden {
-  visibility: hidden;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.mapping-modal-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.5);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
-  z-index: 1;
-}
-
-.mapping-modal-content {
-  position: relative;
-  z-index: 2;
-  background: white;
-  width: 100%;
-  max-width: 860px;
-  border-radius: var(--radius-xl);
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.15);
-  padding: 1.75rem;
-  animation: modalSlideUp 0.35s var(--ease);
-  border: 1px solid var(--gray-200);
-}
-
-@keyframes modalSlideUp {
-  from {
-    transform: translateY(20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-.mapping-modal-header {
-  font-size: 1.1rem;
-  font-weight: 700;
-  margin-bottom: 1.5rem;
-  color: var(--gray-800);
-  border-bottom: 1px solid var(--gray-100);
-  padding-bottom: 1rem;
-  letter-spacing: -0.01em;
-}
-
-.mapping-modal-body {
-  max-height: 500px;
-  overflow-y: auto;
-  margin-bottom: 1.5rem;
-  padding-right: 5px;
-}
-
-/* Mapping Table in Modal */
-.modal-mapping-grid {
-  display: grid;
-  grid-template-columns: 180px 1fr 1fr;
-  gap: 1rem;
-  align-items: center;
-}
-
-.modal-mapping-header {
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: var(--gray-500);
-  text-transform: uppercase;
-  margin-bottom: 0.5rem;
-  letter-spacing: 0.06em;
-}
-
-.modal-mapping-row {
-  display: contents;
-}
-
-.modal-type-label {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--gray-800);
-  padding: 0.5rem 0;
-}
-
-.transaction-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.6rem 0.8rem;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.transaction-item:hover {
-  background: var(--primary-light);
-}
-
-.transaction-item input {
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
-  accent-color: var(--primary);
-}
-
-.transaction-item label {
-  cursor: pointer;
-  font-weight: 500;
-  margin: 0;
-}
-
-.mapping-modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.75rem;
-}
-
-.btn-cancel,
-.btn-confirm {
-  padding: 0.65rem 1.35rem;
-  border-radius: var(--radius-md);
-  font-weight: 600;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all 0.2s;
-  border: 1px solid var(--gray-200);
-}
-
-.btn-cancel {
-  background: white;
-  color: var(--gray-700);
-}
-.btn-cancel:hover {
-  background: var(--gray-100);
-  border-color: var(--gray-300);
-}
-
-.btn-confirm {
-  background: var(--primary);
-  color: white;
-  border-color: var(--primary);
-  box-shadow: 0 2px 10px oklch(from var(--primary) l c h / 0.2);
-}
-.btn-confirm:hover {
-  background: linear-gradient(135deg, var(--primary-hover) 0%, var(--primary) 100%);
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px oklch(from var(--primary) l c h / 0.3);
-}
+/* .btn-cancel / .btn-confirm now live in components.css. They are shared
+   controls, and keeping their base rules in a page stylesheet meant the confirm
+   button was only shaped on this page, while the cancel button's hardcoded
+   `background: white` had no dark-mode counterpart — a white pill with light
+   grey text once the theme flipped. */
 
 /* ─── DARK MODE ─── */
-[data-theme='dark'] .search-select-dropdown,
-[data-theme='dark'] .mapping-modal-content {
+[data-theme='dark'] .search-select-dropdown {
   background: var(--card-bg);
   border-color: var(--border);
   color: var(--text);
 }
 [data-theme='dark'] .search-input {
   background: var(--muted);
-  border-color: var(--border);
+  border-color: var(--border-input);
   color: var(--text);
 }
 

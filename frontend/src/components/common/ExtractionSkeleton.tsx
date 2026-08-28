@@ -18,10 +18,18 @@ export default function ExtractionSkeleton({ status, elapsed }: Props) {
         gap: '1rem',
       }}
     >
-      <div className="extraction-status-strip">
-        <div className="extraction-spinner" />
+      {/* The status text is the only signal that extraction is progressing rather than
+          hung, so it lives in a polite live region. The elapsed counter is hidden from it:
+          it changes every second, and inside the region that is one announcement per
+          second drowning out the status change that actually matters. */}
+      <div className="extraction-status-strip" role="status">
+        <div className="extraction-spinner" aria-hidden="true" />
         <span className="extraction-status-text">{status ?? 'Reading document…'}</span>
-        {showElapsed && <span className="extraction-elapsed">{elapsed}s</span>}
+        {showElapsed && (
+          <span className="extraction-elapsed" aria-hidden="true">
+            {elapsed}s
+          </span>
+        )}
       </div>
 
       <div className="data-card">

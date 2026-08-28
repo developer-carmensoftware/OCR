@@ -22,6 +22,7 @@ from app.models.schemas import CreditOrderResponse, KpiSummaryResponse
 from app.models.schemas.credits import HoldBatchResultItem, PostArResultItem
 from app.services import ar_posting_service, notification_service, storage_service
 from app.services.credit_service import activate_subscription, grant_credits
+from app.utils.pagination import count_rows
 
 logger = logging.getLogger(__name__)
 
@@ -79,13 +80,18 @@ async def list_orders(
     has_slip: bool | None,
     tenant_id: str | None,
     limit: int,
+    offset: int = 0,
     is_global: bool,
     tenant_scope: str,
-) -> list[CreditOrderResponse]:
+) -> tuple[list[CreditOrderResponse], int]:
     """
     List credit orders across all tenants (global admin) or own tenant (scoped admin).
     Default view is the slip-review queue (awaiting_review); `status=all` returns
     every status; `tenant_id` narrows to one company's order history.
+
+    Returns (window, total). `total` counts every matching order, not the window —
+    without it the admin queue silently truncates at `limit` with nothing on screen
+    saying so.
     """
     # Enrich each row with its proforma number and the AR code resolved from the
     # buyer's (tax_id, branch) — so the queue shows post-readiness at a glance.
@@ -136,8 +142,11 @@ async def list_orders(
     elif has_slip is False:
         query = query.where(CreditOrder.slip_uploaded_at.is_(None))
 
-    query = query.order_by(CreditOrder.created_at.asc()).limit(limit)
-    rows = (await db.execute(query)).all()
+    query = query.order_by(CreditOrder.created_at.asc())
+    # count_rows, not paginate(): this selects five entities, and paginate's .scalars()
+    # would flatten every row down to the CreditOrder alone.
+    total = await count_rows(db, query)
+    rows = (await db.execute(query.limit(limit).offset(offset))).all()
 
     out: list[CreditOrderResponse] = []
     for order, tenant_name, proforma_number, buyer_name, ar_code in rows:
@@ -147,7 +156,7 @@ async def list_orders(
         resp.buyer_name = buyer_name
         resp.carmen_ar_code = ar_code
         out.append(resp)
-    return out
+    return out, total
 
 
 async def get_slip_url(order: CreditOrder, *, ttl_seconds: int = 3600) -> dict:
@@ -188,7 +197,7 @@ async def approve(db: AsyncSession, order: CreditOrder) -> str:
             db,
             str(order.tenant_id),
             str(order.pack_code),
-            int(order.credits),  # type: ignore[arg-type]  # per-month allowance (both periods)
+            int(order.credits),  # per-month allowance (both periods)
             str(order.id),
             billing_period=str(order.billing_period),
         )
@@ -516,7 +525,7 @@ async def post_ar_batch(
             )
             order.status = CreditOrderStatus.COMPLETE  # type: ignore[assignment]
             order.carmen_ar_posted_at = datetime.now(UTC)  # type: ignore[assignment]
-            order.carmen_ar_ref = resp["carmen_ar_ref"]  # type: ignore[assignment]
+            order.carmen_ar_ref = resp["carmen_ar_ref"]
             results.append(
                 PostArResultItem(order_id=oid, success=True, carmen_ar_ref=resp["carmen_ar_ref"])
             )

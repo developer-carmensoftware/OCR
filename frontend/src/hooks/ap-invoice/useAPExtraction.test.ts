@@ -82,6 +82,13 @@ function makeProps(overrides: Record<string, unknown> = {}) {
 
 const MOCK_FILE = new File(['%PDF-1.4'], 'invoice.pdf', { type: 'application/pdf' })
 
+/**
+ * Vitest's own per-test timeout is 5s, which killed the previewUrl test before the 10s
+ * `waitFor` budget below could ever be spent — so the 2026-08-21 flake fix never took
+ * effect in a full-suite run. Both numbers are needed; raising only one does nothing.
+ */
+const PDF_PARSE_TIMEOUT_MS = 15_000
+
 const MOCK_API_RESPONSE = {
   id: 'inv-uuid-001',
   vendorName: 'Test Corp',
@@ -419,20 +426,26 @@ describe('useAPExtraction', () => {
   // ── F5: handleFileChange ─────────────────────────────────────────────────────
 
   describe('F5: handleFileChange', () => {
-    it('sets file, previewUrl, and triggers runOCR automatically', async () => {
-      mockSuccess()
-      const props = makeProps()
-      const { result } = renderHook(() => useAPExtraction(props))
-      const event = { target: { files: [MOCK_FILE] } }
-      await act(async () => {
-        result.current.handleFileChange(event)
-        // Wait for async runOCR to complete
-        await new Promise(r => setTimeout(r, 0))
-      })
-      expect(result.current.file).toBe(MOCK_FILE)
-      // previewUrl is produced asynchronously now (auto-print stripping); wait for it.
-      await waitFor(() => expect(result.current.previewUrl).toBeTruthy())
-    })
+    it(
+      'sets file, previewUrl, and triggers runOCR automatically',
+      async () => {
+        mockSuccess()
+        const props = makeProps()
+        const { result } = renderHook(() => useAPExtraction(props))
+        const event = { target: { files: [MOCK_FILE] } }
+        await act(async () => {
+          result.current.handleFileChange(event)
+          // Wait for async runOCR to complete
+          await new Promise(r => setTimeout(r, 0))
+        })
+        expect(result.current.file).toBe(MOCK_FILE)
+        // previewUrl is produced asynchronously now (auto-print stripping); wait for it.
+        // 10s, not the 1s default: the pdf-lib parse behind it takes seconds when the
+        // whole suite runs in parallel. Flaked in CI at the default.
+        await waitFor(() => expect(result.current.previewUrl).toBeTruthy(), { timeout: 10_000 })
+      },
+      PDF_PARSE_TIMEOUT_MS
+    )
 
     it('sets previewType=pdf for PDF files', async () => {
       mockSuccess()

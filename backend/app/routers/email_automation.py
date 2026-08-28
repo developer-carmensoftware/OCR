@@ -46,11 +46,11 @@ from app.models.identity import Tenant
 from app.models.schemas.email_automation import URI_DOC, SettingsIn, TokenIn
 from app.routers.admin.deps import decode_admin_principal, require_maintenance_auth
 
-# ponytail: private imports across routers. _validate_uri / _validate_token raise
+# ponytail: private imports across routers. validate_uri / validate_token raise
 # HTTPException and the login path depends on those exact codes, so extracting them
 # into a shared module is a real refactor, not a move — do it when something else
 # needs them too.
-from app.routers.auth import _validate_token, _validate_uri
+from app.routers.auth import validate_token, validate_uri
 from app.services import email_ingest_service as ingest
 from app.services import email_settings_service as es
 from app.services import notification_service
@@ -194,12 +194,12 @@ def _tenant_host(uri: str) -> str:
     Carmen already passes a full origin to `/auth/exchange`, so this API takes the same
     value rather than making them derive a bare hostname for one endpoint. It is parsed
     exactly the way that endpoint parses it (`routers/auth.py` —
-    `urlparse(_validate_uri(uri)).hostname`), which is where `tenants.host` came from in
+    `urlparse(validate_uri(uri)).hostname`), which is where `tenants.host` came from in
     the first place. So for any `uri` that resolves to a tenant at all,
     `tenant.host == hostname(uri)`; and everything outbound still starts from
     `tenants.host` via `_safe_carmen_uri`. Nothing here ever becomes a URL we request.
 
-    Deliberately **not** `_validate_uri`: that ends in a blocking `socket.getaddrinfo`,
+    Deliberately **not** `validate_uri`: that ends in a blocking `socket.getaddrinfo`,
     i.e. a DNS lookup driven by unauthenticated input — the exposure the limiters at the
     top of this module exist to bound. There is nothing to validate in a value we never
     call.
@@ -237,7 +237,7 @@ async def _resolve(db: AsyncSession, caller: Caller, uri: str, bu: str) -> Tenan
 
     The token is checked against the Carmen instance the payload names, so claiming
     another company's host means producing a credential that company's own Carmen
-    validates. `_validate_token`'s 401 ("re-login") and 502 ("cannot reach Carmen")
+    validates. `validate_token`'s 401 ("re-login") and 502 ("cannot reach Carmen")
     propagate unchanged: Carmen's screen needs to tell those two apart.
 
     The caller's `uri` and the `origin` below are deliberately separate names: the
@@ -260,7 +260,7 @@ async def _resolve(db: AsyncSession, caller: Caller, uri: str, bu: str) -> Tenan
             status_code=401, detail="Carmen token rejected — please re-login to Carmen"
         )
     try:
-        await _validate_token(caller.carmen_token, origin)
+        await validate_token(caller.carmen_token, origin)
     except HTTPException as exc:
         if exc.status_code == 401:
             # Only a definite "no" is remembered. A 502 means we could not ask.
@@ -276,7 +276,7 @@ async def _safe_carmen_uri(tenant: Tenant) -> str:
     produced by this same check at login, so the origin we validate a token against
     is always the origin we later post with — one value, not two that can disagree.
 
-    `_validate_uri` (routers/auth.py) is the same check `/auth/exchange` already
+    `validate_uri` (routers/auth.py) is the same check `/auth/exchange` already
     applies: https only, ALLOWED_CARMEN_HOSTS allowlist, loopback/private-IP
     rejection including what a hostname resolves to. Its 400 is re-raised as the
     422 field-error shape Carmen's screen already renders inline.
@@ -287,7 +287,7 @@ async def _safe_carmen_uri(tenant: Tenant) -> str:
     """
     candidate = f"https://{tenant.host}"
     try:
-        return await asyncio.to_thread(_validate_uri, candidate)
+        return await asyncio.to_thread(validate_uri, candidate)
     except HTTPException as exc:
         raise FieldValidationError(
             [{"field": "carmen_uri", "code": "invalid_uri", "message": str(exc.detail)}]
@@ -434,6 +434,30 @@ async def run_email_ingest(
 ):
     """One mailbox poll. Same auth as every other cron-driven endpoint."""
     return await ingest.run_ingest(limit)
+
+
+@router.post("/email-ingest/confirmations")
+async def sweep_forwarding_confirmations(_auth=Depends(require_maintenance_auth)):
+    """Follow any Gmail forwarding-confirmation link sitting in the mailbox.
+
+    Scheduled **every minute**, unlike the document poll, and cheap enough to be: it
+    searches the mailbox by sender, parses no attachment, and opens IMAP at all only
+    while some BU is mid-setup. The customer is watching Gmail's "Awaiting verification"
+    screen when this runs, so ten minutes of latency would read as broken.
+
+        select cron.schedule('email-confirm', '* * * * *', $$
+        select net.http_post(
+            url     := (select value #>> '{}' from system_configs
+                         where key_name = 'app.base_url' limit 1)
+                       || '/api/v1/carmen/email-ingest/confirmations',
+            headers := jsonb_build_object(
+                'Content-Type', 'application/json',
+                'Authorization', 'Bearer ' || (select decrypted_secret
+                    from vault.decrypted_secrets where name = 'internal_job_token' limit 1)),
+            body    := '{}'::jsonb);
+        $$);
+    """
+    return await ingest.sweep_confirmations()
 
 
 @router.post("/email-ingest/health")
