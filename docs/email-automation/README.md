@@ -1,18 +1,19 @@
 # Email Automation
 
-> **Status: built, merged to `main`, live-tested end to end. But neither of the two cron
-> jobs is scheduled yet** (`backend/app/routers/email_automation.py:380-406`) — in
-> production, nothing polls the mailbox until someone schedules `email-ingest` and
-> `email-token-health`, or curls the endpoints by hand. See
-> [05-operations.md](05-operations.md#scheduling) for the exact SQL.
+> **Status: built, merged to `main`, live-tested end to end.** `email-ingest` (every 10
+> minutes) and `email-confirm` (every minute) are scheduled by migration
+> `20260817000000_email_ingest_cron.sql`; `email-token-health` is the one still unscheduled.
+> See [05-operations.md](05-operations.md#scheduling) for the exact SQL, and for the
+> launcher-cache trap that leaves `job_run_details` empty after a `db push`.
 
 ## What it does, in one paragraph
 
 Banks email commission and fee reports to hotels. Today a user downloads the PDF and
 uploads it into the Credit Card OCR wizard by hand. Email Automation removes that step for
 one document type: the customer sets up a mail-forward rule once, and every report after
-that is read, extracted, GL-mapped and posted to that business unit's Carmen ERP with no
-human involved. Each business unit (BU) gets its own `AIAGENT+<tag>@carmensoftware.com`
+that is read, extracted, GL-mapped and queued for one click of approval in that business
+unit's own Carmen ERP — or posted with nobody in between, once the BU turns review off.
+Each business unit (BU) gets its own `AIAGENT+<tag>@carmensoftware.com`
 address; the tag in the address — not the document's contents — is what tells the system
 which BU's books to write to, and it is read for free, before any LLM call.
 
@@ -21,12 +22,12 @@ which BU's books to write to, and it is read for free, before any LLM call.
 This is the inbound half of a wider "documents in, JV out" pattern shared with the
 Credit Card OCR wizard (`CLAUDE.md` → *Credit Card OCR (5-step wizard)*) — same extraction
 code, same GL-mapping service, same Carmen posting call, same `credit_cards` table. What's
-different is *how the document arrives* and *that nobody reviews it before it posts*.
+different is *how the document arrives*, and *who is standing between it and Carmen*.
 
-That last property is the one under design in
-[07-human-in-the-loop.md](07-human-in-the-loop.md): a per-BU `auto_post` switch that defaults
-to **off**, so a document waits for a human until the BU has seen enough to stop watching.
-Nothing in that document is built — everything else in this folder describes what runs today.
+Since 2026-08-28 that is a per-BU switch rather than a property of the pipeline:
+`auto_post` defaults to **off**, so a document waits in a queue for a human, and a BU turns
+review off once it has seen enough to stop watching. See
+[07-human-in-the-loop.md](07-human-in-the-loop.md).
 
 ## Doc map
 
@@ -34,11 +35,11 @@ Nothing in that document is built — everything else in this folder describes w
 |---|---|
 | [01-requirements.md](01-requirements.md) | What the feature must do, who it's for, the business rules |
 | [02-architecture.md](02-architecture.md) | How it works — sequence diagrams for every flow, the cost/refund gate ladder |
-| [03-api-reference.md](03-api-reference.md) | All 8 endpoints, auth model, error shapes |
+| [03-api-reference.md](03-api-reference.md) | All 14 endpoints across both routers, auth model, error shapes |
 | [04-data-model.md](04-data-model.md) | The two tables, migration lineage, the `reason_code` taxonomy |
 | [05-operations.md](05-operations.md) | Env vars, cron, observability, runbook, tests, known gaps |
 | [06-decision-log.md](06-decision-log.md) | What was decided, why, and what was tried and reverted |
-| [07-human-in-the-loop.md](07-human-in-the-loop.md) | **Design, not yet built.** The review step before posting, the `auto_post` switch, and the two screens that replace the wizard entry |
+| [07-human-in-the-loop.md](07-human-in-the-loop.md) | The review step before posting, the `auto_post` switch, and the two screens that replaced the wizard entry. Written as the design; built as written |
 
 Two documents live outside this folder because they have a different audience — the Carmen
 ERP development team, not an OCR-app developer:
@@ -75,8 +76,10 @@ this folder adds the two cron-only routes neither of the above documents.
 | `backend/app/services/email_ingest_service.py` | IMAP poll + the whole per-document pipeline (1116 lines) — the core of the feature |
 | `backend/app/services/email_settings_service.py` | Settings store, secrets, tag allocation, token health (730 lines) |
 | `backend/app/routers/email_automation.py` | The Settings API + the two cron-triggered ingest routes (407 lines) |
+| `backend/app/routers/email_review.py` | The review queue's own API, on our session JWT rather than the customer's Carmen token |
 | `backend/app/models/email_automation.py` | ORM: `EmailIngestSettings`, `EmailDocument` |
 | `backend/app/models/schemas/email_automation.py` | Request payloads: `RuleIn`, `SettingsIn`, `TokenIn` |
 | `frontend/src/pages/EmailSettings.tsx` + `frontend/src/hooks/email-settings/` + `frontend/src/lib/api/emailAutomation.ts` | The internal test surface at `#/email-settings` — see [02-architecture.md](02-architecture.md#frontend-surface) |
+| `frontend/src/pages/ReviewQueue.tsx` + `ReviewDocument.tsx` + `hooks/credit-card/useReviewQueue.ts` + `lib/api/emailReview.ts` | The customer-facing queue at `#/CreditCardOCR` and the review page behind it |
 | `scripts/email_ingest_e2e.py` | End-to-end script against the real dev mailbox + database |
-| `supabase/migrations/20260803000000_email_automation.sql` and six migrations after it | Schema — full lineage in [04-data-model.md](04-data-model.md#migration-lineage) |
+| `supabase/migrations/20260803000000_email_automation.sql` and eight migrations after it | Schema — full lineage in [04-data-model.md](04-data-model.md#migration-lineage) |

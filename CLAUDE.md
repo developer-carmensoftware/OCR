@@ -100,7 +100,7 @@ useAPInvoice hook
   → POST /api/v1/carmen/invoice  submit to Carmen ERP
 ```
 
-### Email ingestion (no wizard — nobody reviews before it posts)
+### Email ingestion (a queue, not a wizard — a human approves before it posts)
 
 Built, merged, live-tested end to end. **Full docs: [`docs/email-automation/`](docs/email-automation/)**
 (requirements → architecture → API → data model → operations → decision log). Read those
@@ -117,13 +117,25 @@ pg_cron → POST /api/v1/email/ingest  (internal job token)
       email_ingest_settings  filename must match one of this BU's rules; this BU's PDF passwords
       consume_document() → same extract → GL-map → POST JV path as the Credit Card wizard
       tax ID vs this BU's register  ← verification, not routing; parks only on positive conflict
+      auto_post = false (default) → park at pending_review; the poll stops here
+routers/email_review.py  ← the queue's own API (session JWT, not the Carmen-token path)
+  #/CreditCardOCR        the review queue = the Credit Card module's landing page
+  #/CreditCardOCR/review?id=…   approve → the same post_gljv the poll would have called
+  #/CreditCardOCR/manual  the wizard, moved down one level, unchanged
 ```
 
 Two properties that make it unlike the wizards: the tag is read **before any LLM call**, so
-an unowned message costs nothing; and there is no human between extraction and posting, so a
-`warnings` field that merely draws an amber banner in a wizard has no reader here. Neither
-cron job (`email-ingest`, `email-token-health`) is scheduled in production yet — see
-[`05-operations.md`](docs/email-automation/05-operations.md#scheduling).
+an unowned message costs nothing; and a document is charged the moment the vision call
+returns, so approve, reject and "still sitting there" all cost the same — reject does not
+refund (see the charge-before-the-LLM decision below).
+
+**`auto_post` is per BU and defaults to `false`** (`email_ingest_settings.auto_post`,
+flipped only by `PUT /api/v1/email/settings/auto-post`, never by the settings save, which is
+a full replace). A BU switching the feature on gets review; they turn it off once the queue
+has earned it. Backpressure, not refunds, protects a BU that stops reading its queue: past
+50 pending, mail is handed back unread and costs nothing.
+
+Design: [`07-human-in-the-loop.md`](docs/email-automation/07-human-in-the-loop.md).
 
 ### Admin dashboard (`#/admin/*`) — check here before writing SQL
 
@@ -223,7 +235,7 @@ an ad-hoc script while `uvicorn` is up hits the 15-connection Supavisor cap.
 - **Tenant resolution at login** — `routers/auth.py` upserts a single `tenants` row keyed by the (host, bu) pair from Carmen JWT claims on every `/exchange` call. `tenant_id` is embedded in the JWT so subsequent requests read identity without a DB lookup. There is no separate `business_units` table — each (host, bu) pair is its own tenant.
 - **FK-based tenancy** — Data-plane tables carry a single `tenant_id` NOT NULL FK (native `PGUUID(as_uuid=True)`). Observability log tables use `VARCHAR(36)` + index (no FK — high-volume append-only tables).
 - **Bank code not enum** — `credit_cards.bank_code` FK → `banks.code` VARCHAR. No hardcoded `BankType` enum in the DB; adding a bank is an INSERT (pending Admin Dashboard for zero-redeploy).
-- **Credit card line items are NOT persisted** — like AP invoices, credit-card transactions follow the extract-display-only pattern (Carmen ERP is source of truth). Only `credit_cards` header data is stored; line items live transiently in the API response (`CreditCardTransactionSchema`).
+- **Credit card line items are NOT persisted** — like AP invoices, credit-card transactions follow the extract-display-only pattern (Carmen ERP is source of truth). Only `credit_cards` header data is stored; line items live transiently in the API response (`CreditCardTransactionSchema`). **One bounded exception:** an email document waiting for a human holds its whole extraction — line items included — in `email_documents.review_payload`, because there is nothing else to show the reviewer and no second extraction to fall back on. `_finish()` clears it on every terminal transition, so the steady state is unchanged.
 - **Soft delete everywhere** — Business tables never hard-delete. Always filter `WHERE deleted_at IS NULL`.
 - **Two document pools, not three** — a scan is charged by `consume_document()` (`services/credit_service.py`): the active subscription's monthly allowance first (use-it-or-lose-it), then `tenant_credits.balance` (never expires). The free trial is not a third pool — a new tenant is granted 30 credits (`signup_grant` ledger reason) in the same transaction that creates their tenant row, which is what makes it a one-time grant. The old `quotas`/`quota_usage` counter engine was retired by migration `20260813000100` and the tables were dropped by `20260825000000`. What survived that retirement is only `assert_module_enabled()`, which now lives in `services/module_gate.py` (renamed from `quota_service.py` 2026-08-18 — the old name described an engine that no longer exists).
 - **module_id on every LLM call** — `log_llm_usage(module_id="credit_card_ocr")` instead of old `usage_type` string. Enables per-module cost breakdown in `daily_usage_summary`.

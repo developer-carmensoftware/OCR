@@ -210,7 +210,12 @@ sequenceDiagram
         Ingest->>DB: fill_missing_mappings() — saved for next document
     end
     Ingest->>Ingest: build_jv_rows()
-    Ingest->>Carmen: post_gljv(payload, carmen_token)
+    alt auto_post = false (the default)
+        Ingest->>DB: _park_for_review() — status="pending_review", review_payload stored
+        Note over Ingest,DB: The poll stops here. Nothing reaches Carmen until<br/>a human approves it at #/CreditCardOCR.
+    else auto_post = true
+        Ingest->>Carmen: post_gljv(payload, carmen_token)
+    end
     Carmen-->>Ingest: {Code: 0, InternalMessage: jv_no}
     Ingest->>DB: _mark_submitted() — credit_cards.submitted_at
     Ingest->>Carmen: post_input_tax() — cannot fail the JV above
@@ -243,7 +248,13 @@ flowchart TD
     G6 -- no --> F3["failed\nmapping_incomplete\ncharged"]
     G6 -- yes --> G7{"build_jv_rows has\npostable amounts?"}
     G7 -- no --> F4["failed\nunreadable_document\ncharged"]
-    G7 -- yes --> G8{"post_gljv succeeds?"}
+    G7 -- yes --> G9{"auto_post?"}
+    G9 -- "no (default)" --> P1["pending_review
+charged, waiting for a human"]
+    P1 -- "reviewer approves" --> G8
+    P1 -- "reviewer rejects" --> F8["rejected
+charged, terminal"]
+    G9 -- yes --> G8{"post_gljv succeeds?"}
     G8 -- "Carmen declines (Code != 0)" --> F5["failed\ncarmen_rejected\ncharged"]
     G8 -- "transport error" --> F6["failed\ncarmen_rejected\ncharged"]
     G8 -- yes --> Posted(["posted\ninput-tax record attempted, cannot fail this"])
@@ -251,7 +262,13 @@ flowchart TD
     style Charge fill:#f5c542,color:#000
     style Boundary fill:#f5c542,color:#000
     style Posted fill:#5cb85c,color:#000
+    style P1 fill:#5bc0de,color:#000
 ```
+
+**The review fork is not a cost boundary.** A parked document has already been read, so it
+is already charged; approving, rejecting and letting it sit all cost the same. That is why
+`_park_for_review()` sits *after* the refund boundary and why reject does not refund
+(decision-log #17, unchanged).
 
 The rule stated once: **the charge follows the vision call, not the outcome.** Pre-charge
 exits are the customer's own configuration saying "not this file", and file as `skipped` —
@@ -274,15 +291,26 @@ same event, so the two pipelines disagreed about what one document costs.
 ```mermaid
 stateDiagram-v2
     [*] --> received: _claim() inserts the ledger row
-    received --> posted: JV + input-tax attempted
+    received --> pending_review: auto_post = false, every gate passed
+    received --> posted: auto_post = true, JV + input-tax attempted
     received --> failed: charged, then a gate failed
     received --> skipped: a free gate failed, never charged
+    pending_review --> posted: a human approved it
+    pending_review --> rejected: a human rejected it
+    pending_review --> pending_review: Carmen refused the JV — stays reviewable
     posted --> [*]
     failed --> [*]
+    rejected --> [*]
     skipped --> [*]
 ```
 
-All three are terminal. There is no retry sweep — `attempts` is always written as `1`
+`pending_review` is the only non-terminal state, and the only one a human can leave. A
+Carmen refusal during approve deliberately does **not** move it: a closed period or an
+unknown dept code is something the person standing at the screen can fix and try again, so
+the row stays where it is and the message goes back to them (see
+[07-human-in-the-loop.md](07-human-in-the-loop.md)).
+
+The other four are terminal. There is no retry sweep — `attempts` is always written as `1`
 (`ponytail` note, `email_ingest_service.py:35`); a failed document needs a human to
 re-forward it, or a retry job to be built when real failure volume justifies it
 (see [05-operations.md](05-operations.md#known-gaps--roadmap)).
@@ -346,6 +374,14 @@ about it are deliberate:
   itself sends. A 401 here means *Carmen* rejected the token, which the page renders
   inline; going through the shared `apiFetch` would instead treat a 401 as "our own session
   died" and wipe the OCR session.
+
+`#/CreditCardOCR` (`frontend/src/pages/ReviewQueue.tsx`) is the other half, and unlike
+`#/email-settings` it *is* customer-facing: it is the Credit Card module's landing page, so
+it is what Carmen's SSO deep-link opens. It lists this BU's email documents by status tab,
+opens a parked one at `#/CreditCardOCR/review?id=…` for approval, and hides the
+`auto_post` switch behind a gear. The manual wizard moved to `#/CreditCardOCR/manual`
+unchanged. It reads our own session JWT through `routers/email_review.py`, not the Carmen
+token path above — see [07-human-in-the-loop.md](07-human-in-the-loop.md).
 
 There is no admin UI at all for this feature — see
 [05-operations.md #known-gaps](05-operations.md#known-gaps--roadmap).

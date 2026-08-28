@@ -11,8 +11,10 @@
 >
 > Companion documents: [email-automation/](email-automation/README.md) (our own engineering
 > docs — architecture, data model, operations, decision log), [Security_Trust_Overview.md](Security_Trust_Overview.md).
-> The v1 pilot design (human-approval step, own admin UI) is superseded and lives only on
-> the unmerged `feat/email-flow` branch — see `email-automation/06-decision-log.md §17`.
+> The v1 pilot design (own admin UI, `email_flow_*` tables) is superseded and lives only on
+> the unmerged `feat/email-flow` branch. Its *approval step*, however, came back on
+> 2026-08-28 in a different form — see §0.2 below and
+> `email-automation/06-decision-log.md §18`.
 
 ---
 
@@ -37,10 +39,38 @@ Bank ──mail──> Customer mailbox ──┬── auto-forward rule ──
 
 The three things that make this different from the pilot:
 
-1. **No human approval step.** Documents post to Carmen automatically.
+1. **Approval is a per-BU switch, not a fixed step.** A BU starts with review on: the
+   document is read, mapped and queued in the OCR app, and posts only when someone
+   approves it. They turn review off (`auto_post`) once the queue has earned it, and from
+   then on documents post automatically. See §0.2.
 2. **Settings live in Carmen.** The customer configures everything on Carmen's screens;
-   Carmen calls our API to store it. The OCR app has no settings UI for this feature.
+   Carmen calls our API to store it. The OCR app has no settings UI for this feature —
+   with one exception, the review queue in §0.2, which is a work surface rather than a
+   settings screen.
 3. **Carmen is notified by webhook**, so it can react without polling us.
+
+### 0.2 Where the human sits (2026-08-28)
+
+Between "we read it" and "it posts", when `auto_post` is off — which is the default, and
+how every BU starts.
+
+```text
+forwarded mail → we read it → GL mapping → [ queued for approval ] → post to Carmen
+                                                    ▲
+                                     #/CreditCardOCR in the OCR app
+```
+
+- The queue is the **Credit Card module's landing page** in the OCR app, so Carmen's
+  existing SSO deep-link opens it. The manual scan wizard moved one level down, to
+  `#/CreditCardOCR/manual`; nothing about that wizard changed.
+- The reviewer can correct the header, the line items, the GL mapping and whether the
+  input-tax record is written, then posts with one click. What they see is what posts.
+- Rejecting is terminal and does **not** refund the document — the extraction ran, which
+  is what was charged for.
+- Nothing about the JV payload, the endpoints Carmen calls, or the settings contract
+  changes. This is a pause in our pipeline, not a change to yours.
+- While review is on, `document.posted` (§3.3) would fire on approval rather than on
+  arrival. It is still unbuilt.
 
 ### What the customer does (the whole setup)
 
@@ -602,8 +632,10 @@ happened", not as an error.**
 
 ### 3.3 `document.posted` / `document.failed` — **proposed**
 
-Not in the original request, but with no human approval step these are the only way
-Carmen (or the customer) learns what happened to a forwarded document.
+Not in the original request. For a BU running with `auto_post` on — no human in the loop —
+these are the only way Carmen (or the customer) learns what happened to a forwarded
+document. With review on, the queue itself is that answer, and the events would fire when
+the reviewer approves rather than when the mail lands.
 
 ```jsonc
 {
@@ -703,8 +735,10 @@ Two things that still need Carmen's side, and are the reason §5 is not empty:
 
 1. **Revocation must actually happen on the OFF switch.** Deleting our copy is not
    revoking; if the OFF switch only updates a flag, the credential outlives the setting.
-2. **Mark automated postings in `JvhSource`.** No human saw these documents. Accounting
-   needs to tell them apart from wizard postings when reviewing later.
+2. **Mark automated postings in `JvhSource`.** Accounting needs to tell email-sourced
+   postings apart from wizard postings when reviewing later. Still true with review on: an
+   approved document was checked on a screen, not keyed by hand, and the approver's name is
+   recorded on our side rather than in Carmen.
 
 The JV content itself is unchanged from what the wizard posts today
 (`JvhSeq/JvhDate/Prefix/JvhSource/Detail[]`), and the GL accounts come from the mapping

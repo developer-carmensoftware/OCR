@@ -1,10 +1,18 @@
 # API Reference
 
-All routes live in `backend/app/routers/email_automation.py`, prefix `/api/v1/carmen`,
-OpenAPI tag `Email Automation`. Seven are the Settings/notifications API Carmen calls (six
-also documented, in Thai, for Carmen's own developers in
-[`../CARMEN_API_SPEC.md`](../CARMEN_API_SPEC.md)); the two ingest routes are cron-only and
-appear in no other document.
+Two routers, two auth models, and the split is the point.
+
+`backend/app/routers/email_automation.py` (prefix `/api/v1/carmen`, tag `Email Automation`)
+answers **Carmen's server**, authenticated by replaying the customer's own Carmen token.
+Seven are the Settings/notifications API Carmen calls (six also documented, in Thai, for
+Carmen's own developers in [`../CARMEN_API_SPEC.md`](../CARMEN_API_SPEC.md)); the two ingest
+routes are cron-only and appear in no other document.
+
+`backend/app/routers/email_review.py` (prefix `/api/v1/email`, tag `Email Review`) answers
+**our own frontend** at `#/CreditCardOCR`, where the user already holds a session JWT, so it
+uses `get_current_session` like every other tenant-facing route in the app. It is what the
+human-in-the-loop queue reads and writes — see
+[07-human-in-the-loop.md](07-human-in-the-loop.md).
 
 ## Endpoints
 
@@ -19,6 +27,28 @@ appear in no other document.
 | GET | `/api/v1/carmen/notifications?uri=&bu=&since=` | Caller | `{"has_notification": bool}` — a badge, not a feed. **Interim poll substitute** for the unbuilt webhook (`../CARMEN_INTEGRATION.md §3.2`) |
 | POST | `/api/v1/carmen/email-ingest/run?limit=1..100` | `require_maintenance_auth` | Run one mailbox poll |
 | POST | `/api/v1/carmen/email-ingest/health` | `require_maintenance_auth` | Re-verify every enabled BU's stored credential |
+
+### The review queue (`/api/v1/email`, session JWT)
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/email/documents?tab=&limit=&offset=` | `Page[ReviewDocument]` for this BU, newest first |
+| GET | `/api/v1/email/documents/{id}` | One document plus the `review_payload` the screen edits |
+| GET | `/api/v1/email/status` | Which of the queue's four states to paint, plus a count per tab |
+| POST | `/api/v1/email/documents/{id}/approve` | Post what the reviewer checked → `{jv_no, tax_note}` |
+| POST | `/api/v1/email/documents/{id}/reject` | Terminal, optional reason → `204` |
+| PUT | `/api/v1/email/settings/auto-post` | `{auto_post: bool}` — turn review off, or back on |
+
+`tab` is one of `review` · `posted` · `problem` · `skipped`, and is a *group* of ledger
+statuses rather than one: `problem` is `failed` + `rejected` (they differ in who decided,
+which the row shows, but not in what is owed) and `skipped` absorbs `received` so a row
+stuck mid-flight is still findable. An unknown value falls back to `review`.
+
+`PUT /settings/auto-post` is deliberately its own route and not a field on
+`PUT /api/v1/carmen/settings`: that endpoint is a full replace, so flipping the switch
+through it would rewrite the BU's rules and PDF passwords on the way, and would make "turn
+review off" reachable as a side effect of an unrelated save. `404` if the BU has no settings
+row — nothing is forwarding, so there is no switch to flip.
 
 ## Auth model
 
@@ -180,8 +210,11 @@ messages fetched this poll (1–100; default is `IMAP_BATCH_SIZE`). Returns
 touching a mailbox.
 
 ```jsonc
-{ "messages": 4, "posted": 2, "failed": 1, "skipped": 1, "unrouted": 0 }
+{ "messages": 4, "posted": 2, "pending_review": 1, "failed": 1, "skipped": 1, "unrouted": 0 }
 ```
+
+`pending_review` counts documents parked for a human this poll. On a BU with `auto_post`
+off — the default — `posted` stays `0` and this is the number that moves.
 
 ## `POST /email-ingest/health`
 
@@ -194,6 +227,33 @@ deleting the token, since a transient Carmen outage looks identical to a revocat
 ```jsonc
 { "checked": 12, "ok": 11, "failed": 1 }
 ```
+
+## `POST /documents/{id}/approve`
+
+```jsonc
+// request — what was on the reviewer's screen, not a request to rebuild it
+{
+  "extracted": { "doc_no": "INV-001", "doc_date": "15/01/2026", "details": [ /* … */ ] },
+  "rows": [ /* the JV rows the screen displayed */ ],
+  "post_input_tax": true
+}
+// response
+{ "jv_no": "JV-9001", "tax_note": null }
+```
+
+`rows` are sent, not rebuilt server-side: the screen derives them against the live
+accounting config, so rebuilding would risk posting something other than what the person
+approved. Synchronous on purpose — Carmen rejects JVs for reasons only a human can fix, and
+telling them ten minutes later in a notification wastes the fact that they are sitting
+right there.
+
+| Status | When | What the row does |
+|---|---|---|
+| `200` | Posted | `posted`, `review_payload` cleared, `jv_no` stamped |
+| `200` + `tax_note` | JV posted, input-tax record did not | Still `posted` — the VAT is a separate errand, not a failure |
+| `400` | Carmen declined (`Code != 0`) — closed period, unknown dept | **Stays `pending_review`.** The message is Carmen's own; it is fixable on the screen |
+| `409` | Someone else in the BU approved or rejected it first | Gone from the queue |
+| `503` | Carmen unreachable | Stays `pending_review`. *Check whether the JV posted before approving again* |
 
 Both `/email-ingest/*` routes share `require_maintenance_auth`
 (`backend/app/routers/admin/deps.py:78`) — admin JWT **or** `INTERNAL_JOB_TOKEN` via

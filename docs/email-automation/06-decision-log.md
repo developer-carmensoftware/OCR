@@ -210,13 +210,45 @@ key `(tenant, message_id, attachment)` catches it before any charge. Only a genu
 different email carrying the same document costs twice, which in practice means the
 double-forward setup and little else.
 
-## 18. Superseded designs, and where they live
+## 18. A human approves before anything posts (2026-08-28)
+
+**Reverses the central choice of v2, and partially reinstates v1's.** Ingest posted straight
+to Carmen with nobody in between. That is the right shape for a pipeline a BU already
+trusts, and the wrong one for a BU switching it on for the first time — the first thing the
+automation does on day one is write to their real ledger, and the only way to find out it
+misread a figure is to find the JV afterwards.
+
+A document now stops at `pending_review` between the gate ladder and `post_gljv`, and a
+human approves it at `#/CreditCardOCR`. The switch back is per BU: `auto_post`, default
+`false`, flipped in the queue's own settings once the queue has been getting it right.
+
+What this is **not** is a return to v1. The differences are the whole reason it could be
+built in a week rather than being cherry-picked:
+
+- **No new admin UI, no `email_flow_*` tables.** Four columns on `email_documents`, one on
+  `email_ingest_settings`.
+- **Review is the Credit Card module's landing page**, not a screen of its own. The wizard
+  moved to `#/CreditCardOCR/manual`; the queue took `#/CreditCardOCR`, which is what
+  Carmen's SSO deep-link opens.
+- **The reviewer edits in the wizard's own components** — `HeaderCard`, `DetailTable`,
+  `AccountingReview` — so there is one implementation of the arithmetic, not two.
+- **The cost model does not move.** #17 is unchanged: the charge follows the vision call, so
+  a parked document is already charged and rejecting it refunds nothing. Backpressure, not
+  refunds, is what protects a BU that stops reading its queue — past 50 pending, mail is
+  handed back unread and costs nothing.
+
+The one thing v1 got right that this keeps: nothing reaches the customer's ledger that a
+person has not looked at, until that person says otherwise.
+
+## 19. Superseded designs, and where they live
 
 - **`feat/email-flow`** — the v1 design: a human-approval review step before posting, its
   own admin UI, `email_flow_*` migrations. Deliberately never merged; kept only as
-  historical reference for UX and endpoint shape. **Not cherry-pickable** — v2 (what's on
-  `main` today) removed the approval step, moved settings ownership to Carmen's own screen,
-  and is a different architecture end to end, not a superset of v1.
+  historical reference for UX and endpoint shape. **Not cherry-pickable** — v2 removed the
+  approval step and moved settings ownership to Carmen's own screen, and is a different
+  architecture end to end, not a superset of v1. #18 above brings the *idea* back on v2's
+  architecture; it does not bring back this branch's code, and that distinction is why it
+  cost days instead of weeks.
 - **`poc/email-commission-automation`** — the original proof-of-concept the whole feature
   grew from.
 
