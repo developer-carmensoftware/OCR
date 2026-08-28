@@ -26,10 +26,9 @@
 -- time — they rotate, and sweep_token_health may have unverified them while the document sat.
 
 alter table email_documents
-    add column if not exists review_payload   jsonb,
-    add column if not exists reviewed_by      varchar(36),
-    add column if not exists reviewed_by_name varchar(100),
-    add column if not exists reviewed_at      timestamptz;
+    add column if not exists review_payload jsonb,
+    add column if not exists reviewed_by    varchar(36),
+    add column if not exists reviewed_at    timestamptz;
 
 comment on column email_documents.review_payload is
     'Extracted header/details/warnings/flags for a document parked at pending_review, plus '
@@ -41,14 +40,6 @@ comment on column email_documents.reviewed_by is
     'carmen_user_id of whoever approved or rejected. Audit only — deliberately no FK and no '
     'enforcement: there is no users table, and any Carmen session for the BU can approve. '
     'Same opaque-external-id convention as ocr_tasks.carmen_user_id.';
-
-comment on column email_documents.reviewed_by_name is
-    'Their display name, copied from the session at decision time. Denormalised on purpose: '
-    'the rest of the codebase stores only carmen_user_id and resolves names through '
-    'tenant_lookup.username_map, which reads ocr_sessions — retained 90 days, so that lookup '
-    'decays into a raw UUID. Acceptable for a usage chart; not for the audit trail of who '
-    'approved a journal entry, which has to still read as a name in a year. The id stays the '
-    'identity; this is the label.';
 
 comment on column email_documents.reviewed_at is
     'When the approve/reject click happened. Distinct from updated_at, which also moves for '
