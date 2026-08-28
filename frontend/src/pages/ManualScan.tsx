@@ -116,9 +116,12 @@ export default function ManualScan() {
       <div className="app-container">
         <AppHeader
           module="credit-card"
-          moduleName="AI JV Automation"
+          moduleName={t('review.manualTitle')}
           eyebrow="Carmen Cloud · Credit Card"
-          backPath="/glJv"
+          onBack={() => {
+            window.location.hash = '#/CreditCardOCR'
+          }}
+          backLabel={t('review.backToQueue')}
         >
           <UsageIndicator />
         </AppHeader>

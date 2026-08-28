@@ -36,6 +36,16 @@ export const API = {
     suggest: `${V1}/ap-invoice/suggest`,
   },
 
+  // The review queue this BU owns. Session JWT — distinct from `/api/v1/carmen/*`,
+  // which is the settings API Carmen's own server calls with a raw Carmen token.
+  emailReview: {
+    documents: `${V1}/email/documents`,
+    document: (id: string) => `${V1}/email/documents/${id}`,
+    approve: (id: string) => `${V1}/email/documents/${id}/approve`,
+    reject: (id: string) => `${V1}/email/documents/${id}/reject`,
+    status: `${V1}/email/status`,
+  },
+
   // Carmen ERP proxy — shared by BOTH credit card and AP invoice flows.
   carmen: {
     accountCodes: `${V1}/carmen/account-codes`,

@@ -68,6 +68,7 @@ function dismissInitialLoader() {
 
 const Home = lazy(() => import('./pages/Home'))
 const ManualScan = lazy(() => import('./pages/ManualScan'))
+const ReviewQueue = lazy(() => import('./pages/ReviewQueue'))
 const Mapping = lazy(() => import('./pages/Mapping'))
 const APInvoice = lazy(() => import('./pages/APInvoice'))
 const Pricing = lazy(() => import('./pages/Pricing'))
@@ -137,9 +138,11 @@ function Router() {
   let Page: React.ReactElement
   if (route.startsWith('creditcardocr')) {
     const sub = route.replace('creditcardocr', '').replace(/^\//, '')
-    // `manual` is the wizard's own route. The bare route still renders it too, until the
-    // review queue takes over the landing page — so this commit changes no behaviour.
-    Page = sub === 'mapping' ? <Mapping /> : <ManualScan />
+    // Carmen's SSO deep-link lands on the bare route, so whatever renders there is the
+    // module's first screen — the queue. The wizard is somewhere you go on purpose.
+    if (sub === 'mapping') Page = <Mapping />
+    else if (sub === 'manual') Page = <ManualScan />
+    else Page = <ReviewQueue />
   } else if (route.startsWith('apinvoice')) {
     Page = <APInvoice />
   } else if (route === 'whats-new') {
