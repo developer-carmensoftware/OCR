@@ -25,12 +25,17 @@ from app.database import get_db
 from app.exceptions import NotFoundError
 from app.models.email_automation import EmailDocument
 from app.models.identity import Tenant
+from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.common import Page
 from app.models.schemas.email_automation import (
+    ApproveIn,
+    ApproveResult,
+    RejectIn,
     ReviewDocument,
     ReviewDocumentDetail,
     ReviewStatus,
 )
+from app.services import email_ingest_service as ingest
 from app.services import email_settings_service as es
 from app.services.cc_jv import num, r2
 from app.utils.pagination import paginate
@@ -162,4 +167,50 @@ async def review_status(
         ingest_address=body.get("ingest_address"),
         blockers=list((body.get("status") or {}).get("blockers") or []),
         pending=count,
+    )
+
+
+@router.post("/documents/{document_id}/approve", response_model=ApproveResult)
+async def approve(
+    document_id: uuid.UUID,
+    body: ApproveIn,
+    session: SessionInfo = Depends(get_current_session),
+):
+    """Post the document the reviewer just checked, under the BU's own credential.
+
+    Synchronous on purpose. Carmen rejects JVs for reasons only a human can fix (a closed
+    period, a dept code it does not know), and telling them ten minutes later in a bell
+    notification wastes the fact that they are sitting right here. The cost is one slow
+    request, which `post_gljv` already is in the wizard.
+
+    No `db` dependency: the service opens its own short sessions around the lock, the
+    Carmen call and the ledger write, so a slow Carmen never holds a pooled connection
+    open. The pool is 10 for the whole application (Supavisor caps the project at 15).
+    """
+    result = await ingest.approve_document(
+        document_id,
+        tenant_id=str(session.tenant_id),
+        reviewer=session.carmen_user_id,
+        extracted=ExtractedCreditCardData.model_validate(body.extracted),
+        rows=body.rows,
+        post_input_tax_record=body.post_input_tax,
+    )
+    return ApproveResult(**result)
+
+
+@router.post("/documents/{document_id}/reject", status_code=204)
+async def reject(
+    document_id: uuid.UUID,
+    body: RejectIn,
+    session: SessionInfo = Depends(get_current_session),
+):
+    """Terminal, and not a refund — the vision call ran, and that is what the credit
+    paid for. The reason is optional free text: a mandatory one gets typed as "x" by day
+    three, and an optional one that reaches `#/admin/email` is how we learn what the
+    extractor keeps getting wrong."""
+    await ingest.reject_document(
+        document_id,
+        tenant_id=str(session.tenant_id),
+        reviewer=session.carmen_user_id,
+        reason=body.reason,
     )

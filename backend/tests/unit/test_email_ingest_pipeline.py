@@ -13,15 +13,23 @@ actual EmailDocument ORM instances in memory (no schema, no real DB).
 check correctly refuses; the gate itself is tested separately below.
 """
 
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.exceptions import InsufficientCredits, ModuleDisabled
+from app.exceptions import (
+    CarmenServiceError,
+    ConflictError,
+    InsufficientCredits,
+    ModuleDisabled,
+    NotFoundError,
+    ValidationError,
+)
 from app.models.billing import UserNotification
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.config import AccountingConfigResponse
@@ -2100,3 +2108,278 @@ async def test_an_unnumbered_document_is_never_called_a_duplicate():
     anything. Matching them would park the second one for a reason its reviewer cannot
     check."""
     assert await ingest._already_pending(TENANT_ID, "KTC", None) is False
+
+
+# ── Approve and reject: the human's two verbs ─────────────────────────────────
+
+
+def _pending_row(**overrides):
+    defaults = dict(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        status="pending_review",
+        task_id=None,
+        bank_code="KTC",
+        doc_no="INV-001",
+        review_payload={"extracted": {"doc_no": "INV-001"}, "flags": []},
+        reviewed_by=None,
+        reviewed_at=None,
+        jv_no=None,
+        reason_code=None,
+        error_message=None,
+        attachment="statement.pdf",
+    )
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+class _ReviewDB:
+    """Enough AsyncSession for the approve path: scalar() answers the claim, get()
+    answers the tenant lookup and the later _finish/_stamp_reviewer fetches."""
+
+    def __init__(self, row, tenant=None):
+        self.row = row
+        self.tenant = tenant if tenant is not None else SimpleNamespace(id=row.tenant_id)
+        self.committed = 0
+        # _finish writes the bell notification through this session.
+        self.added: list = []
+
+    def add(self, obj):
+        self.added.append(obj)
+
+    async def scalar(self, *_a, **_kw):
+        return self.row
+
+    async def execute(self, *_a, **_kw):
+        result = MagicMock()
+        result.scalars.return_value.first.return_value = None  # has_submitted_doc: no
+        return result
+
+    async def get(self, model, ident):
+        if getattr(model, "__name__", "") == "Tenant":
+            return self.tenant
+        return self.row
+
+    async def commit(self):
+        self.committed += 1
+
+    async def refresh(self, *_a, **_kw):
+        return None
+
+
+@contextmanager
+def _approve_patches(db, *, carmen_result, carmen_side_effect=None, tax_note=None):
+    post = AsyncMock(return_value=carmen_result, side_effect=carmen_side_effect)
+    tax = AsyncMock(return_value=tax_note)
+    mark = AsyncMock()
+    with (
+        patch.object(ingest, "async_session", _session_factory(db)),
+        patch.object(ingest.es, "get_settings", AsyncMock(return_value=MagicMock())),
+        patch.object(ingest.es, "posting_target", AsyncMock(return_value=("bu-tok", "https://bu"))),
+        patch.object(ingest, "get_accounting_config", AsyncMock(return_value=_config())),
+        patch.object(ingest, "build_gljv_payload", MagicMock(return_value={"JvhSeq": -1})),
+        patch.object(ingest, "post_gljv", post),
+        patch.object(ingest, "_post_input_tax", tax),
+        patch.object(ingest, "_mark_submitted", mark),
+    ):
+        yield SimpleNamespace(post=post, tax=tax, mark=mark)
+
+
+@pytest.mark.asyncio
+async def test_approve_posts_under_the_bus_credential_not_the_reviewers():
+    """The JV belongs to the business unit, not to whoever happened to open the queue.
+
+    This is why approve cannot go through routers/carmen.py:proxy_gljv, which reads
+    session.carmen_token — an ingested document posted that way would be attributed to a
+    colleague who merely clicked a button.
+    """
+    row = _pending_row()
+    db = _ReviewDB(row)
+    with _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-77"}) as p:
+        out = await ingest.approve_document(
+            row.id,
+            tenant_id=str(row.tenant_id),
+            reviewer="u-reviewer",
+            extracted=_extracted(id=str(uuid4())),
+            rows=[{"dept": "GEN", "acc": "1010", "debit": 0, "credit": 1000.0}],
+        )
+
+    assert out["jv_no"] == "JV-77"
+    assert p.post.await_args.args[1] == "bu-tok"
+    assert row.status == "posted"
+    assert row.jv_no == "JV-77"
+    # Terminal, so the extracted line items go.
+    assert row.review_payload is None
+    assert row.reviewed_by == "u-reviewer"
+    p.mark.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_approve_posts_the_rows_the_reviewer_saw():
+    """Rebuilding rows server-side would risk posting something other than what was on
+    screen when the button was pressed — the one thing an approval must never do."""
+    row = _pending_row()
+    db = _ReviewDB(row)
+    edited = [{"dept": "OPS", "acc": "9999", "debit": 42.0, "credit": 0}]
+    with _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-1"}):
+        with patch.object(ingest, "build_gljv_payload", MagicMock(return_value={})) as build:
+            await ingest.approve_document(
+                row.id,
+                tenant_id=str(row.tenant_id),
+                reviewer="u",
+                extracted=_extracted(),
+                rows=edited,
+            )
+    assert build.call_args.args[0] == edited
+
+
+@pytest.mark.asyncio
+async def test_a_second_approve_finds_nothing_to_approve():
+    """Two reviewers in one BU with the queue open is the expected case — the bell
+    notification has no user to address, so it goes to everyone. The row is taken FOR
+    UPDATE, so the loser of that race must find a row that is no longer pending rather
+    than post the same JV twice."""
+    row = _pending_row(status="posted")
+    db = _ReviewDB(row)
+    with _approve_patches(db, carmen_result={"Code": 0}) as p, pytest.raises(ConflictError):
+        await ingest.approve_document(
+            row.id,
+            tenant_id=str(row.tenant_id),
+            reviewer="u",
+            extracted=_extracted(),
+            rows=[],
+        )
+    p.post.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_approving_someone_elses_document_is_a_not_found():
+    """A 403 would confirm the row exists. For the one path that returns and posts
+    extracted line items, "is this yours" must not leak whether it is anyone's."""
+    db = _ReviewDB(None, tenant=SimpleNamespace(id=uuid4()))
+    with _approve_patches(db, carmen_result={"Code": 0}), pytest.raises(NotFoundError):
+        await ingest.approve_document(
+            uuid4(),
+            tenant_id=str(uuid4()),
+            reviewer="u",
+            extracted=_extracted(),
+            rows=[],
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_rejected_jv_leaves_the_document_reviewable():
+    """The only place in this feature where a failed post is not terminal. Carmen refuses
+    JVs for reasons a human standing right there can fix — a closed period, a dept code it
+    does not know — so the document must survive to be corrected and resubmitted."""
+    row = _pending_row()
+    db = _ReviewDB(row)
+    with _approve_patches(db, carmen_result={"Code": -1, "UserMessage": "Period is closed"}):
+        with pytest.raises(ValidationError, match="Period is closed"):
+            await ingest.approve_document(
+                row.id,
+                tenant_id=str(row.tenant_id),
+                reviewer="u",
+                extracted=_extracted(),
+                rows=[],
+            )
+    assert row.status == "pending_review"
+    assert row.review_payload is not None
+
+
+@pytest.mark.asyncio
+async def test_carmen_going_dark_tells_the_reviewer_to_check_before_retrying():
+    """A transport failure leaves the JV's fate genuinely unknown, and `submitted_at` is
+    stamped on success only — so nothing on our side can tell them. A reviewer told just
+    "failed" presses the button again, and if the first call landed the statement posts
+    twice."""
+    row = _pending_row()
+    db = _ReviewDB(row)
+    with _approve_patches(
+        db, carmen_result=None, carmen_side_effect=CarmenAPIError(502, "upstream timeout")
+    ):
+        with pytest.raises(CarmenServiceError, match="Check whether the JV posted"):
+            await ingest.approve_document(
+                row.id,
+                tenant_id=str(row.tenant_id),
+                reviewer="u",
+                extracted=_extracted(),
+                rows=[],
+            )
+    assert row.status == "pending_review"
+
+
+@pytest.mark.asyncio
+async def test_input_tax_can_be_declined_without_blocking_the_jv():
+    """Unchecking the box means the reviewer intends to key the VAT record by hand. The
+    machine path has no such choice and always attempts it."""
+    row = _pending_row()
+    db = _ReviewDB(row)
+    with _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-2"}) as p:
+        await ingest.approve_document(
+            row.id,
+            tenant_id=str(row.tenant_id),
+            reviewer="u",
+            extracted=_extracted(),
+            rows=[],
+            post_input_tax_record=False,
+        )
+    p.tax.assert_not_awaited()
+    assert row.status == "posted"
+
+
+@pytest.mark.asyncio
+async def test_a_failed_input_tax_still_leaves_the_document_posted():
+    """The JV is in Carmen's books and there is no rollback, so the VAT becomes a separate
+    errand rather than a failure of this one. Inventing a `partially_posted` status would
+    create a state with no valid next action."""
+    row = _pending_row()
+    db = _ReviewDB(row)
+    note = "JV posted; input tax not recorded: profile missing"
+    with _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-3"}, tax_note=note):
+        out = await ingest.approve_document(
+            row.id,
+            tenant_id=str(row.tenant_id),
+            reviewer="u",
+            extracted=_extracted(),
+            rows=[],
+        )
+    assert out["tax_note"] == note
+    assert row.status == "posted"
+    assert row.error_message == note
+
+
+@pytest.mark.asyncio
+async def test_reject_is_terminal_and_never_refunds():
+    """Decision-log #17: the charge follows the vision call, not the outcome. Refunding a
+    reviewer's judgement would make the two pipelines disagree about cost again."""
+    row = _pending_row()
+    db = _ReviewDB(row)
+    refund = AsyncMock()
+    with (
+        patch.object(ingest, "async_session", _session_factory(db)),
+        patch.object(ingest, "refund_document", refund),
+    ):
+        await ingest.reject_document(
+            row.id, tenant_id=str(row.tenant_id), reviewer="u-rev", reason="  wrong company  "
+        )
+
+    assert row.status == "rejected"
+    assert row.reason_code == "rejected_by_reviewer"
+    assert row.error_message == "wrong company"
+    assert row.review_payload is None
+    assert row.reviewed_by == "u-rev"
+    refund.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reject_without_a_reason_stores_none_not_an_empty_string():
+    """The reason is optional. An empty string in error_message would render as a blank
+    quote on #/admin/email, which reads as a reason nobody can see."""
+    row = _pending_row()
+    db = _ReviewDB(row)
+    with patch.object(ingest, "async_session", _session_factory(db)):
+        await ingest.reject_document(
+            row.id, tenant_id=str(row.tenant_id), reviewer="u", reason="   "
+        )
+    assert row.error_message is None

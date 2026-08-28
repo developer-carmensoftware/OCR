@@ -119,3 +119,35 @@ class AutoPostIn(BaseModel):
     unrelated settings save — the same reason `TokenIn` is separate from `SettingsIn`."""
 
     auto_post: bool
+
+
+class ApproveIn(BaseModel):
+    """What the reviewer approved, as it appeared on their screen.
+
+    `rows` are the JV rows the review screen displayed, not a request to rebuild them.
+    The screen derives them against the live accounting config, so rebuilding server-side
+    would risk posting something other than what was on screen when the button was
+    pressed. Same trust model the wizard already has, and narrower: `proxy_gljv` accepts a
+    fully client-built Carmen body, where this one still builds the envelope itself.
+    """
+
+    extracted: dict
+    rows: list[dict] = Field(default_factory=list)
+    # Unchecked = the reviewer intends to key the VAT record by hand. Defaults on, which
+    # is what the machine path does unconditionally.
+    post_input_tax: bool = True
+
+
+class ApproveResult(BaseModel):
+    jv_no: str = ""
+    # Set when the JV posted but the input-tax record did not. The document is still
+    # `posted` and gone from the queue: the JV is in Carmen's books and there is no
+    # rollback, so the VAT is a separate errand, not a failure of this one.
+    tax_note: str | None = None
+
+
+class RejectIn(BaseModel):
+    """Optional free text. A mandatory reason gets typed as "x" by day three; an optional
+    one that lands on `#/admin/email` is how we learn what the extractor gets wrong."""
+
+    reason: str | None = None

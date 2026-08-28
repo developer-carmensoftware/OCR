@@ -36,7 +36,10 @@ from app.models.schemas.credits import (
     TopupRequest,
 )
 from app.models.schemas.email_automation import (
+    ApproveIn,
+    ApproveResult,
     AutoPostIn,
+    RejectIn,
     ReviewDocument,
     ReviewDocumentDetail,
     ReviewStatus,
@@ -75,9 +78,12 @@ __all__ = [
     "FieldMapping",
     "Page",
     # email automation
+    "ApproveIn",
+    "ApproveResult",
     "AutoPostIn",
     "ReviewDocument",
     "ReviewDocumentDetail",
+    "RejectIn",
     "ReviewStatus",
     "RuleIn",
     "SettingsIn",

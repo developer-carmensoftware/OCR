@@ -59,9 +59,12 @@ from app.constants import Module
 from app.context import current_carmen_uri, current_tenant_id
 from app.database import async_session
 from app.exceptions import (
+    CarmenServiceError,
+    ConflictError,
     ExtractionError,
     InsufficientCredits,
     ModuleDisabled,
+    NotFoundError,
     PdfPasswordRequired,
     ValidationError,
 )
@@ -114,6 +117,7 @@ from app.services.email_imap import (
 from app.services.module_gate import assert_module_enabled
 from app.services.task_service import create_task
 from app.utils.bank_detect import detect_bank_code
+from app.utils.db_helpers import has_submitted_doc
 from app.utils.gl_filter import parse_default_account
 from app.utils.image_processing import validate_magic_bytes
 from app.utils.pdf_utils import ensure_pdf_openable
@@ -1329,3 +1333,199 @@ async def _finish(
                 },
             )
         await db.commit()
+
+
+# ── Review: the human's two verbs ─────────────────────────────────────────────
+#
+# These live beside the pipeline rather than in a router or a module of their own,
+# because approve is the second half of `_run_document`: it picks up exactly where the
+# review fork stopped and it must stay consistent with `_finish`'s semantics (which nulls
+# `review_payload` on the way to a terminal status). Split across two files, those two are
+# one refactor away from disagreeing about the thing that must never drift.
+
+
+async def _claim_for_review(
+    db: AsyncSession, document_id: uuid.UUID, tenant_id: str
+) -> EmailDocument:
+    """Take the row, or explain why not. Locked, because two people can be looking.
+
+    Two reviewers in one BU with the queue open is the expected case, not the edge case:
+    the notification goes to the whole business unit, since `user_notifications` has no
+    user to address it to. `FOR UPDATE` means the second click waits for the first and
+    then finds a row that is no longer pending, instead of posting the same JV twice.
+    """
+    row = await db.scalar(
+        select(EmailDocument)
+        .where(
+            EmailDocument.id == document_id,
+            EmailDocument.tenant_id == uuid.UUID(tenant_id),
+        )
+        .with_for_update()
+    )
+    # Not yours and not there are the same answer: this row carries extracted line items.
+    if row is None:
+        raise NotFoundError("This document is not waiting for review")
+    if row.status != "pending_review":
+        raise ConflictError("Someone else has already handled this document")
+    return row
+
+
+async def approve_document(
+    document_id: uuid.UUID,
+    *,
+    tenant_id: str,
+    reviewer: str | None,
+    extracted: ExtractedCreditCardData,
+    rows: list[dict],
+    post_input_tax_record: bool = True,
+) -> dict:
+    """Post what the reviewer approved, under the BU's own credential.
+
+    `rows` are the JV rows the review screen displayed, not rows rebuilt here. The screen
+    derives them against the live accounting config, so rebuilding would risk posting
+    something other than what was on screen when the button was pressed, which is the one
+    thing an approval must never do.
+
+    Three things this deliberately does NOT do:
+
+    * It does not post through `routers/carmen.py:proxy_gljv`. That reads the *session's*
+      Carmen token, so an ingested document would be attributed to whichever colleague
+      happened to open the queue. The credential belongs to the BU, not the reviewer.
+    * It does not use a credential stored at park time. Tokens rotate, and
+      `sweep_token_health` may have unverified one while the document sat, so it is
+      re-read here.
+    * It does not trust `is_duplicate` from the extraction. That was computed before the
+      document waited, and a wait is exactly when someone keys the same statement into
+      Carmen by hand.
+    """
+    async with async_session() as db:
+        row = await _claim_for_review(db, document_id, tenant_id)
+        ledger_id: uuid.UUID = row.id  # type: ignore[assignment]
+        bank_code: str | None = row.bank_code  # type: ignore[assignment]
+        task_id = str(row.task_id) if row.task_id else None
+        tenant = await db.get(Tenant, uuid.UUID(tenant_id))
+        settings_row = await es.get_settings(db, tenant) if tenant else None
+        carmen_token, carmen_uri = (
+            await es.posting_target(db, settings_row) if settings_row else ("", "")
+        )
+
+    if not carmen_token:
+        raise ValidationError("No Carmen posting credential for this business unit")
+    if not carmen_uri:
+        raise ValidationError("No Carmen host known for this business unit")
+
+    doc_no = extracted.doc_no
+    # `post_gljv` reads the target host from a ContextVar the request middleware fills in
+    # for the *user's* Carmen, and this posts to the *BU's*. Set both, reset both.
+    tenant_ctx = current_tenant_id.set(tenant_id)
+    uri_ctx = current_carmen_uri.set(carmen_uri)
+    try:
+        async with async_session() as db:
+            if doc_no and await has_submitted_doc(
+                db, CreditCard, tenant_id=uuid.UUID(tenant_id), doc_no=doc_no
+            ):
+                raise ConflictError(f"Document {doc_no} has already been posted to Carmen")
+            config = await get_accounting_config(db, tenant_id)
+
+        payload = build_gljv_payload(
+            rows, doc_date=extracted.doc_date, bank_code=bank_code, config=config
+        )
+        try:
+            result = await post_gljv(payload, carmen_token)
+        except CarmenAPIError as exc:
+            # Transport, not judgement: the JV's fate is genuinely unknown. The document
+            # stays reviewable, but the message has to say so — a reviewer told only
+            # "failed" will press the button again, and if the first call did land that
+            # posts the statement twice. `submitted_at` is stamped on success only, so
+            # nothing on our side can tell them; Carmen can.
+            logger.error("[email] Carmen unreachable while approving %s: %s", doc_no, exc)
+            raise CarmenServiceError(
+                f"Carmen did not answer ({exc.detail}). Check whether the JV posted "
+                f"before approving this document again."
+            ) from exc
+
+        if not result or result.get("Code", -1) != 0:
+            # A judgement, not an outage — 400 with Carmen's own words, not the 503 that
+            # `CarmenServiceError` would produce and that would read as "try again later".
+            #
+            # Left `pending_review` on purpose. The reviewer is standing right there, and
+            # what Carmen rejects (a closed period, a dept code it does not know) is
+            # usually something they can fix and resubmit. This is the only place in the
+            # feature where a failed post is not terminal.
+            raise ValidationError(
+                str((result or {}).get("UserMessage") or "Carmen rejected the JV")
+            )
+
+        await _mark_submitted(extracted.id)
+        tax_note = (
+            await _post_input_tax(
+                extracted, bank_code=bank_code, config=config, carmen_token=carmen_token
+            )
+            if post_input_tax_record
+            else None
+        )
+        jv_no = str(result.get("InternalMessage") or "")
+        await _finish(
+            ledger_id,
+            status="posted",
+            task_id=task_id,
+            bank_code=bank_code,
+            doc_no=doc_no,
+            jv_no=jv_no,
+            error=tax_note,
+        )
+        await _stamp_reviewer(ledger_id, reviewer)
+        logger.info("[email] %s approved and posted %s (JV %s)", reviewer, doc_no, jv_no)
+        return {"jv_no": jv_no, "tax_note": tax_note}
+    finally:
+        current_carmen_uri.reset(uri_ctx)
+        current_tenant_id.reset(tenant_ctx)
+
+
+async def reject_document(
+    document_id: uuid.UUID, *, tenant_id: str, reviewer: str | None, reason: str | None = None
+) -> None:
+    """Terminal, and deliberately not a refund.
+
+    The vision call ran, which is what the credit paid for (decision-log #17). Refunding
+    here would make the two pipelines disagree about cost again, and would price a
+    reviewer's judgement as though the extraction had never happened.
+
+    There is no un-reject: re-extracting is what the manual wizard is for.
+    """
+    async with async_session() as db:
+        row = await _claim_for_review(db, document_id, tenant_id)
+        ledger_id: uuid.UUID = row.id  # type: ignore[assignment]
+        bank_code: str | None = row.bank_code  # type: ignore[assignment]
+        doc_no: str | None = row.doc_no  # type: ignore[assignment]
+        task_id = str(row.task_id) if row.task_id else None
+
+    await _finish(
+        ledger_id,
+        status="rejected",
+        task_id=task_id,
+        bank_code=bank_code,
+        doc_no=doc_no,
+        reason_code="rejected_by_reviewer",
+        error=(reason or "").strip()[:500] or None,
+    )
+    await _stamp_reviewer(ledger_id, reviewer)
+    logger.info("[email] %s rejected %s", reviewer, doc_no)
+
+
+async def _stamp_reviewer(ledger_id: uuid.UUID, reviewer: str | None) -> None:
+    """Who decided, and when. Audit only: there is no users table to point at, and any
+    Carmen session for this BU may approve, so this records rather than authorises.
+
+    After `_finish`, not inside it. `_finish` also runs on the machine path, where there
+    is no reviewer, and a nullable column written from two places drifts.
+    """
+    try:
+        async with async_session() as db:
+            row = await db.get(EmailDocument, ledger_id)
+            if row is not None:
+                row.reviewed_by = reviewer  # type: ignore[assignment]
+                row.reviewed_at = datetime.now(UTC)  # type: ignore[assignment]
+                await db.commit()
+    except Exception:  # noqa: BLE001 — the decision is already recorded; this is metadata
+        logger.exception("[email] Could not stamp the reviewer on %s", ledger_id)
