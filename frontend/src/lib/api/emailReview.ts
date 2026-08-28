@@ -131,3 +131,15 @@ export async function rejectDocument(id: string, reason?: string): Promise<void>
   })
   if (!res.ok) throw new Error(`Reject failed (${res.status})`)
 }
+
+/** Turn review off, or back on. Its own endpoint: the settings save is a full replace,
+ *  so flipping this through it would rewrite rules and passwords as a side effect. */
+export async function setAutoPost(on: boolean): Promise<boolean> {
+  const res = await apiFetch(API.emailReview.autoPost, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ auto_post: on }),
+  })
+  if (!res.ok) throw new Error(`Could not save (${res.status})`)
+  return ((await res.json()) as { auto_post: boolean }).auto_post
+}

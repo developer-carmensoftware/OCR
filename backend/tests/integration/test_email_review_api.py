@@ -285,3 +285,43 @@ def test_a_resolved_row_reports_its_ledger_columns_not_a_zero_amount(monkeypatch
     assert row["jv_no"] == "JV-9001"
     assert row["reviewed_by_name"] == "somchai"
     assert row["total"] == 0.0 and row["doc_date"] is None and row["flags"] == []
+
+
+# ── The auto-post switch ─────────────────────────────────────────────────────
+
+
+def test_the_switch_writes_only_the_switch(monkeypatch):
+    """Its own route rather than a field on the settings save: `SettingsIn` is a full
+    replace, so routing it there makes "turn review off" reachable as a side effect."""
+    db = make_mock_db()
+    db.get.return_value = MagicMock(id=uuid.UUID(TENANT))
+    row = SimpleNamespace(auto_post=False, updated_by=None)
+
+    async def _settings(db_, tenant):
+        return row
+
+    monkeypatch.setattr(email_review.es, "get_settings", _settings)
+    with make_test_client(db, session=SESSION) as client:
+        res = client.put(f"{BASE}/settings/auto-post", json={"auto_post": True}, headers=AUTH)
+
+    assert res.status_code == 200
+    assert res.json() == {"auto_post": True}
+    assert row.auto_post is True
+    # Who flipped it, in the column the settings screen already shows.
+    assert row.updated_by == "reviewer"
+
+
+def test_a_bu_with_nothing_forwarding_has_no_switch_to_flip(monkeypatch):
+    """No settings row means no mail is arriving, so "auto-post is on" would be a
+    statement about a pipeline that does not exist."""
+    db = make_mock_db()
+    db.get.return_value = MagicMock(id=uuid.UUID(TENANT))
+
+    async def _settings(db_, tenant):
+        return None
+
+    monkeypatch.setattr(email_review.es, "get_settings", _settings)
+    with make_test_client(db, session=SESSION) as client:
+        res = client.put(f"{BASE}/settings/auto-post", json={"auto_post": True}, headers=AUTH)
+
+    assert res.status_code == 404

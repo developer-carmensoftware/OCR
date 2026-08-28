@@ -4,6 +4,7 @@ import AppHeader from '../components/common/AppHeader'
 import UsageIndicator from '../components/common/UsageIndicator'
 import Pager from '../components/common/Pager'
 import QueueRow from '../components/credit-card/QueueRow'
+import QueueSettings from '../components/credit-card/QueueSettings'
 import { useReviewQueue } from '../hooks/credit-card/useReviewQueue'
 import { QUEUE_TABS, type QueueTab } from '../lib/api/emailReview'
 import { useFitRows } from '../hooks/useFitRows'
@@ -179,6 +180,8 @@ export default function ReviewQueue() {
           >
             <RefreshCw size={14} className={reloading || loading ? 'animate-spin' : ''} />
           </button>
+          {/* Nothing to configure until mail is actually arriving. */}
+          {configured && <QueueSettings autoPost={!!status?.auto_post} onChanged={reload} />}
           {/* Outline, not primary. On this page the main action is approving what the
               robot already did; scanning by hand is the secondary path. */}
           <button type="button" className="btn btn-outline" onClick={goManual}>

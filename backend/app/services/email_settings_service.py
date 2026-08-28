@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import decrypt_carmen_token, encrypt_carmen_token
 from app.config import settings as app_settings
-from app.exceptions import ConflictError, FieldValidationError, ValidationError
+from app.exceptions import ConflictError, FieldValidationError, NotFoundError, ValidationError
 from app.models.catalog import Bank
 from app.models.email_automation import EmailDocument, EmailIngestSettings
 from app.models.identity import Tenant
@@ -702,6 +702,22 @@ async def set_token(
     await db.commit()
     await db.refresh(row)
     return row
+
+
+async def set_auto_post(db: AsyncSession, tenant: Tenant, on: bool, actor: str) -> bool:
+    """Flip review off or on. Its own writer, not part of `save_settings`.
+
+    `SettingsIn` is a full replace, so routing review through it would make "turn review
+    off" reachable as a side effect of saving an unrelated field. A BU with no settings
+    row has nothing forwarding mail, so there is no switch to flip.
+    """
+    row = await get_settings(db, tenant)
+    if row is None:
+        raise NotFoundError("Email automation is not set up for this business unit")
+    row.auto_post = on
+    row.updated_by = actor[:100]
+    await db.commit()
+    return bool(row.auto_post)
 
 
 async def clear_token(db: AsyncSession, tenant: Tenant, actor: str) -> None:
