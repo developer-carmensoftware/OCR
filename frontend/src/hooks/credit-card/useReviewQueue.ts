@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   getReviewStatus,
-  listPending,
+  listDocuments,
+  type QueueTab,
   type ReviewDocument,
   type ReviewStatus,
 } from '../../lib/api/emailReview'
 
 export interface ReviewQueueController {
   status: ReviewStatus | null
+  tab: QueueTab
+  setTab: (t: QueueTab) => void
   rows: ReviewDocument[]
   total: number
   offset: number
@@ -29,6 +32,7 @@ export interface ReviewQueueController {
  */
 export function useReviewQueue(limit: number): ReviewQueueController {
   const [status, setStatus] = useState<ReviewStatus | null>(null)
+  const [tab, setTabState] = useState<QueueTab>('review')
   const [rows, setRows] = useState<ReviewDocument[]>([])
   const [total, setTotal] = useState(0)
   const [offset, setOffset] = useState(0)
@@ -41,7 +45,7 @@ export function useReviewQueue(limit: number): ReviewQueueController {
   useEffect(() => {
     let alive = true
     setLoading(true)
-    Promise.all([getReviewStatus(), listPending(limit, offset)])
+    Promise.all([getReviewStatus(), listDocuments(tab, limit, offset)])
       .then(([s, page]) => {
         if (!alive) return
         setStatus(s)
@@ -59,7 +63,14 @@ export function useReviewQueue(limit: number): ReviewQueueController {
     return () => {
       alive = false
     }
-  }, [limit, offset, nonce])
+  }, [tab, limit, offset, nonce])
+
+  // Switching tab always starts at the top. Keeping the offset would land someone on
+  // page 3 of a tab that has two rows, which reads as an empty tab.
+  const setTab = useCallback((next: QueueTab) => {
+    setTabState(next)
+    setOffset(0)
+  }, [])
 
   // Coming back to the tab is the moment a stale queue is most obvious — someone else in
   // the BU may have cleared it while this was open. Cheap: two small reads.
@@ -69,5 +80,5 @@ export function useReviewQueue(limit: number): ReviewQueueController {
     return () => window.removeEventListener('focus', onFocus)
   }, [reload])
 
-  return { status, rows, total, offset, setOffset, loading, error, reload }
+  return { status, tab, setTab, rows, total, offset, setOffset, loading, error, reload }
 }

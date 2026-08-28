@@ -1,12 +1,14 @@
 import type React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { LanguageProvider } from '../i18n/LanguageContext'
 import ReviewQueue from './ReviewQueue'
 import type { ReviewDocument, ReviewStatus } from '../lib/api/emailReview'
 
-vi.mock('../lib/api/emailReview', () => ({
-  listPending: vi.fn(),
+vi.mock('../lib/api/emailReview', async importOriginal => ({
+  // QUEUE_TABS is data the page iterates, not a call to stub.
+  ...(await importOriginal<typeof import('../lib/api/emailReview')>()),
+  listDocuments: vi.fn(),
   getReviewStatus: vi.fn(),
 }))
 // The chrome needs AuthProvider and pulls credits over the network. Neither has anything
@@ -25,10 +27,16 @@ function doc(over: Partial<ReviewDocument> = {}): ReviewDocument {
     attachment: 'july.pdf',
     bank_code: 'KTC',
     doc_no: 'INV-001',
+    status: 'pending_review',
     doc_date: '15/01/2026',
     total: 48200,
     line_count: 14,
     flags: [],
+    jv_no: null,
+    reason_code: null,
+    error_message: null,
+    reviewed_by_name: null,
+    reviewed_at: null,
     ...over,
   }
 }
@@ -40,14 +48,14 @@ function status(over: Partial<ReviewStatus> = {}): ReviewStatus {
     entitled: true,
     ingest_address: 'AIAGENT+ab12@carmensoftware.com',
     blockers: [],
-    pending: 0,
+    counts: { review: 0, posted: 0, problem: 0, skipped: 0 },
     ...over,
   }
 }
 
 function mount(s: ReviewStatus, rows: ReviewDocument[], total = rows.length) {
   vi.mocked(api.getReviewStatus).mockResolvedValue(s)
-  vi.mocked(api.listPending).mockResolvedValue({ total, limit: 25, offset: 0, data: rows })
+  vi.mocked(api.listDocuments).mockResolvedValue({ total, limit: 25, offset: 0, data: rows })
   return render(
     <LanguageProvider>
       <ReviewQueue />
@@ -59,7 +67,7 @@ beforeEach(() => vi.clearAllMocks())
 
 describe('which state the automation page paints', () => {
   it('lists what is waiting, with the gross amount the reviewer is agreeing to', async () => {
-    mount(status(), [doc()])
+    mount(status({ counts: { review: 1, posted: 0, problem: 0, skipped: 0 } }), [doc()])
     expect(await screen.findByText('KTC')).toBeInTheDocument()
     expect(screen.getByText('INV-001')).toBeInTheDocument()
     expect(screen.getByText('48,200.00')).toBeInTheDocument()
@@ -94,7 +102,7 @@ describe('which state the automation page paints', () => {
     // "Nothing is waiting" and "we could not ask" mean opposite things to someone
     // deciding whether to go home.
     vi.mocked(api.getReviewStatus).mockRejectedValue(new Error('offline'))
-    vi.mocked(api.listPending).mockRejectedValue(new Error('offline'))
+    vi.mocked(api.listDocuments).mockRejectedValue(new Error('offline'))
     render(
       <LanguageProvider>
         <ReviewQueue />
@@ -131,5 +139,91 @@ describe('the reason line', () => {
     expect(await screen.findByText('amounts do not reconcile')).toBeInTheDocument()
     expect(screen.queryByText('GL mapping guessed')).not.toBeInTheDocument()
     expect(screen.queryByText('extraction warnings')).not.toBeInTheDocument()
+  })
+})
+
+describe('the status tabs', () => {
+  it('offers one tab per status group, each with its count', async () => {
+    mount(status({ counts: { review: 3, posted: 7, problem: 2, skipped: 101 } }), [doc()])
+    for (const [label, n] of [
+      ['Needs review', '3'],
+      ['Posted', '7'],
+      ['Not posted', '2'],
+      ['Skipped', '101'],
+    ]) {
+      const tab = await screen.findByRole('tab', { name: new RegExp(label) })
+      expect(tab).toHaveTextContent(n)
+    }
+  })
+
+  it('shows a zero rather than dropping the tab', async () => {
+    // A count that disappears makes the strip reflow as documents resolve, and "0" is
+    // itself the answer to "did anything fail?".
+    mount(status(), [doc()])
+    const tab = await screen.findByRole('tab', { name: /Not posted/ })
+    expect(tab).toHaveTextContent('0')
+  })
+
+  it('refetches for the tab that was clicked', async () => {
+    mount(status({ counts: { review: 1, posted: 4, problem: 0, skipped: 0 } }), [doc()])
+    fireEvent.click(await screen.findByRole('tab', { name: /Posted/ }))
+    await waitFor(() => {
+      const calls = vi.mocked(api.listDocuments).mock.calls
+      expect(calls[calls.length - 1][0]).toBe('posted')
+    })
+  })
+
+  it('hides the tabs from a BU with no mail at all', async () => {
+    // Four zeroes above an explanation of what the feature is would be scaffolding,
+    // not navigation.
+    mount(status({ enabled: false, blockers: ['disabled'] }), [])
+    await screen.findByText('Let statements post themselves')
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+  })
+
+  it('never claims "all caught up" on an empty Posted tab', async () => {
+    // Nothing has posted yet is a different statement from you are up to date, and must
+    // not borrow its tick.
+    mount(status({ counts: { review: 0, posted: 0, problem: 0, skipped: 0 } }), [])
+    fireEvent.click(await screen.findByRole('tab', { name: /Posted/ }))
+    expect(await screen.findByText('Nothing here yet.')).toBeInTheDocument()
+    expect(screen.queryByText('You are all caught up')).not.toBeInTheDocument()
+  })
+})
+
+describe('a row that has already been resolved', () => {
+  it('shows the JV it became and who posted it, never a zero amount', async () => {
+    // `_finish` clears review_payload on every terminal transition, so total/date/lines
+    // are gone. Rendering 0.00 would be a wrong number, not a missing one.
+    mount(status(), [
+      doc({
+        status: 'posted',
+        total: 0,
+        line_count: 0,
+        doc_date: null,
+        jv_no: 'JV-9001',
+        reviewed_by_name: 'somchai',
+      }),
+    ])
+    expect(await screen.findByText('JV-9001')).toBeInTheDocument()
+    expect(screen.getByText(/posted by somchai/)).toBeInTheDocument()
+    expect(screen.queryByText('0.00')).not.toBeInTheDocument()
+  })
+
+  it('translates the reason a document did not post', async () => {
+    mount(status(), [doc({ status: 'failed', reason_code: 'carmen_rejected', total: 0 })])
+    expect(await screen.findByText(/Carmen refused it/)).toBeInTheDocument()
+  })
+
+  it('falls back to the raw reason code rather than showing nothing', async () => {
+    // An unfamiliar code is still a lead; a blank is not.
+    mount(status(), [doc({ status: 'failed', reason_code: 'something_new', total: 0 })])
+    expect(await screen.findByText('something_new')).toBeInTheDocument()
+  })
+
+  it('is not clickable — there is nothing left to open', async () => {
+    mount(status(), [doc({ status: 'posted', jv_no: 'JV-1' })])
+    await screen.findByText('JV-1')
+    expect(screen.queryByRole('button', { name: /KTC/ })).not.toBeInTheDocument()
   })
 })

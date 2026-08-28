@@ -71,18 +71,27 @@ class TokenIn(BaseModel):
 
 
 class ReviewDocument(BaseModel):
-    """One row of the review queue.
+    """One row of the queue, under whichever tab it belongs to.
 
-    Everything the queue needs to paint a row without opening the document: the identity
-    a reviewer recognises, the amount that will hit the GL, and `flags` — the reason line
-    telling them whether this one is worth opening at all.
+    Two halves, and which one is filled depends on the status. A document still waiting
+    carries its payload, so it can show what it is worth and why it might need a look. A
+    resolved one does not — `_finish` clears `review_payload` on every terminal transition
+    — so it can only show what the ledger columns remember: the JV number it became, or
+    the reason it did not.
+
+    That asymmetry is the whole reason the row renders differently per tab. Reporting
+    `total: 0.00` for a posted document would not be a missing value, it would be a wrong
+    one.
     """
 
     id: str
     created_at: datetime | None = None
     attachment: str
+    status: str
     bank_code: str | None = None
     doc_no: str | None = None
+
+    # ── Only while pending_review (read out of review_payload) ───────────────
     doc_date: str | None = None
     # Sum of the gross column, which is what lands on the credit side of the JV. Computed
     # from the stored details rather than from JV rows, which do not exist until the
@@ -90,6 +99,13 @@ class ReviewDocument(BaseModel):
     total: float = 0.0
     line_count: int = 0
     flags: list[str] = Field(default_factory=list)
+
+    # ── Only once resolved (plain ledger columns, kept for ever) ─────────────
+    jv_no: str | None = None
+    reason_code: str | None = None
+    error_message: str | None = None
+    reviewed_by_name: str | None = None
+    reviewed_at: datetime | None = None
 
 
 class ReviewDocumentDetail(ReviewDocument):
@@ -104,14 +120,19 @@ class ReviewDocumentDetail(ReviewDocument):
 
 
 class ReviewStatus(BaseModel):
-    """What the automation page needs to choose which of its four states to render."""
+    """What the automation page needs to choose which of its four states to render.
+
+    `counts` is keyed by tab, not by database status, because two of the tabs are unions —
+    see `TABS` in routers/email_review.py. Every tab is present even at zero: a tab that
+    appears only when it has rows makes the row of tabs jump as documents resolve.
+    """
 
     enabled: bool = False
     auto_post: bool = False
     entitled: bool = False
     ingest_address: str | None = None
     blockers: list[str] = Field(default_factory=list)
-    pending: int = 0
+    counts: dict[str, int] = Field(default_factory=dict)
 
 
 class AutoPostIn(BaseModel):

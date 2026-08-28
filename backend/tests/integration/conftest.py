@@ -10,8 +10,11 @@ ensure_db / fetch_openrouter_pricing are patched out so no real DB/network
 calls happen when TestClient enters the ASGI lifespan.
 """
 
+import itertools
 from contextlib import contextmanager
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from app.auth.session import SessionInfo
 
@@ -24,6 +27,28 @@ FAKE_SESSION = SessionInfo(
     carmen_uri="https://test.carmenwork.com",
     bu="BU01",
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_rate_limiter():
+    """Give every test its own client IP, so the rate limiter cannot leak between them.
+
+    The limiter is an in-memory sliding window keyed per IP, and every TestClient request
+    arrives from the same one — so the count accumulated across the whole session and the
+    `default` bucket (120 per 60s) popped once the suite grew past it. The symptom was a
+    429 in whichever unrelated test happened to be running at that moment, which meant
+    adding a test anywhere could break tests everywhere.
+
+    Patched at the seam rather than by reaching into the middleware's `self._windows`:
+    the window is instance state on an object built lazily inside the middleware stack,
+    and a unique IP is the same isolation without depending on where it lives.
+    """
+    counter = itertools.count()
+    with patch(
+        "app.middleware.rate_limit.get_client_ip",
+        side_effect=lambda _request: f"10.0.0.{next(counter) % 250}",
+    ):
+        yield
 
 
 @contextmanager

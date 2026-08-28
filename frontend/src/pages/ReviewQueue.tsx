@@ -5,12 +5,21 @@ import UsageIndicator from '../components/common/UsageIndicator'
 import Pager from '../components/common/Pager'
 import QueueRow from '../components/credit-card/QueueRow'
 import { useReviewQueue } from '../hooks/credit-card/useReviewQueue'
+import { QUEUE_TABS, type QueueTab } from '../lib/api/emailReview'
 import { useFitRows } from '../hooks/useFitRows'
 import { useT } from '../i18n/LanguageContext'
 import { showToast } from '../lib/toast'
+import type { TKey } from '../i18n/dict'
 
 // Mirrors the cap FastAPI enforces on GET /api/v1/email/documents (422 above it).
 const MAX_PAGE = 100
+
+const TAB_LABEL: Record<QueueTab, TKey> = {
+  review: 'review.tabReview',
+  posted: 'review.tabPosted',
+  problem: 'review.tabProblem',
+  skipped: 'review.tabSkipped',
+}
 
 function goManual() {
   window.location.hash = '#/CreditCardOCR/manual'
@@ -117,7 +126,8 @@ export default function ReviewQueue() {
   // Page size = whatever fits above the fold, measured off the fixed-height part of a row.
   const [fits, listRef] = useFitRows('.rq-row-main', 5)
   const limit = Math.min(fits, MAX_PAGE)
-  const { status, rows, total, offset, setOffset, loading, error, reload } = useReviewQueue(limit)
+  const { status, tab, setTab, rows, total, offset, setOffset, loading, error, reload } =
+    useReviewQueue(limit)
   const [reloading, setReloading] = useState(false)
 
   const refresh = () => {
@@ -132,6 +142,9 @@ export default function ReviewQueue() {
 
   const configured = !!status?.enabled && !!status?.entitled
   const hasWork = rows.length > 0
+  // The heading counts what needs a human, not what this tab happens to show — someone
+  // reading the Skipped tab still wants to know whether anything is owed.
+  const reviewCount = status?.counts?.review ?? 0
 
   return (
     <div className="app-container">
@@ -149,8 +162,8 @@ export default function ReviewQueue() {
           <h1 className="rq-heading">
             {loading
               ? t('review.loadingHeading')
-              : hasWork
-                ? t('review.waitingHeading', { count: String(total) })
+              : reviewCount
+                ? t('review.waitingHeading', { count: String(reviewCount) })
                 : t('review.nothingWaiting')}
           </h1>
           {status?.auto_post && <span className="rq-autopost">{t('review.autoPostOn')}</span>}
@@ -174,6 +187,31 @@ export default function ReviewQueue() {
         </div>
       </div>
 
+      {/* Hidden until the BU has mail at all: a strip of four zeroes above an
+          explanation of what the feature is would be scaffolding, not navigation. */}
+      {configured && (
+        <div className="rq-tabs" role="tablist" aria-label={t('review.tabsLabel')}>
+          {QUEUE_TABS.map(id => {
+            const n = status?.counts?.[id] ?? 0
+            return (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={tab === id}
+                className={`rq-tab${tab === id ? ' rq-tab--active' : ''}`}
+                onClick={() => setTab(id)}
+              >
+                {t(TAB_LABEL[id])}
+                {/* Zero is shown too. A count that disappears makes the strip reflow as
+                    documents resolve, and "0" is itself the answer to "anything failed?" */}
+                <span className="rq-tab-count text-mono">{n}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {/* A failed fetch is never the empty state: "nothing is waiting" and "we could not
           ask" mean opposite things to someone deciding whether to go home. */}
       {error ? (
@@ -196,10 +234,15 @@ export default function ReviewQueue() {
             {!loading && rows.map(row => <QueueRow key={row.id} row={row} onOpen={openDoc} />)}
           </ul>
 
-          {!loading && !hasWork && configured && (
+          {!loading && !hasWork && configured && tab === 'review' && (
             <AllClear address={status?.ingest_address ?? null} />
           )}
-          {!loading && !hasWork && !configured && (
+          {/* An empty Posted tab means nothing has posted yet, which is not the same
+              claim as "you are all caught up" and must not borrow its tick. */}
+          {!loading && !hasWork && configured && tab !== 'review' && (
+            <p className="rq-empty-tab">{t('review.emptyTab')}</p>
+          )}
+          {!loading && !hasWork && !configured && tab === 'review' && (
             <NotSetUp
               address={status?.ingest_address ?? null}
               blockers={status?.blockers ?? []}

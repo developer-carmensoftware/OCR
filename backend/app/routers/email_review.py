@@ -44,6 +44,25 @@ router = APIRouter(prefix="/api/v1/email", tags=["Email Review"])
 
 PENDING = "pending_review"
 
+# Tab → the ledger statuses under it. Grouped by what the answer means to the person
+# looking, not by which code path wrote it:
+#
+#   review   what needs you now — the only tab with anything to do
+#   posted   what went through, which is the evidence the automation is working and the
+#            reason "all caught up" is not indistinguishable from "nothing ever arrived"
+#   problem  it did not reach Carmen and somebody should know. `failed` (a gate or Carmen
+#            said no) and `rejected` (a human said no) differ in who decided, which the
+#            row shows — but not in what is now owed, which is the same errand either way.
+#   skipped  the BU's own filename and sender rules said "not this file". Free, never
+#            charged, and mostly noise — its own tab so it is findable without being in
+#            the way of the three that matter.
+TABS: dict[str, tuple[str, ...]] = {
+    "review": (PENDING,),
+    "posted": ("posted",),
+    "problem": ("failed", "rejected"),
+    "skipped": ("skipped", "received"),
+}
+
 
 def _summarise(row: EmailDocument) -> dict:
     """The parts of a queue row that come out of the stored payload rather than a column.
@@ -69,29 +88,39 @@ def _to_row(row: EmailDocument) -> ReviewDocument:
         id=str(row.id),
         created_at=row.created_at,
         attachment=row.attachment,
+        status=row.status,
         bank_code=row.bank_code,
         doc_no=row.doc_no,
+        jv_no=row.jv_no,
+        reason_code=row.reason_code,
+        error_message=row.error_message,
+        reviewed_by_name=row.reviewed_by_name,
+        reviewed_at=row.reviewed_at,
         **_summarise(row),
     )
 
 
 @router.get("/documents", response_model=Page[ReviewDocument])
-async def list_pending(
+async def list_documents(
+    tab: str = Query("review", description="review | posted | problem | skipped"),
     limit: int = Query(25, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
 ):
-    """This BU's unreviewed documents, newest first.
+    """One tab of this BU's mail, newest first.
 
-    Deliberately only `pending_review`. What a BU already resolved is history, and the
-    queue is a to-do list — a list that keeps finished work in it stops being read.
+    `review` is the default because it is the only tab with anything to do; the rest are
+    there so a customer can answer "did that one go through?" without asking us. An
+    unknown tab falls back to `review` rather than 400ing: the query string is a UI
+    detail, and a stale bookmark should land on the useful tab, not on an error.
     """
+    statuses = TABS.get(tab, TABS["review"])
     stmt = (
         select(EmailDocument)
         .where(
             EmailDocument.tenant_id == uuid.UUID(str(session.tenant_id)),
-            EmailDocument.status == PENDING,
+            EmailDocument.status.in_(statuses),
         )
         .order_by(EmailDocument.created_at.desc())
     )
@@ -124,13 +153,8 @@ async def get_pending(
         raise NotFoundError("This document is not waiting for review")
     payload = row.review_payload or {}
     return ReviewDocumentDetail(
-        id=str(row.id),
-        created_at=row.created_at,
-        attachment=row.attachment,
-        bank_code=row.bank_code,
-        doc_no=row.doc_no,
+        **_to_row(row).model_dump(),
         extracted=payload.get("extracted") or {},
-        **_summarise(row),
     )
 
 
@@ -150,23 +174,25 @@ async def review_status(
         raise NotFoundError("Unknown business unit")
     row = await es.get_settings(db, tenant)
     body = await es.build_settings_response(db, tenant, row)
-    count = (
-        await db.scalar(
-            select(func.count())
-            .select_from(EmailDocument)
-            .where(
-                EmailDocument.tenant_id == tenant.id,
-                EmailDocument.status == PENDING,
+    # One grouped count for every tab, in one query rather than four.
+    per_status = {
+        r.status: r.n
+        for r in (
+            await db.execute(
+                select(EmailDocument.status, func.count().label("n"))
+                .where(EmailDocument.tenant_id == tenant.id)
+                .group_by(EmailDocument.status)
             )
-        )
-    ) or 0
+        ).all()
+    }
+    counts = {tab: sum(per_status.get(st, 0) for st in statuses) for tab, statuses in TABS.items()}
     return ReviewStatus(
         enabled=bool(body.get("enabled")),
         auto_post=bool(body.get("auto_post")),
         entitled=bool(body.get("entitled")),
         ingest_address=body.get("ingest_address"),
         blockers=list((body.get("status") or {}).get("blockers") or []),
-        pending=count,
+        counts=counts,
     )
 
 

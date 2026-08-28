@@ -14,18 +14,39 @@ import type { Page } from './page'
  *  because neither survives a list query: see `_review_flags` in email_ingest_service.py. */
 export type ReviewFlag = 'unbalanced' | 'mapping_guessed' | 'warnings'
 
+/** Which tab a row lives under. `problem` and `skipped` are unions of ledger statuses —
+ *  see TABS in routers/email_review.py. */
+export type QueueTab = 'review' | 'posted' | 'problem' | 'skipped'
+
+export const QUEUE_TABS: QueueTab[] = ['review', 'posted', 'problem', 'skipped']
+
 export interface ReviewDocument {
   id: string
   created_at: string | null
   attachment: string
+  /** The raw ledger status, not the tab. `problem` covers two of these and the row has
+   *  to say which: a document Carmen refused and one a colleague rejected are the same
+   *  errand but not the same story. */
+  status: string
   bank_code: string | null
   doc_no: string | null
+
+  // Only while pending_review — `_finish` clears the payload these come from, so on a
+  // resolved row they are absent rather than stale. Rendering `0.00` for a posted
+  // document would not be a missing value, it would be a wrong one.
   doc_date: string | null
   /** Gross (Σ pay_amt) — what lands on the credit side of the JV, so what a reviewer
    *  is agreeing to. Not the net. */
   total: number
   line_count: number
   flags: ReviewFlag[]
+
+  // Only once resolved. Plain ledger columns, kept for ever.
+  jv_no: string | null
+  reason_code: string | null
+  error_message: string | null
+  reviewed_by_name: string | null
+  reviewed_at: string | null
 }
 
 /** One document, opened. `extracted` is an `/extract` response verbatim, which is exactly
@@ -43,11 +64,19 @@ export interface ReviewStatus {
   entitled: boolean
   ingest_address: string | null
   blockers: string[]
-  pending: number
+  /** Keyed by tab. Every tab is present even at zero — one that appears only when it has
+   *  rows makes the tab strip jump around as documents resolve. */
+  counts: Record<string, number>
 }
 
-export async function listPending(limit = 25, offset = 0): Promise<Page<ReviewDocument>> {
-  const res = await apiFetch(`${API.emailReview.documents}?limit=${limit}&offset=${offset}`)
+export async function listDocuments(
+  tab: QueueTab,
+  limit = 25,
+  offset = 0
+): Promise<Page<ReviewDocument>> {
+  const res = await apiFetch(
+    `${API.emailReview.documents}?tab=${tab}&limit=${limit}&offset=${offset}`
+  )
   if (!res.ok) throw new Error(`Review queue fetch failed (${res.status})`)
   return res.json() as Promise<Page<ReviewDocument>>
 }

@@ -341,3 +341,94 @@
     min-height: 44px;
   }
 }
+
+/* ── Tabs ───────────────────────────────────────────────────────────────────── */
+
+.rq-tabs {
+  display: flex;
+  gap: 0.15rem;
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  /* Four tabs plus counts do not fit a narrow phone. Scroll rather than wrap: a tab
+     strip on two lines stops reading as one row of choices. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.rq-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.rq-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.85rem;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  font: inherit;
+  font-size: 0.83rem;
+  font-weight: 500;
+  color: var(--text-3);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color 160ms var(--ease-out-premium, ease-out),
+    border-color 160ms var(--ease-out-premium, ease-out);
+}
+
+.rq-tab:hover {
+  color: var(--text);
+}
+
+.rq-tab--active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 700;
+}
+
+.rq-tab:focus-visible {
+  outline: 2.5px solid var(--primary);
+  outline-offset: -2px;
+  border-radius: var(--radius-xs);
+}
+
+.rq-tab-count {
+  font-size: 0.72rem;
+  color: var(--text-4);
+}
+
+.rq-tab--active .rq-tab-count {
+  color: var(--primary);
+}
+
+/* ── Resolved rows ──────────────────────────────────────────────────────────── */
+
+/* No payload left to open, so no affordance that suggests otherwise. */
+.rq-row--static .rq-row-btn {
+  cursor: default;
+}
+
+.rq-row--static .rq-row-btn:hover {
+  background: none;
+}
+
+.rq-jv {
+  font-size: 0.85rem;
+  color: var(--text-3);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.rq-reason--ok {
+  color: var(--emerald-text);
+}
+
+.rq-empty-tab {
+  padding: var(--space-5) var(--space-4);
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--text-3);
+}

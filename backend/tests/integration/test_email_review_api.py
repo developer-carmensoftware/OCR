@@ -65,8 +65,14 @@ def _doc(**overrides):
         id=uuid.uuid4(),
         created_at=datetime.now(UTC),
         attachment="statement_july.pdf",
+        status="pending_review",
         bank_code="KTC",
         doc_no="INV-001",
+        jv_no=None,
+        reason_code=None,
+        error_message=None,
+        reviewed_by_name=None,
+        reviewed_at=None,
         review_payload=payload,
     )
     defaults.update(overrides)
@@ -131,7 +137,8 @@ def test_the_queue_asks_only_for_this_tenants_pending_rows(monkeypatch):
 
     assert "tenant_id" in seen["sql"] and "status" in seen["sql"]
     assert uuid.UUID(TENANT) in seen["params"].values()
-    assert "pending_review" in seen["params"].values()
+    # The status filter is an IN over the tab's statuses now, so it binds as a list.
+    assert ["pending_review"] in seen["params"].values()
 
 
 # ── GET /documents/{id} ──────────────────────────────────────────────────────
@@ -176,7 +183,16 @@ def test_status_reuses_the_settings_services_blockers(monkeypatch):
     screen disagree about it."""
     db = make_mock_db()
     db.get.return_value = MagicMock(id=uuid.UUID(TENANT))
-    db.scalar.return_value = 3
+    # One grouped count over the raw ledger statuses; the endpoint folds them into tabs.
+    grouped = MagicMock()
+    grouped.all.return_value = [
+        SimpleNamespace(status="pending_review", n=3),
+        SimpleNamespace(status="posted", n=7),
+        SimpleNamespace(status="failed", n=1),
+        SimpleNamespace(status="rejected", n=2),
+        SimpleNamespace(status="skipped", n=101),
+    ]
+    db.execute.return_value = grouped
 
     async def _settings(db_, tenant):
         return None
@@ -201,5 +217,71 @@ def test_status_reuses_the_settings_services_blockers(monkeypatch):
         "entitled": True,
         "ingest_address": "AIAGENT+a1b2c3d4@carmensoftware.com",
         "blockers": ["no_rule"],
-        "pending": 3,
+        # `problem` is the union of failed + rejected: they differ in who decided, which
+        # the row shows, but not in what is now owed.
+        "counts": {"review": 3, "posted": 7, "problem": 3, "skipped": 101},
     }
+
+
+# ── Tabs ─────────────────────────────────────────────────────────────────────
+
+
+def test_each_tab_asks_for_its_own_statuses(monkeypatch):
+    """`problem` and `skipped` are unions, so the filter has to be an IN, not an equals.
+
+    Grouped by what the answer means to the person looking rather than by which code path
+    wrote it: `failed` and `rejected` differ in who said no, which the row shows, but not
+    in what is now owed.
+    """
+    seen: dict[str, object] = {}
+
+    async def _capture(db, stmt, limit, offset):
+        seen["params"] = stmt.compile().params
+        return [], 0
+
+    monkeypatch.setattr(email_review, "paginate", _capture)
+    for tab, expected in [
+        ("review", ["pending_review"]),
+        ("posted", ["posted"]),
+        ("problem", ["failed", "rejected"]),
+        ("skipped", ["skipped", "received"]),
+    ]:
+        with make_test_client(make_mock_db(), session=SESSION) as client:
+            client.get(f"{BASE}/documents?tab={tab}", headers=AUTH)
+        assert expected in seen["params"].values(), tab
+
+
+def test_an_unknown_tab_lands_on_the_useful_one(monkeypatch):
+    """The tab is a UI detail carried in a query string. A stale bookmark or a renamed
+    tab should show the work, not a 422 — nothing here is a correctness boundary."""
+    seen: dict[str, object] = {}
+
+    async def _capture(db, stmt, limit, offset):
+        seen["params"] = stmt.compile().params
+        return [], 0
+
+    monkeypatch.setattr(email_review, "paginate", _capture)
+    with make_test_client(make_mock_db(), session=SESSION) as client:
+        resp = client.get(f"{BASE}/documents?tab=nonsense", headers=AUTH)
+    assert resp.status_code == 200
+    assert ["pending_review"] in seen["params"].values()
+
+
+def test_a_resolved_row_reports_its_ledger_columns_not_a_zero_amount(monkeypatch):
+    """`_finish` clears review_payload on every terminal transition, so a posted document
+    has no amount, no date and no line count. Reporting `total: 0.00` would not be a
+    missing value, it would be a wrong one — the row shows the JV number instead."""
+    posted = _doc(
+        status="posted",
+        review_payload=None,
+        jv_no="JV-9001",
+        reviewed_by_name="somchai",
+    )
+    monkeypatch.setattr(email_review, "paginate", _paginated([posted]))
+    with make_test_client(make_mock_db(), session=SESSION) as client:
+        row = client.get(f"{BASE}/documents?tab=posted", headers=AUTH).json()["data"][0]
+
+    assert row["status"] == "posted"
+    assert row["jv_no"] == "JV-9001"
+    assert row["reviewed_by_name"] == "somchai"
+    assert row["total"] == 0.0 and row["doc_date"] is None and row["flags"] == []
