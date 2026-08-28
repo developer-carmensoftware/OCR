@@ -289,6 +289,7 @@ def to_response(row: EmailIngestSettings | None, host: str, bu: str) -> dict:
             "host": host,
             "bu": bu,
             "enabled": False,
+            "auto_post": False,
             # Null until the BU successfully enables the feature and a tag is issued.
             "ingest_address": None,
             "owner_emails": [],
@@ -310,6 +311,9 @@ def to_response(row: EmailIngestSettings | None, host: str, bu: str) -> dict:
         "host": host,
         "bu": bu,
         "enabled": bool(row.enabled),
+        # Not a blocker in any state: review mode is the *safe* one, so a BU sitting in
+        # it is working as designed, not misconfigured.
+        "auto_post": bool(row.auto_post),
         "ingest_address": ingest_address(row.ingest_tag),
         "owner_emails": list(row.owner_emails or []),
         "tax_ids": list(row.tax_ids or []),
@@ -550,6 +554,7 @@ async def save_settings(db: AsyncSession, tenant: Tenant, payload: Any) -> Email
     if payload.enabled and not row.enabled:
         row.enabled_at = datetime.now(UTC)
     row.enabled = bool(payload.enabled)
+    row.auto_post = bool(payload.auto_post)
     row.owner_emails = owner_emails
     row.tax_ids = tax_ids
     row.rules = [_merge_rule(r, existing.get(r.bank_code or "")) for r in rules]

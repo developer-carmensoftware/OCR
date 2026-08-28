@@ -34,6 +34,16 @@ class SettingsIn(BaseModel):
     owner_emails: list[str] = Field(default_factory=list)
     tax_ids: list[str] = Field(default_factory=list)
     rules: list[RuleIn] = Field(default_factory=list)
+    # False = every document waits for a human before it reaches Carmen. The BU turns
+    # this on once it trusts the extraction; nothing turns it on for them.
+    #
+    # ponytail: absent means False, and PUT /settings is a full replace — so a Carmen
+    # client that predates this field resets the switch on every unrelated settings save,
+    # silently, for a customer who had deliberately turned it on. Deliberate: the failure
+    # is recoverable (they flip it back) and defaulting the other way would post documents
+    # nobody agreed to post. If it is ever reported, the fix is `bool | None = None` plus
+    # merge-on-omit -- the idiom `_merge_rule` already uses for pdf_password_enc.
+    auto_post: bool = False
 
 
 class TokenIn(BaseModel):
