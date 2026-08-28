@@ -564,7 +564,7 @@
 
 .rd-block {
   border: 1px solid var(--border);
-  border-radius: var(--radius-md, 10px);
+  border-radius: var(--radius-md);
   background: var(--card-bg);
   overflow: hidden;
 }
@@ -611,6 +611,115 @@
   padding: var(--space-3);
 }
 
+/* ── The document card ──────────────────────────────────────────────────────── */
+
+.rd-doc {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+}
+
+.rd-f {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.rd-f--wide {
+  grid-column: span 2;
+}
+
+.rd-f-label {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+
+/* Reads as the document until you go to change it: no box around a value nobody is
+   editing, a real field the moment one is. */
+.rd-f-input {
+  width: 100%;
+  padding: 0.3rem 0.4rem;
+  margin-left: -0.4rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  transition: background-color 120ms ease-out;
+}
+
+.rd-f-input:hover:not(:focus) {
+  background: var(--muted);
+}
+
+.rd-f-input:focus,
+.rd-f-input:focus-visible {
+  outline: none;
+  background: var(--card-bg);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px oklch(from var(--primary) l c h / 0.18);
+}
+
+.rd-f-input::placeholder {
+  color: var(--amber);
+  font-style: italic;
+}
+
+/* A field the extractor could not fill is the reason the block header says so — say it
+   again where the fix happens, not only at the top. */
+.rd-f--missing .rd-f-input {
+  border-color: var(--amber);
+  background: oklch(from var(--amber) l c h / 0.08);
+}
+
+/* DateInput renders a button, not an input; give it the same flat treatment. */
+.rd-f .date-input,
+.rd-f .date-input-trigger {
+  width: 100%;
+}
+
+.rd-f .date-input-trigger {
+  justify-content: space-between;
+  min-height: 0;
+}
+
+/* Inside the modal the wizard's own card chrome is one frame too many: the block header
+   above already names the part, and its title would repeat it. */
+.rd-block-body .data-card {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.rd-block-body .data-card > .card-title {
+  display: none;
+}
+
+.rd-block-body .data-card + .data-card {
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+}
+
+.rd-block-body .card-body {
+  padding: 0;
+}
+
+/* ...except the totals strip, which is the one inner card that is a summary rather than
+   a container, and reads better boxed. */
+.rd-block-body .total-summary-card {
+  background: var(--muted);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  border-top: 0;
+}
+
 .rd-check {
   display: flex;
   align-items: flex-start;
@@ -651,6 +760,14 @@
     height: 100%;
     border: 0;
     border-radius: 0;
+  }
+
+  .rd-doc {
+    grid-template-columns: 1fr;
+  }
+
+  .rd-f--wide {
+    grid-column: auto;
   }
 
   .rd-block-h {

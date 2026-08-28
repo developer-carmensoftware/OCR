@@ -147,6 +147,29 @@ describe('loading a parked document', () => {
     expect(await screen.findByText('Document number is missing')).toBeInTheDocument()
   })
 
+  it('shows the six fields a reviewer can act on, not the wizard’s ten', async () => {
+    // DateProcessed is today’s date made up in the browser, and both bank names are
+    // already in the modal header. On a screen asking "does this add up", each is a thing
+    // to read past.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    expect(await screen.findByLabelText('Document no.')).toHaveValue('INV-001')
+    expect(screen.getByLabelText('Branch')).toHaveValue('00000')
+    expect(screen.getByLabelText('Billed to')).toHaveValue('Test Hotel')
+    expect(screen.queryByLabelText(/Input Date/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/Bank Name/)).not.toBeInTheDocument()
+  })
+
+  it('marks the empty field, not just the block header', async () => {
+    // The header says what is wrong; the field is where it gets fixed, so it has to say
+    // so too — otherwise the reviewer hunts for which of six it meant.
+    vi.mocked(api.getPending).mockResolvedValue(detail({ extracted: { ...EXTRACTED, doc_no: '' } }))
+    mount()
+    const field = await screen.findByLabelText('Document no.')
+    expect(field).toHaveAttribute('placeholder', 'Not on the document')
+    expect(field.closest('.rd-f')).toHaveClass('rd-f--missing')
+  })
+
   it('tells the reviewer when the document is no longer theirs to handle', async () => {
     vi.mocked(api.getPending).mockRejectedValue(new Error('404'))
     mount()

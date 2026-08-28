@@ -529,8 +529,22 @@ numbers.
 Escape and a backdrop click close it, except while a post is in flight: the modal is the only
 place the Carmen error is about to appear.
 
-Block bodies reuse the wizard's components rather than reimplementing them: `HeaderCard`,
-`DetailTable`, and `AccountingReview` with `embedded`.
+Block bodies reuse the wizard's components — `DetailTable`, and `AccountingReview` with
+`embedded` — with one exception. **The document block is its own card** (`ReviewDocCard`),
+not `HeaderCard`:
+
+| | `HeaderCard` (wizard) | `ReviewDocCard` (review) |
+|---|---|---|
+| Fields | 10, in entry order | 6, in the order a person checks a statement |
+| Labels | English label + the raw field name under it | one label, uppercase, above the value |
+| Fields the reviewer cannot act on | `DateProcessed` (today's date, made up in the browser), `BankName`, `BankCompanyName`, `DocName` | none — the bank and doc type are in the modal header already |
+| Empty field | blank input | says *"Not on the document"*, in the amber the block header used |
+| Chrome | boxed inputs throughout | flat until hover/focus, so the card reads as the document and becomes a form when someone goes to change it |
+
+`headerData` still carries all ten: `AccountingReview` reads it and approve posts it. They
+simply are not things to look at here. The wizard keeps `HeaderCard` unchanged — data entry
+and verification are different jobs, and one component doing both is how the review screen
+ended up looking like a form to fill in.
 
 ### Manual scan — `#/CreditCardOCR/manual`
 

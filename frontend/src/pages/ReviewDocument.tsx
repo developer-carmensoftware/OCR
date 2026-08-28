@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { AlertCircle, AlertTriangle, Check, CheckCircle2, Loader2, X } from 'lucide-react'
 import CustomModal from '../components/common/CustomModal'
 import SwapLabel from '../components/common/SwapLabel'
-import HeaderCard from '../components/credit-card/HeaderCard'
+import ReviewDocCard from '../components/credit-card/ReviewDocCard'
 import DetailTable, { type DetailRow } from '../components/credit-card/DetailTable'
 import AccountingReview, { type AccountingState } from '../components/credit-card/AccountingReview'
 import { useT } from '../i18n/LanguageContext'
@@ -135,7 +135,12 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   // reviewer would lose the one place the Carmen error is about to appear.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !busy && !rejecting) onClose()
+      if (e.key !== 'Escape' || busy || rejecting) return
+      // The date picker is a layer above this one and closes on Escape too; both listen on
+      // `document`, so the innermost open thing has to be checked for rather than trusted
+      // to stop the event.
+      if (document.querySelector('.date-input-popover')) return
+      onClose()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
@@ -301,7 +306,7 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                 }
                 severity={docSeverity}
               >
-                <HeaderCard headerData={headerData} onUpdate={updateHeader} />
+                <ReviewDocCard headerData={headerData} onUpdate={updateHeader} />
               </Block>
 
               <Block
