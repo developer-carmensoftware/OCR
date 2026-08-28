@@ -10,6 +10,7 @@ import { useT } from '../i18n/LanguageContext'
 import { showToast } from '../lib/toast'
 import { fmt, parseNum, round2 } from '../lib/format'
 import { toExtractedRows } from '../lib/api/ocr'
+import { persistScanForMapping } from '../hooks/credit-card/useOcrExtraction'
 import { normalizeDateStringToCE } from '../lib/date'
 import {
   approveDocument,
@@ -381,7 +382,18 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   bank={bank}
                   onBack={() => undefined}
                   onSubmit={() => undefined}
-                  onGoMapping={() => window.open('#/CreditCardOCR/mapping', '_blank')}
+                  onGoMapping={() => {
+                    // The mapping page reads the current scan out of localStorage; without
+                    // this it opens with nothing to map. Written from the *edited* details,
+                    // so a payment type the reviewer just corrected is the one it asks about.
+                    persistScanForMapping(
+                      doc.extracted as Record<string, unknown>,
+                      details,
+                      bank || doc.bank_code || undefined
+                    )
+                    showToast(t('cc.openedMapping'), 'info')
+                    window.open('#/CreditCardOCR/mapping', '_blank')
+                  }}
                   onState={onState}
                 />
               </Block>

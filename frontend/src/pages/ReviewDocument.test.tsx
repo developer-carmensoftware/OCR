@@ -4,6 +4,7 @@ import { LanguageProvider } from '../i18n/LanguageContext'
 import ReviewDocument from './ReviewDocument'
 import type { ReviewDocumentDetail } from '../lib/api/emailReview'
 import type { AccountingState } from '../components/credit-card/AccountingReview'
+import { appKey } from '../lib/storage'
 
 vi.mock('../lib/api/emailReview', () => ({
   getPending: vi.fn(),
@@ -22,9 +23,21 @@ vi.mock('../components/credit-card/AccountingReview', async () => {
   const { useEffect } = await import('react')
   // From an effect, like the real component: reporting during render is a setState in
   // the parent mid-render, which React refuses.
-  function MockAccountingReview({ onState }: { onState?: (s: AccountingState) => void }) {
+  function MockAccountingReview({
+    onState,
+    onGoMapping,
+  }: {
+    onState?: (s: AccountingState) => void
+    onGoMapping?: () => void
+  }) {
     useEffect(() => onState?.(accState), [onState])
-    return <div data-testid="accounting" />
+    return (
+      <div data-testid="accounting">
+        <button type="button" onClick={onGoMapping}>
+          Mapping Settings
+        </button>
+      </div>
+    )
   }
   return { default: MockAccountingReview }
 })
@@ -289,5 +302,36 @@ describe('rejecting', () => {
     fireEvent.click(screen.getByRole('button', { name: /Reject document/ }))
     await waitFor(() => expect(api.rejectDocument).toHaveBeenCalledWith('d1', 'wrong company'))
     await waitFor(() => expect(onDone).toHaveBeenCalled())
+  })
+})
+
+describe('opening mapping settings', () => {
+  it('hands the current scan to the page it opens', async () => {
+    // The mapping page reads the scan out of localStorage. Opening the tab without writing
+    // it is how that page ended up asking about nothing.
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    fireEvent.click(await screen.findByRole('button', { name: 'Mapping Settings' }))
+
+    const stored = JSON.parse(localStorage.getItem(appKey('ocr_wizard_state')) || '{}')
+    expect(stored.details[0].Transaction).toBe('Visa')
+    expect(stored.bank).toBe('KTC')
+    expect(open).toHaveBeenCalledWith('#/CreditCardOCR/mapping', '_blank')
+  })
+
+  it('sends the edited payment type, not the extracted one', async () => {
+    // The reviewer corrects a payment type precisely because the mapping is wrong for it;
+    // asking the mapping page about the old name would map the wrong thing.
+    vi.spyOn(window, 'open').mockImplementation(() => null)
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    fireEvent.change(await screen.findByLabelText('Transaction'), {
+      target: { value: 'VISA CARD' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Mapping Settings' }))
+
+    const stored = JSON.parse(localStorage.getItem(appKey('ocr_wizard_state')) || '{}')
+    expect(stored.details[0].Transaction).toBe('VISA CARD')
   })
 })
