@@ -1416,6 +1416,7 @@ async def approve_document(
     *,
     tenant_id: str,
     reviewer: str | None,
+    reviewer_name: str | None = None,
     extracted: ExtractedCreditCardData,
     rows: list[dict],
     post_input_tax_record: bool = True,
@@ -1515,8 +1516,10 @@ async def approve_document(
             jv_no=jv_no,
             error=tax_note,
         )
-        await _stamp_reviewer(ledger_id, reviewer)
-        logger.info("[email] %s approved and posted %s (JV %s)", reviewer, doc_no, jv_no)
+        await _stamp_reviewer(ledger_id, reviewer, reviewer_name)
+        logger.info(
+            "[email] %s approved and posted %s (JV %s)", reviewer_name or reviewer, doc_no, jv_no
+        )
         return {"jv_no": jv_no, "tax_note": tax_note}
     finally:
         current_carmen_uri.reset(uri_ctx)
@@ -1524,7 +1527,12 @@ async def approve_document(
 
 
 async def reject_document(
-    document_id: uuid.UUID, *, tenant_id: str, reviewer: str | None, reason: str | None = None
+    document_id: uuid.UUID,
+    *,
+    tenant_id: str,
+    reviewer: str | None,
+    reviewer_name: str | None = None,
+    reason: str | None = None,
 ) -> None:
     """Terminal, and deliberately not a refund.
 
@@ -1550,22 +1558,31 @@ async def reject_document(
         reason_code="rejected_by_reviewer",
         error=(reason or "").strip()[:500] or None,
     )
-    await _stamp_reviewer(ledger_id, reviewer)
-    logger.info("[email] %s rejected %s", reviewer, doc_no)
+    await _stamp_reviewer(ledger_id, reviewer, reviewer_name)
+    logger.info("[email] %s rejected %s", reviewer_name or reviewer, doc_no)
 
 
-async def _stamp_reviewer(ledger_id: uuid.UUID, reviewer: str | None) -> None:
+async def _stamp_reviewer(
+    ledger_id: uuid.UUID, reviewer: str | None, reviewer_name: str | None
+) -> None:
     """Who decided, and when. Audit only: there is no users table to point at, and any
     Carmen session for this BU may approve, so this records rather than authorises.
 
-    After `_finish`, not inside it. `_finish` also runs on the machine path, where there
-    is no reviewer, and a nullable column written from two places drifts.
+    Both the id and the name. Everywhere else in this codebase only `carmen_user_id` is
+    stored and the name is resolved later through `tenant_lookup.username_map`, which reads
+    `ocr_sessions` — scrubbed after 90 days, so that lookup quietly decays into a raw UUID.
+    Fine for a usage chart. Not fine for the record of who approved a journal entry, which
+    has to still read as a name when someone asks in a year.
+
+    After `_finish`, not inside it. `_finish` also runs on the machine path, where there is
+    no reviewer, and a nullable column written from two places drifts.
     """
     try:
         async with async_session() as db:
             row = await db.get(EmailDocument, ledger_id)
             if row is not None:
                 row.reviewed_by = reviewer  # type: ignore[assignment]
+                row.reviewed_by_name = reviewer_name  # type: ignore[assignment]
                 row.reviewed_at = datetime.now(UTC)  # type: ignore[assignment]
                 await db.commit()
     except Exception:  # noqa: BLE001 — the decision is already recorded; this is metadata

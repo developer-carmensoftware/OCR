@@ -123,6 +123,11 @@ async def list_email_documents(
                 "jv_no": doc.jv_no,
                 "error_message": doc.error_message,
                 "task_id": str(doc.task_id) if doc.task_id else None,
+                # Name first: the id is here for the rare case two people share a
+                # display name, but nobody debugging a JV wants to read a UUID.
+                "reviewed_by_name": doc.reviewed_by_name,
+                "reviewed_by": doc.reviewed_by,
+                "reviewed_at": doc.reviewed_at.isoformat() if doc.reviewed_at else None,
                 "charged_docs": charged,
                 "original_filename": original,
                 "created_at": doc.created_at.isoformat() if doc.created_at else None,

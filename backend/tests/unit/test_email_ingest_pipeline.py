@@ -2123,6 +2123,7 @@ def _pending_row(**overrides):
         doc_no="INV-001",
         review_payload={"extracted": {"doc_no": "INV-001"}, "flags": []},
         reviewed_by=None,
+        reviewed_by_name=None,
         reviewed_at=None,
         jv_no=None,
         reason_code=None,
@@ -2200,6 +2201,7 @@ async def test_approve_posts_under_the_bus_credential_not_the_reviewers():
             row.id,
             tenant_id=str(row.tenant_id),
             reviewer="u-reviewer",
+            reviewer_name="somchai",
             extracted=_extracted(id=str(uuid4())),
             rows=[{"dept": "GEN", "acc": "1010", "debit": 0, "credit": 1000.0}],
         )
@@ -2211,6 +2213,10 @@ async def test_approve_posts_under_the_bus_credential_not_the_reviewers():
     # Terminal, so the extracted line items go.
     assert row.review_payload is None
     assert row.reviewed_by == "u-reviewer"
+    # The name is stored, not resolved later: tenant_lookup.username_map reads
+    # ocr_sessions, which is scrubbed at 90 days, so the usual route would decay this
+    # audit row into a raw UUID.
+    assert row.reviewed_by_name == "somchai"
     p.mark.assert_awaited_once()
 
 
@@ -2361,7 +2367,11 @@ async def test_reject_is_terminal_and_never_refunds():
         patch.object(ingest, "refund_document", refund),
     ):
         await ingest.reject_document(
-            row.id, tenant_id=str(row.tenant_id), reviewer="u-rev", reason="  wrong company  "
+            row.id,
+            tenant_id=str(row.tenant_id),
+            reviewer="u-rev",
+            reviewer_name="somchai",
+            reason="  wrong company  ",
         )
 
     assert row.status == "rejected"
@@ -2369,6 +2379,7 @@ async def test_reject_is_terminal_and_never_refunds():
     assert row.error_message == "wrong company"
     assert row.review_payload is None
     assert row.reviewed_by == "u-rev"
+    assert row.reviewed_by_name == "somchai"
     refund.assert_not_awaited()
 
 
@@ -2434,3 +2445,43 @@ async def test_a_failed_notification_never_fails_the_poll():
         patch.object(ingest.notification_service, "notify", broken),
     ):
         await ingest._notify_pending({str(uuid4()): 1})  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_the_reviewers_name_is_stored_not_looked_up_later():
+    """Every other table here keeps only carmen_user_id and resolves the name through
+    tenant_lookup.username_map, which reads ocr_sessions — scrubbed at 90 days, after
+    which its own docstring says ids "fall back to the raw id".
+
+    Fine for a usage chart. Not fine for the record of who approved a journal entry: ask
+    in a year and it would answer with a UUID. The id stays the identity; the name is
+    copied off the session at decision time so it cannot decay.
+    """
+    row = _pending_row()
+    db = _ReviewDB(row)
+    with _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-5"}):
+        await ingest.approve_document(
+            row.id,
+            tenant_id=str(row.tenant_id),
+            reviewer="e6942437-7db5-4895-96e5-b300161dc2b2",
+            reviewer_name="somchai",
+            extracted=_extracted(),
+            rows=[],
+        )
+    assert row.reviewed_by == "e6942437-7db5-4895-96e5-b300161dc2b2"
+    assert row.reviewed_by_name == "somchai"
+
+
+@pytest.mark.asyncio
+async def test_a_session_with_no_display_name_still_records_the_id():
+    """`username` is nullable on ocr_sessions, so it can be absent. Losing the audit row
+    entirely because the name was missing would be the worse failure."""
+    row = _pending_row()
+    db = _ReviewDB(row)
+    with patch.object(ingest, "async_session", _session_factory(db)):
+        await ingest.reject_document(
+            row.id, tenant_id=str(row.tenant_id), reviewer="u-1", reviewer_name=None
+        )
+    assert row.reviewed_by == "u-1"
+    assert row.reviewed_by_name is None
+    assert row.status == "rejected"

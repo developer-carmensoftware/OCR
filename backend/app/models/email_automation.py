@@ -109,6 +109,10 @@ class EmailDocument(Base, TenantFKMixin, TimestampMixin):
     # Who clicked approve/reject. Audit only: no FK, no enforcement — there is no users
     # table, and any Carmen session for this BU can approve.
     reviewed_by = Column(String(36), nullable=True)
+    # Their display name at decision time. Denormalised because the usual route
+    # (tenant_lookup.username_map -> ocr_sessions) decays to a raw UUID once the session
+    # is 90 days scrubbed, and "who approved this JV" must still read as a name in a year.
+    reviewed_by_name = Column(String(100), nullable=True)
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (

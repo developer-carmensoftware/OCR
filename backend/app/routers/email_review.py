@@ -191,6 +191,7 @@ async def approve(
         document_id,
         tenant_id=str(session.tenant_id),
         reviewer=session.carmen_user_id,
+        reviewer_name=session.username,
         extracted=ExtractedCreditCardData.model_validate(body.extracted),
         rows=body.rows,
         post_input_tax_record=body.post_input_tax,
@@ -212,5 +213,6 @@ async def reject(
         document_id,
         tenant_id=str(session.tenant_id),
         reviewer=session.carmen_user_id,
+        reviewer_name=session.username,
         reason=body.reason,
     )
