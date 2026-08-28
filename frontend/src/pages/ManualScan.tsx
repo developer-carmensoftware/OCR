@@ -21,7 +21,7 @@ import InputTaxReconciliation from '../components/credit-card/InputTaxReconcilia
 import { BANK_THAI_NAMES } from '../constants'
 import type { BankCode } from '../types/api'
 
-export default function CreditCardOCR() {
+export default function ManualScan() {
   const { t } = useT()
   const {
     step,

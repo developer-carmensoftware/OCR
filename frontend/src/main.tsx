@@ -67,7 +67,7 @@ function dismissInitialLoader() {
 }
 
 const Home = lazy(() => import('./pages/Home'))
-const CreditCardOCR = lazy(() => import('./pages/CreditCardOCR'))
+const ManualScan = lazy(() => import('./pages/ManualScan'))
 const Mapping = lazy(() => import('./pages/Mapping'))
 const APInvoice = lazy(() => import('./pages/APInvoice'))
 const Pricing = lazy(() => import('./pages/Pricing'))
@@ -137,7 +137,9 @@ function Router() {
   let Page: React.ReactElement
   if (route.startsWith('creditcardocr')) {
     const sub = route.replace('creditcardocr', '').replace(/^\//, '')
-    Page = sub === 'mapping' ? <Mapping /> : <CreditCardOCR />
+    // `manual` is the wizard's own route. The bare route still renders it too, until the
+    // review queue takes over the landing page — so this commit changes no behaviour.
+    Page = sub === 'mapping' ? <Mapping /> : <ManualScan />
   } else if (route.startsWith('apinvoice')) {
     Page = <APInvoice />
   } else if (route === 'whats-new') {
