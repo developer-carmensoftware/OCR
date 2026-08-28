@@ -4,11 +4,15 @@
     python scripts/seed_review_queue.py --bu carmen
     python scripts/seed_review_queue.py --clear            # remove what this script wrote
 
-Ten rows, one per thing the queue has to render: five waiting for review (clean, AI-filled
-mapping, a line that does not add up, a missing document number, an extraction warning) and
-five already resolved (two posted, one Carmen refusal, one rejection, one skipped). A
-resolved row renders from its ledger columns and has no payload left, so a queue seeded
-only with pending documents never shows that half.
+Every status the ledger can hold and every `reason_code` in the taxonomy, because each one
+renders differently: a pending row reads its amount out of `review_payload`, a resolved row
+has no payload left and reads its ledger columns, and `problem`/`skipped` differ only in
+whether a credit was spent.
+
+One of the pending documents (`siampay_fees_july.pdf`) is deliberately **postable**: its
+payment types are the ones this BU has actually mapped, so its GL section arrives complete
+and `Approve and post` is enabled without editing anything. The others need a mapping
+decision first, which is the more common case and the reason the screen lets you make one.
 
 Everything it writes carries `<mock-...@seed.local>` as its Message-ID, which is what
 `--clear` matches. It touches nothing else: no credits, no `ocr_tasks`, no Carmen.
@@ -78,12 +82,44 @@ def doc(bank: str, doc_no: str | None, lines: list[dict], **over) -> dict:
 
 HOTEL = "Grand Riverside Hotel Co., Ltd."
 
+# The two payment types this BU has mapped (bu_accounting_mapping_entries, is_custom).
+# A document built from these arrives with nothing unmapped, which is what makes it
+# postable without touching the GL section first.
+MAPPED_A = "SiamPay Service - Processing Fee"
+MAPPED_B = "SiamPay Service - Transaction Fe"
+# ...and three payment types from the same table, for a statement-shaped document that is
+# also postable as it arrives. Unmapped names (MASTERCARD, JCB, AMEX) are left on the other
+# documents on purpose: that is the state the GL section exists to resolve.
+MAPPED_CARDS = ("VISA", "VSA-INT-P", "MCA-INT")
+
+
+def fee(txn: str, gross: float) -> dict:
+    """A processor fee line: no net proceeds, so `total` is 0 and gross = fee + VAT."""
+    net_fee = round(gross / 1.07, 2)
+    return {
+        "transaction": txn,
+        "pay_amt": f"{gross:.2f}",
+        "commis_amt": f"{net_fee:.2f}",
+        "tax_amt": f"{gross - net_fee:.2f}",
+        "total": "0.00",
+    }
+
+
 # attachment, bank, payload, flags, age in hours
 PENDING = [
     (
+        "siampay_fees_july.pdf",
+        "SIAMPAY",
+        doc("SIAMPAY", "SP-2026-0731", [fee(MAPPED_A, 3_745.00), fee(MAPPED_B, 1_284.00)]),
+        [],
+        1,
+    ),
+    (
         "ktc_commission_july.pdf",
         "KTC",
-        doc("KTC", "KTC-2026-0731", [line("VISA", 128_400), line("MASTERCARD", 96_250), line("JCB", 18_900)]),
+        doc("KTC", "KTC-2026-0731",
+            [line(MAPPED_CARDS[0], 128_400), line(MAPPED_CARDS[1], 96_250),
+             line(MAPPED_CARDS[2], 18_900)]),
         [],
         2,
     ),
@@ -107,7 +143,8 @@ PENDING = [
     (
         "bbl_etax_880123.pdf",
         "BBL",
-        doc("BBL", "BBL-ETAX-880123", [line("VISA", 74_500), line("MASTERCARD", 33_200, off=-1_250.00)]),
+        doc("BBL", "BBL-ETAX-880123",
+            [line("VISA", 74_500), line("MASTERCARD", 33_200, off=-1_250.00)]),
         ["unbalanced"],
         20,
     ),
@@ -143,18 +180,48 @@ PENDING = [
 ]
 
 # attachment, bank, doc_no, status, jv_no, reason_code, error, reviewer, age in hours
+#
+# Every status and every reason code, in the order the taxonomy lists them
+# (04-data-model.md). `received` is a row mid-flight — the poll claimed it and nothing has
+# happened yet; it is rare, terminal-looking and still has to render, which is why the
+# `skipped` tab absorbs it rather than leaving it findable nowhere.
 RESOLVED = [
-    ("ktc_commission_june.pdf", "KTC", "KTC-2026-0630", "posted", "JV-2026-0912", None, None, "somchai", 73),
-    ("kbank_mdr_0701.pdf", "KBANK", "MDR-0701/26", "posted", "JV-2026-0911", None, None, "malee", 96),
-    (
-        "scb_statement_june.pdf", "SCB", "SCB-2026-0630", "failed", None,
-        "carmen_rejected", "Accounting period 2026-06 is closed", None, 121,
-    ),
-    (
-        "paypal_fees_july.pdf", "PAYPAL", "PP-2026-07", "rejected", None,
-        "rejected_by_reviewer", "wrong company - belongs to the Phuket BU", "somchai", 130,
-    ),
-    ("newsletter.pdf", None, None, "skipped", None, "no_rule_match", None, None, 145),
+    ("ktc_commission_inflight.pdf", "KTC", None, "received", None, None, None, None, 0),
+
+    ("ktc_commission_june.pdf", "KTC", "KTC-2026-0630", "posted", "JV-2026-0912",
+     None, None, "somchai", 73),
+    ("kbank_mdr_0701.pdf", "KBANK", "MDR-0701/26", "posted", "JV-2026-0911",
+     # A JV that posted while its input-tax record did not: still `posted`, with the note
+     # on the row. There is no `partially_posted` state, deliberately.
+     None, "Input tax record was not created: ACTX rejected the tax ID", "malee", 96),
+
+    ("paypal_fees_july.pdf", "PAYPAL", "PP-2026-07", "rejected", None,
+     "rejected_by_reviewer", "wrong company - belongs to the Phuket BU", "somchai", 130),
+
+    ("bbl_torn_scan.pdf", "BBL", None, "failed", None,
+     "unreadable_document", "The model could not be reached after 3 attempts", None, 100),
+    ("ktc_other_company.pdf", "KTC", "KTC-2026-0629", "failed", None,
+     "tax_id_mismatch", "Document tax ID 0105536000127 belongs to another business unit",
+     None, 110),
+    ("kbank_mdr_0701_again.pdf", "KBANK", "MDR-0701/26", "failed", None,
+     "duplicate_document", "Already posted as JV-2026-0911", None, 115),
+    ("bay_new_payment_type.pdf", "BAY", "BAY-STM-0625", "failed", None,
+     "mapping_incomplete", "No GL account for payment type: WeChat Pay", None, 118),
+    ("scb_statement_june.pdf", "SCB", "SCB-2026-0630", "failed", None,
+     "carmen_rejected", "Accounting period 2026-06 is closed", None, 121),
+
+    ("newsletter.pdf", None, None, "skipped", None,
+     "no_rule_match", None, None, 145),
+    ("promo_from_stranger.pdf", None, None, "skipped", None,
+     "sender_not_allowed", "marketing@unknown-sender.com", None, 148),
+    ("locked_statement.pdf", "KTC", None, "skipped", None,
+     "wrong_pdf_password", "None of the configured passwords opened this PDF", None, 150),
+    ("signature_logo.png", None, None, "skipped", None,
+     "unsupported_attachment", None, None, 152),
+    ("bbl_statement_may.pdf", "BBL", None, "skipped", None,
+     "ingest_paused", "Arrived while email automation was switched off", None, 400),
+    ("corrupt_report.pdf", None, None, "skipped", None,
+     "unreadable_document", "Not a PDF: magic bytes say otherwise", None, 402),
 ]
 
 INSERT = (
