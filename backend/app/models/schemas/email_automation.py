@@ -3,6 +3,8 @@
 Contract: docs/CARMEN_INTEGRATION.md §2.3 (settings) and §2.6 (posting credential).
 """
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field, SecretStr
 
 # The tenant is still the pair (host, bu) — `uri` is how Carmen spells the host, because
@@ -63,3 +65,57 @@ class TokenIn(BaseModel):
     # distinction the old `carmen_uri` field failed: it let us validate a token against one
     # origin and post it to another. Extra fields are still ignored (Pydantic default), so
     # a caller still sending `host` or `carmen_uri` alongside `uri` keeps working.
+
+
+# ── Review queue (tenant-facing) ──────────────────────────────────────────────
+
+
+class ReviewDocument(BaseModel):
+    """One row of the review queue.
+
+    Everything the queue needs to paint a row without opening the document: the identity
+    a reviewer recognises, the amount that will hit the GL, and `flags` — the reason line
+    telling them whether this one is worth opening at all.
+    """
+
+    id: str
+    created_at: datetime | None = None
+    attachment: str
+    bank_code: str | None = None
+    doc_no: str | None = None
+    doc_date: str | None = None
+    # Sum of the gross column, which is what lands on the credit side of the JV. Computed
+    # from the stored details rather than from JV rows, which do not exist until the
+    # review screen builds them against the current accounting config.
+    total: float = 0.0
+    line_count: int = 0
+    flags: list[str] = Field(default_factory=list)
+
+
+class ReviewDocumentDetail(ReviewDocument):
+    """A single document, opened. Adds the payload the review screen edits.
+
+    `extracted` is an `/extract` response verbatim, which is exactly what
+    `useOcrExtraction.applyExtractedData` consumes — the review screen loads it the same
+    way the wizard loads a fresh scan.
+    """
+
+    extracted: dict = Field(default_factory=dict)
+
+
+class ReviewStatus(BaseModel):
+    """What the automation page needs to choose which of its four states to render."""
+
+    enabled: bool = False
+    auto_post: bool = False
+    entitled: bool = False
+    ingest_address: str | None = None
+    blockers: list[str] = Field(default_factory=list)
+    pending: int = 0
+
+
+class AutoPostIn(BaseModel):
+    """The switch on its own, so turning review off is never a side effect of an
+    unrelated settings save — the same reason `TokenIn` is separate from `SettingsIn`."""
+
+    auto_post: bool

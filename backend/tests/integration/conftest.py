@@ -27,11 +27,17 @@ FAKE_SESSION = SessionInfo(
 
 
 @contextmanager
-def make_test_client(mock_db):
+def make_test_client(mock_db, session=None):
     """Yield a configured TestClient with auth + DB overridden.
 
     Patches lifespan hooks so no real DB or network connections are made.
+
+    `session` overrides FAKE_SESSION for one test. FAKE_SESSION's tenant_id is
+    deliberately not a UUID — test_carmen_proxy relies on that to exercise the
+    "no card to look up" branch — so a router that parses it with uuid.UUID()
+    needs its own session rather than a change to the shared one.
     """
+    session = session or FAKE_SESSION
     from starlette.testclient import TestClient
 
     from app.auth.dependencies import get_current_session
@@ -54,13 +60,13 @@ def make_test_client(mock_db):
             current_username,
         )
 
-        current_tenant_id.set(FAKE_SESSION.tenant_id)
-        current_carmen_user_id.set(FAKE_SESSION.carmen_user_id)
-        current_username.set(FAKE_SESSION.username)
-        current_ocr_session_id.set(FAKE_SESSION.session_id)
-        current_carmen_token.set(FAKE_SESSION.carmen_token)
-        current_carmen_uri.set(FAKE_SESSION.carmen_uri)
-        return FAKE_SESSION
+        current_tenant_id.set(session.tenant_id)
+        current_carmen_user_id.set(session.carmen_user_id)
+        current_username.set(session.username)
+        current_ocr_session_id.set(session.session_id)
+        current_carmen_token.set(session.carmen_token)
+        current_carmen_uri.set(session.carmen_uri)
+        return session
 
     app.dependency_overrides[get_db] = _db
     app.dependency_overrides[get_current_session] = _session

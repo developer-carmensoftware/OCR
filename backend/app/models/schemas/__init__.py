@@ -35,7 +35,15 @@ from app.models.schemas.credits import (
     SlipUploadResponse,
     TopupRequest,
 )
-from app.models.schemas.email_automation import RuleIn, SettingsIn, TokenIn
+from app.models.schemas.email_automation import (
+    AutoPostIn,
+    ReviewDocument,
+    ReviewDocumentDetail,
+    ReviewStatus,
+    RuleIn,
+    SettingsIn,
+    TokenIn,
+)
 from app.models.schemas.maintenance import (
     ScheduleMaintenanceRequest,
     TenantMaintenanceRequest,
@@ -67,6 +75,10 @@ __all__ = [
     "FieldMapping",
     "Page",
     # email automation
+    "AutoPostIn",
+    "ReviewDocument",
+    "ReviewDocumentDetail",
+    "ReviewStatus",
     "RuleIn",
     "SettingsIn",
     "TokenIn",
