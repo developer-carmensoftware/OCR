@@ -44,7 +44,7 @@ Every row here was decided in the design session, not inferred.
 | 6 | **No Carmen API change.** Same endpoint, same payload, later. Update the doc; no coordinated release. |
 | 7 | **Automation and manual are separate pages.** `#/CreditCardOCR` is the queue and only the queue; the wizard moves to `#/CreditCardOCR/manual` unedited. An empty automation page is accepted as the cost, and its not-set-up state is what has to earn it. |
 | 8 | **Backlog capped at 50 pending.** Past that, mail is handed back unread via the existing `_HOLD` path and costs nothing. |
-| 9 | **Review is one page, not steps.** Four sections, auto-expanded only when they have a problem. |
+| 9 | **Review is one surface, not steps.** Four blocks, all open, in a modal over the queue (revised 2026-08-28 — the first cut collapsed them, and collapsing made the reviewer work for the answer). |
 | 10 | **One click posts both documents.** JV then input tax, with a per-document opt-out for the tax post. |
 | 11 | **JV posted + tax failed stays `posted`.** Note on the row. No `partially_posted` state. |
 | 12 | **No refund on reject.** Decision-log #17 unchanged: the charge follows the vision call. |
@@ -448,6 +448,89 @@ measured-page-size high-water-mark machinery solves a problem this list does not
 `AccountingReview` also already **blocks submit on an unbalanced JV** (`isImbalanced`, `:102`)
 and names the offending line numbers. That is the "amounts didn't reconcile" reason line,
 already computed.
+
+### Manual scan — `#/CreditCardOCR/manual`
+
+Today's wizard, unedited. Two differences, both in the chrome:
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ ‹ Automation │ ▪ Manual scan                     [ 27 docs ] 🌙 │  ← back to the queue
+├──────────────────────────────────────────────────────────────────┤
+│  ①─Upload ──── ②─Review ──── ③─Accounting ──── ④─Input Tax      │  ← unchanged
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│                  [ UploadSection, unchanged ]                    │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+`AppHeader` takes `onBack` + `backLabel` instead of `backPath="/glJv"`, so Back returns to the
+automation page. Carmen is then two clicks away rather than one, which is the correct ordering:
+the automation page is the module's home now.
+
+### Review — a modal over the queue, at `#/CreditCardOCR/review?id=…`
+
+**Revised 2026-08-28 after looking at the built version.** The first cut was a route with
+collapsible sections that auto-expanded only when flagged. Two things were wrong with it in
+practice, and both were only visible once it existed:
+
+- **Collapsing made the reviewer work for the answer.** Their question is "does this document
+  add up", which is answered by seeing all four parts at once — not by remembering which they
+  have already expanded. The auto-expand heuristic was solving a problem (too much on screen)
+  that a document with four short parts does not have.
+- **Leaving the queue to answer it lost the queue.** Approving is a rhythm — open, check,
+  post, next — and a full page navigation puts a list re-render between every beat.
+
+So: a modal over the queue, everything open, no disclosure controls at all.
+
+```
+┌─ queue, still there behind ───────────────────────────────────────┐
+│ ┌───────────────────────────────────────────────────────────┐    │
+│ │ KBANK   0012345678   31/07/2026                       [✕] │    │
+│ ├───────────────────────────────────────────────────────────┤    │
+│ │ Document      0012345678 · 31/07/2026                  ✓  │    │
+│ │   [ HeaderCard, editable ]                                │    │
+│ │ Lines         14 lines · 48,200.00                     ✓  │    │
+│ │   [ DetailTable, editable ]                               │    │
+│ │ GL mapping    6 accounts · balanced                    ✓  │    │
+│ │   [ AccountingReview, embedded ]                          │    │
+│ │ Input tax     Will be recorded                         ✓  │    │
+│ │   ☑ Post the input tax record                             │    │
+│ ├───────────────────────────────────────────────────────────┤    │
+│ │  [ Reject ]                          [ Approve and post ] │    │
+│ └───────────────────────────────────────────────────────────┘    │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+Still a **route**, not local state: the bell has to be able to open one document, `OrderHistory`
+already establishes the `?id=` convention, and Back closes the modal instead of leaving the app.
+`main.tsx` renders `ReviewQueue` for both routes and the queue owns the modal, so opening and
+closing a document never refetches the list behind it.
+
+Block-header state vocabulary, using the existing badge semantics:
+
+| Marker | Meaning | Effect |
+|---|---|---|
+| `✓` emerald | nothing to look at | — |
+| `⚠` amber | worth a look, can still post | Approve enabled |
+| `⛔` rose | cannot post | Approve **disabled** |
+
+Only the unbalanced-JV case and a missing GL account on a posting row are `⛔`, because those
+are the two things `AccountingReview` already refuses to submit
+([`:320`](../../frontend/src/components/credit-card/AccountingReview.tsx#L320)). Everything else
+is the reviewer's judgement, and the button stays live.
+
+**There is no document preview**, and there cannot be one: attachment bytes are never stored, by
+the rule this whole feature had to negotiate once already. Do not add a preview pane here
+expecting it to work — storing the PDF is a much bigger decision than storing its extracted
+numbers.
+
+Escape and a backdrop click close it, except while a post is in flight: the modal is the only
+place the Carmen error is about to appear.
+
+Block bodies reuse the wizard's components rather than reimplementing them: `HeaderCard`,
+`DetailTable`, and `AccountingReview` with `embedded`.
 
 ### Manual scan — `#/CreditCardOCR/manual`
 

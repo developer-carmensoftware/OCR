@@ -222,9 +222,21 @@ describe('a row that has already been resolved', () => {
     expect(await screen.findByText('something_new')).toBeInTheDocument()
   })
 
-  it('is not clickable — there is nothing left to open', async () => {
+  it('opens the JV in Carmen instead of a review that no longer exists', async () => {
+    // Same destination the `document_posted` notification offers, from the same helper.
     mount(status(), [doc({ status: 'posted', jv_no: 'JV-1' })])
-    await screen.findByText('JV-1')
+    const link = await screen.findByRole('link', { name: /JV-1/ })
+    expect(link).toHaveAttribute('href', expect.stringContaining('/glJv/JV-1/show'))
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(screen.queryByRole('button', { name: /KTC/ })).not.toBeInTheDocument()
+  })
+
+  it('leaves a row with nothing to open inert', async () => {
+    // A failed document has no JV and no payload: a click would go nowhere, so there is
+    // no affordance offering one.
+    mount(status(), [doc({ status: 'failed', reason_code: 'carmen_rejected', jv_no: null })])
+    await screen.findByText(/Carmen refused it/)
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /KTC/ })).not.toBeInTheDocument()
   })
 })

@@ -485,14 +485,39 @@
   background: var(--muted);
 }
 
-/* ── Review document (#/CreditCardOCR/review) ───────────────────────────────── */
+/* ── Review document — a modal over the queue ───────────────────────────────── */
 
-.rd-title {
+.rd-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000; /* under --z-modal (10050) so the reject confirmation stacks on top */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: oklch(0.16 0.02 258.7 / 0.42);
+  backdrop-filter: blur(2px);
+}
+
+.rd-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(60rem, 100%);
+  max-height: min(90vh, 60rem);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.rd-modal-head {
   display: flex;
   align-items: baseline;
   gap: var(--space-3);
   flex-wrap: wrap;
-  margin: var(--space-4) 0 var(--space-3);
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--border);
   font-size: 0.9rem;
   color: var(--text-3);
 }
@@ -508,69 +533,61 @@
   color: var(--text-4);
 }
 
-.rd-section {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--card-bg);
-  box-shadow: var(--shadow-xs);
-  margin-bottom: var(--space-2);
-  overflow: hidden;
+.rd-close {
+  margin-left: auto;
+  align-self: center;
 }
 
-.rd-section-h {
-  margin: 0;
-  font-size: inherit;
-  font-weight: inherit;
-}
-
-.rd-section-btn {
-  display: grid;
-  grid-template-columns: 1rem minmax(6rem, auto) 1fr auto;
-  align-items: center;
+/* The whole document scrolls as one column: the reviewer's question spans all four
+   blocks, so nothing here scrolls independently of anything else. */
+.rd-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
   gap: var(--space-3);
-  width: 100%;
-  padding: 0.8rem 1rem;
-  background: none;
-  border: 0;
-  text-align: left;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-  transition: background-color 160ms var(--ease-out-premium, ease-out);
 }
 
-.rd-section-btn:hover {
+.rd-loading {
+  align-items: center;
+  justify-content: center;
+  min-height: 12rem;
+  color: var(--text-4);
+}
+
+.rd-modal-foot {
+  border-top: 1px solid var(--border);
+  padding: 0.75rem 1rem;
   background: var(--muted);
 }
 
-.rd-section-btn:focus-visible {
-  outline: 2.5px solid var(--primary);
-  outline-offset: -2px;
+.rd-block {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 10px);
+  background: var(--card-bg);
+  overflow: hidden;
 }
 
-.rd-caret {
-  color: var(--text-4);
-  transition: transform 160ms var(--ease-out-premium, ease-out);
+.rd-block-h {
+  display: grid;
+  grid-template-columns: minmax(6rem, auto) 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0.6rem 0.85rem;
+  background: var(--muted);
+  border-bottom: 1px solid var(--border);
 }
 
-.rd-section--open .rd-caret {
-  transform: rotate(90deg);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .rd-caret {
-    transition: none;
-  }
-}
-
-.rd-section-title {
+.rd-block-title {
   font-weight: 700;
   font-size: 0.875rem;
   color: var(--text);
 }
 
-/* The header states the problem, so it carries the same weight as prose, not as a label. */
-.rd-section-summary {
+/* The header states the verdict, so it carries the weight of prose, not of a label. */
+.rd-block-summary {
   font-size: 0.8rem;
   color: var(--text-3);
   overflow: hidden;
@@ -590,9 +607,8 @@
   color: var(--rose);
 }
 
-.rd-section-body {
+.rd-block-body {
   padding: var(--space-3);
-  border-top: 1px solid var(--border);
 }
 
 .rd-check {
@@ -621,19 +637,29 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin: var(--space-4) 0 var(--space-6);
 }
 
 @media (max-width: 640px) {
-  .rd-section-btn {
-    grid-template-columns: 1rem 1fr auto;
+  .rd-overlay {
+    padding: 0;
+  }
+
+  /* Full screen on a phone: a 90vh card inside a viewport-height overlay just wastes
+     the edges on a document this dense. */
+  .rd-modal {
+    max-height: 100vh;
+    height: 100%;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .rd-block-h {
+    grid-template-columns: 1fr auto;
     row-gap: 0.2rem;
   }
 
-  /* The summary wraps to its own line rather than being truncated to nothing: on a phone
-     it is the only thing telling the reviewer whether to open the section. */
-  .rd-section-summary {
-    grid-column: 2 / 4;
+  .rd-block-summary {
+    grid-column: 1 / 3;
     white-space: normal;
   }
 

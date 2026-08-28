@@ -1,17 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  AlertCircle,
-  AlertTriangle,
-  Check,
-  CheckCircle2,
-  ChevronRight,
-  Loader2,
-} from 'lucide-react'
-import AppHeader from '../components/common/AppHeader'
-import UsageIndicator from '../components/common/UsageIndicator'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { AlertCircle, AlertTriangle, Check, CheckCircle2, Loader2, X } from 'lucide-react'
 import CustomModal from '../components/common/CustomModal'
 import SwapLabel from '../components/common/SwapLabel'
-import PageSkeleton from '../components/common/PageSkeleton'
 import HeaderCard from '../components/credit-card/HeaderCard'
 import DetailTable, { type DetailRow } from '../components/credit-card/DetailTable'
 import AccountingReview, { type AccountingState } from '../components/credit-card/AccountingReview'
@@ -29,14 +20,7 @@ import {
 import { detectBankFromExtracted } from '../constants/banks'
 import type { BankCode } from '../types/api'
 
-const QUEUE = '#/CreditCardOCR'
-
-function docIdFromHash(): string | null {
-  const q = window.location.hash.split('?')[1]
-  return q ? new URLSearchParams(q).get('id') : null
-}
-
-/** How much a section should stop someone. `stop` disables Approve; `warn` does not. */
+/** How much a block should stop someone. `stop` disables Approve; `warn` does not. */
 type Severity = 'ok' | 'warn' | 'stop'
 
 const MARK: Record<Severity, { icon: typeof Check; cls: string }> = {
@@ -45,54 +29,47 @@ const MARK: Record<Severity, { icon: typeof Check; cls: string }> = {
   stop: { icon: AlertCircle, cls: 'rd-mark--stop' },
 }
 
-function Section({
-  id,
+/**
+ * One part of the document, always open.
+ *
+ * These used to be collapsible, and collapsing was the mistake: the reviewer's question is
+ * "does this document add up", which is answered by seeing all four parts at once — not by
+ * remembering which of them they have already expanded.
+ */
+function Block({
   title,
   summary,
   severity,
-  open,
-  onToggle,
   children,
 }: {
-  id: string
   title: string
   summary: string
   severity: Severity
-  open: boolean
-  onToggle: () => void
   children: React.ReactNode
 }) {
   const Icon = MARK[severity].icon
   return (
-    <section className={`rd-section${open ? ' rd-section--open' : ''}`}>
-      <h2 className="rd-section-h">
-        <button
-          type="button"
-          className="rd-section-btn"
-          aria-expanded={open}
-          aria-controls={`rd-body-${id}`}
-          onClick={onToggle}
-        >
-          <ChevronRight size={16} className="rd-caret" aria-hidden="true" />
-          <span className="rd-section-title">{title}</span>
-          {/* The header states the problem rather than only flagging one: a collapsed
-              section still has to answer "is this right?" without being opened. */}
-          <span className="rd-section-summary">{summary}</span>
-          <Icon size={16} className={`rd-mark ${MARK[severity].cls}`} aria-hidden="true" />
-        </button>
-      </h2>
-      {/* Hidden, not unmounted: AccountingReview is what computes the rows Approve posts,
-          so a collapsed section would answer for details the reviewer has since edited. */}
-      <div className="rd-section-body" id={`rd-body-${id}`} hidden={!open}>
-        {children}
-      </div>
+    <section className="rd-block">
+      <h3 className="rd-block-h">
+        <span className="rd-block-title">{title}</span>
+        <span className="rd-block-summary">{summary}</span>
+        <Icon size={16} className={`rd-mark ${MARK[severity].cls}`} aria-hidden="true" />
+      </h3>
+      <div className="rd-block-body">{children}</div>
     </section>
   )
 }
 
-export default function ReviewDocument() {
+interface Props {
+  id: string
+  /** Dismissed without deciding — the document is still waiting. */
+  onClose: () => void
+  /** Approved, rejected, or found to be gone: the queue behind this is now stale. */
+  onDone: () => void
+}
+
+export default function ReviewDocument({ id, onClose, onDone }: Props) {
   const { t } = useT()
-  const [id] = useState(docIdFromHash)
   const [doc, setDoc] = useState<ReviewDocumentDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [gone, setGone] = useState(false)
@@ -108,25 +85,12 @@ export default function ReviewDocument() {
     unmappedFields: [],
   })
 
-  // Whether AccountingReview has answered yet. Until it has, `blocked` is only the
-  // pessimistic default, and opening GL on it flashes the section open and shut.
-  const [accReady, setAccReady] = useState(false)
-  const [open, setOpen] = useState<Record<string, boolean>>({})
-  // A ref, not state: the auto-expand effect must read whether the reviewer has taken over
-  // *now*, not as of the render it was scheduled in — otherwise a click landing in the same
-  // tick as the GL verdict is undone by the effect that was already queued.
-  const touched = useRef(false)
   const [busy, setBusy] = useState(false)
   const [postError, setPostError] = useState<string | null>(null)
   const [rejecting, setRejecting] = useState(false)
   const [reason, setReason] = useState('')
 
   useEffect(() => {
-    if (!id) {
-      setLoading(false)
-      setGone(true)
-      return
-    }
     let alive = true
     getPending(id)
       .then(d => {
@@ -167,6 +131,16 @@ export default function ReviewDocument() {
     }
   }, [id])
 
+  // Escape closes, like every other dialog in the app — but never mid-post, where the
+  // reviewer would lose the one place the Carmen error is about to appear.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !busy && !rejecting) onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [busy, rejecting, onClose])
+
   // Every layout satisfies gross = commission + tax + net per line, so a line that breaks
   // it was misread. Same arithmetic the backend flagged at park time, recomputed here
   // because the reviewer is editing and the stored flag went stale the moment they typed.
@@ -187,34 +161,13 @@ export default function ReviewDocument() {
   const lineSeverity: Severity = badLines.length ? 'warn' : 'ok'
   const glSeverity: Severity = acc.blocked ? 'stop' : acc.unmappedFields.length ? 'warn' : 'ok'
 
-  // Auto-expand only what has a problem, once, when the document lands. A clean document
-  // opens fully collapsed and is two clicks from posted; re-running this on every edit
-  // would fight the reviewer as they fix things.
-  useEffect(() => {
-    if (!doc || touched.current || !accReady) return
-    setOpen({
-      doc: !headerData.DocNo,
-      lines: badLines.length > 0,
-      gl: acc.blocked || acc.unmappedFields.length > 0,
-      tax: false,
-    })
-  }, [doc, accReady, headerData.DocNo, badLines.length, acc.blocked, acc.unmappedFields.length])
-
-  const toggle = (k: string) => {
-    touched.current = true
-    setOpen(o => ({ ...o, [k]: !o[k] }))
-  }
-
   const updateHeader = (key: string, value: string) => setHeaderData(h => ({ ...h, [key]: value }))
   const updateDetail = (i: number, col: string, value: string) =>
     setDetails(d => d.map((row, n) => (n === i ? { ...row, [col]: value } : row)))
-  const onState = useCallback((s: AccountingState) => {
-    setAcc(s)
-    setAccReady(true)
-  }, [])
+  const onState = useCallback((s: AccountingState) => setAcc(s), [])
 
   async function approve() {
-    if (!id || !doc) return
+    if (!doc) return
     setBusy(true)
     setPostError(null)
     try {
@@ -242,13 +195,13 @@ export default function ReviewDocument() {
           : t('review.postedOk', { jv: res.jv_no }),
         res.tax_note ? 'warning' : 'success'
       )
-      window.location.hash = QUEUE
+      onDone()
     } catch (e) {
       const err = e as Error & { status?: number }
       if (err.status === 409) {
         // Someone else in the BU got there first. Nothing to fix here.
         showToast(t('review.alreadyHandled'), 'warning')
-        window.location.hash = QUEUE
+        onDone()
         return
       }
       // Carmen refuses JVs for reasons a human standing here can fix — a closed period, a
@@ -261,12 +214,11 @@ export default function ReviewDocument() {
   }
 
   async function reject() {
-    if (!id) return
     setBusy(true)
     try {
       await rejectDocument(id, reason.trim() || undefined)
       showToast(t('review.rejected'), 'success')
-      window.location.hash = QUEUE
+      onDone()
     } catch {
       showToast(t('review.rejectFailed'), 'error')
       setBusy(false)
@@ -274,192 +226,199 @@ export default function ReviewDocument() {
     }
   }
 
-  if (loading) return <PageSkeleton />
-
-  if (gone || !doc) {
-    return (
-      <div className="app-container">
-        <AppHeader module="credit-card" moduleName={t('review.title')} />
-        <div className="rq-empty">
-          <AlertTriangle size={36} className="rq-empty-icon rq-empty-icon--bad" aria-hidden />
-          <h2 className="rq-empty-title">{t('review.goneTitle')}</h2>
-          <p className="rq-empty-body">{t('review.goneBody')}</p>
-          <a className="btn btn-outline" href={QUEUE}>
-            {t('review.backToQueue')}
-          </a>
-        </div>
-      </div>
-    )
-  }
-
   const sum = (k: keyof DetailRow) => details.reduce((n, d) => n + parseNum(d[k]), 0)
 
-  return (
-    <div className="app-container">
-      <CustomModal
-        show={rejecting}
-        type="warning"
-        confirmVariant="danger"
-        title={t('review.rejectTitle')}
-        message={t('review.rejectMsg')}
-        inputLabel={t('review.rejectReason')}
-        inputValue={reason}
-        onInputChange={setReason}
-        inputPlaceholder={t('review.rejectReasonHint')}
-        confirmText={t('review.rejectConfirm')}
-        cancelText={t('modal.cancel')}
-        busy={busy}
-        onConfirm={reject}
-        onCancel={() => setRejecting(false)}
-      />
-
-      <AppHeader
-        module="credit-card"
-        moduleName={t('review.title')}
-        eyebrow="Carmen Cloud · Credit Card"
-        onBack={() => {
-          window.location.hash = QUEUE
-        }}
-        backLabel={t('review.backToQueue')}
+  return createPortal(
+    <div className="rd-overlay" role="presentation" onMouseDown={() => !busy && onClose()}>
+      <div
+        className="rd-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('review.title')}
+        onMouseDown={e => e.stopPropagation()}
       >
-        <UsageIndicator />
-      </AppHeader>
-
-      <div className="rd-title">
-        <span className="rd-title-bank">{bank || doc.bank_code || t('review.unknownBank')}</span>
-        <span className="text-mono">{headerData.DocNo || '—'}</span>
-        <span className="text-mono rd-title-date">{headerData.DocDate || '—'}</span>
-      </div>
-
-      {warnings.length > 0 && (
-        <div className="mapping-alert">
-          <AlertTriangle size={16} />
-          <span className="cc-alert-text">{warnings.join(' · ')}</span>
-        </div>
-      )}
-
-      <Section
-        id="doc"
-        title={t('review.secDocument')}
-        summary={
-          headerData.DocNo
-            ? `${headerData.DocNo} · ${headerData.DocDate}`
-            : t('review.secDocumentMissing')
-        }
-        severity={docSeverity}
-        open={!!open.doc}
-        onToggle={() => toggle('doc')}
-      >
-        <HeaderCard headerData={headerData} onUpdate={updateHeader} />
-      </Section>
-
-      <Section
-        id="lines"
-        title={t('review.secLines')}
-        summary={
-          badLines.length
-            ? t('review.secLinesBad', { lines: badLines.map(b => b.line).join(', ') })
-            : t('review.secLinesOk', { count: String(details.length), total: fmt(sum('PayAmt')) })
-        }
-        severity={lineSeverity}
-        open={!!open.lines}
-        onToggle={() => toggle('lines')}
-      >
-        <DetailTable
-          details={details}
-          onUpdate={updateDetail}
-          onAddRow={() =>
-            setDetails(d => [
-              ...d,
-              {
-                Transaction: '',
-                PayAmt: '',
-                CommisAmt: '',
-                TaxAmt: '',
-                Total: '',
-                _uid: crypto.randomUUID(),
-              },
-            ])
-          }
-          onDeleteRow={i => setDetails(d => d.filter((_, n) => n !== i))}
+        <CustomModal
+          show={rejecting}
+          type="warning"
+          confirmVariant="danger"
+          title={t('review.rejectTitle')}
+          message={t('review.rejectMsg')}
+          inputLabel={t('review.rejectReason')}
+          inputValue={reason}
+          onInputChange={setReason}
+          inputPlaceholder={t('review.rejectReasonHint')}
+          confirmText={t('review.rejectConfirm')}
+          cancelText={t('modal.cancel')}
+          busy={busy}
+          onConfirm={reject}
+          onCancel={() => setRejecting(false)}
         />
-      </Section>
 
-      <Section
-        id="gl"
-        title={t('review.secGl')}
-        summary={
-          acc.blocked
-            ? t('review.secGlBlocked')
-            : acc.unmappedFields.length
-              ? t('review.secGlGuessed', { fields: acc.unmappedFields.join(', ') })
-              : t('review.secGlOk', { count: String(acc.rows.length) })
-        }
-        severity={glSeverity}
-        open={!!open.gl}
-        onToggle={() => toggle('gl')}
-      >
-        <AccountingReview
-          embedded
-          details={details}
-          headerData={headerData}
-          bank={bank}
-          onBack={() => undefined}
-          onSubmit={() => undefined}
-          onGoMapping={() => window.open('#/CreditCardOCR/mapping', '_blank')}
-          onState={onState}
-        />
-      </Section>
+        <header className="rd-modal-head">
+          <span className="rd-title-bank">{bank || doc?.bank_code || t('review.unknownBank')}</span>
+          <span className="text-mono">{headerData.DocNo || '—'}</span>
+          <span className="text-mono rd-title-date">{headerData.DocDate || '—'}</span>
+          <button
+            type="button"
+            className="btn-icon rd-close"
+            onClick={onClose}
+            disabled={busy}
+            aria-label={t('review.close')}
+          >
+            <X size={16} />
+          </button>
+        </header>
 
-      <Section
-        id="tax"
-        title={t('review.secTax')}
-        summary={postInputTax ? t('review.secTaxOn') : t('review.secTaxOff')}
-        severity="ok"
-        open={!!open.tax}
-        onToggle={() => toggle('tax')}
-      >
-        <label className="rd-check">
-          <input
-            type="checkbox"
-            checked={postInputTax}
-            onChange={e => setPostInputTax(e.target.checked)}
-          />
-          <span>
-            <strong>{t('review.secTaxLabel')}</strong>
-            <br />
-            <span className="rd-check-hint">{t('review.secTaxHint')}</span>
-          </span>
-        </label>
-      </Section>
+        {loading ? (
+          <div className="rd-modal-body rd-loading">
+            <Loader2 size={22} className="animate-spin" aria-hidden="true" />
+          </div>
+        ) : gone || !doc ? (
+          <div className="rd-modal-body rq-empty">
+            <AlertTriangle size={36} className="rq-empty-icon rq-empty-icon--bad" aria-hidden />
+            <h2 className="rq-empty-title">{t('review.goneTitle')}</h2>
+            <p className="rq-empty-body">{t('review.goneBody')}</p>
+            <button type="button" className="btn btn-outline" onClick={onDone}>
+              {t('review.backToQueue')}
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="rd-modal-body">
+              {warnings.length > 0 && (
+                <div className="mapping-alert">
+                  <AlertTriangle size={16} />
+                  <span className="cc-alert-text">{warnings.join(' · ')}</span>
+                </div>
+              )}
 
-      {postError && (
-        <div className="mapping-alert is-danger" role="alert">
-          <AlertCircle size={16} />
-          <span className="cc-alert-text">{postError}</span>
-        </div>
-      )}
+              <Block
+                title={t('review.secDocument')}
+                summary={
+                  headerData.DocNo
+                    ? `${headerData.DocNo} · ${headerData.DocDate}`
+                    : t('review.secDocumentMissing')
+                }
+                severity={docSeverity}
+              >
+                <HeaderCard headerData={headerData} onUpdate={updateHeader} />
+              </Block>
 
-      <div className="rd-actions">
-        <button
-          type="button"
-          className="btn btn-danger"
-          onClick={() => setRejecting(true)}
-          disabled={busy}
-        >
-          {t('review.reject')}
-        </button>
-        <div className="form-actions-sep" />
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={approve}
-          disabled={busy || acc.blocked}
-        >
-          {busy ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-          <SwapLabel active={busy} idle={t('review.approve')} busy={t('review.approving')} />
-        </button>
+              <Block
+                title={t('review.secLines')}
+                summary={
+                  badLines.length
+                    ? t('review.secLinesBad', { lines: badLines.map(b => b.line).join(', ') })
+                    : t('review.secLinesOk', {
+                        count: String(details.length),
+                        total: fmt(sum('PayAmt')),
+                      })
+                }
+                severity={lineSeverity}
+              >
+                <DetailTable
+                  details={details}
+                  onUpdate={updateDetail}
+                  onAddRow={() =>
+                    setDetails(d => [
+                      ...d,
+                      {
+                        Transaction: '',
+                        PayAmt: '',
+                        CommisAmt: '',
+                        TaxAmt: '',
+                        Total: '',
+                        _uid: crypto.randomUUID(),
+                      },
+                    ])
+                  }
+                  onDeleteRow={i => setDetails(d => d.filter((_, n) => n !== i))}
+                />
+              </Block>
+
+              <Block
+                title={t('review.secGl')}
+                summary={
+                  acc.blocked
+                    ? t('review.secGlBlocked')
+                    : acc.unmappedFields.length
+                      ? t('review.secGlGuessed', { fields: acc.unmappedFields.join(', ') })
+                      : t('review.secGlOk', { count: String(acc.rows.length) })
+                }
+                severity={glSeverity}
+              >
+                <AccountingReview
+                  embedded
+                  details={details}
+                  headerData={headerData}
+                  bank={bank}
+                  onBack={() => undefined}
+                  onSubmit={() => undefined}
+                  onGoMapping={() => window.open('#/CreditCardOCR/mapping', '_blank')}
+                  onState={onState}
+                />
+              </Block>
+
+              <Block
+                title={t('review.secTax')}
+                summary={postInputTax ? t('review.secTaxOn') : t('review.secTaxOff')}
+                severity="ok"
+              >
+                <label className="rd-check">
+                  <input
+                    type="checkbox"
+                    checked={postInputTax}
+                    onChange={e => setPostInputTax(e.target.checked)}
+                  />
+                  <span>
+                    <strong>{t('review.secTaxLabel')}</strong>
+                    <br />
+                    <span className="rd-check-hint">{t('review.secTaxHint')}</span>
+                  </span>
+                </label>
+              </Block>
+            </div>
+
+            <footer className="rd-modal-foot">
+              {postError && (
+                <div className="mapping-alert is-danger" role="alert">
+                  <AlertCircle size={16} />
+                  <span className="cc-alert-text">{postError}</span>
+                </div>
+              )}
+              <div className="rd-actions">
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  onClick={() => setRejecting(true)}
+                  disabled={busy}
+                >
+                  {t('review.reject')}
+                </button>
+                <div className="form-actions-sep" />
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={approve}
+                  disabled={busy || acc.blocked}
+                >
+                  {busy ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <CheckCircle2 size={14} />
+                  )}
+                  <SwapLabel
+                    active={busy}
+                    idle={t('review.approve')}
+                    busy={t('review.approving')}
+                  />
+                </button>
+              </div>
+            </footer>
+          </>
+        )}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

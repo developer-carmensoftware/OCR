@@ -1,6 +1,7 @@
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, ExternalLink } from 'lucide-react'
 import { useT } from '../../i18n/LanguageContext'
 import { fmt } from '../../lib/format'
+import { getCarmenUrl } from '../../lib/url'
 import type { ReviewDocument } from '../../lib/api/emailReview'
 import type { TKey } from '../../i18n/dict'
 
@@ -43,14 +44,23 @@ interface Props {
 export default function QueueRow({ row, onOpen }: Props) {
   const { t } = useT()
   const pending = row.status === 'pending_review'
+  // A posted row has no payload left to open here, but it does have somewhere to go: the
+  // JV it became, in Carmen. Same destination the `document_posted` notification offers,
+  // built from the same helper so the two cannot point at different Carmens.
+  const jvHref =
+    !pending && row.status === 'posted' && row.jv_no
+      ? getCarmenUrl(`/glJv/${row.jv_no}/show`)
+      : null
 
-  // Only a pending document can be opened — every other row's payload has been cleared,
-  // so there is nothing on the other side of the click.
-  const Tag = pending ? 'button' : 'div'
-  const clickProps = pending ? { type: 'button' as const, onClick: () => onOpen(row.id) } : {}
+  const Tag = pending ? 'button' : jvHref ? 'a' : 'div'
+  const clickProps = pending
+    ? { type: 'button' as const, onClick: () => onOpen(row.id) }
+    : jvHref
+      ? { href: jvHref, target: '_blank', rel: 'noopener noreferrer', title: t('review.openJv') }
+      : {}
 
   return (
-    <li className={`rq-row${pending ? '' : ' rq-row--static'}`}>
+    <li className={`rq-row${pending || jvHref ? '' : ' rq-row--static'}`}>
       <Tag className="rq-row-btn" {...clickProps}>
         <span className="rq-row-main">
           <span className="rq-bank">{row.bank_code || t('review.unknownBank')}</span>
@@ -71,6 +81,8 @@ export default function QueueRow({ row, onOpen }: Props) {
 
           {pending ? (
             <ChevronRight size={16} className="rq-chevron" aria-hidden="true" />
+          ) : jvHref ? (
+            <ExternalLink size={14} className="rq-chevron" aria-hidden="true" />
           ) : (
             <span className="rq-chevron" aria-hidden="true" />
           )}

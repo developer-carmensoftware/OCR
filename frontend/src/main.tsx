@@ -69,7 +69,6 @@ function dismissInitialLoader() {
 const Home = lazy(() => import('./pages/Home'))
 const ManualScan = lazy(() => import('./pages/ManualScan'))
 const ReviewQueue = lazy(() => import('./pages/ReviewQueue'))
-const ReviewDocument = lazy(() => import('./pages/ReviewDocument'))
 const Mapping = lazy(() => import('./pages/Mapping'))
 const APInvoice = lazy(() => import('./pages/APInvoice'))
 const Pricing = lazy(() => import('./pages/Pricing'))
@@ -143,7 +142,8 @@ function Router() {
     // module's first screen — the queue. The wizard is somewhere you go on purpose.
     if (sub === 'mapping') Page = <Mapping />
     else if (sub === 'manual') Page = <ManualScan />
-    else if (sub === 'review') Page = <ReviewDocument />
+    // `/review?id=…` is the queue with a document open over it. Same component, so
+    // opening and closing a document never refetches the list behind it.
     else Page = <ReviewQueue />
   } else if (route.startsWith('apinvoice')) {
     Page = <APInvoice />

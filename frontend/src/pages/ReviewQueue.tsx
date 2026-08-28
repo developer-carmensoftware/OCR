@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Copy, Mail, RefreshCw, ScanLine } from 'lucide-react'
 import AppHeader from '../components/common/AppHeader'
 import UsageIndicator from '../components/common/UsageIndicator'
 import Pager from '../components/common/Pager'
 import QueueRow from '../components/credit-card/QueueRow'
 import QueueSettings from '../components/credit-card/QueueSettings'
+import ReviewDocument from './ReviewDocument'
 import { useReviewQueue } from '../hooks/credit-card/useReviewQueue'
 import { QUEUE_TABS, type QueueTab } from '../lib/api/emailReview'
 import { useFitRows } from '../hooks/useFitRows'
@@ -22,8 +23,18 @@ const TAB_LABEL: Record<QueueTab, TKey> = {
   skipped: 'review.tabSkipped',
 }
 
+const QUEUE = '#/CreditCardOCR'
+
 function goManual() {
   window.location.hash = '#/CreditCardOCR/manual'
+}
+
+/** The document the URL says is open, if any. A route rather than local state so a
+ *  document can be linked to, and so Back closes it. */
+function docIdFromHash(): string | null {
+  const [route, query] = window.location.hash.split('?')
+  if (!route.toLowerCase().includes('/review')) return null
+  return query ? new URLSearchParams(query).get('id') : null
 }
 
 /** The skeleton is the real row with its content hidden, so the list does not jolt when
@@ -130,6 +141,15 @@ export default function ReviewQueue() {
   const { status, tab, setTab, rows, total, offset, setOffset, loading, error, reload } =
     useReviewQueue(limit)
   const [reloading, setReloading] = useState(false)
+  const [openId, setOpenId] = useState(docIdFromHash)
+
+  // main.tsx renders this same component for both routes, so the hash change that opens a
+  // document does not remount anything — this is what notices it.
+  useEffect(() => {
+    const onHash = () => setOpenId(docIdFromHash())
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
 
   const refresh = () => {
     setReloading(true)
@@ -138,7 +158,7 @@ export default function ReviewQueue() {
   }
 
   const openDoc = (id: string) => {
-    window.location.hash = `#/CreditCardOCR/review?id=${id}`
+    window.location.hash = `${QUEUE}/review?id=${id}`
   }
 
   const configured = !!status?.enabled && !!status?.entitled
@@ -255,6 +275,19 @@ export default function ReviewQueue() {
 
           {hasWork && <Pager offset={offset} limit={limit} total={total} onChange={setOffset} />}
         </>
+      )}
+
+      {openId && (
+        <ReviewDocument
+          id={openId}
+          onClose={() => {
+            window.location.hash = QUEUE
+          }}
+          onDone={() => {
+            window.location.hash = QUEUE
+            reload()
+          }}
+        />
       )}
     </div>
   )

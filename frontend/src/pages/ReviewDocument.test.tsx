@@ -1,4 +1,3 @@
-import type React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { LanguageProvider } from '../i18n/LanguageContext'
@@ -10,10 +9,6 @@ vi.mock('../lib/api/emailReview', () => ({
   getPending: vi.fn(),
   approveDocument: vi.fn(),
   rejectDocument: vi.fn(),
-}))
-vi.mock('../components/common/UsageIndicator', () => ({ default: () => null }))
-vi.mock('../components/common/AppHeader', () => ({
-  default: ({ children }: { children?: React.ReactNode }) => <header>{children}</header>,
 }))
 
 // AccountingReview reaches Carmen for account names and the BU's config. Its own suite
@@ -85,17 +80,19 @@ async function clickApprove() {
   fireEvent.click(btn)
 }
 
+const onClose = vi.fn()
+const onDone = vi.fn()
+
 function mount() {
   return render(
     <LanguageProvider>
-      <ReviewDocument />
+      <ReviewDocument id="d1" onClose={onClose} onDone={onDone} />
     </LanguageProvider>
   )
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
-  window.location.hash = '#/CreditCardOCR/review?id=d1'
   accState = {
     rows: [{ dept: 'GEN', acc: '1010' }],
     blocked: false,
@@ -104,55 +101,26 @@ beforeEach(() => {
 })
 
 describe('loading a parked document', () => {
-  it('loads snake_case details into the PascalCase editor', async () => {
-    // The payload is the raw /extract shape. Skipping the bridge would silently render
+  it('shows the whole document at once, no clicking to reveal it', async () => {
+    // The payload is the raw /extract shape. Skipping the snake_case bridge would render
     // every row empty rather than failing, which is the worst possible way to be wrong
     // about money.
     vi.mocked(api.getPending).mockResolvedValue(detail())
     mount()
-    // Collapsed by design when nothing is flagged, so open the two sections to read them.
-    const docBtn = await screen.findByRole('button', { name: /Document/ })
-    await waitFor(() => expect(docBtn).toHaveAttribute('aria-expanded', 'false'))
-    fireEvent.click(docBtn)
     expect(await screen.findByDisplayValue('INV-001')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /Lines/ }))
-    expect(await screen.findByDisplayValue('1,000.00')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('1,000.00')).toBeInTheDocument()
+    expect(screen.getByTestId('accounting')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox')).toBeInTheDocument()
   })
 
-  it('tells the reviewer when the document is no longer theirs to handle', async () => {
-    vi.mocked(api.getPending).mockRejectedValue(new Error('404'))
-    mount()
-    expect(await screen.findByText('This document is not waiting for review')).toBeInTheDocument()
-  })
-})
-
-describe('which sections open themselves', () => {
-  it('leaves a clean document fully collapsed', async () => {
+  it("states each part's verdict in its own header", async () => {
     vi.mocked(api.getPending).mockResolvedValue(detail())
     mount()
-    await screen.findByText('Document')
-    // Nothing may open even for a frame: the GL verdict arrives async, and opening on its
-    // pessimistic default flashed the section open and shut on every clean document.
-    await screen.findByTestId('accounting')
-    for (let i = 0; i < 5; i++) {
-      const flags = Array.from(document.querySelectorAll('.rd-section-btn')).map(b =>
-        b.getAttribute('aria-expanded')
-      )
-      expect(flags).toEqual(['false', 'false', 'false', 'false'])
-      await new Promise(r => setTimeout(r, 10))
-    }
+    expect(await screen.findByText('INV-001 · 15/01/2026')).toBeInTheDocument()
+    expect(screen.getByText('1 lines · 1,000.00')).toBeInTheDocument()
   })
 
-  it('opens the section whose header states a problem', async () => {
-    vi.mocked(api.getPending).mockResolvedValue(detail({ extracted: { ...EXTRACTED, doc_no: '' } }))
-    mount()
-    const doc = await screen.findByRole('button', { name: /Document number is missing/ })
-    // The section opens from an effect, which commits after findBy* first sees the button.
-    await waitFor(() => expect(doc).toHaveAttribute('aria-expanded', 'true'))
-    expect(screen.getByRole('button', { name: /Lines/ })).toHaveAttribute('aria-expanded', 'false')
-  })
-
-  it('opens Lines when a line does not add up', async () => {
+  it('says so in the header when a line does not add up', async () => {
     vi.mocked(api.getPending).mockResolvedValue(
       detail({
         extracted: {
@@ -170,8 +138,40 @@ describe('which sections open themselves', () => {
       })
     )
     mount()
-    const lines = await screen.findByRole('button', { name: /Line 1 does not add up/ })
-    await waitFor(() => expect(lines).toHaveAttribute('aria-expanded', 'true'))
+    expect(await screen.findByText('Line 1 does not add up')).toBeInTheDocument()
+  })
+
+  it('says so in the header when the document number is missing', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(detail({ extracted: { ...EXTRACTED, doc_no: '' } }))
+    mount()
+    expect(await screen.findByText('Document number is missing')).toBeInTheDocument()
+  })
+
+  it('tells the reviewer when the document is no longer theirs to handle', async () => {
+    vi.mocked(api.getPending).mockRejectedValue(new Error('404'))
+    mount()
+    expect(await screen.findByText('This document is not waiting for review')).toBeInTheDocument()
+  })
+})
+
+describe('dismissing without deciding', () => {
+  it('closes on Escape, and the document stays waiting', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalled()
+    expect(onDone).not.toHaveBeenCalled()
+  })
+
+  it('refuses to close mid-post', async () => {
+    // The modal is the only place the Carmen error is about to appear.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    vi.mocked(api.approveDocument).mockReturnValue(new Promise(() => {}))
+    mount()
+    await clickApprove()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).not.toHaveBeenCalled()
   })
 })
 
@@ -180,9 +180,6 @@ describe('approving', () => {
     vi.mocked(api.getPending).mockResolvedValue(detail())
     vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-9001', tax_note: null })
     mount()
-    const docBtn = await screen.findByRole('button', { name: /Document/ })
-    await waitFor(() => expect(docBtn).toHaveAttribute('aria-expanded', 'false'))
-    fireEvent.click(docBtn)
     const docNo = await screen.findByDisplayValue('INV-001')
     fireEvent.change(docNo, { target: { value: 'INV-999' } })
     await clickApprove()
@@ -210,7 +207,7 @@ describe('approving', () => {
     mount()
     await clickApprove()
     expect(await screen.findByText('Period is closed')).toBeInTheDocument()
-    expect(window.location.hash).toContain('review')
+    expect(onDone).not.toHaveBeenCalled()
   })
 
   it('sends the reviewer back to the queue when someone else got there first', async () => {
@@ -222,14 +219,14 @@ describe('approving', () => {
     vi.mocked(api.approveDocument).mockRejectedValue(err)
     mount()
     await clickApprove()
-    await waitFor(() => expect(window.location.hash).toBe('#/CreditCardOCR'))
+    await waitFor(() => expect(onDone).toHaveBeenCalled())
   })
 
   it('can decline the input-tax record without blocking the JV', async () => {
     vi.mocked(api.getPending).mockResolvedValue(detail())
     vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-2', tax_note: null })
     mount()
-    fireEvent.click(await screen.findByRole('button', { name: /Input tax/ }))
+    await screen.findByDisplayValue('INV-001')
     fireEvent.click(screen.getByRole('checkbox'))
     await clickApprove()
     await waitFor(() => expect(api.approveDocument).toHaveBeenCalled())
@@ -255,6 +252,6 @@ describe('rejecting', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: /Reject document/ }))
     await waitFor(() => expect(api.rejectDocument).toHaveBeenCalledWith('d1', 'wrong company'))
-    await waitFor(() => expect(window.location.hash).toBe('#/CreditCardOCR'))
+    await waitFor(() => expect(onDone).toHaveBeenCalled())
   })
 })

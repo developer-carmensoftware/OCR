@@ -719,6 +719,8 @@ const en = {
   'review.nothingWaiting': 'Nothing waiting',
   'review.autoPostOn': 'Posting without review',
   'review.settings': 'Automation settings',
+  'review.close': 'Close',
+  'review.openJv': 'Open JV in Carmen',
   'review.autoPostLabel': 'Post without review',
   'review.autoPostHint':
     'Documents post to Carmen as soon as they are read. Nothing waits here for approval - turn this on once the queue has been getting it right.',
@@ -2125,6 +2127,8 @@ const th: Record<TKey, string> = {
   'review.nothingWaiting': 'ไม่มีรายการรอ',
   'review.autoPostOn': 'โพสต์อัตโนมัติ',
   'review.settings': 'ตั้งค่าระบบอัตโนมัติ',
+  'review.close': 'ปิด',
+  'review.openJv': 'เปิด JV ใน Carmen',
   'review.autoPostLabel': 'โพสต์โดยไม่ต้องตรวจ',
   'review.autoPostHint':
     'เอกสารจะโพสต์เข้า Carmen ทันทีที่อ่านเสร็จ ไม่มีอะไรรอให้อนุมัติที่นี่ - เปิดเมื่อมั่นใจว่าคิวทำงานถูกต้องแล้ว',
