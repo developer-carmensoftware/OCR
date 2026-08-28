@@ -135,6 +135,10 @@ class _Patches:
         self.open_or_fail = AsyncMock(return_value=None)
         self.foreign_tax_id = AsyncMock(return_value=conflict)
         self.post_input_tax = AsyncMock(return_value=tax_note)
+        # Exposed like every other collaborator so a test can assert the JV was *not*
+        # posted. The patch is stopped by the time `_run` returns, so reaching for
+        # `ingest.post_gljv` afterwards finds the real function again.
+        self.post_gljv = AsyncMock(return_value=carmen_result, side_effect=carmen_side_effect)
         self._stack = []
 
     def __enter__(self):
@@ -153,11 +157,7 @@ class _Patches:
             patch.object(ingest, "get_accounting_config", AsyncMock(return_value=self.config)),
             patch.object(ingest, "_suggest_missing_mappings", self.suggest),
             patch.object(ingest, "fill_missing_mappings", self.fill_missing_mappings),
-            patch.object(
-                ingest,
-                "post_gljv",
-                AsyncMock(return_value=self.carmen_result, side_effect=self.carmen_side_effect),
-            ),
+            patch.object(ingest, "post_gljv", self.post_gljv),
         ]
         for p in patches:
             p.start()
@@ -185,6 +185,7 @@ async def _run(
     rules=None,
     carmen_token="dev-tok",
     carmen_uri="https://hotel.carmenwork.com",
+    auto_post=True,
     **patch_kwargs,
 ):
     """Runs `_process_attachment` — the whole per-attachment pipeline for a tenant the
@@ -192,6 +193,11 @@ async def _run(
 
     Returns (outcome, patches) so callers can assert on refund_document /
     consume_document / extract calls, not just the outcome string.
+
+    `auto_post` defaults True because that is the behaviour every test in this file
+    predates the review queue and asserts: the document goes all the way to Carmen. The
+    review-fork tests pass False explicitly, so the default can never make one of them
+    pass for the wrong reason.
     """
     with (
         patch.object(ingest, "async_session", _session_factory(fake_db)),
@@ -209,6 +215,7 @@ async def _run(
             passwords=[],
             carmen_token=carmen_token,
             carmen_uri=carmen_uri,
+            auto_post=auto_post,
         )
     return outcome, p
 
@@ -1118,6 +1125,7 @@ async def test_run_ingest_summarises_every_message_and_records_the_job_run():
     assert summary == {
         "messages": 2,
         "posted": 1,
+        "pending_review": 0,
         "failed": 0,
         "skipped": 0,
         "unrouted": 1,
@@ -1681,6 +1689,7 @@ async def test_running_out_of_documents_releases_the_claim():
             passwords=[],
             carmen_token="tok",
             carmen_uri="https://h",
+            auto_post=True,
         )
     release.assert_awaited_once()
 
@@ -1712,6 +1721,7 @@ async def test_a_disabled_module_holds_the_mail_instead_of_failing_the_document(
             passwords=[],
             carmen_token="tok",
             carmen_uri="https://h",
+            auto_post=True,
         )
     release.assert_awaited_once()
 
@@ -1871,3 +1881,144 @@ async def test_a_failed_poll_writes_a_job_run_even_with_no_mail():
         await ingest._record_run(datetime.now(UTC), {"messages": 0}, error="IMAP login refused")
     assert len(db.added) == 1
     assert db.added[0].error_message == "IMAP login refused"
+
+
+# ── The review fork: stop one step short of Carmen ────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_review_mode_parks_the_document_instead_of_posting():
+    """`auto_post` off is the whole feature: extract, gate, map — then wait.
+
+    The assertion that matters is the negative one. Everything above the fork must still
+    run (the charge, the tax-ID check, the GL mapping) so that a document reaching a human
+    has already survived every gate a machine can judge — but `post_gljv` must not fire,
+    and `submitted_at` must not be stamped, or the "approval" would be approving something
+    already in the customer's books.
+    """
+    db = _FakeDB()
+    outcome, p = await _run(
+        db,
+        auto_post=False,
+        extracted=_extracted(),
+        config=_config(),
+        carmen_result={"Code": 0, "InternalMessage": "JV-1"},
+    )
+
+    assert outcome == "pending_review"
+    p.post_gljv.assert_not_awaited()
+    p.mark_submitted.assert_not_awaited()
+    p.post_input_tax.assert_not_awaited()
+
+    row = db.added[0]
+    assert row.status == "pending_review"
+    assert row.doc_no == "INV-001"
+    assert row.review_payload["extracted"]["doc_no"] == "INV-001"
+    assert len(row.review_payload["extracted"]["details"]) == 1
+
+    # The credit is spent at extraction and stays spent. Decision-log #17: the charge
+    # follows the vision call, not the outcome — so neither approving nor rejecting this
+    # later may refund, and parking certainly may not.
+    p.consume_document.assert_awaited_once()
+    p.refund_document.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_parked_payload_drops_raw_text():
+    """The bulkiest field on the extraction, read by nothing, and this row sits in the
+    database until a human clicks. Storing line items at all is a narrowing of a
+    documented rule; storing the whole OCR dump with them is not part of that deal."""
+    db = _FakeDB()
+    await _run(
+        db,
+        auto_post=False,
+        extracted=_extracted(raw_text="page 1 of 4 ..."),
+        config=_config(),
+        carmen_result=None,
+    )
+    assert "raw_text" not in db.added[0].review_payload["extracted"]
+
+
+@pytest.mark.asyncio
+async def test_an_ai_guessed_mapping_is_flagged_for_the_reviewer():
+    """CARMEN_INTEGRATION.md §4: an LLM-guessed GL mapping must never post by itself.
+
+    With review on, "by itself" stops being true — but only if the reviewer is told which
+    documents contain a guess. Nothing downstream can recompute this: by the time the
+    queue is read, `fill_missing_mappings` has already saved the guess and it is
+    indistinguishable from a mapping the customer made months ago.
+    """
+    db = _FakeDB()
+    await _run(
+        db,
+        auto_post=False,
+        extracted=_extracted(
+            details=[
+                ExtractedDetailRow(
+                    transaction="Mastercard",
+                    pay_amt="1000.00",
+                    commis_amt="30.00",
+                    tax_amt="2.10",
+                    total="967.90",
+                )
+            ]
+        ),
+        config=_config(),
+        carmen_result=None,
+        suggested={"Mastercard": {"dept": "GEN", "acc": "1130M"}},
+    )
+    assert "mapping_guessed" in db.added[0].review_payload["flags"]
+
+
+@pytest.mark.asyncio
+async def test_a_line_that_does_not_add_up_is_flagged():
+    """Every layout satisfies gross = commission + tax + net per line, so a line that
+    breaks it was misread and its JV would post unbalanced. Same arithmetic the browser
+    does in AccountingReview.imbalancedLines — computed here because the queue must paint
+    a reason line without loading every payload."""
+    db = _FakeDB()
+    await _run(
+        db,
+        auto_post=False,
+        config=_config(),
+        carmen_result=None,
+        extracted=_extracted(
+            details=[
+                ExtractedDetailRow(
+                    transaction="Visa",
+                    pay_amt="1000.00",
+                    commis_amt="30.00",
+                    tax_amt="2.10",
+                    total="900.00",
+                )
+            ]
+        ),
+    )
+    assert "unbalanced" in db.added[0].review_payload["flags"]
+
+
+@pytest.mark.asyncio
+async def test_a_clean_document_is_flagged_as_nothing_to_see():
+    """The reason line's whole value is that most rows say "nothing flagged". A flag set
+    that is never empty is a flag set nobody reads."""
+    db = _FakeDB()
+    await _run(db, auto_post=False, extracted=_extracted(), config=_config(), carmen_result=None)
+    assert db.added[0].review_payload["flags"] == []
+
+
+@pytest.mark.asyncio
+async def test_finishing_a_document_clears_the_review_payload():
+    """Every status `_finish` writes is terminal, so the payload has no reader left.
+
+    This is what keeps "extracted line items are not persisted" true in the only sense
+    that survives this feature: they exist while a human owes us a decision, and not one
+    moment longer. A leak here would quietly turn the ledger into a permanent store of
+    every merchant name and amount the BU has ever received.
+    """
+    db = _FakeDB()
+    with patch.object(ingest, "async_session", _session_factory(db)):
+        ledger = await ingest._claim(db, TENANT_ID, "<m@b>", "s.pdf")
+        ledger.review_payload = {"extracted": {"doc_no": "INV-1"}, "flags": []}
+        await ingest._finish(ledger.id, status="posted", jv_no="JV-9")
+    assert ledger.status == "posted"
+    assert ledger.review_payload is None

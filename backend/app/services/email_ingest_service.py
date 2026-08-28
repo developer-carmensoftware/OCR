@@ -88,7 +88,13 @@ from app.services.carmen_service import (
     post_input_tax,
 )
 from app.services.cc_input_tax import build_input_tax_payload
-from app.services.cc_jv import build_gljv_payload, build_jv_rows, unmapped_payment_types
+from app.services.cc_jv import (
+    build_gljv_payload,
+    build_jv_rows,
+    num,
+    r2,
+    unmapped_payment_types,
+)
 from app.services.credit_card_service import finalize_extraction, mark_task_failed
 from app.services.credit_service import consume_document, refund_document
 from app.services.email_imap import (
@@ -173,6 +179,11 @@ async def run_ingest(limit: int | None = None) -> dict:
         summary = {
             "messages": 0,
             "posted": 0,
+            # Extracted, charged, and parked for a human because the BU has `auto_post`
+            # off. In the initial shape for the same reason as `retry_later`: on a BU in
+            # review mode this is the *normal* outcome, and a key that only appears when
+            # something happened is one the admin page cannot render honestly.
+            "pending_review": 0,
             "failed": 0,
             "skipped": 0,
             "unrouted": 0,
@@ -453,6 +464,7 @@ async def _process_message(msg: dict[str, Any], exhausted: set[str] | None = Non
         owner_emails = list(row.owner_emails or [])
         rules = list(row.rules or [])
         passwords = es.rule_passwords(row)
+        auto_post = bool(row.auto_post)
         carmen_token, carmen_uri = await es.posting_target(db, row)
 
     # One name per attachment, across both lists at once: they share the ledger's unique
@@ -509,6 +521,7 @@ async def _process_message(msg: dict[str, Any], exhausted: set[str] | None = Non
                     passwords=passwords,
                     carmen_token=carmen_token,
                     carmen_uri=carmen_uri,
+                    auto_post=auto_post,
                 )
             )
         except _HOLD:
@@ -569,8 +582,11 @@ async def _process_attachment(
     passwords: list[str],
     carmen_token: str,
     carmen_uri: str,
+    auto_post: bool,
 ) -> str:
-    """Claim the ledger row, then run the document. 'posted' | 'failed' | 'skipped'.
+    """Claim the ledger row, then run the document.
+
+    'posted' | 'pending_review' | 'failed' | 'skipped'.
 
     The claim is first and is the only dedupe: an atomic insert against
     `uq_email_documents_message`, which is keyed `(tenant_id, message_id, attachment)`
@@ -604,6 +620,7 @@ async def _process_attachment(
                 passwords=passwords,
                 carmen_token=carmen_token,
                 carmen_uri=carmen_uri,
+                auto_post=auto_post,
             )
         except _HOLD:
             # Not a verdict on this document — the BU has nothing left to spend, or the
@@ -630,11 +647,20 @@ async def _run_document(
     passwords: list[str],
     carmen_token: str,
     carmen_uri: str,
+    auto_post: bool,
 ) -> str:
-    """Gate, charge, extract, verify, post — every exit lands on the ledger."""
+    """Gate, charge, extract, verify, post — every exit lands on the ledger.
+
+    With `auto_post` off the document stops one step short of Carmen and parks at
+    `pending_review` instead. Everything above that fork is identical either way, so a
+    document that reaches a human has already survived every gate a machine can judge.
+    """
     charged: str | None = None
     task_id: str | None = None
     bank_code: str | None = None
+    # Did the AI have to invent a GL mapping on the way past? Only knowable here, and the
+    # queue needs it to tell a reviewer which documents are worth opening.
+    mapping_guessed = False
     # Recorded on failures too: "several BUs failing on the same issuer at once" is the
     # only early warning that a bank changed its form, and it cannot be computed if a
     # failed row forgets which bank the document came from.
@@ -746,6 +772,7 @@ async def _run_document(
                 async with async_session() as db:
                     await fill_missing_mappings(db, tenant_id, suggested)
                 config.mappings = {**(config.mappings or {}), **suggested}
+                mapping_guessed = True
             still = unmapped_payment_types(extracted.details, config.mappings or {})
             if still:
                 # Fallback, not a closed door: the LLM had no answer or Carmen's
@@ -765,6 +792,32 @@ async def _run_document(
             # carmen_service._base_url falls through to the generic handler and the
             # document is filed as unreadable, which sends everyone looking at the PDF.
             raise _Skip("carmen_rejected", "No Carmen host known for this BU")
+
+        # ── The review fork ───────────────────────────────────────────────────────────
+        #
+        # Here and not earlier: every gate a machine can judge has now passed, so a
+        # document that reaches the queue is one a human can actually act on. Parking
+        # before the GL step would fill the queue with documents whose only problem is a
+        # missing mapping the AI was about to fill by itself.
+        #
+        # Here and not later: `build_gljv_payload` + `post_gljv` is the step that writes to
+        # someone's books, and it is the only thing this fork skips. Nothing above it has
+        # touched Carmen.
+        #
+        # The credit is already spent (`consume_document`, far above). Approving or
+        # rejecting later must not refund — decision-log #17: the charge follows the vision
+        # call, not the outcome.
+        if not auto_post:
+            await _park_for_review(
+                ledger_id,
+                extracted=extracted,
+                task_id=task_id,
+                bank_code=bank_code,
+                doc_no=doc_no,
+                mapping_guessed=mapping_guessed,
+            )
+            logger.info("[email] Parked %s (%s) for review, tenant %s", doc_no, filename, tenant_id)
+            return "pending_review"
 
         payload = build_gljv_payload(
             rows, doc_date=extracted.doc_date, bank_code=bank_code, config=config
@@ -1081,6 +1134,68 @@ async def _mark_submitted(card_id: str | None) -> None:
         logger.exception("[email] Could not stamp submitted_at on card %s", card_id)
 
 
+def _review_flags(extracted: ExtractedCreditCardData, *, mapping_guessed: bool) -> list[str]:
+    """Why this document might be worth opening. Computed once, here, and stored.
+
+    The queue paints a reason line per row, and neither of these can be recovered later
+    from a list query: `mapping_guessed` is knowable only inside `_run_document` (it is
+    whether the AI had to invent a GL mapping on the way past), and re-deriving
+    `unbalanced` at list time would mean loading every payload just to paint a list.
+
+    `unbalanced` is the same arithmetic AccountingReview does in the browser
+    (`imbalancedLines`): every layout satisfies gross = commission + tax + net per line, so
+    a line that breaks it was misread and its JV would post unbalanced.
+    """
+    flags: list[str] = []
+    if mapping_guessed:
+        flags.append("mapping_guessed")
+    if any(
+        abs(r2(num(d.pay_amt) - (num(d.commis_amt) + num(d.tax_amt) + num(d.total)))) > 0.01
+        for d in extracted.details
+    ):
+        flags.append("unbalanced")
+    if extracted.warnings:
+        flags.append("warnings")
+    return flags
+
+
+async def _park_for_review(
+    ledger_id: uuid.UUID,
+    *,
+    extracted: ExtractedCreditCardData,
+    task_id: str | None,
+    bank_code: str | None,
+    doc_no: str | None,
+    mapping_guessed: bool,
+) -> None:
+    """Stop one step short of Carmen and wait for a human.
+
+    The payload is the raw extraction shape — the same JSON `/extract` returns — because
+    the browser already knows how to load that: `useOcrExtraction.applyExtractedData` takes
+    it verbatim. `raw_text` is dropped: it is the bulkiest field, nothing reads it, and this
+    row sits in the database until someone clicks.
+
+    Not stored, deliberately: the built JV rows (the review screen derives them live against
+    the *current* accounting config, so a stored copy would go stale behind what the reviewer
+    is looking at) and the Carmen credential (re-read at approve time — it rotates, and
+    `sweep_token_health` may have unverified it while the document sat).
+    """
+    payload = extracted.model_dump(mode="json", exclude={"raw_text"})
+    async with async_session() as db:
+        row = await db.get(EmailDocument, ledger_id)
+        if row is None:
+            return
+        row.status = "pending_review"  # type: ignore[assignment]
+        row.task_id = uuid.UUID(task_id) if task_id else None  # type: ignore[assignment]
+        row.bank_code = bank_code  # type: ignore[assignment]
+        row.doc_no = doc_no  # type: ignore[assignment]
+        row.review_payload = {  # type: ignore[assignment]
+            "extracted": payload,
+            "flags": _review_flags(extracted, mapping_guessed=mapping_guessed),
+        }
+        await db.commit()
+
+
 async def _finish(
     ledger_id: uuid.UUID,
     *,
@@ -1103,6 +1218,11 @@ async def _finish(
         row.jv_no = jv_no or None  # type: ignore[assignment]
         row.reason_code = reason_code  # type: ignore[assignment]
         row.error_message = error  # type: ignore[assignment]
+        # Every status this function writes is terminal, so the review payload has no
+        # reader left. This is what keeps "extracted line items are not persisted" true in
+        # the only sense that matters: they exist while a human owes us a decision about
+        # them, and not one moment longer.
+        row.review_payload = None  # type: ignore[assignment]
         if status in ("posted", "failed"):
             # "skipped" is deliberately excluded — it's the customer's own filename/
             # sender rules saying "not this file", not a failure worth a notification

@@ -161,14 +161,22 @@ Shape — everything the review screen needs, nothing it doesn't:
 
 ```jsonc
 {
-  "header":   { "DocNo": "...", "DocDate": "...", "BranchNo": "...", "CompanyName": "..." },
-  "details":  [ { "Transaction": "...", "PayAmt": "...", "CommisAmt": "...",
-                  "TaxAmt": "...", "Total": "..." } ],
-  "warnings": [ "..." ],
-  "card_id":  "uuid",          // credit_cards.id, for _mark_submitted
-  "flags":    [ "mapping_guessed", "unbalanced" ]   // computed once, at park time
+  // ExtractedCreditCardData verbatim, minus raw_text — i.e. exactly what /extract returns.
+  // `id` is the credit_cards row, which is what approve needs for _mark_submitted.
+  "extracted": { "id": "uuid", "doc_no": "...", "doc_date": "...", "bank_name": "...",
+                 "branch_no": "...", "company_name": "...", "tax_ids": [ "..." ],
+                 "details": [ { "transaction": "...", "pay_amt": "...", "commis_amt": "...",
+                                "tax_amt": "...", "total": "..." } ],
+                 "warnings": [ "..." ], "is_duplicate": false },
+  "flags":     [ "mapping_guessed", "unbalanced", "warnings" ]  // computed once, at park time
 }
 ```
+
+The payload is the **raw extraction shape**, not a hand-built one, because the browser
+already knows how to load that: `useOcrExtraction.applyExtractedData` takes a `/extract`
+response verbatim. Building a bespoke shape would mean writing a mapping layer on both
+sides for no gain. `raw_text` is dropped — bulkiest field, read by nothing, and this row
+sits in the database until a human clicks.
 
 `flags` exists so the queue can paint a reason line without loading every payload or resolving
 the accounting config per row. `mapping_guessed` is knowable only here — it is whether
@@ -185,9 +193,6 @@ time. Storing rows would mean displaying one thing and having a second, stale co
 The frontend sends the rows it displayed with the approve call, so what is approved is what
 posts. This is the same contract the wizard already has — `AccountingReview`'s `onSubmit(rows)`
 hands its own derived rows to `handleSubmitFinal`.
-
-Key casing matches the frontend's `HeaderData` / `DetailRow` shapes (`DocNo`, `PayAmt`) rather
-than the backend's snake_case, so the payload feeds `applyExtractedData`-shaped state directly.
 
 ### `SettingsIn.auto_post`
 
