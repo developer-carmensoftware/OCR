@@ -50,6 +50,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -133,6 +134,13 @@ UNROUTED_ALERT_THRESHOLD = 5
 # How recently a BU must have touched its settings to count as "setting up forwarding
 # right now". The gate on the confirmation sweep — see `es.tags_awaiting_confirmation`.
 CONFIRM_WINDOW_HOURS = 24
+
+# How many unreviewed documents a BU may accumulate before ingestion stops for them.
+# Generous on purpose: this is a guard against a queue nobody is reading, not a work
+# limit, and a BU handling fifty statements a fortnight must never hit it.
+#
+# ponytail: one number for every BU. Per-BU tuning when someone actually needs it.
+REVIEW_BACKLOG_CAP = 50
 
 
 class _Skip(Exception):
@@ -467,6 +475,25 @@ async def _process_message(msg: dict[str, Any], exhausted: set[str] | None = Non
         auto_post = bool(row.auto_post)
         carmen_token, carmen_uri = await es.posting_target(db, row)
 
+        # Backpressure. With review on, every document costs a credit at extraction and
+        # then waits for a human — so a BU that stops reading its queue would keep paying
+        # for a pile nobody has looked at, and there is no refund for any of it once the
+        # vision call has run (decision-log #17).
+        #
+        # Same shape as running out of credits: mail handed back unread, no ledger row,
+        # nothing charged, replays on the poll after someone clears the backlog. The
+        # 14-day hold window bounds how long that offer lasts, and mail past it already
+        # raises `email_ingest_beyond_window`.
+        if not auto_post and await _pending_count(db, tenant_id) >= REVIEW_BACKLOG_CAP:
+            logger.warning(
+                "[email] Tenant %s has %d+ documents awaiting review — mail held unread",
+                tenant_id,
+                REVIEW_BACKLOG_CAP,
+            )
+            if exhausted is not None:
+                exhausted.add(tag)
+            return ["retry_later"]
+
     # One name per attachment, across both lists at once: they share the ledger's unique
     # index, so disambiguating them separately would still let a rejected `report.pdf`
     # collide with an accepted one. See `unique_names`.
@@ -758,6 +785,17 @@ async def _run_document(
 
         if extracted.is_duplicate:
             raise _Skip("duplicate_document", f"Document {extracted.doc_no} already submitted")
+
+        # `is_duplicate` above reads `credit_cards.submitted_at`, which stays NULL for the
+        # whole time a document sits in the review queue. So a second copy — the bank
+        # re-sends, or someone forwards it twice — sails past that check and parks a second
+        # identical row for the reviewer to notice by eye.
+        #
+        # Ingest-side only, deliberately: `has_submitted_doc` is shared with the wizard,
+        # where a pending row means nothing and blocking on one would stop a user scanning
+        # a document they are holding in their hand.
+        if not auto_post and await _already_pending(tenant_id, bank_code, doc_no):
+            raise _Skip("duplicate_document", f"Document {doc_no} is already waiting for review")
 
         async with async_session() as db:
             config = await get_accounting_config(db, tenant_id)
@@ -1089,6 +1127,49 @@ async def _claim(
         await db.rollback()
         return None
     return row
+
+
+async def _already_pending(tenant_id: str, bank_code: str | None, doc_no: str | None) -> bool:
+    """Is an identical document already sitting in this BU's review queue?
+
+    Only meaningful with `auto_post` off. A document with no `doc_no` is not comparable —
+    two unnumbered statements are not evidence of anything — so it never matches.
+    """
+    if not doc_no:
+        return False
+    try:
+        async with async_session() as db:
+            hit = await db.scalar(
+                select(EmailDocument.id)
+                .where(
+                    EmailDocument.tenant_id == uuid.UUID(tenant_id),
+                    EmailDocument.status == "pending_review",
+                    EmailDocument.bank_code == bank_code,
+                    EmailDocument.doc_no == doc_no,
+                )
+                .limit(1)
+            )
+        return hit is not None
+    except Exception as exc:  # noqa: BLE001
+        # Fail open, like every other infra guard on this path. A missed duplicate costs
+        # the reviewer one extra row to reject; a raised exception here would file a
+        # perfectly good document as `failed / unreadable_document`.
+        logger.error("[email] Could not check the review queue for duplicates: %s", exc)
+        return False
+
+
+async def _pending_count(db: AsyncSession, tenant_id: str) -> int:
+    """How many documents this BU has left unreviewed."""
+    return (
+        await db.scalar(
+            select(func.count())
+            .select_from(EmailDocument)
+            .where(
+                EmailDocument.tenant_id == uuid.UUID(tenant_id),
+                EmailDocument.status == "pending_review",
+            )
+        )
+    ) or 0
 
 
 async def _release(ledger_id: uuid.UUID) -> None:

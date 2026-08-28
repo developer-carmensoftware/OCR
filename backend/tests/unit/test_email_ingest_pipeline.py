@@ -675,6 +675,10 @@ def _settings_row(**overrides):
         # Explicit: a MagicMock attribute is truthy by default, which would silently arm
         # the arrived-before-switch-on filter in every routing test.
         enabled_at=None,
+        # Same trap, opposite direction: left as a MagicMock this is truthy, which happens
+        # to be the auto-post path these tests predate and assert. Pinned so it stays true
+        # on purpose rather than by accident.
+        auto_post=True,
     )
     defaults.update(overrides)
     return MagicMock(**defaults)
@@ -2022,3 +2026,77 @@ async def test_finishing_a_document_clears_the_review_payload():
         await ingest._finish(ledger.id, status="posted", jv_no="JV-9")
     assert ledger.status == "posted"
     assert ledger.review_payload is None
+
+
+# ── Backpressure: a queue nobody reads stops costing money ────────────────────
+
+
+@pytest.mark.asyncio
+async def test_an_unread_backlog_holds_the_mail_instead_of_charging_for_it():
+    """Review mode charges at extraction and then waits for a human, and nothing on that
+    path refunds. A BU that stops reading its queue would otherwise keep paying for a pile
+    nobody has looked at — so past the cap the mail goes back unread, exactly as it does
+    when the credits run out: no ledger row, nothing charged, replays once someone clears
+    the backlog."""
+    exhausted: set[str] = set()
+    with patch.object(ingest, "_pending_count", AsyncMock(return_value=ingest.REVIEW_BACKLOG_CAP)):
+        outcomes, _, process = await _route(
+            resolved=_settings_row(auto_post=False), exhausted=exhausted
+        )
+    assert outcomes == ["retry_later"]
+    process.assert_not_awaited()
+    # The rest of this BU's mail in the same batch is skipped too, rather than each
+    # attachment re-asking the same question.
+    assert TAG in exhausted
+
+
+@pytest.mark.asyncio
+async def test_a_backlog_under_the_cap_keeps_ingesting():
+    """The guard is a stop for a queue nobody is reading, not a work limit. A BU handling
+    fifty statements a fortnight must never notice it."""
+    with patch.object(
+        ingest, "_pending_count", AsyncMock(return_value=ingest.REVIEW_BACKLOG_CAP - 1)
+    ):
+        outcomes, _, process = await _route(resolved=_settings_row(auto_post=False))
+    assert outcomes == ["posted"]
+    process.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_auto_post_never_looks_at_the_backlog():
+    """Nothing parks with `auto_post` on, so the count is meaningless there — and paying
+    for it on every message of every BU that already trusts the pipeline is a query for
+    nothing."""
+    count = AsyncMock(return_value=10_000)
+    with patch.object(ingest, "_pending_count", count):
+        outcomes, _, _ = await _route(resolved=_settings_row(auto_post=True))
+    assert outcomes == ["posted"]
+    count.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_second_copy_of_a_parked_document_does_not_queue_twice():
+    """`is_duplicate` reads `credit_cards.submitted_at`, which stays NULL for the whole
+    time a document sits in the queue — so the bank re-sending, or someone forwarding
+    twice, sails past it and parks a second identical row for the reviewer to spot by eye.
+
+    Charged, not refunded: the vision call ran (decision-log #17), which is why this lands
+    as `failed` rather than `skipped`.
+    """
+    db = _FakeDB()
+    with patch.object(ingest, "_already_pending", AsyncMock(return_value=True)):
+        outcome, p = await _run(
+            db, auto_post=False, extracted=_extracted(), config=_config(), carmen_result=None
+        )
+    assert outcome == "failed"
+    assert db.added[0].reason_code == "duplicate_document"
+    assert db.added[0].review_payload is None
+    p.refund_document.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_unnumbered_document_is_never_called_a_duplicate():
+    """Two statements the model could not read a document number off are not evidence of
+    anything. Matching them would park the second one for a reason its reviewer cannot
+    check."""
+    assert await ingest._already_pending(TENANT_ID, "KTC", None) is False
