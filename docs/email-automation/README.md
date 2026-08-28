@@ -23,6 +23,11 @@ Credit Card OCR wizard (`CLAUDE.md` → *Credit Card OCR (5-step wizard)*) — s
 code, same GL-mapping service, same Carmen posting call, same `credit_cards` table. What's
 different is *how the document arrives* and *that nobody reviews it before it posts*.
 
+That last property is the one under design in
+[07-human-in-the-loop.md](07-human-in-the-loop.md): a per-BU `auto_post` switch that defaults
+to **off**, so a document waits for a human until the BU has seen enough to stop watching.
+Nothing in that document is built — everything else in this folder describes what runs today.
+
 ## Doc map
 
 | File | Read this for |
@@ -33,6 +38,7 @@ different is *how the document arrives* and *that nobody reviews it before it po
 | [04-data-model.md](04-data-model.md) | The two tables, migration lineage, the `reason_code` taxonomy |
 | [05-operations.md](05-operations.md) | Env vars, cron, observability, runbook, tests, known gaps |
 | [06-decision-log.md](06-decision-log.md) | What was decided, why, and what was tried and reverted |
+| [07-human-in-the-loop.md](07-human-in-the-loop.md) | **Design, not yet built.** The review step before posting, the `auto_post` switch, and the two screens that replace the wizard entry |
 
 Two documents live outside this folder because they have a different audience — the Carmen
 ERP development team, not an OCR-app developer:
