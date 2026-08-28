@@ -207,6 +207,10 @@ async def run_ingest(limit: int | None = None) -> dict:
         }
         # Tags that cannot be spent against right now, and the mail to hand back for them.
         exhausted: set[str] = set()
+        # tenant_id → documents parked this poll. Accumulated rather than notified per
+        # document: a 20-attachment batch must produce one bell row saying "20 documents
+        # need review", not 20 rows saying "one does".
+        parked: dict[str, int] = {}
         retry: list[str] = []
         # How many of `messages` have been decided about. `fetch_unseen` flagged the whole
         # batch on the way in, so anything this loop never reached is `\Seen`, unprocessed
@@ -220,7 +224,7 @@ async def run_ingest(limit: int | None = None) -> dict:
             summary["messages"] = len(messages)
             summary["beyond_window"] = beyond
             for msg in messages:
-                outcomes = await _process_message(msg, exhausted)
+                outcomes = await _process_message(msg, exhausted, parked)
                 if "retry_later" in outcomes:
                     retry.append(msg["uid"])
                 for outcome in outcomes:
@@ -234,6 +238,9 @@ async def run_ingest(limit: int | None = None) -> dict:
             # traceback above is the trail for that one message.
             retry.extend(m["uid"] for m in messages[done + 1 :])
             await asyncio.to_thread(unmark_seen, retry)
+            # Documents parked before the crash are real and waiting; a poll that died
+            # half way through must not swallow the only signal a reviewer gets.
+            await _notify_pending(parked)
             await _record_run(started, summary, error=str(exc))
             raise
 
@@ -247,6 +254,7 @@ async def run_ingest(limit: int | None = None) -> dict:
         # One IMAP round trip for the whole batch, and only when something was left
         # undone — the common poll never reaches it.
         await asyncio.to_thread(unmark_seen, retry)
+        await _notify_pending(parked)
         logger.info("[email] Poll finished: %s", summary)
         await _record_run(started, summary)
         return summary
@@ -325,6 +333,34 @@ async def sweep_confirmations() -> dict:
         return {"checked": len(messages), "confirmed": confirmed, "waiting": len(waiting)}
 
 
+async def _notify_pending(parked: dict[str, int]) -> None:
+    """One bell row per BU per poll: "N documents need review".
+
+    Per poll and not per document, because a bank sending a twenty-attachment zip would
+    otherwise bury every other notification the customer has. Per BU and not per person
+    because `user_notifications` has no user column — there is no users table to point at,
+    and any Carmen session for the business unit may approve.
+
+    Never raises. A missing bell row is a customer who finds the queue on their next
+    login; an exception here would fail a poll whose documents are already safely parked.
+    """
+    if not parked:
+        return
+    try:
+        async with async_session() as db:
+            for tenant_id, count in parked.items():
+                notification_service.notify(
+                    db,
+                    tenant_id=uuid.UUID(tenant_id),
+                    order_id=None,
+                    type_="document_pending_review",
+                    payload={"pending": count},
+                )
+            await db.commit()
+    except Exception:  # noqa: BLE001 — the documents are parked either way
+        logger.exception("[email] Could not raise the review notification")
+
+
 async def _record_run(
     started: datetime,
     summary: dict,
@@ -396,7 +432,11 @@ async def _record_run(
         )
 
 
-async def _process_message(msg: dict[str, Any], exhausted: set[str] | None = None) -> list[str]:
+async def _process_message(
+    msg: dict[str, Any],
+    exhausted: set[str] | None = None,
+    parked: dict[str, int] | None = None,
+) -> list[str]:
     """One message → one outcome per attachment (or a single message-level outcome).
 
     Everything expensive is behind two free checks: does it name a file at all, and
@@ -539,22 +579,23 @@ async def _process_message(msg: dict[str, Any], exhausted: set[str] | None = Non
 
     for filename, blob in accepted:
         try:
-            outcomes.append(
-                await _process_attachment(
-                    tenant_id=tenant_id,
-                    message_id=msg["message_id"],
-                    sender=msg["from"],
-                    people=msg["people"],
-                    filename=filename,
-                    blob=blob,
-                    owner_emails=owner_emails,
-                    rules=rules,
-                    passwords=passwords,
-                    carmen_token=carmen_token,
-                    carmen_uri=carmen_uri,
-                    auto_post=auto_post,
-                )
+            outcome = await _process_attachment(
+                tenant_id=tenant_id,
+                message_id=msg["message_id"],
+                sender=msg["from"],
+                people=msg["people"],
+                filename=filename,
+                blob=blob,
+                owner_emails=owner_emails,
+                rules=rules,
+                passwords=passwords,
+                carmen_token=carmen_token,
+                carmen_uri=carmen_uri,
+                auto_post=auto_post,
             )
+            outcomes.append(outcome)
+            if outcome == "pending_review" and parked is not None:
+                parked[tenant_id] = parked.get(tenant_id, 0) + 1
         except _HOLD:
             # The remaining attachments would each fail the same way, one wasted
             # `consume_document` at a time. Hand the whole message back instead: the

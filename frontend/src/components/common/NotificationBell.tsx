@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock,
+  ClockAlert,
   FileCheck2,
   FileWarning,
   Sparkles,
@@ -40,6 +41,9 @@ const TYPE_META: Record<string, { icon: LucideIcon; tone: string }> = {
   release_note: { icon: Sparkles, tone: 'info' },
   document_posted: { icon: FileCheck2, tone: 'success' },
   document_failed: { icon: FileWarning, tone: 'error' },
+  // Not an outcome but a request: the only row in the bell that asks the customer to
+  // do something rather than reporting what already happened.
+  document_pending_review: { icon: ClockAlert, tone: 'warning' },
 }
 
 type TFn = (key: TKey, vars?: Record<string, string | number>) => string
@@ -72,6 +76,10 @@ function notifText(n: BellItem, t: TFn): string {
       return t('notif.docPosted', { doc: docLabel(p) })
     case 'document_failed':
       return t('notif.docFailed', { doc: docLabel(p) })
+    // Counts documents, not one of them: the poll raises a single row per BU per run,
+    // so a twenty-attachment zip does not bury every other notification.
+    case 'document_pending_review':
+      return t('notif.docPendingReview', { count: String(p.pending ?? 1) })
     default:
       return n.type
   }
@@ -141,6 +149,10 @@ export default function NotificationBell() {
     // them to — the payload is already the whole story.
     if (n.type === 'document_posted' || n.type === 'document_failed') {
       setDetail(n)
+    } else if (n.type === 'document_pending_review') {
+      // The only actionable row in the bell, and the queue is where the action is —
+      // a detail modal here would be a dead end with a count in it.
+      window.location.hash = '#/CreditCardOCR'
     } else {
       // Deep-link to the specific order when we have it, so the row opens/scrolls
       // into view; the orders route ignores the query suffix when matching.

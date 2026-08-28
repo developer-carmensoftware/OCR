@@ -7,7 +7,14 @@ export interface Notification {
   order_id: string | null
   // Order lifecycle first, then the email-automation outcomes (emitted by
   // `_finish` in email_ingest_service.py — "skipped" deliberately does not notify).
-  type: 'approved' | 'rejected' | 'on_hold' | 'missing_slip' | 'document_posted' | 'document_failed'
+  type:
+    | 'approved'
+    | 'rejected'
+    | 'on_hold'
+    | 'missing_slip'
+    | 'document_posted'
+    | 'document_failed'
+    | 'document_pending_review'
   payload: Record<string, unknown>
   read_at: string | null
   created_at: string

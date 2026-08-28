@@ -707,6 +707,7 @@ const en = {
   'notif.missingSlip': 'Reminder: payment slip not yet uploaded',
   'notif.docPosted': 'Posted to Carmen · {doc}',
   'notif.docFailed': 'Could not post · {doc}',
+  'notif.docPendingReview': '{count} waiting for your review',
 
   // Detail dialog for the two email-automation rows. They open here rather than
   // navigating: there is no tenant-facing email document page to navigate to,
@@ -2020,6 +2021,7 @@ const th: Record<TKey, string> = {
   'notif.missingSlip': 'เตือนความจำ: ยังไม่ได้อัปโหลดหลักฐานการชำระเงิน',
   'notif.docPosted': 'ส่งเข้า Carmen แล้ว · {doc}',
   'notif.docFailed': 'ส่งเข้า Carmen ไม่สำเร็จ · {doc}',
+  'notif.docPendingReview': 'มี {count} รายการรอคุณตรวจสอบ',
 
   'notif.detail.postedTitle': 'ส่งเข้า Carmen แล้ว',
   'notif.detail.failedTitle': 'ส่งเข้า Carmen ไม่สำเร็จ',

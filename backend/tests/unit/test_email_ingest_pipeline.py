@@ -2383,3 +2383,54 @@ async def test_reject_without_a_reason_stores_none_not_an_empty_string():
             row.id, tenant_id=str(row.tenant_id), reviewer="u", reason="   "
         )
     assert row.error_message is None
+
+
+# ── One bell row per poll, not per document ───────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_batch_of_parked_documents_raises_one_notification():
+    """A bank sending a twenty-attachment zip would otherwise bury every other
+    notification the customer has. One row per BU per poll, carrying the count."""
+    db = _FakeDB()
+    tenant = str(uuid4())
+    with patch.object(ingest, "async_session", _session_factory(db)):
+        await ingest._notify_pending({tenant: 20})
+
+    assert len(db.added) == 1
+    row = db.added[0]
+    assert row.type == "document_pending_review"
+    assert row.payload == {"pending": 20}
+    assert str(row.tenant_id) == tenant
+
+
+@pytest.mark.asyncio
+async def test_each_bu_in_one_poll_is_told_separately():
+    """The mailbox is shared; the queues are not."""
+    db = _FakeDB()
+    a, b = str(uuid4()), str(uuid4())
+    with patch.object(ingest, "async_session", _session_factory(db)):
+        await ingest._notify_pending({a: 2, b: 1})
+    assert sorted(r.payload["pending"] for r in db.added) == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_a_poll_that_parked_nothing_writes_no_notification():
+    """Every ten minutes, for every BU on auto-post. A bell that cries "0 documents"
+    is one the customer stops opening."""
+    db = _FakeDB()
+    with patch.object(ingest, "async_session", _session_factory(db)):
+        await ingest._notify_pending({})
+    assert db.added == []
+
+
+@pytest.mark.asyncio
+async def test_a_failed_notification_never_fails_the_poll():
+    """The documents are parked either way. Raising here would turn a successful poll
+    into a FAILED job_run and hand the mail back for a bell row."""
+    broken = MagicMock(side_effect=RuntimeError("bell is down"))
+    with (
+        patch.object(ingest, "async_session", _session_factory(_FakeDB())),
+        patch.object(ingest.notification_service, "notify", broken),
+    ):
+        await ingest._notify_pending({str(uuid4()): 1})  # must not raise
