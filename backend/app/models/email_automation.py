@@ -45,6 +45,10 @@ class EmailIngestSettings(Base, TimestampMixin, WriterMixin):
     # is keying those documents by hand, and a manual Carmen entry is invisible to the
     # duplicate guard. Null = no filtering. See the migration for the full reasoning.
     enabled_at = Column(DateTime(timezone=True), nullable=True)
+    # False (default) = every document parks at pending_review for a human. True = post
+    # straight to Carmen, which is what the pipeline did before this column existed. The
+    # BU turns it on once it trusts the extraction; nothing turns it on automatically.
+    auto_post = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     # The customer's own addresses. Empty = accept any sender; non-empty = the message
     # must carry one of them in From/To/Cc. A second layer, not the routing key — these
     # headers are composed by the sender, unlike the envelope tag. See the migration.
@@ -97,6 +101,15 @@ class EmailDocument(Base, TenantFKMixin, TimestampMixin):
     reason_code = Column(String(50), nullable=True)
     error_message = Column(Text, nullable=True)
     attempts = Column(Integer, nullable=False, default=0)
+    # Set only while status == 'pending_review'; _finish clears it on every terminal
+    # transition. This is the one place extracted line items touch disk, and it lasts
+    # exactly as long as a human owes us a decision — see the migration for why that
+    # narrows "line items are NOT persisted" rather than repealing it.
+    review_payload = Column(_JSON, nullable=True)
+    # Who clicked approve/reject. Audit only: no FK, no enforcement — there is no users
+    # table, and any Carmen session for this BU can approve.
+    reviewed_by = Column(String(36), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index("uq_email_documents_message", "tenant_id", "message_id", "attachment", unique=True),
