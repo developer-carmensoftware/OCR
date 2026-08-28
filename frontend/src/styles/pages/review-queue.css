@@ -542,11 +542,19 @@
    blocks, so nothing here scrolls independently of anything else. */
 .rd-modal-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: var(--space-3);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+}
+
+/* Load-bearing. A flex column that scrolls still shrinks its children first, so without
+   this the four blocks are squeezed to fit the modal and their tables are clipped inside
+   them rather than the body scrolling. */
+.rd-modal-body > * {
+  flex: 0 0 auto;
 }
 
 .rd-loading {
@@ -566,10 +574,13 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--card-bg);
-  overflow: hidden;
+  /* NOT `overflow: hidden`. The date picker opens a popover out of the document card, and
+     clipping it to the block is why HeaderCard carries an `overflow-visible` class. The
+     header rounds its own top corners instead. */
 }
 
 .rd-block-h {
+  border-radius: calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px) 0 0;
   display: grid;
   grid-template-columns: minmax(6rem, auto) 1fr auto;
   align-items: center;
@@ -688,8 +699,10 @@
   min-height: 0;
 }
 
-/* Inside the modal the wizard's own card chrome is one frame too many: the block header
-   above already names the part, and its title would repeat it. */
+/* Inside the modal the wizard's card *frame* is one border too many — the block header
+   above already draws it — but its title bar is not chrome: it carries the row count and
+   the mapping badges, which is information the reviewer came here for. Flatten the box,
+   keep what it says. */
 .rd-block-body .data-card {
   border: 0;
   border-radius: 0;
@@ -698,26 +711,66 @@
 }
 
 .rd-block-body .data-card > .card-title {
-  display: none;
+  padding: 0 0 var(--space-2);
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-2);
+  font-size: 0.78rem;
 }
 
 .rd-block-body .data-card + .data-card {
   margin-top: var(--space-3);
-  border-top: 1px solid var(--border);
-  padding-top: var(--space-3);
 }
 
 .rd-block-body .card-body {
   padding: 0;
 }
 
-/* ...except the totals strip, which is the one inner card that is a summary rather than
-   a container, and reads better boxed. */
 .rd-block-body .total-summary-card {
   background: var(--muted);
   border-radius: var(--radius-md);
   padding: var(--space-2) var(--space-3);
-  border-top: 0;
+}
+
+/* ── The numbers the decision turns on, above the fold ──────────────────────── */
+
+.rd-sum {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+  padding: 0.6rem 1rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--muted);
+}
+
+.rd-sum-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.rd-sum-label {
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+
+.rd-sum-value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Gross is what the BU is agreeing to; the other three are how it splits. */
+.rd-sum-item--lead .rd-sum-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .rd-check {
@@ -764,6 +817,11 @@
 
   .rd-doc {
     grid-template-columns: 1fr;
+  }
+
+  .rd-sum {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: var(--space-3);
   }
 
   .rd-f--wide {

@@ -19,6 +19,7 @@ import {
 } from '../lib/api/emailReview'
 import { detectBankFromExtracted } from '../constants/banks'
 import type { BankCode } from '../types/api'
+import type { TKey } from '../i18n/dict'
 
 /** How much a block should stop someone. `stop` disables Approve; `warn` does not. */
 type Severity = 'ok' | 'warn' | 'stop'
@@ -166,6 +167,8 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   const lineSeverity: Severity = badLines.length ? 'warn' : 'ok'
   const glSeverity: Severity = acc.blocked ? 'stop' : acc.unmappedFields.length ? 'warn' : 'ok'
 
+  const sum = (k: keyof DetailRow) => details.reduce((n, d) => n + parseNum(d[k]), 0)
+
   const updateHeader = (key: string, value: string) => setHeaderData(h => ({ ...h, [key]: value }))
   const updateDetail = (i: number, col: string, value: string) =>
     setDetails(d => d.map((row, n) => (n === i ? { ...row, [col]: value } : row)))
@@ -231,8 +234,6 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
     }
   }
 
-  const sum = (k: keyof DetailRow) => details.reduce((n, d) => n + parseNum(d[k]), 0)
-
   return createPortal(
     <div className="rd-overlay" role="presentation" onMouseDown={() => !busy && onClose()}>
       <div
@@ -273,6 +274,27 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
             <X size={16} />
           </button>
         </header>
+
+        {!loading && !gone && doc && (
+          /* The four numbers the decision turns on, out of the Lines block and above the
+             scroll: a reviewer should not have to scroll past a table to find the total
+             they are approving. */
+          <div className="rd-sum">
+            {(
+              [
+                ['review.sumGross', 'PayAmt', true],
+                ['review.sumCommission', 'CommisAmt', false],
+                ['review.sumTax', 'TaxAmt', false],
+                ['review.sumNet', 'Total', false],
+              ] as Array<[TKey, keyof DetailRow, boolean]>
+            ).map(([label, col, lead]) => (
+              <div key={col} className={`rd-sum-item${lead ? ' rd-sum-item--lead' : ''}`}>
+                <span className="rd-sum-label">{t(label)}</span>
+                <span className="rd-sum-value text-mono">{fmt(sum(col))}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {loading ? (
           <div className="rd-modal-body rd-loading">

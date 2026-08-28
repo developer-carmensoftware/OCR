@@ -170,6 +170,19 @@ describe('loading a parked document', () => {
     expect(field.closest('.rd-f')).toHaveClass('rd-f--missing')
   })
 
+  it('puts the four decisive numbers above the scroll', async () => {
+    // They live at the bottom of the Lines table otherwise, which means scrolling past a
+    // table to find the total you are approving.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    await screen.findByText('Gross')
+    const strip = document.querySelector('.rd-sum')!
+    expect(strip).toHaveTextContent('1,000.00')
+    expect(strip).toHaveTextContent('30.00')
+    expect(strip).toHaveTextContent('2.10')
+    expect(strip).toHaveTextContent('967.90')
+  })
+
   it('tells the reviewer when the document is no longer theirs to handle', async () => {
     vi.mocked(api.getPending).mockRejectedValue(new Error('404'))
     mount()
