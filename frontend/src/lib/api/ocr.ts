@@ -61,6 +61,23 @@ export async function getPdfInfo(file: File, pdfPassword?: string): Promise<PdfI
 }
 
 /**
+ * The API answers snake_case; the wizard's DetailRow is PascalCase. This is the one place
+ * that bridges them, exported because the review queue loads the same payload from a
+ * different endpoint — `applyExtractedData` spreads `details` wholesale, so a row that
+ * arrives still in snake_case silently reads as an empty row rather than failing.
+ */
+export function toExtractedRows(rawDetails: Array<Record<string, string>>): ExtractedRow[] {
+  return rawDetails.map(d => ({
+    Transaction: d.transaction || '',
+    PayAmt: d.pay_amt || '',
+    CommisAmt: d.commis_amt || '',
+    TaxAmt: d.tax_amt || '',
+    WHTAmount: '',
+    Total: d.total || '',
+  }))
+}
+
+/**
  * Get a browser-renderable preview for an image the browser can't decode itself
  * (HEIC/HEIF). The backend converts HEIC -> JPEG and returns a base64 data URL.
  */
@@ -114,14 +131,7 @@ export async function extractFromFile(
   const card = results[0] || {}
   const rawDetails = (card.details as Array<Record<string, string>> | undefined) || []
 
-  const details: ExtractedRow[] = rawDetails.map(d => ({
-    Transaction: d.transaction || '',
-    PayAmt: d.pay_amt || '',
-    CommisAmt: d.commis_amt || '',
-    TaxAmt: d.tax_amt || '',
-    WHTAmount: '',
-    Total: d.total || '',
-  }))
+  const details: ExtractedRow[] = toExtractedRows(rawDetails)
 
   return {
     id: (card.id as string) || '',

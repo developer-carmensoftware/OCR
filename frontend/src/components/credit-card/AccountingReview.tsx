@@ -27,6 +27,16 @@ import type { DetailRow } from './DetailTable'
 import type { JvRow } from '../../hooks/credit-card/useOcrSubmission'
 import type { BankCode } from '../../types/api'
 
+/** What the parent needs to drive its own footer in embedded mode. */
+export interface AccountingState {
+  rows: JvRow[]
+  /** Cannot post: no rows at all, or a JV that would not balance. Exactly the two
+   *  conditions this component already refuses to submit on. */
+  blocked: boolean
+  /** Postable, but the BU has never mapped these — worth a warning, not a stop. */
+  unmappedFields: string[]
+}
+
 interface Props {
   details: DetailRow[]
   headerData?: Record<string, string>
@@ -35,6 +45,18 @@ interface Props {
   onSubmit: (rows: JvRow[]) => void
   onGoMapping: () => void
   submitting?: boolean
+  /**
+   * Render as a section inside someone else's page: no footer, no submit.
+   *
+   * The review queue owns Approve/Reject and needs them beside the other three sections,
+   * not buried inside this one. Everything above the footer — the missing-mapping alert,
+   * the imbalance block, the MISSING cells, the totals row — is exactly the review logic
+   * that screen wants and must not be reimplemented next door.
+   */
+  embedded?: boolean
+  /** Embedded only: report rows and validity up, because the parent's button needs both
+   *  and re-deriving them there is how the two copies drift. */
+  onState?: (state: AccountingState) => void
 }
 
 let _accCache: Record<string, string> | null = null
@@ -49,6 +71,8 @@ export default function AccountingReview({
   onSubmit,
   onGoMapping,
   submitting = false,
+  embedded = false,
+  onState,
 }: Props) {
   const { t } = useT()
   const { config, loading: configLoading, refresh: loadConfig } = useAccountingConfig()
@@ -119,6 +143,15 @@ export default function AccountingReview({
     })
   }
   const hasMissing = !rawConfig || unmappedFields.length > 0
+
+  // Reported from an effect, not during render: this fires a setState in the parent.
+  useEffect(() => {
+    if (!onState) return
+    onState({ rows, blocked: rows.length === 0 || isImbalanced, unmappedFields })
+    // `rows` and `unmappedFields` are rebuilt every render; the primitives below are what
+    // actually change, and gating on them stops an update loop through the parent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onState, isImbalanced, rows.length, unmappedFields.join('|'), totalDr, totalCr])
 
   const reviewDescription = descriptionForBank(
     rawConfig?.description as string | undefined,
@@ -297,37 +330,60 @@ export default function AccountingReview({
           </table>
         </div>
 
-        <div className="form-actions">
-          <button type="button" className="btn btn-outline" onClick={onBack}>
-            <ArrowLeft size={14} /> {t('cc.back')}
-          </button>
-          <button type="button" className="btn btn-outline cc-mr-auto" onClick={onGoMapping}>
-            <Settings size={14} /> {t('cc.mappingSettings')}
-          </button>
-          <button
-            type="button"
-            className="btn-icon"
-            title={t('cc.refreshMapping')}
-            onClick={loadConfig}
-            disabled={configLoading}
-          >
-            <RefreshCw size={14} className={configLoading ? 'animate-spin' : ''} />
-          </button>
-          <div className="form-actions-sep" />
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={rows.length === 0 || submitting || isImbalanced}
-            onClick={() => (hasMissing ? setWarningModal(true) : onSubmit(rows))}
-          >
-            {submitting ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <UploadCloud size={14} />
-            )}
-            <SwapLabel active={submitting} idle={t('cc.confirmSubmit')} busy={t('cc.submitting')} />
-          </button>
-        </div>
+        {embedded ? (
+          // Mapping settings stays reachable — it is the fix for the one alert above that
+          // a reviewer can actually act on without leaving the document.
+          <div className="form-actions form-actions--embedded">
+            <button type="button" className="btn btn-outline" onClick={onGoMapping}>
+              <Settings size={14} /> {t('cc.mappingSettings')}
+            </button>
+            <button
+              type="button"
+              className="btn-icon"
+              title={t('cc.refreshMapping')}
+              onClick={loadConfig}
+              disabled={configLoading}
+            >
+              <RefreshCw size={14} className={configLoading ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        ) : (
+          <div className="form-actions">
+            <button type="button" className="btn btn-outline" onClick={onBack}>
+              <ArrowLeft size={14} /> {t('cc.back')}
+            </button>
+            <button type="button" className="btn btn-outline cc-mr-auto" onClick={onGoMapping}>
+              <Settings size={14} /> {t('cc.mappingSettings')}
+            </button>
+            <button
+              type="button"
+              className="btn-icon"
+              title={t('cc.refreshMapping')}
+              onClick={loadConfig}
+              disabled={configLoading}
+            >
+              <RefreshCw size={14} className={configLoading ? 'animate-spin' : ''} />
+            </button>
+            <div className="form-actions-sep" />
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={rows.length === 0 || submitting || isImbalanced}
+              onClick={() => (hasMissing ? setWarningModal(true) : onSubmit(rows))}
+            >
+              {submitting ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <UploadCloud size={14} />
+              )}
+              <SwapLabel
+                active={submitting}
+                idle={t('cc.confirmSubmit')}
+                busy={t('cc.submitting')}
+              />
+            </button>
+          </div>
+        )}
       </Card>
 
       <CustomModal

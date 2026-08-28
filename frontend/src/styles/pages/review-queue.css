@@ -432,3 +432,15 @@
   font-size: 0.875rem;
   color: var(--text-3);
 }
+
+/* Embedded AccountingReview: the section keeps its mapping shortcut but not its submit —
+   the review page owns Approve/Reject, and two submit buttons on one screen is one too
+   many regardless of which is right. */
+.form-actions--embedded {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--border);
+  background: var(--muted);
+}
