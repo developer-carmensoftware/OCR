@@ -233,17 +233,40 @@ describe('the actions column', () => {
   })
 
   it('sends a missing GL mapping to the screen that fixes it', async () => {
-    // The one failure a customer can clear themselves.
     mount(status(), [doc({ status: 'failed', reason_code: 'mapping_incomplete', total: 0 })])
     const link = await screen.findByRole('link', { name: 'Fix mapping' })
     expect(link).toHaveAttribute('href', '#/CreditCardOCR/mapping')
   })
 
-  it('offers no fix for a failure the customer cannot clear', async () => {
-    mount(status(), [doc({ status: 'failed', reason_code: 'carmen_rejected', total: 0 })])
-    await screen.findByText(/Carmen refused it/)
-    expect(screen.queryByRole('link', { name: 'Fix mapping' })).not.toBeInTheDocument()
+  // The regression that matters: the ledger's skipped/failed split is about whether a
+  // credit was charged, NOT about whether anyone can act. Keying the action off `status`
+  // hides every one of these behind the chip the design doc calls "mostly noise" — which
+  // is how eight sender_not_allowed rows cost a day of diagnosis on 2026-08-28.
+  it.each(['no_rule_match', 'sender_not_allowed', 'wrong_pdf_password', 'ingest_paused'])(
+    'offers settings on a *skipped* %s row',
+    async reason_code => {
+      mount(status(), [doc({ status: 'skipped', reason_code, total: 0 })])
+      const link = await screen.findByRole('link', { name: 'Open settings' })
+      expect(link).toHaveAttribute('href', '#/email-settings')
+    }
+  )
+
+  it('gives a dead Carmen credential its own word, not a generic settings link', async () => {
+    // One expired token fails EVERY document of the BU until someone re-pastes it, so it
+    // is not "a setting is off" — it is "the pipeline is down".
+    mount(status(), [doc({ status: 'failed', reason_code: 'carmen_unauthorized', total: 0 })])
+    expect(await screen.findByRole('link', { name: 'Reconnect Carmen' })).toBeInTheDocument()
+    expect(screen.getByText(/Carmen connection has expired/)).toBeInTheDocument()
   })
+
+  it.each(['carmen_rejected', 'duplicate_document', 'unreadable_document'])(
+    'offers nothing on %s, where a button would be a lie',
+    async reason_code => {
+      mount(status(), [doc({ status: 'failed', reason_code, total: 0 })])
+      await screen.findByRole('table')
+      expect(screen.queryByRole('link', { name: /settings|mapping|Reconnect/ })).toBeNull()
+    }
+  )
 })
 
 describe('a row that has already been resolved', () => {
