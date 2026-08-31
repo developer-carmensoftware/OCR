@@ -9,7 +9,6 @@ import JvEditor, { type JvState, type Overrides } from '../components/credit-car
 import { useT } from '../i18n/LanguageContext'
 import { useAccountingConfig } from '../hooks/credit-card'
 import { showToast } from '../lib/toast'
-import { fmt, parseNum } from '../lib/format'
 import { toExtractedRows } from '../lib/api/ocr'
 import { normalizeDateStringToCE } from '../lib/date'
 import { applyJvAmount, type JvRow } from '../lib/ccJv'
@@ -22,7 +21,6 @@ import {
 } from '../lib/api/emailReview'
 import { detectBankFromExtracted } from '../constants/banks'
 import type { BankCode } from '../types/api'
-import type { TKey } from '../i18n/dict'
 
 interface Props {
   id: string
@@ -124,8 +122,6 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [busy, rejecting, onClose])
-
-  const sum = (k: keyof DetailRow) => details.reduce((n, d) => n + parseNum(d[k]), 0)
 
   const updateHeader = (key: string, value: string) => setHeaderData(h => ({ ...h, [key]: value }))
 
@@ -279,26 +275,6 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
           </button>
         </header>
 
-        {!loading && !gone && doc && (
-          /* The reconciliation, pinned. Either pane can scroll under it without taking
-             the numbers being compared off screen with it. */
-          <div className="rd-sum">
-            {(
-              [
-                ['review.sumGross', 'PayAmt', true],
-                ['review.sumCommission', 'CommisAmt', false],
-                ['review.sumTax', 'TaxAmt', false],
-                ['review.sumNet', 'Total', false],
-              ] as Array<[TKey, keyof DetailRow, boolean]>
-            ).map(([label, col, lead]) => (
-              <div key={col} className={`rd-sum-item${lead ? ' rd-sum-item--lead' : ''}`}>
-                <span className="rd-sum-label">{t(label)}</span>
-                <span className="rd-sum-value text-mono">{fmt(sum(col))}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
         {loading ? (
           <div className="rd-modal-body rd-loading">
             <Loader2 size={22} className="animate-spin" aria-hidden="true" />
@@ -314,20 +290,21 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
           </div>
         ) : (
           <>
-            <div className="rd-panes">
-              <section className="rd-pane" aria-label={t('review.paneDocument')}>
-                {/* A statement about the reading, so it belongs to this pane rather than
-                    spanning both. */}
-                {warnings.length > 0 && (
-                  <div className="mapping-alert">
-                    <AlertTriangle size={16} />
-                    <span className="cc-alert-text">{warnings.join(' · ')}</span>
-                  </div>
-                )}
+            <div className="rd-body">
+              {/* A statement about the reading, not about the entry — so it sits with the
+                  document rather than over the whole screen. */}
+              {warnings.length > 0 && (
+                <div className="mapping-alert">
+                  <AlertTriangle size={16} />
+                  <span className="cc-alert-text">{warnings.join(' · ')}</span>
+                </div>
+              )}
+
+              <section aria-label={t('review.paneDocument')}>
                 <ReviewDocCard headerData={headerData} onUpdate={updateHeader} />
               </section>
 
-              <section className="rd-pane rd-pane--jv" aria-label={t('review.paneJv')}>
+              <section aria-label={t('review.paneJv')}>
                 <JvEditor
                   details={details}
                   config={config as Record<string, unknown> | null}

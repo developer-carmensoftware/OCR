@@ -564,8 +564,8 @@
 .rd-modal {
   display: flex;
   flex-direction: column;
-  width: min(96rem, 100%);
-  max-height: min(92vh, 60rem);
+  width: min(64rem, 100%);
+  max-height: min(92vh, 54rem);
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -600,40 +600,27 @@
   align-self: center;
 }
 
-/* ── The two panes ──────────────────────────────────────────────────────────── */
+/* ── The body: one column ───────────────────────────────────────────────────── */
 
-/* Evidence on the left, consequence on the right. The reviewer's only question is
-   whether one follows from the other, so the two sit side by side and each scrolls on
-   its own — scrolling them together loses the JV the moment the line table gets long,
-   which is the complaint this layout exists to answer. */
-.rd-panes {
+/* Two columns made the eye cross the screen for a comparison that reads top to bottom:
+   here is the document, here is the entry it produces. One column, one scroll, and the
+   figures are read once — the line-items table that used to hold a second copy of them
+   is gone, and the four-number summary above it restated the journal's own totals. */
+.rd-body {
   flex: 1;
   min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-}
-
-.rd-pane {
-  min-width: 0;
-  min-height: 0;
   overflow-y: auto;
-  padding: var(--space-3);
+  padding: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  /* Generous between the two groups; the tight spacing lives inside each. */
+  gap: var(--space-5);
 }
 
-/* A scrolling flex column shrinks its children before it scrolls; without this the
-   tables are squeezed and clipped inside the pane instead. */
-.rd-pane > * {
+/* A scrolling flex column shrinks its children before it scrolls, which squeezes the
+   table instead of moving it. */
+.rd-body > * {
   flex: 0 0 auto;
-}
-
-/* The second neutral layer the product register asks for: the consequence side reads as
-   a different surface from the evidence side without a border doing the talking. */
-.rd-pane--jv {
-  background: var(--muted);
-  border-left: 1px solid var(--border);
 }
 
 .rd-loading {
@@ -644,59 +631,20 @@
   color: var(--text-4);
 }
 
-/* ── Pinned reconciliation ──────────────────────────────────────────────────── */
+/* ── What the document says ─────────────────────────────────────────────────── */
 
-.rd-sum {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-2);
-  padding: 0.6rem 1rem 0.75rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--muted);
-}
-
-.rd-sum-item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  min-width: 0;
-}
-
-.rd-sum-label {
-  font-size: 0.64rem;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--text-4);
-}
-
-.rd-sum-value {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Gross is what the BU is agreeing to; the other three are how it splits. */
-.rd-sum-item--lead .rd-sum-value {
-  font-size: 1.15rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-/* ── The document pane ──────────────────────────────────────────────────────── */
-
+/* Auto-fit rather than a fixed column count: the fields are short and independent, so
+   they should reflow to whatever the modal is, not sit in a grid built for one width. */
 .rd-doc {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
   gap: var(--space-3) var(--space-4);
 }
 
 .rd-f {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.1rem;
   min-width: 0;
 }
 
@@ -712,23 +660,25 @@
   color: var(--text-4);
 }
 
-/* Reads as the document until you go to change it: no box around a value nobody is
-   editing, a real field the moment someone does. */
+/* Reads as the document until someone goes to change it. A grid of boxes says "form to
+   fill in"; this screen is a document to check, and the box appears where it is wanted. */
 .rd-f-input {
   width: 100%;
-  padding: 0.3rem 0.4rem;
+  padding: 0.25rem 0.4rem;
   margin-left: -0.4rem;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   font-family: inherit;
   color: var(--text);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  transition: background-color 120ms var(--ease-out-premium, ease-out);
+  transition:
+    background-color 140ms var(--ease-out-premium, ease-out),
+    border-color 140ms var(--ease-out-premium, ease-out);
 }
 
 .rd-f-input:hover:not(:focus) {
-  background: var(--card-bg);
+  background: var(--muted);
 }
 
 .rd-f-input:focus,
@@ -760,14 +710,14 @@
   min-height: 0;
 }
 
-/* ── The JV pane ────────────────────────────────────────────────────────────── */
+/* ── What will post ─────────────────────────────────────────────────────────── */
 
 .jv-loading,
 .jv-empty {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: 8rem;
+  min-height: 6rem;
   font-size: 0.85rem;
   color: var(--text-3);
 }
@@ -783,9 +733,9 @@
 }
 
 .jv-table th {
-  padding: 0.5rem 0.6rem;
+  padding: 0.5rem 0.65rem;
   text-align: left;
-  font-size: 0.64rem;
+  font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -796,8 +746,8 @@
 }
 
 .jv-table td {
-  padding: 0.35rem 0.6rem;
-  font-size: 0.82rem;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.83rem;
   color: var(--text-3);
   vertical-align: middle;
 }
@@ -806,29 +756,40 @@
   border-top: 1px solid var(--border);
 }
 
+/* The two pickers get what they need to show a code plus a name; the description takes
+   the slack, and the money columns are fixed so the digits line up down the page. */
+.jv-c-dept {
+  width: 8.5rem;
+}
+
+.jv-c-acc {
+  width: 11rem;
+}
+
 .jv-num {
   text-align: right;
   white-space: nowrap;
   width: 7.5rem;
 }
 
-/* The figures are typed here now — the line-items table that used to carry them showed
-   the same numbers one derivation earlier. Flat until touched, like the document fields
-   opposite: a grid of boxes reads as a form to fill in rather than a journal to check. */
+/* The figures are typed here now. Flat until touched, like the document fields above:
+   the same rule, so the whole screen behaves one way. */
 .jv-amt {
   width: 100%;
   padding: 0.25rem 0.35rem;
-  font-size: 0.82rem;
+  font-size: 0.83rem;
   text-align: right;
   color: var(--text);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  transition: background-color 120ms var(--ease-out-premium, ease-out);
+  transition:
+    background-color 140ms var(--ease-out-premium, ease-out),
+    border-color 140ms var(--ease-out-premium, ease-out);
 }
 
 .jv-amt:hover:not(:focus) {
-  background: var(--card-bg);
+  background: var(--muted);
   border-color: var(--border);
 }
 
@@ -841,7 +802,7 @@
 }
 
 /* Summed from several lines: typing here changes all of them, so the cell says it is not
-   a plain figure. Underline rather than a colour — this is a caveat, not a problem. */
+   a plain figure. Underline rather than colour — a caveat, not a problem. */
 .jv-amt[data-shared] {
   text-decoration: underline dotted var(--text-4);
   text-underline-offset: 3px;
@@ -851,8 +812,8 @@
   color: var(--text-4);
 }
 
-/* Rows after the first that share a rule: the value is shown, the control is not, so the
-   same question is never asked twice about one mapping. */
+/* Rows after the first that share a rule: the value shows, the control does not, so one
+   rule is never asked about twice. */
 .jv-echo {
   color: var(--text-4);
   font-size: 0.8rem;
@@ -916,17 +877,19 @@
   outline-offset: 1px;
 }
 
+/* The totals the reviewer is agreeing to. One step up in size and weight from the rows,
+   because it is the line the decision turns on — and the only place the JV says whether
+   it balances, since nothing above it summarises what is already visible. */
 .jv-total td {
-  padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
+  font-size: 0.9rem;
   font-weight: 700;
   color: var(--text);
   background: var(--muted);
   border-top: 1px solid var(--border-raised, var(--border));
 }
 
-/* The one place a blocked JV says so. Nothing above summarises it, because the numbers
-   that disagree are on this row. */
 .jv-total--bad td {
   color: var(--rose-text);
   background: var(--rose-light);
@@ -936,7 +899,7 @@
 
 .rd-modal-foot {
   border-top: 1px solid var(--border);
-  padding: 0.75rem 1rem;
+  padding: 0.75rem var(--space-4);
   background: var(--muted);
 }
 
@@ -973,31 +936,13 @@
 
 /* ── Narrow ─────────────────────────────────────────────────────────────────── */
 
-@media (max-width: 900px) {
-  /* Side by side stops paying for itself once neither pane is wide enough to read. The
-     document comes first: it is what the JV is derived from. */
-  .rd-panes {
-    grid-template-columns: minmax(0, 1fr);
-    overflow-y: auto;
-  }
-
-  .rd-pane {
-    overflow: visible;
-  }
-
-  .rd-pane--jv {
-    border-left: 0;
-    border-top: 1px solid var(--border);
-  }
-}
-
 @media (max-width: 640px) {
   .rd-overlay {
     padding: 0;
   }
 
-  /* Full screen on a phone: a 92vh card inside a viewport-height overlay just wastes the
-     edges on a document this dense. */
+  /* Full screen on a phone: a 92vh card inside a viewport-height overlay wastes the edges
+     on a document this dense. */
   .rd-modal {
     max-height: 100vh;
     height: 100%;
@@ -1005,13 +950,26 @@
     border-radius: 0;
   }
 
-  .rd-doc,
-  .rd-sum {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .rd-body {
+    padding: var(--space-3);
+    gap: var(--space-4);
   }
 
   .rd-f--wide {
     grid-column: auto;
+  }
+
+  /* The pickers are the widest cells and the first to make the table scroll; the
+     description is the one column a reviewer can do without on a phone. */
+  .jv-desc,
+  .jv-table th:nth-child(3) {
+    display: none;
+  }
+
+  .jv-c-dept,
+  .jv-c-acc,
+  .jv-num {
+    width: auto;
   }
 
   .rd-actions {

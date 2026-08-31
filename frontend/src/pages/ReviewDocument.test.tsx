@@ -174,7 +174,7 @@ beforeEach(() => {
   }
 })
 
-describe('the two panes', () => {
+describe('the screen', () => {
   it('shows the document and the JV it produces at the same time', async () => {
     // The whole reason for the layout: the comparison is the reviewer's only question,
     // and it cannot be made one pane at a time.
@@ -196,13 +196,17 @@ describe('the two panes', () => {
     }
   })
 
-  it('puts the four decisive numbers above both panes', async () => {
+  it('states the totals once, on the journal that produces them', async () => {
+    // A summary strip used to sit above: Gross was the JV's credit total and Commission /
+    // VAT / Net were three of its debit rows. Four numbers, every one already on screen.
     vi.mocked(api.getPending).mockResolvedValue(detail())
     mount()
     await screen.findByDisplayValue('INV-001')
-    for (const label of ['Gross', 'Commission', 'VAT', 'Net']) {
-      expect(screen.getByText(label)).toBeInTheDocument()
-    }
+    expect(screen.getByText('Balanced')).toBeInTheDocument()
+    expect(screen.queryByText('Gross')).not.toBeInTheDocument()
+    // The figures it summarised are still there, on the rows that own them.
+    expect(screen.getByLabelText('Debit for Credit card commission line 1')).toHaveValue('30.00')
+    expect(screen.getByLabelText('Credit for Visa line 1')).toHaveValue('1,000.00')
   })
 
   it('shows a JV that does not add up on the row where the numbers disagree', async () => {

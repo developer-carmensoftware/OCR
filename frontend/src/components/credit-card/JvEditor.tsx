@@ -194,8 +194,12 @@ export default function JvEditor({
       <table className="jv-table">
         <thead>
           <tr>
-            <th scope="col">{t('review.jvDept')}</th>
-            <th scope="col">{t('review.jvAccount')}</th>
+            <th scope="col" className="jv-c-dept">
+              {t('review.jvDept')}
+            </th>
+            <th scope="col" className="jv-c-acc">
+              {t('review.jvAccount')}
+            </th>
             <th scope="col">{t('review.jvDesc')}</th>
             <th scope="col" className="jv-num">
               {t('review.jvDebit')}
