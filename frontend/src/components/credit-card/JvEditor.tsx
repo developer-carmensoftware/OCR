@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Loader2, Sparkles, Undo2 } from 'lucide-react'
 import CustomSearchSelect from '../common/CustomSearchSelect'
+import NumericInput from '../common/NumericInput'
 import { useT } from '../../i18n/LanguageContext'
-import { fmt, round2 } from '../../lib/format'
+import { fmt, parseNum, round2 } from '../../lib/format'
 import { buildJvRows, type JvRow } from '../../lib/ccJv'
 import { allowedAccountsForDept, isAccountAllowed } from '../../lib/deptAccounts'
 import { GROUP_DEBIT_BY_TRANSACTION } from '../../constants/banks'
@@ -35,6 +36,8 @@ interface Props {
    *  fill at all (`unmapped`). The first asks to be checked, the second to be filled. */
   guessedKeys: string[]
   unmappedKeys: string[]
+  /** An amount typed on a leg, written back into the detail lines it was summed from. */
+  onAmount: (row: JvRow, next: number) => void
   onState: (state: JvState) => void
   bankCode?: string
 }
@@ -62,6 +65,7 @@ export default function JvEditor({
   onUndo,
   guessedKeys,
   unmappedKeys,
+  onAmount,
   onState,
   bankCode,
 }: Props) {
@@ -274,8 +278,8 @@ export default function JvEditor({
                     </button>
                   )}
                 </td>
-                <td className="jv-num text-mono">{row.debit ? fmt(row.debit) : '—'}</td>
-                <td className="jv-num text-mono">{row.credit ? fmt(row.credit) : '—'}</td>
+                <Amount row={row} side="debit" onAmount={onAmount} />
+                <Amount row={row} side="credit" onAmount={onAmount} />
               </tr>
             )
           })}
@@ -289,5 +293,52 @@ export default function JvEditor({
         </tfoot>
       </table>
     </div>
+  )
+}
+
+/**
+ * One amount cell. Editable on the side the leg actually carries; the other side of a JV
+ * row is structurally empty, and an input there would invite someone to make the journal
+ * one-sided.
+ *
+ * A leg summed from more than one line is marked, because typing into it changes all of
+ * them — see `applyJvAmount` for how the figure is shared out.
+ */
+function Amount({
+  row,
+  side,
+  onAmount,
+}: {
+  row: JvRow
+  side: 'debit' | 'credit'
+  onAmount: (row: JvRow, next: number) => void
+}) {
+  const { t } = useT()
+  const value = row[side]
+  const other = row[side === 'debit' ? 'credit' : 'debit']
+  // A leg with nothing on either side is the display-only zero (a gateway invoice's net);
+  // it is dropped before posting, so it is not a figure to type into.
+  if (!value && other) return <td className="jv-num jv-num--empty">—</td>
+
+  const shared = row.lines.length > 1
+  return (
+    <td className="jv-num">
+      <NumericInput
+        className="jv-amt text-mono"
+        // Two lines of one payment type produce two legs with the same description, so
+        // the line number is part of the name — otherwise the second is unreachable by
+        // anything that finds a control by its label, screen readers included. A summed
+        // leg spans every line and has no number to give.
+        aria-label={t(side === 'debit' ? 'review.jvDebitFor' : 'review.jvCreditFor', {
+          field: shared
+            ? row.desc
+            : t('review.jvLineOf', { field: row.desc, line: String(row.lines[0] + 1) }),
+        })}
+        title={shared ? t('review.jvSharedHint', { count: String(row.lines.length) }) : undefined}
+        data-shared={shared || undefined}
+        value={fmt(value)}
+        onChange={v => onAmount(row, parseNum(v))}
+      />
+    </td>
   )
 }

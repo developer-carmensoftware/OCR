@@ -30,6 +30,18 @@ export interface JvRow {
    * rule, not a row.
    */
   key: string
+  /**
+   * Which detail lines this leg's amount came from, by index.
+   *
+   * The review screen edits amounts on the JV rather than on a separate line-items table,
+   * so it has to put an edited figure back where it came from — and `details` is not
+   * cosmetic: `build_input_tax_payload` files the VAT record off it, per line.
+   *
+   * A credit leg carries exactly one index and is therefore exact. A consolidated debit
+   * leg carries every contributing line, and there is no single right way to split one
+   * total back across several — see `applyJvAmount`, which is where that judgement lives.
+   */
+  lines: number[]
 }
 
 // Minimal structural shape of a Step-2 DetailRow — only the fields the JV builder
@@ -44,13 +56,21 @@ interface Detail {
 
 type Mapping = { dept?: string; acc?: string }
 
-const leg = (cfg: Mapping, desc: string, debit: number, credit: number, key: string): JvRow => ({
+const leg = (
+  cfg: Mapping,
+  desc: string,
+  debit: number,
+  credit: number,
+  key: string,
+  lines: number[]
+): JvRow => ({
   dept: cfg.dept || '',
   acc: cfg.acc || '',
   desc,
   debit,
   credit,
   key,
+  lines,
 })
 
 /**
@@ -80,22 +100,32 @@ export function buildJvRows(
   if (opts.consolidateDebit) return consolidated(details, mappings, paymentAmount)
 
   const rows: JvRow[] = []
-  const addRow = (cfg: Mapping, amount: number, desc: string, isDebit: boolean, key: string) => {
+  const addRow = (
+    cfg: Mapping,
+    amount: number,
+    desc: string,
+    isDebit: boolean,
+    key: string,
+    line: number
+  ) => {
     if (!amount) return
-    rows.push(isDebit ? leg(cfg, desc, amount, 0, key) : leg(cfg, desc, 0, amount, key))
+    rows.push(
+      isDebit ? leg(cfg, desc, amount, 0, key, [line]) : leg(cfg, desc, 0, amount, key, [line])
+    )
   }
-  details.forEach(detail => {
+  details.forEach((detail, i) => {
     const payType = detail.Transaction || 'UNKNOWN'
-    addRow(paymentAmount[payType] || {}, parseNum(detail.PayAmt), payType, false, payType)
+    addRow(paymentAmount[payType] || {}, parseNum(detail.PayAmt), payType, false, payType, i)
     addRow(
       mappings.commission || {},
       parseNum(detail.CommisAmt),
       'Credit card commission',
       true,
-      'commission'
+      'commission',
+      i
     )
-    addRow(mappings.tax || {}, parseNum(detail.TaxAmt), 'Input Tax', true, 'tax')
-    addRow(mappings.net || {}, parseNum(detail.Total), 'Bank Account', true, 'net')
+    addRow(mappings.tax || {}, parseNum(detail.TaxAmt), 'Input Tax', true, 'tax', i)
+    addRow(mappings.net || {}, parseNum(detail.Total), 'Bank Account', true, 'net', i)
   })
   return rows
 }
@@ -107,11 +137,11 @@ function consolidated(
 ): JvRow[] {
   // Credit legs: one per payment-type detail line (unchanged), skip zero.
   const rows: JvRow[] = []
-  details.forEach(detail => {
+  details.forEach((detail, i) => {
     const amt = parseNum(detail.PayAmt)
     if (!amt) return
     const payType = detail.Transaction || 'UNKNOWN'
-    rows.push(leg(paymentAmount[payType] || {}, payType, 0, amt, payType))
+    rows.push(leg(paymentAmount[payType] || {}, payType, 0, amt, payType, [i]))
   })
   // Degenerate/empty document — no real credit legs, so emit nothing (mirrors the
   // per-line builder's "no data" outcome; keeps Submit disabled).
@@ -119,12 +149,68 @@ function consolidated(
 
   // Debit side: the three canonical buckets, summed, always present (standard layout).
   const sum = (k: keyof Detail) => round2(details.reduce((s, d) => s + parseNum(d[k]), 0))
+  const all = details.map((_, i) => i)
   rows.push(
-    leg(mappings.commission || {}, 'Credit card commission', sum('CommisAmt'), 0, 'commission')
+    leg(mappings.commission || {}, 'Credit card commission', sum('CommisAmt'), 0, 'commission', all)
   )
-  rows.push(leg(mappings.tax || {}, 'Input Tax', sum('TaxAmt'), 0, 'tax'))
-  rows.push(leg(mappings.net || {}, 'Bank Account', sum('Total'), 0, 'net'))
+  rows.push(leg(mappings.tax || {}, 'Input Tax', sum('TaxAmt'), 0, 'tax', all))
+  rows.push(leg(mappings.net || {}, 'Bank Account', sum('Total'), 0, 'net', all))
   return rows
+}
+
+/** Which detail column each JV leg's amount is a sum of. */
+const COLUMN_FOR_KEY: Record<string, keyof Detail> = {
+  commission: 'CommisAmt',
+  tax: 'TaxAmt',
+  net: 'Total',
+}
+
+/**
+ * Put an amount edited on the JV back into the detail lines it came from.
+ *
+ * The review screen has no separate line-items table any more — the JV is the one place
+ * figures are read and changed. But `details` is not display: `build_input_tax_payload`
+ * files the VAT record from it, line by line, so an edit that only moved the JV would
+ * post a tax record that disagrees with the journal.
+ *
+ * A credit leg maps to exactly one line, so it is written straight through. A consolidated
+ * debit leg is a sum over several, and splitting one total back has no single right
+ * answer — this shares the new figure out **in proportion to what each line already
+ * carries**, which is the relationship the bank charged by (commission and its VAT are
+ * per-transaction percentages). Rounding drift lands on the last line so the parts still
+ * add to exactly what was typed.
+ *
+ * ponytail: proportional split, and it is a judgement, not arithmetic. If a BU ever needs
+ * to correct one specific line of a multi-line statement, that needs the per-line table
+ * back — not a cleverer rule here.
+ */
+export function applyJvAmount<T extends Detail>(details: T[], row: JvRow, next: number): T[] {
+  const col = COLUMN_FOR_KEY[row.key] ?? 'PayAmt'
+  const lines = row.lines.filter(i => i >= 0 && i < details.length)
+  if (lines.length === 0) return details
+
+  if (lines.length === 1) {
+    const i = lines[0]
+    return details.map((d, n) => (n === i ? { ...d, [col]: round2(next).toFixed(2) } : d))
+  }
+
+  const current = lines.map(i => parseNum(details[i][col]))
+  const total = current.reduce((s, v) => s + v, 0)
+  // Nothing to be proportional to: an all-zero column splits evenly, the only neutral
+  // answer available.
+  const share = (v: number) => (total ? (next * v) / total : next / lines.length)
+
+  let assigned = 0
+  const out = [...details]
+  lines.forEach((i, k) => {
+    // The last line absorbs the rounding, so the parts add to exactly what was typed
+    // rather than to a figure one satang out that makes the JV refuse to balance.
+    const last = k === lines.length - 1
+    const value = last ? round2(next - assigned) : round2(share(current[k]))
+    assigned = round2(assigned + value)
+    out[i] = { ...out[i], [col]: value.toFixed(2) }
+  })
+  return out
 }
 
 /**

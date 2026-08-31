@@ -1,17 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AlertCircle, AlertTriangle, CheckCircle2, Loader2, X } from 'lucide-react'
 import CustomModal from '../components/common/CustomModal'
 import SwapLabel from '../components/common/SwapLabel'
 import ReviewDocCard from '../components/credit-card/ReviewDocCard'
-import DetailTable, { type DetailRow } from '../components/credit-card/DetailTable'
+import type { DetailRow } from '../components/credit-card/DetailTable'
 import JvEditor, { type JvState, type Overrides } from '../components/credit-card/JvEditor'
 import { useT } from '../i18n/LanguageContext'
 import { useAccountingConfig } from '../hooks/credit-card'
 import { showToast } from '../lib/toast'
-import { fmt, parseNum, round2 } from '../lib/format'
+import { fmt, parseNum } from '../lib/format'
 import { toExtractedRows } from '../lib/api/ocr'
 import { normalizeDateStringToCE } from '../lib/date'
+import { applyJvAmount, type JvRow } from '../lib/ccJv'
 import { patchAccountingMappings } from '../lib/api/config'
 import {
   approveDocument,
@@ -124,33 +125,17 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
     return () => document.removeEventListener('keydown', onKey)
   }, [busy, rejecting, onClose])
 
-  // Every layout satisfies gross = commission + tax + net per line, so a line that breaks
-  // it was misread. Recomputed here rather than read off the stored flag, which went stale
-  // the moment the reviewer typed.
-  const badLines = useMemo(
-    () =>
-      new Set(
-        details
-          .map((d, i) =>
-            Math.abs(
-              round2(
-                parseNum(d.PayAmt) -
-                  (parseNum(d.CommisAmt) + parseNum(d.TaxAmt) + parseNum(d.Total))
-              )
-            ) > 0.01
-              ? i
-              : -1
-          )
-          .filter(i => i >= 0)
-      ),
-    [details]
-  )
-
   const sum = (k: keyof DetailRow) => details.reduce((n, d) => n + parseNum(d[k]), 0)
 
   const updateHeader = (key: string, value: string) => setHeaderData(h => ({ ...h, [key]: value }))
-  const updateDetail = (i: number, col: string, value: string) =>
-    setDetails(d => d.map((row, n) => (n === i ? { ...row, [col]: value } : row)))
+
+  // An amount typed on the JV goes back into the lines it was summed from. `details` is
+  // not display: the input-tax record is filed from it, per line, so a figure that moved
+  // only on the journal would post a VAT record that disagrees with it.
+  const updateAmount = useCallback(
+    (row: JvRow, next: number) => setDetails(d => applyJvAmount(d, row, next)),
+    []
+  )
 
   const onOverride = useCallback(
     (key: string, mapping: { dept?: string | null; acc?: string | null }) =>
@@ -198,8 +183,13 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
           ...(doc.extracted as Record<string, unknown>),
           doc_no: headerData.DocNo,
           doc_date: headerData.DocDate,
+          doc_name: headerData.DocName,
           branch_no: headerData.BranchNo,
+          bank_name: headerData.BankName,
+          bank_company_name: headerData.BankCompanyName,
           company_name: headerData.CompanyName,
+          merchant_id: headerData.MerchantId,
+          merchant_name: headerData.MerchantName,
           details: details.map(d => ({
             transaction: d.Transaction || '',
             pay_amt: d.PayAmt || '',
@@ -326,7 +316,6 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
           <>
             <div className="rd-panes">
               <section className="rd-pane" aria-label={t('review.paneDocument')}>
-                <h2 className="rd-pane-title">{t('review.paneDocument')}</h2>
                 {/* A statement about the reading, so it belongs to this pane rather than
                     spanning both. */}
                 {warnings.length > 0 && (
@@ -336,29 +325,9 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   </div>
                 )}
                 <ReviewDocCard headerData={headerData} onUpdate={updateHeader} />
-                <DetailTable
-                  details={details}
-                  badRows={badLines}
-                  onUpdate={updateDetail}
-                  onAddRow={() =>
-                    setDetails(d => [
-                      ...d,
-                      {
-                        Transaction: '',
-                        PayAmt: '',
-                        CommisAmt: '',
-                        TaxAmt: '',
-                        Total: '',
-                        _uid: crypto.randomUUID(),
-                      },
-                    ])
-                  }
-                  onDeleteRow={i => setDetails(d => d.filter((_, n) => n !== i))}
-                />
               </section>
 
               <section className="rd-pane rd-pane--jv" aria-label={t('review.paneJv')}>
-                <h2 className="rd-pane-title">{t('review.paneJv')}</h2>
                 <JvEditor
                   details={details}
                   config={config as Record<string, unknown> | null}
@@ -368,6 +337,7 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   onUndo={onUndo}
                   guessedKeys={doc.guessed || []}
                   unmappedKeys={doc.unmapped || []}
+                  onAmount={updateAmount}
                   onState={onJvState}
                   bankCode={bank || doc.bank_code || ''}
                 />

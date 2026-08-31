@@ -181,9 +181,19 @@ describe('the two panes', () => {
     vi.mocked(api.getPending).mockResolvedValue(detail())
     mount()
     expect(await screen.findByDisplayValue('INV-001')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('1,000.00')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Credit for Visa line 1')).toHaveValue('1,000.00')
     expect(screen.getByRole('region', { name: 'What the document says' })).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'What will post' })).toBeInTheDocument()
+  })
+
+  it('carries every extracted header field, not a chosen six', async () => {
+    // The one omission is DateProcessed, which is today's date made up in the browser.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    for (const label of ['Document type', 'Bank', 'Issued by', 'Merchant ID', 'Branch']) {
+      expect(screen.getByLabelText(label)).toBeInTheDocument()
+    }
   })
 
   it('puts the four decisive numbers above both panes', async () => {
@@ -195,12 +205,15 @@ describe('the two panes', () => {
     }
   })
 
-  it('marks the line that does not reconcile, not a header above the table', async () => {
+  it('shows a JV that does not add up on the row where the numbers disagree', async () => {
+    // No block header summarises it, and there is no line-items table to hunt through:
+    // the TOTAL row carries both figures and the reason.
     vi.mocked(api.getPending).mockResolvedValue(detail({ extracted: BENT }))
     mount()
     await screen.findByDisplayValue('INV-001')
+    expect(screen.getByText('Does not balance')).toBeInTheDocument()
     // Portaled to body, so RTL's `container` never sees it.
-    expect(document.querySelector('.detail-row--bad')).toBeInTheDocument()
+    expect(document.querySelector('.jv-total--bad')).toBeInTheDocument()
   })
 })
 
@@ -273,6 +286,60 @@ describe('mapping in place', () => {
     await waitFor(() =>
       expect(screen.queryByText('1 GL rule changes when you approve')).not.toBeInTheDocument()
     )
+  })
+})
+
+describe('editing amounts on the JV', () => {
+  it('writes a credit leg straight back to its own line', async () => {
+    // One credit leg, one detail line: exact, no judgement involved. The net moves with it
+    // because a JV that no longer balances cannot be approved — which is the point.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-1', tax_note: null })
+    mount()
+    fireEvent.change(await screen.findByLabelText('Credit for Visa line 1'), {
+      target: { value: '1200' },
+    })
+    fireEvent.change(screen.getByLabelText('Debit for Bank Account line 1'), {
+      target: { value: '1167.90' },
+    })
+    await clickApprove()
+    await waitFor(() => {
+      const body = vi.mocked(api.approveDocument).mock.calls[0][1]
+      const lines = (body.extracted as { details: { pay_amt: string }[] }).details
+      expect(lines[0].pay_amt).toBe('1200.00')
+    })
+  })
+
+  it('shares a summed leg across its lines and still totals exactly what was typed', async () => {
+    // `details` is not display — the input-tax record is filed from it line by line — so a
+    // figure that moved only on the journal would post a VAT record that disagrees.
+    // Commission is 30 + 15 = 45 across two lines; 60 splits 40 / 20. The net absorbs the
+    // 15 so the JV still balances and can be approved — the correction a reviewer who
+    // spotted a misread commission would actually make.
+    vi.mocked(api.getPending).mockResolvedValue(detail({ extracted: TWO_VISA }))
+    vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-1', tax_note: null })
+    mount()
+    fireEvent.change(await screen.findByLabelText('Debit for Credit card commission'), {
+      target: { value: '60' },
+    })
+    fireEvent.change(screen.getByLabelText('Debit for Bank Account'), {
+      target: { value: '1436.85' },
+    })
+    await clickApprove()
+    await waitFor(() => {
+      const body = vi.mocked(api.approveDocument).mock.calls[0][1]
+      const lines = (body.extracted as { details: { commis_amt: string }[] }).details
+      expect(lines.map(l => l.commis_amt)).toEqual(['40.00', '20.00'])
+    })
+  })
+
+  it('marks a leg that is summed from several lines', async () => {
+    // Typing into it changes all of them, which is not what a plain figure does.
+    vi.mocked(api.getPending).mockResolvedValue(detail({ extracted: TWO_VISA }))
+    mount()
+    const shared = await screen.findByLabelText('Debit for Credit card commission')
+    expect(shared).toHaveAttribute('data-shared')
+    expect(screen.getByLabelText('Credit for Visa line 1')).not.toHaveAttribute('data-shared')
   })
 })
 

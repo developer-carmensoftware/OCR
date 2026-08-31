@@ -636,15 +636,6 @@
   border-left: 1px solid var(--border);
 }
 
-.rd-pane-title {
-  margin: 0;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-2, var(--text));
-}
-
 .rd-loading {
   display: flex;
   align-items: center;
@@ -769,39 +760,6 @@
   min-height: 0;
 }
 
-/* The wizard's card frame is one border too many inside a pane that is already a
-   surface; its title bar is not chrome, so the box flattens and the words stay. */
-.rd-pane .data-card {
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-  background: transparent;
-}
-
-.rd-pane .data-card > .card-title {
-  padding: 0 0 var(--space-2);
-  background: transparent;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: var(--space-2);
-  font-size: 0.78rem;
-}
-
-.rd-pane .card-body {
-  padding: 0;
-}
-
-.rd-pane .total-summary-card {
-  background: var(--muted);
-  border-radius: var(--radius-md);
-  padding: var(--space-2) var(--space-3);
-}
-
-/* The line that does not reconcile, marked on itself rather than summarised above the
-   table — the reviewer's next keystroke is in this row. */
-.detail-row--bad td {
-  background: oklch(from var(--amber) l c h / 0.09);
-}
-
 /* ── The JV pane ────────────────────────────────────────────────────────────── */
 
 .jv-loading,
@@ -851,6 +809,46 @@
 .jv-num {
   text-align: right;
   white-space: nowrap;
+  width: 7.5rem;
+}
+
+/* The figures are typed here now — the line-items table that used to carry them showed
+   the same numbers one derivation earlier. Flat until touched, like the document fields
+   opposite: a grid of boxes reads as a form to fill in rather than a journal to check. */
+.jv-amt {
+  width: 100%;
+  padding: 0.25rem 0.35rem;
+  font-size: 0.82rem;
+  text-align: right;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  transition: background-color 120ms var(--ease-out-premium, ease-out);
+}
+
+.jv-amt:hover:not(:focus) {
+  background: var(--card-bg);
+  border-color: var(--border);
+}
+
+.jv-amt:focus,
+.jv-amt:focus-visible {
+  outline: none;
+  background: var(--card-bg);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px oklch(from var(--primary) l c h / 0.18);
+}
+
+/* Summed from several lines: typing here changes all of them, so the cell says it is not
+   a plain figure. Underline rather than a colour — this is a caveat, not a problem. */
+.jv-amt[data-shared] {
+  text-decoration: underline dotted var(--text-4);
+  text-underline-offset: 3px;
+}
+
+.jv-num--empty {
+  color: var(--text-4);
 }
 
 /* Rows after the first that share a rule: the value is shown, the control is not, so the
