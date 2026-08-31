@@ -50,6 +50,38 @@ class CarmenAPIError(Exception):
         super().__init__(detail)
 
 
+def _fail(resp: httpx.Response) -> CarmenAPIError:
+    """A Carmen failure that still knows its HTTP status.
+
+    The status is the difference between "fix the JV" and "fix the token", and it used
+    to be dropped: on 2026-08-28 three email-ingest documents were filed as "Carmen
+    rejected the JV" when Carmen had actually answered 401 to a dead posting token.
+    Raised here rather than formatted at each call site so every Carmen error string —
+    ledger row, wizard toast, log line — starts with what actually came back.
+
+    `wrap_network_error` deliberately does NOT go through this: a connection that never
+    reached Carmen has no status, and its friendly wording is what the user should read.
+    """
+    detail = (resp.text or "")[:500] or resp.reason_phrase or "no body"
+    return CarmenAPIError(resp.status_code, f"HTTP {resp.status_code}: {detail}")
+
+
+def _json_or_raise(resp: httpx.Response) -> Any:
+    """Carmen's answer, or a `CarmenAPIError` — never a rejection dressed as a result.
+
+    The write calls used to `return resp.json()` without ever reading `status_code`, so
+    a 401's body (`{"Message": "Authorization has been denied…"}`) arrived at the caller
+    as an ordinary result with no `Code` key, and every caller fell through to its own
+    generic "Carmen rejected it" text.
+    """
+    if resp.status_code >= 400:
+        raise _fail(resp)
+    try:
+        return resp.json()
+    except ValueError:
+        raise _fail(resp)
+
+
 # ── httpx event hooks for outbound logging ────────────────────────────────────
 
 
@@ -140,7 +172,7 @@ async def get_account_codes(carmen_token: str) -> Any:
             f"{_base_url()}/accountCode", headers=_headers(carmen_token)
         )
         if resp.status_code != 200:
-            raise CarmenAPIError(resp.status_code, resp.text)
+            raise _fail(resp)
         return resp.json()
     except RequestError as e:
         raise wrap_network_error(e) from e
@@ -152,7 +184,7 @@ async def get_departments(carmen_token: str) -> Any:
             f"{_base_url()}/department", headers=_headers(carmen_token)
         )
         if resp.status_code != 200:
-            raise CarmenAPIError(resp.status_code, resp.text)
+            raise _fail(resp)
         return resp.json()
     except RequestError as e:
         raise wrap_network_error(e) from e
@@ -176,10 +208,7 @@ async def post_gljv(body: dict, carmen_token: str) -> Any:
         resp = await get_http_client().post(
             f"{_base_url()}/gljv", json=body, headers=_headers(carmen_token)
         )
-        try:
-            return resp.json()
-        except ValueError:
-            raise CarmenAPIError(resp.status_code, resp.text)
+        return _json_or_raise(resp)
     except CarmenAPIError:
         raise
     except RequestError as e:
@@ -191,10 +220,7 @@ async def put_gljv(jvh_seq: int, body: dict, carmen_token: str) -> Any:
         resp = await get_http_client().put(
             f"{_base_url()}/gljv/{jvh_seq}", json=body, headers=_headers(carmen_token)
         )
-        try:
-            return resp.json()
-        except ValueError:
-            raise CarmenAPIError(resp.status_code, resp.text)
+        return _json_or_raise(resp)
     except CarmenAPIError:
         raise
     except RequestError as e:
@@ -229,7 +255,7 @@ async def get_vendors(carmen_token: str) -> Any:
     try:
         resp = await get_http_client().get(f"{_base_url()}/vendor", headers=_headers(carmen_token))
         if resp.status_code != 200:
-            raise CarmenAPIError(resp.status_code, resp.text)
+            raise _fail(resp)
         data = resp.json()
         if isinstance(data, dict) and isinstance(data.get("Data"), list):
             data["Data"] = [
@@ -253,7 +279,7 @@ async def get_vendor_invoices(vn_code: str, carmen_token: str) -> Any:
         if resp.status_code == 404:
             return []
         if resp.status_code != 200:
-            raise CarmenAPIError(resp.status_code, resp.text)
+            raise _fail(resp)
         # ponytail: Carmen occasionally returns 200 with empty body
         return resp.json() if resp.content else []
     except RequestError as e:
@@ -273,7 +299,7 @@ async def get_jv_by_source(source: str, carmen_token: str) -> Any:
         if resp.status_code == 404:
             return []
         if resp.status_code != 200:
-            raise CarmenAPIError(resp.status_code, resp.text)
+            raise _fail(resp)
         return resp.json() if resp.content else []
     except RequestError as e:
         raise wrap_network_error(e) from e
@@ -285,7 +311,7 @@ async def get_tax_profiles(carmen_token: str) -> Any:
             f"{_base_url()}/taxProfile", headers=_headers(carmen_token)
         )
         if resp.status_code != 200:
-            raise CarmenAPIError(resp.status_code, resp.text)
+            raise _fail(resp)
         return resp.json()
     except RequestError as e:
         raise wrap_network_error(e) from e
@@ -297,7 +323,7 @@ async def get_period_list(carmen_token: str) -> Any:
             f"{_base_url()}/getPeriodList", headers=_headers(carmen_token)
         )
         if resp.status_code != 200:
-            raise CarmenAPIError(resp.status_code, resp.text)
+            raise _fail(resp)
         return resp.json()
     except RequestError as e:
         raise wrap_network_error(e) from e
@@ -312,12 +338,9 @@ async def post_input_tax(body: dict, carmen_token: str) -> Any:
         # record — the wizard then toasted success over a document Carmen never filed.
         # Both callers cope with the raise: the router maps it through _carmen_errors,
         # and email_ingest_service._post_input_tax catches it and parks the reason.
-        if resp.status_code >= 400:
-            raise CarmenAPIError(resp.status_code, resp.text)
-        try:
-            return resp.json()
-        except ValueError:
-            raise CarmenAPIError(resp.status_code, resp.text)
+        # This call was fixed alone in 2026-07; `_json_or_raise` is that same rule,
+        # shared, after the four siblings it left behind produced the 401 mystery.
+        return _json_or_raise(resp)
     except CarmenAPIError:
         raise
     except RequestError as e:
@@ -329,10 +352,7 @@ async def put_input_tax(rec_seq: int, body: dict, carmen_token: str) -> Any:
         resp = await get_http_client().put(
             f"{_base_url()}/inputTaxRec/{rec_seq}", json=body, headers=_headers(carmen_token)
         )
-        try:
-            return resp.json()
-        except ValueError:
-            raise CarmenAPIError(resp.status_code, resp.text)
+        return _json_or_raise(resp)
     except CarmenAPIError:
         raise
     except RequestError as e:
@@ -344,10 +364,7 @@ async def post_invoice(body: dict, carmen_token: str) -> Any:
         resp = await get_http_client().post(
             f"{_base_url()}/invoice", json=body, headers=_headers(carmen_token)
         )
-        try:
-            return resp.json()
-        except ValueError:
-            raise CarmenAPIError(resp.status_code, resp.text)
+        return _json_or_raise(resp)
     except CarmenAPIError:
         raise
     except RequestError as e:

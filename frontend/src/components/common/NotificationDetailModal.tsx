@@ -27,6 +27,7 @@ const REASON_KEY: Record<string, TKey> = {
   mapping_incomplete: 'notif.reason.mappingIncomplete',
   unreadable_document: 'notif.reason.unreadableDocument',
   carmen_rejected: 'notif.reason.carmenRejected',
+  carmen_unauthorized: 'notif.reason.carmenUnauthorized',
 }
 
 interface Props {

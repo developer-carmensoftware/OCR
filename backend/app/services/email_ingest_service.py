@@ -143,6 +143,23 @@ class _Skip(Exception):
         super().__init__(message)
 
 
+def _carmen_verdict(result: Any) -> str:
+    """What Carmen actually said about a document it would not file.
+
+    Nobody reviews these before they post, so the ledger row *is* the support ticket:
+    "Carmen rejected the JV" — the old text — names only the fact that there was a
+    verdict. Carmen puts its reason in `UserMessage`, sometimes in `InternalMessage`,
+    and its framework puts framework-level refusals in `Message`; the `Code` is worth
+    keeping even when all three are empty, because "Code 1 with no message" is a
+    different support conversation from "Code 1: Insufficient balance".
+    """
+    body = result if isinstance(result, dict) else {}
+    said = str(body.get("UserMessage") or body.get("InternalMessage") or body.get("Message") or "")
+    return f"Carmen returned Code {body.get('Code')}" + (
+        f": {said}" if said else " with no message"
+    )
+
+
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 
 # One poll at a time per process — see `run_ingest`.
@@ -758,23 +775,23 @@ async def _run_document(
             # The read itself succeeded, so the charge stands.
             raise _Skip("unreadable_document", "Document has no postable amounts")
 
+        # `carmen_unauthorized`, not `carmen_rejected`: nothing is wrong with the
+        # document, and the fix is a credential on the settings screen rather than a
+        # figure on the invoice. Same bucket as a 401 from the post itself, below.
         if not carmen_token:
-            raise _Skip("carmen_rejected", "No Carmen posting credential for this BU")
+            raise _Skip("carmen_unauthorized", "No Carmen posting credential for this BU")
         if not carmen_uri:
             # Park with the honest reason. Without this the RuntimeError from
             # carmen_service._base_url falls through to the generic handler and the
             # document is filed as unreadable, which sends everyone looking at the PDF.
-            raise _Skip("carmen_rejected", "No Carmen host known for this BU")
+            raise _Skip("carmen_unauthorized", "No Carmen host known for this BU")
 
         payload = build_gljv_payload(
             rows, doc_date=extracted.doc_date, bank_code=bank_code, config=config
         )
         result = await post_gljv(payload, carmen_token)
         if not result or result.get("Code", -1) != 0:
-            raise _Skip(
-                "carmen_rejected",
-                str((result or {}).get("UserMessage") or "Carmen rejected the JV"),
-            )
+            raise _Skip("carmen_rejected", _carmen_verdict(result))
 
         await _mark_submitted(extracted.id)
 
@@ -829,15 +846,26 @@ async def _run_document(
         logger.warning("[email] Tenant %s: %s — mail held unread", tenant_id, stop)
         raise
     except CarmenAPIError as exc:
-        # Transport failure — the JV's fate is unknown, so do NOT refund and do not
-        # retry automatically; a human decides after checking Carmen.
+        # Either a transport failure or a real HTTP status from Carmen. Neither refunds:
+        # the JV's fate is unknown, so a human decides after checking Carmen.
+        #
+        # 401/403 is separated out because it is not a verdict on this document at all —
+        # every document of this BU will fail the same way until someone re-pastes the
+        # token, and the person who does that is not the person reading the invoice.
+        unauthorized = exc.status_code in (401, 403)
+        if unauthorized:
+            try:
+                async with async_session() as db:
+                    await es.mark_token_unverified(db, tenant_id)
+            except Exception:  # never let the flag cost us the ledger row
+                logger.exception("[email] Could not flag the credential for tenant %s", tenant_id)
         await _finish(
             ledger_id,
             status="failed",
             task_id=task_id,
             bank_code=bank_code,
             doc_no=doc_no,
-            reason_code="carmen_rejected",
+            reason_code="carmen_unauthorized" if unauthorized else "carmen_rejected",
             error=str(exc),
         )
         return "failed"
@@ -846,6 +874,11 @@ async def _run_document(
         # and re-raised there; refunding again would hand back a second credit for one
         # document. Anything reaching here from after it is post-extraction and keeps
         # its charge like every other late failure.
+        #
+        # `unreadable_document` is the honest-but-broad reason for an unclassified
+        # failure, so the exception's own type goes in the message: without it every
+        # bug in this pipeline reads as "your PDF is bad" and sends the reader to a
+        # file that is perfectly fine.
         await _finish(
             ledger_id,
             status="failed",
@@ -853,7 +886,7 @@ async def _run_document(
             bank_code=bank_code,
             doc_no=doc_no,
             reason_code="unreadable_document",
-            error=str(exc),
+            error=f"{type(exc).__name__}: {exc}",
         )
         logger.exception("[email] Failed on %s", filename)
         return "failed"
@@ -902,7 +935,7 @@ async def _post_input_tax(
         return f"JV posted; input tax not recorded: {exc}"
 
     if not result or result.get("Code", -1) != 0:
-        message = str((result or {}).get("UserMessage") or "Carmen rejected the input-tax record")
+        message = _carmen_verdict(result)
         logger.error("[email] Input tax rejected for %s: %s", extracted.doc_no, message)
         return f"JV posted; input tax not recorded: {message}"
 

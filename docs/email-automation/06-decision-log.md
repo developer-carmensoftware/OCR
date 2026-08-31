@@ -210,7 +210,51 @@ key `(tenant, message_id, attachment)` catches it before any charge. Only a genu
 different email carrying the same document costs twice, which in practice means the
 double-forward setup and little else.
 
-## 18. Superseded designs, and where they live
+## 18. An upstream 401 is not a rejection (2026-08-28)
+
+Three documents of one BU were filed `carmen_rejected — "Carmen rejected the JV"`. Carmen
+had not rejected anything: it answered **HTTP 401**, because that BU's stored posting token
+had died between two polls (it posted JV 1011 at 09:21 UTC and was refused at 09:35).
+Establishing that took a manual join of `email_documents` against `outbound_call_logs`,
+which is the only place the status code survived.
+
+The cause was one line in `carmen_service.post_gljv`: it returned `resp.json()` without ever
+reading `resp.status_code`, so a 401's framework body (`{"Message": "Authorization has been
+denied…"}`) arrived as an ordinary result carrying no `Code`, and the caller fell through to
+its generic "rejected" text. `post_input_tax` had been fixed for exactly this in July; its
+four siblings had not. `_json_or_raise` is now that rule, shared by every write call, and
+`_fail` puts the status into the message so a reader sees `HTTP 401: …` rather than an
+opaque body.
+
+Three consequences worth stating, because each is a decision rather than a mechanical fix:
+
+- **`carmen_unauthorized` is its own `reason_code`.** A dead credential and a bad JV are
+  fixed by different people on different screens, and a dead credential fails *every*
+  document of that BU until someone acts — a distinction the ledger has to be able to show.
+  The two pre-post guards (no stored token, no known host) moved into the same bucket.
+- **The first 401 clears `carmen_token_verified_at`** (`es.mark_token_unverified`), the same
+  "unproven" signal `sweep_token_health` writes, so the settings screen stops claiming a
+  credential verified days ago. `email-token-health` is also scheduled now
+  (`20260828000000_email_token_health_cron.sql`) — it existed all along and had no caller,
+  which is why burnt credits were the first report.
+- **The charge still stands.** Extraction happened, so decision #17 applies unchanged: the
+  document is charged whatever the posting layer says afterwards. Flagging the credential
+  shortens the window; it does not stop a BU spending on mail that arrives before someone
+  re-pastes the token. Halting a BU's run after an auth failure is a real improvement and a
+  separate decision.
+
+The wizard carried the same defect in a different shape: `routers/carmen.py` stamped
+`submitted_at` whenever Carmen answered `Code >= 0`, so a *rejected* JV was recorded as
+submitted and the retry was answered "already submitted to Carmen" — the duplicate guard
+reporting a failure it had caused itself, over Carmen's actual complaint. It now stamps only
+on `Code == 0`, Carmen's documented success contract.
+
+Left alone deliberately: `hooks/ap-invoice/useAPSubmission.ts` treats only `Code < 0` as a
+failure, where the credit-card wizard and the input-tax step both use `Code !== 0`. Unifying
+that is a behaviour change on a working posting path and needs Carmen's contract for
+`/invoice` confirmed first.
+
+## 19. Superseded designs, and where they live
 
 - **`feat/email-flow`** — the v1 design: a human-approval review step before posting, its
   own admin UI, `email_flow_*` migrations. Deliberately never merged; kept only as

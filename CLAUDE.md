@@ -121,9 +121,9 @@ pg_cron → POST /api/v1/email/ingest  (internal job token)
 
 Two properties that make it unlike the wizards: the tag is read **before any LLM call**, so
 an unowned message costs nothing; and there is no human between extraction and posting, so a
-`warnings` field that merely draws an amber banner in a wizard has no reader here. Neither
-cron job (`email-ingest`, `email-token-health`) is scheduled in production yet — see
-[`05-operations.md`](docs/email-automation/05-operations.md#scheduling).
+`warnings` field that merely draws an amber banner in a wizard has no reader here. All three
+cron jobs (`email-ingest`, `email-confirm`, `email-token-health`) are scheduled by migration —
+see [`05-operations.md`](docs/email-automation/05-operations.md#scheduling).
 
 ### Admin dashboard (`#/admin/*`) — check here before writing SQL
 

@@ -37,11 +37,13 @@ address).
 
 ## Scheduling
 
-**Both jobs are scheduled** by `supabase/migrations/20260817000000_email_ingest_cron.sql`:
-`email-ingest` every 10 minutes and `email-confirm` every minute. `email-token-health` is
-the one still unscheduled. The SQL below is what the migration runs — reproduced because it
-is also what you re-issue by hand when the launcher cache goes stale (see below), and it is
-documented as a docstring on `check_token_health()` (`routers/email_automation.py`):
+**All three jobs are scheduled.** `20260817000000_email_ingest_cron.sql` schedules
+`email-ingest` every 10 minutes and `email-confirm` every minute;
+`20260828000000_email_token_health_cron.sql` schedules `email-token-health` daily at 02:15
+UTC (09:15 ICT — before the working day, after the overnight commission mail). The SQL below
+is what the migrations run — reproduced because it is also what you re-issue by hand when the
+launcher cache goes stale (see below), and it is documented as a docstring on
+`check_token_health()` (`routers/email_automation.py`):
 
 ```sql
 select cron.schedule('email-ingest', '*/10 * * * *', $$
@@ -119,7 +121,8 @@ limit 50;
 | Zero messages, ever | `IMAP_HOST` empty (feature off), wrong `IMAP_FOLDER`, or the server rejected `SEARCH … SMALLER` and there's nothing unseen | Check `run_ingest()`'s return isn't `{"status":"disabled"}`; confirm the mailbox actually has unseen mail in that folder |
 | Messages arrive but land as `unrouted` | The tag isn't present in `Delivered-To` / `X-Original-To` / `Envelope-To` / `Received: … for` | Dump the raw headers of one such message; confirm the customer copied the address from Carmen's screen rather than typing it |
 | A BU's documents are all `no_rule_match` | `filename_patterns` too narrow for how this bank actually names its files | Point the customer at "start broad, narrow later" — `.pdf` accepts everything from that bank as an escape hatch |
-| A previously-working BU starts failing with `carmen_rejected` | Carmen token was rotated or revoked on Carmen's side without the OFF/ON cycle | Run `POST /email-ingest/health`; check `verified_at` on `GET /settings/token` |
+| A previously-working BU starts failing with `carmen_unauthorized` | Carmen token expired, was rotated, or was revoked on Carmen's side without the OFF/ON cycle | Since 2026-08-28 the pipeline itself clears `verified_at` on the first 401, so `GET /settings/token` already says "unproven" — the fix is a fresh token, then replay the failed documents. `POST /email-ingest/health` re-checks every BU at once |
+| A BU fails with `carmen_rejected` | Carmen read the JV and declined it — the `error_message` carries Carmen's own `Code` and text | Read the row's message first: it is Carmen's verdict verbatim, not our summary of it. Before 2026-08-28 this reason also absorbed every HTTP-level refusal, so older rows saying "Carmen rejected the JV" with no detail are usually dead tokens, not bad JVs |
 | `gmail_confirmed_at` stays null despite the customer insisting they set up the forward | Google changed the confirmation link format — `auto_confirm_forwarding()` targets an undocumented interface | Check application logs for `"Could not follow the confirmation link"`; this is the one failure mode that breaks silently by design |
 | A BU switched the feature back on and the mail from the off period is not posted | **Expected since 2026-08-18.** Mail older than `enabled_at` is recorded `skipped / ingest_paused` and never scanned: switching the feature off means the customer keyed those documents by hand, and a manual Carmen entry is invisible to the duplicate guard, so replaying the backlog posted everything twice | Filter `#/admin/email` on reason `ingest_paused` — that list *is* the set of documents they must key themselves. To ingest one anyway: re-send it (a fresh arrival time), since the `\Seen` flag and the ledger row both make the original a no-op |
 | A BU switched the feature back on and nothing arrives at all | Their mail was held unread while off, and `IMAP_HOLD_DAYS` has since passed — or it was read by a person or a Gmail filter, which makes it invisible to `SEARCH UNSEEN` for good | The messages are still in the mailbox: mark them unread and poll. Held mail writes no `email_documents` row by design (a ledger row would dedupe it out of ever being retried), so the only live signal is the `held` count in the poll toast on `#/admin/email` |
@@ -180,8 +183,6 @@ with `statement_cache_size=0` rather than raising the app's own pool size.
 Everything below is a real, currently-absent piece — flagged here so it isn't rediscovered
 by surprise.
 
-- **`email-token-health` is not scheduled** — the other two are. See
-  [Scheduling](#scheduling).
 - **No webhooks to Carmen.** `../CARMEN_INTEGRATION.md §3` (`document.posted`,
   `document.failed`) is a proposal; nothing in this repo sends a signed outbound POST.
 - **No retry of a failed document.** Single pass, one attempt, a human has to re-forward.

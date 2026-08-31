@@ -290,7 +290,7 @@ describe('useOcrSubmission', () => {
       expect(props.setCarmenJvId).toHaveBeenCalledWith('JV-777')
     })
 
-    it('F5.2 – Code !== 0 → warning toast + "Already Posted" modal, setCarmenJvId not called', async () => {
+    it('F5.2 – Code !== 0 → warning toast + rejection modal, setCarmenJvId not called', async () => {
       diffCorrections.mockReturnValue([])
       getAccountingConfig.mockResolvedValue(defaultConfig)
       submitToCarmen.mockResolvedValue({ Code: 3, UserMessage: 'Already posted in Carmen' })
@@ -306,9 +306,31 @@ describe('useOcrSubmission', () => {
         'warning'
       )
       expect(props.showModal).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Warning: Data Already Posted' })
+        expect.objectContaining({
+          title: 'Carmen rejected the JV',
+          message: expect.stringContaining('NOT posted'),
+        })
       )
       expect(props.setCarmenJvId).not.toHaveBeenCalled()
+    })
+
+    it('F5.3 – a verdict with no UserMessage still names the Code', async () => {
+      diffCorrections.mockReturnValue([])
+      getAccountingConfig.mockResolvedValue(defaultConfig)
+      // What an upstream 401 used to look like here: a body with neither Code nor
+      // UserMessage, rendered as the unactionable "Carmen error (Code: undefined)".
+      submitToCarmen.mockResolvedValue({ Message: 'Authorization has been denied' })
+
+      const props = makeProps()
+      const { result } = renderHook(() => useOcrSubmission(props))
+      await act(async () => {
+        await result.current.handleSubmitFinal(defaultRows)
+      })
+
+      expect(showToast).toHaveBeenCalledWith(
+        expect.stringContaining('Authorization has been denied'),
+        'warning'
+      )
     })
   })
 

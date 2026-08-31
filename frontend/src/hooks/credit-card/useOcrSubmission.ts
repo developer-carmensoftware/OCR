@@ -122,8 +122,12 @@ export function useOcrSubmission({
         >
         if (carmenRes?.Code !== 0) {
           carmenRejected = true
+          // Carmen puts its reason in UserMessage, sometimes in InternalMessage, and its
+          // framework puts framework-level refusals in Message. Falling straight to
+          // `Code: undefined` (the old text) named nothing the user could act on.
           carmenError =
-            (carmenRes?.UserMessage as string) || `Carmen error (Code: ${carmenRes?.Code})`
+            ((carmenRes?.UserMessage || carmenRes?.InternalMessage || carmenRes?.Message) as
+              string | undefined) || `Carmen returned Code ${carmenRes?.Code} with no message`
           showToast(`Carmen Cloud JV: ${carmenError}`, 'warning')
         } else {
           if (carmenRes?.InternalMessage) {
@@ -156,9 +160,14 @@ export function useOcrSubmission({
           onConfirm: closeModal,
         })
       } else if (carmenRejected) {
+        // Titled "Warning: Data Already Posted" until 2026-08-28, over a JV Carmen had
+        // just refused. The server no longer stamps submitted_at on a rejection either,
+        // so the document really is still submittable and the modal may say so.
         showModal({
-          title: 'Warning: Data Already Posted',
-          message: `Document number ${docNo} saved to database.\n\nCarmen: "${carmenError}"`,
+          title: 'Carmen rejected the JV',
+          message:
+            `Document number ${docNo} was NOT posted to Carmen.\n\nCarmen: "${carmenError}"\n\n` +
+            'The extraction is saved here — correct what Carmen objected to and submit again.',
           type: 'warning',
           confirmText: 'Back to Step 1',
           onConfirm: () => {

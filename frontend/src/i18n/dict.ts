@@ -728,6 +728,8 @@ const en = {
   'notif.reason.mappingIncomplete': 'GL mapping for this bank is still incomplete.',
   'notif.reason.unreadableDocument': 'The document could not be read.',
   'notif.reason.carmenRejected': 'Carmen declined the journal voucher.',
+  'notif.reason.carmenUnauthorized':
+    'Carmen would not accept this business unit’s posting credential. The document is fine — the token needs to be set again in Email Automation settings.',
   'notif.reason.unknown': 'The document could not be processed.',
 
   // What's New — release history page (#/whats-new), entered from the bell.
@@ -982,6 +984,7 @@ const en = {
   'admin.email.reason.duplicate_document': 'Already posted',
   'admin.email.reason.mapping_incomplete': 'GL mapping incomplete',
   'admin.email.reason.carmen_rejected': 'Carmen rejected the JV',
+  'admin.email.reason.carmen_unauthorized': 'Carmen refused the posting credential',
   'admin.email.reason.unsupported_attachment': 'Attachment type not supported',
   'admin.email.reason.ingest_paused': 'Arrived while automation was off',
   'admin.email.col.time': 'Received',
@@ -2037,6 +2040,8 @@ const th: Record<TKey, string> = {
   'notif.reason.mappingIncomplete': 'การผูกผังบัญชีของธนาคารนี้ยังไม่ครบ',
   'notif.reason.unreadableDocument': 'อ่านข้อมูลจากเอกสารนี้ไม่ได้',
   'notif.reason.carmenRejected': 'Carmen ปฏิเสธการบันทึกใบสำคัญ',
+  'notif.reason.carmenUnauthorized':
+    'Carmen ไม่ยอมรับ token สำหรับส่งเอกสารของหน่วยธุรกิจนี้ ตัวเอกสารไม่มีปัญหา — ต้องตั้ง token ใหม่ในหน้าตั้งค่า Email Automation',
   'notif.reason.unknown': 'ประมวลผลเอกสารนี้ไม่สำเร็จ',
 
   'whatsnew.title': 'มีอะไรใหม่',
@@ -2280,6 +2285,7 @@ const th: Record<TKey, string> = {
   'admin.email.reason.duplicate_document': 'เอกสารถูกส่งไปแล้ว',
   'admin.email.reason.mapping_incomplete': 'ผัง GL ไม่ครบ',
   'admin.email.reason.carmen_rejected': 'Carmen ปฏิเสธ JV',
+  'admin.email.reason.carmen_unauthorized': 'Carmen ไม่รับ token ที่ใช้ส่ง',
   'admin.email.reason.unsupported_attachment': 'ไฟล์แนบชนิดที่ระบบอ่านไม่ได้',
   'admin.email.reason.ingest_paused': 'เข้ามาตอนปิดระบบอัตโนมัติ',
   'admin.email.col.time': 'เวลาที่รับ',
