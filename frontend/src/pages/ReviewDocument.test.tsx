@@ -66,6 +66,7 @@ const EXTRACTED = {
 function detail(over: Partial<ReviewDocumentDetail> = {}): ReviewDocumentDetail {
   return {
     id: 'd1',
+    source: 'email',
     created_at: null,
     attachment: 'july.pdf',
     status: 'pending_review',

@@ -87,18 +87,19 @@
   text-decoration: underline;
 }
 
-/* ── The list ───────────────────────────────────────────────────────────────── */
+/* ── The table ──────────────────────────────────────────────────────────────── */
 
-.rq-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.rq-row {
+/* No wrapper div. `useFitRows` measures the space under the list by walking the next
+   siblings of the ref'd element AND of its parent — with the ref on <tbody> that reaches
+   <table>'s siblings, i.e. the pager. A wrapper would hide the pager one level too deep
+   and the page size would come out one row too tall.
+   `separate` + zero spacing rather than `collapse`, because overflow: hidden (which is
+   what rounds the corners over the tinted header row) is only reliable on the former. */
+.rq-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--card-bg);
@@ -106,43 +107,68 @@
   overflow: hidden;
 }
 
-.rq-row-btn {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  width: 100%;
-  padding: 0.85rem 1rem;
-  background: none;
-  border: 0;
+/* Panel labels, not headings — DESIGN.md's label type.
+   --text-2 rather than the --text-3 other tables use for a header: on a phone these names
+   move into the rows as the ONLY thing identifying a cell, and --text-3 on --muted is
+   4.39:1, under the 4.5 floor for text. */
+.rq-table th {
+  padding: 0.6rem 0.85rem;
   text-align: left;
-  cursor: pointer;
-  font: inherit;
-  color: inherit;
-  transition:
-    background-color 160ms var(--ease-out-premium, ease-out),
-    transform 160ms var(--ease-out-premium, ease-out);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2, var(--text));
+  background: var(--muted);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
 }
 
-.rq-row-btn:hover {
+.rq-table td {
+  padding: 0.7rem 0.85rem;
+  font-size: 0.83rem;
+  color: var(--text-3);
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rq-table tbody tr + tr td {
+  border-top: 1px solid var(--border);
+}
+
+.rq-row {
+  transition: background-color 160ms var(--ease-out-premium, ease-out);
+}
+
+.rq-row:hover {
   background: var(--primary-light);
 }
 
-.rq-row-btn:active {
-  transform: scale(0.995);
+/* Widths are declared once, here, rather than per cell — table-layout: fixed reads only
+   the first row, and the header IS that row. */
+.rq-c-source {
+  width: 6.5rem;
+}
+.rq-c-when {
+  width: 9.5rem;
+}
+.rq-c-jv {
+  width: 9rem;
+}
+.rq-c-status {
+  width: 6.5rem;
+}
+.rq-c-act {
+  width: 8rem;
 }
 
-.rq-row-btn:focus-visible {
-  outline: 2.5px solid var(--primary);
-  outline-offset: -2px;
-}
-
-/* The fixed-height half of the row — useFitRows measures this, never the whole row. */
-.rq-row-main {
-  display: grid;
-  grid-template-columns: minmax(4.5rem, auto) minmax(6rem, auto) 1fr auto 1rem;
+.rq-source {
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-3);
-  min-height: 1.5rem;
+  gap: 0.35rem;
+  color: var(--text-3);
+  white-space: nowrap;
 }
 
 .rq-bank {
@@ -151,53 +177,83 @@
   color: var(--text);
 }
 
-.rq-date,
 .rq-docno {
-  font-size: 0.8rem;
   color: var(--text-3);
   white-space: nowrap;
+}
+
+/* Second line of the Document cell: what the file was called, and — while a document is
+   still pending — the gross a reviewer is being asked to agree to. */
+.rq-file {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-4);
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .rq-amount {
-  font-size: 0.9rem;
   font-weight: 500;
-  color: var(--text);
-  text-align: right;
-  white-space: nowrap;
-}
-
-.rq-chevron {
-  color: var(--text-4);
-  flex: none;
-}
-
-.rq-row-btn:hover .rq-chevron {
-  color: var(--primary);
-}
-
-/* ── The reason line ────────────────────────────────────────────────────────── */
-
-.rq-row-sub {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.78rem;
   color: var(--text-3);
-  min-width: 0;
 }
 
-.rq-file {
-  max-width: 16rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.rq-c-when,
+.rq-c-jv {
+  white-space: nowrap;
+  color: var(--text-3);
+}
+
+.rq-c-jv a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.rq-c-jv a:hover {
+  text-decoration: underline;
+}
+
+.rq-empty-cell {
+  color: var(--text-4);
+}
+
+/* ── The status pill ────────────────────────────────────────────────────────── */
+
+.rq-pill {
+  display: inline-block;
+  padding: 0.28rem 0.7rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.7rem;
+  font-weight: 700;
   white-space: nowrap;
 }
 
-.rq-dot {
-  color: var(--text-4);
+.rq-pill--ok {
+  background: var(--emerald-light);
+  color: var(--emerald-text);
 }
+
+.rq-pill--warn {
+  background: var(--amber-light);
+  color: var(--amber-text);
+}
+
+.rq-pill--bad {
+  background: var(--rose-light);
+  color: var(--rose-text);
+}
+
+/* No semantic colour: "skipped" is not an outcome to feel anything about. --text-2, not
+   --text-3, for the same 4.5:1 reason the header carries. */
+.rq-pill--calm {
+  background: var(--muted);
+  color: var(--text-2, var(--text));
+}
+
+/* ── The message ───────────────────────────────────────────────────────────── */
 
 .rq-reason {
   font-weight: 500;
@@ -217,12 +273,15 @@
   color: var(--text-4);
 }
 
-.rq-row--skeleton .rq-row-btn {
-  cursor: default;
+/* The skeleton is a real row with its content hidden, so the table is exactly as tall
+   before the fetch lands as after. A guessed height is what made OrderHistory jolt. */
+.rq-row--skeleton:hover {
+  background: none;
 }
 
-.rq-row--skeleton .rq-bank,
-.rq-row--skeleton .rq-row-sub {
+.rq-skel {
+  display: block;
+  width: 80%;
   border-radius: var(--radius-xs);
   background: linear-gradient(
     90deg,
@@ -235,12 +294,9 @@
   color: transparent;
 }
 
-.rq-row--skeleton .rq-bank {
-  width: 40%;
-}
-
-.rq-row--skeleton .rq-row-sub {
-  width: 65%;
+/* Two lines' worth, matching the Document cell that sets the real row height. */
+.rq-row--skeleton .rq-c-doc .rq-skel {
+  height: 2.1rem;
 }
 
 @keyframes rq-shimmer {
@@ -250,8 +306,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rq-row--skeleton .rq-bank,
-  .rq-row--skeleton .rq-row-sub {
+  .rq-skel {
     animation: none;
   }
 }
@@ -362,22 +417,59 @@
   flex: none;
 }
 
-@media (max-width: 640px) {
-  .rq-row-main {
-    grid-template-columns: minmax(3.5rem, auto) 1fr auto;
-    row-gap: 0.25rem;
+/* Seven columns do not fit a phone, and a primary work surface must not scroll sideways.
+   Each row becomes a stacked card and each cell wears its column name — one markup path,
+   no duplicate DOM, `data-label` supplied by the row component. */
+@media (max-width: 720px) {
+  .rq-table,
+  .rq-table tbody,
+  .rq-table tr,
+  .rq-table td {
+    display: block;
+    width: auto;
   }
 
-  /* Doc number drops before the amount does: the amount is the number someone scans for. */
-  .rq-docno {
+  .rq-table thead {
     display: none;
   }
 
-  .rq-file {
-    max-width: 9rem;
+  .rq-table tbody tr {
+    padding: 0.5rem 0;
   }
 
-  .rq-bar-actions .btn {
+  .rq-table tbody tr + tr {
+    border-top: 1px solid var(--border);
+  }
+
+  .rq-table tbody tr + tr td {
+    border-top: 0;
+  }
+
+  .rq-table td {
+    display: grid;
+    grid-template-columns: 6.5rem 1fr;
+    align-items: baseline;
+    gap: var(--space-2);
+    padding: 0.28rem 0.85rem;
+    white-space: normal;
+  }
+
+  .rq-table td::before {
+    content: attr(data-label);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-2, var(--text));
+  }
+
+  /* An empty Actions cell would otherwise leave its label floating alone. */
+  .rq-c-act:empty {
+    display: none;
+  }
+
+  .rq-bar-actions .btn,
+  .rq-c-act .btn {
     min-height: 44px;
   }
 }
@@ -442,24 +534,6 @@
 
 .rq-tab--active .rq-tab-count {
   color: var(--primary);
-}
-
-/* ── Resolved rows ──────────────────────────────────────────────────────────── */
-
-/* No payload left to open, so no affordance that suggests otherwise. */
-.rq-row--static .rq-row-btn {
-  cursor: default;
-}
-
-.rq-row--static .rq-row-btn:hover {
-  background: none;
-}
-
-.rq-jv {
-  font-size: 0.85rem;
-  color: var(--text-3);
-  text-align: right;
-  white-space: nowrap;
 }
 
 .rq-reason--ok {

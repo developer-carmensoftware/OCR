@@ -1,7 +1,9 @@
 # Human in the loop
 
 Design for the review step that sits between extraction and the Carmen post, and for
-the screen it lives on. Nothing here is built yet.
+the screen it lives on. **Built and shipped 2026-08-28**; §9 records what a customer
+requirement changed about the screen on 2026-08-31. Read §1–§8 as the design, and §9 for
+where the built version now differs from it.
 
 Read [`02-architecture.md`](02-architecture.md) and [`06-decision-log.md`](06-decision-log.md)
 first. This document changes one sentence in each of them: the ledger state machine gains a
@@ -53,7 +55,7 @@ Every row here was decided in the design session, not inferred.
 | 15 | **Approve posts synchronously**, under the BU's stored credential, authed by the session JWT. |
 | 16 | **Rows carry a reason line** — the one derived phrase that says why this document might need you. |
 | 17 | **Auto-post switch is in a settings popover**, not on the main surface. |
-| 18 | **Queue lists email documents only.** A manual scan is something you just did; it is already in Carmen. |
+| 18 | ~~**Queue lists email documents only.** A manual scan is something you just did; it is already in Carmen.~~ **Superseded 2026-08-31** — see §9. The page lists both sources; "already in Carmen" is what the Source and JV columns now say out loud. |
 
 ---
 
@@ -332,9 +334,11 @@ is still one click away, and gains one action.
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-`+ Manual scan` is `.btn-outline`, not `.btn-primary`. On this page the primary action is
+~~`+ Manual scan` is `.btn-outline`, not `.btn-primary`. On this page the primary action is
 approving what the robot already did; scanning by hand is the secondary path, and the button
-weight should say so.
+weight should say so.~~ **Superseded 2026-08-31 (§9)** — it is `Upload documents`, primary.
+The reasoning above held while the page was only the robot's inbox; now that it lists manual
+scans too, uploading one is a first-class action on it rather than an escape from it.
 
 **All clear.** Ingestion is on, nothing pending. This is where a working BU spends most of its
 time, so it must read as success rather than as absence.
@@ -726,3 +730,46 @@ automation states, and `/impeccable audit` on the two new pages before the PR.
 
 Per `CLAUDE.md`: `changelog/<today>.md` in the same commit, a `releaseNotes.ts` entry (this is
 user-visible), and a **MINOR** `VERSION` bump — a new user-visible capability.
+
+---
+
+## 9. Amendment 2026-08-31 — the activity table
+
+A customer requirement plus a mockup replaced the queue's shape. It is the same page and the
+same review flow; what changed is what the page claims to be.
+
+**Was:** the robot's inbox. Four tabs (Needs review / Posted / Not posted / Skipped), each
+holding one status, two-line card rows, the whole row clickable while pending.
+
+**Is:** the module's history. One table, all statuses mixed, a Status pill per row, filter
+chips instead of tabs, and an explicit action button only where there is an action.
+
+### What changed, and why
+
+| # | Change | Why |
+|---|---|---|
+| 19 | **Decision #2 stands; decision #18 falls.** The page lists email documents **and** manual scans. | A `Source` column that says "Email" on every row is not a column. #18's reasoning — "a manual scan is already in Carmen" — is true and is exactly what the row now says, in the Source and JV columns, instead of being a reason to hide it. |
+| 20 | **Manual rows are `submitted_at IS NOT NULL` only.** | A draft someone abandoned mid-wizard is not a notification. They were sitting right there. |
+| 21 | **`credit_cards.jv_no` is a new column** (`20260831000000`), stamped in `proxy_gljv` from Carmen's `InternalMessage`. | Without it a Manual row cannot link into Carmen the way an Email row does. Nullable, no backfill — scans posted before the migration render `—`, because we genuinely do not know. |
+| 22 | **`GET /api/v1/credit-card/activity` is its own router**, not another route on `email_review.py`. | That file's contract is email documents; a manual scan in it would make its own docstring a lie. Approve / reject / detail / status are unchanged and stay there. |
+| 23 | **`DataTable` is still the wrong tool** — the note in §6 survives the reshape. | Rows are one line now, so the columnar objection is gone, but its URL-state and measured-page high-water-mark machinery still solve problems this list does not have. A plain `<table>` plus the existing `<Pager>` is smaller. |
+| 24 | **The `Function` column from the mockup is not built.** | At Credit-Card-only scope it is 1:1 with `Source` on every row ("Email → Credit Card Commission Tax", "Manual → JV Creation"). Add it the day AP invoice or bank e-Tax joins the table. |
+| 25 | **Actions: Review, or Fix mapping, or nothing.** | `pending_review` → Review (opens the same modal). `failed` + `mapping_incomplete` → Fix mapping, the one failure a customer can clear themselves. Everything else gets an empty cell: `_finish` clears `review_payload`, so a View button on a resolved row would open nothing. |
+
+### The one that will get broken
+
+Email ingest calls the same `finalize_extraction` the wizard does, so **every ingested
+document also has a `credit_cards` row**. The Manual half of the query is therefore
+
+```sql
+NOT EXISTS (SELECT 1 FROM email_documents ed WHERE ed.task_id = credit_cards.task_id)
+```
+
+Drop that and one forwarded statement appears twice — once as Email, once as Manual — and
+every count on the page is wrong. `test_credit_card_activity_api.py` asserts the predicate
+against the compiled SQL, because a mock DB cannot execute it.
+
+### Not changed
+
+The review modal, approve, reject, the backlog cap, the refund rule, the notification, and
+every decision #1–#17 above except the two struck through.

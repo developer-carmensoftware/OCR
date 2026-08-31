@@ -44,6 +44,21 @@ statuses rather than one: `problem` is `failed` + `rejected` (they differ in who
 which the row shows, but not in what is owed) and `skipped` absorbs `received` so a row
 stuck mid-flight is still findable. An unknown value falls back to `review`.
 
+### The activity table (`/api/v1/credit-card`, session JWT)
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/credit-card/activity?filter=&limit=&offset=` | `ActivityPage` — email documents **and** manual scans, newest first, plus a count per chip |
+
+What `#/CreditCardOCR` actually lists since 2026-08-31, and a strictly wider question than
+`GET /email/documents` (which still exists and is still email-only). `filter` is
+`all` · `review` · `success` · `failed` · `skipped`, grouping the same ledger statuses the
+`tab` values above do; unknown falls back to `all`. Each row carries `source: email|manual`,
+and a manual row is a `credit_cards` entry with `submitted_at IS NOT NULL` and no
+`email_documents` row pointing at its task — email ingest writes both, so without that
+anti-join one forwarded statement is listed under each source. See
+[`07-human-in-the-loop.md §9`](07-human-in-the-loop.md).
+
 `PUT /settings/auto-post` is deliberately its own route and not a field on
 `PUT /api/v1/carmen/settings`: that endpoint is a full replace, so flipping the switch
 through it would rewrite the BU's rules and PDF passwords on the way, and would make "turn

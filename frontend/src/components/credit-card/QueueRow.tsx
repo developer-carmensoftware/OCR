@@ -1,4 +1,4 @@
-import { ChevronRight, ExternalLink } from 'lucide-react'
+import { ExternalLink, Mail, Upload } from 'lucide-react'
 import { useT } from '../../i18n/LanguageContext'
 import { fmt } from '../../lib/format'
 import { getCarmenUrl } from '../../lib/url'
@@ -36,6 +36,20 @@ const REASON_KEY: Record<string, TKey> = {
   rejected_by_reviewer: 'review.rcRejectedByReviewer',
 }
 
+/**
+ * Ledger status → the pill the row wears. The same four buckets the filter chips use
+ * (FILTERS in routers/credit_card_activity.py), so a chip and a pill can never disagree
+ * about which group a row is in.
+ */
+const STATUS_META: Record<string, { key: TKey; tone: string }> = {
+  pending_review: { key: 'review.statusReview', tone: 'warn' },
+  posted: { key: 'review.statusSuccess', tone: 'ok' },
+  failed: { key: 'review.statusFailed', tone: 'bad' },
+  rejected: { key: 'review.statusFailed', tone: 'bad' },
+  skipped: { key: 'review.statusSkipped', tone: 'calm' },
+  received: { key: 'review.statusSkipped', tone: 'calm' },
+}
+
 interface Props {
   row: ReviewDocument
   onOpen: (id: string) => void
@@ -44,87 +58,116 @@ interface Props {
 export default function QueueRow({ row, onOpen }: Props) {
   const { t } = useT()
   const pending = row.status === 'pending_review'
-  // A posted row has no payload left to open here, but it does have somewhere to go: the
-  // JV it became, in Carmen. Same destination the `document_posted` notification offers,
-  // built from the same helper so the two cannot point at different Carmens.
-  const jvHref =
-    !pending && row.status === 'posted' && row.jv_no
-      ? getCarmenUrl(`/glJv/${row.jv_no}/show`)
-      : null
-
-  const Tag = pending ? 'button' : jvHref ? 'a' : 'div'
-  const clickProps = pending
-    ? { type: 'button' as const, onClick: () => onOpen(row.id) }
-    : jvHref
-      ? { href: jvHref, target: '_blank', rel: 'noopener noreferrer', title: t('review.openJv') }
-      : {}
+  // A posted row has somewhere to go: the JV it became, in Carmen. Same destination the
+  // `document_posted` notification offers, built from the same helper so the two cannot
+  // point at different Carmens. Manual scans reach it through `credit_cards.jv_no`, which
+  // is NULL for anything posted before migration 20260831000000 — hence the `—`.
+  const jvHref = row.jv_no ? getCarmenUrl(`/glJv/${row.jv_no}/show`) : null
+  const status = STATUS_META[row.status] ?? { key: 'review.statusSkipped' as TKey, tone: 'calm' }
+  const SourceIcon = row.source === 'manual' ? Upload : Mail
 
   return (
-    <li className={`rq-row${pending || jvHref ? '' : ' rq-row--static'}`}>
-      <Tag className="rq-row-btn" {...clickProps}>
-        <span className="rq-row-main">
-          <span className="rq-bank">{row.bank_code || t('review.unknownBank')}</span>
-          {/* Mono on everything the reviewer has to verify — DESIGN.md's Mono Signal Rule. */}
-          <span className="rq-date text-mono">
-            {pending ? row.doc_date || '—' : formatWhen(row.created_at)}
-          </span>
-          <span className="rq-docno text-mono">{row.doc_no || '—'}</span>
-
-          {/* A resolved row has no amount: `_finish` cleared the payload it came from.
-              Showing 0.00 there would be a wrong number, not a missing one — so the JV
-              it became takes that column instead. */}
-          {pending ? (
-            <span className="rq-amount text-mono">{fmt(row.total)}</span>
-          ) : (
-            <span className="rq-jv text-mono">{row.jv_no || '—'}</span>
-          )}
-
-          {pending ? (
-            <ChevronRight size={16} className="rq-chevron" aria-hidden="true" />
-          ) : jvHref ? (
-            <ExternalLink size={14} className="rq-chevron" aria-hidden="true" />
-          ) : (
-            <span className="rq-chevron" aria-hidden="true" />
-          )}
+    <tr className="rq-row">
+      <td className="rq-c-source" data-label={t('review.colSource')}>
+        <span className="rq-source">
+          <SourceIcon size={13} strokeWidth={2} aria-hidden="true" />
+          {t(row.source === 'manual' ? 'review.sourceManual' : 'review.sourceEmail')}
         </span>
+      </td>
 
-        <span className="rq-row-sub">
-          <span className="rq-file" title={row.attachment}>
-            {row.attachment}
-          </span>
-          <span className="rq-dot" aria-hidden="true">
-            ·
-          </span>
-          {pending ? (
+      <td className="rq-c-doc" data-label={t('review.colDocument')}>
+        <span className="rq-bank">{row.bank_code || t('review.unknownBank')}</span>{' '}
+        {/* Mono on everything the reviewer has to verify — DESIGN.md's Mono Signal Rule. */}
+        <span className="rq-docno text-mono">{row.doc_no || '—'}</span>
+        <span className="rq-file" title={row.attachment}>
+          {row.attachment}
+          {/* The gross, which is what lands on the credit side of the JV — the number a
+              reviewer scans for. Pending only: `_finish` clears the payload it comes from,
+              so on a resolved row 0.00 would be a wrong value, not a missing one. */}
+          {pending && (
             <>
-              <span>{t('review.lineCount', { count: String(row.line_count) })}</span>
-              <span className="rq-dot" aria-hidden="true">
-                ·
-              </span>
-              <span className={`rq-reason rq-reason--${reasonKey(row.flags).tone}`}>
-                {t(reasonKey(row.flags).key)}
-              </span>
+              {' · '}
+              <span className="rq-amount text-mono">{fmt(row.total)}</span>
             </>
-          ) : (
-            <ResolvedNote row={row} />
           )}
         </span>
-      </Tag>
-    </li>
+      </td>
+
+      <td className="rq-c-when text-mono" data-label={t('review.colReceived')}>
+        {formatWhen(row.created_at)}
+      </td>
+
+      <td className="rq-c-jv text-mono" data-label={t('review.colJv')}>
+        {jvHref ? (
+          <a href={jvHref} target="_blank" rel="noopener noreferrer" title={t('review.openJv')}>
+            {row.jv_no}
+            <ExternalLink size={12} strokeWidth={2} aria-hidden="true" />
+          </a>
+        ) : (
+          <span className="rq-empty-cell">—</span>
+        )}
+      </td>
+
+      <td className="rq-c-status" data-label={t('review.colStatus')}>
+        <span className={`rq-pill rq-pill--${status.tone}`}>{t(status.key)}</span>
+      </td>
+
+      <td className="rq-c-msg" data-label={t('review.colMessage')}>
+        <Message row={row} pending={pending} />
+      </td>
+
+      <td className="rq-c-act" data-label={t('review.colActions')}>
+        <RowAction row={row} onOpen={onOpen} />
+      </td>
+    </tr>
   )
 }
 
-/** What happened to a document nobody can open any more. The whole story the ledger
- *  columns still hold: who decided, or what refused it. */
-function ResolvedNote({ row }: { row: ReviewDocument }) {
+/**
+ * The action, and only where there is one.
+ *
+ * A resolved row has no `review_payload` left — `_finish` clears it on every terminal
+ * transition — so a "View" button on one would open nothing. Its story is already in the
+ * Message column and its JV number is already a link.
+ */
+function RowAction({ row, onOpen }: Props) {
   const { t } = useT()
+
+  if (row.status === 'pending_review') {
+    return (
+      <button type="button" className="btn btn-outline btn-sm" onClick={() => onOpen(row.id)}>
+        {t('review.actionReview')}
+      </button>
+    )
+  }
+  // The one failure a customer can fix themselves, and the fix is on another screen.
+  if (row.status === 'failed' && row.reason_code === 'mapping_incomplete') {
+    return (
+      <a className="btn btn-outline btn-sm" href="#/CreditCardOCR/mapping">
+        {t('review.actionFixMapping')}
+      </a>
+    )
+  }
+  return null
+}
+
+/** Why this row might need you (while pending), or what happened to it (once resolved). */
+function Message({ row, pending }: { row: ReviewDocument; pending: boolean }) {
+  const { t } = useT()
+
+  if (pending) {
+    const reason = reasonKey(row.flags)
+    return <span className={`rq-reason rq-reason--${reason.tone}`}>{t(reason.key)}</span>
+  }
 
   if (row.status === 'posted') {
     return (
       <span className="rq-reason rq-reason--ok">
-        {row.reviewed_by_name
-          ? t('review.postedBy', { name: row.reviewed_by_name })
-          : t('review.postedAutomatically')}
+        {row.source === 'manual'
+          ? t('review.postedManually')
+          : row.reviewed_by_name
+            ? t('review.postedBy', { name: row.reviewed_by_name })
+            : t('review.postedAutomatically')}
         {/* The JV posted but its VAT record did not — the document is done either way,
             so this is a note, not a failure. */}
         {row.error_message ? ` · ${row.error_message}` : ''}
@@ -144,11 +187,13 @@ function ResolvedNote({ row }: { row: ReviewDocument }) {
   )
 }
 
-/** Resolved rows have no document date — the payload is gone — so they are stamped with
- *  when we handled them, which is the only date the ledger still knows. */
+/** When we handled it. A pending row's document date lives in the review modal; this
+ *  column answers "how long has this been sitting here", which is the same question for
+ *  every row regardless of status. */
 function formatWhen(iso: string | null): string {
   if (!iso) return '—'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
 }

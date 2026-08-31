@@ -23,6 +23,9 @@ export const API = {
 
   creditCard: {
     extract: `${V1}/credit-card/extract`,
+    // The module landing page's list: email documents AND manual scans, one envelope.
+    // Deliberately not under /email — it outgrew that prefix the day Source became a column.
+    activity: `${V1}/credit-card/activity`,
     tasks: `${V1}/credit-card/tasks`,
     task: (taskId: string) => `${V1}/credit-card/tasks/${taskId}`,
     mapping: {

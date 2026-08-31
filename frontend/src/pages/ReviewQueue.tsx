@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Copy, Mail, RefreshCw, ScanLine } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Copy, Mail, RefreshCw, Upload } from 'lucide-react'
 import AppHeader from '../components/common/AppHeader'
 import UsageIndicator from '../components/common/UsageIndicator'
 import Pager from '../components/common/Pager'
@@ -7,21 +7,33 @@ import QueueRow from '../components/credit-card/QueueRow'
 import QueueSettings from '../components/credit-card/QueueSettings'
 import ReviewDocument from './ReviewDocument'
 import { useReviewQueue } from '../hooks/credit-card/useReviewQueue'
-import { QUEUE_TABS, type QueueTab } from '../lib/api/emailReview'
+import { ACTIVITY_FILTERS, type ActivityFilter } from '../lib/api/emailReview'
 import { useFitRows } from '../hooks/useFitRows'
 import { useT } from '../i18n/LanguageContext'
 import { showToast } from '../lib/toast'
 import type { TKey } from '../i18n/dict'
 
-// Mirrors the cap FastAPI enforces on GET /api/v1/email/documents (422 above it).
+// Mirrors the cap FastAPI enforces on GET /api/v1/credit-card/activity (422 above it).
 const MAX_PAGE = 100
 
-const TAB_LABEL: Record<QueueTab, TKey> = {
-  review: 'review.tabReview',
-  posted: 'review.tabPosted',
-  problem: 'review.tabProblem',
-  skipped: 'review.tabSkipped',
+const FILTER_LABEL: Record<ActivityFilter, TKey> = {
+  all: 'review.filterAll',
+  review: 'review.filterReview',
+  success: 'review.filterSuccess',
+  failed: 'review.filterFailed',
+  skipped: 'review.filterSkipped',
 }
+
+// One column per header cell — the row component must stay in step with this list.
+const COLUMNS: TKey[] = [
+  'review.colSource',
+  'review.colDocument',
+  'review.colReceived',
+  'review.colJv',
+  'review.colStatus',
+  'review.colMessage',
+  'review.colActions',
+]
 
 const QUEUE = '#/CreditCardOCR'
 
@@ -41,14 +53,13 @@ function docIdFromHash(): string | null {
  *  data lands. A guessed height is what made OrderHistory jump; same lesson, same fix. */
 function RowSkeleton() {
   return (
-    <li className="rq-row rq-row--skeleton" aria-hidden="true">
-      <span className="rq-row-btn">
-        <span className="rq-row-main">
-          <span className="rq-bank">&nbsp;</span>
-        </span>
-        <span className="rq-row-sub">&nbsp;</span>
-      </span>
-    </li>
+    <tr className="rq-row rq-row--skeleton" aria-hidden="true">
+      {COLUMNS.map(c => (
+        <td key={c}>
+          <span className="rq-skel">&nbsp;</span>
+        </td>
+      ))}
+    </tr>
   )
 }
 
@@ -135,11 +146,23 @@ function NotSetUp({
 
 export default function ReviewQueue() {
   const { t } = useT()
-  // Page size = whatever fits above the fold, measured off the fixed-height part of a row.
-  const [fits, listRef] = useFitRows('.rq-row-main', 5)
+  // Page size = whatever fits above the fold. Every row is now one line tall, so the row
+  // itself is a safe thing to measure.
+  const [fits, listRef] = useFitRows('tr', 5)
   const limit = Math.min(fits, MAX_PAGE)
-  const { status, tab, setTab, rows, total, offset, setOffset, loading, error, reload } =
-    useReviewQueue(limit)
+  const {
+    status,
+    filter,
+    setFilter,
+    rows,
+    total,
+    counts,
+    offset,
+    setOffset,
+    loading,
+    error,
+    reload,
+  } = useReviewQueue(limit)
   const [reloading, setReloading] = useState(false)
   const [openId, setOpenId] = useState(docIdFromHash)
 
@@ -163,9 +186,15 @@ export default function ReviewQueue() {
 
   const configured = !!status?.enabled && !!status?.entitled
   const hasWork = rows.length > 0
-  // The heading counts what needs a human, not what this tab happens to show — someone
-  // reading the Skipped tab still wants to know whether anything is owed.
-  const reviewCount = status?.counts?.review ?? 0
+  // The heading counts what needs a human, not what this filter happens to show — someone
+  // reading the Skipped chip still wants to know whether anything is owed.
+  const reviewCount = counts.review ?? 0
+  // Empty under All or Needs review means "caught up". Empty under Success / Failed /
+  // Skipped just means that bucket is empty, which is a different sentence.
+  const workFilter = filter === 'all' || filter === 'review'
+  // A BU with manual scans has a history even with forwarding off, so the sales pitch is
+  // gated on having nothing at all rather than on the current filter being empty.
+  const nothingEver = (counts.all ?? 0) === 0
 
   return (
     <div className="app-container">
@@ -202,36 +231,32 @@ export default function ReviewQueue() {
           </button>
           {/* Nothing to configure until mail is actually arriving. */}
           {configured && <QueueSettings autoPost={!!status?.auto_post} onChanged={reload} />}
-          {/* Outline, not primary. On this page the main action is approving what the
-              robot already did; scanning by hand is the secondary path. */}
-          <button type="button" className="btn btn-outline" onClick={goManual}>
-            <ScanLine size={14} /> {t('review.manualScan')}
+          <button type="button" className="btn btn-primary" onClick={goManual}>
+            <Upload size={14} /> {t('review.uploadDocuments')}
           </button>
         </div>
       </div>
 
-      {/* Hidden until the BU has mail at all: a strip of four zeroes above an
-          explanation of what the feature is would be scaffolding, not navigation. */}
-      {configured && (
+      {/* Hidden until the BU has mail at all: a strip of five zeroes above an explanation
+          of what the feature is would be scaffolding, not navigation. A BU with only
+          manual scans still gets it — they have rows to filter. */}
+      {(configured || !nothingEver) && (
         <div className="rq-tabs" role="tablist" aria-label={t('review.tabsLabel')}>
-          {QUEUE_TABS.map(id => {
-            const n = status?.counts?.[id] ?? 0
-            return (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={tab === id}
-                className={`rq-tab${tab === id ? ' rq-tab--active' : ''}`}
-                onClick={() => setTab(id)}
-              >
-                {t(TAB_LABEL[id])}
-                {/* Zero is shown too. A count that disappears makes the strip reflow as
-                    documents resolve, and "0" is itself the answer to "anything failed?" */}
-                <span className="rq-tab-count text-mono">{n}</span>
-              </button>
-            )
-          })}
+          {ACTIVITY_FILTERS.map(id => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={filter === id}
+              className={`rq-tab${filter === id ? ' rq-tab--active' : ''}`}
+              onClick={() => setFilter(id)}
+            >
+              {t(FILTER_LABEL[id])}
+              {/* Zero is shown too. A count that disappears makes the strip reflow as
+                  documents resolve, and "0" is itself the answer to "anything failed?" */}
+              <span className="rq-tab-count text-mono">{counts[id] ?? 0}</span>
+            </button>
+          ))}
         </div>
       )}
 
@@ -252,26 +277,42 @@ export default function ReviewQueue() {
         </div>
       ) : (
         <>
-          <ul className="rq-list" ref={listRef}>
-            {loading && Array.from({ length: 3 }).map((_, i) => <RowSkeleton key={i} />)}
-            {!loading && rows.map(row => <QueueRow key={row.id} row={row} onOpen={openDoc} />)}
-          </ul>
+          {(loading || hasWork) && (
+            <table className="rq-table">
+              <thead>
+                <tr>
+                  {COLUMNS.map(c => (
+                    <th key={c} scope="col">
+                      {t(c)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              {/* The ref goes on tbody, not the table: useFitRows measures a rendered row
+                  and reaches the pager through the table's siblings. */}
+              <tbody ref={listRef}>
+                {loading && Array.from({ length: 3 }).map((_, i) => <RowSkeleton key={i} />)}
+                {!loading && rows.map(row => <QueueRow key={row.id} row={row} onOpen={openDoc} />)}
+              </tbody>
+            </table>
+          )}
 
-          {!loading && !hasWork && configured && tab === 'review' && (
-            <AllClear address={status?.ingest_address ?? null} />
-          )}
-          {/* An empty Posted tab means nothing has posted yet, which is not the same
-              claim as "you are all caught up" and must not borrow its tick. */}
-          {!loading && !hasWork && configured && tab !== 'review' && (
-            <p className="rq-empty-tab">{t('review.emptyTab')}</p>
-          )}
-          {!loading && !hasWork && !configured && tab === 'review' && (
-            <NotSetUp
-              address={status?.ingest_address ?? null}
-              blockers={status?.blockers ?? []}
-              entitled={!!status?.entitled}
-            />
-          )}
+          {/* Three empty states, never one generic one. An empty Success list means
+              nothing has posted yet, which is not the same claim as "you are all caught
+              up" and must not borrow its tick. */}
+          {!loading &&
+            !hasWork &&
+            (nothingEver && !configured ? (
+              <NotSetUp
+                address={status?.ingest_address ?? null}
+                blockers={status?.blockers ?? []}
+                entitled={!!status?.entitled}
+              />
+            ) : workFilter && configured ? (
+              <AllClear address={status?.ingest_address ?? null} />
+            ) : (
+              <p className="rq-empty-tab">{t('review.emptyTab')}</p>
+            ))}
 
           {hasWork && <Pager offset={offset} limit={limit} total={total} onChange={setOffset} />}
         </>

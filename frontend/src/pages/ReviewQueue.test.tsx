@@ -6,14 +6,14 @@ import ReviewQueue from './ReviewQueue'
 import type { ReviewDocument, ReviewStatus } from '../lib/api/emailReview'
 
 vi.mock('../lib/api/emailReview', async importOriginal => ({
-  // QUEUE_TABS is data the page iterates, not a call to stub.
+  // ACTIVITY_FILTERS is data the page iterates, not a call to stub.
   ...(await importOriginal<typeof import('../lib/api/emailReview')>()),
-  listDocuments: vi.fn(),
+  listActivity: vi.fn(),
   getReviewStatus: vi.fn(),
   setAutoPost: vi.fn(),
 }))
 // The chrome needs AuthProvider and pulls credits over the network. Neither has anything
-// to do with which of its four states this page picks, which is all these tests are about.
+// to do with which of its states this page picks, which is what these tests are about.
 vi.mock('../components/common/UsageIndicator', () => ({ default: () => null }))
 vi.mock('../components/common/AppHeader', () => ({
   default: ({ children }: { children?: React.ReactNode }) => <header>{children}</header>,
@@ -24,6 +24,7 @@ const api = await import('../lib/api/emailReview')
 function doc(over: Partial<ReviewDocument> = {}): ReviewDocument {
   return {
     id: 'd1',
+    source: 'email',
     created_at: '2026-08-28T00:00:00Z',
     attachment: 'july.pdf',
     bank_code: 'KTC',
@@ -49,14 +50,26 @@ function status(over: Partial<ReviewStatus> = {}): ReviewStatus {
     entitled: true,
     ingest_address: 'AIAGENT+ab12@carmensoftware.com',
     blockers: [],
-    counts: { review: 0, posted: 0, problem: 0, skipped: 0 },
     ...over,
   }
 }
 
-function mount(s: ReviewStatus, rows: ReviewDocument[], total = rows.length) {
+const ZERO = { all: 0, review: 0, success: 0, failed: 0, skipped: 0 }
+
+function mount(
+  s: ReviewStatus,
+  rows: ReviewDocument[],
+  counts: Record<string, number> = { ...ZERO, all: rows.length, review: rows.length },
+  total = rows.length
+) {
   vi.mocked(api.getReviewStatus).mockResolvedValue(s)
-  vi.mocked(api.listDocuments).mockResolvedValue({ total, limit: 25, offset: 0, data: rows })
+  vi.mocked(api.listActivity).mockResolvedValue({
+    total,
+    limit: 25,
+    offset: 0,
+    data: rows,
+    counts,
+  })
   return render(
     <LanguageProvider>
       <ReviewQueue />
@@ -68,7 +81,7 @@ beforeEach(() => vi.clearAllMocks())
 
 describe('which state the automation page paints', () => {
   it('lists what is waiting, with the gross amount the reviewer is agreeing to', async () => {
-    mount(status({ counts: { review: 1, posted: 0, problem: 0, skipped: 0 } }), [doc()])
+    mount(status(), [doc()])
     expect(await screen.findByText('KTC')).toBeInTheDocument()
     expect(screen.getByText('INV-001')).toBeInTheDocument()
     expect(screen.getByText('48,200.00')).toBeInTheDocument()
@@ -76,14 +89,14 @@ describe('which state the automation page paints', () => {
   })
 
   it('reads as success, not absence, when a live BU is caught up', async () => {
-    mount(status(), [])
+    mount(status(), [], ZERO)
     expect(await screen.findByText('You are all caught up')).toBeInTheDocument()
     // Never the sales pitch: this BU already knows what the feature is.
     expect(screen.queryByText('Let statements post themselves')).not.toBeInTheDocument()
   })
 
   it('sells the feature to a BU that has not switched it on', async () => {
-    mount(status({ enabled: false, blockers: ['disabled'] }), [])
+    mount(status({ enabled: false, blockers: ['disabled'] }), [], ZERO)
     expect(await screen.findByText('Let statements post themselves')).toBeInTheDocument()
     expect(screen.getByText('AIAGENT+ab12@carmensoftware.com')).toBeInTheDocument()
     expect(screen.getByText('Forwarding is switched off right now.')).toBeInTheDocument()
@@ -91,7 +104,7 @@ describe('which state the automation page paints', () => {
 
   it('hides the address from a BU that cannot receive mail yet', async () => {
     // An address that silently drops everything sent to it is worse than no address.
-    mount(status({ enabled: false, entitled: false, blockers: ['not_entitled'] }), [])
+    mount(status({ enabled: false, entitled: false, blockers: ['not_entitled'] }), [], ZERO)
     await screen.findByText('Let statements post themselves')
     expect(screen.queryByText('AIAGENT+ab12@carmensoftware.com')).not.toBeInTheDocument()
     expect(
@@ -103,7 +116,7 @@ describe('which state the automation page paints', () => {
     // "Nothing is waiting" and "we could not ask" mean opposite things to someone
     // deciding whether to go home.
     vi.mocked(api.getReviewStatus).mockRejectedValue(new Error('offline'))
-    vi.mocked(api.listDocuments).mockRejectedValue(new Error('offline'))
+    vi.mocked(api.listActivity).mockRejectedValue(new Error('offline'))
     render(
       <LanguageProvider>
         <ReviewQueue />
@@ -115,12 +128,12 @@ describe('which state the automation page paints', () => {
   })
 
   it('says so when the BU has turned review off', async () => {
-    mount(status({ auto_post: true }), [])
+    mount(status({ auto_post: true }), [], ZERO)
     await waitFor(() => expect(screen.getByText('Posting without review')).toBeInTheDocument())
   })
 })
 
-describe('the reason line', () => {
+describe('the message column', () => {
   const cases: [ReviewDocument['flags'], string][] = [
     [['unbalanced'], 'amounts do not reconcile'],
     [['mapping_guessed'], 'GL mapping guessed'],
@@ -143,52 +156,93 @@ describe('the reason line', () => {
   })
 })
 
-describe('the status tabs', () => {
-  it('offers one tab per status group, each with its count', async () => {
-    mount(status({ counts: { review: 3, posted: 7, problem: 2, skipped: 101 } }), [doc()])
+describe('the source column', () => {
+  it('tells a forwarded document apart from one somebody scanned', async () => {
+    mount(status(), [
+      doc({ id: 'a' }),
+      doc({ id: 'b', source: 'manual', status: 'posted', jv_no: 'JV-7', total: 0 }),
+    ])
+    expect(await screen.findByText('Email')).toBeInTheDocument()
+    expect(screen.getByText('Manual')).toBeInTheDocument()
+    expect(screen.getByText('scanned and posted by hand')).toBeInTheDocument()
+  })
+})
+
+describe('the status filter chips', () => {
+  it('offers one chip per status group, each with its count', async () => {
+    mount(status(), [doc()], { all: 113, review: 3, success: 7, failed: 2, skipped: 101 })
     for (const [label, n] of [
+      ['All', '113'],
       ['Needs review', '3'],
       ['Posted', '7'],
       ['Not posted', '2'],
       ['Skipped', '101'],
     ]) {
-      const tab = await screen.findByRole('tab', { name: new RegExp(label) })
-      expect(tab).toHaveTextContent(n)
+      const chip = await screen.findByRole('tab', { name: new RegExp(label) })
+      expect(chip).toHaveTextContent(n)
     }
   })
 
-  it('shows a zero rather than dropping the tab', async () => {
+  it('shows a zero rather than dropping the chip', async () => {
     // A count that disappears makes the strip reflow as documents resolve, and "0" is
     // itself the answer to "did anything fail?".
     mount(status(), [doc()])
-    const tab = await screen.findByRole('tab', { name: /Not posted/ })
-    expect(tab).toHaveTextContent('0')
+    const chip = await screen.findByRole('tab', { name: /Not posted/ })
+    expect(chip).toHaveTextContent('0')
   })
 
-  it('refetches for the tab that was clicked', async () => {
-    mount(status({ counts: { review: 1, posted: 4, problem: 0, skipped: 0 } }), [doc()])
+  it('refetches for the chip that was clicked', async () => {
+    mount(status(), [doc()], { ...ZERO, all: 5, review: 1, success: 4 })
     fireEvent.click(await screen.findByRole('tab', { name: /Posted/ }))
     await waitFor(() => {
-      const calls = vi.mocked(api.listDocuments).mock.calls
-      expect(calls[calls.length - 1][0]).toBe('posted')
+      const calls = vi.mocked(api.listActivity).mock.calls
+      expect(calls[calls.length - 1][0]).toBe('success')
     })
   })
 
-  it('hides the tabs from a BU with no mail at all', async () => {
-    // Four zeroes above an explanation of what the feature is would be scaffolding,
+  it('hides the chips from a BU with no documents at all', async () => {
+    // Five zeroes above an explanation of what the feature is would be scaffolding,
     // not navigation.
-    mount(status({ enabled: false, blockers: ['disabled'] }), [])
+    mount(status({ enabled: false, blockers: ['disabled'] }), [], ZERO)
     await screen.findByText('Let statements post themselves')
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
   })
 
-  it('never claims "all caught up" on an empty Posted tab', async () => {
+  it('never claims "all caught up" on an empty Posted chip', async () => {
     // Nothing has posted yet is a different statement from you are up to date, and must
     // not borrow its tick.
-    mount(status({ counts: { review: 0, posted: 0, problem: 0, skipped: 0 } }), [])
+    mount(status(), [], { ...ZERO, all: 2, failed: 2 })
     fireEvent.click(await screen.findByRole('tab', { name: /Posted/ }))
     expect(await screen.findByText('Nothing here yet.')).toBeInTheDocument()
     expect(screen.queryByText('You are all caught up')).not.toBeInTheDocument()
+  })
+})
+
+describe('the actions column', () => {
+  it('offers Review only on a document that is actually waiting', async () => {
+    mount(status(), [doc()])
+    expect(await screen.findByRole('button', { name: 'Review' })).toBeInTheDocument()
+  })
+
+  it('offers nothing on a resolved row', async () => {
+    // A posted document has no review_payload left — `_finish` clears it — so a button
+    // there would open nothing. Its JV number is the link instead.
+    mount(status(), [doc({ status: 'posted', jv_no: 'JV-9001', total: 0 })])
+    await screen.findByText('JV-9001')
+    expect(screen.queryByRole('button', { name: 'Review' })).not.toBeInTheDocument()
+  })
+
+  it('sends a missing GL mapping to the screen that fixes it', async () => {
+    // The one failure a customer can clear themselves.
+    mount(status(), [doc({ status: 'failed', reason_code: 'mapping_incomplete', total: 0 })])
+    const link = await screen.findByRole('link', { name: 'Fix mapping' })
+    expect(link).toHaveAttribute('href', '#/CreditCardOCR/mapping')
+  })
+
+  it('offers no fix for a failure the customer cannot clear', async () => {
+    mount(status(), [doc({ status: 'failed', reason_code: 'carmen_rejected', total: 0 })])
+    await screen.findByText(/Carmen refused it/)
+    expect(screen.queryByRole('link', { name: 'Fix mapping' })).not.toBeInTheDocument()
   })
 })
 
@@ -222,22 +276,20 @@ describe('a row that has already been resolved', () => {
     expect(await screen.findByText('something_new')).toBeInTheDocument()
   })
 
-  it('opens the JV in Carmen instead of a review that no longer exists', async () => {
+  it('opens the JV in Carmen', async () => {
     // Same destination the `document_posted` notification offers, from the same helper.
-    mount(status(), [doc({ status: 'posted', jv_no: 'JV-1' })])
+    mount(status(), [doc({ status: 'posted', jv_no: 'JV-1', total: 0 })])
     const link = await screen.findByRole('link', { name: /JV-1/ })
     expect(link).toHaveAttribute('href', expect.stringContaining('/glJv/JV-1/show'))
     expect(link).toHaveAttribute('target', '_blank')
-    expect(screen.queryByRole('button', { name: /KTC/ })).not.toBeInTheDocument()
   })
 
   it('leaves a row with nothing to open inert', async () => {
-    // A failed document has no JV and no payload: a click would go nowhere, so there is
+    // A failed document has no JV and no payload: there is nowhere to click, so there is
     // no affordance offering one.
     mount(status(), [doc({ status: 'failed', reason_code: 'carmen_rejected', jv_no: null })])
     await screen.findByText(/Carmen refused it/)
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /KTC/ })).not.toBeInTheDocument()
   })
 })
 
@@ -275,7 +327,7 @@ describe('the auto-post switch', () => {
   })
 
   it('is not offered to a BU with nothing forwarding', async () => {
-    mount(status({ enabled: false, blockers: ['disabled'] }), [])
+    mount(status({ enabled: false, blockers: ['disabled'] }), [], ZERO)
     await screen.findByText('Let statements post themselves')
     expect(screen.queryByRole('button', { name: /Automation settings/ })).not.toBeInTheDocument()
   })

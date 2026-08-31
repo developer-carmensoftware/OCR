@@ -84,7 +84,9 @@ def _summarise(row: EmailDocument) -> dict:
     }
 
 
-def _to_row(row: EmailDocument) -> ReviewDocument:
+def to_review_row(row: EmailDocument) -> ReviewDocument:
+    """Public: `credit_card_activity.py` lists these rows beside manual scans and must
+    build them the same way, or the two screens disagree about one document."""
     return ReviewDocument(
         id=str(row.id),
         created_at=row.created_at,
@@ -127,7 +129,7 @@ async def list_documents(
     )
     rows, total = await paginate(db, stmt, limit, offset)
     return Page[ReviewDocument](
-        total=total, limit=limit, offset=offset, data=[_to_row(r) for r in rows]
+        total=total, limit=limit, offset=offset, data=[to_review_row(r) for r in rows]
     )
 
 
@@ -154,7 +156,7 @@ async def get_pending(
         raise NotFoundError("This document is not waiting for review")
     payload = row.review_payload or {}
     return ReviewDocumentDetail(
-        **_to_row(row).model_dump(),
+        **to_review_row(row).model_dump(),
         extracted=payload.get("extracted") or {},
     )
 

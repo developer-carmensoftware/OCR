@@ -7,6 +7,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, SecretStr
 
+from app.models.schemas.common import Page
+
 # The tenant is still the pair (host, bu) — `uri` is how Carmen spells the host, because
 # it is the value they already pass to `/auth/exchange`. We take its hostname and look
 # the tenant up; see `routers/email_automation._tenant_host` for why that is all it does.
@@ -117,6 +119,33 @@ class ReviewDocumentDetail(ReviewDocument):
     """
 
     extracted: dict = Field(default_factory=dict)
+
+
+class ActivityRow(ReviewDocument):
+    """One line of the activity table — an email document OR a manual scan.
+
+    A subclass rather than a parallel type on purpose: every other field means the same
+    thing for both sources, and the browser renders one row component. `source` is the only
+    thing that differs, and it is what the Source column shows.
+
+    A manual row's pending-only fields (`doc_date`, `total`, `line_count`, `flags`) stay at
+    their defaults — a manual scan is only ever listed once it has posted, so there is
+    nothing waiting on a human and no payload to summarise.
+    """
+
+    source: str  # "email" | "manual"
+
+
+class ActivityPage(Page[ActivityRow]):
+    """The activity window plus the counts behind the filter chips.
+
+    Counts span every row, not the page — the same reason `NotificationList` carries
+    `unread_count` next to its `Page` fields. Keyed by filter name, and every key is present
+    even at zero: a chip that appears only when it has rows makes the strip jump as
+    documents resolve.
+    """
+
+    counts: dict[str, int] = Field(default_factory=dict)
 
 
 class ReviewStatus(BaseModel):

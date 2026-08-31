@@ -14,14 +14,17 @@ import type { Page } from './page'
  *  because neither survives a list query: see `_review_flags` in email_ingest_service.py. */
 export type ReviewFlag = 'unbalanced' | 'mapping_guessed' | 'warnings'
 
-/** Which tab a row lives under. `problem` and `skipped` are unions of ledger statuses —
- *  see TABS in routers/email_review.py. */
-export type QueueTab = 'review' | 'posted' | 'problem' | 'skipped'
+/** Which filter chip a row lives under. `failed` and `skipped` are unions of ledger
+ *  statuses — see FILTERS in routers/credit_card_activity.py. */
+export type ActivityFilter = 'all' | 'review' | 'success' | 'failed' | 'skipped'
 
-export const QUEUE_TABS: QueueTab[] = ['review', 'posted', 'problem', 'skipped']
+export const ACTIVITY_FILTERS: ActivityFilter[] = ['all', 'review', 'success', 'failed', 'skipped']
 
 export interface ReviewDocument {
   id: string
+  /** Where the document came in from. `manual` rows are scans someone ran through the
+   *  wizard; they only ever appear once posted, so they are always `status: 'posted'`. */
+  source: 'email' | 'manual'
   created_at: string | null
   attachment: string
   /** The raw ledger status, not the tab. `problem` covers two of these and the row has
@@ -64,21 +67,26 @@ export interface ReviewStatus {
   entitled: boolean
   ingest_address: string | null
   blockers: string[]
-  /** Keyed by tab. Every tab is present even at zero — one that appears only when it has
-   *  rows makes the tab strip jump around as documents resolve. */
+  // The endpoint also returns per-tab `counts`, deliberately not typed here: the chips are
+  // fed by `listActivity`, which is the only source that also knows about manual scans.
+}
+
+/** The activity window plus the counts behind the filter chips. Counts span every row, not
+ *  the page — same shape reason `NotificationList` carries `unread_count`. */
+export interface ActivityPage extends Page<ReviewDocument> {
   counts: Record<string, number>
 }
 
-export async function listDocuments(
-  tab: QueueTab,
+export async function listActivity(
+  filter: ActivityFilter,
   limit = 25,
   offset = 0
-): Promise<Page<ReviewDocument>> {
+): Promise<ActivityPage> {
   const res = await apiFetch(
-    `${API.emailReview.documents}?tab=${tab}&limit=${limit}&offset=${offset}`
+    `${API.creditCard.activity}?filter=${filter}&limit=${limit}&offset=${offset}`
   )
-  if (!res.ok) throw new Error(`Review queue fetch failed (${res.status})`)
-  return res.json() as Promise<Page<ReviewDocument>>
+  if (!res.ok) throw new Error(`Activity fetch failed (${res.status})`)
+  return res.json() as Promise<ActivityPage>
 }
 
 export async function getPending(id: string): Promise<ReviewDocumentDetail> {
