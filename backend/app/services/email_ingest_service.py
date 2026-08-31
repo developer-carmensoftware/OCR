@@ -99,6 +99,7 @@ from app.services.email_imap import (
     gmail_confirm_link,
     mark_seen,
     match_rules,
+    people_addresses,
     sender_allowed,
     tag_from_recipients,
     unique_names,
@@ -644,9 +645,15 @@ async def _run_document(
         # Before match_rules so mail that is not theirs at all is not filed under the
         # narrower "your pattern was too tight" reason.
         if not sender_allowed(owner_emails, people):
+            # Naming what arrived is the whole value of this row. Without it a typo in a
+            # registered address is indistinguishable from a broken feature — see
+            # `people_addresses`. Five is enough to spot the near-miss without pasting a
+            # forwarded chain's entire Cc into the dialog.
+            seen = ", ".join(people_addresses(people)[:5]) or "no readable address"
             raise _Skip(
                 "sender_not_allowed",
-                "No registered address of this BU appears in From/To/Cc",
+                "None of this BU's registered addresses appear in From/To/Cc — "
+                f"this mail carries {seen}",
             )
         matched = match_rules(rules, sender, filename)
         if not matched:

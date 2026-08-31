@@ -22,6 +22,7 @@ import zipfile
 from datetime import UTC, datetime, timedelta
 from email.header import decode_header, make_header
 from email.message import Message
+from email.utils import getaddresses
 from typing import Any
 
 import httpx
@@ -408,7 +409,11 @@ def fetch_unseen(limit: int) -> tuple[list[dict[str, Any]], int]:
                     "from": _decode(msg.get("From")),
                     # For the owner-address gate only. `To`/`Cc` are display headers and
                     # are never used to route — see `sender_allowed` and `_recipients`.
-                    "people": " ".join(
+                    # Comma-joined, not space-joined: that makes the concatenation a valid
+                    # address *list*, which is what `people_addresses` needs to name the
+                    # arriving addresses when the gate refuses. `getaddresses` returns
+                    # nothing at all for headers run together on whitespace.
+                    "people": ", ".join(
                         _decode(v) for h in ("From", "To", "Cc") for v in (msg.get_all(h) or [])
                     ),
                     "recipients": _recipients(msg),
@@ -660,6 +665,21 @@ def sender_allowed(owner_emails: list[str], people: str) -> bool:
         return True
     haystack = people.lower()
     return any(addr in haystack for addr in owner_emails if addr)
+
+
+def people_addresses(people: str) -> list[str]:
+    """The bare addresses in `people`, lowercased and de-duplicated, in header order.
+
+    Only ever used to say what a refused message *did* carry. A `sender_not_allowed` row
+    that names nothing cannot be acted on: on 2026-08-28 one dropped character in a
+    registered address ("acounting@" for "accounting@") skipped every document a BU
+    forwarded, and the ledger said only that no registered address appeared — leaving
+    "the whole feature is broken" as the only available reading.
+
+    `people` is comma-joined in `fetch_unseen` for exactly this: `getaddresses` parses an
+    address list, and answers `[("", "")]` for headers concatenated on whitespace.
+    """
+    return list(dict.fromkeys(addr.lower() for _, addr in getaddresses([people]) if addr))
 
 
 def match_rules(rules: list[dict], sender: str, filename: str) -> list[dict]:
