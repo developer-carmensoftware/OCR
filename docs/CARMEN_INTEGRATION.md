@@ -635,11 +635,18 @@ Carmen (or the customer) learns what happened to a forwarded document.
 `reason_code` values (stable identifiers; the `message` is display text and may change):
 `bank_not_identified`, `mapping_incomplete`, `unbalanced_jv`, `duplicate_document`,
 `unreadable_document`, `wrong_pdf_password`, `out_of_credits`, `carmen_rejected`,
-`tax_id_mismatch`, `no_rule_match`, `sender_not_allowed`.
+`carmen_unauthorized`, `tax_id_mismatch`, `no_rule_match`, `sender_not_allowed`.
 
 - **`sender_not_allowed`** — the BU set `owner_emails` (§2.3) and none of them appeared in
   the message's `From`/`To`/`Cc`. Nothing was charged. Expect this when a colleague
   forwards from an address nobody registered.
+- **`carmen_unauthorized`** — Carmen answered the posting call with **401/403**, or the BU
+  has no stored token/host at all. Nothing is wrong with the document and re-sending it
+  will not help: the BU's posting credential (§2.6) must be set again, after which the
+  document can be replayed. Split out of `carmen_rejected` on 2026-08-28, when three
+  documents of one BU were reported as rejected JVs by a token that had simply expired.
+  `carmen_rejected` now means only what its name says — Carmen read the JV and declined
+  it (`Code != 0`), and the `message` carries that `Code` and Carmen's own text.
 
 The other two are worth reading closely, because they are the two ways a document that
 *arrived correctly* still does not post:

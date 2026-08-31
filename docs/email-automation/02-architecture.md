@@ -246,6 +246,7 @@ flowchart TD
     G7 -- yes --> G8{"post_gljv succeeds?"}
     G8 -- "Carmen declines (Code != 0)" --> F5["failed\ncarmen_rejected\ncharged"]
     G8 -- "transport error" --> F6["failed\ncarmen_rejected\ncharged"]
+    G8 -- "HTTP 401/403, or no token/host" --> F8["failed\ncarmen_unauthorized\ncharged\ncredential flagged unverified"]
     G8 -- yes --> Posted(["posted\ninput-tax record attempted, cannot fail this"])
 
     style Charge fill:#f5c542,color:#000

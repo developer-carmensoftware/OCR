@@ -149,7 +149,12 @@ async def proxy_gljv(
         res = await post_gljv(body, session.carmen_token)
         # Carmen has already accepted the JV; the bookkeeping below must never turn a
         # successful submit into an HTTP 500 (the lock releases on session close).
-        if res and res.get("Code", -1) >= 0 and card is not None:
+        #
+        # `Code == 0` is Carmen's success contract and nothing weaker will do: this used
+        # to stamp on `Code >= 0`, so a *rejected* JV was marked submitted and the user's
+        # retry was met with "already submitted to Carmen" instead of whatever Carmen had
+        # actually complained about. A document Carmen refused must stay re-submittable.
+        if res and res.get("Code") == 0 and card is not None:
             card.submitted_at = datetime.now(UTC)  # type: ignore[assignment]
             if doc_no:
                 card.doc_no = doc_no  # type: ignore[assignment]

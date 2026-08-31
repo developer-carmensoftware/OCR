@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import secrets
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -649,10 +650,14 @@ def fingerprint(token: str) -> str:
 async def verify_token(token: str, carmen_uri: str) -> None:
     """Prove the credential works, now, before we promise the customer automation.
 
-    Carmen's token has no expiry and no introspection endpoint, so an ordinary
-    authenticated GET is the only liveness signal available. Called at save time
-    (the customer finds out on their own screen) and from the daily health check
-    (we find out before the customer does).
+    Carmen offers no introspection endpoint, so an ordinary authenticated GET is the only
+    liveness signal available. Called at save time (the customer finds out on their own
+    screen) and from the daily health check (we find out before the customer does).
+
+    "Carmen's token has no expiry" is what this file used to say. It is not true: on
+    2026-08-28 a token that posted successfully at 09:21 UTC was refused at 09:35, with
+    nothing changed on our side. Treat liveness as something that lapses at any moment,
+    which is why `mark_token_unverified` exists for the posts that discover it first.
     """
     from app.context import current_carmen_uri
     from app.services.carmen_service import CarmenAPIError, get_departments
@@ -711,12 +716,42 @@ async def clear_token(db: AsyncSession, tenant: Tenant, actor: str) -> None:
     await db.commit()
 
 
+async def mark_token_unverified(db: AsyncSession, tenant_id: Any) -> None:
+    """A real post just proved this BU's credential dead — say so where it gets fixed.
+
+    Writes the same `verified_at = null` the health sweep writes, for the same reason:
+    the token may well come back, so we record "unproven" rather than deleting something
+    we cannot re-obtain. Without this, an expired token is visible only as a failed row
+    in the document ledger, while `#/admin/email` and the customer's own settings screen
+    keep showing a credential last verified days ago — which is what made a dead token
+    take three burnt credits to notice on 2026-08-28.
+    """
+    row = (
+        await db.execute(
+            select(EmailIngestSettings).where(
+                EmailIngestSettings.tenant_id == uuid.UUID(str(tenant_id))
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None or row.carmen_token_verified_at is None:
+        return
+    row.carmen_token_verified_at = None
+    await db.commit()
+    logger.warning(
+        "[email] Carmen token %s for tenant %s was rejected on a real post",
+        row.carmen_token_fp,
+        tenant_id,
+    )
+
+
 async def sweep_token_health(db: AsyncSession) -> dict:
     """Re-prove every stored credential against Carmen.
 
-    The token never expires, so nothing tells us it has been revoked on Carmen's
-    side — without this the first symptom is a customer's document failing to post
-    at 3am. Clearing `verified_at` on failure is deliberate: the credential may
+    Nothing tells us a token has expired or been revoked on Carmen's side — without this
+    the first symptom is a customer's document failing to post at 3am, which is exactly
+    what happened on 2026-08-28 while this sweep had an endpoint and no schedule (it now
+    runs daily; see `20260828000000_email_token_health_cron.sql`). Clearing `verified_at`
+    on failure is deliberate: the credential may
     well come back (a transient Carmen outage looks the same as a revocation), so
     we record "unproven" rather than deleting something we cannot re-obtain.
     """

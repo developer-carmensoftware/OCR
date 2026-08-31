@@ -134,6 +134,7 @@ class _Patches:
         self.extract = AsyncMock(return_value=extracted, side_effect=extract_side_effect)
         self.open_or_fail = AsyncMock(return_value=None)
         self.foreign_tax_id = AsyncMock(return_value=conflict)
+        self.mark_token_unverified = AsyncMock()
         self.post_input_tax = AsyncMock(return_value=tax_note)
         self._stack = []
 
@@ -146,6 +147,7 @@ class _Patches:
             patch.object(ingest.ocr_service, "extract_stateless", self.extract),
             patch.object(ingest, "_open_or_fail", self.open_or_fail),
             patch.object(ingest.es, "foreign_tax_id", self.foreign_tax_id),
+            patch.object(ingest.es, "mark_token_unverified", self.mark_token_unverified),
             patch.object(ingest, "_post_input_tax", self.post_input_tax),
             patch.object(ingest, "finalize_extraction", AsyncMock(return_value=self.extracted)),
             patch.object(ingest, "mark_task_failed", AsyncMock()),
@@ -437,7 +439,47 @@ async def test_carmen_declines_jv_fails_but_does_not_refund():
     )
     assert outcome == "failed"
     assert db.added[0].reason_code == "carmen_rejected"
+    # The verdict itself, not "Carmen rejected the JV" — the row is the support ticket.
+    assert "Insufficient balance" in db.added[0].error_message
+    assert "Code 1" in db.added[0].error_message
     p.refund_document.assert_not_called()  # extraction was fine — Carmen just declined
+    p.mark_token_unverified.assert_not_called()  # the credential is fine; the JV is not
+
+
+@pytest.mark.asyncio
+async def test_carmen_401_is_a_credential_failure_not_a_rejection():
+    """2026-08-28: three documents were filed as "Carmen rejected the JV" when the BU's
+    posting token had died. Different reason, different fixer, different screen."""
+    db = _FakeDB()
+    outcome, p = await _run(
+        db,
+        message_id="<msg-4@bank.co.th>",
+        extracted=_extracted(),
+        config=_config(),
+        carmen_result=None,
+        carmen_side_effect=CarmenAPIError(401, "HTTP 401: Authorization has been denied"),
+    )
+    assert outcome == "failed"
+    assert db.added[0].reason_code == "carmen_unauthorized"
+    assert "401" in db.added[0].error_message
+    p.refund_document.assert_not_called()
+    # Flagged where it gets fixed, not only in a ledger row nobody is watching.
+    p.mark_token_unverified.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_missing_credential_is_carmen_unauthorized():
+    db = _FakeDB()
+    outcome, _ = await _run(
+        db,
+        message_id="<msg-5@bank.co.th>",
+        extracted=_extracted(),
+        config=_config(),
+        carmen_result=None,
+        carmen_token="",
+    )
+    assert outcome == "failed"
+    assert db.added[0].reason_code == "carmen_unauthorized"
 
 
 @pytest.mark.asyncio

@@ -253,6 +253,34 @@ def test_gljv_posts_and_stamps_when_not_a_duplicate():
     assert card.submitted_at is not None  # stamped, so the next submit is rejected
 
 
+def test_gljv_rejection_does_not_stamp_submitted_at():
+    """A rejection must leave the document re-submittable.
+
+    The stamp condition was `Code >= 0`, so a rejected JV was recorded as submitted and
+    the user's retry was answered with "already submitted to Carmen" — the duplicate
+    guard reporting a failure it caused itself, over Carmen's real complaint.
+    """
+    card = _card(submitted=False)
+    mock_db = make_mock_db(execute_rows=[card])
+    post = _ok({"Code": 1, "UserMessage": "Period is closed"})
+
+    with (
+        _patch_service("post_gljv", post),
+        _patch_service("has_submitted_doc", AsyncMock(return_value=False)),
+        make_test_client(mock_db) as client,
+    ):
+        _use_uuid_tenant_session()
+        resp = client.post(
+            f"{BASE}/gljv?credit_card_id={card.id}&doc_no=INV-123&bank_code=KBANK",
+            json={"JvhSeq": -1, "Detail": []},
+            headers=AUTH,
+        )
+
+    assert resp.status_code == 200
+    assert resp.json().get("UserMessage") == "Period is closed"
+    assert card.submitted_at is None
+
+
 def test_gljv_non_uuid_credit_card_id_does_not_500():
     """Regression: on duplicate re-submission the frontend sends doc_no (not a
     UUID) as credit_card_id. The post-submit bookkeeping must fall back to a
