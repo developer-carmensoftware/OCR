@@ -156,6 +156,38 @@ async def test_post_input_tax_rejection_with_json_body_raises():
             p.stop()
 
 
+# ── every write call, not just post_input_tax ────────────────────────────────
+#
+# post_input_tax was fixed for the JSON-body rejection alone. Its four siblings kept
+# `return resp.json()` without ever reading the status, so on 2026-08-28 a 401 answered
+# with `{"Message": "Authorization has been denied…"}` reached email_ingest_service as an
+# ordinary result with no `Code`, and three documents were filed as "Carmen rejected the
+# JV" when the BU's posting token was simply dead. Reverting `_json_or_raise` fails here.
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("call", ["post_gljv", "put_gljv", "post_invoice", "put_input_tax"])
+async def test_write_calls_raise_on_401_with_json_body(call):
+    import app.services.carmen_service as svc
+
+    resp = _mock_resp(401, json_data={"Message": "Authorization has been denied for this request."})
+    resp.text = '{"Message": "Authorization has been denied for this request."}'
+    patches = _patch_carmen(resp, method="put" if call.startswith("put") else "post")
+    for p in patches:
+        p.start()
+    try:
+        args = (1, {}, "tok") if call.startswith("put") else ({}, "tok")
+        with pytest.raises(svc.CarmenAPIError) as exc:
+            await getattr(svc, call)(*args)
+        assert exc.value.status_code == 401
+        # The status must survive into the message — it is what tells a reader to go fix
+        # the credential instead of the document.
+        assert "401" in str(exc.value)
+    finally:
+        for p in patches:
+            p.stop()
+
+
 @pytest.mark.asyncio
 async def test_post_input_tax_success_returns_body():
     from app.services.carmen_service import post_input_tax

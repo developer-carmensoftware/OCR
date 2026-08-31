@@ -135,6 +135,9 @@ a full replace). A BU switching the feature on gets review; they turn it off onc
 has earned it. Backpressure, not refunds, protects a BU that stops reading its queue: past
 50 pending, mail is handed back unread and costs nothing.
 
+All three cron jobs (`email-ingest`, `email-confirm`, `email-token-health`) are scheduled by
+migration — see [`05-operations.md`](docs/email-automation/05-operations.md#scheduling).
+
 Design: [`07-human-in-the-loop.md`](docs/email-automation/07-human-in-the-loop.md).
 
 ### Admin dashboard (`#/admin/*`) — check here before writing SQL

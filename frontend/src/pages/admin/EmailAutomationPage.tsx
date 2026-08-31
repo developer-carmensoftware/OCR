@@ -46,6 +46,7 @@ const REASON_CODES = [
   'duplicate_document',
   'mapping_incomplete',
   'carmen_rejected',
+  'carmen_unauthorized',
   'unsupported_attachment',
   'ingest_paused',
 ] as const
