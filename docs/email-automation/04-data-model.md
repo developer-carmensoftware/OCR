@@ -24,7 +24,7 @@ One row per BU (`tenant_id` is the primary key). What Carmen wrote through
 | `gmail_confirm_code` | `varchar(32)`, nullable | `20260807000000` | Kept as a fallback; expect `null` — see [06-decision-log.md](06-decision-log.md) |
 | `gmail_confirm_at` | `timestamptz`, nullable | `20260807000000` | When a confirmation code was last seen |
 | `gmail_confirmed_at` | `timestamptz`, nullable | `20260807020000` | When the poll followed the confirmation **link** and Google accepted it — the real "forward is live" signal today |
-| `auto_post` | `boolean not null default false` | `20260828000000` | Post without a human. **Default false**: a BU switching the feature on gets review, and turns it off once it trusts the queue. Written only by `PUT /api/v1/email/settings/auto-post`, never by the settings save |
+| `auto_post` | `boolean not null default false` | `20260829000000` | Post without a human. **Default false**: a BU switching the feature on gets review, and turns it off once it trusts the queue. Written only by `PUT /api/v1/email/settings/auto-post`, never by the settings save |
 | `created_by` / `updated_by` / `created_at` / `updated_at` | via `TimestampMixin` + `WriterMixin` | `20260803000000` | Standard audit columns |
 
 **Index:** `uq_email_ingest_tag` — unique on `ingest_tag` **where `ingest_tag is not null`**
@@ -186,8 +186,8 @@ how the design changed (full narrative in [06-decision-log.md](06-decision-log.m
 | `20260807000000_email_gmail_confirm_code.sql` | `gmail_confirm_code`, `gmail_confirm_at` |
 | `20260807010000_email_owner_emails.sql` | `owner_emails` — the optional sender allow-list |
 | `20260807020000_email_gmail_auto_confirm.sql` | `gmail_confirmed_at` — the real completion signal, once it was found Google no longer prints a code |
-| `20260828000000_email_review_queue.sql` | Human-in-the-loop: `review_payload`, `reviewed_by`, `reviewed_at`, the partial pending index, and `auto_post` on the settings table |
-| `20260828010000_email_review_reviewer_name.sql` | `reviewed_by_name` — added a day later, as its own migration, because `20260828000000` had already been applied |
+| `20260829000000_email_review_queue.sql` | Human-in-the-loop: `review_payload`, `reviewed_by`, `reviewed_at`, the partial pending index, and `auto_post` on the settings table |
+| `20260829010000_email_review_reviewer_name.sql` | `reviewed_by_name` — added a day later, as its own migration, because `20260829000000` had already been applied |
 
 ## Deliberately not stored
 

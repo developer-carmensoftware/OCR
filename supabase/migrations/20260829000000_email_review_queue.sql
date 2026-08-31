@@ -1,5 +1,13 @@
 -- Email Automation: the human-in-the-loop review queue.
 --
+-- Renumbered from 20260828000000 (and its follow-up from 20260828010000) on 2026-08-31.
+-- `20260828000000_email_token_health_cron.sql` reached main under the same version while
+-- this branch was unmerged, and Supabase keys `supabase_migrations` on the version alone:
+-- whichever landed second would have been treated as already applied and silently skipped,
+-- so on prod this DDL would never have run while its own follow-up altered the table it
+-- creates columns on. The dev database, which had these applied under the old numbers, was
+-- corrected with `supabase migration repair` in the same change.
+--
 -- Until now a document went extract → GL-map → post to Carmen with nobody in between,
 -- which is why docs/CARMEN_INTEGRATION.md publishes "No human approval step" as a property
 -- of the contract. That is the right shape for a pipeline people already trust and the

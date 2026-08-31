@@ -1,6 +1,6 @@
 -- Email Automation: keep the reviewer's NAME on the audit row, not just their id.
 --
--- A follow-up to 20260828000000 rather than an edit of it. That one is already applied, and
+-- A follow-up to 20260829000000 rather than an edit of it. That one is already applied, and
 -- an applied migration is not a file you change: `db push` will never re-run it, so the edit
 -- would exist only in the repo while the database went on without the column.
 --
