@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertCircle, AlertTriangle, Check, CheckCircle2, Loader2, X } from 'lucide-react'
+import { AlertCircle, AlertTriangle, CheckCircle2, Loader2, X } from 'lucide-react'
 import CustomModal from '../components/common/CustomModal'
 import SwapLabel from '../components/common/SwapLabel'
 import ReviewDocCard from '../components/credit-card/ReviewDocCard'
 import DetailTable, { type DetailRow } from '../components/credit-card/DetailTable'
-import AccountingReview, { type AccountingState } from '../components/credit-card/AccountingReview'
+import JvEditor, { type JvState, type Overrides } from '../components/credit-card/JvEditor'
 import { useT } from '../i18n/LanguageContext'
+import { useAccountingConfig } from '../hooks/credit-card'
 import { showToast } from '../lib/toast'
 import { fmt, parseNum, round2 } from '../lib/format'
 import { toExtractedRows } from '../lib/api/ocr'
-import { persistScanForMapping } from '../hooks/credit-card/useOcrExtraction'
 import { normalizeDateStringToCE } from '../lib/date'
+import { patchAccountingMappings } from '../lib/api/config'
 import {
   approveDocument,
   getPending,
@@ -22,46 +23,6 @@ import { detectBankFromExtracted } from '../constants/banks'
 import type { BankCode } from '../types/api'
 import type { TKey } from '../i18n/dict'
 
-/** How much a block should stop someone. `stop` disables Approve; `warn` does not. */
-type Severity = 'ok' | 'warn' | 'stop'
-
-const MARK: Record<Severity, { icon: typeof Check; cls: string }> = {
-  ok: { icon: Check, cls: 'rd-mark--ok' },
-  warn: { icon: AlertTriangle, cls: 'rd-mark--warn' },
-  stop: { icon: AlertCircle, cls: 'rd-mark--stop' },
-}
-
-/**
- * One part of the document, always open.
- *
- * These used to be collapsible, and collapsing was the mistake: the reviewer's question is
- * "does this document add up", which is answered by seeing all four parts at once — not by
- * remembering which of them they have already expanded.
- */
-function Block({
-  title,
-  summary,
-  severity,
-  children,
-}: {
-  title: string
-  summary: string
-  severity: Severity
-  children: React.ReactNode
-}) {
-  const Icon = MARK[severity].icon
-  return (
-    <section className="rd-block">
-      <h3 className="rd-block-h">
-        <span className="rd-block-title">{title}</span>
-        <span className="rd-block-summary">{summary}</span>
-        <Icon size={16} className={`rd-mark ${MARK[severity].cls}`} aria-hidden="true" />
-      </h3>
-      <div className="rd-block-body">{children}</div>
-    </section>
-  )
-}
-
 interface Props {
   id: string
   /** Dismissed without deciding — the document is still waiting. */
@@ -70,6 +31,20 @@ interface Props {
   onDone: () => void
 }
 
+/**
+ * One parked document, as a modal over the queue.
+ *
+ * Rebuilt 2026-08-31. The first version stacked four equal blocks (Document / Lines / GL
+ * mapping / Input tax), which was wrong about what this screen is for. Ingest fills every
+ * field and saves every rule before a document parks here, so nothing on it is unfinished
+ * data entry — the reviewer is checking a machine's decision. That is a comparison between
+ * two things, so the screen is two panes: what the document says, and what will post. The
+ * block frames and their ✓/⚠/⛔ headers are gone; a problem is marked on the thing that
+ * has it.
+ *
+ * The GL rules are editable here rather than on `#/CreditCardOCR/mapping`. Leaving to fix
+ * one meant losing the document you were reading.
+ */
 export default function ReviewDocument({ id, onClose, onDone }: Props) {
   const { t } = useT()
   const [doc, setDoc] = useState<ReviewDocumentDetail | null>(null)
@@ -81,11 +56,12 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   const [bank, setBank] = useState<BankCode | ''>('')
   const [warnings, setWarnings] = useState<string[]>([])
   const [postInputTax, setPostInputTax] = useState(true)
-  const [acc, setAcc] = useState<AccountingState>({
-    rows: [],
-    blocked: true,
-    unmappedFields: [],
-  })
+
+  // GL rule corrections, not yet saved. Keyed by accounting-config field type, because
+  // that is what a picker edits — see JvEditor's note on JvRow.key.
+  const [overrides, setOverrides] = useState<Overrides>({})
+  const [jv, setJv] = useState<JvState>({ rows: [], blocked: true, totalDr: 0, totalCr: 0 })
+  const { config, loading: configLoading } = useAccountingConfig()
 
   const [busy, setBusy] = useState(false)
   const [postError, setPostError] = useState<string | null>(null)
@@ -138,10 +114,10 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || busy || rejecting) return
-      // The date picker is a layer above this one and closes on Escape too; both listen on
-      // `document`, so the innermost open thing has to be checked for rather than trusted
-      // to stop the event.
-      if (document.querySelector('.date-input-popover')) return
+      // The date picker and the account dropdown are layers above this one and close on
+      // Escape too; all listen on `document`, so the innermost open thing has to be
+      // checked for rather than trusted to stop the event.
+      if (document.querySelector('.date-input-popover, .css-select-panel')) return
       onClose()
     }
     document.addEventListener('keydown', onKey)
@@ -149,36 +125,73 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   }, [busy, rejecting, onClose])
 
   // Every layout satisfies gross = commission + tax + net per line, so a line that breaks
-  // it was misread. Same arithmetic the backend flagged at park time, recomputed here
-  // because the reviewer is editing and the stored flag went stale the moment they typed.
+  // it was misread. Recomputed here rather than read off the stored flag, which went stale
+  // the moment the reviewer typed.
   const badLines = useMemo(
     () =>
-      details
-        .map((d, i) => ({
-          line: i + 1,
-          diff: round2(
-            parseNum(d.PayAmt) - (parseNum(d.CommisAmt) + parseNum(d.TaxAmt) + parseNum(d.Total))
-          ),
-        }))
-        .filter(r => Math.abs(r.diff) > 0.01),
+      new Set(
+        details
+          .map((d, i) =>
+            Math.abs(
+              round2(
+                parseNum(d.PayAmt) -
+                  (parseNum(d.CommisAmt) + parseNum(d.TaxAmt) + parseNum(d.Total))
+              )
+            ) > 0.01
+              ? i
+              : -1
+          )
+          .filter(i => i >= 0)
+      ),
     [details]
   )
-
-  const docSeverity: Severity = headerData.DocNo ? 'ok' : 'warn'
-  const lineSeverity: Severity = badLines.length ? 'warn' : 'ok'
-  const glSeverity: Severity = acc.blocked ? 'stop' : acc.unmappedFields.length ? 'warn' : 'ok'
 
   const sum = (k: keyof DetailRow) => details.reduce((n, d) => n + parseNum(d[k]), 0)
 
   const updateHeader = (key: string, value: string) => setHeaderData(h => ({ ...h, [key]: value }))
   const updateDetail = (i: number, col: string, value: string) =>
     setDetails(d => d.map((row, n) => (n === i ? { ...row, [col]: value } : row)))
-  const onState = useCallback((s: AccountingState) => setAcc(s), [])
+
+  const onOverride = useCallback(
+    (key: string, mapping: { dept?: string | null; acc?: string | null }) =>
+      setOverrides(o => ({ ...o, [key]: { dept: mapping.dept || '', acc: mapping.acc || '' } })),
+    []
+  )
+  const onUndo = useCallback(
+    (key: string) =>
+      setOverrides(o => {
+        const { [key]: _dropped, ...rest } = o
+        return rest
+      }),
+    []
+  )
+  const onJvState = useCallback((s: JvState) => setJv(s), [])
+
+  const ruleCount = Object.keys(overrides).length
 
   async function approve() {
     if (!doc) return
     setBusy(true)
     setPostError(null)
+
+    // Rules first, JV second. If Carmen then refuses, the corrected rule still stands —
+    // it was wrong before and is right now, independently of this document — and the
+    // reviewer is standing here to retry. The other order can leave a rule silently
+    // unsaved behind a JV that already posted.
+    if (ruleCount) {
+      try {
+        await patchAccountingMappings(
+          Object.fromEntries(
+            Object.entries(overrides).map(([k, m]) => [k, { dept: m.dept || '', acc: m.acc || '' }])
+          )
+        )
+      } catch (e) {
+        setPostError(t('review.ruleSaveFailed', { reason: (e as Error).message }))
+        setBusy(false)
+        return
+      }
+    }
+
     try {
       const res = await approveDocument(id, {
         extracted: {
@@ -195,7 +208,7 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
             total: d.Total || '',
           })),
         },
-        rows: acc.rows,
+        rows: jv.rows,
         post_input_tax: postInputTax,
       })
       showToast(
@@ -277,9 +290,8 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
         </header>
 
         {!loading && !gone && doc && (
-          /* The four numbers the decision turns on, out of the Lines block and above the
-             scroll: a reviewer should not have to scroll past a table to find the total
-             they are approving. */
+          /* The reconciliation, pinned. Either pane can scroll under it without taking
+             the numbers being compared off screen with it. */
           <div className="rd-sum">
             {(
               [
@@ -312,40 +324,21 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
           </div>
         ) : (
           <>
-            <div className="rd-modal-body">
-              {warnings.length > 0 && (
-                <div className="mapping-alert">
-                  <AlertTriangle size={16} />
-                  <span className="cc-alert-text">{warnings.join(' · ')}</span>
-                </div>
-              )}
-
-              <Block
-                title={t('review.secDocument')}
-                summary={
-                  headerData.DocNo
-                    ? `${headerData.DocNo} · ${headerData.DocDate}`
-                    : t('review.secDocumentMissing')
-                }
-                severity={docSeverity}
-              >
+            <div className="rd-panes">
+              <section className="rd-pane" aria-label={t('review.paneDocument')}>
+                <h2 className="rd-pane-title">{t('review.paneDocument')}</h2>
+                {/* A statement about the reading, so it belongs to this pane rather than
+                    spanning both. */}
+                {warnings.length > 0 && (
+                  <div className="mapping-alert">
+                    <AlertTriangle size={16} />
+                    <span className="cc-alert-text">{warnings.join(' · ')}</span>
+                  </div>
+                )}
                 <ReviewDocCard headerData={headerData} onUpdate={updateHeader} />
-              </Block>
-
-              <Block
-                title={t('review.secLines')}
-                summary={
-                  badLines.length
-                    ? t('review.secLinesBad', { lines: badLines.map(b => b.line).join(', ') })
-                    : t('review.secLinesOk', {
-                        count: String(details.length),
-                        total: fmt(sum('PayAmt')),
-                      })
-                }
-                severity={lineSeverity}
-              >
                 <DetailTable
                   details={details}
+                  badRows={badLines}
                   onUpdate={updateDetail}
                   onAddRow={() =>
                     setDetails(d => [
@@ -362,60 +355,23 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   }
                   onDeleteRow={i => setDetails(d => d.filter((_, n) => n !== i))}
                 />
-              </Block>
+              </section>
 
-              <Block
-                title={t('review.secGl')}
-                summary={
-                  acc.blocked
-                    ? t('review.secGlBlocked')
-                    : acc.unmappedFields.length
-                      ? t('review.secGlGuessed', { fields: acc.unmappedFields.join(', ') })
-                      : t('review.secGlOk', { count: String(acc.rows.length) })
-                }
-                severity={glSeverity}
-              >
-                <AccountingReview
-                  embedded
+              <section className="rd-pane rd-pane--jv" aria-label={t('review.paneJv')}>
+                <h2 className="rd-pane-title">{t('review.paneJv')}</h2>
+                <JvEditor
                   details={details}
-                  headerData={headerData}
-                  bank={bank}
-                  onBack={() => undefined}
-                  onSubmit={() => undefined}
-                  onGoMapping={() => {
-                    // The mapping page reads the current scan out of localStorage; without
-                    // this it opens with nothing to map. Written from the *edited* details,
-                    // so a payment type the reviewer just corrected is the one it asks about.
-                    persistScanForMapping(
-                      doc.extracted as Record<string, unknown>,
-                      details,
-                      bank || doc.bank_code || undefined
-                    )
-                    showToast(t('cc.openedMapping'), 'info')
-                    window.open('#/CreditCardOCR/mapping', '_blank')
-                  }}
-                  onState={onState}
+                  config={config as Record<string, unknown> | null}
+                  configLoading={configLoading}
+                  overrides={overrides}
+                  onOverride={onOverride}
+                  onUndo={onUndo}
+                  guessedKeys={doc.guessed || []}
+                  unmappedKeys={doc.unmapped || []}
+                  onState={onJvState}
+                  bankCode={bank || doc.bank_code || ''}
                 />
-              </Block>
-
-              <Block
-                title={t('review.secTax')}
-                summary={postInputTax ? t('review.secTaxOn') : t('review.secTaxOff')}
-                severity="ok"
-              >
-                <label className="rd-check">
-                  <input
-                    type="checkbox"
-                    checked={postInputTax}
-                    onChange={e => setPostInputTax(e.target.checked)}
-                  />
-                  <span>
-                    <strong>{t('review.secTaxLabel')}</strong>
-                    <br />
-                    <span className="rd-check-hint">{t('review.secTaxHint')}</span>
-                  </span>
-                </label>
-              </Block>
+              </section>
             </div>
 
             <footer className="rd-modal-foot">
@@ -424,6 +380,15 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   <AlertCircle size={16} />
                   <span className="cc-alert-text">{postError}</span>
                 </div>
+              )}
+              {/* Said before the button, not after: the rule change is a second, wider
+                  consequence of pressing it, and the reviewer should know while deciding. */}
+              {ruleCount > 0 && (
+                <p className="rd-rules" role="status">
+                  {t(ruleCount === 1 ? 'review.rulesChanged' : 'review.rulesChangedPlural', {
+                    count: String(ruleCount),
+                  })}
+                </p>
               )}
               <div className="rd-actions">
                 <button
@@ -434,12 +399,19 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                 >
                   {t('review.reject')}
                 </button>
-                <div className="form-actions-sep" />
+                <label className="rd-check">
+                  <input
+                    type="checkbox"
+                    checked={postInputTax}
+                    onChange={e => setPostInputTax(e.target.checked)}
+                  />
+                  <span>{t('review.secTaxLabel')}</span>
+                </label>
                 <button
                   type="button"
                   className="btn btn-primary"
                   onClick={approve}
-                  disabled={busy || acc.blocked}
+                  disabled={busy || jv.blocked}
                 >
                   {busy ? (
                     <Loader2 size={14} className="animate-spin" />
@@ -448,7 +420,11 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   )}
                   <SwapLabel
                     active={busy}
-                    idle={t('review.approve')}
+                    idle={
+                      ruleCount
+                        ? t('review.approveWithRules', { count: String(ruleCount) })
+                        : t('review.approve')
+                    }
                     busy={t('review.approving')}
                   />
                 </button>

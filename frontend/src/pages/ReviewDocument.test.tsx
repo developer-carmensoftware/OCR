@@ -3,46 +3,87 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { LanguageProvider } from '../i18n/LanguageContext'
 import ReviewDocument from './ReviewDocument'
 import type { ReviewDocumentDetail } from '../lib/api/emailReview'
-import type { AccountingState } from '../components/credit-card/AccountingReview'
-import { appKey } from '../lib/storage'
 
 vi.mock('../lib/api/emailReview', () => ({
   getPending: vi.fn(),
   approveDocument: vi.fn(),
   rejectDocument: vi.fn(),
 }))
+vi.mock('../lib/api/config', () => ({ patchAccountingMappings: vi.fn() }))
+vi.mock('../lib/api/mapping', () => ({ suggestPaymentTypes: vi.fn() }))
+vi.mock('../lib/api/carmen', () => ({
+  fetchAccountCodes: vi.fn(async () => [
+    { AccCode: '510300', Description: 'Bank charge' },
+    { AccCode: '511200', Description: 'Input tax' },
+    { AccCode: '511300', Description: 'Input tax (alt)' },
+    { AccCode: '110200', Description: 'Bank - KBANK' },
+    { AccCode: '110300', Description: 'Settlement receivable' },
+  ]),
+  fetchDepartments: vi.fn(async () => [
+    // OPS restricts to three accounts; GEN restricts nothing.
+    {
+      DeptCode: 'OPS',
+      Description: 'Operations',
+      // 110300 is deliberately absent: it is the pair OPS forbids.
+      DefaultAccount: JSON.stringify([
+        { AccCode: '510300' },
+        { AccCode: '511200' },
+        { AccCode: '511300' },
+        { AccCode: '110200' },
+      ]),
+    },
+    { DeptCode: 'GEN', Description: 'General', DefaultAccount: '[]' },
+  ]),
+}))
 
-// AccountingReview reaches Carmen for account names and the BU's config. Its own suite
-// covers what it computes; here it is a stand-in that reports whatever state a test wants.
-let accState: AccountingState = {
-  rows: [{ dept: 'GEN', acc: '1010' }],
-  blocked: false,
-  unmappedFields: [],
-} as unknown as AccountingState
-vi.mock('../components/credit-card/AccountingReview', async () => {
-  const { useEffect } = await import('react')
-  // From an effect, like the real component: reporting during render is a setState in
-  // the parent mid-render, which React refuses.
-  function MockAccountingReview({
-    onState,
-    onGoMapping,
+// The BU's stored rules. Every payment type is mapped, which is the state a parked
+// document actually arrives in — ingest fills and saves before it parks.
+let storedConfig: Record<string, unknown> | null = null
+vi.mock('../hooks/credit-card', () => ({
+  useAccountingConfig: () => ({ config: storedConfig, loading: false }),
+}))
+
+// The picker is portaled and search-driven; its internals are not what this screen adds.
+// Standing in for it with a plain select keeps the real JvEditor under test — the shared
+// rule, the recompute, the undo — and still exposes the option list it was handed.
+vi.mock('../components/common/CustomSearchSelect', () => ({
+  default: ({
+    value,
+    onChange,
+    options,
+    'aria-label': label,
   }: {
-    onState?: (s: AccountingState) => void
-    onGoMapping?: () => void
-  }) {
-    useEffect(() => onState?.(accState), [onState])
-    return (
-      <div data-testid="accounting">
-        <button type="button" onClick={onGoMapping}>
-          Mapping Settings
-        </button>
-      </div>
-    )
-  }
-  return { default: MockAccountingReview }
-})
+    value: string | null
+    onChange: (v: string) => void
+    options: { code: string }[]
+    'aria-label'?: string
+  }) => (
+    <select
+      aria-label={label}
+      value={value || ''}
+      onChange={e => onChange(e.target.value)}
+      data-options={options.map(o => o.code).join(',')}
+    >
+      <option value="" />
+      {options.map(o => (
+        <option key={o.code} value={o.code}>
+          {o.code}
+        </option>
+      ))}
+    </select>
+  ),
+}))
 
 const api = await import('../lib/api/emailReview')
+const cfgApi = await import('../lib/api/config')
+
+const LINE = {
+  transaction: 'Visa',
+  pay_amt: '1000.00',
+  commis_amt: '30.00',
+  tax_amt: '2.10',
+  total: '967.90',
+}
 
 const EXTRACTED = {
   id: 'card-1',
@@ -52,13 +93,23 @@ const EXTRACTED = {
   company_name: 'Test Hotel',
   branch_no: '00000',
   warnings: [],
+  details: [LINE],
+}
+
+/** A line whose columns do not reconcile: gross ≠ commission + tax + net. */
+const BENT = { ...EXTRACTED, details: [{ ...LINE, total: '900.00' }] }
+
+/** Two lines of the SAME payment type — the case that proves a picker edits a rule. */
+const TWO_VISA = {
+  ...EXTRACTED,
   details: [
+    LINE,
     {
       transaction: 'Visa',
-      pay_amt: '1000.00',
-      commis_amt: '30.00',
-      tax_amt: '2.10',
-      total: '967.90',
+      pay_amt: '500.00',
+      commis_amt: '15.00',
+      tax_amt: '1.05',
+      total: '483.95',
     },
   ],
 }
@@ -76,6 +127,8 @@ function detail(over: Partial<ReviewDocumentDetail> = {}): ReviewDocumentDetail 
     total: 1000,
     line_count: 1,
     flags: [],
+    unmapped: [],
+    guessed: [],
     jv_no: null,
     reason_code: null,
     error_message: null,
@@ -86,10 +139,8 @@ function detail(over: Partial<ReviewDocumentDetail> = {}): ReviewDocumentDetail 
   }
 }
 
-// Approve stays disabled until AccountingReview reports — clicking before that is a
-// no-op, which would pass as "nothing posted" for the wrong reason.
 async function clickApprove() {
-  const btn = await screen.findByRole('button', { name: /Approve and post/ })
+  const btn = await screen.findByRole('button', { name: /Approve/ })
   await waitFor(() => expect(btn).toBeEnabled())
   fireEvent.click(btn)
 }
@@ -105,166 +156,230 @@ function mount() {
   )
 }
 
+const mapApi = await import('../lib/api/mapping')
+
 beforeEach(() => {
   vi.clearAllMocks()
-  accState = {
-    rows: [{ dept: 'GEN', acc: '1010' }],
-    blocked: false,
-    unmappedFields: [],
-  } as unknown as AccountingState
+  // JvEditor asks for a suggestion whenever a payment type has no account. Most tests
+  // never reach that branch, but an unresolved mock throws inside the effect.
+  vi.mocked(mapApi.suggestPaymentTypes).mockResolvedValue({})
+  storedConfig = {
+    filePrefix: 'JV',
+    mappings: {
+      commission: { dept: 'OPS', acc: '510300' },
+      tax: { dept: 'OPS', acc: '511200' },
+      net: { dept: 'OPS', acc: '110200' },
+    },
+    paymentAmount: { Visa: { dept: 'GEN', acc: '110300' } },
+  }
 })
 
-describe('loading a parked document', () => {
-  it('shows the whole document at once, no clicking to reveal it', async () => {
-    // The payload is the raw /extract shape. Skipping the snake_case bridge would render
-    // every row empty rather than failing, which is the worst possible way to be wrong
-    // about money.
+describe('the two panes', () => {
+  it('shows the document and the JV it produces at the same time', async () => {
+    // The whole reason for the layout: the comparison is the reviewer's only question,
+    // and it cannot be made one pane at a time.
     vi.mocked(api.getPending).mockResolvedValue(detail())
     mount()
     expect(await screen.findByDisplayValue('INV-001')).toBeInTheDocument()
     expect(screen.getByDisplayValue('1,000.00')).toBeInTheDocument()
-    expect(screen.getByTestId('accounting')).toBeInTheDocument()
-    expect(screen.getByRole('checkbox')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'What the document says' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'What will post' })).toBeInTheDocument()
   })
 
-  it("states each part's verdict in its own header", async () => {
-    vi.mocked(api.getPending).mockResolvedValue(detail())
-    mount()
-    expect(await screen.findByText('INV-001 · 15/01/2026')).toBeInTheDocument()
-    expect(screen.getByText('1 lines · 1,000.00')).toBeInTheDocument()
-  })
-
-  it('says so in the header when a line does not add up', async () => {
-    vi.mocked(api.getPending).mockResolvedValue(
-      detail({
-        extracted: {
-          ...EXTRACTED,
-          details: [
-            {
-              transaction: 'Visa',
-              pay_amt: '1000.00',
-              commis_amt: '30.00',
-              tax_amt: '2.10',
-              total: '900.00',
-            },
-          ],
-        },
-      })
-    )
-    mount()
-    expect(await screen.findByText('Line 1 does not add up')).toBeInTheDocument()
-  })
-
-  it('says so in the header when the document number is missing', async () => {
-    vi.mocked(api.getPending).mockResolvedValue(detail({ extracted: { ...EXTRACTED, doc_no: '' } }))
-    mount()
-    expect(await screen.findByText('Document number is missing')).toBeInTheDocument()
-  })
-
-  it('shows the six fields a reviewer can act on, not the wizard’s ten', async () => {
-    // DateProcessed is today’s date made up in the browser, and both bank names are
-    // already in the modal header. On a screen asking "does this add up", each is a thing
-    // to read past.
-    vi.mocked(api.getPending).mockResolvedValue(detail())
-    mount()
-    expect(await screen.findByLabelText('Document no.')).toHaveValue('INV-001')
-    expect(screen.getByLabelText('Branch')).toHaveValue('00000')
-    expect(screen.getByLabelText('Billed to')).toHaveValue('Test Hotel')
-    expect(screen.queryByLabelText(/Input Date/)).not.toBeInTheDocument()
-    expect(screen.queryByLabelText(/Bank Name/)).not.toBeInTheDocument()
-  })
-
-  it('marks the empty field, not just the block header', async () => {
-    // The header says what is wrong; the field is where it gets fixed, so it has to say
-    // so too — otherwise the reviewer hunts for which of six it meant.
-    vi.mocked(api.getPending).mockResolvedValue(detail({ extracted: { ...EXTRACTED, doc_no: '' } }))
-    mount()
-    const field = await screen.findByLabelText('Document no.')
-    expect(field).toHaveAttribute('placeholder', 'Not on the document')
-    expect(field.closest('.rd-f')).toHaveClass('rd-f--missing')
-  })
-
-  it('puts the four decisive numbers above the scroll', async () => {
-    // They live at the bottom of the Lines table otherwise, which means scrolling past a
-    // table to find the total you are approving.
-    vi.mocked(api.getPending).mockResolvedValue(detail())
-    mount()
-    await screen.findByText('Gross')
-    const strip = document.querySelector('.rd-sum')!
-    expect(strip).toHaveTextContent('1,000.00')
-    expect(strip).toHaveTextContent('30.00')
-    expect(strip).toHaveTextContent('2.10')
-    expect(strip).toHaveTextContent('967.90')
-  })
-
-  it('tells the reviewer when the document is no longer theirs to handle', async () => {
-    vi.mocked(api.getPending).mockRejectedValue(new Error('404'))
-    mount()
-    expect(await screen.findByText('This document is not waiting for review')).toBeInTheDocument()
-  })
-})
-
-describe('dismissing without deciding', () => {
-  it('closes on Escape, and the document stays waiting', async () => {
+  it('puts the four decisive numbers above both panes', async () => {
     vi.mocked(api.getPending).mockResolvedValue(detail())
     mount()
     await screen.findByDisplayValue('INV-001')
-    fireEvent.keyDown(document, { key: 'Escape' })
-    expect(onClose).toHaveBeenCalled()
-    expect(onDone).not.toHaveBeenCalled()
+    for (const label of ['Gross', 'Commission', 'VAT', 'Net']) {
+      expect(screen.getByText(label)).toBeInTheDocument()
+    }
   })
 
-  it('refuses to close mid-post', async () => {
-    // The modal is the only place the Carmen error is about to appear.
-    vi.mocked(api.getPending).mockResolvedValue(detail())
-    vi.mocked(api.approveDocument).mockReturnValue(new Promise(() => {}))
+  it('marks the line that does not reconcile, not a header above the table', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(detail({ extracted: BENT }))
     mount()
-    await clickApprove()
-    fireEvent.keyDown(document, { key: 'Escape' })
-    expect(onClose).not.toHaveBeenCalled()
+    await screen.findByDisplayValue('INV-001')
+    // Portaled to body, so RTL's `container` never sees it.
+    expect(document.querySelector('.detail-row--bad')).toBeInTheDocument()
+  })
+})
+
+describe('mapping in place', () => {
+  it('offers a picker per JV row so nobody has to leave for the mapping page', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    expect(await screen.findByLabelText('Account for Visa')).toBeInTheDocument()
+    expect(screen.getByLabelText('Account for Credit card commission')).toBeInTheDocument()
+    expect(screen.getByLabelText('Department for Input Tax')).toBeInTheDocument()
+  })
+
+  it('marks only the rules the AI actually invented', async () => {
+    // `flags: ['mapping_guessed']` says one rule was guessed, not which. Marking every
+    // rule off that flag says the same thing as marking none — the badge exists to point
+    // somewhere, and the payload records where.
+    vi.mocked(api.getPending).mockResolvedValue(
+      detail({ flags: ['mapping_guessed'], guessed: ['tax'] })
+    )
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    expect(screen.getAllByText('AI')).toHaveLength(1)
+  })
+
+  it('limits the account list to what the department allows', async () => {
+    // Carmen's DefaultAccount is the rule; offering a pair Carmen forbids just moves the
+    // refusal to the post, where it is slower and worse explained.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    const acc = await screen.findByLabelText('Account for Credit card commission')
+    expect(acc.getAttribute('data-options')).toBe('510300,511200,511300,110200')
+  })
+
+  it('drops an account the newly chosen department forbids', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    // Visa is stored under GEN as 110300, which OPS does not permit.
+    const dept = await screen.findByLabelText('Department for Visa')
+    fireEvent.change(dept, { target: { value: 'OPS' } })
+    await waitFor(() =>
+      expect((screen.getByLabelText('Account for Visa') as HTMLSelectElement).value).toBe('')
+    )
+  })
+
+  it('changes every row that shares the rule, because that is what will be saved', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(detail({ extracted: TWO_VISA }))
+    mount()
+    const acc = await screen.findByLabelText('Account for Visa')
+    fireEvent.change(acc, { target: { value: '511300' } })
+    // One picker, two rows: the second echoes the value rather than asking again.
+    await waitFor(() => expect(screen.getAllByText('511300').length).toBeGreaterThan(1))
+  })
+
+  it('says the rule will change before the button that changes it', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    fireEvent.change(await screen.findByLabelText('Account for Input Tax'), {
+      target: { value: '511300' },
+    })
+    expect(await screen.findByText('1 GL rule changes when you approve')).toBeInTheDocument()
+  })
+
+  it('undoes a correction and stops promising to save it', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    fireEvent.change(await screen.findByLabelText('Account for Input Tax'), {
+      target: { value: '511300' },
+    })
+    fireEvent.click(await screen.findByRole('button', { name: /Undo/ }))
+    await waitFor(() =>
+      expect(screen.queryByText('1 GL rule changes when you approve')).not.toBeInTheDocument()
+    )
   })
 })
 
 describe('approving', () => {
-  it('posts the edited values, not the ones that arrived', async () => {
+  it('saves the corrected rule before posting, never after', async () => {
+    // The other order can leave a rule silently unsaved behind a JV that already posted.
+    // This one leaves a corrected rule standing even if Carmen refuses, which is right on
+    // its own terms — the rule was wrong before and is right now.
+    const order: string[] = []
     vi.mocked(api.getPending).mockResolvedValue(detail())
-    vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-9001', tax_note: null })
+    vi.mocked(cfgApi.patchAccountingMappings).mockImplementation(async () => {
+      order.push('rules')
+    })
+    vi.mocked(api.approveDocument).mockImplementation(async () => {
+      order.push('post')
+      return { jv_no: 'JV-1', tax_note: null }
+    })
     mount()
-    const docNo = await screen.findByDisplayValue('INV-001')
-    fireEvent.change(docNo, { target: { value: 'INV-999' } })
+    fireEvent.change(await screen.findByLabelText('Account for Input Tax'), {
+      target: { value: '511300' },
+    })
     await clickApprove()
 
+    await waitFor(() => expect(order).toEqual(['rules', 'post']))
+    expect(cfgApi.patchAccountingMappings).toHaveBeenCalledWith({
+      tax: { dept: 'OPS', acc: '511300' },
+    })
+  })
+
+  it('touches no rules when nothing was corrected', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-1', tax_note: null })
+    mount()
+    await clickApprove()
     await waitFor(() => expect(api.approveDocument).toHaveBeenCalled())
-    const body = vi.mocked(api.approveDocument).mock.calls[0][1]
-    expect((body.extracted as Record<string, unknown>).doc_no).toBe('INV-999')
-    expect(body.post_input_tax).toBe(true)
+    expect(cfgApi.patchAccountingMappings).not.toHaveBeenCalled()
+  })
+
+  it('posts nothing when the rule could not be saved', async () => {
+    // A JV built on a rule the server rejected would put the wrong account into the books
+    // and leave no record of why.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    vi.mocked(cfgApi.patchAccountingMappings).mockRejectedValue(
+      new Error('Account 511300 is not allowed for department OPS')
+    )
+    mount()
+    fireEvent.change(await screen.findByLabelText('Account for Input Tax'), {
+      target: { value: '511300' },
+    })
+    await clickApprove()
+    expect(await screen.findByRole('alert')).toHaveTextContent('not allowed for department OPS')
+    expect(api.approveDocument).not.toHaveBeenCalled()
+  })
+
+  it('posts the edited values, not the ones that arrived', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-1', tax_note: null })
+    mount()
+    fireEvent.change(await screen.findByDisplayValue('INV-001'), { target: { value: 'INV-999' } })
+    await clickApprove()
+    await waitFor(() => {
+      const body = vi.mocked(api.approveDocument).mock.calls[0][1]
+      expect((body.extracted as { doc_no: string }).doc_no).toBe('INV-999')
+    })
   })
 
   it('cannot be approved while the JV would not balance', async () => {
-    // Exactly what AccountingReview already refuses to submit — the page must not offer
-    // a way around its own rule.
-    accState = { rows: [], blocked: true, unmappedFields: [] } as unknown as AccountingState
-    vi.mocked(api.getPending).mockResolvedValue(detail())
+    vi.mocked(api.getPending).mockResolvedValue(detail({ extracted: BENT }))
     mount()
-    expect(await screen.findByRole('button', { name: /Approve and post/ })).toBeDisabled()
+    await screen.findByDisplayValue('INV-001')
+    expect(screen.getByRole('button', { name: /Approve/ })).toBeDisabled()
+    expect(screen.getByText('Does not balance')).toBeInTheDocument()
+  })
+
+  it('cannot be approved while a line carrying money has no account', async () => {
+    // The state a `mapping_missing` document parks in. Posting it would hand Carmen a GL
+    // line it cannot file.
+    storedConfig = { ...storedConfig, paymentAmount: {} }
+    vi.mocked(api.getPending).mockResolvedValue(detail({ unmapped: ['Visa'] }))
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    expect(screen.getByRole('button', { name: /Approve/ })).toBeDisabled()
+  })
+
+  it('becomes approvable once the missing account is filled in place', async () => {
+    // This is the whole point of parking `mapping_incomplete` instead of failing it.
+    storedConfig = { ...storedConfig, paymentAmount: {} }
+    vi.mocked(api.getPending).mockResolvedValue(detail({ unmapped: ['Visa'] }))
+    mount()
+    fireEvent.change(await screen.findByLabelText('Department for Visa'), {
+      target: { value: 'GEN' },
+    })
+    fireEvent.change(screen.getByLabelText('Account for Visa'), { target: { value: '110300' } })
+    await waitFor(() => expect(screen.getByRole('button', { name: /Approve/ })).toBeEnabled())
   })
 
   it('keeps the document on screen when Carmen refuses it', async () => {
-    // The one place a failed post is not terminal: a closed period or an unknown dept
-    // code is something the person standing here can fix and try again.
     vi.mocked(api.getPending).mockResolvedValue(detail())
-    vi.mocked(api.approveDocument).mockRejectedValue(new Error('Period is closed'))
+    vi.mocked(api.approveDocument).mockRejectedValue(new Error('Period 01/2026 is closed'))
     mount()
     await clickApprove()
-    expect(await screen.findByText('Period is closed')).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Period 01/2026 is closed')
     expect(onDone).not.toHaveBeenCalled()
   })
 
   it('sends the reviewer back to the queue when someone else got there first', async () => {
-    const err = new Error('Someone else has already handled this document') as Error & {
-      status?: number
-    }
-    err.status = 409
+    const err = Object.assign(new Error('gone'), { status: 409 })
     vi.mocked(api.getPending).mockResolvedValue(detail())
     vi.mocked(api.approveDocument).mockRejectedValue(err)
     mount()
@@ -274,65 +389,37 @@ describe('approving', () => {
 
   it('can decline the input-tax record without blocking the JV', async () => {
     vi.mocked(api.getPending).mockResolvedValue(detail())
-    vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-2', tax_note: null })
+    vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-1', tax_note: null })
+    mount()
+    fireEvent.click(await screen.findByRole('checkbox'))
+    await clickApprove()
+    await waitFor(() =>
+      expect(vi.mocked(api.approveDocument).mock.calls[0][1].post_input_tax).toBe(false)
+    )
+  })
+})
+
+describe('leaving', () => {
+  it('closes on Escape, and the document stays waiting', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(detail())
     mount()
     await screen.findByDisplayValue('INV-001')
-    fireEvent.click(screen.getByRole('checkbox'))
-    await clickApprove()
-    await waitFor(() => expect(api.approveDocument).toHaveBeenCalled())
-    expect(vi.mocked(api.approveDocument).mock.calls[0][1].post_input_tax).toBe(false)
-  })
-})
-
-describe('rejecting', () => {
-  it('asks first, and says the charge is not coming back', async () => {
-    vi.mocked(api.getPending).mockResolvedValue(detail())
-    mount()
-    fireEvent.click(await screen.findByRole('button', { name: /^Reject$/ }))
-    expect(await screen.findByText(/does not refund it/)).toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalled()
+    expect(api.rejectDocument).not.toHaveBeenCalled()
   })
 
-  it('sends the optional reason and returns to the queue', async () => {
-    vi.mocked(api.getPending).mockResolvedValue(detail())
-    vi.mocked(api.rejectDocument).mockResolvedValue(undefined)
+  it('tells the reviewer when the document is no longer theirs to handle', async () => {
+    vi.mocked(api.getPending).mockRejectedValue(new Error('404'))
     mount()
-    fireEvent.click(await screen.findByRole('button', { name: /^Reject$/ }))
-    fireEvent.change(await screen.findByLabelText(/Reason/), {
-      target: { value: '  wrong company  ' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: /Reject document/ }))
-    await waitFor(() => expect(api.rejectDocument).toHaveBeenCalledWith('d1', 'wrong company'))
-    await waitFor(() => expect(onDone).toHaveBeenCalled())
-  })
-})
-
-describe('opening mapping settings', () => {
-  it('hands the current scan to the page it opens', async () => {
-    // The mapping page reads the scan out of localStorage. Opening the tab without writing
-    // it is how that page ended up asking about nothing.
-    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
-    vi.mocked(api.getPending).mockResolvedValue(detail())
-    mount()
-    fireEvent.click(await screen.findByRole('button', { name: 'Mapping Settings' }))
-
-    const stored = JSON.parse(localStorage.getItem(appKey('ocr_wizard_state')) || '{}')
-    expect(stored.details[0].Transaction).toBe('Visa')
-    expect(stored.bank).toBe('KTC')
-    expect(open).toHaveBeenCalledWith('#/CreditCardOCR/mapping', '_blank')
+    expect(await screen.findByText('This document is not waiting for review')).toBeInTheDocument()
   })
 
-  it('sends the edited payment type, not the extracted one', async () => {
-    // The reviewer corrects a payment type precisely because the mapping is wrong for it;
-    // asking the mapping page about the old name would map the wrong thing.
-    vi.spyOn(window, 'open').mockImplementation(() => null)
+  it('asks before rejecting, since it is terminal and not refunded', async () => {
     vi.mocked(api.getPending).mockResolvedValue(detail())
     mount()
-    fireEvent.change(await screen.findByLabelText('Transaction'), {
-      target: { value: 'VISA CARD' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Mapping Settings' }))
-
-    const stored = JSON.parse(localStorage.getItem(appKey('ocr_wizard_state')) || '{}')
-    expect(stored.details[0].Transaction).toBe('VISA CARD')
+    fireEvent.click(await screen.findByRole('button', { name: /Reject/ }))
+    await screen.findByRole('button', { name: 'Reject document' })
+    expect(api.rejectDocument).not.toHaveBeenCalled()
   })
 })

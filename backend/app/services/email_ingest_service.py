@@ -751,6 +751,14 @@ async def _run_document(
     # Did the AI have to invent a GL mapping on the way past? Only knowable here, and the
     # queue needs it to tell a reviewer which documents are worth opening.
     mapping_guessed = False
+    # WHICH rules it invented, not just that it did. The review screen marks these for
+    # checking, and marking every rule because one was guessed is the same as marking
+    # none — the point of the flag is to say where to look.
+    mapping_guessed_keys: list[str] = []
+    # Payment types nothing could map — the AI included. With review on these park instead
+    # of failing, so the reviewer sees them as empty cells to fill rather than never seeing
+    # the document at all.
+    mapping_missing: list[str] = []
     # Recorded on failures too: "several BUs failing on the same issuer at once" is the
     # only early warning that a bank changed its form, and it cannot be computed if a
     # failed row forgets which bank the document came from.
@@ -880,11 +888,19 @@ async def _run_document(
                     await fill_missing_mappings(db, tenant_id, suggested)
                 config.mappings = {**(config.mappings or {}), **suggested}
                 mapping_guessed = True
-            still = unmapped_payment_types(extracted.details, config.mappings or {})
-            if still:
-                # Fallback, not a closed door: the LLM had no answer or Carmen's
-                # master was unreachable.
-                raise _Skip("mapping_incomplete", f"No GL mapping for: {', '.join(still)}")
+                mapping_guessed_keys = sorted(suggested)
+            mapping_missing = unmapped_payment_types(extracted.details, config.mappings or {})
+            if mapping_missing and auto_post:
+                # Nobody is coming. The LLM had no answer or Carmen's master was
+                # unreachable, and with review off there is no one to ask.
+                raise _Skip(
+                    "mapping_incomplete", f"No GL mapping for: {', '.join(mapping_missing)}"
+                )
+            # With review on this is no longer terminal: the review screen maps in place,
+            # so a document the AI could not map is a question for the reviewer rather
+            # than a dead end. It falls through to the fork below and parks with the
+            # unmapped fields named on the row. Changed 2026-08-31; before that the whole
+            # BU's odd payment types died here and someone had to find the mapping page.
 
         rows = build_jv_rows(extracted.details, config.mappings or {})
         if not rows or not any(r["credit"] for r in rows):
@@ -925,6 +941,8 @@ async def _run_document(
                 bank_code=bank_code,
                 doc_no=doc_no,
                 mapping_guessed=mapping_guessed,
+                mapping_guessed_keys=mapping_guessed_keys,
+                mapping_missing=mapping_missing,
             )
             logger.info("[email] Parked %s (%s) for review, tenant %s", doc_no, filename, tenant_id)
             return "pending_review"
@@ -1300,7 +1318,12 @@ async def _mark_submitted(card_id: str | None) -> None:
         logger.exception("[email] Could not stamp submitted_at on card %s", card_id)
 
 
-def _review_flags(extracted: ExtractedCreditCardData, *, mapping_guessed: bool) -> list[str]:
+def _review_flags(
+    extracted: ExtractedCreditCardData,
+    *,
+    mapping_guessed: bool,
+    mapping_missing: list[str] | None = None,
+) -> list[str]:
     """Why this document might be worth opening. Computed once, here, and stored.
 
     The queue paints a reason line per row, and neither of these can be recovered later
@@ -1313,6 +1336,10 @@ def _review_flags(extracted: ExtractedCreditCardData, *, mapping_guessed: bool) 
     a line that breaks it was misread and its JV would post unbalanced.
     """
     flags: list[str] = []
+    # Above `mapping_guessed` in the row's reason ladder: a guess posts and may post to the
+    # wrong account, a gap cannot post at all until the reviewer fills it.
+    if mapping_missing:
+        flags.append("mapping_missing")
     if mapping_guessed:
         flags.append("mapping_guessed")
     if any(
@@ -1333,6 +1360,8 @@ async def _park_for_review(
     bank_code: str | None,
     doc_no: str | None,
     mapping_guessed: bool,
+    mapping_guessed_keys: list[str] | None = None,
+    mapping_missing: list[str] | None = None,
 ) -> None:
     """Stop one step short of Carmen and wait for a human.
 
@@ -1357,7 +1386,17 @@ async def _park_for_review(
         row.doc_no = doc_no  # type: ignore[assignment]
         row.review_payload = {  # type: ignore[assignment]
             "extracted": payload,
-            "flags": _review_flags(extracted, mapping_guessed=mapping_guessed),
+            "flags": _review_flags(
+                extracted,
+                mapping_guessed=mapping_guessed,
+                mapping_missing=mapping_missing,
+            ),
+            # Which payment types the reviewer has to map before this can post, and which
+            # rules the AI invented on the way past. Stored rather than re-derived: the
+            # review screen would otherwise have to diff the document against the live
+            # config to find them, and the config moves.
+            "unmapped": list(mapping_missing or []),
+            "guessed": list(mapping_guessed_keys or []),
         }
         await db.commit()
 

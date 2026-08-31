@@ -369,7 +369,11 @@ async def test_unmapped_bu_gets_ai_mappings_posts_and_saves_them():
 
 @pytest.mark.asyncio
 async def test_mapping_incomplete_fails_and_keeps_the_charge_when_ai_cannot_fill_it():
-    """The fallback: no LLM answer, or Carmen's GL master was unreachable."""
+    """The fallback with review OFF: no LLM answer, or Carmen's GL master was unreachable.
+
+    `_run` defaults `auto_post=True`, which is the case this asserts: nobody is coming, so
+    there is nothing to do but stop.
+    """
     db = _FakeDB()
     outcome, p = await _run(
         db,
@@ -381,6 +385,36 @@ async def test_mapping_incomplete_fails_and_keeps_the_charge_when_ai_cannot_fill
     assert outcome == "failed"
     assert db.added[0].reason_code == "mapping_incomplete"
     p.refund_document.assert_not_called()  # extraction succeeded — the charge stands
+
+
+@pytest.mark.asyncio
+async def test_a_document_the_ai_cannot_map_parks_for_review_instead_of_failing():
+    """The same dead end with review ON is not a dead end any more.
+
+    Before 2026-08-31 this failed either way, and clearing it meant finding the mapping
+    page with the document no longer in front of you. The review screen maps in place, so
+    an unmappable payment type is now a question rather than an ending — and the row has
+    to carry which types are unmapped, because the reviewer's screen cannot re-derive them
+    from a config that keeps moving.
+    """
+    db = _FakeDB()
+    outcome, p = await _run(
+        db,
+        auto_post=False,
+        extracted=_extracted(),
+        config=_config(mappings={}),
+        carmen_result={"Code": 0},
+        suggested={},  # AI produced nothing usable
+    )
+
+    assert outcome == "pending_review"
+    row = db.added[0]
+    assert row.status == "pending_review"
+    assert row.reason_code is None  # not a failure — it is waiting on a person
+    assert "mapping_missing" in row.review_payload["flags"]
+    assert row.review_payload["unmapped"]  # names what the reviewer has to map
+    p.post_gljv.assert_not_awaited()  # nothing reaches Carmen with a blank account
+    p.refund_document.assert_not_called()
 
 
 @pytest.mark.asyncio

@@ -162,6 +162,54 @@ async def fill_missing_mappings(
     logger.info("Filled %d GL mapping(s) for tenant=%s", len(fillable), tenant_id)
 
 
+async def set_mappings(
+    db: AsyncSession, tenant_id: str, mappings: dict[str, dict[str, str]]
+) -> None:
+    """Write dept/acc for the named field types, overwriting, and touch nothing else.
+
+    The third writer of this table, and it exists because neither of the other two fits a
+    reviewer correcting one GL rule from the review screen:
+
+    * `save_accounting_config` is a full replace — it assigns `file_prefix`, `file_source`,
+      `description` and `branch` unconditionally and deletes every mapping entry before
+      re-inserting. Sending a partial config through it wipes the rest, and two reviewers
+      with the queue open is the expected case, not the edge case.
+    * `fill_missing_mappings` never overwrites what the BU already set, which is exactly
+      what a correction has to do.
+
+    So: upsert the given keys, leave every other column and entry alone.
+    """
+    usable = {k: v for k, v in mappings.items() if v.get("dept") and v.get("acc")}
+    if not usable:
+        return
+
+    row = await _get_config(db, tenant_id)
+    if row is None:
+        row = BUAccountingConfig(tenant_id=tenant_id)
+        db.add(row)
+        await db.flush()
+
+    existing = {str(e.field_type): e for e in await _get_entries(db, row.id)}
+    for field_type, mapping in usable.items():
+        entry = existing.get(field_type)
+        if entry is None:
+            db.add(
+                BUAccountingMappingEntry(
+                    config_id=row.id,
+                    field_type=field_type,
+                    dept_code=mapping["dept"],
+                    acc_code=mapping["acc"],
+                    is_custom=(field_type not in _FIXED_TYPES),
+                )
+            )
+        else:
+            entry.dept_code = mapping["dept"]
+            entry.acc_code = mapping["acc"]
+
+    await db.commit()
+    logger.info("Set %d GL mapping(s) for tenant=%s", len(usable), tenant_id)
+
+
 # ── AP vendor column mapping ───────────────────────────────────────────────────
 
 

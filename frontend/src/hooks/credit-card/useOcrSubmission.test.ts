@@ -67,7 +67,9 @@ function makeProps(overrides: Record<string, unknown> = {}) {
   }
 }
 
-const defaultRows: JvRow[] = [{ dept: 'ACC', acc: '1100', desc: 'Revenue', credit: 1000, debit: 0 }]
+const defaultRows: JvRow[] = [
+  { dept: 'ACC', acc: '1100', desc: 'Revenue', credit: 1000, debit: 0, key: 'VISA' },
+]
 
 const defaultConfig = {
   file_prefix: 'PRE',
@@ -432,8 +434,8 @@ describe('useOcrSubmission', () => {
       mockHappyPath()
       const rows: JvRow[] = [
         // 0.1 + 0.2 = 0.30000000000000004 — must not reach the ERP raw
-        { dept: 'A', acc: '1', desc: 'x', credit: 0.1 + 0.2, debit: 0 },
-        { dept: 'B', acc: '2', desc: 'y', credit: 0, debit: 12.3456 },
+        { dept: 'A', acc: '1', desc: 'x', credit: 0.1 + 0.2, debit: 0, key: 'VISA' },
+        { dept: 'B', acc: '2', desc: 'y', credit: 0, debit: 12.3456, key: 'commission' },
       ]
       const props = makeProps()
       const { result } = renderHook(() => useOcrSubmission(props))

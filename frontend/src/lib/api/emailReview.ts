@@ -12,7 +12,7 @@ import type { Page } from './page'
 
 /** Why a parked document might be worth opening. Computed once at park time and stored,
  *  because neither survives a list query: see `_review_flags` in email_ingest_service.py. */
-export type ReviewFlag = 'unbalanced' | 'mapping_guessed' | 'warnings'
+export type ReviewFlag = 'unbalanced' | 'mapping_guessed' | 'mapping_missing' | 'warnings'
 
 /** Which filter chip a row lives under. `failed` and `skipped` are unions of ledger
  *  statuses — see FILTERS in routers/credit_card_activity.py. */
@@ -43,6 +43,12 @@ export interface ReviewDocument {
   total: number
   line_count: number
   flags: ReviewFlag[]
+  /** Payment types nothing could map. The review screen renders an empty picker per
+   *  entry; the reviewer fills them and the JV becomes postable. */
+  unmapped: string[]
+  /** GL rules the AI invented during ingest, by config field type. Marked for checking —
+   *  `flags` only says one of them was guessed, which is not enough to point at. */
+  guessed: string[]
 
   // Only once resolved. Plain ledger columns, kept for ever.
   jv_no: string | null

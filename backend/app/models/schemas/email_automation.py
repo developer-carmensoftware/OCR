@@ -101,6 +101,14 @@ class ReviewDocument(BaseModel):
     total: float = 0.0
     line_count: int = 0
     flags: list[str] = Field(default_factory=list)
+    # Payment types nothing could map, including the AI. Present only while a document is
+    # waiting: the review screen renders one empty picker per entry, and it cannot work
+    # them out for itself because the config it would compare against keeps changing.
+    unmapped: list[str] = Field(default_factory=list)
+    # Which GL rules the AI invented on the way past. `mapping_guessed` says only THAT it
+    # did; the review screen marks these for checking, and marking every rule because one
+    # was guessed says the same as marking none.
+    guessed: list[str] = Field(default_factory=list)
 
     # ── Only once resolved (plain ledger columns, kept for ever) ─────────────
     jv_no: str | None = None

@@ -81,6 +81,11 @@ def _summarise(row: EmailDocument) -> dict:
         "total": r2(sum(num(d.get("pay_amt")) for d in details)),
         "line_count": len(details),
         "flags": list(payload.get("flags") or []),
+        # Which payment types nothing could map. The review screen turns these into empty
+        # pickers; it cannot re-derive them, because the config it would diff against has
+        # moved on since the document parked.
+        "unmapped": list(payload.get("unmapped") or []),
+        "guessed": list(payload.get("guessed") or []),
     }
 
 

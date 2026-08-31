@@ -547,18 +547,6 @@
   color: var(--text-3);
 }
 
-/* Embedded AccountingReview: the section keeps its mapping shortcut but not its submit —
-   the review page owns Approve/Reject, and two submit buttons on one screen is one too
-   many regardless of which is right. */
-.form-actions--embedded {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0.75rem 1rem;
-  border-top: 1px solid var(--border);
-  background: var(--muted);
-}
-
 /* ── Review document — a modal over the queue ───────────────────────────────── */
 
 .rd-overlay {
@@ -576,8 +564,8 @@
 .rd-modal {
   display: flex;
   flex-direction: column;
-  width: min(60rem, 100%);
-  max-height: min(90vh, 60rem);
+  width: min(96rem, 100%);
+  max-height: min(92vh, 60rem);
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -612,10 +600,21 @@
   align-self: center;
 }
 
-/* The whole document scrolls as one column: the reviewer's question spans all four
-   blocks, so nothing here scrolls independently of anything else. */
-.rd-modal-body {
+/* ── The two panes ──────────────────────────────────────────────────────────── */
+
+/* Evidence on the left, consequence on the right. The reviewer's only question is
+   whether one follows from the other, so the two sit side by side and each scrolls on
+   its own — scrolling them together loses the JV the moment the line table gets long,
+   which is the complaint this layout exists to answer. */
+.rd-panes {
   flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.rd-pane {
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
   padding: var(--space-3);
@@ -624,189 +623,37 @@
   gap: var(--space-3);
 }
 
-/* Load-bearing. A flex column that scrolls still shrinks its children first, so without
-   this the four blocks are squeezed to fit the modal and their tables are clipped inside
-   them rather than the body scrolling. */
-.rd-modal-body > * {
+/* A scrolling flex column shrinks its children before it scrolls; without this the
+   tables are squeezed and clipped inside the pane instead. */
+.rd-pane > * {
   flex: 0 0 auto;
 }
 
+/* The second neutral layer the product register asks for: the consequence side reads as
+   a different surface from the evidence side without a border doing the talking. */
+.rd-pane--jv {
+  background: var(--muted);
+  border-left: 1px solid var(--border);
+}
+
+.rd-pane-title {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2, var(--text));
+}
+
 .rd-loading {
+  display: flex;
   align-items: center;
   justify-content: center;
   min-height: 12rem;
   color: var(--text-4);
 }
 
-.rd-modal-foot {
-  border-top: 1px solid var(--border);
-  padding: 0.75rem 1rem;
-  background: var(--muted);
-}
-
-.rd-block {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--card-bg);
-  /* NOT `overflow: hidden`. The date picker opens a popover out of the document card, and
-     clipping it to the block is why HeaderCard carries an `overflow-visible` class. The
-     header rounds its own top corners instead. */
-}
-
-.rd-block-h {
-  border-radius: calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px) 0 0;
-  display: grid;
-  grid-template-columns: minmax(6rem, auto) 1fr auto;
-  align-items: center;
-  gap: var(--space-3);
-  margin: 0;
-  padding: 0.6rem 0.85rem;
-  background: var(--muted);
-  border-bottom: 1px solid var(--border);
-}
-
-.rd-block-title {
-  font-weight: 700;
-  font-size: 0.875rem;
-  color: var(--text);
-}
-
-/* The header states the verdict, so it carries the weight of prose, not of a label. */
-.rd-block-summary {
-  font-size: 0.8rem;
-  color: var(--text-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rd-mark--ok {
-  color: var(--emerald);
-}
-
-.rd-mark--warn {
-  color: var(--amber);
-}
-
-.rd-mark--stop {
-  color: var(--rose);
-}
-
-.rd-block-body {
-  padding: var(--space-3);
-}
-
-/* ── The document card ──────────────────────────────────────────────────────── */
-
-.rd-doc {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-3) var(--space-4);
-}
-
-.rd-f {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  min-width: 0;
-}
-
-.rd-f--wide {
-  grid-column: span 2;
-}
-
-.rd-f-label {
-  font-size: 0.66rem;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--text-4);
-}
-
-/* Reads as the document until you go to change it: no box around a value nobody is
-   editing, a real field the moment one is. */
-.rd-f-input {
-  width: 100%;
-  padding: 0.3rem 0.4rem;
-  margin-left: -0.4rem;
-  font-size: 0.9rem;
-  font-family: inherit;
-  color: var(--text);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  transition: background-color 120ms ease-out;
-}
-
-.rd-f-input:hover:not(:focus) {
-  background: var(--muted);
-}
-
-.rd-f-input:focus,
-.rd-f-input:focus-visible {
-  outline: none;
-  background: var(--card-bg);
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px oklch(from var(--primary) l c h / 0.18);
-}
-
-.rd-f-input::placeholder {
-  color: var(--amber);
-  font-style: italic;
-}
-
-/* A field the extractor could not fill is the reason the block header says so — say it
-   again where the fix happens, not only at the top. */
-.rd-f--missing .rd-f-input {
-  border-color: var(--amber);
-  background: oklch(from var(--amber) l c h / 0.08);
-}
-
-/* DateInput renders a button, not an input; give it the same flat treatment. */
-.rd-f .date-input,
-.rd-f .date-input-trigger {
-  width: 100%;
-}
-
-.rd-f .date-input-trigger {
-  justify-content: space-between;
-  min-height: 0;
-}
-
-/* Inside the modal the wizard's card *frame* is one border too many — the block header
-   above already draws it — but its title bar is not chrome: it carries the row count and
-   the mapping badges, which is information the reviewer came here for. Flatten the box,
-   keep what it says. */
-.rd-block-body .data-card {
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-  background: transparent;
-}
-
-.rd-block-body .data-card > .card-title {
-  padding: 0 0 var(--space-2);
-  background: transparent;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: var(--space-2);
-  font-size: 0.78rem;
-}
-
-.rd-block-body .data-card + .data-card {
-  margin-top: var(--space-3);
-}
-
-.rd-block-body .card-body {
-  padding: 0;
-}
-
-.rd-block-body .total-summary-card {
-  background: var(--muted);
-  border-radius: var(--radius-md);
-  padding: var(--space-2) var(--space-3);
-}
-
-/* ── The numbers the decision turns on, above the fold ──────────────────────── */
+/* ── Pinned reconciliation ──────────────────────────────────────────────────── */
 
 .rd-sum {
   display: grid;
@@ -847,32 +694,303 @@
   letter-spacing: -0.01em;
 }
 
+/* ── The document pane ──────────────────────────────────────────────────────── */
+
+.rd-doc {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+}
+
+.rd-f {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.rd-f--wide {
+  grid-column: span 2;
+}
+
+.rd-f-label {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+
+/* Reads as the document until you go to change it: no box around a value nobody is
+   editing, a real field the moment someone does. */
+.rd-f-input {
+  width: 100%;
+  padding: 0.3rem 0.4rem;
+  margin-left: -0.4rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  transition: background-color 120ms var(--ease-out-premium, ease-out);
+}
+
+.rd-f-input:hover:not(:focus) {
+  background: var(--card-bg);
+}
+
+.rd-f-input:focus,
+.rd-f-input:focus-visible {
+  outline: none;
+  background: var(--card-bg);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px oklch(from var(--primary) l c h / 0.18);
+}
+
+.rd-f-input::placeholder {
+  color: var(--amber-text);
+  font-style: italic;
+}
+
+/* The field the extractor could not fill, marked where the fix happens. */
+.rd-f--missing .rd-f-input {
+  border-color: var(--amber);
+  background: oklch(from var(--amber) l c h / 0.08);
+}
+
+.rd-f .date-input,
+.rd-f .date-input-trigger {
+  width: 100%;
+}
+
+.rd-f .date-input-trigger {
+  justify-content: space-between;
+  min-height: 0;
+}
+
+/* The wizard's card frame is one border too many inside a pane that is already a
+   surface; its title bar is not chrome, so the box flattens and the words stay. */
+.rd-pane .data-card {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.rd-pane .data-card > .card-title {
+  padding: 0 0 var(--space-2);
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-2);
+  font-size: 0.78rem;
+}
+
+.rd-pane .card-body {
+  padding: 0;
+}
+
+.rd-pane .total-summary-card {
+  background: var(--muted);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+}
+
+/* The line that does not reconcile, marked on itself rather than summarised above the
+   table — the reviewer's next keystroke is in this row. */
+.detail-row--bad td {
+  background: oklch(from var(--amber) l c h / 0.09);
+}
+
+/* ── The JV pane ────────────────────────────────────────────────────────────── */
+
+.jv-loading,
+.jv-empty {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 8rem;
+  font-size: 0.85rem;
+  color: var(--text-3);
+}
+
+.jv-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.jv-table th {
+  padding: 0.5rem 0.6rem;
+  text-align: left;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-2, var(--text));
+  background: var(--muted);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.jv-table td {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.82rem;
+  color: var(--text-3);
+  vertical-align: middle;
+}
+
+.jv-table tbody tr + tr td {
+  border-top: 1px solid var(--border);
+}
+
+.jv-num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Rows after the first that share a rule: the value is shown, the control is not, so the
+   same question is never asked twice about one mapping. */
+.jv-echo {
+  color: var(--text-4);
+  font-size: 0.8rem;
+}
+
+.jv-desc {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.jv-desc > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jv-row--changed td {
+  background: var(--primary-light);
+}
+
+.jv-row--needed td {
+  background: oklch(from var(--amber) l c h / 0.09);
+}
+
+.jv-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  flex: none;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.jv-tag--ai {
+  background: var(--primary-light);
+  color: var(--primary);
+  cursor: help;
+}
+
+.jv-tag--undo {
+  border: 1px solid var(--border-raised, var(--border));
+  background: var(--card-bg);
+  color: var(--text-2, var(--text));
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.jv-tag--undo:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.jv-tag--undo:focus-visible {
+  outline: 2.5px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.jv-total td {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--muted);
+  border-top: 1px solid var(--border-raised, var(--border));
+}
+
+/* The one place a blocked JV says so. Nothing above summarises it, because the numbers
+   that disagree are on this row. */
+.jv-total--bad td {
+  color: var(--rose-text);
+  background: var(--rose-light);
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────────────── */
+
+.rd-modal-foot {
+  border-top: 1px solid var(--border);
+  padding: 0.75rem 1rem;
+  background: var(--muted);
+}
+
+/* Said before the button rather than after: pressing Approve has a second, wider
+   consequence and the reviewer should read it while deciding. */
+.rd-rules {
+  margin: 0 0 var(--space-2);
+  font-size: 0.78rem;
+  color: var(--primary);
+}
+
+.rd-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
 .rd-check {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--space-2);
-  font-size: 0.875rem;
+  margin-left: auto;
+  font-size: 0.82rem;
   color: var(--text-2, var(--text));
   cursor: pointer;
 }
 
 .rd-check input {
-  margin-top: 0.2rem;
   width: 1rem;
   height: 1rem;
   accent-color: var(--primary);
   flex: none;
 }
 
-.rd-check-hint {
-  font-size: 0.8rem;
-  color: var(--text-3);
-}
+/* ── Narrow ─────────────────────────────────────────────────────────────────── */
 
-.rd-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+@media (max-width: 900px) {
+  /* Side by side stops paying for itself once neither pane is wide enough to read. The
+     document comes first: it is what the JV is derived from. */
+  .rd-panes {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  .rd-pane {
+    overflow: visible;
+  }
+
+  .rd-pane--jv {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
 }
 
 @media (max-width: 640px) {
@@ -880,8 +998,8 @@
     padding: 0;
   }
 
-  /* Full screen on a phone: a 90vh card inside a viewport-height overlay just wastes
-     the edges on a document this dense. */
+  /* Full screen on a phone: a 92vh card inside a viewport-height overlay just wastes the
+     edges on a document this dense. */
   .rd-modal {
     max-height: 100vh;
     height: 100%;
@@ -889,27 +1007,23 @@
     border-radius: 0;
   }
 
-  .rd-doc {
-    grid-template-columns: 1fr;
-  }
-
+  .rd-doc,
   .rd-sum {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    row-gap: var(--space-3);
   }
 
   .rd-f--wide {
     grid-column: auto;
   }
 
-  .rd-block-h {
-    grid-template-columns: 1fr auto;
-    row-gap: 0.2rem;
+  .rd-actions {
+    flex-wrap: wrap;
   }
 
-  .rd-block-summary {
-    grid-column: 1 / 3;
-    white-space: normal;
+  .rd-check {
+    order: -1;
+    margin-left: 0;
+    width: 100%;
   }
 
   .rd-actions .btn {

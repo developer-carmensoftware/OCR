@@ -1,9 +1,10 @@
 # Human in the loop
 
 Design for the review step that sits between extraction and the Carmen post, and for
-the screen it lives on. **Built and shipped 2026-08-28**; §9 records what a customer
-requirement changed about the screen on 2026-08-31. Read §1–§8 as the design, and §9 for
-where the built version now differs from it.
+the screen it lives on. **Built and shipped 2026-08-28.** Read §1–§8 as the design, then
+§9 and §10 for where the built version now differs from it: §9 is what a customer
+requirement changed about the queue on 2026-08-31, §10 what building the review screen
+taught us about the review screen the same day.
 
 Read [`02-architecture.md`](02-architecture.md) and [`06-decision-log.md`](06-decision-log.md)
 first. This document changes one sentence in each of them: the ledger state machine gains a
@@ -63,7 +64,8 @@ Every row here was decided in the design session, not inferred.
 
 One place in [`email_ingest_service.py`](../../backend/app/services/email_ingest_service.py).
 Everything above line 767 is unchanged: the gate ladder still runs in full, still charges,
-still auto-fills missing GL mappings, still parks on `tax_id_mismatch` or `mapping_incomplete`.
+still auto-fills missing GL mappings, still parks on `tax_id_mismatch` or `mapping_incomplete`
+(the latter now parks *for review* rather than failing, with review on — §10 #30).
 
 ```python
         if not carmen_uri:
@@ -774,3 +776,32 @@ against the compiled SQL, because a mock DB cannot execute it.
 
 The review modal, approve, reject, the backlog cap, the refund rule, the notification, and
 every decision #1–#17 above except the two struck through.
+
+---
+
+## 10. Amendment 2026-08-31 (later) — the review screen
+
+§6's four blocks and §9's activity table were built. Using them surfaced two things the
+design had wrong about what the review screen is for.
+
+**Nothing on it is unfinished data entry.** `_run_document` suggests and *saves* GL mappings
+before a document parks, and a document it cannot map became `failed` and never arrived. So
+every field is filled and every rule is live by the time a human sees it. Four equal blocks
+(Document / Lines / GL mapping / Input tax) read like four tasks; there is one task, and it
+is a comparison. The screen is now two panes — what the document says, and what will post —
+with the four reconciliation totals pinned above both.
+
+**The block headers were chrome.** A ✓/⚠/⛔ summarising what is visible one line below makes
+the reader find the row themselves. A problem is now marked on the thing that has it.
+
+| # | Decision |
+|---|---|
+| 27 | **GL rules are editable in the review screen.** Leaving for `#/CreditCardOCR/mapping` lost the document you were reading. That page stays: the wizard uses it, and it owns `filePrefix` / `description` / `fileSource`, which are not per-document decisions. |
+| 28 | **A picker edits a rule, not a row.** `buildJvRows` binds each JV row 1:1 to a config key (`JvRow.key`), and two lines of one payment type share a key. There is no per-row identity to hang a per-document override on, so a correction always persists — with the consequence stated before the button and an Undo beside it. The "remember for next time?" checkbox this started with would have needed a shadow config nothing else in the system has. |
+| 29 | **`PUT /config/accounting` must never be called from here.** It is a full replace: unconditional column assignment plus `DELETE` + re-insert of every mapping entry. `PUT /config/accounting/mappings` (`set_mappings`) upserts named keys only. `fill_missing_mappings` is not an alternative — it never overwrites, and a correction is an overwrite. |
+| 30 | **`mapping_incomplete` parks for review instead of failing**, unless `auto_post` is on. It was terminal because nothing could fix it in place. Reverses the "Fallback, not a closed door" comment at the raise site. |
+| 31 | **`review_payload` records `unmapped` and `guessed`.** `mapping_guessed` says a rule was invented, not which — enough for a queue reason line, useless for a badge that has to point somewhere. |
+| 32 | **`JvEditor` is a new component, not `AccountingReview` with a flag.** Same split as `HeaderCard` vs `ReviewDocCard`: data entry and verification are different jobs. `buildJvRows` keeps the arithmetic single-sourced. `AccountingReview`'s `embedded` mode is deleted. |
+
+Decision #9 ("review is one surface, not steps") survives and is what this sharpens: one
+surface, but two columns rather than four stacked sections.

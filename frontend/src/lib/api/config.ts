@@ -28,6 +28,33 @@ export async function saveAccountingConfig(
   return res.json() as Promise<AccountingConfigResponse>
 }
 
+/**
+ * Correct named GL rules, leaving the rest of the config alone.
+ *
+ * NOT `saveAccountingConfig`: that PUT is a full replace on the server — it assigns
+ * file_prefix / file_source / description / branch unconditionally and DELETEs every
+ * mapping entry before re-inserting. Sending one corrected rule through it wipes the
+ * others, and two people reviewing the same BU's queue at once is the expected case.
+ */
+export async function patchAccountingMappings(
+  mappings: Record<string, { dept: string; acc: string }>
+): Promise<void> {
+  const res = await apiFetch(API.config.accountingMappings, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mappings }),
+  })
+  if (!res.ok) {
+    // 400 carries the server's own reason (a dept that forbids the account), which the
+    // reviewer has to read — it names the pair they just picked.
+    const detail = await res
+      .json()
+      .then(d => (d as { detail?: string }).detail)
+      .catch(() => null)
+    throw new Error(detail || `Mapping save failed (${res.status})`)
+  }
+}
+
 export async function getAPVendorMapping(vendorTaxId: string): Promise<APVendorMappingResponse> {
   const res = await apiFetch(API.config.apMapping(vendorTaxId))
   if (!res.ok) throw new Error(`AP mapping fetch failed (${res.status})`)

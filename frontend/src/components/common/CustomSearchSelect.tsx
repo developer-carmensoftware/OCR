@@ -198,10 +198,21 @@ export default function CustomSearchSelect({
               : 'transparent',
           color: isAISuggested ? 'var(--primary)' : 'inherit',
         }}
+        // Escape closes the list, and stops there. Without this the key reaches whatever
+        // is behind — inside the review modal that closed the whole dialog and threw away
+        // the reviewer's edits, because a dropdown that ignores Escape is indistinguishable
+        // from no dropdown being open.
+        onKeyDown={e => {
+          if (e.key !== 'Escape' || !isOpen) return
+          e.stopPropagation()
+          setIsOpen(false)
+        }}
       />
       {isOpen &&
         createPortal(
-          <div ref={dropdownRef} style={dropdownStyle}>
+          // Named so a dialog above can tell "a list is open" from "nothing is open"; the
+          // panel is portaled to body, so a DOM-containment check cannot find it.
+          <div ref={dropdownRef} className="css-select-panel" style={dropdownStyle}>
             {notice && (
               <div
                 style={{

@@ -34,6 +34,8 @@ function doc(over: Partial<ReviewDocument> = {}): ReviewDocument {
     total: 48200,
     line_count: 14,
     flags: [],
+    unmapped: [],
+    guessed: [],
     jv_no: null,
     reason_code: null,
     error_message: null,

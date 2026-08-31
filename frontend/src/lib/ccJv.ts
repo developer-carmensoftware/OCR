@@ -16,6 +16,20 @@ export interface JvRow {
   desc: string
   debit: number
   credit: number
+  /**
+   * Which accounting-config entry produced this row's dept/acc — `commission`, `tax`,
+   * `net`, or a payment type.
+   *
+   * The review screen edits mappings in place and needs to know what a picker is editing.
+   * Deriving it from row order would couple that screen to this function's internals; a
+   * row genuinely knows which rule made it, so it says so. Ignored by
+   * `buildGljvPayload`, which builds Carmen's `Detail` field by field.
+   *
+   * Not unique per row: two detail lines of the same payment type produce two rows with
+   * one key, and editing either changes both. That IS the model — the picker edits a
+   * rule, not a row.
+   */
+  key: string
 }
 
 // Minimal structural shape of a Step-2 DetailRow — only the fields the JV builder
@@ -30,12 +44,13 @@ interface Detail {
 
 type Mapping = { dept?: string; acc?: string }
 
-const leg = (cfg: Mapping, desc: string, debit: number, credit: number): JvRow => ({
+const leg = (cfg: Mapping, desc: string, debit: number, credit: number, key: string): JvRow => ({
   dept: cfg.dept || '',
   acc: cfg.acc || '',
   desc,
   debit,
   credit,
+  key,
 })
 
 /**
@@ -65,16 +80,22 @@ export function buildJvRows(
   if (opts.consolidateDebit) return consolidated(details, mappings, paymentAmount)
 
   const rows: JvRow[] = []
-  const addRow = (cfg: Mapping, amount: number, desc: string, isDebit: boolean) => {
+  const addRow = (cfg: Mapping, amount: number, desc: string, isDebit: boolean, key: string) => {
     if (!amount) return
-    rows.push(isDebit ? leg(cfg, desc, amount, 0) : leg(cfg, desc, 0, amount))
+    rows.push(isDebit ? leg(cfg, desc, amount, 0, key) : leg(cfg, desc, 0, amount, key))
   }
   details.forEach(detail => {
     const payType = detail.Transaction || 'UNKNOWN'
-    addRow(paymentAmount[payType] || {}, parseNum(detail.PayAmt), payType, false)
-    addRow(mappings.commission || {}, parseNum(detail.CommisAmt), 'Credit card commission', true)
-    addRow(mappings.tax || {}, parseNum(detail.TaxAmt), 'Input Tax', true)
-    addRow(mappings.net || {}, parseNum(detail.Total), 'Bank Account', true)
+    addRow(paymentAmount[payType] || {}, parseNum(detail.PayAmt), payType, false, payType)
+    addRow(
+      mappings.commission || {},
+      parseNum(detail.CommisAmt),
+      'Credit card commission',
+      true,
+      'commission'
+    )
+    addRow(mappings.tax || {}, parseNum(detail.TaxAmt), 'Input Tax', true, 'tax')
+    addRow(mappings.net || {}, parseNum(detail.Total), 'Bank Account', true, 'net')
   })
   return rows
 }
@@ -90,7 +111,7 @@ function consolidated(
     const amt = parseNum(detail.PayAmt)
     if (!amt) return
     const payType = detail.Transaction || 'UNKNOWN'
-    rows.push(leg(paymentAmount[payType] || {}, payType, 0, amt))
+    rows.push(leg(paymentAmount[payType] || {}, payType, 0, amt, payType))
   })
   // Degenerate/empty document — no real credit legs, so emit nothing (mirrors the
   // per-line builder's "no data" outcome; keeps Submit disabled).
@@ -98,9 +119,11 @@ function consolidated(
 
   // Debit side: the three canonical buckets, summed, always present (standard layout).
   const sum = (k: keyof Detail) => round2(details.reduce((s, d) => s + parseNum(d[k]), 0))
-  rows.push(leg(mappings.commission || {}, 'Credit card commission', sum('CommisAmt'), 0))
-  rows.push(leg(mappings.tax || {}, 'Input Tax', sum('TaxAmt'), 0))
-  rows.push(leg(mappings.net || {}, 'Bank Account', sum('Total'), 0))
+  rows.push(
+    leg(mappings.commission || {}, 'Credit card commission', sum('CommisAmt'), 0, 'commission')
+  )
+  rows.push(leg(mappings.tax || {}, 'Input Tax', sum('TaxAmt'), 0, 'tax'))
+  rows.push(leg(mappings.net || {}, 'Bank Account', sum('Total'), 0, 'net'))
   return rows
 }
 

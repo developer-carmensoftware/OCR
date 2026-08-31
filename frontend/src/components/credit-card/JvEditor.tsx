@@ -1,0 +1,293 @@
+import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { Loader2, Sparkles, Undo2 } from 'lucide-react'
+import CustomSearchSelect from '../common/CustomSearchSelect'
+import { useT } from '../../i18n/LanguageContext'
+import { fmt, round2 } from '../../lib/format'
+import { buildJvRows, type JvRow } from '../../lib/ccJv'
+import { allowedAccountsForDept, isAccountAllowed } from '../../lib/deptAccounts'
+import { GROUP_DEBIT_BY_TRANSACTION } from '../../constants/banks'
+import { useGlMasters } from '../../hooks/mapping/useGlMasters'
+import { suggestPaymentTypes } from '../../lib/api/mapping'
+import type { DetailRow } from './DetailTable'
+import type { FieldMapping } from '../../types/api'
+
+/** A correction the reviewer has made but not yet approved. Keyed by config field type. */
+export type Overrides = Record<string, FieldMapping>
+
+export interface JvState {
+  rows: JvRow[]
+  /** Cannot post: no rows at all, or a JV that would not balance, or a blank account on a
+   *  row carrying money. Each would be refused by Carmen, slower and less clearly. */
+  blocked: boolean
+  totalDr: number
+  totalCr: number
+}
+
+interface Props {
+  details: DetailRow[]
+  /** The BU's stored config, as loaded. Never mutated — corrections live in `overrides`. */
+  config: Record<string, unknown> | null
+  configLoading: boolean
+  overrides: Overrides
+  onOverride: (key: string, mapping: FieldMapping) => void
+  onUndo: (key: string) => void
+  /** Field types the AI chose during ingest (`mapping_guessed`), and ones it could not
+   *  fill at all (`unmapped`). The first asks to be checked, the second to be filled. */
+  guessedKeys: string[]
+  unmappedKeys: string[]
+  onState: (state: JvState) => void
+  bankCode?: string
+}
+
+/**
+ * The JV as it will post, with every GL rule editable in place.
+ *
+ * Not a variant of `AccountingReview`. That component is the wizard's data-entry step and
+ * owns a Back/Submit/mapping-page footer; this one is a verification surface whose footer
+ * belongs to the review screen. The split follows the precedent `HeaderCard` and
+ * `ReviewDocCard` already set — one component doing both jobs is what made the review
+ * screen read like a form to fill in. The arithmetic is not duplicated: both call
+ * `buildJvRows`.
+ *
+ * **A picker edits a rule, not a row.** `JvRow.key` is the accounting-config entry that
+ * produced the row, and two detail lines of one payment type produce two rows sharing a
+ * key. Changing either changes both, visibly, because that is what will actually be saved.
+ */
+export default function JvEditor({
+  details,
+  config,
+  configLoading,
+  overrides,
+  onOverride,
+  onUndo,
+  guessedKeys,
+  unmappedKeys,
+  onState,
+  bankCode,
+}: Props) {
+  const { t } = useT()
+  const { accounts, departments, loading: mastersLoading } = useGlMasters()
+
+  // The config the JV is actually built from: stored, with the reviewer's corrections on
+  // top. `mappings` and `paymentAmount` are separate buckets in the stored shape but one
+  // namespace in `buildJvRows`, so an override lands in whichever the key belongs to.
+  const effective = useMemo(() => {
+    if (!config) return null
+    const mappings = { ...((config.mappings || {}) as Record<string, FieldMapping>) }
+    const paymentAmount = { ...((config.paymentAmount || {}) as Record<string, FieldMapping>) }
+    for (const [key, value] of Object.entries(overrides)) {
+      if (key in mappings || ['commission', 'tax', 'net'].includes(key)) mappings[key] = value
+      else paymentAmount[key] = value
+    }
+    return { ...config, mappings, paymentAmount }
+  }, [config, overrides])
+
+  const rows = useMemo(
+    () =>
+      effective
+        ? buildJvRows(details, effective, { consolidateDebit: !GROUP_DEBIT_BY_TRANSACTION })
+        : [],
+    [details, effective]
+  )
+
+  const totalDr = round2(rows.reduce((s, r) => s + r.debit, 0))
+  const totalCr = round2(rows.reduce((s, r) => s + r.credit, 0))
+  const imbalanced = Math.abs(totalDr - totalCr) > 0.01
+  // A row carrying money with no account posts a GL line Carmen cannot file. Zero-amount
+  // legs are display-only (a gateway invoice's 0.00 net) and are dropped before posting,
+  // so an empty account on one is not a problem.
+  const blankAccount = rows.some(r => (r.debit || r.credit) && !r.acc)
+  const blocked = rows.length === 0 || imbalanced || blankAccount
+
+  const loading = configLoading || mastersLoading
+
+  useEffect(() => {
+    onState({ rows, blocked, totalDr, totalCr })
+    // `rows` is rebuilt every render; the primitives below are what actually change, and
+    // gating on them is what stops an update loop through the parent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onState, blocked, rows.length, totalDr, totalCr, JSON.stringify(overrides)])
+
+  // ── AI fill for a payment type the reviewer just introduced ────────────────
+  //
+  // Not fired on open: ingest already suggested for everything that arrived, so the only
+  // gap here is one the reviewer created by editing a Transaction cell. Fired once per
+  // type, because a second identical answer costs the same as the first.
+  const asked = useRef(new Set<string>())
+  const missingNow = useMemo(
+    () => [...new Set(rows.filter(r => (r.debit || r.credit) && !r.acc).map(r => r.key))],
+    [rows]
+  )
+
+  useEffect(() => {
+    if (loading || !accounts.length) return
+    const fresh = missingNow.filter(k => !asked.current.has(k))
+    if (!fresh.length) return
+    fresh.forEach(k => asked.current.add(k))
+    let alive = true
+    void suggestPaymentTypes({
+      payment_types: fresh,
+      accounts: accounts.map(a => ({ code: a.code, name: a.name })),
+      departments: departments.map(d => ({
+        code: d.code,
+        name: d.name,
+        allowed_accounts: d.allowedAccounts || [],
+      })),
+      bank_code: bankCode || '',
+    })
+      .then(res => {
+        if (!alive) return
+        for (const [key, m] of Object.entries(res)) {
+          if (m?.dept && m?.acc) onOverride(key, { dept: m.dept, acc: m.acc })
+        }
+      })
+      .catch(() => {
+        // Silent: the row already shows an empty picker asking to be filled, and a toast
+        // about a background guess failing is noise the reviewer cannot act on.
+      })
+    return () => {
+      alive = false
+    }
+  }, [missingNow, loading, accounts, departments, bankCode, onOverride])
+
+  const change = useCallback(
+    (key: string, field: 'dept' | 'acc', value: string) => {
+      const current = rows.find(r => r.key === key)
+      const next: FieldMapping =
+        field === 'dept'
+          ? // Changing department can invalidate the account under it. Drop it rather than
+            // keep an illegal pair the server would refuse on save.
+            {
+              dept: value,
+              acc: isAccountAllowed(value, current?.acc, departments) ? current?.acc || '' : '',
+            }
+          : { dept: current?.dept || '', acc: value }
+      onOverride(key, next)
+    },
+    [rows, departments, onOverride]
+  )
+
+  if (loading) {
+    return (
+      <div className="jv-loading">
+        <Loader2 size={18} className="animate-spin" aria-hidden="true" />
+        <span>{t('review.jvLoading')}</span>
+      </div>
+    )
+  }
+
+  if (!config) {
+    return <p className="jv-empty">{t('review.jvNoConfig')}</p>
+  }
+
+  // One picker per rule, not per row: rows sharing a key render the same value and the
+  // first of them owns the controls, so the reviewer is never asked the same question
+  // twice about one rule.
+  const seen = new Set<string>()
+
+  return (
+    <div className="jv">
+      <table className="jv-table">
+        <thead>
+          <tr>
+            <th scope="col">{t('review.jvDept')}</th>
+            <th scope="col">{t('review.jvAccount')}</th>
+            <th scope="col">{t('review.jvDesc')}</th>
+            <th scope="col" className="jv-num">
+              {t('review.jvDebit')}
+            </th>
+            <th scope="col" className="jv-num">
+              {t('review.jvCredit')}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => {
+            const first = !seen.has(row.key)
+            seen.add(row.key)
+            const changed = row.key in overrides
+            const guessed = !changed && guessedKeys.includes(row.key)
+            const needed =
+              unmappedKeys.includes(row.key) || (!row.acc && !!(row.debit || row.credit))
+            const accOptions = allowedAccountsForDept(row.dept, departments, accounts)
+            const filtered = accOptions.length < accounts.length
+
+            return (
+              <tr
+                key={`${row.key}-${i}`}
+                className={`jv-row${changed ? ' jv-row--changed' : ''}${needed ? ' jv-row--needed' : ''}`}
+              >
+                <td>
+                  {first ? (
+                    <CustomSearchSelect
+                      value={row.dept || null}
+                      onChange={v => change(row.key, 'dept', v)}
+                      options={departments}
+                      placeholder={t('review.jvDeptPlaceholder')}
+                      hasError={!row.dept && !!(row.debit || row.credit)}
+                      aria-label={t('review.jvDeptFor', { field: row.desc })}
+                    />
+                  ) : (
+                    <span className="jv-echo text-mono">{row.dept || '—'}</span>
+                  )}
+                </td>
+                <td>
+                  {first ? (
+                    <CustomSearchSelect
+                      value={row.acc || null}
+                      onChange={v => change(row.key, 'acc', v)}
+                      options={accOptions}
+                      notice={
+                        filtered
+                          ? t('review.jvDeptFilter', {
+                              count: String(accOptions.length),
+                              dept: row.dept,
+                            })
+                          : undefined
+                      }
+                      placeholder={t('review.jvAccountPlaceholder')}
+                      hasError={needed}
+                      aria-label={t('review.jvAccountFor', { field: row.desc })}
+                    />
+                  ) : (
+                    <span className="jv-echo text-mono">{row.acc || '—'}</span>
+                  )}
+                </td>
+                <td className="jv-desc">
+                  <span title={row.desc}>{row.desc}</span>
+                  {/* The only thing on this pane asking to be checked: everything else
+                      came from a rule a person set. */}
+                  {first && guessed && (
+                    <span className="jv-tag jv-tag--ai" title={t('review.jvGuessedHint')}>
+                      <Sparkles size={11} strokeWidth={2.25} aria-hidden="true" />
+                      {t('review.jvGuessed')}
+                    </span>
+                  )}
+                  {first && changed && (
+                    <button
+                      type="button"
+                      className="jv-tag jv-tag--undo"
+                      onClick={() => onUndo(row.key)}
+                    >
+                      <Undo2 size={11} strokeWidth={2.25} aria-hidden="true" />
+                      {t('review.jvUndo')}
+                    </button>
+                  )}
+                </td>
+                <td className="jv-num text-mono">{row.debit ? fmt(row.debit) : '—'}</td>
+                <td className="jv-num text-mono">{row.credit ? fmt(row.credit) : '—'}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+        <tfoot>
+          <tr className={`jv-total${imbalanced ? ' jv-total--bad' : ''}`}>
+            <td colSpan={3}>{imbalanced ? t('review.jvImbalanced') : t('review.jvBalanced')}</td>
+            <td className="jv-num text-mono">{fmt(totalDr)}</td>
+            <td className="jv-num text-mono">{fmt(totalCr)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  )
+}

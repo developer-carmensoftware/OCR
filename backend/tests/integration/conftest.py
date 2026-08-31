@@ -29,6 +29,15 @@ FAKE_SESSION = SessionInfo(
 )
 
 
+# Session-wide: see the fixture below for why this cannot live inside it.
+_ip_counter = itertools.count()
+
+
+def _unique_ip(_request) -> str:
+    n = next(_ip_counter) % 62_500
+    return f"10.0.{n // 250}.{n % 250}"
+
+
 @pytest.fixture(autouse=True)
 def _isolate_rate_limiter():
     """Give every test its own client IP, so the rate limiter cannot leak between them.
@@ -42,12 +51,18 @@ def _isolate_rate_limiter():
     Patched at the seam rather than by reaching into the middleware's `self._windows`:
     the window is instance state on an object built lazily inside the middleware stack,
     and a unique IP is the same isolation without depending on where it lives.
+
+    **The counter is module-level, not per-test, and two octets wide.** It used to be
+    created inside the fixture and wrapped at 250, so every test restarted at 10.0.0.0
+    and collided with every other test's opening requests — while the middleware's
+    `_windows` dict lives for the whole process and never forgets. Past roughly 120
+    requests on a shared address the `default` bucket popped, and the 429 landed on
+    whichever test happened to be running (it was `test_feedback_api` the day this was
+    found, purely because four tests were added to another file). Both halves matter: a
+    session-wide counter stops tests colliding, and 62,500 slots stop the counter itself
+    wrapping. The modulo remains only so a wrap still yields a valid address.
     """
-    counter = itertools.count()
-    with patch(
-        "app.middleware.rate_limit.get_client_ip",
-        side_effect=lambda _request: f"10.0.0.{next(counter) % 250}",
-    ):
+    with patch("app.middleware.rate_limit.get_client_ip", side_effect=_unique_ip):
         yield
 
 
