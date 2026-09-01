@@ -22,8 +22,9 @@ interface Alert {
   resolved_at: string | null
 }
 
-/** A card, not a table row — so this list pages on its own rather than via DataTable. */
-const PER_PAGE = 20
+// A card, not a table row — so this list pages on its own rather than via DataTable. The
+// size still comes from `useTableQuery`, which seeds it from the reader's stored choice,
+// so it stays in step with every other list in the dashboard.
 
 export default function AnomaliesPage() {
   const { t } = useT()
@@ -45,7 +46,7 @@ export default function AnomaliesPage() {
         tenant_id: params.tenant_id || undefined,
         from: params.from,
         to: endOfDay(params.to),
-        limit: PER_PAGE,
+        limit: params.limit,
         offset: params.offset,
       }),
     [params],
@@ -132,9 +133,12 @@ export default function AnomaliesPage() {
       </div>
       <Pager
         offset={params.offset}
-        limit={PER_PAGE}
+        limit={params.limit}
         total={total}
         onChange={offset => set({ offset })}
+        // Both in one patch — a new size with the old offset can point past the end, and
+        // patching them separately would fetch twice to reach one page.
+        onLimitChange={limit => set({ limit, offset: 0 })}
       />
     </div>
   )

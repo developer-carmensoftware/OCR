@@ -1,5 +1,5 @@
-/* Offset pager: prev / range / next. Sized by its container, so the same component
-   sits in the bell dropdown and under a full-width order list without a variant. */
+/* Offset pager: rows-per-page / range / prev / next. Sized by its container, so the same
+   component sits in the bell dropdown and under a full-width order list without a variant. */
 
 .pager {
   display: flex;
@@ -7,6 +7,33 @@
   justify-content: center;
   gap: 0.5rem;
   padding: 0.5rem;
+  /* Narrow containers (the bell panel) wrap instead of overflowing. */
+  flex-wrap: wrap;
+}
+
+.pager__size {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--muted-fg);
+  /* The label belongs to the select it wraps, so a click on the words opens it. */
+  cursor: pointer;
+  margin-right: 0.25rem;
+}
+
+.pager__select {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  color: var(--fg);
+  font: inherit;
+  padding: 0.25rem 0.375rem;
+  cursor: pointer;
+}
+
+.pager__select:hover {
+  border-color: var(--fg);
 }
 
 .pager__btn {

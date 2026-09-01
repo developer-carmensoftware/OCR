@@ -8,13 +8,10 @@ import QueueSettings from '../components/credit-card/QueueSettings'
 import ReviewDocument from './ReviewDocument'
 import { useReviewQueue } from '../hooks/credit-card/useReviewQueue'
 import { ACTIVITY_FILTERS, type ActivityFilter } from '../lib/api/emailReview'
-import { useFitRows } from '../hooks/useFitRows'
+import { useRowsPerPage } from '../hooks/useRowsPerPage'
 import { useT } from '../i18n/LanguageContext'
 import { showToast } from '../lib/toast'
 import type { TKey } from '../i18n/dict'
-
-// Mirrors the cap FastAPI enforces on GET /api/v1/credit-card/activity (422 above it).
-const MAX_PAGE = 100
 
 const FILTER_LABEL: Record<ActivityFilter, TKey> = {
   all: 'review.filterAll',
@@ -146,10 +143,9 @@ function NotSetUp({
 
 export default function ReviewQueue() {
   const { t } = useT()
-  // Page size = whatever fits above the fold. Every row is now one line tall, so the row
-  // itself is a safe thing to measure.
-  const [fits, listRef] = useFitRows('tr', 5)
-  const limit = Math.min(fits, MAX_PAGE)
+  // Page size is the reader's, shared with every other table in the app. The options top
+  // out at 100, which is the cap FastAPI enforces on GET /api/v1/credit-card/activity.
+  const [limit, setLimit] = useRowsPerPage()
   const {
     status,
     filter,
@@ -278,7 +274,7 @@ export default function ReviewQueue() {
       ) : (
         <>
           {(loading || hasWork) && (
-            <table className="rq-table">
+            <table className="rq-table" aria-busy={loading || undefined}>
               <thead>
                 <tr>
                   {COLUMNS.map(c => (
@@ -288,11 +284,14 @@ export default function ReviewQueue() {
                   ))}
                 </tr>
               </thead>
-              {/* The ref goes on tbody, not the table: useFitRows measures a rendered row
-                  and reaches the pager through the table's siblings. */}
-              <tbody ref={listRef}>
-                {loading && Array.from({ length: 3 }).map((_, i) => <RowSkeleton key={i} />)}
-                {!loading && rows.map(row => <QueueRow key={row.id} row={row} onOpen={openDoc} />)}
+              {/* Skeletons only on the first load. A page turn keeps the rows it has and
+                  dims them — swapping them for skeletons and back makes every arrow click
+                  flash, in a table that is about to show almost the same thing. */}
+              <tbody>
+                {loading &&
+                  !hasWork &&
+                  Array.from({ length: 3 }).map((_, i) => <RowSkeleton key={i} />)}
+                {hasWork && rows.map(row => <QueueRow key={row.id} row={row} onOpen={openDoc} />)}
               </tbody>
             </table>
           )}
@@ -314,7 +313,19 @@ export default function ReviewQueue() {
               <p className="rq-empty-tab">{t('review.emptyTab')}</p>
             ))}
 
-          {hasWork && <Pager offset={offset} limit={limit} total={total} onChange={setOffset} />}
+          {hasWork && (
+            <Pager
+              offset={offset}
+              limit={limit}
+              total={total}
+              onChange={setOffset}
+              // Back to page 1: offset 380 at a new limit of 100 points past the end.
+              onLimitChange={n => {
+                setLimit(n)
+                setOffset(0)
+              }}
+            />
+          )}
         </>
       )}
 

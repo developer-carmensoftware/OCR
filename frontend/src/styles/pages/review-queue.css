@@ -279,6 +279,13 @@
   background: none;
 }
 
+/* A page turn keeps the rows it has and dims them. Swapping them for skeletons and back
+   made every arrow click flash a table about to show almost the same thing. */
+.rq-table[aria-busy='true'] tbody {
+  opacity: 0.45;
+  transition: opacity 120ms var(--ease-out-premium);
+}
+
 .rq-skel {
   display: block;
   width: 80%;
@@ -911,27 +918,13 @@
   color: var(--primary);
 }
 
+/* Two buttons, pushed apart: the destructive one on the left, the one that posts on the
+   right, and nothing between them to click by accident. */
 .rd-actions {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-3);
-}
-
-.rd-check {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-left: auto;
-  font-size: 0.82rem;
-  color: var(--text-2, var(--text));
-  cursor: pointer;
-}
-
-.rd-check input {
-  width: 1rem;
-  height: 1rem;
-  accent-color: var(--primary);
-  flex: none;
 }
 
 /* ── Narrow ─────────────────────────────────────────────────────────────────── */
@@ -976,14 +969,192 @@
     flex-wrap: wrap;
   }
 
-  .rd-check {
-    order: -1;
-    margin-left: 0;
-    width: 100%;
-  }
-
   .rd-actions .btn {
     flex: 1;
     min-height: 44px;
+  }
+}
+
+/* A JV-header value that is not per-document: Prefix and Description come from the BU's
+   accounting config and are changed on the mapping page. Same type as an editable value,
+   no box and no hover, because there is nothing here to click. */
+.rd-f-fixed {
+  padding: 0.25rem 0;
+  font-size: 0.875rem;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Input tax: the second document this approval files ─────────────────────── */
+
+.itx {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  overflow: hidden;
+}
+
+.itx-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0.6rem 0.85rem;
+  background: var(--muted);
+}
+
+.itx-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.83rem;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.itx-check input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--primary);
+  flex: none;
+}
+
+.itx-check input:disabled {
+  cursor: not-allowed;
+}
+
+.itx-check:has(input:disabled) {
+  color: var(--text-4);
+  cursor: not-allowed;
+}
+
+/* The answer, whether or not anyone opens the panel: will it be filed, for how much, at
+   what rate. A disclosure that hides its own outcome is the collapsing this screen threw
+   out once already. */
+.itx-sum {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.83rem;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itx-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex: none;
+  padding: 0.2rem 0.4rem;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.itx-toggle:hover {
+  background: var(--primary-light);
+}
+
+.itx-toggle:focus-visible {
+  outline: 2.5px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.itx-chev {
+  transition: transform 160ms var(--ease-out-premium, ease-out);
+}
+
+.itx-chev.is-open {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .itx-chev {
+    transition: none;
+  }
+}
+
+.itx-body {
+  padding: var(--space-3) 0.85rem;
+  border-top: 1px solid var(--border);
+}
+
+.itx-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--amber-text);
+}
+
+.itx-warn svg {
+  flex: none;
+  margin-top: 0.1rem;
+}
+
+.itx-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-3) var(--space-4);
+  margin: 0;
+}
+
+.itx-f {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.itx-f--wide {
+  grid-column: span 2;
+}
+
+.itx-f dt {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+
+.itx-f dd {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The reason Carmen refuses a record, so it reads beside the name it belongs to rather
+   than as a second field. */
+.itx-taxid {
+  margin-left: var(--space-2);
+  font-size: 0.8rem;
+  color: var(--text-4);
+}
+
+@media (max-width: 640px) {
+  .itx-f--wide {
+    grid-column: auto;
+  }
+
+  .itx-head {
+    flex-wrap: wrap;
+  }
+
+  .itx-sum {
+    order: 3;
+    flex-basis: 100%;
   }
 }

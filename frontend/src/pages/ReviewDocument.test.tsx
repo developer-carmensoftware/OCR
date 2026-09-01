@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { LanguageProvider } from '../i18n/LanguageContext'
 import ReviewDocument from './ReviewDocument'
 import type { ReviewDocumentDetail } from '../lib/api/emailReview'
@@ -19,6 +19,7 @@ vi.mock('../lib/api/carmen', () => ({
     { AccCode: '110200', Description: 'Bank - KBANK' },
     { AccCode: '110300', Description: 'Settlement receivable' },
   ]),
+  fetchTaxProfiles: vi.fn(async () => [{ code: 'VAT07', desc: 'VAT 7%', rate: 7 }]),
   fetchDepartments: vi.fn(async () => [
     // OPS restricts to three accounts; GEN restricts nothing.
     {
@@ -186,14 +187,82 @@ describe('the screen', () => {
     expect(screen.getByRole('region', { name: 'What will post' })).toBeInTheDocument()
   })
 
-  it('carries every extracted header field, not a chosen six', async () => {
-    // The one omission is DateProcessed, which is today's date made up in the browser.
+  it('shows the four fields that reach Carmen as the JV header, and no others', async () => {
+    // Read off build_gljv_payload: JvhDate, Prefix and Description are the only header
+    // fields that vary, plus the document number the record is filed under. Company,
+    // merchant and the two bank names appear in neither payload — they were things to
+    // read past.
     vi.mocked(api.getPending).mockResolvedValue(detail())
     mount()
     await screen.findByDisplayValue('INV-001')
-    for (const label of ['Document type', 'Bank', 'Issued by', 'Merchant ID', 'Branch']) {
-      expect(screen.getByLabelText(label)).toBeInTheDocument()
+    // Scoped: the JV table has a Description column header of its own.
+    const header = within(screen.getByRole('region', { name: 'What the document says' }))
+    expect(header.getByLabelText('Document no.')).toBeInTheDocument()
+    expect(header.getByLabelText('Document date')).toBeInTheDocument()
+    expect(header.getByText('Prefix')).toBeInTheDocument()
+    expect(header.getByText('Description')).toBeInTheDocument()
+    for (const gone of ['Billed to', 'Merchant', 'Merchant ID', 'Bank', 'Document type']) {
+      expect(screen.queryByLabelText(gone)).not.toBeInTheDocument()
     }
+  })
+
+  it('previews the prefix and description exactly as the JV will carry them', async () => {
+    // Resolved through descriptionForBank, the same helper buildGljvPayload uses — a
+    // preview that could disagree with what posts is worse than no preview.
+    storedConfig = { ...storedConfig, filePrefix: 'JV', description: 'Card settlement' }
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    expect(screen.getByText('JV')).toBeInTheDocument()
+    expect(screen.getByText('Card settlement - 15/01/2026')).toBeInTheDocument()
+  })
+})
+
+describe('the input tax record', () => {
+  it('states its outcome without being opened', async () => {
+    // A disclosure that hides its own answer is the collapsing this screen threw out once
+    // already. Commission 30.00, VAT 2.10 — 7%.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    expect(screen.getByText('VAT 2.10 at 7%')).toBeInTheDocument()
+  })
+
+  it('keeps its own fields behind the dropdown, not in the JV header', async () => {
+    // Branch is the one document field this record uses and the JV does not.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    expect(screen.queryByLabelText('Branch')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Show details/ }))
+    expect(await screen.findByLabelText('Branch')).toHaveValue('00000')
+    expect(screen.getByText('Tax period')).toBeInTheDocument()
+    expect(screen.getByText('Vendor')).toBeInTheDocument()
+  })
+
+  it('does not repeat the figures the JV above it already shows', async () => {
+    // BfTaxAmt is the commission debit row and TaxAmt is the Input Tax row; TotalAmt is
+    // their sum. Reading a number twice to check it once is what this screen keeps cutting.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    fireEvent.click(screen.getByRole('button', { name: /Show details/ }))
+    await screen.findByLabelText('Branch')
+    expect(screen.queryByText('Base')).not.toBeInTheDocument()
+    expect(screen.queryByText('Total')).not.toBeInTheDocument()
+  })
+
+  it('says so when the statement charged no VAT, instead of offering a choice', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(
+      detail({
+        extracted: { ...EXTRACTED, details: [{ ...LINE, commis_amt: '0', tax_amt: '0' }] },
+      })
+    )
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    expect(screen.getByText('No VAT on this document')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox')).toBeDisabled()
   })
 
   it('states the totals once, on the journal that produces them', async () => {

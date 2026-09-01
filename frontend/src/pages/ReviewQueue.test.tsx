@@ -202,6 +202,18 @@ describe('the status filter chips', () => {
     })
   })
 
+  it('refetches only the list when the view moves — status is configuration', async () => {
+    // Changing chip or page used to cost two round trips, one of which could not
+    // possibly return anything new. Status only refetches on an explicit refresh.
+    mount(status(), [doc()], { ...ZERO, all: 5, review: 1, success: 4 })
+    await screen.findByRole('tab', { name: /Posted/ })
+    expect(vi.mocked(api.getReviewStatus)).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByRole('tab', { name: /Posted/ }))
+    await waitFor(() => expect(vi.mocked(api.listActivity)).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(api.getReviewStatus)).toHaveBeenCalledTimes(1)
+  })
+
   it('hides the chips from a BU with no documents at all', async () => {
     // Five zeroes above an explanation of what the feature is would be scaffolding,
     // not navigation.

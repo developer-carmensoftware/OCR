@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { Search } from 'lucide-react'
 import { useT } from '../../i18n/LanguageContext'
-import { useFitRows } from '../../hooks/useFitRows'
+import { useRowsPerPage } from '../../hooks/useRowsPerPage'
+import Pager from '../common/Pager'
 
 const SKELETON_WIDTHS = [
   'sk-w-72',
@@ -40,7 +41,7 @@ export interface ServerTable {
   sort: string | null
   dir: SortDir
   offset: number
-  /** Rows per page. Measured here and reported back through `onChange`. */
+  /** Rows per page. Chosen in the pager and reported back through `onChange`. */
   limit: number
   total: number
   onChange: (next: Partial<{ sort: string; dir: SortDir; offset: number; limit: number }>) => void
@@ -49,8 +50,9 @@ export interface ServerTable {
 export interface DataTableProps<T = Record<string, unknown>> {
   columns: Column<T>[]
   rows: T[]
-  /** Fixed rows per page. Omit to fit the viewport — only pass it for a table that is
-   *  not viewport-bound, such as one nested inside an expanded row. */
+  /** Fixed rows per page, and no rows-per-page control. Omit to let the reader choose —
+   *  only pass it for a table whose size is not theirs to pick, such as one nested
+   *  inside an expanded row. */
   pageSize?: number
   emptyText?: string
   loading?: boolean
@@ -146,37 +148,14 @@ export default function DataTable<T = Record<string, unknown>>({
   // so every admin page rendered "‹ Prev / Next › / of" untranslated no matter what
   // the language toggle said. Fixing it here fixes all 11 callers at once.
   const { t } = useT()
-  // Rows per page is measured off the rendered table, not decided here: a laptop and a
-  // 4K panel should not both get 50. An explicit `pageSize` still wins — see the prop.
-  const [fits, bodyRef] = useFitRows('tr', 7)
-  const perPage = pageSize ?? fits
+  // Rows per page is the reader's choice, remembered across tables and sessions. In
+  // server mode `server.limit` is the truth — it is what the rows on screen were fetched
+  // with, and `useTableQuery` seeds it from the same stored preference.
+  const [stored, chooseStored] = useRowsPerPage()
+  const perPage = pageSize ?? (server ? server.limit : stored)
   const [page, setPage] = useState(0)
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortAsc, setSortAsc] = useState(true)
-
-  // In server mode the fetch needs the page size, and only this component can measure
-  // it. Report it up; the parent refetches when it changes.
-  //
-  // Only ever report a LARGER measurement than the last one for this viewport, because
-  // the measurement and the row count feed each other: useFitRows derives the count
-  // from the space left below the table, so fetching 15 rows leaves room that measures
-  // as 17, and fetching 17 leaves room that measures as 15. Reporting both directions
-  // made every server-mode page fetch forever, alternating limit=15 and limit=17.
-  //
-  // Page size follows the *viewport*, so a real resize resets the high-water mark and
-  // the table re-measures from scratch. A shrink caused by our own rows is ignored,
-  // which is what makes the sequence monotonic and therefore terminating.
-  const onServerChange = server?.onChange
-  const serverLimit = server?.limit
-  const fitted = useRef({ viewport: '', limit: 0 })
-  useEffect(() => {
-    if (!onServerChange) return
-    const viewport = `${window.innerWidth}x${window.innerHeight}`
-    if (fitted.current.viewport !== viewport) fitted.current = { viewport, limit: 0 }
-    if (perPage <= fitted.current.limit) return
-    fitted.current.limit = perPage
-    if (serverLimit !== perPage) onServerChange({ limit: perPage })
-  }, [onServerChange, serverLimit, perPage])
 
   const activeSort = server ? server.sort : sortKey
   const activeAsc = server ? server.dir === 'asc' : sortAsc
@@ -219,17 +198,29 @@ export default function DataTable<T = Record<string, unknown>>({
 
   const total = server ? server.total : sorted.length
   const pages = Math.ceil(total / perPage)
-  // A resize can make the current page index point past the end (fewer, taller pages);
-  // clamp rather than render a blank table the reader has to click their way out of.
+  // A bigger page size can make the current page index point past the end (fewer, taller
+  // pages); clamp rather than render a blank table the reader has to click their way out of.
   const safePage = server
     ? Math.floor(server.offset / Math.max(1, perPage))
     : Math.min(page, Math.max(0, pages - 1))
   const start = safePage * perPage
   const paginated = server ? sorted : sorted.slice(start, start + perPage)
 
-  const goToPage = (next: number) => {
-    if (server) server.onChange({ offset: next * perPage })
-    else setPage(next)
+  const goToOffset = (next: number) => {
+    if (server) server.onChange({ offset: next })
+    else setPage(Math.floor(next / Math.max(1, perPage)))
+  }
+
+  // Both halves in one patch: a new size with the old offset can point past the end, and
+  // patching them separately would fire two fetches to get to one page. In server mode
+  // `useTableQuery.set` is what remembers the choice — it owns the limit there.
+  const chooseLimit = (next: number) => {
+    if (server) {
+      server.onChange({ limit: next, offset: 0 })
+      return
+    }
+    chooseStored(next)
+    setPage(0)
   }
 
   const handleSort = (key: string) => {
@@ -311,13 +302,17 @@ export default function DataTable<T = Record<string, unknown>>({
     </div>
   ) : null
 
-  if (loading) {
+  // Skeletons only on the FIRST load. A page turn already has rows on screen, and
+  // replacing them with skeletons and back makes every arrow click flash — the reader
+  // loses their place in a table that was about to show almost the same thing. Keeping
+  // them and dimming says "these are a moment out of date" without the strobe.
+  if (loading && rows.length === 0) {
     return (
       <div className="admin-table-wrap">
         {toolbar}
         <table className="admin-table">
           {head}
-          <tbody ref={bodyRef}>
+          <tbody>
             {Array.from({ length: 7 }).map((_, i) => (
               <tr key={i} className="admin-tr skeleton-row" role="presentation">
                 {columns.map((col, j) => (
@@ -343,9 +338,9 @@ export default function DataTable<T = Record<string, unknown>>({
   return (
     <div className="admin-table-wrap">
       {toolbar}
-      <table className="admin-table">
+      <table className="admin-table" aria-busy={loading || undefined}>
         {head}
-        <tbody ref={bodyRef}>
+        <tbody>
           {paginated.length === 0 ? (
             <tr>
               <td colSpan={columns.length} className="admin-td-empty">
@@ -388,33 +383,14 @@ export default function DataTable<T = Record<string, unknown>>({
         </tbody>
       </table>
 
-      {pages > 1 && (
-        <div className="admin-table-pagination">
-          <span className="pagination-info">
-            {t('admin.common.table.range', {
-              from: start + 1,
-              to: Math.min(start + perPage, total),
-              total,
-            })}
-          </span>
-          <button
-            type="button"
-            disabled={safePage === 0}
-            onClick={() => goToPage(safePage - 1)}
-            className="pagination-btn"
-          >
-            {t('admin.common.table.prev')}
-          </button>
-          <button
-            type="button"
-            disabled={safePage >= pages - 1}
-            onClick={() => goToPage(safePage + 1)}
-            className="pagination-btn"
-          >
-            {t('admin.common.table.next')}
-          </button>
-        </div>
-      )}
+      <Pager
+        offset={start}
+        limit={perPage}
+        total={total}
+        onChange={goToOffset}
+        // A fixed `pageSize` is the caller saying the size is not the reader's to pick.
+        onLimitChange={pageSize ? undefined : chooseLimit}
+      />
     </div>
   )
 }

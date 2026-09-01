@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom'
 import { AlertCircle, AlertTriangle, CheckCircle2, Loader2, X } from 'lucide-react'
 import CustomModal from '../components/common/CustomModal'
 import SwapLabel from '../components/common/SwapLabel'
-import ReviewDocCard from '../components/credit-card/ReviewDocCard'
+import JvHeaderCard from '../components/credit-card/JvHeaderCard'
+import InputTaxPanel from '../components/credit-card/InputTaxPanel'
 import type { DetailRow } from '../components/credit-card/DetailTable'
 import JvEditor, { type JvState, type Overrides } from '../components/credit-card/JvEditor'
 import { useT } from '../i18n/LanguageContext'
@@ -179,13 +180,8 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
           ...(doc.extracted as Record<string, unknown>),
           doc_no: headerData.DocNo,
           doc_date: headerData.DocDate,
-          doc_name: headerData.DocName,
+          // The input-tax record's only document field, edited in its own panel.
           branch_no: headerData.BranchNo,
-          bank_name: headerData.BankName,
-          bank_company_name: headerData.BankCompanyName,
-          company_name: headerData.CompanyName,
-          merchant_id: headerData.MerchantId,
-          merchant_name: headerData.MerchantName,
           details: details.map(d => ({
             transaction: d.Transaction || '',
             pay_amt: d.PayAmt || '',
@@ -301,7 +297,12 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
               )}
 
               <section aria-label={t('review.paneDocument')}>
-                <ReviewDocCard headerData={headerData} onUpdate={updateHeader} />
+                <JvHeaderCard
+                  headerData={headerData}
+                  onUpdate={updateHeader}
+                  config={config as Record<string, unknown> | null}
+                  bank={bank}
+                />
               </section>
 
               <section aria-label={t('review.paneJv')}>
@@ -317,6 +318,20 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   onAmount={updateAmount}
                   onState={onJvState}
                   bankCode={bank || doc.bank_code || ''}
+                />
+              </section>
+
+              {/* The second document this approval files. Its own fields live with it
+                  rather than in the JV header, which is the only place they were ever
+                  wanted. */}
+              <section aria-label={t('review.secTax')}>
+                <InputTaxPanel
+                  details={details}
+                  headerData={headerData}
+                  bank={bank}
+                  enabled={postInputTax}
+                  onEnabledChange={setPostInputTax}
+                  onUpdate={updateHeader}
                 />
               </section>
             </div>
@@ -346,14 +361,6 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                 >
                   {t('review.reject')}
                 </button>
-                <label className="rd-check">
-                  <input
-                    type="checkbox"
-                    checked={postInputTax}
-                    onChange={e => setPostInputTax(e.target.checked)}
-                  />
-                  <span>{t('review.secTaxLabel')}</span>
-                </label>
                 <button
                   type="button"
                   className="btn btn-primary"

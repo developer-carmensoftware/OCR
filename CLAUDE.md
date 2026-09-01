@@ -204,14 +204,22 @@ Gotchas worth knowing before trusting a number:
   failures by cause; grouping one page reports wrong counts) and Credit Orders loads the
   endpoint's cap in one go (its search must reach past the visible page). Don't "fix" these
   into server mode — each shows a real `total` so a bitten cap is visible.
-- **Page size is measured, not configured** — `hooks/useFitRows.ts` fits rows to the
-  viewport; `pageSize` survives only as an override for tables that aren't viewport-bound.
-- ⚠️ **In server mode the measured size feeds the fetch, so the measurement must never
-  shrink in response to its own rows.** 15 rows leave room that measures as 17, 17 leave
-  room that measures as 15, and the tab fetches forever. `DataTable` keeps a monotonic
-  high-water mark per viewport size (a real resize clears it); `DataTable.fetchloop.test.tsx`
-  is the regression test, and reverting the guard makes it hang. This shipped as a bug on
-  2026-08-24 — read that changelog entry before touching the measurement.
+- **Page size is the reader's, and shared** — `hooks/useRowsPerPage.ts` holds it in one
+  global `localStorage['rowsPerPage']` (**not** `appKey()`: a UI preference like `theme`,
+  so it survives logout). `useTableQuery` seeds its `limit` default from it *synchronously*,
+  which is what stops a table fetching 25 rows and then immediately fetching 50. `pageSize`
+  survives as an override that also hides the control, for a table whose size is not the
+  reader's to pick (only `ExtractionsPage`'s nested table today).
+- **One pagination component**: `components/common/Pager.tsx`, used by DataTable and the
+  five customer-facing lists. Pass `onLimitChange` to get the rows-per-page select; omit it
+  for a fixed-size list (the notification bell). Options top out at 100 because that is the
+  lowest backend cap among its callers — check `le=` before adding a bigger one.
+  ⚠️ It **replaced** a measured page size (`useFitRows`, deleted 2026-09-01). Don't bring
+  measurement back: in server mode it fed the fetch and the rows it asked for changed the
+  measurement, so the tab fetched forever until a monotonic guard was bolted on
+  (bug of 2026-08-24). A chosen number cannot oscillate — that is the whole point.
+- **A page turn keeps its rows.** Skeletons render only when there is nothing to keep
+  (`loading && rows.length === 0`); otherwise the table carries `aria-busy` and dims via CSS.
 
 The SQL behind the adoption views lives in [`backend/db/queries.sql`](backend/db/queries.sql)
 items 11–14 — useful for cross-checking a page against the raw numbers.
@@ -255,7 +263,7 @@ an ad-hoc script while `uvicorn` is up hits the 15-connection Supavisor cap.
 - **App factory** — `app/factory.py` builds the FastAPI instance (middleware + exception handlers + routers). `app/lifecycle.py` owns lifespan (startup/shutdown + background tasks). `app/sentry.py` owns Sentry init. `app/main.py` is the thin entrypoint.
 - **Charge before the LLM, refund only when the LLM never ran** — `consume_document()` runs at every extract endpoint AFTER `ensure_pdf_openable` and `assert_module_enabled` (so a locked PDF or a disabled module never costs a document) and returns what it charged; pass that to `refund_document()` for the files that failed. Both fail open on infra errors — only a real out-of-credits raises `InsufficientCredits` (402). **The refund test is "did the vision call happen", not "did the document post".** In the wizards every refund site is an extraction that threw, so the user got nothing back. Email ingest states the same rule explicitly: `_run_document()` has a single **refund boundary** (`email_ingest_service.py`) wrapping `create_task` + `extract_stateless` + `finalize_extraction`, and it is the only place in that pipeline that refunds — once extraction returns, the document is charged whatever happens next (`duplicate_document`, `tax_id_mismatch`, `mapping_incomplete`, any `carmen_rejected`). That is why `_Skip` carries no refund flag. Ingest deliberately matches the wizard here, which has always charged for a duplicate because `finalize_extraction` only sets an `is_duplicate` flag rather than raising.
 - **What one document costs differs per module** — credit card charges **per file** (`increment=len(file_data)`), AP invoice charges **per page sent to the LLM** (`billable_pages()` in `utils/pages.py`, capped at `MAX_PAGES_PER_CALL`=5): a 3-page selection costs 3, and 3 images merged client-side into one PDF cost 3. `ensure_pdf_openable()` returns the page count for exactly this. The whole N is charged to one pool — a tenant with 3 subscription docs left scanning 5 pages pays 5 credits and strands the 3. **`ocr_tasks.charged_docs` records what each task cost** — nothing else can (a subscription-funded scan writes no ledger row; `credit_ledger.ref` is the filename, since the charge precedes `create_task`). Count documents with `SUM(charged_docs)`, never `COUNT(ocr_tasks)`.
-- **Hook directory convention** — Feature hooks live in subdirectories, one per feature: `hooks/admin/`, `hooks/ap-invoice/`, `hooks/credit-card/`, `hooks/credits/`, `hooks/email-settings/`, `hooks/mapping/`, `hooks/notifications/`. Cross-cutting hooks (`useModal`, `useDarkMode`, `useCarmenSSO`, `useFitRows`) stay at top level. Each subdir has an `index.ts` barrel. All localStorage access goes through the tenant-aware `lib/storage.ts` (`appKey()`).
+- **Hook directory convention** — Feature hooks live in subdirectories, one per feature: `hooks/admin/`, `hooks/ap-invoice/`, `hooks/credit-card/`, `hooks/credits/`, `hooks/email-settings/`, `hooks/mapping/`, `hooks/notifications/`. Cross-cutting hooks (`useModal`, `useDarkMode`, `useCarmenSSO`, `useRowsPerPage`) stay at top level. Each subdir has an `index.ts` barrel. All **tenant-scoped** localStorage access goes through `lib/storage.ts` (`appKey()`); global UI preferences (`theme`, `lang`, `rowsPerPage`) deliberately stay outside it, because they are not business data and must survive logout — see that file's header before adding a key either way.
 - **Pydantic schemas** — All request/response schemas in `app/models/schemas/` package. Never define `class X(BaseModel)` inside a router file.
 - **Every list endpoint answers the same envelope** — `Page[T]` = `{total, limit, offset, data}` (`models/schemas/common.py`), built by `paginate()` (`utils/pagination.py`), mirrored on the frontend by `lib/api/page.ts`. `total` is counted off the **unlimited** statement with `ORDER BY` stripped, so a truncated window can always say *"showing 200 of 340"* instead of ending silently — `len(data)` as a total is the bug class this exists to kill. A query selecting several entities uses `count_rows()` + its own `.all()` instead, because `paginate()`'s `.scalars()` would flatten each row to the first entity.
 

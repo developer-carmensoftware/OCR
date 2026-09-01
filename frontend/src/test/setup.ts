@@ -46,9 +46,8 @@ if (dialog && !dialog.showModal) {
   }
 }
 
-// jsdom has no ResizeObserver, and useFitRows measures with one. Nothing lays out
-// under jsdom anyway (every box is 0×0), so a stub that never fires is honest: the
-// hook falls back to its initial row count, which is what the tests assert against.
+// jsdom has no ResizeObserver and several components observe with one. Nothing lays out
+// under jsdom anyway (every box is 0×0), so a stub that never fires is honest.
 globalThis.ResizeObserver ??= class {
   observe() {}
   unobserve() {}
