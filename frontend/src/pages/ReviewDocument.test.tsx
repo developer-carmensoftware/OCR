@@ -214,15 +214,16 @@ describe('the screen', () => {
 
   it('previews the prefix and description exactly as the JV will carry them', async () => {
     // Resolved through descriptionForBank, the same helper buildGljvPayload uses — a
-    // preview that could disagree with what posts is worse than no preview. The date is
-    // machine-appended per document, so it sits beside the field rather than inside it.
+    // preview that could disagree with what posts is worse than no preview. The field holds
+    // the BASE — the JV builder appends " - <doc date>" on post, and that tail is not
+    // rendered: it is the document date already on screen two fields along.
     storedConfig = { ...storedConfig, filePrefix: 'JV', description: 'Card settlement' }
     vi.mocked(api.getPending).mockResolvedValue(detail())
     mount()
     await screen.findByDisplayValue('INV-001')
     expect(screen.getByLabelText('Prefix')).toHaveValue('JV')
     expect(screen.getByLabelText('Description')).toHaveValue('Card settlement')
-    expect(screen.getByText('- 15/01/2026')).toBeInTheDocument()
+    expect(screen.queryByText(/- 15\/01\/2026/)).not.toBeInTheDocument()
   })
 
   it('offers Carmen’s journal books rather than a free-text prefix', async () => {

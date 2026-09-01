@@ -730,9 +730,13 @@
    they should reflow to whatever the modal is, not sit in a grid built for one width.
    The wide field takes the whole row rather than `span 2`: two columns of a four-column
    row cannot hold it, so it wrapped and left a hole where it used to sit. */
+/* Flex, not the auto-fit grid it was: these four fields have nothing in common but a row.
+   A grid gave each an equal 1fr, so a two-character prefix and a ten-character date got the
+   same width as a description that needs every pixel it can have. 1D layout, intrinsic
+   widths, and the description absorbs the slack. */
 .rd-doc {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--space-3) var(--space-4);
 }
 
@@ -741,10 +745,26 @@
   flex-direction: column;
   gap: 0.1rem;
   min-width: 0;
+  flex: 0 0 auto;
 }
 
-.rd-f--wide {
-  grid-column: 1 / -1;
+/* Sized to what each field holds. Doc numbers run long (TH260505V3168047); a date is ten
+   characters; a prefix is two or three. */
+.rd-f--docno {
+  width: 12rem;
+}
+
+.rd-f--date {
+  width: 9rem;
+}
+
+.rd-f--prefix {
+  width: 8rem;
+}
+
+/* The only field with anything to gain from a wider modal. */
+.rd-f--grow {
+  flex: 1 1 14rem;
 }
 
 /* --text-3: one tier lighter than the value it names, and the lightest tier that still
@@ -803,9 +823,20 @@
   width: 100%;
 }
 
+/* The trigger is a button and arrives with the page's button metrics. Inside this row it is
+   one field among four and reads as a field, not a control to press. */
 .rd-f .date-input-trigger {
   justify-content: space-between;
   min-height: 0;
+  padding: 0.25rem 0.4rem;
+  font-size: 0.875rem;
+}
+
+/* The picker's own input carries inline border/background from the component; only the
+   geometry is set here, so the two field types line up. */
+.rd-f .search-select-input {
+  padding: 0.25rem 0.4rem;
+  font-size: 0.875rem;
 }
 
 /* ── What will post ─────────────────────────────────────────────────────────── */

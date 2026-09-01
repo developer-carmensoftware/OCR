@@ -23,8 +23,9 @@ import type { BankCode } from '../../types/api'
  * consequences worth knowing:
  *
  * - The input edits the description's **base**. What posts is `base - docDate`, and the
- *   date is machine-appended per document; the tail is rendered beside the field so the
- *   reviewer sees the whole string without being asked to retype a date into it.
+ *   date is machine-appended per document and is not rendered here — it is the document
+ *   date already on screen two fields along, and what this system appends on post is not
+ *   news to the person approving.
  * - `descriptionForBank` prefers a per-bank entry over the BU-wide one. The parent tells
  *   the server which bank this edit was made against so it writes whichever one actually
  *   wins — otherwise the per-bank value keeps overriding the edit on every future document.
@@ -69,7 +70,7 @@ export default function JvHeaderCard({
 
   return (
     <div className="rd-doc">
-      <div className={`rd-f${headerData.DocNo ? '' : ' rd-f--missing'}`}>
+      <div className={`rd-f rd-f--docno${headerData.DocNo ? '' : ' rd-f--missing'}`}>
         <label className="rd-f-label" htmlFor="rd-DocNo">
           {t('review.fDocNo')}
         </label>
@@ -85,7 +86,7 @@ export default function JvHeaderCard({
         />
       </div>
 
-      <div className={`rd-f${headerData.DocDate ? '' : ' rd-f--missing'}`}>
+      <div className={`rd-f rd-f--date${headerData.DocDate ? '' : ' rd-f--missing'}`}>
         <label className="rd-f-label" htmlFor="rd-DocDate">
           {t('review.fDocDate')}
         </label>
@@ -98,7 +99,7 @@ export default function JvHeaderCard({
         />
       </div>
 
-      <div className="rd-f">
+      <div className="rd-f rd-f--prefix">
         <span className="rd-f-label">{t('review.fPrefix')}</span>
         {/* Carmen's own list of journal books, through the picker the JV rows use — one
             control vocabulary across the screen. */}
@@ -111,25 +112,23 @@ export default function JvHeaderCard({
         />
       </div>
 
-      <div className="rd-f">
+      {/* Takes whatever the three fixed-width fields leave. The JV builder appends
+          " - <doc date>" to whatever is typed here; that tail used to render beside the
+          field and has been dropped — it is the same date already on screen two fields
+          along, and what this system appends on post is not news to the person approving. */}
+      <div className="rd-f rd-f--grow">
         <label className="rd-f-label" htmlFor="rd-Description">
           {t('review.fDescription')}
         </label>
-        <div className="rd-f-suffixed">
-          <input
-            id="rd-Description"
-            type="text"
-            aria-label={t('review.fDescription')}
-            className="rd-f-input"
-            value={effectiveBase}
-            placeholder={t('review.fMissing')}
-            onChange={e => onDescription(e.target.value)}
-          />
-          {/* Appended per document by the JV builder, so it is shown rather than typed. */}
-          {headerData.DocDate && (
-            <span className="rd-f-suffix text-mono">- {headerData.DocDate}</span>
-          )}
-        </div>
+        <input
+          id="rd-Description"
+          type="text"
+          aria-label={t('review.fDescription')}
+          className="rd-f-input"
+          value={effectiveBase}
+          placeholder={t('review.fMissing')}
+          onChange={e => onDescription(e.target.value)}
+        />
       </div>
     </div>
   )
