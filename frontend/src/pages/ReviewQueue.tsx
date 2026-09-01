@@ -7,6 +7,7 @@ import QueueRow from '../components/credit-card/QueueRow'
 import QueueSettings from '../components/credit-card/QueueSettings'
 import ReviewDocument from './ReviewDocument'
 import { useReviewQueue } from '../hooks/credit-card/useReviewQueue'
+import { prefetchGlMasters } from '../hooks/mapping/useGlMasters'
 import { ACTIVITY_FILTERS, type ActivityFilter } from '../lib/api/emailReview'
 import { useRowsPerPage } from '../hooks/useRowsPerPage'
 import { useT } from '../i18n/LanguageContext'
@@ -175,6 +176,15 @@ export default function ReviewQueue() {
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
+
+  // Carmen's chart of accounts is the slow half of opening a document, and it is the same
+  // three lists whichever row is clicked. Fetched here, while the queue is being read, the
+  // module-level cache is usually warm by the time the dialog mounts and the JV arrives
+  // built. Only once there is something to open — a BU still setting forwarding up
+  // downloads nothing.
+  useEffect(() => {
+    if (rows.length) void prefetchGlMasters()
+  }, [rows.length])
 
   const refresh = () => {
     setReloading(true)

@@ -373,16 +373,36 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
         />
 
         <header className="rd-modal-head">
-          <h2 className="rd-title-bank" id="rd-title">
-            {bank || doc?.bank_code || t('review.unknownBank')}
+          {/* Skeleton, not the "Unknown" fallback: while the fetch is out nothing is known
+              about the bank yet, and that fallback is an answer — it read as a document
+              whose bank could not be identified. `aria-label` keeps the dialog named while
+              the heading holds a placeholder. */}
+          <h2
+            className="rd-title-bank"
+            id="rd-title"
+            aria-label={loading ? t('review.loadingDocument') : undefined}
+          >
+            {loading ? (
+              <span className="rq-skel rd-skel-bank" aria-hidden="true">
+                &nbsp;
+              </span>
+            ) : (
+              bank || doc?.bank_code || t('review.unknownBank')
+            )}
           </h2>
           {/* The attachment this was read from. Nothing else on the dialog says which
               file it is, and the document number and date that used to sit here were a
               second copy of the two fields directly below them. */}
-          {doc?.attachment && (
-            <span className="rd-title-file" title={doc.attachment}>
-              {doc.attachment}
+          {loading ? (
+            <span className="rq-skel rd-skel-file" aria-hidden="true">
+              &nbsp;
             </span>
+          ) : (
+            doc?.attachment && (
+              <span className="rd-title-file" title={doc.attachment}>
+                {doc.attachment}
+              </span>
+            )
           )}
           <button
             type="button"
@@ -396,27 +416,46 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
         </header>
 
         {loading ? (
-          /* The shape it will hold — four header fields over a table — rather than a
-             spinner the content lands around. Same skeleton the queue behind it uses. */
-          <div className="rd-body" aria-busy="true">
-            <span className="sr-only" role="status">
-              {t('review.loadingDocument')}
-            </span>
-            <div className="rd-doc">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <span key={i} className="rq-skel rd-skel-f" aria-hidden="true">
+          /* The shape it will hold — a row of header fields, the JV table, the collapsed
+             input-tax line, the buttons — rather than a spinner the content lands around.
+             The fields wear the real `.rd-f--*` width classes so the row cannot drift from
+             the one JvHeaderCard renders. */
+          <>
+            <div className="rd-body" aria-busy="true">
+              <span className="sr-only" role="status">
+                {t('review.loadingDocument')}
+              </span>
+              <div className="rd-doc">
+                {['rd-f--docno', 'rd-f--date', 'rd-f--prefix', 'rd-f--grow'].map(w => (
+                  <span key={w} className={`rq-skel rd-skel-f rd-f ${w}`} aria-hidden="true">
+                    &nbsp;
+                  </span>
+                ))}
+              </div>
+              <div className="rd-skel-rows">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <span key={i} className="rq-skel" aria-hidden="true">
+                    &nbsp;
+                  </span>
+                ))}
+              </div>
+              <span className="rq-skel rd-skel-tax" aria-hidden="true">
+                &nbsp;
+              </span>
+            </div>
+            {/* Kept, so the dialog opens at the height it will hold and Reject/Approve do
+                not appear from nowhere under the reviewer's cursor. */}
+            <footer className="rd-modal-foot">
+              <div className="rd-actions">
+                <span className="rq-skel rd-skel-btn" aria-hidden="true">
                   &nbsp;
                 </span>
-              ))}
-            </div>
-            <div className="rd-skel-rows">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <span key={i} className="rq-skel" aria-hidden="true">
+                <span className="rq-skel rd-skel-btn" aria-hidden="true">
                   &nbsp;
                 </span>
-              ))}
-            </div>
-          </div>
+              </div>
+            </footer>
+          </>
         ) : gone || !doc ? (
           <div className="rq-empty rd-gone">
             <AlertTriangle size={36} className="rq-empty-icon rq-empty-icon--bad" aria-hidden />

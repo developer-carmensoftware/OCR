@@ -691,12 +691,41 @@
   flex: 0 0 auto;
 }
 
-/* The dialog arrives in the shape it will hold — four header fields over a table. A
-   spinner in the middle makes the content land around it; the queue behind already
-   answers a pending fetch with rows of the right height. */
+/* The dialog arrives in the shape it will hold — a row of header fields, a table, the
+   collapsed input-tax line, the buttons. A spinner in the middle makes the content land
+   around it; the queue behind already answers a pending fetch with rows of the right
+   height.
+
+   No width here: the bars carry the real `.rd-f--docno/date/prefix/grow` classes, so they
+   sit in one wrapping row like the fields they stand in for. `width: 100%` made each take
+   a row of its own — four stacked bars where the settled header is one line. */
 .rd-skel-f {
   height: 2.35rem;
+}
+
+/* The head, which used to render its "Unknown" fallback until the fetch landed. */
+.rd-skel-bank {
+  display: inline-block;
+  width: 4.5rem;
+  height: 1.05rem;
+}
+
+.rd-skel-file {
+  flex: 1 1 auto;
+  max-width: 18rem;
+  height: 0.9rem;
+}
+
+/* The input-tax panel arrives collapsed, so it is one summary line. */
+.rd-skel-tax {
+  height: 2.75rem;
   width: 100%;
+}
+
+.rd-skel-btn {
+  width: 7rem;
+  height: 2.15rem;
+  border-radius: var(--radius-md);
 }
 
 .rd-skel-rows {
@@ -769,8 +798,14 @@
 
 /* --text-3: one tier lighter than the value it names, and the lightest tier that still
    passes AA at this size. The table headers beside it need --text-2 for the same 4.5:1
-   because they sit on --muted; these sit on the card face. */
+   because they sit on --muted; these sit on the card face.
+   Indented to the field's own text: every field in this row insets its value by 0.4rem
+   (the padding its focus box needs), so the label does the same and the column has one
+   left edge instead of two. The input used to pull itself back with `margin-left: -0.4rem`
+   to meet the label, which was invisible while the field had no border and crooked the
+   moment it got one — the underline started 0.4rem left of everything above it. */
 .rd-f-label {
+  padding-left: 0.4rem;
   font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.07em;
@@ -778,25 +813,37 @@
   color: var(--text-3);
 }
 
-/* Reads as the document until someone goes to change it. A grid of boxes says "form to
-   fill in"; this screen is a document to check, and the box appears where it is wanted. */
+/* Reads as the document until someone goes to change it — but flat cannot mean invisible,
+   which is what it was in light mode: transparent on transparent at rest, and a hover fill
+   of `--muted` that is a 2.5% step against a card at L 1.0. Doc no. and Description were
+   text, and the branch field in the input-tax sentence was a gap.
+   The underline is not a new idea — the date field in the same row already wears one
+   (`.date-input-trigger`). `--border-input` measures 3.21:1 on the card in light and
+   3.61:1 in dark (npm run contrast), so it clears the 3:1 floor for a control boundary in
+   both themes, which is the whole ask. The BOX still only appears on focus, so the
+   "document, not a form" reading survives: one line under each field, not a grid of boxes
+   around them. */
 .rd-f-input {
   width: 100%;
   padding: 0.25rem 0.4rem;
-  margin-left: -0.4rem;
   font-size: 0.875rem;
   font-family: inherit;
   color: var(--text);
   background: transparent;
   border: 1px solid transparent;
+  border-bottom-color: var(--border-input);
   border-radius: var(--radius-sm);
   transition:
     background-color 140ms var(--ease-out-premium, ease-out),
     border-color 140ms var(--ease-out-premium, ease-out);
 }
 
+/* The line it already has, in the accent colour — the same answer the date trigger beside
+   it gives, so hovering along the row is one behaviour rather than two. The old `--muted`
+   fill is gone: against a card at L 1.0 it was a 2.5% step, so in light mode hover did
+   nothing perceptible at all. */
 .rd-f-input:hover:not(:focus) {
-  background: var(--muted);
+  border-bottom-color: var(--primary);
 }
 
 .rd-f-input:focus,
@@ -824,21 +871,22 @@
 }
 
 /* The trigger is a button and arrives with the page's button metrics. Inside this row it is
-   one field among four and reads as a field, not a control to press. */
+   one field among four and reads as a field, not a control to press. Its underline is the
+   one the text fields copy; the width comes back to 1px so all four lines are one weight. */
 .rd-f .date-input-trigger {
   justify-content: space-between;
   min-height: 0;
   padding: 0.25rem 0.4rem;
   font-size: 0.875rem;
+  border-bottom-width: 1px;
 }
 
 /* ── One field treatment across the screen ──────────────────────────────────── */
 
-/* Every editable thing here is flat until hover or focus — a grid of boxes says "form to
-   fill in" and this screen is a document to check. The pickers were the exception, and only
-   because the component painted their border inline where no stylesheet could reach it: in
-   one JV row the dept and account sat in permanent boxes while the amounts beside them,
-   equally editable, did not.
+/* No boxes at rest — a grid of boxes says "form to fill in" and this screen is a document
+   to check. The pickers were the exception, and only because the component painted their
+   border inline where no stylesheet could reach it: in one JV row the dept and account sat
+   in permanent boxes while the amounts beside them, equally editable, did not.
    The `:not()` guards matter — a picker that is empty or carries an AI suggestion still
    shows its red or violet box, which is the whole point of those states. */
 .rd-doc .custom-search-select-input:not([data-error]):not([data-suggested]),
@@ -846,10 +894,21 @@
   border-color: transparent;
 }
 
-.rd-doc .custom-search-select-input:hover:not(:focus):not([data-error]):not([data-suggested]),
+/* In the header row the picker is one field among four, and the other three carry a line,
+   so it carries one too — the chevron on its own left it reading as the row's one static
+   value. In the JV table it stays flat: five columns of underlines is the grid of boxes
+   under another name, and there the cell already says where the field is. */
+.rd-doc .custom-search-select-input:not([data-error]):not([data-suggested]) {
+  border-bottom-color: var(--border-input);
+}
+
+.rd-doc .custom-search-select-input:hover:not(:focus):not([data-error]):not([data-suggested]) {
+  border-bottom-color: var(--primary);
+}
+
 .jv-table .custom-search-select-input:hover:not(:focus):not([data-error]):not([data-suggested]) {
   background: var(--muted);
-  border-color: var(--border);
+  border-color: var(--border-input);
 }
 
 .rd-doc .custom-search-select-input:focus,
@@ -895,7 +954,6 @@
 
 /* ── What will post ─────────────────────────────────────────────────────────── */
 
-.jv-loading,
 .jv-empty {
   display: flex;
   align-items: center;
@@ -903,6 +961,23 @@
   min-height: 6rem;
   font-size: 0.85rem;
   color: var(--text-3);
+}
+
+/* The JV waits as the table it will be. `.jv-loading` was a centred spinner with
+   "Loading your GL accounts" beside it — a sentence about our two fetches, in the middle
+   of the space the table then landed in, so the dialog reflowed under the reader. */
+.jv-skel {
+  height: 1.55rem;
+}
+
+/* Right-aligned like the figures they stand in for. */
+.jv-num > .jv-skel {
+  width: 60%;
+  margin-left: auto;
+}
+
+.jv-skel--foot {
+  width: 40%;
 }
 
 /* `fixed`, like the queue's table: the column widths below are declared once on the
@@ -978,7 +1053,7 @@
 
 .jv-amt:hover:not(:focus) {
   background: var(--muted);
-  border-color: var(--border);
+  border-color: var(--border-input);
 }
 
 .jv-amt:focus,
@@ -1463,10 +1538,12 @@
 }
 
 /* The one input on the line — sized to a branch code so it does not stretch to fill and
-   look like the row's main event. */
+   look like the row's main event. It is the field that made the resting underline
+   necessary: the others sit under a label of their own, this one sits mid-sentence between
+   two static values, and while it was transparent-on-transparent an empty branch (the
+   usual state — a blank one posts fine) was not on the screen at all. */
 .itx-branch {
   width: 6rem;
-  margin-left: 0;
 }
 
 @media (max-width: 640px) {

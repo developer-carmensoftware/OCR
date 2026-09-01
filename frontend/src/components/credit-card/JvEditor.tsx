@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { Loader2, Sparkles, Undo2 } from 'lucide-react'
+import { Sparkles, Undo2 } from 'lucide-react'
 import CustomSearchSelect from '../common/CustomSearchSelect'
 import NumericInput from '../common/NumericInput'
 import { useT } from '../../i18n/LanguageContext'
@@ -191,11 +191,96 @@ export default function JvEditor({
     [rows, departments, onOverride]
   )
 
+  // Declared once and rendered by both the skeleton and the real table, so the column
+  // widths `table-layout: fixed` reads off this row cannot differ between them.
+  const head = (
+    <thead>
+      <tr>
+        <th scope="col" className="jv-c-dept">
+          {t('review.jvDept')}
+        </th>
+        <th scope="col" className="jv-c-acc">
+          {t('review.jvAccount')}
+        </th>
+        <th scope="col">{t('review.jvDesc')}</th>
+        <th scope="col" className="jv-num">
+          {t('review.jvDebit')}
+        </th>
+        <th scope="col" className="jv-num">
+          {t('review.jvCredit')}
+        </th>
+      </tr>
+    </thead>
+  )
+
   if (loading) {
+    // The table it is about to be, not a spinner in the middle of the space the table then
+    // lands in. The BU config and Carmen's chart of accounts are two fetches nobody asked
+    // for and the reviewer has no use for the sentence "loading your GL accounts" — so it
+    // is said to screen readers and drawn to everyone else.
+    //
+    // Row count is what `buildJvRows` will produce: three consolidated debit legs plus one
+    // credit leg per detail line. Capped, because a 30-line statement should not open as a
+    // wall of grey.
+    const n = Math.min(3 + details.length, 8)
     return (
-      <div className="jv-loading">
-        <Loader2 size={18} className="animate-spin" aria-hidden="true" />
-        <span>{t('review.jvLoading')}</span>
+      <div className="jv" aria-busy="true">
+        <span className="sr-only" role="status">
+          {t('review.jvLoading')}
+        </span>
+        <table className="jv-table">
+          {head}
+          <tbody>
+            {Array.from({ length: n }).map((_, i) => (
+              <tr key={i}>
+                <td>
+                  <span className="rq-skel jv-skel" aria-hidden="true">
+                    &nbsp;
+                  </span>
+                </td>
+                <td>
+                  <span className="rq-skel jv-skel" aria-hidden="true">
+                    &nbsp;
+                  </span>
+                </td>
+                <td>
+                  <span className="rq-skel jv-skel" aria-hidden="true">
+                    &nbsp;
+                  </span>
+                </td>
+                <td className="jv-num">
+                  <span className="rq-skel jv-skel" aria-hidden="true">
+                    &nbsp;
+                  </span>
+                </td>
+                <td className="jv-num">
+                  <span className="rq-skel jv-skel" aria-hidden="true">
+                    &nbsp;
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="jv-total">
+              <td colSpan={3}>
+                <span className="rq-skel jv-skel jv-skel--foot" aria-hidden="true">
+                  &nbsp;
+                </span>
+              </td>
+              <td className="jv-num">
+                <span className="rq-skel jv-skel" aria-hidden="true">
+                  &nbsp;
+                </span>
+              </td>
+              <td className="jv-num">
+                <span className="rq-skel jv-skel" aria-hidden="true">
+                  &nbsp;
+                </span>
+              </td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
     )
   }
@@ -212,23 +297,7 @@ export default function JvEditor({
   return (
     <div className="jv">
       <table className="jv-table">
-        <thead>
-          <tr>
-            <th scope="col" className="jv-c-dept">
-              {t('review.jvDept')}
-            </th>
-            <th scope="col" className="jv-c-acc">
-              {t('review.jvAccount')}
-            </th>
-            <th scope="col">{t('review.jvDesc')}</th>
-            <th scope="col" className="jv-num">
-              {t('review.jvDebit')}
-            </th>
-            <th scope="col" className="jv-num">
-              {t('review.jvCredit')}
-            </th>
-          </tr>
-        </thead>
+        {head}
         <tbody>
           {rows.map((row, i) => {
             const first = !seen.has(row.key)

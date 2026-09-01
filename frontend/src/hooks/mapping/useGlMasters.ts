@@ -31,6 +31,54 @@ export interface GlMasters {
   loading: boolean
 }
 
+/**
+ * Fill the cache without rendering anything, for a screen that knows a modal is coming.
+ *
+ * The review queue calls this: the chart of accounts is the slow half of opening a
+ * document and does not depend on which document, so it is fetched while the reviewer is
+ * still reading the list rather than after they click.
+ */
+export function prefetchGlMasters(): Promise<void> {
+  if (cache) return Promise.resolve()
+  // One request set even when several components mount together — the JV editor and
+  // the JV header share the promise rather than racing for the same three lists.
+  inflight ??= Promise.all([fetchAccountCodes(), fetchDepartments(), fetchGLPrefixes()])
+    .then(([acc, dept, pre]) => {
+      cache = {
+        accounts: acc
+          .filter(a => a.AccCode && a.AccCode !== 'AccCode')
+          .map(a => ({
+            code: a.AccCode as string,
+            name: (a.Description as string) || '',
+            name2: a.Description2 as string | undefined,
+          })),
+        departments: dept
+          .filter(d => d.DeptCode && d.DeptCode !== 'CodeDep')
+          .map(d => ({
+            code: d.DeptCode as string,
+            name: (d.Description as string) || '',
+            name2: d.Description2 as string | undefined,
+            allowedAccounts: parseDefaultAccount(d.DefaultAccount),
+          })),
+        prefixes: pre
+          .filter(x => x.PrefixName)
+          .map(x => ({
+            code: x.PrefixName as string,
+            name: (x.Description as string) || '',
+          })),
+      }
+    })
+    .catch(() => {
+      // An empty master list renders every picker as free text rather than blanking the
+      // screen. The dept/account pair is re-checked server-side on save either way.
+      cache = { accounts: [], departments: [], prefixes: [] }
+    })
+    .finally(() => {
+      inflight = null
+    })
+  return inflight
+}
+
 export function useGlMasters(): GlMasters {
   const [masters, setMasters] = useState(cache)
   const [loading, setLoading] = useState(!cache)
@@ -38,44 +86,7 @@ export function useGlMasters(): GlMasters {
   useEffect(() => {
     if (cache) return
     let alive = true
-    // One request set even when several components mount together — the JV editor and
-    // the JV header share the promise rather than racing for the same three lists.
-    inflight ??= Promise.all([fetchAccountCodes(), fetchDepartments(), fetchGLPrefixes()])
-      .then(([acc, dept, pre]) => {
-        cache = {
-          accounts: acc
-            .filter(a => a.AccCode && a.AccCode !== 'AccCode')
-            .map(a => ({
-              code: a.AccCode as string,
-              name: (a.Description as string) || '',
-              name2: a.Description2 as string | undefined,
-            })),
-          departments: dept
-            .filter(d => d.DeptCode && d.DeptCode !== 'CodeDep')
-            .map(d => ({
-              code: d.DeptCode as string,
-              name: (d.Description as string) || '',
-              name2: d.Description2 as string | undefined,
-              allowedAccounts: parseDefaultAccount(d.DefaultAccount),
-            })),
-          prefixes: pre
-            .filter(x => x.PrefixName)
-            .map(x => ({
-              code: x.PrefixName as string,
-              name: (x.Description as string) || '',
-            })),
-        }
-      })
-      .catch(() => {
-        // An empty master list renders every picker as free text rather than blanking the
-        // screen. The dept/account pair is re-checked server-side on save either way.
-        cache = { accounts: [], departments: [], prefixes: [] }
-      })
-      .finally(() => {
-        inflight = null
-      })
-
-    void inflight.then(() => {
+    void prefetchGlMasters().then(() => {
       if (!alive) return
       setMasters(cache)
       setLoading(false)
