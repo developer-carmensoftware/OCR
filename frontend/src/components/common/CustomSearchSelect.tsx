@@ -159,7 +159,7 @@ export default function CustomSearchSelect({
     : null
 
   return (
-    <div ref={wrapperRef} style={{ position: 'relative', width: '100%' }}>
+    <div ref={wrapperRef} className="custom-search-select">
       <input
         type="text"
         placeholder={placeholder}
@@ -182,22 +182,13 @@ export default function CustomSearchSelect({
               : ''
         }
         className="search-select-input custom-search-select-input"
-        style={{
-          border: `1px solid ${isAISuggested ? 'var(--primary-mid)' : hasError ? 'var(--rose)' : 'var(--border)'}`,
-          borderBottomColor: isOpen
-            ? 'var(--primary)'
-            : isAISuggested
-              ? 'var(--primary-mid)'
-              : hasError
-                ? 'var(--rose)'
-                : 'var(--border)',
-          background: isAISuggested
-            ? 'var(--primary-light)'
-            : hasError
-              ? 'var(--rose-light)'
-              : 'transparent',
-          color: isAISuggested ? 'var(--primary)' : 'inherit',
-        }}
+        /* State as data attributes, not inline style. It was inline, which meant no
+           stylesheet could reach it: the review screen sets every other field flat until
+           hover or focus and this one kept a permanent box, with no way to match it short
+           of `!important`. The rendered look is unchanged — see components.css. */
+        data-open={isOpen || undefined}
+        data-suggested={isAISuggested || undefined}
+        data-error={hasError || undefined}
         // Escape closes the list, and stops there. Without this the key reaches whatever
         // is behind — inside the review modal that closed the whole dialog and threw away
         // the reviewer's edits, because a dropdown that ignores Escape is indistinguishable

@@ -832,10 +832,64 @@
   font-size: 0.875rem;
 }
 
-/* The picker's own input carries inline border/background from the component; only the
-   geometry is set here, so the two field types line up. */
-.rd-f .search-select-input {
-  padding: 0.25rem 0.4rem;
+/* ── One field treatment across the screen ──────────────────────────────────── */
+
+/* Every editable thing here is flat until hover or focus — a grid of boxes says "form to
+   fill in" and this screen is a document to check. The pickers were the exception, and only
+   because the component painted their border inline where no stylesheet could reach it: in
+   one JV row the dept and account sat in permanent boxes while the amounts beside them,
+   equally editable, did not.
+   The `:not()` guards matter — a picker that is empty or carries an AI suggestion still
+   shows its red or violet box, which is the whole point of those states. */
+.rd-doc .custom-search-select-input:not([data-error]):not([data-suggested]),
+.jv-table .custom-search-select-input:not([data-error]):not([data-suggested]) {
+  border-color: transparent;
+}
+
+.rd-doc .custom-search-select-input:hover:not(:focus):not([data-error]):not([data-suggested]),
+.jv-table .custom-search-select-input:hover:not(:focus):not([data-error]):not([data-suggested]) {
+  background: var(--muted);
+  border-color: var(--border);
+}
+
+.rd-doc .custom-search-select-input:focus,
+.jv-table .custom-search-select-input:focus {
+  background: var(--card-bg);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px oklch(from var(--primary) l c h / 0.18);
+}
+
+/* Flat costs the picker the one thing that said it was a picker — it has no chevron of its
+   own. So the wrapper draws one, and the input leaves room for it. */
+.rd-doc .custom-search-select,
+.jv-table .custom-search-select {
+  position: relative;
+}
+
+.rd-doc .custom-search-select::after,
+.jv-table .custom-search-select::after {
+  content: '';
+  position: absolute;
+  right: 0.45rem;
+  top: 50%;
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-top: -0.28rem;
+  border-right: 1.5px solid var(--text-3);
+  border-bottom: 1.5px solid var(--text-3);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+/* Geometry, so a picker and a plain field are the same height in the same row. */
+.rd-doc .custom-search-select-input,
+.jv-table .custom-search-select-input {
+  padding: 0.25rem 1.25rem 0.25rem 0.4rem;
+  font-size: 0.83rem;
+  border-radius: var(--radius-sm);
+}
+
+.rd-doc .custom-search-select-input {
   font-size: 0.875rem;
 }
 
