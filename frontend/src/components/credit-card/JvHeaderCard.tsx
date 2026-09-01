@@ -1,6 +1,8 @@
+import CustomSearchSelect from '../common/CustomSearchSelect'
 import DateInput from '../common/DateInput'
 import { useT } from '../../i18n/LanguageContext'
 import { descriptionForBank } from '../../lib/bankTransforms'
+import { useGlMasters } from '../../hooks/mapping/useGlMasters'
 import type { BankCode } from '../../types/api'
 
 /**
@@ -16,30 +18,54 @@ import type { BankCode } from '../../types/api'
  * `BranchNo` is the one document field that survived the cut but belongs elsewhere: it is
  * used by the input-tax record and nothing else, so it lives in that panel.
  *
- * Prefix and Description are read-only because they are not per-document: they come from
- * the BU's accounting config, are resolved here exactly as `buildGljvPayload` resolves
- * them, and are changed on the mapping page. Showing them as a preview is the point —
- * they are what will print on the journal.
+ * **Prefix and Description are BU config, not per-document**, so editing one changes the
+ * rule and the parent persists it on approve — the same contract the GL pickers have. Two
+ * consequences worth knowing:
+ *
+ * - The input edits the description's **base**. What posts is `base - docDate`, and the
+ *   date is machine-appended per document; the tail is rendered beside the field so the
+ *   reviewer sees the whole string without being asked to retype a date into it.
+ * - `descriptionForBank` prefers a per-bank entry over the BU-wide one. The parent tells
+ *   the server which bank this edit was made against so it writes whichever one actually
+ *   wins — otherwise the per-bank value keeps overriding the edit on every future document.
  */
 interface Props {
   headerData: Record<string, string>
   onUpdate: (key: string, value: string) => void
   config: Record<string, unknown> | null
   bank: BankCode | ''
+  /** Uncommitted header corrections, keyed as the config names them. */
+  prefix: string | null
+  description: string | null
+  onPrefix: (value: string) => void
+  onDescription: (value: string) => void
 }
 
-export default function JvHeaderCard({ headerData, onUpdate, config, bank }: Props) {
+export default function JvHeaderCard({
+  headerData,
+  onUpdate,
+  config,
+  bank,
+  prefix,
+  description,
+  onPrefix,
+  onDescription,
+}: Props) {
   const { t } = useT()
+  const { prefixes } = useGlMasters()
 
-  const prefix = (config?.filePrefix as string) || ''
+  const storedPrefix = (config?.filePrefix as string) || ''
   // Same resolution `buildGljvPayload` does, from the same helper — a preview that could
   // disagree with what posts would be worse than no preview.
-  const base = descriptionForBank(
-    config?.description as string | undefined,
-    config?.bankDescriptions as Record<string, string> | undefined,
-    bank
-  )
-  const description = base ? `${base}${headerData.DocDate ? ` - ${headerData.DocDate}` : ''}` : ''
+  const storedBase =
+    descriptionForBank(
+      config?.description as string | undefined,
+      config?.bankDescriptions as Record<string, string> | undefined,
+      bank
+    ) || ''
+
+  const effectivePrefix = prefix ?? storedPrefix
+  const effectiveBase = description ?? storedBase
 
   return (
     <div className="rd-doc">
@@ -74,14 +100,36 @@ export default function JvHeaderCard({ headerData, onUpdate, config, bank }: Pro
 
       <div className="rd-f">
         <span className="rd-f-label">{t('review.fPrefix')}</span>
-        <span className="rd-f-fixed text-mono">{prefix || '—'}</span>
+        {/* Carmen's own list of journal books, through the picker the JV rows use — one
+            control vocabulary across the screen. */}
+        <CustomSearchSelect
+          value={effectivePrefix || null}
+          onChange={onPrefix}
+          options={prefixes}
+          placeholder={t('review.fPrefixPlaceholder')}
+          aria-label={t('review.fPrefix')}
+        />
       </div>
 
-      <div className="rd-f rd-f--wide">
-        <span className="rd-f-label">{t('review.fDescription')}</span>
-        <span className="rd-f-fixed" title={description}>
-          {description || '—'}
-        </span>
+      <div className="rd-f">
+        <label className="rd-f-label" htmlFor="rd-Description">
+          {t('review.fDescription')}
+        </label>
+        <div className="rd-f-suffixed">
+          <input
+            id="rd-Description"
+            type="text"
+            aria-label={t('review.fDescription')}
+            className="rd-f-input"
+            value={effectiveBase}
+            placeholder={t('review.fMissing')}
+            onChange={e => onDescription(e.target.value)}
+          />
+          {/* Appended per document by the JV builder, so it is shown rather than typed. */}
+          {headerData.DocDate && (
+            <span className="rd-f-suffix text-mono">- {headerData.DocDate}</span>
+          )}
+        </div>
       </div>
     </div>
   )

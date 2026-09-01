@@ -226,7 +226,7 @@ def test_analytics_with_acc_code_returns_results():
         assert "results" in resp.json()
 
 
-# ── PUT /accounting/mappings — the review screen's partial write ─────────────
+# ── PATCH /accounting — the review screen's partial write ────────────────────
 
 
 def _patch_body(dept="OPS", acc="511300"):
@@ -252,14 +252,14 @@ def test_a_correction_is_saved_without_touching_the_rest_of_the_config(monkeypat
 
     saved = {}
 
-    async def set_mappings(_db, tenant_id, mappings):
-        saved.update({"tenant": tenant_id, "mappings": mappings})
+    async def patch_config(_db, tenant_id, **kw):
+        saved.update({"tenant": tenant_id, **kw})
 
     monkeypatch.setattr(router, "get_departments", depts)
-    monkeypatch.setattr(router.svc, "set_mappings", set_mappings)
+    monkeypatch.setattr(router.svc, "patch_config", patch_config)
 
     with make_test_client(make_mock_db()) as client:
-        res = client.put(f"{BASE}/accounting/mappings", json=_patch_body(), headers=AUTH)
+        res = client.patch(f"{BASE}/accounting", json=_patch_body(), headers=AUTH)
 
     assert res.status_code == 200
     # Only the named key travels — nothing reconstructs a whole config from the browser,
@@ -277,15 +277,15 @@ def test_an_account_the_department_forbids_is_refused_server_side(monkeypatch):
 
     called = False
 
-    async def set_mappings(*_a, **_k):
+    async def patch_config(*_a, **_k):
         nonlocal called
         called = True
 
     monkeypatch.setattr(router, "get_departments", depts)
-    monkeypatch.setattr(router.svc, "set_mappings", set_mappings)
+    monkeypatch.setattr(router.svc, "patch_config", patch_config)
 
     with make_test_client(make_mock_db()) as client:
-        res = client.put(f"{BASE}/accounting/mappings", json=_patch_body(), headers=AUTH)
+        res = client.patch(f"{BASE}/accounting", json=_patch_body(), headers=AUTH)
 
     assert res.status_code == 400
     assert "511300" in res.json()["detail"]
@@ -302,15 +302,15 @@ def test_a_department_that_restricts_nothing_allows_everything(monkeypatch):
 
     ok = False
 
-    async def set_mappings(*_a, **_k):
+    async def patch_config(*_a, **_k):
         nonlocal ok
         ok = True
 
     monkeypatch.setattr(router, "get_departments", depts)
-    monkeypatch.setattr(router.svc, "set_mappings", set_mappings)
+    monkeypatch.setattr(router.svc, "patch_config", patch_config)
 
     with make_test_client(make_mock_db()) as client:
-        res = client.put(f"{BASE}/accounting/mappings", json=_patch_body(), headers=AUTH)
+        res = client.patch(f"{BASE}/accounting", json=_patch_body(), headers=AUTH)
 
     assert res.status_code == 200
     assert ok
@@ -327,15 +327,15 @@ def test_carmen_being_unreachable_does_not_block_a_correction(monkeypatch):
 
     ok = False
 
-    async def set_mappings(*_a, **_k):
+    async def patch_config(*_a, **_k):
         nonlocal ok
         ok = True
 
     monkeypatch.setattr(router, "get_departments", depts)
-    monkeypatch.setattr(router.svc, "set_mappings", set_mappings)
+    monkeypatch.setattr(router.svc, "patch_config", patch_config)
 
     with make_test_client(make_mock_db()) as client:
-        res = client.put(f"{BASE}/accounting/mappings", json=_patch_body(), headers=AUTH)
+        res = client.patch(f"{BASE}/accounting", json=_patch_body(), headers=AUTH)
 
     assert res.status_code == 200
     assert ok

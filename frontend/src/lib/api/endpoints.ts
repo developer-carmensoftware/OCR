@@ -78,11 +78,10 @@ export const API = {
   },
 
   config: {
+    // One path, two verbs: PUT is a FULL REPLACE (it wipes every column and mapping
+    // entry the body omits), PATCH writes only what it names. Anything correcting one
+    // field while a colleague may have the config open must use PATCH.
     accounting: `${V1}/config/accounting`,
-    // Correct named GL rules only. `accounting` above is a FULL REPLACE — it wipes every
-    // column and mapping entry the body omits — so anything editing one rule while a
-    // colleague may have the config open must come here instead.
-    accountingMappings: `${V1}/config/accounting/mappings`,
     apMapping: (vendorTaxId: string) =>
       `${V1}/config/ap-mapping/${encodeURIComponent(vendorTaxId)}`,
   },

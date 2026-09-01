@@ -162,10 +162,16 @@ async def fill_missing_mappings(
     logger.info("Filled %d GL mapping(s) for tenant=%s", len(fillable), tenant_id)
 
 
-async def set_mappings(
-    db: AsyncSession, tenant_id: str, mappings: dict[str, dict[str, str]]
+async def patch_config(
+    db: AsyncSession,
+    tenant_id: str,
+    *,
+    mappings: dict[str, dict[str, str]] | None = None,
+    file_prefix: str | None = None,
+    description: str | None = None,
+    bank_code: str | None = None,
 ) -> None:
-    """Write dept/acc for the named field types, overwriting, and touch nothing else.
+    """Write the named GL rules and header columns, overwriting, and touch nothing else.
 
     The third writer of this table, and it exists because neither of the other two fits a
     reviewer correcting one GL rule from the review screen:
@@ -177,10 +183,17 @@ async def set_mappings(
     * `fill_missing_mappings` never overwrites what the BU already set, which is exactly
       what a correction has to do.
 
-    So: upsert the given keys, leave every other column and entry alone.
+    So: write what was named, leave every other column and entry alone. `None` means "not
+    mentioned" throughout — the same idiom `save_accounting_config` already uses for
+    `bank_descriptions`.
+
+    `description` is written to whichever field actually WINS at posting time.
+    `description_for` prefers `bank_descriptions[bank_code]` over the BU-wide `description`,
+    so writing the BU-wide one while a per-bank entry exists would look like the edit did
+    nothing: the per-bank value keeps overriding it on every future document.
     """
-    usable = {k: v for k, v in mappings.items() if v.get("dept") and v.get("acc")}
-    if not usable:
+    usable = {k: v for k, v in (mappings or {}).items() if v.get("dept") and v.get("acc")}
+    if not usable and file_prefix is None and description is None:
         return
 
     row = await _get_config(db, tenant_id)
@@ -188,6 +201,21 @@ async def set_mappings(
         row = BUAccountingConfig(tenant_id=tenant_id)
         db.add(row)
         await db.flush()
+
+    if file_prefix is not None:
+        row.file_prefix = file_prefix
+    if description is not None:
+        per_bank = dict(row.bank_descriptions or {})
+        if bank_code and per_bank.get(bank_code):
+            per_bank[bank_code] = description
+            row.bank_descriptions = per_bank
+        else:
+            row.description = description
+
+    if not usable:
+        await db.commit()
+        logger.info("Patched accounting header for tenant=%s", tenant_id)
+        return
 
     existing = {str(e.field_type): e for e in await _get_entries(db, row.id)}
     for field_type, mapping in usable.items():
@@ -207,7 +235,7 @@ async def set_mappings(
             entry.acc_code = mapping["acc"]
 
     await db.commit()
-    logger.info("Set %d GL mapping(s) for tenant=%s", len(usable), tenant_id)
+    logger.info("Patched %d GL mapping(s) for tenant=%s", len(usable), tenant_id)
 
 
 # ── AP vendor column mapping ───────────────────────────────────────────────────

@@ -9,7 +9,7 @@ vi.mock('../lib/api/emailReview', () => ({
   approveDocument: vi.fn(),
   rejectDocument: vi.fn(),
 }))
-vi.mock('../lib/api/config', () => ({ patchAccountingMappings: vi.fn() }))
+vi.mock('../lib/api/config', () => ({ patchAccountingConfig: vi.fn() }))
 vi.mock('../lib/api/mapping', () => ({ suggestPaymentTypes: vi.fn() }))
 vi.mock('../lib/api/carmen', () => ({
   fetchAccountCodes: vi.fn(async () => [
@@ -20,6 +20,12 @@ vi.mock('../lib/api/carmen', () => ({
     { AccCode: '110300', Description: 'Settlement receivable' },
   ]),
   fetchTaxProfiles: vi.fn(async () => [{ code: 'VAT07', desc: 'VAT 7%', rate: 7 }]),
+  // Carmen's journal books — what the Prefix picker offers.
+  fetchGLPrefixes: vi.fn(async () => [
+    { PrefixName: 'JV', Description: 'Journal Voucher' },
+    { PrefixName: 'AJ', Description: 'Adjustment' },
+    { PrefixName: 'CA', Description: 'Cost Allocation' },
+  ]),
   fetchDepartments: vi.fn(async () => [
     // OPS restricts to three accounts; GEN restricts nothing.
     {
@@ -208,13 +214,22 @@ describe('the screen', () => {
 
   it('previews the prefix and description exactly as the JV will carry them', async () => {
     // Resolved through descriptionForBank, the same helper buildGljvPayload uses — a
-    // preview that could disagree with what posts is worse than no preview.
+    // preview that could disagree with what posts is worse than no preview. The date is
+    // machine-appended per document, so it sits beside the field rather than inside it.
     storedConfig = { ...storedConfig, filePrefix: 'JV', description: 'Card settlement' }
     vi.mocked(api.getPending).mockResolvedValue(detail())
     mount()
     await screen.findByDisplayValue('INV-001')
-    expect(screen.getByText('JV')).toBeInTheDocument()
-    expect(screen.getByText('Card settlement - 15/01/2026')).toBeInTheDocument()
+    expect(screen.getByLabelText('Prefix')).toHaveValue('JV')
+    expect(screen.getByLabelText('Description')).toHaveValue('Card settlement')
+    expect(screen.getByText('- 15/01/2026')).toBeInTheDocument()
+  })
+
+  it('offers Carmen’s journal books rather than a free-text prefix', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    const picker = await screen.findByLabelText('Prefix')
+    expect(picker.getAttribute('data-options')).toBe('JV,AJ,CA')
   })
 })
 
@@ -423,7 +438,7 @@ describe('approving', () => {
     // its own terms — the rule was wrong before and is right now.
     const order: string[] = []
     vi.mocked(api.getPending).mockResolvedValue(detail())
-    vi.mocked(cfgApi.patchAccountingMappings).mockImplementation(async () => {
+    vi.mocked(cfgApi.patchAccountingConfig).mockImplementation(async () => {
       order.push('rules')
     })
     vi.mocked(api.approveDocument).mockImplementation(async () => {
@@ -437,9 +452,38 @@ describe('approving', () => {
     await clickApprove()
 
     await waitFor(() => expect(order).toEqual(['rules', 'post']))
-    expect(cfgApi.patchAccountingMappings).toHaveBeenCalledWith({
-      tax: { dept: 'OPS', acc: '511300' },
+    expect(vi.mocked(cfgApi.patchAccountingConfig).mock.calls[0][0]).toMatchObject({
+      mappings: { tax: { dept: 'OPS', acc: '511300' } },
     })
+  })
+
+  it('saves an edited prefix and description as config, with the bank they belong to', async () => {
+    // They are BU config, not per-document: approve_document reads them off the config
+    // server-side, so a browser edit reaches Carmen only once it is written. `bank_code`
+    // travels because the server prefers a per-bank description over the BU-wide one.
+    storedConfig = { ...storedConfig, filePrefix: 'JV', description: 'Card settlement' }
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-1', tax_note: null })
+    mount()
+    fireEvent.change(await screen.findByLabelText('Prefix'), { target: { value: 'AJ' } })
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Settlement' } })
+    await clickApprove()
+
+    await waitFor(() => expect(cfgApi.patchAccountingConfig).toHaveBeenCalled())
+    expect(vi.mocked(cfgApi.patchAccountingConfig).mock.calls[0][0]).toMatchObject({
+      file_prefix: 'AJ',
+      // The base only. The " - 15/01/2026" tail is appended per document by the JV
+      // builder, and saving it would bake one document's date into the BU's rule.
+      description: 'Settlement',
+      bank_code: 'KTC',
+    })
+  })
+
+  it('counts a header change alongside the mapping changes', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    fireEvent.change(await screen.findByLabelText('Prefix'), { target: { value: 'AJ' } })
+    expect(await screen.findByText('1 GL rule changes when you approve')).toBeInTheDocument()
   })
 
   it('touches no rules when nothing was corrected', async () => {
@@ -448,14 +492,14 @@ describe('approving', () => {
     mount()
     await clickApprove()
     await waitFor(() => expect(api.approveDocument).toHaveBeenCalled())
-    expect(cfgApi.patchAccountingMappings).not.toHaveBeenCalled()
+    expect(cfgApi.patchAccountingConfig).not.toHaveBeenCalled()
   })
 
   it('posts nothing when the rule could not be saved', async () => {
     // A JV built on a rule the server rejected would put the wrong account into the books
     // and leave no record of why.
     vi.mocked(api.getPending).mockResolvedValue(detail())
-    vi.mocked(cfgApi.patchAccountingMappings).mockRejectedValue(
+    vi.mocked(cfgApi.patchAccountingConfig).mockRejectedValue(
       new Error('Account 511300 is not allowed for department OPS')
     )
     mount()
@@ -544,6 +588,27 @@ describe('approving', () => {
     await waitFor(() =>
       expect(vi.mocked(api.approveDocument).mock.calls[0][1].post_input_tax).toBe(false)
     )
+  })
+})
+
+describe('the dialog does not swallow events its children need', () => {
+  it('lets a document-level mousedown listener see a click inside the modal', async () => {
+    // The regression: the modal used to carry `onMouseDown={e => e.stopPropagation()}` so a
+    // click inside it would not reach the overlay's close. React's stopPropagation stops the
+    // NATIVE event too, so `document` listeners never fired — and CustomSearchSelect and
+    // DateInput both close themselves from one. Every picker in this dialog stayed open once
+    // you clicked away from it.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    const inside = await screen.findByDisplayValue('INV-001')
+
+    const seen = vi.fn()
+    document.addEventListener('mousedown', seen)
+    fireEvent.mouseDown(inside)
+    document.removeEventListener('mousedown', seen)
+
+    expect(seen).toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled() // and the dialog still does not close
   })
 })
 

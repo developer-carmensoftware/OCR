@@ -156,42 +156,41 @@ export default function InputTaxPanel({
             </p>
           )}
 
-          <dl className="itx-grid">
-            <div className="itx-f itx-f--wide">
-              <dt>{t('review.itxVendor')}</dt>
-              <dd>
-                {vendor?.name || '—'}
-                {vendor?.taxId && <span className="text-mono itx-taxid">{vendor.taxId}</span>}
-              </dd>
-            </div>
+          {/* Two lines, not a grid. Four short facts in a `repeat(auto-fit, minmax(11rem))`
+              with two span-2 cells wrapped into a tall ragged block for no gain — these
+              read as a sentence, so they are laid out as one. */}
+          <p className="itx-line">
+            <span className="itx-k">{t('review.itxVendor')}</span>
+            <span className="itx-v">
+              {vendor?.name || '—'}
+              {vendor?.taxId && <span className="text-mono itx-taxid">· {vendor.taxId}</span>}
+            </span>
+          </p>
 
+          <p className="itx-line">
+            <span className="itx-k">{t('review.itxPeriod')}</span>
+            <span className="itx-v text-mono">{period}</span>
+            <span className="itx-sep" aria-hidden="true">
+              ·
+            </span>
+            <span className="itx-k">{t('review.itxProfile')}</span>
+            <span className="itx-v">{tax.profile || '—'}</span>
+            <span className="itx-sep" aria-hidden="true">
+              ·
+            </span>
             {/* The one field this record takes from the document that the JV does not. */}
-            <div className="itx-f">
-              <dt>
-                <label htmlFor="itx-branch">{t('review.fBranch')}</label>
-              </dt>
-              <dd>
-                <input
-                  id="itx-branch"
-                  type="text"
-                  aria-label={t('review.fBranch')}
-                  className="rd-f-input text-mono"
-                  value={headerData.BranchNo || ''}
-                  onChange={e => onUpdate('BranchNo', e.target.value)}
-                />
-              </dd>
-            </div>
-
-            <div className="itx-f">
-              <dt>{t('review.itxPeriod')}</dt>
-              <dd className="text-mono">{period}</dd>
-            </div>
-
-            <div className="itx-f itx-f--wide">
-              <dt>{t('review.itxProfile')}</dt>
-              <dd>{tax.profile || '—'}</dd>
-            </div>
-          </dl>
+            <label className="itx-k" htmlFor="itx-branch">
+              {t('review.fBranch')}
+            </label>
+            <input
+              id="itx-branch"
+              type="text"
+              aria-label={t('review.fBranch')}
+              className="rd-f-input text-mono itx-branch"
+              value={headerData.BranchNo || ''}
+              onChange={e => onUpdate('BranchNo', e.target.value)}
+            />
+          </p>
         </div>
       )}
     </div>

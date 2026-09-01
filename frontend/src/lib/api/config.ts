@@ -28,21 +28,28 @@ export async function saveAccountingConfig(
   return res.json() as Promise<AccountingConfigResponse>
 }
 
+export interface ConfigPatch {
+  mappings?: Record<string, { dept: string; acc: string }>
+  file_prefix?: string
+  description?: string
+  /** Which bank the `description` belongs to — the server prefers a per-bank entry over
+   *  the BU-wide one, so it needs to know which one the reviewer was looking at. */
+  bank_code?: string
+}
+
 /**
- * Correct named GL rules, leaving the rest of the config alone.
+ * Correct the named parts of the accounting config, leaving the rest alone.
  *
  * NOT `saveAccountingConfig`: that PUT is a full replace on the server — it assigns
  * file_prefix / file_source / description / branch unconditionally and DELETEs every
- * mapping entry before re-inserting. Sending one corrected rule through it wipes the
- * others, and two people reviewing the same BU's queue at once is the expected case.
+ * mapping entry before re-inserting. Sending one correction through it wipes the others,
+ * and two people reviewing the same BU's queue at once is the expected case.
  */
-export async function patchAccountingMappings(
-  mappings: Record<string, { dept: string; acc: string }>
-): Promise<void> {
-  const res = await apiFetch(API.config.accountingMappings, {
-    method: 'PUT',
+export async function patchAccountingConfig(patch: ConfigPatch): Promise<void> {
+  const res = await apiFetch(API.config.accounting, {
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mappings }),
+    body: JSON.stringify(patch),
   })
   if (!res.ok) {
     // 400 carries the server's own reason (a dept that forbids the account), which the
@@ -51,7 +58,7 @@ export async function patchAccountingMappings(
       .json()
       .then(d => (d as { detail?: string }).detail)
       .catch(() => null)
-    throw new Error(detail || `Mapping save failed (${res.status})`)
+    throw new Error(detail || `Config save failed (${res.status})`)
   }
 }
 

@@ -2,7 +2,8 @@
 User config router — persists per-BU settings that previously lived in localStorage.
 
   GET  /api/v1/config/accounting                    → load accounting config for current BU
-  PUT  /api/v1/config/accounting                    → upsert accounting config
+  PUT  /api/v1/config/accounting                    → upsert accounting config (FULL replace)
+  PATCH /api/v1/config/accounting                   → correct only the fields named
   GET  /api/v1/config/ap-mapping/{tax_id}           → load AP column mapping for a vendor
   PUT  /api/v1/config/ap-mapping/{tax_id}           → upsert AP column mapping for a vendor
   GET  /api/v1/config/analytics/account-usage       → which BUs use a given acc/dept code
@@ -20,7 +21,7 @@ from app.exceptions import ValidationError
 from app.models.schemas import (
     AccountingConfigRequest,
     AccountingConfigResponse,
-    MappingPatchRequest,
+    ConfigPatchRequest,
 )
 from app.services import accounting_config_service as svc
 from app.services.carmen_service import CarmenAPIError, get_departments
@@ -48,24 +49,25 @@ async def save_accounting_config(
     return {"ok": True}
 
 
-@router.put("/accounting/mappings")
-async def patch_accounting_mappings(
-    req: MappingPatchRequest,
+@router.patch("/accounting")
+async def patch_accounting_config(
+    req: ConfigPatchRequest,
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
 ):
-    """Correct named GL rules without touching the rest of the config.
+    """Correct the named parts of the config without touching the rest.
 
-    The review screen's write. `PUT /accounting` cannot be used for it: that one replaces
-    every column and every mapping entry, so a partial body wipes the BU's prefix,
-    description and the mappings it did not mention — and two people reviewing the same
-    BU's queue at once is the expected case.
+    The review screen's write, and PATCH rather than PUT because that is exactly what it
+    does. `PUT /accounting` cannot be used for it: that one replaces every column and every
+    mapping entry, so a partial body wipes the BU's prefix, description and the mappings it
+    did not mention — and two people reviewing the same BU's queue at once is the expected
+    case.
 
     The dept/account pair is re-checked against Carmen's own `DefaultAccount` list here.
     The browser filters the dropdown to the allowed set, but a filtered dropdown is a
     convenience, not a control, and this endpoint is the thing that decides what posts.
     """
-    pairs = {k: v for k, v in req.mappings.items() if v.dept and v.acc}
+    pairs = {k: v for k, v in (req.mappings or {}).items() if v.dept and v.acc}
     if pairs:
         try:
             depts_raw = await get_departments(session.carmen_token)
@@ -89,10 +91,15 @@ async def patch_accounting_mappings(
                         f" (field: {field_type})"
                     )
 
-    await svc.set_mappings(
+    await svc.patch_config(
         db,
         session.tenant_id,
-        {k: {"dept": v.dept or "", "acc": v.acc or ""} for k, v in req.mappings.items()},
+        mappings={
+            k: {"dept": v.dept or "", "acc": v.acc or ""} for k, v in (req.mappings or {}).items()
+        },
+        file_prefix=req.file_prefix,
+        description=req.description,
+        bank_code=req.bank_code,
     )
     return {"ok": True}
 

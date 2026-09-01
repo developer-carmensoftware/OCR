@@ -107,6 +107,11 @@ def _doc(card_id: str, doc_no: str, *, bent: bool) -> dict:
         },
         # Computed at park time by the real pipeline; hand-written here to match.
         "flags": ["unbalanced"] if bent else ["mapping_guessed"],
+        # WHICH rules the AI invented, not just that it did. Without this the queue row
+        # says "GL mapping guessed" and stops, and the review screen marks nothing —
+        # which is exactly what the demo looked like before it was added.
+        "guessed": [] if bent else ["tax", "JCB"],
+        "unmapped": [],
     }
 
 

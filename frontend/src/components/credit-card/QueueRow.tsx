@@ -1,6 +1,7 @@
 import { ExternalLink, Mail, Upload } from 'lucide-react'
 import { useT } from '../../i18n/LanguageContext'
 import { fmt } from '../../lib/format'
+import { glFieldLabel, glFieldList } from '../../lib/glFieldLabels'
 import { getCarmenUrl } from '../../lib/url'
 import type { ReviewDocument } from '../../lib/api/emailReview'
 import type { TKey } from '../../i18n/dict'
@@ -10,14 +11,24 @@ import type { TKey } from '../../i18n/dict'
  *
  * With review on, most parked documents are fine; the reviewer's real job is finding the
  * two that are not. A row that cannot say why it might be wrong makes them open all
- * fourteen. Ordered by how much it should stop someone: an unbalanced JV cannot post at
- * all, a guessed mapping posts but may post to the wrong account, warnings are advisory.
+ * fourteen. Ordered by how much it should stop someone: a missing mapping cannot post at
+ * all, an unbalanced JV cannot either, a guessed mapping posts but may post to the wrong
+ * account, warnings are advisory.
+ *
+ * **The mapping reasons name the fields.** "GL mapping guessed" told the reviewer a rule
+ * was invented and then made them open the document to find out which — the row already
+ * carries `guessed` and `unmapped`, so it can say. Documents parked before those were
+ * recorded have empty lists and fall back to the bare phrase.
  */
-function reasonKey(flags: ReviewDocument['flags']): { key: TKey; tone: string } {
-  if (flags.includes('unbalanced')) return { key: 'review.reasonUnbalanced', tone: 'bad' }
-  if (flags.includes('mapping_guessed')) return { key: 'review.reasonGuessed', tone: 'warn' }
-  if (flags.includes('warnings')) return { key: 'review.reasonWarnings', tone: 'warn' }
-  return { key: 'review.reasonClean', tone: 'calm' }
+function reasonFor(row: ReviewDocument): { key: TKey; tone: string; fields: string[] } {
+  const f = row.flags
+  if (f.includes('mapping_missing'))
+    return { key: 'review.reasonMissingMapping', tone: 'bad', fields: row.unmapped || [] }
+  if (f.includes('unbalanced')) return { key: 'review.reasonUnbalanced', tone: 'bad', fields: [] }
+  if (f.includes('mapping_guessed'))
+    return { key: 'review.reasonGuessed', tone: 'warn', fields: row.guessed || [] }
+  if (f.includes('warnings')) return { key: 'review.reasonWarnings', tone: 'warn', fields: [] }
+  return { key: 'review.reasonClean', tone: 'calm', fields: [] }
 }
 
 /** The reason codes the pipeline actually writes. Anything unmapped falls back to the
@@ -202,8 +213,17 @@ function Message({ row, pending }: { row: ReviewDocument; pending: boolean }) {
   const { t } = useT()
 
   if (pending) {
-    const reason = reasonKey(row.flags)
-    return <span className={`rq-reason rq-reason--${reason.tone}`}>{t(reason.key)}</span>
+    const reason = reasonFor(row)
+    const named = reason.fields.length ? glFieldList(reason.fields) : ''
+    return (
+      <span
+        className={`rq-reason rq-reason--${reason.tone}`}
+        // The cell ellipsizes, so the full list lives here rather than being lost.
+        title={reason.fields.length ? reason.fields.map(glFieldLabel).join(', ') : undefined}
+      >
+        {named ? `${t(reason.key)}: ${named}` : t(reason.key)}
+      </span>
+    )
   }
 
   if (row.status === 'posted') {

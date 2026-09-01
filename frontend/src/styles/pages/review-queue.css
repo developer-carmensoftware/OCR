@@ -1313,46 +1313,56 @@
   margin-top: 0.1rem;
 }
 
-.itx-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
-  gap: var(--space-3) var(--space-4);
-  margin: 0;
-}
-
-.itx-f {
+/* Two lines, not a grid. Four short facts in a `repeat(auto-fit, minmax(11rem))` with two
+   span-all cells wrapped into a tall ragged block for no gain — they read as a sentence, so
+   they are set as one: label, value, separator, wrapping where it has to. */
+.itx-line {
   display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  min-width: 0;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.5rem;
+  margin: 0 0 var(--space-2);
+  font-size: 0.83rem;
+  line-height: 1.6;
 }
 
-.itx-f--wide {
-  grid-column: 1 / -1;
+.itx-line:last-child {
+  margin-bottom: 0;
 }
 
-.itx-f dt {
+/* Label weight comes from case and colour, not size — at 0.83rem a second type size in a
+   line this short reads as noise. */
+.itx-k {
   font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--text-3);
+  white-space: nowrap;
 }
 
-.itx-f dd {
-  margin: 0;
-  font-size: 0.875rem;
+.itx-v {
   color: var(--text-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.itx-sep {
+  color: var(--text-4);
 }
 
 /* The reason Carmen refuses a record, so it reads beside the name it belongs to rather
    than as a second field. */
 .itx-taxid {
-  margin-left: var(--space-2);
+  margin-left: 0.35rem;
   font-size: 0.8rem;
   color: var(--text-3);
+}
+
+/* The one input on the line — sized to a branch code so it does not stretch to fill and
+   look like the row's main event. */
+.itx-branch {
+  width: 6rem;
+  margin-left: 0;
 }
 
 @media (max-width: 640px) {

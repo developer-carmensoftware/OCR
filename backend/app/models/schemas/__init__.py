@@ -11,7 +11,7 @@ from app.models.schemas.common import FieldMapping, Page
 from app.models.schemas.config import (
     AccountingConfigRequest,
     AccountingConfigResponse,
-    MappingPatchRequest,
+    ConfigPatchRequest,
 )
 from app.models.schemas.consent import ConsentRequest, ConsentStatusResponse
 from app.models.schemas.credits import (
@@ -106,7 +106,7 @@ __all__ = [
     # config
     "AccountingConfigRequest",
     "AccountingConfigResponse",
-    "MappingPatchRequest",
+    "ConfigPatchRequest",
     # consent
     "ConsentRequest",
     "ConsentStatusResponse",

@@ -10,6 +10,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import CustomSearchSelect from '../common/CustomSearchSelect'
+import { glFieldLabel } from '../../lib/glFieldLabels'
 import { allowedAccountsForDept, isAccountAllowed } from '../../lib/deptAccounts'
 import AISuggestBar from '../common/AISuggestBar'
 import Badge from '../common/Badge'
@@ -41,11 +42,9 @@ interface Props {
   openAmountModal: () => void
 }
 
-const LABEL_MAP: Record<MainMappingKey, string> = {
-  commission: 'Credit card commission',
-  tax: 'Input Tax',
-  net: 'Bank Account',
-}
+// Shared with the queue's reason line — two copies of this list is how the two screens
+// end up calling the same rule different things.
+const LABEL_MAP = glFieldLabel
 
 export default function MainMappingTable({
   masterAccounts,
@@ -209,7 +208,7 @@ export default function MainMappingTable({
               <React.Fragment key={key}>
                 <div className="mapping-type type-debit cc-mapping-type-debit">Debit</div>
                 <div className="mapping-label cc-label-flex-container">
-                  <span>{LABEL_MAP[key]}</span>
+                  <span>{LABEL_MAP(key)}</span>
                   {badge && (
                     <span className="cc-history-badge">
                       <History size={11} /> {badge.label}

@@ -14,7 +14,7 @@ import { fmt } from '../lib/format'
 import { toExtractedRows } from '../lib/api/ocr'
 import { normalizeDateStringToCE } from '../lib/date'
 import { applyJvAmount, type JvRow } from '../lib/ccJv'
-import { patchAccountingMappings } from '../lib/api/config'
+import { patchAccountingConfig } from '../lib/api/config'
 import {
   approveDocument,
   getPending,
@@ -61,6 +61,11 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   // GL rule corrections, not yet saved. Keyed by accounting-config field type, because
   // that is what a picker edits — see JvEditor's note on JvRow.key.
   const [overrides, setOverrides] = useState<Overrides>({})
+  // Header corrections, same shape of thing as a mapping override: BU config, uncommitted
+  // until approve. `null` means "not touched", which is what keeps the stored value showing
+  // through rather than being replaced by an empty string on first render.
+  const [prefix, setPrefix] = useState<string | null>(null)
+  const [description, setDescription] = useState<string | null>(null)
   const [jv, setJv] = useState<JvState>({
     rows: [],
     blocked: true,
@@ -225,7 +230,10 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   }, [])
   const onJvState = useCallback((s: JvState) => setJv(s), [])
 
-  const ruleCount = Object.keys(overrides).length
+  // Everything the approve will write back to the BU config, counted once so the footer
+  // and the button agree.
+  const ruleCount =
+    Object.keys(overrides).length + (prefix === null ? 0 : 1) + (description === null ? 0 : 1)
 
   async function approve() {
     if (!doc) return
@@ -238,11 +246,16 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
     // unsaved behind a JV that already posted.
     if (ruleCount) {
       try {
-        await patchAccountingMappings(
-          Object.fromEntries(
+        await patchAccountingConfig({
+          mappings: Object.fromEntries(
             Object.entries(overrides).map(([k, m]) => [k, { dept: m.dept || '', acc: m.acc || '' }])
-          )
-        )
+          ),
+          ...(prefix === null ? {} : { file_prefix: prefix }),
+          ...(description === null ? {} : { description }),
+          // Which bank's wording the description belongs to. The server prefers a per-bank
+          // entry over the BU-wide one, so it has to write whichever actually wins.
+          bank_code: bank || doc.bank_code || '',
+        })
       } catch (e) {
         setPostError(t('review.ruleSaveFailed', { reason: (e as Error).message }))
         setBusy(false)
@@ -307,7 +320,21 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   }
 
   return createPortal(
-    <div className="rd-overlay" role="presentation" onMouseDown={requestClose}>
+    <div
+      className="rd-overlay"
+      role="presentation"
+      /* Close only when the press landed on the backdrop itself.
+       *
+       * This used to be an unconditional `requestClose` here plus
+       * `onMouseDown={e => e.stopPropagation()}` on the modal — and React's
+       * stopPropagation stops the NATIVE event too, so `mousedown` never reached
+       * `document`. Both `CustomSearchSelect` and `DateInput` close themselves from a
+       * `document` listener, so every picker in this dialog stayed open once clicked away
+       * from. Comparing target to currentTarget needs no propagation blocking at all. */
+      onMouseDown={e => {
+        if (e.target === e.currentTarget) requestClose()
+      }}
+    >
       <div
         className="rd-modal"
         ref={modalRef}
@@ -315,7 +342,6 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="rd-title"
-        onMouseDown={e => e.stopPropagation()}
       >
         <CustomModal
           show={rejecting}
@@ -418,6 +444,10 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   onUpdate={updateHeader}
                   config={config as Record<string, unknown> | null}
                   bank={bank}
+                  prefix={prefix}
+                  description={description}
+                  onPrefix={setPrefix}
+                  onDescription={setDescription}
                 />
               </section>
 
