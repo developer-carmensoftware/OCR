@@ -284,26 +284,35 @@ export default function JvEditor({
                     <span className="jv-echo text-mono">{row.acc || '—'}</span>
                   )}
                 </td>
+                {/* The flex lives on an inner span, not on the cell. `display: flex` on a
+                    <td> takes it out of table layout: the browser wraps it in an anonymous
+                    cell that fills the row while the flex box — which is what carries the
+                    background — is only as tall as its text, so a tinted row showed two
+                    colours in this one cell. */}
                 <td className="jv-desc">
-                  <span title={row.desc}>{row.desc}</span>
-                  {/* The only thing on this pane asking to be checked: everything else
-                      came from a rule a person set. */}
-                  {first && guessed && (
-                    <span className="jv-tag jv-tag--ai" title={t('review.jvGuessedHint')}>
-                      <Sparkles size={11} strokeWidth={2.25} aria-hidden="true" />
-                      {t('review.jvGuessed')}
+                  <span className="jv-desc-in">
+                    <span className="jv-desc-text" title={row.desc}>
+                      {row.desc}
                     </span>
-                  )}
-                  {first && changed && (
-                    <button
-                      type="button"
-                      className="jv-tag jv-tag--undo"
-                      onClick={() => onUndo(row.key)}
-                    >
-                      <Undo2 size={11} strokeWidth={2.25} aria-hidden="true" />
-                      {t('review.jvUndo')}
-                    </button>
-                  )}
+                    {/* The only thing on this pane asking to be checked: everything else
+                      came from a rule a person set. */}
+                    {first && guessed && (
+                      <span className="jv-tag jv-tag--ai" title={t('review.jvGuessedHint')}>
+                        <Sparkles size={11} strokeWidth={2.25} aria-hidden="true" />
+                        {t('review.jvGuessed')}
+                      </span>
+                    )}
+                    {first && changed && (
+                      <button
+                        type="button"
+                        className="jv-tag jv-tag--undo"
+                        onClick={() => onUndo(row.key)}
+                      >
+                        <Undo2 size={11} strokeWidth={2.25} aria-hidden="true" />
+                        {t('review.jvUndo')}
+                      </button>
+                    )}
+                  </span>
                 </td>
                 <Amount row={row} side="debit" onAmount={onAmount} />
                 <Amount row={row} side="credit" onAmount={onAmount} />

@@ -1008,14 +1008,22 @@
   font-size: 0.8rem;
 }
 
+/* The cell stays a table cell. `display: flex` here took it out of table layout: the
+   browser wrapped it in an anonymous cell that filled the row while this box — the one
+   painting the background — was only as tall as its text, so a tinted row showed two
+   colours in this one cell. The flex moved to the span inside. */
 .jv-desc {
+  min-width: 0;
+}
+
+.jv-desc-in {
   display: flex;
   align-items: center;
   gap: 0.4rem;
   min-width: 0;
 }
 
-.jv-desc > span:first-child {
+.jv-desc-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1222,8 +1230,9 @@
 
   /* The line names itself, above the fields that describe it — a label here would only
      repeat the column header it replaced. */
+  /* No display here: the row is a flex column at this width, so the cell only needs its
+     place in the order. The flex that lays the line out lives on `.jv-desc-in`. */
   .jv-table td.jv-desc {
-    display: flex;
     order: -1;
     padding-bottom: 0.2rem;
     font-weight: 500;
