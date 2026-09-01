@@ -989,12 +989,12 @@
   box-shadow: 0 0 0 3px oklch(from var(--primary) l c h / 0.18);
 }
 
-/* Summed from several lines: typing here changes all of them, so the cell says it is not
-   a plain figure. Underline rather than colour — a caveat, not a problem. */
-.jv-amt[data-shared] {
-  text-decoration: underline dotted var(--text-4);
-  text-underline-offset: 3px;
-}
+/* No mark for `data-shared`. It used to carry a dotted underline, which put one under every
+   figure in the Debit column: in consolidated mode the three debit legs are ALWAYS summed
+   across every line, so on any multi-line document the marker was true for all of them and
+   distinguished nothing — it just read as a spell-check squiggle under the numbers. The
+   `title` still explains it to anyone hovering the field they are about to type in, which is
+   the moment the behaviour matters. The attribute stays as the hook that says so. */
 
 .jv-num--empty {
   color: var(--text-4);
@@ -1025,8 +1025,18 @@
   background: var(--primary-light);
 }
 
+/* Rose, not amber. Amber is this app's "worth a look, can still post"; a line with no
+   account CANNOT post — `blocked` counts it — so it wears the colour that means stop, and
+   the picker inside it agrees instead of arguing. */
 .jv-row--needed td {
-  background: oklch(from var(--amber) l c h / 0.09);
+  background: oklch(from var(--rose) l c h / 0.08);
+}
+
+/* One background per row. The row already says which line is blocked; the field repeating
+   it in a second, heavier rose was the unevenness — two shades of the same warning in one
+   row. The border keeps pointing at which of the two fields is empty. */
+.jv-row--needed .custom-search-select-input[data-error] {
+  background: transparent;
 }
 
 .jv-tag {
