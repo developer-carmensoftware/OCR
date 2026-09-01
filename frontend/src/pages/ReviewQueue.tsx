@@ -21,14 +21,19 @@ const FILTER_LABEL: Record<ActivityFilter, TKey> = {
   skipped: 'review.filterSkipped',
 }
 
-// One column per header cell — the row component must stay in step with this list.
+// One column per header cell — the row component must stay in step with this list, and the
+// widths in review-queue.css are declared on these cells because `table-layout: fixed`
+// reads only the first row.
+//
+// Source is no longer a column: `MANUAL_FILTERS` means a manual scan can only appear under
+// two of the five chips, so it read "Email" on every row under the other three — the same
+// argument §9 #19 used to delete it as a concept. It is an icon on the filename line now.
 const COLUMNS: TKey[] = [
-  'review.colSource',
+  'review.colStatus',
   'review.colDocument',
+  'review.colMessage',
   'review.colReceived',
   'review.colJv',
-  'review.colStatus',
-  'review.colMessage',
   'review.colActions',
 ]
 
@@ -153,6 +158,7 @@ export default function ReviewQueue() {
     rows,
     total,
     counts,
+    attention,
     offset,
     setOffset,
     loading,
@@ -238,21 +244,39 @@ export default function ReviewQueue() {
           manual scans still gets it — they have rows to filter. */}
       {(configured || !nothingEver) && (
         <div className="rq-tabs" role="tablist" aria-label={t('review.tabsLabel')}>
-          {ACTIVITY_FILTERS.map(id => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={filter === id}
-              className={`rq-tab${filter === id ? ' rq-tab--active' : ''}`}
-              onClick={() => setFilter(id)}
-            >
-              {t(FILTER_LABEL[id])}
-              {/* Zero is shown too. A count that disappears makes the strip reflow as
+          {ACTIVITY_FILTERS.map(id => {
+            // How many rows this chip holds that someone here could clear. The page opens
+            // on Needs review, so Skipped — which is where every customer-fixable cause
+            // lands, because `status` splits on billing rather than on who can act — is out
+            // of sight by default. Without this the 2026-08-28 incident has its conditions
+            // back: eight fixable rows, nothing pointing at them.
+            const owed = attention[id] ?? 0
+            return (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={filter === id}
+                className={`rq-tab${filter === id ? ' rq-tab--active' : ''}`}
+                onClick={() => setFilter(id)}
+              >
+                {t(FILTER_LABEL[id])}
+                {/* Never colour alone (WCAG 1.4.1) — the dot is decorative and the sentence
+                  beside it is what a screen reader reads out. */}
+                {owed > 0 && (
+                  <>
+                    <span className="rq-tab-dot" aria-hidden="true" />
+                    <span className="sr-only">
+                      {t('review.chipAttention', { count: String(owed) })}
+                    </span>
+                  </>
+                )}
+                {/* Zero is shown too. A count that disappears makes the strip reflow as
                   documents resolve, and "0" is itself the answer to "anything failed?" */}
-              <span className="rq-tab-count text-mono">{counts[id] ?? 0}</span>
-            </button>
-          ))}
+                <span className="rq-tab-count text-mono">{counts[id] ?? 0}</span>
+              </button>
+            )
+          })}
         </div>
       )}
 

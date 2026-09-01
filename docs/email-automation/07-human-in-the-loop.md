@@ -805,3 +805,39 @@ the reader find the row themselves. A problem is now marked on the thing that ha
 
 Decision #9 ("review is one surface, not steps") survives and is what this sharpens: one
 surface, but two columns rather than four stacked sections.
+
+---
+
+## 11. Amendment 2026-09-01 — the columns, and which statuses reach the reader
+
+§9 turned the page into the module's history and made `all` the default. §6's heading, its
+three empty states and its reason line were all written for the inbox and were never
+rewritten, so the page has been telling the reader two different things about what it is.
+This settles it in the inbox's favour and reorders the table behind that answer.
+
+### What changed, and why
+
+| # | Change | Why |
+|---|---|---|
+| 33 | **The page opens on `review`, not `all`.** `all` stays the API default and stays a chip, moved to the end of the strip. | The heading counts `review`, the empty state says "you're all caught up", and the reason line exists to triage a queue. Meanwhile the default view mixed in the rows the BU's own filename rules threw out — 61 of 154 on the dev DB. Every word on the page was written for the work view; only the filter disagreed. |
+| 34 | **Source is no longer a column.** It is a ✉/⬆ icon at the head of the filename line, with an `sr-only` word beside it. | `MANUAL_FILTERS = ("all", "success")` means a manual scan can only appear under two of the five chips, so under `review` / `failed` / `skipped` the column read "Email" on every row **by construction**. That is #19's own argument against decision #18, turned back on itself. Provenance is a fact about a row, not something anybody scans a column for. |
+| 35 | **Status leads; JV no. and Actions move to the right edge.** Order is now Status · Document · Message · Received · JV no. · Actions. | The pill is what distinguishes one row from the next once statuses are mixed — that is §9's whole premise — and it sat fifth. The two columns that are mostly em dashes (`JV no.` is empty on every non-posted row; Actions renders nothing for six reason codes) cost least at the far right. |
+| 36 | **Received prints a time today and a short date otherwise**, with the full stamp on the cell's `title`. | `31/08/2026 14:22` bought 9.5rem to print today's date on every row that matters. Fixed-width columns fell 39.5rem → 28.5rem; `Document` and `Message`, the two cells that were truncating, took the difference. |
+| 37 | **`GET /activity` returns `attention` beside `counts`** — same keys, counting the rows under each chip that someone in the BU could clear themselves. The chip renders an amber dot plus an `sr-only` sentence. | #25 established that `status` is the wrong key for actionability (`status = "skipped" if charged is None else "failed"` is a billing split) and fixed the Actions column for it. The chips were left keyed on status, which did not matter while `skipped` was in the default view. Under #33 it is not, so without this the 2026-08-28 `sender_not_allowed` incident has its exact conditions back: fixable rows, nothing pointing at them. `FIXABLE_REASONS` in the router mirrors `FIX` in `QueueRow.tsx`; nothing can assert that across the language boundary, so each names the other. |
+| 38 | **`received` gets its own pill word and the `warn` tone**, and `attention` counts one older than `STUCK_AFTER` (1 h). | `received` is the state every row is *claimed* into — the backlog cap writes no ledger row at all — so one still sitting there means the pipeline picked a message up and never finished it. It wore the same calm grey `Skipped · no reason recorded` as a filename rule doing its job. Age is the only thing separating stuck from in flight, because the state carries no `reason_code`. |
+
+### Considered and not done
+
+- **An Amount column.** The gross is a triage signal on the §6 mockup and is not one here:
+  the reader confirmed they open the document rather than scan for it. It stays on the
+  Document cell's second line.
+- **Re-keying the chips by `reason_code`.** The dot answers what #25 identified without
+  giving the strip a second vocabulary the API does not speak.
+- **§6's `[Recently posted ▾]` panel**, still unbuilt. With `review` as the default the chip
+  strip sits directly above the empty state, so `Posted 61` is already the evidence §6 wanted.
+  Revisit if a supervisor asks for recency rather than a total.
+
+### Not changed
+
+The review modal, approve, reject, the anti-join, the backlog cap, the refund rule, the
+notification, and every decision #1–#32 except where the table above supersedes them.

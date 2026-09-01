@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AlertCircle, AlertTriangle, CheckCircle2, Loader2, X } from 'lucide-react'
 import CustomModal from '../components/common/CustomModal'
@@ -10,6 +10,7 @@ import JvEditor, { type JvState, type Overrides } from '../components/credit-car
 import { useT } from '../i18n/LanguageContext'
 import { useAccountingConfig } from '../hooks/credit-card'
 import { showToast } from '../lib/toast'
+import { fmt } from '../lib/format'
 import { toExtractedRows } from '../lib/api/ocr'
 import { normalizeDateStringToCE } from '../lib/date'
 import { applyJvAmount, type JvRow } from '../lib/ccJv'
@@ -60,13 +61,24 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   // GL rule corrections, not yet saved. Keyed by accounting-config field type, because
   // that is what a picker edits — see JvEditor's note on JvRow.key.
   const [overrides, setOverrides] = useState<Overrides>({})
-  const [jv, setJv] = useState<JvState>({ rows: [], blocked: true, totalDr: 0, totalCr: 0 })
+  const [jv, setJv] = useState<JvState>({
+    rows: [],
+    blocked: true,
+    reason: null,
+    totalDr: 0,
+    totalCr: 0,
+  })
   const { config, loading: configLoading } = useAccountingConfig()
 
   const [busy, setBusy] = useState(false)
   const [postError, setPostError] = useState<string | null>(null)
   const [rejecting, setRejecting] = useState(false)
   const [reason, setReason] = useState('')
+  /** Anything the reviewer has typed or re-mapped and not yet posted. Only used to decide
+   *  whether closing needs to ask first. */
+  const [dirty, setDirty] = useState(false)
+  const [discarding, setDiscarding] = useState(false)
+  const modalRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     let alive = true
@@ -109,44 +121,108 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
     }
   }, [id])
 
-  // Escape closes, like every other dialog in the app — but never mid-post, where the
-  // reviewer would lose the one place the Carmen error is about to appear.
+  // Closing throws away corrected amounts and re-mapped GL rules, and the two ways to do
+  // it by accident — a stray click on the page behind, a reflex Escape — are the two
+  // cheapest gestures on the screen. Ask, but only when there is something to lose.
+  const requestClose = useCallback(() => {
+    if (busy) return
+    if (dirty) setDiscarding(true)
+    else onClose()
+  }, [busy, dirty, onClose])
+
+  // Dialog chrome: focus moves in, focus goes back, the page behind stops scrolling, Tab
+  // stays inside. CustomModal does all four for the confirmations it owns and this dialog
+  // did none of them. Not shared code with it — CustomModal traps a fixed set of three
+  // controls it renders itself, while this one's focusable set grows and shrinks as rows,
+  // pickers and the input-tax panel appear.
+  useEffect(() => {
+    const returnTo = document.activeElement as HTMLElement | null
+    const priorOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = priorOverflow
+      returnTo?.focus?.()
+    }
+  }, [])
+
+  // The dialog itself, not its first field: this screen is read before it is edited, and
+  // landing in Document no. would put the caret past the warning above it.
+  useEffect(() => {
+    if (!loading) modalRef.current?.focus()
+  }, [loading])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || busy || rejecting) return
+      // Never mid-post, where the reviewer would lose the one place the Carmen error is
+      // about to appear; and never under a confirmation, which runs its own trap.
+      if (busy || rejecting || discarding) return
       // The date picker and the account dropdown are layers above this one and close on
       // Escape too; all listen on `document`, so the innermost open thing has to be
-      // checked for rather than trusted to stop the event.
+      // checked for rather than trusted to stop the event. Tab is left alone while one is
+      // open for the same reason: the account list renders outside this dialog.
       if (document.querySelector('.date-input-popover, .css-select-panel')) return
-      onClose()
+
+      if (e.key === 'Escape') {
+        requestClose()
+        return
+      }
+      if (e.key !== 'Tab' || !modalRef.current) return
+
+      const focusable = Array.from(
+        modalRef.current.querySelectorAll<HTMLElement>(
+          'a[href],button,input,select,textarea,[tabindex]:not([tabindex="-1"])'
+        )
+      ).filter(el => !el.hasAttribute('disabled'))
+      if (!focusable.length) return
+
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      // The container holds focus on open, so Shift+Tab from it wraps to the end rather
+      // than escaping to the browser chrome.
+      if (
+        e.shiftKey &&
+        (document.activeElement === first || document.activeElement === modalRef.current)
+      ) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [busy, rejecting, onClose])
+  }, [busy, rejecting, discarding, requestClose])
 
-  const updateHeader = (key: string, value: string) => setHeaderData(h => ({ ...h, [key]: value }))
+  const updateHeader = (key: string, value: string) => {
+    setDirty(true)
+    setHeaderData(h => ({ ...h, [key]: value }))
+  }
 
   // An amount typed on the JV goes back into the lines it was summed from. `details` is
   // not display: the input-tax record is filed from it, per line, so a figure that moved
   // only on the journal would post a VAT record that disagrees with it.
-  const updateAmount = useCallback(
-    (row: JvRow, next: number) => setDetails(d => applyJvAmount(d, row, next)),
-    []
-  )
+  const updateAmount = useCallback((row: JvRow, next: number) => {
+    setDirty(true)
+    setDetails(d => applyJvAmount(d, row, next))
+  }, [])
 
   const onOverride = useCallback(
-    (key: string, mapping: { dept?: string | null; acc?: string | null }) =>
-      setOverrides(o => ({ ...o, [key]: { dept: mapping.dept || '', acc: mapping.acc || '' } })),
+    (key: string, mapping: { dept?: string | null; acc?: string | null }, byUser = true) => {
+      // The background suggestion for a payment type nothing could map is not the
+      // reviewer's work, so it does not make closing ask — it is re-asked next time.
+      if (byUser) setDirty(true)
+      setOverrides(o => ({ ...o, [key]: { dept: mapping.dept || '', acc: mapping.acc || '' } }))
+    },
     []
   )
-  const onUndo = useCallback(
-    (key: string) =>
-      setOverrides(o => {
-        const { [key]: _dropped, ...rest } = o
-        return rest
-      }),
-    []
-  )
+  const onUndo = useCallback((key: string) => {
+    setDirty(true)
+    setOverrides(o => {
+      const { [key]: _dropped, ...rest } = o
+      return rest
+    })
+  }, [])
   const onJvState = useCallback((s: JvState) => setJv(s), [])
 
   const ruleCount = Object.keys(overrides).length
@@ -231,12 +307,14 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   }
 
   return createPortal(
-    <div className="rd-overlay" role="presentation" onMouseDown={() => !busy && onClose()}>
+    <div className="rd-overlay" role="presentation" onMouseDown={requestClose}>
       <div
         className="rd-modal"
+        ref={modalRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
-        aria-label={t('review.title')}
+        aria-labelledby="rd-title"
         onMouseDown={e => e.stopPropagation()}
       >
         <CustomModal
@@ -256,14 +334,34 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
           onCancel={() => setRejecting(false)}
         />
 
+        <CustomModal
+          show={discarding}
+          type="warning"
+          confirmVariant="danger"
+          title={t('review.discardTitle')}
+          message={t('review.discardMsg')}
+          confirmText={t('review.discardConfirm')}
+          cancelText={t('review.discardKeep')}
+          onConfirm={onClose}
+          onCancel={() => setDiscarding(false)}
+        />
+
         <header className="rd-modal-head">
-          <span className="rd-title-bank">{bank || doc?.bank_code || t('review.unknownBank')}</span>
-          <span className="text-mono">{headerData.DocNo || '—'}</span>
-          <span className="text-mono rd-title-date">{headerData.DocDate || '—'}</span>
+          <h2 className="rd-title-bank" id="rd-title">
+            {bank || doc?.bank_code || t('review.unknownBank')}
+          </h2>
+          {/* The attachment this was read from. Nothing else on the dialog says which
+              file it is, and the document number and date that used to sit here were a
+              second copy of the two fields directly below them. */}
+          {doc?.attachment && (
+            <span className="rd-title-file" title={doc.attachment}>
+              {doc.attachment}
+            </span>
+          )}
           <button
             type="button"
             className="btn-icon rd-close"
-            onClick={onClose}
+            onClick={requestClose}
             disabled={busy}
             aria-label={t('review.close')}
           >
@@ -272,11 +370,29 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
         </header>
 
         {loading ? (
-          <div className="rd-modal-body rd-loading">
-            <Loader2 size={22} className="animate-spin" aria-hidden="true" />
+          /* The shape it will hold — four header fields over a table — rather than a
+             spinner the content lands around. Same skeleton the queue behind it uses. */
+          <div className="rd-body" aria-busy="true">
+            <span className="sr-only" role="status">
+              {t('review.loadingDocument')}
+            </span>
+            <div className="rd-doc">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <span key={i} className="rq-skel rd-skel-f" aria-hidden="true">
+                  &nbsp;
+                </span>
+              ))}
+            </div>
+            <div className="rd-skel-rows">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <span key={i} className="rq-skel" aria-hidden="true">
+                  &nbsp;
+                </span>
+              ))}
+            </div>
           </div>
         ) : gone || !doc ? (
-          <div className="rd-modal-body rq-empty">
+          <div className="rq-empty rd-gone">
             <AlertTriangle size={36} className="rq-empty-icon rq-empty-icon--bad" aria-hidden />
             <h2 className="rq-empty-title">{t('review.goneTitle')}</h2>
             <p className="rq-empty-body">{t('review.goneBody')}</p>
@@ -330,7 +446,10 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   headerData={headerData}
                   bank={bank}
                   enabled={postInputTax}
-                  onEnabledChange={setPostInputTax}
+                  onEnabledChange={on => {
+                    setDirty(true)
+                    setPostInputTax(on)
+                  }}
                   onUpdate={updateHeader}
                 />
               </section>
@@ -342,6 +461,19 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   <AlertCircle size={16} />
                   <span className="cc-alert-text">{postError}</span>
                 </div>
+              )}
+              {/* Why Approve cannot be pressed, at the button rather than left to be
+                  inferred from a tinted row further up. The error above supersedes it:
+                  a Carmen rejection is the more recent and more specific answer. */}
+              {jv.reason && !postError && (
+                <p className="rd-blocked" id="rd-blocked" role="status">
+                  <AlertTriangle size={14} aria-hidden="true" />
+                  {jv.reason === 'account'
+                    ? t('review.jvBlankAccount')
+                    : jv.reason === 'unbalanced'
+                      ? t('review.jvOffBy', { diff: fmt(Math.abs(jv.totalDr - jv.totalCr)) })
+                      : t('review.jvNothing')}
+                </p>
               )}
               {/* Said before the button, not after: the rule change is a second, wider
                   consequence of pressing it, and the reviewer should know while deciding. */}
@@ -366,19 +498,23 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   className="btn btn-primary"
                   onClick={approve}
                   disabled={busy || jv.blocked}
+                  /* The sentence above is the reason the control is unavailable, so a
+                     screen reader is given it along with the disabled state. */
+                  aria-describedby={jv.reason && !postError ? 'rd-blocked' : undefined}
                 >
                   {busy ? (
                     <Loader2 size={14} className="animate-spin" />
                   ) : (
                     <CheckCircle2 size={14} />
                   )}
+                  {/* One label, whatever else is true. The rule count is stated once,
+                      in the sentence above — a primary button that changes width while
+                      the reviewer edits is a moving target, and "Approve JV · updates 2"
+                      says less about what pressing it does than the sentence already
+                      does. */}
                   <SwapLabel
                     active={busy}
-                    idle={
-                      ruleCount
-                        ? t('review.approveWithRules', { count: String(ruleCount) })
-                        : t('review.approve')
-                    }
+                    idle={t('review.approve')}
                     busy={t('review.approving')}
                   />
                 </button>

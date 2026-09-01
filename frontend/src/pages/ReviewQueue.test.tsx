@@ -62,7 +62,8 @@ function mount(
   s: ReviewStatus,
   rows: ReviewDocument[],
   counts: Record<string, number> = { ...ZERO, all: rows.length, review: rows.length },
-  total = rows.length
+  total = rows.length,
+  attention: Record<string, number> = ZERO
 ) {
   vi.mocked(api.getReviewStatus).mockResolvedValue(s)
   vi.mocked(api.listActivity).mockResolvedValue({
@@ -71,6 +72,7 @@ function mount(
     offset: 0,
     data: rows,
     counts,
+    attention,
   })
   return render(
     <LanguageProvider>
@@ -158,8 +160,11 @@ describe('the message column', () => {
   })
 })
 
-describe('the source column', () => {
+describe('where a row came from', () => {
   it('tells a forwarded document apart from one somebody scanned', async () => {
+    // No longer a column of its own — under three of the five chips it could only ever
+    // say "Email", because a manual scan is only ever listed once posted. It is an icon
+    // on the filename line now, and the word is still there for a screen reader.
     mount(status(), [
       doc({ id: 'a' }),
       doc({ id: 'b', source: 'manual', status: 'posted', jv_no: 'JV-7', total: 0 }),
@@ -167,6 +172,16 @@ describe('the source column', () => {
     expect(await screen.findByText('Email')).toBeInTheDocument()
     expect(screen.getByText('Manual')).toBeInTheDocument()
     expect(screen.getByText('scanned and posted by hand')).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Source' })).not.toBeInTheDocument()
+  })
+
+  it('leads with the status, not the source', async () => {
+    // The pill is what distinguishes one row from the next once the statuses are mixed;
+    // it used to sit fifth, behind two columns of mostly em dashes.
+    mount(status(), [doc()])
+    await screen.findByText('KTC')
+    const headers = screen.getAllByRole('columnheader').map(h => h.textContent)
+    expect(headers).toEqual(['Status', 'Document', 'Message', 'Received', 'JV no.', 'Actions'])
   })
 })
 
@@ -183,6 +198,16 @@ describe('the status filter chips', () => {
       const chip = await screen.findByRole('tab', { name: new RegExp(label) })
       expect(chip).toHaveTextContent(n)
     }
+  })
+
+  it('leads with the work and leaves All till last', async () => {
+    // The strip reads as the four buckets a document actually moves through; All is the
+    // escape hatch from them, not a peer of them.
+    mount(status(), [doc()], { all: 113, review: 3, success: 7, failed: 2, skipped: 101 })
+    await screen.findByRole('tab', { name: /All/ })
+    const chips = screen.getAllByRole('tab').map(el => el.textContent ?? '')
+    expect(chips[0]).toMatch(/^Needs review/)
+    expect(chips[chips.length - 1]).toMatch(/^All/)
   })
 
   it('shows a zero rather than dropping the chip', async () => {
@@ -229,6 +254,36 @@ describe('the status filter chips', () => {
     fireEvent.click(await screen.findByRole('tab', { name: /Posted/ }))
     expect(await screen.findByText('Nothing here yet.')).toBeInTheDocument()
     expect(screen.queryByText('You are all caught up')).not.toBeInTheDocument()
+  })
+
+  it('opens on the work, not on the whole history', async () => {
+    // Every word on this page — the heading, the empty states, the reason line — was
+    // written for "what is owed", while the default filter answered "what happened" and
+    // mixed in the rows the BU's own filename rules threw out.
+    mount(status(), [doc()], { ...ZERO, all: 113, review: 1, skipped: 101 })
+    await screen.findByText('KTC')
+    expect(vi.mocked(api.listActivity).mock.calls[0][0]).toBe('review')
+    expect(screen.getByRole('tab', { name: /Needs review/ })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+  })
+
+  it('marks a chip that is hiding something the BU can fix', async () => {
+    // Skipped is out of the default view now, and it is where every customer-clearable
+    // cause lands — `status` splits on whether a credit was charged, not on who can act.
+    // Without the marker the 2026-08-28 incident has its conditions back.
+    mount(status(), [doc()], { ...ZERO, all: 60, review: 1, skipped: 59 }, 1, {
+      ...ZERO,
+      all: 5,
+      skipped: 5,
+    })
+    const skipped = await screen.findByRole('tab', { name: /Skipped/ })
+    expect(skipped).toHaveTextContent('5 of these you can fix yourself')
+    expect(skipped.querySelector('.rq-tab-dot')).toBeInTheDocument()
+    // And stays quiet on a chip with nothing owed.
+    const posted = screen.getByRole('tab', { name: /Posted/ })
+    expect(posted.querySelector('.rq-tab-dot')).not.toBeInTheDocument()
   })
 })
 
@@ -305,6 +360,17 @@ describe('a row that has already been resolved', () => {
   it('translates the reason a document did not post', async () => {
     mount(status(), [doc({ status: 'failed', reason_code: 'carmen_rejected', total: 0 })])
     expect(await screen.findByText(/Carmen refused it/)).toBeInTheDocument()
+  })
+
+  it('does not dress a document we never finished as one we deliberately skipped', async () => {
+    // `received` is the state every row is CLAIMED into — the backlog cap writes no row at
+    // all — so one still sitting there means the pipeline picked the message up and
+    // stopped. It used to wear the same calm grey "Skipped · no reason recorded" as a
+    // filename rule doing its job.
+    mount(status(), [doc({ status: 'received', reason_code: null, total: 0 })])
+    expect(await screen.findByText('Unfinished')).toBeInTheDocument()
+    expect(screen.getByText('we started reading this and did not finish')).toBeInTheDocument()
+    expect(screen.queryByText('no reason recorded')).not.toBeInTheDocument()
   })
 
   it('falls back to the raw reason code rather than showing nothing', async () => {

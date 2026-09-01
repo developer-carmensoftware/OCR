@@ -18,7 +18,13 @@ export type ReviewFlag = 'unbalanced' | 'mapping_guessed' | 'mapping_missing' | 
  *  statuses — see FILTERS in routers/credit_card_activity.py. */
 export type ActivityFilter = 'all' | 'review' | 'success' | 'failed' | 'skipped'
 
-export const ACTIVITY_FILTERS: ActivityFilter[] = ['all', 'review', 'success', 'failed', 'skipped']
+/** Strip order, and the first one is where the page opens. `review` leads because the page
+ *  is the day's work queue: the heading counts it, the empty states are written for it, and
+ *  `all` mixes in the skipped rows the BU's own rules threw out — 61 of 154 on the dev DB.
+ *
+ *  The four real buckets then run in the order a document moves through them, and `all` sits
+ *  last: it is the escape hatch from the four, not a peer of them. */
+export const ACTIVITY_FILTERS: ActivityFilter[] = ['review', 'success', 'failed', 'skipped', 'all']
 
 export interface ReviewDocument {
   id: string
@@ -81,6 +87,11 @@ export interface ReviewStatus {
  *  the page — same shape reason `NotificationList` carries `unread_count`. */
 export interface ActivityPage extends Page<ReviewDocument> {
   counts: Record<string, number>
+  /** Same keys as `counts`: of those rows, how many someone here could clear themselves.
+   *  The page opens on `review`, so the chip that holds the fixable causes is not in the
+   *  default view — this is what lets its chip say so. See `FIXABLE_REASONS` in
+   *  routers/credit_card_activity.py for why the status cannot answer it. */
+  attention: Record<string, number>
 }
 
 export async function listActivity(

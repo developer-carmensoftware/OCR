@@ -485,6 +485,9 @@ describe('approving', () => {
     await screen.findByDisplayValue('INV-001')
     expect(screen.getByRole('button', { name: /Approve/ })).toBeDisabled()
     expect(screen.getByText('Does not balance')).toBeInTheDocument()
+    // And says so at the button, by how much. A disabled control with no sentence beside
+    // it sends the reviewer hunting the dialog for a tinted row.
+    expect(await screen.findByText(/Debit and credit differ by/)).toBeInTheDocument()
   })
 
   it('cannot be approved while a line carrying money has no account', async () => {
@@ -494,7 +497,12 @@ describe('approving', () => {
     vi.mocked(api.getPending).mockResolvedValue(detail({ unmapped: ['Visa'] }))
     mount()
     await screen.findByDisplayValue('INV-001')
-    expect(screen.getByRole('button', { name: /Approve/ })).toBeDisabled()
+    const approve = screen.getByRole('button', { name: /Approve/ })
+    expect(approve).toBeDisabled()
+    // The reason names the fix and is what a screen reader is given for the disabled
+    // control, not just something rendered nearby.
+    expect(await screen.findByText(/Choose an account for every line/)).toBeInTheDocument()
+    expect(approve).toHaveAttribute('aria-describedby', 'rd-blocked')
   })
 
   it('becomes approvable once the missing account is filled in place', async () => {
@@ -561,5 +569,28 @@ describe('leaving', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Reject/ }))
     await screen.findByRole('button', { name: 'Reject document' })
     expect(api.rejectDocument).not.toHaveBeenCalled()
+  })
+
+  it('asks before throwing away work the reviewer has done', async () => {
+    // Escape and a click on the page behind are the two cheapest gestures on the screen,
+    // and both used to discard corrected amounts and re-mapped accounts without a word.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    fireEvent.change(await screen.findByDisplayValue('INV-001'), { target: { value: 'INV-999' } })
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).not.toHaveBeenCalled()
+    expect(await screen.findByText('Leave without posting?')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }))
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('does not ask when nothing has been touched', async () => {
+    // A reviewer who opened a document, read it and moved on is not owed a dialog.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalled()
+    expect(screen.queryByText('Leave without posting?')).not.toBeInTheDocument()
   })
 })

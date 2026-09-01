@@ -1180,7 +1180,7 @@ input[type='text'].detail-input:focus {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(8, 6, 20, 0.6);
+  background: var(--scrim);
   -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
   z-index: var(--z-modal);
@@ -1512,7 +1512,7 @@ input[type='text'].detail-input:focus {
 .mapping-alert.is-danger {
   background: var(--rose-light);
   border-color: var(--rose-mid);
-  color: var(--destructive);
+  color: var(--rose-text);
 }
 
 @media (max-width: 640px) {

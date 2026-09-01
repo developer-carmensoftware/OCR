@@ -18,6 +18,9 @@ export interface ReviewQueueController {
   /** Keyed by filter name. Every chip is present even at zero — one that appears only
    *  when it has rows makes the strip jump around as documents resolve. */
   counts: Record<string, number>
+  /** Same keys: of those rows, how many someone here could clear themselves. The page no
+   *  longer opens on `all`, so this is what stops a chip quietly hiding fixable work. */
+  attention: Record<string, number>
   offset: number
   setOffset: (n: number) => void
   loading: boolean
@@ -46,10 +49,15 @@ export interface ReviewQueueController {
  */
 export function useReviewQueue(limit: number): ReviewQueueController {
   const [status, setStatus] = useState<ReviewStatus | null>(null)
-  const [filter, setFilterState] = useState<ActivityFilter>('all')
+  // `review`, not `all`. The heading counts what is owed, the empty state says "all caught
+  // up", and the reason line exists to triage a queue — every word on this page was written
+  // for the work view, while the default filter answered "what happened" and mixed in the
+  // rows the BU's own filename rules threw out. The history is a chip away.
+  const [filter, setFilterState] = useState<ActivityFilter>('review')
   const [rows, setRows] = useState<ReviewDocument[]>([])
   const [total, setTotal] = useState(0)
   const [counts, setCounts] = useState<Record<string, number>>({})
+  const [attention, setAttention] = useState<Record<string, number>>({})
   const [offset, setOffset] = useState(0)
   const [listLoading, setListLoading] = useState(true)
   const [statusLoaded, setStatusLoaded] = useState(false)
@@ -92,6 +100,7 @@ export function useReviewQueue(limit: number): ReviewQueueController {
         setRows(page.data)
         setTotal(page.total)
         setCounts(page.counts)
+        setAttention(page.attention ?? {})
         setListError(false)
       })
       .catch(() => {
@@ -132,6 +141,7 @@ export function useReviewQueue(limit: number): ReviewQueueController {
     rows,
     total,
     counts,
+    attention,
     offset,
     setOffset,
     loading,

@@ -71,18 +71,28 @@ def _manual(**overrides):
     return (card, SimpleNamespace(original_filename="scanned_by_hand.pdf"))
 
 
-def _db(*, statuses, manual_count, emails, manuals):
+def _db(*, statuses=None, pairs=None, manual_count, emails, manuals):
     """Drive the four `db.execute` calls the handler makes, in order.
 
-    1. GROUP BY status over email_documents   → .all()
-    2. count_rows(manual_stmt)                → .scalar_one()
-    3. the email window                       → .scalars().all()
+    1. GROUP BY status, reason_code over email_documents → .all()
+    2. count_rows(manual_stmt)                           → .scalar_one()
+    3. the email window                                  → .scalars().all()
     4. the manual window (only when the filter admits manual rows) → .all()
+
+    `statuses` is the shorthand most tests want: {status: n}, no reason code, nothing
+    stale. `pairs` is the long form the `attention` tests need: {(status, reason_code):
+    (n, stale)}, where `stale` is how many of those are older than `STUCK_AFTER`.
     """
     db = make_mock_db()
 
     grouped = MagicMock()
-    grouped.all.return_value = [SimpleNamespace(status=s, n=n) for s, n in statuses.items()]
+    grouped.all.return_value = [
+        SimpleNamespace(status=s, reason_code=None, n=n, stale=0)
+        for s, n in (statuses or {}).items()
+    ] + [
+        SimpleNamespace(status=s, reason_code=rc, n=n, stale=stale)
+        for (s, rc), (n, stale) in (pairs or {}).items()
+    ]
     counted = MagicMock()
     counted.scalar_one.return_value = manual_count
     email_window = MagicMock()
@@ -151,6 +161,58 @@ def test_counts_cover_every_chip_even_at_zero():
         counts = client.get(BASE, headers=AUTH).json()["counts"]
 
     assert counts == {"review": 0, "success": 5, "failed": 0, "skipped": 0, "all": 5}
+
+
+def test_attention_finds_the_fixable_rows_the_skipped_chip_buries():
+    """The other half of decision #25. `status = "skipped" if charged is None else "failed"`
+    splits on billing, so every customer-clearable cause lands under the chip that is now
+    out of the default view — `attention` is what lets that chip say it is holding work."""
+    db = _db(
+        pairs={
+            ("skipped", "no_rule_match"): (46, 46),
+            ("skipped", "unsupported_attachment"): (12, 12),
+            ("failed", "carmen_rejected"): (3, 3),
+        },
+        manual_count=0,
+        emails=[],
+        manuals=[],
+    )
+    with make_test_client(db, session=SESSION) as client:
+        body = client.get(BASE, headers=AUTH).json()
+
+    # 46 fixable; the 12 with no attachment we can read are not — we never stored the bytes.
+    assert body["attention"]["skipped"] == 46
+    # Carmen's own complaint is fixed in Carmen, so it is not owed here either.
+    assert body["attention"]["failed"] == 0
+    assert body["attention"]["all"] == 46
+    # And the plain counts are untouched by any of it.
+    assert body["counts"]["skipped"] == 58
+
+
+def test_a_document_still_being_read_is_not_a_stuck_one():
+    """`received` is the state every row is claimed into, so one in flight during a poll
+    must not put a dot on the chip. Only age separates the two, and it carries no
+    reason_code to separate them any other way."""
+    db = _db(
+        pairs={("received", None): (4, 1)},
+        manual_count=0,
+        emails=[],
+        manuals=[],
+    )
+    with make_test_client(db, session=SESSION) as client:
+        body = client.get(BASE, headers=AUTH).json()
+
+    assert body["counts"]["skipped"] == 4
+    assert body["attention"]["skipped"] == 1
+
+
+def test_attention_covers_every_chip_even_at_zero():
+    """Same reason `counts` does: the strip must not reflow as documents resolve."""
+    db = _db(statuses={"posted": 3}, manual_count=2, emails=[], manuals=[])
+    with make_test_client(db, session=SESSION) as client:
+        attention = client.get(BASE, headers=AUTH).json()["attention"]
+
+    assert attention == {"review": 0, "success": 0, "failed": 0, "skipped": 0, "all": 0}
 
 
 def test_review_filter_asks_for_no_manual_rows_at_all():

@@ -89,11 +89,7 @@
 
 /* ── The table ──────────────────────────────────────────────────────────────── */
 
-/* No wrapper div. `useFitRows` measures the space under the list by walking the next
-   siblings of the ref'd element AND of its parent — with the ref on <tbody> that reaches
-   <table>'s siblings, i.e. the pager. A wrapper would hide the pager one level too deep
-   and the page size would come out one row too tall.
-   `separate` + zero spacing rather than `collapse`, because overflow: hidden (which is
+/* `separate` + zero spacing rather than `collapse`, because overflow: hidden (which is
    what rounds the corners over the tinted header row) is only reliable on the former. */
 .rq-table {
   width: 100%;
@@ -146,29 +142,33 @@
 }
 
 /* Widths are declared once, here, rather than per cell — table-layout: fixed reads only
-   the first row, and the header IS that row. */
-.rq-c-source {
-  width: 6.5rem;
+   the first row, and the header IS that row.
+   28.5rem fixed, down from 39.5: Source is gone as a column, Received prints a time rather
+   than a full stamp, and JV is narrower. The 11rem goes to Document and Message, which are
+   the two cells that were truncating. */
+.rq-c-status {
+  width: 7rem;
 }
 .rq-c-when {
-  width: 9.5rem;
+  width: 6rem;
 }
 .rq-c-jv {
-  width: 9rem;
-}
-.rq-c-status {
-  width: 6.5rem;
+  width: 7.5rem;
 }
 .rq-c-act {
   width: 8rem;
 }
 
-.rq-source {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  color: var(--text-3);
-  white-space: nowrap;
+/* Where the document came in from, on the filename line rather than in a column of its
+   own — under three of the five chips that column could only ever say "Email". */
+.rq-source-icon {
+  vertical-align: -0.12em;
+  margin-right: 0.3rem;
+  color: var(--text-4);
+}
+
+.rq-source-icon[data-source='manual'] {
+  color: var(--primary);
 }
 
 .rq-bank {
@@ -183,11 +183,12 @@
 }
 
 /* Second line of the Document cell: what the file was called, and — while a document is
-   still pending — the gross a reviewer is being asked to agree to. */
+   still pending — the gross a reviewer is being asked to agree to.
+   --text-3, not --text-4: at 0.75rem this is small text, and --text-4 is 3.36:1. */
 .rq-file {
   display: block;
   font-size: 0.75rem;
-  color: var(--text-4);
+  color: var(--text-3);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -217,7 +218,7 @@
 }
 
 .rq-empty-cell {
-  color: var(--text-4);
+  color: var(--text-3);
 }
 
 /* ── The status pill ────────────────────────────────────────────────────────── */
@@ -270,7 +271,7 @@
 }
 
 .rq-reason--calm {
-  color: var(--text-4);
+  color: var(--text-3);
 }
 
 /* The skeleton is a real row with its content hidden, so the table is exactly as tall
@@ -536,11 +537,22 @@
 
 .rq-tab-count {
   font-size: 0.72rem;
-  color: var(--text-4);
+  color: var(--text-3);
 }
 
 .rq-tab--active .rq-tab-count {
   color: var(--primary);
+}
+
+/* This chip is holding rows someone here could clear. Amber, and never on its own: the
+   sr-only sentence beside it carries the same fact for anyone who cannot see the dot. */
+.rq-tab-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: var(--radius-pill);
+  background: var(--amber);
+  flex: none;
+  margin-left: -0.15rem;
 }
 
 .rq-reason--ok {
@@ -556,16 +568,36 @@
 
 /* ── Review document — a modal over the queue ───────────────────────────────── */
 
+/* --z-modal-backdrop sits under --z-modal, which is what CustomModal uses — so the
+   reject and discard confirmations stack over this one. Named, rather than the 9000 that
+   happened to be under it. */
 .rd-overlay {
   position: fixed;
   inset: 0;
-  z-index: 9000; /* under --z-modal (10050) so the reject confirmation stacks on top */
+  z-index: var(--z-modal-backdrop);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: var(--space-4);
-  background: oklch(0.16 0.02 258.7 / 0.42);
-  backdrop-filter: blur(2px);
+  background: var(--scrim);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  animation: rd-fade 180ms var(--ease-out) both;
+}
+
+/* Same 180/240ms and the same curve CustomModal animates on. A dialog that appears with
+   no arrival at all, next to three that rise, reads as a different kind of thing. */
+@keyframes rd-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes rd-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
 }
 
 .rd-modal {
@@ -578,13 +610,29 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
+  animation: rd-rise 240ms var(--ease-out) both;
 }
 
+/* Focused on open so the dialog reads first and Tab starts inside it. A programmatic
+   target, never tabbed to, so it wears no ring of its own. */
+.rd-modal:focus {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rd-overlay,
+  .rd-modal {
+    animation: rd-fade 140ms linear both;
+  }
+}
+
+/* One line, never two: with flex-wrap the close button dropped below the title on a
+   narrow modal, which is the one control that has to stay where the eye expects it.
+   The filename gives up its width instead. */
 .rd-modal-head {
   display: flex;
   align-items: baseline;
   gap: var(--space-3);
-  flex-wrap: wrap;
   padding: 0.9rem 1rem;
   border-bottom: 1px solid var(--border);
   font-size: 0.9rem;
@@ -592,17 +640,30 @@
 }
 
 .rd-title-bank {
+  flex: none;
   font-size: 1.05rem;
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--text);
+  margin: 0;
+}
+
+/* Which attachment this is. Nowhere else on the dialog says so, and it is how a reviewer
+   ties what they are reading back to the mail they forwarded. */
+.rd-title-file {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .rd-title-date {
-  color: var(--text-4);
+  color: var(--text-3);
 }
 
 .rd-close {
+  flex: none;
   margin-left: auto;
   align-self: center;
 }
@@ -630,18 +691,45 @@
   flex: 0 0 auto;
 }
 
-.rd-loading {
+/* The dialog arrives in the shape it will hold — four header fields over a table. A
+   spinner in the middle makes the content land around it; the queue behind already
+   answers a pending fetch with rows of the right height. */
+.rd-skel-f {
+  height: 2.35rem;
+  width: 100%;
+}
+
+.rd-skel-rows {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.rd-skel-rows .rq-skel {
+  height: 2rem;
+  width: 100%;
+}
+
+.rd-skel-rows .rq-skel:first-child {
+  height: 1.7rem;
+}
+
+/* The "already handled by someone else" state, which is the queue's empty-state card
+   reused. Inside the dialog it is already inside a card, so it drops its own frame and
+   takes the height instead — centred in the space rather than pinned to the top of it. */
+.rd-gone {
+  flex: 1;
   justify-content: center;
-  min-height: 12rem;
-  color: var(--text-4);
+  border: 0;
+  box-shadow: none;
 }
 
 /* ── What the document says ─────────────────────────────────────────────────── */
 
 /* Auto-fit rather than a fixed column count: the fields are short and independent, so
-   they should reflow to whatever the modal is, not sit in a grid built for one width. */
+   they should reflow to whatever the modal is, not sit in a grid built for one width.
+   The wide field takes the whole row rather than `span 2`: two columns of a four-column
+   row cannot hold it, so it wrapped and left a hole where it used to sit. */
 .rd-doc {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
@@ -656,15 +744,18 @@
 }
 
 .rd-f--wide {
-  grid-column: span 2;
+  grid-column: 1 / -1;
 }
 
+/* --text-3: one tier lighter than the value it names, and the lightest tier that still
+   passes AA at this size. The table headers beside it need --text-2 for the same 4.5:1
+   because they sit on --muted; these sit on the card face. */
 .rd-f-label {
   font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--text-4);
+  color: var(--text-3);
 }
 
 /* Reads as the document until someone goes to change it. A grid of boxes says "form to
@@ -729,8 +820,13 @@
   color: var(--text-3);
 }
 
+/* `fixed`, like the queue's table: the column widths below are declared once on the
+   header row and are only honoured under fixed layout. Under auto, a long description
+   won the space and the money columns changed width from one document to the next —
+   which is the one thing a column of figures must not do. */
 .jv-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
   background: var(--card-bg);
@@ -820,9 +916,10 @@
 }
 
 /* Rows after the first that share a rule: the value shows, the control does not, so one
-   rule is never asked about twice. */
+   rule is never asked about twice. Quieter than a picker, but still a GL code the
+   reviewer is agreeing to — so --text-3, not the decorative tier. */
 .jv-echo {
-  color: var(--text-4);
+  color: var(--text-3);
   font-size: 0.8rem;
 }
 
@@ -904,18 +1001,48 @@
 
 /* ── Footer ─────────────────────────────────────────────────────────────────── */
 
+/* Gap, not margins: the three things that can appear above the buttons (a Carmen
+   rejection, the reason Approve is unavailable, the rule note) each used to carry their
+   own bottom margin, so the footer's height depended on which of them showed. */
 .rd-modal-foot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
   border-top: 1px solid var(--border);
   padding: 0.75rem var(--space-4);
   background: var(--muted);
 }
 
+/* `.mapping-alert` is shared with the wizard, where it is a block with a margin under it.
+   Inside a gap-spaced column that margin is doubled spacing. */
+.rd-body > .mapping-alert,
+.rd-modal-foot > .mapping-alert {
+  margin-bottom: 0;
+}
+
 /* Said before the button rather than after: pressing Approve has a second, wider
    consequence and the reviewer should read it while deciding. */
 .rd-rules {
-  margin: 0 0 var(--space-2);
+  margin: 0;
   font-size: 0.78rem;
   color: var(--primary);
+}
+
+/* Why Approve is unavailable, said at the button rather than left to be inferred from a
+   tinted row further up the dialog. Amber: something to finish, not something that failed.
+   The button points at it with aria-describedby, so it is also the reason a screen reader
+   is given for the disabled control. */
+.rd-blocked {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--amber-text);
+}
+
+.rd-blocked svg {
+  flex: none;
 }
 
 /* Two buttons, pushed apart: the destructive one on the left, the one that posts on the
@@ -948,14 +1075,73 @@
     gap: var(--space-4);
   }
 
-  .rd-f--wide {
-    grid-column: auto;
+  /* Five columns do not fit a phone. The queue's own table already answers that by
+     becoming one stacked card per row, so the JV does the same — rather than dropping
+     the description column, which is where the AI tag and the Undo button live and was
+     the only place either could be reached. */
+  .jv-table,
+  .jv-table tbody,
+  .jv-table tfoot,
+  .jv-table tr,
+  .jv-table td {
+    display: block;
+    width: auto;
   }
 
-  /* The pickers are the widest cells and the first to make the table scroll; the
-     description is the one column a reviewer can do without on a phone. */
-  .jv-desc,
-  .jv-table th:nth-child(3) {
+  .jv-table thead {
+    display: none;
+  }
+
+  .jv-table tbody tr,
+  .jv-table tfoot tr {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    padding: 0.5rem 0;
+  }
+
+  .jv-table tbody tr + tr {
+    border-top: 1px solid var(--border);
+  }
+
+  .jv-table tbody tr + tr td {
+    border-top: 0;
+  }
+
+  .jv-table td {
+    display: grid;
+    grid-template-columns: 5rem 1fr;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 0.15rem 0.65rem;
+  }
+
+  .jv-table td::before {
+    content: attr(data-label);
+    font-size: 0.64rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+
+  /* The line names itself, above the fields that describe it — a label here would only
+     repeat the column header it replaced. */
+  .jv-table td.jv-desc {
+    display: flex;
+    order: -1;
+    padding-bottom: 0.2rem;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .jv-desc::before {
+    content: none;
+  }
+
+  /* The structurally-empty side of a leg. A dash under a "Credit" label is a value that
+     is not there; on its own line that is noise, not information. */
+  .jv-table td.jv-num--empty {
     display: none;
   }
 
@@ -963,6 +1149,30 @@
   .jv-c-acc,
   .jv-num {
     width: auto;
+    text-align: left;
+  }
+
+  /* Flat-until-touched depends on the cell grid to read as a field at all. One per line,
+     it needs its own edge. */
+  .jv-amt {
+    text-align: left;
+    background: var(--card-bg);
+    border-color: var(--border-input);
+  }
+
+  .jv-total {
+    background: var(--muted);
+  }
+
+  .jv-total td {
+    padding-top: 0.15rem;
+    padding-bottom: 0.15rem;
+    background: none;
+    border-top: 0;
+  }
+
+  .jv-total td:first-child {
+    display: block;
   }
 
   .rd-actions {
@@ -977,11 +1187,12 @@
 
 /* A JV-header value that is not per-document: Prefix and Description come from the BU's
    accounting config and are changed on the mapping page. Same type as an editable value,
-   no box and no hover, because there is nothing here to click. */
+   no box and no hover, because there is nothing here to click. One tier back from an
+   editable value, one tier ahead of the label above it. */
 .rd-f-fixed {
   padding: 0.25rem 0;
   font-size: 0.875rem;
-  color: var(--text-3);
+  color: var(--text-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1117,7 +1328,7 @@
 }
 
 .itx-f--wide {
-  grid-column: span 2;
+  grid-column: 1 / -1;
 }
 
 .itx-f dt {
@@ -1125,13 +1336,13 @@
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--text-4);
+  color: var(--text-3);
 }
 
 .itx-f dd {
   margin: 0;
   font-size: 0.875rem;
-  color: var(--text-3);
+  color: var(--text-2);
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -1141,14 +1352,10 @@
 .itx-taxid {
   margin-left: var(--space-2);
   font-size: 0.8rem;
-  color: var(--text-4);
+  color: var(--text-3);
 }
 
 @media (max-width: 640px) {
-  .itx-f--wide {
-    grid-column: auto;
-  }
-
   .itx-head {
     flex-wrap: wrap;
   }
@@ -1156,5 +1363,32 @@
   .itx-sum {
     order: 3;
     flex-basis: 100%;
+  }
+}
+
+/* ── Touch ─────────────────────────────────────────────────────────────────── */
+
+/* Two controls in the dialog are deliberately small because they sit inside dense rows.
+   On a coarse pointer they get a real target without changing the layout they sit in:
+   the toggle grows, the undo tag keeps its size and grows its hit area instead. */
+@media (pointer: coarse) {
+  .itx-toggle {
+    min-height: 44px;
+    padding: 0.2rem 0.6rem;
+  }
+
+  .rd-close {
+    width: 44px;
+    height: 44px;
+  }
+
+  .jv-tag--undo {
+    position: relative;
+  }
+
+  .jv-tag--undo::after {
+    content: '';
+    position: absolute;
+    inset: -12px -8px;
   }
 }

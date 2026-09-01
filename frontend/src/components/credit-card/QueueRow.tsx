@@ -81,7 +81,11 @@ const STATUS_META: Record<string, { key: TKey; tone: string }> = {
   failed: { key: 'review.statusFailed', tone: 'bad' },
   rejected: { key: 'review.statusFailed', tone: 'bad' },
   skipped: { key: 'review.statusSkipped', tone: 'calm' },
-  received: { key: 'review.statusSkipped', tone: 'calm' },
+  // Its own word, not "Skipped". `received` is the state every row is CLAIMED into — the
+  // backlog cap writes no row at all — so one still sitting here is a message the pipeline
+  // picked up and never finished. Wearing the calm grey of "your filename rule threw this
+  // out" made a crashed run and a deliberate filter look identical.
+  received: { key: 'review.statusStuck', tone: 'warn' },
 }
 
 interface Props {
@@ -100,13 +104,15 @@ export default function QueueRow({ row, onOpen }: Props) {
   const status = STATUS_META[row.status] ?? { key: 'review.statusSkipped' as TKey, tone: 'calm' }
   const SourceIcon = row.source === 'manual' ? Upload : Mail
 
+  const sourceLabel = t(row.source === 'manual' ? 'review.sourceManual' : 'review.sourceEmail')
+
+  // Order is the order the reader asks: what state → which document → why → when → where it
+  // went → what to press. The two columns that are mostly empty (JV, Actions) sit at the
+  // right edge, where a column of em dashes costs least.
   return (
     <tr className="rq-row">
-      <td className="rq-c-source" data-label={t('review.colSource')}>
-        <span className="rq-source">
-          <SourceIcon size={13} strokeWidth={2} aria-hidden="true" />
-          {t(row.source === 'manual' ? 'review.sourceManual' : 'review.sourceEmail')}
-        </span>
+      <td className="rq-c-status" data-label={t('review.colStatus')}>
+        <span className={`rq-pill rq-pill--${status.tone}`}>{t(status.key)}</span>
       </td>
 
       <td className="rq-c-doc" data-label={t('review.colDocument')}>
@@ -114,6 +120,17 @@ export default function QueueRow({ row, onOpen }: Props) {
         {/* Mono on everything the reviewer has to verify — DESIGN.md's Mono Signal Rule. */}
         <span className="rq-docno text-mono">{row.doc_no || '—'}</span>
         <span className="rq-file" title={row.attachment}>
+          {/* Where it came in from. It was a 6.5rem column of its own, which said "Email" on
+              every row under three of the five chips — manual scans only exist as `posted`
+              (MANUAL_FILTERS). Provenance, not a scan target: an icon carries it. */}
+          <SourceIcon
+            size={12}
+            strokeWidth={2}
+            className="rq-source-icon"
+            aria-hidden="true"
+            data-source={row.source}
+          />
+          <span className="sr-only">{sourceLabel}</span>
           {row.attachment}
           {/* The gross, which is what lands on the credit side of the JV — the number a
               reviewer scans for. Pending only: `_finish` clears the payload it comes from,
@@ -127,8 +144,12 @@ export default function QueueRow({ row, onOpen }: Props) {
         </span>
       </td>
 
+      <td className="rq-c-msg" data-label={t('review.colMessage')}>
+        <Message row={row} pending={pending} />
+      </td>
+
       <td className="rq-c-when text-mono" data-label={t('review.colReceived')}>
-        {formatWhen(row.created_at)}
+        <span title={fullWhen(row.created_at)}>{formatWhen(row.created_at)}</span>
       </td>
 
       <td className="rq-c-jv text-mono" data-label={t('review.colJv')}>
@@ -140,14 +161,6 @@ export default function QueueRow({ row, onOpen }: Props) {
         ) : (
           <span className="rq-empty-cell">—</span>
         )}
-      </td>
-
-      <td className="rq-c-status" data-label={t('review.colStatus')}>
-        <span className={`rq-pill rq-pill--${status.tone}`}>{t(status.key)}</span>
-      </td>
-
-      <td className="rq-c-msg" data-label={t('review.colMessage')}>
-        <Message row={row} pending={pending} />
       </td>
 
       <td className="rq-c-act" data-label={t('review.colActions')}>
@@ -208,9 +221,16 @@ function Message({ row, pending }: { row: ReviewDocument; pending: boolean }) {
     )
   }
 
+  // Claimed and never finished. It has no reason_code to fall back on, and the generic
+  // "no reason recorded" said the one thing that is not true about it: something did
+  // happen, and it stopped halfway.
+  if (row.status === 'received') {
+    return <span className="rq-reason rq-reason--warn">{t('review.rcStuck')}</span>
+  }
+
   const key = row.reason_code ? REASON_KEY[row.reason_code] : undefined
   const label = key ? t(key) : row.reason_code || t('review.rcUnknown')
-  const tone = row.status === 'skipped' || row.status === 'received' ? 'calm' : 'bad'
+  const tone = row.status === 'skipped' ? 'calm' : 'bad'
   return (
     <span className={`rq-reason rq-reason--${tone}`} title={row.error_message || undefined}>
       {row.status === 'rejected' && row.reviewed_by_name
@@ -220,13 +240,38 @@ function Message({ row, pending }: { row: ReviewDocument; pending: boolean }) {
   )
 }
 
+const pad = (n: number) => String(n).padStart(2, '0')
+
 /** When we handled it. A pending row's document date lives in the review modal; this
  *  column answers "how long has this been sitting here", which is the same question for
- *  every row regardless of status. */
+ *  every row regardless of status.
+ *
+ *  Two forms, not one. The full `31/08/2026 14:22` cost 9.5rem of a table whose two content
+ *  columns were fighting for width, to print a date that is today's on every row that
+ *  matters. Today gives the time, anything older gives the date; `fullWhen` is on the
+ *  title so nothing is actually lost. */
 function formatWhen(iso: string | null): string {
-  if (!iso) return '—'
+  const d = parseWhen(iso)
+  if (!d) return '—'
+  const now = new Date()
+  const sameDay =
+    d.getDate() === now.getDate() &&
+    d.getMonth() === now.getMonth() &&
+    d.getFullYear() === now.getFullYear()
+  return sameDay
+    ? `${pad(d.getHours())}:${pad(d.getMinutes())}`
+    : `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${pad(d.getFullYear() % 100)}`
+}
+
+/** The whole timestamp, for the cell's tooltip. */
+function fullWhen(iso: string | null): string | undefined {
+  const d = parseWhen(iso)
+  if (!d) return undefined
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function parseWhen(iso: string | null): Date | null {
+  if (!iso) return null
   const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return '—'
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
+  return Number.isNaN(d.getTime()) ? null : d
 }

@@ -2,21 +2,21 @@
 
 One list, two sources. `email_review.py` answers "what is the automation holding for me",
 which is a strictly smaller question: this endpoint also lists the scans a person did by
-hand, so the Source column has something to say and the page reads as the module's whole
-history rather than as the robot's inbox.
+hand, so the page reads as the module's whole history rather than as the robot's inbox.
 
 It is a separate router rather than another route on `email_review.py` because that file's
 whole contract is email documents; a manual scan there would make its docstring a lie.
 Everything a *reviewer* does — open, approve, reject — stays there.
 
-Design: docs/email-automation/07-human-in-the-loop.md §6 (the screen), amended 2026-08-31
-when the mockup added the Source column and folded four tabs into one filtered table.
+Design: docs/email-automation/07-human-in-the-loop.md §6 (the screen), §9 (four tabs folded
+into one filtered table), §11 (the column order, and `attention`). Where a row came from is
+no longer a column of its own — `MANUAL_FILTERS` below is why.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
@@ -52,6 +52,31 @@ FILTERS: dict[str, tuple[str, ...]] = {
 
 # A manual scan is only ever "posted", so it belongs to exactly one chip besides `all`.
 MANUAL_FILTERS = ("all", "success")
+
+# Reason codes a person in the BU can clear themselves, which is NOT what `status` records:
+# `status = "skipped" if charged is None else "failed"` is a billing split, so every one of
+# these lands under the chip the comment above calls "mostly noise". Decision #25 learned
+# that for the Actions column and left the filter strip alone; `attention` below is the
+# other half of the same fix, now that `skipped` has left the default view.
+#
+# Must stay in step with `FIX` in frontend/src/components/credit-card/QueueRow.tsx — that map
+# is what renders the button; this tuple only puts a dot on the chip that hides it. Nothing
+# can assert the two match across the language boundary, so each names the other.
+FIXABLE_REASONS = (
+    "mapping_incomplete",
+    "carmen_unauthorized",
+    "no_rule_match",
+    "sender_not_allowed",
+    "wrong_pdf_password",
+    "ingest_paused",
+    "tax_id_mismatch",
+)
+
+# How long a row may sit at `received` before it counts as stuck rather than in flight.
+# `received` is the state every row is claimed into — backpressure writes no row at all — so
+# one still there long after its poll run means the pipeline never finished it. Generous
+# enough that a document being extracted during a poll never flickers a dot on.
+STUCK_AFTER = timedelta(hours=1)
 
 # Sorting key for a row whose timestamp is NULL. Aware, because everything it is compared
 # against comes back from Postgres aware and Python refuses to order the two together.
@@ -119,10 +144,12 @@ async def list_activity(
 ):
     """This BU's credit-card documents from both sources, newest first.
 
-    `all` is the default because the page's job is now "what happened", not "what is
-    owed" — the Status pill carries what the tabs used to. An unknown filter falls back to
-    `all` rather than 400ing: the query string is a UI detail and a stale bookmark should
-    land somewhere useful.
+    `all` remains the API default, but it is no longer what the page opens on: the screen
+    asks for `review` (see `useReviewQueue`), because the heading, the empty states and the
+    reason line were all written for "what is owed" while the default filter answered "what
+    happened". The other four chips are how the history is reached. An unknown filter falls
+    back to `all` rather than 400ing: the query string is a UI detail and a stale bookmark
+    should land somewhere useful.
     """
     tenant_id = uuid.UUID(str(session.tenant_id))
     if filter not in FILTERS:
@@ -134,21 +161,45 @@ async def list_activity(
     wants_manual = filter in MANUAL_FILTERS
 
     # Counts span every row, not the page: one GROUP BY for email plus one count for
-    # manual, rather than five round trips.
-    per_status = {
-        r.status: r.n
+    # manual, rather than five round trips. Grouped by (status, reason_code) rather than
+    # status alone because `attention` needs the reason — same single round trip either way.
+    stale_before = datetime.now(UTC) - STUCK_AFTER
+    per_pair = {
+        (r.status, r.reason_code): (r.n, r.stale)
         for r in (
             await db.execute(
-                select(EmailDocument.status, func.count().label("n"))
+                select(
+                    EmailDocument.status,
+                    EmailDocument.reason_code,
+                    func.count().label("n"),
+                    func.count().filter(EmailDocument.created_at < stale_before).label("stale"),
+                )
                 .where(EmailDocument.tenant_id == tenant_id)
-                .group_by(EmailDocument.status)
+                .group_by(EmailDocument.status, EmailDocument.reason_code)
             )
         ).all()
     }
     manual_total = await count_rows(db, manual_stmt)
-    counts = {k: sum(per_status.get(s, 0) for s in v) for k, v in FILTERS.items()}
+    counts = {
+        k: sum(n for (s, _), (n, _stale) in per_pair.items() if s in v) for k, v in FILTERS.items()
+    }
     counts["success"] += manual_total
     counts["all"] = sum(counts.values())
+
+    # How many rows under each chip someone here could clear themselves. The page opens on
+    # `review`, so `skipped` is out of the default view; without this the causes that are
+    # one field away from fixed would be invisible again — the shape of the 2026-08-28
+    # `sender_not_allowed` incident. `received` carries no reason_code, so it is counted by
+    # age instead: claimed and never finished is a thing to look at, in flight is not.
+    attention = {
+        k: sum(
+            n if rc in FIXABLE_REASONS else stale if s == "received" else 0
+            for (s, rc), (n, stale) in per_pair.items()
+            if s in v
+        )
+        for k, v in FILTERS.items()
+    }
+    attention["all"] = sum(attention.values())
 
     total = counts[filter]
 
@@ -171,4 +222,5 @@ async def list_activity(
         offset=offset,
         data=rows[offset : offset + limit],
         counts=counts,
+        attention=attention,
     )

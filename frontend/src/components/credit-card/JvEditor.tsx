@@ -15,11 +15,17 @@ import type { FieldMapping } from '../../types/api'
 /** A correction the reviewer has made but not yet approved. Keyed by config field type. */
 export type Overrides = Record<string, FieldMapping>
 
+/** Which of the three things is stopping the post. The review screen says it at the
+ *  button; a disabled Approve with no sentence beside it makes the reviewer hunt the
+ *  dialog for a tinted row. */
+export type BlockReason = 'empty' | 'account' | 'unbalanced'
+
 export interface JvState {
   rows: JvRow[]
   /** Cannot post: no rows at all, or a JV that would not balance, or a blank account on a
    *  row carrying money. Each would be refused by Carmen, slower and less clearly. */
   blocked: boolean
+  reason: BlockReason | null
   totalDr: number
   totalCr: number
 }
@@ -30,7 +36,9 @@ interface Props {
   config: Record<string, unknown> | null
   configLoading: boolean
   overrides: Overrides
-  onOverride: (key: string, mapping: FieldMapping) => void
+  /** `byUser` false marks the background AI fill below, which the review screen does not
+   *  count as unsaved work of the reviewer's. */
+  onOverride: (key: string, mapping: FieldMapping, byUser?: boolean) => void
   onUndo: (key: string) => void
   /** Field types the AI chose during ingest (`mapping_guessed`), and ones it could not
    *  fill at all (`unmapped`). The first asks to be checked, the second to be filled. */
@@ -101,16 +109,28 @@ export default function JvEditor({
   // legs are display-only (a gateway invoice's 0.00 net) and are dropped before posting,
   // so an empty account on one is not a problem.
   const blankAccount = rows.some(r => (r.debit || r.credit) && !r.acc)
-  const blocked = rows.length === 0 || imbalanced || blankAccount
+  // Account before balance: a blank picker is one click from fixed and is the usual
+  // cause, while an imbalance is often the same problem seen from the other end.
+  const reason: BlockReason | null = !rows.length
+    ? 'empty'
+    : blankAccount
+      ? 'account'
+      : imbalanced
+        ? 'unbalanced'
+        : null
+  const blocked = reason !== null
 
   const loading = configLoading || mastersLoading
 
   useEffect(() => {
-    onState({ rows, blocked, totalDr, totalCr })
+    // No reason while the masters are still arriving: there are no rows yet, and "there
+    // is nothing to post" is a true sentence about an empty table that would flash under
+    // the Approve button on every open.
+    onState({ rows, blocked, reason: loading ? null : reason, totalDr, totalCr })
     // `rows` is rebuilt every render; the primitives below are what actually change, and
     // gating on them is what stops an update loop through the parent.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onState, blocked, rows.length, totalDr, totalCr, JSON.stringify(overrides)])
+  }, [onState, blocked, reason, loading, rows.length, totalDr, totalCr, JSON.stringify(overrides)])
 
   // ── AI fill for a payment type the reviewer just introduced ────────────────
   //
@@ -142,7 +162,7 @@ export default function JvEditor({
       .then(res => {
         if (!alive) return
         for (const [key, m] of Object.entries(res)) {
-          if (m?.dept && m?.acc) onOverride(key, { dept: m.dept, acc: m.acc })
+          if (m?.dept && m?.acc) onOverride(key, { dept: m.dept, acc: m.acc }, false)
         }
       })
       .catch(() => {
@@ -225,7 +245,10 @@ export default function JvEditor({
                 key={`${row.key}-${i}`}
                 className={`jv-row${changed ? ' jv-row--changed' : ''}${needed ? ' jv-row--needed' : ''}`}
               >
-                <td>
+                {/* `data-label` is what the cell wears as its own name once the table
+                    stacks on a phone — the same one markup path the queue's table uses,
+                    no duplicate DOM. */}
+                <td data-label={t('review.jvDept')}>
                   {first ? (
                     <CustomSearchSelect
                       value={row.dept || null}
@@ -239,7 +262,7 @@ export default function JvEditor({
                     <span className="jv-echo text-mono">{row.dept || '—'}</span>
                   )}
                 </td>
-                <td>
+                <td data-label={t('review.jvAccount')}>
                   {first ? (
                     <CustomSearchSelect
                       value={row.acc || null}
@@ -291,8 +314,12 @@ export default function JvEditor({
         <tfoot>
           <tr className={`jv-total${imbalanced ? ' jv-total--bad' : ''}`}>
             <td colSpan={3}>{imbalanced ? t('review.jvImbalanced') : t('review.jvBalanced')}</td>
-            <td className="jv-num text-mono">{fmt(totalDr)}</td>
-            <td className="jv-num text-mono">{fmt(totalCr)}</td>
+            <td className="jv-num text-mono" data-label={t('review.jvDebit')}>
+              {fmt(totalDr)}
+            </td>
+            <td className="jv-num text-mono" data-label={t('review.jvCredit')}>
+              {fmt(totalCr)}
+            </td>
           </tr>
         </tfoot>
       </table>
@@ -320,13 +347,14 @@ function Amount({
   const { t } = useT()
   const value = row[side]
   const other = row[side === 'debit' ? 'credit' : 'debit']
+  const label = t(side === 'debit' ? 'review.jvDebit' : 'review.jvCredit')
   // A leg with nothing on either side is the display-only zero (a gateway invoice's net);
   // it is dropped before posting, so it is not a figure to type into.
   if (!value && other) return <td className="jv-num jv-num--empty">—</td>
 
   const shared = row.lines.length > 1
   return (
-    <td className="jv-num">
+    <td className="jv-num" data-label={label}>
       <NumericInput
         className="jv-amt text-mono"
         // Two lines of one payment type produce two legs with the same description, so

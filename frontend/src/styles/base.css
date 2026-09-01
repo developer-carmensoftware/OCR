@@ -153,6 +153,11 @@
     0 0 0 1px oklch(0.16 0.02 258.7 / 0.08), 0 4px 8px oklch(0.16 0.02 258.7 / 0.04),
     0 12px 32px oklch(0.16 0.02 258.7 / 0.08);
 
+  /* Dialog scrim. One value, shared by every overlay — CustomModal and the review
+     dialog used to carry two different raw colours, so a dialog opened over a dialog
+     changed the darkness of the page as well as adding a layer. */
+  --scrim: oklch(0.16 0.02 258.7 / 0.5);
+
   /* ── Z-index scale ── */
   --z-sticky: 50;
   --z-dropdown: 200;
@@ -586,6 +591,8 @@ textarea:focus-visible {
   --shadow-card-hover:
     0 0 0 1px oklch(0.9 0.003 var(--neutral-h) / 0.16), 0 2px 4px rgba(0, 0, 0, 0.12),
     0 8px 24px rgba(0, 0, 0, 0.18);
+
+  --scrim: oklch(0.06 0.008 var(--neutral-h) / 0.66);
 
   --gray-50: oklch(0.2 0.003 var(--neutral-h));
   --gray-100: oklch(0.24 0.003 var(--neutral-h));

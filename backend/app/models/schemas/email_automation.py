@@ -151,9 +151,15 @@ class ActivityPage(Page[ActivityRow]):
     `unread_count` next to its `Page` fields. Keyed by filter name, and every key is present
     even at zero: a chip that appears only when it has rows makes the strip jump as
     documents resolve.
+
+    `attention` is the same shape and the same keys: of those rows, how many someone in the
+    BU could clear themselves. It exists because the page opens on `review`, so the chip
+    holding the fixable causes is out of the default view — see `FIXABLE_REASONS` in
+    routers/credit_card_activity.py for why `status` cannot answer this.
     """
 
     counts: dict[str, int] = Field(default_factory=dict)
+    attention: dict[str, int] = Field(default_factory=dict)
 
 
 class ReviewStatus(BaseModel):
