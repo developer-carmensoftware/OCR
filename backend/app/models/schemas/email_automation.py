@@ -152,14 +152,20 @@ class ActivityPage(Page[ActivityRow]):
     even at zero: a chip that appears only when it has rows makes the strip jump as
     documents resolve.
 
-    `attention` is the same shape and the same keys: of those rows, how many someone in the
-    BU could clear themselves. It exists because the page opens on `review`, so the chip
-    holding the fixable causes is out of the default view — see `FIXABLE_REASONS` in
-    routers/credit_card_activity.py for why `status` cannot answer this.
+    `attention` is the same shape and the same keys: of those rows, how many are wrong in
+    some way — every failure, a document claimed and never finished, a JV that posted
+    without its input-tax record. Not "what a person can fix"; see `_attention` in
+    routers/credit_card_activity.py for why that was the wrong line to draw.
+
+    `unseen` says which chips are holding an anomaly **nobody in this BU has looked at
+    yet** — the same keys again, and the one that renders the dot. Two fields rather than
+    one because they answer different questions: the dot asks "is there something new
+    here", and the screen-reader sentence beside it reports the size of the pile.
     """
 
     counts: dict[str, int] = Field(default_factory=dict)
     attention: dict[str, int] = Field(default_factory=dict)
+    unseen: dict[str, bool] = Field(default_factory=dict)
 
 
 class ReviewStatus(BaseModel):
@@ -183,6 +189,24 @@ class AutoPostIn(BaseModel):
     unrelated settings save — the same reason `TokenIn` is separate from `SettingsIn`."""
 
     auto_post: bool
+
+
+class QueueSeenIn(BaseModel):
+    """Which chip somebody just opened. Its own route rather than a side effect of reading
+    the list: a GET that writes would let a prefetch or a retry clear the BU's dot.
+
+    Only the chip name. What gets stored is the anomaly count the **server** computes for
+    it — a client-supplied number would let one bad value silence that BU's dot for good.
+    """
+
+    filter: str
+
+
+class QueueSeenOut(BaseModel):
+    """What was actually recorded, so the caller can see the server's own number."""
+
+    filter: str
+    seen: int
 
 
 class InputTaxOverrides(BaseModel):

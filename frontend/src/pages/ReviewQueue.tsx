@@ -165,6 +165,7 @@ export default function ReviewQueue() {
     total,
     counts,
     attention,
+    unseen,
     offset,
     setOffset,
     loading,
@@ -235,12 +236,17 @@ export default function ReviewQueue() {
         {(configured || !nothingEver) && (
           <div className="rq-tabs" role="tablist" aria-label={t('review.tabsLabel')}>
             {ACTIVITY_FILTERS.map(id => {
-              // How many rows this chip holds that went wrong in the last week. Three chips
-              // hold every row between them now, so a cause with nothing pointing at it is
-              // a cause nobody finds — the shape of the 2026-08-28 `sender_not_allowed`
-              // incident, whose whole family lives under `unposted`. Windowed rather than
-              // lifetime because nothing retries a failure: see `ATTENTION_WINDOW`.
+              // Whether this chip is holding something nobody here has looked at, and how
+              // big the pile under it is. Three chips hold every row between them now, so
+              // a cause with nothing pointing at it is a cause nobody finds — the shape of
+              // the 2026-08-28 `sender_not_allowed` incident, whose whole family lives
+              // under `unposted`.
+              //
+              // Two values because they answer different questions. Nothing retries a
+              // failure, so a dot drawn from the count alone would be lit for good;
+              // opening the chip is what puts it out, for the whole BU.
               const owed = attention[id] ?? 0
+              const isNew = !!unseen[id]
               return (
                 <button
                   key={id}
@@ -253,7 +259,7 @@ export default function ReviewQueue() {
                   {t(FILTER_LABEL[id])}
                   {/* Never colour alone (WCAG 1.4.1) — the dot is decorative and the
                     sentence beside it is what a screen reader reads out. */}
-                  {owed > 0 && (
+                  {isNew && (
                     <>
                       <span className="rq-tab-dot" aria-hidden="true" />
                       <span className="sr-only">

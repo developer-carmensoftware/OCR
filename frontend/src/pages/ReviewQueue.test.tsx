@@ -11,6 +11,9 @@ vi.mock('../lib/api/emailReview', async importOriginal => ({
   listActivity: vi.fn(),
   getReviewStatus: vi.fn(),
   setAutoPost: vi.fn(),
+  // Unstubbed this reaches apiFetch in jsdom. The hook fires it whenever the chip on
+  // screen is holding something nobody has looked at.
+  markChipSeen: vi.fn(),
 }))
 // The chrome needs AuthProvider and pulls credits over the network. Neither has anything
 // to do with which of its states this page picks, which is what these tests are about.
@@ -63,7 +66,9 @@ function mount(
   rows: ReviewDocument[],
   counts: Record<string, number> = { ...ZERO, all: rows.length, review: rows.length },
   total = rows.length,
-  attention: Record<string, number> = ZERO
+  attention: Record<string, number> = ZERO,
+  // Which chips are holding something unlooked-at — what actually draws the dot.
+  unseen: Record<string, boolean> = {}
 ) {
   vi.mocked(api.getReviewStatus).mockResolvedValue(s)
   vi.mocked(api.listActivity).mockResolvedValue({
@@ -73,6 +78,7 @@ function mount(
     data: rows,
     counts,
     attention,
+    unseen,
   })
   return render(
     <LanguageProvider>
@@ -307,11 +313,14 @@ describe('the status filter chips', () => {
     // The dot means "something is off", not "you can fix it" — a failure nobody in the BU
     // can clear is still a failure, and every customer-clearable cause now shares one chip
     // with the rest. Without the marker the 2026-08-28 incident has its conditions back.
-    mount(status(), [doc()], { ...ZERO, all: 60, review: 1, unposted: 59 }, 1, {
-      ...ZERO,
-      all: 5,
-      unposted: 5,
-    })
+    mount(
+      status(),
+      [doc()],
+      { ...ZERO, all: 60, review: 1, unposted: 59 },
+      1,
+      { ...ZERO, all: 5, unposted: 5 },
+      { unposted: true }
+    )
     await screen.findByText('KTC')
     const unposted = screen.getByRole('tab', { name: /Not posted/ })
     expect(unposted).toHaveTextContent('5 need attention')
@@ -324,7 +333,14 @@ describe('the status filter chips', () => {
   it('marks a JV that posted without its input-tax record', async () => {
     // The quietest outcome in the system: the row wears the Success pill and nothing else
     // in the app says the VAT record never happened.
-    mount(status(), [doc()], { ...ZERO, all: 20, success: 20 }, 1, { ...ZERO, all: 2, success: 2 })
+    mount(
+      status(),
+      [doc()],
+      { ...ZERO, all: 20, success: 20 },
+      1,
+      { ...ZERO, all: 2, success: 2 },
+      { success: true }
+    )
     // The strip renders as soon as status lands, a beat before the counts do — wait for a
     // row, or this asserts against the empty first paint.
     await screen.findByText('KTC')
@@ -481,5 +497,64 @@ describe('the auto-post switch', () => {
     mount(status({ enabled: false, blockers: ['disabled'] }), [], ZERO)
     await screen.findByText('Let statements post themselves')
     expect(screen.queryByRole('button', { name: /Automation settings/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('the dot the whole business unit shares', () => {
+  it('puts it out for everyone once somebody opens the chip', async () => {
+    // Nothing retries a failure, so the count behind the dot never falls on its own. What
+    // ends it is a person looking — and because the mark lives on the server, it ends for
+    // the colleague on the next desk too.
+    mount(
+      status(),
+      [doc()],
+      { ...ZERO, all: 60, review: 1, unposted: 59 },
+      1,
+      { ...ZERO, all: 5, unposted: 5 },
+      { unposted: true }
+    )
+    await screen.findByText('KTC')
+    expect(
+      screen.getByRole('tab', { name: /Not posted/ }).querySelector('.rq-tab-dot')
+    ).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: /Not posted/ }))
+    await waitFor(() => expect(api.markChipSeen).toHaveBeenCalledWith('unposted'))
+    // Cleared locally rather than by refetching: the POST changes what the next GET would
+    // say, and asking it costs a round trip to be told what we already know.
+    await waitFor(() =>
+      expect(
+        screen.getByRole('tab', { name: /Not posted/ }).querySelector('.rq-tab-dot')
+      ).not.toBeInTheDocument()
+    )
+  })
+
+  it('marks nothing when there is nothing wrong under the open chip', async () => {
+    // The guard against a write on every page load. The gate is the same value the write
+    // clears, which is also what stops it looping.
+    mount(status(), [doc()], { ...ZERO, all: 60, review: 1, unposted: 59 }, 1, ZERO, {})
+    await screen.findByText('KTC')
+    fireEvent.click(screen.getByRole('tab', { name: /Not posted/ }))
+    await waitFor(() => expect(vi.mocked(api.listActivity)).toHaveBeenCalledTimes(2))
+    expect(api.markChipSeen).not.toHaveBeenCalled()
+  })
+
+  it('survives a mark that never reaches the server', async () => {
+    // A dot that stays on until next time is not worth an error message, and must never
+    // be mistaken for the list itself having failed.
+    vi.mocked(api.markChipSeen).mockRejectedValue(new Error('offline'))
+    mount(
+      status(),
+      [doc()],
+      { ...ZERO, all: 60, review: 1, unposted: 59 },
+      1,
+      { ...ZERO, all: 5, unposted: 5 },
+      { unposted: true }
+    )
+    await screen.findByText('KTC')
+    fireEvent.click(screen.getByRole('tab', { name: /Not posted/ }))
+    await waitFor(() => expect(api.markChipSeen).toHaveBeenCalled())
+    expect(screen.queryByText('Could not load the queue')).not.toBeInTheDocument()
+    expect(await screen.findByText('KTC')).toBeInTheDocument()
   })
 })

@@ -26,9 +26,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import SessionInfo, get_current_session
 from app.database import get_db
+from app.exceptions import ValidationError
 from app.models.business import CreditCard, OCRTask
-from app.models.email_automation import EmailDocument
-from app.models.schemas.email_automation import ActivityPage, ActivityRow
+from app.models.email_automation import EmailDocument, EmailQueueSeen
+from app.models.schemas.email_automation import ActivityPage, ActivityRow, QueueSeenIn, QueueSeenOut
 from app.routers.email_review import to_review_row
 from app.utils.pagination import count_rows
 
@@ -79,34 +80,21 @@ FIXABLE_REASONS = (
 # enough that a document being extracted during a poll never flickers a dot on.
 STUCK_AFTER = timedelta(hours=1)
 
-# How far back the dot looks. **Not** how far back the chip lists — `counts` spans every row
-# and always will.
-#
-# There is no retry (`ponytail: single pass, no retry of a failed document` in
-# email_ingest_service.py) and the mail is already `\Seen`, so a failed row is terminal:
-# fixing the filename rule today does not clear the 46 `no_rule_match` rows behind it. A dot
-# counting those is on for ever, and a warning that never goes out is one nobody reads by
-# the third day — including the day something new breaks.
-#
-# Seven days because the documents this handles arrive monthly: a rule that rejected this
-# month's statement stays marked for a week, which is long enough to notice and fix before
-# next month's arrives, and short enough that the dot means "recently" rather than "ever".
-ATTENTION_WINDOW = timedelta(days=7)
-
 # Sorting key for a row whose timestamp is NULL. Aware, because everything it is compared
 # against comes back from Postgres aware and Python refuses to order the two together.
 _EPOCH = datetime.min.replace(tzinfo=UTC)
 
 
-def _attention(status: str, reason_code: str | None, recent: int, stuck: int, noted: int) -> int:
-    """How many rows in this (status, reason_code) group are **anomalous and recent**.
+def _attention(status: str, reason_code: str | None, n: int, stuck: int, noted: int) -> int:
+    """How many rows in this (status, reason_code) group are **anomalous**.
 
-    The dot this feeds means "something went wrong lately", not "you can fix this". It used
-    to mean the latter, which made it silent about every failure a person cannot clear — and
-    a dot that covers only some anomalies is a dot nobody can read the absence of.
+    The dot this feeds means "something is off here", not "you can fix this". It used to
+    mean the latter, which made it silent about every failure a person cannot clear — and a
+    dot that covers only some anomalies is a dot nobody can read the absence of.
 
-    Every count it reads is already inside `ATTENTION_WINDOW`; see there for why a lifetime
-    figure would leave the dot on for ever.
+    A lifetime figure, deliberately. Nothing retries a failure, so what puts the dot out is
+    the mark in `email_queue_seen` — somebody looking — rather than a clock: this number is
+    what the mark is measured against, so it has to count the same things every time.
 
     - `failed` / `rejected`: all of them. A document that did not post is off regardless of
       who can act on it.
@@ -118,12 +106,12 @@ def _attention(status: str, reason_code: str | None, recent: int, stuck: int, no
       record did not. Nothing else in the app says so, and the row looks like a success.
     """
     if status in ("failed", "rejected"):
-        return recent
+        return n
     if status == "received":
         return stuck
     if status == "posted":
         return noted
-    return recent if reason_code in FIXABLE_REASONS else 0
+    return n if reason_code in FIXABLE_REASONS else 0
 
 
 def _manual_row(card: CreditCard, task: OCRTask) -> ActivityRow:
@@ -150,27 +138,60 @@ def _manual_row(card: CreditCard, task: OCRTask) -> ActivityRow:
 
 
 def _counts_stmt(tenant_id: uuid.UUID, now: datetime):
-    """Every chip's count and every chip's dot, in one GROUP BY.
+    """Every chip's count and every chip's anomalies, in one GROUP BY.
 
-    `n` spans the tenant's whole history, because it is what the chip and the Pager report.
-    The other three are the dot's, and each is confined to `ATTENTION_WINDOW` — a mock DB
-    cannot execute a date predicate, so `test_the_dot_only_looks_at_the_last_week` asserts
-    them against the compiled SQL instead.
+    All three span the tenant's whole history. The only clock is `STUCK_AFTER`, and it is
+    not a staleness policy: `received` carries no reason code, so age is the sole thing
+    telling a document being extracted right now from one the pipeline abandoned. What
+    stops the dot being permanently lit is the mark in `email_queue_seen`, not a window
+    here — a window was tried (`ATTENTION_WINDOW`, 7 days) and was only ever a guess about
+    how long somebody stays interested.
     """
-    fresh = EmailDocument.created_at >= now - ATTENTION_WINDOW
     return (
         select(
             EmailDocument.status,
             EmailDocument.reason_code,
             func.count().label("n"),
-            func.count().filter(fresh).label("recent"),
-            # Claimed and not finished: old enough to be stuck, new enough to matter.
-            func.count().filter(EmailDocument.created_at < now - STUCK_AFTER, fresh).label("stuck"),
-            func.count().filter(EmailDocument.error_message.is_not(None), fresh).label("noted"),
+            # Claimed and never finished. Age is the only thing separating it from a
+            # document being read during this very poll.
+            func.count().filter(EmailDocument.created_at < now - STUCK_AFTER).label("stuck"),
+            func.count().filter(EmailDocument.error_message.is_not(None)).label("noted"),
         )
         .where(EmailDocument.tenant_id == tenant_id)
         .group_by(EmailDocument.status, EmailDocument.reason_code)
     )
+
+
+async def _per_pair(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
+    """The GROUP BY, fetched. Both the list and the mark fold over the same numbers, so
+    neither can disagree with the other about what this BU's dot is worth."""
+    return {
+        (r.status, r.reason_code): (r.n, r.stuck, r.noted)
+        for r in (await db.execute(_counts_stmt(tenant_id, datetime.now(UTC)))).all()
+    }
+
+
+def _anomalies(per_pair: dict) -> dict[str, int]:
+    """Anomalies per chip — the number the mark is measured against."""
+    return {
+        k: sum(
+            _attention(s, rc, n, stuck, noted)
+            for (s, rc), (n, stuck, noted) in per_pair.items()
+            if s in v
+        )
+        for k, v in FILTERS.items()
+    }
+
+
+async def _seen(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str, int]:
+    """What this BU has already been shown, chip → count.
+
+    `db.get`, not a `select` — the mock DB in the tests stubs `db.get` to None and drives
+    `db.execute` by a positional `side_effect`, so reading this with `execute` would shift
+    every other call in the handler by one.
+    """
+    row = await db.get(EmailQueueSeen, tenant_id)
+    return dict(row.seen or {}) if row else {}
 
 
 def _email_stmt(tenant_id: uuid.UUID, statuses: tuple[str, ...] | None):
@@ -234,10 +255,7 @@ async def list_activity(
     # Counts span every row, not the page: one GROUP BY for email plus one count for
     # manual, rather than a round trip per chip. Grouped by (status, reason_code) rather
     # than status alone because `_attention` needs the reason — same single round trip.
-    per_pair = {
-        (r.status, r.reason_code): (r.n, r.recent, r.stuck, r.noted)
-        for r in (await db.execute(_counts_stmt(tenant_id, datetime.now(UTC)))).all()
-    }
+    per_pair = await _per_pair(db, tenant_id)
     manual_total = await count_rows(db, manual_stmt)
     counts = {
         k: sum(n for (s, _), (n, *_) in per_pair.items() if s in v) for k, v in FILTERS.items()
@@ -245,19 +263,18 @@ async def list_activity(
     counts["success"] += manual_total
     counts["all"] = sum(counts.values())
 
-    # How many rows under each chip went wrong lately — see `_attention` for what that
+    # How many rows under each chip are wrong in some way — see `_attention` for what that
     # covers and why it is not "what a person can fix". The strip is three chips now, so a
     # cause nothing points at is a cause nobody finds: that is the 2026-08-28
     # `sender_not_allowed` incident, and `unposted` is where all seven of its siblings live.
-    attention = {
-        k: sum(
-            _attention(s, rc, recent, stuck, noted)
-            for (s, rc), (_n, recent, stuck, noted) in per_pair.items()
-            if s in v
-        )
-        for k, v in FILTERS.items()
-    }
+    attention = _anomalies(per_pair)
     attention["all"] = sum(attention.values())
+
+    # …and which of those chips is holding something this BU has not looked at. The count
+    # sizes the pile for the screen-reader sentence; this is what lights the dot, so that a
+    # failure nobody can retry stops shouting once somebody has actually seen it.
+    seen = await _seen(db, tenant_id)
+    unseen = {k: v > seen.get(k, 0) for k, v in attention.items()}
 
     total = counts[filter]
 
@@ -281,4 +298,43 @@ async def list_activity(
         data=rows[offset : offset + limit],
         counts=counts,
         attention=attention,
+        unseen=unseen,
     )
+
+
+@router.post("/activity/seen", response_model=QueueSeenOut)
+async def mark_chip_seen(
+    body: QueueSeenIn,
+    db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(get_current_session),
+):
+    """Somebody in this BU opened that chip — put its dot out for all of them.
+
+    The count stored is the one **this** request computes, never a number the caller sent:
+    a client is free to be wrong, and one bad value would silence that BU's dot for good.
+
+    Anyone with a session for the BU may do it, the same rule approve and auto-post follow.
+    That is the point rather than a compromise — the queue is shared, so "has anyone here
+    seen this yet" is a fact about the BU and not about a browser or a person.
+    """
+    if body.filter not in FILTERS:
+        # A trust boundary: the value becomes a key in the stored JSON. `all` is rejected
+        # with the nonsense, deliberately — it has no chip and therefore no dot.
+        raise ValidationError(f"Unknown filter: {body.filter}")
+
+    tenant_id = uuid.UUID(str(session.tenant_id))
+    total = _anomalies(await _per_pair(db, tenant_id))[body.filter]
+
+    row = await db.get(EmailQueueSeen, tenant_id)
+    if row is None:
+        # ponytail: read-then-add, so two people opening the same chip in the same second
+        # race for the insert and one gets an IntegrityError — a 500 on a UI convenience
+        # the browser already swallows. `pg_insert(...).on_conflict_do_update` if it is
+        # ever seen. The same idiom `save_settings` uses for its own one-row-per-BU table.
+        row = EmailQueueSeen(tenant_id=tenant_id, seen={})
+        db.add(row)
+    # Replaced, not mutated: SQLAlchemy does not track in-place changes to a JSON column,
+    # so `row.seen[k] = v` would commit nothing at all.
+    row.seen = {**(row.seen or {}), body.filter: total}
+    await db.commit()
+    return QueueSeenOut(filter=body.filter, seen=total)

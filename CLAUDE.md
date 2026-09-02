@@ -372,7 +372,7 @@ EMAIL_INGEST_ADDRESS=ocr@carmensoftware.com   # dev default; per-BU routing uses
 | Billing | `credit_packs`, `tenant_credits`, `credit_ledger`, `credit_orders`, `billing_documents`, `tenant_subscriptions`, `ar_customer_profiles`, `document_sequences` |
 | Reference | `model_pricing` |
 | Business data | `ocr_sessions`, `ocr_tasks`, `credit_cards`, `ap_invoices`, `correction_feedback`, `bug_reports`, `consent_logs`, `user_notifications` |
-| Email ingestion | `email_ingest_settings` (per-BU tag, rules, PDF passwords, posting credential), `email_documents` (one row per message×attachment — dedupe key **and** audit trail) — see [`docs/email-automation/04-data-model.md`](docs/email-automation/04-data-model.md) |
+| Email ingestion | `email_ingest_settings` (per-BU tag, rules, PDF passwords, posting credential), `email_documents` (one row per message×attachment — dedupe key **and** audit trail), `email_queue_seen` (per-BU acknowledgement of the review queue's attention dot; deliberately **not** a column on `email_ingest_settings`, whose `updated_at` gates a per-minute IMAP sweep) — see [`docs/email-automation/04-data-model.md`](docs/email-automation/04-data-model.md) |
 | Observability | `llm_usage_logs`, `audit_logs`, `performance_logs`, `outbound_call_logs` |
 | Analytics | `daily_usage_summary`, `daily_model_cost`, `monthly_usage_summary`, `anomaly_alerts`, `job_runs` |
 | Migration tracker | `_supabase_migrations` (Supabase CLI tracking) |

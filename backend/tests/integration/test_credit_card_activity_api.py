@@ -71,7 +71,7 @@ def _manual(**overrides):
     return (card, SimpleNamespace(original_filename="scanned_by_hand.pdf"))
 
 
-def _db(*, statuses=None, pairs=None, manual_count, emails, manuals):
+def _db(*, statuses=None, pairs=None, manual_count, emails, manuals, seen=None):
     """Drive the four `db.execute` calls the handler makes, in order.
 
     1. GROUP BY status, reason_code over email_documents → .all()
@@ -79,22 +79,24 @@ def _db(*, statuses=None, pairs=None, manual_count, emails, manuals):
     3. the email window                                  → .scalars().all()
     4. the manual window (only when the filter admits manual rows) → .all()
 
-    `statuses` is the shorthand most tests want: {status: n}, no reason code and nothing
-    the dot would look at. `pairs` is the long form the `attention` tests need:
-    {(status, reason_code): (n, recent, stuck, noted)} — `n` is the lifetime count the chip
-    reports, and the other three are what the SQL already narrowed to `ATTENTION_WINDOW`:
-    how many arrived inside it, how many of those are stuck, how many carry an
-    `error_message`.
+    `statuses` is the shorthand most tests want: {status: n}, no reason code, nothing
+    stuck, nothing noted. `pairs` is the long form the `attention` tests need:
+    {(status, reason_code): (n, stuck, noted)} — `stuck` is how many are older than
+    `STUCK_AFTER`, `noted` how many carry an `error_message`.
+
+    `seen` is the `email_queue_seen` row, read with `db.get` rather than `db.execute`
+    precisely so it stays out of the ordering above — None means this BU has never opened
+    a chip, which is what `make_mock_db` already stubs.
     """
     db = make_mock_db()
 
     grouped = MagicMock()
     grouped.all.return_value = [
-        SimpleNamespace(status=s, reason_code=None, n=n, recent=0, stuck=0, noted=0)
+        SimpleNamespace(status=s, reason_code=None, n=n, stuck=0, noted=0)
         for s, n in (statuses or {}).items()
     ] + [
-        SimpleNamespace(status=s, reason_code=rc, n=n, recent=recent, stuck=stuck, noted=noted)
-        for (s, rc), (n, recent, stuck, noted) in (pairs or {}).items()
+        SimpleNamespace(status=s, reason_code=rc, n=n, stuck=stuck, noted=noted)
+        for (s, rc), (n, stuck, noted) in (pairs or {}).items()
     ]
     counted = MagicMock()
     counted.scalar_one.return_value = manual_count
@@ -104,6 +106,8 @@ def _db(*, statuses=None, pairs=None, manual_count, emails, manuals):
     manual_window.all.return_value = manuals
 
     db.execute.side_effect = [grouped, counted, email_window, manual_window]
+    if seen is not None:
+        db.get.return_value = SimpleNamespace(seen=seen)
     return db
 
 
@@ -172,9 +176,9 @@ def test_everything_that_did_not_post_lands_under_one_chip():
     column, not the strip."""
     db = _db(
         pairs={
-            ("skipped", "no_rule_match"): (46, 46, 0, 0),
-            ("failed", "carmen_rejected"): (3, 3, 0, 0),
-            ("rejected", "rejected_by_reviewer"): (2, 2, 0, 0),
+            ("skipped", "no_rule_match"): (46, 0, 0),
+            ("failed", "carmen_rejected"): (3, 0, 0),
+            ("rejected", "rejected_by_reviewer"): (2, 0, 0),
         },
         manual_count=0,
         emails=[],
@@ -193,9 +197,9 @@ def test_attention_marks_every_anomaly_not_only_the_fixable_ones():
     read the absence of. A filename rule doing its job is the exception: not an anomaly."""
     db = _db(
         pairs={
-            ("skipped", "no_rule_match"): (46, 46, 0, 0),
-            ("skipped", "unsupported_attachment"): (12, 12, 0, 0),
-            ("failed", "carmen_rejected"): (3, 3, 0, 0),
+            ("skipped", "no_rule_match"): (46, 0, 0),
+            ("skipped", "unsupported_attachment"): (12, 0, 0),
+            ("failed", "carmen_rejected"): (3, 0, 0),
         },
         manual_count=0,
         emails=[],
@@ -212,31 +216,28 @@ def test_attention_marks_every_anomaly_not_only_the_fixable_ones():
     assert body["counts"]["unposted"] == 61
 
 
-def test_the_dot_only_looks_at_the_last_week():
-    """There is no retry, so a failed row is terminal: fixing the filename rule never
-    clears the 46 `no_rule_match` rows behind it. A dot counting those is on for ever, and
-    a warning that never goes out is one nobody reads by the day something new breaks.
+def test_the_dot_spans_every_anomaly_rather_than_a_window():
+    """The 7-day window is gone: what puts the dot out is the mark in `email_queue_seen`,
+    not a clock. Compiled, not executed, for the same reason as the anti-join above — the
+    mock DB runs no SQL, and a date bound sneaking back in would be invisible otherwise.
 
-    Compiled, not executed, for the same reason as the anti-join above: the mock DB runs no
-    SQL, and the window lives entirely in these `FILTER` clauses. `n` — what the chip and
-    the Pager report — must stay unwindowed, which is the other half of the assertion.
+    `STUCK_AFTER` stays, and is not the same kind of thing: `received` carries no reason
+    code, so age is the only thing telling a document being read right now from one the
+    pipeline abandoned.
     """
     sql = str(
         _counts_stmt(uuid.uuid4(), NOW).compile(compile_kwargs={"literal_binds": True})
     ).lower()
-    week_ago = str((NOW - timedelta(days=7)).replace(tzinfo=None))
-    # Three of the four counts are narrowed to the window; `count(*)` alone is not.
-    assert sql.count(week_ago) == 3
-    assert "count(*) as n" in sql
-    # And the stuck count is the window AND the hour, not one or the other.
+    assert str((NOW - timedelta(days=7)).replace(tzinfo=None)) not in sql
     assert str((NOW - timedelta(hours=1)).replace(tzinfo=None)) in sql
+    assert "count(*) as n" in sql
 
 
 def test_a_posted_document_whose_input_tax_failed_still_gets_a_dot():
     """The quietest outcome in the system: the JV reached Carmen, the VAT record did not.
     The row wears the Success pill and nothing else in the app says otherwise."""
     db = _db(
-        pairs={("posted", None): (20, 20, 0, 2)},
+        pairs={("posted", None): (20, 0, 2)},
         manual_count=0,
         emails=[],
         manuals=[],
@@ -253,7 +254,7 @@ def test_a_document_still_being_read_is_not_a_stuck_one():
     must not put a dot on the chip. Only age separates the two, and it carries no
     reason_code to separate them any other way."""
     db = _db(
-        pairs={("received", None): (4, 4, 1, 0)},
+        pairs={("received", None): (4, 1, 0)},
         manual_count=0,
         emails=[],
         manuals=[],
@@ -293,3 +294,115 @@ def test_an_unknown_filter_lands_on_all_rather_than_400ing():
 
     assert res.status_code == 200
     assert res.json()["total"] == 2
+
+
+# ── The dot, and what puts it out ────────────────────────────────────────────
+
+
+def test_a_chip_someone_already_opened_has_no_dot():
+    """The whole point: nothing retries a failure, so 49 dead documents would light the dot
+    for ever. The mark is what ends that — and it ends only the dot, never the count, which
+    still sizes the pile for the sentence a screen reader speaks."""
+    db = _db(
+        pairs={("skipped", "no_rule_match"): (49, 0, 0)},
+        manual_count=0,
+        emails=[],
+        manuals=[],
+        seen={"unposted": 49},
+    )
+    with make_test_client(db, session=SESSION) as client:
+        body = client.get(BASE, headers=AUTH).json()
+
+    assert body["unseen"]["unposted"] is False
+    assert body["attention"]["unposted"] == 49
+    assert body["counts"]["unposted"] == 49
+
+
+def test_a_newer_anomaly_brings_the_dot_back():
+    """A mark is a high-water line, not an off switch."""
+    db = _db(
+        pairs={("skipped", "no_rule_match"): (50, 0, 0)},
+        manual_count=0,
+        emails=[],
+        manuals=[],
+        seen={"unposted": 49},
+    )
+    with make_test_client(db, session=SESSION) as client:
+        assert client.get(BASE, headers=AUTH).json()["unseen"]["unposted"] is True
+
+
+def test_opening_one_chip_does_not_silence_another():
+    """A mark per chip, not one for the queue. Looking at the failures says nothing about
+    a JV that posted without its input-tax record."""
+    db = _db(
+        pairs={
+            ("skipped", "no_rule_match"): (49, 0, 0),
+            ("posted", None): (20, 0, 2),
+        },
+        manual_count=0,
+        emails=[],
+        manuals=[],
+        seen={"unposted": 49},
+    )
+    with make_test_client(db, session=SESSION) as client:
+        unseen = client.get(BASE, headers=AUTH).json()["unseen"]
+
+    assert unseen["unposted"] is False
+    assert unseen["success"] is True
+
+
+def test_a_business_unit_that_has_never_looked_sees_every_dot():
+    """No row is not an error — it is the first visit."""
+    db = _db(
+        pairs={("skipped", "no_rule_match"): (49, 0, 0)},
+        manual_count=0,
+        emails=[],
+        manuals=[],
+    )
+    with make_test_client(db, session=SESSION) as client:
+        assert client.get(BASE, headers=AUTH).json()["unseen"]["unposted"] is True
+
+
+def test_marking_a_chip_seen_stores_the_count_the_server_computed():
+    """Never the caller's number: a client is free to be wrong, and one bad value would
+    silence that BU's dot for good."""
+    db = _db(
+        pairs={("skipped", "no_rule_match"): (49, 0, 0)},
+        manual_count=0,
+        emails=[],
+        manuals=[],
+    )
+    with make_test_client(db, session=SESSION) as client:
+        res = client.post(f"{BASE}/seen", headers=AUTH, json={"filter": "unposted", "seen": 0})
+
+    assert res.status_code == 200
+    assert res.json() == {"filter": "unposted", "seen": 49}
+    # No row yet, so the first mark creates one rather than 404ing the way auto-post does.
+    assert db.add.called
+
+
+def test_marking_a_chip_seen_keeps_the_other_chips_marks():
+    """The stored value is replaced, not mutated — SQLAlchemy does not track an in-place
+    write to a JSON column, so `row.seen[k] = v` would commit nothing at all."""
+    db = _db(
+        pairs={("posted", None): (20, 0, 2)},
+        manual_count=0,
+        emails=[],
+        manuals=[],
+        seen={"unposted": 49},
+    )
+    with make_test_client(db, session=SESSION) as client:
+        client.post(f"{BASE}/seen", headers=AUTH, json={"filter": "success"})
+
+    assert db.get.return_value.seen == {"unposted": 49, "success": 2}
+
+
+def test_only_a_real_chip_can_be_marked_seen():
+    """A trust boundary: the value becomes a key in stored JSON. `all` is refused with the
+    nonsense — it has no chip on the strip, so it has no dot to put out."""
+    for bad in ("all", "nonsense", ""):
+        db = _db(statuses={"posted": 1}, manual_count=0, emails=[], manuals=[])
+        with make_test_client(db, session=SESSION) as client:
+            assert (
+                client.post(f"{BASE}/seen", headers=AUTH, json={"filter": bad}).status_code == 400
+            )

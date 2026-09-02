@@ -26,6 +26,9 @@ export const API = {
     // The module landing page's list: email documents AND manual scans, one envelope.
     // Deliberately not under /email — it outgrew that prefix the day Source became a column.
     activity: `${V1}/credit-card/activity`,
+    // "somebody in this BU has now looked at that chip". A POST rather than a flag on the
+    // GET above: a read that writes would let a prefetch or a retry put the dot out.
+    activitySeen: `${V1}/credit-card/activity/seen`,
     tasks: `${V1}/credit-card/tasks`,
     task: (taskId: string) => `${V1}/credit-card/tasks/${taskId}`,
     mapping: {

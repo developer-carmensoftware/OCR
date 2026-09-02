@@ -91,14 +91,18 @@ export interface ReviewStatus {
  *  the page — same shape reason `NotificationList` carries `unread_count`. */
 export interface ActivityPage extends Page<ReviewDocument> {
   counts: Record<string, number>
-  /** Same keys as `counts`, but a different question: of those rows, how many went wrong
-   *  **in the last week** — a failure of any kind, a document claimed and never finished,
-   *  or a JV that posted without its input-tax record.
+  /** Same keys as `counts`: of those rows, how many are wrong in some way — a failure of
+   *  any kind, a document claimed and never finished, or a JV that posted without its
+   *  input-tax record. Not "what you can fix"; see `_attention` in
+   *  routers/credit_card_activity.py for why that was the wrong line to draw.
    *
-   *  Not "what you can fix" (see `_attention`), and deliberately not a lifetime figure:
-   *  nothing retries a failed document, so a dot counting every failure ever would be lit
-   *  for good — see `ATTENTION_WINDOW`, both in routers/credit_card_activity.py. */
+   *  A lifetime figure. It sizes the pile for the screen-reader sentence; it is **not**
+   *  what decides whether the dot shows. */
   attention: Record<string, number>
+  /** Same keys again: which chips are holding an anomaly nobody in this BU has looked at.
+   *  This is what renders the dot. Nothing retries a failure, so a dot drawn from
+   *  `attention` alone would be lit for good — `markChipSeen` is what puts it out. */
+  unseen: Record<string, boolean>
 }
 
 export async function listActivity(
@@ -111,6 +115,22 @@ export async function listActivity(
   )
   if (!res.ok) throw new Error(`Activity fetch failed (${res.status})`)
   return res.json() as Promise<ActivityPage>
+}
+
+/**
+ * Put that chip's dot out — for everyone in the business unit, not just this browser.
+ *
+ * The server stores the anomaly count it computes for itself; nothing is sent but the chip
+ * name. Failure is silently survivable (the dot simply stays on until next time), so the
+ * caller does not await this or surface an error for it.
+ */
+export async function markChipSeen(filter: ChipFilter): Promise<void> {
+  const res = await apiFetch(API.creditCard.activitySeen, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filter }),
+  })
+  if (!res.ok) throw new Error(`Could not mark seen (${res.status})`)
 }
 
 export async function getPending(id: string): Promise<ReviewDocumentDetail> {

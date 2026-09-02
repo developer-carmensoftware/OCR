@@ -916,10 +916,44 @@ missed. `counts` is exempt only because it is not presented as progress — it s
 the reader is about to page through, which is why it survives in the `Pager` and not on the
 chip.
 
-**#46 is a placeholder.** `ATTENTION_WINDOW` is a guess about how long someone stays
-interested, and the thing that should put the dot out is a person looking at the chip. The
-agreed replacement — one *per-BU* timestamp behind its own endpoint, with `GET /activity`
-returning `newest_anomaly_at` per chip instead of a count — is deliberately a separate
-change. A per-browser mark was built and discarded first: `clearAppStorage()` fires on
-session expiry, so it would have been wiped several times a day, and a read receipt is the
-wrong model for a queue a whole BU shares. See the changelog entry of 2026-09-02 15:40.
+### Amendment 2026-09-02 (later) — #46 replaced: the dot is put out by a person
+
+`ATTENTION_WINDOW` was a placeholder and said so. Any number of days is a guess about how
+long somebody stays interested; what should end the dot is somebody *looking*.
+
+| # | Change | Why |
+|---|---|---|
+| 47 | **`ATTENTION_WINDOW` is deleted.** `attention` is a lifetime count again, and a new `unseen: dict[str, bool]` decides the dot: true while a chip's anomaly count is above the number this BU has already acknowledged. The mark is one row per tenant in a new **`email_queue_seen`** table, written by `POST /api/v1/credit-card/activity/seen` with the count the *server* computes. | The mark is per **business unit**, not per browser and not per person: the queue is shared, so "has anybody here seen this" is a fact about the BU. `attention` survives beside `unseen` because the two answer different questions — the dot asks whether anything is new, the screen-reader sentence beside it reports the size of the pile. |
+
+**Three designs were tried before this one.** Each is recorded because each looks obviously
+right until you check it:
+
+- **A per-browser mark in `localStorage`.** Killed by `clearAppStorage()`, which fires on
+  session *expiry* (`AuthContext.tsx:76`), not just logout — sessions die on a 30-minute
+  clock, so the mark would be wiped several times a day and the dot relit at every login,
+  the exact failure it was built to fix. And a read receipt is the wrong model for a shared
+  queue.
+- **A per-BU *timestamp* compared against `max(created_at)`** — what the note this replaces
+  actually prescribed. It is wrong: `created_at` is when the document **arrived**, not when
+  it became anomalous. A document that parks on Monday, gets a mark set on Tuesday and is
+  rejected on Wednesday still carries Monday, so the dot never comes back; the same holds
+  for a JV that posts without its input-tax record days after arrival, which is the case
+  #43 exists to surface. On those the timestamp is strictly worse than the placeholder. A
+  count is evaluated at read time and has no such hole.
+- **A column on `email_ingest_settings`**, which already has the one row per BU. That row is
+  booby trapped: `tags_awaiting_confirmation` gates a **per-minute IMAP sweep** on its
+  `updated_at`, and `WriterMixin`'s `before_update` listener stamps `updated_by` on any ORM
+  write. A filter-chip click would reopen a mailbox connection and rewrite who last changed
+  the BU's email settings. A Core `UPDATE` dodges both and nothing enforces that it keeps
+  being used.
+
+**The ceiling, stated.** A high-water count assumes anomaly counts only rise. They do today:
+every anomalous status is terminal, a stuck `received` row never resolves (single pass, no
+retry), and nothing purges `email_documents`. Add a retry sweep and a count can fall, which
+costs exactly one missed dot — the `ponytail:` comment at the write site names a per-chip
+timestamp as the upgrade path, and the paragraph above says why it is not the starting
+point.
+
+**Not changed:** the three chips (#41), the opening chip following `auto_post` (#42), what
+counts as an anomaly (#43), and #45's rule that the only number on a chip is one that can go
+down — `attention` is not printed on the strip, only spoken beside the dot.
