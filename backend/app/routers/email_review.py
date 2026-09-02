@@ -249,6 +249,7 @@ async def approve(
         extracted=ExtractedCreditCardData.model_validate(body.extracted),
         rows=body.rows,
         post_input_tax_record=body.post_input_tax,
+        input_tax=body.input_tax,
     )
     return ApproveResult(**result)
 

@@ -122,6 +122,55 @@ def test_no_record_when_the_bank_has_no_registered_identity():
     assert _build(bank=None) is None
 
 
+# ── What the reviewer corrected ───────────────────────────────────────────────
+#
+# Two of the refusals above are dead ends for the machine and one field for a human,
+# which is what the review screen's input-tax panel now is.
+
+
+def test_a_named_vendor_stands_in_for_a_bank_with_no_registry_entry():
+    p = _build(
+        bank=SimpleNamespace(code="XXX", legal_name=None, tax_id=None, address=None),
+        vendor_name="Kasikornbank Public Company Limited",
+        tax_id="0107536000315",
+    )
+    assert p["VnName"] == "Kasikornbank Public Company Limited"
+    assert p["TaxId"] == "0107536000315"
+
+
+def test_a_named_profile_files_a_rate_no_profile_declares():
+    """3% matches nothing, which is a skip until somebody says which profile it is."""
+    p = _build(details=_rows(("1030", "1000", "30")), profile_code="VAT07")
+    assert p["TaxProfileCode"] == "VAT07"
+    # Carmen's own figure for that profile, not the document's 3% and not the browser's
+    # word for it: a browser may say which profile, never define one.
+    assert p["TaxRate"] == 7
+    assert p["TaxAmt"] == 30.0  # still the document's own VAT
+
+
+def test_a_profile_that_does_not_exist_is_a_skip_that_says_so():
+    _, why = build_input_tax_payload(
+        _rows(("1070", "1000", "70")),
+        doc_no="INV-001",
+        doc_date="15/01/2026",
+        bank=BANK,
+        branch="00000",
+        description="d",
+        tax_profiles_raw=PROFILES,
+        profile_code="VAT10",  # exists, but Active: false
+    )
+    assert why and "VAT10" in why
+
+
+def test_the_tax_period_is_not_among_them_and_still_follows_the_document():
+    """It is a fact about the statement, not a judgement — a claim filed in a month the
+    document does not name is the wrong-month error this module exists to refuse. A
+    misread date is corrected on the document date, and the period follows it."""
+    p = _build(doc_date="15/03/2026")
+    assert p["Prefix"] == "vat202603"
+    assert (p["FrDate"], p["ToDate"]) == ("2026-03-01", "2026-03-31")
+
+
 # ── resolve_tax_profile ───────────────────────────────────────────────────────
 
 

@@ -185,6 +185,27 @@ class AutoPostIn(BaseModel):
     auto_post: bool
 
 
+class InputTaxOverrides(BaseModel):
+    """What the reviewer corrected on the input-tax panel.
+
+    Only the three things the machine can get wrong and a human can see: a bank whose
+    registered identity is missing or stale, and a profile resolved from a rate the
+    document does not quite state. Everything else on that record is either the same
+    detail lines the JV was built from or a fact about the document already editable
+    above it — the tax period included, which follows the document date and is corrected
+    by fixing that — so it has no field here.
+
+    Deliberately not the whole ACTX body. `build_input_tax_payload` still assembles it,
+    still sums the amounts off `details`, and still reads a named profile's rate and
+    wording back from Carmen's own list — a browser may say *which* profile, never
+    define one.
+    """
+
+    vendor_name: str | None = Field(None, max_length=200)
+    tax_id: str | None = Field(None, max_length=20)
+    profile_code: str | None = Field(None, max_length=20)
+
+
 class ApproveIn(BaseModel):
     """What the reviewer approved, as it appeared on their screen.
 
@@ -200,6 +221,8 @@ class ApproveIn(BaseModel):
     # Unchecked = the reviewer intends to key the VAT record by hand. Defaults on, which
     # is what the machine path does unconditionally.
     post_input_tax: bool = True
+    # Absent from the auto-post path, which has nobody to correct anything.
+    input_tax: InputTaxOverrides | None = None
 
 
 class ApproveResult(BaseModel):

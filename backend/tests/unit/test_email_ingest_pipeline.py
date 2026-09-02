@@ -2316,6 +2316,32 @@ async def test_approve_posts_the_rows_the_reviewer_saw():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("branch_no", "expected"),
+    [("00012", "00012"), (None, "00000")],
+)
+async def test_input_tax_files_the_branch_off_the_document(branch_no, expected):
+    """The branch printed on the statement, with the BU config only as fallback.
+
+    The review screen shows this field and lets a reviewer correct it — the edit travels
+    in `extracted`, so reading the config here instead made that input theatre.
+    """
+    build = MagicMock(return_value=(None, None))
+    with (
+        patch.object(ingest, "async_session", _session_factory(_FakeDB())),
+        patch.object(ingest, "build_input_tax_payload", build),
+        patch.object(ingest, "get_tax_profiles", AsyncMock(return_value={})),
+    ):
+        await ingest._post_input_tax(
+            _extracted(branch_no=branch_no),
+            bank_code=None,
+            config=_config(branch="00000"),
+            carmen_token="tok",
+        )
+    assert build.call_args.kwargs["branch"] == expected
+
+
+@pytest.mark.asyncio
 async def test_a_second_approve_finds_nothing_to_approve():
     """Two reviewers in one BU with the queue open is the expected case — the bell
     notification has no user to address, so it goes to everyone. The row is taken FOR

@@ -1062,6 +1062,7 @@ async def _post_input_tax(
     bank_code: str | None,
     config: Any,
     carmen_token: str,
+    overrides: Any = None,
 ) -> str | None:
     """File the VAT the bank charged. Returns a note to keep on the ledger, or None.
 
@@ -1079,9 +1080,18 @@ async def _post_input_tax(
             doc_no=extracted.doc_no,
             doc_date=extracted.doc_date,
             bank=bank,
-            branch=getattr(config, "branch", None),
+            # The branch printed on the statement, which is the field the review screen
+            # shows and lets a reviewer correct. Falling straight through to the BU config
+            # made that input theatre: whatever was typed went into `extracted` and was
+            # then dropped here. Config stays the fallback for a document with none.
+            branch=extracted.branch_no or getattr(config, "branch", None),
             description=description_for(config, bank_code),
             tax_profiles_raw=await get_tax_profiles(carmen_token),
+            # `getattr` rather than a branch: the auto-post path passes nothing, and
+            # None answers all three the same way the reviewer leaving them alone does.
+            vendor_name=getattr(overrides, "vendor_name", None),
+            tax_id=getattr(overrides, "tax_id", None),
+            profile_code=getattr(overrides, "profile_code", None),
         )
         if payload is None:
             if skipped:
@@ -1499,6 +1509,7 @@ async def approve_document(
     extracted: ExtractedCreditCardData,
     rows: list[dict],
     post_input_tax_record: bool = True,
+    input_tax: Any = None,
 ) -> dict:
     """Post what the reviewer approved, under the BU's own credential.
 
@@ -1580,7 +1591,11 @@ async def approve_document(
         await _mark_submitted(extracted.id)
         tax_note = (
             await _post_input_tax(
-                extracted, bank_code=bank_code, config=config, carmen_token=carmen_token
+                extracted,
+                bank_code=bank_code,
+                config=config,
+                carmen_token=carmen_token,
+                overrides=input_tax,
             )
             if post_input_tax_record
             else None

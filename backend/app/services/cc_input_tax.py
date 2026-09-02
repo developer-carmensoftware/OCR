@@ -82,6 +82,9 @@ def build_input_tax_payload(
     branch: str | None,
     description: str | None,
     tax_profiles_raw: Any,
+    vendor_name: str | None = None,
+    tax_id: str | None = None,
+    profile_code: str | None = None,
 ) -> tuple[dict | None, str | None]:
     """(payload, reason it was skipped) — exactly one of the two is ever set.
 
@@ -92,18 +95,29 @@ def build_input_tax_payload(
     The reason is returned rather than only logged because a skip that nobody sees
     is a VAT claim quietly lost — the caller puts it on the ledger. `None, None`
     means there was genuinely nothing to claim, which needs no announcement.
+
+    The last three arguments are the review screen's corrections, and they are what
+    turns two of those skips into a record: a bank with no registered identity and a
+    document at a rate no profile declares are both dead ends for the machine and one
+    field for a human. Deliberately narrow — the amounts still come from `details`, the
+    period still comes from the document date, and a named profile's rate and wording are
+    still read back from Carmen's own list. A browser may say *which* profile; it may
+    never define one.
     """
     net = r2(sum(num(d.commis_amt) for d in details))
     tax = r2(sum(num(d.tax_amt) for d in details))
     if tax <= 0 or net <= 0:
         return None, None  # no VAT on this document — nothing was lost
 
+    # The month the claim is filed in is the document's own, and deliberately not a field:
+    # it is a fact about the statement, and the document date two fields up is where a
+    # misread one is corrected.
     parts = _iso_parts(doc_date)
     if parts is None:
         return None, f"input tax skipped: document date {doc_date!r} has no readable day"
     year, month = parts
 
-    legal_name = getattr(bank, "legal_name", None) if bank is not None else None
+    legal_name = vendor_name or (getattr(bank, "legal_name", None) if bank is not None else None)
     if not legal_name:
         code = getattr(bank, "code", None) or "?"
         return None, f"input tax skipped: bank {code} has no registered identity on file"
@@ -111,11 +125,22 @@ def build_input_tax_payload(
     # The profile's canonical rate is what we post, but the document's own VAT amount
     # is what we claim: a slightly-off extracted figure must not silently become
     # "7% of net" in the books. Unmatched rate ⇒ the document is not standard-rated,
-    # so there is no profile to file it under.
+    # so there is no profile to file it under — unless a reviewer names one, which is
+    # the answer to exactly that question.
     ratio = round(tax / net * 100, 2)
-    profile = resolve_tax_profile(ratio, _profiles(tax_profiles_raw))
-    if profile is None:
-        return None, f"input tax skipped: no active tax profile at {ratio:.2f}%"
+    profiles = _profiles(tax_profiles_raw)
+    if profile_code:
+        profile = next((p for p in profiles if p["code"] == profile_code), None)
+        if profile is None:
+            return None, f"input tax skipped: no active tax profile {profile_code!r}"
+    else:
+        profile = resolve_tax_profile(ratio, profiles)
+        if profile is None:
+            return None, f"input tax skipped: no active tax profile at {ratio:.2f}%"
+    # Carmen lists a profile without a declared rate now and then. Resolution by rate can
+    # never return one; a named one can, and the document's own ratio is the only honest
+    # figure left to post.
+    rate = profile["rate"] if profile["rate"] is not None else ratio
 
     last_day = calendar.monthrange(int(year), int(month))[1]
     day, mon, yr = (doc_date or "//").split("/")
@@ -131,10 +156,10 @@ def build_input_tax_payload(
         "VnName": legal_name,
         "TaxProfileCode": profile["code"],
         "BfTaxAmt": f"{net:.2f}",
-        "TaxRate": profile["rate"],
+        "TaxRate": rate,
         "TaxAmt": tax,
         "TotalAmt": f"{r2(net + tax):.2f}",
-        "TaxId": getattr(bank, "tax_id", None) or "",
+        "TaxId": tax_id or getattr(bank, "tax_id", None) or "",
         "BranchNo": branch or "",
         "Address": getattr(bank, "address", None) or "",
         # ponytail: the wizard hardcodes "admin" here. Marking the machine-posted
