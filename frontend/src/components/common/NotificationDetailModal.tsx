@@ -10,7 +10,7 @@ import type { BellItem } from '../../lib/api/notifications'
 import '../../styles/components/notification-bell.css'
 
 /**
- * What a `document_posted` / `document_failed` bell row opens.
+ * What a `document_posted` / `document_failed` / `document_blocked` bell row opens.
  *
  * ponytail: a dialog, not a page. Everything worth showing already rides in the
  * notification payload, so there is nothing to fetch and nowhere to navigate —
@@ -28,6 +28,11 @@ const REASON_KEY: Record<string, TKey> = {
   unreadable_document: 'notif.reason.unreadableDocument',
   carmen_rejected: 'notif.reason.carmenRejected',
   carmen_unauthorized: 'notif.reason.carmenUnauthorized',
+  // The three the customer fixes in Email Settings rather than in Carmen —
+  // `NOTIFIABLE_SKIPS` in email_ingest_service.py.
+  wrong_pdf_password: 'notif.reason.wrongPdfPassword',
+  sender_not_allowed: 'notif.reason.senderNotAllowed',
+  unsupported_attachment: 'notif.reason.unsupportedAttachment',
 }
 
 interface Props {
@@ -47,6 +52,9 @@ export default function NotificationDetailModal({ item, onClose }: Props) {
 
   const p = shown.payload as Record<string, string | null | undefined>
   const posted = shown.type === 'document_posted'
+  // Blocked never reached Carmen at all, so "Could not post" would send the customer to
+  // look at a journal voucher that was never attempted.
+  const blocked = shown.type === 'document_blocked'
   const bankCode = p.bank_code || ''
 
   const rows: Array<[TKey, string]> = [
@@ -72,8 +80,14 @@ export default function NotificationDetailModal({ item, onClose }: Props) {
   return (
     <CustomModal
       show={!!item}
-      type={posted ? 'success' : 'error'}
-      title={t(posted ? 'notif.detail.postedTitle' : 'notif.detail.failedTitle')}
+      type={posted ? 'success' : blocked ? 'warning' : 'error'}
+      title={t(
+        posted
+          ? 'notif.detail.postedTitle'
+          : blocked
+            ? 'notif.detail.blockedTitle'
+            : 'notif.detail.failedTitle'
+      )}
       message={message}
       confirmText={t('notif.detail.close')}
       onConfirm={onClose}

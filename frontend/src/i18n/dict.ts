@@ -709,6 +709,7 @@ const en = {
   'notif.docPosted': 'Posted to Carmen · {doc}',
   'notif.docFailed': 'Could not post · {doc}',
   'notif.docPendingReview': '{count} waiting for your review',
+  'notif.docBlocked': 'Could not read · {doc}',
   // -- Review queue: the automation landing page (#/CreditCardOCR) -------------
   // One name for the module, on the queue and on the wizard alike. The page has no heading
   // of its own — the chip strip is it — so this is the only place either page is named.
@@ -889,6 +890,7 @@ const en = {
   // and the payload already carries everything worth showing.
   'notif.detail.postedTitle': 'Posted to Carmen',
   'notif.detail.failedTitle': 'Could not post',
+  'notif.detail.blockedTitle': 'Could not read this document',
   'notif.detail.postedMsg': 'Journal voucher {jv} was created in Carmen.',
   'notif.detail.postedMsgNoJv': 'The document was posted to Carmen.',
   'notif.detail.document': 'Document',
@@ -906,6 +908,13 @@ const en = {
   'notif.reason.carmenRejected': 'Carmen declined the journal voucher.',
   'notif.reason.carmenUnauthorized':
     'Carmen would not accept this business unit’s posting credential. The document is fine — the token needs to be set again in Email Automation settings.',
+  // The three a customer fixes themselves, in Email Automation settings.
+  'notif.reason.wrongPdfPassword':
+    'This PDF is password-protected and the password saved for this bank did not open it. Update it in Email Automation settings and forward the mail again.',
+  'notif.reason.senderNotAllowed':
+    'The mail did not come from any address registered for this business unit. Add the sender in Email Automation settings and forward it again.',
+  'notif.reason.unsupportedAttachment':
+    'This file type cannot be read. Forward the document as a PDF or an image.',
   'notif.reason.unknown': 'The document could not be processed.',
 
   // What's New — release history page (#/whats-new), entered from the bell.
@@ -2203,6 +2212,7 @@ const th: Record<TKey, string> = {
   'notif.docPosted': 'ส่งเข้า Carmen แล้ว · {doc}',
   'notif.docFailed': 'ส่งเข้า Carmen ไม่สำเร็จ · {doc}',
   'notif.docPendingReview': 'มี {count} รายการรอคุณตรวจสอบ',
+  'notif.docBlocked': 'อ่านเอกสารไม่ได้ · {doc}',
   'review.title': 'AI JV Automation',
   'review.back': 'ย้อนกลับ',
   'review.refresh': 'รีเฟรช',
@@ -2362,6 +2372,7 @@ const th: Record<TKey, string> = {
 
   'notif.detail.postedTitle': 'ส่งเข้า Carmen แล้ว',
   'notif.detail.failedTitle': 'ส่งเข้า Carmen ไม่สำเร็จ',
+  'notif.detail.blockedTitle': 'อ่านเอกสารนี้ไม่ได้',
   'notif.detail.postedMsg': 'สร้างใบสำคัญ {jv} ใน Carmen เรียบร้อยแล้ว',
   'notif.detail.postedMsgNoJv': 'ส่งเอกสารเข้า Carmen เรียบร้อยแล้ว',
   'notif.detail.document': 'เอกสาร',
@@ -2378,6 +2389,12 @@ const th: Record<TKey, string> = {
   'notif.reason.carmenRejected': 'Carmen ปฏิเสธการบันทึกใบสำคัญ',
   'notif.reason.carmenUnauthorized':
     'Carmen ไม่ยอมรับ token สำหรับส่งเอกสารของหน่วยธุรกิจนี้ ตัวเอกสารไม่มีปัญหา — ต้องตั้ง token ใหม่ในหน้าตั้งค่า Email Automation',
+  'notif.reason.wrongPdfPassword':
+    'ไฟล์ PDF นี้ตั้งรหัสผ่านไว้ และรหัสที่บันทึกไว้สำหรับธนาคารนี้เปิดไม่ได้ แก้รหัสในหน้าตั้งค่า Email Automation แล้วส่งเมลเข้ามาใหม่',
+  'notif.reason.senderNotAllowed':
+    'เมลฉบับนี้ไม่ได้มาจากอีเมลที่ลงทะเบียนไว้กับหน่วยธุรกิจนี้ เพิ่มผู้ส่งในหน้าตั้งค่า Email Automation แล้วส่งเข้ามาใหม่',
+  'notif.reason.unsupportedAttachment':
+    'ไฟล์ชนิดนี้อ่านไม่ได้ กรุณาส่งเอกสารเป็น PDF หรือไฟล์รูปภาพ',
   'notif.reason.unknown': 'ประมวลผลเอกสารนี้ไม่สำเร็จ',
 
   'whatsnew.title': 'มีอะไรใหม่',

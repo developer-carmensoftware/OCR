@@ -274,11 +274,33 @@ async def test_failed_jv_records_document_failed_notification():
 
 
 @pytest.mark.asyncio
-async def test_skipped_document_does_not_notify():
-    """A gate the customer's own config tripped (charged is None, so status="skipped")
-    is not a failure worth a notification — see the rationale in `_finish`'s caller."""
+async def test_a_file_no_rule_wanted_does_not_notify():
+    """The customer's own filename rules saying "not this file" is not news.
+
+    Every bank zip carries a summary PDF and a CSV beside the document, so a bell row per
+    skip would ring every morning — and a bell that rings every morning is one nobody
+    reads on the morning it matters.
+    """
     db = _FakeDB()
-    outcome, p = await _run(
+    outcome, _ = await _run(
+        db,
+        filename="summary.pdf",  # RULES matches .jpg only
+        extracted=_extracted(),
+        config=_config(),
+        carmen_result={"Code": 0},
+    )
+    assert outcome == "skipped"
+    assert db.added[0].reason_code == "no_rule_match"
+    assert [o for o in db.added if isinstance(o, UserNotification)] == []
+
+
+@pytest.mark.asyncio
+async def test_a_document_the_customer_can_unblock_notifies():
+    """The silence this closes: a document addressed to us, matching their rules, that
+    never arrived — and no queue row, no bell, nothing to distinguish it from a poll that
+    never ran. Only the customer can fix the three reasons in `NOTIFIABLE_SKIPS`."""
+    db = _FakeDB()
+    outcome, _ = await _run(
         db,
         owner_emails=["accounting@hotelgroup.com"],
         people="From: stranger@elsewhere.com To: AIAGENT+a1b2c3d4@carmensoftware.com",
@@ -289,7 +311,12 @@ async def test_skipped_document_does_not_notify():
     )
     assert outcome == "skipped"
     notifications = [o for o in db.added if isinstance(o, UserNotification)]
-    assert notifications == []
+    assert len(notifications) == 1
+    assert notifications[0].type == "document_blocked"
+    assert notifications[0].payload["reason_code"] == "sender_not_allowed"
+    # The filename is the only identity the customer recognises — it never got as far as
+    # a bank code or a document number.
+    assert notifications[0].payload["attachment"] == "statement.jpg"
 
 
 @pytest.mark.asyncio
@@ -998,7 +1025,10 @@ async def test_an_unsupported_attachment_leaves_a_row_instead_of_vanishing():
     # Free: this is far ahead of consume_document, so there is nothing to refund either.
     extract.assert_not_awaited()
     process.assert_not_awaited()
-    assert [o for o in db.added if isinstance(o, UserNotification)] == []
+    # And they are told, because only they can fix it — `NOTIFIABLE_SKIPS`.
+    notifications = [o for o in db.added if isinstance(o, UserNotification)]
+    assert [n.type for n in notifications] == ["document_blocked"]
+    assert notifications[0].payload["reason_code"] == "unsupported_attachment"
 
 
 @pytest.mark.asyncio
@@ -1197,8 +1227,8 @@ async def test_run_ingest_summarises_every_message_and_records_the_job_run():
     a dict to its caller and wrote nothing, so a job that spends money on every poll
     was absent from the one page that answers "is the machine running?"."""
     messages = [
-        {"message_id": "<a>", "subject": "s", "from": "f", "recipients": [], "attachments": []},
-        {"message_id": "<b>", "subject": "s", "from": "f", "recipients": [], "attachments": []},
+        {"uid": "1", "message_id": "<a>", "subject": "s", "from": "f", "recipients": []},
+        {"uid": "2", "message_id": "<b>", "subject": "s", "from": "f", "recipients": []},
     ]
     record = AsyncMock()
     process = AsyncMock(side_effect=[["posted"], ["unrouted"]])
@@ -1206,6 +1236,7 @@ async def test_run_ingest_summarises_every_message_and_records_the_job_run():
         patch.object(ingest.settings, "imap_host", "imap.example.com"),
         patch.object(ingest, "fetch_unseen", lambda limit: (messages, 0)),
         patch.object(ingest, "_process_message", process),
+        patch.object(ingest, "mark_seen", MagicMock()),
         patch.object(ingest, "_record_run", record),
     ):
         summary = await ingest.run_ingest(limit=5)
@@ -1531,7 +1562,9 @@ def test_the_poll_records_when_each_message_arrived(monkeypatch, fetched):
 
     messages, _ = ingest.fetch_unseen(10)
 
-    assert _uid_calls(box, "FETCH")[0][1] == "(INTERNALDATE RFC822)"
+    # PEEK, not a bare RFC822 fetch: reading the body must not set `\Seen` as a side
+    # effect — the flag is the poll's verdict and is set after one exists.
+    assert _uid_calls(box, "FETCH")[0][1] == "(INTERNALDATE BODY.PEEK[])"
     assert messages[0]["arrived_at"] == _WHEN
 
 
@@ -1543,7 +1576,8 @@ def test_an_internaldate_the_server_answers_oddly_leaves_the_arrival_unknown(mon
     messages, _ = ingest.fetch_unseen(10)
 
     assert messages[0]["arrived_at"] is None
-    box.uid.assert_any_call("STORE", "1", "+FLAGS", "\\Seen")
+    # The fetch flags nothing: a message it parsed is the poll's to decide about.
+    assert not _uid_calls(box, "STORE")
 
 
 def test_the_poll_addresses_mail_by_uid_not_sequence_number(monkeypatch):
@@ -1565,12 +1599,28 @@ def test_the_poll_addresses_mail_by_uid_not_sequence_number(monkeypatch):
 
 
 def test_setting_the_seen_flag_addresses_mail_by_uid(monkeypatch):
-    """The connection that made UIDs mandatory: `_set_seen` opens its own, minutes after
+    """The connection that made UIDs mandatory: `mark_seen` opens its own, minutes after
     the one that read the mail."""
     box = _searching_box(monkeypatch, b"")
-    ingest.unmark_seen(["11", "12"])
-    assert _uid_calls(box, "STORE") == [("11", "-FLAGS", "\\Seen"), ("12", "-FLAGS", "\\Seen")]
+    ingest.mark_seen(["11", "12"])
+    assert _uid_calls(box, "STORE") == [("11", "+FLAGS", "\\Seen"), ("12", "+FLAGS", "\\Seen")]
     box.store.assert_not_called()
+
+
+def test_a_message_that_cannot_be_parsed_is_flagged_and_left(monkeypatch):
+    """The one flag the fetch still sets itself.
+
+    There is no verdict to reach on a message we cannot even parse, and leaving it unread
+    would put it at the head of every poll from now on — the crash loop the old
+    flag-on-the-way-in behaviour was really protecting against.
+    """
+    box = _searching_box(monkeypatch, b"1", fetch=("OK", [(b"1 (UID 1 BODY[] {3}", b"raw")]))
+    monkeypatch.setattr(imap, "_attachments", MagicMock(side_effect=ValueError("bad MIME")))
+
+    messages, _ = ingest.fetch_unseen(10)
+
+    assert messages == []
+    assert _uid_calls(box, "STORE") == [("1", "+FLAGS", "\\Seen")]
 
 
 def test_a_poll_takes_the_newest_mail_not_the_oldest(monkeypatch):
@@ -1857,10 +1907,10 @@ async def test_a_bu_that_ran_out_is_skipped_without_even_a_lookup():
 
 
 @pytest.mark.asyncio
-async def test_the_poll_clears_seen_on_everything_it_handed_back():
-    """`fetch_unseen` flags the whole batch on the way in. Out-of-credits is not a
-    verdict on the mail, so the flag has to come back off or the document is gone."""
-    unmark = MagicMock()
+async def test_the_poll_flags_only_the_mail_it_reached_a_verdict_on():
+    """Out-of-credits is not a verdict on the mail, so that message is never flagged and
+    the next poll gets another go at it."""
+    mark = MagicMock()
     messages = [
         {"uid": "7", "message_id": "<a>", "subject": "s", "from": "f", "recipients": []},
         {"uid": "8", "message_id": "<b>", "subject": "s", "from": "f", "recipients": []},
@@ -1871,24 +1921,24 @@ async def test_the_poll_clears_seen_on_everything_it_handed_back():
         patch.object(
             ingest, "_process_message", AsyncMock(side_effect=[["posted"], ["retry_later"]])
         ),
-        patch.object(ingest, "unmark_seen", unmark),
+        patch.object(ingest, "mark_seen", mark),
         patch.object(ingest, "_record_run", AsyncMock()),
     ):
         summary = await ingest.run_ingest()
 
     assert summary["retry_later"] == 1
-    unmark.assert_called_once_with(["8"])
+    mark.assert_called_once_with(["7"])
 
 
 @pytest.mark.asyncio
-async def test_a_crash_mid_poll_hands_back_everything_it_never_looked_at():
-    """One DB blip on message 2 of 3 used to leave message 3 `\\Seen`, unprocessed and
-    gone — it never reached `_claim`, so nothing anywhere recorded that it existed.
+async def test_a_crash_mid_poll_leaves_everything_it_never_looked_at_unread():
+    """One DB blip on message 2 of 3 must not cost message 3: it never reached `_claim`,
+    so nothing anywhere would record that it existed.
 
-    The message that actually raised stays flagged on purpose: handing it back would
+    The message that actually raised IS flagged, on purpose: leaving it unread would
     re-crash the next poll on it forever, and the FAILED `job_runs` row is its trail.
     """
-    unmark = MagicMock()
+    mark = MagicMock()
     messages = [
         {"uid": str(u), "message_id": f"<{u}>", "subject": "s", "from": "f", "recipients": []}
         for u in (7, 8, 9)
@@ -1901,13 +1951,38 @@ async def test_a_crash_mid_poll_hands_back_everything_it_never_looked_at():
             "_process_message",
             AsyncMock(side_effect=[["posted"], RuntimeError("connection reset"), ["posted"]]),
         ),
-        patch.object(ingest, "unmark_seen", unmark),
+        patch.object(ingest, "mark_seen", mark),
         patch.object(ingest, "_record_run", AsyncMock()),
         pytest.raises(RuntimeError),
     ):
         await ingest.run_ingest()
 
-    unmark.assert_called_once_with(["9"])
+    mark.assert_called_once_with(["7", "8"])
+
+
+@pytest.mark.asyncio
+async def test_a_poll_that_dies_before_the_ledger_leaves_its_mail_unread():
+    """The loss this inversion exists to prevent.
+
+    A process killed between the fetch and the ledger write — a deploy, an OOM, a
+    request the caller gave up on — used to leave the whole batch `\\Seen`: read,
+    unclaimed, and recorded in no table at all. Nothing flagged means nothing lost.
+    """
+    mark = MagicMock()
+    messages = [
+        {"uid": "7", "message_id": "<a>", "subject": "s", "from": "f", "recipients": []},
+    ]
+    with (
+        patch.object(ingest.settings, "imap_host", "imap.example.com"),
+        patch.object(ingest, "fetch_unseen", lambda limit: (messages, 0)),
+        patch.object(ingest, "_process_message", AsyncMock(side_effect=BaseException("killed"))),
+        patch.object(ingest, "mark_seen", mark),
+        patch.object(ingest, "_record_run", AsyncMock()),
+        pytest.raises(BaseException, match="killed"),
+    ):
+        await ingest.run_ingest()
+
+    mark.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1917,7 +1992,7 @@ async def test_mail_beyond_the_hold_window_reaches_the_summary_and_an_alert():
     with (
         patch.object(ingest.settings, "imap_host", "imap.example.com"),
         patch.object(ingest, "fetch_unseen", lambda limit: ([], 4)),
-        patch.object(ingest, "unmark_seen", MagicMock()),
+        patch.object(ingest, "mark_seen", MagicMock()),
         patch.object(ingest, "async_session", _session_factory(_FakeDB())),
         patch.object(ingest.anomaly_service, "open_alert_if_absent", alert),
     ):

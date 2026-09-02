@@ -37,8 +37,8 @@ and attempts; add a retry sweep when real failures show it is worth it.
 
 ponytail: attachments within a poll are processed serially, so one poll of a full batch
 costs roughly batch_size × (one vision call + two Carmen posts). Size the cron interval
-above that or polls overlap — harmless (`_claim` and the IMAP \\Seen flag both dedupe)
-but pointless load. Parallelise per message if the daily-commission banks make the
+above that or polls overlap — harmless (`_claim` is an atomic insert, so the second
+poll's copy of a document is refused, not charged) but pointless load. Parallelise per message if the daily-commission banks make the
 backlog visible in `job_runs`.
 """
 
@@ -113,7 +113,6 @@ from app.services.email_imap import (
     sender_allowed,
     tag_from_recipients,
     unique_names,
-    unmark_seen,
 )
 from app.services.module_gate import assert_module_enabled
 from app.services.task_service import create_task
@@ -146,6 +145,16 @@ CONFIRM_WINDOW_HOURS = 24
 #
 # ponytail: one number for every BU. Per-BU tuning when someone actually needs it.
 REVIEW_BACKLOG_CAP = 50
+
+# The `skipped` reasons the customer has to hear about, because only they can fix them
+# and the document is otherwise gone in silence — a wrong PDF password parks nothing in
+# the queue, raises nothing in the bell, and reads exactly like a poll that never ran.
+#
+# Every other `skipped` reason stays silent on purpose: `no_rule_match` fires on the
+# summary PDF inside every bank zip, and `ingest_paused`/`duplicate_document` describe
+# something the customer already did. A bell that cries every morning is a bell nobody
+# reads on the morning it matters.
+NOTIFIABLE_SKIPS = ("wrong_pdf_password", "sender_not_allowed", "unsupported_attachment")
 
 
 class _Skip(Exception):
@@ -189,10 +198,10 @@ async def run_ingest(limit: int | None = None) -> dict:
     """One poll. Returns a summary the job endpoint echoes back.
 
     Serialised against itself. A batch whose documents are slow can outlast the poll
-    interval, and a second poll starting on top of it would not duplicate work — the
-    `\\Seen` flag and `_claim` both dedupe — but it would double this job's share of a
-    connection pool capped at 15 for the whole application. Skipping is free and the
-    backlog is still there in ten minutes.
+    interval, and a second poll starting on top of it would not duplicate work — `_claim`
+    dedupes, and nothing is flagged `\\Seen` until a verdict exists — but it would double
+    this job's share of a connection pool capped at 15 for the whole application. Skipping
+    is free and the backlog is still there in ten minutes.
     """
     if not settings.imap_host:
         return {"status": "disabled", "reason": "IMAP not configured"}
@@ -229,10 +238,12 @@ async def run_ingest(limit: int | None = None) -> dict:
         # document: a 20-attachment batch must produce one bell row saying "20 documents
         # need review", not 20 rows saying "one does".
         parked: dict[str, int] = {}
-        retry: list[str] = []
-        # How many of `messages` have been decided about. `fetch_unseen` flagged the whole
-        # batch on the way in, so anything this loop never reached is `\Seen`, unprocessed
-        # and — having never got as far as `_claim` — recorded nowhere at all.
+        # The mail this poll has reached a verdict on, and may therefore flag `\Seen`.
+        # Nothing else is touched: `fetch_unseen` flags nothing on the way in, so a poll
+        # that dies — crash, deploy, OOM, a killed request — leaves every undecided
+        # message unread and the next poll picks it up. Flagged on the way in instead,
+        # that mail was read, unclaimed and recorded nowhere at all.
+        handled: list[str] = []
         messages: list[dict[str, Any]] = []
         done = 0
         try:
@@ -243,19 +254,23 @@ async def run_ingest(limit: int | None = None) -> dict:
             summary["beyond_window"] = beyond
             for msg in messages:
                 outcomes = await _process_message(msg, exhausted, parked)
-                if "retry_later" in outcomes:
-                    retry.append(msg["uid"])
+                # `retry_later` is the one verdict that is not about the mail — the BU has
+                # nothing to spend or is switched off — so that message stays unread and
+                # replays for as long as `since_arg` allows.
+                if "retry_later" not in outcomes:
+                    handled.append(msg["uid"])
                 for outcome in outcomes:
                     summary[outcome] = summary.get(outcome, 0) + 1
                 done += 1
         except Exception as exc:
             logger.exception("[email] Poll failed")
-            # Everything the loop never attempted goes back unread. `messages[done]` — the
-            # one that actually raised — stays `\Seen` on purpose: handing it back would
-            # re-crash the next poll on it forever, and the FAILED `job_runs` row plus the
-            # traceback above is the trail for that one message.
-            retry.extend(m["uid"] for m in messages[done + 1 :])
-            await asyncio.to_thread(unmark_seen, retry)
+            # `messages[done]` — the one that actually raised — is flagged on purpose:
+            # leaving it unread would re-crash the next poll on it forever, and the FAILED
+            # `job_runs` row plus the traceback above is the trail for that one message.
+            # Everything after it was never attempted and stays unread.
+            if done < len(messages):
+                handled.append(messages[done]["uid"])
+            await asyncio.to_thread(mark_seen, handled)
             # Documents parked before the crash are real and waiting; a poll that died
             # half way through must not swallow the only signal a reviewer gets.
             await _notify_pending(parked)
@@ -269,9 +284,8 @@ async def run_ingest(limit: int | None = None) -> dict:
                 summary["beyond_window"],
                 settings.imap_hold_days,
             )
-        # One IMAP round trip for the whole batch, and only when something was left
-        # undone — the common poll never reaches it.
-        await asyncio.to_thread(unmark_seen, retry)
+        # One IMAP round trip for the whole batch, after every verdict is on the ledger.
+        await asyncio.to_thread(mark_seen, handled)
         await _notify_pending(parked)
         logger.info("[email] Poll finished: %s", summary)
         await _record_run(started, summary)
@@ -715,8 +729,8 @@ async def _process_attachment(
         except _HOLD:
             # Not a verdict on this document — the BU has nothing left to spend, or the
             # module is switched off for them. Drop the claim so a poll after that is
-            # fixed can take it again; the caller hands the mail itself back by clearing
-            # \Seen.
+            # fixed can take it again; the caller leaves the mail itself unread by never
+            # flagging it `\Seen`.
             await _release(ledger_id)
             raise
     finally:
@@ -1438,15 +1452,23 @@ async def _finish(
         # the only sense that matters: they exist while a human owes us a decision about
         # them, and not one moment longer.
         row.review_payload = None  # type: ignore[assignment]
-        if status in ("posted", "failed"):
-            # "skipped" is deliberately excluded — it's the customer's own filename/
-            # sender rules saying "not this file", not a failure worth a notification
-            # (see the _Skip handler above).
+        # Most of `skipped` is deliberately silent — the customer's own filename/sender
+        # rules saying "not this file" (see the _Skip handler above). `NOTIFIABLE_SKIPS`
+        # is the part that is not: a document that was theirs, matched their rules, and
+        # still never arrived because of something only they can change.
+        notify_type = (
+            f"document_{status}"
+            if status in ("posted", "failed")
+            else "document_blocked"
+            if reason_code in NOTIFIABLE_SKIPS
+            else None
+        )
+        if notify_type:
             notification_service.notify(
                 db,
                 tenant_id=row.tenant_id,  # type: ignore[arg-type]
                 order_id=None,
-                type_=f"document_{status}",
+                type_=notify_type,
                 payload={
                     "document_id": str(row.id),
                     # The attachment filename is the only identity the customer

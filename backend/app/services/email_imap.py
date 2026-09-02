@@ -288,8 +288,8 @@ _IMAP_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 def since_arg() -> str:
     """The `SEARCH … SINCE` floor, as an IMAP date.
 
-    Bounds the hold-and-retry window. Mail we hand back (`unmark_seen`) stays unseen on
-    purpose, so that a BU switched off, out of package or with the module disabled loses
+    Bounds the hold-and-retry window. Mail we reach no verdict on is never flagged (see
+    `mark_seen`), so that a BU switched off, out of package or with the module disabled loses
     nothing and replays its backlog the moment it is switched on again. What it must not
     do is accumulate for ever: past this many days a held message drops out of every
     search, costing nothing more, and stays in the mailbox for a person to find.
@@ -349,13 +349,21 @@ def fetch_unseen(limit: int) -> tuple[list[dict[str, Any]], int]:
     path never had: `MAX_FILE_SIZE_MB` is enforced in `file_service.py`, which only the
     interactive upload path calls.
 
-    `SINCE` is the other half of the hold-and-retry behaviour (`unmark_seen`): mail the
-    pipeline hands back stays unseen, so without a floor a BU that switches the feature
-    off leaves its bank's daily mail in the search result for ever. See `since_arg`.
+    `SINCE` is the other half of the hold-and-retry behaviour (`mark_seen`): mail the
+    pipeline never reaches a verdict on stays unseen, so without a floor a BU that
+    switches the feature off leaves its bank's daily mail in the search result for
+    ever. See `since_arg`.
 
-    Marked seen even when it turns out to be junk: an unattributable message has no
-    ledger row to record it, so the IMAP flag is the only thing stopping it from being
-    re-read on every poll forever.
+    **Nothing is flagged here** — `BODY.PEEK[]`, not `RFC822`, because a bare FETCH of
+    the body sets `\\Seen` as a side effect. The flag is the poll's verdict and belongs
+    where verdicts are reached (`run_ingest`): flagged on the way in, a poll whose
+    process dies between this call and the ledger write leaves the mail read, unclaimed
+    and unrecoverable, with no row anywhere to say it ever arrived. Re-reading is free
+    and safe — `_claim` dedupes on (tenant, message, attachment).
+
+    The one exception is a message we cannot even parse: it is flagged right here,
+    because there is no verdict to reach and handing it back would re-crash every poll
+    on it forever.
     """
     box = _connect()
     try:
@@ -394,15 +402,25 @@ def fetch_unseen(limit: int) -> tuple[list[dict[str, Any]], int]:
         # backlog can only ever use capacity nothing newer wants.
         messages = []
         for uid in found[-limit:]:
-            _, fetched = box.uid("FETCH", uid, "(INTERNALDATE RFC822)")
+            _, fetched = box.uid("FETCH", uid, "(INTERNALDATE BODY.PEEK[])")
             if not fetched or not isinstance(fetched[0], tuple):
                 continue
-            msg = email.message_from_bytes(fetched[0][1])
-            accepted, rejected = _attachments(msg)
+            try:
+                msg = email.message_from_bytes(fetched[0][1])
+                accepted, rejected = _attachments(msg)
+            except Exception as exc:  # noqa: BLE001 — one unparseable mail is not an outage
+                # Nothing downstream can do anything with it, and leaving it unread would
+                # put it at the head of every future poll. This is the only place the flag
+                # is set without a verdict.
+                logger.warning(
+                    "[email] Could not parse message %s — flagged and left: %s", uid, exc
+                )
+                box.uid("STORE", uid, "+FLAGS", "\\Seen")
+                continue
             messages.append(
                 {
-                    # Carried so the poll can hand a message back (un-`\Seen`) when the
-                    # reason it stopped was ours, not the mail's — see `unmark_seen`.
+                    # Carried so the poll can flag the mail it *has* reached a verdict on
+                    # and leave everything else unread — see `mark_seen`.
                     "uid": uid,
                     "message_id": (msg.get("Message-ID") or f"no-id-{uid}")[:500],
                     "subject": _decode(msg.get("Subject")),
@@ -430,7 +448,6 @@ def fetch_unseen(limit: int) -> tuple[list[dict[str, Any]], int]:
                     "body": _confirmation_body(msg),
                 }
             )
-            box.uid("STORE", uid, "+FLAGS", "\\Seen")
         return messages, beyond_window
     finally:
         try:
@@ -478,8 +495,12 @@ def fetch_confirmations(limit: int = MAX_CONFIRMATIONS_PER_SWEEP) -> list[dict[s
             pass
 
 
-def _set_seen(uids: list[str], *, seen: bool) -> None:
-    """Add or remove `\\Seen` on messages we have decided about. Never raises.
+def mark_seen(uids: list[str]) -> None:
+    """Flag the messages the caller has finished with. Never raises.
+
+    The flag means "this one has been decided about", so nothing calls it until a
+    verdict exists — mail the pipeline could not judge (out of credits, switched off,
+    a poll that died) is simply left alone and replays on the next poll.
 
     **This is the connection that made UIDs mandatory** — see `_uid_search`. It opens
     minutes after the one that read the mail, and a sequence number from the earlier
@@ -492,30 +513,14 @@ def _set_seen(uids: list[str], *, seen: bool) -> None:
         try:
             box.select(_quoted_folder(settings.imap_folder))
             for uid in uids:
-                box.uid("STORE", uid, "+FLAGS" if seen else "-FLAGS", "\\Seen")
+                box.uid("STORE", uid, "+FLAGS", "\\Seen")
         finally:
             try:
                 box.logout()
             except OSError:
                 pass
     except Exception as exc:  # noqa: BLE001 — a flag we could not set is not an outage
-        logger.error("[email] Could not set \\Seen=%s on %d message(s): %s", seen, len(uids), exc)
-
-
-def mark_seen(uids: list[str]) -> None:
-    """Flag the messages the sweep has finished with."""
-    _set_seen(uids, seen=True)
-
-
-def unmark_seen(uids: list[str]) -> None:
-    """Put mail back the way we found it, so a later poll gets another go at it.
-
-    `fetch_unseen` flags the whole batch on the way in, which is right for everything
-    the pipeline reaches a verdict on — but "this BU is out of documents" is not a
-    verdict about the mail. Left flagged, a customer who runs out mid-backlog silently
-    loses every remaining statement, with no retry anywhere in this feature to save them.
-    """
-    _set_seen(uids, seen=False)
+        logger.error("[email] Could not set \\Seen on %d message(s): %s", len(uids), exc)
 
 
 # ── Routing ───────────────────────────────────────────────────────────────────

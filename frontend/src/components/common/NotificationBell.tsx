@@ -11,6 +11,7 @@ import {
   ClockAlert,
   FileCheck2,
   FileWarning,
+  FileX2,
   Sparkles,
   XCircle,
 } from 'lucide-react'
@@ -43,6 +44,9 @@ const TYPE_META: Record<string, { icon: LucideIcon; tone: string }> = {
   release_note: { icon: Sparkles, tone: 'info' },
   document_posted: { icon: FileCheck2, tone: 'success' },
   document_failed: { icon: FileWarning, tone: 'error' },
+  // Never read, rather than read and refused: the document stopped at a gate the
+  // customer owns (PDF password, sender list, file type), so it is amber, not red.
+  document_blocked: { icon: FileX2, tone: 'warning' },
   // Not an outcome but a request: the only row in the bell that asks the customer to
   // do something rather than reporting what already happened.
   document_pending_review: { icon: ClockAlert, tone: 'warning' },
@@ -78,6 +82,8 @@ function notifText(n: BellItem, t: TFn): string {
       return t('notif.docPosted', { doc: docLabel(p) })
     case 'document_failed':
       return t('notif.docFailed', { doc: docLabel(p) })
+    case 'document_blocked':
+      return t('notif.docBlocked', { doc: docLabel(p) })
     // Counts documents, not one of them: the poll raises a single row per BU per run,
     // so a twenty-attachment zip does not bury every other notification.
     case 'document_pending_review':
@@ -146,7 +152,11 @@ export default function NotificationBell() {
     // Email-automation rows open in place. They carry no order_id, so the order
     // history below would be the wrong page, and there is no right page to send
     // them to — the payload is already the whole story.
-    if (n.type === 'document_posted' || n.type === 'document_failed') {
+    if (
+      n.type === 'document_posted' ||
+      n.type === 'document_failed' ||
+      n.type === 'document_blocked'
+    ) {
       setDetail(n)
     } else if (n.type === 'document_pending_review') {
       // The only actionable row in the bell, and the queue is where the action is —
