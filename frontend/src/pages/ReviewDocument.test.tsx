@@ -237,14 +237,55 @@ describe('the screen', () => {
   })
 })
 
+/** The opened panel. Scoped, because its figures also appear on the JV that produced them. */
+function itxBody() {
+  return document.getElementById('itx-body') as HTMLElement
+}
+
 describe('the input tax record', () => {
   it('states its outcome without being opened', async () => {
     // A disclosure that hides its own answer is the collapsing this screen threw out once
-    // already. Commission 30.00, VAT 2.10 — 7%.
+    // already. Whether, not how much: four labelled figures on that line read as clutter,
+    // and the record itself is one click away.
     vi.mocked(api.getPending).mockResolvedValue(detail())
     mount()
     await screen.findByDisplayValue('INV-001')
-    expect(screen.getByText('VAT 2.10 at 7%')).toBeInTheDocument()
+    expect(screen.getByText('Will be recorded')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('checkbox'))
+    expect(await screen.findByText('Will not be recorded')).toBeInTheDocument()
+  })
+
+  it('names its amounts the way Carmen will once they post', async () => {
+    // Net Amount / Tax / Total are Carmen's column headings for BfTaxAmt / TaxAmt /
+    // TotalAmt, and 30.00 + 2.10 = 32.10 is the record's whole arithmetic. A reviewer
+    // checks these against the ERP they are posting to; renaming the middle one 'VAT'
+    // makes them do the matching themselves.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    fireEvent.click(screen.getByRole('button', { name: /Show details/ }))
+    const body = itxBody()
+    for (const label of ['Net Amount', 'Tax', 'Total', 'Tax period']) {
+      expect(within(body).getByText(label)).toBeInTheDocument()
+    }
+    for (const figure of ['30.00', '2.10', '32.10', '01/2026']) {
+      expect(within(body).getByText(figure)).toBeInTheDocument()
+    }
+  })
+
+  it('shows the figures it takes from the JV as text, never as fields', async () => {
+    // They are sums over `details` — the lines buildJvRows builds the journal from, and the
+    // ones applyJvAmount writes every JV amount edit back into. A record that disagreed
+    // with the journal filed beside it is the one outcome worse than no record, so there is
+    // nothing here to type into: the JV above is where an amount is corrected.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    fireEvent.click(screen.getByRole('button', { name: /Show details/ }))
+    const body = itxBody()
+    // Four editable fields and no more: vendor, tax ID, branch, and the profile select.
+    expect(within(body).getAllByRole('textbox')).toHaveLength(3)
+    expect(within(body).getAllByRole('combobox')).toHaveLength(1)
   })
 
   it('keeps its own fields behind the dropdown, not in the JV header', async () => {
@@ -260,16 +301,17 @@ describe('the input tax record', () => {
     expect(screen.getByText('Vendor')).toBeInTheDocument()
   })
 
-  it('does not repeat the figures the JV above it already shows', async () => {
-    // BfTaxAmt is the commission debit row and TaxAmt is the Input Tax row; TotalAmt is
-    // their sum. Reading a number twice to check it once is what this screen keeps cutting.
+  it('keeps its figures off the collapsed line, which answers whether and not how much', async () => {
+    // BfTaxAmt is the JV's commission debit row and TaxAmt its Input Tax row, so the panel
+    // does restate them — under Carmen's own headings, one click in. Restating them on the
+    // head as well put four labelled figures on a line whose job is one yes-or-no.
     vi.mocked(api.getPending).mockResolvedValue(detail())
     mount()
     await screen.findByDisplayValue('INV-001')
-    fireEvent.click(screen.getByRole('button', { name: /Show details/ }))
-    await screen.findByLabelText('Branch')
-    expect(screen.queryByText('Base')).not.toBeInTheDocument()
-    expect(screen.queryByText('Total')).not.toBeInTheDocument()
+    const head = screen.getByRole('checkbox').closest('.itx-head') as HTMLElement
+    for (const figure of ['30.00', '2.10', '32.10', '01/2026']) {
+      expect(within(head).queryByText(figure)).not.toBeInTheDocument()
+    }
   })
 
   it('says so when the statement charged no VAT, instead of offering a choice', async () => {
@@ -316,18 +358,20 @@ describe('the input tax record', () => {
   it('states the tax period rather than offering it, because the document names it', async () => {
     // Doc date 15/01/2026. Not a field: a claim filed in a month the statement does not
     // name is the wrong-month error the builder refuses to make, and a misread date is
-    // corrected on the document date above.
+    // corrected on the document date above. So it stands with the figures that follow the
+    // JV, not with the four boxes below them.
     vi.mocked(api.getPending).mockResolvedValue(detail())
     mount()
     await screen.findByDisplayValue('INV-001')
     fireEvent.click(screen.getByRole('button', { name: /Show details/ }))
-    expect(await screen.findByText('01/2026')).toBeInTheDocument()
+    expect(within(itxBody()).getByText('01/2026')).toBeInTheDocument()
     expect(screen.queryByLabelText('Tax period')).not.toBeInTheDocument()
   })
 
-  it('follows the profile the reviewer picked, rate and warning included', async () => {
-    // Naming a profile answers the question the rate lookup asks — so the summary line
-    // has to answer with it, and the mismatch it now creates has to be said out loud.
+  it('follows the profile the reviewer picked without restating its rate', async () => {
+    // Naming a profile answers the question the rate lookup asks. The figures state the
+    // amounts and nothing about the rate — that is the profile's, and its code sits in the
+    // row below them, so the old 'VAT 2.10 at 7%' said it twice.
     vi.mocked(api.getPending).mockResolvedValue(detail())
     vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-1', tax_note: null })
     mount()
@@ -336,7 +380,9 @@ describe('the input tax record', () => {
     await screen.findByLabelText('Branch')
     fireEvent.change(screen.getByLabelText('Tax profile'), { target: { value: 'VAT00' } })
 
-    expect(await screen.findByText('VAT 2.10 at 0%')).toBeInTheDocument()
+    const grid = itxBody().querySelector('.itx-grid') as HTMLElement
+    await waitFor(() => expect(within(grid).getByText('2.10')).toBeInTheDocument())
+    expect(within(grid).queryByText(/%/)).not.toBeInTheDocument()
     await clickApprove()
     await waitFor(() => expect(api.approveDocument).toHaveBeenCalled())
     expect(vi.mocked(api.approveDocument).mock.calls[0][1].input_tax).toEqual({
@@ -683,6 +729,38 @@ describe('approving', () => {
     await waitFor(() =>
       expect(vi.mocked(api.approveDocument).mock.calls[0][1].post_input_tax).toBe(false)
     )
+  })
+
+  it('cannot be approved while the input-tax record has half an identity', async () => {
+    // Carmen accepts a record with `TaxId: ""` and rejects it silently afterwards, which is
+    // a VAT claim nobody finds out was lost. The wizard's Submit has blocked on this pair
+    // since that incident; this screen showed the same warning and posted anyway.
+    vi.mocked(api.getPending).mockResolvedValue(
+      detail({ bank_code: null, extracted: { ...EXTRACTED, bank_name: 'Unlisted Issuer Ltd' } })
+    )
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    const approve = screen.getByRole('button', { name: /Approve/ })
+    expect(approve).toBeDisabled()
+    expect(await screen.findByText(/Fill in the vendor name and tax ID/)).toBeInTheDocument()
+    expect(approve).toHaveAttribute('aria-describedby', 'rd-blocked')
+
+    // The other way out, and a real one rather than a last resort: file the JV alone.
+    fireEvent.click(screen.getByRole('checkbox'))
+    await waitFor(() => expect(approve).toBeEnabled())
+  })
+
+  it('reads the vendor identity off the ledger row when the payload does not name the bank', async () => {
+    // `bank_name: 'KTC'` detects nothing — the keyword list wants "KRUNGTHAI CARD" — but the
+    // row ingest wrote knows the code. Without that fallback the panel took a bare '' and a
+    // bank with a perfectly good registry entry filed with no vendor at all, which the
+    // identity block above would then have refused for every such document.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    await waitFor(() => expect(screen.getByRole('button', { name: /Approve/ })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: /Show details/ }))
+    expect(screen.getByLabelText('Tax ID')).toHaveValue('0107545000110')
   })
 })
 

@@ -58,6 +58,9 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   const [bank, setBank] = useState<BankCode | ''>('')
   const [warnings, setWarnings] = useState<string[]>([])
   const [postInputTax, setPostInputTax] = useState(true)
+  /** The input-tax record cannot be filed as it stands. Approve posts both documents, so
+   *  it stops for this the same way it stops for an unbalanced JV. */
+  const [itxBlocked, setItxBlocked] = useState(false)
   // Corrections to the input-tax record's own fields. Per document, like the line
   // descriptions — none of it is a rule, and none of it is written to the BU config.
   const [itx, setItx] = useState<ItxOverrides>({})
@@ -241,10 +244,33 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   }, [])
   const onJvState = useCallback((s: JvState) => setJv(s), [])
 
+  // Which bank this posts against: what the payload re-detects, else what ingest already
+  // stored on the row. `detectBankFromExtracted` reads the printed issuer name and misses
+  // whenever the header carries only the short code, and the ledger row is not a guess.
+  //
+  // The JV pane and the config write already fell back this way; the input-tax panel took
+  // the bare detection and so lost the vendor's registered identity — name, tax ID and
+  // address — for a bank whose registry entry was sitting right there. Resolved once here
+  // so a fourth reader cannot pick the wrong one again.
+  const bankCode = (bank || doc?.bank_code || '') as BankCode | ''
+
   // Everything the approve will write back to the BU config, counted once so the footer
   // and the button agree.
   const ruleCount =
     Object.keys(overrides).length + (prefix === null ? 0 : 1) + (description === null ? 0 : 1)
+
+  // Why Approve cannot be pressed, resolved once so the sentence under the button and the
+  // button's own disabled state cannot disagree. The JV comes first: it is the document
+  // being posted, and the input-tax record is filed after it.
+  const blockReason = jv.reason
+    ? jv.reason === 'account'
+      ? t('review.jvBlankAccount')
+      : jv.reason === 'unbalanced'
+        ? t('review.jvOffBy', { diff: fmt(Math.abs(jv.totalDr - jv.totalCr)) })
+        : t('review.jvNothing')
+    : itxBlocked
+      ? t('review.itxBlocked')
+      : null
 
   async function approve() {
     if (!doc) return
@@ -265,7 +291,7 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
           ...(description === null ? {} : { description }),
           // Which bank's wording the description belongs to. The server prefers a per-bank
           // entry over the BU-wide one, so it has to write whichever actually wins.
-          bank_code: bank || doc.bank_code || '',
+          bank_code: bankCode,
         })
       } catch (e) {
         setPostError(t('review.ruleSaveFailed', { reason: (e as Error).message }))
@@ -401,7 +427,7 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                 &nbsp;
               </span>
             ) : (
-              bank || doc?.bank_code || t('review.unknownBank')
+              bankCode || t('review.unknownBank')
             )}
           </h2>
           {/* The attachment this was read from. Nothing else on the dialog says which
@@ -518,7 +544,7 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   descs={descs}
                   onDesc={onDesc}
                   onState={onJvState}
-                  bankCode={bank || doc.bank_code || ''}
+                  bankCode={bankCode}
                 />
               </section>
 
@@ -529,7 +555,7 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                 <InputTaxPanel
                   details={details}
                   headerData={headerData}
-                  bank={bank}
+                  bank={bankCode}
                   enabled={postInputTax}
                   onEnabledChange={on => {
                     setDirty(true)
@@ -541,6 +567,7 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                     setDirty(true)
                     setItx(o => ({ ...o, ...patch }))
                   }}
+                  onBlocked={setItxBlocked}
                 />
               </section>
             </div>
@@ -555,14 +582,10 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
               {/* Why Approve cannot be pressed, at the button rather than left to be
                   inferred from a tinted row further up. The error above supersedes it:
                   a Carmen rejection is the more recent and more specific answer. */}
-              {jv.reason && !postError && (
+              {blockReason && !postError && (
                 <p className="rd-blocked" id="rd-blocked" role="status">
                   <AlertTriangle size={14} aria-hidden="true" />
-                  {jv.reason === 'account'
-                    ? t('review.jvBlankAccount')
-                    : jv.reason === 'unbalanced'
-                      ? t('review.jvOffBy', { diff: fmt(Math.abs(jv.totalDr - jv.totalCr)) })
-                      : t('review.jvNothing')}
+                  {blockReason}
                 </p>
               )}
               {/* Said before the button, not after: the rule change is a second, wider
@@ -587,10 +610,10 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   type="button"
                   className="btn btn-primary"
                   onClick={approve}
-                  disabled={busy || jv.blocked}
+                  disabled={busy || jv.blocked || itxBlocked}
                   /* The sentence above is the reason the control is unavailable, so a
                      screen reader is given it along with the disabled state. */
-                  aria-describedby={jv.reason && !postError ? 'rd-blocked' : undefined}
+                  aria-describedby={blockReason && !postError ? 'rd-blocked' : undefined}
                 >
                   {busy ? (
                     <Loader2 size={14} className="animate-spin" />

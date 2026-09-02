@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, ChevronDown } from 'lucide-react'
+import CustomSearchSelect from '../common/CustomSearchSelect'
 import { useT } from '../../i18n/LanguageContext'
 import { fetchTaxProfiles, type TaxProfileItem } from '../../lib/api/carmen'
 import type { ItxOverrides } from '../../lib/api/emailReview'
@@ -19,6 +20,10 @@ interface Props {
   onUpdate: (key: string, value: string) => void
   overrides: ItxOverrides
   onOverride: (patch: ItxOverrides) => void
+  /** Whether this record would be refused if Approve were pressed now. Reported up rather
+   *  than acted on here: the button belongs to the review screen, and the JV has its own
+   *  reasons to be unpostable. Mirrors `JvEditor`'s `onState`. */
+  onBlocked: (blocked: boolean) => void
 }
 
 /**
@@ -67,6 +72,7 @@ export default function InputTaxPanel({
   onUpdate,
   overrides,
   onOverride,
+  onBlocked,
 }: Props) {
   const { t } = useT()
   const [open, setOpen] = useState(false)
@@ -99,6 +105,9 @@ export default function InputTaxPanel({
     return {
       net,
       vat,
+      // `TotalAmt`, and derived here rather than read off a payload that does not exist yet
+      // — `build_input_tax_payload` computes the same `net + tax` server-side.
+      total: round2(net + vat),
       ratio,
       rate,
       code,
@@ -117,12 +126,18 @@ export default function InputTaxPanel({
   // Carmen accepts the request and rejects the record afterwards when the vendor has no
   // identity, so it has to be caught here rather than read off a response. Measured on
   // what will post, so typing the missing half clears the warning.
-  const identityMissing = !vendor.taxId || !vendor.name
+  //
+  // Trimmed, because a field of spaces is the empty field Carmen rejects for — untrimmed,
+  // one space in either box cleared this warning and unblocked Approve on a record that
+  // would then be thrown away silently. `build_input_tax_payload` trims for the same reason.
+  const identityMissing = !vendor.taxId.trim() || !vendor.name.trim()
 
-  // Not a field. The month the claim is filed in is a fact about the statement, and a
-  // claim filed in a month the document does not name is exactly the wrong-month error
-  // `build_input_tax_payload` refuses to make — a misread date is corrected on the
-  // document date above, and this follows it.
+  // Not a field, and now not in the body either. The month the claim is filed in is a fact
+  // about the statement — a claim filed in a month the document does not name is exactly
+  // the wrong-month error `build_input_tax_payload` refuses to make, and a misread date is
+  // corrected on the document date above. Being the one read-only thing among four fields
+  // made it look like a field that would not take a value, so it moved up to the summary
+  // line, which is where this panel's other facts already live.
   const period = (() => {
     const parts = (headerData.DocDate || '').split('/')
     return parts.length === 3 ? `${parts[1]}/${normalizeYearToCE(parts[2])}` : '—'
@@ -137,6 +152,16 @@ export default function InputTaxPanel({
   // Nothing to claim. Not an error and not a choice — the statement charged no VAT.
   const nothingToFile = tax.vat <= 0 || tax.net <= 0
 
+  // A record with half an identity is one Carmen accepts and then rejects silently, so it
+  // is stopped before it is sent. The wizard's own Submit has blocked on this same pair
+  // since that incident (InputTaxReconciliation.tsx); the review screen showed the warning
+  // and posted anyway. Only while the record will actually be filed — unticking the box is
+  // a real answer, and a document with no VAT was never a problem.
+  const blocked = enabled && !nothingToFile && identityMissing
+  useEffect(() => {
+    onBlocked(blocked)
+  }, [onBlocked, blocked])
+
   return (
     <div className="itx">
       <div className="itx-head">
@@ -150,11 +175,15 @@ export default function InputTaxPanel({
           <span>{t('review.secTaxLabel')}</span>
         </label>
 
+        {/* Whether, not how much. Four labelled figures up here read as clutter on a line
+            whose job is one yes-or-no, so the head answers that and the body carries the
+            record itself. What a disclosure must never do is hide its own outcome — this
+            still says it, in the fewest words that can. */}
         <span className="itx-sum">
           {nothingToFile
             ? t('review.itxNothing')
             : enabled
-              ? t('review.itxSummary', { vat: fmt(tax.vat), rate: String(tax.rate) })
+              ? t('review.itxOn')
               : t('review.itxOff')}
         </span>
 
@@ -185,95 +214,139 @@ export default function InputTaxPanel({
             </p>
           )}
 
-          {/* Two lines, not a grid. Four short facts in a `repeat(auto-fit, minmax(11rem))`
-              with two span-2 cells wrapped into a tall ragged block for no gain — these
-              read as a sentence, so they are laid out as one. */}
-          {/* The bank's registered identity, which is a fact about the bank — until the
-              registry has none, or has one Carmen disagrees with. Then it is two fields
-              and a reviewer who can read the tax invoice in front of them. */}
-          {/* Each label and the field it names are one `.itx-f` unit, so a wrap can only
-              fall between fields — never between a label and the box it belongs to, which
-              is what turned these two lines into five ragged ones. */}
-          <p className="itx-line">
-            <span className="itx-f">
-              <label className="itx-k" htmlFor="itx-vendor">
+          {/* **One grid, two rows, four columns that both rows share.**
+              This panel is read, not filled in: it is the whole of the second document an
+              approval files, and the reviewer's job is to take it in. So the eight things
+              stand in four columns that span the panel — identity over the figures it
+              produces — and every label shares a left edge with the one above it.
+              What stood here was two rows sized to their own contents: fields packed left,
+              ending 25rem short of the right edge, and the record line anchored at both
+              edges beneath them. Balanced edges, hollow middle, and the eye had to jump
+              three times to read four numbers. Filling the columns costs nothing here (a
+              wider box holds the same value) and removes every jump.
+              Vendor, Tax ID and Branch are one thing — the vendor's identity — so they run
+              together, and the profile, which is a filing choice rather than a fact about
+              the bank, comes last and sits above the total its rate produced.
+              Each cell is still the dialog's own `.rd-f`, so a field here and a field in the
+              document header are the same object; only the track sizing lives on the grid. */}
+          <div className="itx-grid">
+            {/* The bank's registered identity, which is a fact about the bank — until the
+                registry has none, or has one Carmen disagrees with. Then it is two fields
+                and a reviewer who can read the tax invoice in front of them. */}
+            <div className="rd-f">
+              <label className="rd-f-label" htmlFor="itx-vendor">
                 {t('review.itxVendor')}
               </label>
               <input
                 id="itx-vendor"
                 type="text"
-                className="rd-f-input itx-vendor"
+                className="rd-f-input"
                 placeholder={t('review.itxVendorHint')}
                 value={vendor.name}
                 onChange={e => onOverride({ vendor_name: e.target.value })}
               />
-            </span>
-            <span className="itx-sep" aria-hidden="true">
-              ·
-            </span>
+            </div>
+
             {/* Its own label rather than a placeholder: a placeholder names a field only
                 while it is empty, and this one is the reason Carmen refuses a record. */}
-            <span className="itx-f">
-              <label className="itx-k" htmlFor="itx-taxid">
+            <div className="rd-f">
+              <label className="rd-f-label" htmlFor="itx-taxid">
                 {t('review.itxTaxId')}
               </label>
               <input
                 id="itx-taxid"
                 type="text"
                 inputMode="numeric"
-                className="rd-f-input text-mono itx-taxid"
+                className="rd-f-input text-mono"
                 value={vendor.taxId}
                 onChange={e => onOverride({ tax_id: e.target.value })}
               />
-            </span>
-          </p>
+            </div>
 
-          <p className="itx-line">
-            <span className="itx-f">
-              <span className="itx-k">{t('review.itxPeriod')}</span>
-              <span className="itx-v text-mono">{period}</span>
-            </span>
-            <span className="itx-sep" aria-hidden="true">
-              ·
-            </span>
-            {/* Carmen's own list. Naming a profile is the reviewer's to do; its rate and
-                wording are read back from that list server-side, never from here. */}
-            <span className="itx-f">
-              <label className="itx-k" htmlFor="itx-profile">
-                {t('review.itxProfile')}
-              </label>
-              <select
-                id="itx-profile"
-                className="rd-f-input itx-profile"
-                value={tax.code}
-                onChange={e => onOverride({ profile_code: e.target.value })}
-              >
-                {!tax.code && <option value="">—</option>}
-                {profileOptions.map(p => (
-                  <option key={p.code} value={p.code}>
-                    {p.desc ? `${p.code} · ${p.desc}` : p.code}
-                  </option>
-                ))}
-              </select>
-            </span>
-            <span className="itx-sep" aria-hidden="true">
-              ·
-            </span>
-            {/* The one field this record takes from the document that the JV does not. */}
-            <span className="itx-f">
-              <label className="itx-k" htmlFor="itx-branch">
+            {/* The one field this record takes from the document that the JV does not, and
+                the third part of the vendor's identity — so it stands with the two above
+                rather than after the filing choice that follows. */}
+            <div className="rd-f">
+              <label className="rd-f-label" htmlFor="itx-branch">
                 {t('review.fBranch')}
               </label>
+              {/* The value that will file when the document names no branch, shown rather
+                  than left blank: this panel is a preview of a second document, and an
+                  empty box would be a wrong answer about what posts. A placeholder and
+                  not a written value — the reviewer types over it, and nothing claims
+                  the statement said "00000" when it did not. */}
               <input
                 id="itx-branch"
                 type="text"
                 aria-label={t('review.fBranch')}
                 className="rd-f-input text-mono itx-branch"
+                placeholder="00000"
                 value={headerData.BranchNo || ''}
                 onChange={e => onUpdate('BranchNo', e.target.value)}
               />
+            </div>
+
+            {/* Carmen's own list, through the same picker every other chosen value on this
+                dialog uses — a native `<select>` here was the one control that could not
+                take the screen's field treatment and rendered as the browser's own widget
+                beside three flat boxes.
+                The closed state shows the code alone; the description still names each
+                option in the open list and on hover. Naming a profile is the reviewer's to
+                do — its rate and wording are read back from Carmen's list server-side,
+                never from here.
+                A `<span>` label and not a `<label>`: the picker renders its own input and
+                has no id to point at, so it is named by `aria-label` the way the JV row's
+                two pickers are. */}
+            <div className="rd-f">
+              <span className="rd-f-label">{t('review.itxProfile')}</span>
+              <CustomSearchSelect
+                value={tax.code || null}
+                onChange={code => onOverride({ profile_code: code })}
+                options={profileOptions.map(p => ({ code: p.code, name: p.desc }))}
+                placeholder={t('review.itxProfile')}
+                aria-label={t('review.itxProfile')}
+              />
+            </div>
+            {/* The rule that says the row below is read rather than typed into. Spans every
+                track, so it also draws the grid the two rows share. */}
+            <div className="itx-rule" />
+
+            {/* What the record will say. `Net Amount | Tax | Total` are Carmen's own column
+                headings for `BfTaxAmt`, `TaxAmt` and `TotalAmt` — which is what settles
+                `Tax` over `VAT` for the middle one: the reviewer checks that figure against
+                the ERP they are posting to, and a screen that renames it makes them do the
+                matching. All three, not the tax alone; `989.87` says nothing about whether
+                989.87 is right, while the three together are the record's whole arithmetic.
+                Right-aligned, as `.jv-num` right-aligns every figure on this screen, so the
+                three end on one edge and read as a sum rather than as three separate
+                numbers. The period is not a figure and keeps the left edge of its column.
+                **None of the four is a field, and none looks like one.** They are sums over
+                `details` — the lines `buildJvRows` builds the journal from and
+                `applyJvAmount` writes every JV amount edit back into — so they follow the
+                journal above and cannot be typed into here. A VAT record disagreeing with
+                the journal filed beside it is the one outcome worse than no record. The
+                period is the same kind of thing: the month the document names, corrected on
+                the document date. `.itx-fact` is built as `.rd-f` is, so the wash is what
+                tells a value from a field, which is the rule this screen already runs on. */}
+            <span className="itx-fact">
+              <span className="rd-f-label">{t('review.itxPeriod')}</span>
+              <span className="itx-fact-v text-mono">{period}</span>
             </span>
-          </p>
+            <span className="itx-fact itx-fact--amt">
+              <span className="rd-f-label">{t('review.itxNet')}</span>
+              <span className="itx-fact-v text-mono">{fmt(tax.net)}</span>
+            </span>
+            <span className="itx-fact itx-fact--amt">
+              <span className="rd-f-label">{t('review.itxTax')}</span>
+              <span className="itx-fact-v text-mono">{fmt(tax.vat)}</span>
+            </span>
+            {/* The record's headline figure, and the only one carrying weight — two
+                dimensions of hierarchy where three amounts would otherwise read flat. */}
+            <span className="itx-fact itx-fact--amt itx-fact--total">
+              <span className="rd-f-label">{t('review.itxTotal')}</span>
+              <span className="itx-fact-v text-mono">{fmt(tax.total)}</span>
+            </span>
+          </div>
         </div>
       )}
     </div>

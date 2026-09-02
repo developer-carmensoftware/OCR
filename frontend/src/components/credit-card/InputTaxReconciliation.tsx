@@ -139,7 +139,11 @@ export default function InputTaxReconciliation({
       TotalAmt: round2(total).toFixed(2),
       TaxId: vendor.taxId,
       // Branch is the one identity field that comes off the document, not the registry.
-      BranchNo: company.branch || '',
+      // A tax invoice stating no branch was issued by the head office, whose Revenue
+      // Department code is "00000" — the printed convention, not a stand-in for a fact
+      // nobody read, which is why it defaults where the name and tax ID above refuse.
+      // Kept in step with `_HEAD_OFFICE` in services/cc_input_tax.py, its server twin.
+      BranchNo: company.branch || '00000',
       Address: vendor.address,
       UserModified: 'admin',
       TaxProfileDesc: resolvedProfileItem?.desc ?? `VAT ${Math.round(taxRate)}%`,

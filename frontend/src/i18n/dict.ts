@@ -725,7 +725,16 @@ const en = {
   'review.fDescription': 'Description',
   'review.itxShow': 'Show details',
   'review.itxHide': 'Hide details',
-  'review.itxSummary': 'VAT {vat} at {rate}%',
+  // Carmen's own column headings for the three amounts it will show once this record posts
+  // (BfTaxAmt / TaxAmt / TotalAmt). English in both dictionaries, like Dept and Tax ID: the
+  // reviewer matches these against the ERP they are posting to, and translating them makes
+  // that harder. `Tax` rather than `VAT` for the same reason — it is Carmen's word.
+  'review.itxNet': 'Net Amount',
+  'review.itxTax': 'Tax',
+  'review.itxTotal': 'Total',
+  // The collapsed line answers whether, not how much — the figures are a click away. Its
+  // counterpart below is what makes either state readable without the other on screen.
+  'review.itxOn': 'Will be recorded',
   'review.itxOff': 'Will not be recorded',
   'review.itxNothing': 'No VAT on this document',
   'review.itxVendor': 'Vendor',
@@ -780,6 +789,10 @@ const en = {
   'review.jvBlankAccount': 'Choose an account for every line that carries an amount',
   'review.jvOffBy': 'Debit and credit differ by {diff}',
   'review.jvNothing': 'There is nothing to post',
+  // Names both ways out, because unticking the record is a real answer here and not a
+  // last resort: some documents genuinely have no vendor to claim against.
+  'review.itxBlocked':
+    'Fill in the vendor name and tax ID under Show details, or untick the input tax record',
   'review.loadingDocument': 'Loading the document',
   'review.rulesChanged': '{count} GL rule changes when you approve',
   'review.rulesChangedPlural': '{count} GL rules change when you approve',
@@ -2215,7 +2228,10 @@ const th: Record<TKey, string> = {
   'review.fDescription': 'Description',
   'review.itxShow': 'ดูรายละเอียด',
   'review.itxHide': 'ซ่อนรายละเอียด',
-  'review.itxSummary': 'VAT {vat} ที่ {rate}%',
+  'review.itxNet': 'Net Amount',
+  'review.itxTax': 'Tax',
+  'review.itxTotal': 'Total',
+  'review.itxOn': 'จะบันทึก',
   'review.itxOff': 'จะไม่บันทึก',
   'review.itxNothing': 'เอกสารนี้ไม่มี VAT',
   'review.itxVendor': 'Vendor',
@@ -2262,6 +2278,8 @@ const th: Record<TKey, string> = {
   'review.jvUndo': 'ย้อนกลับ',
   'review.jvBalanced': 'ยอดตรงกัน',
   'review.jvImbalanced': 'ยอดไม่ตรงกัน',
+  'review.itxBlocked':
+    'กรอกชื่อผู้ขายและเลขประจำตัวผู้เสียภาษีใน "ดูรายละเอียด" หรือติ๊กรายการภาษีซื้อออก',
   'review.jvBlankAccount': 'เลือกบัญชีให้ทุกบรรทัดที่มียอด',
   'review.jvOffBy': 'เดบิตกับเครดิตต่างกัน {diff}',
   'review.jvNothing': 'ไม่มีรายการให้โพสต์',

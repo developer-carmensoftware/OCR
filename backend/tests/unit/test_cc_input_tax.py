@@ -79,6 +79,47 @@ def test_carries_the_issuers_registered_identity_not_the_hotels():
     assert p["BranchNo"] == "00000"  # the BU's own branch, from its accounting config
 
 
+def test_whitespace_is_absence_everywhere_an_identity_field_is_read():
+    """Carmen treats a field of spaces as the empty field it rejects the record for, so a
+    typed space must not walk past the refusals above — it did, and the review screen's own
+    block cleared on it too."""
+    blank = SimpleNamespace(code="XXX", legal_name="  ", tax_id="  ", address=None)
+    assert _build(bank=blank) is None
+    assert _build(bank=blank, vendor_name="Some Bank Ltd", tax_id="   ") is None
+
+    _, why = build_input_tax_payload(
+        _rows(("1070", "1000", "70")),
+        doc_no="INV-001",
+        doc_date="15/01/2026",
+        bank=SimpleNamespace(code="XXX", legal_name="Some Bank Ltd", tax_id="  "),
+        branch="00000",
+        description="d",
+        tax_profiles_raw=PROFILES,
+    )
+    assert why and "tax ID" in why
+
+    # And the values that do post are trimmed rather than passed through verbatim.
+    p = _build(branch="  ", tax_id="  0107536000315  ")
+    assert (p["BranchNo"], p["TaxId"]) == ("00000", "0107536000315")
+
+
+def test_a_blanked_override_falls_back_to_the_registry_rather_than_losing_the_claim():
+    """A reviewer clearing the vendor box has not decided the bank has no identity — the
+    review screen blocks Approve on an empty one, and the unattended path never sends one at
+    all. Falling back keeps a claim that would otherwise be dropped for a stray keystroke."""
+    p = _build(bank=BANK, vendor_name="", tax_id="   ")
+    assert (p["VnName"], p["TaxId"]) == (BANK.legal_name, BANK.tax_id)
+
+
+def test_an_unread_branch_files_as_the_head_office():
+    """A tax invoice stating no branch was issued by the head office, and "00000" is the
+    Revenue Department's code for that — the printed convention, so it is a default rather
+    than the refusal a missing name or tax ID gets."""
+    assert _build(branch=None)["BranchNo"] == "00000"
+    assert _build(branch="")["BranchNo"] == "00000"
+    assert _build(branch="00012")["BranchNo"] == "00012"  # what was read still wins
+
+
 def test_february_in_a_leap_year_ends_on_the_29th():
     p = _build(doc_date="03/02/2028")
     assert (p["FrDate"], p["ToDate"]) == ("2028-02-01", "2028-02-29")
@@ -120,6 +161,27 @@ def test_no_record_when_the_bank_has_no_registered_identity():
     """Nullable on purpose: a bank nobody has filled in yet just gets no ACTX record."""
     assert _build(bank=SimpleNamespace(code="XXX", legal_name=None)) is None
     assert _build(bank=None) is None
+
+
+def test_a_missing_tax_id_is_a_refusal_too_and_says_which_half_is_missing():
+    """Half an identity is not an identity. Carmen takes `TaxId: ""` and rejects the
+    record afterwards, so the record has to be refused here where it can be reported."""
+    _, why = build_input_tax_payload(
+        _rows(("1070", "1000", "70")),
+        doc_no="INV-001",
+        doc_date="15/01/2026",
+        bank=SimpleNamespace(code="XXX", legal_name="Some Bank Ltd", tax_id=None),
+        branch="00000",
+        description="d",
+        tax_profiles_raw=PROFILES,
+    )
+    assert why and "tax ID" in why
+    # And the reviewer typing the missing half is what turns it back into a record.
+    p = _build(
+        bank=SimpleNamespace(code="XXX", legal_name="Some Bank Ltd", tax_id=None),
+        tax_id="0107536000315",
+    )
+    assert p["TaxId"] == "0107536000315"
 
 
 # ── What the reviewer corrected ───────────────────────────────────────────────

@@ -791,10 +791,15 @@
   width: 8rem;
 }
 
-/* The only field with anything to gain from a wider modal. */
+/* The only field with anything to gain from a wider modal — the JV description, which is
+   free text a reviewer writes. */
 .rd-f--grow {
   flex: 1 1 14rem;
 }
+
+/* The input-tax panel's fields carry no width modifier: they are grid cells, sized by the
+   tracks on `.itx-grid`. Sizing them here as well is what made the two rows there stop at
+   different places. */
 
 /* --text-3: one tier lighter than the value it names, and the lightest tier that still
    passes AA at this size. The table headers beside it need --text-2 for the same 4.5:1
@@ -879,7 +884,8 @@
 }
 
 .rd-f .date-input,
-.rd-f .date-input-trigger {
+.rd-f .date-input-trigger,
+.rd-f .custom-search-select {
   width: 100%;
 }
 
@@ -913,19 +919,21 @@
    than as decoration.
    The `:not()` guards matter — a picker that is empty or carries an AI suggestion still
    shows its red or violet box, which is the whole point of those states. */
-.rd-doc .custom-search-select-input:not([data-error]):not([data-suggested]),
-.jv-table .custom-search-select-input:not([data-error]):not([data-suggested]) {
+/* Scoped to `.rd-modal`, not to the two places that happened to have a picker first: the
+   rule is "everywhere on this screen a value can be chosen", and naming the containers
+   one by one is what left the input-tax panel's tax profile as a raw browser `<select>`
+   next to four flat boxes. `CustomModal`'s confirmations render no picker, so widening
+   the scope reaches nothing else. */
+.rd-modal .custom-search-select-input:not([data-error]):not([data-suggested]) {
   background: var(--field-rest);
   border-color: transparent;
 }
 
-.rd-doc .custom-search-select-input:hover:not(:focus):not([data-error]):not([data-suggested]),
-.jv-table .custom-search-select-input:hover:not(:focus):not([data-error]):not([data-suggested]) {
+.rd-modal .custom-search-select-input:hover:not(:focus):not([data-error]):not([data-suggested]) {
   background: var(--field-hover);
 }
 
-.rd-doc .custom-search-select-input:focus,
-.jv-table .custom-search-select-input:focus {
+.rd-modal .custom-search-select-input:focus {
   background: var(--card-bg);
   border-color: var(--primary);
   box-shadow: 0 0 0 3px oklch(from var(--primary) l c h / 0.18);
@@ -933,13 +941,11 @@
 
 /* Flat costs the picker the one thing that said it was a picker — it has no chevron of its
    own. So the wrapper draws one, and the input leaves room for it. */
-.rd-doc .custom-search-select,
-.jv-table .custom-search-select {
+.rd-modal .custom-search-select {
   position: relative;
 }
 
-.rd-doc .custom-search-select::after,
-.jv-table .custom-search-select::after {
+.rd-modal .custom-search-select::after {
   content: '';
   position: absolute;
   right: 0.45rem;
@@ -954,13 +960,15 @@
 }
 
 /* Geometry, so a picker and a plain field are the same height in the same row. */
-.rd-doc .custom-search-select-input,
-.jv-table .custom-search-select-input {
+.rd-modal .custom-search-select-input {
   padding: 0.25rem 1.25rem 0.25rem 0.4rem;
   font-size: 0.83rem;
   border-radius: var(--radius-sm);
 }
 
+/* `.rd-doc` fields are 0.875rem — a picker a hair smaller than the boxes beside it is the
+   staggered look the one field treatment exists to prevent. Covers the input-tax row too,
+   which is a `.rd-doc`. */
 .rd-doc .custom-search-select-input {
   font-size: 0.875rem;
 }
@@ -1439,9 +1447,64 @@
   cursor: not-allowed;
 }
 
-/* The answer, whether or not anyone opens the panel: will it be filed, for how much, at
-   what rate. A disclosure that hides its own outcome is the collapsing this screen threw
-   out once already. */
+/* The answer, whether or not anyone opens the panel: will it be filed, for how much, and
+   into which month. A disclosure that hides its own outcome is the collapsing this screen
+   threw out once already.
+   The slack lives on the group, not on the amount — `flex: 1` was on `.itx-sum`, which held
+   the period out at the right edge of a 64rem dialog with a hand's width of nothing between
+   it and the figure it belongs to. */
+/* One grid for the whole panel: four columns, both rows on them.
+   The two rows were sized to their own contents before — fields packed left and stopping
+   25rem short of a 64rem dialog, figures anchored to the right edge under them. The edges
+   balanced and the middle went hollow, and reading four numbers took three jumps. This
+   panel is read rather than filled in, so the columns span the width and every label shares
+   a left edge with the one above it. Filling costs nothing: a wider box holds the same
+   value.
+   Vendor takes half again what the others do — it is the only cell holding a sentence; the
+   remaining three are a 13-digit number, a 5-digit code and a 5-character code, and equal
+   tracks let them line up with the figures beneath. */
+.itx-grid {
+  display: grid;
+  grid-template-columns: 1.5fr repeat(3, 1fr);
+  gap: var(--space-3) var(--space-4);
+  align-items: start;
+}
+
+/* Spans every track, so the line that separates typed-into from read-only also draws the
+   grid the two rows share. */
+.itx-rule {
+  grid-column: 1 / -1;
+  height: 1px;
+  background: var(--border);
+  margin: 0.2rem 0 0.05rem;
+}
+
+/* Figures end on their column's right edge, as `.jv-num` ends every figure on this screen,
+   so the three read as a sum rather than as three separate numbers. */
+.itx-fact--amt .rd-f-label,
+.itx-fact--amt .itx-fact-v {
+  text-align: right;
+}
+
+/* Two columns before the fields would have to shrink below what they hold. Vendor keeps the
+   full width to itself: a company name in half a phone screen is unreadable. */
+@media (max-width: 640px) {
+  .itx-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .itx-grid > .rd-f:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* The record's headline. Weight and ink, not size: a third type size in a row this short
+   would be noise, and two dimensions are enough to stop three equal figures reading flat. */
+.itx-fact--total .itx-fact-v {
+  font-weight: 600;
+  color: var(--text);
+}
+
 .itx-sum {
   flex: 1;
   min-width: 0;
@@ -1449,6 +1512,31 @@
   color: var(--text-3);
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* One labelled figure the reviewer reads but cannot type into — built as `.rd-f` is, label
+   over value, so the row reads as part of the same screen as the fields under it rather
+   than as this panel's own invention.
+   What separates them is the wash, not the layout, and that is the rule this file already
+   states: a field is washed and a value that is not a field is bare (see "One field
+   treatment across the screen"). So the value keeps the field's own box metrics — same
+   0.4rem inset, same 0.875rem — and simply never fills. Two rows, one grid, and the one
+   difference between them is the one that means something. */
+.itx-fact {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.itx-fact-v {
+  padding: 0.25rem 0.4rem;
+  font-size: 0.875rem;
+  /* One tier back from the fields above, because these are the record's outcome rather than
+     its inputs — and it is what leaves the total room to carry weight without shouting. */
+  color: var(--text-2);
   white-space: nowrap;
 }
 
@@ -1513,99 +1601,26 @@
   margin-top: 0.1rem;
 }
 
-/* Two lines, not a grid. Six short facts in a `repeat(auto-fit, minmax(11rem))` with two
-   span-all cells wrapped into a tall ragged block for no gain — they read as a sentence, so
-   they are set as one: label, field, separator, and each line holds.
-   `center`, not `baseline`: baseline lines up the *text* inside boxes of different heights,
-   which leaves the boxes themselves staggered — the single worst thing about the underline
-   this replaced, since each field's line then sat at its own height. */
-/* Three steps of air, and only three, so the grouping is read rather than worked out:
- *
- *   0.4rem   inside a unit  — a label and the field it names
- *   0.5rem   between units  — doubled around the `·` that sits in that gap, so ~1.15rem
- *                             of clear space separates one field from the next
- *   0.6rem   between lines
- *
- * The old numbers were 0.4 / 0.6 / 0.5: the gap inside a unit and the gap between two units
- * were near enough the same that VENDOR read as belonging to whatever box was nearest, and
- * the two lines sat closer together than the fields sat apart. */
-.itx-line {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.35rem 0.5rem;
-  margin: 0 0 0.6rem;
-  font-size: 0.83rem;
-  line-height: 1.6;
-}
+/* The body's four fields are a plain `.rd-doc` row of `.rd-f` units — the same layout the
+   document fields at the top of the dialog use, so there is one field layout on this screen
+   and not two. What stood here before was this panel's own: `.itx-line` / `.itx-f` /
+   `.itx-k` / `.itx-sep`, a sentence with the label beside its box and a `·` between units,
+   which needed those separators exactly because nothing else told one field from the next.
+   Stacking the label over the box gives each field its own column and the separators had
+   nothing left to do. Widths live with the other `.rd-f--*` modifiers above. */
 
-.itx-line:last-child {
-  margin-bottom: 0;
-}
-
-/* Label weight comes from case and colour, not size — at 0.83rem a second type size in a
-   line this short reads as noise.
-   The negative margin is the letter-spacing coming back: 0.07em is applied after the last
-   letter too, so every label carried half a space of its own into the gap and no two
-   label-to-field gaps measured the same. */
-.itx-k {
-  margin-right: -0.07em;
-  font-size: 0.66rem;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+/* The one placeholder on this screen that is not a complaint.
+ *
+ * Every other one wears the amber italic set on `.rd-f-input::placeholder` and means the
+ * same thing: nobody filled this in, and somebody has to. This one is the value that will
+ * actually file — a statement naming no branch was issued by the head office, whose Revenue
+ * Department code is "00000" — so it is a preview, not a gap, and takes the muted treatment
+ * that reads as "already answered". Same specificity as the amber rule, so it must stay
+ * below it. */
+.rd-modal .itx-branch::placeholder {
   color: var(--text-3);
-  white-space: nowrap;
-}
-
-.itx-v {
-  color: var(--text-2);
-  min-width: 0;
-  /* Sits where a field's text sits, so the static period lines up with the boxes beside
-     it instead of starting a hair to their left. */
-  padding-left: 0.4rem;
-}
-
-.itx-sep {
-  color: var(--text-4);
-}
-
-/* A label and the field it names, as one unit. Without it the wrap fell wherever it liked
-   — VENDOR kept its box and TAX ID's landed a line below its own label, which is what made
-   two lines render as five.
-   `flex-shrink: 0` because these are short: nothing here is longer than a company name,
-   and a field that shrinks to fit a row is a field you cannot read. */
-.itx-f {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 0.4rem;
-  min-width: 0;
-}
-
-/* Every field is sized to what it holds rather than stretched to fill: this reads as a
-   sentence, and a row of equal boxes would make it a form. These have to out-specify
-   `.rd-modal .rd-f-input { width: 100% }`, hence the `.rd-modal` on each.
-   The wash is what makes an empty one visible at all — a blank branch is the usual state,
-   and a blank vendor is the case worth noticing. */
-.rd-modal .itx-vendor {
-  /* A registered bank name, the longest string on the panel. */
-  width: 17rem;
-}
-
-/* No font-size of its own: at 0.8rem against its 0.875rem neighbours it was a shorter box
-   in a row of taller ones. A tax ID is 13 digits and `text-mono` already sets it apart. */
-.rd-modal .itx-taxid {
-  width: 9rem;
-}
-
-.rd-modal .itx-profile {
-  /* 'VAT07 · VAT 7%' plus the select's own arrow. */
-  width: 11rem;
-}
-
-.rd-modal .itx-branch {
-  width: 5.5rem;
+  font-style: normal;
+  opacity: 0.75;
 }
 
 @media (max-width: 640px) {
