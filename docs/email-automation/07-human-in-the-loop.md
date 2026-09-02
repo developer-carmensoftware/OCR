@@ -841,3 +841,61 @@ This settles it in the inbox's favour and reorders the table behind that answer.
 
 The review modal, approve, reject, the anti-join, the backlog cap, the refund rule, the
 notification, and every decision #1–#32 except where the table above supersedes them.
+
+---
+
+## 12. Amendment 2026-09-02 — what the page claims to be, settled
+
+§11 said it settled the page "in the inbox's favour" and then left §9's history table
+underneath. The page went on saying three things about itself at once: the title named a
+*mechanism* (`AI JV Automation`), the heading named an *inbox* (`3 waiting for you`), and a
+strip of five status chips over a table of every row named a *history*. The Home card that
+links to it named a fourth thing and described the wizard one level below it.
+
+Settled by the reader, in six rounds, against the recommendation in four of them:
+
+> The page is **the robot's inbox**, for the credit-card module only, and it exists so that
+> the amount of manual work goes down.
+
+Everything below follows from that sentence, and nothing on the page may contradict it.
+
+### What changed, and why
+
+| # | Change | Why |
+|---|---|---|
+| 39 | **One name, three places.** `AI JV Automation` on the Home card, on the queue and on `#/CreditCardOCR/manual` — same header, same eyebrow, back button reads `Back`. `home.ccDesc` now describes the destination (forward mail → read → approve) instead of the wizard. | The wizard's header used to introduce a differently-named page, and Home sold a scanner to someone about to land in a queue. Which of the two pages you are on is the `StepWizard` directly below the header; that was judged context enough. |
+| 40 | **The heading is deleted**, and with it `loadingHeading` / `waitingHeading` / `nothingWaiting` and the `Posting without review` badge. The chip strip moved up into its row. | `3 waiting for you` printed the number the `Needs review` chip already carries two rows below, in a page whose one heading could say nothing true to a BU that posts without review. §6's second clause (`· 8 posted today`) was considered as the fix and rejected by the reader on its own merits: a lifetime total only goes up, so nobody can act on it. |
+| 41 | **Five chips become three**: `Needs review` · `Posted` · `Not posted`. `all` survives as an API value and as `counts.all` — it has no chip. | `failed` vs `skipped` is `status = "skipped" if charged is None else "failed"`, a *billing* split, and both words mean "it did not post" to the person reading them. #25 and #37 both diagnosed this and both patched around it. The Message column already names all seven causes, and `all` was an escape hatch from a strip that no longer holds anything back. |
+| 42 | **The opening chip follows `auto_post`**: off → `review`, on → `success`. Chosen once, when status lands, so a refresh or a flip of the gear does not move the reader. | A BU that has switched review off has an empty `review` chip *for ever* — the end state this whole feature is aimed at would have opened on a permanently empty page saying "All clear", the morning after the robot posted forty documents. |
+| 43 | **The dot means "something is off", not "you can fix it"** (`_attention`). It now covers every `failed`/`rejected`, the fixable `skipped` reasons as before, stale `received`, and — new — a `posted` row carrying an `error_message`. | The old line excluded `carmen_rejected` and every other failure with no button, so a dot's *absence* meant nothing. The `posted` case is the quietest outcome in the system: the JV reached Carmen, the input-tax record did not, and the row wears the Success pill. Nothing anywhere said so. |
+| 44 | **`All clear` is written to be true in both modes**, and the second person is gone from the page. It also serves an empty `Posted`; an empty `Not posted` keeps the plain line. | "…land here for approval before they post" described, to a BU that had turned review off, the exact thing it had stopped doing. An empty pile of failures is not an achievement and does not get the tick. |
+
+### Considered and not done
+
+- **A second heading clause** (`· 8 posted today`, or a 30-day automated-vs-manual ratio).
+  Rejected with the heading itself. The ratio is the number that actually measures decision
+  #1's goal, and is worth revisiting the day a BU has the volume to make a percentage
+  honest — at three documents a month one manual scan moves it 33 points.
+- **Re-keying the chips on who-can-act** (`Needs review / Needs a fix / Posted / Nothing to
+  do`). It is the split the reader's question really wants, and it costs a vocabulary the
+  API does not speak. The dot carries it instead, as in #37.
+- **Sorting `unposted` so fixable rows lead.** Rejected in favour of plain time order. The
+  consequence is stated plainly: the 2026-08-28 conditions now live *inside* one chip
+  rather than being hidden behind one, and the dot plus the Actions column are what point
+  at them.
+- **Showing the not-set-up pitch to a BU that has manual scans.** `NotSetUp` is still gated
+  on `counts.all === 0`, so the BUs doing the most manual work are the ones that never see
+  the address again. Raised, and deliberately left: this page does not sell, onboarding
+  does. Home (#39) is the surface that carries the pitch.
+- **Demoting `Upload documents` to `.btn-outline`**, which §6 specified and §9 overturned on
+  reasoning that decision #1 has now retired. Kept primary anyway: today most people arrive
+  here to press it, and that fact outranks the definition until email volume passes manual
+  volume. Worth re-reading then.
+- **The review modal.** Untouched this round, deliberately: it was rebuilt over §10 and
+  should be judged against the new queue rather than alongside it.
+
+### Not changed
+
+The anti-join, the backlog cap, the refund rule, the notification, `FIXABLE_REASONS` as the
+key to the Actions column, `MANUAL_FILTERS`, and every decision #1–#38 except where the
+table above supersedes them.

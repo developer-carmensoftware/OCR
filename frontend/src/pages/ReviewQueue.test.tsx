@@ -56,7 +56,7 @@ function status(over: Partial<ReviewStatus> = {}): ReviewStatus {
   }
 }
 
-const ZERO = { all: 0, review: 0, success: 0, failed: 0, skipped: 0 }
+const ZERO = { all: 0, review: 0, success: 0, unposted: 0 }
 
 function mount(
   s: ReviewStatus,
@@ -89,14 +89,32 @@ describe('which state the automation page paints', () => {
     expect(await screen.findByText('KTC')).toBeInTheDocument()
     expect(screen.getByText('INV-001')).toBeInTheDocument()
     expect(screen.getByText('48,200.00')).toBeInTheDocument()
-    expect(screen.getByText('1 waiting for you')).toBeInTheDocument()
+  })
+
+  it('has no heading — the chip strip is it', async () => {
+    // "1 waiting for you" printed the number the Needs review chip already carries two
+    // rows below, and had nothing true to say to a BU that posts without review.
+    mount(status(), [doc()])
+    await screen.findByText('KTC')
+    expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: /Needs review/ })).toHaveTextContent('1')
+    )
   })
 
   it('reads as success, not absence, when a live BU is caught up', async () => {
     mount(status(), [], ZERO)
-    expect(await screen.findByText('You are all caught up')).toBeInTheDocument()
+    expect(await screen.findByText('All clear')).toBeInTheDocument()
     // Never the sales pitch: this BU already knows what the feature is.
     expect(screen.queryByText('Let statements post themselves')).not.toBeInTheDocument()
+  })
+
+  it('says the same true thing whether or not the BU reviews before posting', async () => {
+    // "…land here for approval before they post" described, to a BU that had switched
+    // review off, the exact thing it had stopped doing.
+    mount(status({ auto_post: true }), [], ZERO)
+    expect(await screen.findByText(/appear here/)).toBeInTheDocument()
+    expect(screen.queryByText(/approval/)).not.toBeInTheDocument()
   })
 
   it('sells the feature to a BU that has not switched it on', async () => {
@@ -127,13 +145,8 @@ describe('which state the automation page paints', () => {
       </LanguageProvider>
     )
     expect(await screen.findByText('Could not load the queue')).toBeInTheDocument()
-    expect(screen.queryByText('You are all caught up')).not.toBeInTheDocument()
+    expect(screen.queryByText('All clear')).not.toBeInTheDocument()
     expect(screen.queryByText('Let statements post themselves')).not.toBeInTheDocument()
-  })
-
-  it('says so when the BU has turned review off', async () => {
-    mount(status({ auto_post: true }), [], ZERO)
-    await waitFor(() => expect(screen.getByText('Posting without review')).toBeInTheDocument())
   })
 })
 
@@ -162,9 +175,9 @@ describe('the message column', () => {
 
 describe('where a row came from', () => {
   it('tells a forwarded document apart from one somebody scanned', async () => {
-    // No longer a column of its own — under three of the five chips it could only ever
-    // say "Email", because a manual scan is only ever listed once posted. It is an icon
-    // on the filename line now, and the word is still there for a screen reader.
+    // No longer a column of its own — a manual scan is only ever listed once posted, so
+    // outside the Posted chip it could only ever say "Email". It is an icon on the
+    // filename line now, and the word is still there for a screen reader.
     mount(status(), [
       doc({ id: 'a' }),
       doc({ id: 'b', source: 'manual', status: 'posted', jv_no: 'JV-7', total: 0 }),
@@ -186,28 +199,29 @@ describe('where a row came from', () => {
 })
 
 describe('the status filter chips', () => {
-  it('offers one chip per status group, each with its count', async () => {
-    mount(status(), [doc()], { all: 113, review: 3, success: 7, failed: 2, skipped: 101 })
+  it('offers three chips that between them hold every row', async () => {
+    // `failed` and `skipped` were two chips for one fact. The split behind them is whether
+    // a credit was charged — the billing system's business, and nothing a reader can guess.
+    mount(status(), [doc()], { all: 113, review: 3, success: 7, unposted: 103 })
+    // The strip renders as soon as status lands; the counts arrive with the list.
+    await screen.findByText('KTC')
     for (const [label, n] of [
-      ['All', '113'],
       ['Needs review', '3'],
       ['Posted', '7'],
-      ['Not posted', '2'],
-      ['Skipped', '101'],
+      ['Not posted', '103'],
     ]) {
-      const chip = await screen.findByRole('tab', { name: new RegExp(label) })
-      expect(chip).toHaveTextContent(n)
+      expect(screen.getByRole('tab', { name: new RegExp(label) })).toHaveTextContent(n)
     }
+    expect(screen.getAllByRole('tab')).toHaveLength(3)
   })
 
-  it('leads with the work and leaves All till last', async () => {
-    // The strip reads as the four buckets a document actually moves through; All is the
-    // escape hatch from them, not a peer of them.
-    mount(status(), [doc()], { all: 113, review: 3, success: 7, failed: 2, skipped: 101 })
-    await screen.findByRole('tab', { name: /All/ })
-    const chips = screen.getAllByRole('tab').map(el => el.textContent ?? '')
-    expect(chips[0]).toMatch(/^Needs review/)
-    expect(chips[chips.length - 1]).toMatch(/^All/)
+  it('has no All chip — three chips already hold everything', async () => {
+    // `all` survives as the API default and as `counts.all`, which is how the page tells a
+    // BU that has never had a document from one whose current chip is empty. As a fourth
+    // chip it was a choice with no consequence.
+    mount(status(), [doc()], { all: 113, review: 3, success: 7, unposted: 103 })
+    await screen.findByRole('tab', { name: /Needs review/ })
+    expect(screen.queryByRole('tab', { name: /^All/ })).not.toBeInTheDocument()
   })
 
   it('shows a zero rather than dropping the chip', async () => {
@@ -240,27 +254,24 @@ describe('the status filter chips', () => {
   })
 
   it('hides the chips from a BU with no documents at all', async () => {
-    // Five zeroes above an explanation of what the feature is would be scaffolding,
+    // Three zeroes above an explanation of what the feature is would be scaffolding,
     // not navigation.
     mount(status({ enabled: false, blockers: ['disabled'] }), [], ZERO)
     await screen.findByText('Let statements post themselves')
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
   })
 
-  it('never claims "all caught up" on an empty Posted chip', async () => {
-    // Nothing has posted yet is a different statement from you are up to date, and must
-    // not borrow its tick.
-    mount(status(), [], { ...ZERO, all: 2, failed: 2 })
-    fireEvent.click(await screen.findByRole('tab', { name: /Posted/ }))
+  it('never puts a tick on an empty Not posted chip', async () => {
+    // An empty pile of failures is not an achievement; celebrating a non-event is how a
+    // success screen stops meaning anything.
+    mount(status(), [], { ...ZERO, all: 2, success: 2 })
+    fireEvent.click(await screen.findByRole('tab', { name: /Not posted/ }))
     expect(await screen.findByText('Nothing here yet.')).toBeInTheDocument()
-    expect(screen.queryByText('You are all caught up')).not.toBeInTheDocument()
+    expect(screen.queryByText('All clear')).not.toBeInTheDocument()
   })
 
-  it('opens on the work, not on the whole history', async () => {
-    // Every word on this page — the heading, the empty states, the reason line — was
-    // written for "what is owed", while the default filter answered "what happened" and
-    // mixed in the rows the BU's own filename rules threw out.
-    mount(status(), [doc()], { ...ZERO, all: 113, review: 1, skipped: 101 })
+  it('opens on the work when the BU still reviews', async () => {
+    mount(status(), [doc()], { ...ZERO, all: 113, review: 1, unposted: 101 })
     await screen.findByText('KTC')
     expect(vi.mocked(api.listActivity).mock.calls[0][0]).toBe('review')
     expect(screen.getByRole('tab', { name: /Needs review/ })).toHaveAttribute(
@@ -269,21 +280,46 @@ describe('the status filter chips', () => {
     )
   })
 
-  it('marks a chip that is hiding something the BU can fix', async () => {
-    // Skipped is out of the default view now, and it is where every customer-clearable
-    // cause lands — `status` splits on whether a credit was charged, not on who can act.
-    // Without the marker the 2026-08-28 incident has its conditions back.
-    mount(status(), [doc()], { ...ZERO, all: 60, review: 1, skipped: 59 }, 1, {
+  it('opens on Posted for a BU that has switched review off', async () => {
+    // `auto_post` means `review` is empty for ever. Landing there would hide the only
+    // thing that page has to show such a BU: the work the robot is doing for it.
+    mount(status({ auto_post: true }), [], { ...ZERO, all: 40, success: 40 })
+    await screen.findByRole('tab', { name: /Posted/ })
+    expect(vi.mocked(api.listActivity).mock.calls[0][0]).toBe('success')
+    expect(screen.getByRole('tab', { name: /Posted/ })).toHaveAttribute('aria-selected', 'true')
+    // And exactly one fetch: seeding `review` first and correcting it would flash the
+    // wrong empty state on the way.
+    expect(vi.mocked(api.listActivity)).toHaveBeenCalledTimes(1)
+  })
+
+  it('marks a chip that is hiding an anomaly, whoever can fix it', async () => {
+    // The dot means "something is off", not "you can fix it" — a failure nobody in the BU
+    // can clear is still a failure, and every customer-clearable cause now shares one chip
+    // with the rest. Without the marker the 2026-08-28 incident has its conditions back.
+    mount(status(), [doc()], { ...ZERO, all: 60, review: 1, unposted: 59 }, 1, {
       ...ZERO,
       all: 5,
-      skipped: 5,
+      unposted: 5,
     })
-    const skipped = await screen.findByRole('tab', { name: /Skipped/ })
-    expect(skipped).toHaveTextContent('5 of these you can fix yourself')
-    expect(skipped.querySelector('.rq-tab-dot')).toBeInTheDocument()
-    // And stays quiet on a chip with nothing owed.
+    await screen.findByText('KTC')
+    const unposted = screen.getByRole('tab', { name: /Not posted/ })
+    expect(unposted).toHaveTextContent('5 need attention')
+    expect(unposted.querySelector('.rq-tab-dot')).toBeInTheDocument()
+    // And stays quiet on a chip with nothing wrong under it.
     const posted = screen.getByRole('tab', { name: /Posted/ })
     expect(posted.querySelector('.rq-tab-dot')).not.toBeInTheDocument()
+  })
+
+  it('marks a JV that posted without its input-tax record', async () => {
+    // The quietest outcome in the system: the row wears the Success pill and nothing else
+    // in the app says the VAT record never happened.
+    mount(status(), [doc()], { ...ZERO, all: 20, success: 20 }, 1, { ...ZERO, all: 2, success: 2 })
+    // The strip renders as soon as status lands, a beat before the counts do — wait for a
+    // row, or this asserts against the empty first paint.
+    await screen.findByText('KTC')
+    expect(
+      screen.getByRole('tab', { name: /^Posted/ }).querySelector('.rq-tab-dot')
+    ).toBeInTheDocument()
   })
 })
 
@@ -414,7 +450,8 @@ describe('the auto-post switch', () => {
     fireEvent.click(screen.getByRole('button', { name: /Automation settings/ }))
     fireEvent.click(await screen.findByRole('switch'))
     await waitFor(() => expect(api.setAutoPost).toHaveBeenCalledWith(true))
-    // The badge in the bar reads the fetched status, so the page has to ask again.
+    // The switch renders from the fetched status, so the page has to ask again rather
+    // than keeping a second copy of the answer.
     await waitFor(() => expect(vi.mocked(api.getReviewStatus).mock.calls.length).toBeGreaterThan(1))
   })
 

@@ -8,26 +8,27 @@ import QueueSettings from '../components/credit-card/QueueSettings'
 import ReviewDocument from './ReviewDocument'
 import { useReviewQueue } from '../hooks/credit-card/useReviewQueue'
 import { prefetchGlMasters } from '../hooks/mapping/useGlMasters'
-import { ACTIVITY_FILTERS, type ActivityFilter } from '../lib/api/emailReview'
+import { ACTIVITY_FILTERS, type ChipFilter } from '../lib/api/emailReview'
 import { useRowsPerPage } from '../hooks/useRowsPerPage'
 import { useT } from '../i18n/LanguageContext'
 import { showToast } from '../lib/toast'
 import type { TKey } from '../i18n/dict'
 
-const FILTER_LABEL: Record<ActivityFilter, TKey> = {
-  all: 'review.filterAll',
+// `all` has no chip — it is still the API's default and still what `counts.all` answers,
+// but the three below hold every row between them, so a fourth that repeats them is a
+// choice with no consequence.
+const FILTER_LABEL: Record<ChipFilter, TKey> = {
   review: 'review.filterReview',
   success: 'review.filterSuccess',
-  failed: 'review.filterFailed',
-  skipped: 'review.filterSkipped',
+  unposted: 'review.filterUnposted',
 }
 
 // One column per header cell — the row component must stay in step with this list, and the
 // widths in review-queue.css are declared on these cells because `table-layout: fixed`
 // reads only the first row.
 //
-// Source is no longer a column: `MANUAL_FILTERS` means a manual scan can only appear under
-// two of the five chips, so it read "Email" on every row under the other three — the same
+// Source is no longer a column: `MANUAL_FILTERS` means a manual scan only ever appears
+// under Posted, so the column read "Email" on every row of the other two — the same
 // argument §9 #19 used to delete it as a concept. It is an icon on the filename line now.
 const COLUMNS: TKey[] = [
   'review.colStatus',
@@ -66,8 +67,12 @@ function RowSkeleton() {
   )
 }
 
-/** Shown once forwarding is live and the queue is clear — which is where a working BU
- *  spends most of its time, so it has to read as success rather than as absence. */
+/** Shown once forwarding is live and there is nothing under the chip — which is where a
+ *  working BU spends most of its time, so it has to read as success rather than as absence.
+ *
+ *  Its sentence must be true in both modes. "…land here for approval before they post" was
+ *  written for review and describes, to a BU that has switched review off, the exact thing
+ *  it stopped doing. Nothing on this page mentions `auto_post`; it lives behind the gear. */
 function AllClear({ address }: { address: string | null }) {
   const { t } = useT()
   return (
@@ -198,14 +203,14 @@ export default function ReviewQueue() {
 
   const configured = !!status?.enabled && !!status?.entitled
   const hasWork = rows.length > 0
-  // The heading counts what needs a human, not what this filter happens to show — someone
-  // reading the Skipped chip still wants to know whether anything is owed.
-  const reviewCount = counts.review ?? 0
-  // Empty under All or Needs review means "caught up". Empty under Success / Failed /
-  // Skipped just means that bucket is empty, which is a different sentence.
-  const workFilter = filter === 'all' || filter === 'review'
-  // A BU with manual scans has a history even with forwarding off, so the sales pitch is
-  // gated on having nothing at all rather than on the current filter being empty.
+  // Which empty chips get the tick. `review` empty means nothing is owed; `success` empty
+  // is the first screen a BU sees after switching forwarding on, and "Nothing here yet."
+  // is too thin a sentence for it. `unposted` empty gets the plain line — an empty pile of
+  // failures is not an achievement, and a green tick over it would be celebrating a
+  // non-event.
+  const clearFilter = filter === 'review' || filter === 'success'
+  // A BU with manual scans has rows even with forwarding off, so the sales pitch is gated
+  // on having nothing at all rather than on the current filter being empty.
   const nothingEver = (counts.all ?? 0) === 0
 
   return (
@@ -219,17 +224,50 @@ export default function ReviewQueue() {
         <UsageIndicator />
       </AppHeader>
 
+      {/* The chips are the heading. A line that read "3 waiting for you" said the number
+          the Needs review chip prints two rows below it, and had nothing true to say to a
+          BU that posts without review — so it is gone and the strip moved up into its row.
+
+          Hidden until the BU has mail at all: three zeroes above an explanation of what the
+          feature is would be scaffolding, not navigation. A BU with only manual scans still
+          gets them — it has rows to filter. */}
       <div className="rq-bar">
-        <div className="rq-bar-left">
-          <h1 className="rq-heading">
-            {loading
-              ? t('review.loadingHeading')
-              : reviewCount
-                ? t('review.waitingHeading', { count: String(reviewCount) })
-                : t('review.nothingWaiting')}
-          </h1>
-          {status?.auto_post && <span className="rq-autopost">{t('review.autoPostOn')}</span>}
-        </div>
+        {(configured || !nothingEver) && (
+          <div className="rq-tabs" role="tablist" aria-label={t('review.tabsLabel')}>
+            {ACTIVITY_FILTERS.map(id => {
+              // How many rows this chip holds that are wrong in some way. Three chips hold
+              // every row between them now, so a cause with nothing pointing at it is a
+              // cause nobody finds — the shape of the 2026-08-28 `sender_not_allowed`
+              // incident, whose whole family lives under `unposted`.
+              const owed = attention[id] ?? 0
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={filter === id}
+                  className={`rq-tab${filter === id ? ' rq-tab--active' : ''}`}
+                  onClick={() => setFilter(id)}
+                >
+                  {t(FILTER_LABEL[id])}
+                  {/* Never colour alone (WCAG 1.4.1) — the dot is decorative and the
+                    sentence beside it is what a screen reader reads out. */}
+                  {owed > 0 && (
+                    <>
+                      <span className="rq-tab-dot" aria-hidden="true" />
+                      <span className="sr-only">
+                        {t('review.chipAttention', { count: String(owed) })}
+                      </span>
+                    </>
+                  )}
+                  {/* Zero is shown too. A count that disappears makes the strip reflow as
+                    documents resolve, and "0" is itself the answer to "anything failed?" */}
+                  <span className="rq-tab-count text-mono">{counts[id] ?? 0}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
         <div className="rq-bar-actions">
           <button
             type="button"
@@ -248,47 +286,6 @@ export default function ReviewQueue() {
           </button>
         </div>
       </div>
-
-      {/* Hidden until the BU has mail at all: a strip of five zeroes above an explanation
-          of what the feature is would be scaffolding, not navigation. A BU with only
-          manual scans still gets it — they have rows to filter. */}
-      {(configured || !nothingEver) && (
-        <div className="rq-tabs" role="tablist" aria-label={t('review.tabsLabel')}>
-          {ACTIVITY_FILTERS.map(id => {
-            // How many rows this chip holds that someone here could clear. The page opens
-            // on Needs review, so Skipped — which is where every customer-fixable cause
-            // lands, because `status` splits on billing rather than on who can act — is out
-            // of sight by default. Without this the 2026-08-28 incident has its conditions
-            // back: eight fixable rows, nothing pointing at them.
-            const owed = attention[id] ?? 0
-            return (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={filter === id}
-                className={`rq-tab${filter === id ? ' rq-tab--active' : ''}`}
-                onClick={() => setFilter(id)}
-              >
-                {t(FILTER_LABEL[id])}
-                {/* Never colour alone (WCAG 1.4.1) — the dot is decorative and the sentence
-                  beside it is what a screen reader reads out. */}
-                {owed > 0 && (
-                  <>
-                    <span className="rq-tab-dot" aria-hidden="true" />
-                    <span className="sr-only">
-                      {t('review.chipAttention', { count: String(owed) })}
-                    </span>
-                  </>
-                )}
-                {/* Zero is shown too. A count that disappears makes the strip reflow as
-                  documents resolve, and "0" is itself the answer to "anything failed?" */}
-                <span className="rq-tab-count text-mono">{counts[id] ?? 0}</span>
-              </button>
-            )
-          })}
-        </div>
-      )}
 
       {/* A failed fetch is never the empty state: "nothing is waiting" and "we could not
           ask" mean opposite things to someone deciding whether to go home. */}
@@ -330,9 +327,8 @@ export default function ReviewQueue() {
             </table>
           )}
 
-          {/* Three empty states, never one generic one. An empty Success list means
-              nothing has posted yet, which is not the same claim as "you are all caught
-              up" and must not borrow its tick. */}
+          {/* Three empty states, never one generic one. An empty Not posted list is not an
+              achievement and must not borrow the tick. */}
           {!loading &&
             !hasWork &&
             (nothingEver && !configured ? (
@@ -341,7 +337,7 @@ export default function ReviewQueue() {
                 blockers={status?.blockers ?? []}
                 entitled={!!status?.entitled}
               />
-            ) : workFilter && configured ? (
+            ) : clearFilter && configured ? (
               <AllClear address={status?.ingest_address ?? null} />
             ) : (
               <p className="rq-empty-tab">{t('review.emptyTab')}</p>

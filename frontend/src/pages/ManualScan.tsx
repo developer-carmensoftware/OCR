@@ -116,12 +116,14 @@ export default function ManualScan() {
       <div className="app-container">
         <AppHeader
           module="credit-card"
-          moduleName={t('review.manualTitle')}
+          // One module, one name, on both of its pages. Which page you are on is the
+          // StepWizard directly below this header, not a second title.
+          moduleName={t('review.title')}
           eyebrow="Carmen Cloud · Credit Card"
           onBack={() => {
             window.location.hash = '#/CreditCardOCR'
           }}
-          backLabel={t('review.backToQueue')}
+          backLabel={t('review.back')}
         >
           <UsageIndicator />
         </AppHeader>

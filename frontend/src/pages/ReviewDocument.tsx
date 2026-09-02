@@ -502,7 +502,7 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
             <h2 className="rq-empty-title">{t('review.goneTitle')}</h2>
             <p className="rq-empty-body">{t('review.goneBody')}</p>
             <button type="button" className="btn btn-outline" onClick={onDone}>
-              {t('review.backToQueue')}
+              {t('review.back')}
             </button>
           </div>
         ) : (

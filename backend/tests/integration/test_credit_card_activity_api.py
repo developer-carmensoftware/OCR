@@ -80,18 +80,19 @@ def _db(*, statuses=None, pairs=None, manual_count, emails, manuals):
     4. the manual window (only when the filter admits manual rows) → .all()
 
     `statuses` is the shorthand most tests want: {status: n}, no reason code, nothing
-    stale. `pairs` is the long form the `attention` tests need: {(status, reason_code):
-    (n, stale)}, where `stale` is how many of those are older than `STUCK_AFTER`.
+    stale, nothing noted. `pairs` is the long form the `attention` tests need:
+    {(status, reason_code): (n, stale, noted)} — `stale` is how many are older than
+    `STUCK_AFTER`, `noted` how many carry an `error_message`.
     """
     db = make_mock_db()
 
     grouped = MagicMock()
     grouped.all.return_value = [
-        SimpleNamespace(status=s, reason_code=None, n=n, stale=0)
+        SimpleNamespace(status=s, reason_code=None, n=n, stale=0, noted=0)
         for s, n in (statuses or {}).items()
     ] + [
-        SimpleNamespace(status=s, reason_code=rc, n=n, stale=stale)
-        for (s, rc), (n, stale) in (pairs or {}).items()
+        SimpleNamespace(status=s, reason_code=rc, n=n, stale=stale, noted=noted)
+        for (s, rc), (n, stale, noted) in (pairs or {}).items()
     ]
     counted = MagicMock()
     counted.scalar_one.return_value = manual_count
@@ -160,18 +161,39 @@ def test_counts_cover_every_chip_even_at_zero():
     with make_test_client(db, session=SESSION) as client:
         counts = client.get(BASE, headers=AUTH).json()["counts"]
 
-    assert counts == {"review": 0, "success": 5, "failed": 0, "skipped": 0, "all": 5}
+    assert counts == {"review": 0, "success": 5, "unposted": 0, "all": 5}
 
 
-def test_attention_finds_the_fixable_rows_the_skipped_chip_buries():
-    """The other half of decision #25. `status = "skipped" if charged is None else "failed"`
-    splits on billing, so every customer-clearable cause lands under the chip that is now
-    out of the default view — `attention` is what lets that chip say it is holding work."""
+def test_everything_that_did_not_post_lands_under_one_chip():
+    """The billing split (`skipped` vs `failed`) is invisible to a reader — both mean "it
+    did not post" — so the two chips became one. What separates the rows is the Message
+    column, not the strip."""
     db = _db(
         pairs={
-            ("skipped", "no_rule_match"): (46, 46),
-            ("skipped", "unsupported_attachment"): (12, 12),
-            ("failed", "carmen_rejected"): (3, 3),
+            ("skipped", "no_rule_match"): (46, 0, 0),
+            ("failed", "carmen_rejected"): (3, 0, 0),
+            ("rejected", "rejected_by_reviewer"): (2, 0, 0),
+        },
+        manual_count=0,
+        emails=[],
+        manuals=[],
+    )
+    with make_test_client(db, session=SESSION) as client:
+        counts = client.get(BASE, headers=AUTH).json()["counts"]
+
+    assert counts["unposted"] == 51
+    assert counts["all"] == 51
+
+
+def test_attention_marks_every_anomaly_not_only_the_fixable_ones():
+    """The dot means "something is off", not "you can fix it". A failure nobody in the BU
+    can clear is still a failure, and a dot that covers only some of them is one nobody can
+    read the absence of. A filename rule doing its job is the exception: not an anomaly."""
+    db = _db(
+        pairs={
+            ("skipped", "no_rule_match"): (46, 0, 0),
+            ("skipped", "unsupported_attachment"): (12, 0, 0),
+            ("failed", "carmen_rejected"): (3, 0, 0),
         },
         manual_count=0,
         emails=[],
@@ -180,21 +202,19 @@ def test_attention_finds_the_fixable_rows_the_skipped_chip_buries():
     with make_test_client(db, session=SESSION) as client:
         body = client.get(BASE, headers=AUTH).json()
 
-    # 46 fixable; the 12 with no attachment we can read are not — we never stored the bytes.
-    assert body["attention"]["skipped"] == 46
-    # Carmen's own complaint is fixed in Carmen, so it is not owed here either.
-    assert body["attention"]["failed"] == 0
-    assert body["attention"]["all"] == 46
+    # 46 fixable + 3 Carmen refusals. The 12 unreadable attachments are the BU's own rules
+    # working — we never stored the bytes, and nothing is owed.
+    assert body["attention"]["unposted"] == 49
+    assert body["attention"]["all"] == 49
     # And the plain counts are untouched by any of it.
-    assert body["counts"]["skipped"] == 58
+    assert body["counts"]["unposted"] == 61
 
 
-def test_a_document_still_being_read_is_not_a_stuck_one():
-    """`received` is the state every row is claimed into, so one in flight during a poll
-    must not put a dot on the chip. Only age separates the two, and it carries no
-    reason_code to separate them any other way."""
+def test_a_posted_document_whose_input_tax_failed_still_gets_a_dot():
+    """The quietest outcome in the system: the JV reached Carmen, the VAT record did not.
+    The row wears the Success pill and nothing else in the app says otherwise."""
     db = _db(
-        pairs={("received", None): (4, 1)},
+        pairs={("posted", None): (20, 0, 2)},
         manual_count=0,
         emails=[],
         manuals=[],
@@ -202,8 +222,25 @@ def test_a_document_still_being_read_is_not_a_stuck_one():
     with make_test_client(db, session=SESSION) as client:
         body = client.get(BASE, headers=AUTH).json()
 
-    assert body["counts"]["skipped"] == 4
-    assert body["attention"]["skipped"] == 1
+    assert body["counts"]["success"] == 20
+    assert body["attention"]["success"] == 2
+
+
+def test_a_document_still_being_read_is_not_a_stuck_one():
+    """`received` is the state every row is claimed into, so one in flight during a poll
+    must not put a dot on the chip. Only age separates the two, and it carries no
+    reason_code to separate them any other way."""
+    db = _db(
+        pairs={("received", None): (4, 1, 0)},
+        manual_count=0,
+        emails=[],
+        manuals=[],
+    )
+    with make_test_client(db, session=SESSION) as client:
+        body = client.get(BASE, headers=AUTH).json()
+
+    assert body["counts"]["unposted"] == 4
+    assert body["attention"]["unposted"] == 1
 
 
 def test_attention_covers_every_chip_even_at_zero():
@@ -212,7 +249,7 @@ def test_attention_covers_every_chip_even_at_zero():
     with make_test_client(db, session=SESSION) as client:
         attention = client.get(BASE, headers=AUTH).json()["attention"]
 
-    assert attention == {"review": 0, "success": 0, "failed": 0, "skipped": 0, "all": 0}
+    assert attention == {"review": 0, "success": 0, "unposted": 0, "all": 0}
 
 
 def test_review_filter_asks_for_no_manual_rows_at_all():

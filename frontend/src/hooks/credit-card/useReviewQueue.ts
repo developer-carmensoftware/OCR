@@ -11,15 +11,17 @@ export interface ReviewQueueController {
   /** null until the first status fetch lands. The page must not choose which state to
    *  paint before then — see `loading`. */
   status: ReviewStatus | null
-  filter: ActivityFilter
+  /** null until status has landed and chosen the opening chip. Nothing is fetched and no
+   *  chip is active while it is — `loading` covers the same window. */
+  filter: ActivityFilter | null
   setFilter: (f: ActivityFilter) => void
   rows: ReviewDocument[]
   total: number
   /** Keyed by filter name. Every chip is present even at zero — one that appears only
    *  when it has rows makes the strip jump around as documents resolve. */
   counts: Record<string, number>
-  /** Same keys: of those rows, how many someone here could clear themselves. The page no
-   *  longer opens on `all`, so this is what stops a chip quietly hiding fixable work. */
+  /** Same keys: of those rows, how many are anomalous. Three chips hold every row between
+   *  them, so this is the only thing that says a chip is hiding something wrong. */
   attention: Record<string, number>
   offset: number
   setOffset: (n: number) => void
@@ -49,11 +51,11 @@ export interface ReviewQueueController {
  */
 export function useReviewQueue(limit: number): ReviewQueueController {
   const [status, setStatus] = useState<ReviewStatus | null>(null)
-  // `review`, not `all`. The heading counts what is owed, the empty state says "all caught
-  // up", and the reason line exists to triage a queue — every word on this page was written
-  // for the work view, while the default filter answered "what happened" and mixed in the
-  // rows the BU's own filename rules threw out. The history is a chip away.
-  const [filter, setFilterState] = useState<ActivityFilter>('review')
+  // Which chip the page opens on is the BU's own answer to "do I review?", so it waits for
+  // status rather than being seeded here. A BU with `auto_post` on has nothing in `review`
+  // by definition — opening it on a chip that is empty for ever would hide the work the
+  // robot is doing on its behalf, which is the only thing that page has to show.
+  const [filter, setFilterState] = useState<ActivityFilter | null>(null)
   const [rows, setRows] = useState<ReviewDocument[]>([])
   const [total, setTotal] = useState(0)
   const [counts, setCounts] = useState<Record<string, number>>({})
@@ -78,9 +80,16 @@ export function useReviewQueue(limit: number): ReviewQueueController {
         if (!alive) return
         setStatus(s)
         setStatusError(false)
+        // Only the first time: a refresh must not throw the reader back to the opening
+        // chip, and neither must flipping auto-post from the gear on this very page.
+        setFilterState(f => f ?? (s.auto_post ? 'success' : 'review'))
       })
       .catch(() => {
-        if (alive) setStatusError(true)
+        if (!alive) return
+        setStatusError(true)
+        // The error screen renders instead of the table, but the list still has to be
+        // asked for — otherwise Retry has nothing to retry.
+        setFilterState(f => f ?? 'review')
       })
       .finally(() => {
         if (alive) setStatusLoaded(true)
@@ -90,8 +99,10 @@ export function useReviewQueue(limit: number): ReviewQueueController {
     }
   }, [nonce])
 
-  // Content.
+  // Content. Held until status has named the opening chip — asking for `review` first and
+  // `success` a moment later would fetch twice and flash the wrong empty state between.
   useEffect(() => {
+    if (!filter) return
     let alive = true
     setListLoading(true)
     listActivity(filter, limit, offset)

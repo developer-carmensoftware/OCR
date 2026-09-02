@@ -710,14 +710,11 @@ const en = {
   'notif.docFailed': 'Could not post · {doc}',
   'notif.docPendingReview': '{count} waiting for your review',
   // -- Review queue: the automation landing page (#/CreditCardOCR) -------------
+  // One name for the module, on the queue and on the wizard alike. The page has no heading
+  // of its own — the chip strip is it — so this is the only place either page is named.
   'review.title': 'AI JV Automation',
-  'review.manualTitle': 'Manual scan',
-  'review.backToQueue': 'Automation',
+  'review.back': 'Back',
   'review.refresh': 'Refresh',
-  'review.loadingHeading': 'Checking for documents',
-  'review.waitingHeading': '{count} waiting for you',
-  'review.nothingWaiting': 'Nothing waiting',
-  'review.autoPostOn': 'Posting without review',
   'review.settings': 'Automation settings',
   'review.close': 'Close',
   'review.fPrefixPlaceholder': 'Book',
@@ -795,10 +792,11 @@ const en = {
   'review.reasonGuessed': 'GL mapping guessed',
   'review.reasonWarnings': 'extraction warnings',
   'review.reasonClean': 'nothing flagged',
-  'review.allClearTitle': 'You are all caught up',
-  'review.allClearBody':
-    'Statements forwarded to {address} land here for approval before they post.',
-  'review.allClearBodyNoAddress': 'Forwarded statements land here for approval before they post.',
+  // No second person, and true whether or not this BU reviews before posting: the same
+  // screen serves an empty Needs review and an empty Posted.
+  'review.allClearTitle': 'All clear',
+  'review.allClearBody': 'Statements forwarded to {address} appear here.',
+  'review.allClearBodyNoAddress': 'Forwarded statements appear here.',
   'review.introTitle': 'Let statements post themselves',
   'review.introBody':
     'Forward a bank statement to this address. We read it, map it to your GL, and queue it here. Nothing reaches Carmen until you approve it.',
@@ -815,11 +813,12 @@ const en = {
   'review.errorBody': 'The list could not be fetched. Nothing has been lost - try again.',
   'review.retry': 'Try again',
   'review.tabsLabel': 'Document status',
-  'review.filterAll': 'All',
   'review.filterReview': 'Needs review',
   'review.filterSuccess': 'Posted',
-  'review.filterFailed': 'Not posted',
-  'review.filterSkipped': 'Skipped',
+  // One word for everything that did not become a JV. "Not posted" and "Skipped" were two
+  // chips for one fact — the split behind them is whether a credit was charged, which is
+  // the billing system's business and not something a reader can guess at.
+  'review.filterUnposted': 'Not posted',
   'review.colDocument': 'Document',
   'review.colReceived': 'Received',
   'review.colJv': 'JV no.',
@@ -860,7 +859,7 @@ const en = {
   'review.rcRejectedByReviewer': 'rejected',
   'review.rcUnknown': 'no reason recorded',
   'review.rcStuck': 'we started reading this and did not finish',
-  'review.chipAttention': '{count} of these you can fix yourself',
+  'review.chipAttention': '{count} need attention',
   'review.secTax': 'Input tax',
   'review.secTaxLabel': 'Post the input tax record',
   'review.approve': 'Approve and post',
@@ -927,9 +926,12 @@ const en = {
     'AI-powered accounting automation — extract invoices and credit card statements, then post directly to Carmen Cloud with no manual entry.',
   'home.tagActive': 'ACTIVE',
   'home.tagSoon': 'COMING SOON',
-  'home.ccName': 'AI Credit Card Automation',
+  // Same name as the page it opens, and a sentence about the destination rather than about
+  // the wizard one level below it. Home is the only screen that still sells this — the
+  // queue itself does not — so it is the one that has to describe the automation.
+  'home.ccName': 'AI JV Automation',
   'home.ccDesc':
-    'AI extracts credit card statements from BBL, KBANK, SCB and posts entries directly to Carmen Cloud',
+    'Forward credit card statements by email — AI reads them, maps the GL, and queues them for approval before they post to Carmen Cloud',
   'home.apName': 'AP Invoice Processing',
   'home.apDesc':
     'Reads vendor invoices automatically, matches GL accounts, and syncs with the accounting system',
@@ -2202,13 +2204,8 @@ const th: Record<TKey, string> = {
   'notif.docFailed': 'ส่งเข้า Carmen ไม่สำเร็จ · {doc}',
   'notif.docPendingReview': 'มี {count} รายการรอคุณตรวจสอบ',
   'review.title': 'AI JV Automation',
-  'review.manualTitle': 'สแกนเอง',
-  'review.backToQueue': 'งานอัตโนมัติ',
+  'review.back': 'ย้อนกลับ',
   'review.refresh': 'รีเฟรช',
-  'review.loadingHeading': 'กำลังตรวจสอบเอกสาร',
-  'review.waitingHeading': 'มี {count} รายการรอคุณ',
-  'review.nothingWaiting': 'ไม่มีรายการรอ',
-  'review.autoPostOn': 'โพสต์อัตโนมัติ',
   'review.settings': 'ตั้งค่าระบบอัตโนมัติ',
   'review.close': 'ปิด',
   // Field names and column headers stay English on this screen, in both locales. They are
@@ -2280,9 +2277,9 @@ const th: Record<TKey, string> = {
   'review.reasonGuessed': 'AI เดาผังบัญชีให้',
   'review.reasonWarnings': 'มีคำเตือนจากการอ่าน',
   'review.reasonClean': 'ไม่พบสิ่งผิดปกติ',
-  'review.allClearTitle': 'ตรวจครบทุกรายการแล้ว',
-  'review.allClearBody': 'เอกสารที่ส่งมาที่ {address} จะมารออนุมัติที่นี่ก่อนโพสต์',
-  'review.allClearBodyNoAddress': 'เอกสารที่ส่งต่อมาจะมารออนุมัติที่นี่ก่อนโพสต์',
+  'review.allClearTitle': 'ไม่มีรายการค้าง',
+  'review.allClearBody': 'เอกสารที่ส่งมาที่ {address} จะมาปรากฏที่นี่',
+  'review.allClearBodyNoAddress': 'เอกสารที่ส่งต่อเข้ามาจะมาปรากฏที่นี่',
   'review.introTitle': 'ให้ใบแจ้งหนี้ลงบัญชีเอง',
   'review.introBody':
     'ส่งต่อใบแจ้งหนี้ธนาคารมาที่อีเมลนี้ ระบบจะอ่าน จับคู่ผังบัญชี แล้วนำมารอที่นี่ ไม่มีอะไรถูกส่งเข้า Carmen จนกว่าคุณจะอนุมัติ',
@@ -2299,11 +2296,9 @@ const th: Record<TKey, string> = {
   'review.errorBody': 'ดึงรายการไม่ได้ ข้อมูลไม่หาย ลองอีกครั้ง',
   'review.retry': 'ลองอีกครั้ง',
   'review.tabsLabel': 'สถานะเอกสาร',
-  'review.filterAll': 'ทั้งหมด',
   'review.filterReview': 'รอตรวจ',
-  'review.filterSuccess': 'โพสต์แล้ว',
-  'review.filterFailed': 'ไม่ได้โพสต์',
-  'review.filterSkipped': 'ข้ามไป',
+  'review.filterSuccess': 'ลงบัญชีแล้ว',
+  'review.filterUnposted': 'ไม่ได้ลงบัญชี',
   'review.colDocument': 'Document',
   'review.colReceived': 'Received',
   'review.colJv': 'JV no.',
@@ -2341,7 +2336,7 @@ const th: Record<TKey, string> = {
   'review.rcRejectedByReviewer': 'ถูกปฏิเสธ',
   'review.rcUnknown': 'ไม่มีการบันทึกเหตุผล',
   'review.rcStuck': 'เริ่มอ่านแล้วแต่ทำไม่จบ',
-  'review.chipAttention': 'มี {count} รายการที่คุณแก้เองได้',
+  'review.chipAttention': 'มี {count} รายการผิดปกติ',
   'review.secTax': 'Input tax',
   'review.secTaxLabel': 'บันทึกรายการภาษีซื้อ',
   'review.approve': 'อนุมัติและโพสต์',
@@ -2399,9 +2394,9 @@ const th: Record<TKey, string> = {
     'ระบบอัตโนมัติด้านบัญชีด้วย AI — ดึงข้อมูลใบแจ้งหนี้และรายการบัตรเครดิต แล้วบันทึกเข้า Carmen Cloud โดยตรงไม่ต้องคีย์มือ',
   'home.tagActive': 'พร้อมใช้งาน',
   'home.tagSoon': 'เร็ว ๆ นี้',
-  'home.ccName': 'ระบบอัตโนมัติบัตรเครดิตด้วย AI',
+  'home.ccName': 'AI JV Automation',
   'home.ccDesc':
-    'AI ดึงข้อมูลรายการบัตรเครดิตจาก BBL, KBANK, SCB และบันทึกรายการเข้า Carmen Cloud โดยตรง',
+    'ส่งอีเมล statement บัตรเครดิตเข้ามา AI อ่านและจับคู่ผังบัญชีให้ แล้วรอการอนุมัติก่อนลงบัญชีเข้า Carmen Cloud',
   'home.apName': 'ประมวลผลใบแจ้งหนี้เจ้าหนี้ (AP)',
   'home.apDesc': 'อ่านใบแจ้งหนี้ผู้ขายอัตโนมัติ จับคู่บัญชี GL และซิงค์กับระบบบัญชี',
   'home.bankName': 'กระทบยอดธนาคาร',

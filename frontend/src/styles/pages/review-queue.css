@@ -4,47 +4,25 @@
 
 /* ── Header bar ─────────────────────────────────────────────────────────────── */
 
+/* One row: the chip strip on the left, the three controls on the right. There is no
+   heading — the chips are it. `flex-end` is what lets the strip's own rule line up with
+   the bottom of the buttons beside it. */
 .rq-bar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: flex-end;
   gap: var(--space-3);
   flex-wrap: wrap;
   margin: var(--space-4) 0 var(--space-3);
 }
 
-.rq-bar-left {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-.rq-heading {
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--text);
-  margin: 0;
-}
-
-/* Not a warning: auto-post is a state the BU chose. Neutral chip, stated once. */
-.rq-autopost {
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  background: var(--bg-2, var(--muted));
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  padding: 0.2rem 0.6rem;
-}
-
+/* `auto` rather than `space-between`: the strip is absent on a BU that has never had a
+   document, and the buttons must not slide left when it is. */
 .rq-bar-actions {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  margin-left: auto;
+  padding-bottom: 0.35rem;
 }
 
 /* ── Settings popover ───────────────────────────────────────────────────────── */
@@ -484,13 +462,16 @@
 
 /* ── Tabs ───────────────────────────────────────────────────────────────────── */
 
+/* Lives inside `.rq-bar` and takes the width the buttons leave. The rule under it is the
+   strip's own, not the bar's, so a BU with no chips gets no stray line across the page. */
 .rq-tabs {
   display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
   gap: 0.15rem;
-  margin-bottom: var(--space-3);
   border-bottom: 1px solid var(--border);
-  /* Four tabs plus counts do not fit a narrow phone. Scroll rather than wrap: a tab
-     strip on two lines stops reading as one row of choices. */
+  /* Three tabs plus counts still do not fit a narrow phone. Scroll rather than wrap: a
+     tab strip on two lines stops reading as one row of choices. */
   overflow-x: auto;
   scrollbar-width: none;
 }

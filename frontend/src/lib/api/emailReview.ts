@@ -14,17 +14,21 @@ import type { Page } from './page'
  *  because neither survives a list query: see `_review_flags` in email_ingest_service.py. */
 export type ReviewFlag = 'unbalanced' | 'mapping_guessed' | 'mapping_missing' | 'warnings'
 
-/** Which filter chip a row lives under. `failed` and `skipped` are unions of ledger
- *  statuses — see FILTERS in routers/credit_card_activity.py. */
-export type ActivityFilter = 'all' | 'review' | 'success' | 'failed' | 'skipped'
-
-/** Strip order, and the first one is where the page opens. `review` leads because the page
- *  is the day's work queue: the heading counts it, the empty states are written for it, and
- *  `all` mixes in the skipped rows the BU's own rules threw out — 61 of 154 on the dev DB.
+/** Which filter chip a row lives under. `unposted` is a union of four ledger statuses —
+ *  see FILTERS in routers/credit_card_activity.py.
  *
- *  The four real buckets then run in the order a document moves through them, and `all` sits
- *  last: it is the escape hatch from the four, not a peer of them. */
-export const ACTIVITY_FILTERS: ActivityFilter[] = ['review', 'success', 'failed', 'skipped', 'all']
+ *  `all` is in the type but not in the strip: it is still the API default and still what
+ *  `counts.all` is read off, but it has no chip. It was the escape hatch from five status
+ *  words; with three chips that between them hold every row, there is nothing to escape. */
+export type ActivityFilter = 'all' | 'review' | 'success' | 'unposted'
+
+/** The three that have a chip — `all` is the filter with no tab. Its own type so the label
+ *  map is exhaustive by construction rather than by assertion. */
+export type ChipFilter = Exclude<ActivityFilter, 'all'>
+
+/** The strip, in the order a document moves through it. Where the page *opens* is not the
+ *  first entry here — it follows `auto_post`, see `useReviewQueue`. */
+export const ACTIVITY_FILTERS: ChipFilter[] = ['review', 'success', 'unposted']
 
 export interface ReviewDocument {
   id: string
@@ -87,10 +91,10 @@ export interface ReviewStatus {
  *  the page — same shape reason `NotificationList` carries `unread_count`. */
 export interface ActivityPage extends Page<ReviewDocument> {
   counts: Record<string, number>
-  /** Same keys as `counts`: of those rows, how many someone here could clear themselves.
-   *  The page opens on `review`, so the chip that holds the fixable causes is not in the
-   *  default view — this is what lets its chip say so. See `FIXABLE_REASONS` in
-   *  routers/credit_card_activity.py for why the status cannot answer it. */
+  /** Same keys as `counts`: of those rows, how many are **anomalous** — a failure of any
+   *  kind, a document claimed and never finished, or a JV that posted without its
+   *  input-tax record. Not "what you can fix": see `_attention` in
+   *  routers/credit_card_activity.py for why that was the wrong line to draw. */
   attention: Record<string, number>
 }
 
