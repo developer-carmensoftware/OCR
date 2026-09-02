@@ -203,16 +203,27 @@ describe('the status filter chips', () => {
     // `failed` and `skipped` were two chips for one fact. The split behind them is whether
     // a credit was charged — the billing system's business, and nothing a reader can guess.
     mount(status(), [doc()], { all: 113, review: 3, success: 7, unposted: 103 })
-    // The strip renders as soon as status lands; the counts arrive with the list.
     await screen.findByText('KTC')
-    for (const [label, n] of [
-      ['Needs review', '3'],
-      ['Posted', '7'],
-      ['Not posted', '103'],
-    ]) {
-      expect(screen.getByRole('tab', { name: new RegExp(label) })).toHaveTextContent(n)
+    for (const label of ['Needs review', 'Posted', 'Not posted']) {
+      expect(screen.getByRole('tab', { name: new RegExp(label) })).toBeInTheDocument()
     }
     expect(screen.getAllByRole('tab')).toHaveLength(3)
+  })
+
+  it('numbers only the chip whose number can go down', async () => {
+    // `Needs review` is bounded by backpressure (50 pending, then mail is handed back) and
+    // falls as it is worked. `Posted` and `Not posted` are lifetime totals that never fall
+    // — at four figures the number is furniture, and it is on screen for ever. The size of
+    // the list is in the Pager once the chip is open.
+    mount(status(), [doc()], { all: 113, review: 3, success: 7, unposted: 103 })
+    await screen.findByText('KTC')
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: /Needs review/ })).toHaveTextContent('3')
+    )
+    for (const label of ['^Posted', 'Not posted']) {
+      const chip = screen.getByRole('tab', { name: new RegExp(label) })
+      expect(chip.querySelector('.rq-tab-count')).not.toBeInTheDocument()
+    }
   })
 
   it('has no All chip — three chips already hold everything', async () => {
@@ -224,11 +235,11 @@ describe('the status filter chips', () => {
     expect(screen.queryByRole('tab', { name: /^All/ })).not.toBeInTheDocument()
   })
 
-  it('shows a zero rather than dropping the chip', async () => {
-    // A count that disappears makes the strip reflow as documents resolve, and "0" is
-    // itself the answer to "did anything fail?".
-    mount(status(), [doc()])
-    const chip = await screen.findByRole('tab', { name: /Not posted/ })
+  it('shows a zero on the work chip rather than dropping the number', async () => {
+    // A count that disappears when it empties makes the strip reflow as documents are
+    // approved, and "0" is itself the answer to "is anything waiting?".
+    mount(status(), [], ZERO)
+    const chip = await screen.findByRole('tab', { name: /Needs review/ })
     expect(chip).toHaveTextContent('0')
   })
 

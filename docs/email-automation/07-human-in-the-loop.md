@@ -899,3 +899,19 @@ Everything below follows from that sentence, and nothing on the page may contrad
 The anti-join, the backlog cap, the refund rule, the notification, `FIXABLE_REASONS` as the
 key to the Actions column, `MANUAL_FILTERS`, and every decision #1–#38 except where the
 table above supersedes them.
+
+### Addendum, same day — two numbers that could only go up
+
+Reading §12 back on the built page found the same fault twice, and #43 above had just
+introduced the worse half of it.
+
+| # | Change | Why |
+|---|---|---|
+| 45 | **Only `Needs review` carries a count.** `Posted` and `Not posted` lost theirs. | Backpressure caps pending at 50, so `Needs review` lives in 0–50 and falls as it is worked. The other two are lifetime totals that never fall: at four figures the number is furniture, on screen every day for ever, and nothing anyone can act on. The size of the list is in the `Pager` once the chip is open, which is where it answers something. The old comment's defence — *"a count that disappears makes the strip reflow"* — argued for printing a **zero**, not for the number existing; it still holds on the one chip that has one, and the other two cannot reflow because they never have a number to lose. |
+| 46 | **`ATTENTION_WINDOW` = 7 days.** The dot counts anomalies from the last week, not from all time. `counts` stays unwindowed. | #43 widened the dot to cover every failure — and `email_ingest_service.py` says `ponytail: single pass, no retry of a failed document`, with the mail already `\Seen`. A failed row is therefore terminal: fixing the filename rule today does not clear the 46 `no_rule_match` rows behind it. As written, #43's dot would have been lit for ever on any BU that has ever had a bad week, which is a warning nobody reads by the third day — including the day something new breaks. Seven days because these documents arrive monthly: long enough to notice and fix before next month's statement, short enough that the dot means "recently" rather than "ever". The window lives in `_counts_stmt`, asserted against compiled SQL (`test_the_dot_only_looks_at_the_last_week`) because a mock DB executes no date predicate. |
+
+Both are the same rule, and it is worth stating once: **a number on this page has to be able
+to go down.** It is what killed §6's `· 8 posted today` (#40) and it is what these two
+missed. `counts` is exempt only because it is not presented as progress — it sizes the list
+the reader is about to page through, which is why it survives in the `Pager` and not on the
+chip.

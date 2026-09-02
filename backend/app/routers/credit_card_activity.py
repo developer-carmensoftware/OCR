@@ -79,34 +79,51 @@ FIXABLE_REASONS = (
 # enough that a document being extracted during a poll never flickers a dot on.
 STUCK_AFTER = timedelta(hours=1)
 
+# How far back the dot looks. **Not** how far back the chip lists — `counts` spans every row
+# and always will.
+#
+# There is no retry (`ponytail: single pass, no retry of a failed document` in
+# email_ingest_service.py) and the mail is already `\Seen`, so a failed row is terminal:
+# fixing the filename rule today does not clear the 46 `no_rule_match` rows behind it. A dot
+# counting those is on for ever, and a warning that never goes out is one nobody reads by
+# the third day — including the day something new breaks.
+#
+# Seven days because the documents this handles arrive monthly: a rule that rejected this
+# month's statement stays marked for a week, which is long enough to notice and fix before
+# next month's arrives, and short enough that the dot means "recently" rather than "ever".
+ATTENTION_WINDOW = timedelta(days=7)
+
 # Sorting key for a row whose timestamp is NULL. Aware, because everything it is compared
 # against comes back from Postgres aware and Python refuses to order the two together.
 _EPOCH = datetime.min.replace(tzinfo=UTC)
 
 
-def _attention(status: str, reason_code: str | None, n: int, stale: int, noted: int) -> int:
-    """Of `n` rows in this (status, reason_code) group, how many are **anomalous**.
+def _attention(status: str, reason_code: str | None, recent: int, stuck: int, noted: int) -> int:
+    """How many rows in this (status, reason_code) group are **anomalous and recent**.
 
-    The dot this feeds means "something is off here", not "you can fix this". It used to
-    mean the latter, which made it silent about every failure a person cannot clear — and a
-    dot that covers only some anomalies is a dot nobody can read the absence of.
+    The dot this feeds means "something went wrong lately", not "you can fix this". It used
+    to mean the latter, which made it silent about every failure a person cannot clear — and
+    a dot that covers only some anomalies is a dot nobody can read the absence of.
+
+    Every count it reads is already inside `ATTENTION_WINDOW`; see there for why a lifetime
+    figure would leave the dot on for ever.
 
     - `failed` / `rejected`: all of them. A document that did not post is off regardless of
       who can act on it.
     - `skipped`: only `FIXABLE_REASONS`. A filename rule refusing a file it was written to
       refuse is the system working, and it is the bulk of this bucket.
-    - `received`: the stale ones only. Every row is *claimed* into this state, so age is
+    - `received`: the stuck ones only. Every row is *claimed* into this state, so age is
       the only thing separating "the pipeline never finished" from "in flight".
     - `posted`: those carrying an `error_message` — the JV reached Carmen but the input-tax
       record did not. Nothing else in the app says so, and the row looks like a success.
     """
     if status in ("failed", "rejected"):
-        return n
+        return recent
     if status == "received":
-        return stale
+        return stuck
     if status == "posted":
         return noted
-    return n if reason_code in FIXABLE_REASONS else 0
+    return recent if reason_code in FIXABLE_REASONS else 0
 
 
 def _manual_row(card: CreditCard, task: OCRTask) -> ActivityRow:
@@ -129,6 +146,30 @@ def _manual_row(card: CreditCard, task: OCRTask) -> ActivityRow:
         bank_code=card.bank_code,
         doc_no=card.doc_no,
         jv_no=card.jv_no,
+    )
+
+
+def _counts_stmt(tenant_id: uuid.UUID, now: datetime):
+    """Every chip's count and every chip's dot, in one GROUP BY.
+
+    `n` spans the tenant's whole history, because it is what the chip and the Pager report.
+    The other three are the dot's, and each is confined to `ATTENTION_WINDOW` — a mock DB
+    cannot execute a date predicate, so `test_the_dot_only_looks_at_the_last_week` asserts
+    them against the compiled SQL instead.
+    """
+    fresh = EmailDocument.created_at >= now - ATTENTION_WINDOW
+    return (
+        select(
+            EmailDocument.status,
+            EmailDocument.reason_code,
+            func.count().label("n"),
+            func.count().filter(fresh).label("recent"),
+            # Claimed and not finished: old enough to be stuck, new enough to matter.
+            func.count().filter(EmailDocument.created_at < now - STUCK_AFTER, fresh).label("stuck"),
+            func.count().filter(EmailDocument.error_message.is_not(None), fresh).label("noted"),
+        )
+        .where(EmailDocument.tenant_id == tenant_id)
+        .group_by(EmailDocument.status, EmailDocument.reason_code)
     )
 
 
@@ -193,39 +234,25 @@ async def list_activity(
     # Counts span every row, not the page: one GROUP BY for email plus one count for
     # manual, rather than a round trip per chip. Grouped by (status, reason_code) rather
     # than status alone because `_attention` needs the reason — same single round trip.
-    stale_before = datetime.now(UTC) - STUCK_AFTER
     per_pair = {
-        (r.status, r.reason_code): (r.n, r.stale, r.noted)
-        for r in (
-            await db.execute(
-                select(
-                    EmailDocument.status,
-                    EmailDocument.reason_code,
-                    func.count().label("n"),
-                    func.count().filter(EmailDocument.created_at < stale_before).label("stale"),
-                    func.count().filter(EmailDocument.error_message.is_not(None)).label("noted"),
-                )
-                .where(EmailDocument.tenant_id == tenant_id)
-                .group_by(EmailDocument.status, EmailDocument.reason_code)
-            )
-        ).all()
+        (r.status, r.reason_code): (r.n, r.recent, r.stuck, r.noted)
+        for r in (await db.execute(_counts_stmt(tenant_id, datetime.now(UTC)))).all()
     }
     manual_total = await count_rows(db, manual_stmt)
     counts = {
-        k: sum(n for (s, _), (n, _stale, _noted) in per_pair.items() if s in v)
-        for k, v in FILTERS.items()
+        k: sum(n for (s, _), (n, *_) in per_pair.items() if s in v) for k, v in FILTERS.items()
     }
     counts["success"] += manual_total
     counts["all"] = sum(counts.values())
 
-    # How many rows under each chip are anomalous — see `_attention` for what that covers
-    # and why it is not "what a person can fix". The strip is three chips now, so a cause
-    # nothing points at is a cause nobody finds: that is the 2026-08-28 `sender_not_allowed`
-    # incident, and `unposted` is where all seven of its siblings live.
+    # How many rows under each chip went wrong lately — see `_attention` for what that
+    # covers and why it is not "what a person can fix". The strip is three chips now, so a
+    # cause nothing points at is a cause nobody finds: that is the 2026-08-28
+    # `sender_not_allowed` incident, and `unposted` is where all seven of its siblings live.
     attention = {
         k: sum(
-            _attention(s, rc, n, stale, noted)
-            for (s, rc), (n, stale, noted) in per_pair.items()
+            _attention(s, rc, recent, stuck, noted)
+            for (s, rc), (_n, recent, stuck, noted) in per_pair.items()
             if s in v
         )
         for k, v in FILTERS.items()

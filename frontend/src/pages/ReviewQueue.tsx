@@ -235,10 +235,11 @@ export default function ReviewQueue() {
         {(configured || !nothingEver) && (
           <div className="rq-tabs" role="tablist" aria-label={t('review.tabsLabel')}>
             {ACTIVITY_FILTERS.map(id => {
-              // How many rows this chip holds that are wrong in some way. Three chips hold
-              // every row between them now, so a cause with nothing pointing at it is a
-              // cause nobody finds — the shape of the 2026-08-28 `sender_not_allowed`
-              // incident, whose whole family lives under `unposted`.
+              // How many rows this chip holds that went wrong in the last week. Three chips
+              // hold every row between them now, so a cause with nothing pointing at it is
+              // a cause nobody finds — the shape of the 2026-08-28 `sender_not_allowed`
+              // incident, whose whole family lives under `unposted`. Windowed rather than
+              // lifetime because nothing retries a failure: see `ATTENTION_WINDOW`.
               const owed = attention[id] ?? 0
               return (
                 <button
@@ -260,9 +261,18 @@ export default function ReviewQueue() {
                       </span>
                     </>
                   )}
-                  {/* Zero is shown too. A count that disappears makes the strip reflow as
-                    documents resolve, and "0" is itself the answer to "anything failed?" */}
-                  <span className="rq-tab-count text-mono">{counts[id] ?? 0}</span>
+                  {/* Only the work chip carries a number, and zero is shown on it — the
+                    strip never reflows, because the other two never have one to lose.
+
+                    `Needs review` is bounded by construction: backpressure hands mail back
+                    unread past 50 pending, so it lives in 0–50 and goes down as it is
+                    worked. `Posted` and `Not posted` are 0 to infinity and never go down —
+                    at four figures the number is furniture, and it is on screen every day
+                    for ever. The size of the list is in the Pager once the chip is open,
+                    which is where it means something. */}
+                  {id === 'review' && (
+                    <span className="rq-tab-count text-mono">{counts[id] ?? 0}</span>
+                  )}
                 </button>
               )
             })}

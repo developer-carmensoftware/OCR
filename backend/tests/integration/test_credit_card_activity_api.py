@@ -16,7 +16,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from app.auth.session import SessionInfo
-from app.routers.credit_card_activity import _manual_stmt
+from app.routers.credit_card_activity import _counts_stmt, _manual_stmt
 from tests.conftest import make_mock_db
 from tests.integration.conftest import make_test_client
 
@@ -79,20 +79,22 @@ def _db(*, statuses=None, pairs=None, manual_count, emails, manuals):
     3. the email window                                  → .scalars().all()
     4. the manual window (only when the filter admits manual rows) → .all()
 
-    `statuses` is the shorthand most tests want: {status: n}, no reason code, nothing
-    stale, nothing noted. `pairs` is the long form the `attention` tests need:
-    {(status, reason_code): (n, stale, noted)} — `stale` is how many are older than
-    `STUCK_AFTER`, `noted` how many carry an `error_message`.
+    `statuses` is the shorthand most tests want: {status: n}, no reason code and nothing
+    the dot would look at. `pairs` is the long form the `attention` tests need:
+    {(status, reason_code): (n, recent, stuck, noted)} — `n` is the lifetime count the chip
+    reports, and the other three are what the SQL already narrowed to `ATTENTION_WINDOW`:
+    how many arrived inside it, how many of those are stuck, how many carry an
+    `error_message`.
     """
     db = make_mock_db()
 
     grouped = MagicMock()
     grouped.all.return_value = [
-        SimpleNamespace(status=s, reason_code=None, n=n, stale=0, noted=0)
+        SimpleNamespace(status=s, reason_code=None, n=n, recent=0, stuck=0, noted=0)
         for s, n in (statuses or {}).items()
     ] + [
-        SimpleNamespace(status=s, reason_code=rc, n=n, stale=stale, noted=noted)
-        for (s, rc), (n, stale, noted) in (pairs or {}).items()
+        SimpleNamespace(status=s, reason_code=rc, n=n, recent=recent, stuck=stuck, noted=noted)
+        for (s, rc), (n, recent, stuck, noted) in (pairs or {}).items()
     ]
     counted = MagicMock()
     counted.scalar_one.return_value = manual_count
@@ -170,9 +172,9 @@ def test_everything_that_did_not_post_lands_under_one_chip():
     column, not the strip."""
     db = _db(
         pairs={
-            ("skipped", "no_rule_match"): (46, 0, 0),
-            ("failed", "carmen_rejected"): (3, 0, 0),
-            ("rejected", "rejected_by_reviewer"): (2, 0, 0),
+            ("skipped", "no_rule_match"): (46, 46, 0, 0),
+            ("failed", "carmen_rejected"): (3, 3, 0, 0),
+            ("rejected", "rejected_by_reviewer"): (2, 2, 0, 0),
         },
         manual_count=0,
         emails=[],
@@ -191,9 +193,9 @@ def test_attention_marks_every_anomaly_not_only_the_fixable_ones():
     read the absence of. A filename rule doing its job is the exception: not an anomaly."""
     db = _db(
         pairs={
-            ("skipped", "no_rule_match"): (46, 0, 0),
-            ("skipped", "unsupported_attachment"): (12, 0, 0),
-            ("failed", "carmen_rejected"): (3, 0, 0),
+            ("skipped", "no_rule_match"): (46, 46, 0, 0),
+            ("skipped", "unsupported_attachment"): (12, 12, 0, 0),
+            ("failed", "carmen_rejected"): (3, 3, 0, 0),
         },
         manual_count=0,
         emails=[],
@@ -210,11 +212,31 @@ def test_attention_marks_every_anomaly_not_only_the_fixable_ones():
     assert body["counts"]["unposted"] == 61
 
 
+def test_the_dot_only_looks_at_the_last_week():
+    """There is no retry, so a failed row is terminal: fixing the filename rule never
+    clears the 46 `no_rule_match` rows behind it. A dot counting those is on for ever, and
+    a warning that never goes out is one nobody reads by the day something new breaks.
+
+    Compiled, not executed, for the same reason as the anti-join above: the mock DB runs no
+    SQL, and the window lives entirely in these `FILTER` clauses. `n` — what the chip and
+    the Pager report — must stay unwindowed, which is the other half of the assertion.
+    """
+    sql = str(
+        _counts_stmt(uuid.uuid4(), NOW).compile(compile_kwargs={"literal_binds": True})
+    ).lower()
+    week_ago = str((NOW - timedelta(days=7)).replace(tzinfo=None))
+    # Three of the four counts are narrowed to the window; `count(*)` alone is not.
+    assert sql.count(week_ago) == 3
+    assert "count(*) as n" in sql
+    # And the stuck count is the window AND the hour, not one or the other.
+    assert str((NOW - timedelta(hours=1)).replace(tzinfo=None)) in sql
+
+
 def test_a_posted_document_whose_input_tax_failed_still_gets_a_dot():
     """The quietest outcome in the system: the JV reached Carmen, the VAT record did not.
     The row wears the Success pill and nothing else in the app says otherwise."""
     db = _db(
-        pairs={("posted", None): (20, 0, 2)},
+        pairs={("posted", None): (20, 20, 0, 2)},
         manual_count=0,
         emails=[],
         manuals=[],
@@ -231,7 +253,7 @@ def test_a_document_still_being_read_is_not_a_stuck_one():
     must not put a dot on the chip. Only age separates the two, and it carries no
     reason_code to separate them any other way."""
     db = _db(
-        pairs={("received", None): (4, 1, 0)},
+        pairs={("received", None): (4, 4, 1, 0)},
         manual_count=0,
         emails=[],
         manuals=[],

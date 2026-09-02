@@ -91,10 +91,13 @@ export interface ReviewStatus {
  *  the page — same shape reason `NotificationList` carries `unread_count`. */
 export interface ActivityPage extends Page<ReviewDocument> {
   counts: Record<string, number>
-  /** Same keys as `counts`: of those rows, how many are **anomalous** — a failure of any
-   *  kind, a document claimed and never finished, or a JV that posted without its
-   *  input-tax record. Not "what you can fix": see `_attention` in
-   *  routers/credit_card_activity.py for why that was the wrong line to draw. */
+  /** Same keys as `counts`, but a different question: of those rows, how many went wrong
+   *  **in the last week** — a failure of any kind, a document claimed and never finished,
+   *  or a JV that posted without its input-tax record.
+   *
+   *  Not "what you can fix" (see `_attention`), and deliberately not a lifetime figure:
+   *  nothing retries a failed document, so a dot counting every failure ever would be lit
+   *  for good — see `ATTENTION_WINDOW`, both in routers/credit_card_activity.py. */
   attention: Record<string, number>
 }
 

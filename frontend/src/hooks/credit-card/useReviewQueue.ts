@@ -20,8 +20,8 @@ export interface ReviewQueueController {
   /** Keyed by filter name. Every chip is present even at zero — one that appears only
    *  when it has rows makes the strip jump around as documents resolve. */
   counts: Record<string, number>
-  /** Same keys: of those rows, how many are anomalous. Three chips hold every row between
-   *  them, so this is the only thing that says a chip is hiding something wrong. */
+  /** Same keys: of those rows, how many went wrong in the last week. Three chips hold every
+   *  row between them, so this is the only thing that says a chip is hiding something. */
   attention: Record<string, number>
   offset: number
   setOffset: (n: number) => void
