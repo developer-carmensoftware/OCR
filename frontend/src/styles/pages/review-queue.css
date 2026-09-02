@@ -1226,14 +1226,6 @@
   margin-bottom: 0;
 }
 
-/* Said before the button rather than after: pressing Approve has a second, wider
-   consequence and the reviewer should read it while deciding. */
-.rd-rules {
-  margin: 0;
-  font-size: 0.78rem;
-  color: var(--primary);
-}
-
 /* Why Approve is unavailable, said at the button rather than left to be inferred from a
    tinted row further up the dialog. Amber: something to finish, not something that failed.
    The button points at it with aria-describedby, so it is also the reason a screen reader
@@ -1447,12 +1439,6 @@
   cursor: not-allowed;
 }
 
-/* The answer, whether or not anyone opens the panel: will it be filed, for how much, and
-   into which month. A disclosure that hides its own outcome is the collapsing this screen
-   threw out once already.
-   The slack lives on the group, not on the amount — `flex: 1` was on `.itx-sum`, which held
-   the period out at the right edge of a 64rem dialog with a hand's width of nothing between
-   it and the figure it belongs to. */
 /* One grid for the whole panel: four columns, both rows on them.
    The two rows were sized to their own contents before — fields packed left and stopping
    25rem short of a 64rem dialog, figures anchored to the right edge under them. The edges
@@ -1505,16 +1491,6 @@
   color: var(--text);
 }
 
-.itx-sum {
-  flex: 1;
-  min-width: 0;
-  font-size: 0.83rem;
-  color: var(--text-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* One labelled figure the reviewer reads but cannot type into — built as `.rd-f` is, label
    over value, so the row reads as part of the same screen as the fields under it rather
    than as this panel's own invention.
@@ -1540,11 +1516,14 @@
   white-space: nowrap;
 }
 
+/* Head is two items now — the tick box says what happens, the toggle opens the record —
+   so the slack that used to be a summary line sits between them. */
 .itx-toggle {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
   flex: none;
+  margin-left: auto;
   padding: 0.2rem 0.4rem;
   background: none;
   border: 0;
@@ -1621,17 +1600,6 @@
   color: var(--text-3);
   font-style: normal;
   opacity: 0.75;
-}
-
-@media (max-width: 640px) {
-  .itx-head {
-    flex-wrap: wrap;
-  }
-
-  .itx-sum {
-    order: 3;
-    flex-basis: 100%;
-  }
 }
 
 /* ── Touch ─────────────────────────────────────────────────────────────────── */

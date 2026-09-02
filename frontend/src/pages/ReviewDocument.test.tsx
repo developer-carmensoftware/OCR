@@ -243,18 +243,6 @@ function itxBody() {
 }
 
 describe('the input tax record', () => {
-  it('states its outcome without being opened', async () => {
-    // A disclosure that hides its own answer is the collapsing this screen threw out once
-    // already. Whether, not how much: four labelled figures on that line read as clutter,
-    // and the record itself is one click away.
-    vi.mocked(api.getPending).mockResolvedValue(detail())
-    mount()
-    await screen.findByDisplayValue('INV-001')
-    expect(screen.getByText('Will be recorded')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('checkbox'))
-    expect(await screen.findByText('Will not be recorded')).toBeInTheDocument()
-  })
-
   it('names its amounts the way Carmen will once they post', async () => {
     // Net Amount / Tax / Total are Carmen's column headings for BfTaxAmt / TaxAmt /
     // TotalAmt, and 30.00 + 2.10 = 32.10 is the record's whole arithmetic. A reviewer
@@ -301,20 +289,7 @@ describe('the input tax record', () => {
     expect(screen.getByText('Vendor')).toBeInTheDocument()
   })
 
-  it('keeps its figures off the collapsed line, which answers whether and not how much', async () => {
-    // BfTaxAmt is the JV's commission debit row and TaxAmt its Input Tax row, so the panel
-    // does restate them — under Carmen's own headings, one click in. Restating them on the
-    // head as well put four labelled figures on a line whose job is one yes-or-no.
-    vi.mocked(api.getPending).mockResolvedValue(detail())
-    mount()
-    await screen.findByDisplayValue('INV-001')
-    const head = screen.getByRole('checkbox').closest('.itx-head') as HTMLElement
-    for (const figure of ['30.00', '2.10', '32.10', '01/2026']) {
-      expect(within(head).queryByText(figure)).not.toBeInTheDocument()
-    }
-  })
-
-  it('says so when the statement charged no VAT, instead of offering a choice', async () => {
+  it('offers no choice when the statement charged no VAT', async () => {
     vi.mocked(api.getPending).mockResolvedValue(
       detail({
         extracted: { ...EXTRACTED, details: [{ ...LINE, commis_amt: '0', tax_amt: '0' }] },
@@ -322,7 +297,6 @@ describe('the input tax record', () => {
     )
     mount()
     await screen.findByDisplayValue('INV-001')
-    expect(screen.getByText('No VAT on this document')).toBeInTheDocument()
     expect(screen.getByRole('checkbox')).toBeDisabled()
   })
 
@@ -463,15 +437,6 @@ describe('mapping in place', () => {
     fireEvent.change(acc, { target: { value: '511300' } })
     // One picker, two rows: the second echoes the value rather than asking again.
     await waitFor(() => expect(screen.getAllByText('511300').length).toBeGreaterThan(1))
-  })
-
-  it('says the rule will change before the button that changes it', async () => {
-    vi.mocked(api.getPending).mockResolvedValue(detail())
-    mount()
-    fireEvent.change(await screen.findByLabelText('Account for Input Tax'), {
-      target: { value: '511300' },
-    })
-    expect(await screen.findByText('1 GL rule changes when you approve')).toBeInTheDocument()
   })
 
   it('undoes a correction and stops promising to save it', async () => {
@@ -618,13 +583,6 @@ describe('approving', () => {
       description: 'Settlement',
       bank_code: 'KTC',
     })
-  })
-
-  it('counts a header change alongside the mapping changes', async () => {
-    vi.mocked(api.getPending).mockResolvedValue(detail())
-    mount()
-    fireEvent.change(await screen.findByLabelText('Prefix'), { target: { value: 'AJ' } })
-    expect(await screen.findByText('1 GL rule changes when you approve')).toBeInTheDocument()
   })
 
   it('touches no rules when nothing was corrected', async () => {

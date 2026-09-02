@@ -45,8 +45,8 @@ interface Props {
  * Collapsed by design, which the review screen otherwise refuses (07-human-in-the-loop #9:
  * collapsing made the reviewer work for the answer). The difference is what is behind it:
  * not part of the decision, but a *preview of a second document* derived from figures
- * already on screen. The summary line carries the answer — will it be filed, for how much,
- * at what rate — so a collapsed panel still answers the question it exists to answer.
+ * already on screen. The tick box is the outcome — a ticked box files the record — so a
+ * collapsed panel still answers the one question it exists to answer.
  *
  * **Vendor, tax ID, tax profile and branch are fields; the period and the amounts are
  * not.** The line between them is not "derived or not" — the vendor and the profile are
@@ -174,18 +174,6 @@ export default function InputTaxPanel({
           />
           <span>{t('review.secTaxLabel')}</span>
         </label>
-
-        {/* Whether, not how much. Four labelled figures up here read as clutter on a line
-            whose job is one yes-or-no, so the head answers that and the body carries the
-            record itself. What a disclosure must never do is hide its own outcome — this
-            still says it, in the fewest words that can. */}
-        <span className="itx-sum">
-          {nothingToFile
-            ? t('review.itxNothing')
-            : enabled
-              ? t('review.itxOn')
-              : t('review.itxOff')}
-        </span>
 
         <button
           type="button"

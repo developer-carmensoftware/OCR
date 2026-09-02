@@ -254,8 +254,8 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   // so a fourth reader cannot pick the wrong one again.
   const bankCode = (bank || doc?.bank_code || '') as BankCode | ''
 
-  // Everything the approve will write back to the BU config, counted once so the footer
-  // and the button agree.
+  // Everything the approve will write back to the BU config: zero means skip the config
+  // call entirely.
   const ruleCount =
     Object.keys(overrides).length + (prefix === null ? 0 : 1) + (description === null ? 0 : 1)
 
@@ -586,15 +586,6 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                 <p className="rd-blocked" id="rd-blocked" role="status">
                   <AlertTriangle size={14} aria-hidden="true" />
                   {blockReason}
-                </p>
-              )}
-              {/* Said before the button, not after: the rule change is a second, wider
-                  consequence of pressing it, and the reviewer should know while deciding. */}
-              {ruleCount > 0 && (
-                <p className="rd-rules" role="status">
-                  {t(ruleCount === 1 ? 'review.rulesChanged' : 'review.rulesChangedPlural', {
-                    count: String(ruleCount),
-                  })}
                 </p>
               )}
               <div className="rd-actions">
