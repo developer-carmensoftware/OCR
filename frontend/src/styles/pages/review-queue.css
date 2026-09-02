@@ -120,10 +120,13 @@
 }
 
 /* Widths are declared once, here, rather than per cell — table-layout: fixed reads only
-   the first row, and the header IS that row.
-   28.5rem fixed, down from 39.5: Source is gone as a column, Received prints a time rather
-   than a full stamp, and JV is narrower. The 11rem goes to Document and Message, which are
-   the two cells that were truncating. */
+   the first row, and the header IS that row. That is why `COLUMNS` in ReviewQueue.tsx puts
+   these classes on the `<th>`s: while they sat only on the body `<td>`s the browser read
+   none of them and every column rendered at an equal 1/6, which is what starved the two
+   columns below that carry all the text.
+
+   29rem fixed. Everything not listed here — Document and Message — splits the remainder,
+   because those are the only two cells that were ever truncating. */
 .rq-c-status {
   width: 7rem;
 }
@@ -133,20 +136,39 @@
 .rq-c-jv {
   width: 7.5rem;
 }
+/* Sized for its widest label ("Fix mapping"), not for its widest imaginable one: nowrap
+   below means a button that outgrew this would push its neighbours rather than silently
+   double the row's height, which is the failure worth catching. */
 .rq-c-act {
-  width: 8rem;
+  width: 8.5rem;
 }
 
-/* Where the document came in from, on the filename line rather than in a column of its
-   own — under three of the five chips that column could only ever say "Email". */
-.rq-source-icon {
-  vertical-align: -0.12em;
-  margin-right: 0.3rem;
-  color: var(--text-4);
+.rq-c-act .btn {
+  white-space: nowrap;
 }
 
-.rq-source-icon[data-source='manual'] {
-  color: var(--primary);
+/* Justification, in one rule: the two columns that hold sentences keep the left edge, and
+ * every fixed-width column centres. Document and Message are prose and read from a left
+ * margin; the other four hold one short self-contained thing each — a pill, a time, an
+ * identifier, a button — and none of them has anything to align to. A JV number is not a
+ * magnitude (no digits to stack), and `formatWhen` prints `14:22` or `31/08/26`, so no
+ * edge lines up whichever way those go. Left-aligned they gave four ragged right edges in
+ * a row, the last stopping ~2.6rem short of the table's border, which is what made the
+ * right-hand side look like it was falling away.
+ *
+ * `.rq-table` prefixes these because `.rq-table th` (0-1-1) sets `text-align: left` and
+ * would otherwise outrank a bare `.rq-c-*` (0-1-0) — the header would stay left while its
+ * cells moved, which is the exact misalignment this is fixing. At 0-2-0 the rule lands on
+ * the `<th>` and the `<td>` together, so a column and its label can never disagree.
+ *
+ * The cost, accepted: a centred pill wobbles by up to ±0.78rem between "Review" and
+ * "Unfinished", where left-aligned it drew a clean vertical down the table's left edge.
+ * One rule that holds for every column is worth more here than a per-column optimum. */
+.rq-table .rq-c-status,
+.rq-table .rq-c-when,
+.rq-table .rq-c-jv,
+.rq-table .rq-c-act {
+  text-align: center;
 }
 
 .rq-bank {
@@ -181,18 +203,6 @@
 .rq-c-jv {
   white-space: nowrap;
   color: var(--text-3);
-}
-
-.rq-c-jv a {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  color: var(--primary);
-  text-decoration: none;
-}
-
-.rq-c-jv a:hover {
-  text-decoration: underline;
 }
 
 .rq-empty-cell {
@@ -278,6 +288,18 @@
   background-size: 200% 100%;
   animation: rq-shimmer 1.4s linear infinite;
   color: transparent;
+}
+
+/* The bar is a block, so it ignores the `text-align` its column carries and would sit at
+   the opposite end of the cell from the content it is standing in for — the placeholder
+   jumping sideways as data lands is the same jolt the fixed height above prevents
+   vertically. Margins, because `display: inline-block` here would reach the `.rd-skel-*`
+   users of this class inside the modal. */
+.rq-table .rq-c-status .rq-skel,
+.rq-table .rq-c-when .rq-skel,
+.rq-table .rq-c-jv .rq-skel,
+.rq-table .rq-c-act .rq-skel {
+  margin-inline: auto;
 }
 
 /* Two lines' worth, matching the Document cell that sets the real row height. */
@@ -403,7 +425,7 @@
   flex: none;
 }
 
-/* Seven columns do not fit a phone, and a primary work surface must not scroll sideways.
+/* Six columns do not fit a phone, and a primary work surface must not scroll sideways.
    Each row becomes a stacked card and each cell wears its column name — one markup path,
    no duplicate DOM, `data-label` supplied by the row component. */
 @media (max-width: 720px) {
@@ -452,6 +474,16 @@
   /* An empty Actions cell would otherwise leave its label floating alone. */
   .rq-c-act:empty {
     display: none;
+  }
+
+  /* Alignment is a property of a column, and there are no columns here. Each cell is a
+     label/value grid, so the centring above would push the `data-label` off the card's
+     left edge — the same reset `.jv-table` makes at this breakpoint. */
+  .rq-table .rq-c-status,
+  .rq-table .rq-c-when,
+  .rq-table .rq-c-jv,
+  .rq-table .rq-c-act {
+    text-align: left;
   }
 
   .rq-bar-actions .btn,

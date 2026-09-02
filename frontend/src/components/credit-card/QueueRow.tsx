@@ -1,4 +1,4 @@
-import { ExternalLink, Mail, Upload } from 'lucide-react'
+import { ExternalLink } from 'lucide-react'
 import { useT } from '../../i18n/LanguageContext'
 import { fmt } from '../../lib/format'
 import { glFieldLabel, glFieldList } from '../../lib/glFieldLabels'
@@ -28,7 +28,11 @@ function reasonFor(row: ReviewDocument): { key: TKey; tone: string; fields: stri
   if (f.includes('mapping_guessed'))
     return { key: 'review.reasonGuessed', tone: 'warn', fields: row.guessed || [] }
   if (f.includes('warnings')) return { key: 'review.reasonWarnings', tone: 'warn', fields: [] }
-  return { key: 'review.reasonClean', tone: 'calm', fields: [] }
+  // Green, and phrased as the next action rather than as the absence of a problem. This is
+  // the row a reviewer should spend the least time on, so it gets the strongest "skip me"
+  // signal the column has. It cannot be misread as already-posted: the pill beside it still
+  // says Review, in amber.
+  return { key: 'review.reasonClean', tone: 'ok', fields: [] }
 }
 
 /** The reason codes the pipeline actually writes. Anything unmapped falls back to the
@@ -107,19 +111,12 @@ interface Props {
 export default function QueueRow({ row, onOpen }: Props) {
   const { t } = useT()
   const pending = row.status === 'pending_review'
-  // A posted row has somewhere to go: the JV it became, in Carmen. Same destination the
-  // `document_posted` notification offers, built from the same helper so the two cannot
-  // point at different Carmens. Manual scans reach it through `credit_cards.jv_no`, which
-  // is NULL for anything posted before migration 20260831000000 — hence the `—`.
-  const jvHref = row.jv_no ? getCarmenUrl(`/glJv/${row.jv_no}/show`) : null
   const status = STATUS_META[row.status] ?? { key: 'review.statusSkipped' as TKey, tone: 'calm' }
-  const SourceIcon = row.source === 'manual' ? Upload : Mail
-
-  const sourceLabel = t(row.source === 'manual' ? 'review.sourceManual' : 'review.sourceEmail')
 
   // Order is the order the reader asks: what state → which document → why → when → where it
-  // went → what to press. The two columns that are mostly empty (JV, Actions) sit at the
-  // right edge, where a column of em dashes costs least.
+  // went → what to press. The two narrow ones sit at the right edge, where JV's column of
+  // em dashes costs least. Everything not given a width in review-queue.css — Document and
+  // Message — splits the rest, because those are the only cells that were truncating.
   return (
     <tr className="rq-row">
       <td className="rq-c-status" data-label={t('review.colStatus')}>
@@ -130,18 +127,13 @@ export default function QueueRow({ row, onOpen }: Props) {
         <span className="rq-bank">{row.bank_code || t('review.unknownBank')}</span>{' '}
         {/* Mono on everything the reviewer has to verify — DESIGN.md's Mono Signal Rule. */}
         <span className="rq-docno text-mono">{row.doc_no || '—'}</span>
+        {/* No provenance marker here. It was a 6.5rem "Source" column, then a 12px envelope
+            on this line, and both said the same one word on every row of two chips out of
+            three — manual scans only exist as `posted` (MANUAL_FILTERS). On the one chip
+            where the two do mix, the Message column already says which in a sentence
+            ("scanned and posted by hand" vs "posted automatically"), so the glyph was
+            unreadable where it was needed and constant where it was not. */}
         <span className="rq-file" title={row.attachment}>
-          {/* Where it came in from. It was a 6.5rem column of its own, which said "Email" on
-              every row under three of the five chips — manual scans only exist as `posted`
-              (MANUAL_FILTERS). Provenance, not a scan target: an icon carries it. */}
-          <SourceIcon
-            size={12}
-            strokeWidth={2}
-            className="rq-source-icon"
-            aria-hidden="true"
-            data-source={row.source}
-          />
-          <span className="sr-only">{sourceLabel}</span>
           {row.attachment}
           {/* The gross, which is what lands on the credit side of the JV — the number a
               reviewer scans for. Pending only: `_finish` clears the payload it comes from,
@@ -163,12 +155,14 @@ export default function QueueRow({ row, onOpen }: Props) {
         <span title={fullWhen(row.created_at)}>{formatWhen(row.created_at)}</span>
       </td>
 
+      {/* The number, as data. It used to BE the link to Carmen, which made the one thing a
+          reviewer wants to do with a JV number — select it, copy it, paste it into Carmen's
+          own search — impossible without opening a tab. The action moved to the Actions
+          column, where the rest of this row's buttons already live. The `title` is what a
+          truncated number falls back to now that there is no link to hover. */}
       <td className="rq-c-jv text-mono" data-label={t('review.colJv')}>
-        {jvHref ? (
-          <a href={jvHref} target="_blank" rel="noopener noreferrer" title={t('review.openJv')}>
-            {row.jv_no}
-            <ExternalLink size={12} strokeWidth={2} aria-hidden="true" />
-          </a>
+        {row.jv_no ? (
+          <span title={row.jv_no}>{row.jv_no}</span>
         ) : (
           <span className="rq-empty-cell">—</span>
         )}
@@ -186,7 +180,7 @@ export default function QueueRow({ row, onOpen }: Props) {
  *
  * A resolved row has no `review_payload` left — `_finish` clears it on every terminal
  * transition — so a "View" button on one would open nothing. Its story is already in the
- * Message column and its JV number is already a link.
+ * Message column.
  */
 function RowAction({ row, onOpen }: Props) {
   const { t } = useT()
@@ -199,6 +193,29 @@ function RowAction({ row, onOpen }: Props) {
       </button>
     )
   }
+
+  // A posted row has somewhere to go: the JV it became, in Carmen. Same destination the
+  // `document_posted` notification offers, built from the same helper so the two cannot
+  // point at different Carmens. Manual scans reach it through `credit_cards.jv_no`, which
+  // is NULL for anything posted before migration 20260831000000 — those get no button.
+  //
+  // Ahead of `FIX` because the two cannot collide: a row with a JV posted, and every code
+  // in FIX is a reason it did not.
+  if (row.jv_no) {
+    return (
+      <a
+        className="btn btn-outline btn-sm"
+        href={getCarmenUrl(`/glJv/${row.jv_no}/show`)}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={t('review.openJv')}
+      >
+        {t('review.actionOpenJv')}
+        <ExternalLink size={12} strokeWidth={2} aria-hidden="true" />
+      </a>
+    )
+  }
+
   const fix = row.reason_code ? FIX[row.reason_code] : undefined
   if (!fix) return null
   return (

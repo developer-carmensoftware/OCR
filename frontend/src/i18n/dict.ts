@@ -792,7 +792,10 @@ const en = {
   'review.reasonUnbalanced': 'amounts do not reconcile',
   'review.reasonGuessed': 'GL mapping guessed',
   'review.reasonWarnings': 'extraction warnings',
-  'review.reasonClean': 'nothing flagged',
+  // The reviewer's next move, not the absence of a problem. "nothing flagged" named an
+  // internal concept (the four ReviewFlag values) and left a clerk to work out that the
+  // row was fine.
+  'review.reasonClean': 'Ready to post',
   // No second person, and true whether or not this BU reviews before posting: the same
   // screen serves an empty Needs review and an empty Posted.
   'review.allClearTitle': 'All clear',
@@ -826,8 +829,6 @@ const en = {
   'review.colStatus': 'Status',
   'review.colMessage': 'Message',
   'review.colActions': 'Actions',
-  'review.sourceEmail': 'Email',
-  'review.sourceManual': 'Manual',
   'review.statusReview': 'Review',
   'review.statusSuccess': 'Success',
   'review.statusFailed': 'Failed',
@@ -839,7 +840,11 @@ const en = {
   'review.actionReview': 'Review',
   'review.actionFixMapping': 'Fix mapping',
   'review.actionOpenSettings': 'Open settings',
-  'review.actionReconnect': 'Reconnect Carmen',
+  // Short because it shares an 8.5rem column with every other row's button; the word that
+  // distinguishes it from the generic 'Open settings' is 'Reconnect', and that is kept.
+  // review.openJv carries the full sentence on the button's title.
+  'review.actionReconnect': 'Reconnect',
+  'review.actionOpenJv': 'Open JV',
   'review.uploadDocuments': 'Upload documents',
   'review.emptyTab': 'Nothing here yet.',
   'review.postedBy': 'posted by {name}',
@@ -2286,7 +2291,7 @@ const th: Record<TKey, string> = {
   'review.reasonUnbalanced': 'ยอดไม่สมดุล',
   'review.reasonGuessed': 'AI เดาผังบัญชีให้',
   'review.reasonWarnings': 'มีคำเตือนจากการอ่าน',
-  'review.reasonClean': 'ไม่พบสิ่งผิดปกติ',
+  'review.reasonClean': 'พร้อมโพสต์',
   'review.allClearTitle': 'ไม่มีรายการค้าง',
   'review.allClearBody': 'เอกสารที่ส่งมาที่ {address} จะมาปรากฏที่นี่',
   'review.allClearBodyNoAddress': 'เอกสารที่ส่งต่อเข้ามาจะมาปรากฏที่นี่',
@@ -2315,8 +2320,6 @@ const th: Record<TKey, string> = {
   'review.colStatus': 'Status',
   'review.colMessage': 'Message',
   'review.colActions': 'Actions',
-  'review.sourceEmail': 'อีเมล',
-  'review.sourceManual': 'สแกนเอง',
   'review.statusReview': 'รอตรวจ',
   'review.statusSuccess': 'สำเร็จ',
   'review.statusFailed': 'ล้มเหลว',
@@ -2324,8 +2327,9 @@ const th: Record<TKey, string> = {
   'review.statusStuck': 'ค้างอยู่',
   'review.actionReview': 'ตรวจสอบ',
   'review.actionOpenSettings': 'เปิดตั้งค่า',
-  'review.actionReconnect': 'เชื่อม Carmen ใหม่',
+  'review.actionReconnect': 'เชื่อมใหม่',
   'review.actionFixMapping': 'แก้ผังบัญชี',
+  'review.actionOpenJv': 'เปิด JV',
   'review.uploadDocuments': 'อัปโหลดเอกสาร',
   'review.emptyTab': 'ยังไม่มีรายการที่นี่',
   'review.postedBy': 'โพสต์โดย {name}',

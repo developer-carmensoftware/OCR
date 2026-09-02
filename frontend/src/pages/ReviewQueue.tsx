@@ -23,20 +23,25 @@ const FILTER_LABEL: Record<ChipFilter, TKey> = {
   unposted: 'review.filterUnposted',
 }
 
-// One column per header cell — the row component must stay in step with this list, and the
-// widths in review-queue.css are declared on these cells because `table-layout: fixed`
-// reads only the first row.
+// One column per header cell — the row component must stay in step with this list.
+//
+// **The class rides along, and it is not decoration.** `table-layout: fixed` reads column
+// widths from the FIRST row only, which is this header row — so the widths in
+// review-queue.css did nothing at all while `.rq-c-*` lived solely on the body `<td>`s and
+// all six columns rendered at an equal 1/6. Document and Message were not narrow by design;
+// they were starved by a class that was never on the cell the browser measures.
 //
 // Source is no longer a column: `MANUAL_FILTERS` means a manual scan only ever appears
 // under Posted, so the column read "Email" on every row of the other two — the same
-// argument §9 #19 used to delete it as a concept. It is an icon on the filename line now.
-const COLUMNS: TKey[] = [
-  'review.colStatus',
-  'review.colDocument',
-  'review.colMessage',
-  'review.colReceived',
-  'review.colJv',
-  'review.colActions',
+// argument §9 #19 used to delete it as a concept. On Posted, the Message column says which
+// it was in words, which is why the icon that briefly replaced the column is gone too.
+const COLUMNS: { key: TKey; cls: string }[] = [
+  { key: 'review.colStatus', cls: 'rq-c-status' },
+  { key: 'review.colDocument', cls: 'rq-c-doc' },
+  { key: 'review.colMessage', cls: 'rq-c-msg' },
+  { key: 'review.colReceived', cls: 'rq-c-when' },
+  { key: 'review.colJv', cls: 'rq-c-jv' },
+  { key: 'review.colActions', cls: 'rq-c-act' },
 ]
 
 const QUEUE = '#/CreditCardOCR'
@@ -59,7 +64,7 @@ function RowSkeleton() {
   return (
     <tr className="rq-row rq-row--skeleton" aria-hidden="true">
       {COLUMNS.map(c => (
-        <td key={c}>
+        <td key={c.key} className={c.cls}>
           <span className="rq-skel">&nbsp;</span>
         </td>
       ))}
@@ -325,8 +330,8 @@ export default function ReviewQueue() {
               <thead>
                 <tr>
                   {COLUMNS.map(c => (
-                    <th key={c} scope="col">
-                      {t(c)}
+                    <th key={c.key} className={c.cls} scope="col">
+                      {t(c.key)}
                     </th>
                   ))}
                 </tr>

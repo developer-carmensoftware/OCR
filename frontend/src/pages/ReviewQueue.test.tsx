@@ -161,7 +161,7 @@ describe('the message column', () => {
     [['unbalanced'], 'amounts do not reconcile'],
     [['mapping_guessed'], 'GL mapping guessed'],
     [['warnings'], 'extraction warnings'],
-    [[], 'nothing flagged'],
+    [[], 'Ready to post'],
   ]
 
   it.each(cases)('renders %s as "%s"', async (flags, text) => {
@@ -180,18 +180,18 @@ describe('the message column', () => {
 })
 
 describe('where a row came from', () => {
-  it('tells a forwarded document apart from one somebody scanned', async () => {
-    // No longer a column of its own — a manual scan is only ever listed once posted, so
-    // outside the Posted chip it could only ever say "Email". It is an icon on the
-    // filename line now, and the word is still there for a screen reader.
+  it('says it in the message, and nowhere else', async () => {
+    // Not a column, and no longer an icon either. A manual scan is only ever listed once
+    // posted, so outside the Posted chip both said the same word on every row — and inside
+    // it, this sentence was already saying it.
     mount(status(), [
       doc({ id: 'a' }),
       doc({ id: 'b', source: 'manual', status: 'posted', jv_no: 'JV-7', total: 0 }),
     ])
-    expect(await screen.findByText('Email')).toBeInTheDocument()
-    expect(screen.getByText('Manual')).toBeInTheDocument()
-    expect(screen.getByText('scanned and posted by hand')).toBeInTheDocument()
+    expect(await screen.findByText('scanned and posted by hand')).toBeInTheDocument()
     expect(screen.queryByRole('columnheader', { name: 'Source' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Email')).not.toBeInTheDocument()
+    expect(screen.queryByText('Manual')).not.toBeInTheDocument()
   })
 
   it('leads with the status, not the source', async () => {
@@ -201,6 +201,45 @@ describe('where a row came from', () => {
     await screen.findByText('KTC')
     const headers = screen.getAllByRole('columnheader').map(h => h.textContent)
     expect(headers).toEqual(['Status', 'Document', 'Message', 'Received', 'JV no.', 'Actions'])
+  })
+
+  it('puts the width classes on the header cells, which is what fixed layout measures', async () => {
+    // The regression this exists for: `table-layout: fixed` reads column widths from the
+    // first row only. While `.rq-c-*` lived solely on the body <td>s the widths in
+    // review-queue.css did nothing and all six columns rendered at an equal 1/6, which is
+    // what starved Document and Message. jsdom cannot measure a width; the class on the
+    // <th> is the thing whose absence caused it.
+    mount(status(), [doc()])
+    await screen.findByText('KTC')
+    for (const [name, cls] of [
+      ['Status', 'rq-c-status'],
+      ['Document', 'rq-c-doc'],
+      ['Message', 'rq-c-msg'],
+      ['Received', 'rq-c-when'],
+      ['JV no.', 'rq-c-jv'],
+      ['Actions', 'rq-c-act'],
+    ]) {
+      expect(screen.getByRole('columnheader', { name })).toHaveClass(cls)
+    }
+  })
+})
+
+describe('the JV number', () => {
+  it('opens from the Actions column, not by clicking the number', async () => {
+    // The number itself used to be the link, which made the one thing a reviewer wants to
+    // do with it — select it and paste it into Carmen's own search — impossible.
+    mount(status(), [doc({ id: 'b', status: 'posted', jv_no: 'JV-7', total: 0 })])
+    const link = await screen.findByRole('link', { name: /Open JV/ })
+    expect(link).toHaveAttribute('href', expect.stringContaining('/glJv/JV-7/show'))
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(screen.getByText('JV-7').closest('a')).toBeNull()
+  })
+
+  it('offers no button for a row posted before jv_no was recorded', async () => {
+    // credit_cards.jv_no is NULL for anything posted before migration 20260831000000.
+    mount(status(), [doc({ id: 'c', status: 'posted', jv_no: null, total: 0 })])
+    await screen.findByText('KTC')
+    expect(screen.queryByRole('link', { name: /Open JV/ })).not.toBeInTheDocument()
   })
 })
 
@@ -387,7 +426,7 @@ describe('the actions column', () => {
     // One expired token fails EVERY document of the BU until someone re-pastes it, so it
     // is not "a setting is off" — it is "the pipeline is down".
     mount(status(), [doc({ status: 'failed', reason_code: 'carmen_unauthorized', total: 0 })])
-    expect(await screen.findByRole('link', { name: 'Reconnect Carmen' })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: 'Reconnect' })).toBeInTheDocument()
     expect(screen.getByText(/Carmen connection has expired/)).toBeInTheDocument()
   })
 
@@ -440,14 +479,6 @@ describe('a row that has already been resolved', () => {
     // An unfamiliar code is still a lead; a blank is not.
     mount(status(), [doc({ status: 'failed', reason_code: 'something_new', total: 0 })])
     expect(await screen.findByText('something_new')).toBeInTheDocument()
-  })
-
-  it('opens the JV in Carmen', async () => {
-    // Same destination the `document_posted` notification offers, from the same helper.
-    mount(status(), [doc({ status: 'posted', jv_no: 'JV-1', total: 0 })])
-    const link = await screen.findByRole('link', { name: /JV-1/ })
-    expect(link).toHaveAttribute('href', expect.stringContaining('/glJv/JV-1/show'))
-    expect(link).toHaveAttribute('target', '_blank')
   })
 
   it('leaves a row with nothing to open inert', async () => {
