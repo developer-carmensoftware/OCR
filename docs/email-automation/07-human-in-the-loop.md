@@ -915,3 +915,11 @@ to go down.** It is what killed §6's `· 8 posted today` (#40) and it is what t
 missed. `counts` is exempt only because it is not presented as progress — it sizes the list
 the reader is about to page through, which is why it survives in the `Pager` and not on the
 chip.
+
+**#46 is a placeholder.** `ATTENTION_WINDOW` is a guess about how long someone stays
+interested, and the thing that should put the dot out is a person looking at the chip. The
+agreed replacement — one *per-BU* timestamp behind its own endpoint, with `GET /activity`
+returning `newest_anomaly_at` per chip instead of a count — is deliberately a separate
+change. A per-browser mark was built and discarded first: `clearAppStorage()` fires on
+session expiry, so it would have been wiped several times a day, and a read receipt is the
+wrong model for a queue a whole BU shares. See the changelog entry of 2026-09-02 15:40.
