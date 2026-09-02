@@ -19,6 +19,7 @@ import {
   approveDocument,
   getPending,
   rejectDocument,
+  type ItxOverrides,
   type ReviewDocumentDetail,
 } from '../lib/api/emailReview'
 import { detectBankFromExtracted } from '../constants/banks'
@@ -57,6 +58,9 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   const [bank, setBank] = useState<BankCode | ''>('')
   const [warnings, setWarnings] = useState<string[]>([])
   const [postInputTax, setPostInputTax] = useState(true)
+  // Corrections to the input-tax record's own fields. Per document, like the line
+  // descriptions — none of it is a rule, and none of it is written to the BU config.
+  const [itx, setItx] = useState<ItxOverrides>({})
 
   // GL rule corrections, not yet saved. Keyed by accounting-config field type, because
   // that is what a picker edits — see JvEditor's note on JvRow.key.
@@ -66,6 +70,9 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   // through rather than being replaced by an empty string on first render.
   const [prefix, setPrefix] = useState<string | null>(null)
   const [description, setDescription] = useState<string | null>(null)
+  // Retyped GL line descriptions, keyed by leg. Per document — unlike the header
+  // description above, nothing here is written back to the BU config.
+  const [descs, setDescs] = useState<Record<string, string>>({})
   const [jv, setJv] = useState<JvState>({
     rows: [],
     blocked: true,
@@ -228,6 +235,10 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
       return rest
     })
   }, [])
+  const onDesc = useCallback((id: string, value: string) => {
+    setDirty(true)
+    setDescs(d => ({ ...d, [id]: value }))
+  }, [])
   const onJvState = useCallback((s: JvState) => setJv(s), [])
 
   // Everything the approve will write back to the BU config, counted once so the footer
@@ -281,6 +292,9 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
         },
         rows: jv.rows,
         post_input_tax: postInputTax,
+        // Omitted entirely when nothing was touched, so the server derives the record the
+        // same way the unattended path does.
+        input_tax: Object.keys(itx).length ? itx : undefined,
       })
       showToast(
         res.tax_note
@@ -501,6 +515,8 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   guessedKeys={doc.guessed || []}
                   unmappedKeys={doc.unmapped || []}
                   onAmount={updateAmount}
+                  descs={descs}
+                  onDesc={onDesc}
                   onState={onJvState}
                   bankCode={bank || doc.bank_code || ''}
                 />
@@ -520,6 +536,11 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                     setPostInputTax(on)
                   }}
                   onUpdate={updateHeader}
+                  overrides={itx}
+                  onOverride={patch => {
+                    setDirty(true)
+                    setItx(o => ({ ...o, ...patch }))
+                  }}
                 />
               </section>
             </div>

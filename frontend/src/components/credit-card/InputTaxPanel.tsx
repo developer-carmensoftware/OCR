@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, ChevronDown } from 'lucide-react'
 import { useT } from '../../i18n/LanguageContext'
 import { fetchTaxProfiles, type TaxProfileItem } from '../../lib/api/carmen'
+import type { ItxOverrides } from '../../lib/api/emailReview'
 import { fmt, parseNum, round2 } from '../../lib/format'
 import { normalizeYearToCE } from '../../lib/date'
 import { resolveTaxProfileForRate } from '../../lib/apTax'
@@ -16,6 +17,8 @@ interface Props {
   enabled: boolean
   onEnabledChange: (on: boolean) => void
   onUpdate: (key: string, value: string) => void
+  overrides: ItxOverrides
+  onOverride: (patch: ItxOverrides) => void
 }
 
 /**
@@ -40,9 +43,16 @@ interface Props {
  * already on screen. The summary line carries the answer — will it be filed, for how much,
  * at what rate — so a collapsed panel still answers the question it exists to answer.
  *
- * Read-only except `BranchNo`. The rest is either derived (the period from the document
- * date, the profile from the rate between two figures the JV already shows) or looked up
- * from the bank's registered identity, which is a fact about the bank, not this document.
+ * **Vendor, tax ID, tax profile and branch are fields; the period and the amounts are
+ * not.** The line between them is not "derived or not" — the vendor and the profile are
+ * derived too, and each field starts at what the machine chose. It is whether a reviewer
+ * looking at this statement can know better. A registry entry that is missing or stale
+ * and a rate no profile declares are dead ends for the machine (both used to skip the
+ * record entirely, behind a warning nobody could act on) and one field for a human. The
+ * period and the amounts are not judgements: the period is the month the document names,
+ * corrected by fixing the document date two fields up, and the amounts are the JV's — a
+ * VAT record disagreeing with the journal it is filed beside is the one outcome worse
+ * than no record.
  *
  * This does NOT post. `approve_document` files the record server-side under the BU's own
  * credential; the wizard's `InputTaxReconciliation` is the one that submits, and reusing
@@ -55,6 +65,8 @@ export default function InputTaxPanel({
   enabled,
   onEnabledChange,
   onUpdate,
+  overrides,
+  onOverride,
 }: Props) {
   const { t } = useT()
   const [open, setOpen] = useState(false)
@@ -79,7 +91,9 @@ export default function InputTaxPanel({
     const net = round2(details.reduce((s, d) => s + parseNum(d.CommisAmt), 0))
     const vat = round2(details.reduce((s, d) => s + parseNum(d.TaxAmt), 0))
     const ratio = net > 0 ? round2((vat / net) * 100) : 0
-    const code = resolveTaxProfileForRate(ratio, profiles)
+    // A profile the reviewer named answers the question the rate lookup asks, so it wins
+    // — including when the lookup found nothing, which is the case they picked it for.
+    const code = overrides.profile_code || resolveTaxProfileForRate(ratio, profiles)
     const profile = profiles.find(p => p.code === code)
     const rate = profile?.rate ?? Math.round(ratio)
     return {
@@ -87,23 +101,38 @@ export default function InputTaxPanel({
       vat,
       ratio,
       rate,
-      profile: profile ? `${profile.code} · ${profile.desc}` : code,
+      code,
       // We post the profile's canonical rate but claim the document's own VAT figure. If
       // base × rate disagrees with what was extracted, the document is not standard-rated
       // and somebody should look before it is filed.
       rateOff: net > 0 && Math.abs(round2(net * (rate / 100)) - vat) > 0.02,
     }
-  }, [details, profiles])
+  }, [details, profiles, overrides.profile_code])
 
-  const vendor = bank ? BANK_INFO[OCR_BANK_MAP[bank]] : undefined
+  const registered = bank ? BANK_INFO[OCR_BANK_MAP[bank]] : undefined
+  const vendor = {
+    name: overrides.vendor_name ?? registered?.name ?? '',
+    taxId: overrides.tax_id ?? registered?.taxId ?? '',
+  }
   // Carmen accepts the request and rejects the record afterwards when the vendor has no
-  // identity, so it has to be caught here rather than read off a response.
-  const identityMissing = !vendor?.taxId || !vendor?.name
+  // identity, so it has to be caught here rather than read off a response. Measured on
+  // what will post, so typing the missing half clears the warning.
+  const identityMissing = !vendor.taxId || !vendor.name
 
+  // Not a field. The month the claim is filed in is a fact about the statement, and a
+  // claim filed in a month the document does not name is exactly the wrong-month error
+  // `build_input_tax_payload` refuses to make — a misread date is corrected on the
+  // document date above, and this follows it.
   const period = (() => {
     const parts = (headerData.DocDate || '').split('/')
     return parts.length === 3 ? `${parts[1]}/${normalizeYearToCE(parts[2])}` : '—'
   })()
+  // The list, plus whatever is selected if the fetch has not landed or does not carry it —
+  // a select whose own value is not among its options renders blank.
+  const profileOptions =
+    tax.code && !profiles.some(p => p.code === tax.code)
+      ? [{ code: tax.code, desc: '' }, ...profiles]
+      : profiles
 
   // Nothing to claim. Not an error and not a choice — the statement charged no VAT.
   const nothingToFile = tax.vat <= 0 || tax.net <= 0
@@ -159,37 +188,91 @@ export default function InputTaxPanel({
           {/* Two lines, not a grid. Four short facts in a `repeat(auto-fit, minmax(11rem))`
               with two span-2 cells wrapped into a tall ragged block for no gain — these
               read as a sentence, so they are laid out as one. */}
+          {/* The bank's registered identity, which is a fact about the bank — until the
+              registry has none, or has one Carmen disagrees with. Then it is two fields
+              and a reviewer who can read the tax invoice in front of them. */}
+          {/* Each label and the field it names are one `.itx-f` unit, so a wrap can only
+              fall between fields — never between a label and the box it belongs to, which
+              is what turned these two lines into five ragged ones. */}
           <p className="itx-line">
-            <span className="itx-k">{t('review.itxVendor')}</span>
-            <span className="itx-v">
-              {vendor?.name || '—'}
-              {vendor?.taxId && <span className="text-mono itx-taxid">· {vendor.taxId}</span>}
+            <span className="itx-f">
+              <label className="itx-k" htmlFor="itx-vendor">
+                {t('review.itxVendor')}
+              </label>
+              <input
+                id="itx-vendor"
+                type="text"
+                className="rd-f-input itx-vendor"
+                placeholder={t('review.itxVendorHint')}
+                value={vendor.name}
+                onChange={e => onOverride({ vendor_name: e.target.value })}
+              />
+            </span>
+            <span className="itx-sep" aria-hidden="true">
+              ·
+            </span>
+            {/* Its own label rather than a placeholder: a placeholder names a field only
+                while it is empty, and this one is the reason Carmen refuses a record. */}
+            <span className="itx-f">
+              <label className="itx-k" htmlFor="itx-taxid">
+                {t('review.itxTaxId')}
+              </label>
+              <input
+                id="itx-taxid"
+                type="text"
+                inputMode="numeric"
+                className="rd-f-input text-mono itx-taxid"
+                value={vendor.taxId}
+                onChange={e => onOverride({ tax_id: e.target.value })}
+              />
             </span>
           </p>
 
           <p className="itx-line">
-            <span className="itx-k">{t('review.itxPeriod')}</span>
-            <span className="itx-v text-mono">{period}</span>
+            <span className="itx-f">
+              <span className="itx-k">{t('review.itxPeriod')}</span>
+              <span className="itx-v text-mono">{period}</span>
+            </span>
             <span className="itx-sep" aria-hidden="true">
               ·
             </span>
-            <span className="itx-k">{t('review.itxProfile')}</span>
-            <span className="itx-v">{tax.profile || '—'}</span>
+            {/* Carmen's own list. Naming a profile is the reviewer's to do; its rate and
+                wording are read back from that list server-side, never from here. */}
+            <span className="itx-f">
+              <label className="itx-k" htmlFor="itx-profile">
+                {t('review.itxProfile')}
+              </label>
+              <select
+                id="itx-profile"
+                className="rd-f-input itx-profile"
+                value={tax.code}
+                onChange={e => onOverride({ profile_code: e.target.value })}
+              >
+                {!tax.code && <option value="">—</option>}
+                {profileOptions.map(p => (
+                  <option key={p.code} value={p.code}>
+                    {p.desc ? `${p.code} · ${p.desc}` : p.code}
+                  </option>
+                ))}
+              </select>
+            </span>
             <span className="itx-sep" aria-hidden="true">
               ·
             </span>
             {/* The one field this record takes from the document that the JV does not. */}
-            <label className="itx-k" htmlFor="itx-branch">
-              {t('review.fBranch')}
-            </label>
-            <input
-              id="itx-branch"
-              type="text"
-              aria-label={t('review.fBranch')}
-              className="rd-f-input text-mono itx-branch"
-              value={headerData.BranchNo || ''}
-              onChange={e => onUpdate('BranchNo', e.target.value)}
-            />
+            <span className="itx-f">
+              <label className="itx-k" htmlFor="itx-branch">
+                {t('review.fBranch')}
+              </label>
+              <input
+                id="itx-branch"
+                type="text"
+                aria-label={t('review.fBranch')}
+                className="rd-f-input text-mono itx-branch"
+                value={headerData.BranchNo || ''}
+                onChange={e => onUpdate('BranchNo', e.target.value)}
+              />
+            </span>
           </p>
         </div>
       )}

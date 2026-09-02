@@ -813,54 +813,67 @@
   color: var(--text-3);
 }
 
-/* Reads as the document until someone goes to change it — but flat cannot mean invisible,
-   which is what it was in light mode: transparent on transparent at rest, and a hover fill
-   of `--muted` that is a 2.5% step against a card at L 1.0. Doc no. and Description were
-   text, and the branch field in the input-tax sentence was a gap.
-   The underline is not a new idea — the date field in the same row already wears one
-   (`.date-input-trigger`). `--border-input` measures 3.21:1 on the card in light and
-   3.61:1 in dark (npm run contrast), so it clears the 3:1 floor for a control boundary in
-   both themes, which is the whole ask. The BOX still only appears on focus, so the
-   "document, not a form" reading survives: one line under each field, not a grid of boxes
-   around them. */
-.rd-f-input {
+/* A field on this screen is a shape, not a line.
+ *
+ * Two things were wrong with the underline that came before it. The visible one: on the
+ * input-tax sentence — `VENDOR ___ · TAX ID ___ · TAX PROFILE ___ · BRANCH ___` — four
+ * rules of four different widths at four different baselines read as debris, not as
+ * fields. A line has to sit under something to look like anything, and mid-sentence there
+ * is nothing to sit under.
+ *
+ * The invisible one: it never existed in dark mode. `[data-theme='dark'] input` in
+ * base.css is `(0,1,1)` and `.rd-f-input` was `(0,1,0)`, so dark overrode both the
+ * background AND all four border colours — every field on the screen was a filled, fully
+ * boxed form control, which is the exact reading the underline was chosen to avoid. That
+ * is why these rules are scoped to `.rd-modal`: `(0,2,0)` beats it, and the screen now
+ * looks the same way in both themes.
+ *
+ * The wash replaces both. `--text` at 5% is a real step on a card at L 1.0 *and* a real
+ * lift on one at L 0.225 — one declaration, no per-theme branch — which is what `--muted`
+ * could never be (2.5% in light, so hover did nothing there at all). It marks the extent
+ * of the field rather than its bottom edge, so an empty branch box is on the screen, and
+ * a row of them reads as cells rather than as a grid of boxes. */
+.rd-modal {
+  --field-rest: oklch(from var(--text) l c h / 0.05);
+  --field-hover: oklch(from var(--text) l c h / 0.09);
+}
+
+.rd-modal .rd-f-input {
   width: 100%;
   padding: 0.25rem 0.4rem;
   font-size: 0.875rem;
   font-family: inherit;
   color: var(--text);
-  background: transparent;
+  background: var(--field-rest);
+  /* Transparent at rest and coloured on focus, so the box does not change size when the
+     ring appears. */
   border: 1px solid transparent;
-  border-bottom-color: var(--border-input);
   border-radius: var(--radius-sm);
   transition:
     background-color 140ms var(--ease-out-premium, ease-out),
     border-color 140ms var(--ease-out-premium, ease-out);
 }
 
-/* The line it already has, in the accent colour — the same answer the date trigger beside
-   it gives, so hovering along the row is one behaviour rather than two. The old `--muted`
-   fill is gone: against a card at L 1.0 it was a 2.5% step, so in light mode hover did
-   nothing perceptible at all. */
-.rd-f-input:hover:not(:focus) {
-  border-bottom-color: var(--primary);
+.rd-modal .rd-f-input:hover:not(:focus) {
+  background: var(--field-hover);
 }
 
-.rd-f-input:focus,
-.rd-f-input:focus-visible {
+.rd-modal .rd-f-input:focus,
+.rd-modal .rd-f-input:focus-visible {
   outline: none;
   background: var(--card-bg);
   border-color: var(--primary);
   box-shadow: 0 0 0 3px oklch(from var(--primary) l c h / 0.18);
 }
 
-.rd-f-input::placeholder {
+.rd-modal .rd-f-input::placeholder {
   color: var(--amber-text);
   font-style: italic;
 }
 
-/* The field the extractor could not fill, marked where the fix happens. */
-.rd-f--missing .rd-f-input {
+/* The field the extractor could not fill, marked where the fix happens. Keeps its border:
+   this is a state worth a hard edge, and it is the only one on the screen that has one. */
+.rd-modal .rd-f--missing .rd-f-input {
   border-color: var(--amber);
   background: oklch(from var(--amber) l c h / 0.08);
 }
@@ -871,44 +884,44 @@
 }
 
 /* The trigger is a button and arrives with the page's button metrics. Inside this row it is
-   one field among four and reads as a field, not a control to press. Its underline is the
-   one the text fields copy; the width comes back to 1px so all four lines are one weight. */
+   one field among four and reads as a field, not a control to press — so it drops the
+   1.5px underline it comes with and takes the same wash as the text fields beside it. */
 .rd-f .date-input-trigger {
   justify-content: space-between;
   min-height: 0;
   padding: 0.25rem 0.4rem;
   font-size: 0.875rem;
-  border-bottom-width: 1px;
+  background: var(--field-rest);
+  border-bottom: 1px solid transparent;
+  border-radius: var(--radius-sm);
+}
+
+.rd-f .date-input-trigger:hover:not(:focus) {
+  background: var(--field-hover);
 }
 
 /* ── One field treatment across the screen ──────────────────────────────────── */
 
-/* No boxes at rest — a grid of boxes says "form to fill in" and this screen is a document
-   to check. The pickers were the exception, and only because the component painted their
-   border inline where no stylesheet could reach it: in one JV row the dept and account sat
-   in permanent boxes while the amounts beside them, equally editable, did not.
+/* One wash, everywhere on the screen a value can be typed or chosen — header fields, both
+   pickers of a JV row, the amount beside them, the line description, the four fields of the
+   input-tax sentence. Nothing else on the dialog carries it, which is what makes it mean
+   something: the `jv-echo` codes on a row that repeats a rule, and the `—` on the empty
+   side of a leg, are the cells that stay bare, and they are exactly the cells that are not
+   fields.
+   Five washed columns is not the "grid of boxes" a border treatment would have been — every
+   cell in those columns IS an input, so a uniform fill reads as an editable table rather
+   than as decoration.
    The `:not()` guards matter — a picker that is empty or carries an AI suggestion still
    shows its red or violet box, which is the whole point of those states. */
 .rd-doc .custom-search-select-input:not([data-error]):not([data-suggested]),
 .jv-table .custom-search-select-input:not([data-error]):not([data-suggested]) {
+  background: var(--field-rest);
   border-color: transparent;
 }
 
-/* In the header row the picker is one field among four, and the other three carry a line,
-   so it carries one too — the chevron on its own left it reading as the row's one static
-   value. In the JV table it stays flat: five columns of underlines is the grid of boxes
-   under another name, and there the cell already says where the field is. */
-.rd-doc .custom-search-select-input:not([data-error]):not([data-suggested]) {
-  border-bottom-color: var(--border-input);
-}
-
-.rd-doc .custom-search-select-input:hover:not(:focus):not([data-error]):not([data-suggested]) {
-  border-bottom-color: var(--primary);
-}
-
+.rd-doc .custom-search-select-input:hover:not(:focus):not([data-error]):not([data-suggested]),
 .jv-table .custom-search-select-input:hover:not(:focus):not([data-error]):not([data-suggested]) {
-  background: var(--muted);
-  border-color: var(--border-input);
+  background: var(--field-hover);
 }
 
 .rd-doc .custom-search-select-input:focus,
@@ -1035,15 +1048,16 @@
   width: 7.5rem;
 }
 
-/* The figures are typed here now. Flat until touched, like the document fields above:
-   the same rule, so the whole screen behaves one way. */
-.jv-amt {
+/* The figures are typed here. Same wash as the document fields above — the whole screen
+   behaves one way. Scoped to `.jv-table` for the same reason `.rd-f-input` is scoped to
+   `.rd-modal`: `[data-theme='dark'] input` would otherwise repaint it. */
+.jv-table .jv-amt {
   width: 100%;
   padding: 0.25rem 0.35rem;
   font-size: 0.83rem;
   text-align: right;
   color: var(--text);
-  background: transparent;
+  background: var(--field-rest);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   transition:
@@ -1051,13 +1065,12 @@
     border-color 140ms var(--ease-out-premium, ease-out);
 }
 
-.jv-amt:hover:not(:focus) {
-  background: var(--muted);
-  border-color: var(--border-input);
+.jv-table .jv-amt:hover:not(:focus) {
+  background: var(--field-hover);
 }
 
-.jv-amt:focus,
-.jv-amt:focus-visible {
+.jv-table .jv-amt:focus,
+.jv-table .jv-amt:focus-visible {
   outline: none;
   background: var(--card-bg);
   border-color: var(--primary);
@@ -1102,6 +1115,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Takes what the tags beside it leave, and no more — a description that stretched the
+   full cell would push the AI/Undo chips off the row on a narrow dialog. */
+.jv-desc-input {
+  flex: 1;
+  min-width: 0;
 }
 
 .jv-row--changed td {
@@ -1331,12 +1351,10 @@
     text-align: left;
   }
 
-  /* Flat-until-touched depends on the cell grid to read as a field at all. One per line,
-     it needs its own edge. */
-  .jv-amt {
+  /* The wash carries its own extent, so the stacked card needs no extra edge — only the
+     alignment changes once the column is gone. */
+  .jv-table .jv-amt {
     text-align: left;
-    background: var(--card-bg);
-    border-color: var(--border-input);
   }
 
   .jv-total {
@@ -1472,8 +1490,11 @@
   }
 }
 
+/* Asymmetric on purpose. The first line's fields have their own box padding above them and
+   the last line's have it below, so equal padding here reads as more space at the bottom
+   than at the top. */
 .itx-body {
-  padding: var(--space-3) 0.85rem;
+  padding: 0.7rem 0.85rem 0.8rem;
   border-top: 1px solid var(--border);
 }
 
@@ -1492,15 +1513,28 @@
   margin-top: 0.1rem;
 }
 
-/* Two lines, not a grid. Four short facts in a `repeat(auto-fit, minmax(11rem))` with two
+/* Two lines, not a grid. Six short facts in a `repeat(auto-fit, minmax(11rem))` with two
    span-all cells wrapped into a tall ragged block for no gain — they read as a sentence, so
-   they are set as one: label, value, separator, wrapping where it has to. */
+   they are set as one: label, field, separator, and each line holds.
+   `center`, not `baseline`: baseline lines up the *text* inside boxes of different heights,
+   which leaves the boxes themselves staggered — the single worst thing about the underline
+   this replaced, since each field's line then sat at its own height. */
+/* Three steps of air, and only three, so the grouping is read rather than worked out:
+ *
+ *   0.4rem   inside a unit  — a label and the field it names
+ *   0.5rem   between units  — doubled around the `·` that sits in that gap, so ~1.15rem
+ *                             of clear space separates one field from the next
+ *   0.6rem   between lines
+ *
+ * The old numbers were 0.4 / 0.6 / 0.5: the gap inside a unit and the gap between two units
+ * were near enough the same that VENDOR read as belonging to whatever box was nearest, and
+ * the two lines sat closer together than the fields sat apart. */
 .itx-line {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 0.3rem 0.5rem;
-  margin: 0 0 var(--space-2);
+  gap: 0.35rem 0.5rem;
+  margin: 0 0 0.6rem;
   font-size: 0.83rem;
   line-height: 1.6;
 }
@@ -1510,8 +1544,12 @@
 }
 
 /* Label weight comes from case and colour, not size — at 0.83rem a second type size in a
-   line this short reads as noise. */
+   line this short reads as noise.
+   The negative margin is the letter-spacing coming back: 0.07em is applied after the last
+   letter too, so every label carried half a space of its own into the gap and no two
+   label-to-field gaps measured the same. */
 .itx-k {
+  margin-right: -0.07em;
   font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.07em;
@@ -1523,27 +1561,51 @@
 .itx-v {
   color: var(--text-2);
   min-width: 0;
+  /* Sits where a field's text sits, so the static period lines up with the boxes beside
+     it instead of starting a hair to their left. */
+  padding-left: 0.4rem;
 }
 
 .itx-sep {
   color: var(--text-4);
 }
 
-/* The reason Carmen refuses a record, so it reads beside the name it belongs to rather
-   than as a second field. */
-.itx-taxid {
-  margin-left: 0.35rem;
-  font-size: 0.8rem;
-  color: var(--text-3);
+/* A label and the field it names, as one unit. Without it the wrap fell wherever it liked
+   — VENDOR kept its box and TAX ID's landed a line below its own label, which is what made
+   two lines render as five.
+   `flex-shrink: 0` because these are short: nothing here is longer than a company name,
+   and a field that shrinks to fit a row is a field you cannot read. */
+.itx-f {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
 }
 
-/* The one input on the line — sized to a branch code so it does not stretch to fill and
-   look like the row's main event. It is the field that made the resting underline
-   necessary: the others sit under a label of their own, this one sits mid-sentence between
-   two static values, and while it was transparent-on-transparent an empty branch (the
-   usual state — a blank one posts fine) was not on the screen at all. */
-.itx-branch {
-  width: 6rem;
+/* Every field is sized to what it holds rather than stretched to fill: this reads as a
+   sentence, and a row of equal boxes would make it a form. These have to out-specify
+   `.rd-modal .rd-f-input { width: 100% }`, hence the `.rd-modal` on each.
+   The wash is what makes an empty one visible at all — a blank branch is the usual state,
+   and a blank vendor is the case worth noticing. */
+.rd-modal .itx-vendor {
+  /* A registered bank name, the longest string on the panel. */
+  width: 17rem;
+}
+
+/* No font-size of its own: at 0.8rem against its 0.875rem neighbours it was a shorter box
+   in a row of taller ones. A tax ID is 13 digits and `text-mono` already sets it apart. */
+.rd-modal .itx-taxid {
+  width: 9rem;
+}
+
+.rd-modal .itx-profile {
+  /* 'VAT07 · VAT 7%' plus the select's own arrow. */
+  width: 11rem;
+}
+
+.rd-modal .itx-branch {
+  width: 5.5rem;
 }
 
 @media (max-width: 640px) {

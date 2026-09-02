@@ -19,7 +19,10 @@ vi.mock('../lib/api/carmen', () => ({
     { AccCode: '110200', Description: 'Bank - KBANK' },
     { AccCode: '110300', Description: 'Settlement receivable' },
   ]),
-  fetchTaxProfiles: vi.fn(async () => [{ code: 'VAT07', desc: 'VAT 7%', rate: 7 }]),
+  fetchTaxProfiles: vi.fn(async () => [
+    { code: 'VAT07', desc: 'VAT 7%', rate: 7 },
+    { code: 'VAT00', desc: 'VAT 0%', rate: 0 },
+  ]),
   // Carmen's journal books — what the Prefix picker offers.
   fetchGLPrefixes: vi.fn(async () => [
     { PrefixName: 'JV', Description: 'Journal Voucher' },
@@ -281,6 +284,66 @@ describe('the input tax record', () => {
     expect(screen.getByRole('checkbox')).toBeDisabled()
   })
 
+  it('sends only the fields the reviewer corrected, so the rest stay derived', async () => {
+    // The server builds this record; the panel names the four things it can get wrong.
+    // Untouched means absent, which is exactly what the unattended path sends.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-1', tax_note: null })
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    fireEvent.click(screen.getByRole('button', { name: /Show details/ }))
+    await screen.findByLabelText('Branch')
+    fireEvent.change(screen.getByLabelText('Vendor'), { target: { value: 'KTC PCL' } })
+    fireEvent.change(screen.getByLabelText('Tax ID'), { target: { value: '0107536000315' } })
+    await clickApprove()
+
+    await waitFor(() => expect(api.approveDocument).toHaveBeenCalled())
+    expect(vi.mocked(api.approveDocument).mock.calls[0][1].input_tax).toEqual({
+      vendor_name: 'KTC PCL',
+      tax_id: '0107536000315',
+    })
+  })
+
+  it('omits the overrides entirely when nothing was touched', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-1', tax_note: null })
+    mount()
+    await clickApprove()
+    await waitFor(() => expect(api.approveDocument).toHaveBeenCalled())
+    expect(vi.mocked(api.approveDocument).mock.calls[0][1].input_tax).toBeUndefined()
+  })
+
+  it('states the tax period rather than offering it, because the document names it', async () => {
+    // Doc date 15/01/2026. Not a field: a claim filed in a month the statement does not
+    // name is the wrong-month error the builder refuses to make, and a misread date is
+    // corrected on the document date above.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    fireEvent.click(screen.getByRole('button', { name: /Show details/ }))
+    expect(await screen.findByText('01/2026')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Tax period')).not.toBeInTheDocument()
+  })
+
+  it('follows the profile the reviewer picked, rate and warning included', async () => {
+    // Naming a profile answers the question the rate lookup asks — so the summary line
+    // has to answer with it, and the mismatch it now creates has to be said out loud.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-1', tax_note: null })
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    fireEvent.click(screen.getByRole('button', { name: /Show details/ }))
+    await screen.findByLabelText('Branch')
+    fireEvent.change(screen.getByLabelText('Tax profile'), { target: { value: 'VAT00' } })
+
+    expect(await screen.findByText('VAT 2.10 at 0%')).toBeInTheDocument()
+    await clickApprove()
+    await waitFor(() => expect(api.approveDocument).toHaveBeenCalled())
+    expect(vi.mocked(api.approveDocument).mock.calls[0][1].input_tax).toEqual({
+      profile_code: 'VAT00',
+    })
+  })
+
   it('states the totals once, on the journal that produces them', async () => {
     // A summary strip used to sit above: Gross was the JV's credit total and Commission /
     // VAT / Net were three of its debit rows. Four numbers, every one already on screen.
@@ -429,6 +492,37 @@ describe('editing amounts on the JV', () => {
     const shared = await screen.findByLabelText('Debit for Credit card commission')
     expect(shared).toHaveAttribute('data-shared')
     expect(screen.getByLabelText('Credit for Visa line 1')).not.toHaveAttribute('data-shared')
+  })
+})
+
+describe('editing a line description', () => {
+  it('posts the retyped wording and saves no rule for it', async () => {
+    // The GL line's own text, not a rule: it reaches Carmen as Detail[].Description and
+    // nothing about it belongs in the BU config.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-1', tax_note: null })
+    mount()
+    fireEvent.change(await screen.findByLabelText('Description for Bank Account'), {
+      target: { value: 'KBANK settlement 15/01' },
+    })
+    await clickApprove()
+
+    await waitFor(() => expect(api.approveDocument).toHaveBeenCalled())
+    const rows = vi.mocked(api.approveDocument).mock.calls[0][1].rows as { desc: string }[]
+    expect(rows.map(r => r.desc)).toContain('KBANK settlement 15/01')
+    expect(cfgApi.patchAccountingConfig).not.toHaveBeenCalled()
+  })
+
+  it('survives an amount edit that drops a leg', async () => {
+    // Keyed by rule + source lines, not by index: zeroing a credit leg removes a row and
+    // would shift every index after it, moving the reviewer's text onto another line.
+    vi.mocked(api.getPending).mockResolvedValue(detail({ extracted: TWO_VISA }))
+    mount()
+    fireEvent.change(await screen.findByLabelText('Description for Credit card commission'), {
+      target: { value: 'Merchant fee' },
+    })
+    fireEvent.change(screen.getByLabelText('Credit for Visa line 1'), { target: { value: '0' } })
+    expect(await screen.findByLabelText('Description for Merchant fee')).toHaveValue('Merchant fee')
   })
 })
 

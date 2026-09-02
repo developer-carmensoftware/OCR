@@ -125,9 +125,31 @@ export interface ApproveResult {
   tax_note: string | null
 }
 
+/**
+ * What the reviewer corrected on the input-tax record, as the server names it
+ * (`InputTaxOverrides`). `undefined` means "not touched", which is what lets a derived
+ * value show through rather than being replaced by an empty string on first render.
+ *
+ * Only the three things the machine can get wrong and a human can see. The amounts are
+ * the JV's and are edited on its table; a record that disagreed with the journal it is
+ * filed beside is the one outcome worse than no record. The tax period is likewise absent:
+ * it follows the document date, and that is where a misread one is corrected.
+ */
+export interface ItxOverrides {
+  vendor_name?: string
+  tax_id?: string
+  profile_code?: string
+}
+
 export async function approveDocument(
   id: string,
-  body: { extracted: Record<string, unknown>; rows: unknown[]; post_input_tax: boolean }
+  body: {
+    extracted: Record<string, unknown>
+    rows: unknown[]
+    post_input_tax: boolean
+    /** Absent = derive the record, the way the unattended path does. */
+    input_tax?: ItxOverrides
+  }
 ): Promise<ApproveResult> {
   const res = await apiFetch(API.emailReview.approve(id), {
     method: 'POST',

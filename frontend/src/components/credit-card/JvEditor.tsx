@@ -46,9 +46,17 @@ interface Props {
   unmappedKeys: string[]
   /** An amount typed on a leg, written back into the detail lines it was summed from. */
   onAmount: (row: JvRow, next: number) => void
+  /** Line descriptions the reviewer retyped, keyed by `rowId`. Per document, not a rule —
+   *  the text posts as Carmen's `Detail[].Description` and nothing is saved to the config. */
+  descs: Record<string, string>
+  onDesc: (id: string, value: string) => void
   onState: (state: JvState) => void
   bankCode?: string
 }
+
+/** Identity of one leg, stable across a rebuild. Not the array index: zeroing an amount
+ *  drops a credit leg and shifts every index after it. */
+const rowId = (r: JvRow) => `${r.key}:${r.lines.join(',')}`
 
 /**
  * The JV as it will post, with every GL rule editable in place.
@@ -74,6 +82,8 @@ export default function JvEditor({
   guessedKeys,
   unmappedKeys,
   onAmount,
+  descs,
+  onDesc,
   onState,
   bankCode,
 }: Props) {
@@ -94,13 +104,15 @@ export default function JvEditor({
     return { ...config, mappings, paymentAmount }
   }, [config, overrides])
 
-  const rows = useMemo(
-    () =>
-      effective
-        ? buildJvRows(details, effective, { consolidateDebit: !GROUP_DEBIT_BY_TRANSACTION })
-        : [],
-    [details, effective]
-  )
+  const rows = useMemo(() => {
+    const built = effective
+      ? buildJvRows(details, effective, { consolidateDebit: !GROUP_DEBIT_BY_TRANSACTION })
+      : []
+    return built.map(r => {
+      const id = rowId(r)
+      return id in descs ? { ...r, desc: descs[id] } : r
+    })
+  }, [details, effective, descs])
 
   const totalDr = round2(rows.reduce((s, r) => s + r.debit, 0))
   const totalCr = round2(rows.reduce((s, r) => s + r.credit, 0))
@@ -130,7 +142,17 @@ export default function JvEditor({
     // `rows` is rebuilt every render; the primitives below are what actually change, and
     // gating on them is what stops an update loop through the parent.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onState, blocked, reason, loading, rows.length, totalDr, totalCr, JSON.stringify(overrides)])
+  }, [
+    onState,
+    blocked,
+    reason,
+    loading,
+    rows.length,
+    totalDr,
+    totalCr,
+    descs,
+    JSON.stringify(overrides),
+  ])
 
   // ── AI fill for a payment type the reviewer just introduced ────────────────
   //
@@ -360,9 +382,16 @@ export default function JvEditor({
                     colours in this one cell. */}
                 <td className="jv-desc">
                   <span className="jv-desc-in">
-                    <span className="jv-desc-text" title={row.desc}>
-                      {row.desc}
-                    </span>
+                    {/* Per row, not per rule: this is the GL line's own wording, and unlike
+                        dept/acc it is not saved back to the BU config. */}
+                    <input
+                      type="text"
+                      className="rd-f-input jv-desc-input"
+                      value={row.desc}
+                      title={row.desc}
+                      aria-label={t('review.jvDescFor', { field: row.desc })}
+                      onChange={e => onDesc(rowId(row), e.target.value)}
+                    />
                     {/* The only thing on this pane asking to be checked: everything else
                       came from a rule a person set. */}
                     {first && guessed && (
