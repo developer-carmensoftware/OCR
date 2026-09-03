@@ -263,29 +263,71 @@ describe('the JV number', () => {
 })
 
 describe('the status filter chips', () => {
-  it('offers three chips that between them hold every row', async () => {
+  it('offers three status chips plus the day, in reading order', async () => {
     // `failed` and `skipped` were two chips for one fact. The split behind them is whether
     // a credit was charged — the billing system's business, and nothing a reader can guess.
-    mount(status(), [doc()], { all: 113, review: 3, success: 7, unposted: 103 })
+    // `Today` is not a fourth status: it cuts across all three on time, which is the one
+    // question none of them can answer.
+    mount(status(), [doc()], { all: 113, today: 4, review: 3, success: 7, unposted: 103 })
     await screen.findByText('KTC')
+    const labels = screen.getAllByRole('tab').map(t => t.textContent)
+    expect(labels).toHaveLength(4)
+    expect(labels[0]).toMatch(/Today/)
     for (const label of ['Review', 'Posted', 'Not posted']) {
       expect(screen.getByRole('tab', { name: new RegExp(label) })).toBeInTheDocument()
     }
-    expect(screen.getAllByRole('tab')).toHaveLength(3)
   })
 
-  it('numbers only the chip whose number can go down', async () => {
-    // `Review` is bounded by backpressure (50 pending, then mail is handed back) and
-    // falls as it is worked. `Posted` and `Not posted` are lifetime totals that never fall
-    // — at four figures the number is furniture, and it is on screen for ever. The size of
-    // the list is in the Pager once the chip is open.
-    mount(status(), [doc()], { all: 113, review: 3, success: 7, unposted: 103 })
+  it('numbers only the chips whose number can go down', async () => {
+    // `Review` is bounded by backpressure (50 pending, then mail is handed back) and falls
+    // as it is worked; `Today` is bounded by the clock and empties itself every midnight.
+    // `Posted` and `Not posted` are lifetime totals that never fall — at four figures the
+    // number is furniture, and it is on screen for ever. The size of the list is in the
+    // Pager once the chip is open.
+    mount(status(), [doc()], { all: 113, today: 4, review: 3, success: 7, unposted: 103 })
     await screen.findByText('KTC')
     await waitFor(() => expect(screen.getByRole('tab', { name: /Review/ })).toHaveTextContent('3'))
+    expect(screen.getByRole('tab', { name: /Today/ })).toHaveTextContent('4')
     for (const label of ['^Posted', 'Not posted']) {
       const chip = screen.getByRole('tab', { name: new RegExp(label) })
       expect(chip.querySelector('.rq-tab-count')).not.toBeInTheDocument()
     }
+  })
+
+  it('opens on the work, never on the day', async () => {
+    // Today reads first, but landing there would show a BU with twelve documents owed a
+    // quiet morning instead of its work. The opening chip still follows `auto_post`.
+    mount(status(), [doc()], { ...ZERO, all: 113, today: 0, review: 12, unposted: 101 })
+    await screen.findByText('KTC')
+    expect(vi.mocked(api.listActivity).mock.calls[0][0]).toBe('review')
+    expect(screen.getByRole('tab', { name: /Today/ })).toHaveAttribute('aria-selected', 'false')
+  })
+
+  it('never puts a dot on Today', async () => {
+    // Every row under it is already counted under a chip that does light, and `unseen`
+    // measures a lifetime count against a stored mark — which a number that resets at
+    // midnight can never be compared against. The server sends no `today` key at all.
+    mount(
+      status(),
+      [doc()],
+      { ...ZERO, all: 60, today: 5, review: 1, unposted: 59 },
+      1,
+      { ...ZERO, unposted: 5 },
+      { unposted: true }
+    )
+    await screen.findByText('KTC')
+    expect(
+      screen.getByRole('tab', { name: /Today/ }).querySelector('.rq-tab-dot')
+    ).not.toBeInTheDocument()
+  })
+
+  it('says nothing has happened yet rather than congratulating an empty day', async () => {
+    // An empty Today at 08:00 means the post has not arrived — neither good news nor bad.
+    // A green tick every morning stops meaning anything by Wednesday.
+    mount(status(), [], { ...ZERO, all: 2, success: 2 })
+    fireEvent.click(await screen.findByRole('tab', { name: /Today/ }))
+    expect(await screen.findByText('Nothing here yet.')).toBeInTheDocument()
+    expect(screen.queryByText('All clear')).not.toBeInTheDocument()
   })
 
   it('has no All chip — three chips already hold everything', async () => {

@@ -16,7 +16,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from app.auth.session import SessionInfo
-from app.routers.credit_card_activity import _counts_stmt, _manual_stmt
+from app.routers.credit_card_activity import _counts_stmt, _email_stmt, _manual_stmt
 from tests.conftest import make_mock_db
 from tests.integration.conftest import make_test_client
 
@@ -71,18 +71,20 @@ def _manual(**overrides):
     return (card, SimpleNamespace(original_filename="scanned_by_hand.pdf"))
 
 
-def _db(*, statuses=None, pairs=None, manual_count, emails, manuals, seen=None):
-    """Drive the four `db.execute` calls the handler makes, in order.
+def _db(*, statuses=None, pairs=None, manual_count, emails, manuals, seen=None, manual_today=0):
+    """Drive the five `db.execute` calls the handler makes, in order.
 
     1. GROUP BY status, reason_code over email_documents → .all()
     2. count_rows(manual_stmt)                           → .scalar_one()
-    3. the email window                                  → .scalars().all()
-    4. the manual window (only when the filter admits manual rows) → .all()
+    3. count_rows(manual_stmt, since=midnight ICT)       → .scalar_one()
+    4. the email window                                  → .scalars().all()
+    5. the manual window (only when the filter admits manual rows) → .all()
 
     `statuses` is the shorthand most tests want: {status: n}, no reason code, nothing
-    stuck, nothing noted. `pairs` is the long form the `attention` tests need:
-    {(status, reason_code): (n, stuck, noted)} — `stuck` is how many are older than
-    `STUCK_AFTER`, `noted` how many carry an `error_message`.
+    stuck, nothing noted, nothing today. `pairs` is the long form the `attention` tests
+    need: {(status, reason_code): (n, stuck, noted)} — `stuck` is how many are older than
+    `STUCK_AFTER`, `noted` how many carry an `error_message`. A fourth element sets how many
+    of that group arrived today, which is the only thing the Today chip counts.
 
     `seen` is the `email_queue_seen` row, read with `db.get` rather than `db.execute`
     precisely so it stays out of the ordering above — None means this BU has never opened
@@ -92,23 +94,31 @@ def _db(*, statuses=None, pairs=None, manual_count, emails, manuals, seen=None):
 
     grouped = MagicMock()
     grouped.all.return_value = [
-        SimpleNamespace(status=s, reason_code=None, n=n, stuck=0, noted=0)
+        SimpleNamespace(status=s, reason_code=None, n=n, stuck=0, noted=0, today=0)
         for s, n in (statuses or {}).items()
     ] + [
-        SimpleNamespace(status=s, reason_code=rc, n=n, stuck=stuck, noted=noted)
-        for (s, rc), (n, stuck, noted) in (pairs or {}).items()
+        SimpleNamespace(status=s, reason_code=rc, n=v[0], stuck=v[1], noted=v[2], today=_today(v))
+        for (s, rc), v in (pairs or {}).items()
     ]
     counted = MagicMock()
     counted.scalar_one.return_value = manual_count
+    counted_today = MagicMock()
+    counted_today.scalar_one.return_value = manual_today
     email_window = MagicMock()
     email_window.scalars.return_value.all.return_value = emails
     manual_window = MagicMock()
     manual_window.all.return_value = manuals
 
-    db.execute.side_effect = [grouped, counted, email_window, manual_window]
+    db.execute.side_effect = [grouped, counted, counted_today, email_window, manual_window]
     if seen is not None:
         db.get.return_value = SimpleNamespace(seen=seen)
     return db
+
+
+def _today(value):
+    """The optional fourth element of a `pairs` value — how many of that group arrived
+    today. Absent means none, which is what every test that predates the chip wants."""
+    return value[3] if len(value) > 3 else 0
 
 
 # ── The anti-join ────────────────────────────────────────────────────────────
@@ -167,7 +177,7 @@ def test_counts_cover_every_chip_even_at_zero():
     with make_test_client(db, session=SESSION) as client:
         counts = client.get(BASE, headers=AUTH).json()["counts"]
 
-    assert counts == {"review": 0, "success": 5, "unposted": 0, "all": 5}
+    assert counts == {"review": 0, "success": 5, "unposted": 0, "all": 5, "today": 0}
 
 
 def test_everything_that_did_not_post_lands_under_one_chip():
@@ -226,7 +236,7 @@ def test_the_dot_spans_every_anomaly_rather_than_a_window():
     pipeline abandoned.
     """
     sql = str(
-        _counts_stmt(uuid.uuid4(), NOW).compile(compile_kwargs={"literal_binds": True})
+        _counts_stmt(uuid.uuid4(), NOW, NOW).compile(compile_kwargs={"literal_binds": True})
     ).lower()
     assert str((NOW - timedelta(days=7)).replace(tzinfo=None)) not in sql
     assert str((NOW - timedelta(hours=1)).replace(tzinfo=None)) in sql
@@ -294,6 +304,100 @@ def test_an_unknown_filter_lands_on_all_rather_than_400ing():
 
     assert res.status_code == 200
     assert res.json()["total"] == 2
+
+
+# ── Today ────────────────────────────────────────────────────────────────────
+
+
+def test_today_counts_every_status_and_the_bus_own_scans():
+    """The chip answers "what happened today", so it spans all three status chips plus the
+    manual scans — a day view that hid the BU's own work would be answering something
+    else."""
+    db = _db(
+        pairs={
+            ("posted", None): (40, 0, 0, 3),
+            ("skipped", "no_rule_match"): (46, 0, 0, 2),
+            ("pending_review", None): (5, 0, 0, 1),
+        },
+        manual_count=9,
+        manual_today=4,
+        emails=[],
+        manuals=[],
+    )
+    with make_test_client(db, session=SESSION) as client:
+        counts = client.get(BASE, headers=AUTH).json()["counts"]
+
+    assert counts["today"] == 10  # 3 + 2 + 1 email, + 4 scanned by hand
+
+
+def test_today_is_left_out_of_the_all_count():
+    """`all` is how the page tells a BU that has never had a document from one whose chip is
+    merely empty. Today overlaps the other three by construction, so folding it in would
+    count the same row twice and make that number a fiction."""
+    db = _db(
+        pairs={("posted", None): (10, 0, 0, 10)},
+        manual_count=0,
+        manual_today=0,
+        emails=[],
+        manuals=[],
+    )
+    with make_test_client(db, session=SESSION) as client:
+        counts = client.get(BASE, headers=AUTH).json()["counts"]
+
+    assert counts["today"] == 10
+    assert counts["all"] == 10
+
+
+def test_today_carries_no_dot():
+    """`unseen` measures an anomaly count against a stored lifetime mark. Today's count
+    resets at midnight, so there is nothing a mark could mean — and every one of its rows is
+    already counted under a chip that does light."""
+    db = _db(
+        pairs={("failed", "carmen_rejected"): (3, 0, 0, 3)},
+        manual_count=0,
+        emails=[],
+        manuals=[],
+    )
+    with make_test_client(db, session=SESSION) as client:
+        body = client.get(BASE, headers=AUTH).json()
+
+    assert "today" not in body["attention"]
+    assert "today" not in body["unseen"]
+    assert body["unseen"]["unposted"] is True
+
+
+def test_today_asks_for_manual_rows_too():
+    """`MANUAL_FILTERS` admits it, so the fifth `db.execute` is consumed and a scan done by
+    hand this morning appears in the day's list beside the forwarded ones."""
+    db = _db(
+        pairs={("posted", None): (1, 0, 0, 1)},
+        manual_count=1,
+        manual_today=1,
+        emails=[_email(status="posted")],
+        manuals=[_manual()],
+    )
+    with make_test_client(db, session=SESSION) as client:
+        body = client.get(f"{BASE}?filter=today", headers=AUTH).json()
+
+    assert [r["source"] for r in body["data"]] == ["email", "manual"]
+    assert body["total"] == 2
+
+
+def test_today_windows_both_sources_on_the_same_midnight():
+    """Compiled, not executed. The email side filters `created_at` and the manual side
+    `submitted_at` — the moment each row is timestamped by — and both must carry a bound at
+    all, or the chip silently lists the BU's whole history."""
+    day = datetime(2026, 8, 31, 0, 0, tzinfo=UTC)
+    email_sql = str(
+        _email_stmt(uuid.uuid4(), None, day).compile(compile_kwargs={"literal_binds": True})
+    )
+    manual_sql = str(
+        _manual_stmt(uuid.uuid4(), day).compile(compile_kwargs={"literal_binds": True})
+    )
+    assert "email_documents.created_at >=" in email_sql
+    assert "credit_cards.submitted_at >=" in manual_sql
+    # And nothing is windowed when nothing asked for it.
+    assert ">=" not in str(_email_stmt(uuid.uuid4(), None).compile())
 
 
 # ── The dot, and what puts it out ────────────────────────────────────────────
@@ -398,9 +502,10 @@ def test_marking_a_chip_seen_keeps_the_other_chips_marks():
 
 
 def test_only_a_real_chip_can_be_marked_seen():
-    """A trust boundary: the value becomes a key in stored JSON. `all` is refused with the
-    nonsense — it has no chip on the strip, so it has no dot to put out."""
-    for bad in ("all", "nonsense", ""):
+    """A trust boundary: the value becomes a key in stored JSON. `all` and `today` are
+    refused with the nonsense — neither carries a dot, so neither has one to put out, and
+    `today`'s count resets at midnight where a stored mark never would."""
+    for bad in ("all", "today", "nonsense", ""):
         db = _db(statuses={"posted": 1}, manual_count=0, emails=[], manuals=[])
         with make_test_client(db, session=SESSION) as client:
             assert (

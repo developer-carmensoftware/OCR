@@ -17,18 +17,25 @@ export type ReviewFlag = 'unbalanced' | 'mapping_guessed' | 'mapping_missing' | 
 /** Which filter chip a row lives under. `unposted` is a union of four ledger statuses —
  *  see FILTERS in routers/credit_card_activity.py.
  *
+ *  `today` is the odd one and deliberately so: it selects on *time*, not on status, so it
+ *  overlaps all three of the others rather than sitting beside them. That is why the server
+ *  leaves it out of `counts.all`.
+ *
  *  `all` is in the type but not in the strip: it is still the API default and still what
  *  `counts.all` is read off, but it has no chip. It was the escape hatch from five status
  *  words; with three chips that between them hold every row, there is nothing to escape. */
-export type ActivityFilter = 'all' | 'review' | 'success' | 'unposted'
+export type ActivityFilter = 'all' | 'today' | 'review' | 'success' | 'unposted'
 
-/** The three that have a chip — `all` is the filter with no tab. Its own type so the label
+/** The four that have a chip — `all` is the filter with no tab. Its own type so the label
  *  map is exhaustive by construction rather than by assertion. */
 export type ChipFilter = Exclude<ActivityFilter, 'all'>
 
-/** The strip, in the order a document moves through it. Where the page *opens* is not the
- *  first entry here — it follows `auto_post`, see `useReviewQueue`. */
-export const ACTIVITY_FILTERS: ChipFilter[] = ['review', 'success', 'unposted']
+/** The strip, left to right: the day first, then the order a document moves through. Where
+ *  the page *opens* is not the first entry here — it follows `auto_post`, see
+ *  `useReviewQueue`. Today reads first because it is the question asked on arrival; it is
+ *  not the landing chip, because a BU with twelve documents owed must not be shown a quiet
+ *  morning instead of its work. */
+export const ACTIVITY_FILTERS: ChipFilter[] = ['today', 'review', 'success', 'unposted']
 
 export interface ReviewDocument {
   id: string

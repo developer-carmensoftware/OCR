@@ -820,7 +820,12 @@ const en = {
   'review.errorTitle': 'Could not load the queue',
   'review.errorBody': 'The list could not be fetched. Nothing has been lost - try again.',
   'review.retry': 'Try again',
-  'review.tabsLabel': 'Document status',
+  // "Document status" no longer describes the whole strip — `Today` is a window over every
+  // status rather than one of them — so the group is named for what it does instead.
+  'review.tabsLabel': 'Filter documents',
+  // Everything since midnight, whatever came of it. The one chip that answers "what has the
+  // robot been doing", which no status can.
+  'review.filterToday': 'Today',
   // One word, and the same one the row's Status pill and its action button already use.
   // "Needs review" described a chip holding one status; this one holds everything that
   // wants a human, and the shorter word is the one that stays true as it widens.
@@ -2319,7 +2324,8 @@ const th: Record<TKey, string> = {
   'review.errorTitle': 'โหลดรายการไม่สำเร็จ',
   'review.errorBody': 'ดึงรายการไม่ได้ ข้อมูลไม่หาย ลองอีกครั้ง',
   'review.retry': 'ลองอีกครั้ง',
-  'review.tabsLabel': 'สถานะเอกสาร',
+  'review.tabsLabel': 'กรองเอกสาร',
+  'review.filterToday': 'วันนี้',
   'review.filterReview': 'ตรวจสอบ',
   'review.filterSuccess': 'ลงบัญชีแล้ว',
   'review.filterUnposted': 'ไม่ได้ลงบัญชี',

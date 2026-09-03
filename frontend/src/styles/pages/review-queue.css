@@ -502,8 +502,10 @@
   min-width: 0;
   gap: 0.15rem;
   border-bottom: 1px solid var(--border);
-  /* Three tabs plus counts still do not fit a narrow phone. Scroll rather than wrap: a
-     tab strip on two lines stops reading as one row of choices. */
+  /* Four tabs plus counts do not fit a narrow phone. Scroll rather than wrap: a tab strip
+     on two lines stops reading as one row of choices. `white-space: nowrap` on `.rq-tab` is
+     what makes that work — a flex item does not shrink below its content, so the strip
+     overflows into this scroller instead of squeezing four labels into three widths. */
   overflow-x: auto;
   scrollbar-width: none;
 }

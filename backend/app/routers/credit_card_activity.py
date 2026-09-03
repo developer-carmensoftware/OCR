@@ -18,7 +18,7 @@ what the dot means now). Where a row came from is no longer a column of its own 
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
@@ -35,8 +35,8 @@ from app.utils.pagination import count_rows
 
 router = APIRouter(prefix="/api/v1/credit-card", tags=["Credit Card Activity"])
 
-# Filter chip → the ledger statuses under it. Three chips, and the reader's question is what
-# splits them — not the pipeline's vocabulary:
+# Filter chip → the ledger statuses under it. Three of the four, and the reader's question
+# is what splits them — not the pipeline's vocabulary (the fourth, `today`, is below):
 #
 #   review    needs a human now — the only chip with anything to decide
 #   success   reached Carmen. Manual scans land here too; they are only ever listed
@@ -54,8 +54,31 @@ FILTERS: dict[str, tuple[str, ...]] = {
     "unposted": ("failed", "rejected", "skipped", "received"),
 }
 
-# A manual scan is only ever "posted", so it belongs to exactly one chip besides `all`.
-MANUAL_FILTERS = ("all", "success")
+# The fourth chip, and the only one that is not a selection of statuses. `today` is a
+# *window* over all three — what the robot did since midnight, whatever came of it — so it
+# cannot live in FILTERS without giving that map two kinds of value. It is a documented
+# special case in the three places that care, rather than a rewrite of FILTERS into
+# predicates for one member.
+#
+# Deliberately unfiltered: a day on which the BU's own filename rules threw out forty
+# signature logos is a fact worth being able to see. The noise argument that pulled `all`
+# off the strip (§11 #33) was about the *landing* view, and this is not it — the page still
+# opens on `review`/`success`.
+TODAY = "today"
+
+# The strip, in the order it draws. `all` is in neither: it remains the API default and
+# `counts["all"]`, and has no chip.
+CHIPS = (TODAY, *FILTERS)
+
+# The BU's midnight, not UTC's. Every tenant on this system keeps Thai books, so a statement
+# read at 06:00 ICT belongs to the day the reviewer is having, not to the one UTC is still
+# on. Same +07 the daily rollups are cut on — see backend/db/queries.sql.
+ICT = timezone(timedelta(hours=7))
+
+# A manual scan is only ever "posted", so among the status chips it belongs to `success`
+# alone — but it is still something that happened today, and a queue that hid the BU's own
+# scans from its day view would be answering a different question than the one it asks.
+MANUAL_FILTERS = ("all", "success", TODAY)
 
 # Reason codes a person in the BU can clear themselves. Its one remaining job is deciding
 # which `skipped` rows are an anomaly rather than the BU's own filename rules doing exactly
@@ -137,15 +160,22 @@ def _manual_row(card: CreditCard, task: OCRTask) -> ActivityRow:
     )
 
 
-def _counts_stmt(tenant_id: uuid.UUID, now: datetime):
+def _day_start() -> datetime:
+    """Midnight ICT of the day the reader is having. Aware, so Postgres compares it against
+    a `timestamptz` column without either side guessing at a zone."""
+    return datetime.now(ICT).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def _counts_stmt(tenant_id: uuid.UUID, now: datetime, day_start: datetime):
     """Every chip's count and every chip's anomalies, in one GROUP BY.
 
-    All three span the tenant's whole history. The only clock is `STUCK_AFTER`, and it is
-    not a staleness policy: `received` carries no reason code, so age is the sole thing
-    telling a document being extracted right now from one the pipeline abandoned. What
-    stops the dot being permanently lit is the mark in `email_queue_seen`, not a window
-    here — a window was tried (`ATTENTION_WINDOW`, 7 days) and was only ever a guess about
-    how long somebody stays interested.
+    The status counts span the tenant's whole history. The only clocks are `STUCK_AFTER`
+    and `day_start`, and neither is a staleness policy: `received` carries no reason code,
+    so age is the sole thing telling a document being extracted right now from one the
+    pipeline abandoned, and `day_start` is the Today chip's whole definition. What stops the
+    dot being permanently lit is the mark in `email_queue_seen`, not a window here — a
+    window was tried (`ATTENTION_WINDOW`, 7 days) and was only ever a guess about how long
+    somebody stays interested.
     """
     return (
         select(
@@ -156,6 +186,10 @@ def _counts_stmt(tenant_id: uuid.UUID, now: datetime):
             # document being read during this very poll.
             func.count().filter(EmailDocument.created_at < now - STUCK_AFTER).label("stuck"),
             func.count().filter(EmailDocument.error_message.is_not(None)).label("noted"),
+            # The Today chip, as one more aggregate over the GROUP BY that was already
+            # running. A second round trip for a number this cheap would be the only query
+            # on the page that pays for its own answer.
+            func.count().filter(EmailDocument.created_at >= day_start).label("today"),
         )
         .where(EmailDocument.tenant_id == tenant_id)
         .group_by(EmailDocument.status, EmailDocument.reason_code)
@@ -165,18 +199,25 @@ def _counts_stmt(tenant_id: uuid.UUID, now: datetime):
 async def _per_pair(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
     """The GROUP BY, fetched. Both the list and the mark fold over the same numbers, so
     neither can disagree with the other about what this BU's dot is worth."""
+    stmt = _counts_stmt(tenant_id, datetime.now(UTC), _day_start())
     return {
-        (r.status, r.reason_code): (r.n, r.stuck, r.noted)
-        for r in (await db.execute(_counts_stmt(tenant_id, datetime.now(UTC)))).all()
+        (r.status, r.reason_code): (r.n, r.stuck, r.noted, r.today)
+        for r in (await db.execute(stmt)).all()
     }
 
 
 def _anomalies(per_pair: dict) -> dict[str, int]:
-    """Anomalies per chip — the number the mark is measured against."""
+    """Anomalies per chip — the number the mark is measured against.
+
+    Folds over `FILTERS`, so `today` gets no entry and therefore no dot. That is not an
+    omission: `unseen` compares this against a stored lifetime acknowledgement, and a number
+    that resets at midnight cannot be measured against yesterday's mark. Today's own count
+    is the one number on the strip guaranteed to go down.
+    """
     return {
         k: sum(
             _attention(s, rc, n, stuck, noted)
-            for (s, rc), (n, stuck, noted) in per_pair.items()
+            for (s, rc), (n, stuck, noted, _today) in per_pair.items()
             if s in v
         )
         for k, v in FILTERS.items()
@@ -194,14 +235,20 @@ async def _seen(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str, int]:
     return dict(row.seen or {}) if row else {}
 
 
-def _email_stmt(tenant_id: uuid.UUID, statuses: tuple[str, ...] | None):
+def _email_stmt(
+    tenant_id: uuid.UUID,
+    statuses: tuple[str, ...] | None,
+    since: datetime | None = None,
+):
     stmt = select(EmailDocument).where(EmailDocument.tenant_id == tenant_id)
     if statuses is not None:
         stmt = stmt.where(EmailDocument.status.in_(statuses))
+    if since is not None:
+        stmt = stmt.where(EmailDocument.created_at >= since)
     return stmt.order_by(EmailDocument.created_at.desc())
 
 
-def _manual_stmt(tenant_id: uuid.UUID):
+def _manual_stmt(tenant_id: uuid.UUID, since: datetime | None = None):
     """Manual scans only — the anti-join is what makes that true.
 
     Email ingestion calls the same `finalize_extraction` the wizard does, so every ingested
@@ -209,7 +256,7 @@ def _manual_stmt(tenant_id: uuid.UUID):
     statement appears twice: once as Email and once as Manual.
     """
     ingested = select(EmailDocument.id).where(EmailDocument.task_id == CreditCard.task_id).exists()
-    return (
+    stmt = (
         select(CreditCard, OCRTask)
         .join(OCRTask, OCRTask.id == CreditCard.task_id)
         .where(
@@ -218,13 +265,17 @@ def _manual_stmt(tenant_id: uuid.UUID):
             CreditCard.submitted_at.is_not(None),
             ~ingested,
         )
-        .order_by(CreditCard.submitted_at.desc())
     )
+    if since is not None:
+        # `submitted_at`, not `created_at`: the row is timestamped by the moment it became a
+        # JV (see `_manual_row`), so that is the moment Today has to be asking about.
+        stmt = stmt.where(CreditCard.submitted_at >= since)
+    return stmt.order_by(CreditCard.submitted_at.desc())
 
 
 @router.get("/activity", response_model=ActivityPage)
 async def list_activity(
-    filter: str = Query("all", description="all | review | success | unposted"),
+    filter: str = Query("all", description="all | today | review | success | unposted"),
     limit: int = Query(25, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -239,34 +290,51 @@ async def list_activity(
     (see `useReviewQueue`) — a BU that auto-posts has nothing in `review` by definition, and
     landing it on a permanently empty chip would hide the work the robot is doing for it.
 
+    `today` is the one chip that is not a selection of statuses — it is every row since
+    midnight ICT, whatever became of it. So it overlaps all three of the others by
+    construction, which is why `counts["all"]` is summed **before** it is added: `all` is
+    what the page uses to tell a BU that has never had a document from one whose current
+    chip is empty, and counting the same row twice would make that number a fiction.
+
     An unknown filter falls back to `all` rather than 400ing: the query string is a UI
     detail and a stale bookmark — `?filter=skipped` from before the chips merged — should
     land somewhere useful.
     """
     tenant_id = uuid.UUID(str(session.tenant_id))
-    if filter not in FILTERS:
+    if filter not in CHIPS:
         filter = "all"
-    statuses = FILTERS.get(filter)  # None for `all` — no status predicate at all
+    # None for `all` and for `today` — neither has a status predicate at all; what makes
+    # `today` narrower is `since`.
+    statuses = FILTERS.get(filter)
+    day_start = _day_start()
+    since = day_start if filter == TODAY else None
 
-    email_stmt = _email_stmt(tenant_id, statuses)
-    manual_stmt = _manual_stmt(tenant_id)
+    email_stmt = _email_stmt(tenant_id, statuses, since)
+    manual_stmt = _manual_stmt(tenant_id, since)
     wants_manual = filter in MANUAL_FILTERS
 
-    # Counts span every row, not the page: one GROUP BY for email plus one count for
+    # Counts span every row, not the page: one GROUP BY for email plus two counts for
     # manual, rather than a round trip per chip. Grouped by (status, reason_code) rather
     # than status alone because `_attention` needs the reason — same single round trip.
     per_pair = await _per_pair(db, tenant_id)
-    manual_total = await count_rows(db, manual_stmt)
+    manual_total = await count_rows(db, _manual_stmt(tenant_id))
+    manual_today = await count_rows(db, _manual_stmt(tenant_id, day_start))
     counts = {
         k: sum(n for (s, _), (n, *_) in per_pair.items() if s in v) for k, v in FILTERS.items()
     }
     counts["success"] += manual_total
     counts["all"] = sum(counts.values())
+    # After `all`, deliberately — see the docstring. Today is a window over the three chips
+    # above it, not a fourth pile beside them.
+    counts[TODAY] = sum(t for (_s, _rc), (*_, t) in per_pair.items()) + manual_today
 
     # How many rows under each chip are wrong in some way — see `_attention` for what that
-    # covers and why it is not "what a person can fix". The strip is three chips now, so a
+    # covers and why it is not "what a person can fix". The status chips are three, so a
     # cause nothing points at is a cause nobody finds: that is the 2026-08-28
     # `sender_not_allowed` incident, and `unposted` is where all seven of its siblings live.
+    #
+    # No `today` key, and therefore no dot on it — see `_anomalies`. Today's rows are all
+    # counted under one of the three below, so anything wrong with them is already lit.
     attention = _anomalies(per_pair)
     attention["all"] = sum(attention.values())
 
@@ -318,8 +386,10 @@ async def mark_chip_seen(
     seen this yet" is a fact about the BU and not about a browser or a person.
     """
     if body.filter not in FILTERS:
-        # A trust boundary: the value becomes a key in the stored JSON. `all` is rejected
-        # with the nonsense, deliberately — it has no chip and therefore no dot.
+        # A trust boundary: the value becomes a key in the stored JSON. `all` and `today`
+        # are rejected with the nonsense, deliberately — neither carries a dot, so neither
+        # has a mark to store. `today` additionally could not have one: the mark is a
+        # lifetime figure and that count resets at midnight.
         raise ValidationError(f"Unknown filter: {body.filter}")
 
     tenant_id = uuid.UUID(str(session.tenant_id))

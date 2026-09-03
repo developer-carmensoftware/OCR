@@ -15,9 +15,11 @@ import { showToast } from '../lib/toast'
 import type { TKey } from '../i18n/dict'
 
 // `all` has no chip — it is still the API's default and still what `counts.all` answers,
-// but the three below hold every row between them, so a fourth that repeats them is a
-// choice with no consequence.
+// but the three status chips hold every row between them, so a fourth that repeats them is
+// a choice with no consequence. `today` is not that fourth: it cuts across all three on
+// time rather than selecting among them, which is a question none of them can answer.
 const FILTER_LABEL: Record<ChipFilter, TKey> = {
+  today: 'review.filterToday',
   review: 'review.filterReview',
   success: 'review.filterSuccess',
   unposted: 'review.filterUnposted',
@@ -215,7 +217,9 @@ export default function ReviewQueue() {
   // is the first screen a BU sees after switching forwarding on, and "Nothing here yet."
   // is too thin a sentence for it. `unposted` empty gets the plain line — an empty pile of
   // failures is not an achievement, and a green tick over it would be celebrating a
-  // non-event.
+  // non-event. `today` empty is the same kind of non-event and gets the same plain line:
+  // at 08:00 on a Monday it means the post has not arrived, which is neither good news nor
+  // bad, and a tick that appears every morning stops meaning anything by Wednesday.
   const clearFilter = filter === 'review' || filter === 'success'
   // A BU with manual scans has rows even with forwarding off, so the sales pitch is gated
   // on having nothing at all rather than on the current filter being empty.
@@ -274,16 +278,18 @@ export default function ReviewQueue() {
                       </span>
                     </>
                   )}
-                  {/* Only the work chip carries a number, and zero is shown on it — the
-                    strip never reflows, because the other two never have one to lose.
+                  {/* Only the two chips whose number can go down carry one, and zero is
+                    shown on both — the strip never reflows, because the other two never
+                    have one to lose.
 
-                    `Needs review` is bounded by construction: backpressure hands mail back
-                    unread past 50 pending, so it lives in 0–50 and goes down as it is
-                    worked. `Posted` and `Not posted` are 0 to infinity and never go down —
-                    at four figures the number is furniture, and it is on screen every day
-                    for ever. The size of the list is in the Pager once the chip is open,
-                    which is where it means something. */}
-                  {id === 'review' && (
+                    `Review` is bounded by construction: backpressure hands mail back unread
+                    past 50 pending, so it lives in 0–50 and falls as it is worked. `Today`
+                    is bounded by the clock and empties itself every midnight. `Posted` and
+                    `Not posted` are 0 to infinity and never fall — at four figures the
+                    number is furniture, and it is on screen every day for ever. The size of
+                    the list is in the Pager once the chip is open, which is where it means
+                    something. */}
+                  {(id === 'review' || id === 'today') && (
                     <span className="rq-tab-count text-mono">{counts[id] ?? 0}</span>
                   )}
                 </button>
