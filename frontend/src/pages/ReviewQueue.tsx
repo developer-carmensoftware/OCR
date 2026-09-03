@@ -218,10 +218,15 @@ export default function ReviewQueue() {
   // is the first screen a BU sees after switching forwarding on, and "Nothing here yet."
   // is too thin a sentence for it. `unposted` empty gets the plain line — an empty pile of
   // failures is not an achievement, and a green tick over it would be celebrating a
-  // non-event. `today` empty is the same kind of non-event and gets the same plain line:
-  // at 08:00 on a Monday it means the post has not arrived, which is neither good news nor
-  // bad, and a tick that appears every morning stops meaning anything by Wednesday.
-  const clearFilter = filter === 'review' || filter === 'success'
+  // non-event.
+  //
+  // `today` gets the tick too, now that it is the chip the page opens on. An empty Today is
+  // only ever *shown* when Review and Posted are empty as well — the fall-through in
+  // `useReviewQueue` hands over to whichever has something — so reaching it means the BU
+  // genuinely has nothing to do, which is what the tick says. It would be the wrong sign on
+  // a chip a reader had to arrive at past their own unread work, and that state cannot
+  // happen.
+  const clearFilter = filter === 'review' || filter === 'success' || filter === 'today'
   // A BU with manual scans has rows even with forwarding off, so the sales pitch is gated
   // on having nothing at all rather than on the current filter being empty.
   const nothingEver = (counts.all ?? 0) === 0

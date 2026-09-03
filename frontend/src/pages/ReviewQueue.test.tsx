@@ -357,13 +357,31 @@ describe('the status filter chips', () => {
     }
   })
 
-  it('opens on the work, never on the day', async () => {
-    // Today reads first, but landing there would show a BU with twelve documents owed a
-    // quiet morning instead of its work. The opening chip still follows `auto_post`.
-    mount(status(), [doc()], { ...ZERO, all: 113, today: 0, review: 12, unposted: 101 })
+  it('opens on the day when the day has something in it', async () => {
+    mount(status(), [doc()], { ...ZERO, all: 113, today: 4, review: 12, unposted: 101 })
     await screen.findByText('KTC')
-    expect(vi.mocked(api.listActivity).mock.calls[0][0]).toBe('review')
-    expect(screen.getByRole('tab', { name: /Today/ })).toHaveAttribute('aria-selected', 'false')
+    expect(vi.mocked(api.listActivity).mock.calls[0][0]).toBe('today')
+    expect(screen.getByRole('tab', { name: /Today/ })).toHaveAttribute('aria-selected', 'true')
+    expect(vi.mocked(api.listActivity)).toHaveBeenCalledTimes(1)
+  })
+
+  it('falls through a quiet day to the work owed', async () => {
+    // A BU with twelve documents owed must not be shown an empty morning. The counts for
+    // every chip arrive with the first response, so the fall-through knows where to go
+    // rather than trying each in turn.
+    mount(status(), [doc()], { ...ZERO, all: 113, today: 0, review: 12, unposted: 101 })
+    await waitFor(() => expect(vi.mocked(api.listActivity)).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(api.listActivity).mock.calls.map(c => c[0])).toEqual(['today', 'review'])
+    expect(screen.getByRole('tab', { name: /Review/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('shows no empty table on the way through', async () => {
+    // The fall-through happens behind `loading`: painting today's nothing and then the
+    // work a moment later is the flash this exists to avoid.
+    mount(status(), [doc()], { ...ZERO, all: 113, today: 0, review: 12 })
+    expect(screen.queryByText('Nothing here yet.')).not.toBeInTheDocument()
+    expect(screen.queryByText('All clear')).not.toBeInTheDocument()
+    await screen.findByText('KTC')
   })
 
   it('never puts a dot on Today', async () => {
@@ -382,15 +400,6 @@ describe('the status filter chips', () => {
     expect(
       screen.getByRole('tab', { name: /Today/ }).querySelector('.rq-tab-dot')
     ).not.toBeInTheDocument()
-  })
-
-  it('says nothing has happened yet rather than congratulating an empty day', async () => {
-    // An empty Today at 08:00 means the post has not arrived — neither good news nor bad.
-    // A green tick every morning stops meaning anything by Wednesday.
-    mount(status(), [], { ...ZERO, all: 2, success: 2 })
-    fireEvent.click(await screen.findByRole('tab', { name: /Today/ }))
-    expect(await screen.findByText('Nothing here yet.')).toBeInTheDocument()
-    expect(screen.queryByText('All clear')).not.toBeInTheDocument()
   })
 
   it('has no All chip — three chips already hold everything', async () => {
@@ -422,7 +431,9 @@ describe('the status filter chips', () => {
   it('refetches only the list when the view moves — status is configuration', async () => {
     // Changing chip or page used to cost two round trips, one of which could not
     // possibly return anything new. Status only refetches on an explicit refresh.
-    mount(status(), [doc()], { ...ZERO, all: 5, review: 1, success: 4 })
+    // `today` non-zero so the page lands there and the fall-through never runs — this is
+    // about what a chip click costs, not about where the page opens.
+    mount(status(), [doc()], { ...ZERO, all: 5, today: 5, review: 1, success: 4 })
     await screen.findByRole('tab', { name: /Posted/ })
     expect(vi.mocked(api.getReviewStatus)).toHaveBeenCalledTimes(1)
 
@@ -448,23 +459,35 @@ describe('the status filter chips', () => {
     expect(screen.queryByText('All clear')).not.toBeInTheDocument()
   })
 
-  it('opens on the work when the BU still reviews', async () => {
-    mount(status(), [doc()], { ...ZERO, all: 113, review: 1, unposted: 101 })
-    await screen.findByText('KTC')
-    expect(vi.mocked(api.listActivity).mock.calls[0][0]).toBe('review')
-    expect(screen.getByRole('tab', { name: /Review/ })).toHaveAttribute('aria-selected', 'true')
+  it('falls through an empty Review to Posted', async () => {
+    // What the old `auto_post ? success : review` rule was for: with review switched off
+    // that chip is empty for ever, and landing there would hide the only thing the page has
+    // to show such a BU — the work the robot is doing for it. Falling through an empty chip
+    // covers that without asking, and covers a BU that has merely caught up as well.
+    mount(status({ auto_post: true }), [], { ...ZERO, all: 40, success: 40 })
+    await waitFor(() => expect(vi.mocked(api.listActivity)).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(api.listActivity).mock.calls.map(c => c[0])).toEqual(['today', 'success'])
+    expect(screen.getByRole('tab', { name: /^Posted/ })).toHaveAttribute('aria-selected', 'true')
   })
 
-  it('opens on Posted for a BU that has switched review off', async () => {
-    // `auto_post` means `review` is empty for ever. Landing there would hide the only
-    // thing that page has to show such a BU: the work the robot is doing for it.
-    mount(status({ auto_post: true }), [], { ...ZERO, all: 40, success: 40 })
-    await screen.findByRole('tab', { name: /Posted/ })
-    expect(vi.mocked(api.listActivity).mock.calls[0][0]).toBe('success')
-    expect(screen.getByRole('tab', { name: /Posted/ })).toHaveAttribute('aria-selected', 'true')
-    // And exactly one fetch: seeding `review` first and correcting it would flash the
-    // wrong empty state on the way.
+  it('stays on the day when every chip is empty', async () => {
+    // Nowhere better to be, and the tick is the honest answer: the fall-through only
+    // reaches this state when Review and Posted are empty too.
+    mount(status(), [], ZERO)
+    expect(await screen.findByText('All clear')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /Today/ })).toHaveAttribute('aria-selected', 'true')
     expect(vi.mocked(api.listActivity)).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not re-land after a refresh', async () => {
+    // A reader who walked to Not posted must stay there when the list reloads, and a chip
+    // worked down to zero must not throw them somewhere else mid-task.
+    mount(status(), [doc()], { ...ZERO, all: 5, today: 5, review: 5 })
+    await screen.findByText('KTC')
+    fireEvent.click(screen.getByRole('tab', { name: /Not posted/ }))
+    await waitFor(() => expect(vi.mocked(api.listActivity)).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(api.listActivity).mock.calls[1][0]).toBe('unposted')
+    expect(screen.getByRole('tab', { name: /Not posted/ })).toHaveAttribute('aria-selected', 'true')
   })
 
   it('marks a chip that is hiding an anomaly, whoever can fix it', async () => {
@@ -491,10 +514,14 @@ describe('the status filter chips', () => {
   it('marks a JV that posted without its input-tax record', async () => {
     // The quietest outcome in the system: the row wears the Success pill and nothing else
     // in the app says the VAT record never happened.
+    //
+    // `today` non-zero so the page stays there. A dot is a signal about a chip you are NOT
+    // on — landing on Posted would mark it seen and put the dot out, which is the feature
+    // working rather than this test's subject.
     mount(
       status(),
       [doc()],
-      { ...ZERO, all: 20, success: 20 },
+      { ...ZERO, all: 20, today: 3, success: 20 },
       1,
       { ...ZERO, all: 2, success: 2 },
       { success: true }
@@ -682,7 +709,7 @@ describe('the dot the whole business unit shares', () => {
   it('marks nothing when there is nothing wrong under the open chip', async () => {
     // The guard against a write on every page load. The gate is the same value the write
     // clears, which is also what stops it looping.
-    mount(status(), [doc()], { ...ZERO, all: 60, review: 1, unposted: 59 }, 1, ZERO, {})
+    mount(status(), [doc()], { ...ZERO, all: 60, today: 1, review: 1, unposted: 59 }, 1, ZERO, {})
     await screen.findByText('KTC')
     fireEvent.click(screen.getByRole('tab', { name: /Not posted/ }))
     await waitFor(() => expect(vi.mocked(api.listActivity)).toHaveBeenCalledTimes(2))

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   dismissRow,
   getReviewStatus,
@@ -12,13 +12,17 @@ import {
 import { useT } from '../../i18n/LanguageContext'
 import { showToast } from '../../lib/toast'
 
+/** Where the page opens before the counts have said otherwise. */
+const TODAY: ActivityFilter = 'today'
+
 export interface ReviewQueueController {
   /** null until the first status fetch lands. The page must not choose which state to
    *  paint before then — see `loading`. */
   status: ReviewStatus | null
-  /** null until status has landed and chosen the opening chip. Nothing is fetched and no
-   *  chip is active while it is — `loading` covers the same window. */
-  filter: ActivityFilter | null
+  /** Never null: the page opens on `today` and falls through to the first chip that has
+   *  anything (see the fetch effect). `loading` covers the fall-through, so the strip does
+   *  not visibly hop. */
+  filter: ActivityFilter
   setFilter: (f: ActivityFilter) => void
   rows: ReviewDocument[]
   total: number
@@ -63,11 +67,13 @@ export interface ReviewQueueController {
 export function useReviewQueue(limit: number): ReviewQueueController {
   const { t } = useT()
   const [status, setStatus] = useState<ReviewStatus | null>(null)
-  // Which chip the page opens on is the BU's own answer to "do I review?", so it waits for
-  // status rather than being seeded here. A BU with `auto_post` on has nothing in `review`
-  // by definition — opening it on a chip that is empty for ever would hide the work the
-  // robot is doing on its behalf, which is the only thing that page has to show.
-  const [filter, setFilterState] = useState<ActivityFilter | null>(null)
+  // The page opens on the day: "what has happened today" is the question somebody arrives
+  // with. It no longer waits for `auto_post` to name a chip — the fall-through below covers
+  // what that rule was for, and covers more besides.
+  const [filter, setFilterState] = useState<ActivityFilter>(TODAY)
+  // Whether the opening chip has been settled. The fall-through runs once, so a refresh
+  // never throws the reader back to the top and neither does working a chip down to zero.
+  const landed = useRef(false)
   const [rows, setRows] = useState<ReviewDocument[]>([])
   const [total, setTotal] = useState(0)
   const [counts, setCounts] = useState<Record<string, number>>({})
@@ -93,16 +99,9 @@ export function useReviewQueue(limit: number): ReviewQueueController {
         if (!alive) return
         setStatus(s)
         setStatusError(false)
-        // Only the first time: a refresh must not throw the reader back to the opening
-        // chip, and neither must flipping auto-post from the gear on this very page.
-        setFilterState(f => f ?? (s.auto_post ? 'success' : 'review'))
       })
       .catch(() => {
-        if (!alive) return
-        setStatusError(true)
-        // The error screen renders instead of the table, but the list still has to be
-        // asked for — otherwise Retry has nothing to retry.
-        setFilterState(f => f ?? 'review')
+        if (alive) setStatusError(true)
       })
       .finally(() => {
         if (alive) setStatusLoaded(true)
@@ -112,15 +111,46 @@ export function useReviewQueue(limit: number): ReviewQueueController {
     }
   }, [nonce])
 
-  // Content. Held until status has named the opening chip — asking for `review` first and
-  // `success` a moment later would fetch twice and flash the wrong empty state between.
+  // Content, and — on the very first response — where the page should have opened.
   useEffect(() => {
-    if (!filter) return
     let alive = true
+    let hopped = false
     setListLoading(true)
     listActivity(filter, limit, offset)
       .then(page => {
         if (!alive) return
+
+        // **The opening chip, settled from the counts rather than guessed at.**
+        //
+        // Today first, because that is the question somebody arrives with. But a quiet
+        // morning must not be the whole answer, so an empty Today hands over to the work,
+        // and an empty Review to what the robot posted without being asked.
+        //
+        // It costs one extra request and only on a quiet morning: every chip's count
+        // arrives with this first response, so the fall-through knows exactly where to go
+        // instead of trying each chip in turn. Nothing is painted on the way past —
+        // `hopped` holds `loading` on, so the reader never sees an empty table flash before
+        // the one with their work in it.
+        //
+        // This replaces the `auto_post ? success : review` rule. That existed because a BU
+        // with review switched off has a permanently empty Review chip; falling through an
+        // empty chip covers it without asking, and covers a BU that has simply caught up.
+        if (!landed.current) {
+          landed.current = true
+          const next = !page.counts.today
+            ? page.counts.review
+              ? 'review'
+              : page.counts.success
+                ? 'success'
+                : null
+            : null
+          if (next) {
+            hopped = true
+            setFilterState(next)
+            return
+          }
+        }
+
         setRows(page.data)
         setTotal(page.total)
         setCounts(page.counts)
@@ -144,7 +174,9 @@ export function useReviewQueue(limit: number): ReviewQueueController {
         if (alive) setListError(true)
       })
       .finally(() => {
-        if (alive) setListLoading(false)
+        // Not while hopping: the effect is about to run again for the chip we fell through
+        // to, and clearing this in between is what would flash the empty state.
+        if (alive && !hopped) setListLoading(false)
       })
     return () => {
       alive = false
