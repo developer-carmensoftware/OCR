@@ -1514,13 +1514,17 @@
   text-align: right;
 }
 
-/* The read-only half is six cells in a four-column grid, so it breaks over two rows: the
-   document it is filed against, then what it claims. Auto-placement would put Net in the
-   gap beside Tax period and push Total onto a row of its own; anchoring the first figure to
-   column 2 lands all three on one row ending at the grid's right edge. Identity from the
-   left, figures to the right — how the document's own footer reads. */
-.itx-fact--net {
-  grid-column: 2;
+/* The read-only half: six values in **two rows of three**, spanning the panel.
+   Its own three tracks rather than the four the fields above use. Six cells in four tracks
+   is what made this read as scatter — the first row ended one column short, the second
+   began one column late, and no figure shared an edge with the identity above it. Three
+   tracks put the document it is filed against directly over what it claims. */
+.itx-facts {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+  align-items: start;
 }
 
 /* Two columns before the fields would have to shrink below what they hold. Vendor keeps the
@@ -1534,11 +1538,10 @@
     grid-column: 1 / -1;
   }
 
-  /* Two tracks hold two figures a row, so the anchor above has nothing left to line up and
-     would only strand Net on a row of its own. Let them flow. */
-  .itx-fact--net {
-    grid-column: auto;
-  }
+  /* The facts keep their three tracks where the fields drop to two: they hold a document
+     number, a date, a period and three short amounts, and splitting them two-per-row would
+     interleave the identity with the figures — which is the pairing the three tracks exist
+     to hold together. */
 }
 
 /* The record's headline. Weight and ink, not size: a third type size in a row this short

@@ -299,58 +299,66 @@ export default function InputTaxPanel({
                 track, so it also draws the grid the two rows share. */}
             <div className="itx-rule" />
 
-            {/* The document this claim is filed against, in the record's own words.
-                `InvhTInvNo` and `InvhTInvDt` are the JV header's document number and date —
-                literally the same two strings, which is why they were left off this panel
-                at first. They are here now because a VAT claim is filed against a tax
-                invoice, and a reviewer signing one off should see the invoice it names
-                without reconstructing it from a header two panels up. Read-only on the same
-                test as the tax period beside them: not a judgement a reviewer can make
-                better, and corrected by fixing the document field it comes from. */}
-            <span className="itx-fact">
-              <span className="rd-f-label">{t('review.itxTInvNo')}</span>
-              <span className="itx-fact-v text-mono">{headerData.DocNo || '—'}</span>
-            </span>
-            <span className="itx-fact">
-              <span className="rd-f-label">{t('review.itxTInvDt')}</span>
-              <span className="itx-fact-v text-mono">{headerData.DocDate || '—'}</span>
-            </span>
+            {/* Everything the record says that nobody types: **six values, two rows of
+                three, on one set of column edges.**
 
-            {/* What the record will say. `Net Amount | Tax | Total` are Carmen's own column
-                headings for `BfTaxAmt`, `TaxAmt` and `TotalAmt` — which is what settles
-                `Tax` over `VAT` for the middle one: the reviewer checks that figure against
-                the ERP they are posting to, and a screen that renames it makes them do the
-                matching. All three, not the tax alone; `989.87` says nothing about whether
-                989.87 is right, while the three together are the record's whole arithmetic.
-                Right-aligned, as `.jv-num` right-aligns every figure on this screen, so the
-                three end on one edge and read as a sum rather than as three separate
-                numbers. The period is not a figure and keeps the left edge of its column.
-                **None of the four is a field, and none looks like one.** They are sums over
-                `details` — the lines `buildJvRows` builds the journal from and
+                Its own grid rather than the four field tracks above. Six cells in four
+                tracks is what made this read as scatter — the first row ended one column
+                short, the second began one column late, and each figure sat under a
+                different edge from the identity above it. Three tracks put the document it
+                is filed against directly over what it claims, which is the pairing a
+                reviewer is actually checking.
+
+                What the two rows are: `InvhTInvNo` / `InvhTInvDt` / the period the claim
+                lands in, then `BfTaxAmt` / `TaxAmt` / `TotalAmt` under Carmen's own column
+                headings — which is what settles `Tax` over `VAT` for the middle one. The
+                reviewer checks that figure against the ERP they are posting to, and a
+                screen that renames it makes them do the matching. All three, not the tax
+                alone; `989.87` says nothing about whether 989.87 is right, while the three
+                together are the record's whole arithmetic.
+
+                **None of the six is a field, and none looks like one.** The amounts are
+                sums over `details` — the lines `buildJvRows` builds the journal from and
                 `applyJvAmount` writes every JV amount edit back into — so they follow the
-                journal above and cannot be typed into here. A VAT record disagreeing with
+                journal above and cannot be typed into here; a VAT record disagreeing with
                 the journal filed beside it is the one outcome worse than no record. The
-                period is the same kind of thing: the month the document names, corrected on
-                the document date. `.itx-fact` is built as `.rd-f` is, so the wash is what
-                tells a value from a field, which is the rule this screen already runs on. */}
-            <span className="itx-fact">
-              <span className="rd-f-label">{t('review.itxPeriod')}</span>
-              <span className="itx-fact-v text-mono">{period}</span>
-            </span>
-            <span className="itx-fact itx-fact--amt itx-fact--net">
-              <span className="rd-f-label">{t('review.itxNet')}</span>
-              <span className="itx-fact-v text-mono">{fmt(tax.net)}</span>
-            </span>
-            <span className="itx-fact itx-fact--amt">
-              <span className="rd-f-label">{t('review.itxTax')}</span>
-              <span className="itx-fact-v text-mono">{fmt(tax.vat)}</span>
-            </span>
-            {/* The record's headline figure, and the only one carrying weight — two
-                dimensions of hierarchy where three amounts would otherwise read flat. */}
-            <span className="itx-fact itx-fact--amt itx-fact--total">
-              <span className="rd-f-label">{t('review.itxTotal')}</span>
-              <span className="itx-fact-v text-mono">{fmt(tax.total)}</span>
-            </span>
+                other three are the same kind of thing: the document number and date the JV
+                header carries, and the month they name. Each is corrected by fixing the
+                field it comes from, two panels up. `.itx-fact` is built as `.rd-f` is, so
+                the wash is what tells a value from a field — the rule this screen already
+                runs on. */}
+            <div className="itx-facts">
+              <span className="itx-fact">
+                <span className="rd-f-label">{t('review.itxTInvNo')}</span>
+                <span className="itx-fact-v text-mono">{headerData.DocNo || '—'}</span>
+              </span>
+              <span className="itx-fact">
+                <span className="rd-f-label">{t('review.itxTInvDt')}</span>
+                <span className="itx-fact-v text-mono">{headerData.DocDate || '—'}</span>
+              </span>
+              <span className="itx-fact">
+                <span className="rd-f-label">{t('review.itxPeriod')}</span>
+                <span className="itx-fact-v text-mono">{period}</span>
+              </span>
+
+              {/* Right-aligned, as `.jv-num` right-aligns every figure on this screen, so
+                  the three end on one edge and read as a sum rather than as three separate
+                  numbers. */}
+              <span className="itx-fact itx-fact--amt">
+                <span className="rd-f-label">{t('review.itxNet')}</span>
+                <span className="itx-fact-v text-mono">{fmt(tax.net)}</span>
+              </span>
+              <span className="itx-fact itx-fact--amt">
+                <span className="rd-f-label">{t('review.itxTax')}</span>
+                <span className="itx-fact-v text-mono">{fmt(tax.vat)}</span>
+              </span>
+              {/* The record's headline figure, and the only one carrying weight — two
+                  dimensions of hierarchy where three amounts would otherwise read flat. */}
+              <span className="itx-fact itx-fact--amt itx-fact--total">
+                <span className="rd-f-label">{t('review.itxTotal')}</span>
+                <span className="itx-fact-v text-mono">{fmt(tax.total)}</span>
+              </span>
+            </div>
           </div>
         </div>
       )}
