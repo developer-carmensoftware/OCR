@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import SessionInfo, get_current_session
 from app.database import get_db
-from app.exceptions import ValidationError
+from app.exceptions import NotFoundError, ValidationError
 from app.models.business import CreditCard, OCRTask
 from app.models.email_automation import EmailDocument, EmailQueueSeen
 from app.models.schemas.email_automation import ActivityPage, ActivityRow, QueueSeenIn, QueueSeenOut
@@ -408,3 +408,35 @@ async def mark_chip_seen(
     row.seen = {**(row.seen or {}), body.filter: total}
     await db.commit()
     return QueueSeenOut(filter=body.filter, seen=total)
+
+
+@router.post("/activity/{document_id}/dismiss", status_code=204)
+async def dismiss_row(
+    document_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(get_current_session),
+):
+    """Put a row away: it leaves the Review chip and stays in Not posted.
+
+    The Review chip holds everything that wants a human, which includes failures a person
+    can clear from settings. Nothing retries those, so fixing the filename rule today never
+    clears the rows behind it — without a way to put one away, the chip fills with dead rows
+    until nobody can find the live ones, and its number stops being able to go down.
+
+    **Only a row with no `review_payload`.** A parked document has the audited verb for this
+    already: Reject stamps the reviewer and takes a reason. Two ways to retire a real
+    document, with different audit trails, is worse than one — so this refuses them rather
+    than offering a quieter alternative.
+
+    Not found and not yours are the same answer, as everywhere else in this feature.
+    Dismissing a dismissed row is a no-op rather than a 409: the outcome the caller wanted
+    is the outcome that holds, and a double-click is not an error.
+    """
+    row = await db.get(EmailDocument, document_id)
+    if row is None or row.tenant_id != uuid.UUID(str(session.tenant_id)):
+        raise NotFoundError("No such document")
+    if row.review_payload is not None:
+        raise ValidationError("A document waiting for review is rejected, not dismissed")
+    if row.dismissed_at is None:
+        row.dismissed_at = datetime.now(UTC)  # type: ignore[assignment]
+        await db.commit()

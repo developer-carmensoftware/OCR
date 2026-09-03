@@ -141,6 +141,12 @@ class EmailDocument(Base, TenantFKMixin, TimestampMixin):
     # is 90 days scrubbed, and "who approved this JV" must still read as a name in a year.
     reviewed_by_name = Column(String(100), nullable=True)
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    # Somebody put this row away. Only ever set on a row with no `review_payload`: a parked
+    # document is retired with Reject, which records who and why, and two ways to retire a
+    # real document is worse than one. Dismissed rows leave the Review chip and stay
+    # visible under Not posted and Today — this is not a soft delete, and this table has
+    # no `deleted_at` for it to be confused with.
+    dismissed_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index("uq_email_documents_message", "tenant_id", "message_id", "attachment", unique=True),

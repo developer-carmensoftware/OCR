@@ -400,6 +400,74 @@ def test_today_windows_both_sources_on_the_same_midnight():
     assert ">=" not in str(_email_stmt(uuid.uuid4(), None).compile())
 
 
+# ── Dismiss ──────────────────────────────────────────────────────────────────
+
+
+def _dismissable(**overrides):
+    """A row a person can put away: terminal, and carrying no payload to review."""
+    row = _email(status="skipped", reason_code="no_rule_match", review_payload=None)
+    row.tenant_id = uuid.UUID(TENANT)
+    row.dismissed_at = None
+    for k, v in overrides.items():
+        setattr(row, k, v)
+    return row
+
+
+def _one_row(row):
+    """A db whose only job is to hand back that row from `db.get`."""
+    db = make_mock_db()
+    db.get.return_value = row
+    return db
+
+
+def test_dismissing_a_row_stamps_it_and_commits():
+    row = _dismissable()
+    db = _one_row(row)
+    with make_test_client(db, session=SESSION) as client:
+        res = client.post(f"{BASE}/{row.id}/dismiss", headers=AUTH)
+
+    assert res.status_code == 204
+    assert row.dismissed_at is not None
+    assert db.commit.await_count == 1
+
+
+def test_a_document_waiting_for_review_is_rejected_not_dismissed():
+    """Reject already retires a real document and records who and why. Two ways to do that,
+    with different audit trails, is worse than one — so this refuses rather than offering a
+    quieter alternative."""
+    row = _dismissable(status="pending_review", review_payload={"extracted": {}})
+    db = _one_row(row)
+    with make_test_client(db, session=SESSION) as client:
+        res = client.post(f"{BASE}/{row.id}/dismiss", headers=AUTH)
+
+    assert res.status_code == 400
+    assert row.dismissed_at is None
+
+
+def test_dismissing_twice_is_not_an_error():
+    """The outcome the caller wanted is the outcome that holds, and a double-click is not a
+    conflict. Nothing is rewritten, so the first person's timestamp stands."""
+    stamped = datetime(2026, 9, 1, 9, 0, tzinfo=UTC)
+    row = _dismissable(dismissed_at=stamped)
+    db = _one_row(row)
+    with make_test_client(db, session=SESSION) as client:
+        assert client.post(f"{BASE}/{row.id}/dismiss", headers=AUTH).status_code == 204
+
+    assert row.dismissed_at == stamped
+    db.commit.assert_not_awaited()
+
+
+def test_another_bus_row_is_not_found_rather_than_forbidden():
+    """Same answer as everywhere else in this feature: not yours and not there are
+    indistinguishable, so the id space says nothing about other BUs."""
+    row = _dismissable(tenant_id=uuid.uuid4())
+    db = _one_row(row)
+    with make_test_client(db, session=SESSION) as client:
+        assert client.post(f"{BASE}/{row.id}/dismiss", headers=AUTH).status_code == 404
+
+    assert row.dismissed_at is None
+
+
 # ── The dot, and what puts it out ────────────────────────────────────────────
 
 
