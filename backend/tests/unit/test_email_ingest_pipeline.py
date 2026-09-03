@@ -48,14 +48,23 @@ class _FakeDB:
     """In-memory stand-in for AsyncSession: real object identity through
     add()/get(), configurable commit() failure for the dedupe path."""
 
-    def __init__(self, fail_commit_on_call: int | None = None):
+    def __init__(self, fail_commit_on_call: int | None = None, scalar=None):
         self.added: list = []
         self._fail_commit_on_call = fail_commit_on_call
         self._commit_calls = 0
         self.rollback = AsyncMock()
+        # Whatever the next `db.scalar()` answers. `None` is the only safe default: two
+        # callers read it, and they read it differently. `_pending_count` treats it as a
+        # number (`or 0`), while `_already_pending` treats it as a row and asks
+        # `hit is not None` — so a default of 0 would tell every parking document that an
+        # identical one is already in the queue.
+        self._scalar = scalar
 
     def add(self, obj):
         self.added.append(obj)
+
+    async def scalar(self, *_a, **_kw):
+        return self._scalar
 
     async def commit(self):
         self._commit_calls += 1
@@ -259,18 +268,37 @@ async def test_happy_path_posts_and_records_ledger():
 
 
 @pytest.mark.asyncio
-async def test_failed_jv_records_document_failed_notification():
+async def test_a_parked_failure_rings_no_bell_of_its_own():
+    """A Carmen refusal used to write `document_failed` here, because the row was finished.
+    It parks now, and the bell for it is raised once per BU per poll by `_notify_pending`
+    instead — a dead credential fails EVERY document of the BU, which is exactly the
+    twenty-row burial that batching rule exists to prevent."""
     db = _FakeDB()
-    await _run(
+    outcome, _ = await _run(
         db,
         extracted=_extracted(),
         config=_config(),
         carmen_result={"Code": 1, "UserMessage": "Insufficient balance"},
     )
-    notifications = [o for o in db.added if isinstance(o, UserNotification)]
-    assert len(notifications) == 1
-    assert notifications[0].type == "document_failed"
-    assert notifications[0].payload["reason_code"] == "carmen_rejected"
+    assert outcome == "pending_review"
+    assert [o for o in db.added if isinstance(o, UserNotification)] == []
+
+
+@pytest.mark.asyncio
+async def test_an_ordinary_park_is_not_news():
+    """The review fork itself still rings nothing. The queue's own count is the channel for
+    "there is work", and a bell per forwarded statement would ring every morning."""
+    db = _FakeDB()
+    outcome, _ = await _run(
+        db,
+        auto_post=False,
+        extracted=_extracted(),
+        config=_config(),
+        carmen_result={"Code": 0},
+    )
+    assert outcome == "pending_review"
+    assert db.added[0].reason_code is None
+    assert [o for o in db.added if isinstance(o, UserNotification)] == []
 
 
 @pytest.mark.asyncio
@@ -342,7 +370,8 @@ async def test_posting_stamps_submitted_at_so_the_duplicate_guard_sees_it():
 
 @pytest.mark.asyncio
 async def test_rejected_jv_does_not_stamp_submitted_at():
-    """Carmen declined, so nothing was posted — stamping would block the retry."""
+    """Carmen declined, so nothing was posted — stamping would block the retry the reviewer
+    is now able to make."""
     db = _FakeDB()
     outcome, p = await _run(
         db,
@@ -350,7 +379,7 @@ async def test_rejected_jv_does_not_stamp_submitted_at():
         config=_config(),
         carmen_result={"Code": 1, "UserMessage": "Insufficient balance"},
     )
-    assert outcome == "failed"
+    assert outcome == "pending_review"
     p.mark_submitted.assert_not_awaited()
 
 
@@ -363,7 +392,7 @@ async def test_already_submitted_document_never_reaches_carmen():
         config=_config(),
         carmen_result={"Code": 0},
     )
-    assert outcome == "failed"
+    assert outcome == "pending_review"
     assert db.added[0].reason_code == "duplicate_document"
     p.mark_submitted.assert_not_awaited()
     p.refund_document.assert_not_called()  # the model read it — the charge stands
@@ -395,11 +424,13 @@ async def test_unmapped_bu_gets_ai_mappings_posts_and_saves_them():
 
 
 @pytest.mark.asyncio
-async def test_mapping_incomplete_fails_and_keeps_the_charge_when_ai_cannot_fill_it():
+async def test_mapping_incomplete_parks_and_keeps_the_charge_when_ai_cannot_fill_it():
     """The fallback with review OFF: no LLM answer, or Carmen's GL master was unreachable.
 
-    `_run` defaults `auto_post=True`, which is the case this asserts: nobody is coming, so
-    there is nothing to do but stop.
+    `_run` defaults `auto_post=True`, so nobody was coming — and this used to stop there,
+    which threw away a reading the BU had paid for. It parks instead: the review screen maps
+    in place, so the one thing that can clear this is a person, and the queue is where they
+    are. Auto-post now means "post what I can", not "post or destroy".
     """
     db = _FakeDB()
     outcome, p = await _run(
@@ -409,8 +440,12 @@ async def test_mapping_incomplete_fails_and_keeps_the_charge_when_ai_cannot_fill
         carmen_result={"Code": 0},
         suggested={},  # AI produced nothing usable
     )
-    assert outcome == "failed"
+    assert outcome == "pending_review"
     assert db.added[0].reason_code == "mapping_incomplete"
+    # The point of parking: the reading survives, and it names every gap to fill — the
+    # config was empty, so that is the payment type and all three fixed legs.
+    assert set(db.added[0].review_payload["unmapped"]) == {"Visa", "commission", "tax", "net"}
+    p.post_gljv.assert_not_awaited()
     p.refund_document.assert_not_called()  # extraction succeeded — the charge stands
 
 
@@ -459,12 +494,17 @@ async def test_a_fully_mapped_bu_never_calls_the_suggester():
 
 
 @pytest.mark.asyncio
-async def test_duplicate_document_fails_and_keeps_the_charge():
+async def test_duplicate_document_parks_and_keeps_the_charge():
     """A duplicate is a decision about a document we read, not a failure to read it.
 
     The vision call has already been made and billed to us by the time `is_duplicate`
     is knowable, so the credit stays spent — the same answer the wizard has always
     given for the same document.
+
+    And because it was paid for, it parks. `approve_document` re-checks `has_submitted_doc`
+    and 409s, so a genuine duplicate cannot post twice; what parking recovers is the case
+    where it was never a duplicate at all and the model misread a digit of the document
+    number — which the reviewer can correct in the one field it lives in.
     """
     db = _FakeDB()
     outcome, p = await _run(
@@ -473,8 +513,32 @@ async def test_duplicate_document_fails_and_keeps_the_charge():
         config=_config(),
         carmen_result={"Code": 0},
     )
+    assert outcome == "pending_review"
+    assert db.added[0].reason_code == "duplicate_document"
+    assert db.added[0].review_payload is not None
+    p.refund_document.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_second_copy_of_something_already_in_the_queue_does_not_park():
+    """The one post-extraction refusal that stays terminal even though it was charged.
+
+    Its twin is already in the queue — editable, postable, and the same document. Parking
+    this one would put two identical rows in front of the reviewer, which is the exact thing
+    the `_already_pending` check was written to prevent.
+    """
+    db = _FakeDB()
+    with patch.object(ingest, "_already_pending", AsyncMock(return_value=True)):
+        outcome, p = await _run(
+            db,
+            auto_post=False,  # `_already_pending` is only consulted with review on
+            extracted=_extracted(),
+            config=_config(),
+            carmen_result={"Code": 0},
+        )
     assert outcome == "failed"
     assert db.added[0].reason_code == "duplicate_document"
+    assert db.added[0].review_payload is None
     p.refund_document.assert_not_called()
 
 
@@ -504,7 +568,10 @@ async def test_extraction_failure_is_the_one_case_that_still_refunds():
 
 
 @pytest.mark.asyncio
-async def test_carmen_declines_jv_fails_but_does_not_refund():
+async def test_carmen_declines_jv_parks_but_does_not_refund():
+    """Carmen refuses JVs for reasons a human standing there can fix — a closed period, a
+    dept code it does not know. The approve path has always left those `pending_review` for
+    exactly that reason; the unattended path threw them away. Now they match."""
     db = _FakeDB()
     outcome, p = await _run(
         db,
@@ -513,7 +580,7 @@ async def test_carmen_declines_jv_fails_but_does_not_refund():
         config=_config(),
         carmen_result={"Code": 1, "UserMessage": "Insufficient balance"},
     )
-    assert outcome == "failed"
+    assert outcome == "pending_review"
     assert db.added[0].reason_code == "carmen_rejected"
     # The verdict itself, not "Carmen rejected the JV" — the row is the support ticket.
     assert "Insufficient balance" in db.added[0].error_message
@@ -525,7 +592,12 @@ async def test_carmen_declines_jv_fails_but_does_not_refund():
 @pytest.mark.asyncio
 async def test_carmen_401_is_a_credential_failure_not_a_rejection():
     """2026-08-28: three documents were filed as "Carmen rejected the JV" when the BU's
-    posting token had died. Different reason, different fixer, different screen."""
+    posting token had died. Different reason, different fixer, different screen.
+
+    It parks all the same. A dead credential fails every document of the BU, and every one
+    of them was charged — parking makes them all postable the moment the token is replaced,
+    instead of a day of scanning burnt.
+    """
     db = _FakeDB()
     outcome, p = await _run(
         db,
@@ -535,7 +607,7 @@ async def test_carmen_401_is_a_credential_failure_not_a_rejection():
         carmen_result=None,
         carmen_side_effect=CarmenAPIError(401, "HTTP 401: Authorization has been denied"),
     )
-    assert outcome == "failed"
+    assert outcome == "pending_review"
     assert db.added[0].reason_code == "carmen_unauthorized"
     assert "401" in db.added[0].error_message
     p.refund_document.assert_not_called()
@@ -554,12 +626,16 @@ async def test_missing_credential_is_carmen_unauthorized():
         carmen_result=None,
         carmen_token="",
     )
-    assert outcome == "failed"
+    assert outcome == "pending_review"
     assert db.added[0].reason_code == "carmen_unauthorized"
 
 
 @pytest.mark.asyncio
-async def test_carmen_transport_failure_fails_but_does_not_refund():
+async def test_carmen_transport_failure_parks_with_the_double_post_caveat():
+    """The one parked case that carries a risk, and it is the risk the approve path already
+    takes: `_mark_submitted` never ran, so `has_submitted_doc` cannot catch a JV that landed
+    just as the socket died. The caveat travels on the row, in the same words the 503 from
+    `approve_document` uses, because the row is the only place the reviewer will read it."""
     db = _FakeDB()
     outcome, p = await _run(
         db,
@@ -569,8 +645,9 @@ async def test_carmen_transport_failure_fails_but_does_not_refund():
         carmen_result=None,
         carmen_side_effect=CarmenAPIError(503, "upstream timeout"),
     )
-    assert outcome == "failed"
+    assert outcome == "pending_review"
     assert db.added[0].reason_code == "carmen_rejected"
+    assert "check whether the JV posted" in db.added[0].error_message
     p.refund_document.assert_not_called()  # fate unknown — never auto-refund a maybe-posted JV
 
 
@@ -795,6 +872,10 @@ async def test_a_document_whose_tax_id_belongs_to_another_bu_is_parked():
 
     Two signals that disagree stop the post rather than picking a winner — money in the
     wrong company's ledger is the one outcome unattended posting cannot recover from.
+
+    "Stop the post", not "destroy the reading": a machine cannot tell which signal is right,
+    which is the definition of a question for a human. The name of this test was always
+    `_is_parked`; it now is.
     """
     db = _FakeDB()
     outcome, p = await _run(
@@ -804,8 +885,9 @@ async def test_a_document_whose_tax_id_belongs_to_another_bu_is_parked():
         carmen_result={"Code": 0},
         conflict="0994000165676",
     )
-    assert outcome == "failed"
+    assert outcome == "pending_review"
     assert db.added[0].reason_code == "tax_id_mismatch"
+    p.post_gljv.assert_not_awaited()  # the point of the gate: nothing reached Carmen
     p.refund_document.assert_not_called()  # extraction succeeded — the charge stands
 
 
@@ -2684,6 +2766,30 @@ async def test_each_bu_in_one_poll_is_told_separately():
     with patch.object(ingest, "async_session", _session_factory(db)):
         await ingest._notify_pending({a: 2, b: 1})
     assert sorted(r.payload["pending"] for r in db.added) == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_a_queue_holding_blocked_documents_says_so_once():
+    """A parked failure must not go silent — but a dead credential fails EVERY document of
+    the BU, so notifying per document is exactly the twenty-row burial the batching rule
+    above exists to prevent. One extra row per BU per poll, whatever the pile."""
+    db = _FakeDB(scalar=7)
+    tenant = str(uuid4())
+    with patch.object(ingest, "async_session", _session_factory(db)):
+        await ingest._notify_pending({tenant: 20})
+
+    assert [r.type for r in db.added] == ["document_pending_review", "document_blocked"]
+    assert db.added[1].payload == {"blocked": 7}
+
+
+@pytest.mark.asyncio
+async def test_a_queue_of_ordinary_parked_documents_is_not_blocked():
+    """`reason_code IS NOT NULL` is the whole distinction. Twenty statements waiting for an
+    OK are not a problem, and calling them blocked would make the word worthless."""
+    db = _FakeDB(scalar=0)
+    with patch.object(ingest, "async_session", _session_factory(db)):
+        await ingest._notify_pending({str(uuid4()): 20})
+    assert [r.type for r in db.added] == ["document_pending_review"]
 
 
 @pytest.mark.asyncio
