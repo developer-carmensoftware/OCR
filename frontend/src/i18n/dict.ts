@@ -817,7 +817,10 @@ const en = {
   'review.errorBody': 'The list could not be fetched. Nothing has been lost - try again.',
   'review.retry': 'Try again',
   'review.tabsLabel': 'Document status',
-  'review.filterReview': 'Needs review',
+  // One word, and the same one the row's Status pill and its action button already use.
+  // "Needs review" described a chip holding one status; this one holds everything that
+  // wants a human, and the shorter word is the one that stays true as it widens.
+  'review.filterReview': 'Review',
   'review.filterSuccess': 'Posted',
   // One word for everything that did not become a JV. "Not posted" and "Skipped" were two
   // chips for one fact — the split behind them is whether a credit was charged, which is
@@ -2311,7 +2314,7 @@ const th: Record<TKey, string> = {
   'review.errorBody': 'ดึงรายการไม่ได้ ข้อมูลไม่หาย ลองอีกครั้ง',
   'review.retry': 'ลองอีกครั้ง',
   'review.tabsLabel': 'สถานะเอกสาร',
-  'review.filterReview': 'รอตรวจ',
+  'review.filterReview': 'ตรวจสอบ',
   'review.filterSuccess': 'ลงบัญชีแล้ว',
   'review.filterUnposted': 'ไม่ได้ลงบัญชี',
   'review.colDocument': 'Document',

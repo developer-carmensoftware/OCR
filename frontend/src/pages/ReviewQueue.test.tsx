@@ -98,14 +98,12 @@ describe('which state the automation page paints', () => {
   })
 
   it('has no heading — the chip strip is it', async () => {
-    // "1 waiting for you" printed the number the Needs review chip already carries two
+    // "1 waiting for you" printed the number the Review chip already carries two
     // rows below, and had nothing true to say to a BU that posts without review.
     mount(status(), [doc()])
     await screen.findByText('KTC')
     expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument()
-    await waitFor(() =>
-      expect(screen.getByRole('tab', { name: /Needs review/ })).toHaveTextContent('1')
-    )
+    await waitFor(() => expect(screen.getByRole('tab', { name: /Review/ })).toHaveTextContent('1'))
   })
 
   it('shows each row the bank that issued it, not one bank for the whole page', async () => {
@@ -270,22 +268,20 @@ describe('the status filter chips', () => {
     // a credit was charged — the billing system's business, and nothing a reader can guess.
     mount(status(), [doc()], { all: 113, review: 3, success: 7, unposted: 103 })
     await screen.findByText('KTC')
-    for (const label of ['Needs review', 'Posted', 'Not posted']) {
+    for (const label of ['Review', 'Posted', 'Not posted']) {
       expect(screen.getByRole('tab', { name: new RegExp(label) })).toBeInTheDocument()
     }
     expect(screen.getAllByRole('tab')).toHaveLength(3)
   })
 
   it('numbers only the chip whose number can go down', async () => {
-    // `Needs review` is bounded by backpressure (50 pending, then mail is handed back) and
+    // `Review` is bounded by backpressure (50 pending, then mail is handed back) and
     // falls as it is worked. `Posted` and `Not posted` are lifetime totals that never fall
     // — at four figures the number is furniture, and it is on screen for ever. The size of
     // the list is in the Pager once the chip is open.
     mount(status(), [doc()], { all: 113, review: 3, success: 7, unposted: 103 })
     await screen.findByText('KTC')
-    await waitFor(() =>
-      expect(screen.getByRole('tab', { name: /Needs review/ })).toHaveTextContent('3')
-    )
+    await waitFor(() => expect(screen.getByRole('tab', { name: /Review/ })).toHaveTextContent('3'))
     for (const label of ['^Posted', 'Not posted']) {
       const chip = screen.getByRole('tab', { name: new RegExp(label) })
       expect(chip.querySelector('.rq-tab-count')).not.toBeInTheDocument()
@@ -297,7 +293,7 @@ describe('the status filter chips', () => {
     // BU that has never had a document from one whose current chip is empty. As a fourth
     // chip it was a choice with no consequence.
     mount(status(), [doc()], { all: 113, review: 3, success: 7, unposted: 103 })
-    await screen.findByRole('tab', { name: /Needs review/ })
+    await screen.findByRole('tab', { name: /Review/ })
     expect(screen.queryByRole('tab', { name: /^All/ })).not.toBeInTheDocument()
   })
 
@@ -305,7 +301,7 @@ describe('the status filter chips', () => {
     // A count that disappears when it empties makes the strip reflow as documents are
     // approved, and "0" is itself the answer to "is anything waiting?".
     mount(status(), [], ZERO)
-    const chip = await screen.findByRole('tab', { name: /Needs review/ })
+    const chip = await screen.findByRole('tab', { name: /Review/ })
     expect(chip).toHaveTextContent('0')
   })
 
@@ -351,10 +347,7 @@ describe('the status filter chips', () => {
     mount(status(), [doc()], { ...ZERO, all: 113, review: 1, unposted: 101 })
     await screen.findByText('KTC')
     expect(vi.mocked(api.listActivity).mock.calls[0][0]).toBe('review')
-    expect(screen.getByRole('tab', { name: /Needs review/ })).toHaveAttribute(
-      'aria-selected',
-      'true'
-    )
+    expect(screen.getByRole('tab', { name: /Review/ })).toHaveAttribute('aria-selected', 'true')
   })
 
   it('opens on Posted for a BU that has switched review off', async () => {
