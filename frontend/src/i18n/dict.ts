@@ -852,6 +852,11 @@ const en = {
   'review.actionReview': 'Review',
   'review.actionFixMapping': 'Fix mapping',
   'review.actionOpenSettings': 'Open settings',
+  // The icon button beside a fix link. "Dismiss", not "Delete" or "Hide": nothing is
+  // destroyed and nothing disappears — the row keeps its whole story under Not posted, it
+  // just stops being work. Label lives on `aria-label` and `title`; the button is an ✕.
+  'review.actionDismiss': 'Dismiss this row',
+  'review.dismissFailed': 'Could not dismiss that row. It is back in the list.',
   // Short because it shares an 8.5rem column with every other row's button; the word that
   // distinguishes it from the generic 'Open settings' is 'Reconnect', and that is kept.
   // review.openJv carries the full sentence on the button's title.
@@ -2342,6 +2347,8 @@ const th: Record<TKey, string> = {
   'review.statusStuck': 'ค้างอยู่',
   'review.actionReview': 'ตรวจสอบ',
   'review.actionOpenSettings': 'เปิดตั้งค่า',
+  'review.actionDismiss': 'ปิดรายการนี้',
+  'review.dismissFailed': 'ปิดรายการไม่สำเร็จ รายการกลับมาอยู่ในลิสต์แล้ว',
   'review.actionReconnect': 'เชื่อมใหม่',
   'review.actionFixMapping': 'แก้ผังบัญชี',
   'review.actionOpenJv': 'เปิด JV',

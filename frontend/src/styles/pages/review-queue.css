@@ -136,15 +136,31 @@
 .rq-c-jv {
   width: 7.5rem;
 }
-/* Sized for its widest label ("Fix mapping"), not for its widest imaginable one: nowrap
-   below means a button that outgrew this would push its neighbours rather than silently
-   double the row's height, which is the failure worth catching. */
+/* Sized for its widest label ("Fix mapping") plus the ✕ beside it on the Review chip, not
+   for its widest imaginable one: nowrap below means a button that outgrew this would push
+   its neighbours rather than silently double the row's height, which is the failure worth
+   catching. */
 .rq-c-act {
-  width: 8.5rem;
+  width: 10.5rem;
 }
 
 .rq-c-act .btn {
   white-space: nowrap;
+}
+
+/* The way out of the chip, beside the repair. An icon and not a second full button:
+   putting a row away is the lesser of the two things to do with it, and two equal buttons
+   in this column would read as a choice rather than as an action and an escape. Quiet at
+   rest for the same reason — it is the thing you reach for when the other one does not
+   apply. */
+.rq-dismiss {
+  margin-left: 0.35rem;
+  vertical-align: middle;
+  color: var(--text-3);
+}
+
+.rq-dismiss:hover {
+  color: var(--text);
 }
 
 /* Justification, in one rule: the two columns that hold sentences keep the left edge, and
@@ -487,7 +503,8 @@
   }
 
   .rq-bar-actions .btn,
-  .rq-c-act .btn {
+  .rq-c-act .btn,
+  .rq-c-act .rq-dismiss {
     min-height: 44px;
   }
 }

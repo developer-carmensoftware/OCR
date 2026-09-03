@@ -16,7 +16,14 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from app.auth.session import SessionInfo
-from app.routers.credit_card_activity import _counts_stmt, _email_stmt, _manual_stmt
+from app.routers.credit_card_activity import (
+    FIXABLE_REASONS,
+    PENDING,
+    _chip_expr,
+    _counts_stmt,
+    _email_stmt,
+    _manual_stmt,
+)
 from tests.conftest import make_mock_db
 from tests.integration.conftest import make_test_client
 
@@ -94,12 +101,8 @@ def _db(*, statuses=None, pairs=None, manual_count, emails, manuals, seen=None, 
 
     grouped = MagicMock()
     grouped.all.return_value = [
-        SimpleNamespace(status=s, reason_code=None, n=n, stuck=0, noted=0, today=0)
-        for s, n in (statuses or {}).items()
-    ] + [
-        SimpleNamespace(status=s, reason_code=rc, n=v[0], stuck=v[1], noted=v[2], today=_today(v))
-        for (s, rc), v in (pairs or {}).items()
-    ]
+        g for s, n in (statuses or {}).items() for g in _group(s, None, (n, 0, 0))
+    ] + [g for (s, rc), v in (pairs or {}).items() for g in _group(s, rc, v)]
     counted = MagicMock()
     counted.scalar_one.return_value = manual_count
     counted_today = MagicMock()
@@ -115,10 +118,52 @@ def _db(*, statuses=None, pairs=None, manual_count, emails, manuals, seen=None, 
     return db
 
 
-def _today(value):
-    """The optional fourth element of a `pairs` value — how many of that group arrived
-    today. Absent means none, which is what every test that predates the chip wants."""
-    return value[3] if len(value) > 3 else 0
+def _chip_of(status, reason_code, dismissed):
+    """The test suite's reading of `_chip_expr`, which the mock DB never runs.
+
+    Deliberately written as prose the other file can be checked against rather than imported
+    from it: a fixture that shares the implementation it is testing proves nothing about it.
+    """
+    if status == "posted":
+        return "success"
+    if status == PENDING or (reason_code in FIXABLE_REASONS and not dismissed):
+        return "review"
+    return "unposted"
+
+
+def _group(status, reason_code, value):
+    """The GROUP BY rows one (status, reason_code) produces.
+
+    Usually one. **Two when some of the group is dismissed and some is not** — the real
+    query groups by chip, and dismissal is part of what decides the chip, so those rows come
+    back split. A fixture that returned one row with a `dismissed` count inside it would be
+    describing a shape Postgres cannot produce.
+
+    `value` is `(n, stuck, noted)` plus two optionals: how many of that group arrived today,
+    and how many have been put away. Absent means none, which is what every test written
+    before either existed wants.
+    """
+    n, stuck, noted = value[0], value[1], value[2]
+    today = value[3] if len(value) > 3 else 0
+    dismissed = value[4] if len(value) > 4 else 0
+
+    def one(count, is_dismissed, today_count):
+        return SimpleNamespace(
+            chip=_chip_of(status, reason_code, is_dismissed),
+            status=status,
+            reason_code=reason_code,
+            n=count,
+            stuck=stuck if not is_dismissed else 0,
+            noted=noted if not is_dismissed else 0,
+            today=today_count,
+            dismissed=count if is_dismissed else 0,
+        )
+
+    if not dismissed:
+        return [one(n, False, today)]
+    if dismissed >= n:
+        return [one(n, True, today)]
+    return [one(n - dismissed, False, today), one(dismissed, True, 0)]
 
 
 # ── The anti-join ────────────────────────────────────────────────────────────
@@ -180,13 +225,14 @@ def test_counts_cover_every_chip_even_at_zero():
     assert counts == {"review": 0, "success": 5, "unposted": 0, "all": 5, "today": 0}
 
 
-def test_everything_that_did_not_post_lands_under_one_chip():
-    """The billing split (`skipped` vs `failed`) is invisible to a reader — both mean "it
-    did not post" — so the two chips became one. What separates the rows is the Message
-    column, not the strip."""
+def test_a_row_somebody_can_still_clear_belongs_to_review():
+    """The re-key. `unposted` is what did not post **and nothing is owed on it**; a filename
+    rule somebody can widen is owed. Filing those under the chip §12 itself calls the one
+    nobody works is how eight `sender_not_allowed` rows cost a day of diagnosis."""
     db = _db(
         pairs={
             ("skipped", "no_rule_match"): (46, 0, 0),
+            ("skipped", "unsupported_attachment"): (12, 0, 0),
             ("failed", "carmen_rejected"): (3, 0, 0),
             ("rejected", "rejected_by_reviewer"): (2, 0, 0),
         },
@@ -197,19 +243,42 @@ def test_everything_that_did_not_post_lands_under_one_chip():
     with make_test_client(db, session=SESSION) as client:
         counts = client.get(BASE, headers=AUTH).json()["counts"]
 
-    assert counts["unposted"] == 51
-    assert counts["all"] == 51
+    assert counts["review"] == 46  # somebody can widen the rule
+    assert counts["unposted"] == 17  # 12 unreadable + 3 refused + 2 rejected
+    # Exactly one chip each, which is what keeps `all` a true total rather than a sum of
+    # overlapping piles.
+    assert counts["all"] == 63
 
 
-def test_attention_marks_every_anomaly_not_only_the_fixable_ones():
-    """The dot means "something is off", not "you can fix it". A failure nobody in the BU
-    can clear is still a failure, and a dot that covers only some of them is one nobody can
-    read the absence of. A filename rule doing its job is the exception: not an anomaly."""
+def test_a_dismissed_row_leaves_review_for_unposted():
+    """The pile has to be able to be worked down. Nothing retries a failure, so without this
+    the chip fills with rows nobody will act on and its number never falls."""
+    db = _db(
+        pairs={("skipped", "no_rule_match"): (46, 0, 0, 0, 20)},
+        manual_count=0,
+        emails=[],
+        manuals=[],
+    )
+    with make_test_client(db, session=SESSION) as client:
+        counts = client.get(BASE, headers=AUTH).json()["counts"]
+
+    assert counts["review"] == 26
+    assert counts["unposted"] == 20
+    assert counts["all"] == 46  # nothing was destroyed, only moved
+
+
+def test_attention_marks_the_machine_misbehaving_not_the_work():
+    """The dot means "something is off", not "there is work here" — `review` holds work by
+    definition now, so a dot drawn from its size would be lit whenever the feature was doing
+    its job. A reviewer's own rejection is not an anomaly either."""
     db = _db(
         pairs={
             ("skipped", "no_rule_match"): (46, 0, 0),
             ("skipped", "unsupported_attachment"): (12, 0, 0),
             ("failed", "carmen_rejected"): (3, 0, 0),
+            ("rejected", "rejected_by_reviewer"): (2, 0, 0),
+            ("pending_review", None): (5, 0, 0),
+            ("pending_review", "tax_id_mismatch"): (4, 0, 0),
         },
         manual_count=0,
         emails=[],
@@ -218,12 +287,32 @@ def test_attention_marks_every_anomaly_not_only_the_fixable_ones():
     with make_test_client(db, session=SESSION) as client:
         body = client.get(BASE, headers=AUTH).json()
 
-    # 46 fixable + 3 Carmen refusals. The 12 unreadable attachments are the BU's own rules
-    # working — we never stored the bytes, and nothing is owed.
-    assert body["attention"]["unposted"] == 49
-    assert body["attention"]["all"] == 49
+    # 46 clearable + the 4 that stopped on a problem. The 5 waiting for a plain OK are the
+    # feature working.
+    assert body["attention"]["review"] == 50
+    # 3 Carmen refusals. The 12 unreadable attachments are the BU's own rules working, and
+    # the 2 rejections were somebody's decision.
+    assert body["attention"]["unposted"] == 3
+    assert body["attention"]["all"] == 53
     # And the plain counts are untouched by any of it.
-    assert body["counts"]["unposted"] == 61
+    assert body["counts"]["review"] == 55
+    assert body["counts"]["unposted"] == 17
+
+
+def test_a_dismissed_row_stops_lighting_the_dot():
+    """ "Seen" was never "fixed", but "put away" is answered — and a row that has been
+    answered has nothing left to say."""
+    db = _db(
+        pairs={("skipped", "no_rule_match"): (46, 0, 0, 0, 46)},
+        manual_count=0,
+        emails=[],
+        manuals=[],
+    )
+    with make_test_client(db, session=SESSION) as client:
+        body = client.get(BASE, headers=AUTH).json()
+
+    assert body["counts"]["unposted"] == 46
+    assert body["attention"]["unposted"] == 0
 
 
 def test_the_dot_spans_every_anomaly_rather_than_a_window():
@@ -400,6 +489,21 @@ def test_today_windows_both_sources_on_the_same_midnight():
     assert ">=" not in str(_email_stmt(uuid.uuid4(), None).compile())
 
 
+def test_the_chip_expression_never_drops_a_row_with_no_reason_code():
+    """`NULL IN (...)` is NULL, not false. Without the coalesce, `unposted` — the negation
+    of the review predicate — evaluates to NULL for every row that carries no reason code,
+    which is every `received` row and every ordinary skip. They would vanish from the strip
+    while still being counted in `all`.
+
+    Compiled rather than executed: the mock DB runs no SQL, so a coalesce quietly deleted
+    here would be invisible to every other test in this file.
+    """
+    sql = str(_chip_expr().compile(compile_kwargs={"literal_binds": True})).lower()
+    assert "coalesce" in sql
+    for chip in ("success", "review", "unposted"):
+        assert chip in sql
+
+
 # ── Dismiss ──────────────────────────────────────────────────────────────────
 
 
@@ -480,14 +584,14 @@ def test_a_chip_someone_already_opened_has_no_dot():
         manual_count=0,
         emails=[],
         manuals=[],
-        seen={"unposted": 49},
+        seen={"review": 49},
     )
     with make_test_client(db, session=SESSION) as client:
         body = client.get(BASE, headers=AUTH).json()
 
-    assert body["unseen"]["unposted"] is False
-    assert body["attention"]["unposted"] == 49
-    assert body["counts"]["unposted"] == 49
+    assert body["unseen"]["review"] is False
+    assert body["attention"]["review"] == 49
+    assert body["counts"]["review"] == 49
 
 
 def test_a_newer_anomaly_brings_the_dot_back():
@@ -497,10 +601,10 @@ def test_a_newer_anomaly_brings_the_dot_back():
         manual_count=0,
         emails=[],
         manuals=[],
-        seen={"unposted": 49},
+        seen={"review": 49},
     )
     with make_test_client(db, session=SESSION) as client:
-        assert client.get(BASE, headers=AUTH).json()["unseen"]["unposted"] is True
+        assert client.get(BASE, headers=AUTH).json()["unseen"]["review"] is True
 
 
 def test_opening_one_chip_does_not_silence_another():
@@ -514,12 +618,12 @@ def test_opening_one_chip_does_not_silence_another():
         manual_count=0,
         emails=[],
         manuals=[],
-        seen={"unposted": 49},
+        seen={"review": 49},
     )
     with make_test_client(db, session=SESSION) as client:
         unseen = client.get(BASE, headers=AUTH).json()["unseen"]
 
-    assert unseen["unposted"] is False
+    assert unseen["review"] is False
     assert unseen["success"] is True
 
 
@@ -532,7 +636,7 @@ def test_a_business_unit_that_has_never_looked_sees_every_dot():
         manuals=[],
     )
     with make_test_client(db, session=SESSION) as client:
-        assert client.get(BASE, headers=AUTH).json()["unseen"]["unposted"] is True
+        assert client.get(BASE, headers=AUTH).json()["unseen"]["review"] is True
 
 
 def test_marking_a_chip_seen_stores_the_count_the_server_computed():
@@ -545,10 +649,10 @@ def test_marking_a_chip_seen_stores_the_count_the_server_computed():
         manuals=[],
     )
     with make_test_client(db, session=SESSION) as client:
-        res = client.post(f"{BASE}/seen", headers=AUTH, json={"filter": "unposted", "seen": 0})
+        res = client.post(f"{BASE}/seen", headers=AUTH, json={"filter": "review", "seen": 0})
 
     assert res.status_code == 200
-    assert res.json() == {"filter": "unposted", "seen": 49}
+    assert res.json() == {"filter": "review", "seen": 49}
     # No row yet, so the first mark creates one rather than 404ing the way auto-post does.
     assert db.add.called
 
@@ -561,12 +665,12 @@ def test_marking_a_chip_seen_keeps_the_other_chips_marks():
         manual_count=0,
         emails=[],
         manuals=[],
-        seen={"unposted": 49},
+        seen={"review": 49},
     )
     with make_test_client(db, session=SESSION) as client:
         client.post(f"{BASE}/seen", headers=AUTH, json={"filter": "success"})
 
-    assert db.get.return_value.seen == {"unposted": 49, "success": 2}
+    assert db.get.return_value.seen == {"review": 49, "success": 2}
 
 
 def test_only_a_real_chip_can_be_marked_seen():

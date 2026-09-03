@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
+  dismissRow,
   getReviewStatus,
   listActivity,
   markChipSeen,
@@ -8,6 +9,8 @@ import {
   type ReviewDocument,
   type ReviewStatus,
 } from '../../lib/api/emailReview'
+import { useT } from '../../i18n/LanguageContext'
+import { showToast } from '../../lib/toast'
 
 export interface ReviewQueueController {
   /** null until the first status fetch lands. The page must not choose which state to
@@ -35,6 +38,9 @@ export interface ReviewQueueController {
    *  empty state — "nothing is waiting" and "we could not ask" must never look alike. */
   error: boolean
   reload: () => void
+  /** Put a row away: it leaves the Review chip and stays under Not posted. Optimistic —
+   *  nothing is destroyed, so a failure simply puts it back. */
+  dismiss: (id: string) => void
 }
 
 /**
@@ -55,6 +61,7 @@ export interface ReviewQueueController {
  * is what forbids that.
  */
 export function useReviewQueue(limit: number): ReviewQueueController {
+  const { t } = useT()
   const [status, setStatus] = useState<ReviewStatus | null>(null)
   // Which chip the page opens on is the BU's own answer to "do I review?", so it waits for
   // status rather than being seeded here. A BU with `auto_post` on has nothing in `review`
@@ -164,6 +171,35 @@ export function useReviewQueue(limit: number): ReviewQueueController {
     return () => window.removeEventListener('focus', onFocus)
   }, [reload])
 
+  /**
+   * Put a row away, on screen first.
+   *
+   * Optimistic because the whole point of the gesture is that it is cheap: a spinner and a
+   * refetch per row would make clearing a morning's noise feel like work. The counts are
+   * adjusted by hand for the same reason — the row moved from `review` to `unposted` and
+   * `all` did not change, which is small enough to say here and not worth a round trip to
+   * be told.
+   *
+   * A failure puts it back and says so. Nothing was destroyed either way; the row is still
+   * there under Not posted.
+   */
+  const dismiss = useCallback(
+    (id: string) => {
+      setRows(rs => rs.filter(r => r.id !== id))
+      setTotal(n => Math.max(0, n - 1))
+      setCounts(c => ({
+        ...c,
+        review: Math.max(0, (c.review ?? 0) - 1),
+        unposted: (c.unposted ?? 0) + 1,
+      }))
+      dismissRow(id).catch(() => {
+        showToast(t('review.dismissFailed'), 'error')
+        reload()
+      })
+    },
+    [reload, t]
+  )
+
   return {
     status,
     filter,
@@ -178,5 +214,6 @@ export function useReviewQueue(limit: number): ReviewQueueController {
     loading,
     error,
     reload,
+    dismiss,
   }
 }

@@ -14,6 +14,7 @@ vi.mock('../lib/api/emailReview', async importOriginal => ({
   // Unstubbed this reaches apiFetch in jsdom. The hook fires it whenever the chip on
   // screen is holding something nobody has looked at.
   markChipSeen: vi.fn(),
+  dismissRow: vi.fn(),
 }))
 // The chrome needs AuthProvider and pulls credits over the network. Neither has anything
 // to do with which of its states this page picks, which is what these tests are about.
@@ -211,6 +212,52 @@ describe('the message column', () => {
     // and postable rather than being a record of a failure.
     mount(status(), [doc({ reason_code: 'carmen_rejected' })])
     expect(await screen.findByRole('button', { name: 'Review' })).toBeInTheDocument()
+  })
+})
+
+describe('dismissing a row nobody will act on', () => {
+  const fixable = () =>
+    doc({ status: 'skipped', reason_code: 'no_rule_match', flags: [], total: 0 })
+
+  it('offers the way out beside the repair, on the work chip', async () => {
+    mount(status(), [fixable()], { ...ZERO, all: 1, review: 1 })
+    expect(await screen.findByRole('link', { name: 'Open settings' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Dismiss this row' })).toBeInTheDocument()
+  })
+
+  it('takes the row off the list without waiting for the server', async () => {
+    // The whole point of the gesture is that it is cheap. A spinner and a refetch per row
+    // would make clearing a morning's noise feel like work.
+    vi.mocked(api.dismissRow).mockResolvedValue(undefined)
+    mount(status(), [fixable()], { ...ZERO, all: 1, review: 1 })
+    fireEvent.click(await screen.findByRole('button', { name: 'Dismiss this row' }))
+
+    await waitFor(() => expect(screen.queryByText('KTC')).not.toBeInTheDocument())
+    expect(api.dismissRow).toHaveBeenCalledWith('d1')
+    // Moved, not destroyed: it is under Not posted now.
+    expect(screen.getByRole('tab', { name: /Review/ })).toHaveTextContent('0')
+  })
+
+  it('puts the row back when the server refuses', async () => {
+    vi.mocked(api.dismissRow).mockRejectedValue(new Error('nope'))
+    mount(status(), [fixable()], { ...ZERO, all: 1, review: 1 })
+    fireEvent.click(await screen.findByRole('button', { name: 'Dismiss this row' }))
+    expect(await screen.findByText('KTC')).toBeInTheDocument()
+  })
+
+  it('offers nothing to dismiss on a chip nobody is working', async () => {
+    // "Stop showing me this" on a history view is an invitation to hide history.
+    mount(status(), [fixable()], { ...ZERO, all: 1, unposted: 1 })
+    fireEvent.click(await screen.findByRole('tab', { name: /Not posted/ }))
+    await waitFor(() => expect(vi.mocked(api.listActivity)).toHaveBeenCalledTimes(2))
+    expect(screen.queryByRole('button', { name: 'Dismiss this row' })).not.toBeInTheDocument()
+  })
+
+  it('never offers it on a document waiting for review', async () => {
+    // Reject is the verb for those, and it records who and why.
+    mount(status(), [doc()], { ...ZERO, all: 1, review: 1 })
+    await screen.findByRole('button', { name: 'Review' })
+    expect(screen.queryByRole('button', { name: 'Dismiss this row' })).not.toBeInTheDocument()
   })
 })
 

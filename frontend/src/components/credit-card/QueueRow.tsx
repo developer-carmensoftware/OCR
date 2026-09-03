@@ -1,4 +1,4 @@
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, X } from 'lucide-react'
 import { useT } from '../../i18n/LanguageContext'
 import { fmt } from '../../lib/format'
 import { glFieldLabel, glFieldList } from '../../lib/glFieldLabels'
@@ -57,9 +57,12 @@ const STATUS_META: Record<string, { key: TKey; tone: string }> = {
 interface Props {
   row: ReviewDocument
   onOpen: (id: string) => void
+  /** Put this row away. Passed only on the Review chip — that is the only place a row can
+   *  be in the way, and it is where the pile has to be able to be worked down. */
+  onDismiss?: (id: string) => void
 }
 
-export default function QueueRow({ row, onOpen }: Props) {
+export default function QueueRow({ row, onOpen, onDismiss }: Props) {
   const { t } = useT()
   const pending = row.status === 'pending_review'
   const status = STATUS_META[row.status] ?? { key: 'review.statusSkipped' as TKey, tone: 'calm' }
@@ -120,7 +123,7 @@ export default function QueueRow({ row, onOpen }: Props) {
       </td>
 
       <td className="rq-c-act" data-label={t('review.colActions')}>
-        <RowAction row={row} onOpen={onOpen} />
+        <RowAction row={row} onOpen={onOpen} onDismiss={onDismiss} />
       </td>
     </tr>
   )
@@ -133,7 +136,7 @@ export default function QueueRow({ row, onOpen }: Props) {
  * transition — so a "View" button on one would open nothing. Its story is already in the
  * Message column.
  */
-function RowAction({ row, onOpen }: Props) {
+function RowAction({ row, onOpen, onDismiss }: Props) {
   const { t } = useT()
 
   // The only row that asks for a decision rather than a repair.
@@ -170,9 +173,33 @@ function RowAction({ row, onOpen }: Props) {
   const fix = row.reason_code ? FIX[row.reason_code] : undefined
   if (!fix) return null
   return (
-    <a className="btn btn-outline btn-sm" href={fix.href}>
-      {t(fix.key)}
-    </a>
+    <>
+      <a className="btn btn-outline btn-sm" href={fix.href}>
+        {t(fix.key)}
+      </a>
+      {/* And the way out of the chip. A row wearing a fix link is in Review, and nothing
+          retries it — fixing the rule today does not clear the rows behind it, so without
+          this the chip fills with work nobody will do and its number never falls.
+
+          An icon, not a second full button: putting the row away is the lesser of the two
+          things to do with it, and two equal buttons in a 7rem column read as a choice
+          rather than as an action and an escape.
+
+          No confirmation and no undo, because nothing is destroyed — the row keeps its
+          whole story under Not posted. Optimistic, because the alternative is a spinner on
+          a gesture whose whole point is to be cheap; a failure puts the row back. */}
+      {onDismiss && (
+        <button
+          type="button"
+          className="btn-icon rq-dismiss"
+          onClick={() => onDismiss(row.id)}
+          aria-label={t('review.actionDismiss')}
+          title={t('review.actionDismiss')}
+        >
+          <X size={14} />
+        </button>
+      )}
+    </>
   )
 }
 

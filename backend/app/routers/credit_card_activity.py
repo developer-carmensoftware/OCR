@@ -11,8 +11,8 @@ Everything a *reviewer* does — open, approve, reject — stays there.
 
 Design: docs/email-automation/07-human-in-the-loop.md §6 (the screen), §9 (four tabs folded
 into one filtered table), §11 (the column order, and `attention`), §12 (three chips, and
-what the dot means now). Where a row came from is no longer a column of its own —
-`MANUAL_FILTERS` below is why.
+what the dot means now), §13 (the chips re-keyed on who can act, plus `today`). Where a row
+came from is no longer a column of its own — `MANUAL_FILTERS` below is why.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ import uuid
 from datetime import UTC, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import SessionInfo, get_current_session
@@ -35,30 +35,30 @@ from app.utils.pagination import count_rows
 
 router = APIRouter(prefix="/api/v1/credit-card", tags=["Credit Card Activity"])
 
-# Filter chip → the ledger statuses under it. Three of the four, and the reader's question
-# is what splits them — not the pipeline's vocabulary (the fourth, `today`, is below):
+# The three status chips, and the reader's question is what splits them — not the pipeline's
+# vocabulary:
 #
-#   review    needs a human now — the only chip with anything to decide
+#   review    wants a human now
 #   success   reached Carmen. Manual scans land here too; they are only ever listed
 #             once they have posted.
-#   unposted  did not become a JV, whatever the cause.
+#   unposted  did not become a JV and nothing is owed on it.
 #
 # `failed` and `skipped` used to be two chips. That split is `status = "skipped" if charged
 # is None else "failed"` (email_ingest_service.py) — whether a credit was charged — and a
-# reader has no way to guess it: both words mean "it did not post". Worse, every
-# customer-clearable cause lands under `skipped`, the one the old comment here called
-# "mostly noise". One chip, and the row's Message says which of the seven causes it is.
-FILTERS: dict[str, tuple[str, ...]] = {
-    "review": ("pending_review",),
-    "success": ("posted",),
-    "unposted": ("failed", "rejected", "skipped", "received"),
-}
+# reader has no way to guess it: both words mean "it did not post".
+#
+# **These are no longer a map of statuses**, because "wants a human" stopped being one.
+# `review` holds parked documents AND the failures somebody here can clear from settings;
+# `unposted` is what is left. §12 of 07-human-in-the-loop.md considered exactly this re-key
+# and declined it — *"it costs a vocabulary the API does not speak"* — and the answer to that
+# is `_chip_expr` below: the API speaks it now, in one place, so a row's chip is one
+# definition rather than one per caller.
+STATUS_CHIPS = ("review", "success", "unposted")
 
-# The fourth chip, and the only one that is not a selection of statuses. `today` is a
-# *window* over all three — what the robot did since midnight, whatever came of it — so it
-# cannot live in FILTERS without giving that map two kinds of value. It is a documented
-# special case in the three places that care, rather than a rewrite of FILTERS into
-# predicates for one member.
+PENDING = "pending_review"
+
+# The fourth chip, and the only one that is not about state at all. `today` is a *window*
+# over the three above — what the robot did since midnight, whatever came of it.
 #
 # Deliberately unfiltered: a day on which the BU's own filename rules threw out forty
 # signature logos is a fact worth being able to see. The noise argument that pulled `all`
@@ -68,7 +68,7 @@ TODAY = "today"
 
 # The strip, in the order it draws. `all` is in neither: it remains the API default and
 # `counts["all"]`, and has no chip.
-CHIPS = (TODAY, *FILTERS)
+CHIPS = (TODAY, *STATUS_CHIPS)
 
 # The BU's midnight, not UTC's. Every tenant on this system keeps Thai books, so a statement
 # read at 06:00 ICT belongs to the day the reviewer is having, not to the one UTC is still
@@ -80,13 +80,13 @@ ICT = timezone(timedelta(hours=7))
 # scans from its day view would be answering a different question than the one it asks.
 MANUAL_FILTERS = ("all", "success", TODAY)
 
-# Reason codes a person in the BU can clear themselves. Its one remaining job is deciding
-# which `skipped` rows are an anomaly rather than the BU's own filename rules doing exactly
-# what they were written to do — see `_attention`.
+# Reason codes a person in the BU can clear themselves. This is now what decides chip
+# membership for a row that did not post: one of these, undismissed, means somebody here can
+# still act, and `review` is where the things that want a person live.
 #
-# Must stay in step with `FIX` in frontend/src/components/credit-card/QueueRow.tsx — that map
-# is what renders the Actions button. Nothing can assert the two match across the language
-# boundary, so each names the other.
+# Must stay in step with `FIX` in frontend/src/lib/reviewReasons.ts — that map is what
+# renders the link. Nothing can assert the two match across the language boundary, so each
+# names the other.
 FIXABLE_REASONS = (
     "mapping_incomplete",
     "carmen_unauthorized",
@@ -108,33 +108,89 @@ STUCK_AFTER = timedelta(hours=1)
 _EPOCH = datetime.min.replace(tzinfo=UTC)
 
 
-def _attention(status: str, reason_code: str | None, n: int, stuck: int, noted: int) -> int:
-    """How many rows in this (status, reason_code) group are **anomalous**.
+def _wants_a_human():
+    """The `review` chip's predicate: the two kinds of row that are somebody's job.
 
-    The dot this feeds means "something is off here", not "you can fix this". It used to
-    mean the latter, which made it silent about every failure a person cannot clear — and a
-    dot that covers only some anomalies is a dot nobody can read the absence of.
+    A parked document — a decision to take, and since a refusal that came after a paid-for
+    extraction parks rather than finishing, that includes most of what used to be `failed`.
+    And a row nobody was charged for but somebody here can still clear from settings, until
+    they put it away: filing those under the chip §12 itself calls the one nobody works is
+    how eight `sender_not_allowed` rows cost a day of diagnosis on 2026-08-28.
+
+    `coalesce` is load-bearing. `NULL IN (...)` is NULL, not false, so without it the
+    negation this predicate is put through for `unposted` evaluates to NULL for every row
+    with no reason code — silently dropping every `received` row out of both chips.
+    """
+    return or_(
+        EmailDocument.status == PENDING,
+        and_(
+            func.coalesce(EmailDocument.reason_code, "").in_(FIXABLE_REASONS),
+            EmailDocument.dismissed_at.is_(None),
+        ),
+    )
+
+
+def _chip_expr():
+    """Which chip a row is in, as SQL — **the only definition there is.**
+
+    The list filters on it and the counts group by it, so a row cannot be counted under one
+    chip and listed under another. The alternative was this rule written twice, once as a
+    WHERE clause and once as a Python fold over the GROUP BY, and the two drifting is the
+    bug this shape cannot have.
+
+    Exactly one chip per row. `counts["all"]` is their sum, so an overlap would make that
+    number a fiction — which is the same reason `today` is left out of it.
+
+    ponytail: a CASE in the WHERE clause cannot use an index. Correct at this repo's volumes
+    (largest business table holds 342 rows — docs/SQL_PERFORMANCE_AUDIT.md); if a BU ever
+    grows into it, expand the CASE back into three explicit clauses keyed off this function
+    so there is still one place to read.
+    """
+    return case(
+        (EmailDocument.status == "posted", "success"),
+        (_wants_a_human(), "review"),
+        else_="unposted",
+    )
+
+
+def _attention(g) -> int:
+    """How many rows in this group are **anomalous**.
+
+    The dot this feeds means "something is off here", not "you can fix this" — a dot that
+    covers only the fixable ones is a dot nobody can read the absence of. And not "there is
+    work here" either: that is what the chip's own count says, and the two would be the same
+    number on a chip whose whole job is holding work.
 
     A lifetime figure, deliberately. Nothing retries a failure, so what puts the dot out is
     the mark in `email_queue_seen` — somebody looking — rather than a clock: this number is
     what the mark is measured against, so it has to count the same things every time.
 
-    - `failed` / `rejected`: all of them. A document that did not post is off regardless of
-      who can act on it.
-    - `skipped`: only `FIXABLE_REASONS`. A filename rule refusing a file it was written to
-      refuse is the system working, and it is the bulk of this bucket.
+    - `pending_review`: only the ones carrying a `reason_code`. A statement waiting for an
+      OK is the feature working; one that *stopped* on a foreign tax ID or a Carmen refusal
+      is not, even though both now sit in the same chip.
+    - `failed`: all of them. Since a charged refusal parks, what is left here is a crash
+      inside the refund boundary, an unhandled bug, or a second copy of something already
+      queued — the machine misbehaving, which is exactly what the dot is for.
+    - `rejected`: none. A reviewer's own decision is not an anomaly, and a signal you set
+      off by doing your job is one you learn to ignore.
+    - `skipped`: `FIXABLE_REASONS` that nobody has put away. A filename rule refusing a file
+      it was written to refuse is the system working, and a dismissed row has been answered.
     - `received`: the stuck ones only. Every row is *claimed* into this state, so age is
       the only thing separating "the pipeline never finished" from "in flight".
     - `posted`: those carrying an `error_message` — the JV reached Carmen but the input-tax
       record did not. Nothing else in the app says so, and the row looks like a success.
     """
-    if status in ("failed", "rejected"):
-        return n
-    if status == "received":
-        return stuck
-    if status == "posted":
-        return noted
-    return n if reason_code in FIXABLE_REASONS else 0
+    if g.status == PENDING:
+        return g.n if g.reason_code else 0
+    if g.status == "failed":
+        return g.n
+    if g.status == "rejected":
+        return 0
+    if g.status == "received":
+        return g.stuck
+    if g.status == "posted":
+        return g.noted
+    return g.n - g.dismissed if g.reason_code in FIXABLE_REASONS else 0
 
 
 def _manual_row(card: CreditCard, task: OCRTask) -> ActivityRow:
@@ -179,6 +235,10 @@ def _counts_stmt(tenant_id: uuid.UUID, now: datetime, day_start: datetime):
     """
     return (
         select(
+            # The chip comes out of the database, not out of a Python fold beside it — see
+            # `_chip_expr`. Grouping by it as well as by (status, reason_code) is what lets
+            # the counts and the list agree by construction.
+            _chip_expr().label("chip"),
             EmailDocument.status,
             EmailDocument.reason_code,
             func.count().label("n"),
@@ -190,38 +250,34 @@ def _counts_stmt(tenant_id: uuid.UUID, now: datetime, day_start: datetime):
             # running. A second round trip for a number this cheap would be the only query
             # on the page that pays for its own answer.
             func.count().filter(EmailDocument.created_at >= day_start).label("today"),
+            # Put away by hand. Only `_attention` reads it — a dismissed row is still under
+            # `unposted` and still counted there, it just stops being a reason to shout.
+            func.count().filter(EmailDocument.dismissed_at.is_not(None)).label("dismissed"),
         )
         .where(EmailDocument.tenant_id == tenant_id)
-        .group_by(EmailDocument.status, EmailDocument.reason_code)
+        .group_by(_chip_expr(), EmailDocument.status, EmailDocument.reason_code)
     )
 
 
-async def _per_pair(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
-    """The GROUP BY, fetched. Both the list and the mark fold over the same numbers, so
-    neither can disagree with the other about what this BU's dot is worth."""
+async def _groups(db: AsyncSession, tenant_id: uuid.UUID) -> list:
+    """The GROUP BY, fetched. Every number on the strip folds over this one list, so no two
+    of them can disagree about what this BU has."""
     stmt = _counts_stmt(tenant_id, datetime.now(UTC), _day_start())
-    return {
-        (r.status, r.reason_code): (r.n, r.stuck, r.noted, r.today)
-        for r in (await db.execute(stmt)).all()
-    }
+    return list((await db.execute(stmt)).all())
 
 
-def _anomalies(per_pair: dict) -> dict[str, int]:
+def _anomalies(groups: list) -> dict[str, int]:
     """Anomalies per chip — the number the mark is measured against.
 
-    Folds over `FILTERS`, so `today` gets no entry and therefore no dot. That is not an
+    Keyed off `STATUS_CHIPS`, so `today` gets no entry and therefore no dot. That is not an
     omission: `unseen` compares this against a stored lifetime acknowledgement, and a number
     that resets at midnight cannot be measured against yesterday's mark. Today's own count
     is the one number on the strip guaranteed to go down.
     """
-    return {
-        k: sum(
-            _attention(s, rc, n, stuck, noted)
-            for (s, rc), (n, stuck, noted, _today) in per_pair.items()
-            if s in v
-        )
-        for k, v in FILTERS.items()
-    }
+    out = dict.fromkeys(STATUS_CHIPS, 0)
+    for g in groups:
+        out[g.chip] += _attention(g)
+    return out
 
 
 async def _seen(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str, int]:
@@ -237,12 +293,17 @@ async def _seen(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str, int]:
 
 def _email_stmt(
     tenant_id: uuid.UUID,
-    statuses: tuple[str, ...] | None,
+    chip: str | None,
     since: datetime | None = None,
 ):
+    """The window, filtered by the same expression the counts group by.
+
+    `chip` is None for `all` and for `today` — neither selects on state; what narrows
+    `today` is `since`.
+    """
     stmt = select(EmailDocument).where(EmailDocument.tenant_id == tenant_id)
-    if statuses is not None:
-        stmt = stmt.where(EmailDocument.status.in_(statuses))
+    if chip is not None:
+        stmt = stmt.where(_chip_expr() == chip)
     if since is not None:
         stmt = stmt.where(EmailDocument.created_at >= since)
     return stmt.order_by(EmailDocument.created_at.desc())
@@ -290,11 +351,12 @@ async def list_activity(
     (see `useReviewQueue`) — a BU that auto-posts has nothing in `review` by definition, and
     landing it on a permanently empty chip would hide the work the robot is doing for it.
 
-    `today` is the one chip that is not a selection of statuses — it is every row since
-    midnight ICT, whatever became of it. So it overlaps all three of the others by
-    construction, which is why `counts["all"]` is summed **before** it is added: `all` is
-    what the page uses to tell a BU that has never had a document from one whose current
-    chip is empty, and counting the same row twice would make that number a fiction.
+    `today` is the one chip that is not about state — it is every row since midnight ICT,
+    whatever became of it. So it overlaps all three of the others by construction, which is
+    why `counts["all"]` is summed **before** it is added: `all` is what the page uses to
+    tell a BU that has never had a document from one whose current chip is empty, and
+    counting the same row twice would make that number a fiction. The three status chips
+    themselves never overlap — `_chip_expr` gives each row exactly one.
 
     An unknown filter falls back to `all` rather than 400ing: the query string is a UI
     detail and a stale bookmark — `?filter=skipped` from before the chips merged — should
@@ -303,39 +365,39 @@ async def list_activity(
     tenant_id = uuid.UUID(str(session.tenant_id))
     if filter not in CHIPS:
         filter = "all"
-    # None for `all` and for `today` — neither has a status predicate at all; what makes
-    # `today` narrower is `since`.
-    statuses = FILTERS.get(filter)
+    # None for `all` and for `today` — neither selects on state; what narrows `today` is
+    # `since`.
+    chip = filter if filter in STATUS_CHIPS else None
     day_start = _day_start()
     since = day_start if filter == TODAY else None
 
-    email_stmt = _email_stmt(tenant_id, statuses, since)
+    email_stmt = _email_stmt(tenant_id, chip, since)
     manual_stmt = _manual_stmt(tenant_id, since)
     wants_manual = filter in MANUAL_FILTERS
 
     # Counts span every row, not the page: one GROUP BY for email plus two counts for
-    # manual, rather than a round trip per chip. Grouped by (status, reason_code) rather
-    # than status alone because `_attention` needs the reason — same single round trip.
-    per_pair = await _per_pair(db, tenant_id)
+    # manual, rather than a round trip per chip. Grouped by chip AND (status, reason_code),
+    # because `_attention` needs the reason — same single round trip.
+    groups = await _groups(db, tenant_id)
     manual_total = await count_rows(db, _manual_stmt(tenant_id))
     manual_today = await count_rows(db, _manual_stmt(tenant_id, day_start))
-    counts = {
-        k: sum(n for (s, _), (n, *_) in per_pair.items() if s in v) for k, v in FILTERS.items()
-    }
+    counts = dict.fromkeys(STATUS_CHIPS, 0)
+    for g in groups:
+        counts[g.chip] += g.n
     counts["success"] += manual_total
     counts["all"] = sum(counts.values())
     # After `all`, deliberately — see the docstring. Today is a window over the three chips
     # above it, not a fourth pile beside them.
-    counts[TODAY] = sum(t for (_s, _rc), (*_, t) in per_pair.items()) + manual_today
+    counts[TODAY] = sum(g.today for g in groups) + manual_today
 
     # How many rows under each chip are wrong in some way — see `_attention` for what that
-    # covers and why it is not "what a person can fix". The status chips are three, so a
-    # cause nothing points at is a cause nobody finds: that is the 2026-08-28
-    # `sender_not_allowed` incident, and `unposted` is where all seven of its siblings live.
+    # covers, and why it is neither "what a person can fix" nor "how much work is here".
+    # The latter matters more now: `review` holds work by definition, so a dot drawn from
+    # its size would be lit whenever the feature was doing its job.
     #
     # No `today` key, and therefore no dot on it — see `_anomalies`. Today's rows are all
     # counted under one of the three below, so anything wrong with them is already lit.
-    attention = _anomalies(per_pair)
+    attention = _anomalies(groups)
     attention["all"] = sum(attention.values())
 
     # …and which of those chips is holding something this BU has not looked at. The count
@@ -385,7 +447,7 @@ async def mark_chip_seen(
     That is the point rather than a compromise — the queue is shared, so "has anyone here
     seen this yet" is a fact about the BU and not about a browser or a person.
     """
-    if body.filter not in FILTERS:
+    if body.filter not in STATUS_CHIPS:
         # A trust boundary: the value becomes a key in the stored JSON. `all` and `today`
         # are rejected with the nonsense, deliberately — neither carries a dot, so neither
         # has a mark to store. `today` additionally could not have one: the mark is a
@@ -393,7 +455,7 @@ async def mark_chip_seen(
         raise ValidationError(f"Unknown filter: {body.filter}")
 
     tenant_id = uuid.UUID(str(session.tenant_id))
-    total = _anomalies(await _per_pair(db, tenant_id))[body.filter]
+    total = _anomalies(await _groups(db, tenant_id))[body.filter]
 
     row = await db.get(EmailQueueSeen, tenant_id)
     if row is None:

@@ -180,6 +180,7 @@ export default function ReviewQueue() {
     loading,
     error,
     reload,
+    dismiss,
   } = useReviewQueue(limit)
   const [reloading, setReloading] = useState(false)
   const [openId, setOpenId] = useState(docIdFromHash)
@@ -351,7 +352,18 @@ export default function ReviewQueue() {
                 {loading &&
                   !hasWork &&
                   Array.from({ length: 3 }).map((_, i) => <RowSkeleton key={i} />)}
-                {hasWork && rows.map(row => <QueueRow key={row.id} row={row} onOpen={openDoc} />)}
+                {/* Dismiss only on the work chip. Elsewhere the row is not in anybody's
+                    way, and a button that means "stop showing me this" on a chip nobody
+                    is working is an invitation to hide history. */}
+                {hasWork &&
+                  rows.map(row => (
+                    <QueueRow
+                      key={row.id}
+                      row={row}
+                      onOpen={openDoc}
+                      onDismiss={filter === 'review' ? dismiss : undefined}
+                    />
+                  ))}
               </tbody>
             </table>
           )}
