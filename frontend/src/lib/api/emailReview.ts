@@ -30,11 +30,12 @@ export type ActivityFilter = 'all' | 'today' | 'review' | 'success' | 'unposted'
  *  map is exhaustive by construction rather than by assertion. */
 export type ChipFilter = Exclude<ActivityFilter, 'all'>
 
-/** The strip, left to right: the day first, then the order a document moves through. Where
- *  the page *opens* is not the first entry here — it follows `auto_post`, see
- *  `useReviewQueue`. Today reads first because it is the question asked on arrival; it is
- *  not the landing chip, because a BU with twelve documents owed must not be shown a quiet
- *  morning instead of its work. */
+/** The strip, left to right: the day first, then the order a document moves through.
+ *
+ *  This is also the fall-through order the page opens on — `today`, then `review`, then
+ *  `success`, stopping at the first with anything in it (`useReviewQueue`). Today reads
+ *  first because it is the question asked on arrival, and a BU with twelve documents owed
+ *  is still never shown a quiet morning: an empty chip hands over rather than holding. */
 export const ACTIVITY_FILTERS: ChipFilter[] = ['today', 'review', 'success', 'unposted']
 
 export interface ReviewDocument {

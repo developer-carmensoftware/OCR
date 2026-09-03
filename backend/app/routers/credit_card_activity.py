@@ -62,8 +62,8 @@ PENDING = "pending_review"
 #
 # Deliberately unfiltered: a day on which the BU's own filename rules threw out forty
 # signature logos is a fact worth being able to see. The noise argument that pulled `all`
-# off the strip (§11 #33) was about the *landing* view, and this is not it — the page still
-# opens on `review`/`success`.
+# off the strip (§11 #33) was about a view a reader is *stuck* on, and an empty Today is
+# never that — `useReviewQueue` falls through it to `review`, and through that to `success`.
 TODAY = "today"
 
 # The strip, in the order it draws. `all` is in neither: it remains the API default and
@@ -361,9 +361,10 @@ async def list_activity(
     `all` remains the API default and is **not a chip** — it has no tab on the screen. It
     survives because `counts["all"]` is how the page tells a BU that has never had a
     document from one that has: the difference between the sales screen and an empty table.
-    What the page opens on is `review`, or `success` when the BU has switched review off
-    (see `useReviewQueue`) — a BU that auto-posts has nothing in `review` by definition, and
-    landing it on a permanently empty chip would hide the work the robot is doing for it.
+    What the page opens on is `today`, falling through to `review` and then to `success` —
+    the first chip with anything in it (see `useReviewQueue`). Every chip's count travels
+    with this response precisely so that decision costs no extra round trip on a day that
+    has something in it.
 
     `today` is the one chip that is not about state — it is every row since midnight ICT,
     whatever became of it. So it overlaps all three of the others by construction, which is
