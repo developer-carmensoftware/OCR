@@ -1514,15 +1514,23 @@
   text-align: right;
 }
 
-/* The read-only half: six values in **two rows of three**, spanning the panel.
-   Its own three tracks rather than the four the fields above use. Six cells in four tracks
-   is what made this read as scatter — the first row ended one column short, the second
-   began one column late, and no figure shared an edge with the identity above it. Three
-   tracks put the document it is filed against directly over what it claims. */
+/* The read-only half: the whole record on **one line**, spanning the panel.
+
+   Six cells in the four tracks the fields use is what made this read as scatter — the first
+   row ended one column short, the second began one column late, and no figure shared an
+   edge with the identity above it. Its own six tracks end that by having no second row to
+   misalign against, and the panel is wide enough to hold them: the three identity values
+   are an invoice number, a date and a month, and the three figures are money.
+
+   Left to right it reads as the record does — what it is filed against, then what it
+   claims — and the amounts, right-aligned by the rule above, end on the panel's own edge.
+
+   Tax invoice no. takes half again what the others do: it is the only cell holding a long
+   mono identifier, where the rest are ten characters or fewer. */
 .itx-facts {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: 1.5fr repeat(5, minmax(0, 1fr));
   gap: var(--space-3) var(--space-4);
   align-items: start;
 }
@@ -1538,10 +1546,12 @@
     grid-column: 1 / -1;
   }
 
-  /* The facts keep their three tracks where the fields drop to two: they hold a document
-     number, a date, a period and three short amounts, and splitting them two-per-row would
-     interleave the identity with the figures — which is the pairing the three tracks exist
-     to hold together. */
+  /* Six on a line is a desktop answer. Three tracks here, so the record breaks into the two
+     halves it is made of — what it is filed against, then what it claims — rather than into
+     three arbitrary pairs that would put a date beside a net amount. */
+  .itx-facts {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 /* The record's headline. Weight and ink, not size: a third type size in a row this short
@@ -1574,6 +1584,12 @@
      its inputs — and it is what leaves the total room to carry weight without shouting. */
   color: var(--text-2);
   white-space: nowrap;
+  /* Six tracks leave each value less room than two rows of three did, and an unusually long
+     invoice number would otherwise run under its neighbour. It ellipsises instead — and
+     every one of these carries a `title`, so the full value is a hover away and the field it
+     comes from shows it in full two panels up. */
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Head is two items now — the tick box says what happens, the toggle opens the record —

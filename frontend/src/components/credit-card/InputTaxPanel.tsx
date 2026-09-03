@@ -299,23 +299,23 @@ export default function InputTaxPanel({
                 track, so it also draws the grid the two rows share. */}
             <div className="itx-rule" />
 
-            {/* Everything the record says that nobody types: **six values, two rows of
-                three, on one set of column edges.**
+            {/* Everything the record says that nobody types: **the whole of it on one
+                line.**
 
                 Its own grid rather than the four field tracks above. Six cells in four
                 tracks is what made this read as scatter — the first row ended one column
                 short, the second began one column late, and each figure sat under a
-                different edge from the identity above it. Three tracks put the document it
-                is filed against directly over what it claims, which is the pairing a
-                reviewer is actually checking.
+                different edge from the identity above it. Six tracks end that by leaving no
+                second row to misalign against, and the panel is wide enough: three short
+                identity values and three amounts.
 
-                What the two rows are: `InvhTInvNo` / `InvhTInvDt` / the period the claim
-                lands in, then `BfTaxAmt` / `TaxAmt` / `TotalAmt` under Carmen's own column
-                headings — which is what settles `Tax` over `VAT` for the middle one. The
-                reviewer checks that figure against the ERP they are posting to, and a
-                screen that renames it makes them do the matching. All three, not the tax
-                alone; `989.87` says nothing about whether 989.87 is right, while the three
-                together are the record's whole arithmetic.
+                Left to right it reads as the record does: `InvhTInvNo` / `InvhTInvDt` / the
+                period the claim lands in, then `BfTaxAmt` / `TaxAmt` / `TotalAmt` under
+                Carmen's own column headings — which is what settles `Tax` over `VAT` for the
+                middle one. The reviewer checks that figure against the ERP they are posting
+                to, and a screen that renames it makes them do the matching. All three, not
+                the tax alone; `989.87` says nothing about whether 989.87 is right, while the
+                three together are the record's whole arithmetic.
 
                 **None of the six is a field, and none looks like one.** The amounts are
                 sums over `details` — the lines `buildJvRows` builds the journal from and
@@ -327,18 +327,27 @@ export default function InputTaxPanel({
                 field it comes from, two panels up. `.itx-fact` is built as `.rd-f` is, so
                 the wash is what tells a value from a field — the rule this screen already
                 runs on. */}
+            {/* `title` on every value, because six tracks make each cell narrow enough that
+                an unusually long invoice number ellipsises. Nothing is lost — the document
+                number and date are also fields in full two panels up. */}
             <div className="itx-facts">
               <span className="itx-fact">
                 <span className="rd-f-label">{t('review.itxTInvNo')}</span>
-                <span className="itx-fact-v text-mono">{headerData.DocNo || '—'}</span>
+                <span className="itx-fact-v text-mono" title={headerData.DocNo || undefined}>
+                  {headerData.DocNo || '—'}
+                </span>
               </span>
               <span className="itx-fact">
                 <span className="rd-f-label">{t('review.itxTInvDt')}</span>
-                <span className="itx-fact-v text-mono">{headerData.DocDate || '—'}</span>
+                <span className="itx-fact-v text-mono" title={headerData.DocDate || undefined}>
+                  {headerData.DocDate || '—'}
+                </span>
               </span>
               <span className="itx-fact">
                 <span className="rd-f-label">{t('review.itxPeriod')}</span>
-                <span className="itx-fact-v text-mono">{period}</span>
+                <span className="itx-fact-v text-mono" title={period}>
+                  {period}
+                </span>
               </span>
 
               {/* Right-aligned, as `.jv-num` right-aligns every figure on this screen, so
@@ -346,17 +355,23 @@ export default function InputTaxPanel({
                   numbers. */}
               <span className="itx-fact itx-fact--amt">
                 <span className="rd-f-label">{t('review.itxNet')}</span>
-                <span className="itx-fact-v text-mono">{fmt(tax.net)}</span>
+                <span className="itx-fact-v text-mono" title={fmt(tax.net)}>
+                  {fmt(tax.net)}
+                </span>
               </span>
               <span className="itx-fact itx-fact--amt">
                 <span className="rd-f-label">{t('review.itxTax')}</span>
-                <span className="itx-fact-v text-mono">{fmt(tax.vat)}</span>
+                <span className="itx-fact-v text-mono" title={fmt(tax.vat)}>
+                  {fmt(tax.vat)}
+                </span>
               </span>
               {/* The record's headline figure, and the only one carrying weight — two
                   dimensions of hierarchy where three amounts would otherwise read flat. */}
               <span className="itx-fact itx-fact--amt itx-fact--total">
                 <span className="rd-f-label">{t('review.itxTotal')}</span>
-                <span className="itx-fact-v text-mono">{fmt(tax.total)}</span>
+                <span className="itx-fact-v text-mono" title={fmt(tax.total)}>
+                  {fmt(tax.total)}
+                </span>
               </span>
             </div>
           </div>
