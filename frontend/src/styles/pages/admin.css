@@ -1449,7 +1449,7 @@ body:has(.admin-login-page) {
 @media (max-width: 768px) {
   .admin-nav-item,
   .pager__btn,
-  .pager__select,
+  .pager__size-select .isel-trigger,
   .admin-select,
   .admin-date-input,
   .alert-resolve-btn,

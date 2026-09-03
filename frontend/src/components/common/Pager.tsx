@@ -1,7 +1,11 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useT } from '../../i18n/LanguageContext'
+import InlineSelect from './InlineSelect'
 import { ROWS_PER_PAGE } from '../../hooks/useRowsPerPage'
 import '../../styles/components/pager.css'
+
+/** A constant, so it is built once rather than on every render of every table's pager. */
+const SIZE_OPTIONS = ROWS_PER_PAGE.map(n => ({ value: String(n), label: String(n) }))
 
 interface Props {
   offset: number
@@ -43,20 +47,19 @@ export default function Pager({ offset, limit, total, onChange, onLimitChange }:
   return (
     <nav className="pager" aria-label={t('common.pagination')}>
       {onLimitChange && (
-        <label className="pager__size">
+        <span className="pager__size">
           {t('common.rowsPerPage')}
-          <select
-            className="pager__select"
-            value={limit}
-            onChange={e => onLimitChange(Number(e.target.value))}
-          >
-            {ROWS_PER_PAGE.map(n => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-        </label>
+          {/* `InlineSelect`, not a native <select>: a browser draws the option list itself,
+              outside the page, so the app's popover tokens, radius, shadow and hover never
+              reached it — the one surface here that was still wearing the OS's design. */}
+          <InlineSelect
+            className="pager__size-select"
+            value={String(limit)}
+            onChange={v => onLimitChange(Number(v))}
+            options={SIZE_OPTIONS}
+            aria-label={t('common.rowsPerPage')}
+          />
+        </span>
       )}
       <span className="pager__range text-mono">
         {t('common.pageRange', {

@@ -16,6 +16,15 @@ const columns = [
   { key: 'name', label: 'Name', sortable: true },
   { key: 'code', label: 'Code', sortable: true },
 ]
+/** Pager's rows-per-page control: a listbox trigger, opened and picked from. */
+const sizeTrigger = () => screen.queryByRole('button', { name: 'common.rowsPerPage' })
+const chooseSize = (n: string) => {
+  fireEvent.click(sizeTrigger()!)
+  // `hidden: true`: the panel is a <datalist>, which the UA stylesheet hides and
+  // inline-select.css un-hides — jsdom loads no CSS, so it stays hidden to role queries.
+  fireEvent.mouseDown(screen.getByRole('option', { name: n, hidden: true }))
+}
+
 const rows = [
   { id: '1', name: 'b', code: 'x' },
   { id: '2', name: 'a', code: 'y' },
@@ -70,12 +79,12 @@ describe('DataTable paging', () => {
     const { container } = render(<DataTable columns={columns} rows={many(20)} pageSize={3} />)
     expect(container.querySelectorAll('tbody tr')).toHaveLength(3)
     // A nested table's size is not the reader's to pick.
-    expect(screen.queryByRole('combobox')).toBeNull()
+    expect(sizeTrigger()).toBeNull()
   })
 
   it('choosing a size repages, and remembers the choice', () => {
     const { container } = render(<DataTable columns={columns} rows={many(40)} />)
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: '25' } })
+    chooseSize('25')
     expect(container.querySelectorAll('tbody tr')).toHaveLength(25)
     expect(localStorage.getItem('rowsPerPage')).toBe('25')
   })
@@ -100,7 +109,7 @@ describe('DataTable paging', () => {
   it('hides the pager entirely below the smallest size — no option would change anything', () => {
     render(<DataTable columns={columns} rows={rows} />)
     expect(screen.queryByRole('button', { name: 'common.pageNext' })).toBeNull()
-    expect(screen.queryByRole('combobox')).toBeNull()
+    expect(sizeTrigger()).toBeNull()
   })
 
   it('keeps the rows it has while a later page loads, rather than flashing skeletons', () => {
@@ -248,7 +257,7 @@ describe('DataTable server mode', () => {
         server={{ sort: null, dir: 'desc', offset: 0, limit: 50, total: 99, onChange }}
       />
     )
-    expect(screen.getByRole('combobox')).toHaveValue('50')
+    expect(sizeTrigger()).toHaveTextContent('50')
     // And it reports nothing on its own — the old measuring version pushed a limit up
     // on mount, which is what let the measurement and the fetch chase each other.
     expect(onChange).not.toHaveBeenCalled()
@@ -263,7 +272,7 @@ describe('DataTable server mode', () => {
         server={{ sort: null, dir: 'desc', offset: 80, limit: 15, total: 99, onChange }}
       />
     )
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: '50' } })
+    chooseSize('50')
     // Both halves together: offset 80 at limit 50 points past the end, and two patches
     // would be two fetches to reach one page.
     expect(onChange).toHaveBeenCalledTimes(1)
