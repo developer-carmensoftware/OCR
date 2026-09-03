@@ -161,7 +161,9 @@ export default function ReviewQueue() {
   const { t } = useT()
   // Page size is the reader's, shared with every other table in the app. The options top
   // out at 100, which is the cap FastAPI enforces on GET /api/v1/credit-card/activity.
-  const [limit, setLimit] = useRowsPerPage()
+  // This one starts at 10 rather than the app-wide 15: the queue is a landing page, and a
+  // reviewer should see the whole first page without scrolling. A stored choice still wins.
+  const [limit, setLimit] = useRowsPerPage(10)
   const {
     status,
     filter,

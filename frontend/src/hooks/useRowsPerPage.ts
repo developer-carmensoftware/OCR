@@ -15,24 +15,26 @@ import { useCallback, useState } from 'react'
  * somebody who wants 50 rows wants 50 rows everywhere.
  */
 
-export const ROWS_PER_PAGE = [15, 25, 50, 100] as const
+export const ROWS_PER_PAGE = [10, 15, 25, 50, 100] as const
 
 const KEY = 'rowsPerPage'
-const DEFAULT = ROWS_PER_PAGE[0]
+const DEFAULT = 15
 
 /**
- * The stored size, or 15. Exported because it must be readable **synchronously**, before
- * the first render: `useTableQuery` seeds its default from it so the very first fetch
- * already carries the right limit instead of asking for 25 and immediately asking again.
+ * The stored size, or `fallback` (15). Exported because it must be readable
+ * **synchronously**, before the first render: `useTableQuery` seeds its default from it so
+ * the very first fetch already carries the right limit instead of asking for 25 and
+ * immediately asking again. `fallback` is for a list that should start smaller than the
+ * app-wide default — the review queue, which must fit the first screen without scrolling.
  */
-export function readRowsPerPage(): number {
+export function readRowsPerPage(fallback: number = DEFAULT): number {
   try {
     const n = Number(localStorage.getItem(KEY))
     // Anything not on the list — a hand-edited value, an option we have since dropped —
     // falls back rather than being sent to an endpoint that would 422 it.
-    return (ROWS_PER_PAGE as readonly number[]).includes(n) ? n : DEFAULT
+    return (ROWS_PER_PAGE as readonly number[]).includes(n) ? n : fallback
   } catch {
-    return DEFAULT // storage unavailable (private window, blocked site data)
+    return fallback // storage unavailable (private window, blocked site data)
   }
 }
 
@@ -49,8 +51,8 @@ export function writeRowsPerPage(n: number): void {
 }
 
 /** The choice as state, for a list that has nowhere else to keep it. */
-export function useRowsPerPage(): [number, (n: number) => void] {
-  const [rows, setRows] = useState(readRowsPerPage)
+export function useRowsPerPage(fallback?: number): [number, (n: number) => void] {
+  const [rows, setRows] = useState(() => readRowsPerPage(fallback))
 
   const choose = useCallback((n: number) => {
     writeRowsPerPage(n)
