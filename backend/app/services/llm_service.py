@@ -142,11 +142,11 @@ async def extract_from_image(
     # uses) so row cleaning can spare fee-invoice line rows, whose pay_amt is null
     # by design and would otherwise be dropped as "blank" before the normalizer runs.
     resolved_bank = detect_bank_code(
+        model_bank_code=extracted.bank_code,
         bank_company_name=extracted.bank_company_name,
         bank_name=extracted.bank_name,
         company_name=extracted.company_name,
         doc_name=extracted.doc_name,
-        raw_text=raw_text,
     )
     extracted.details = _clean_llm_rows(
         extracted.details, is_fee_invoice=resolved_bank in FEE_INVOICE_CODES

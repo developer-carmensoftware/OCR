@@ -738,6 +738,31 @@ async def _process_attachment(
         current_tenant_id.reset(tenant_ctx)
 
 
+def _resolve_bank(extracted: ExtractedCreditCardData, rule_bank: str | None) -> str | None:
+    """Which bank issued this document: what it says, else what the rule guessed.
+
+    The document outranks the rule because the rule is a filename substring and the
+    document is the printed issuer. When they disagree the rule's patterns are catching
+    another bank's files — say so on the document itself: the reviewer sees it as the
+    amber banner, and it is the only place a mis-scoped pattern is visible before it has
+    posted a JV against the wrong vendor.
+    """
+    detected = detect_bank_code(
+        model_bank_code=extracted.bank_code,
+        bank_company_name=extracted.bank_company_name,
+        bank_name=extracted.bank_name,
+        company_name=extracted.company_name,
+        doc_name=extracted.doc_name,
+    )
+    if detected and rule_bank and detected != rule_bank:
+        extracted.warnings.append(
+            f"This file matched your {rule_bank} rule, but the document was issued by "
+            f"{detected} — it has been filed as {detected}. Check that rule's filename "
+            "patterns."
+        )
+    return detected or rule_bank
+
+
 async def _run_document(
     *,
     ledger_id: uuid.UUID,
@@ -799,9 +824,16 @@ async def _run_document(
             # #/admin — and it costs nothing, which is what removes the whole
             # signature-logo class of junk from the spend.
             raise _Skip("no_rule_match", f"No rule matches {filename}")
-        # Overlapping patterns: don't guess the prompt, let detect_bank_code read the
-        # document. A wrong bank prompt is worse than the generic one.
-        bank_code = matched[0].get("bank_code") if len(matched) == 1 else None
+        # A rule says which files are worth scanning. It does NOT say which bank issued
+        # one: `filename_patterns` is a substring test and `.pdf` is a documented escape
+        # hatch, so one broad rule is the sole match for every other bank's documents and
+        # used to label all of them itself — and pick their extraction layout. Kept only
+        # as the fallback for a document whose issuer cannot be read at all.
+        rule_bank = matched[0].get("bank_code") if len(matched) == 1 else None
+        # Standing guess, so a row that fails before extraction still names an issuer for
+        # the "several BUs failing on the same bank" signal. Replaced by the document's
+        # own answer the moment there is one.
+        bank_code = rule_bank
 
         # Before any charge: a disguised, locked or corrupt file must not cost anything.
         password = await _open_or_fail(blob, filename, passwords)
@@ -837,13 +869,19 @@ async def _run_document(
             # The first money of the document, and the tenant and task are already known —
             # so `log_llm_usage` inserts a fully attributed row rather than needing the
             # tenant-less parking buffer the tax-ID design forced on it.
+            # No bank: the combined auto-detect prompt, always. A filename cannot pick a
+            # layout — reading a GHL invoice with the KBANK layout mismaps its columns AND
+            # makes it answer "ธนาคารกสิกรไทย", which then confirms the wrong bank to
+            # every later reader.
             extracted = await ocr_service.extract_stateless(
                 file_bytes=blob,
                 original_filename=filename,
-                bank_code=bank_code,
                 task_id=task_id,
                 pdf_password=password,
             )
+            # Resolved once, before finalize_extraction, so `credit_cards.bank_code` and
+            # `email_documents.bank_code` are the same decision rather than two.
+            bank_code = _resolve_bank(extracted, rule_bank)
             extracted = await finalize_extraction(extracted, task_id, tenant_id, bank_code, None)
         except Exception as exc:
             if charged:
@@ -852,15 +890,6 @@ async def _run_document(
                 await mark_task_failed(task_id, exc)
             raise
 
-        # A manual forward carries no bank identity, and overlapping rules name no one
-        # bank — resolve it from the document, exactly as finalize_extraction does.
-        bank_code = bank_code or detect_bank_code(
-            bank_company_name=extracted.bank_company_name,
-            bank_name=extracted.bank_name,
-            company_name=extracted.company_name,
-            doc_name=extracted.doc_name,
-            raw_text=extracted.raw_text,
-        )
         doc_no = extracted.doc_no
 
         # The second factor. The envelope said who owns this mail; if the document

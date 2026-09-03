@@ -87,7 +87,7 @@ Each is traceable to the code that implements it.
 | A tax ID belongs to exactly one BU system-wide | A second claim is almost always a copy-paste mistake and would route another company's document into these books — `409` on write |
 | A bank's own tax ID cannot be registered by a customer | It's printed on the same invoice the customer is reading to find theirs — `422 reserved_tax_id` |
 | `filename_patterns` is required, at least one entry, on every rule | An attachment matching no pattern is never processed — this is not an optional filter |
-| At most one rule per `bank_code` (including `null` = "Other") | A rule identifies a bank, never a BU; ambiguity here would mean guessing which prompt to extract with |
+| At most one rule per `bank_code` (including `null` = "Other") | One place to edit a bank's patterns and password. It is **not** what makes the bank unambiguous — since 2026-09-03 the document names its own issuer and the rule is only a fallback (decision #21), so overlapping patterns are safe |
 | The ingest tag is issued once and never reissued | A BU's mailbox rule points at it forever; reissuing would make their documents vanish with no error |
 | `owner_emails` defaults to empty (accept any sender) | "Start broad, narrow later" — a gate nobody asked for that silently refuses real documents is worse than no gate |
 | `enabled: true` requires at least one tax ID and an active entitlement | Both are checked at write time so the failure is visible on the settings screen, not silently blocking every future document |

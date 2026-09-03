@@ -670,36 +670,120 @@ async def test_a_sender_hit_does_not_buy_a_filename_miss_an_llm_call():
 
 
 @pytest.mark.asyncio
-async def test_one_matching_rule_names_the_bank_for_the_prompt():
+async def test_a_rule_never_picks_the_extraction_layout():
+    """A filename substring cannot choose a bank prompt, however unambiguous the match.
+
+    Reading a KTC invoice with the KBANK layout mismaps its columns and makes it answer
+    "ธนาคารกสิกรไทย", which then confirms the wrong bank to every later reader.
+    """
     db = _FakeDB()
     _, p = await _run(
         db,
         filename="MDR-aug.jpg",
-        rules=[{"bank_code": "KTC", "filename_patterns": ["MDR"], "is_active": True}],
+        rules=[{"bank_code": "KBANK", "filename_patterns": ["MDR"], "is_active": True}],
         extracted=_extracted(),
         config=_config(),
         carmen_result={"Code": 0, "InternalMessage": "JV-1"},
     )
-    assert p.extract.await_args.kwargs["bank_code"] == "KTC"
+    assert p.extract.await_args.kwargs.get("bank_code") is None
 
 
 @pytest.mark.asyncio
-async def test_overlapping_rules_leave_the_bank_to_the_document():
-    """Two rules naming the same filename is a config overlap. Guessing the prompt is
-    worse than the generic one — detect_bank_code reads the document instead."""
+async def test_the_document_outranks_the_rule_that_matched_it():
+    """The exact reported bug: one broad rule is the sole match for every bank's files,
+    and used to label all of them itself. The issuer printed on the page wins, and the
+    reviewer is told which rule over-reached."""
     db = _FakeDB()
-    _, p = await _run(
+    extracted = _extracted()  # bank_company_name="Krungthai Card" → KTC
+    outcome, _ = await _run(
+        db,
+        filename="anything.jpg",
+        rules=[{"bank_code": "KBANK", "filename_patterns": [".jpg"], "is_active": True}],
+        extracted=extracted,
+        config=_config(),
+        carmen_result={"Code": 0, "InternalMessage": "JV-1"},
+    )
+    assert outcome == "posted"
+    assert db.added[0].bank_code == "KTC"
+    # Pinned in full: `ReviewDocument.test.tsx` renders this exact sentence, and a
+    # warning the reviewer cannot act on is the same as no warning.
+    assert extracted.warnings == [
+        "This file matched your KBANK rule, but the document was issued by KTC — it has "
+        "been filed as KTC. Check that rule's filename patterns."
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_rule_still_names_a_bank_the_document_cannot():
+    """Fallback, not dead weight: an issuer nothing can read keeps the rule's answer."""
+    db = _FakeDB()
+    await _run(
+        db,
+        filename="MDR-aug.jpg",
+        rules=[{"bank_code": "KTC", "filename_patterns": ["MDR"], "is_active": True}],
+        extracted=_extracted(bank_company_name=None, bank_name=None, doc_name=None),
+        config=_config(),
+        carmen_result={"Code": 0, "InternalMessage": "JV-1"},
+    )
+    assert db.added[0].bank_code == "KTC"
+
+
+@pytest.mark.asyncio
+async def test_the_model_naming_its_issuer_beats_the_header_fields():
+    """Tier 0 end to end: a document whose bank_name a wrong layout would dictate is
+    still filed under the issuer the model says it matched."""
+    db = _FakeDB()
+    await _run(
         db,
         filename="report.jpg",
         rules=[
             {"bank_code": "KTC", "filename_patterns": ["report"], "is_active": True},
             {"bank_code": "GHL", "filename_patterns": ["report"], "is_active": True},
         ],
-        extracted=_extracted(),
+        extracted=_extracted(bank_code="GHL"),
         config=_config(),
         carmen_result={"Code": 0, "InternalMessage": "JV-1"},
     )
-    assert p.extract.await_args.kwargs["bank_code"] is None
+    assert db.added[0].bank_code == "GHL"
+
+
+@pytest.mark.asyncio
+async def test_three_banks_in_one_poll_come_out_as_three_banks():
+    """The reported bug, at the size it was reported: several rules, several banks, one
+    mailbox run, and every document used to come back labelled with the one rule whose
+    pattern was broad enough to catch them all."""
+    db = _FakeDB()
+    rules = [
+        # The broad one. Sole match for anything the two below miss — which used to make
+        # it the answer for every bank.
+        {"bank_code": "KBANK", "filename_patterns": [".pdf"], "is_active": True},
+        {"bank_code": "KTC", "filename_patterns": ["MDR"], "is_active": True},
+        {"bank_code": "BAY", "filename_patterns": ["krungsri"], "is_active": True},
+    ]
+    mail = [
+        ("kbank-july.pdf", "ธนาคารกสิกรไทย จำกัด (มหาชน)", "KBANK"),
+        ("MDR-july.pdf", "บริษัท บัตรกรุงไทย จำกัด (มหาชน)", "KTC"),
+        ("krungsri-july.pdf", "ธนาคารกรุงศรีอยุธยา จำกัด (มหาชน)", "BAY"),
+        # Renamed by an employee before forwarding: only the .pdf rule claims it, and the
+        # issuer is nobody that rule names.
+        ("scan0012.pdf", "PayPal Thailand Limited", "PAYPAL"),
+    ]
+    for i, (filename, issuer, _) in enumerate(mail):
+        outcome, _ = await _run(
+            db,
+            filename=filename,
+            message_id=f"<msg-{i}@bank.co.th>",
+            rules=rules,
+            extracted=_extracted(bank_company_name=issuer, bank_name=None, doc_no=f"INV-{i}"),
+            config=_config(),
+            carmen_result={"Code": 0, "InternalMessage": f"JV-{i}"},
+        )
+        assert outcome == "posted"
+
+    ledger = [r for r in db.added if hasattr(r, "attachment")]
+    assert [(r.attachment, r.bank_code) for r in ledger] == [
+        (filename, expected) for filename, _, expected in mail
+    ]
 
 
 # ── The second factor: the tax ID verifies, it no longer routes ───────────────

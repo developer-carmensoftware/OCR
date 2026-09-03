@@ -197,9 +197,10 @@ sequenceDiagram
     Note over Ingest: Everything above this line is free.
     Ingest->>DB: consume_document() — first charge
     Ingest->>DB: create_task()
-    Ingest->>Vision: extract_stateless() — first LLM spend
+    Ingest->>Vision: extract_stateless() — first LLM spend, always the auto-detect prompt
     Vision-->>Ingest: ExtractedCreditCardData
-    Ingest->>Ingest: finalize_extraction(), detect_bank_code()
+    Ingest->>Ingest: _resolve_bank() — the document names its issuer, the rule is the fallback
+    Ingest->>Ingest: finalize_extraction()
     Ingest->>DB: foreign_tax_id() — second-factor check
     Ingest->>DB: is_duplicate check
     Ingest->>DB: get_accounting_config() — existing GL mappings

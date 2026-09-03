@@ -25,14 +25,20 @@ def test_doc_name_keyword_fallback():
     assert detect_bank_code(doc_name="ใบสรุปยอดขายบัตรเครดิต") == "SCB"
 
 
-def test_raw_text_keyword_fallback():
-    assert detect_bank_code(raw_text="...ธนาคารกสิกรไทย...") == "KBANK"
-    assert detect_bank_code(raw_text="...กรุงเทพ...") == "BBL"
-    assert detect_bank_code(raw_text="...ไทยพาณิชย์...") == "SCB"
+def test_model_answer_wins_over_every_keyword_tier():
+    # Tier 0: the reader looking at the page beats keyword-matching the header fields it
+    # happened to fill in — including a fixed bank_name a wrong layout prompt dictated.
+    assert (
+        detect_bank_code(model_bank_code="GHL", bank_name="ธนาคารกสิกรไทย", doc_name="KASIKORN")
+        == "GHL"
+    )
 
 
-def test_name_signal_takes_priority_over_raw_text():
-    assert detect_bank_code(bank_company_name="ธนาคารกรุงเทพ", raw_text="กสิกร") == "BBL"
+def test_model_answer_is_untrusted_text():
+    # Anything that is not one of ours falls through to the keyword tiers.
+    for junk in ("KASIKORN", "Bangkok Bank", "kbank", "", None, "xx"):
+        assert detect_bank_code(model_bank_code=junk, bank_company_name="ธนาคารกรุงเทพ") == "BBL"
+    assert detect_bank_code(model_bank_code="KASIKORN") is None
 
 
 def test_detects_new_commission_formats_from_names():
@@ -48,34 +54,41 @@ def test_detects_new_commission_formats_from_names():
 
 def test_ktc_wins_over_generic_krung_prefixes():
     # บัตรกรุงไทย must NOT fall through to กรุงเทพ/กรุงศรี checks
-    assert detect_bank_code(raw_text="KRUNGTHAI CARD PUBLIC COMPANY LIMITED") == "KTC"
+    assert detect_bank_code(doc_name="KRUNGTHAI CARD PUBLIC COMPANY LIMITED") == "KTC"
     assert detect_bank_code(bank_company_name="บริษัท บัตรกรุงไทย จำกัด (มหาชน)") == "KTC"
 
 
-def test_new_formats_raw_text_fallback():
-    assert detect_bank_code(raw_text="...ธนาคารกรุงศรีอยุธยา...") == "BAY"
-    assert detect_bank_code(raw_text="...NTT DATA Digital Payment...") == "GHL"
-    assert detect_bank_code(raw_text="...paypal.com...") == "PAYPAL"
-    assert detect_bank_code(raw_text="...SiamPay Service - Processing Fee...") == "SIAMPAY"
+def test_new_formats_from_issuer_and_doc_name():
+    assert detect_bank_code(bank_company_name="...ธนาคารกรุงศรีอยุธยา...") == "BAY"
+    assert detect_bank_code(bank_company_name="NTT DATA Digital Payment") == "GHL"
+    assert detect_bank_code(doc_name="Invoice from paypal.com") == "PAYPAL"
+    assert detect_bank_code(doc_name="SiamPay Service - Processing Fee") == "SIAMPAY"
 
 
 def test_bay_english_aliases():
     assert detect_bank_code(bank_company_name="Bank of Ayudhya Public Company Limited") == "BAY"
-    assert detect_bank_code(raw_text="...KRUNGSRI...") == "BAY"
+    assert detect_bank_code(doc_name="...KRUNGSRI...") == "BAY"
 
 
-def test_processor_wins_over_bangkok_address_in_raw_text():
+def test_processor_wins_over_bangkok_address():
     # All four processors print a Bangkok (กรุงเทพ) address — the address must
     # not misroute detection to BBL.
-    assert detect_bank_code(raw_text="เอ็นทีที เดต้า ... สีลม เขตบางรัก กรุงเทพมหานคร 10500") == "GHL"
-    assert detect_bank_code(raw_text="PayPal Thailand ... Pathumwan กรุงเทพ 10330") == "PAYPAL"
+    assert (
+        detect_bank_code(bank_company_name="เอ็นทีที เดต้า ... สีลม เขตบางรัก กรุงเทพมหานคร 10500")
+        == "GHL"
+    )
+    assert (
+        detect_bank_code(bank_company_name="PayPal Thailand ... Pathumwan กรุงเทพ 10330") == "PAYPAL"
+    )
     # But a plain Bangkok Bank document still resolves to BBL
-    assert detect_bank_code(raw_text="ธนาคารกรุงเทพ จำกัด (มหาชน)") == "BBL"
+    assert detect_bank_code(bank_company_name="ธนาคารกรุงเทพ จำกัด (มหาชน)") == "BBL"
 
 
 def test_merchant_company_name_cannot_flip_to_new_issuer():
-    # Merchant named กรุงศรี* must not be detected as BAY; the raw-text signal wins.
-    assert detect_bank_code(company_name="บริษัท กรุงศรี ฟู้ดส์ จำกัด", raw_text="กสิกร") == "KBANK"
+    # Merchant named กรุงศรี* must not be detected as BAY; the issuer signal wins.
+    assert (
+        detect_bank_code(company_name="บริษัท กรุงศรี ฟู้ดส์ จำกัด", bank_name="ธนาคารกสิกรไทย") == "KBANK"
+    )
     assert detect_bank_code(company_name="บริษัท กรุงศรี ฟู้ดส์ จำกัด") is None
 
 

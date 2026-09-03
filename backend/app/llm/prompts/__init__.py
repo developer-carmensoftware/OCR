@@ -30,18 +30,20 @@ _REGISTRY: dict[str, str] = {
     "SIAMPAY": _SIAMPAY,
 }
 
-# Bump whenever a layout changes — used by GET /api/version
+# Bump whenever a layout changes — used by GET /api/version.
+# All bumped together on 2026-09-03: the shared OUTPUT_RULES gained `bank_code`, so every
+# prompt's output contract changed, not just one layout.
 _PROMPT_VERSIONS: dict[str, str] = {
-    "BBL": "2.2.0",
-    "KBANK": "2.2.0",
-    "SCB": "2.2.0",
-    "BAY": "1.3.0",
-    "KTC": "1.4.0",
-    "GHL": "1.4.0",
-    "PAYPAL": "1.4.0",
-    "SIAMPAY": "1.4.0",
-    "GENERIC": "2.2.0",
-    "COMBINED": "2.6.0",
+    "BBL": "2.3.0",
+    "KBANK": "2.3.0",
+    "SCB": "2.3.0",
+    "BAY": "1.4.0",
+    "KTC": "1.5.0",
+    "GHL": "1.5.0",
+    "PAYPAL": "1.5.0",
+    "SIAMPAY": "1.5.0",
+    "GENERIC": "2.3.0",
+    "COMBINED": "2.7.0",
 }
 
 # Pre-built at import time — no cost at request time

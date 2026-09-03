@@ -108,6 +108,27 @@ describe('which state the automation page paints', () => {
     )
   })
 
+  it('shows each row the bank that issued it, not one bank for the whole page', async () => {
+    // The reported bug, at the surface where it was reported. Four documents, four
+    // issuers: the page must not collapse them onto whichever rule matched the filenames.
+    mount(status(), [
+      doc({ id: 'a', bank_code: 'KTC', doc_no: 'INV-1', attachment: 'MDR-july.pdf' }),
+      doc({ id: 'b', bank_code: 'BAY', doc_no: 'INV-2', attachment: 'krungsri-july.pdf' }),
+      doc({ id: 'c', bank_code: 'PAYPAL', doc_no: 'INV-3', attachment: 'scan0012.pdf' }),
+      doc({ id: 'd', bank_code: 'KBANK', doc_no: 'INV-4', attachment: 'kbank-july.pdf' }),
+    ])
+    for (const code of ['KTC', 'BAY', 'PAYPAL', 'KBANK']) {
+      expect(await screen.findByText(code)).toBeInTheDocument()
+    }
+  })
+
+  it('says so plainly when ingest could not identify the issuer', async () => {
+    // A null bank is an honest answer — the fallback must read as "unknown", never as
+    // some default bank the reader would then trust.
+    mount(status(), [doc({ bank_code: null })])
+    expect(await screen.findByText('Unknown')).toBeInTheDocument()
+  })
+
   it('reads as success, not absence, when a live BU is caught up', async () => {
     mount(status(), [], ZERO)
     expect(await screen.findByText('All clear')).toBeInTheDocument()

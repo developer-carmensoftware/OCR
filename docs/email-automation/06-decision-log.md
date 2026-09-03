@@ -283,6 +283,41 @@ built in a week rather than being cherry-picked:
 
 The one thing v1 got right that this keeps: nothing reaches the customer's ledger that a
 person has not looked at, until that person says otherwise.
+## 21. A rule says which files are documents; the document says which bank (2026-09-03)
+
+Reported as "several banks configured, everything comes out as KBANK". The rule's
+`bank_code` was the verdict: it picked the extraction layout *and* was stored without ever
+being checked against the page.
+
+That gives a filename substring authority over the printed issuer. `filename_patterns` is a
+case-insensitive `%pattern%` test and `.pdf` is a documented escape hatch, so **one** broad
+rule is the sole match for every file the other rules' narrower patterns miss — and labels
+all of them itself. Worse, it chose the prompt: a GHL invoice read with the KBANK layout
+mismaps its columns and is instructed to answer `bank_name: "ธนาคารกสิกรไทย"`, which then
+confirms the wrong bank to every later reader, the browser included.
+
+**Inverted.** Extraction on the email path always uses the combined auto-detect prompt; the
+document's own answer decides; the rule's bank survives only as the fallback for an issuer
+nothing can read, and as the standing guess on rows that fail before extraction. Where the
+two disagree, the reviewer is told which rule over-reached — that warning is the only place
+a mis-scoped pattern is visible before it has posted a JV against the wrong vendor.
+
+Two smaller things fell out of the same look:
+
+- **The combined prompt identified the bank and never said so.** Every prompt now returns
+  `bank_code`, and `detect_bank_code` takes it as tier 0. The reader looking at the page
+  beats keyword-matching the two or three header fields it chose to fill in.
+- **The `raw_text` detection tier could never fire** — no prompt has ever asked for
+  `raw_text`. Two earlier diagnoses blamed it anyway. Deleted rather than fixed.
+
+**What this does not change:** the per-BU uniqueness of `bank_code` across rules (still one
+place to edit a bank's patterns and password), and the gate itself — an attachment matching
+no rule is still `no_rule_match`, still free. A rule is a filter, not an identification.
+
+**Prior verdicts this corrects.** 2026-08-28 and 2026-08-31 both closed this class as
+customer configuration. Both were factually right and both left the same defect standing:
+the configuration could not be got wrong safely.
+
 ## 20. Superseded designs, and where they live
 
 - **`feat/email-flow`** — the v1 design: a human-approval review step before posting, its

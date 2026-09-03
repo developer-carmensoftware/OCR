@@ -229,6 +229,46 @@ describe('the screen', () => {
     expect(screen.queryByText(/- 15\/01\/2026/)).not.toBeInTheDocument()
   })
 
+  it('shows the reviewer when a filename rule claimed the wrong bank', async () => {
+    // `_resolve_bank` writes this sentence when the rule and the document disagree. It is
+    // the only place an over-broad filename pattern is visible before it has posted a JV
+    // against the wrong vendor, so it has to reach the screen, not just the row.
+    vi.mocked(api.getPending).mockResolvedValue(
+      detail({
+        extracted: {
+          ...EXTRACTED,
+          // Copied verbatim from `_resolve_bank`; test_email_ingest_pipeline pins the
+          // backend half of the same sentence.
+          warnings: [
+            'This file matched your KBANK rule, but the document was issued by KTC — it ' +
+              "has been filed as KTC. Check that rule's filename patterns.",
+          ],
+        },
+      })
+    )
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    expect(screen.getByText(/matched your KBANK rule/)).toBeInTheDocument()
+    expect(screen.getByText(/issued by KTC/)).toBeInTheDocument()
+  })
+
+  it('previews the description of the bank on the row, not the BU-wide one', async () => {
+    // `JvHeaderCard` was the one reader still taking the bare browser detection where its
+    // siblings take the resolved code. `bank_name: 'KTC'` detects nothing — the keyword
+    // list wants "KRUNGTHAI CARD" — so the header previewed the BU-wide wording while
+    // approve wrote the edit under the per-bank key. Two answers for one document.
+    storedConfig = {
+      ...storedConfig,
+      filePrefix: 'JV',
+      description: 'Card settlement',
+      bankDescriptions: { KTC: 'KTC merchant fee' },
+    }
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    expect(screen.getByLabelText('Description')).toHaveValue('KTC merchant fee')
+  })
+
   it('offers Carmen’s journal books rather than a free-text prefix', async () => {
     vi.mocked(api.getPending).mockResolvedValue(detail())
     mount()
@@ -706,6 +746,19 @@ describe('approving', () => {
     // The other way out, and a real one rather than a last resort: file the JV alone.
     fireEvent.click(screen.getByRole('checkbox'))
     await waitFor(() => expect(approve).toBeEnabled())
+  })
+
+  it('files against the ledger row even when the payload re-detects another bank', async () => {
+    // Ingest resolves the bank from the document itself (2026-09-03) — re-guessing it here
+    // put a weaker reading of the same payload ahead of that answer. `bank_company_name`
+    // detects BBL; the row says KTC, and KTC's registered identity is what must show.
+    vi.mocked(api.getPending).mockResolvedValue(
+      detail({ extracted: { ...EXTRACTED, bank_company_name: 'ธนาคารกรุงเทพ จำกัด (มหาชน)' } })
+    )
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    fireEvent.click(screen.getByRole('button', { name: /Show details/ }))
+    expect(screen.getByLabelText('Tax ID')).toHaveValue('0107545000110')
   })
 
   it('reads the vendor identity off the ledger row when the payload does not name the bank', async () => {

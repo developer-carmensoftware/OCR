@@ -4,6 +4,7 @@ from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 from app.models.enums import FieldName, TaskStatus
+from app.utils.bank_detect import BANK_CODES
 from app.utils.date_parsing import format_doc_date
 
 # ── Credit Card ───────────────────────────────────────────────────────────────
@@ -86,6 +87,13 @@ class ExtractedDetailRow(BaseModel):
 class ExtractedCreditCardData(BaseModel):
     id: str | None = Field(None, description="Credit card record ID (Draft)")
     task_id: str | None = Field(None, description="Task ID associated with this extraction")
+    bank_code: str | None = Field(
+        None,
+        description=(
+            "Which BANK REFERENCE entry the model says issued this document. A claim, "
+            "not the resolved bank — detect_bank_code() takes it as tier 0."
+        ),
+    )
     bank_name: str | None = Field(None, description="Bank name")
     doc_name: str | None = Field(None, description="Document type")
     company_name: str | None = Field(None, description="Company name")
@@ -110,6 +118,14 @@ class ExtractedCreditCardData(BaseModel):
         default_factory=list,
         description="User-facing extraction warnings (English), set by backend normalizers only",
     )
+
+    @field_validator("bank_code", mode="before")
+    @classmethod
+    def _known_bank_only(cls, v):
+        """LLM output is untrusted: keep the code only if it is one we actually support.
+        "KASIKORN", "Bangkok Bank" and "" all become None and fall through to keywords."""
+        code = str(v or "").strip().upper()
+        return code if code in BANK_CODES else None
 
     @field_validator("tax_ids", mode="before")
     @classmethod

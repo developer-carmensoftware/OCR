@@ -243,15 +243,16 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   }, [])
   const onJvState = useCallback((s: JvState) => setJv(s), [])
 
-  // Which bank this posts against: what the payload re-detects, else what ingest already
-  // stored on the row. `detectBankFromExtracted` reads the printed issuer name and misses
-  // whenever the header carries only the short code, and the ledger row is not a guess.
+  // Which bank this posts against: what ingest stored on the row, which since 2026-09-03
+  // is the document's own answer and not a filename rule's guess. Re-detecting in the
+  // browser first put a weaker reading of the same payload ahead of it —
+  // `detectBankFromExtracted` misses whenever the header carries only the short code. The
+  // detection stays as the fallback for rows written before that change.
   //
-  // The JV pane and the config write already fell back this way; the input-tax panel took
-  // the bare detection and so lost the vendor's registered identity — name, tax ID and
-  // address — for a bank whose registry entry was sitting right there. Resolved once here
-  // so a fourth reader cannot pick the wrong one again.
-  const bankCode = (bank || doc?.bank_code || '') as BankCode | ''
+  // Resolved once here: the JV pane and the config write already fell back this way, and
+  // the input-tax panel took the bare detection and so lost the vendor's registered
+  // identity — name, tax ID and address — for a bank sitting right there in the registry.
+  const bankCode = (doc?.bank_code || bank || '') as BankCode | ''
 
   // Everything the approve will write back to the BU config: zero means skip the config
   // call entirely.
@@ -521,7 +522,7 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   headerData={headerData}
                   onUpdate={updateHeader}
                   config={config as Record<string, unknown> | null}
-                  bank={bank}
+                  bank={bankCode}
                   prefix={prefix}
                   description={description}
                   onPrefix={setPrefix}

@@ -690,9 +690,10 @@ def people_addresses(people: str) -> list[str]:
 def match_rules(rules: list[dict], sender: str, filename: str) -> list[dict]:
     """This BU's rules that claim this attachment. **Empty means stop** — no LLM call.
 
-    A rule identifies a bank. Both of its conditions must hold, which is stricter than
-    either alone: mail from KTC's address carrying a file only the BBL rule names stops
-    rather than being scanned as BBL.
+    A rule says a file is worth scanning — it no longer says which bank issued it, which
+    the document answers itself (`_resolve_bank`). Both of its conditions must hold, which
+    is stricter than either alone: mail from KTC's address carrying a file only the BBL
+    rule names stops rather than being scanned at all.
 
         narrow by bank_sender_email  →  matched nothing? keep every rule. A manual
                                         forward carries no bank sender, so this step
@@ -702,9 +703,8 @@ def match_rules(rules: list[dict], sender: str, filename: str) -> list[dict]:
     Sender **narrows**, it does not short-circuit: returning on a sender hit without
     looking at the filename would walk straight past the gate.
 
-    Several matches means the BU's patterns overlap. The list is returned rather than a
-    winner so the caller can decline to guess the extraction prompt and let the document
-    itself say which bank issued it.
+    Several matches means the BU's patterns overlap, which is harmless — the list is
+    returned rather than a winner because there is nothing here worth picking a winner for.
     """
     active = [r for r in rules if r.get("is_active", True)]
     sender_l, filename_l = sender.lower(), filename.lower()

@@ -615,11 +615,11 @@ async def finalize_extraction(
     # stored and it drives the normalizer below, but it is deliberately NOT part of the
     # duplicate key: see the `has_submitted_doc` call.
     resolved_bank_code = bank_code or detect_bank_code(
+        model_bank_code=extracted.bank_code,
         bank_company_name=extracted.bank_company_name,
         bank_name=extracted.bank_name,
         company_name=extracted.company_name,
         doc_name=extracted.doc_name,
-        raw_text=extracted.raw_text,
     )
 
     if resolved_bank_code and resolved_bank_code in FEE_INVOICE_CODES:
@@ -637,7 +637,7 @@ async def finalize_extraction(
         if extracted.doc_no:
             # **bank_code is not in this key.** The two entry paths fill it from different
             # authorities — the wizard from the user's dropdown, the email job from the
-            # matched rule (`email_ingest_service._run_document`) — so one disagreement
+            # document itself (`email_ingest_service._run_document`) — so one disagreement
             # over the same document produced two rows and both posted to Carmen.
             # doc_date keeps the key specific enough that two banks reusing a doc_no do
             # not collide: a false positive here refuses a real document as "already

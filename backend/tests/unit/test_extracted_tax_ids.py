@@ -43,3 +43,29 @@ def test_non_list_junk_becomes_empty_list():
 
 def test_missing_field_defaults_to_empty_list():
     assert ExtractedCreditCardData().tax_ids == []
+
+
+# ── bank_code: the model's own answer, equally untrusted ──────────────────────
+
+
+def _bank(raw) -> str | None:
+    return ExtractedCreditCardData(bank_code=raw).bank_code
+
+
+def test_supported_code_passes_through():
+    assert _bank("GHL") == "GHL"
+
+
+def test_code_is_normalised_before_it_is_checked():
+    assert _bank(" ktc ") == "KTC"
+
+
+def test_unsupported_or_junk_code_becomes_none():
+    # A bank name, a code we do not support, and non-strings must all fall through to
+    # keyword detection rather than being stored or raising.
+    for junk in ("KASIKORN", "Bangkok Bank", "TMB", "", "   ", None, 42, ["KTC"]):
+        assert _bank(junk) is None
+
+
+def test_missing_field_defaults_to_none():
+    assert ExtractedCreditCardData().bank_code is None

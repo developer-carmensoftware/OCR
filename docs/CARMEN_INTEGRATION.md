@@ -295,8 +295,12 @@ PUT /api/v1/carmen/settings
   may therefore be `null`, and a BU that only ever forwards by hand never has to fill it in.
 - **A rule identifies a bank, never a BU.** "`no-reply@ktc.co.th` sends KTC fee invoices" is
   equally true whoever the document belongs to. Ownership is the address's job (§2.5),
-  confirmed by the tax ID (§2.4); a rule picks the bank-specific extraction prompt and
-  decides whether the attachment is a document at all.
+  confirmed by the tax ID (§2.4); a rule decides whether the attachment is a document at
+  all, and carries that bank's patterns and PDF password.
+  Since 2026-09-03 it does **not** pick the extraction prompt or the stored `bank_code`:
+  the document names its own issuer and the rule's bank is only the fallback for one that
+  cannot be read (decision log #21). A pattern broad enough to catch another bank's files
+  is therefore safe — it costs a warning on the review row, not a wrong vendor.
 - `pdf_password` is accepted on write, stored encrypted, and **never returned** by any
   endpoint. Reads expose `has_password: true/false` only. Only **this BU's own** passwords
   are ever tried on its files; they are tried in turn because two overlapping rules can
