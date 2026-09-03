@@ -1,9 +1,35 @@
 # .graphifyignore
+#
+# Was a whitelist — `*` then `!src/` + `!src/**`. Current graphify applies the
+# catch-all first and prunes the tree before the negations can rescue anything,
+# from every scan root, so `detect()` returned **0 files** for the whole repo and
+# `graphify update` happily wrote a 0-node graph over graph.json (2026-09-03).
+#
+# Same intent — index the frontend source — expressed as exclusions, which the
+# ignore engine cannot reinterpret. The scan root stays the repo root so
+# `graphify update` writes to the repo-root `graphify-out/` that CLAUDE.md and
+# git point at; narrowing it to `frontend/src` instead makes graphify write a
+# second `graphify-out/` inside `frontend/src/`.
+#
+# Adding the backend to the graph = delete the `backend/` line. Read the note in
+# CLAUDE.md first: it also pulls in ~87 documents, which cost real LLM tokens.
+backend/
+docs/
+supabase/
+changelog/
+scripts/
+.github/
+graphify-out/
+frontend/dist/
+frontend/public/
+frontend/coverage/
+
+# Noise, at any depth.
 node_modules/
 dist/
+build/
+coverage/
+venv/
+__pycache__/
+.pytest_cache/
 *.generated.py
-
-# only index src/, ignore everything else
-*
-!src/
-!src/**

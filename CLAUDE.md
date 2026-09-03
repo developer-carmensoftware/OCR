@@ -395,4 +395,5 @@ Rules:
 - Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
 - If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
 - For cross-module "how does X relate to Y" questions, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, or `graphify explain "<concept>"` over grep — these traverse the graph's EXTRACTED + INFERRED edges instead of scanning files
-- After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)
+- After modifying code files in this session, run **`graphify update`** with no argument to keep the graph current (AST-only, no API cost). It reads `graphify-out/.graphify_root` (the repo root) and writes back into `graphify-out/`. Never pass `.` — on 2026-09-03 the `*`-whitelist in `.graphifyignore` made that scan match nothing and overwrite `graph.json` with an empty graph; the scope now lives in `.graphifyignore` as plain exclusions
+- **The graph covers `frontend/` only** (`.graphifyignore` excludes `backend/`, `docs/`, `supabase/`, …). A backend question it cannot answer is a gap, not a wrong answer. Adding the backend = delete one line from `.graphifyignore`, but it also pulls in ~87 documents whose semantic extraction costs real LLM tokens, so it is a spending decision
