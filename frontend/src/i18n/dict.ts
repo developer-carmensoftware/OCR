@@ -733,6 +733,10 @@ const en = {
   'review.itxVendor': 'Vendor',
   'review.itxVendorHint': 'Registered name',
   'review.itxTaxId': 'Tax ID',
+  // `InvhTInvNo` / `InvhTInvDt`, named as the record names them. English in both
+  // dictionaries for the same reason the three amounts above are.
+  'review.itxTInvNo': 'Tax invoice no.',
+  'review.itxTInvDt': 'Tax invoice date',
   'review.itxPeriod': 'Tax period',
   'review.itxProfile': 'Tax profile',
   'review.itxNoIdentity':
@@ -2242,6 +2246,8 @@ const th: Record<TKey, string> = {
   'review.itxVendor': 'Vendor',
   'review.itxVendorHint': 'Registered name',
   'review.itxTaxId': 'Tax ID',
+  'review.itxTInvNo': 'Tax invoice no.',
+  'review.itxTInvDt': 'Tax invoice date',
   'review.itxPeriod': 'Tax period',
   'review.itxProfile': 'Tax profile',
   'review.itxNoIdentity': 'ธนาคารนี้ไม่มีเลขประจำตัวผู้เสียภาษีในระบบ Carmen จะปฏิเสธรายการนี้',

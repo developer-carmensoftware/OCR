@@ -299,6 +299,23 @@ export default function InputTaxPanel({
                 track, so it also draws the grid the two rows share. */}
             <div className="itx-rule" />
 
+            {/* The document this claim is filed against, in the record's own words.
+                `InvhTInvNo` and `InvhTInvDt` are the JV header's document number and date —
+                literally the same two strings, which is why they were left off this panel
+                at first. They are here now because a VAT claim is filed against a tax
+                invoice, and a reviewer signing one off should see the invoice it names
+                without reconstructing it from a header two panels up. Read-only on the same
+                test as the tax period beside them: not a judgement a reviewer can make
+                better, and corrected by fixing the document field it comes from. */}
+            <span className="itx-fact">
+              <span className="rd-f-label">{t('review.itxTInvNo')}</span>
+              <span className="itx-fact-v text-mono">{headerData.DocNo || '—'}</span>
+            </span>
+            <span className="itx-fact">
+              <span className="rd-f-label">{t('review.itxTInvDt')}</span>
+              <span className="itx-fact-v text-mono">{headerData.DocDate || '—'}</span>
+            </span>
+
             {/* What the record will say. `Net Amount | Tax | Total` are Carmen's own column
                 headings for `BfTaxAmt`, `TaxAmt` and `TotalAmt` — which is what settles
                 `Tax` over `VAT` for the middle one: the reviewer checks that figure against
@@ -320,7 +337,7 @@ export default function InputTaxPanel({
               <span className="rd-f-label">{t('review.itxPeriod')}</span>
               <span className="itx-fact-v text-mono">{period}</span>
             </span>
-            <span className="itx-fact itx-fact--amt">
+            <span className="itx-fact itx-fact--amt itx-fact--net">
               <span className="rd-f-label">{t('review.itxNet')}</span>
               <span className="itx-fact-v text-mono">{fmt(tax.net)}</span>
             </span>
