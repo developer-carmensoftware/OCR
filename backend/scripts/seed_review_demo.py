@@ -1,8 +1,8 @@
-"""Seed two `pending_review` documents so the Needs-review state can actually be looked at.
+"""Seed one of each row the Review chip can hold, so the state can actually be looked at.
 
-The dev database has never held one: both BUs run `auto_post = false`, but the deployed
-backend predates the review fork, so nothing has ever parked. `IMAP_HOST` is empty locally,
-so the real pipeline cannot be run to make one either.
+The dev database has never held a parked document: both BUs run `auto_post = false`, but the
+deployed backend predates the review fork, so nothing has ever parked. `IMAP_HOST` is empty
+locally, so the real pipeline cannot be run to make one either.
 
 Creates, per document, the three rows the review screen and `approve_document` need:
 
@@ -12,12 +12,17 @@ Creates, per document, the three rows the review screen and `approve_document` n
 `_mark_submitted` stamps on approve. `submitted_at` stays NULL, so these do NOT show up as
 Manual rows in the activity table — only as the email documents they claim to be.
 
+Plus one row of the other kind the chip holds since 2026-09-03: a `skipped` document nobody
+was charged for, carrying a reason somebody here can clear from settings. It has no payload
+and no task — there is nothing to review, only a link to press and an ✕ to put it away.
+
     python scripts/seed_review_demo.py            # seed
     python scripts/seed_review_demo.py --clean    # remove everything it made
 
 ⚠️  DEMO-CLEAN is approvable, and approving it posts a real JV into that BU's Carmen.
-    DEMO-BENT does not reconcile, so `AccountingReview` disables Approve on it — that one
-    is safe to click through end to end.
+    Everything else here is deliberately unpostable — DEMO-BENT and DEMO-STOPPED do not
+    reconcile, so the JV editor disables Approve on both, and DEMO-SKIPPED has no Approve
+    at all. Those three are safe to click through end to end.
 
 ponytail: raw asyncpg over the transaction pooler, not the app's ORM session. This is a
 one-off dev fixture; importing the app to write six rows would drag in config validation,
@@ -121,7 +126,15 @@ async def seed(c: asyncpg.Connection) -> None:
         sys.exit(f"No tenant with bu_code={BU!r}")
 
     now = datetime.now(UTC)
-    for i, (doc_no, bent) in enumerate([("DEMO-CLEAN-0001", False), ("DEMO-BENT-0002", True)]):
+    # (doc_no, unbalanced?, reason_code). A reason on a parked row is what the pipeline
+    # writes when it got past extraction and then refused — the review dialog paints it as
+    # a banner above the fields, and the queue row prints it over every flag.
+    parked = [
+        ("DEMO-CLEAN-0001", False, None),
+        ("DEMO-BENT-0002", True, None),
+        ("DEMO-STOPPED-0003", True, "carmen_rejected"),
+    ]
+    for i, (doc_no, bent, reason) in enumerate(parked):
         task_id, card_id, ledger_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
         filename = f"{TAG}_{doc_no}.pdf"
         created = now - timedelta(minutes=30 * (i + 1))
@@ -149,8 +162,9 @@ async def seed(c: asyncpg.Connection) -> None:
         )
         await c.execute(
             "insert into email_documents (id, tenant_id, message_id, attachment, status,"
-            " task_id, bank_code, doc_no, review_payload, attempts, created_at)"
-            " values ($1,$2,$3,$4,'pending_review',$5,'KBANK',$6,$7,1,$8)",
+            " task_id, bank_code, doc_no, review_payload, reason_code, error_message,"
+            " attempts, created_at)"
+            " values ($1,$2,$3,$4,'pending_review',$5,'KBANK',$6,$7,$8,$9,1,$10)",
             ledger_id,
             tenant_id,
             f"<{TAG}-{ledger_id}@demo.local>",
@@ -158,11 +172,35 @@ async def seed(c: asyncpg.Connection) -> None:
             task_id,
             doc_no,
             json.dumps(_doc(str(card_id), doc_no, bent=bent)),
+            reason,
+            "Carmen returned Code 1: Period 2026-08 is closed" if reason else None,
             created,
         )
-        print(
-            f"  + {doc_no:<16} {'unbalanced, Approve disabled' if bent else 'clean, Approve LIVE'}"
+        note = (
+            f"stopped on {reason}, Approve disabled"
+            if reason
+            else "unbalanced, Approve disabled"
+            if bent
+            else "clean, Approve LIVE"
         )
+        print(f"  + {doc_no:<18} {note}")
+
+    # And the other half of the chip: nobody was charged, there is nothing to review, and
+    # the whole answer is a settings link and the ✕ beside it. No task and no credit_cards
+    # row — this document never reached the model.
+    ledger_id = uuid.uuid4()
+    await c.execute(
+        "insert into email_documents (id, tenant_id, message_id, attachment, status,"
+        " reason_code, error_message, attempts, created_at)"
+        " values ($1,$2,$3,$4,'skipped','no_rule_match',$5,1,$6)",
+        ledger_id,
+        tenant_id,
+        f"<{TAG}-{ledger_id}@demo.local>",
+        f"{TAG}_DEMO-SKIPPED-0004.pdf",
+        "No active rule matched 'DEMO-SKIPPED-0004.pdf'",
+        now - timedelta(minutes=15),
+    )
+    print(f"  + {'DEMO-SKIPPED-0004':<18} no payload — Open settings + Dismiss")
 
 
 async def clean(c: asyncpg.Connection) -> None:
@@ -183,9 +221,7 @@ async def main() -> None:
     doing_clean = "--clean" in sys.argv
     c = await asyncpg.connect(dsn(), statement_cache_size=0)
     try:
-        print(
-            "removing demo rows..." if doing_clean else f"seeding 2 pending_review rows on {BU}..."
-        )
+        print("removing demo rows..." if doing_clean else f"seeding the Review chip on {BU}...")
         await (clean(c) if doing_clean else seed(c))
         left = await c.fetchval(
             "select count(*) from email_documents where status='pending_review'"

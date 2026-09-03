@@ -957,3 +957,73 @@ point.
 **Not changed:** the three chips (#41), the opening chip following `auto_post` (#42), what
 counts as an anomaly (#43), and #45's rule that the only number on a chip is one that can go
 down — `attention` is not printed on the strip, only spoken beside the dot.
+
+---
+
+## §13 — Charged means reviewable, and the chips re-keyed on who can act (2026-09-03)
+
+Five pieces of feedback from using the queue. Four are small; one is a defect in the
+pipeline's economics that everything else here follows from.
+
+### The defect
+
+The pipeline charges a credit the moment the vision call returns, and `_finish()` nulls
+`review_payload` on every terminal transition. So a document that was **read successfully**
+and then hit a *decision* gate — a foreign tax ID, a payment type nothing maps, a Carmen
+refusal — became a dead red row. The customer paid for an extraction they never got to use,
+and the only recovery was to re-scan the same file by hand and pay for it twice.
+
+The rule was already written down, in the refund boundary's own comment: those outcomes are
+*"decisions taken about a document we successfully read, not failures to read it."* §10 #30
+had already acted on it once, for `mapping_incomplete` alone — *"it was terminal because
+nothing could fix it in place; now something can."* This generalises that.
+
+**The criterion, and it decides everything below: did the vision call run, and do we still
+have what it returned?**
+
+| | Charged, payload kept | Never charged, or refunded |
+|---|---|---|
+| Status | `pending_review` | `skipped` / `failed` |
+| Chip | `review` | `review` if `FIXABLE_REASONS`, else `unposted` |
+| The reviewer can | open, edit every field, post, or Reject | follow the fix link, or Dismiss |
+
+### Decisions
+
+| # | Decision | Why |
+|---|---|---|
+| 48 | **A post-extraction refusal parks instead of failing.** `tax_id_mismatch`, `duplicate_document`, `mapping_incomplete`, `carmen_unauthorized`, `carmen_rejected`, and a document with no postable amount. | All six were charged, none was a failure to read. `_park_or_finish` is the whole rule. |
+| 49 | **Three stay terminal.** The generic `except`; the refund boundary; a second copy of something already queued. | The generic one can fire *after* `post_gljv` succeeded — an Approve button on a JV already in Carmen's books invites a double post. The refund boundary gave the money back, and `extracted` is dropped there before the re-raise so that is true by construction. The duplicate's twin is already in the queue, and two identical rows is what raising it prevented. |
+| 50 | **A Carmen transport failure parks, carrying the approve path's own caveat** — *check whether the JV posted before approving this document.* | `_mark_submitted` never ran, so `has_submitted_doc` cannot catch a JV that landed as the socket died. That is the risk the approve path has always taken; the row now carries the warning to the person taking it. |
+| 51 | **`auto_post = true` no longer means "post or destroy".** A BU with review off can now accumulate a queue. | The alternative was burning the credit. Parked failures also count toward `REVIEW_BACKLOG_CAP`, so a dead credential stops ingestion — which is the cap working, and those 50 become postable the moment the token is replaced. |
+| 52 | **The bell is batched, not per document.** `_park_for_review` notifies nothing; `_notify_pending` raises one extra `document_blocked` per BU per poll when the queue holds anything with a `reason_code`. | A dead credential fails *every* document of the BU — exactly the twenty-row burial `_notify_pending`'s own rule exists to prevent. `document_failed` would now be a lie: the document is waiting, not finished. |
+| 53 | **The chips are re-keyed on who can act.** `review` = parked documents **plus** undismissed `FIXABLE_REASONS`; `unposted` = did not post and nothing is owed. | This is the re-key §12 considered and declined — *"it costs a vocabulary the API does not speak."* The API speaks it now: `_chip_expr()` is a SQL `CASE` the list filters on and the counts group by, so a row cannot be counted under one chip and listed under another. Filing the seven clearable causes under the chip §12 itself calls the one nobody works is the 2026-08-28 incident in UI form. |
+| 54 | **`dismissed_at`, and one ✕ per row.** | Nothing retries a failure, so fixing the filename rule today never clears the 46 rows behind it — without a way out the chip fills with dead rows until nobody can find the live ones, and #45's rule (a number here has to be able to go down) breaks. Not a soft delete: the row keeps its story under Not posted. Hence no confirmation and no undo. |
+| 55 | **Dismiss only on rows with no payload, and only on the Review chip.** | A parked document already has the audited verb — Reject stamps the reviewer and takes a reason — and two ways to retire a real document with different audit trails is worse than one. Elsewhere the row is not in anybody's way, and "stop showing me this" on a history view is an invitation to hide history. |
+| 56 | **The migration starts every existing terminal row dismissed, and clears `email_queue_seen`.** | Otherwise the chip's first number after deploy is every historical failure the BU ever had — 54 on dev — and nobody fixes a filename rule for a logo from three weeks ago. The marks go because anomalies move between chips in this release; a stored `{"unposted": 49}` would silence a chip whose real count is near zero while `review` lights against a mark it never had. |
+| 57 | **`_attention` stops meaning "there is work here".** `pending_review` counts only rows carrying a `reason_code`; `rejected` and dismissed rows stop counting; `failed` still counts all. | `review` holds work by definition now, so a dot drawn from its size would be lit whenever the feature was doing its job. A reviewer's own rejection is not an anomaly — a signal you set off by doing your job is one you learn to ignore. `failed` keeps counting all because what is left there is a crash or an unhandled bug. |
+| 58 | **A fourth chip, `Today`** — every row since midnight ICT, unfiltered, first in the strip. Count, never a dot. Does not become the landing chip. | The strip could answer "what is owed" and "what posted, ever", but not "what has the robot been doing today", and every status chip is a lifetime pile. Unfiltered because a day on which forty logos were thrown out is a fact worth seeing — §11 #33's noise argument was about the *landing* view, and this is not it. No dot because `unseen` measures against a stored lifetime mark and a number that resets at midnight cannot be. Not the landing chip because a BU with twelve documents owed must not be shown a quiet morning instead of its work. |
+| 59 | **The chip is labelled `Review`, not `Needs review`.** | It holds one status no longer. The shorter word stays true as it widens, and it is the word the Status pill and the row's action button already used. |
+| 60 | **A parked document says why it stopped** — the reason outranks every flag on the row, and renders in a banner above the fields in the dialog, with its fix link. | `reasonFor` answers "why this might be worth opening"; a reason code answers "why this got no further", which is the stronger claim on a reviewer's time. The banner carries the pipeline's own message — Carmen's verdict, the conflicting tax ID, the double-post caveat — and it is the only place the reviewer will ever read it. |
+| 61 | **The input-tax panel names the tax invoice it files** — `Tax invoice no.` and `Tax invoice date`, read-only. | A VAT claim is filed against a tax invoice and the panel previewing it never said which. They are the JV header's document number and date, which is why they were left off; a reviewer signing off a claim should read the invoice it names rather than reconstruct it. Read-only on this panel's existing test: not a judgement a reviewer can make better, and corrected by fixing the document field it comes from — as `Tax period` beside them already is. |
+
+### Considered and not done
+
+- **A retry sweep.** Unchanged from `01-requirements.md`'s non-goals, and this release is not
+  a step toward one: nothing retries anything. What changed is that most of what was being
+  retried was never a failure — it was a question, and a person can now answer it.
+- **Dismiss on a parked document.** #55. Reject is that verb.
+- **Per-cause dismissal** ("dismiss all 46 `no_rule_match`"). The migration clears the
+  historical pile in one go and the ongoing rate is a few rows a day, so per-row is enough
+  until it demonstrably is not.
+- **A dot on Today.** #58.
+- **Sorting `review` so documents lead.** Rejected again, as §12 rejected it for `unposted`:
+  plain time order, as everywhere else in the app. The two kinds of row are told apart by
+  the Message column and by which button they carry.
+
+### The ceiling, stated
+
+`_chip_expr()` is a `CASE` in a `WHERE` clause, which cannot use an index. Correct at this
+repo's volumes — the largest business table holds 342 rows
+([SQL_PERFORMANCE_AUDIT.md](../SQL_PERFORMANCE_AUDIT.md)) — and the `ponytail:` comment at
+the definition names the upgrade path: expand it into three explicit clauses keyed off the
+same function, so there is still one place to read.

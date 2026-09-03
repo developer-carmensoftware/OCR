@@ -129,6 +129,15 @@ an unowned message costs nothing; and a document is charged the moment the visio
 returns, so approve, reject and "still sitting there" all cost the same — reject does not
 refund (see the charge-before-the-LLM decision below).
 
+**Charged means reviewable** (2026-09-03, decision-log #22). A refusal that happens *after*
+extraction — `tax_id_mismatch`, `duplicate_document`, `mapping_incomplete`,
+`carmen_unauthorized`, `carmen_rejected`, no postable amount — **parks at `pending_review`
+with its reason recorded** instead of finishing as `failed`. The customer paid for that
+reading; throwing it away left re-scanning by hand as the only recovery. Only three
+post-extraction cases stay terminal: the generic `except` (it can fire after the JV posted),
+the refund boundary (the money went back), and a second copy of something already queued.
+`_park_or_finish` in `_run_document` is the whole rule.
+
 **`auto_post` is per BU and defaults to `false`** (`email_ingest_settings.auto_post`,
 flipped only by `PUT /api/v1/email/settings/auto-post`, never by the settings save, which is
 a full replace). A BU switching the feature on gets review; they turn it off once the queue

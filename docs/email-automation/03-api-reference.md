@@ -44,20 +44,44 @@ statuses rather than one: `problem` is `failed` + `rejected` (they differ in who
 which the row shows, but not in what is owed) and `skipped` absorbs `received` so a row
 stuck mid-flight is still findable. An unknown value falls back to `review`.
 
+> ⚠️ **`GET /email/documents` is not what the screen reads.** It is the older, email-only
+> list, and its four `TABS` are not the chips — the queue has used the activity table below
+> since 2026-08-31, and `/email/status`'s per-tab `counts` are deliberately ignored by the
+> browser (`emailReview.ts`). Nothing has been deleted because approve/reject still live on
+> this router; the vocabulary below is the live one.
+
 ### The activity table (`/api/v1/credit-card`, session JWT)
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/v1/credit-card/activity?filter=&limit=&offset=` | `ActivityPage` — email documents **and** manual scans, newest first, plus a count per chip |
+| GET | `/api/v1/credit-card/activity?filter=&limit=&offset=` | `ActivityPage` — email documents **and** manual scans, newest first, plus `counts`, `attention` and `unseen` per chip |
+| POST | `/api/v1/credit-card/activity/seen` | `{filter}` — somebody in this BU opened that chip, put its dot out |
+| POST | `/api/v1/credit-card/activity/{id}/dismiss` | `204` — put a row away; it leaves `review` and stays under `unposted` |
 
-What `#/CreditCardOCR` actually lists since 2026-08-31, and a strictly wider question than
-`GET /email/documents` (which still exists and is still email-only). `filter` is
-`all` · `review` · `success` · `failed` · `skipped`, grouping the same ledger statuses the
-`tab` values above do; unknown falls back to `all`. Each row carries `source: email|manual`,
-and a manual row is a `credit_cards` entry with `submitted_at IS NOT NULL` and no
-`email_documents` row pointing at its task — email ingest writes both, so without that
-anti-join one forwarded statement is listed under each source. See
-[`07-human-in-the-loop.md §9`](07-human-in-the-loop.md).
+What `#/CreditCardOCR` actually lists, and a strictly wider question than
+`GET /email/documents` (which still exists and is still email-only). Each row carries
+`source: email|manual`, and a manual row is a `credit_cards` entry with `submitted_at IS NOT
+NULL` and no `email_documents` row pointing at its task — email ingest writes both, so
+without that anti-join one forwarded statement is listed under each source.
+
+**`filter` is `all` · `today` · `review` · `success` · `unposted`**; unknown falls back to
+`all`. Only the last four have a chip on screen. They are **not** a grouping of statuses —
+`_chip_expr()` in `credit_card_activity.py` is the single definition, as a SQL `CASE` the
+list filters on and the counts group by:
+
+| chip | what is in it |
+|---|---|
+| `today` | every row since midnight ICT, whatever became of it. Cuts across the other three, which is why it is left out of `counts["all"]`. Carries a count, never a dot |
+| `review` | wants a human: `pending_review` **plus** undismissed rows whose `reason_code` is in `FIXABLE_REASONS` |
+| `success` | `posted`. Manual scans land here too — they are only listed once posted |
+| `unposted` | did not post and nothing is owed: unfixable causes, rejections, and dismissed rows |
+
+The three status chips partition the ledger — exactly one each — so `counts["all"]` is a
+true total rather than a sum of overlapping piles. `dismiss` refuses a row that still has a
+`review_payload`: a parked document is retired with **reject**, which records who and why.
+
+See [`07-human-in-the-loop.md §9`](07-human-in-the-loop.md) for the table, §12 for the chips
+and the dot, §13 for this re-key.
 
 `PUT /settings/auto-post` is deliberately its own route and not a field on
 `PUT /api/v1/carmen/settings`: that endpoint is a full replace, so flipping the switch

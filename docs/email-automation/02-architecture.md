@@ -294,8 +294,9 @@ same event, so the two pipelines disagreed about what one document costs.
 stateDiagram-v2
     [*] --> received: _claim() inserts the ledger row
     received --> pending_review: auto_post = false, every gate passed
+    received --> pending_review: charged, then a gate refused — the reading is kept
     received --> posted: auto_post = true, JV + input-tax attempted
-    received --> failed: charged, then a gate failed
+    received --> failed: refunded, crashed, or already queued
     received --> skipped: a free gate failed, never charged
     pending_review --> posted: a human approved it
     pending_review --> rejected: a human rejected it
@@ -312,9 +313,18 @@ unknown dept code is something the person standing at the screen can fix and try
 the row stays where it is and the message goes back to them (see
 [07-human-in-the-loop.md](07-human-in-the-loop.md)).
 
-The other four are terminal. There is no retry sweep — `attempts` is always written as `1`
-(`ponytail` note, `email_ingest_service.py:35`); a failed document needs a human to
-re-forward it, or a retry job to be built when real failure volume justifies it
+**Since 2026-09-03 it is also where a charged refusal lands.** The second arrow into it is
+the corollary of the charge rule above: a foreign tax ID, an unmappable payment type or a
+Carmen refusal is a decision *about a document we read and were paid for*, so the reading is
+kept and the row goes to the queue with its reason recorded, rather than being finished as
+`failed` and thrown away. `failed` still exists and now means one of three things — the
+refund boundary gave the money back, an unhandled bug fired (possibly *after* the JV
+posted), or an identical document is already waiting. See the taxonomy in
+[04-data-model.md](04-data-model.md#reason_code-taxonomy).
+
+The other four are terminal. There is still no retry sweep — `attempts` is always written as
+`1` (`ponytail` note, `email_ingest_service.py:35`); what changed is not that failures are
+retried but that most of them were never failures, and a person can now finish them
 (see [05-operations.md](05-operations.md#known-gaps--roadmap)).
 
 ## Trust model of mail headers

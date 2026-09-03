@@ -63,6 +63,7 @@ trail for every outcome, `reason_code` taxonomy included.
 | `reviewed_by` | `varchar(36)`, nullable | `carmen_user_id` of whoever approved or rejected it. No FK — there is no users table, and the id is opaque to us |
 | `reviewed_by_name` | `varchar(100)`, nullable | Their username, from the same session claims. Stored because an opaque uuid answers nobody's question about who posted a JV |
 | `reviewed_at` | `timestamptz`, nullable | When they did |
+| `dismissed_at` | `timestamptz`, nullable | Somebody put this row away: it leaves the `review` chip and stays under `unposted`. Only ever set where `review_payload IS NULL` — a parked document is retired with **reject**, which records who and why. Not a soft delete, and this table has no `deleted_at` for it to be confused with |
 
 **Indexes:** `uq_email_documents_message` — unique on `(tenant_id, message_id, attachment)`,
 **this index is the dedupe**, not a constraint that happens to also prevent duplicates.
@@ -132,13 +133,16 @@ every raise site in `_run_document()` / `_open_or_fail()` and the three `except`
 | `unreadable_document` | `_open_or_fail()` — bad magic bytes or corrupt PDF | No | — | `skipped` |
 | `wrong_pdf_password` | `_open_or_fail()` — every password tried, none worked | No | — | `skipped` |
 | `unreadable_document` | `create_task` / `extract_stateless` / `finalize_extraction` threw — **inside the refund boundary** | Yes | **Yes** — the only refund left in the pipeline | `failed` |
-| `tax_id_mismatch` | `foreign_tax_id()` finds a conflict | Yes | No | `failed` |
-| `duplicate_document` | `extracted.is_duplicate` | Yes | No | `failed` |
-| `mapping_incomplete` | GL mapping still missing after the AI-fill attempt | Yes | No | `failed` |
-| `unreadable_document` | `build_jv_rows()` produces no postable amount | Yes | No | `failed` |
-| `carmen_rejected` | No posting credential, or no Carmen host known for the BU | Yes | No | `failed` |
-| `carmen_rejected` | `post_gljv()` returns a non-zero `Code` | Yes | No | `failed` |
-| `carmen_rejected` | `CarmenAPIError` — transport/network failure | Yes | No | `failed` |
+| `unreadable_document` | anything else unhandled — the generic `except` | Yes | No | `failed` |
+| `duplicate_document` | `_already_pending()` — an identical document is already in the queue (review mode only) | Yes | No | `failed` |
+| `tax_id_mismatch` | `foreign_tax_id()` finds a conflict | Yes | No | **`pending_review`** |
+| `duplicate_document` | `extracted.is_duplicate` | Yes | No | **`pending_review`** |
+| `mapping_incomplete` | GL mapping still missing after the AI-fill attempt (auto-post only — with review on it parks with the gap named) | Yes | No | **`pending_review`** |
+| `unreadable_document` | `build_jv_rows()` produces no postable amount | Yes | No | **`pending_review`** |
+| `carmen_unauthorized` | No posting credential, or no Carmen host known for the BU | Yes | No | **`pending_review`** |
+| `carmen_unauthorized` | `CarmenAPIError` 401/403 — also flags the credential via `mark_token_unverified` | Yes | No | **`pending_review`** |
+| `carmen_rejected` | `post_gljv()` returns a non-zero `Code` | Yes | No | **`pending_review`** |
+| `carmen_rejected` | `CarmenAPIError` — transport/network failure. The message carries *check whether the JV posted before approving* | Yes | No | **`pending_review`** |
 | `rejected_by_reviewer` | A human rejected it in the queue; the optional free-text reason lands in `error_message` | Yes | **No** — the vision call ran, and that is what the credit paid for | `rejected` |
 | *(none)* | Full pipeline completes | Yes | — | `posted` |
 
@@ -148,6 +152,24 @@ Once `finalize_extraction` has returned, the model has run and been billed to us
 document keeps its charge no matter what happens next — a duplicate, a foreign tax ID, an
 unmappable account and a Carmen refusal are all decisions taken *about a document we
 successfully read*, not failures to read it.
+
+**And its corollary, added 2026-09-03: a document we charged for stays reviewable.** Every
+`pending_review` in the table above used to be `failed`, which threw away a reading the
+customer had paid for and left re-scanning the same file by hand as the only recovery. The
+reading is kept, the reason is recorded on the row, and the document lands in the queue
+where the one thing that can clear it — a person — already is. `_park_or_finish()` in
+`_run_document` is the whole of that rule.
+
+Three post-extraction cases stay terminal, each for its own reason:
+
+- the **generic `except`**, because it can fire *after* `post_gljv` returned zero
+  (`_mark_submitted` and `_post_input_tax` both run past that point) and an Approve button
+  on a JV already in Carmen's books invites a double post;
+- the **refund boundary**, because the money went back and there is no reading to park —
+  `extracted` is dropped there before the re-raise so that is true by construction;
+- **`_already_pending`**, because the reviewable copy is already in the queue and parking a
+  second would put two identical rows in front of the reviewer. This is the only `_Skip`
+  raised with `reviewable=False`.
 
 The single exception is the **refund boundary** in `_run_document()`: the `try` wrapping
 `create_task` + `extract_stateless` + `finalize_extraction`. Everything in it can fail

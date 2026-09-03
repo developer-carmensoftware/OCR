@@ -1,4 +1,4 @@
-# Decision Log
+﻿# Decision Log
 
 ADR-style record of what was decided, why, what it cost, and — where relevant — what was
 tried first and reverted. Sourced from migration headers, service docstrings, and the
@@ -317,6 +317,55 @@ no rule is still `no_rule_match`, still free. A rule is a filter, not an identif
 **Prior verdicts this corrects.** 2026-08-28 and 2026-08-31 both closed this class as
 customer configuration. Both were factually right and both left the same defect standing:
 the configuration could not be got wrong safely.
+
+## 22. A document we charged for stays reviewable (2026-09-03)
+
+**Decision.** A refusal that happens *after* a successful extraction parks at
+`pending_review` with its reason recorded, instead of finishing as `failed`. The reviewer
+opens it, edits every field, and posts — or rejects it. Six causes move:
+`tax_id_mismatch`, `duplicate_document`, `mapping_incomplete`, `carmen_unauthorized`,
+`carmen_rejected`, and a document with no postable amount.
+
+**Why.** #17 settled that the charge follows the vision call, not the outcome. The queue did
+not honour the other half of that bargain: `_finish()` nulls `review_payload` on every
+terminal transition, so the customer paid for a reading and then had it thrown away. The
+only recovery was to re-scan the same file by hand and pay for it a second time. The refund
+boundary's own comment had already named these as *"decisions taken about a document we
+successfully read, not failures to read it"* — this is that sentence applied to the ledger.
+
+Not a new principle: §10 #30 of `07-human-in-the-loop.md` did it for `mapping_incomplete`
+alone on 2026-08-31, with the reason that generalises — *"it was terminal because nothing
+could fix it in place; now something can."*
+
+**What stays terminal, and why each.**
+
+- The generic `except`. It can fire *after* `post_gljv` returned zero, because
+  `_mark_submitted` and `_post_input_tax` both run past that point — offering Approve on a
+  JV already in Carmen's books invites a double post.
+- The refund boundary. The money went back, so there is no reading to keep. `extracted` is
+  dropped there before the re-raise, making that true by construction rather than by
+  tracing which handler the exception reaches.
+- A second copy of something already in the queue (`_already_pending`). Its twin is there,
+  editable and postable; parking this one recreates the two-identical-rows problem raising
+  it prevented. The only `_Skip` carrying `reviewable=False`.
+
+**The one risk taken.** A Carmen *transport* failure parks too, and `_mark_submitted` never
+ran — so `has_submitted_doc` cannot catch a JV that landed as the socket died, and a
+reviewer who approves without checking Carmen can post it twice. This is the risk the
+approve path has taken since it shipped (its 503 says *"check whether the JV posted before
+approving this document again"*); the difference is that there a human had just pressed the
+button, and here a robot failed at 3am. The mitigation is that the same sentence now travels
+on the row, which is where that reviewer will read it.
+
+**What it costs.** `auto_post = true` stops meaning "post or destroy" — a BU with review
+switched off can now accumulate a queue, and parked failures count toward
+`REVIEW_BACKLOG_CAP`. A dead credential therefore fills the queue and stops ingestion. That
+is the cap working: those 50 documents all become postable the moment the token is replaced,
+so clearing them produces 50 JVs rather than being cleanup.
+
+**Not a retry.** #13 stands: single pass, no sweep. Nothing is retried automatically. What
+changed is that most of what was being filed as a failure was never one — it was a question,
+and now a person can answer it.
 
 ## 20. Superseded designs, and where they live
 
