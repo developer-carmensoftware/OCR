@@ -21,7 +21,7 @@ import uuid
 from datetime import UTC, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import and_, case, func, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import SessionInfo, get_current_session
@@ -233,6 +233,20 @@ def _counts_stmt(tenant_id: uuid.UUID, now: datetime, day_start: datetime):
     window was tried (`ATTENTION_WINDOW`, 7 days) and was only ever a guess about how long
     somebody stays interested.
     """
+    # **Grouped by the output column's name, never by the expression again.**
+    #
+    # `GROUP BY <the CASE>` looks like the obvious way to write this and does not work:
+    # SQLAlchemy renders the expression a second time with a *fresh set of bind parameters*
+    # ($10..$15 where the SELECT used $1..$6), so Postgres cannot see the two as the same
+    # thing and rejects `dismissed_at` inside the SELECT's CASE as an ungrouped column.
+    #
+    # Postgres resolves a bare name in GROUP BY against the output columns when no input
+    # column shares it, and `email_documents` has no `chip`. One rendering, one meaning.
+    #
+    # This is invisible to `literal_binds` compilation — with the values inlined the two
+    # CASEs come out textually identical and the statement is valid — so a compiled-SQL
+    # test must assert the CASE appears exactly once, which is what
+    # `test_the_chip_is_grouped_by_name_not_by_a_second_case` does.
     return (
         select(
             # The chip comes out of the database, not out of a Python fold beside it — see
@@ -255,7 +269,7 @@ def _counts_stmt(tenant_id: uuid.UUID, now: datetime, day_start: datetime):
             func.count().filter(EmailDocument.dismissed_at.is_not(None)).label("dismissed"),
         )
         .where(EmailDocument.tenant_id == tenant_id)
-        .group_by(_chip_expr(), EmailDocument.status, EmailDocument.reason_code)
+        .group_by(literal_column("chip"), EmailDocument.status, EmailDocument.reason_code)
     )
 
 

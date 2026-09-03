@@ -504,6 +504,25 @@ def test_the_chip_expression_never_drops_a_row_with_no_reason_code():
         assert chip in sql
 
 
+def test_the_chip_is_grouped_by_name_not_by_a_second_case():
+    """The 500 of 2026-09-03, and the reason no other test in this file caught it.
+
+    `GROUP BY <the CASE>` reads as the obvious way to write this and is invalid: SQLAlchemy
+    renders the expression again with a *fresh set of bind parameters*, so Postgres cannot
+    see the two as one thing and rejects `dismissed_at` inside the SELECT's CASE with
+    "must appear in the GROUP BY clause". Grouping by the output column's name renders the
+    CASE once, and Postgres resolves a bare name in GROUP BY against the output columns.
+
+    **Compiled with real bind parameters, deliberately.** Under `literal_binds` the two
+    renderings come out textually identical and the statement is perfectly valid — which is
+    exactly how this shipped: every compiled-SQL assertion here inlined its binds, and the
+    mock DB below never executes anything.
+    """
+    sql = str(_counts_stmt(uuid.uuid4(), NOW, NOW).compile()).lower()
+    assert sql.count("case") == 1, "the CASE is rendered twice — see the docstring"
+    assert "group by chip" in sql
+
+
 # ── Dismiss ──────────────────────────────────────────────────────────────────
 
 
