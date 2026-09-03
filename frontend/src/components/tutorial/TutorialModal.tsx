@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { ChevronLeft, ChevronRight, Waves, X } from 'lucide-react'
 import { useT } from '../../i18n/LanguageContext'
+import { useScrollLock } from '../../hooks/useScrollLock'
 import { SpotProvider } from './Spot'
 import { CANVAS_WIDTH, useCamera } from './useCamera'
 import type { TutorialStep } from './types'
@@ -138,6 +139,7 @@ export default function TutorialModal({ open, onClose, title, steps, finish }: P
   // Arrow keys walk the tour; Escape is the dialog's own. Body scroll is locked
   // the same way OrderDrawer does it — a modal dialog makes the page inert but
   // not unscrollable, and the page sliding behind the backdrop reads as a bug.
+  useScrollLock(open)
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
@@ -145,11 +147,8 @@ export default function TutorialModal({ open, onClose, title, steps, finish }: P
       else if (e.key === 'ArrowLeft') go(index - 1)
     }
     window.addEventListener('keydown', onKey)
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
     return () => {
       window.removeEventListener('keydown', onKey)
-      document.body.style.overflow = prevOverflow
     }
   }, [open, index, go])
 

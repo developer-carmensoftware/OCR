@@ -6,6 +6,7 @@ import OrderWorkspace from './OrderWorkspace'
 import type { AdminCreditOrder } from '../../lib/api/adminClient'
 import type { PaymentInfo } from '../../lib/api/credits'
 import { useT } from '../../i18n/LanguageContext'
+import { useScrollLock } from '../../hooks/useScrollLock'
 
 interface Props {
   order: AdminCreditOrder | null
@@ -37,17 +38,15 @@ export default function OrderDrawer({
   const open = !!order
 
   // Escape closes; lock body scroll behind the drawer.
+  useScrollLock(open)
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
     document.addEventListener('keydown', onKey)
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
     return () => {
       document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = prevOverflow
     }
   }, [open, onClose])
 

@@ -9,6 +9,7 @@ import type { DetailRow } from '../components/credit-card/DetailTable'
 import JvEditor, { type JvState, type Overrides } from '../components/credit-card/JvEditor'
 import { useT } from '../i18n/LanguageContext'
 import { useAccountingConfig } from '../hooks/credit-card'
+import { useScrollLock } from '../hooks/useScrollLock'
 import { showToast } from '../lib/toast'
 import { fmt } from '../lib/format'
 import { toExtractedRows } from '../lib/api/ocr'
@@ -150,12 +151,10 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   // did none of them. Not shared code with it — CustomModal traps a fixed set of three
   // controls it renders itself, while this one's focusable set grows and shrinks as rows,
   // pickers and the input-tax panel appear.
+  useScrollLock()
   useEffect(() => {
     const returnTo = document.activeElement as HTMLElement | null
-    const priorOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
     return () => {
-      document.body.style.overflow = priorOverflow
       returnTo?.focus?.()
     }
   }, [])

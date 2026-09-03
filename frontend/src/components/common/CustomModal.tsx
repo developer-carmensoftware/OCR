@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { m, AnimatePresence, useAnimationControls, useReducedMotion } from 'framer-motion'
 import { CheckCircle2, AlertTriangle, XCircle, Info, Loader2, Eye, EyeOff } from 'lucide-react'
 import { useT } from '../../i18n/LanguageContext'
+import { useScrollLock } from '../../hooks/useScrollLock'
 
 type ModalType = 'info' | 'success' | 'warning' | 'error' | 'loading'
 
@@ -118,6 +119,9 @@ export default function CustomModal({
     onInputChange?.(v)
   }
 
+  // Background scroll behind a fixed overlay reads as the dialog itself drifting.
+  useScrollLock(show)
+
   /**
    * Open/close side effects. Deliberately keyed on `show` ALONE: the keydown effect below
    * re-subscribes whenever `busy` or a handler identity changes, and if focus restore
@@ -130,11 +134,7 @@ export default function CustomModal({
     // Without this, dismissing a modal drops focus to <body> and a keyboard user
     // restarts their tab journey from the top of the page.
     const returnFocusTo = document.activeElement as HTMLElement | null
-    // Background scroll behind a fixed overlay reads as the dialog itself drifting.
-    const priorOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
     return () => {
-      document.body.style.overflow = priorOverflow
       returnFocusTo?.focus?.()
     }
   }, [show])
