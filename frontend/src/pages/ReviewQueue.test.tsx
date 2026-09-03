@@ -196,6 +196,22 @@ describe('the message column', () => {
     expect(screen.queryByText('GL mapping guessed')).not.toBeInTheDocument()
     expect(screen.queryByText('extraction warnings')).not.toBeInTheDocument()
   })
+
+  it('says why the pipeline stopped, over anything it merely noticed', async () => {
+    // A pending row can now carry a reason code: a refusal that came after a paid-for
+    // extraction parks rather than finishing. "Why this got no further" is a stronger claim
+    // on the reviewer's time than "why this might be worth opening".
+    mount(status(), [doc({ reason_code: 'tax_id_mismatch', flags: ['unbalanced'] })])
+    expect(await screen.findByText(/tax ID/i)).toBeInTheDocument()
+    expect(screen.queryByText('amounts do not reconcile')).not.toBeInTheDocument()
+  })
+
+  it('still offers Review on a row that stopped, because it is still postable', async () => {
+    // The whole point of parking it: the reading was paid for, so the document is editable
+    // and postable rather than being a record of a failure.
+    mount(status(), [doc({ reason_code: 'carmen_rejected' })])
+    expect(await screen.findByRole('button', { name: 'Review' })).toBeInTheDocument()
+  })
 })
 
 describe('where a row came from', () => {

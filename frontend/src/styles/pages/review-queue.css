@@ -1241,6 +1241,16 @@
   margin-bottom: 0;
 }
 
+/* The "fix this for good" link on the stop-reason banner. Pushed to the far edge so the
+   sentence keeps the left and the action keeps the right — the same division the queue's
+   own rows use, where the Message column reads and the Actions column acts. `flex: none`
+   because the alert is a flex row and a long Carmen verdict would otherwise squeeze the
+   button to its ellipsis. */
+.rd-alert-fix {
+  margin-left: auto;
+  flex: none;
+}
+
 /* Why Approve is unavailable, said at the button rather than left to be inferred from a
    tinted row further up the dialog. Amber: something to finish, not something that failed.
    The button points at it with aria-describedby, so it is also the reason a screen reader

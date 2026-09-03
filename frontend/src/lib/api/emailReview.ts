@@ -67,8 +67,11 @@ export interface ReviewDocument {
    *  `flags` only says one of them was guessed, which is not enough to point at. */
   guessed: string[]
 
-  // Only once resolved. Plain ledger columns, kept for ever.
+  // Plain ledger columns, kept for ever.
   jv_no: string | null
+  /** Why the pipeline stopped. Once only set on a resolved row — but since a refusal that
+   *  came *after* a paid-for extraction parks instead of finishing, a `pending_review` row
+   *  can carry one too, and then it is the strongest thing the row has to say. */
   reason_code: string | null
   error_message: string | null
   reviewed_by_name: string | null

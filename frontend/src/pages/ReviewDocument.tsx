@@ -15,6 +15,7 @@ import { fmt } from '../lib/format'
 import { toExtractedRows } from '../lib/api/ocr'
 import { normalizeDateStringToCE } from '../lib/date'
 import { applyJvAmount, type JvRow } from '../lib/ccJv'
+import { FIX, REASON_KEY } from '../lib/reviewReasons'
 import { patchAccountingConfig } from '../lib/api/config'
 import {
   approveDocument,
@@ -508,6 +509,42 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
         ) : (
           <>
             <div className="rd-body">
+              {/* Why the robot stopped, above everything — including the extraction
+                  warnings, which are about how well the document was *read* while this is
+                  about what happened after.
+
+                  Only some parked documents have one. A document that reached the ordinary
+                  review fork carries no reason code and shows nothing here; one that hit a
+                  foreign tax ID, an unmappable payment type or a Carmen refusal was going
+                  to be thrown away before this change, and the reviewer needs to know that
+                  before being asked to approve it.
+
+                  Amber and not red: unlike the resolved rows wearing these same words, this
+                  document is still open, still editable and still postable. The message
+                  underneath is the pipeline's own — Carmen's verdict, the conflicting tax
+                  ID, the "check whether the JV posted" caveat — and it is the only place
+                  the reviewer will ever read it. */}
+              {doc.reason_code && (
+                <div className="mapping-alert">
+                  <AlertTriangle size={16} />
+                  <span className="cc-alert-text">
+                    {t(REASON_KEY[doc.reason_code] ?? 'review.rcUnknown')}
+                    {doc.error_message ? ` · ${doc.error_message}` : ''}
+                  </span>
+                  {/* Where it gets fixed for good, for the causes that have such a place.
+                      The reviewer can still correct and post this one document without
+                      leaving; this is for the next twenty. */}
+                  {FIX[doc.reason_code] && (
+                    <a
+                      className="btn btn-outline btn-sm rd-alert-fix"
+                      href={FIX[doc.reason_code].href}
+                    >
+                      {t(FIX[doc.reason_code].key)}
+                    </a>
+                  )}
+                </div>
+              )}
+
               {/* A statement about the reading, not about the entry — so it sits with the
                   document rather than over the whole screen. */}
               {warnings.length > 0 && (

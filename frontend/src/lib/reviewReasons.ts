@@ -1,0 +1,65 @@
+import type { TKey } from '../i18n/dict'
+
+/**
+ * Why the pipeline stopped, and where a person goes to unstop it.
+ *
+ * Its own module because two screens read it now: the queue row, which prints the phrase in
+ * its Message column, and the review dialog, which prints the same phrase in a banner above
+ * the fields — a reviewer opening a parked document has to be told what stopped it before
+ * being asked to fix it.
+ */
+
+/** The reason codes the pipeline actually writes. Anything unmapped falls back to the
+ *  raw code rather than to a blank — an unfamiliar code is still a lead. */
+export const REASON_KEY: Record<string, TKey> = {
+  sender_not_allowed: 'review.rcSenderNotAllowed',
+  no_rule_match: 'review.rcNoRuleMatch',
+  unsupported_attachment: 'review.rcUnsupported',
+  unreadable_document: 'review.rcUnreadable',
+  wrong_pdf_password: 'review.rcWrongPassword',
+  tax_id_mismatch: 'review.rcTaxIdMismatch',
+  duplicate_document: 'review.rcDuplicate',
+  mapping_incomplete: 'review.rcMappingIncomplete',
+  carmen_rejected: 'review.rcCarmenRejected',
+  // Distinct from carmen_rejected on purpose: a dead credential and a bad JV are fixed by
+  // different people on different screens, and a dead one fails EVERY document of the BU.
+  carmen_unauthorized: 'review.rcCarmenUnauthorized',
+  ingest_paused: 'review.rcIngestPaused',
+  rejected_by_reviewer: 'review.rcRejectedByReviewer',
+}
+
+const SETTINGS = { key: 'review.actionOpenSettings' as TKey, href: '#/email-settings' }
+
+/**
+ * Where a person fixes each cause — and nothing at all for the ones they cannot.
+ *
+ * **Keyed on `reason_code`, not on `status`.** The skipped/failed split is about whether a
+ * credit was charged (`status = "skipped" if charged is None else "failed"` in
+ * `email_ingest_service.py`), which says nothing about whether anyone can act:
+ * `sender_not_allowed` is `skipped` and is one field away from fixed, while
+ * `carmen_rejected` is `failed` and there is nothing to press here. Filing the actionable
+ * ones under the chip the design doc calls "mostly noise" is how eight `sender_not_allowed`
+ * rows cost a day of diagnosis on 2026-08-28.
+ *
+ * Deliberately absent, because a button would be a lie: `carmen_rejected` (Carmen's own
+ * complaint, fixed in Carmen), `duplicate_document` (already posted, nothing owed),
+ * `unreadable_document` / `unsupported_attachment` (we cannot re-read a file we never
+ * stored — the Upload button above is the whole answer), `rejected_by_reviewer` (terminal
+ * by design).
+ *
+ * **Most of these now appear on `pending_review` rows**, since a refusal that came after a
+ * paid-for extraction parks rather than finishing. On the row itself Review still wins —
+ * opening the document is the stronger action, and it is where the reviewer reads the
+ * reason. This map is what the dialog's banner offers beside it.
+ */
+export const FIX: Record<string, { key: TKey; href: string }> = {
+  mapping_incomplete: { key: 'review.actionFixMapping', href: '#/CreditCardOCR/mapping' },
+  // Its own word, not the generic one: this is not "a setting is off", it is "the pipeline
+  // is down for this BU until someone re-pastes the token".
+  carmen_unauthorized: { key: 'review.actionReconnect', href: '#/email-settings' },
+  no_rule_match: SETTINGS,
+  sender_not_allowed: SETTINGS,
+  wrong_pdf_password: SETTINGS,
+  ingest_paused: SETTINGS,
+  tax_id_mismatch: SETTINGS,
+}
