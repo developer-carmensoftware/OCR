@@ -66,6 +66,7 @@ export default function CustomModal({
   const confirmRef = useRef<HTMLButtonElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const boxRef = useRef<HTMLDivElement>(null)
   const [inputVal, setInputVal] = useState('')
   const [inputErrored, setInputErrored] = useState(false)
   const [revealed, setRevealed] = useState(false)
@@ -153,9 +154,14 @@ export default function CustomModal({
         return
       }
       if (e.key !== 'Tab') return
-      const focusable = [cancelRef.current, inputRef.current, confirmRef.current].filter(
-        Boolean
-      ) as HTMLElement[]
+      // Everything focusable in the box, in DOM order — not the three refs this used to
+      // list. A dialog that puts a control in `children` (the review queue's Dismiss, the
+      // bell's "Open JV") had it cycled past: Tab from cancel went straight to confirm and
+      // Shift+Tab from cancel wrapped to confirm, so the child was unreachable by keyboard.
+      // `tabIndex >= 0` is what keeps the password-reveal button (tabIndex -1) out of it.
+      const focusable = Array.from(
+        boxRef.current?.querySelectorAll<HTMLElement>('a[href], button, input, [tabindex]') ?? []
+      ).filter(el => el.tabIndex >= 0 && !el.hasAttribute('disabled'))
       if (!focusable.length) return
       const first = focusable[0]
       const last = focusable[focusable.length - 1]
@@ -224,7 +230,7 @@ export default function CustomModal({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.18 }}
         >
-          <m.div className={`modal-box modal-${type}`} {...boxMotion}>
+          <m.div ref={boxRef} className={`modal-box modal-${type}`} {...boxMotion}>
             <div className="modal-icon-wrapper">
               <cfg.Icon size={26} strokeWidth={1.75} />
             </div>

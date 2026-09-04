@@ -1,6 +1,7 @@
-import { ExternalLink, X } from 'lucide-react'
+import { useState } from 'react'
+import { ExternalLink } from 'lucide-react'
+import CustomModal from '../common/CustomModal'
 import { useT } from '../../i18n/LanguageContext'
-import { fmt } from '../../lib/format'
 import { glFieldLabel, glFieldList } from '../../lib/glFieldLabels'
 import { FIX, REASON_KEY, WITH_DETAIL } from '../../lib/reviewReasons'
 import { getCarmenUrl } from '../../lib/url'
@@ -98,17 +99,12 @@ export default function QueueRow({ row, onOpen, onDismiss }: Props) {
             where the two do mix, the Message column already says which in a sentence
             ("scanned and posted by hand" vs "posted automatically"), so the glyph was
             unreadable where it was needed and constant where it was not. */}
+        {/* The filename, and nothing appended to it. The gross used to ride here on pending
+            rows; it is on the second line of a cell that already holds a bank, a document
+            number and a filename, and the figure a reviewer actually decides on is the one
+            in the dialog's own total row, next to the legs it is made of. */}
         <span className="rq-file" title={row.attachment}>
           {row.attachment}
-          {/* The gross, which is what lands on the credit side of the JV — the number a
-              reviewer scans for. Pending only: `_finish` clears the payload it comes from,
-              so on a resolved row 0.00 would be a wrong value, not a missing one. */}
-          {pending && (
-            <>
-              {' · '}
-              <span className="rq-amount text-mono">{fmt(row.total)}</span>
-            </>
-          )}
         </span>
       </td>
 
@@ -182,36 +178,104 @@ function RowAction({ row, onOpen, onDismiss }: Props) {
   }
 
   const fix = row.reason_code ? FIX[row.reason_code] : undefined
-  if (!fix) return null
+  // The repair belongs to the chip where the row is work, and `onDismiss` is passed on
+  // exactly that chip. Elsewhere the row is a record: `_wants_a_human()` puts every
+  // undismissed fixable row under `review`, so the copy of it showing up under `Today` or
+  // `All` is the same row offering the same button twice — and once it has been dismissed,
+  // a repair button on it argues with the person who put it away.
+  if (!fix || !onDismiss) return null
+  return <Stopped row={row} fix={fix} onDismiss={onDismiss} />
+}
+
+/**
+ * A row the pipeline stopped, on the chip where somebody is working — and the two things
+ * that can be done about it, behind one button.
+ *
+ * They used to sit in the cell: the repair as a link, the way out as a bare ✕ whose only
+ * label was a tooltip. That put the control that changes state in the smaller target, in a
+ * column narrow enough that the pair read as a choice between equals. One button, and the
+ * dialog behind it can afford to say what each does before it is pressed.
+ *
+ * `CustomModal`, not a dialog of this page's own: it already carries the portal, the scroll
+ * lock, focus trap and restore, Escape, and the reduced-motion path.
+ *
+ * **Escape and Close leave the row alone.** Dismiss is deliberately not in the cancel slot,
+ * which is what Escape fires — a keypress that means "never mind" must not be the one that
+ * changes something. It is the quiet third action in the body instead, which is also its
+ * rank: fixing the rule is what a reviewer came to do.
+ *
+ * Dismiss stays optimistic and unconfirmed, as it was. Nothing is destroyed — the row keeps
+ * its whole story under Not posted, which is what the hint says — and a failure puts it back.
+ */
+function Stopped({
+  row,
+  fix,
+  onDismiss,
+}: {
+  row: ReviewDocument
+  fix: { key: TKey; href: string }
+  onDismiss: (id: string) => void
+}) {
+  const { t } = useT()
+  const [open, setOpen] = useState(false)
+
   return (
     <>
-      <a className="btn btn-outline btn-sm" href={fix.href}>
-        {t(fix.key)}
-      </a>
-      {/* And the way out of the chip. A row wearing a fix link is in Review, and nothing
-          retries it — fixing the rule today does not clear the rows behind it, so without
-          this the chip fills with work nobody will do and its number never falls.
-
-          An icon, not a second full button: putting the row away is the lesser of the two
-          things to do with it, and two equal buttons in a 7rem column read as a choice
-          rather than as an action and an escape.
-
-          No confirmation and no undo, because nothing is destroyed — the row keeps its
-          whole story under Not posted. Optimistic, because the alternative is a spinner on
-          a gesture whose whole point is to be cheap; a failure puts the row back. */}
-      {onDismiss && (
+      <button type="button" className="btn btn-outline btn-sm" onClick={() => setOpen(true)}>
+        {t('review.actionDetails')}
+      </button>
+      {/* Amber, not rose: every reason that reaches this dialog is one somebody here can
+          clear — that is what put the row on this chip (`FIXABLE_REASONS`). */}
+      <CustomModal
+        show={open}
+        type="warning"
+        title={t('review.detailTitle')}
+        message={stopText(row, t)}
+        cancelText={t('review.close')}
+        onCancel={() => setOpen(false)}
+        confirmText={t(fix.key)}
+        onConfirm={() => {
+          setOpen(false)
+          window.location.hash = fix.href
+        }}
+      >
+        {/* Which attachment this is — the one thing on the row the dialog covers up, and
+            the only way to tell two rows of the same complaint apart. */}
+        <span className="modal-doc">{row.attachment}</span>
         <button
           type="button"
-          className="btn-icon rq-dismiss"
-          onClick={() => onDismiss(row.id)}
-          aria-label={t('review.actionDismiss')}
-          title={t('review.actionDismiss')}
+          className="rq-dismiss"
+          onClick={() => {
+            setOpen(false)
+            onDismiss(row.id)
+          }}
         >
-          <X size={14} />
+          {t('review.actionDismiss')}
         </button>
-      )}
+        <p className="rq-dismiss-hint">{t('review.dismissHint')}</p>
+      </CustomModal>
     </>
   )
+}
+
+/**
+ * What a row that did not post says about itself, in one sentence.
+ *
+ * Shared by the Message column and the dialog above it, because the two must not drift: a
+ * reviewer opening a row is checking the sentence they just read, and a dialog that
+ * paraphrased it would read as a second, different finding.
+ *
+ * The detail *replaces* the phrase, never joins it. Printing both gave every one of these
+ * rows a vacuous head — "duplicate — a copy is already waiting for review" — which says the
+ * same thing twice and makes the reader read past the first half to reach the part that
+ * differs. The phrase is what stands in when there is no detail (a legacy row, or a Carmen
+ * refusal with an empty body).
+ */
+function stopText(row: ReviewDocument, t: (k: TKey) => string): string {
+  const detail = row.error_message?.trim()
+  if (detail && WITH_DETAIL.has(row.reason_code ?? '')) return detail
+  const key = row.reason_code ? REASON_KEY[row.reason_code] : undefined
+  return key ? t(key) : row.reason_code || t('review.rcUnknown')
 }
 
 /** Why this row might need you (while pending), or what happened to it (once resolved). */
@@ -275,8 +339,6 @@ function Message({ row, pending }: { row: ReviewDocument; pending: boolean }) {
     return <span className="rq-reason rq-reason--warn">{t('review.rcStuck')}</span>
   }
 
-  const key = row.reason_code ? REASON_KEY[row.reason_code] : undefined
-  const label = key ? t(key) : row.reason_code || t('review.rcUnknown')
   // One colour for everything under Not posted. Greying the duplicate was tried and
   // reverted: an exception in a column of red raises "why is that one different?" before it
   // answers anything, and the row already says in words that nothing is owed. The words
@@ -296,15 +358,10 @@ function Message({ row, pending }: { row: ReviewDocument; pending: boolean }) {
     )
   }
 
-  // The detail *replaces* the phrase, never joins it. Printing both gave every one of these
-  // rows a vacuous head — "duplicate — a copy is already waiting for review" — which says
-  // the same thing twice and makes the reader read past the first half to reach the part
-  // that differs. One sentence per row; the phrase is what stands in when there is no
-  // detail (a legacy row, or a Carmen refusal with an empty body).
-  const speaks = detail && WITH_DETAIL.has(row.reason_code ?? '')
+  // One sentence per row, and the same one the Details dialog opens with — see `stopText`.
   return (
     <span className={`rq-reason rq-reason--${tone}`} title={detail || undefined}>
-      {speaks ? detail : label}
+      {stopText(row, t)}
     </span>
   )
 }

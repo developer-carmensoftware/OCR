@@ -1189,3 +1189,62 @@ total"*, and #70's link answers the same dead end for the price of one button. �
 goes up). And `components/admin/ui/EmptyState.tsx` was not adopted: it is admin-only, its
 CSS lives in `admin.css`, its `action` slot has no CSS rule and no call site, and it puts
 body copy on `--text-4`, which `DESIGN.md:176` says can never reach AA.
+
+---
+
+## §16 — The row's Actions cell holds one button (2026-09-04, later)
+
+Two changes to the queue table, both subtractions.
+
+### The gross leaves the Document cell
+
+§9's Document cell carried four values on two lines: bank, document number, filename, and —
+on pending rows only — the gross appended after a `·`. #33's *"Considered and not done"*
+already declined an Amount **column** on the grounds that *"the reader confirmed they open
+the document rather than scan for it"*; keeping the figure as a suffix on the filename kept
+the cost of the column (a fourth value competing in the cell that was already truncating)
+without the benefit it was rejected for lacking. It is in the dialog, in the JV's own total
+row, beside the legs it is made of — which is where a number anybody decides on belongs.
+
+### `Details`, and the ✕ goes with it
+
+#54 put the way out of the chip beside the repair: a `Fix mapping` / `Open settings` link,
+and a bare ✕ whose only label was a `title`. Two problems, both about the pair rather than
+about either control.
+
+- **The ✕ was the smaller target and the bigger action.** It is the one that changes state,
+  and it was a 36px icon with no visible word, in a column sized to 10.5rem so the two would
+  fit side by side.
+- **Side by side they read as a choice between equals**, which #54 itself said they are not
+  (*"putting the row away is the lesser of the two things to do with it"*). An icon was the
+  compromise; the honest answer is that the cell is the wrong place for two controls.
+
+So the cell holds one `Details` button on the Review chip, and both actions move into a
+dialog behind it, where each can carry a full label and the dismiss can say what it costs.
+
+| | |
+|---|---|
+| Title | *This document did not post* |
+| Message | `stopText(row)` — the **same sentence the Message column prints** |
+| Body | the attachment name (`.modal-doc`), then `Dismiss this row` + its hint |
+| Actions | `[ Close ]` `[ Open settings / Fix mapping / Reconnect ]` |
+
+|  | Decision | Why |
+|---|---|---|
+| 77 | **`CustomModal`, not a dialog of this page's own.** | It already carries the portal, the scroll lock, focus trap and restore, Escape, and the reduced-motion path. `.rd-modal` is the review screen's, and it is a 64rem work surface — the wrong shape for four lines and three buttons. |
+| 78 | **Dismiss is not in the cancel slot.** It is a quiet text button in the body; `Close` takes the slot. | `CustomModal` fires `onCancel` on Escape. A keypress that means *"never mind"* must never be the one that changes something. It also gets the rank right: the repair is what a reviewer came to do, `Close` is the way out of the dialog, and dismiss is what you reach for when the repair does not apply. |
+| 79 | **The hint — *"Takes it off this list. The record stays under Not posted."*** | #54 chose no confirmation and no undo, correctly, because nothing is destroyed. That only works if the reader knows it before pressing. The ✕ could not say so; a button in a dialog can. |
+| 80 | **`CustomModal`'s focus trap now reads the DOM, not three refs.** | It cycled `[cancel, input, confirm]`, so anything a caller passed in `children` was unreachable by keyboard — Tab from cancel jumped to confirm and Shift+Tab wrapped to it. This dialog is the second caller to hit it; the bell's `Open JV` link was the first, and is fixed by the same change. `tabIndex >= 0` keeps the password-reveal button (`tabIndex -1`) out. |
+| 81 | **Off the Review chip the Actions cell is empty.** No dialog, and no repair link either — `RowAction` returns null unless `onDismiss` was passed, which happens on the work chip alone. | The repair belongs to the chip where the row is *work*. `_wants_a_human()` keeps every undismissed fixable row under `review`, so the copy of one appearing under `Today` or `All` was the same row offering the same button a second time — and under `unposted` / `uncharged` a fixable reason means **dismissed** (#67), where a repair button argues with the person who just put the row away. The 2026-08-28 lesson is untouched: the cause is still pointed at, by the chip that carries the amber dot. |
+
+`.rq-c-act` drops 10.5rem → 8.5rem. It now holds one word plus at most a glyph — `Review`,
+`Details`, or `Open JV` with its arrow — where before it had to fit the longest repair label
+(`Fix mapping`) *and* the ✕ beside it.
+
+### Considered and not done
+
+- **A confirmation on Dismiss.** #54's reasoning is unchanged: nothing is destroyed. The
+  hint is the cheaper answer, and it is on screen before the press rather than after it.
+- **Naming the button after the repair** (`Open settings` opening a dialog). The label would
+  describe something the button does not do. The Message column already names the cause, and
+  the dialog's confirm button carries the repair's real word.

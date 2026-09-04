@@ -92,11 +92,15 @@ function mount(
 beforeEach(() => vi.clearAllMocks())
 
 describe('which state the automation page paints', () => {
-  it('lists what is waiting, with the gross amount the reviewer is agreeing to', async () => {
+  it('lists what is waiting, and leaves the amount to the document', async () => {
+    // The gross used to be appended to the filename on the second line of this cell. It is
+    // a figure a reviewer decides on, and deciding happens in the dialog, where it sits in
+    // the JV's own total row beside the legs it is made of.
     mount(status(), [doc()])
     expect(await screen.findByText('KTC')).toBeInTheDocument()
     expect(screen.getByText('INV-001')).toBeInTheDocument()
-    expect(screen.getByText('48,200.00')).toBeInTheDocument()
+    expect(screen.getByText('july.pdf')).toBeInTheDocument()
+    expect(screen.queryByText('48,200.00')).not.toBeInTheDocument()
   })
 
   it('has no heading — the chip strip is it', async () => {
@@ -238,10 +242,24 @@ describe('dismissing a row nobody will act on', () => {
   const fixable = () =>
     doc({ status: 'skipped', reason_code: 'no_rule_match', flags: [], total: 0 })
 
-  it('offers the way out beside the repair, on the work chip', async () => {
+  /** Open the row's Details dialog, which is where both actions now live. */
+  const openDetails = async () => {
+    fireEvent.click(await screen.findByRole('button', { name: 'Details' }))
+    return screen.findByRole('button', { name: 'Dismiss this row' })
+  }
+
+  it('keeps both actions behind one button on the work chip', async () => {
+    // The row used to carry the repair as a link and the way out as a bare ✕ whose only
+    // label was a tooltip. One control in the cell; the dialog says what each does.
     mount(status(), [fixable()], { ...ZERO, all: 1, review: 1 })
-    expect(await screen.findByRole('link', { name: 'Open settings' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Dismiss this row' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Details' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Dismiss this row' })).not.toBeInTheDocument()
+
+    await openDetails()
+    expect(screen.getByRole('button', { name: 'Open settings' })).toBeInTheDocument()
+    // The dialog names the attachment: it covers the row it was opened from, and the
+    // filename is the only thing that tells two rows of the same complaint apart.
+    expect(screen.getAllByText('july.pdf')).toHaveLength(2)
   })
 
   it('takes the row off the list without waiting for the server', async () => {
@@ -249,7 +267,7 @@ describe('dismissing a row nobody will act on', () => {
     // would make clearing a morning's noise feel like work.
     vi.mocked(api.dismissRow).mockResolvedValue(undefined)
     mount(status(), [fixable()], { ...ZERO, all: 1, review: 1 })
-    fireEvent.click(await screen.findByRole('button', { name: 'Dismiss this row' }))
+    fireEvent.click(await openDetails())
 
     await waitFor(() => expect(screen.queryByText('KTC')).not.toBeInTheDocument())
     expect(api.dismissRow).toHaveBeenCalledWith('d1')
@@ -260,23 +278,39 @@ describe('dismissing a row nobody will act on', () => {
   it('puts the row back when the server refuses', async () => {
     vi.mocked(api.dismissRow).mockRejectedValue(new Error('nope'))
     mount(status(), [fixable()], { ...ZERO, all: 1, review: 1 })
-    fireEvent.click(await screen.findByRole('button', { name: 'Dismiss this row' }))
+    fireEvent.click(await openDetails())
     expect(await screen.findByText('KTC')).toBeInTheDocument()
   })
 
-  it('offers nothing to dismiss on a chip nobody is working', async () => {
-    // "Stop showing me this" on a history view is an invitation to hide history.
+  it('leaves the row alone when the dialog is merely closed', async () => {
+    // Close and Escape both land on CustomModal's cancel slot, which is why Dismiss is not
+    // in it: a keypress meaning "never mind" must not be the one that changes something.
+    mount(status(), [fixable()], { ...ZERO, all: 1, review: 1 })
+    await openDetails()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(api.dismissRow).not.toHaveBeenCalled()
+    expect(screen.getByText('KTC')).toBeInTheDocument()
+  })
+
+  it('offers nothing at all on a chip nobody is working', async () => {
+    // Not the dialog — "stop showing me this" on a history view is an invitation to hide
+    // history — and not the repair either. `_wants_a_human()` keeps every undismissed
+    // fixable row under Review, so a copy of one here is the same row offering the same
+    // button twice; and a dismissed one carrying a repair argues with the person who put
+    // it away.
     mount(status(), [fixable()], { ...ZERO, all: 1, unposted: 1 })
     fireEvent.click(await screen.findByRole('tab', { name: /Not posted/ }))
     await waitFor(() => expect(vi.mocked(api.listActivity)).toHaveBeenCalledTimes(2))
-    expect(screen.queryByRole('button', { name: 'Dismiss this row' })).not.toBeInTheDocument()
+    expect(screen.getByText('KTC')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Open settings' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Details' })).not.toBeInTheDocument()
   })
 
   it('never offers it on a document waiting for review', async () => {
     // Reject is the verb for those, and it records who and why.
     mount(status(), [doc()], { ...ZERO, all: 1, review: 1 })
     await screen.findByRole('button', { name: 'Review' })
-    expect(screen.queryByRole('button', { name: 'Dismiss this row' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Details' })).not.toBeInTheDocument()
   })
 })
 
@@ -633,9 +667,13 @@ describe('the actions column', () => {
   })
 
   it('sends a missing GL mapping to the screen that fixes it', async () => {
+    // On the work chip the repair is the dialog's confirm button rather than a link in the
+    // cell — but it is still the repair, still named, and it still goes to the one screen
+    // that clears this cause.
     mount(status(), [doc({ status: 'failed', reason_code: 'mapping_incomplete', total: 0 })])
-    const link = await screen.findByRole('link', { name: 'Fix mapping' })
-    expect(link).toHaveAttribute('href', '#/CreditCardOCR/mapping')
+    fireEvent.click(await screen.findByRole('button', { name: 'Details' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Fix mapping' }))
+    expect(window.location.hash).toBe('#/CreditCardOCR/mapping')
   })
 
   // The regression that matters: the ledger's skipped/failed split is about whether a
@@ -646,8 +684,8 @@ describe('the actions column', () => {
     'offers settings on a *skipped* %s row',
     async reason_code => {
       mount(status(), [doc({ status: 'skipped', reason_code, total: 0 })])
-      const link = await screen.findByRole('link', { name: 'Open settings' })
-      expect(link).toHaveAttribute('href', '#/email-settings')
+      fireEvent.click(await screen.findByRole('button', { name: 'Details' }))
+      expect(await screen.findByRole('button', { name: 'Open settings' })).toBeInTheDocument()
     }
   )
 
@@ -655,8 +693,12 @@ describe('the actions column', () => {
     // One expired token fails EVERY document of the BU until someone re-pastes it, so it
     // is not "a setting is off" — it is "the pipeline is down".
     mount(status(), [doc({ status: 'failed', reason_code: 'carmen_unauthorized', total: 0 })])
-    expect(await screen.findByRole('link', { name: 'Reconnect' })).toBeInTheDocument()
-    expect(screen.getByText(/Carmen connection has expired/)).toBeInTheDocument()
+    expect(await screen.findByText(/Carmen connection has expired/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }))
+    expect(await screen.findByRole('button', { name: 'Reconnect' })).toBeInTheDocument()
+    // The cell and the dialog open with the same sentence — one `stopText`, so they cannot
+    // drift into two different findings about the same row.
+    expect(screen.getAllByText(/Carmen connection has expired/)).toHaveLength(2)
   })
 
   it.each(['carmen_rejected', 'duplicate_document', 'unreadable_document'])(
@@ -665,6 +707,7 @@ describe('the actions column', () => {
       mount(status(), [doc({ status: 'failed', reason_code, total: 0 })])
       await screen.findByRole('table')
       expect(screen.queryByRole('link', { name: /settings|mapping|Reconnect/ })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Details' })).toBeNull()
     }
   )
 })

@@ -136,31 +136,18 @@
 .rq-c-jv {
   width: 7.5rem;
 }
-/* Sized for its widest label ("Fix mapping") plus the ✕ beside it on the Review chip, not
-   for its widest imaginable one: nowrap below means a button that outgrew this would push
-   its neighbours rather than silently double the row's height, which is the failure worth
+/* One control per row, and never more than one word plus a glyph: `Review`, `Details`, or
+   `Open JV` with its arrow. The repair's own labels ("Fix mapping", "Reconnect") moved into
+   the Details dialog, so this no longer has to hold the longest of those plus the ✕ beside
+   it — 10.5rem → 8.5rem. nowrap below means a button that outgrew this would push its
+   neighbours rather than silently double the row's height, which is the failure worth
    catching. */
 .rq-c-act {
-  width: 10.5rem;
+  width: 8.5rem;
 }
 
 .rq-c-act .btn {
   white-space: nowrap;
-}
-
-/* The way out of the chip, beside the repair. An icon and not a second full button:
-   putting a row away is the lesser of the two things to do with it, and two equal buttons
-   in this column would read as a choice rather than as an action and an escape. Quiet at
-   rest for the same reason — it is the thing you reach for when the other one does not
-   apply. */
-.rq-dismiss {
-  margin-left: 0.35rem;
-  vertical-align: middle;
-  color: var(--text-3);
-}
-
-.rq-dismiss:hover {
-  color: var(--text);
 }
 
 /* Justification, in one rule: the two columns that hold sentences keep the left edge, and
@@ -198,8 +185,10 @@
   white-space: nowrap;
 }
 
-/* Second line of the Document cell: what the file was called, and — while a document is
-   still pending — the gross a reviewer is being asked to agree to.
+/* Second line of the Document cell: what the file was called, and nothing else. The gross
+   used to be appended here on pending rows; it was a fourth value in a cell that already
+   carries a bank, a document number and a filename, and the figure a reviewer decides on is
+   the one in the dialog's total row, beside the legs it is made of.
    --text-3, not --text-4: at 0.75rem this is small text, and --text-4 is 3.36:1. */
 .rq-file {
   display: block;
@@ -208,11 +197,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.rq-amount {
-  font-weight: 500;
-  color: var(--text-3);
 }
 
 .rq-c-when,
@@ -528,8 +512,7 @@
   }
 
   .rq-bar-actions .btn,
-  .rq-c-act .btn,
-  .rq-c-act .rq-dismiss {
+  .rq-c-act .btn {
     min-height: 44px;
   }
 }
@@ -614,6 +597,71 @@
 
 .rq-reason--ok {
   color: var(--emerald-text);
+}
+
+/* ── The Details dialog ─────────────────────────────────────────────────────── */
+
+/* A `CustomModal` body, so everything here sits in a centred 420px box between the message
+   and the two framed buttons. Only the third action needs dressing; the rest of the dialog
+   is the shared component's.
+
+   The way out of the chip, and the reason it exists: a row wearing a fix link is in Review,
+   nothing retries it, and fixing the rule today does not clear the rows behind it — so
+   without this the chip fills with work nobody will do and its number never falls.
+
+   Third in rank, third in weight. Close and the repair are framed buttons below it; this is
+   what you reach for when the repair does not apply. Quiet, but a labelled button rather
+   than the ✕ it replaces — putting the label on the control instead of in a tooltip is the
+   whole reason it moved off the row. */
+/* Block, so it takes a line of its own rather than sharing one with the filename chip above
+   it — both are inline-block, and a 420px box has room for the pair. `fit-content` keeps the
+   hit area the width of the words; `margin-inline: auto` keeps it on the box's centre line
+   with everything else. */
+.rq-dismiss {
+  display: block;
+  width: fit-content;
+  margin: var(--space-2) auto 0;
+  padding: 0.35rem 0.6rem;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 0.83rem;
+  font-weight: 500;
+  color: var(--text-3);
+  cursor: pointer;
+  transition:
+    color 140ms var(--ease-out-premium, ease-out),
+    background-color 140ms var(--ease-out-premium, ease-out);
+}
+
+.rq-dismiss:hover {
+  background: var(--muted);
+  color: var(--text);
+}
+
+.rq-dismiss:focus-visible {
+  outline: 2.5px solid var(--primary);
+  outline-offset: 1px;
+}
+
+/* Why pressing it is safe, said before it is pressed — which is what lets the gesture stay
+   unconfirmed and optimistic. --text-3, not --text-4: this is text somebody has to read,
+   and --text-4 is decorative-only per DESIGN.md. */
+.rq-dismiss-hint {
+  margin: 0.15rem auto 0;
+  max-width: 32ch;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-3);
+  text-wrap: pretty;
+}
+
+/* The one control in this dialog that is not already a full-size button. */
+@media (pointer: coarse) {
+  .rq-dismiss {
+    min-height: 44px;
+  }
 }
 
 /* ── Review document — a modal over the queue ───────────────────────────────── */
