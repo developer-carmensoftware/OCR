@@ -800,11 +800,31 @@ const en = {
   // internal concept (the four ReviewFlag values) and left a clerk to work out that the
   // row was fine.
   'review.reasonClean': 'Ready to post',
-  // No second person, and true whether or not this BU reviews before posting: the same
-  // screen serves an empty Needs review and an empty Posted.
-  'review.allClearTitle': 'All clear',
-  'review.allClearBody': 'Statements forwarded to {address} appear here.',
-  'review.allClearBodyNoAddress': 'Forwarded statements appear here.',
+  // One pair per chip. A single sentence used to serve three of them, which is how an empty
+  // Posted chip came to say "All clear" — it has not posted anything; that is not all clear.
+  //
+  // No second person, and each must stay true whether or not this BU reviews before posting.
+  // The old one could not: "…appear here for approval" describes, to a BU that switched
+  // review off, the exact thing it stopped doing. None of these names forwarding or
+  // approval, so none of them can go stale that way.
+  //
+  // The ingest address is deliberately absent. It was printed mid-sentence here, unspaced
+  // and unbreakable, while the not-set-up screen two branches away gives the same string a
+  // mono field and a copy button. One of those is a product; the other is a debug line.
+  'review.emptyReviewTitle': 'Nothing needs review',
+  'review.emptyReviewBody': 'Documents that need a decision appear here.',
+  'review.emptyTodayTitle': 'No activity today',
+  'review.emptyTodayBody': 'Documents received or posted today appear here.',
+  'review.emptyPostedTitle': 'Nothing posted yet',
+  'review.emptyPostedBody': 'Documents that reached Carmen appear here with their JV number.',
+  // Not "All clear" and no tick: an empty pile of failures is not an achievement.
+  'review.emptyUnpostedTitle': 'No failed documents',
+  'review.emptyUnpostedBody': 'Documents that were read but did not post appear here.',
+  'review.emptyAllTitle': 'No documents yet',
+  'review.emptyAllBody': 'Every document this module has looked at appears here.',
+  // The only route the page does not already offer. Since `all` became a chip, a BU can be
+  // told "nothing here" while holding a hundred rows it has no way to reach.
+  'review.viewAllActivity': 'View all activity',
   'review.introTitle': 'Let statements post themselves',
   'review.introBody':
     'Forward a bank statement to this address. We read it, map it to your GL, and queue it here. Nothing reaches Carmen until you approve it.',
@@ -830,11 +850,16 @@ const en = {
   // "Needs review" described a chip holding one status; this one holds everything that
   // wants a human, and the shorter word is the one that stays true as it widens.
   'review.filterReview': 'Review',
+  // Both of these are literal, and both are about a document this BU paid to have read: it
+  // reached Carmen, or it did not. An attachment nobody was charged for is under neither —
+  // it was never a document, and saying "not posted" about a signature logo made the words
+  // mean nothing.
   'review.filterSuccess': 'Posted',
-  // One word for everything that did not become a JV. "Not posted" and "Skipped" were two
-  // chips for one fact — the split behind them is whether a credit was charged, which is
-  // the billing system's business and not something a reader can guess at.
   'review.filterUnposted': 'Not posted',
+  // The log. Every attachment the system has ever looked at for this BU, charged or not,
+  // forwarded or scanned by hand — which makes it the only place the rows the BU's own
+  // filename rules threw out can be found, and the answer to "did my statement arrive?".
+  'review.filterAll': 'All',
   'review.colDocument': 'Document',
   'review.colReceived': 'Received',
   'review.colJv': 'JV no.',
@@ -863,9 +888,15 @@ const en = {
   'review.actionReconnect': 'Reconnect',
   'review.actionOpenJv': 'Open JV',
   'review.uploadDocuments': 'Upload documents',
-  'review.emptyTab': 'Nothing here yet.',
   'review.postedBy': 'posted by {name}',
   'review.postedAutomatically': 'posted automatically',
+  // Named wherever the session that ran the scan can still be resolved. "by hand" answers
+  // how, which the reader can already see from the Source icon; the name answers who, which
+  // is the part they were reading the row for.
+  'review.postedManuallyBy': 'scanned and posted by {name}',
+  // The fallback, and it has to exist: the name comes from `ocr_sessions`, not a stored
+  // column, so it is genuinely gone once that session is scrubbed. Vaguer than a name and
+  // far better than a raw user id.
   'review.postedManually': 'scanned and posted by hand',
   'review.rejectedBy': 'rejected by {name} - {reason}',
   'review.rcSenderNotAllowed': 'sender not on your list',
@@ -2311,9 +2342,17 @@ const th: Record<TKey, string> = {
   'review.reasonGuessed': 'AI เดาผังบัญชีให้',
   'review.reasonWarnings': 'มีคำเตือนจากการอ่าน',
   'review.reasonClean': 'พร้อมโพสต์',
-  'review.allClearTitle': 'ไม่มีรายการค้าง',
-  'review.allClearBody': 'เอกสารที่ส่งมาที่ {address} จะมาปรากฏที่นี่',
-  'review.allClearBodyNoAddress': 'เอกสารที่ส่งต่อเข้ามาจะมาปรากฏที่นี่',
+  'review.emptyReviewTitle': 'ไม่มีรายการรอตรวจสอบ',
+  'review.emptyReviewBody': 'เอกสารที่ต้องให้คุณตัดสินใจจะมาปรากฏที่นี่',
+  'review.emptyTodayTitle': 'วันนี้ยังไม่มีความเคลื่อนไหว',
+  'review.emptyTodayBody': 'เอกสารที่เข้ามาหรือลงบัญชีวันนี้จะมาปรากฏที่นี่',
+  'review.emptyPostedTitle': 'ยังไม่มีเอกสารที่ลงบัญชี',
+  'review.emptyPostedBody': 'เอกสารที่ส่งเข้า Carmen สำเร็จจะมาปรากฏที่นี่พร้อมเลขที่ JV',
+  'review.emptyUnpostedTitle': 'ไม่มีเอกสารที่ลงบัญชีไม่สำเร็จ',
+  'review.emptyUnpostedBody': 'เอกสารที่ระบบอ่านแล้วแต่ลงบัญชีไม่สำเร็จจะมาปรากฏที่นี่',
+  'review.emptyAllTitle': 'ยังไม่มีเอกสาร',
+  'review.emptyAllBody': 'เอกสารทุกฉบับที่ผ่านเข้าโมดูลนี้จะมาปรากฏที่นี่',
+  'review.viewAllActivity': 'ดูประวัติทั้งหมด',
   'review.introTitle': 'ให้ใบแจ้งหนี้ลงบัญชีเอง',
   'review.introBody':
     'ส่งต่อใบแจ้งหนี้ธนาคารมาที่อีเมลนี้ ระบบจะอ่าน จับคู่ผังบัญชี แล้วนำมารอที่นี่ ไม่มีอะไรถูกส่งเข้า Carmen จนกว่าคุณจะอนุมัติ',
@@ -2334,6 +2373,7 @@ const th: Record<TKey, string> = {
   'review.filterReview': 'ตรวจสอบ',
   'review.filterSuccess': 'ลงบัญชีแล้ว',
   'review.filterUnposted': 'ไม่ได้ลงบัญชี',
+  'review.filterAll': 'ทั้งหมด',
   'review.colDocument': 'Document',
   'review.colReceived': 'Received',
   'review.colJv': 'JV no.',
@@ -2353,9 +2393,9 @@ const th: Record<TKey, string> = {
   'review.actionFixMapping': 'แก้ผังบัญชี',
   'review.actionOpenJv': 'เปิด JV',
   'review.uploadDocuments': 'อัปโหลดเอกสาร',
-  'review.emptyTab': 'ยังไม่มีรายการที่นี่',
   'review.postedBy': 'โพสต์โดย {name}',
   'review.postedAutomatically': 'โพสต์อัตโนมัติ',
+  'review.postedManuallyBy': 'สแกนและลงบัญชีโดย {name}',
   'review.postedManually': 'สแกนและโพสต์เอง',
   'review.rejectedBy': '{name} ปฏิเสธ - {reason}',
   'review.rcSenderNotAllowed': 'ผู้ส่งไม่อยู่ในรายชื่อ',

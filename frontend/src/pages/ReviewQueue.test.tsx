@@ -45,6 +45,7 @@ function doc(over: Partial<ReviewDocument> = {}): ReviewDocument {
     error_message: null,
     reviewed_by_name: null,
     reviewed_at: null,
+    posted_by_name: null,
     ...over,
   }
 }
@@ -130,17 +131,29 @@ describe('which state the automation page paints', () => {
 
   it('reads as success, not absence, when a live BU is caught up', async () => {
     mount(status(), [], ZERO)
-    expect(await screen.findByText('All clear')).toBeInTheDocument()
+    // ZERO leaves every chip empty, so the fall-through stays on Today.
+    expect(await screen.findByText('No activity today')).toBeInTheDocument()
     // Never the sales pitch: this BU already knows what the feature is.
     expect(screen.queryByText('Let statements post themselves')).not.toBeInTheDocument()
   })
 
+  it('never prints the ingest address on a chip that is merely empty', async () => {
+    // It used to sit mid-sentence here, unbreakable and unspaced, while the not-set-up
+    // screen gave the same string a mono field and a copy button. One of those is a
+    // product surface; the other is a debug line.
+    mount(status(), [], ZERO)
+    await screen.findByText('No activity today')
+    expect(screen.queryByText(/carmensoftware\.com/)).not.toBeInTheDocument()
+  })
+
   it('says the same true thing whether or not the BU reviews before posting', async () => {
     // "…land here for approval before they post" described, to a BU that had switched
-    // review off, the exact thing it had stopped doing.
+    // review off, the exact thing it had stopped doing. No empty state on this page may
+    // name forwarding or approval, because either can be switched off under it.
     mount(status({ auto_post: true }), [], ZERO)
     expect(await screen.findByText(/appear here/)).toBeInTheDocument()
-    expect(screen.queryByText(/approval/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/approval/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/forward/i)).not.toBeInTheDocument()
   })
 
   it('sells the feature to a BU that has not switched it on', async () => {
@@ -171,7 +184,7 @@ describe('which state the automation page paints', () => {
       </LanguageProvider>
     )
     expect(await screen.findByText('Could not load the queue')).toBeInTheDocument()
-    expect(screen.queryByText('All clear')).not.toBeInTheDocument()
+    expect(screen.queryByText('No activity today')).not.toBeInTheDocument()
     expect(screen.queryByText('Let statements post themselves')).not.toBeInTheDocument()
   })
 })
@@ -276,6 +289,29 @@ describe('where a row came from', () => {
     expect(screen.queryByText('Manual')).not.toBeInTheDocument()
   })
 
+  it('names whoever ran a manual scan', async () => {
+    // "by hand" answered how, which the Source glyph already says; the name answers who,
+    // which is what the reader opened the row for.
+    mount(status(), [
+      doc({
+        source: 'manual',
+        status: 'posted',
+        jv_no: 'JV-7',
+        total: 0,
+        posted_by_name: 'somchai',
+      }),
+    ])
+    expect(await screen.findByText('scanned and posted by somchai')).toBeInTheDocument()
+    expect(screen.queryByText('scanned and posted by hand')).not.toBeInTheDocument()
+  })
+
+  it('falls back to "by hand" when the scanner can no longer be resolved', async () => {
+    // The name comes from the session that ran the scan, not from a stored column, so it
+    // really can be gone. The vaguer sentence beats printing a raw user id at somebody.
+    mount(status(), [doc({ source: 'manual', status: 'posted', jv_no: 'JV-7', total: 0 })])
+    expect(await screen.findByText('scanned and posted by hand')).toBeInTheDocument()
+  })
+
   it('leads with the status, not the source', async () => {
     // The pill is what distinguishes one row from the next once the statuses are mixed;
     // it used to sit fifth, behind two columns of mostly em dashes.
@@ -326,16 +362,17 @@ describe('the JV number', () => {
 })
 
 describe('the status filter chips', () => {
-  it('offers three status chips plus the day, in reading order', async () => {
+  it('offers three status chips between the day and the log, in reading order', async () => {
     // `failed` and `skipped` were two chips for one fact. The split behind them is whether
     // a credit was charged — the billing system's business, and nothing a reader can guess.
-    // `Today` is not a fourth status: it cuts across all three on time, which is the one
-    // question none of them can answer.
+    // Only two of the five are about state at all: `Today` cuts across the three on time,
+    // and `All` selects on nothing, which is what makes it the log.
     mount(status(), [doc()], { all: 113, today: 4, review: 3, success: 7, unposted: 103 })
     await screen.findByText('KTC')
     const labels = screen.getAllByRole('tab').map(t => t.textContent)
-    expect(labels).toHaveLength(4)
+    expect(labels).toHaveLength(5)
     expect(labels[0]).toMatch(/Today/)
+    expect(labels[4]).toMatch(/All/)
     for (const label of ['Review', 'Posted', 'Not posted']) {
       expect(screen.getByRole('tab', { name: new RegExp(label) })).toBeInTheDocument()
     }
@@ -379,8 +416,8 @@ describe('the status filter chips', () => {
     // The fall-through happens behind `loading`: painting today's nothing and then the
     // work a moment later is the flash this exists to avoid.
     mount(status(), [doc()], { ...ZERO, all: 113, today: 0, review: 12 })
-    expect(screen.queryByText('Nothing here yet.')).not.toBeInTheDocument()
-    expect(screen.queryByText('All clear')).not.toBeInTheDocument()
+    expect(screen.queryByText('No activity today')).not.toBeInTheDocument()
+    expect(screen.queryByText('Nothing needs review')).not.toBeInTheDocument()
     await screen.findByText('KTC')
   })
 
@@ -402,13 +439,35 @@ describe('the status filter chips', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('has no All chip — three chips already hold everything', async () => {
-    // `all` survives as the API default and as `counts.all`, which is how the page tells a
-    // BU that has never had a document from one whose current chip is empty. As a fourth
-    // chip it was a choice with no consequence.
-    mount(status(), [doc()], { all: 113, review: 3, success: 7, unposted: 103 })
-    await screen.findByRole('tab', { name: /Review/ })
-    expect(screen.queryByRole('tab', { name: /^All/ })).not.toBeInTheDocument()
+  it('has an All chip, last, carrying neither a count nor a dot', async () => {
+    // The log. `Posted` and `Not posted` report on documents this BU paid to have read, so
+    // the attachments nobody was charged for are under neither — `all` is where they are,
+    // and the reason the chip came back.
+    //
+    // No count: a lifetime total only goes up, and the Pager prints the size once it is
+    // open. No dot: every row under it is counted under a status chip too, so anything
+    // wrong with one is already being pointed at there.
+    mount(
+      status(),
+      [doc()],
+      { all: 113, today: 5, review: 3, success: 7, unposted: 5 },
+      1,
+      { ...ZERO, unposted: 5 },
+      { unposted: true }
+    )
+    const all = await screen.findByRole('tab', { name: /^All/ })
+    expect(all).not.toHaveTextContent('113')
+    expect(all.querySelector('.rq-tab-dot')).not.toBeInTheDocument()
+    const tabs = screen.getAllByRole('tab')
+    expect(tabs[tabs.length - 1]).toBe(all)
+  })
+
+  it('asks the server for the whole log when All is clicked', async () => {
+    mount(status(), [doc()], { all: 113, today: 5, review: 3, success: 7, unposted: 5 })
+    await screen.findByText('KTC')
+    fireEvent.click(screen.getByRole('tab', { name: /^All/ }))
+    await waitFor(() => expect(vi.mocked(api.listActivity)).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(api.listActivity).mock.calls[1][0]).toBe('all')
   })
 
   it('shows a zero on the work chip rather than dropping the number', async () => {
@@ -452,11 +511,29 @@ describe('the status filter chips', () => {
 
   it('never puts a tick on an empty Not posted chip', async () => {
     // An empty pile of failures is not an achievement; celebrating a non-event is how a
-    // success screen stops meaning anything.
+    // success screen stops meaning anything. It still gets a real card — the bare grey
+    // paragraph it used to get was the one thing on this page that looked unfinished.
     mount(status(), [], { ...ZERO, all: 2, success: 2 })
     fireEvent.click(await screen.findByRole('tab', { name: /Not posted/ }))
-    expect(await screen.findByText('Nothing here yet.')).toBeInTheDocument()
-    expect(screen.queryByText('All clear')).not.toBeInTheDocument()
+    const card = (await screen.findByText('No failed documents')).closest('.rq-empty')
+    expect(card?.querySelector('.rq-empty-icon--calm')).toBeInTheDocument()
+    expect(card?.querySelector('.rq-empty-icon--ok')).not.toBeInTheDocument()
+  })
+
+  it('offers the log as the way out of a chip that has nothing', async () => {
+    // Since `all` became a chip, a BU whose whole history is rows nobody was charged for
+    // is told "nothing here" while holding a hundred it cannot reach from this screen.
+    mount(status(), [], { ...ZERO, all: 101 })
+    fireEvent.click(await screen.findByRole('button', { name: 'View all activity' }))
+    await waitFor(() => expect(vi.mocked(api.listActivity)).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(api.listActivity).mock.calls[1][0]).toBe('all')
+  })
+
+  it('does not offer the log when there is no history to see', async () => {
+    // A link to an empty list is worse than no link.
+    mount(status(), [], ZERO)
+    await screen.findByText('No activity today')
+    expect(screen.queryByRole('button', { name: 'View all activity' })).not.toBeInTheDocument()
   })
 
   it('falls through an empty Review to Posted', async () => {
@@ -474,7 +551,7 @@ describe('the status filter chips', () => {
     // Nowhere better to be, and the tick is the honest answer: the fall-through only
     // reaches this state when Review and Posted are empty too.
     mount(status(), [], ZERO)
-    expect(await screen.findByText('All clear')).toBeInTheDocument()
+    expect(await screen.findByText('No activity today')).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /Today/ })).toHaveAttribute('aria-selected', 'true')
     expect(vi.mocked(api.listActivity)).toHaveBeenCalledTimes(1)
   })

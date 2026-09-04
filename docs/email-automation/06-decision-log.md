@@ -367,6 +367,44 @@ so clearing them produces 50 JVs rather than being cleanup.
 changed is that most of what was being filed as a failure was never one — it was a question,
 and now a person can answer it.
 
+## 23. Posted and Not posted mean charged; All is the log (2026-09-03)
+
+**Decision.** The two chips that report outcomes now hold only documents this BU was charged
+for. An attachment that never cost a credit — `status = 'skipped'`, which is every exit
+upstream of `consume_document()` — is in neither, and is found under `All`, which is a chip
+again. `Review` is unchanged and outranks the split: a cause somebody can still clear from
+settings stays there whether or not it cost anything.
+
+**Why.** #17 settled that the charge follows the vision call; #22 made the queue honour that
+by keeping a charged document reviewable. This is the same rule facing the reader. `unposted`
+was the `else_` arm of `_chip_expr`, so it collected everything that was neither posted nor
+owed — on the dev database that is 61 rows of 154 where the customer's own filename rules
+refused a signature logo. Reporting those as *"documents that did not post"* makes the phrase
+mean nothing, and it is the same fault #25 found in the Actions column: a *billing* split
+being read as a statement about the document.
+
+**The mechanism is free.** `status` is already the charge marker — `_park_or_finish` writes
+`status = "skipped" if charged is None else "failed"` — so the split is one more `CASE` arm,
+no join and no new column. It gets exactly one row wrong: a crash inside the refund boundary
+returns the credit and still finishes `failed`, so it shows under Not posted. Left there —
+an infra failure deserves a reader's eye wherever it lands. `OCRTask.charged_docs` via
+`task_id` is the per-row truth if it ever matters.
+
+**Why `All` had to come back.** §12 #41 removed it because the three status chips held every
+row between them, so there was nothing to escape from. Narrowing two of those three makes
+that false — without the chip, the rows answering *"did my statement even arrive?"* would be
+reachable from nowhere. It carries no count (a lifetime total cannot go down — #45) and no
+dot (every row under it is already counted under a status chip, and `mark_chip_seen` stores
+no mark for it, so the dot could never be put out).
+
+**What it does not change.** `counts["all"]` is the same number. A stuck `received` row stays
+under Not posted, deliberately: its charge is unknown, it did not post, and it is the one row
+that says the pipeline stopped mid-document — #38's dot needs a chip to sit on. Dismiss is
+unchanged as a gesture; where the row lands is now the charge, which in practice means it
+leaves the status chips altogether and keeps its story under `All`.
+
+Full reasoning and the alternatives in [`07-human-in-the-loop.md §14`](07-human-in-the-loop.md).
+
 ## 20. Superseded designs, and where they live
 
 - **`feat/email-flow`** — the v1 design: a human-approval review step before posting, its

@@ -1,5 +1,16 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Copy, Mail, RefreshCw, Upload } from 'lucide-react'
+import {
+  AlertTriangle,
+  Archive,
+  CheckCircle2,
+  Copy,
+  FileCheck2,
+  FileX2,
+  Mail,
+  RefreshCw,
+  Upload,
+  type LucideIcon,
+} from 'lucide-react'
 import AppHeader from '../components/common/AppHeader'
 import UsageIndicator from '../components/common/UsageIndicator'
 import Pager from '../components/common/Pager'
@@ -8,21 +19,68 @@ import QueueSettings from '../components/credit-card/QueueSettings'
 import ReviewDocument from './ReviewDocument'
 import { useReviewQueue } from '../hooks/credit-card/useReviewQueue'
 import { prefetchGlMasters } from '../hooks/mapping/useGlMasters'
-import { ACTIVITY_FILTERS, type ChipFilter } from '../lib/api/emailReview'
+import { ACTIVITY_FILTERS, type ActivityFilter } from '../lib/api/emailReview'
 import { useRowsPerPage } from '../hooks/useRowsPerPage'
 import { useT } from '../i18n/LanguageContext'
 import { showToast } from '../lib/toast'
 import type { TKey } from '../i18n/dict'
 
-// `all` has no chip — it is still the API's default and still what `counts.all` answers,
-// but the three status chips hold every row between them, so a fourth that repeats them is
-// a choice with no consequence. `today` is not that fourth: it cuts across all three on
-// time rather than selecting among them, which is a question none of them can answer.
-const FILTER_LABEL: Record<ChipFilter, TKey> = {
+// Five chips, and only three of them are about state. `today` cuts across those three on
+// time; `all` selects on nothing and is the module's log — the one view that shows the
+// attachments nobody was charged for, which `Posted` and `Not posted` no longer claim.
+// Neither of the two carries a dot: a chip that is a view over the others does not get to
+// shout on their behalf.
+const FILTER_LABEL: Record<ActivityFilter, TKey> = {
   today: 'review.filterToday',
   review: 'review.filterReview',
   success: 'review.filterSuccess',
   unposted: 'review.filterUnposted',
+  all: 'review.filterAll',
+}
+
+// What an empty chip says, per chip — because the same sentence cannot answer five different
+// questions. One screen used to serve `review`, `success` and `today`, so an empty Posted
+// chip read "All clear", which is not what an empty Posted chip means: nothing has posted.
+//
+// **The tick is earned, not decorative.** `review` and `today` are the two states that mean
+// nothing is owed — everything else is an absence, and `DESIGN.md` bans celebrating a
+// non-event. A semantic colour is a bare glyph, a neutral one sits in a muted well; that is
+// the convention the rest of the app already follows.
+//
+// Every body has to be true with `auto_post` on **and** off, which is what broke the old
+// copy: "…land here for approval" described, to a BU that had switched review off, the exact
+// thing it had stopped doing. None of these names forwarding, so none of them can.
+const EMPTY: Record<ActivityFilter, { Icon: LucideIcon; tone: string; title: TKey; body: TKey }> = {
+  today: {
+    Icon: CheckCircle2,
+    tone: 'ok',
+    title: 'review.emptyTodayTitle',
+    body: 'review.emptyTodayBody',
+  },
+  review: {
+    Icon: CheckCircle2,
+    tone: 'ok',
+    title: 'review.emptyReviewTitle',
+    body: 'review.emptyReviewBody',
+  },
+  success: {
+    Icon: FileCheck2,
+    tone: 'calm',
+    title: 'review.emptyPostedTitle',
+    body: 'review.emptyPostedBody',
+  },
+  unposted: {
+    Icon: FileX2,
+    tone: 'calm',
+    title: 'review.emptyUnpostedTitle',
+    body: 'review.emptyUnpostedBody',
+  },
+  all: {
+    Icon: Archive,
+    tone: 'calm',
+    title: 'review.emptyAllTitle',
+    body: 'review.emptyAllBody',
+  },
 }
 
 // One column per header cell — the row component must stay in step with this list.
@@ -74,21 +132,42 @@ function RowSkeleton() {
   )
 }
 
-/** Shown once forwarding is live and there is nothing under the chip — which is where a
- *  working BU spends most of its time, so it has to read as success rather than as absence.
+/** An empty chip, named for the chip it is empty on.
  *
- *  Its sentence must be true in both modes. "…land here for approval before they post" was
- *  written for review and describes, to a BU that has switched review off, the exact thing
- *  it stopped doing. Nothing on this page mentions `auto_post`; it lives behind the gear. */
-function AllClear({ address }: { address: string | null }) {
+ *  `DESIGN.md` requires an empty state to *teach the next step*, and the one this replaces
+ *  taught none — it printed the ingest address mid-sentence and stopped. The address is gone
+ *  from here entirely: `NotSetUp` gives it a proper mono field with a copy button, and a BU
+ *  that is already receiving mail knows it. What earns the space instead is the one link
+ *  that leads somewhere — the log — because since `all` became a chip a BU can be told
+ *  "nothing here" while holding a hundred rows it cannot reach. */
+function QueueEmpty({
+  filter,
+  hasHistory,
+  onShowAll,
+}: {
+  filter: ActivityFilter
+  hasHistory: boolean
+  onShowAll: () => void
+}) {
   const { t } = useT()
+  const { Icon, tone, title, body } = EMPTY[filter]
   return (
     <div className="rq-empty">
-      <CheckCircle2 size={40} className="rq-empty-icon rq-empty-icon--ok" aria-hidden="true" />
-      <h2 className="rq-empty-title">{t('review.allClearTitle')}</h2>
-      <p className="rq-empty-body">
-        {address ? t('review.allClearBody', { address }) : t('review.allClearBodyNoAddress')}
-      </p>
+      {/* The tone rides on a wrapper, not on the glyph: `--calm` draws a well around it and
+          an SVG cannot draw its own. Colour still reaches the icon through currentColor. */}
+      <span className={`rq-empty-icon rq-empty-icon--${tone}`} aria-hidden="true">
+        <Icon size={tone === 'calm' ? 22 : 36} strokeWidth={tone === 'calm' ? 1.75 : 2} />
+      </span>
+      <h2 className="rq-empty-title">{t(title)}</h2>
+      <p className="rq-empty-body">{t(body)}</p>
+      {/* Not a second "Upload documents": that button is primary in the bar directly above,
+          and repeating it here is the thing that reads as filler. This is the only route
+          the page does not already offer. */}
+      {filter !== 'all' && hasHistory && (
+        <button type="button" className="btn btn-outline" onClick={onShowAll}>
+          {t('review.viewAllActivity')}
+        </button>
+      )}
     </div>
   )
 }
@@ -214,19 +293,6 @@ export default function ReviewQueue() {
 
   const configured = !!status?.enabled && !!status?.entitled
   const hasWork = rows.length > 0
-  // Which empty chips get the tick. `review` empty means nothing is owed; `success` empty
-  // is the first screen a BU sees after switching forwarding on, and "Nothing here yet."
-  // is too thin a sentence for it. `unposted` empty gets the plain line — an empty pile of
-  // failures is not an achievement, and a green tick over it would be celebrating a
-  // non-event.
-  //
-  // `today` gets the tick too, now that it is the chip the page opens on. An empty Today is
-  // only ever *shown* when Review and Posted are empty as well — the fall-through in
-  // `useReviewQueue` hands over to whichever has something — so reaching it means the BU
-  // genuinely has nothing to do, which is what the tick says. It would be the wrong sign on
-  // a chip a reader had to arrive at past their own unread work, and that state cannot
-  // happen.
-  const clearFilter = filter === 'review' || filter === 'success' || filter === 'today'
   // A BU with manual scans has rows even with forwarding off, so the sales pitch is gated
   // on having nothing at all rather than on the current filter being empty.
   const nothingEver = (counts.all ?? 0) === 0
@@ -254,14 +320,17 @@ export default function ReviewQueue() {
           <div className="rq-tabs" role="tablist" aria-label={t('review.tabsLabel')}>
             {ACTIVITY_FILTERS.map(id => {
               // Whether this chip is holding something nobody here has looked at, and how
-              // big the pile under it is. Three chips hold every row between them now, so
-              // a cause with nothing pointing at it is a cause nobody finds — the shape of
-              // the 2026-08-28 `sender_not_allowed` incident, whose whole family lives
-              // under `unposted`.
+              // big the pile under it is. A cause with nothing pointing at it is a cause
+              // nobody finds — the shape of the 2026-08-28 `sender_not_allowed` incident,
+              // whose whole family is now in `review` until somebody puts it away.
               //
               // Two values because they answer different questions. Nothing retries a
               // failure, so a dot drawn from the count alone would be lit for good;
               // opening the chip is what puts it out, for the whole BU.
+              //
+              // `today` and `all` get no entry from the server and so never light. Every
+              // row under them is counted under a status chip as well, so anything wrong
+              // with one is already being pointed at.
               const owed = attention[id] ?? 0
               const isNew = !!unseen[id]
               return (
@@ -285,16 +354,16 @@ export default function ReviewQueue() {
                     </>
                   )}
                   {/* Only the two chips whose number can go down carry one, and zero is
-                    shown on both — the strip never reflows, because the other two never
+                    shown on both — the strip never reflows, because the other three never
                     have one to lose.
 
                     `Review` is bounded by construction: backpressure hands mail back unread
                     past 50 pending, so it lives in 0–50 and falls as it is worked. `Today`
-                    is bounded by the clock and empties itself every midnight. `Posted` and
-                    `Not posted` are 0 to infinity and never fall — at four figures the
-                    number is furniture, and it is on screen every day for ever. The size of
-                    the list is in the Pager once the chip is open, which is where it means
-                    something. */}
+                    is bounded by the clock and empties itself every midnight. `Posted`,
+                    `Not posted` and `All` are 0 to infinity and never fall — at four figures
+                    the number is furniture, and it is on screen every day for ever. The size
+                    of the list is in the Pager once the chip is open, which is where it
+                    means something. */}
                   {(id === 'review' || id === 'today') && (
                     <span className="rq-tab-count text-mono">{counts[id] ?? 0}</span>
                   )}
@@ -326,11 +395,9 @@ export default function ReviewQueue() {
           ask" mean opposite things to someone deciding whether to go home. */}
       {error ? (
         <div className="rq-empty">
-          <AlertTriangle
-            size={36}
-            className="rq-empty-icon rq-empty-icon--bad"
-            aria-hidden="true"
-          />
+          <span className="rq-empty-icon rq-empty-icon--bad" aria-hidden="true">
+            <AlertTriangle size={36} />
+          </span>
           <h2 className="rq-empty-title">{t('review.errorTitle')}</h2>
           <p className="rq-empty-body">{t('review.errorBody')}</p>
           <button type="button" className="btn btn-outline" onClick={refresh}>
@@ -373,8 +440,11 @@ export default function ReviewQueue() {
             </table>
           )}
 
-          {/* Three empty states, never one generic one. An empty Not posted list is not an
-              achievement and must not borrow the tick. */}
+          {/* Two screens, and the sales pitch is the special case. Everything else is one
+              card whose words come from `EMPTY` — including the states that used to fall to
+              a bare grey paragraph, which was the only thing on this page that looked
+              unfinished. An empty Not posted still does not borrow the tick; that rule now
+              lives in the map rather than in a condition here. */}
           {!loading &&
             !hasWork &&
             (nothingEver && !configured ? (
@@ -383,10 +453,12 @@ export default function ReviewQueue() {
                 blockers={status?.blockers ?? []}
                 entitled={!!status?.entitled}
               />
-            ) : clearFilter && configured ? (
-              <AllClear address={status?.ingest_address ?? null} />
             ) : (
-              <p className="rq-empty-tab">{t('review.emptyTab')}</p>
+              <QueueEmpty
+                filter={filter}
+                hasHistory={(counts.all ?? 0) > 0}
+                onShowAll={() => setFilter('all')}
+              />
             ))}
 
           {hasWork && (

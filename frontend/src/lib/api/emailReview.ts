@@ -14,29 +14,29 @@ import type { Page } from './page'
  *  because neither survives a list query: see `_review_flags` in email_ingest_service.py. */
 export type ReviewFlag = 'unbalanced' | 'mapping_guessed' | 'mapping_missing' | 'warnings'
 
-/** Which filter chip a row lives under. `unposted` is a union of four ledger statuses —
- *  see FILTERS in routers/credit_card_activity.py.
+/** Which filter chip a row lives under — see `_chip_expr` in routers/credit_card_activity.py,
+ *  which is the only definition there is.
  *
- *  `today` is the odd one and deliberately so: it selects on *time*, not on status, so it
- *  overlaps all three of the others rather than sitting beside them. That is why the server
- *  leaves it out of `counts.all`.
+ *  `success` and `unposted` are both about a document this BU **paid to have read**: it
+ *  posted, or it did not. An attachment nobody was charged for — a filename rule refusing a
+ *  signature logo, a sender the BU never allowed — is in neither, because it is not a
+ *  document that failed to post, it is a file that was never one.
  *
- *  `all` is in the type but not in the strip: it is still the API default and still what
- *  `counts.all` is read off, but it has no chip. It was the escape hatch from five status
- *  words; with three chips that between them hold every row, there is nothing to escape. */
+ *  `today` and `all` are the two that are not about state. `today` selects on *time* and
+ *  overlaps all the others, which is why the server leaves it out of `counts.all`. `all`
+ *  selects on nothing at all: it is the module's log, and the only view that shows the
+ *  never-charged rows. Both are counted, neither carries a dot. */
 export type ActivityFilter = 'all' | 'today' | 'review' | 'success' | 'unposted'
 
-/** The four that have a chip — `all` is the filter with no tab. Its own type so the label
- *  map is exhaustive by construction rather than by assertion. */
-export type ChipFilter = Exclude<ActivityFilter, 'all'>
-
-/** The strip, left to right: the day first, then the order a document moves through.
+/** The strip, left to right: the day, then the order a document moves through, then the log.
  *
- *  This is also the fall-through order the page opens on — `today`, then `review`, then
- *  `success`, stopping at the first with anything in it (`useReviewQueue`). Today reads
- *  first because it is the question asked on arrival, and a BU with twelve documents owed
- *  is still never shown a quiet morning: an empty chip hands over rather than holding. */
-export const ACTIVITY_FILTERS: ChipFilter[] = ['today', 'review', 'success', 'unposted']
+ *  The first three are also the fall-through order the page opens on — `today`, then
+ *  `review`, then `success`, stopping at the first with anything in it (`useReviewQueue`).
+ *  Today reads first because it is the question asked on arrival, and a BU with twelve
+ *  documents owed is still never shown a quiet morning: an empty chip hands over rather than
+ *  holding. `all` is last because nobody arrives asking for everything — it is where you go
+ *  when a document you expected is not in any of the others. */
+export const ACTIVITY_FILTERS: ActivityFilter[] = ['today', 'review', 'success', 'unposted', 'all']
 
 export interface ReviewDocument {
   id: string
@@ -77,6 +77,11 @@ export interface ReviewDocument {
   error_message: string | null
   reviewed_by_name: string | null
   reviewed_at: string | null
+  /** Who ran the scan, on a `manual` row only — resolved server-side from the session that
+   *  did it, not a stored column, so it goes null once that session has been scrubbed. The
+   *  row then says it was scanned by hand without naming anybody, which is the honest
+   *  answer; a raw user id would not be. */
+  posted_by_name: string | null
 }
 
 /** One document, opened. `extracted` is an `/extract` response verbatim, which is exactly
@@ -134,8 +139,12 @@ export async function listActivity(
  * The server stores the anomaly count it computes for itself; nothing is sent but the chip
  * name. Failure is silently survivable (the dot simply stays on until next time), so the
  * caller does not await this or surface an error for it.
+ *
+ * Only a status chip has a mark; `today` and `all` are 400ed by the endpoint. Neither is
+ * ever passed, because the caller fires this only for a chip whose dot is lit, and the
+ * server sends no `unseen` entry for either.
  */
-export async function markChipSeen(filter: ChipFilter): Promise<void> {
+export async function markChipSeen(filter: ActivityFilter): Promise<void> {
   const res = await apiFetch(API.creditCard.activitySeen, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

@@ -72,20 +72,36 @@ def _manual(**overrides):
         bank_code="KBANK",
         doc_no="MAN-001",
         jv_no="JV-2026-0042",
+        # Default None: `username_map` returns early on an empty id list, so a fixture that
+        # does not care about the scanner's name costs no `db.execute` and cannot shift the
+        # positional `side_effect` below.
+        carmen_user_id=None,
     )
     for k, v in overrides.items():
         setattr(card, k, v)
     return (card, SimpleNamespace(original_filename="scanned_by_hand.pdf"))
 
 
-def _db(*, statuses=None, pairs=None, manual_count, emails, manuals, seen=None, manual_today=0):
-    """Drive the five `db.execute` calls the handler makes, in order.
+def _db(
+    *,
+    statuses=None,
+    pairs=None,
+    manual_count,
+    emails,
+    manuals,
+    seen=None,
+    manual_today=0,
+    usernames=None,
+):
+    """Drive the six `db.execute` calls the handler makes, in order.
 
     1. GROUP BY status, reason_code over email_documents → .all()
     2. count_rows(manual_stmt)                           → .scalar_one()
     3. count_rows(manual_stmt, since=midnight ICT)       → .scalar_one()
     4. the email window                                  → .scalars().all()
     5. the manual window (only when the filter admits manual rows) → .all()
+    6. username_map over those manual rows (only when one carries a user id)
+       → .mappings().all(); `usernames` is {carmen_user_id: username}
 
     `statuses` is the shorthand most tests want: {status: n}, no reason code, nothing
     stuck, nothing noted, nothing today. `pairs` is the long form the `attention` tests
@@ -112,7 +128,22 @@ def _db(*, statuses=None, pairs=None, manual_count, emails, manuals, seen=None, 
     manual_window = MagicMock()
     manual_window.all.return_value = manuals
 
-    db.execute.side_effect = [grouped, counted, counted_today, email_window, manual_window]
+    # Sixth and last: `username_map`, resolving the scanners of whatever manual rows came
+    # back. Always supplied, never always consumed — the handler only asks when a manual row
+    # actually carries a `carmen_user_id`, and an unconsumed side_effect entry is harmless.
+    names = MagicMock()
+    names.mappings.return_value.all.return_value = [
+        SimpleNamespace(carmen_user_id=k, username=v) for k, v in (usernames or {}).items()
+    ]
+
+    db.execute.side_effect = [
+        grouped,
+        counted,
+        counted_today,
+        email_window,
+        manual_window,
+        names,
+    ]
     if seen is not None:
         db.get.return_value = SimpleNamespace(seen=seen)
     return db
@@ -128,6 +159,8 @@ def _chip_of(status, reason_code, dismissed):
         return "success"
     if status == PENDING or (reason_code in FIXABLE_REASONS and not dismissed):
         return "review"
+    if status == "skipped":
+        return "uncharged"
     return "unposted"
 
 
@@ -199,6 +232,43 @@ def test_both_sources_appear_in_one_list_newest_first():
     assert body["data"][1]["status"] == "posted"
 
 
+def test_a_manual_row_names_whoever_ran_the_scan():
+    """ "Scanned and posted by hand" answered *how*, which the reader can already see, and
+    not *who*, which is what they were reading the row for."""
+    uid = "e6942437-7db4-4a1e-9c3d-000000000001"
+    db = _db(
+        statuses={},
+        manual_count=1,
+        emails=[],
+        manuals=[_manual(carmen_user_id=uid)],
+        usernames={uid: "somchai"},
+    )
+    with make_test_client(db, session=SESSION) as client:
+        body = client.get(BASE, headers=AUTH).json()
+
+    assert body["data"][0]["posted_by_name"] == "somchai"
+
+
+def test_a_manual_row_whose_scanner_is_no_longer_known_names_nobody():
+    """The name is resolved from `ocr_sessions`, not stored, so it really can be gone — and
+    a row that cannot name the person says so in words rather than printing a raw user id.
+
+    Kept distinct from `reviewed_by_name`, which IS a stored ledger column, for exactly this
+    reason: one field holding both guarantees is how the weaker one gets trusted."""
+    db = _db(
+        statuses={},
+        manual_count=1,
+        emails=[],
+        manuals=[_manual(carmen_user_id="1f0e0000-0000-0000-0000-00000000dead")],
+        usernames={},  # scrubbed — the session that ran it is past the 90-day window
+    )
+    with make_test_client(db, session=SESSION) as client:
+        body = client.get(BASE, headers=AUTH).json()
+
+    assert body["data"][0]["posted_by_name"] is None
+    assert body["data"][0]["reviewed_by_name"] is None
+
+
 def test_total_is_the_unlimited_count_not_the_window():
     """`len(data)` as a total is the bug class `Page` exists to kill: a truncated window
     has to be able to say "showing 1 of 4"."""
@@ -222,7 +292,14 @@ def test_counts_cover_every_chip_even_at_zero():
     with make_test_client(db, session=SESSION) as client:
         counts = client.get(BASE, headers=AUTH).json()["counts"]
 
-    assert counts == {"review": 0, "success": 5, "unposted": 0, "all": 5, "today": 0}
+    assert counts == {
+        "review": 0,
+        "success": 5,
+        "unposted": 0,
+        "uncharged": 0,
+        "all": 5,
+        "today": 0,
+    }
 
 
 def test_a_row_somebody_can_still_clear_belongs_to_review():
@@ -244,15 +321,22 @@ def test_a_row_somebody_can_still_clear_belongs_to_review():
         counts = client.get(BASE, headers=AUTH).json()["counts"]
 
     assert counts["review"] == 46  # somebody can widen the rule
-    assert counts["unposted"] == 17  # 12 unreadable + 3 refused + 2 rejected
-    # Exactly one chip each, which is what keeps `all` a true total rather than a sum of
+    assert counts["unposted"] == 5  # 3 refused by Carmen + 2 rejected by a reviewer
+    # Never charged, so it is in neither of the two chips that report on documents this BU
+    # paid to have read. Findable under `all`, and nowhere else.
+    assert counts["uncharged"] == 12
+    # Exactly one bucket each, which is what keeps `all` a true total rather than a sum of
     # overlapping piles.
     assert counts["all"] == 63
 
 
-def test_a_dismissed_row_leaves_review_for_unposted():
+def test_a_dismissed_row_leaves_review_for_the_log():
     """The pile has to be able to be worked down. Nothing retries a failure, so without this
-    the chip fills with rows nobody will act on and its number never falls."""
+    the chip fills with rows nobody will act on and its number never falls.
+
+    Where it lands is the charge, not the dismissal: these were never billed, so they drop
+    off the status chips altogether and stay in `all`. Not posted keeps meaning "a document
+    this BU paid for that did not post"."""
     db = _db(
         pairs={("skipped", "no_rule_match"): (46, 0, 0, 0, 20)},
         manual_count=0,
@@ -263,8 +347,31 @@ def test_a_dismissed_row_leaves_review_for_unposted():
         counts = client.get(BASE, headers=AUTH).json()["counts"]
 
     assert counts["review"] == 26
-    assert counts["unposted"] == 20
+    assert counts["uncharged"] == 20
+    assert counts["unposted"] == 0
     assert counts["all"] == 46  # nothing was destroyed, only moved
+
+
+def test_a_row_nobody_was_charged_for_is_in_the_log_and_no_status_chip():
+    """§14. `Posted` and `Not posted` report on documents this BU paid to have read, so a
+    file its own rules threw out belongs to neither — it cost nothing and there is nothing
+    to post. It is not hidden either: `all` is the module's log, and holding these is what
+    the chip came back for."""
+    db = _db(
+        pairs={("skipped", "unsupported_attachment"): (7, 0, 0)},
+        manual_count=0,
+        emails=[
+            _email(status="skipped", reason_code="unsupported_attachment", review_payload=None)
+        ],
+        manuals=[],
+    )
+    with make_test_client(db, session=SESSION) as client:
+        body = client.get(f"{BASE}?filter=all", headers=AUTH).json()
+
+    assert [r["reason_code"] for r in body["data"]] == ["unsupported_attachment"]
+    assert body["total"] == 7  # the log's own size, which is `counts["all"]`
+    assert body["counts"]["review"] == 0
+    assert body["counts"]["unposted"] == 0
 
 
 def test_attention_marks_the_machine_misbehaving_not_the_work():
@@ -296,7 +403,8 @@ def test_attention_marks_the_machine_misbehaving_not_the_work():
     assert body["attention"]["all"] == 53
     # And the plain counts are untouched by any of it.
     assert body["counts"]["review"] == 55
-    assert body["counts"]["unposted"] == 17
+    assert body["counts"]["unposted"] == 5  # 3 Carmen refusals + 2 rejections
+    assert body["counts"]["uncharged"] == 12  # the unreadable attachments, in the log only
 
 
 def test_a_dismissed_row_stops_lighting_the_dot():
@@ -311,7 +419,8 @@ def test_a_dismissed_row_stops_lighting_the_dot():
     with make_test_client(db, session=SESSION) as client:
         body = client.get(BASE, headers=AUTH).json()
 
-    assert body["counts"]["unposted"] == 46
+    assert body["counts"]["uncharged"] == 46
+    assert body["attention"]["uncharged"] == 0
     assert body["attention"]["unposted"] == 0
 
 
@@ -371,7 +480,7 @@ def test_attention_covers_every_chip_even_at_zero():
     with make_test_client(db, session=SESSION) as client:
         attention = client.get(BASE, headers=AUTH).json()["attention"]
 
-    assert attention == {"review": 0, "success": 0, "unposted": 0, "all": 0}
+    assert attention == {"review": 0, "success": 0, "unposted": 0, "uncharged": 0, "all": 0}
 
 
 def test_review_filter_asks_for_no_manual_rows_at_all():
@@ -500,7 +609,7 @@ def test_the_chip_expression_never_drops_a_row_with_no_reason_code():
     """
     sql = str(_chip_expr().compile(compile_kwargs={"literal_binds": True})).lower()
     assert "coalesce" in sql
-    for chip in ("success", "review", "unposted"):
+    for chip in ("success", "review", "unposted", "uncharged"):
         assert chip in sql
 
 
@@ -644,6 +753,25 @@ def test_opening_one_chip_does_not_silence_another():
 
     assert unseen["review"] is False
     assert unseen["success"] is True
+
+
+def test_the_log_chip_carries_no_dot():
+    """`all` is a view over the other chips, so a dot on it would only repeat theirs — and
+    it could never be put out, because `mark_chip_seen` refuses to store a mark for anything
+    that is not a status chip. Same rule as `today`, and the reason `unseen` is keyed off
+    `STATUS_CHIPS` rather than off `attention`, which does carry an `all` entry."""
+    db = _db(
+        pairs={("failed", "carmen_rejected"): (3, 0, 0)},
+        manual_count=0,
+        emails=[],
+        manuals=[],
+    )
+    with make_test_client(db, session=SESSION) as client:
+        body = client.get(BASE, headers=AUTH).json()
+
+    assert "all" not in body["unseen"]
+    assert "uncharged" not in body["unseen"]
+    assert body["unseen"]["unposted"] is True
 
 
 def test_a_business_unit_that_has_never_looked_sees_every_dot():

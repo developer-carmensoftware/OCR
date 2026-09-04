@@ -59,6 +59,7 @@ Each is traceable to the code that implements it.
 | FR-12 | **The queue shows everything that wants a human in one chip**, whether it needs a decision or a settings change, and a row nobody will act on can be put away so the pile can reach zero | `_chip_expr()` (`credit_card_activity.py`), `POST /activity/{id}/dismiss`, `email_documents.dismissed_at` |
 | FR-13 | **The reviewer sees the whole of what an approval files** before pressing it: the JV, and the input-tax record with the tax invoice it is filed against | `ReviewDocument.tsx` + `InputTaxPanel.tsx`, built from `build_input_tax_payload` field by field |
 | FR-14 | The page answers "what has the robot been doing today" without a reader having to filter for it, and never opens on an empty view while work is owed | `today` chip + the fall-through in `useReviewQueue` |
+| FR-15 | **Posted and Not posted count only what the BU was charged for**, and every attachment the system has ever looked at — charged or not, forwarded or scanned by hand — is findable under `All`, so "did my statement arrive?" is answerable without anyone reading the database | `_chip_expr()`'s `uncharged` arm (`credit_card_activity.py`), the `All` chip — decision-log [#23](06-decision-log.md), [§14](07-human-in-the-loop.md) |
 
 ## Non-functional requirements
 

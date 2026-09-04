@@ -143,6 +143,15 @@ class ActivityRow(ReviewDocument):
 
     source: str  # "email" | "manual"
 
+    # Who ran the scan, for a manual row. **Deliberately not `reviewed_by_name`**, which it
+    # would otherwise fit: that is a stored ledger column on `email_documents`, written once
+    # and kept for ever, and nobody reviewed a manual scan. This one is resolved at read
+    # time from `ocr_sessions` via `username_map`, so it decays to None once that session
+    # has been scrubbed — two different guarantees, and one field holding both is how a
+    # reader ends up trusting the weaker one. None means "we no longer know", and the row
+    # says so in words rather than printing a raw id.
+    posted_by_name: str | None = None
+
 
 class ActivityPage(Page[ActivityRow]):
     """The activity window plus the counts behind the filter chips.

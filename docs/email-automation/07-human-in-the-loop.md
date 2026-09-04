@@ -1029,3 +1029,93 @@ repo's volumes — the largest business table holds 342 rows
 ([SQL_PERFORMANCE_AUDIT.md](../SQL_PERFORMANCE_AUDIT.md)) — and the `ponytail:` comment at
 the definition names the upgrade path: expand it into three explicit clauses keyed off the
 same function, so there is still one place to read.
+
+---
+
+## §14 — Posted and Not posted mean charged; All is the log (2026-09-03, later)
+
+Read back against §13, the strip said two different things about what its words meant.
+
+`Review` had just been re-keyed on **who can act** and was right. `Posted` and `Not posted`
+were still keyed on **what happened**, which sounds like the same axis and is not: `unposted`
+was the `else_` arm, so it collected everything that was neither posted nor owed — including
+the 61 rows (of 154, on dev) the BU's own filename rules threw out before a credit was ever
+charged. A signature logo the system refused to read was being reported to the customer as a
+document that did not post.
+
+And the escape hatch was gone. §12 #41 removed the `All` chip on the grounds that *"three
+chips that between them hold every row"* left nothing to escape from. True then. The moment
+`Posted`/`Not posted` narrow to what a credit was spent on, it stops being true, and the
+rows that answer *"did my statement even arrive?"* have no chip at all.
+
+**The criterion, and it is the same one §13 used, applied one level out: was this BU charged
+for reading it?** `Review` asks a different question — is there an action owed — and outranks
+it, so a filename rule somebody can still widen stays in `Review` whether or not it cost
+anything.
+
+| | Charged | Never charged |
+|---|---|---|
+| Posted | `Posted` | — |
+| Did not post | `Not posted` | `All` only |
+| Action owed | `Review` | `Review` |
+
+### Decisions
+
+| # | Decision | Why |
+|---|---|---|
+| 64 | **`_chip_expr()` gains a fourth arm, `uncharged`** — `status = 'skipped'`, taken after the `review` arm. It has no chip; `all` is where it is read. | `status` is already the charge marker: `_park_or_finish` writes `status = "skipped" if charged is None else "failed"`, and every other writer of `skipped` is upstream of `consume_document()`. So the split needs no join, no new column and no second vocabulary — the one the billing system already speaks turns out to be the one the reader wanted, just never shown to them. |
+| 65 | **`All` is a chip again, last on the strip.** No count, no dot. | It is the module's log, and now the only view holding #64's bucket. Last because nobody arrives asking for everything — it is where you go when a document you expected is in none of the others. No count by #45's rule (a number here has to be able to go down, and a lifetime total never does; the `Pager` prints the size once it is open). No dot because every row under it is counted under a status chip too, so anything wrong with one is already being pointed at — and `mark_chip_seen` refuses to store a mark for it, so a dot there could never be put out. Same reasoning as `today`, which is why `unseen` is now keyed off `STATUS_CHIPS` rather than off `attention` (which does carry an `all` entry). |
+| 66 | **A stuck `received` row stays under `Not posted`**, in the `else_` arm. | Its charge is genuinely unknown — the pipeline died between the claim and `_finish` — and it certainly did not post. #38 gave it a pill and a dot precisely because it is the one row that says the machine stopped mid-document; moving it to a chip with no dot would put that signal out. Filed under the chip a person still reads, deliberately, rather than under the criterion. |
+| 67 | **Dismiss moves a row out of the status chips, not from `Review` to `Not posted`.** | #54's gesture is unchanged and so is its reason; where the row lands is now the charge. A dismissible row is one with no `review_payload`, and the fixable causes that reach that endpoint without one are all pre-charge skips — so in practice it lands in `uncharged` and `Not posted` never sees it. A charged one would land under `Not posted`, which is equally right, so the endpoint needs no branch. Nothing is destroyed either way: the row keeps its story under `All`. |
+
+### Considered and not done
+
+- **A chip for the never-charged pile** (`Ignored`, `Not a document`). It is a fifth status
+  word, which is the vocabulary §12 spent two rounds removing — and the reader asked for the
+  log, not for another bucket to learn. `All` holds it at no cost in strip width.
+- **`?filter=uncharged`.** The bucket is a `counts` key, not a view. Add it the day somebody
+  wants to page through only the noise, which nobody has.
+- **Joining `ocr_tasks.charged_docs` to get the charge per row.** The `ponytail:` comment at
+  the CASE names it. `status = 'skipped'` gets exactly one row wrong — a crash *inside* the
+  refund boundary gives the credit back and still finishes `failed` — and that row is an
+  infra failure worth a reader's eye wherever it lands.
+- **Re-keying the pill words to match.** The Status column still prints the ledger's own
+  vocabulary (`Skipped`, `Failed`, `Unfinished`), which is what the Message column then
+  explains. The chips are the reader's question; the pill is the record.
+
+### Not changed
+
+The review modal, approve, reject, the anti-join, the backlog cap, the refund rule, the
+notification, `FIXABLE_REASONS`, `MANUAL_FILTERS`, the fall-through (`today` → `review` →
+`success`, #62 — `all` is deliberately not in it), the green tick's rule (#63 — restated per
+chip by #68 below), and every decision #1–#63 except where the table above supersedes them.
+
+`counts["all"]` does not change value. What changed is which chip a never-charged row is
+findable under.
+
+### Addendum, same day — the empty states, which §6 specified and nobody revisited
+
+Adding a fifth chip meant looking at what each one says when it holds nothing, and the
+answer was that they all said the same thing. `clearFilter = review || success || today`
+sent three chips to one `AllClear` card, so an empty **Posted** read *"All clear · Statements
+forwarded to aragent+1ad4e0b6@… appear here"* — which is not what an empty Posted means, and
+prints a 40-character identifier mid-sentence to say it. The other two chips fell to a bare
+grey `<p>`, so the page had two unrelated empty states as well as one wrong sentence.
+
+§6 wrote *"two different screens, never one generic one"* and the built version had drifted
+into one and a half.
+
+| # | Decision | Why |
+|---|---|---|
+| 68 | **One card, five per-chip states**, from an `EMPTY` map beside `FILTER_LABEL`. The tick stays on `review` and `today`; `success`, `unposted` and `all` get a neutral glyph in a muted well. | The rule §6 and #63 were both reaching for is *the tick is earned*, and a `clearFilter` boolean could not express it once there were five chips. In the map each state's tone sits next to its words, so the two cannot drift. Bare glyph for a semantic colour, glyph-in-a-well for a neutral one, is the convention `orders-empty-icon` already set. |
+| 69 | **The ingest address is gone from this screen.** It stays on `NotSetUp`, with the mono field and copy button it always had. | Two branches apart, the same string was a proper field on one screen and unspaced prose on the other. A BU that is receiving mail knows its address; a BU that is not gets the screen built to teach it. Removing it is also what lets each body be *specific* again — the old sentence was vague because it had to be true with `auto_post` on and off, and none of the five replacements names forwarding or approval at all. |
+| 70 | **One action: `View all activity`**, when `filter !== 'all'` and `counts.all > 0`. | `DESIGN.md:333` requires an empty state to teach the next step and this one taught none. It is also a real dead end since #65: the dev BU with 101 never-charged rows lands on Today, is told there is nothing, and had no way to reach its own log. Deliberately **not** a second `Upload documents` — that button is primary in the bar directly above, and repeating a primary CTA inside the empty state is what makes a screen read as filler. |
+| 71 | **`.rq-empty` loses its shadow**; `.rq-intro` keeps one. | `DESIGN.md:238` — a shadow promises the surface holds something to act on. `NotSetUp` always has a button; an empty chip is mostly a sentence. |
+
+**Considered and not done.** §6's `[ Recently posted ▾ ]` panel (`:365`) is still unbuilt and
+still deferred — §12 left it for *"the day a supervisor asks for recency rather than a
+total"*, and #70's link answers the same dead end for the price of one button. §6's
+`Nothing waiting · 8 posted today` header line stays deleted (#40: a lifetime total only
+goes up). And `components/admin/ui/EmptyState.tsx` was not adopted: it is admin-only, its
+CSS lives in `admin.css`, its `action` slot has no CSS rule and no call site, and it puts
+body copy on `--text-4`, which `DESIGN.md:176` says can never reach AA.

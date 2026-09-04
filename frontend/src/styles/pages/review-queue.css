@@ -348,7 +348,21 @@
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
+}
+
+/* Flat by default (DESIGN.md §Flat-By-Default): a shadow promises the surface holds
+   something to act on. `.rq-intro` always carries a button, so it keeps the promise;
+   `.rq-empty` is mostly a sentence and only sometimes a link. */
+.rq-intro {
   box-shadow: var(--shadow-sm);
+}
+
+/* The tone rides on a wrapper so `--calm` can draw a well, which an SVG cannot draw for
+   itself. `--ok` and `--bad` set a colour and no box; the glyph picks it up through
+   currentColor exactly as it did when the class sat on the icon. */
+.rq-empty-icon {
+  display: grid;
+  place-items: center;
 }
 
 .rq-empty-icon--ok {
@@ -357,6 +371,17 @@
 
 .rq-empty-icon--bad {
   color: var(--rose);
+}
+
+/* An absence, not an outcome — so no semantic colour. The muted well is the same idiom
+   `orders-empty-icon` uses on the order history. `--text-4` is decorative-only per
+   DESIGN.md and this glyph is aria-hidden; the body copy beside it stays on `--text-3`. */
+.rq-empty-icon--calm {
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--radius-md);
+  background: var(--muted);
+  color: var(--text-4);
 }
 
 .rq-intro-icon {
@@ -589,13 +614,6 @@
 
 .rq-reason--ok {
   color: var(--emerald-text);
-}
-
-.rq-empty-tab {
-  padding: var(--space-5) var(--space-4);
-  text-align: center;
-  font-size: 0.875rem;
-  color: var(--text-3);
 }
 
 /* ── Review document — a modal over the queue ───────────────────────────────── */

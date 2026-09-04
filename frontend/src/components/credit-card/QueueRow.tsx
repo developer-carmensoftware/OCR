@@ -239,8 +239,14 @@ function Message({ row, pending }: { row: ReviewDocument; pending: boolean }) {
   if (row.status === 'posted') {
     return (
       <span className="rq-reason rq-reason--ok">
+        {/* Name the person wherever we still know it — "by hand" says how, which the
+            reader can already see, and not who, which is the part they came for. The
+            unnamed wording survives as the fallback because a manual scanner's name is
+            resolved from their session rather than stored, so it can genuinely be gone. */}
         {row.source === 'manual'
-          ? t('review.postedManually')
+          ? row.posted_by_name
+            ? t('review.postedManuallyBy', { name: row.posted_by_name })
+            : t('review.postedManually')
           : row.reviewed_by_name
             ? t('review.postedBy', { name: row.reviewed_by_name })
             : t('review.postedAutomatically')}

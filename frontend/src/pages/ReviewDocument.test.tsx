@@ -144,6 +144,7 @@ function detail(over: Partial<ReviewDocumentDetail> = {}): ReviewDocumentDetail 
     error_message: null,
     reviewed_by_name: null,
     reviewed_at: null,
+    posted_by_name: null,
     extracted: EXTRACTED,
     ...over,
   }

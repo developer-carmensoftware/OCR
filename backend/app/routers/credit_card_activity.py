@@ -2,8 +2,9 @@
 
 One list, two sources. `email_review.py` answers "what is the automation holding for me",
 which is a strictly smaller question: this endpoint also lists the scans a person did by
-hand. The page it feeds is the robot's inbox — what needs a decision — and the manual rows
-are there as the count of the work the automation exists to remove, not as history.
+hand. The page it feeds is the robot's inbox — what needs a decision — and, under `all`, the
+module's log: every attachment ever put in front of the system, so a BU can answer "did my
+statement even arrive" without anyone reading the database for them (§14).
 
 It is a separate router rather than another route on `email_review.py` because that file's
 whole contract is email documents; a manual scan there would make its docstring a lie.
@@ -11,7 +12,8 @@ Everything a *reviewer* does — open, approve, reject — stays there.
 
 Design: docs/email-automation/07-human-in-the-loop.md §6 (the screen), §9 (four tabs folded
 into one filtered table), §11 (the column order, and `attention`), §12 (three chips, and
-what the dot means now), §13 (the chips re-keyed on who can act, plus `today`). Where a row
+what the dot means now), §13 (the chips re-keyed on who can act, plus `today`), §14 (`all`
+back on the strip, and Posted/Not posted narrowed to what a credit was spent on). Where a row
 came from is no longer a column of its own — `MANUAL_FILTERS` below is why.
 """
 
@@ -31,6 +33,7 @@ from app.models.business import CreditCard, OCRTask
 from app.models.email_automation import EmailDocument, EmailQueueSeen
 from app.models.schemas.email_automation import ActivityPage, ActivityRow, QueueSeenIn, QueueSeenOut
 from app.routers.email_review import to_review_row
+from app.services.tenant_lookup import username_map
 from app.utils.pagination import count_rows
 
 router = APIRouter(prefix="/api/v1/credit-card", tags=["Credit Card Activity"])
@@ -41,7 +44,7 @@ router = APIRouter(prefix="/api/v1/credit-card", tags=["Credit Card Activity"])
 #   review    wants a human now
 #   success   reached Carmen. Manual scans land here too; they are only ever listed
 #             once they have posted.
-#   unposted  did not become a JV and nothing is owed on it.
+#   unposted  we were paid to read it and it did not become a JV.
 #
 # `failed` and `skipped` used to be two chips. That split is `status = "skipped" if charged
 # is None else "failed"` (email_ingest_service.py) — whether a credit was charged — and a
@@ -49,11 +52,25 @@ router = APIRouter(prefix="/api/v1/credit-card", tags=["Credit Card Activity"])
 #
 # **These are no longer a map of statuses**, because "wants a human" stopped being one.
 # `review` holds parked documents AND the failures somebody here can clear from settings;
-# `unposted` is what is left. §12 of 07-human-in-the-loop.md considered exactly this re-key
-# and declined it — *"it costs a vocabulary the API does not speak"* — and the answer to that
-# is `_chip_expr` below: the API speaks it now, in one place, so a row's chip is one
-# definition rather than one per caller.
+# `unposted` is what is left *of the documents this BU paid for*. §12 of
+# 07-human-in-the-loop.md considered exactly this re-key and declined it — *"it costs a
+# vocabulary the API does not speak"* — and the answer to that is `_chip_expr` below: the API
+# speaks it now, in one place, so a row's chip is one definition rather than one per caller.
 STATUS_CHIPS = ("review", "success", "unposted")
+
+# The fourth bucket, and the only one with no chip of its own: an attachment nobody was ever
+# charged for. `unposted` used to absorb these, which made the two words on the strip mean
+# different things — `Posted` counts documents, `Not posted` counted documents *and* the
+# signature logos this BU's own filename rules threw out (61 of 154 rows on the dev DB).
+# Now both sides of that pair are what they say: a document the BU paid to have read.
+#
+# These rows are not hidden — they are what `all` holds beyond the three, and `all` has a chip
+# again precisely so the page can answer "did my statement even arrive" (§14).
+UNCHARGED = "uncharged"
+
+# Every row is in exactly one of these. `counts["all"]` is their sum, which is why the new
+# bucket has to be in the dict even though nothing filters on it.
+LEDGER_BUCKETS = (*STATUS_CHIPS, UNCHARGED)
 
 PENDING = "pending_review"
 
@@ -66,9 +83,11 @@ PENDING = "pending_review"
 # never that — `useReviewQueue` falls through it to `review`, and through that to `success`.
 TODAY = "today"
 
-# The strip, in the order it draws. `all` is in neither: it remains the API default and
-# `counts["all"]`, and has no chip.
-CHIPS = (TODAY, *STATUS_CHIPS)
+# The strip, in the order it draws — `all` last, and it *is* a chip again (§14). It reads as
+# the module's log: every attachment this BU has put in front of the system, whatever became
+# of it, including the ones nobody was charged for and which therefore appear under no other
+# chip. `all` is still the API default, and still what `counts["all"]` answers.
+CHIPS = (TODAY, *STATUS_CHIPS, "all")
 
 # The BU's midnight, not UTC's. Every tenant on this system keeps Thai books, so a statement
 # read at 06:00 ICT belongs to the day the reviewer is having, not to the one UTC is still
@@ -131,24 +150,46 @@ def _wants_a_human():
 
 
 def _chip_expr():
-    """Which chip a row is in, as SQL — **the only definition there is.**
+    """Which ledger bucket a row is in, as SQL — **the only definition there is.**
+
+    Three of the four are chips; `UNCHARGED` is not, and is reachable only under `all`.
 
     The list filters on it and the counts group by it, so a row cannot be counted under one
     chip and listed under another. The alternative was this rule written twice, once as a
     WHERE clause and once as a Python fold over the GROUP BY, and the two drifting is the
     bug this shape cannot have.
 
-    Exactly one chip per row. `counts["all"]` is their sum, so an overlap would make that
+    Exactly one bucket per row. `counts["all"]` is their sum, so an overlap would make that
     number a fiction — which is the same reason `today` is left out of it.
+
+    **`status == "skipped"` is the charge marker**, which is what the third arm is reading.
+    `_park_or_finish` writes `status = "skipped" if charged is None else "failed"`, and every
+    other writer of that status (`_skip_all`, the pre-charge `_Skip`s in `_open_or_fail` and
+    the gate ladder) sits upstream of `consume_document()`. So "was this BU ever billed for
+    this attachment" needs no join and no new column. A `skipped` row somebody here can still
+    clear from settings has already been taken by the arm above — `review` outranks the
+    charge, because an action owed outranks who paid for it.
+
+    A stuck `received` row falls to `unposted` on purpose. Its charge is genuinely unknown
+    (the pipeline died between the claim and `_finish`), it certainly did not post, and it is
+    the one row that says the machine stopped mid-document — `_attention`'s `stuck` dot needs
+    a chip to sit on, and `all` deliberately has none.
 
     ponytail: a CASE in the WHERE clause cannot use an index. Correct at this repo's volumes
     (largest business table holds 342 rows — docs/SQL_PERFORMANCE_AUDIT.md); if a BU ever
-    grows into it, expand the CASE back into three explicit clauses keyed off this function
+    grows into it, expand the CASE back into four explicit clauses keyed off this function
     so there is still one place to read.
+
+    ponytail: `status == "skipped"` gets exactly one row wrong — a crash *inside* the refund
+    boundary gives the credit back and still finishes `failed`, so it shows under `Not posted`
+    having cost nothing. Left there deliberately (an infra failure is worth a reader's eye
+    wherever it lands); per-row truth is `OCRTask.charged_docs` via `task_id`, the join
+    `routers/admin/email_ingest.py` already makes, if it is ever worth a join here.
     """
     return case(
         (EmailDocument.status == "posted", "success"),
         (_wants_a_human(), "review"),
+        (EmailDocument.status == "skipped", UNCHARGED),
         else_="unposted",
     )
 
@@ -193,7 +234,7 @@ def _attention(g) -> int:
     return g.n - g.dismissed if g.reason_code in FIXABLE_REASONS else 0
 
 
-def _manual_row(card: CreditCard, task: OCRTask) -> ActivityRow:
+def _manual_row(card: CreditCard, task: OCRTask, name: str | None) -> ActivityRow:
     """A submitted manual scan, as a row of the same shape an email document produces.
 
     Timestamped by `submitted_at`, not `created_at`: the moment it became a JV is the only
@@ -203,6 +244,8 @@ def _manual_row(card: CreditCard, task: OCRTask) -> ActivityRow:
     The pending-only fields stay at their defaults. There is no payload to summarise and
     nothing waiting on a human, so `total: 0.00` would be a wrong number rather than a
     missing one — the same rule `_summarise` follows for a resolved email document.
+
+    `name` is the scanner, already resolved in bulk by the caller — see `posted_by_name`.
     """
     return ActivityRow(
         id=str(card.id),
@@ -213,6 +256,7 @@ def _manual_row(card: CreditCard, task: OCRTask) -> ActivityRow:
         bank_code=card.bank_code,
         doc_no=card.doc_no,
         jv_no=card.jv_no,
+        posted_by_name=name,
     )
 
 
@@ -283,12 +327,17 @@ async def _groups(db: AsyncSession, tenant_id: uuid.UUID) -> list:
 def _anomalies(groups: list) -> dict[str, int]:
     """Anomalies per chip — the number the mark is measured against.
 
-    Keyed off `STATUS_CHIPS`, so `today` gets no entry and therefore no dot. That is not an
+    Keyed off `LEDGER_BUCKETS`, so `today` gets no entry and therefore no dot. That is not an
     omission: `unseen` compares this against a stored lifetime acknowledgement, and a number
     that resets at midnight cannot be measured against yesterday's mark. Today's own count
     is the one number on the strip guaranteed to go down.
+
+    `UNCHARGED` gets an entry and it is always zero, without a special case: a `skipped` row
+    with a fixable reason nobody has put away is in `review`, so what reaches this bucket is
+    either dismissed (`n - dismissed == 0`) or a cause with no fix (`0`). It is summed into
+    `all` like the rest rather than being excluded, so the arithmetic stays one rule.
     """
-    out = dict.fromkeys(STATUS_CHIPS, 0)
+    out = dict.fromkeys(LEDGER_BUCKETS, 0)
     for g in groups:
         out[g.chip] += _attention(g)
     return out
@@ -358,20 +407,19 @@ async def list_activity(
 ):
     """This BU's credit-card documents from both sources, newest first.
 
-    `all` remains the API default and is **not a chip** — it has no tab on the screen. It
-    survives because `counts["all"]` is how the page tells a BU that has never had a
-    document from one that has: the difference between the sales screen and an empty table.
-    What the page opens on is `today`, falling through to `review` and then to `success` —
-    the first chip with anything in it (see `useReviewQueue`). Every chip's count travels
-    with this response precisely so that decision costs no extra round trip on a day that
-    has something in it.
+    `all` is the API default and is the module's **log**: no status predicate at all, so it
+    is the only view that shows the attachments nobody was charged for (§14). `counts["all"]`
+    is also how the page tells a BU that has never had a document from one that has — the
+    difference between the sales screen and an empty table. What the page opens on is
+    `today`, falling through to `review` and then to `success` — the first chip with anything
+    in it (see `useReviewQueue`). Every chip's count travels with this response precisely so
+    that decision costs no extra round trip on a day that has something in it.
 
     `today` is the one chip that is not about state — it is every row since midnight ICT,
-    whatever became of it. So it overlaps all three of the others by construction, which is
-    why `counts["all"]` is summed **before** it is added: `all` is what the page uses to
-    tell a BU that has never had a document from one whose current chip is empty, and
-    counting the same row twice would make that number a fiction. The three status chips
-    themselves never overlap — `_chip_expr` gives each row exactly one.
+    whatever became of it. So it overlaps all of the others by construction, which is why
+    `counts["all"]` is summed **before** it is added: counting the same row twice would make
+    that number a fiction. The four ledger buckets themselves never overlap — `_chip_expr`
+    gives each row exactly one, and three of them have a chip.
 
     An unknown filter falls back to `all` rather than 400ing: the query string is a UI
     detail and a stale bookmark — `?filter=skipped` from before the chips merged — should
@@ -396,7 +444,7 @@ async def list_activity(
     groups = await _groups(db, tenant_id)
     manual_total = await count_rows(db, _manual_stmt(tenant_id))
     manual_today = await count_rows(db, _manual_stmt(tenant_id, day_start))
-    counts = dict.fromkeys(STATUS_CHIPS, 0)
+    counts = dict.fromkeys(LEDGER_BUCKETS, 0)
     for g in groups:
         counts[g.chip] += g.n
     counts["success"] += manual_total
@@ -418,8 +466,14 @@ async def list_activity(
     # …and which of those chips is holding something this BU has not looked at. The count
     # sizes the pile for the screen-reader sentence; this is what lights the dot, so that a
     # failure nobody can retry stops shouting once somebody has actually seen it.
+    #
+    # **Keyed off `STATUS_CHIPS`, not off `attention`.** `attention` also carries `all` and
+    # `uncharged`, and iterating it would hand `all` a dot the moment anything anywhere was
+    # off — a dot that repeats three others and cannot be put out, since `mark_chip_seen`
+    # refuses to store a mark for `all`. Same rule as `today`: a chip that is a view over the
+    # others does not get to shout on their behalf.
     seen = await _seen(db, tenant_id)
-    unseen = {k: v > seen.get(k, 0) for k, v in attention.items()}
+    unseen = {k: attention[k] > seen.get(k, 0) for k in STATUS_CHIPS}
 
     total = counts[filter]
 
@@ -433,7 +487,17 @@ async def list_activity(
     rows = [ActivityRow(**to_review_row(e).model_dump(), source="email") for e in emails]
     if wants_manual:
         manuals = (await db.execute(manual_stmt.limit(window))).all()
-        rows += [_manual_row(card, task) for card, task in manuals]
+        # Who ran each scan. One bulk lookup for the whole window rather than a query per
+        # row, and `ocr_sessions` is the only table that has ever held the username — every
+        # business table carries the opaque `carmen_user_id` alone. An id it cannot resolve
+        # is simply absent from the map, and the row falls back to saying it was scanned by
+        # hand without naming anybody; printing a raw UUID at a reader is worse than the
+        # vaguer sentence it replaced.
+        names = await username_map(db, [c.carmen_user_id for c, _ in manuals])
+        rows += [
+            _manual_row(card, task, names.get(str(card.carmen_user_id or "")))
+            for card, task in manuals
+        ]
         rows.sort(key=lambda r: r.created_at or _EPOCH, reverse=True)
 
     return ActivityPage(
@@ -493,7 +557,13 @@ async def dismiss_row(
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
 ):
-    """Put a row away: it leaves the Review chip and stays in Not posted.
+    """Put a row away: it leaves the Review chip, and the log under `all` still has it.
+
+    Where it lands is whatever `_chip_expr` says once `dismissed_at` stops holding it in
+    `review` — which is the charge. In practice that is always `uncharged`, so the row drops
+    off the status chips entirely: a dismissible row is one with no `review_payload`, and the
+    fixable causes that reach this endpoint without one are all pre-charge `skipped` rows. A
+    charged one would land under Not posted, which is equally right and needs no branch here.
 
     The Review chip holds everything that wants a human, which includes failures a person
     can clear from settings. Nothing retries those, so fixing the filename rule today never

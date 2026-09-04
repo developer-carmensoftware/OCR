@@ -5,7 +5,6 @@ import {
   listActivity,
   markChipSeen,
   type ActivityFilter,
-  type ChipFilter,
   type ReviewDocument,
   type ReviewStatus,
 } from '../../lib/api/emailReview'
@@ -166,7 +165,7 @@ export function useReviewQueue(limit: number): ReviewQueueController {
         // that stays on until next time is not worth an error message.
         const owed = !!page.unseen?.[filter]
         setUnseen(owed ? { ...page.unseen, [filter]: false } : (page.unseen ?? {}))
-        if (owed) void markChipSeen(filter as ChipFilter).catch(() => {})
+        if (owed) void markChipSeen(filter).catch(() => {})
 
         setListError(false)
       })
@@ -207,23 +206,19 @@ export function useReviewQueue(limit: number): ReviewQueueController {
    * Put a row away, on screen first.
    *
    * Optimistic because the whole point of the gesture is that it is cheap: a spinner and a
-   * refetch per row would make clearing a morning's noise feel like work. The counts are
-   * adjusted by hand for the same reason — the row moved from `review` to `unposted` and
-   * `all` did not change, which is small enough to say here and not worth a round trip to
-   * be told.
+   * refetch per row would make clearing a morning's noise feel like work. The count is
+   * adjusted by hand for the same reason, and only `review` moves: a dismissible row is one
+   * nobody was charged for, so it drops off the status chips altogether rather than landing
+   * under Not posted. `all` is unchanged, which is the point — the log keeps it.
    *
    * A failure puts it back and says so. Nothing was destroyed either way; the row is still
-   * there under Not posted.
+   * there under All.
    */
   const dismiss = useCallback(
     (id: string) => {
       setRows(rs => rs.filter(r => r.id !== id))
       setTotal(n => Math.max(0, n - 1))
-      setCounts(c => ({
-        ...c,
-        review: Math.max(0, (c.review ?? 0) - 1),
-        unposted: (c.unposted ?? 0) + 1,
-      }))
+      setCounts(c => ({ ...c, review: Math.max(0, (c.review ?? 0) - 1) }))
       dismissRow(id).catch(() => {
         showToast(t('review.dismissFailed'), 'error')
         reload()

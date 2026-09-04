@@ -65,23 +65,32 @@ NULL` and no `email_documents` row pointing at its task — email ingest writes 
 without that anti-join one forwarded statement is listed under each source.
 
 **`filter` is `all` · `today` · `review` · `success` · `unposted`**; unknown falls back to
-`all`. Only the last four have a chip on screen. They are **not** a grouping of statuses —
+`all`. All five have a chip on screen. They are **not** a grouping of statuses —
 `_chip_expr()` in `credit_card_activity.py` is the single definition, as a SQL `CASE` the
 list filters on and the counts group by:
 
 | chip | what is in it |
 |---|---|
-| `today` | every row since midnight ICT, whatever became of it. Cuts across the other three, which is why it is left out of `counts["all"]`. Carries a count, never a dot |
+| `today` | every row since midnight ICT, whatever became of it. Cuts across the others, which is why it is left out of `counts["all"]`. Carries a count, never a dot |
 | `review` | wants a human: `pending_review` **plus** undismissed rows whose `reason_code` is in `FIXABLE_REASONS` |
 | `success` | `posted`. Manual scans land here too — they are only listed once posted |
-| `unposted` | did not post and nothing is owed: unfixable causes, rejections, and dismissed rows |
+| `unposted` | **a document this BU paid to have read that did not post**: rejections, unfixable charged failures, and a `received` row the pipeline never finished |
+| `all` | no predicate at all — the module's log, and the only view holding the fourth bucket below. No count, no dot |
 
-The three status chips partition the ledger — exactly one each — so `counts["all"]` is a
+Plus one **bucket with no chip**, which is what `all` holds beyond the other three:
+
+| bucket | what is in it |
+|---|---|
+| `uncharged` | `status = 'skipped'` and nobody is owed anything: the BU's own filename rules, an unknown sender, an unreadable file, a dismissed fixable row. Never charged — every writer of that status is upstream of `consume_document()`. Appears in `counts` and `attention` (always `0`), never in `unseen`, and cannot be passed as `filter` |
+
+The **four ledger buckets** partition the ledger — exactly one each — so `counts["all"]` is a
 true total rather than a sum of overlapping piles. `dismiss` refuses a row that still has a
-`review_payload`: a parked document is retired with **reject**, which records who and why.
+`review_payload`: a parked document is retired with **reject**, which records who and why;
+dismissing moves a row out of `review` into whichever bucket its charge says, which in
+practice is `uncharged`.
 
 See [`07-human-in-the-loop.md §9`](07-human-in-the-loop.md) for the table, §12 for the chips
-and the dot, §13 for this re-key.
+and the dot, §13 for the re-key on who can act, §14 for the charge split and `all`'s return.
 
 `PUT /settings/auto-post` is deliberately its own route and not a field on
 `PUT /api/v1/carmen/settings`: that endpoint is a full replace, so flipping the switch
