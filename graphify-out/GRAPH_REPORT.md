@@ -1,7 +1,7 @@
 # Graph Report - OCR  (2026-09-04)
 
 ## Corpus Check
-- 297 files · ~236,029 words
+- 297 files · ~236,902 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `09108f4d`
+- Built from commit: `61d81e02`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -18,7 +18,7 @@
 - apiFetch
 - TutorialModal.tsx
 - ReviewDocument.tsx
-- ExtractionsPage.tsx
+- EmailAutomationPage.tsx
 - AdminAuthContext.tsx
 - storage.ts
 - DataTable.tsx
@@ -44,7 +44,7 @@
 - credits.ts
 - NotificationBell.tsx
 - adminClient.ts
-- EmailAutomationPage.tsx
+- ExtractionsPage.tsx
 - ReviewQueue.tsx
 - dict.ts
 - TenantsPage.tsx
@@ -71,7 +71,7 @@
 - ErrorBoundary
 - Skeleton.tsx
 - usePdfPasswordPrompt
-- Overview.tsx
+- MetricChartImpl.tsx
 - useOcrSubmission.test.ts
 - reviewReasons.ts
 - scripts
@@ -153,9 +153,9 @@ Nodes (31): OrderDrawer(), PurchaseTutorial(), PURCHASE_FIGURE_WIDTHS, PURCHASE_
 Cohesion: 0.11
 Nodes (27): CustomSearchSelect(), Props, SelectOption, TopChoice, SkeletonRow(), SwapLabel(), DEFAULT_EMPTY_OBJECT, Props (+19 more)
 
-### Community 3 - "ExtractionsPage.tsx"
-Cohesion: 0.21
-Nodes (13): DateRangePicker(), DateRangePickerProps, ExtractionFailureRow, fetchExtractionFailures(), causeLabel(), classify(), ERROR_RULES, ExtractionsPage() (+5 more)
+### Community 3 - "EmailAutomationPage.tsx"
+Cohesion: 0.18
+Nodes (17): EmailBusinessUnitRow, EmailDocumentRow, EmailIngestHealth, EmailPollResult, fetchEmailBusinessUnits(), fetchEmailDocuments(), fetchEmailHealth(), pollEmailNow() (+9 more)
 
 ### Community 4 - "AdminAuthContext.tsx"
 Cohesion: 0.16
@@ -255,11 +255,11 @@ Nodes (39): docLabel(), NotificationBell(), notifText(), releaseCopy(), failedRo
 
 ### Community 28 - "adminClient.ts"
 Cohesion: 0.06
-Nodes (71): OrderKpiCards(), OrderWorkspace(), wsReducer(), Button(), ButtonProps, Variant, VARIANT_CLASS, useOrderActions() (+63 more)
+Nodes (73): OrderKpiCards(), OrderWorkspace(), wsReducer(), Button(), ButtonProps, Variant, VARIANT_CLASS, Card() (+65 more)
 
-### Community 29 - "EmailAutomationPage.tsx"
-Cohesion: 0.09
-Nodes (28): EmptyState(), EmptyStateProps, Switch(), SwitchProps, Tab, Tabs(), TabsProps, EmailBusinessUnitRow (+20 more)
+### Community 29 - "ExtractionsPage.tsx"
+Cohesion: 0.08
+Nodes (32): DateRangePicker(), DateRangePickerProps, EmptyState(), EmptyStateProps, PageHeader(), PageHeaderProps, Switch(), SwitchProps (+24 more)
 
 ### Community 30 - "ReviewQueue.tsx"
 Cohesion: 0.14
@@ -334,8 +334,8 @@ Cohesion: 0.18
 Nodes (12): OcrDraftState, CcDraft, COPY, Options, PdfPasswordAttempt, PdfPasswordModalPayload, setup(), ApiError (+4 more)
 
 ### Community 49 - "PeriodPicker.tsx"
-Cohesion: 0.13
-Nodes (40): Column, daysAgo(), endOfDay(), granularityFor(), lastDays(), matchPreset(), MAX_DAILY_RANGE_DAYS, Period (+32 more)
+Cohesion: 0.12
+Nodes (44): Column, daysAgo(), endOfDay(), granularityFor(), lastDays(), matchPreset(), MAX_DAILY_RANGE_DAYS, Period (+36 more)
 
 ### Community 50 - "ReviewDocument.test.tsx"
 Cohesion: 0.15
@@ -361,9 +361,9 @@ Nodes (6): Props, Skeleton(), SkeletonGrid(), SkeletonGridProps, SkeletonProps, 
 Cohesion: 0.60
 Nodes (5): usePdfPasswordPrompt(), open(), prompt(), render(), submit()
 
-### Community 56 - "Overview.tsx"
-Cohesion: 0.10
-Nodes (25): LazyMetricChart, MetricChart(), axisTick, ChartType, FALLBACK_COLORS, MetricChart(), MetricChartProps, Series (+17 more)
+### Community 56 - "MetricChartImpl.tsx"
+Cohesion: 0.18
+Nodes (11): LazyMetricChart, MetricChart(), axisTick, ChartType, FALLBACK_COLORS, MetricChart(), MetricChartProps, Series (+3 more)
 
 ### Community 57 - "useOcrSubmission.test.ts"
 Cohesion: 0.12
@@ -473,7 +473,7 @@ Nodes (5): useMapping(), useMappingSuggestions(), PaymentTypesHook, usePaymentTy
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `useT()` connect `useT` to `apiFetch`, `TutorialModal.tsx`, `ReviewDocument.tsx`, `ExtractionsPage.tsx`, `AdminAuthContext.tsx`, `DataTable.tsx`, `TKey`, `useAPInvoice.ts`, `constants/index.ts`, `useAPExtraction.ts`, `OrderActions.tsx`, `OrderWorkspace.tsx`, `useOcrWizard`, `APAmountSummary.tsx`, `main.tsx`, `CreditsPage.tsx`, `QueueRow.tsx`, `APInvoice.tsx`, `apInvoice.ts`, `credits.ts`, `NotificationBell.tsx`, `adminClient.ts`, `EmailAutomationPage.tsx`, `ReviewQueue.tsx`, `dict.ts`, `TenantsPage.tsx`, `UsageIndicator.tsx`, `useFileUpload.ts`, `InputTaxReconciliation.tsx`, `FeatureFlows.tsx`, `OrderTable.tsx`, `useAPExtraction.test.ts`, `useMapping.ts`, `PeriodPicker.tsx`, `ArCustomerProfiles.tsx`, `Overview.tsx`, `useAPSubmission.ts`, `LanguageContext.tsx`, `MaintenanceGate.tsx`, `showToast`, `parseNum`, `Mapping.tsx`?**
+- **Why does `useT()` connect `useT` to `apiFetch`, `TutorialModal.tsx`, `ReviewDocument.tsx`, `EmailAutomationPage.tsx`, `AdminAuthContext.tsx`, `DataTable.tsx`, `TKey`, `useAPInvoice.ts`, `constants/index.ts`, `useAPExtraction.ts`, `OrderActions.tsx`, `OrderWorkspace.tsx`, `useOcrWizard`, `APAmountSummary.tsx`, `main.tsx`, `CreditsPage.tsx`, `QueueRow.tsx`, `APInvoice.tsx`, `apInvoice.ts`, `credits.ts`, `NotificationBell.tsx`, `adminClient.ts`, `ExtractionsPage.tsx`, `ReviewQueue.tsx`, `dict.ts`, `TenantsPage.tsx`, `UsageIndicator.tsx`, `useFileUpload.ts`, `InputTaxReconciliation.tsx`, `FeatureFlows.tsx`, `OrderTable.tsx`, `useAPExtraction.test.ts`, `useMapping.ts`, `PeriodPicker.tsx`, `ArCustomerProfiles.tsx`, `MetricChartImpl.tsx`, `useAPSubmission.ts`, `LanguageContext.tsx`, `MaintenanceGate.tsx`, `showToast`, `parseNum`, `Mapping.tsx`?**
   _High betweenness centrality (0.265) - this node is a cross-community bridge._
 - **Why does `apiFetch` connect `apiFetch` to `ReviewDocument.tsx`, `storage.ts`, `useAPInvoice.ts`, `useAPExtraction.ts`, `OrderWorkspace.tsx`, `useOcrWizard`, `credits.ts`, `NotificationBell.tsx`, `useFileUpload.ts`, `InputTaxReconciliation.tsx`, `api.ts`, `client.ts`, `useAPExtraction.test.ts`, `useOcrWizard.ts`, `useMappingData.ts`, `useOcrSubmission.test.ts`, `useAPSubmission.ts`, `useUserConsent.ts`, `showToast`?**
   _High betweenness centrality (0.021) - this node is a cross-community bridge._
