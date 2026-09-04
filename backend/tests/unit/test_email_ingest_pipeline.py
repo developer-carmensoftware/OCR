@@ -135,6 +135,7 @@ class _Patches:
         carmen_result: dict | None,
         carmen_side_effect=None,
         suggested: dict | None = None,
+        suggest_side_effect=None,
         conflict: str | None = None,
         tax_note: str | None = None,
         extract_side_effect=None,
@@ -146,8 +147,7 @@ class _Patches:
         self.refund_document = AsyncMock()
         self.consume_document = AsyncMock(return_value="credit")
         self.mark_submitted = AsyncMock()
-        self.suggest = AsyncMock(return_value=suggested or {})
-        self.fill_missing_mappings = AsyncMock()
+        self.suggest = AsyncMock(return_value=suggested or {}, side_effect=suggest_side_effect)
         self.extract = AsyncMock(return_value=extracted, side_effect=extract_side_effect)
         self.open_or_fail = AsyncMock(return_value=None)
         self.foreign_tax_id = AsyncMock(return_value=conflict)
@@ -175,7 +175,6 @@ class _Patches:
             patch.object(ingest, "_mark_submitted", self.mark_submitted),
             patch.object(ingest, "get_accounting_config", AsyncMock(return_value=self.config)),
             patch.object(ingest, "_suggest_missing_mappings", self.suggest),
-            patch.object(ingest, "fill_missing_mappings", self.fill_missing_mappings),
             patch.object(ingest, "post_gljv", self.post_gljv),
         ]
         for p in patches:
@@ -402,16 +401,18 @@ async def test_already_submitted_document_never_reaches_carmen():
 
 
 @pytest.mark.asyncio
-async def test_a_bu_with_no_mappings_gets_ai_ones_saved_and_the_document_reviewed():
+async def test_a_bu_with_no_mappings_gets_ai_ones_offered_and_the_document_reviewed():
     """A BU that never opened the mapping page: the AI fills the gap, a human confirms it.
 
-    The guessed pairs are written back, so the second document of the same payment type is
-    deterministic — that is what makes one AI guess acceptable, and it is why the *first*
-    one is worth a person's eye. Auto-post posts what is ready to post, and a GL rule
-    invented thirty seconds ago is the definition of a document that is not.
+    Auto-post posts what is ready to post, and a GL rule invented thirty seconds ago is the
+    definition of a document that is not — so the JV waits for a person.
 
-    So the guess is still made and still saved (nothing about the mapping is deferred to
-    the reviewer); what changed is that the JV waits for them.
+    **The guess is not written to the BU's config here.** It was, until 2026-09-04, and that
+    is what made the check happen once per *document that arrived first* rather than once
+    per payment type: the second copy of the statement found the rule already saved, carried
+    no flag, and auto-posted on something nobody had read (KTC and SiamPay did exactly that,
+    JV 1023 and 1026). The pairs ride on the ledger row instead — `suggested` — and the
+    review screen writes them when a person presses Approve.
     """
     db = _FakeDB()
     outcome, p = await _run(
@@ -427,10 +428,11 @@ async def test_a_bu_with_no_mappings_gets_ai_ones_saved_and_the_document_reviewe
     assert row.review_payload["flags"] == ["mapping_guessed"]
     # Which rules were invented, so the review screen marks those and not every field.
     assert row.review_payload["guessed"] == sorted(MAPPINGS)
+    # And WHAT was invented, because the config no longer holds it: without this the
+    # reviewer opens a document whose pickers are empty and the AI's work is gone.
+    assert row.review_payload["suggested"] == MAPPINGS
     p.post_gljv.assert_not_awaited()
     p.refund_document.assert_not_called()
-    p.fill_missing_mappings.assert_awaited_once()
-    assert p.fill_missing_mappings.await_args.args[2] == MAPPINGS
 
 
 @pytest.mark.asyncio
@@ -505,7 +507,6 @@ async def test_a_fully_mapped_bu_never_calls_the_suggester():
     )
     assert outcome == "posted"
     p.suggest.assert_not_awaited()
-    p.fill_missing_mappings.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -646,6 +647,58 @@ async def test_carmen_401_is_a_credential_failure_not_a_rejection():
     p.refund_document.assert_not_called()
     # Flagged where it gets fixed, not only in a ledger row nobody is watching.
     p.mark_token_unverified.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_dead_credential_found_reading_the_gl_master_says_so():
+    """The 401 that arrives one Carmen call earlier than the one above.
+
+    `_suggest_missing_mappings` reads Carmen's account and department masters, so a dead
+    posting credential is discovered *there* first. It used to be caught and turned into an
+    empty suggestion, which left the document parked as `mapping_missing` — sending the
+    reader to the mapping page to fix a credential — while `mark_token_unverified` never
+    ran and the bell said nothing. carmencloud sat like that on 2026-09-04: one row saying
+    the wrong thing was the only symptom.
+    """
+    db = _FakeDB()
+    outcome, p = await _run(
+        db,
+        message_id="<msg-5@bank.co.th>",
+        extracted=_extracted(),
+        config=_config(mappings={}),  # forces the suggester to run
+        carmen_result={"Code": 0},
+        suggest_side_effect=CarmenAPIError(401, "HTTP 401: Authorization has been denied"),
+    )
+    assert outcome == "pending_review"
+    assert db.added[0].reason_code == "carmen_unauthorized"
+    assert "mapping_missing" not in db.added[0].review_payload["flags"]
+    p.post_gljv.assert_not_awaited()
+    p.refund_document.assert_not_called()  # the model read it — the charge stands
+    p.mark_token_unverified.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [401, 403])
+async def test_the_suggester_hands_a_dead_credential_up_rather_than_swallowing_it(status):
+    with patch.object(
+        ingest, "get_account_codes", AsyncMock(side_effect=CarmenAPIError(status, "no"))
+    ):
+        with pytest.raises(CarmenAPIError):
+            await ingest._suggest_missing_mappings(["Visa"], "KTC", "dead-token")
+
+
+@pytest.mark.asyncio
+async def test_the_suggester_still_swallows_an_outage():
+    """The other half of that branch, and the reason it is a branch and not a re-raise.
+
+    Carmen being down for a minute says nothing about the credential, so it must not
+    unverify a token that is fine. The document parks with the gap named instead, and the
+    next document of the same payment type can fill it.
+    """
+    with patch.object(
+        ingest, "get_account_codes", AsyncMock(side_effect=CarmenAPIError(503, "down"))
+    ):
+        assert await ingest._suggest_missing_mappings(["Visa"], "KTC", "good-token") == {}
 
 
 @pytest.mark.asyncio
@@ -2326,9 +2379,9 @@ async def test_an_ai_guessed_mapping_is_flagged_for_the_reviewer():
     """CARMEN_INTEGRATION.md §4: an LLM-guessed GL mapping must never post by itself.
 
     With review on, "by itself" stops being true — but only if the reviewer is told which
-    documents contain a guess. Nothing downstream can recompute this: by the time the
-    queue is read, `fill_missing_mappings` has already saved the guess and it is
-    indistinguishable from a mapping the customer made months ago.
+    documents contain a guess. Nothing downstream can recompute this: whether the AI had to
+    invent a rule on the way past is knowable only inside `_run_document`, and by the time
+    the queue is read the config has moved on.
     """
     db = _FakeDB()
     await _run(

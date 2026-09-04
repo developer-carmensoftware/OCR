@@ -172,7 +172,11 @@ Shape — everything the review screen needs, nothing it doesn't:
                  "details": [ { "transaction": "...", "pay_amt": "...", "commis_amt": "...",
                                 "tax_amt": "...", "total": "..." } ],
                  "warnings": [ "..." ], "is_duplicate": false },
-  "flags":     [ "mapping_guessed", "unbalanced", "warnings" ]  // computed once, at park time
+  "flags":     [ "mapping_guessed", "unbalanced", "warnings" ],  // computed once, at park time
+  "unmapped":  [ "WeChat Pay" ],                    // nothing could map these, AI included
+  "guessed":   [ "tax", "Mastercard" ],             // which rules the AI chose
+  "suggested": { "tax": { "dept": "OPS", "acc": "511300" },   // …and what it chose for them
+                 "Mastercard": { "dept": "GEN", "acc": "1130M" } }
 }
 ```
 
@@ -186,6 +190,15 @@ sits in the database until a human clicks.
 the accounting config per row. `mapping_guessed` is knowable only here — it is whether
 `_suggest_missing_mappings` filled anything on the way past. `unbalanced` is arithmetic on
 `details` alone. Anything else the review screen can derive live.
+
+`suggested` is the one entry that is not a summary but a **carrier**. Since decision #25
+ingest no longer writes its guess to `bu_accounting_mapping_entries` — a human approving is
+what does that — so the live config the review screen derives its rows from does not have
+these codes and nothing else remembers them. `guessed` is `sorted(suggested)` for any row
+written after that; a row parked before it has the names and not the codes, which is exactly
+right, because for those rows ingest *did* write to the config and the pickers find them
+there. That is also why the review screen seeds its badge list from `guessed` and its picker
+values from `suggested`.
 
 **The JV rows are deliberately NOT stored.** An earlier draft of this document stored them;
 reading [`AccountingReview.tsx:77-81`](../../frontend/src/components/credit-card/AccountingReview.tsx#L77)
@@ -800,7 +813,7 @@ the reader find the row themselves. A problem is now marked on the thing that ha
 | 28 | **A picker edits a rule, not a row.** `buildJvRows` binds each JV row 1:1 to a config key (`JvRow.key`), and two lines of one payment type share a key. There is no per-row identity to hang a per-document override on, so a correction always persists — with the consequence stated before the button and an Undo beside it. The "remember for next time?" checkbox this started with would have needed a shadow config nothing else in the system has. |
 | 29 | **`PUT /config/accounting` must never be called from here.** It is a full replace: unconditional column assignment plus `DELETE` + re-insert of every mapping entry. `PUT /config/accounting/mappings` (`set_mappings`) upserts named keys only. `fill_missing_mappings` is not an alternative — it never overwrites, and a correction is an overwrite. |
 | 30 | **`mapping_incomplete` parks for review instead of failing**, unless `auto_post` is on. It was terminal because nothing could fix it in place. Reverses the "Fallback, not a closed door" comment at the raise site. |
-| 31 | **`review_payload` records `unmapped` and `guessed`.** `mapping_guessed` says a rule was invented, not which — enough for a queue reason line, useless for a badge that has to point somewhere. |
+| 31 | **`review_payload` records `unmapped` and `guessed`.** `mapping_guessed` says a rule was invented, not which — enough for a queue reason line, useless for a badge that has to point somewhere. *(Extended 2026-09-04, §17: `suggested` carries the dept/acc too, because ingest stopped writing them anywhere else.)* |
 | 32 | **`JvEditor` is a new component, not `AccountingReview` with a flag.** Same split as `HeaderCard` vs `ReviewDocCard`: data entry and verification are different jobs. `buildJvRows` keeps the arithmetic single-sourced. `AccountingReview`'s `embedded` mode is deleted. |
 
 Decision #9 ("review is one surface, not steps") survives and is what this sharpens: one
@@ -1248,3 +1261,99 @@ dialog behind it, where each can carry a full label and the dismiss can say what
 - **Naming the button after the repair** (`Open settings` opening a dialog). The label would
   describe something the button does not do. The Message column already names the cause, and
   the dialog's confirm button carries the repair's real word.
+
+---
+
+## §17 — An AI-suggested rule is the BU's rule once a person approves it (2026-09-04, later)
+
+Reported as a copy problem: *"message ที่ว่า GL mapping missing ไม่ควรมีอยู่ แต่ควรจะขึ้นว่า AI
+suggest mapping"* — with the model behind it spelled out, and correct: a document whose
+mapping is missing goes through the suggester **before** it reaches the queue, so what the
+reviewer should be shown is a proposal flagged per row, and that should happen **once per
+payment type**, not once per document.
+
+The design was already that. Four things stopped it being true.
+
+### The wording
+
+`review.reasonGuessed` was *"GL mapping guessed"* in EN while TH had said `AI เดาผังบัญชีให้`
+since it shipped — the two locales disagreeing about whether the row held a machine's
+proposal or a missing value. Now `AI suggested mapping` / `AI แนะนำผังบัญชี`.
+`reasonMissingMapping` drops the "GL": the fields are named after the colon and the noun was
+carrying nothing.
+
+`mapping_missing` stays. It is the fallback for a payment type the suggester genuinely could
+not map, and a document holding one cannot post — removing it moves the refusal to Carmen,
+where it arrives as a blank account instead of a sentence.
+
+### The row that said "mapping missing" and meant "your credential is dead"
+
+Decision-log #26. `_suggest_missing_mappings` caught every `CarmenAPIError`, so an expired
+posting token — the one that reads the GL master — produced an empty suggestion rather than
+an error. 401/403 now re-raises into the handler that already knows what to do with it.
+
+This is the finding recorded on 2026-09-04 as *"a dead posting credential is invisible in the
+queue"*, and it is the one that made the complaint reproducible: carmencloud's queue showed
+`mapping missing` on documents whose only problem was the token.
+
+### The guess that was saved before anybody read it
+
+Decision-log #25, and the substantive change. `fill_missing_mappings` ran inside
+`_run_document`, so the second document carrying that payment type found the rule already
+saved, carried no flag, and — with `auto_post` on — posted unattended. The flag was riding on
+the *document*, and documents are the thing that differ.
+
+Ingest now keeps the pairs on the ledger row and the review screen's existing
+`patchAccountingConfig` call saves them. **The mechanism is entirely `overrides` arriving
+pre-seeded**: the screen has written GL rules on approve since it shipped, and it now has
+something to write on a document nobody edited. That is what makes "confirmed once per
+payment type" literally true rather than a description of the common case.
+
+### The badge the AI's own fill was turning off
+
+`guessed = !changed && guessedKeys.includes(row.key)` where `changed = row.key in overrides`
+— but `JvEditor`'s background `suggestPaymentTypes` fill goes through `onOverride` exactly
+like a keystroke. So an AI fill rendered as the reviewer's own edit, Undo button and all, and
+the ✨ badge worked only for the ingest-time list and only until anything touched the row.
+
+`guessedKeys` is now live state on `ReviewDocument` (`aiKeys`): seeded from `doc.guessed`,
+added to when `onOverride` fires with `byUser` false, removed when a person types over the
+pick. `JvEditor` reads it directly and derives `changed` as the complement, so the two claims
+a row can make — *"check this, a machine chose it"* and *"you changed this, here is the way
+back"* — are one decision rather than two that can both be wrong.
+
+### A key that could never match twice
+
+Not part of the report, found underneath it. GHL's line description comes back as three lines
+run together with the invoice's own date inside — and that string is the mapping **key**
+(`canonical_payment_type`) *and* the JV line's description (`build_jv_rows`). So every
+monthly invoice was a brand-new payment type: suggested again, parked again, saved again as a
+rule good for one document, with the date and "Gross Amount" going into the customer's books.
+
+`_clean_transaction_labels` takes the first non-empty line and cuts date tokens. It lives in
+`finalize_extraction`, **after** the normalizers (they match on the raw label —
+`_is_summary_row` reads "TOTAL") and before anything treats the string as a key. Both entry
+paths run through there, so the wizard and the pipeline cannot disagree about what the key
+is, and neither `cc_jv.py` nor its `ccJv.ts` twin had to move.
+
+Digits otherwise survive, for the reason `_fold` already leaves them alone: this BU has both
+`04-4100-03 SiamPay` and `04-4100-04 SiamPay`, one character apart and different accounts.
+A label that cleans away to nothing keeps what it had — a blank key is worse than a noisy one.
+
+### Considered and not done
+
+- **A `source` / `confirmed_at` column on `bu_accounting_mapping_entries`**, letting ingest
+  keep saving while `_review_flags` flagged until a human confirmed. It buys one thing the
+  chosen fix does not — no repeat suggestion call for documents arriving before the reviewer
+  — at the price of a migration, a third state on a table with two writers, and junk keys
+  still landing in the customer's config. The suggestion is a cheap text-model call.
+- **`mappings` on `ApproveIn` + `fill_missing_mappings` after `post_gljv`.** Better on
+  ordering: a rule confirmed by a JV that actually went through, rather than by a click that
+  Carmen might still refuse. Rejected because it is a *second writer* of the same table on
+  the same click, and the two would drift on the additive-vs-overwrite split that already
+  separates `fill_missing_mappings` from `patch_config`. If the ordering ever bites — a
+  reviewer approves, Carmen refuses for a closed period, and the rule is saved anyway — this
+  is the fix, and it is small.
+- **Cleaning the junk keys already in `bu_accounting_mapping_entries`.** Nothing new lands
+  there now. Removing what is there is a SQL errand against live customer config, not a code
+  change, and it wants somebody to look at the list first.

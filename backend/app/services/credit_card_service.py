@@ -304,6 +304,41 @@ def _strip_noncard_rows(extracted: ExtractedCreditCardData) -> None:
     ]
 
 
+# A date printed inside a line description. Deliberately narrow — two or three
+# groups separated by - / or . — because everything else numeric on these labels
+# is identity, not time (see `_clean_transaction_labels`).
+_DATE_IN_LABEL = re.compile(r"\b\d{1,2}[-/.]\d{1,2}(?:[-/.]\d{2,4})?\b")
+
+
+def _clean_transaction_labels(extracted: ExtractedCreditCardData) -> None:
+    """The line description is a *key*, so it has to be the same next month.
+
+    `transaction` is not just wording: `canonical_payment_type` looks the BU's saved
+    GL mapping up by it, `unmapped_payment_types` decides from it whether the AI has
+    to be asked, and `build_jv_rows` prints it as the JV line's description. A label
+    that carries the invoice's own date can therefore never match anything twice —
+    GHL reads as three lines run together
+
+        TRANSACTION FEE 30-05-2026 / Gross Amount 1,277,748.00 Baht / DA00001562
+
+    which made every monthly invoice a brand-new payment type: suggested again,
+    parked again, and saved again as a mapping good for exactly one document.
+
+    Two cuts, both conservative: the first non-empty line, and any date token in it.
+    **Digits otherwise survive** — this BU really has both `04-4100-03 SiamPay …`
+    and `04-4100-04 SiamPay …`, which are different accounts one character apart,
+    the same reason `_fold` in cc_jv.py leaves digits alone. A label that cleans
+    away to nothing keeps what it had: a row with no name at all is worse than a
+    noisy one.
+    """
+    for row in extracted.details:
+        label = row.transaction or ""
+        first = next((ln for ln in label.splitlines() if ln.strip()), label)
+        cleaned = re.sub(r"\s+", " ", _DATE_IN_LABEL.sub(" ", first)).strip()
+        if cleaned:
+            row.transaction = cleaned
+
+
 def _spread_footer_vat(line_rows: list, total_vat: float) -> str | None:
     """Split one footer VAT figure across fee line rows, proportional to each
     line's fee (commis_amt), the last row absorbing the rounding remainder. Sets
@@ -630,6 +665,13 @@ async def finalize_extraction(
         # Plain statement banks (BBL/KBANK/SCB) + undetected: no normalizer of
         # their own, so drop any summary / WHT row the LLM leaked into details.
         _strip_noncard_rows(extracted)
+
+    # After the normalizers, because they match on the raw label (`_is_summary_row`
+    # reads "TOTAL", `_normalize_fee_invoice` finds its summary row by it) and would
+    # answer differently on a trimmed one. Both entry paths — the wizard and email
+    # ingest — come through here, so the mapping key the browser shows and the one
+    # the pipeline looks up are the same string by construction.
+    _clean_transaction_labels(extracted)
 
     parsed_date = parse_doc_date(extracted.doc_date)
 

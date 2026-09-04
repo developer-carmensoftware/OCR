@@ -14,6 +14,7 @@ from app.services.credit_card_service import (
     _FEE_UNALLOCATED_WARNING,
     _NEGATIVE_UNSUPPORTED_WARNING,
     _RECON_MISMATCH_WARNING,
+    _clean_transaction_labels,
     _normalize_bay_statement,
     _normalize_fee_invoice,
     _strip_noncard_rows,
@@ -925,3 +926,51 @@ def test_bay_zero_commission_still_fills_net():
     assert len(ext.details) == 2  # TOTAL consumed
     assert [r.total for r in ext.details] == ["1,000.00", "500.00"]
     assert _FEE_UNALLOCATED_WARNING in ext.warnings
+
+
+# ── The line description as a mapping key ─────────────────────────────────────
+#
+# `transaction` is not wording, it is the key `canonical_payment_type` looks the BU's
+# saved GL mapping up by — and the description `build_jv_rows` prints on the JV line.
+# A label carrying the invoice's own date therefore matches nothing next month: the
+# document is suggested again, parked again, and saved again as a rule good for one
+# document. GHL is the real case (2026-09-04 e2e run).
+
+
+def _labelled(text: str) -> ExtractedCreditCardData:
+    return ExtractedCreditCardData(details=[ExtractedDetailRow(transaction=text)])
+
+
+def test_a_label_run_together_from_three_lines_keeps_only_the_first():
+    ext = _labelled("TRANSACTION FEE 30-05-2026\nGross Amount 1,277,748.00 Baht\nDA00001562")
+    _clean_transaction_labels(ext)
+    assert ext.details[0].transaction == "TRANSACTION FEE"
+
+
+def test_a_date_is_cut_wherever_it_sits_in_the_label():
+    ext = _labelled("01/06/2026 Commission fee")
+    _clean_transaction_labels(ext)
+    assert ext.details[0].transaction == "Commission fee"
+
+
+def test_digits_that_are_identity_and_not_time_survive():
+    # This BU really has both of these, one character apart. Folding them together
+    # would post two different accounts' fees to one GL line.
+    for label in ("04-4100-03 SiamPay Service", "04-4100-04 SiamPay Service"):
+        ext = _labelled(label)
+        _clean_transaction_labels(ext)
+        assert ext.details[0].transaction == label
+
+
+def test_a_label_that_is_only_a_date_keeps_what_it_had():
+    # Cleaning to nothing leaves a JV line with no description and a mapping keyed on
+    # the empty string. A noisy key beats a blank one.
+    ext = _labelled("30-05-2026")
+    _clean_transaction_labels(ext)
+    assert ext.details[0].transaction == "30-05-2026"
+
+
+def test_an_ordinary_card_type_is_left_exactly_as_it_was():
+    ext = _labelled("VSA-INT-P")
+    _clean_transaction_labels(ext)
+    assert ext.details[0].transaction == "VSA-INT-P"

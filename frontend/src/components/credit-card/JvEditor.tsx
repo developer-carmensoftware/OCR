@@ -40,8 +40,10 @@ interface Props {
    *  count as unsaved work of the reviewer's. */
   onOverride: (key: string, mapping: FieldMapping, byUser?: boolean) => void
   onUndo: (key: string) => void
-  /** Field types the AI chose during ingest (`mapping_guessed`), and ones it could not
-   *  fill at all (`unmapped`). The first asks to be checked, the second to be filled. */
+  /** Field types whose mapping is currently the AI's pick rather than a person's, and ones
+   *  it could not fill at all (`unmapped`). The first asks to be checked, the second to be
+   *  filled. `guessedKeys` is live, not the ledger row's `guessed`: the fill below adds to
+   *  it and a reviewer typing over a pick removes them from it. */
   guessedKeys: string[]
   unmappedKeys: string[]
   /** An amount typed on a leg, written back into the detail lines it was summed from. */
@@ -324,8 +326,13 @@ export default function JvEditor({
           {rows.map((row, i) => {
             const first = !seen.has(row.key)
             seen.add(row.key)
-            const changed = row.key in overrides
-            const guessed = !changed && guessedKeys.includes(row.key)
+            // Whose answer, not whether there is one. Both arrive through `onOverride`, so
+            // `row.key in overrides` cannot tell them apart — it read every AI fill as the
+            // reviewer's own edit and swapped the ✨ badge for an Undo button, which is the
+            // opposite of what the row means. `guessedKeys` is the review screen's live
+            // answer to "is this still the machine's pick".
+            const guessed = guessedKeys.includes(row.key)
+            const changed = row.key in overrides && !guessed
             const needed =
               unmappedKeys.includes(row.key) || (!row.acc && !!(row.debit || row.credit))
             const accOptions = allowedAccountsForDept(row.dept, departments, accounts)

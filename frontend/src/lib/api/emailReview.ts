@@ -89,6 +89,10 @@ export interface ReviewDocument {
  *  what `useOcrExtraction.applyExtractedData` consumes. */
 export interface ReviewDocumentDetail extends ReviewDocument {
   extracted: Record<string, unknown>
+  /** What the AI proposed for each key in `guessed`. Ingest no longer writes these to the
+   *  BU's accounting config — a human approving is what does that — so the live config
+   *  this screen derives its JV rows from will not have them, and this is the only copy. */
+  suggested: Record<string, { dept?: string; acc?: string }>
 }
 
 /** Which of the automation page's four states to render, in one call. `blockers` comes

@@ -681,11 +681,14 @@ mail lands.
 - **`sender_not_allowed`** — the BU set `owner_emails` (§2.3) and none of them appeared in
   the message's `From`/`To`/`Cc`. Nothing was charged. Expect this when a colleague
   forwards from an address nobody registered.
-- **`carmen_unauthorized`** — Carmen answered the posting call with **401/403**, or the BU
-  has no stored token/host at all. Nothing is wrong with the document and re-sending it
-  will not help: the BU's posting credential (§2.6) must be set again, after which the
-  document can be replayed. Split out of `carmen_rejected` on 2026-08-28, when three
-  documents of one BU were reported as rejected JVs by a token that had simply expired.
+- **`carmen_unauthorized`** — Carmen answered **401/403** to the posting call *or to the
+  account/department master read* that the GL suggester makes first, or the BU has no
+  stored token/host at all. Nothing is wrong with the document and re-sending it will not
+  help: the BU's posting credential (§2.6) must be set again, after which the document can
+  be replayed. Split out of `carmen_rejected` on 2026-08-28, when three documents of one BU
+  were reported as rejected JVs by a token that had simply expired; extended to the master
+  read on 2026-09-04, when the same expiry surfaced instead as a missing GL mapping and
+  sent the reader to the wrong screen.
   `carmen_rejected` now means only what its name says — Carmen read the JV and declined
   it (`Code != 0`), and the `message` carries that `Code` and Carmen's own text.
 
@@ -760,22 +763,28 @@ The JV content itself is unchanged from what the wizard posts today
 (`JvhSeq/JvhDate/Prefix/JvhSource/Detail[]`), and the GL accounts come from the mapping
 the customer has already configured in the OCR app.
 
-**GL mapping the customer has not set is filled by AI, and saved.** A BU that never opened
-the mapping page in the OCR app would otherwise have every document park at
-`mapping_incomplete` — silence, for a feature sold as automatic. So when a payment type or
-a fixed field has no mapping, we ask the same suggester the wizard uses (against that BU's
-own Carmen account and department master, with Carmen's `DefaultAccount` restrictions
-enforced), post with the result, and **write it back to the BU's config**. Only the first
-document of a given payment type is a guess; every later one is deterministic.
+**GL mapping the customer has not set is proposed by AI, and confirmed by a person.** A BU
+that never opened the mapping page in the OCR app would otherwise have every document stop
+dead — silence, for a feature sold as automatic. So when a payment type or a fixed field has
+no mapping, we ask the same suggester the wizard uses (against that BU's own Carmen account
+and department master, with Carmen's `DefaultAccount` restrictions enforced) and put the
+answer in front of a reviewer, with the rows the AI chose marked.
 
-Two consequences worth stating plainly, because they are the price of not blocking:
+**The document waits.** A GL rule invented thirty seconds ago is not something to post
+unattended, so it goes to the review queue under either setting of `auto_post` — the
+reviewer sees the proposal filled in rather than a blank form, and approving is what saves
+it to the BU's config. From then on that payment type is deterministic and posts by itself.
+So the review happens **once per payment type**, not once per document.
 
-- **A guess can be wrong.** The customer sees and corrects the mapping in the OCR app —
-  and a correction sticks, because saving never overwrites what they set. A JV already
-  posted under a wrong account has to be fixed in Carmen.
-- **`mapping_incomplete` still exists**, but only as the fallback for when the suggester
-  produced nothing usable or Carmen's master was unreachable — not as a door that stays
-  shut until the customer configures something.
+Two consequences worth stating plainly:
+
+- **A proposal can be wrong**, which is why one is never posted without a person. The
+  reviewer corrects it on the same screen, and a correction sticks — saving never
+  overwrites what the customer set themselves.
+- **A payment type the suggester cannot map** (no usable answer from the model) reaches the
+  reviewer as an empty picker to fill, not as a refusal. The one thing that ends the
+  document is a dead posting credential, which is reported as `carmen_unauthorized` and
+  names the credential rather than the mapping.
 
 ---
 

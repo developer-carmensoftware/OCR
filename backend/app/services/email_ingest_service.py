@@ -87,7 +87,6 @@ from app.services import email_settings_service as es
 from app.services import gl_suggestion_service as gl
 from app.services.accounting_config_service import (
     description_for,
-    fill_missing_mappings,
     get_accounting_config,
 )
 from app.services.carmen_service import (
@@ -857,10 +856,12 @@ async def _run_document(
     # Did the AI have to invent a GL mapping on the way past? Only knowable here, and the
     # queue needs it to tell a reviewer which documents are worth opening.
     mapping_guessed = False
-    # WHICH rules it invented, not just that it did. The review screen marks these for
-    # checking, and marking every rule because one was guessed is the same as marking
-    # none — the point of the flag is to say where to look.
-    mapping_guessed_keys: list[str] = []
+    # WHICH rules it invented and what it put in them. The keys are what the review screen
+    # marks for checking — marking every rule because one was guessed is the same as
+    # marking none — and the values are what it *shows*, since 2026-09-04 nothing
+    # writes them to the BU's config until a human approves, so there is nowhere else for
+    # the reviewer to read them from.
+    mapping_suggested: dict[str, dict[str, str]] = {}
     # Payment types nothing could map — the AI included. With review on these park instead
     # of failing, so the reviewer sees them as empty cells to fill rather than never seeing
     # the document at all.
@@ -895,7 +896,7 @@ async def _run_document(
                     mapping_guessed=mapping_guessed,
                     mapping_missing=mapping_missing,
                 ),
-                mapping_guessed_keys=mapping_guessed_keys,
+                mapping_suggested=mapping_suggested,
                 mapping_missing=mapping_missing,
                 reason_code=reason_code,
                 error=error,
@@ -1058,17 +1059,23 @@ async def _run_document(
             config = await get_accounting_config(db, tenant_id)
         missing = unmapped_payment_types(extracted.details, config.mappings or {})
         if missing:
-            # Nobody is here to confirm a guess, and parking every document of a BU
-            # that never opened the mapping page is the worse failure. So the AI fills
-            # the gap and what it picked is *saved* — the next document carrying the
-            # same payment type is deterministic.
+            # Parking every document of a BU that never opened the mapping page, with
+            # empty pickers and no starting point, is the worse failure. So the AI fills
+            # the gap and the reviewer is handed an answer to check rather than a blank
+            # form — which is the whole of what this call buys. It does not decide
+            # anything: `mapping_guessed` below parks the document either way.
             suggested = await _suggest_missing_mappings(missing, bank_code, carmen_token)
             if suggested:
-                async with async_session() as db:
-                    await fill_missing_mappings(db, tenant_id, suggested)
+                # In memory only. Saving it here made the guess the BU's own rule before
+                # anyone had looked at it, so the *second* document carrying that payment
+                # type was no longer "guessed" and auto-posted on a mapping no human ever
+                # confirmed (KTC and SiamPay did exactly that, JV 1023 and 1026). The write
+                # moved to `approve_document`: a human confirming it once is what turns a
+                # suggestion into a rule, which is also what makes the review happen once
+                # per payment type rather than once per document.
                 config.mappings = {**(config.mappings or {}), **suggested}
                 mapping_guessed = True
-                mapping_guessed_keys = sorted(suggested)
+                mapping_suggested = suggested
             mapping_missing = unmapped_payment_types(extracted.details, config.mappings or {})
             # Never terminal, under either setting: the review screen maps in place, so a
             # document the AI could not map is a question for the reviewer rather than a
@@ -1131,7 +1138,7 @@ async def _run_document(
                 bank_code=bank_code,
                 doc_no=doc_no,
                 flags=flags,
-                mapping_guessed_keys=mapping_guessed_keys,
+                mapping_suggested=mapping_suggested,
                 mapping_missing=mapping_missing,
             )
             logger.info(
@@ -1342,6 +1349,16 @@ async def _suggest_missing_mappings(
         accounts_raw = await get_account_codes(carmen_token)
         depts_raw = await get_departments(carmen_token)
     except CarmenAPIError as exc:
+        # 401/403 is not "the master is unavailable", it is "this BU's stored posting
+        # credential is dead" — and every document of theirs will fail the same way until
+        # someone re-pastes it. Swallowed, it surfaced as one row reading *mapping missing*,
+        # which sends the reader to the mapping page instead of to the credential, while
+        # `mark_token_unverified` never ran and the bell said nothing (seen on carmencloud,
+        # 2026-09-04). Re-raised, the handler in `_run_document` flags the token and parks
+        # the document with the honest reason; it would have raised there at post time
+        # anyway, one Carmen call later.
+        if exc.status_code in (401, 403):
+            raise
         logger.warning("[email] Could not read Carmen GL master for suggestions: %s", exc)
         return {}
 
@@ -1593,7 +1610,7 @@ async def _park_for_review(
     bank_code: str | None,
     doc_no: str | None,
     flags: list[str],
-    mapping_guessed_keys: list[str] | None = None,
+    mapping_suggested: dict[str, dict[str, str]] | None = None,
     mapping_missing: list[str] | None = None,
     reason_code: str | None = None,
     error: str | None = None,
@@ -1644,8 +1661,15 @@ async def _park_for_review(
             # rules the AI invented on the way past. Stored rather than re-derived: the
             # review screen would otherwise have to diff the document against the live
             # config to find them, and the config moves.
+            #
+            # `suggested` carries the AI's dept/acc as well as its keys, because since
+            # 2026-09-04 nothing writes them to the BU's config until a human approves —
+            # the live config the review screen derives its JV rows from does not have
+            # them, so this row is the only copy. Re-asking the model on open would cost a
+            # second call and could answer differently than the queue's own reason line.
             "unmapped": list(mapping_missing or []),
-            "guessed": list(mapping_guessed_keys or []),
+            "guessed": sorted(mapping_suggested or {}),
+            "suggested": dict(mapping_suggested or {}),
         }
         await db.commit()
 
@@ -1776,6 +1800,12 @@ async def approve_document(
     * It does not trust `is_duplicate` from the extraction. That was computed before the
       document waited, and a wait is exactly when someone keys the same statement into
       Carmen by hand.
+
+    It also does not write the GL rules back to the BU's config. Ingest stopped doing that
+    for a suggestion (a guess nobody had read was becoming the BU's own rule, and then the
+    *second* copy of a statement auto-posted on it), and the review screen already writes
+    them itself — `patchAccountingConfig`, immediately before it calls this. One writer,
+    and it is the click that means a human confirmed them.
     """
     async with async_session() as db:
         row = await _claim_for_review(db, document_id, tenant_id)

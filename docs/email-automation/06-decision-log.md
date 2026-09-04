@@ -454,6 +454,61 @@ is still per BU, still defaults `false`, still written only by its own endpoint.
 
 Full reasoning in [`07-human-in-the-loop.md §15`](07-human-in-the-loop.md).
 
+## 25. An AI-suggested GL rule becomes the BU's rule when a human approves it (2026-09-04)
+
+**Decision.** Ingest stops writing what the suggester produced. It keeps the pairs on the
+ledger row — `review_payload.suggested`, `{key: {dept, acc}}` — the review screen seeds its
+pickers from them, and the `patchAccountingConfig` call that screen already makes before
+posting is what saves them. `fill_missing_mappings` is no longer called from
+`email_ingest_service`.
+
+**Why.** The guess became the BU's own rule the instant it was made, so the *second*
+document carrying that payment type found the rule already there: `unmapped_payment_types`
+returned nothing, `mapping_guessed` was false, `_review_flags` was empty, and with
+`auto_post` on it posted unattended on a mapping no human had read. KTC and SiamPay did
+exactly that on 2026-09-04 — parked in run 1, posted as JV 1023 and 1026 in run 2 from the
+identical documents. It contradicted the rule written in `unmapped_payment_types`' own
+docstring (*"an LLM-guessed mapping must never post by itself"*, CARMEN_INTEGRATION §4):
+the flag was riding on the document, and the *documents* are what differ.
+
+**The claim it makes true.** "Reviewed once per payment type" — not once per whichever
+document happened to arrive first. A person confirming is now the only thing that turns a
+suggestion into a rule, and after they do, every later document of that type is clean and
+auto-posts.
+
+**What it costs.** One suggestion call per document that arrives before the reviewer gets
+there, instead of one per payment type. That is a text-model call weighed against posting to
+someone's books on a rule nobody read; `REVIEW_BACKLOG_CAP` still ends the queue.
+
+**No second writer.** The alternative was a `mappings` field on `ApproveIn` and a
+`fill_missing_mappings` call after `post_gljv` — correct on ordering (a rule confirmed by a
+JV that actually went through) but a second writer of the same table on the same click, and
+the two would drift on the additive-vs-overwrite question that already separates
+`fill_missing_mappings` from `patch_config`. The screen was already writing these rules; it
+now writes one more.
+
+**What it does not change.** The suggester itself, when it runs, `mapping_guessed`,
+`mapping_missing`, or the auto-post gate (#24). A clean document still never calls the
+suggester and still posts by itself.
+
+## 26. A 401 reading the GL master is a dead credential, not a missing mapping (2026-09-04)
+
+**Decision.** `_suggest_missing_mappings` re-raises `CarmenAPIError` on 401/403 instead of
+returning `{}`. Every other status stays swallowed.
+
+**Why.** carmencloud's stored posting token was expired — `GET /accountCode` answered 401 —
+and the catch turned that into an empty suggestion. Every key came back unmapped, the
+document parked as `mapping_missing`, and the single symptom was one row telling the reader
+to go and fix a mapping. `mark_token_unverified` never ran, so the bell said nothing and
+`#/admin/email` showed a healthy credential.
+
+Nothing new handles it: the `except CarmenAPIError` in `_run_document` already flags the
+token and parks with `carmen_unauthorized` (#18), and would have caught the same 401 one
+Carmen call later at post time. The re-raise just stops the earlier call from hiding it.
+
+**Why not all statuses.** A 503 says nothing about the credential. Unverifying a token
+because Carmen was down for a minute makes a BU re-paste a token that was fine.
+
 ## 20. Superseded designs, and where they live
 
 - **`feat/email-flow`** — the v1 design: a human-approval review step before posting, its

@@ -59,7 +59,7 @@ trail for every outcome, `reason_code` taxonomy included.
 | `reason_code` | `varchar(50)`, nullable | Stable identifier — see the taxonomy below |
 | `error_message` | `text`, nullable | Human-readable detail |
 | `attempts` | `integer not null default 0` | Always `1` in practice — see [Not built](02-architecture.md#not-built)-adjacent note in 05-operations |
-| `review_payload` | `jsonb`, nullable | The extracted document a reviewer edits, **only while `pending_review`**. Cleared by `_finish()` on every terminal transition |
+| `review_payload` | `jsonb`, nullable | The extracted document a reviewer edits, **only while `pending_review`**. Cleared by `_finish()` on every terminal transition. Keys: `extracted`, `flags`, `unmapped`, `guessed`, and `suggested` — the last being the dept/acc the AI chose, which since decision #25 lives here and nowhere else until a human approves ([shape](07-human-in-the-loop.md)) |
 | `reviewed_by` | `varchar(36)`, nullable | `carmen_user_id` of whoever approved or rejected it. No FK — there is no users table, and the id is opaque to us |
 | `reviewed_by_name` | `varchar(100)`, nullable | Their username, from the same session claims. Stored because an opaque uuid answers nobody's question about who posted a JV |
 | `reviewed_at` | `timestamptz`, nullable | When they did |

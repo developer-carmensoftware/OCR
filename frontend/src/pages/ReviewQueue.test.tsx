@@ -196,7 +196,7 @@ describe('which state the automation page paints', () => {
 describe('the message column', () => {
   const cases: [ReviewDocument['flags'], string][] = [
     [['unbalanced'], 'amounts do not reconcile'],
-    [['mapping_guessed'], 'GL mapping guessed'],
+    [['mapping_guessed'], 'AI suggested mapping'],
     [['doc_no_missing'], 'no document number'],
     [['warnings'], 'extraction warnings'],
     // Also the auto-post rule: an empty flag list is what posts unattended, so this phrase
@@ -216,7 +216,7 @@ describe('the message column', () => {
       doc({ flags: ['warnings', 'doc_no_missing', 'mapping_guessed', 'unbalanced'] }),
     ])
     expect(await screen.findByText('amounts do not reconcile')).toBeInTheDocument()
-    expect(screen.queryByText('GL mapping guessed')).not.toBeInTheDocument()
+    expect(screen.queryByText('AI suggested mapping')).not.toBeInTheDocument()
     expect(screen.queryByText('no document number')).not.toBeInTheDocument()
     expect(screen.queryByText('extraction warnings')).not.toBeInTheDocument()
   })

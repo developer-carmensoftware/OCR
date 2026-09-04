@@ -113,9 +113,18 @@ def _doc(card_id: str, doc_no: str, *, bent: bool) -> dict:
         # Computed at park time by the real pipeline; hand-written here to match.
         "flags": ["unbalanced"] if bent else ["mapping_guessed"],
         # WHICH rules the AI invented, not just that it did. Without this the queue row
-        # says "GL mapping guessed" and stops, and the review screen marks nothing —
+        # says "AI suggested mapping" and stops, and the review screen marks nothing —
         # which is exactly what the demo looked like before it was added.
         "guessed": [] if bent else ["tax", "JCB"],
+        # …and WHAT it chose for them. Since 2026-09-04 ingest keeps its suggestion here
+        # instead of writing it to the BU's config, so a demo row without this opens with
+        # two empty pickers and an Approve button that cannot be pressed.
+        "suggested": {}
+        if bent
+        else {
+            "tax": {"dept": "OPS", "acc": "511300"},
+            "JCB": {"dept": "GEN", "acc": "110300"},
+        },
         "unmapped": [],
     }
 

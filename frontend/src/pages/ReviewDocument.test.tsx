@@ -139,6 +139,7 @@ function detail(over: Partial<ReviewDocumentDetail> = {}): ReviewDocumentDetail 
     flags: [],
     unmapped: [],
     guessed: [],
+    suggested: {},
     jv_no: null,
     reason_code: null,
     error_message: null,
@@ -451,6 +452,41 @@ describe('mapping in place', () => {
     expect(screen.getAllByText('AI')).toHaveLength(1)
   })
 
+  it("shows the AI's own pick in the picker, not an empty one", async () => {
+    // Ingest stopped writing its suggestion to the BU's config, so the codes travel on the
+    // ledger row instead. Without seeding them here the reviewer opens a document whose
+    // pickers are blank and the AI's work is simply gone.
+    vi.mocked(api.getPending).mockResolvedValue(
+      detail({
+        flags: ['mapping_guessed'],
+        guessed: ['tax'],
+        suggested: { tax: { dept: 'OPS', acc: '511300' } },
+      })
+    )
+    mount()
+    expect(await screen.findByLabelText('Account for Input Tax')).toHaveValue('511300')
+    expect(screen.getAllByText('AI')).toHaveLength(1)
+  })
+
+  it('hands the AI badge over to the reviewer once they type over it', async () => {
+    // Two different claims about one row: "check this, a machine chose it" and "you changed
+    // this, here is the way back". Showing the first after the second is a lie about who
+    // decided.
+    vi.mocked(api.getPending).mockResolvedValue(
+      detail({
+        flags: ['mapping_guessed'],
+        guessed: ['tax'],
+        suggested: { tax: { dept: 'OPS', acc: '511300' } },
+      })
+    )
+    mount()
+    fireEvent.change(await screen.findByLabelText('Account for Input Tax'), {
+      target: { value: '511200' },
+    })
+    await waitFor(() => expect(screen.queryByText('AI')).not.toBeInTheDocument())
+    expect(screen.getByText('Undo')).toBeInTheDocument()
+  })
+
   it('limits the account list to what the department allows', async () => {
     // Carmen's DefaultAccount is the rule; offering a pair Carmen forbids just moves the
     // refusal to the post, where it is slower and worse explained.
@@ -633,6 +669,27 @@ describe('approving', () => {
     await clickApprove()
     await waitFor(() => expect(api.approveDocument).toHaveBeenCalled())
     expect(cfgApi.patchAccountingConfig).not.toHaveBeenCalled()
+  })
+
+  it("saves the AI's suggestion even when the reviewer changed nothing", async () => {
+    // This is the whole of "confirmed once per payment type". Ingest no longer writes its
+    // own guess, so if approving an untouched suggestion saved nothing, the next document
+    // carrying that payment type would be suggested and parked all over again — and the
+    // reviewer's click would have meant nothing beyond this one JV.
+    vi.mocked(api.getPending).mockResolvedValue(
+      detail({
+        flags: ['mapping_guessed'],
+        guessed: ['tax'],
+        suggested: { tax: { dept: 'OPS', acc: '511300' } },
+      })
+    )
+    vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-1', tax_note: null })
+    mount()
+    await clickApprove()
+    await waitFor(() => expect(cfgApi.patchAccountingConfig).toHaveBeenCalled())
+    expect(vi.mocked(cfgApi.patchAccountingConfig).mock.calls[0][0]).toMatchObject({
+      mappings: { tax: { dept: 'OPS', acc: '511300' } },
+    })
   })
 
   it('posts nothing when the rule could not be saved', async () => {

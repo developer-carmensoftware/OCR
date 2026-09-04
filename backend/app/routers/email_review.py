@@ -163,6 +163,10 @@ async def get_pending(
     return ReviewDocumentDetail(
         **to_review_row(row).model_dump(),
         extracted=payload.get("extracted") or {},
+        # Read here rather than in `_summarise`: the list endpoint and
+        # `credit_card_activity.py` share that helper, and the dept/acc codes are only
+        # ever wanted by the screen that lets someone edit them.
+        suggested=payload.get("suggested") or {},
     )
 
 

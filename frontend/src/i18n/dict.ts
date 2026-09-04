@@ -795,9 +795,12 @@ const en = {
     'Fill in the vendor name and tax ID under Show details, or untick the input tax record',
   'review.loadingDocument': 'Loading the document',
   'review.ruleSaveFailed': 'The GL rule could not be saved, so nothing was posted: {reason}',
-  'review.reasonMissingMapping': 'GL mapping missing',
+  'review.reasonMissingMapping': 'mapping missing',
   'review.reasonUnbalanced': 'amounts do not reconcile',
-  'review.reasonGuessed': 'GL mapping guessed',
+  // "AI suggested", not "guessed": every document that needs a rule the BU has never set
+  // goes through the suggester before it reaches this queue, so what the reviewer is being
+  // shown is a proposal to check — the fields are named after the colon — and not a gap.
+  'review.reasonGuessed': 'AI suggested mapping',
   'review.reasonDocNoMissing': 'no document number',
   'review.reasonWarnings': 'extraction warnings',
   // The reviewer's next move, not the absence of a problem. "nothing flagged" named an
@@ -2368,7 +2371,7 @@ const th: Record<TKey, string> = {
   'review.ruleSaveFailed': 'บันทึกกฎบัญชีไม่สำเร็จ จึงยังไม่ได้โพสต์: {reason}',
   'review.reasonMissingMapping': 'ยังไม่มีผังบัญชี',
   'review.reasonUnbalanced': 'ยอดไม่สมดุล',
-  'review.reasonGuessed': 'AI เดาผังบัญชีให้',
+  'review.reasonGuessed': 'AI แนะนำผังบัญชี',
   'review.reasonDocNoMissing': 'ไม่มีเลขที่เอกสาร',
   'review.reasonWarnings': 'มีคำเตือนจากการอ่าน',
   'review.reasonClean': 'พร้อมโพสต์',

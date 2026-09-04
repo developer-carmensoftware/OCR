@@ -128,6 +128,13 @@ class ReviewDocumentDetail(ReviewDocument):
 
     extracted: dict = Field(default_factory=dict)
 
+    # What the AI proposed for each key in `guessed`, as `{key: {dept, acc}}`. On the
+    # detail only: the queue lists which types were suggested, but nothing on a row needs
+    # the codes, and every list response would carry them for nobody. Ingest stopped
+    # writing these to the BU's config (they land there when a human approves), so this
+    # is where the review screen reads them from.
+    suggested: dict[str, dict[str, str]] = Field(default_factory=dict)
+
 
 class ActivityRow(ReviewDocument):
     """One line of the activity table — an email document OR a manual scan.

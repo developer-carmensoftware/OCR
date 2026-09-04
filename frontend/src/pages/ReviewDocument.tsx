@@ -69,7 +69,16 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
 
   // GL rule corrections, not yet saved. Keyed by accounting-config field type, because
   // that is what a picker edits — see JvEditor's note on JvRow.key.
+  //
+  // Seeded from `doc.suggested`: since 2026-09-04 ingest keeps what the AI proposed on the
+  // ledger row instead of writing it to the BU's config, so these pickers are the only
+  // place those codes exist until this screen's approve saves them.
   const [overrides, setOverrides] = useState<Overrides>({})
+  // Which of those rules is still the AI's answer rather than a person's. Live, not the
+  // payload's `guessed` list: the AI also fills in here, for a type ingest could not map
+  // and for one the reviewer introduces by retyping a Transaction cell, and a badge that
+  // only knew about ingest called those the reviewer's own work.
+  const [aiKeys, setAiKeys] = useState<string[]>([])
   // Header corrections, same shape of thing as a mapping override: BU config, uncommitted
   // until approve. `null` means "not touched", which is what keeps the stored value showing
   // through rather than being replaced by an empty string on first render.
@@ -126,6 +135,22 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
         )
         setWarnings((ext.warnings as string[]) || [])
         setBank((detectBankFromExtracted(ext as Record<string, string>) || '') as BankCode | '')
+        // What the AI proposed at ingest, into the pickers as the starting answer. Not
+        // `setDirty`: the reviewer has not done anything yet, and closing an untouched
+        // document must not ask them whether to discard the machine's own suggestion.
+        setOverrides(
+          Object.fromEntries(
+            Object.entries(d.suggested || {}).map(([k, m]) => [
+              k,
+              { dept: m.dept || '', acc: m.acc || '' },
+            ])
+          )
+        )
+        // From `guessed`, not from `suggested`: for a new row they are the same list, but a
+        // document parked before 2026-09-04 has only the names — ingest saved its dept/acc
+        // straight to the config back then, so the picker already shows them and the badge
+        // is the one thing that would otherwise be lost.
+        setAiKeys(d.guessed || [])
       })
       .catch(() => {
         if (alive) setGone(true)
@@ -228,6 +253,9 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
       // reviewer's work, so it does not make closing ask — it is re-asked next time.
       if (byUser) setDirty(true)
       setOverrides(o => ({ ...o, [key]: { dept: mapping.dept || '', acc: mapping.acc || '' } }))
+      // Whose answer this row is now holding. A person typing over the AI's pick takes the
+      // row off the "check this" list; the AI filling a row the person left empty puts it on.
+      setAiKeys(k => (byUser ? k.filter(x => x !== key) : k.includes(key) ? k : [...k, key]))
     },
     []
   )
@@ -237,6 +265,7 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
       const { [key]: _dropped, ...rest } = o
       return rest
     })
+    setAiKeys(k => k.filter(x => x !== key))
   }, [])
   const onDesc = useCallback((id: string, value: string) => {
     setDirty(true)
@@ -282,6 +311,12 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
     // it was wrong before and is right now, independently of this document — and the
     // reviewer is standing here to retry. The other order can leave a rule silently
     // unsaved behind a JV that already posted.
+    //
+    // **This is now the only writer of an AI-suggested rule.** Ingest used to save its own
+    // guess the moment it made it, so the second copy of a statement found the rule already
+    // there, carried no flag, and auto-posted on something no human had read. `overrides`
+    // arrives seeded with what the AI proposed, so pressing Approve is what turns it into
+    // the BU's rule — once per payment type, by a person, which is the whole point.
     if (ruleCount) {
       try {
         await patchAccountingConfig({
@@ -577,7 +612,7 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   overrides={overrides}
                   onOverride={onOverride}
                   onUndo={onUndo}
-                  guessedKeys={doc.guessed || []}
+                  guessedKeys={aiKeys}
                   unmappedKeys={doc.unmapped || []}
                   onAmount={updateAmount}
                   descs={descs}
