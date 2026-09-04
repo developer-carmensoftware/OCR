@@ -2,7 +2,7 @@ import { ExternalLink, X } from 'lucide-react'
 import { useT } from '../../i18n/LanguageContext'
 import { fmt } from '../../lib/format'
 import { glFieldLabel, glFieldList } from '../../lib/glFieldLabels'
-import { FIX, REASON_KEY } from '../../lib/reviewReasons'
+import { FIX, REASON_KEY, WITH_DETAIL } from '../../lib/reviewReasons'
 import { getCarmenUrl } from '../../lib/url'
 import type { ReviewDocument } from '../../lib/api/emailReview'
 import type { TKey } from '../../i18n/dict'
@@ -45,7 +45,12 @@ const STATUS_META: Record<string, { key: TKey; tone: string }> = {
   pending_review: { key: 'review.statusReview', tone: 'warn' },
   posted: { key: 'review.statusSuccess', tone: 'ok' },
   failed: { key: 'review.statusFailed', tone: 'bad' },
-  rejected: { key: 'review.statusFailed', tone: 'bad' },
+  // Its own word. Both live under the Not posted chip and both are red — a rejected
+  // document did not become a JV either — but one of these means something broke and the
+  // other means the system worked and a colleague said no. Wearing "Failed" over a
+  // deliberate decision made a BU counting its problems count somchai's judgement calls
+  // among them.
+  rejected: { key: 'review.statusRejected', tone: 'bad' },
   skipped: { key: 'review.statusSkipped', tone: 'calm' },
   // Its own word, not "Skipped". `received` is the state every row is CLAIMED into — the
   // backlog cap writes no row at all — so one still sitting here is a message the pipeline
@@ -266,12 +271,34 @@ function Message({ row, pending }: { row: ReviewDocument; pending: boolean }) {
 
   const key = row.reason_code ? REASON_KEY[row.reason_code] : undefined
   const label = key ? t(key) : row.reason_code || t('review.rcUnknown')
+  // One colour for everything under Not posted. Greying the duplicate was tried and
+  // reverted: an exception in a column of red raises "why is that one different?" before it
+  // answers anything, and the row already says in words that nothing is owed. The words
+  // carry the nuance; the colour just says which pile this is.
   const tone = row.status === 'skipped' ? 'calm' : 'bad'
+  const detail = row.error_message?.trim()
+
+  // A rejection's detail is a person's own words, so it is theirs to print or omit — the
+  // reason field on the reject dialog is optional and most are left empty.
+  if (row.status === 'rejected' && row.reviewed_by_name) {
+    return (
+      <span className={`rq-reason rq-reason--${tone}`} title={detail || undefined}>
+        {detail
+          ? t('review.rejectedByWith', { name: row.reviewed_by_name, reason: detail })
+          : t('review.rejectedBy', { name: row.reviewed_by_name })}
+      </span>
+    )
+  }
+
+  // The detail *replaces* the phrase, never joins it. Printing both gave every one of these
+  // rows a vacuous head — "duplicate — a copy is already waiting for review" — which says
+  // the same thing twice and makes the reader read past the first half to reach the part
+  // that differs. One sentence per row; the phrase is what stands in when there is no
+  // detail (a legacy row, or a Carmen refusal with an empty body).
+  const speaks = detail && WITH_DETAIL.has(row.reason_code ?? '')
   return (
-    <span className={`rq-reason rq-reason--${tone}`} title={row.error_message || undefined}>
-      {row.status === 'rejected' && row.reviewed_by_name
-        ? t('review.rejectedBy', { name: row.reviewed_by_name, reason: label })
-        : label}
+    <span className={`rq-reason rq-reason--${tone}`} title={detail || undefined}>
+      {speaks ? detail : label}
     </span>
   )
 }

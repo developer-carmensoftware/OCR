@@ -687,6 +687,95 @@ describe('a row that has already been resolved', () => {
     expect(await screen.findByText(/Carmen refused it/)).toBeInTheDocument()
   })
 
+  // The Message column used to print a three-word phrase and hide everything that told two
+  // rows apart on the cell's hover title: eight identical "Carmen refused it" rows, and a
+  // rejection that read "rejected by somchai - rejected" because {reason} was fed the
+  // reason-code phrase rather than the words the reviewer typed. The detail now replaces
+  // the phrase rather than joining it — one sentence per row, said once.
+  it('prints what Carmen actually said, not just that it said something', async () => {
+    mount(status(), [
+      doc({
+        status: 'failed',
+        reason_code: 'carmen_rejected',
+        error_message: 'Carmen: Period 2026-08 is closed',
+        total: 0,
+      }),
+    ])
+    expect(await screen.findByText('Carmen: Period 2026-08 is closed')).toBeInTheDocument()
+    expect(screen.queryByText(/Carmen refused it/)).toBeNull()
+  })
+
+  it('tells the two kinds of duplicate apart', async () => {
+    mount(status(), [
+      doc({
+        status: 'failed',
+        reason_code: 'duplicate_document',
+        error_message: 'a copy is already waiting for review',
+        total: 0,
+      }),
+    ])
+    expect(await screen.findByText('a copy is already waiting for review')).toBeInTheDocument()
+    expect(screen.queryByText(/already handled/)).toBeNull()
+  })
+
+  it("prints the reviewer's own words when they left any, and never the word twice", async () => {
+    mount(status(), [
+      doc({
+        status: 'rejected',
+        reason_code: 'rejected_by_reviewer',
+        error_message: 'wrong company',
+        reviewed_by_name: 'somchai',
+        total: 0,
+      }),
+    ])
+    expect(
+      await screen.findByText('reviewed and rejected by somchai: wrong company')
+    ).toBeInTheDocument()
+  })
+
+  // Both are under Not posted and neither became a JV, but one means something broke and
+  // the other means a colleague read it and said no. One pill for both had a BU counting
+  // somchai's judgement calls among its problems.
+  it('does not dress a deliberate rejection as a failure', async () => {
+    mount(status(), [
+      doc({
+        status: 'rejected',
+        reason_code: 'rejected_by_reviewer',
+        reviewed_by_name: 'somchai',
+        total: 0,
+      }),
+    ])
+    expect(await screen.findByText('Rejected')).toBeInTheDocument()
+    expect(screen.queryByText('Failed')).toBeNull()
+  })
+
+  it('says only who rejected it when no reason was typed', async () => {
+    mount(status(), [
+      doc({
+        status: 'rejected',
+        reason_code: 'rejected_by_reviewer',
+        error_message: null,
+        reviewed_by_name: 'somchai',
+        total: 0,
+      }),
+    ])
+    expect(await screen.findByText('reviewed and rejected by somchai')).toBeInTheDocument()
+  })
+
+  // The two codes whose detail is a raw `str(exc)` from the PDF reader stay on the title.
+  it('keeps a raw exception out of the cell', async () => {
+    mount(status(), [
+      doc({
+        status: 'failed',
+        reason_code: 'unreadable_document',
+        error_message: 'PdfReadError: EOF marker not found',
+        total: 0,
+      }),
+    ])
+    expect(await screen.findByText('could not read the document')).toBeInTheDocument()
+    expect(screen.queryByText(/PdfReadError/)).toBeNull()
+  })
+
   it('does not dress a document we never finished as one we deliberately skipped', async () => {
     // `received` is the state every row is CLAIMED into — the backlog cap writes no row at
     // all — so one still sitting there means the pipeline picked the message up and

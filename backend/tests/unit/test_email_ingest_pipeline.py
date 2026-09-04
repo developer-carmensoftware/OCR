@@ -582,11 +582,29 @@ async def test_carmen_declines_jv_parks_but_does_not_refund():
     )
     assert outcome == "pending_review"
     assert db.added[0].reason_code == "carmen_rejected"
-    # The verdict itself, not "Carmen rejected the JV" — the row is the support ticket.
-    assert "Insufficient balance" in db.added[0].error_message
-    assert "Code 1" in db.added[0].error_message
+    # The verdict itself, not "Carmen rejected the JV" — the row is the support ticket, and
+    # it is printed verbatim as the queue's Message cell rather than appended to a phrase.
+    # Attribution plus what was said, once: the numeric Code is kept only for the case
+    # below, where Carmen refused without a word and the code is all there is to go on.
+    assert db.added[0].error_message == "Carmen: Insufficient balance"
     p.refund_document.assert_not_called()  # extraction was fine — Carmen just declined
     p.mark_token_unverified.assert_not_called()  # the credential is fine; the JV is not
+
+
+@pytest.mark.asyncio
+async def test_a_silent_carmen_refusal_still_names_its_code():
+    """A refusal with no message is a different support conversation from one that says
+    "Insufficient balance", and it is the only case where the numeric code is worth
+    printing — with nothing else in the row, it is all anyone has to go on."""
+    db = _FakeDB()
+    _, _ = await _run(
+        db,
+        message_id="<msg-2b@bank.co.th>",
+        extracted=_extracted(),
+        config=_config(),
+        carmen_result={"Code": 1},
+    )
+    assert db.added[0].error_message == "Carmen refused it, no reason given (Code 1)"
 
 
 @pytest.mark.asyncio

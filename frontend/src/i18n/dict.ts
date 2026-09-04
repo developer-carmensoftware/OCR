@@ -869,6 +869,9 @@ const en = {
   'review.statusReview': 'Review',
   'review.statusSuccess': 'Success',
   'review.statusFailed': 'Failed',
+  // Not "Failed". Both sit under Not posted and neither became a JV, but a person read this
+  // one and decided against it — that is the system working, not breaking.
+  'review.statusRejected': 'Rejected',
   'review.statusSkipped': 'Skipped',
   // Not "Skipped". `received` is the state every row is claimed into, so one still sitting
   // there is a message the pipeline picked up and never finished — a different thing from
@@ -888,7 +891,10 @@ const en = {
   'review.actionReconnect': 'Reconnect',
   'review.actionOpenJv': 'Open JV',
   'review.uploadDocuments': 'Upload documents',
-  'review.postedBy': 'posted by {name}',
+  // "reviewed and", because that is what the name is evidence of: this document stopped at
+  // the queue and a person read it before it went. Its sibling below says "scanned and" for
+  // the same reason — each names the work the person actually did, not just the posting.
+  'review.postedBy': 'reviewed and posted by {name}',
   'review.postedAutomatically': 'posted automatically',
   // Named wherever the session that ran the scan can still be resolved. "by hand" answers
   // how, which the reader can already see from the Source icon; the name answers who, which
@@ -898,13 +904,26 @@ const en = {
   // column, so it is genuinely gone once that session is scrubbed. Vaguer than a name and
   // far better than a raw user id.
   'review.postedManually': 'scanned and posted by hand',
-  'review.rejectedBy': 'rejected by {name} - {reason}',
+  // Two forms, because the reason is optional and the one-form version printed the word
+  // twice: `{reason}` was fed the `rejected_by_reviewer` phrase rather than what the
+  // reviewer typed, so every rejection read "rejected by somchai - rejected" and the words
+  // they actually left were reachable only by hovering the cell.
+  'review.rejectedBy': 'reviewed and rejected by {name}',
+  'review.rejectedByWith': 'reviewed and rejected by {name}: {reason}',
   'review.rcSenderNotAllowed': 'sender not on your list',
   'review.rcNoRuleMatch': 'no rule matched this filename',
   'review.rcUnsupported': 'file type we cannot read',
   'review.rcUnreadable': 'could not read the document',
   'review.rcWrongPassword': 'PDF password did not work',
-  'review.rcTaxIdMismatch': 'tax ID belongs to another company',
+  // Not "belongs to another company". A BU's register holds an array of tax IDs, so a
+  // document carrying one that is not in it has not been proven to belong to anyone else —
+  // it just did not match. The claim the row can actually support is the weaker one, and
+  // the number itself rides in on `error_message` (see WITH_DETAIL in lib/reviewReasons).
+  'review.rcTaxIdMismatch': 'registered Tax ID does not match the document',
+  // The fallback only. A live row prints its own detail instead — "already posted to
+  // Carmen" or "a copy is already waiting for review" — because those are two situations
+  // with two different next moves and one phrase could only be vague about both. This is
+  // what a row written before those details existed still says.
   'review.rcDuplicate': 'already handled',
   'review.rcMappingIncomplete': 'GL mapping missing',
   'review.rcCarmenRejected': 'Carmen refused it',
@@ -2383,6 +2402,7 @@ const th: Record<TKey, string> = {
   'review.statusReview': 'รอตรวจ',
   'review.statusSuccess': 'สำเร็จ',
   'review.statusFailed': 'ล้มเหลว',
+  'review.statusRejected': 'ถูกปฏิเสธ',
   'review.statusSkipped': 'ข้ามไป',
   'review.statusStuck': 'ค้างอยู่',
   'review.actionReview': 'ตรวจสอบ',
@@ -2393,17 +2413,18 @@ const th: Record<TKey, string> = {
   'review.actionFixMapping': 'แก้ผังบัญชี',
   'review.actionOpenJv': 'เปิด JV',
   'review.uploadDocuments': 'อัปโหลดเอกสาร',
-  'review.postedBy': 'โพสต์โดย {name}',
+  'review.postedBy': 'ตรวจสอบและโพสต์โดย {name}',
   'review.postedAutomatically': 'โพสต์อัตโนมัติ',
   'review.postedManuallyBy': 'สแกนและลงบัญชีโดย {name}',
   'review.postedManually': 'สแกนและโพสต์เอง',
-  'review.rejectedBy': '{name} ปฏิเสธ - {reason}',
+  'review.rejectedBy': 'ตรวจสอบและปฏิเสธโดย {name}',
+  'review.rejectedByWith': 'ตรวจสอบและปฏิเสธโดย {name}: {reason}',
   'review.rcSenderNotAllowed': 'ผู้ส่งไม่อยู่ในรายชื่อ',
   'review.rcNoRuleMatch': 'ไม่มีกฎที่ตรงกับชื่อไฟล์',
   'review.rcUnsupported': 'ชนิดไฟล์ที่อ่านไม่ได้',
   'review.rcUnreadable': 'อ่านเอกสารไม่ได้',
   'review.rcWrongPassword': 'รหัสผ่าน PDF ไม่ถูกต้อง',
-  'review.rcTaxIdMismatch': 'เลขผู้เสียภาษีเป็นของบริษัทอื่น',
+  'review.rcTaxIdMismatch': 'เลขผู้เสียภาษีที่ลงทะเบียนไว้ไม่ตรงกับในเอกสาร',
   'review.rcDuplicate': 'ทำรายการนี้ไปแล้ว',
   'review.rcMappingIncomplete': 'ยังไม่มีผังบัญชี',
   'review.rcCarmenRejected': 'Carmen ปฏิเสธ',

@@ -190,12 +190,15 @@ def _carmen_verdict(result: Any) -> str:
     and its framework puts framework-level refusals in `Message`; the `Code` is worth
     keeping even when all three are empty, because "Code 1 with no message" is a
     different support conversation from "Code 1: Insufficient balance".
+
+    This *is* the queue's Message cell for the row (WITH_DETAIL in lib/reviewReasons), not
+    a suffix to one, so it has to name who spoke and stand on its own — and say it once.
     """
     body = result if isinstance(result, dict) else {}
     said = str(body.get("UserMessage") or body.get("InternalMessage") or body.get("Message") or "")
-    return f"Carmen returned Code {body.get('Code')}" + (
-        f": {said}" if said else " with no message"
-    )
+    if said:
+        return f"Carmen: {said}"
+    return f"Carmen refused it, no reason given (Code {body.get('Code')})"
 
 
 # ── Pipeline ──────────────────────────────────────────────────────────────────
@@ -993,13 +996,17 @@ async def _run_document(
         async with async_session() as db:
             conflict = await es.foreign_tax_id(db, list(extracted.tax_ids or []), tenant_id)
         if conflict:
-            raise _Skip(
-                "tax_id_mismatch",
-                f"Document carries tax ID {conflict}, registered to another BU",
-            )
+            # Support's copy, not the reviewer's — the queue prints the phrase alone for
+            # this code. "Registered to another BU" is dropped: a BU's register holds an
+            # array of tax IDs, so one missing from it has failed to match and nothing
+            # stronger than that has been established.
+            raise _Skip("tax_id_mismatch", f"Tax ID {conflict} is not in this BU's register")
 
         if extracted.is_duplicate:
-            raise _Skip("duplicate_document", f"Document {extracted.doc_no} already submitted")
+            # Reads as the tail of "duplicate — …" in the queue. The two duplicate kinds
+            # share one reason_code and are told apart here: this copy is redundant because
+            # the document is in Carmen already, which is nothing for anyone to do.
+            raise _Skip("duplicate_document", "already posted to Carmen")
 
         # `is_duplicate` above reads `credit_cards.submitted_at`, which stays NULL for the
         # whole time a document sits in the review queue. So a second copy — the bank
@@ -1015,7 +1022,7 @@ async def _run_document(
             # exists to prevent, not a second chance at anything.
             raise _Skip(
                 "duplicate_document",
-                f"Document {doc_no} is already waiting for review",
+                "a copy is already waiting for review",
                 reviewable=False,
             )
 

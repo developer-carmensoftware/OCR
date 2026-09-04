@@ -28,6 +28,26 @@ export const REASON_KEY: Record<string, TKey> = {
   rejected_by_reviewer: 'review.rcRejectedByReviewer',
 }
 
+/**
+ * Codes whose `error_message` **is** the message — printed in place of the phrase above,
+ * not appended to it.
+ *
+ * Two, and only where the phrase cannot tell two rows apart. Eight `carmen_rejected` rows
+ * said the same three words while Carmen's own verdict — the whole support ticket, per
+ * `_carmen_verdict` — sat in a hover title nobody hovers. `duplicate_document` covers both
+ * "already posted" and "a copy is in the queue", which are different answers to "so what do
+ * I do". Both details are written server-side to stand alone as the whole cell.
+ *
+ * The cost is that these two lines are English for a Thai reader, which is why the set is
+ * this small: everything else keeps its translated phrase. Carmen's verdict and a
+ * reviewer's typed reason were never translatable anyway — they are another system's words
+ * and a colleague's.
+ *
+ * `tax_id_mismatch` is deliberately not here. The phrase already says the whole finding and
+ * the number adds nothing a reviewer acts on; it stays on the title for support.
+ */
+export const WITH_DETAIL = new Set(['carmen_rejected', 'duplicate_document'])
+
 const SETTINGS = { key: 'review.actionOpenSettings' as TKey, href: '#/email-settings' }
 
 /**

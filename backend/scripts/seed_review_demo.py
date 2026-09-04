@@ -173,7 +173,7 @@ async def seed(c: asyncpg.Connection) -> None:
             doc_no,
             json.dumps(_doc(str(card_id), doc_no, bent=bent)),
             reason,
-            "Carmen returned Code 1: Period 2026-08 is closed" if reason else None,
+            "Code 1: Period 2026-08 is closed" if reason else None,
             created,
         )
         note = (
