@@ -117,7 +117,8 @@ pg_cron → POST /api/v1/email/ingest  (internal job token)
       email_ingest_settings  filename must match one of this BU's rules; this BU's PDF passwords
       consume_document() → same extract → GL-map → POST JV path as the Credit Card wizard
       tax ID vs this BU's register  ← verification, not routing; parks only on positive conflict
-      auto_post = false (default) → park at pending_review; the poll stops here
+      _review_flags() non-empty, or auto_post = false (default)
+                                    → park at pending_review; the poll stops here
 routers/email_review.py  ← the queue's own API (session JWT, not the Carmen-token path)
   #/CreditCardOCR        the review queue = the Credit Card module's landing page
   #/CreditCardOCR/review?id=…   approve → the same post_gljv the poll would have called
@@ -143,6 +144,17 @@ flipped only by `PUT /api/v1/email/settings/auto-post`, never by the settings sa
 a full replace). A BU switching the feature on gets review; they turn it off once the queue
 has earned it. Backpressure, not refunds, protects a BU that stops reading its queue: past
 50 pending, mail is handed back unread and costs nothing.
+
+**Auto-post posts what is ready to post** (2026-09-04, decision-log #24). `auto_post` decides
+whether a *clean* document waits; it cannot decide that a doubtful one does. The gate is
+`_review_flags()` being empty — the same predicate that paints the queue's Message column,
+whose empty case reads *Ready to post* — so a document the reviewer would have been given a
+reason for never posts behind their back. Five flags: `mapping_missing`, `unbalanced`,
+`mapping_guessed`, `doc_no_missing` (both duplicate guards key on `doc_no`, so without one
+nothing can catch a second copy), `warnings`. Adding a flag therefore tightens auto-post as
+well as the row — that is intended, and is the reason there is one function and not two.
+`REVIEW_BACKLOG_CAP` and `_already_pending` are unconditional for the same reason: an
+auto-post BU now parks routinely.
 
 All three cron jobs (`email-ingest`, `email-confirm`, `email-token-health`) are scheduled by
 migration — see [`05-operations.md`](docs/email-automation/05-operations.md#scheduling).

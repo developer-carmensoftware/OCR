@@ -10,9 +10,14 @@ import { setAutoPost } from '../../lib/api/emailReview'
 /**
  * The auto-post switch, behind a gear rather than on the queue itself.
  *
- * Turning review off is a decision a BU makes once, after weeks of watching the queue get
- * it right. Putting that switch next to the documents would offer it every day to someone
- * whose actual job on this screen is approving one.
+ * It is a decision a BU makes once, after weeks of watching the queue get it right. Putting
+ * that switch next to the documents would offer it every day to someone whose actual job on
+ * this screen is approving one.
+ *
+ * What it turns off is approving the *ordinary* document. It cannot turn off approving a
+ * doubtful one: the pipeline posts unattended only when the reading has nothing flagged —
+ * the same test that paints this queue's reason column — so a warning, a guessed GL mapping,
+ * amounts that do not reconcile or a missing document number still land here either way.
  */
 export default function QueueSettings({
   autoPost,
@@ -77,8 +82,8 @@ export default function QueueSettings({
             onChange={flip}
             label={t('review.autoPostLabel')}
           />
-          {/* Blunt on purpose: this is the one control on the page that removes the
-              human, and the person flipping it should read what that means. */}
+          {/* Specific on purpose: this is the one control on the page that lets a document
+              reach Carmen unseen, so it names what still stops rather than reassuring. */}
           <p className="rq-settings-hint">{t('review.autoPostHint')}</p>
           <a className="rq-settings-link" href="#/email-settings">
             {t('review.openSettings')}

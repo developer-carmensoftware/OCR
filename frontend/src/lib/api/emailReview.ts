@@ -12,7 +12,8 @@ import type { Page } from './page'
 
 /** Why a parked document might be worth opening. Computed once at park time and stored,
  *  because neither survives a list query: see `_review_flags` in email_ingest_service.py. */
-export type ReviewFlag = 'unbalanced' | 'mapping_guessed' | 'mapping_missing' | 'warnings'
+export type ReviewFlag =
+  'unbalanced' | 'mapping_guessed' | 'mapping_missing' | 'doc_no_missing' | 'warnings'
 
 /** Which filter chip a row lives under — see `_chip_expr` in routers/credit_card_activity.py,
  *  which is the only definition there is.

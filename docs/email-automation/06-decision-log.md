@@ -405,6 +405,55 @@ leaves the status chips altogether and keeps its story under `All`.
 
 Full reasoning and the alternatives in [`07-human-in-the-loop.md §14`](07-human-in-the-loop.md).
 
+## 24. Auto-post posts what is ready to post (2026-09-04)
+
+**Decision.** `auto_post` stops meaning *"post everything that passed the gate ladder"* and
+starts meaning *"post the documents there was nothing to say about"*. The gate is
+`_review_flags()` — the queue's own reason column — and an empty list is the whole test. A
+reading with warnings, lines that do not reconcile, a GL rule the AI invented on the way
+past, or a statement whose number could not be read all park for a human under **either**
+setting.
+
+The flag set gains one member, `doc_no_missing`, and the reason ladder the phrase to go
+with it.
+
+**Why.** The flags were computed, stored, and then only looked at if review happened to be
+on. So the switch was an all-or-nothing bet: a BU either approved every document or accepted
+that an uncertain reading would post to their ledger with the same silence as a clean one.
+This is the gap noted on 2026-08-18 (*"warnings ถูกเมินตอน auto-post"*) and parked; #22
+closed the other half of it by keeping a charged reading reviewable, and this closes the
+half where the reading was never questioned at all.
+
+**One predicate, deliberately.** The gate is the same function that paints the row's Message
+column, whose empty case already read **"Ready to post"**. Two definitions of "worth a
+human's eye" — one for the reader, one for the pipeline — is exactly the drift that would
+let a document post behind the back of the person who would have been shown a reason for it.
+
+**Why `doc_no_missing` is a flag and not a `_Skip`.** Both duplicate guards key on the
+document number: `has_submitted_doc` and `_already_pending` answer `False` when there is
+none. An unnumbered statement forwarded twice would post twice into real books with nothing
+able to catch it — but a reviewer can perfectly well post one on purpose, so it blocks the
+machine and not the human. That is what a flag is.
+
+**Two gates stop being conditional.** `REVIEW_BACKLOG_CAP` and `_already_pending` both read
+`not auto_post`, written when a BU with review off could not park anything. #51 ended that
+and this makes parking routine there, so both were now holes on the main path: an auto-post
+BU had no backpressure at all (a dead credential would charge for every document while its
+queue filled), and a re-sent statement would park a second identical row.
+
+**What it costs.** A BU running auto-post will see documents in its queue that used to post
+silently — which is the point, and is also the only support conversation this creates: *"it
+used to post everything"*. `mapping_incomplete` disappears as a `reason_code` on new rows;
+a GL gap is now the `mapping_missing` flag, one path for both modes rather than two that can
+drift on what the row says. The `mapping_incomplete` fix-link stays in `reviewReasons.ts`
+for the rows that already carry it.
+
+**What it does not change.** The refund rule (#17), what parks after a charge (#22), the
+chips (#23), the backlog cap's value, approve, reject, and the switch itself — `auto_post`
+is still per BU, still defaults `false`, still written only by its own endpoint.
+
+Full reasoning in [`07-human-in-the-loop.md §15`](07-human-in-the-loop.md).
+
 ## 20. Superseded designs, and where they live
 
 - **`feat/email-flow`** — the v1 design: a human-approval review step before posting, its

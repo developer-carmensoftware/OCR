@@ -211,10 +211,11 @@ sequenceDiagram
         Ingest->>DB: fill_missing_mappings() — saved for next document
     end
     Ingest->>Ingest: build_jv_rows()
-    alt auto_post = false (the default)
+    Ingest->>Ingest: _review_flags() — anything to say about this reading?
+    alt auto_post = false (the default), or any flag
         Ingest->>DB: _park_for_review() — status="pending_review", review_payload stored
         Note over Ingest,DB: The poll stops here. Nothing reaches Carmen until<br/>a human approves it at #/CreditCardOCR.
-    else auto_post = true
+    else auto_post = true and nothing flagged
         Ingest->>Carmen: post_gljv(payload, carmen_token)
     end
     Carmen-->>Ingest: {Code: 0, InternalMessage: jv_no}
@@ -246,11 +247,11 @@ flowchart TD
     G4 -- no --> G5{"is_duplicate?"}
     G5 -- yes --> F2["failed\nduplicate_document\ncharged"]
     G5 -- no --> G6{"GL mapping complete\n(incl. AI fill)?"}
-    G6 -- no --> F3["failed\nmapping_incomplete\ncharged"]
+    G6 -- no --> P1
     G6 -- yes --> G7{"build_jv_rows has\npostable amounts?"}
     G7 -- no --> F4["failed\nunreadable_document\ncharged"]
-    G7 -- yes --> G9{"auto_post?"}
-    G9 -- "no (default)" --> P1["pending_review
+    G7 -- yes --> G9{"auto_post AND\n_review_flags() empty?"}
+    G9 -- "no — review off, or something flagged" --> P1["pending_review
 charged, waiting for a human"]
     P1 -- "reviewer approves" --> G8
     P1 -- "reviewer rejects" --> F8["rejected
@@ -271,6 +272,13 @@ charged, terminal"]
 is already charged; approving, rejecting and letting it sit all cost the same. That is why
 `_park_for_review()` sits *after* the refund boundary and why reject does not refund
 (decision-log #17, unchanged).
+
+**`auto_post` is a gate on the fork, not the fork itself.** G9 asks two questions: has the
+BU switched review off, and did `_review_flags()` find nothing to say about this reading.
+Both must answer yes to reach Carmen unattended — so the switch buys freedom from approving
+the *ordinary* document and never from approving a doubtful one. The flags are the queue's
+own reason column, deliberately one predicate: a document the reviewer would have been given
+a reason for cannot post behind their back (decision-log #24).
 
 The rule stated once: **the charge follows the vision call, not the outcome.** Pre-charge
 exits are the customer's own configuration saying "not this file", and file as `skipped` —
@@ -294,8 +302,9 @@ same event, so the two pipelines disagreed about what one document costs.
 stateDiagram-v2
     [*] --> received: _claim() inserts the ledger row
     received --> pending_review: auto_post = false, every gate passed
+    received --> pending_review: auto_post = true, but the reading was flagged
     received --> pending_review: charged, then a gate refused — the reading is kept
-    received --> posted: auto_post = true, JV + input-tax attempted
+    received --> posted: auto_post = true and nothing flagged, JV + input-tax attempted
     received --> failed: refunded, crashed, or already queued
     received --> skipped: a free gate failed, never charged
     pending_review --> posted: a human approved it

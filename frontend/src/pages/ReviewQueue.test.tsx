@@ -193,7 +193,10 @@ describe('the message column', () => {
   const cases: [ReviewDocument['flags'], string][] = [
     [['unbalanced'], 'amounts do not reconcile'],
     [['mapping_guessed'], 'GL mapping guessed'],
+    [['doc_no_missing'], 'no document number'],
     [['warnings'], 'extraction warnings'],
+    // Also the auto-post rule: an empty flag list is what posts unattended, so this phrase
+    // and that decision are the same test read two ways.
     [[], 'Ready to post'],
   ]
 
@@ -205,9 +208,12 @@ describe('the message column', () => {
   it('shows only the most blocking reason, never a list', async () => {
     // Ordered by how much it should stop someone: an unbalanced JV cannot post at all,
     // a guessed mapping posts but may post to the wrong account.
-    mount(status(), [doc({ flags: ['warnings', 'mapping_guessed', 'unbalanced'] })])
+    mount(status(), [
+      doc({ flags: ['warnings', 'doc_no_missing', 'mapping_guessed', 'unbalanced'] }),
+    ])
     expect(await screen.findByText('amounts do not reconcile')).toBeInTheDocument()
     expect(screen.queryByText('GL mapping guessed')).not.toBeInTheDocument()
+    expect(screen.queryByText('no document number')).not.toBeInTheDocument()
     expect(screen.queryByText('extraction warnings')).not.toBeInTheDocument()
   })
 

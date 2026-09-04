@@ -28,6 +28,12 @@ function reasonFor(row: ReviewDocument): { key: TKey; tone: string; fields: stri
   if (f.includes('unbalanced')) return { key: 'review.reasonUnbalanced', tone: 'bad', fields: [] }
   if (f.includes('mapping_guessed'))
     return { key: 'review.reasonGuessed', tone: 'warn', fields: row.guessed || [] }
+  // Below the two mapping reasons because a reviewer can post this one as it stands — but
+  // above `warnings`, since it is the only flag about something we could not check rather
+  // than something we read: both duplicate guards key on the document number, so without
+  // one nothing can catch the same statement arriving twice.
+  if (f.includes('doc_no_missing'))
+    return { key: 'review.reasonDocNoMissing', tone: 'warn', fields: [] }
   if (f.includes('warnings')) return { key: 'review.reasonWarnings', tone: 'warn', fields: [] }
   // Green, and phrased as the next action rather than as the absence of a problem. This is
   // the row a reviewer should spend the least time on, so it gets the strongest "skip me"

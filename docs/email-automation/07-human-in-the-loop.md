@@ -1112,6 +1112,76 @@ into one and a half.
 | 70 | **One action: `View all activity`**, when `filter !== 'all'` and `counts.all > 0`. | `DESIGN.md:333` requires an empty state to teach the next step and this one taught none. It is also a real dead end since #65: the dev BU with 101 never-charged rows lands on Today, is told there is nothing, and had no way to reach its own log. Deliberately **not** a second `Upload documents` — that button is primary in the bar directly above, and repeating a primary CTA inside the empty state is what makes a screen read as filler. |
 | 71 | **`.rq-empty` loses its shadow**; `.rq-intro` keeps one. | `DESIGN.md:238` — a shadow promises the surface holds something to act on. `NotSetUp` always has a button; an empty chip is mostly a sentence. |
 
+---
+
+## §15 — Auto-post posts what is ready to post (2026-09-04)
+
+§13 asked *"was this BU charged for reading it?"* and §14 applied the same question one level
+out, to the chips. This asks it of the switch: `auto_post` was the one place left where the
+answer to *"is there anything to say about this document"* was computed, stored, and then
+ignored.
+
+### The defect
+
+`_review_flags()` runs on every document. With review on it paints the row's Message column
+and a reviewer acts on it. With review off it was written to `review_payload` — a column
+`_finish()` immediately nulls, because the document posted — and nobody ever read it.
+
+So a statement whose lines did not reconcile, whose GL rule the AI had invented thirty
+seconds earlier, or whose fee VAT was assumed at 7% because the footer could not be read,
+reached the customer's ledger with exactly the same silence as a clean one. The system knew.
+It had the sentence written down. It filed it and posted anyway.
+
+That is the 2026-08-18 note (*"warnings ถูกเมินตอน auto-post"*), parked at the time. #22
+closed one half of that gap — a charged reading is kept for a human instead of being thrown
+away. This closes the other: a charged reading is *questioned* before it posts.
+
+**The criterion:** did the pipeline have anything to say about this document? An empty
+`_review_flags()` is the whole test, and the row already prints that case as **Ready to
+post**.
+
+|  | Nothing flagged | Anything flagged |
+|---|---|---|
+| `auto_post = true` | posts | **parks** — was: posted |
+| `auto_post = false` | parks | parks |
+
+### Decisions
+
+| # | Decision | Why |
+|---|---|---|
+| 72 | **`auto_post` gates on `_review_flags()` being empty**, not on having reached the fork. The switch decides whether a *clean* document waits; it can no longer decide that a doubtful one does. | A BU turning automation on was being asked to accept an uncertain reading posting silently, which is the bet nobody should have to take to stop approving ordinary documents. The switch now buys what it was always meant to buy. |
+| 73 | **The gate is the row's own reason column, not a second rule.** | Two definitions of "worth a human's eye" drift, and the drift is silent in exactly one direction: a document posts behind the back of the person who would have been shown a reason for it. `review.reasonClean` already said *Ready to post* — the words and the rule are now the same test read two ways. |
+| 74 | **A fifth flag, `doc_no_missing`.** Ranked below the mapping reasons and above `warnings`, tone `warn`. | The only flag about what we could not *check* rather than what we read. Both duplicate guards key on `doc_no` — `has_submitted_doc` and `_already_pending` answer False without one — so an unnumbered statement forwarded twice posts twice with nothing able to catch it. A flag and not a `_Skip` because a reviewer can post one on purpose: it stops the machine, not the person. |
+| 75 | **`REVIEW_BACKLOG_CAP` and `_already_pending` stop reading `not auto_post`.** | Both guards were written when a BU with review off could not park anything. #51 ended that and #72 makes parking routine there, so both had become holes on the main path: an auto-post BU had **no backpressure at all** — a dead credential charging for every document while its queue filled — and a re-sent statement parked a second identical row, which is the thing `_already_pending` exists to prevent. |
+| 76 | **The `mapping_incomplete` raise is deleted, not kept for the auto-post half.** | It was the `and auto_post` branch of a condition whose other half already fell through to the fork. `mapping_missing` is a flag, so it parks under both settings — one path, which is what stops the two modes drifting on what the row says. Costs the `reason_code` on new rows; `reasonFor` names the unmapped fields from `review_payload.unmapped`, and on a `pending_review` row Review already outranked the Fix-mapping link. The code stays in `reviewReasons.ts` for rows that already carry it. |
+
+### What a BU will notice
+
+Documents in the queue that used to post silently. That is the feature, and it is the one
+support conversation this creates — *"it used to post everything"*. The honest answer is on
+the switch itself, which now names what still stops rather than promising that nothing does.
+
+The volume is bounded by how often a reading is imperfect, not by document count: on the
+banks measured, all seven `warnings` sites in `credit_card_service.py` are exception paths
+(assumed VAT rate, reconciliation drift, negative amounts, no fee lines found), and
+`mapping_guessed` fires once per *new payment type* — the guess is saved, so the second
+document carrying it is clean and posts.
+
+### Considered and not done
+
+- **A per-BU choice of which flags block.** Five booleans on the settings screen to save a
+  clerk one click a month. The flag set is already the ranked list of what is worth a human's
+  time; a BU that wants `warnings` to post unattended is a BU that should be told which
+  warning, not given a switch to silence the category.
+- **Refunding a document that parks under auto-post.** #17 unchanged: the charge follows the
+  vision call. It was read; the reading is what parks.
+- **Removing `auto_post`.** Considered and rejected in the same session. With the gate in
+  place the switch is no longer a bet, and a BU handling a daily commission file should not
+  have to press a button for a document nothing can be said about.
+- **A `no_doc_no` `_Skip` instead of a flag.** #74.
+
+---
+
 **Considered and not done.** §6's `[ Recently posted ▾ ]` panel (`:365`) is still unbuilt and
 still deferred — §12 left it for *"the day a supervisor asks for recency rather than a
 total"*, and #70's link answers the same dead end for the price of one button. §6's

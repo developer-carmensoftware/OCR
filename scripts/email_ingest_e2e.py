@@ -512,15 +512,30 @@ async def paid_run(box, report: Report, pdfs: dict[str, bytes]) -> None:
         append(box, [p18])
         await run_poll("C1")
         row = (await rows_for("P18") or [{}])[0]
-        report.check("P18", p18.why, "posted", row.get("status", "NO ROW"))
-        print(f"       jv_no={row.get('jv_no')!r} note={row.get('error_message')!r}")
+        # **Both are a pass, and which one you get is a fact about the PDF in the mailbox.**
+        # Since decision #24 auto-post posts only a document `_review_flags()` had nothing to
+        # say about, so a real statement read with a warning, an invented GL rule or lines
+        # that do not reconcile lands in the queue instead — and asserting `posted` alone
+        # would fail this run on a document the pipeline handled exactly right. The flags are
+        # printed because they are the thing worth reading here.
+        got = row.get("status", "NO ROW")
+        report.check("P18", p18.why, True, got in ("posted", "pending_review"))
+        if got == "pending_review":
+            flags = await sql(
+                "select review_payload->'flags' as flags from email_documents where id = $1",
+                row["id"],
+            )
+            print(f"       held for review — flags={flags[0]['flags'] if flags else None!r}")
+        else:
+            print(f"       jv_no={row.get('jv_no')!r} note={row.get('error_message')!r}")
         await drop_catchall_rule()
 
-    # `failed`, not `skipped`: both of these are decided *after* the extraction, so a
-    # credit was charged and then refunded. That is the documented behaviour, and the
-    # status is how you tell it apart from a gate that held for free.
+    # `pending_review`, not `failed` or `skipped`. Both of these are decided *after* the
+    # extraction, so a credit was charged and nothing came back — and decision #22 (which
+    # this script predated) keeps a reading the customer paid for: a refusal that happens
+    # past the refund boundary parks with its reason recorded rather than dying red.
     p19 = Case("P19", "a document already posted — duplicate", "duplicate_document",
-               status="failed", attachments=[("BBLETAXACQ_again.pdf", bbl)])
+               status="pending_review", attachments=[("BBLETAXACQ_again.pdf", bbl)])
     append(box, [p19])
     await run_poll("C2")
     await verify(report, [p19])
@@ -536,7 +551,7 @@ async def paid_run(box, report: Report, pdfs: dict[str, bytes]) -> None:
         tin,
     )
     p20 = Case("P20", "document's tax ID belongs to another BU", "tax_id_mismatch",
-               status="failed", attachments=[("BBLETAXACQ_conflict.pdf", bbl)])
+               status="pending_review", attachments=[("BBLETAXACQ_conflict.pdf", bbl)])
     append(box, [p20])
     await run_poll("C3")
     await verify(report, [p20])

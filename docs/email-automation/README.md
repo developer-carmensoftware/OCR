@@ -26,7 +26,9 @@ different is *how the document arrives*, and *who is standing between it and Car
 
 Since 2026-08-28 that is a per-BU switch rather than a property of the pipeline:
 `auto_post` defaults to **off**, so a document waits in a queue for a human, and a BU turns
-review off once it has seen enough to stop watching. See
+review off once it has seen enough to stop watching. Since 2026-09-04 that switch covers
+only the documents we read cleanly — anything the queue would have printed a reason for
+waits for a person under either setting. See
 [07-human-in-the-loop.md](07-human-in-the-loop.md).
 
 ## Doc map

@@ -748,11 +748,14 @@ const en = {
   'review.fBranch': 'Branch',
   'review.fMissing': 'Not on the document',
   'review.openJv': 'Open JV in Carmen',
-  'review.autoPostLabel': 'Post without review',
+  'review.autoPostLabel': 'Post clean documents automatically',
+  // Says what still stops, because that is the part a person is trusting. The old copy
+  // ("nothing waits here for approval") described a switch that handed the whole queue
+  // over; this one only skips the documents there was nothing to say about.
   'review.autoPostHint':
-    'Documents post to Carmen as soon as they are read. Nothing waits here for approval - turn this on once the queue has been getting it right.',
-  'review.autoPostSavedOn': 'Documents will now post without review',
-  'review.autoPostSavedOff': 'Documents will wait for your approval',
+    'A document we read with nothing to flag posts to Carmen on its own. Anything else still waits here - a warning, a GL mapping the AI had to guess, amounts that do not reconcile, or a missing document number.',
+  'review.autoPostSavedOn': 'Clean documents will now post on their own',
+  'review.autoPostSavedOff': 'Every document will wait for your approval',
   'review.autoPostFailed': 'Could not save that setting',
   'review.unknownBank': 'Unknown',
   // -- Review screen: the JV pane, where GL rules are corrected in place ------
@@ -795,10 +798,12 @@ const en = {
   'review.reasonMissingMapping': 'GL mapping missing',
   'review.reasonUnbalanced': 'amounts do not reconcile',
   'review.reasonGuessed': 'GL mapping guessed',
+  'review.reasonDocNoMissing': 'no document number',
   'review.reasonWarnings': 'extraction warnings',
   // The reviewer's next move, not the absence of a problem. "nothing flagged" named an
-  // internal concept (the four ReviewFlag values) and left a clerk to work out that the
-  // row was fine.
+  // internal concept (the ReviewFlag values) and left a clerk to work out that the row was
+  // fine. It is also the sentence auto-post acts on: an empty flag list is what posts
+  // unattended, so the words the reader sees and the rule the pipeline runs are the same.
   'review.reasonClean': 'Ready to post',
   // One pair per chip. A single sentence used to serve three of them, which is how an empty
   // Posted chip came to say "All clear" — it has not posted anything; that is not all clear.
@@ -2317,11 +2322,11 @@ const th: Record<TKey, string> = {
   'review.fBranch': 'Branch',
   'review.fMissing': 'ไม่มีในเอกสาร',
   'review.openJv': 'เปิด JV ใน Carmen',
-  'review.autoPostLabel': 'โพสต์โดยไม่ต้องตรวจ',
+  'review.autoPostLabel': 'โพสต์เอกสารที่พร้อมโดยอัตโนมัติ',
   'review.autoPostHint':
-    'เอกสารจะโพสต์เข้า Carmen ทันทีที่อ่านเสร็จ ไม่มีอะไรรอให้อนุมัติที่นี่ - เปิดเมื่อมั่นใจว่าคิวทำงานถูกต้องแล้ว',
-  'review.autoPostSavedOn': 'ต่อจากนี้เอกสารจะโพสต์โดยไม่ต้องตรวจ',
-  'review.autoPostSavedOff': 'เอกสารจะรอให้คุณอนุมัติ',
+    'เอกสารที่อ่านแล้วไม่มีอะไรต้องตรวจจะโพสต์เข้า Carmen เอง นอกนั้นยังรอที่นี่เหมือนเดิม - มีคำเตือนจากการอ่าน, AI ต้องเดาผังบัญชีให้, ยอดไม่สมดุล หรือไม่มีเลขที่เอกสาร',
+  'review.autoPostSavedOn': 'ต่อจากนี้เอกสารที่พร้อมจะโพสต์เอง',
+  'review.autoPostSavedOff': 'เอกสารทุกใบจะรอให้คุณอนุมัติ',
   'review.autoPostFailed': 'บันทึกการตั้งค่าไม่สำเร็จ',
   'review.unknownBank': 'ไม่ทราบ',
   // -- Review screen: the JV pane, where GL rules are corrected in place ------
@@ -2359,6 +2364,7 @@ const th: Record<TKey, string> = {
   'review.reasonMissingMapping': 'ยังไม่มีผังบัญชี',
   'review.reasonUnbalanced': 'ยอดไม่สมดุล',
   'review.reasonGuessed': 'AI เดาผังบัญชีให้',
+  'review.reasonDocNoMissing': 'ไม่มีเลขที่เอกสาร',
   'review.reasonWarnings': 'มีคำเตือนจากการอ่าน',
   'review.reasonClean': 'พร้อมโพสต์',
   'review.emptyReviewTitle': 'ไม่มีรายการรอตรวจสอบ',

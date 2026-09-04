@@ -402,11 +402,16 @@ async def test_already_submitted_document_never_reaches_carmen():
 
 
 @pytest.mark.asyncio
-async def test_unmapped_bu_gets_ai_mappings_posts_and_saves_them():
-    """A BU that never opened the mapping page must still post its first document.
+async def test_a_bu_with_no_mappings_gets_ai_ones_saved_and_the_document_reviewed():
+    """A BU that never opened the mapping page: the AI fills the gap, a human confirms it.
 
-    The guessed pairs are written back, so the second document of the same payment
-    type is deterministic — that is what makes one AI guess acceptable.
+    The guessed pairs are written back, so the second document of the same payment type is
+    deterministic — that is what makes one AI guess acceptable, and it is why the *first*
+    one is worth a person's eye. Auto-post posts what is ready to post, and a GL rule
+    invented thirty seconds ago is the definition of a document that is not.
+
+    So the guess is still made and still saved (nothing about the mapping is deferred to
+    the reviewer); what changed is that the JV waits for them.
     """
     db = _FakeDB()
     outcome, p = await _run(
@@ -416,8 +421,13 @@ async def test_unmapped_bu_gets_ai_mappings_posts_and_saves_them():
         carmen_result={"Code": 0, "InternalMessage": "JV-1000"},
         suggested=MAPPINGS,
     )
-    assert outcome == "posted"
-    assert db.added[0].reason_code is None
+    assert outcome == "pending_review"
+    row = db.added[0]
+    assert row.reason_code is None  # not a failure — it is waiting on a person
+    assert row.review_payload["flags"] == ["mapping_guessed"]
+    # Which rules were invented, so the review screen marks those and not every field.
+    assert row.review_payload["guessed"] == sorted(MAPPINGS)
+    p.post_gljv.assert_not_awaited()
     p.refund_document.assert_not_called()
     p.fill_missing_mappings.assert_awaited_once()
     assert p.fill_missing_mappings.await_args.args[2] == MAPPINGS
@@ -425,12 +435,16 @@ async def test_unmapped_bu_gets_ai_mappings_posts_and_saves_them():
 
 @pytest.mark.asyncio
 async def test_mapping_incomplete_parks_and_keeps_the_charge_when_ai_cannot_fill_it():
-    """The fallback with review OFF: no LLM answer, or Carmen's GL master was unreachable.
+    """No LLM answer, or Carmen's GL master was unreachable — with `auto_post` ON.
 
-    `_run` defaults `auto_post=True`, so nobody was coming — and this used to stop there,
-    which threw away a reading the BU had paid for. It parks instead: the review screen maps
-    in place, so the one thing that can clear this is a person, and the queue is where they
-    are. Auto-post now means "post what I can", not "post or destroy".
+    This used to stop here, which threw away a reading the BU had paid for. It parks
+    instead: the review screen maps in place, so the one thing that can clear this is a
+    person, and the queue is where they are.
+
+    It carries no `reason_code` any more. The `mapping_incomplete` raise was the auto-post
+    half of a branch whose other half already fell through to the fork, and a gap in the GL
+    mapping is now simply one of the flags that keeps a document out of auto-post — one
+    path for both modes, which is what stops the two drifting on what the row says.
     """
     db = _FakeDB()
     outcome, p = await _run(
@@ -441,7 +455,8 @@ async def test_mapping_incomplete_parks_and_keeps_the_charge_when_ai_cannot_fill
         suggested={},  # AI produced nothing usable
     )
     assert outcome == "pending_review"
-    assert db.added[0].reason_code == "mapping_incomplete"
+    assert db.added[0].reason_code is None
+    assert "mapping_missing" in db.added[0].review_payload["flags"]
     # The point of parking: the reading survives, and it names every gap to fill — the
     # config was empty, so that is the payment type and all three fixed legs.
     assert set(db.added[0].review_payload["unmapped"]) == {"Visa", "commission", "tax", "net"}
@@ -787,10 +802,16 @@ async def test_a_rule_never_picks_the_extraction_layout():
 async def test_the_document_outranks_the_rule_that_matched_it():
     """The exact reported bug: one broad rule is the sole match for every bank's files,
     and used to label all of them itself. The issuer printed on the page wins, and the
-    reviewer is told which rule over-reached."""
+    reviewer is told which rule over-reached.
+
+    And now there IS a reviewer. The warning is a flag, so a document whose rule
+    over-reached parks rather than auto-posting — which is what makes the sentence below
+    worth writing: a mis-scoped pattern is caught before it has filed a JV against the
+    wrong vendor, rather than explained afterwards to nobody.
+    """
     db = _FakeDB()
     extracted = _extracted()  # bank_company_name="Krungthai Card" → KTC
-    outcome, _ = await _run(
+    outcome, p = await _run(
         db,
         filename="anything.jpg",
         rules=[{"bank_code": "KBANK", "filename_patterns": [".jpg"], "is_active": True}],
@@ -798,7 +819,8 @@ async def test_the_document_outranks_the_rule_that_matched_it():
         config=_config(),
         carmen_result={"Code": 0, "InternalMessage": "JV-1"},
     )
-    assert outcome == "posted"
+    assert outcome == "pending_review"
+    p.post_gljv.assert_not_awaited()
     assert db.added[0].bank_code == "KTC"
     # Pinned in full: `ReviewDocument.test.tsx` renders this exact sentence, and a
     # warning the reviewer cannot act on is the same as no warning.
@@ -855,15 +877,21 @@ async def test_three_banks_in_one_poll_come_out_as_three_banks():
         {"bank_code": "KTC", "filename_patterns": ["MDR"], "is_active": True},
         {"bank_code": "BAY", "filename_patterns": ["krungsri"], "is_active": True},
     ]
+    # The last column is the outcome, which the bank-labelling rule decides on its way past:
+    # only a *single* matching rule is allowed to name a bank, so only a single rule can
+    # disagree with the document and raise the over-reach warning — and that warning is a
+    # flag, which keeps the document out of auto-post.
     mail = [
-        ("kbank-july.pdf", "ธนาคารกสิกรไทย จำกัด (มหาชน)", "KBANK"),
-        ("MDR-july.pdf", "บริษัท บัตรกรุงไทย จำกัด (มหาชน)", "KTC"),
-        ("krungsri-july.pdf", "ธนาคารกรุงศรีอยุธยา จำกัด (มหาชน)", "BAY"),
+        ("kbank-july.pdf", "ธนาคารกสิกรไทย จำกัด (มหาชน)", "KBANK", "posted"),
+        # Two rules claim these, so neither is the answer and nothing is assumed.
+        ("MDR-july.pdf", "บริษัท บัตรกรุงไทย จำกัด (มหาชน)", "KTC", "posted"),
+        ("krungsri-july.pdf", "ธนาคารกรุงศรีอยุธยา จำกัด (มหาชน)", "BAY", "posted"),
         # Renamed by an employee before forwarding: only the .pdf rule claims it, and the
-        # issuer is nobody that rule names.
-        ("scan0012.pdf", "PayPal Thailand Limited", "PAYPAL"),
+        # issuer is nobody that rule names. It is filed as PAYPAL and held for a human,
+        # because a rule that over-reached is exactly how a JV lands on the wrong vendor.
+        ("scan0012.pdf", "PayPal Thailand Limited", "PAYPAL", "pending_review"),
     ]
-    for i, (filename, issuer, _) in enumerate(mail):
+    for i, (filename, issuer, _, expected_outcome) in enumerate(mail):
         outcome, _ = await _run(
             db,
             filename=filename,
@@ -873,11 +901,11 @@ async def test_three_banks_in_one_poll_come_out_as_three_banks():
             config=_config(),
             carmen_result={"Code": 0, "InternalMessage": f"JV-{i}"},
         )
-        assert outcome == "posted"
+        assert outcome == expected_outcome, filename
 
     ledger = [r for r in db.added if hasattr(r, "attachment")]
     assert [(r.attachment, r.bank_code) for r in ledger] == [
-        (filename, expected) for filename, _, expected in mail
+        (filename, expected) for filename, _, expected, _ in mail
     ]
 
 
@@ -997,8 +1025,14 @@ async def _route(
     rejected=(),
     db=None,
     arrived_at=None,
+    pending=0,
 ):
-    """Runs `_process_message` — up to (and not into) the per-attachment half."""
+    """Runs `_process_message` — up to (and not into) the per-attachment half.
+
+    `pending` is the BU's review backlog. Patched by default because the cap is consulted
+    on every message now, under both settings — a `db.scalar` left to a mock returns
+    something that cannot be compared to a number.
+    """
     if db is None:
         db = AsyncMock()
         db.get = AsyncMock(return_value=MagicMock())  # tenant row exists
@@ -1017,6 +1051,7 @@ async def _route(
         patch.object(ingest.es, "record_gmail_confirmed", confirmed or AsyncMock()),
         patch.object(ingest, "auto_confirm_forwarding", follow),
         patch.object(ingest.ocr_service, "extract_stateless", extract),
+        patch.object(ingest, "_pending_count", AsyncMock(return_value=pending)),
         patch.object(ingest, "_process_attachment", process),
     ):
         outcomes = await ingest._process_message(
@@ -2353,6 +2388,101 @@ async def test_a_clean_document_is_flagged_as_nothing_to_see():
     assert db.added[0].review_payload["flags"] == []
 
 
+# ── Auto-post posts what is ready to post ─────────────────────────────────────
+#
+# `auto_post` decides whether a *clean* document waits. It never decides whether a doubtful
+# one does: `_review_flags` is the gate as well as the row's reason line, deliberately one
+# predicate, so a document the reviewer would have been given a reason for can never post
+# behind their back. Before this, a reading with warnings, lines that did not reconcile, or
+# a GL rule the AI had just invented reached the customer's ledger exactly like a clean one.
+
+
+@pytest.mark.asyncio
+async def test_auto_post_posts_a_document_with_nothing_flagged():
+    """The case the switch exists for, and the control for everything below it: a clean
+    reading, mapped, balanced, numbered, still goes all the way to Carmen unattended."""
+    db = _FakeDB()
+    outcome, p = await _run(
+        db,
+        extracted=_extracted(),
+        config=_config(),
+        carmen_result={"Code": 0, "InternalMessage": "JV-1"},
+    )
+    assert outcome == "posted"
+    p.post_gljv.assert_awaited_once()
+    p.mark_submitted.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "label,overrides,expected_flag",
+    [
+        # The extractor said something about the reading — an assumed VAT rate, a
+        # reconciliation drift, a rule that over-reached. Ignored by auto-post until now,
+        # which is the gap this closes (noted 2026-08-18, parked).
+        ("warnings", {"warnings": ["Assumed a 7% VAT rate"]}, "warnings"),
+        # A misread digit. The JV would post unbalanced.
+        (
+            "unbalanced",
+            {
+                "details": [
+                    ExtractedDetailRow(
+                        transaction="Visa",
+                        pay_amt="1000.00",
+                        commis_amt="30.00",
+                        tax_amt="2.10",
+                        total="900.00",
+                    )
+                ]
+            },
+            "unbalanced",
+        ),
+        # Both duplicate guards key on `doc_no` and answer False without one, so an
+        # unnumbered statement forwarded twice would post twice with nothing able to
+        # catch it. The one flag that is about what we cannot check rather than what we read.
+        ("doc_no missing", {"doc_no": None}, "doc_no_missing"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_auto_post_holds_a_document_that_has_something_to_say(
+    label, overrides, expected_flag
+):
+    db = _FakeDB()
+    outcome, p = await _run(
+        db,
+        extracted=_extracted(**overrides),
+        config=_config(),
+        carmen_result={"Code": 0, "InternalMessage": "JV-1"},
+    )
+    assert outcome == "pending_review", label
+    assert expected_flag in db.added[0].review_payload["flags"]
+    p.post_gljv.assert_not_awaited()
+    p.mark_submitted.assert_not_awaited()
+    # Held, not thrown away: the reading was charged for and the reviewer gets to use it.
+    assert db.added[0].reason_code is None
+    p.refund_document.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_auto_post_holds_a_second_copy_of_a_queued_document():
+    """`_already_pending` is unconditional now, and this is the case it was missing.
+
+    It read `not auto_post` while auto-post could not park anything. Now it parks routinely,
+    so without this the bank re-sending a statement puts two identical rows in front of the
+    reviewer — which is the whole thing that check exists to prevent.
+    """
+    db = _FakeDB()
+    with patch.object(ingest, "_already_pending", AsyncMock(return_value=True)):
+        outcome, p = await _run(
+            db,
+            extracted=_extracted(),
+            config=_config(),
+            carmen_result={"Code": 0, "InternalMessage": "JV-1"},
+        )
+    assert outcome == "failed"  # charged, and its reviewable twin is already in the queue
+    assert db.added[0].reason_code == "duplicate_document"
+    p.post_gljv.assert_not_awaited()
+
+
 @pytest.mark.asyncio
 async def test_finishing_a_document_clears_the_review_payload():
     """Every status `_finish` writes is terminal, so the payload has no reader left.
@@ -2382,10 +2512,11 @@ async def test_an_unread_backlog_holds_the_mail_instead_of_charging_for_it():
     when the credits run out: no ledger row, nothing charged, replays once someone clears
     the backlog."""
     exhausted: set[str] = set()
-    with patch.object(ingest, "_pending_count", AsyncMock(return_value=ingest.REVIEW_BACKLOG_CAP)):
-        outcomes, _, process = await _route(
-            resolved=_settings_row(auto_post=False), exhausted=exhausted
-        )
+    outcomes, _, process = await _route(
+        resolved=_settings_row(auto_post=False),
+        exhausted=exhausted,
+        pending=ingest.REVIEW_BACKLOG_CAP,
+    )
     assert outcomes == ["retry_later"]
     process.assert_not_awaited()
     # The rest of this BU's mail in the same batch is skipped too, rather than each
@@ -2397,24 +2528,30 @@ async def test_an_unread_backlog_holds_the_mail_instead_of_charging_for_it():
 async def test_a_backlog_under_the_cap_keeps_ingesting():
     """The guard is a stop for a queue nobody is reading, not a work limit. A BU handling
     fifty statements a fortnight must never notice it."""
-    with patch.object(
-        ingest, "_pending_count", AsyncMock(return_value=ingest.REVIEW_BACKLOG_CAP - 1)
-    ):
-        outcomes, _, process = await _route(resolved=_settings_row(auto_post=False))
+    outcomes, _, process = await _route(
+        resolved=_settings_row(auto_post=False), pending=ingest.REVIEW_BACKLOG_CAP - 1
+    )
     assert outcomes == ["posted"]
     process.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_auto_post_never_looks_at_the_backlog():
-    """Nothing parks with `auto_post` on, so the count is meaningless there — and paying
-    for it on every message of every BU that already trusts the pipeline is a query for
-    nothing."""
-    count = AsyncMock(return_value=10_000)
-    with patch.object(ingest, "_pending_count", count):
-        outcomes, _, _ = await _route(resolved=_settings_row(auto_post=True))
-    assert outcomes == ["posted"]
-    count.assert_not_awaited()
+async def test_auto_post_is_held_by_the_backlog_too():
+    """The cap is unconditional, and this is the case it was missing.
+
+    It used to be skipped with `auto_post` on, on the reasoning that nothing parked there so
+    the count was meaningless. Two changes made that false: decision #51 let a post-extraction
+    refusal park under either setting, and auto-post then narrowed to documents with nothing
+    flagged. A BU running auto-post now parks routinely — so without this a dead credential
+    fills their queue while every one of those documents is still charged for.
+    """
+    outcomes, _, process = await _route(
+        resolved=_settings_row(auto_post=True), pending=ingest.REVIEW_BACKLOG_CAP
+    )
+    # `retry_later` is reachable from nothing else here — the BU is enabled, entitled and
+    # has a tag — so the outcome is the proof the count was consulted.
+    assert outcomes == ["retry_later"]
+    process.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -42,17 +42,21 @@ The three things that make this different from the pilot:
 1. **Approval is a per-BU switch, not a fixed step.** A BU starts with review on: the
    document is read, mapped and queued in the OCR app, and posts only when someone
    approves it. They turn review off (`auto_post`) once the queue has earned it, and from
-   then on documents post automatically. See §0.2.
+   then on a document we read with **nothing to flag** posts automatically — one we read
+   with a warning, a guessed GL mapping, amounts that do not reconcile or no document
+   number still waits for a person, under either setting. See §0.2.
 2. **Settings live in Carmen.** The customer configures everything on Carmen's screens;
    Carmen calls our API to store it. The OCR app has no settings UI for this feature —
    with one exception, the review queue in §0.2, which is a work surface rather than a
    settings screen.
 3. **Carmen is notified by webhook**, so it can react without polling us.
 
-### 0.2 Where the human sits (2026-08-28)
+### 0.2 Where the human sits (2026-08-28, narrowed 2026-09-04)
 
-Between "we read it" and "it posts", when `auto_post` is off — which is the default, and
-how every BU starts.
+Between "we read it" and "it posts". Always, when `auto_post` is off — which is the default,
+and how every BU starts. With it on, for any document the reading had something to say
+about: `auto_post` skips the approval of an **ordinary** document, never of a doubtful one.
+The test is the queue's own reason column being empty, which it prints as *Ready to post*.
 
 ```text
 forwarded mail → we read it → GL mapping → [ queued for approval ] → post to Carmen
@@ -636,10 +640,11 @@ happened", not as an error.**
 
 ### 3.3 `document.posted` / `document.failed` — **proposed**
 
-Not in the original request. For a BU running with `auto_post` on — no human in the loop —
-these are the only way Carmen (or the customer) learns what happened to a forwarded
-document. With review on, the queue itself is that answer, and the events would fire when
-the reviewer approves rather than when the mail lands.
+Not in the original request. For a BU running with `auto_post` on, these are the only way
+Carmen (or the customer) learns what happened to a document that posted without anyone
+looking at it. With review on — and for any flagged document either way — the queue itself
+is that answer, and the events would fire when the reviewer approves rather than when the
+mail lands.
 
 ```jsonc
 {

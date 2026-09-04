@@ -7,7 +7,9 @@ each PDF, and uploads it into the Credit Card OCR wizard by hand — one documen
 upload, one review, one submit. Email Automation removes the fetching and the keying for
 this document type: once a mail-forward rule is set up, every report after that arrives
 extracted and GL-mapped, and all that is left is to look at it and approve it — or, once
-the BU turns review off (`auto_post`), nothing at all.
+the BU turns review off (`auto_post`), nothing at all for the documents we read cleanly.
+Those are most of them; the rest still come to the queue, because the switch skips
+approving an ordinary document and never a doubtful one.
 
 ## Actors
 
@@ -16,7 +18,7 @@ the BU turns review off (`auto_post`), nothing at all.
 | Bank | Sends the commission/fee PDF, by their own schedule (often daily) |
 | Customer accounting staff | Sets up the forward once; may also manually forward individual mails |
 | Carmen settings screen | Where the feature is configured — reads and writes settings through our API |
-| Reviewer (any Carmen user for that BU) | Approves or rejects each queued document at `#/CreditCardOCR` in the OCR app, while `auto_post` is off |
+| Reviewer (any Carmen user for that BU) | Approves or rejects each queued document at `#/CreditCardOCR` in the OCR app — every document while `auto_post` is off, and the flagged ones either way |
 | Shared IMAP mailbox | Receives mail for every BU on the platform, disambiguated by `+tag` |
 | pg_cron | Polls the mailbox every 10 minutes (see [05-operations.md](05-operations.md#scheduling)) |
 | The BU's Carmen ERP | Receives the posted JV and the input-tax record, using a credential Carmen itself issued |

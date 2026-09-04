@@ -37,7 +37,7 @@ human-in-the-loop queue reads and writes — see
 | GET | `/api/v1/email/status` | Which of the queue's four states to paint, plus a count per tab |
 | POST | `/api/v1/email/documents/{id}/approve` | Post what the reviewer checked → `{jv_no, tax_note}` |
 | POST | `/api/v1/email/documents/{id}/reject` | Terminal, optional reason → `204` |
-| PUT | `/api/v1/email/settings/auto-post` | `{auto_post: bool}` — turn review off, or back on |
+| PUT | `/api/v1/email/settings/auto-post` | `{auto_post: bool}` — let a **clean** document post without review, or stop it. A flagged one waits either way |
 
 `tab` is one of `review` · `posted` · `problem` · `skipped`, and is a *group* of ledger
 statuses rather than one: `problem` is `failed` + `rejected` (they differ in who decided,
@@ -262,7 +262,9 @@ touching a mailbox.
 ```
 
 `pending_review` counts documents parked for a human this poll. On a BU with `auto_post`
-off — the default — `posted` stays `0` and this is the number that moves.
+off — the default — `posted` stays `0` and this is the number that moves. With it on, both
+move: `auto_post` posts only what `_review_flags()` had nothing to say about, so a flagged
+document lands here rather than in `posted`.
 
 ## `POST /email-ingest/health`
 

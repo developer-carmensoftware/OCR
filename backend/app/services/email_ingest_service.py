@@ -8,7 +8,14 @@
                       ├─ extract                          ← first money spent
                       ├─ tax ID vs this BU's register     ← verification, not routing
                       ├─ GL mapping
+                      ├─ anything to say about it?        ← park for a human if so
                       └─ post the JV (+ the input-tax record) with this BU's token
+
+**Nothing posts unattended that anyone would have been given a reason to look at.** The
+review queue's own reason line (`_review_flags`) is the auto-post gate: an empty list means
+the document is ready to post, and `auto_post` decides only whether a ready document waits.
+A BU with review off still gets the doubtful ones — the flags, not the switch, are what
+stands between an uncertain reading and somebody's ledger.
 
 **The envelope names the owner; the document confirms it.** The tag is issued per BU
 and delivered inside the recipient address, so it is readable from the message headers
@@ -231,10 +238,11 @@ async def run_ingest(limit: int | None = None) -> dict:
         summary = {
             "messages": 0,
             "posted": 0,
-            # Extracted, charged, and parked for a human because the BU has `auto_post`
-            # off. In the initial shape for the same reason as `retry_later`: on a BU in
-            # review mode this is the *normal* outcome, and a key that only appears when
-            # something happened is one the admin page cannot render honestly.
+            # Extracted, charged, and parked for a human: either the BU has `auto_post`
+            # off, or it is on and `_review_flags` found something to say. In the initial
+            # shape for the same reason as `retry_later`: on a BU in review mode this is
+            # the *normal* outcome, and a key that only appears when something happened is
+            # one the admin page cannot render honestly.
             "pending_review": 0,
             "failed": 0,
             "skipped": 0,
@@ -587,16 +595,21 @@ async def _process_message(
         auto_post = bool(row.auto_post)
         carmen_token, carmen_uri = await es.posting_target(db, row)
 
-        # Backpressure. With review on, every document costs a credit at extraction and
-        # then waits for a human — so a BU that stops reading its queue would keep paying
-        # for a pile nobody has looked at, and there is no refund for any of it once the
-        # vision call has run (decision-log #17).
+        # Backpressure. Every document costs a credit at extraction and may then wait for a
+        # human — so a BU that stops reading its queue would keep paying for a pile nobody
+        # has looked at, and there is no refund for any of it once the vision call has run
+        # (decision-log #17).
         #
         # Same shape as running out of credits: mail handed back unread, no ledger row,
         # nothing charged, replays on the poll after someone clears the backlog. The
         # 14-day hold window bounds how long that offer lasts, and mail past it already
         # raises `email_ingest_beyond_window`.
-        if not auto_post and await _pending_count(db, tenant_id) >= REVIEW_BACKLOG_CAP:
+        #
+        # Unconditional since auto-post narrowed to clean documents. It read `not auto_post`
+        # from a time when nothing parked with review off; a BU running auto-post now parks
+        # every document that has anything to say about it, and without this a dead
+        # credential would fill their queue while still charging for each one.
+        if await _pending_count(db, tenant_id) >= REVIEW_BACKLOG_CAP:
             logger.warning(
                 "[email] Tenant %s has %d+ documents awaiting review — mail held unread",
                 tenant_id,
@@ -816,9 +829,16 @@ async def _run_document(
 ) -> str:
     """Gate, charge, extract, verify, post — every exit lands on the ledger.
 
-    With `auto_post` off the document stops one step short of Carmen and parks at
-    `pending_review` instead. Everything above that fork is identical either way, so a
-    document that reaches a human has already survived every gate a machine can judge.
+    Two things stop a document one step short of Carmen and park it at `pending_review`
+    instead: `auto_post` being off, and — with it on — anything `_review_flags` has to say
+    about the document. Everything above that fork is identical either way, so a document
+    that reaches a human has already survived every gate a machine can judge.
+
+    **`auto_post` posts what is ready to post.** Not everything that got this far: a reading
+    with warnings, lines that do not reconcile, a GL rule the AI invented, or a statement
+    whose number could not be read are all questions, and a question goes to the queue no
+    matter which mode the BU is in. The switch buys a BU freedom from approving the
+    *ordinary* document, which is most of them, and never freedom from the doubtful one.
 
     **A failure after the extraction parks too.** The charge follows the vision call
     (decision-log #17), so by the time any of the later gates can refuse — a foreign tax ID,
@@ -870,7 +890,11 @@ async def _run_document(
                 task_id=task_id,
                 bank_code=bank_code,
                 doc_no=doc_no,
-                mapping_guessed=mapping_guessed,
+                flags=_review_flags(
+                    extracted,
+                    mapping_guessed=mapping_guessed,
+                    mapping_missing=mapping_missing,
+                ),
                 mapping_guessed_keys=mapping_guessed_keys,
                 mapping_missing=mapping_missing,
                 reason_code=reason_code,
@@ -1016,7 +1040,11 @@ async def _run_document(
         # Ingest-side only, deliberately: `has_submitted_doc` is shared with the wizard,
         # where a pending row means nothing and blocking on one would stop a user scanning
         # a document they are holding in their hand.
-        if not auto_post and await _already_pending(tenant_id, bank_code, doc_no):
+        #
+        # Unconditional, deliberately. It read `not auto_post` while a BU with review off
+        # could not park anything; decision #51 ended that, and a clean-only `auto_post`
+        # parks routinely — so the gate that was theoretical there is now on the main path.
+        if await _already_pending(tenant_id, bank_code, doc_no):
             # The one post-extraction skip that does NOT park. Its twin is already in the
             # queue, editable and postable; a second identical row is the thing this check
             # exists to prevent, not a second chance at anything.
@@ -1042,17 +1070,15 @@ async def _run_document(
                 mapping_guessed = True
                 mapping_guessed_keys = sorted(suggested)
             mapping_missing = unmapped_payment_types(extracted.details, config.mappings or {})
-            if mapping_missing and auto_post:
-                # Nobody is coming. The LLM had no answer or Carmen's master was
-                # unreachable, and with review off there is no one to ask.
-                raise _Skip(
-                    "mapping_incomplete", f"No GL mapping for: {', '.join(mapping_missing)}"
-                )
-            # With review on this is no longer terminal: the review screen maps in place,
-            # so a document the AI could not map is a question for the reviewer rather
-            # than a dead end. It falls through to the fork below and parks with the
-            # unmapped fields named on the row. Changed 2026-08-31; before that the whole
-            # BU's odd payment types died here and someone had to find the mapping page.
+            # Never terminal, under either setting: the review screen maps in place, so a
+            # document the AI could not map is a question for the reviewer rather than a
+            # dead end. It falls through to the fork below, where `mapping_missing` is a
+            # flag — which both parks it and names the unmapped fields on the row.
+            #
+            # Changed 2026-08-31 for review mode; the `auto_post` half of the branch went
+            # when auto-post narrowed to clean documents, since a gap in the GL mapping is
+            # the plainest case of a document that is not one. Before that, the whole BU's
+            # odd payment types died here and someone had to find the mapping page.
 
         rows = build_jv_rows(extracted.details, config.mappings or {})
         if not rows or not any(r["credit"] for r in rows):
@@ -1085,18 +1111,36 @@ async def _run_document(
         # The credit is already spent (`consume_document`, far above). Approving or
         # rejecting later must not refund — decision-log #17: the charge follows the vision
         # call, not the outcome.
-        if not auto_post:
+        #
+        # **`auto_post` posts what is ready to post, not everything that got this far.**
+        # `_review_flags` is the queue's own answer to "why might this be worth opening",
+        # and it is the gate as well as the row's reason line — deliberately one predicate,
+        # so a document the reviewer would have been shown a reason for can never post
+        # behind their back. Before this, a reading with warnings, a JV whose lines did not
+        # reconcile, or a GL rule the AI invented on the way past all reached the customer's
+        # ledger exactly like a clean one, and the flags were computed and then only looked
+        # at if review happened to be on.
+        flags = _review_flags(
+            extracted, mapping_guessed=mapping_guessed, mapping_missing=mapping_missing
+        )
+        if not auto_post or flags:
             await _park_for_review(
                 ledger_id,
                 extracted=extracted,
                 task_id=task_id,
                 bank_code=bank_code,
                 doc_no=doc_no,
-                mapping_guessed=mapping_guessed,
+                flags=flags,
                 mapping_guessed_keys=mapping_guessed_keys,
                 mapping_missing=mapping_missing,
             )
-            logger.info("[email] Parked %s (%s) for review, tenant %s", doc_no, filename, tenant_id)
+            logger.info(
+                "[email] Parked %s (%s) for review, tenant %s%s",
+                doc_no,
+                filename,
+                tenant_id,
+                f" — {', '.join(flags)}" if auto_post else "",
+            )
             return "pending_review"
 
         payload = build_gljv_payload(
@@ -1403,8 +1447,10 @@ async def _claim(
 async def _already_pending(tenant_id: str, bank_code: str | None, doc_no: str | None) -> bool:
     """Is an identical document already sitting in this BU's review queue?
 
-    Only meaningful with `auto_post` off. A document with no `doc_no` is not comparable —
-    two unnumbered statements are not evidence of anything — so it never matches.
+    A document with no `doc_no` is not comparable — two unnumbered statements are not
+    evidence of anything — so it never matches. That blindness is itself why
+    `doc_no_missing` is a flag: it keeps an unnumbered document out of auto-post, where
+    nothing else could catch a second copy.
     """
     if not doc_no:
         return False
@@ -1509,6 +1555,11 @@ def _review_flags(
     `unbalanced` is the same arithmetic AccountingReview does in the browser
     (`imbalancedLines`): every layout satisfies gross = commission + tax + net per line, so
     a line that breaks it was misread and its JV would post unbalanced.
+
+    **This is also the auto-post gate.** An empty list is what `auto_post` posts on — the
+    queue's own "nothing to say about this one", which the row already prints as *Ready to
+    post*. One predicate on purpose: a document a reviewer would have been given a reason
+    for must not be the one that posts unattended.
     """
     flags: list[str] = []
     # Above `mapping_guessed` in the row's reason ladder: a guess posts and may post to the
@@ -1522,6 +1573,13 @@ def _review_flags(
         for d in extracted.details
     ):
         flags.append("unbalanced")
+    if not extracted.doc_no:
+        # Advisory on the row — a reviewer can post a JV without a document number — and
+        # decisive for auto-post, which is why it is a flag rather than a `_Skip`. Both
+        # duplicate guards key on `doc_no`: `has_submitted_doc` and `_already_pending`
+        # answer False when there is none, so an unnumbered statement forwarded twice
+        # would post twice into real books with nothing able to catch it.
+        flags.append("doc_no_missing")
     if extracted.warnings:
         flags.append("warnings")
     return flags
@@ -1534,7 +1592,7 @@ async def _park_for_review(
     task_id: str | None,
     bank_code: str | None,
     doc_no: str | None,
-    mapping_guessed: bool,
+    flags: list[str],
     mapping_guessed_keys: list[str] | None = None,
     mapping_missing: list[str] | None = None,
     reason_code: str | None = None,
@@ -1578,11 +1636,10 @@ async def _park_for_review(
         row.error_message = error  # type: ignore[assignment]
         row.review_payload = {  # type: ignore[assignment]
             "extracted": payload,
-            "flags": _review_flags(
-                extracted,
-                mapping_guessed=mapping_guessed,
-                mapping_missing=mapping_missing,
-            ),
+            # Passed in, not computed here: since `auto_post` started meaning "post what is
+            # ready to post", this same list is the gate that decided the document parks at
+            # all. Recomputing it would be two readings of one question, one file apart.
+            "flags": flags,
             # Which payment types the reviewer has to map before this can post, and which
             # rules the AI invented on the way past. Stored rather than re-derived: the
             # review screen would otherwise have to diff the document against the live

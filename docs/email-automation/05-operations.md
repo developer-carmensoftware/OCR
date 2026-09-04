@@ -106,7 +106,9 @@ visible at all.
 ## Running with review on
 
 `auto_post` defaults to `false`, so a new BU's documents stop at `pending_review` instead of
-posting. Three operational consequences:
+posting. **A BU with it on still parks anything flagged** (decision #24) — so a queue on a
+BU you believe is fully automated is the feature working, not a fault. Three operational
+consequences:
 
 - **`rows_affected` on `#/admin/jobs` counts posted documents, so it reads `0` for a BU in
   review** even on a poll that worked perfectly. The poll summary carries `pending_review`
