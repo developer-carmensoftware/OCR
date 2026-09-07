@@ -502,7 +502,7 @@ async def save_settings(db: AsyncSession, tenant: Tenant, payload: Any) -> Email
             {
                 "field": "tax_ids",
                 "code": "required",
-                "message": "At least one tax ID is required before enabling Email Automation",
+                "message": "At least one tax ID is required before enabling AI JV Automation",
             }
         )
     # The feature is sold, not free (§2.2). Refusing at write time is what keeps a
@@ -512,7 +512,7 @@ async def save_settings(db: AsyncSession, tenant: Tenant, payload: Any) -> Email
             {
                 "field": "enabled",
                 "code": "not_entitled",
-                "message": "An active monthly package is required to enable Email Automation",
+                "message": "An active monthly package is required to enable AI JV Automation",
             }
         )
     if errors:

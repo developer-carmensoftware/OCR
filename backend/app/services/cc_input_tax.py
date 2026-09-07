@@ -112,6 +112,10 @@ def build_input_tax_payload(
     is a VAT claim quietly lost — the caller puts it on the ledger. `None, None`
     means there was genuinely nothing to claim, which needs no announcement.
 
+    The reason opens "Input tax not recorded" because it goes on screen unedited, in the
+    same cell as `_post_input_tax`'s own failure note — see that docstring for why the two
+    share one prefix rather than each inventing its own.
+
     The last three arguments are the review screen's corrections, and they are what
     turns two of those skips into a record: a bank with no registered identity and a
     document at a rate no profile declares are both dead ends for the machine and one
@@ -130,7 +134,7 @@ def build_input_tax_payload(
     # misread one is corrected.
     parts = _iso_parts(doc_date)
     if parts is None:
-        return None, f"input tax skipped: document date {doc_date!r} has no readable day"
+        return None, f"Input tax not recorded: document date {doc_date!r} has no readable day"
     year, month = parts
 
     # Both halves of the vendor's identity, and both are refusals. Carmen accepts a record
@@ -148,7 +152,7 @@ def build_input_tax_payload(
     if not legal_name or not vendor_tax_id:
         code = getattr(bank, "code", None) or "?"
         what = "name" if not legal_name else "tax ID"
-        return None, f"input tax skipped: bank {code} has no registered {what} on file"
+        return None, f"Input tax not recorded: bank {code} has no registered {what} on file"
 
     # The profile's canonical rate is what we post, but the document's own VAT amount
     # is what we claim: a slightly-off extracted figure must not silently become
@@ -160,11 +164,11 @@ def build_input_tax_payload(
     if profile_code:
         profile = next((p for p in profiles if p["code"] == profile_code), None)
         if profile is None:
-            return None, f"input tax skipped: no active tax profile {profile_code!r}"
+            return None, f"Input tax not recorded: no active tax profile {profile_code!r}"
     else:
         profile = resolve_tax_profile(ratio, profiles)
         if profile is None:
-            return None, f"input tax skipped: no active tax profile at {ratio:.2f}%"
+            return None, f"Input tax not recorded: no active tax profile at {ratio:.2f}%"
     # Carmen lists a profile without a declared rate now and then. Resolution by rate can
     # never return one; a named one can, and the document's own ratio is the only honest
     # figure left to post.

@@ -163,7 +163,7 @@ describe('which state the automation page paints', () => {
     mount(status({ enabled: false, blockers: ['disabled'] }), [], ZERO)
     expect(await screen.findByText('Let statements post themselves')).toBeInTheDocument()
     expect(screen.getByText('AIAGENT+ab12@carmensoftware.com')).toBeInTheDocument()
-    expect(screen.getByText('Forwarding is switched off right now.')).toBeInTheDocument()
+    expect(screen.getByText('AI JV Automation is switched off right now.')).toBeInTheDocument()
   })
 
   it('hides the address from a BU that cannot receive mail yet', async () => {
@@ -194,10 +194,10 @@ describe('which state the automation page paints', () => {
 
 describe('the message column', () => {
   const cases: [ReviewDocument['flags'], string][] = [
-    [['unbalanced'], 'amounts do not reconcile'],
+    [['unbalanced'], 'Amounts do not reconcile'],
     [['mapping_guessed'], 'AI suggested mapping'],
-    [['doc_no_missing'], 'no document number'],
-    [['warnings'], 'extraction warnings'],
+    [['doc_no_missing'], 'No document number'],
+    [['warnings'], 'Extraction warnings'],
     // Also the auto-post rule: an empty flag list is what posts unattended, so this phrase
     // and that decision are the same test read two ways.
     [[], 'Ready to post'],
@@ -214,10 +214,10 @@ describe('the message column', () => {
     mount(status(), [
       doc({ flags: ['warnings', 'doc_no_missing', 'mapping_guessed', 'unbalanced'] }),
     ])
-    expect(await screen.findByText('amounts do not reconcile')).toBeInTheDocument()
+    expect(await screen.findByText('Amounts do not reconcile')).toBeInTheDocument()
     expect(screen.queryByText('AI suggested mapping')).not.toBeInTheDocument()
-    expect(screen.queryByText('no document number')).not.toBeInTheDocument()
-    expect(screen.queryByText('extraction warnings')).not.toBeInTheDocument()
+    expect(screen.queryByText('No document number')).not.toBeInTheDocument()
+    expect(screen.queryByText('Extraction warnings')).not.toBeInTheDocument()
   })
 
   it('says why the pipeline stopped, over anything it merely noticed', async () => {
@@ -226,7 +226,21 @@ describe('the message column', () => {
     // on the reviewer's time than "why this might be worth opening".
     mount(status(), [doc({ reason_code: 'tax_id_mismatch', flags: ['unbalanced'] })])
     expect(await screen.findByText(/tax ID/i)).toBeInTheDocument()
-    expect(screen.queryByText('amounts do not reconcile')).not.toBeInTheDocument()
+    expect(screen.queryByText('Amounts do not reconcile')).not.toBeInTheDocument()
+  })
+
+  it("prints Carmen's own verdict on the row that can still act on it", async () => {
+    // The same `stopText` a resolved row uses. Printing the phrase alone here put the
+    // verdict on the dead row and hid it on the live one, which is backwards: this document
+    // is still open, still editable and still postable.
+    mount(status(), [
+      doc({
+        reason_code: 'carmen_rejected',
+        error_message: 'Carmen: Period 2026-08 is closed',
+      }),
+    ])
+    expect(await screen.findByText('Carmen: Period 2026-08 is closed')).toBeInTheDocument()
+    expect(screen.queryByText('Carmen refused it')).not.toBeInTheDocument()
   })
 
   it('still offers Review on a row that stopped, because it is still postable', async () => {
@@ -251,7 +265,7 @@ describe('a skipped attachment on Not posted', () => {
 
   it('reads exactly like the same row does under All', async () => {
     // One row per attachment, its own filename in the Document cell, its reason in the
-    // Message cell. The pre-charge refusals were briefly folded into one row per cause with
+    // Detail cell. The pre-charge refusals were briefly folded into one row per cause with
     // the filenames underneath; that came out again — §18 #86.
     await onUnposted([skipped()])
     expect(await screen.findByText('july.pdf')).toBeInTheDocument()
@@ -314,7 +328,7 @@ describe('where a row came from', () => {
       doc({ id: 'a' }),
       doc({ id: 'b', source: 'manual', status: 'posted', jv_no: 'JV-7', total: 0 }),
     ])
-    expect(await screen.findByText('scanned and posted by hand')).toBeInTheDocument()
+    expect(await screen.findByText('Scanned and posted by hand')).toBeInTheDocument()
     expect(screen.queryByRole('columnheader', { name: 'Source' })).not.toBeInTheDocument()
     expect(screen.queryByText('Email')).not.toBeInTheDocument()
     expect(screen.queryByText('Manual')).not.toBeInTheDocument()
@@ -332,15 +346,15 @@ describe('where a row came from', () => {
         posted_by_name: 'somchai',
       }),
     ])
-    expect(await screen.findByText('scanned and posted by somchai')).toBeInTheDocument()
-    expect(screen.queryByText('scanned and posted by hand')).not.toBeInTheDocument()
+    expect(await screen.findByText('Scanned and posted by somchai')).toBeInTheDocument()
+    expect(screen.queryByText('Scanned and posted by hand')).not.toBeInTheDocument()
   })
 
   it('falls back to "by hand" when the scanner can no longer be resolved', async () => {
     // The name comes from the session that ran the scan, not from a stored column, so it
     // really can be gone. The vaguer sentence beats printing a raw user id at somebody.
     mount(status(), [doc({ source: 'manual', status: 'posted', jv_no: 'JV-7', total: 0 })])
-    expect(await screen.findByText('scanned and posted by hand')).toBeInTheDocument()
+    expect(await screen.findByText('Scanned and posted by hand')).toBeInTheDocument()
   })
 
   it('leads with the status, not the source', async () => {
@@ -349,7 +363,7 @@ describe('where a row came from', () => {
     mount(status(), [doc()])
     await screen.findByText('KTC')
     const headers = screen.getAllByRole('columnheader').map(h => h.textContent)
-    expect(headers).toEqual(['Status', 'Document', 'Message', 'Received', 'JV no.', 'Actions'])
+    expect(headers).toEqual(['Status', 'Document', 'Detail', 'Received', 'JV no.', 'Actions'])
   })
 
   it('puts the width classes on the header cells, which is what fixed layout measures', async () => {
@@ -363,7 +377,7 @@ describe('where a row came from', () => {
     for (const [name, cls] of [
       ['Status', 'rq-c-status'],
       ['Document', 'rq-c-doc'],
-      ['Message', 'rq-c-msg'],
+      ['Detail', 'rq-c-msg'],
       ['Received', 'rq-c-when'],
       ['JV no.', 'rq-c-jv'],
       ['Actions', 'rq-c-act'],
@@ -687,7 +701,9 @@ describe('the actions column', () => {
     // One expired token fails EVERY document of the BU until someone re-pastes it, so it
     // is not "a setting is off" — it is "the pipeline is down".
     mount(status(), [doc({ status: 'failed', reason_code: 'carmen_unauthorized', total: 0 })])
-    expect(await screen.findByText(/Carmen connection has expired/)).toBeInTheDocument()
+    expect(
+      await screen.findByText(/Carmen posting credential is no longer accepted/)
+    ).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Reconnect' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Open settings' })).not.toBeInTheDocument()
   })
@@ -726,7 +742,7 @@ describe('a row that has already been resolved', () => {
     expect(await screen.findByText(/Carmen refused it/)).toBeInTheDocument()
   })
 
-  // The Message column used to print a three-word phrase and hide everything that told two
+  // The Detail column used to print a three-word phrase and hide everything that told two
   // rows apart on the cell's hover title: eight identical "Carmen refused it" rows, and a
   // rejection that read "rejected by somchai - rejected" because {reason} was fed the
   // reason-code phrase rather than the words the reviewer typed. The detail now replaces
@@ -768,7 +784,7 @@ describe('a row that has already been resolved', () => {
       }),
     ])
     expect(
-      await screen.findByText('reviewed and rejected by somchai: wrong company')
+      await screen.findByText('Reviewed and rejected by somchai: wrong company')
     ).toBeInTheDocument()
   })
 
@@ -798,7 +814,7 @@ describe('a row that has already been resolved', () => {
         total: 0,
       }),
     ])
-    expect(await screen.findByText('reviewed and rejected by somchai')).toBeInTheDocument()
+    expect(await screen.findByText('Reviewed and rejected by somchai')).toBeInTheDocument()
   })
 
   // The two codes whose detail is a raw `str(exc)` from the PDF reader stay on the title.
@@ -811,7 +827,7 @@ describe('a row that has already been resolved', () => {
         total: 0,
       }),
     ])
-    expect(await screen.findByText('could not read the document')).toBeInTheDocument()
+    expect(await screen.findByText('Could not read the document')).toBeInTheDocument()
     expect(screen.queryByText(/PdfReadError/)).toBeNull()
   })
 
@@ -822,8 +838,8 @@ describe('a row that has already been resolved', () => {
     // filename rule doing its job.
     mount(status(), [doc({ status: 'received', reason_code: null, total: 0 })])
     expect(await screen.findByText('Unfinished')).toBeInTheDocument()
-    expect(screen.getByText('we started reading this and did not finish')).toBeInTheDocument()
-    expect(screen.queryByText('no reason recorded')).not.toBeInTheDocument()
+    expect(screen.getByText('We started reading this and stopped')).toBeInTheDocument()
+    expect(screen.queryByText('No reason recorded')).not.toBeInTheDocument()
   })
 
   it('falls back to the raw reason code rather than showing nothing', async () => {

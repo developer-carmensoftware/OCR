@@ -88,12 +88,12 @@ const EMPTY: Record<ActivityFilter, { Icon: LucideIcon; tone: string; title: TKe
 // **The class rides along, and it is not decoration.** `table-layout: fixed` reads column
 // widths from the FIRST row only, which is this header row — so the widths in
 // review-queue.css did nothing at all while `.rq-c-*` lived solely on the body `<td>`s and
-// all six columns rendered at an equal 1/6. Document and Message were not narrow by design;
+// all six columns rendered at an equal 1/6. Document and Detail were not narrow by design;
 // they were starved by a class that was never on the cell the browser measures.
 //
 // Source is no longer a column: `MANUAL_FILTERS` means a manual scan only ever appears
 // under Posted, so the column read "Email" on every row of the other two — the same
-// argument §9 #19 used to delete it as a concept. On Posted, the Message column says which
+// argument §9 #19 used to delete it as a concept. On Posted, the Detail column says which
 // it was in words, which is why the icon that briefly replaced the column is gone too.
 const COLUMNS: { key: TKey; cls: string }[] = [
   { key: 'review.colStatus', cls: 'rq-c-status' },

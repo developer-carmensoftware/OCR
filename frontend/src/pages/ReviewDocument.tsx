@@ -15,7 +15,7 @@ import { fmt } from '../lib/format'
 import { toExtractedRows } from '../lib/api/ocr'
 import { normalizeDateStringToCE } from '../lib/date'
 import { applyJvAmount, type JvRow } from '../lib/ccJv'
-import { FIX, REASON_KEY } from '../lib/reviewReasons'
+import { FIX, stopText } from '../lib/reviewReasons'
 import { patchAccountingConfig } from '../lib/api/config'
 import {
   approveDocument,
@@ -565,8 +565,13 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                 <div className="mapping-alert">
                   <AlertTriangle size={16} />
                   <span className="cc-alert-text">
-                    {t(REASON_KEY[doc.reason_code] ?? 'review.rcUnknown')}
-                    {doc.error_message ? ` · ${doc.error_message}` : ''}
+                    {/* `full`: the dialog has the width the cell does not, so a reason whose
+                        phrase does not already carry its detail gets both — the conflicting
+                        tax ID is the number the reviewer decides on. The two codes whose
+                        detail *replaces* the phrase are not printed twice; that duplication
+                        ("already handled · already posted to Carmen") is what moving to the
+                        shared helper removed. */}
+                    {stopText(doc, t, true)}
                   </span>
                   {/* Where it gets fixed for good, for the causes that have such a place.
                       The reviewer can still correct and post this one document without

@@ -4,9 +4,9 @@ import type { TKey } from '../i18n/dict'
  * Why the pipeline stopped, and where a person goes to unstop it.
  *
  * Its own module because two screens read it now: the queue row, which prints the phrase in
- * its Message column, and the review dialog, which prints the same phrase in a banner above
+ * its Detail column, and the review dialog, which prints the same phrase in a banner above
  * the fields — a reviewer opening a parked document has to be told what stopped it before
- * being asked to fix it.
+ * being asked to fix it. `stopText` below is what keeps them one sentence rather than two.
  */
 
 /** The reason codes the pipeline actually writes. Anything unmapped falls back to the
@@ -35,8 +35,9 @@ export const REASON_KEY: Record<string, TKey> = {
  * Two, and only where the phrase cannot tell two rows apart. Eight `carmen_rejected` rows
  * said the same three words while Carmen's own verdict — the whole support ticket, per
  * `_carmen_verdict` — sat in a hover title nobody hovers. `duplicate_document` covers both
- * "already posted" and "a copy is in the queue", which are different answers to "so what do
- * I do". Both details are written server-side to stand alone as the whole cell.
+ * "Already posted to Carmen" and "A copy is already waiting for review", which are different
+ * answers to "so what do I do". Both details are written server-side to stand alone as the
+ * whole cell, which is also why they are capitalised there and not here.
  *
  * The cost is that these two lines are English for a Thai reader, which is why the set is
  * this small: everything else keeps its translated phrase. Carmen's verdict and a
@@ -47,6 +48,35 @@ export const REASON_KEY: Record<string, TKey> = {
  * the number adds nothing a reviewer acts on; it stays on the title for support.
  */
 export const WITH_DETAIL = new Set(['carmen_rejected', 'duplicate_document'])
+
+/**
+ * The one sentence a stopped row says about itself — the queue's cell, and the banner the
+ * review dialog opens with.
+ *
+ * One function, because the two must not drift: a reviewer opening a row is checking the
+ * sentence they just read, and a banner that paraphrased it would read as a second,
+ * different finding. It was a local helper in QueueRow while only the row used it, and the
+ * dialog's own copy is exactly what drifted — it printed `phrase · detail` for every code,
+ * which for the two in `WITH_DETAIL` gave every banner a vacuous head ("Already handled ·
+ * Already posted to Carmen") and said "Carmen" twice.
+ *
+ * `full` is the one thing the two surfaces genuinely differ on. A cell keeps the detail on
+ * its hover title because it has no width for it; the dialog has the width, and a reviewer
+ * deciding whether a tax ID is theirs needs the number rather than the finding. It never
+ * repeats what the phrase was already replaced by.
+ */
+export function stopText(
+  row: { reason_code?: string | null; error_message?: string | null },
+  t: (k: TKey) => string,
+  full = false
+): string {
+  const code = row.reason_code ?? ''
+  const detail = row.error_message?.trim()
+  if (detail && WITH_DETAIL.has(code)) return detail
+  const key = code ? REASON_KEY[code] : undefined
+  const phrase = key ? t(key) : code || t('review.rcUnknown')
+  return full && detail ? `${phrase} · ${detail}` : phrase
+}
 
 const SETTINGS = { key: 'review.actionOpenSettings' as TKey, href: '#/email-settings' }
 

@@ -197,7 +197,7 @@ def _carmen_verdict(result: Any) -> str:
     keeping even when all three are empty, because "Code 1 with no message" is a
     different support conversation from "Code 1: Insufficient balance".
 
-    This *is* the queue's Message cell for the row (WITH_DETAIL in lib/reviewReasons), not
+    This *is* the queue's Detail cell for the row (WITH_DETAIL in lib/reviewReasons), not
     a suffix to one, so it has to name who spoke and stand on its own — and say it once.
     """
     body = result if isinstance(result, dict) else {}
@@ -642,7 +642,7 @@ async def _process_message(
             msg["message_id"],
             names,
             "ingest_paused",
-            "Arrived while Email Automation was switched off — key this one by hand",
+            "Arrived while AI JV Automation was switched off — key this one by hand",
         )
 
     # A file the customer forwarded and we cannot read. Before this it left no trace
@@ -1028,10 +1028,11 @@ async def _run_document(
             raise _Skip("tax_id_mismatch", f"Tax ID {conflict} is not in this BU's register")
 
         if extracted.is_duplicate:
-            # Reads as the tail of "duplicate — …" in the queue. The two duplicate kinds
-            # share one reason_code and are told apart here: this copy is redundant because
-            # the document is in Carmen already, which is nothing for anyone to do.
-            raise _Skip("duplicate_document", "already posted to Carmen")
+            # This *is* the queue's cell, not a tail on one (WITH_DETAIL in
+            # lib/reviewReasons), so it is capitalised and stands alone. The two duplicate
+            # kinds share one reason_code and are told apart here: this copy is redundant
+            # because the document is in Carmen already, which is nothing for anyone to do.
+            raise _Skip("duplicate_document", "Already posted to Carmen")
 
         # `is_duplicate` above reads `credit_cards.submitted_at`, which stays NULL for the
         # whole time a document sits in the review queue. So a second copy — the bank
@@ -1051,7 +1052,7 @@ async def _run_document(
             # exists to prevent, not a second chance at anything.
             raise _Skip(
                 "duplicate_document",
-                "a copy is already waiting for review",
+                "A copy is already waiting for review",
                 reviewable=False,
             )
 
@@ -1275,6 +1276,12 @@ async def _post_input_tax(
 ) -> str | None:
     """File the VAT the bank charged. Returns a note to keep on the ledger, or None.
 
+    **One prefix, "Input tax not recorded", shared with `build_input_tax_payload`'s own skip
+    reasons.** The two halves used to disagree ("JV posted; input tax not recorded: …" here,
+    "input tax skipped: …" there) and both land in the same cell, appended to a phrase that
+    has already said the JV posted — so the old head restated the row and the reader had two
+    spellings of one outcome to learn.
+
     Never raises. The JV it follows is already in Carmen's books, so the only useful
     answers here are "done" and "someone needs to add this by hand" — turning a
     failure into an exception would mark a document Carmen has already accepted as
@@ -1312,12 +1319,13 @@ async def _post_input_tax(
         result = await post_input_tax(payload, carmen_token)
     except Exception as exc:
         logger.exception("[email] Input tax failed for %s", extracted.doc_no)
-        return f"JV posted; input tax not recorded: {exc}"
+        return f"Input tax not recorded: {exc}"
 
     if not result or result.get("Code", -1) != 0:
         message = _carmen_verdict(result)
         logger.error("[email] Input tax rejected for %s: %s", extracted.doc_no, message)
-        return f"JV posted; input tax not recorded: {message}"
+        # Em dash, not a colon: `message` is `_carmen_verdict` and already opens "Carmen:".
+        return f"Input tax not recorded — {message}"
 
     logger.info("[email] Input tax recorded for %s", extracted.doc_no)
     return None

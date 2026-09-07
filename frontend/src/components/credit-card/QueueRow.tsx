@@ -1,7 +1,7 @@
 import { ExternalLink } from 'lucide-react'
 import { useT } from '../../i18n/LanguageContext'
 import { glFieldLabel, glFieldList } from '../../lib/glFieldLabels'
-import { FIX, REASON_KEY, WITH_DETAIL } from '../../lib/reviewReasons'
+import { FIX, stopText } from '../../lib/reviewReasons'
 import { getCarmenUrl } from '../../lib/url'
 import type { ReviewDocument } from '../../lib/api/emailReview'
 import type { TKey } from '../../i18n/dict'
@@ -77,7 +77,7 @@ export default function QueueRow({ row, onOpen }: Props) {
   // Order is the order the reader asks: what state → which document → why → when → where it
   // went → what to press. The two narrow ones sit at the right edge, where JV's column of
   // em dashes costs least. Everything not given a width in review-queue.css — Document and
-  // Message — splits the rest, because those are the only cells that were truncating.
+  // Detail — splits the rest, because those are the only cells that were truncating.
   return (
     <tr className="rq-row">
       <td className="rq-c-status" data-label={t('review.colStatus')}>
@@ -91,7 +91,7 @@ export default function QueueRow({ row, onOpen }: Props) {
         {/* No provenance marker here. It was a 6.5rem "Source" column, then a 12px envelope
             on this line, and both said the same one word on every row of two chips out of
             three — manual scans only exist as `posted` (MANUAL_FILTERS). On the one chip
-            where the two do mix, the Message column already says which in a sentence
+            where the two do mix, the Detail column already says which in a sentence
             ("scanned and posted by hand" vs "posted automatically"), so the glyph was
             unreadable where it was needed and constant where it was not. */}
         {/* The filename, and nothing appended to it. The gross used to ride here on pending
@@ -136,7 +136,7 @@ export default function QueueRow({ row, onOpen }: Props) {
  *
  * A resolved row has no `review_payload` left — `_finish` clears it on every terminal
  * transition — so a "View" button on one would open nothing. Its story is already in the
- * Message column.
+ * Detail column.
  */
 function RowAction({ row, onOpen }: Props) {
   const { t } = useT()
@@ -178,7 +178,7 @@ function RowAction({ row, onOpen }: Props) {
   // **A row the pipeline stopped goes straight to its repair, on every chip.**
   //
   // §16 put this behind a `Details` dialog, which for these rows held: the sentence the
-  // Message column beside it already prints (`stopText` is shared, so it is the same
+  // Detail column beside it already prints (`stopText` is shared, so it is the same
   // string), the filename the Document column already prints, and a dismiss. Nothing else —
   // a pre-charge skip has no `review_payload`, so there is no document to detail. Two
   // presses to reach a link, with a restatement in between.
@@ -193,26 +193,6 @@ function RowAction({ row, onOpen }: Props) {
   )
 }
 
-/**
- * What a row that did not post says about itself, in one sentence.
- *
- * Shared by the Message column and the dialog above it, because the two must not drift: a
- * reviewer opening a row is checking the sentence they just read, and a dialog that
- * paraphrased it would read as a second, different finding.
- *
- * The detail *replaces* the phrase, never joins it. Printing both gave every one of these
- * rows a vacuous head — "duplicate — a copy is already waiting for review" — which says the
- * same thing twice and makes the reader read past the first half to reach the part that
- * differs. The phrase is what stands in when there is no detail (a legacy row, or a Carmen
- * refusal with an empty body).
- */
-function stopText(row: ReviewDocument, t: (k: TKey) => string): string {
-  const detail = row.error_message?.trim()
-  if (detail && WITH_DETAIL.has(row.reason_code ?? '')) return detail
-  const key = row.reason_code ? REASON_KEY[row.reason_code] : undefined
-  return key ? t(key) : row.reason_code || t('review.rcUnknown')
-}
-
 /** Why this row might need you (while pending), or what happened to it (once resolved). */
 function Message({ row, pending }: { row: ReviewDocument; pending: boolean }) {
   const { t } = useT()
@@ -223,11 +203,14 @@ function Message({ row, pending }: { row: ReviewDocument; pending: boolean }) {
   // answers "why this got no further", which is a stronger claim on the reviewer's time.
   // Amber, not rose: unlike the resolved rows wearing these same words, this one is still
   // open and still postable.
+  //
+  // The same `stopText` the resolved rows use, and it has to be. Printing the phrase alone
+  // here put Carmen's actual verdict on the dead row and hid it on the live one — backwards,
+  // since the pending row is the only one anybody can still act on.
   if (pending && row.reason_code) {
-    const key = REASON_KEY[row.reason_code]
     return (
       <span className="rq-reason rq-reason--warn" title={row.error_message || undefined}>
-        {key ? t(key) : row.reason_code}
+        {stopText(row, t)}
       </span>
     )
   }
@@ -270,8 +253,17 @@ function Message({ row, pending }: { row: ReviewDocument; pending: boolean }) {
   // Claimed and never finished. It has no reason_code to fall back on, and the generic
   // "no reason recorded" said the one thing that is not true about it: something did
   // happen, and it stopped halfway.
+  //
+  // The title carries the half the cell has no room for and the reader cannot infer: this
+  // one is never picked up again. `_claim` dedupes on (message, attachment) and returns
+  // None on the constraint hit, so no later poll retries it — an amber pill on a row that
+  // will sit there for ever otherwise reads as "still working on it".
   if (row.status === 'received') {
-    return <span className="rq-reason rq-reason--warn">{t('review.rcStuck')}</span>
+    return (
+      <span className="rq-reason rq-reason--warn" title={t('review.rcStuckHint')}>
+        {t('review.rcStuck')}
+      </span>
+    )
   }
 
   // One colour for everything under Not posted. Greying the duplicate was tried and

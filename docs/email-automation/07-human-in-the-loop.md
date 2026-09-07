@@ -1449,3 +1449,47 @@ logos and unreadable files are gone from both chips, and still in `All`.
   ringing on it. `today` and `all` hold them.
 - **Re-keying the `Skipped` pill.** Unchanged from §14: the chips are the reader's question,
   the pill is the record.
+
+---
+
+## §19 — One voice in the Detail column, one name for the feature (2026-09-07)
+
+A wording pass over every string the queue can print, read end to end for the first time.
+The column is fed from four places that had never been compared: `reasonFor`'s flag ladder,
+the `review.rc*` dictionary, `error_message` written by `email_ingest_service.py`, and
+`cc_input_tax.py`'s skip reasons. Three of the findings are defects, not taste.
+
+### The defects
+
+| | What it printed | Why it was wrong |
+|---|---|---|
+| **The dialog said it twice** | `already handled · already posted to Carmen`, and `Carmen refused it · Carmen: Period 2026-08 is closed` | `stopText` was written so the detail *replaces* the phrase — the vacuous head is named in its own docstring as the thing it removed. `ReviewDocument.tsx` had a second copy that appended unconditionally, and §13 made both codes park at `pending_review`, so the two now met on screen daily. `_carmen_verdict`'s "say it once" was being broken by the caller. |
+| **Two prefixes for one outcome** | `JV posted; input tax not recorded: input tax skipped: bank KTC has no registered tax id on file`, and `JV posted; input tax not recorded: Carmen: …` | `_post_input_tax` and `build_input_tax_payload` each invented a prefix for the note they both write to the same cell — and the cell is already prefixed by `Posted automatically ·`, so `JV posted;` restated the row it was appended to. |
+| **"Forwarding" named the wrong system** | `Forwarding is switched off right now.` | Step 3 of the settings screen uses that word for the rule the customer sets up in *their own* mailbox. The sentence sent a reader to Outlook to look for our switch. |
+
+### The decisions
+
+| # | Decision | Why |
+|---|---|---|
+| 89 | **`stopText` moves to `lib/reviewReasons.ts` and is the only thing that decides what a stopped row says** — the pending cell, the resolved cell and the dialog banner all call it. `full` is the single flag they differ on. | The invariant was already written down ("the two must not drift") and was already broken, because the rule lived in one screen's private helper. Two surfaces reading one module is what the module is for. |
+| 90 | **A pending row prints its detail, like a resolved one does.** | The phrase-only branch put Carmen's verdict on the dead row and hid it on the live one — backwards, since only the pending row can still be acted on. A reviewer could not triage the queue without opening each row. |
+| 91 | **The column is headed `Detail`, not `Message`.** | Every other header on the table names its content; this one named its medium. The cell is a reason while the row waits and an outcome once it resolves, and `Detail` is the word that covers both without promising either. English in both locales, like `Status` and `JV no.` |
+| 92 | **Sentence case on every phrase the column can print, backend details included.** | Five lowercase fragments, one capitalised phrase and two first-person sentences was four grammars in one scan. A reader's eye re-orients at each change, in the one column they are scanning to decide what to open. |
+| 93 | **A reason that carries a Fix button names the field on the screen that button opens.** `sender not on your list` → *Sender is not one of your email addresses* (settings: **Your email addresses**); `no rule matched this filename` → *No filename pattern matched* (**Filename patterns**); `the Carmen connection has expired` → *The Carmen posting credential is no longer accepted* (**Posting credential**). | "your list", "rule" and "connection" were our nouns for things the customer's screen calls something else, so following the button landed them looking for a field that was not there. The third also drops a claim we cannot make: a revoked token and a lapsed one write the same row, and only one expired. |
+| 94 | **One name — AI JV Automation.** The settings heading, the `ingest_paused` note, the two enable-blocker messages and the three bell reasons all use it; `forwarding` reverts to meaning only the customer's own mailbox rule. | Four names for one feature across the surfaces that hand off to each other. A reader cannot tell whether "Email Automation", "AI JV Automation", "Automation settings" and "forwarding" are one thing or four, and the messages that name it are exactly the ones that send them to another screen. |
+| 95 | **The `Unfinished` row says on its title that nothing will retry it.** | `_claim` dedupes on (message, attachment) and returns `None` on the constraint hit, so a `received` row is never picked up again. An amber pill and "we started reading this and did not finish" read as work in progress; the row had been terminal all along and said so nowhere. |
+
+### Considered and not done
+
+- **Merging `review.rc*` into `notif.reason.*`.** The bell has room for the fix instruction
+  and a queue cell does not, so two lengths is correct. What was wrong was the vocabulary —
+  `carmen_rejected` read *declined* in one and *refused* in the other — and that is fixed
+  without merging. The two blocks now carry a comment naming each other.
+- **Rewriting the column into full sentences.** It is the narrowest thing on the table
+  fighting Document for width; sentences would ellipsize and push the answer into a tooltip,
+  which is the problem #90 just fixed.
+- **Renaming `review.colMessage` / the `Message` component / `.rq-c-msg`.** Identifiers, not
+  copy. Churn across four files for nothing a reader sees.
+- **Retiring `review.rcMappingIncomplete`.** Nothing has raised `mapping_incomplete` since
+  §15 made the auto-post gate the flag list, but legacy rows still print it and its `FIX`
+  entry is the only route to `#/CreditCardOCR/mapping`.

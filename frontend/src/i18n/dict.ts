@@ -795,14 +795,17 @@ const en = {
     'Fill in the vendor name and tax ID under Show details, or untick the input tax record',
   'review.loadingDocument': 'Loading the document',
   'review.ruleSaveFailed': 'The GL rule could not be saved, so nothing was posted: {reason}',
-  'review.reasonMissingMapping': 'mapping missing',
-  'review.reasonUnbalanced': 'amounts do not reconcile',
+  // Sentence case on every phrase this column can print, including the ones that arrive
+  // from the backend. Five lowercase fragments, one capitalised phrase and two first-person
+  // sentences was four grammars in one scan, and the eye re-orients at each change.
+  'review.reasonMissingMapping': 'Mapping missing',
+  'review.reasonUnbalanced': 'Amounts do not reconcile',
   // "AI suggested", not "guessed": every document that needs a rule the BU has never set
   // goes through the suggester before it reaches this queue, so what the reviewer is being
   // shown is a proposal to check — the fields are named after the colon — and not a gap.
   'review.reasonGuessed': 'AI suggested mapping',
-  'review.reasonDocNoMissing': 'no document number',
-  'review.reasonWarnings': 'extraction warnings',
+  'review.reasonDocNoMissing': 'No document number',
+  'review.reasonWarnings': 'Extraction warnings',
   // The reviewer's next move, not the absence of a problem. "nothing flagged" named an
   // internal concept (the ReviewFlag values) and left a clerk to work out that the row was
   // fine. It is also the sentence auto-post acts on: an empty flag list is what posts
@@ -836,7 +839,10 @@ const en = {
   'review.introTitle': 'Let statements post themselves',
   'review.introBody':
     'Forward a bank statement to this address. We read it, map it to your GL, and queue it here. Nothing reaches Carmen until you approve it.',
-  'review.introSwitchedOff': 'Forwarding is switched off right now.',
+  // Named, not described as "forwarding". Step 3 of the settings screen uses that word for
+  // the rule the customer sets up in their *own* mailbox, so "Forwarding is switched off"
+  // read as "go and look in Outlook" — a different switch in a different system.
+  'review.introSwitchedOff': 'AI JV Automation is switched off right now.',
   'review.introNotEntitled': 'An active package is needed before an address can be issued.',
   'review.copyAddress': 'Copy address',
   'review.addressCopied': 'Address copied',
@@ -844,7 +850,9 @@ const en = {
   'review.step1': 'Forward it',
   'review.step2': 'We read it',
   'review.step3': 'You approve',
-  'review.openSettings': 'Open email settings',
+  // The destination is titled AI JV Automation, and the gear beside this one already says
+  // "Automation settings". "Open email settings" was a third name for one screen.
+  'review.openSettings': 'Open automation settings',
   'review.errorTitle': 'Could not load the queue',
   'review.errorBody': 'The list could not be fetched. Nothing has been lost - try again.',
   'review.retry': 'Try again',
@@ -872,7 +880,10 @@ const en = {
   'review.colReceived': 'Received',
   'review.colJv': 'JV no.',
   'review.colStatus': 'Status',
-  'review.colMessage': 'Message',
+  // Not "Message". Every other header on this table names its content; this one named its
+  // medium, and the cell under it is a reason while the row waits and an outcome once it
+  // resolves. "Detail" is the word that covers both without promising either.
+  'review.colMessage': 'Detail',
   'review.colActions': 'Actions',
   'review.statusReview': 'Review',
   'review.statusSuccess': 'Success',
@@ -901,44 +912,55 @@ const en = {
   // "reviewed and", because that is what the name is evidence of: this document stopped at
   // the queue and a person read it before it went. Its sibling below says "scanned and" for
   // the same reason — each names the work the person actually did, not just the posting.
-  'review.postedBy': 'reviewed and posted by {name}',
-  'review.postedAutomatically': 'posted automatically',
+  'review.postedBy': 'Reviewed and posted by {name}',
+  'review.postedAutomatically': 'Posted automatically',
   // Named wherever the session that ran the scan can still be resolved. "by hand" answers
   // how, which the reader can already see from the Source icon; the name answers who, which
   // is the part they were reading the row for.
-  'review.postedManuallyBy': 'scanned and posted by {name}',
+  'review.postedManuallyBy': 'Scanned and posted by {name}',
   // The fallback, and it has to exist: the name comes from `ocr_sessions`, not a stored
   // column, so it is genuinely gone once that session is scrubbed. Vaguer than a name and
   // far better than a raw user id.
-  'review.postedManually': 'scanned and posted by hand',
+  'review.postedManually': 'Scanned and posted by hand',
   // Two forms, because the reason is optional and the one-form version printed the word
   // twice: `{reason}` was fed the `rejected_by_reviewer` phrase rather than what the
   // reviewer typed, so every rejection read "rejected by somchai - rejected" and the words
   // they actually left were reachable only by hovering the cell.
-  'review.rejectedBy': 'reviewed and rejected by {name}',
-  'review.rejectedByWith': 'reviewed and rejected by {name}: {reason}',
-  'review.rcSenderNotAllowed': 'sender not on your list',
-  'review.rcNoRuleMatch': 'no rule matched this filename',
-  'review.rcUnsupported': 'file type we cannot read',
-  'review.rcUnreadable': 'could not read the document',
+  'review.rejectedBy': 'Reviewed and rejected by {name}',
+  'review.rejectedByWith': 'Reviewed and rejected by {name}: {reason}',
+  // Each of the three that carries a Fix button names the field on the screen that button
+  // opens. "your list" / "rule" / "connection" were our nouns; the settings screen offers
+  // *Your email addresses*, *Filename patterns* and *Posting credential*, so a reader who
+  // followed the button arrived looking for something that was not there.
+  'review.rcSenderNotAllowed': 'Sender is not one of your email addresses',
+  'review.rcNoRuleMatch': 'No filename pattern matched',
+  'review.rcUnsupported': 'We cannot read this file type',
+  'review.rcUnreadable': 'Could not read the document',
   'review.rcWrongPassword': 'PDF password did not work',
   // Not "belongs to another company". A BU's register holds an array of tax IDs, so a
   // document carrying one that is not in it has not been proven to belong to anyone else —
   // it just did not match. The claim the row can actually support is the weaker one, and
   // the number itself rides in on `error_message` (see WITH_DETAIL in lib/reviewReasons).
-  'review.rcTaxIdMismatch': 'registered Tax ID does not match the document',
+  'review.rcTaxIdMismatch': 'Registered Tax ID does not match the document',
   // The fallback only. A live row prints its own detail instead — "already posted to
   // Carmen" or "a copy is already waiting for review" — because those are two situations
   // with two different next moves and one phrase could only be vague about both. This is
   // what a row written before those details existed still says.
-  'review.rcDuplicate': 'already handled',
+  'review.rcDuplicate': 'Already handled',
   'review.rcMappingIncomplete': 'GL mapping missing',
   'review.rcCarmenRejected': 'Carmen refused it',
-  'review.rcCarmenUnauthorized': 'the Carmen connection has expired',
-  'review.rcIngestPaused': 'arrived while forwarding was off',
-  'review.rcRejectedByReviewer': 'rejected',
-  'review.rcUnknown': 'no reason recorded',
-  'review.rcStuck': 'we started reading this and did not finish',
+  // Names the field that fixes it, and drops a claim we cannot make: a revoked token and a
+  // lapsed one write the same row, and only one of them expired.
+  'review.rcCarmenUnauthorized': 'The Carmen posting credential is no longer accepted',
+  'review.rcIngestPaused': 'Arrived while AI JV Automation was off',
+  'review.rcRejectedByReviewer': 'Rejected',
+  'review.rcUnknown': 'No reason recorded',
+  'review.rcStuck': 'We started reading this and stopped',
+  // On the cell's title, because it is the half a reader cannot infer and the column has no
+  // width for. `_claim` dedupes on (message, attachment) and returns None on the constraint
+  // hit, so nothing ever retries one of these — an amber pill alone reads as "in progress".
+  'review.rcStuckHint':
+    'This one will not be picked up again. Forward it again if it never reached Carmen.',
   'review.chipAttention': '{count} need attention',
   'review.secTax': 'Input tax',
   'review.secTaxLabel': 'Post the input tax record',
@@ -980,18 +1002,23 @@ const en = {
   'notif.detail.openJv': 'Open JV in Carmen',
   'notif.detail.close': 'Close',
   // reason_code taxonomy — docs/email-automation/04-data-model.md
+  //
+  // The long form of `review.rc*`, which is the same taxonomy in the width a queue cell has.
+  // Two entries rather than one because the bell has room for the fix and the cell does not;
+  // what must not differ is the vocabulary — one verb and one noun per event, or the same
+  // document reads as two findings depending on where you met it.
   'notif.reason.taxIdMismatch': "The document's tax ID does not match this business unit.",
   'notif.reason.duplicateDocument': 'This document had already been posted.',
   'notif.reason.mappingIncomplete': 'GL mapping for this bank is still incomplete.',
   'notif.reason.unreadableDocument': 'The document could not be read.',
-  'notif.reason.carmenRejected': 'Carmen declined the journal voucher.',
+  'notif.reason.carmenRejected': 'Carmen refused the journal voucher.',
   'notif.reason.carmenUnauthorized':
-    'Carmen would not accept this business unit’s posting credential. The document is fine — the token needs to be set again in Email Automation settings.',
-  // The three a customer fixes themselves, in Email Automation settings.
+    'Carmen would not accept this business unit’s posting credential. The document is fine — the token needs to be set again in AI JV Automation settings.',
+  // The three a customer fixes themselves, in AI JV Automation settings.
   'notif.reason.wrongPdfPassword':
-    'This PDF is password-protected and the password saved for this bank did not open it. Update it in Email Automation settings and forward the mail again.',
+    'This PDF is password-protected and the password saved for this bank did not open it. Update it in AI JV Automation settings and forward the mail again.',
   'notif.reason.senderNotAllowed':
-    'The mail did not come from any address registered for this business unit. Add the sender in Email Automation settings and forward it again.',
+    'The mail did not come from any address registered for this business unit. Add the sender in AI JV Automation settings and forward it again.',
   'notif.reason.unsupportedAttachment':
     'This file type cannot be read. Forward the document as a PDF or an image.',
   'notif.reason.unknown': 'The document could not be processed.',
@@ -2383,7 +2410,7 @@ const th: Record<TKey, string> = {
   'review.introTitle': 'ให้ใบแจ้งหนี้ลงบัญชีเอง',
   'review.introBody':
     'ส่งต่อใบแจ้งหนี้ธนาคารมาที่อีเมลนี้ ระบบจะอ่าน จับคู่ผังบัญชี แล้วนำมารอที่นี่ ไม่มีอะไรถูกส่งเข้า Carmen จนกว่าคุณจะอนุมัติ',
-  'review.introSwitchedOff': 'ตอนนี้การส่งต่อถูกปิดอยู่',
+  'review.introSwitchedOff': 'ตอนนี้ AI JV Automation ถูกปิดอยู่',
   'review.introNotEntitled': 'ต้องมีแพ็กเกจที่ใช้งานอยู่ก่อน จึงจะออกอีเมลให้ได้',
   'review.copyAddress': 'คัดลอกอีเมล',
   'review.addressCopied': 'คัดลอกอีเมลแล้ว',
@@ -2391,7 +2418,7 @@ const th: Record<TKey, string> = {
   'review.step1': 'ส่งต่อมา',
   'review.step2': 'ระบบอ่าน',
   'review.step3': 'คุณอนุมัติ',
-  'review.openSettings': 'เปิดตั้งค่าอีเมล',
+  'review.openSettings': 'เปิดตั้งค่าระบบอัตโนมัติ',
   'review.errorTitle': 'โหลดรายการไม่สำเร็จ',
   'review.errorBody': 'ดึงรายการไม่ได้ ข้อมูลไม่หาย ลองอีกครั้ง',
   'review.retry': 'ลองอีกครั้ง',
@@ -2405,7 +2432,7 @@ const th: Record<TKey, string> = {
   'review.colReceived': 'Received',
   'review.colJv': 'JV no.',
   'review.colStatus': 'Status',
-  'review.colMessage': 'Message',
+  'review.colMessage': 'Detail',
   'review.colActions': 'Actions',
   'review.statusReview': 'รอตรวจ',
   'review.statusSuccess': 'สำเร็จ',
@@ -2425,20 +2452,22 @@ const th: Record<TKey, string> = {
   'review.postedManually': 'สแกนและโพสต์เอง',
   'review.rejectedBy': 'ตรวจสอบและปฏิเสธโดย {name}',
   'review.rejectedByWith': 'ตรวจสอบและปฏิเสธโดย {name}: {reason}',
-  'review.rcSenderNotAllowed': 'ผู้ส่งไม่อยู่ในรายชื่อ',
-  'review.rcNoRuleMatch': 'ไม่มีกฎที่ตรงกับชื่อไฟล์',
-  'review.rcUnsupported': 'ชนิดไฟล์ที่อ่านไม่ได้',
+  // Same rule as EN: each names the field on the settings screen its Fix button opens.
+  'review.rcSenderNotAllowed': 'ผู้ส่งไม่อยู่ในอีเมลของคุณ',
+  'review.rcNoRuleMatch': 'ไม่มีรูปแบบชื่อไฟล์ที่ตรงกัน',
+  'review.rcUnsupported': 'อ่านไฟล์ชนิดนี้ไม่ได้',
   'review.rcUnreadable': 'อ่านเอกสารไม่ได้',
   'review.rcWrongPassword': 'รหัสผ่าน PDF ไม่ถูกต้อง',
   'review.rcTaxIdMismatch': 'เลขผู้เสียภาษีที่ลงทะเบียนไว้ไม่ตรงกับในเอกสาร',
   'review.rcDuplicate': 'ทำรายการนี้ไปแล้ว',
   'review.rcMappingIncomplete': 'ยังไม่มีผังบัญชี',
   'review.rcCarmenRejected': 'Carmen ปฏิเสธ',
-  'review.rcCarmenUnauthorized': 'การเชื่อมต่อ Carmen หมดอายุ',
-  'review.rcIngestPaused': 'เข้ามาตอนที่ปิดการส่งต่ออยู่',
+  'review.rcCarmenUnauthorized': 'Carmen ไม่รับ token สำหรับส่งเอกสารแล้ว',
+  'review.rcIngestPaused': 'เข้ามาตอนที่ปิด AI JV Automation อยู่',
   'review.rcRejectedByReviewer': 'ถูกปฏิเสธ',
   'review.rcUnknown': 'ไม่มีการบันทึกเหตุผล',
-  'review.rcStuck': 'เริ่มอ่านแล้วแต่ทำไม่จบ',
+  'review.rcStuck': 'เริ่มอ่านแล้วแต่หยุดกลางทาง',
+  'review.rcStuckHint': 'รายการนี้จะไม่ถูกหยิบไปทำใหม่ ถ้ายังไม่ถึง Carmen ให้ส่งเมลเข้ามาอีกครั้ง',
   'review.chipAttention': 'มี {count} รายการผิดปกติ',
   'review.secTax': 'Input tax',
   'review.secTaxLabel': 'บันทึกรายการภาษีซื้อ',
@@ -2481,11 +2510,11 @@ const th: Record<TKey, string> = {
   'notif.reason.unreadableDocument': 'อ่านข้อมูลจากเอกสารนี้ไม่ได้',
   'notif.reason.carmenRejected': 'Carmen ปฏิเสธการบันทึกใบสำคัญ',
   'notif.reason.carmenUnauthorized':
-    'Carmen ไม่ยอมรับ token สำหรับส่งเอกสารของหน่วยธุรกิจนี้ ตัวเอกสารไม่มีปัญหา — ต้องตั้ง token ใหม่ในหน้าตั้งค่า Email Automation',
+    'Carmen ไม่ยอมรับ token สำหรับส่งเอกสารของหน่วยธุรกิจนี้ ตัวเอกสารไม่มีปัญหา — ต้องตั้ง token ใหม่ในหน้าตั้งค่า AI JV Automation',
   'notif.reason.wrongPdfPassword':
-    'ไฟล์ PDF นี้ตั้งรหัสผ่านไว้ และรหัสที่บันทึกไว้สำหรับธนาคารนี้เปิดไม่ได้ แก้รหัสในหน้าตั้งค่า Email Automation แล้วส่งเมลเข้ามาใหม่',
+    'ไฟล์ PDF นี้ตั้งรหัสผ่านไว้ และรหัสที่บันทึกไว้สำหรับธนาคารนี้เปิดไม่ได้ แก้รหัสในหน้าตั้งค่า AI JV Automation แล้วส่งเมลเข้ามาใหม่',
   'notif.reason.senderNotAllowed':
-    'เมลฉบับนี้ไม่ได้มาจากอีเมลที่ลงทะเบียนไว้กับหน่วยธุรกิจนี้ เพิ่มผู้ส่งในหน้าตั้งค่า Email Automation แล้วส่งเข้ามาใหม่',
+    'เมลฉบับนี้ไม่ได้มาจากอีเมลที่ลงทะเบียนไว้กับหน่วยธุรกิจนี้ เพิ่มผู้ส่งในหน้าตั้งค่า AI JV Automation แล้วส่งเข้ามาใหม่',
   'notif.reason.unsupportedAttachment':
     'ไฟล์ชนิดนี้อ่านไม่ได้ กรุณาส่งเอกสารเป็น PDF หรือไฟล์รูปภาพ',
   'notif.reason.unknown': 'ประมวลผลเอกสารนี้ไม่สำเร็จ',

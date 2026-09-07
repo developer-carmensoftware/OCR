@@ -2892,7 +2892,7 @@ async def test_a_failed_input_tax_still_leaves_the_document_posted():
     create a state with no valid next action."""
     row = _pending_row()
     db = _ReviewDB(row)
-    note = "JV posted; input tax not recorded: profile missing"
+    note = "Input tax not recorded: profile missing"
     with _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-3"}, tax_note=note):
         out = await ingest.approve_document(
             row.id,
