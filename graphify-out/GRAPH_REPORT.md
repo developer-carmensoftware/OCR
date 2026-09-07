@@ -1,7 +1,7 @@
 # Graph Report - OCR  (2026-09-07)
 
 ## Corpus Check
-- 297 files · ~237,086 words
+- 297 files · ~237,458 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `a85e6398`
+- Built from commit: `8c4e0f1a`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -26,7 +26,7 @@
 - useAPValidation.ts
 - fmt
 - APInvoice.tsx
-- PlanCard.tsx
+- Pricing.tsx
 - date.ts
 - useOcrWizard
 - banks.ts
@@ -48,7 +48,7 @@
 - ReviewQueue.tsx
 - ManualScan.tsx
 - TenantsPage.tsx
-- Pricing.tsx
+- OrderHistory.tsx
 - ExtractionsPage.tsx
 - Tooltip.tsx
 - useAPExtraction.ts
@@ -183,9 +183,9 @@ Nodes (13): AmountSummary(), AMOUNT_FIELDS, DetailTable(), formatAmount(), Props
 Cohesion: 0.19
 Nodes (12): APFieldMappingStep(), COLS, Props, REQUIRED_FIELDS, AP_STEPS, APFieldKey, APStep, DEFAULT_MAPPINGS (+4 more)
 
-### Community 11 - "PlanCard.tsx"
-Cohesion: 0.17
-Nodes (16): PackList(), Props, EnterpriseCard(), _growthIcon, PlanCard(), PlanCardProps, TIER_ICONS, ENTERPRISE (+8 more)
+### Community 11 - "Pricing.tsx"
+Cohesion: 0.12
+Nodes (24): PackList(), Props, EnterpriseCard(), _growthIcon, PlanCard(), PlanCardProps, TIER_ICONS, ENTERPRISE (+16 more)
 
 ### Community 12 - "date.ts"
 Cohesion: 0.26
@@ -240,11 +240,11 @@ Cohesion: 0.06
 Nodes (57): ConsentGate(), Props, countdown(), EMPTY, fmtHM(), fmtICT(), isAdminRoute(), MaintenanceGate() (+49 more)
 
 ### Community 25 - "useT"
-Cohesion: 0.13
-Nodes (20): MAP, OrderStatusBadge(), DEMO_BUYER, DEMO_ORDER, DEMO_PACKS, DEMO_PAYMENT_INFO, DEMO_PLANS, DEMO_PROFORMA (+12 more)
+Cohesion: 0.15
+Nodes (17): DEMO_BUYER, DEMO_ORDER, DEMO_PACKS, DEMO_PAYMENT_INFO, DEMO_PLANS, DEMO_PROFORMA, DEMO_SLIP, noop() (+9 more)
 
 ### Community 26 - "CheckoutFlow.tsx"
-Cohesion: 0.17
+Cohesion: 0.16
 Nodes (12): DEFAULT_STEPS, Props, Step, StepWizard(), CheckoutFlow(), itemName(), REQUIRED_BUYER_KEYS, SOURCE_KEY (+4 more)
 
 ### Community 27 - "QueueSettings.tsx"
@@ -271,9 +271,9 @@ Nodes (14): FormActions(), Props, BANK_LOGOS, BankDetectionBanner(), Props, Extr
 Cohesion: 0.22
 Nodes (10): KPICard(), KPICardProps, fetchTenantDetail(), TenantDetail, TenantRow, funnel(), median(), quotaTier() (+2 more)
 
-### Community 33 - "Pricing.tsx"
-Cohesion: 0.14
-Nodes (19): AppHeader(), Pager(), UsageIndicator(), PendingOrderBanner(), useOrderHistory(), ActiveSubscription, getUsage(), getStoredToken() (+11 more)
+### Community 33 - "OrderHistory.tsx"
+Cohesion: 0.24
+Nodes (11): AppHeader(), Pager(), UsageIndicator(), PendingOrderBanner(), useOrderHistory(), getUsage(), getStoredToken(), getPaymentInfo() (+3 more)
 
 ### Community 34 - "ExtractionsPage.tsx"
 Cohesion: 0.21
@@ -336,8 +336,8 @@ Cohesion: 0.18
 Nodes (6): BENT, EXTRACTED, LINE, onClose, onDone, TWO_VISA
 
 ### Community 52 - "credits.ts"
-Cohesion: 0.13
-Nodes (25): Props, CheckoutPhase, CheckoutSession, clearPersistedCheckout(), EMPTY_BUYER, loadPersistedCheckout(), persist(), readPersisted() (+17 more)
+Cohesion: 0.11
+Nodes (28): Props, MAP, OrderStatusBadge(), CheckoutPhase, CheckoutSession, clearPersistedCheckout(), EMPTY_BUYER, loadPersistedCheckout() (+20 more)
 
 ### Community 53 - "OrderTable.tsx"
 Cohesion: 0.21
@@ -475,9 +475,9 @@ Nodes (11): AccountMappingTable(), GLAccount, MainMappingTable(), PaymentTypeMod
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `useT()` connect `useT` to `CustomModal.tsx`, `AccountingReview.tsx`, `NotificationBell.tsx`, `OrderActions.tsx`, `CreditsPage.tsx`, `FeatureFlows.tsx`, `fmt`, `APInvoice.tsx`, `PlanCard.tsx`, `date.ts`, `useOcrWizard`, `APAmountSummary.tsx`, `main.tsx`, `QueueRow.tsx`, `getCarmenUrl`, `APReviewStep.tsx`, `emailAutomation.ts`, `CheckoutFlow.tsx`, `QueueSettings.tsx`, `adminClient.ts`, `EmailAutomationPage.tsx`, `ReviewQueue.tsx`, `ManualScan.tsx`, `TenantsPage.tsx`, `Pricing.tsx`, `ExtractionsPage.tsx`, `useAPExtraction.ts`, `OrderWorkspace.tsx`, `useAPInvoice.ts`, `client.ts`, `MainMappingTable.tsx`, `DataTable.tsx`, `credits.ts`, `OrderTable.tsx`, `PendingOrderBanner.tsx`, `Pager.tsx`, `LanguageContext.tsx`, `JvEditor.tsx`, `DocumentPreview.tsx`, `parseNum`, `ReviewDocument.tsx`, `TKey`, `dict.ts`, `APAccountMappingStep.tsx`, `useMapping.ts`, `InputTaxReconciliation.tsx`, `AccountMappingTable.tsx`?**
+- **Why does `useT()` connect `useT` to `CustomModal.tsx`, `AccountingReview.tsx`, `NotificationBell.tsx`, `OrderActions.tsx`, `CreditsPage.tsx`, `FeatureFlows.tsx`, `fmt`, `APInvoice.tsx`, `Pricing.tsx`, `date.ts`, `useOcrWizard`, `APAmountSummary.tsx`, `main.tsx`, `QueueRow.tsx`, `getCarmenUrl`, `APReviewStep.tsx`, `emailAutomation.ts`, `CheckoutFlow.tsx`, `QueueSettings.tsx`, `adminClient.ts`, `EmailAutomationPage.tsx`, `ReviewQueue.tsx`, `ManualScan.tsx`, `TenantsPage.tsx`, `OrderHistory.tsx`, `ExtractionsPage.tsx`, `useAPExtraction.ts`, `OrderWorkspace.tsx`, `useAPInvoice.ts`, `client.ts`, `MainMappingTable.tsx`, `DataTable.tsx`, `credits.ts`, `OrderTable.tsx`, `PendingOrderBanner.tsx`, `Pager.tsx`, `LanguageContext.tsx`, `JvEditor.tsx`, `DocumentPreview.tsx`, `parseNum`, `ReviewDocument.tsx`, `TKey`, `dict.ts`, `APAccountMappingStep.tsx`, `useMapping.ts`, `InputTaxReconciliation.tsx`, `AccountMappingTable.tsx`?**
   _High betweenness centrality (0.243) - this node is a cross-community bridge._
-- **Why does `apiFetch` connect `apiFetch` to `emailReview.ts`, `NotificationBell.tsx`, `appKey`, `useOcrWizard`, `emailAutomation.ts`, `CheckoutFlow.tsx`, `QueueSettings.tsx`, `useAPExtraction.ts`, `api.ts`, `useAPInvoice.ts`, `client.ts`, `useAPExtraction.test.ts`, `ocr.ts`, `credits.ts`, `PendingOrderBanner.tsx`, `config.ts`, `JvEditor.tsx`, `ReviewDocument.tsx`, `useMapping.ts`, `InputTaxReconciliation.tsx`?**
+- **Why does `apiFetch` connect `apiFetch` to `emailReview.ts`, `NotificationBell.tsx`, `appKey`, `useOcrWizard`, `emailAutomation.ts`, `QueueSettings.tsx`, `OrderHistory.tsx`, `useAPExtraction.ts`, `api.ts`, `useAPInvoice.ts`, `client.ts`, `useAPExtraction.test.ts`, `ocr.ts`, `credits.ts`, `PendingOrderBanner.tsx`, `config.ts`, `JvEditor.tsx`, `ReviewDocument.tsx`, `useMapping.ts`, `InputTaxReconciliation.tsx`?**
   _High betweenness centrality (0.019) - this node is a cross-community bridge._
 - **Why does `useOcrWizard()` connect `useOcrWizard` to `ocr.ts`, `useAPInvoice.ts`, `useAPExtraction.ts`, `ManualScan.tsx`?**
   _High betweenness centrality (0.014) - this node is a cross-community bridge._
