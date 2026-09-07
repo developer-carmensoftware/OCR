@@ -11,6 +11,7 @@ import { appKey, readAccountingConfig, writeAccountingConfig } from '../../lib/s
 import type { ModalConfig } from '../useModal'
 import type { BankCode } from '../../types/api'
 import { normalizeDateStringToCE } from '../../lib/date'
+import type { ExtractionWarning } from '../../lib/reviewReasons'
 
 export interface HeaderData {
   DateProcessed: string
@@ -54,7 +55,7 @@ export interface OcrExtractionHook {
   cardId: string | null
   headerData: HeaderData | Record<string, string>
   details: DetailRow[]
-  warnings: string[]
+  warnings: (ExtractionWarning | string)[]
   originalDetails: DetailRow[]
   originalHeader: HeaderData | Record<string, string>
   processFile: (filesToProcess: File[], pdfPassword?: string) => Promise<void>
@@ -82,7 +83,7 @@ export interface OcrDraftState {
   cardId: string | null
   headerData: Record<string, string>
   details: DetailRow[]
-  warnings: string[]
+  warnings: (ExtractionWarning | string)[]
   originalHeader: Record<string, string>
   originalDetails: DetailRow[]
 }
@@ -164,7 +165,7 @@ export function useOcrExtraction({
   const [cardId, setCardId] = useState<string | null>(null)
   const [headerData, setHeaderData] = useState<Record<string, string>>({})
   const [details, setDetails] = useState<DetailRow[]>([])
-  const [warnings, setWarnings] = useState<string[]>([])
+  const [warnings, setWarnings] = useState<(ExtractionWarning | string)[]>([])
   const [originalDetails, setOriginalDetails] = useState<DetailRow[]>([])
   const [originalHeader, setOriginalHeader] = useState<Record<string, string>>({})
 
@@ -188,7 +189,7 @@ export function useOcrExtraction({
       rawDetails.length ? rawDetails : [{ ...EMPTY_DETAIL_ROW }]
     ).map(row => ({ ...EMPTY_DETAIL_ROW, ...row, _uid: crypto.randomUUID() }))
     setDetails(detailsList)
-    setWarnings((ext.warnings as string[] | undefined) || [])
+    setWarnings((ext.warnings as (ExtractionWarning | string)[] | undefined) || [])
     setOriginalDetails(structuredClone(detailsList))
     setOriginalHeader(structuredClone(header))
     persistScanForMapping(ext, detailsList)

@@ -131,15 +131,25 @@ async def main() -> int:
                 "delete from email_documents where id = any($1::uuid[])", [r["id"] for r in rows]
             )
             print(f"  email_documents  {deleted}")
-            if doc_nos:
+            # By task, then by number. **The task is the reliable key**: `_mark_submitted`
+            # stamps the `credit_cards` row by `extracted.id`, so a reviewer who corrects the
+            # document number before approving leaves the business row holding the number as
+            # extracted while the ledger row keeps the one they typed. Matching on doc_no
+            # alone therefore missed exactly the documents a human had touched — they stayed
+            # `submitted_at IS NOT NULL`, and the next scan of the same statement was refused
+            # as a duplicate with nothing on screen to explain why (2026-09-07).
+            task_ids = [r["task_id"] for r in rows if r["task_id"]]
+            if task_ids or doc_nos:
                 # Soft delete: the duplicate check filters `deleted_at is null`, and this
                 # is a business table — see CLAUDE.md.
                 undup = await conn.execute(
                     "update credit_cards set deleted_at = now(), deleted_by = 'reset_email_test',"
-                    " updated_at = now() where doc_no = any($1::text[]) and deleted_at is null",
+                    " updated_at = now() where deleted_at is null"
+                    " and (task_id = any($1::uuid[]) or doc_no = any($2::text[]))",
+                    task_ids,
                     doc_nos,
                 )
-                print(f"  credit_cards     {undup}  ({', '.join(doc_nos)})")
+                print(f"  credit_cards     {undup}  ({', '.join(doc_nos) or '-'})")
             if give_back:
                 for tenant_id in {r["tenant_id"] for r in rows}:
                     await conn.execute(
