@@ -1,7 +1,7 @@
 # Graph Report - OCR  (2026-09-07)
 
 ## Corpus Check
-- 297 files · ~237,458 words
+- 297 files · ~237,890 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `8c4e0f1a`
+- Built from commit: `f0132164`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -272,8 +272,8 @@ Cohesion: 0.22
 Nodes (10): KPICard(), KPICardProps, fetchTenantDetail(), TenantDetail, TenantRow, funnel(), median(), quotaTier() (+2 more)
 
 ### Community 33 - "OrderHistory.tsx"
-Cohesion: 0.24
-Nodes (11): AppHeader(), Pager(), UsageIndicator(), PendingOrderBanner(), useOrderHistory(), getUsage(), getStoredToken(), getPaymentInfo() (+3 more)
+Cohesion: 0.18
+Nodes (14): AppHeader(), Pager(), UsageIndicator(), MAP, OrderStatusBadge(), PendingOrderBanner(), useOrderHistory(), getUsage() (+6 more)
 
 ### Community 34 - "ExtractionsPage.tsx"
 Cohesion: 0.21
@@ -336,16 +336,16 @@ Cohesion: 0.18
 Nodes (6): BENT, EXTRACTED, LINE, onClose, onDone, TWO_VISA
 
 ### Community 52 - "credits.ts"
-Cohesion: 0.11
-Nodes (28): Props, MAP, OrderStatusBadge(), CheckoutPhase, CheckoutSession, clearPersistedCheckout(), EMPTY_BUYER, loadPersistedCheckout() (+20 more)
+Cohesion: 0.12
+Nodes (27): Props, RowState, CheckoutPhase, CheckoutSession, clearPersistedCheckout(), EMPTY_BUYER, loadPersistedCheckout(), persist() (+19 more)
 
 ### Community 53 - "OrderTable.tsx"
 Cohesion: 0.21
 Nodes (12): BADGE_TABS, BATCH_ACTIONS_FOR_TAB, BATCH_BUTTON, BatchAction, companyOf(), isCheckable(), OrderTable(), paymentDate() (+4 more)
 
 ### Community 54 - "PendingOrderBanner.tsx"
-Cohesion: 0.13
-Nodes (28): OrderKpiCards(), VerifyFacts(), OrderRow(), RowAction, rowInitial, rowReducer(), RowState, expiryDate() (+20 more)
+Cohesion: 0.14
+Nodes (26): OrderKpiCards(), VerifyFacts(), OrderRow(), RowAction, rowInitial, rowReducer(), expiryDate(), num() (+18 more)
 
 ### Community 55 - "Pager.tsx"
 Cohesion: 0.29
