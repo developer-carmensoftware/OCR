@@ -509,7 +509,22 @@ def _normalize_fee_invoice(extracted: ExtractedCreditCardData, bank_code: str) -
                 anchor = round(footer_fee + vat, 2)
             if anchor is None and sub is not None:
                 anchor = round(sub + vat, 2)
-            if anchor is not None and abs(fee_sum + vat - anchor) > _RECON_TOL:
+            # The anchor is read by label and taken from the first non-zero column on that
+            # row (`_labeled_footer_value`), so on a layout whose Net and Commission arrive
+            # swapped — GHL, which this file's header names — the figure labelled Grand
+            # Total is the fee BEFORE VAT. Read literally it then disagrees with Σ fee + VAT
+            # by exactly the VAT, on every document that bank ever sends: 39,653.73 against
+            # a "printed" 37,059.56, off by 2,594.17 (found 2026-09-07, doc M202605-057161).
+            #
+            # So interpret the number before believing it, the way everything else in this
+            # module does rather than trusting which column a figure landed in. It
+            # corroborates the lines if it equals EITHER reading — the grand total, or the
+            # sub-total the fee sum already is. Only a figure that is neither means a line
+            # fee was genuinely misread, which is the one thing this check exists to catch.
+            reconciles = anchor is not None and (
+                abs(fee_sum + vat - anchor) <= _RECON_TOL or abs(fee_sum - anchor) <= _RECON_TOL
+            )
+            if anchor is not None and not reconciles:
                 extracted.warnings.append(
                     _recon_mismatch(round(fee_sum + vat, 2), round(anchor, 2))
                 )

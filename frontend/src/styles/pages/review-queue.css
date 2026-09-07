@@ -1275,6 +1275,16 @@
   font-family: inherit;
 }
 
+/* Scope, not a problem — quieter than the AI badge it sits beside, which is the thing
+   actually asking to be checked. Outline rather than fill so two tags on one row read as
+   one statement and its footnote. */
+.jv-tag--wide {
+  border: 1px solid var(--border-raised, var(--border));
+  color: var(--text-3, var(--text-2, var(--text)));
+  cursor: help;
+  font-weight: 600;
+}
+
 .jv-tag--undo:hover {
   border-color: var(--primary);
   color: var(--primary);

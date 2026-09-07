@@ -60,6 +60,12 @@ interface Props {
  *  drops a credit leg and shifts every index after it. */
 const rowId = (r: JvRow) => `${r.key}:${r.lines.join(',')}`
 
+/** The three rules that are **not** per bank. A payment type belongs to the issuer that
+ *  prints it, but commission, input tax and the bank account are one answer for the whole
+ *  business unit — so confirming one of these here writes it for every bank the BU
+ *  receives, not just the one on screen. `_FIXED_TYPES` server-side. */
+const BU_WIDE = ['commission', 'tax', 'net']
+
 /**
  * The JV as it will post, with every GL rule editable in place.
  *
@@ -110,7 +116,7 @@ export default function JvEditor({
     const mappings = { ...((base.mappings || {}) as Record<string, FieldMapping>) }
     const paymentAmount = { ...((base.paymentAmount || {}) as Record<string, FieldMapping>) }
     for (const [key, value] of Object.entries(overrides)) {
-      if (key in mappings || ['commission', 'tax', 'net'].includes(key)) mappings[key] = value
+      if (key in mappings || BU_WIDE.includes(key)) mappings[key] = value
       else paymentAmount[key] = value
     }
     return { ...base, mappings, paymentAmount }
@@ -417,6 +423,18 @@ export default function JvEditor({
                       <span className="jv-tag jv-tag--ai" title={t('review.jvGuessedHint')}>
                         <Sparkles size={11} strokeWidth={2.25} aria-hidden="true" />
                         {t('review.jvGuessed')}
+                      </span>
+                    )}
+                    {/* Only while the value is still in play — a guess to confirm, or an
+                        edit not yet saved. On a rule the BU already settled this would be
+                        three tags of noise on every document; here it is the one thing the
+                        reviewer cannot see from the row, because the document in front of
+                        them names one bank and this answer will bind all of them. A PayPal
+                        invoice set this BU's `commission` to a department none of its other
+                        six banks had been suggested (2026-09-07). */}
+                    {first && BU_WIDE.includes(row.key) && (guessed || changed) && (
+                      <span className="jv-tag jv-tag--wide" title={t('review.jvAllBanksHint')}>
+                        {t('review.jvAllBanks')}
                       </span>
                     )}
                     {first && changed && (

@@ -831,9 +831,32 @@ def test_equal_fee_lines_not_mistaken_for_footer():
     assert [r.transaction for r in ext.details] == ["Fee A", "Fee B"]
 
 
+def test_a_grand_total_label_carrying_the_fee_is_not_a_mismatch():
+    """The GHL document, reduced (M202605-057161, found 2026-09-07).
+
+    `_labeled_footer_value` takes the first non-zero column on the row labelled GRAND TOTAL,
+    and GHL is the layout whose Net and Commission arrive swapped — so the "grand total" is
+    the fee before VAT. Compared literally it misses Σ fee + VAT by exactly the VAT, which
+    made every GHL invoice ever scanned carry a warning, park for review, and never
+    auto-post. The lines here are internally perfect: 37,059.56 + 2,594.17 = 39,653.73.
+    """
+    ext = _bay_extracted(
+        [
+            {"transaction": "TRANSACTION FEE", "commis_amt": "37,059.56"},
+            {"transaction": "GRAND TOTAL", "pay_amt": "37,059.56", "tax_amt": "2,594.17"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "GHL")
+    assert not any(w.code == "reconMismatch" for w in ext.warnings)
+
+
 def test_reconstructed_total_mismatch_warns():
     # B7: a misread line fee makes Σ fee + VAT drift from the printed grand total.
     # The VAT spread balances exactly, so only the recon cross-check catches it.
+    #
+    # Still warns after the sub-total reading was allowed above: 160.50 is neither
+    # Σ fee + VAT (150.50) nor Σ fee (140.00), and a figure that is neither is the one
+    # thing this check exists to catch.
     ext = _bay_extracted(
         [
             {"transaction": "Fee A", "commis_amt": "100.00"},

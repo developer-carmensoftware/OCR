@@ -805,6 +805,9 @@ const en = {
   'review.jvDeptFilter': '{count} accounts allowed for {dept}',
   'review.jvGuessed': 'AI',
   'review.jvGuessedHint': 'The AI chose this account when the document arrived. Check it.',
+  'review.jvAllBanks': 'Every bank',
+  'review.jvAllBanksHint':
+    'Commission, input tax and the bank account are one rule for this business unit — approving sets them for every bank, not just this one.',
   'review.jvUndo': 'Undo',
   'review.jvBalanced': 'Balanced',
   'review.jvImbalanced': 'Does not balance',
@@ -2421,6 +2424,9 @@ const th: Record<TKey, string> = {
   'review.jvDeptFilter': '{dept} ใช้ได้ {count} บัญชี',
   'review.jvGuessed': 'AI',
   'review.jvGuessedHint': 'AI เลือกบัญชีนี้ตอนเอกสารเข้ามา ช่วยตรวจด้วย',
+  'review.jvAllBanks': 'ทุกธนาคาร',
+  'review.jvAllBanksHint':
+    'ค่าคอมมิชชั่น ภาษีซื้อ และบัญชีธนาคาร เป็นกฎเดียวของหน่วยธุรกิจนี้ — กด Approve แล้วจะมีผลกับทุกธนาคาร ไม่ใช่เฉพาะใบนี้',
   'review.jvUndo': 'ย้อนกลับ',
   'review.jvBalanced': 'ยอดตรงกัน',
   'review.jvImbalanced': 'ยอดไม่ตรงกัน',

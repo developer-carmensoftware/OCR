@@ -557,6 +557,28 @@ describe('mapping in place', () => {
     expect(screen.getAllByText('AI')).toHaveLength(1)
   })
 
+  it('says when confirming a rule binds every bank, and only while it is in play', async () => {
+    // `tax` is BU-wide; `Visa` belongs to the issuer that prints it. The document in front
+    // of the reviewer names one bank, so nothing on the row says that approving this one
+    // writes the rule for the other six — which is how a PayPal invoice set this BU's
+    // commission to a department none of its other banks had been suggested (2026-09-07).
+    vi.mocked(api.getPending).mockResolvedValue(
+      detail({ flags: ['mapping_guessed'], guessed: ['tax'] })
+    )
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    expect(screen.getAllByText('Every bank')).toHaveLength(1)
+  })
+
+  it('stays quiet about scope on a rule the business unit already settled', async () => {
+    // Every document has a commission, a tax and a net row. A permanent tag on all three
+    // would be noise on every document forever; the point is the moment of decision.
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    expect(screen.queryByText('Every bank')).not.toBeInTheDocument()
+  })
+
   it("shows the AI's own pick in the picker, not an empty one", async () => {
     // Ingest stopped writing its suggestion to the BU's config, so the codes travel on the
     // ledger row instead. Without seeding them here the reviewer opens a document whose
