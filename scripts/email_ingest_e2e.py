@@ -44,7 +44,12 @@ load_dotenv(ROOT / "backend" / ".env")
 sys.path.insert(0, str(ROOT / "backend"))
 
 TENANT = "af0786cd-487d-4625-95fd-f2e75718447d"  # dev.carmen4.com / carmen
-OTHER_TENANT = "8111f7a9-d03c-4a11-b9a6-0a4f9a1d2b7d"  # …/carmencloud — entitled, unconfigured
+OTHER_TENANT = "328142eb-55fb-4477-a6f9-63a60cd272d4"  # …/demo — scratch, no settings row
+# Was carmencloud until 2026-09-07. That BU is configured now (its own tag, rules and
+# encrypted PDF passwords), and `teardown` deletes this row outright — which would have
+# released a live ingest tag and silently broken the customer-side Gmail forward. The
+# only requirement here is a second settings row claiming the same tax ID, so any BU
+# with no settings of its own does; the delete below is guarded as well.
 UNPAID_TENANT = "d1424ae3-da7b-4b7d-a51c-d217b64ed113"  # …/dev — no package
 TAG = "41645ee4"
 UNPAID_TAG = "e2eunpaid"
@@ -594,7 +599,10 @@ async def teardown() -> None:
     await set_auto_post(False)
     await set_enabled_at(None)
     await drop_catchall_rule()
-    await sql("delete from email_ingest_settings where tenant_id = any($1::uuid[])",
+    # `rules = []` is what makes this safe to point at any tenant: a BU that has been
+    # configured has filename rules, and this script never writes one here.
+    await sql("delete from email_ingest_settings where tenant_id = any($1::uuid[])"
+              " and rules = '[]'::jsonb",
               [UNPAID_TENANT, OTHER_TENANT])
     await sql(
         "update email_ingest_settings set gmail_confirm_code = null, gmail_confirm_at = null"

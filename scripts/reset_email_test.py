@@ -38,6 +38,11 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / "backend" / ".env")
 
+# Attachment names are frequently Thai and the Windows console is cp1252, which raised
+# UnicodeEncodeError mid-listing — after the query, before anything was decided. Applies to
+# `reset_tenant_email.py` too: it imports from here.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 DSN = os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://")
 DSN = DSN.replace(":5432/", ":6543/")  # transaction pooler — see the EMAXCONNSESSION note
 
