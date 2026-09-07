@@ -95,15 +95,25 @@ export default function JvEditor({
   // The config the JV is actually built from: stored, with the reviewer's corrections on
   // top. `mappings` and `paymentAmount` are separate buckets in the stored shape but one
   // namespace in `buildJvRows`, so an override lands in whichever the key belongs to.
+  //
+  // **A missing stored config is a starting point, not a dead end.** A BU that has never
+  // opened the mapping page is exactly the case ingest's AI fill exists for, and what it
+  // proposed arrives here in `overrides` — the only place those codes live until approve
+  // saves them (`_suggest_missing_mappings` keeps them off the config on purpose). Bailing
+  // on `!config` threw that answer away and handed the reviewer the blank form the fill was
+  // written to prevent: no pickers, no rows, and *There is nothing to post* on a document
+  // the AI had mapped completely. Only nothing-stored-**and**-nothing-suggested is
+  // genuinely nothing to show.
   const effective = useMemo(() => {
-    if (!config) return null
-    const mappings = { ...((config.mappings || {}) as Record<string, FieldMapping>) }
-    const paymentAmount = { ...((config.paymentAmount || {}) as Record<string, FieldMapping>) }
+    if (!config && !Object.keys(overrides).length) return null
+    const base = (config || {}) as Record<string, unknown>
+    const mappings = { ...((base.mappings || {}) as Record<string, FieldMapping>) }
+    const paymentAmount = { ...((base.paymentAmount || {}) as Record<string, FieldMapping>) }
     for (const [key, value] of Object.entries(overrides)) {
       if (key in mappings || ['commission', 'tax', 'net'].includes(key)) mappings[key] = value
       else paymentAmount[key] = value
     }
-    return { ...config, mappings, paymentAmount }
+    return { ...base, mappings, paymentAmount }
   }, [config, overrides])
 
   const rows = useMemo(() => {
@@ -309,7 +319,9 @@ export default function JvEditor({
     )
   }
 
-  if (!config) {
+  // `effective`, not `config` — same rule as the memo above: a suggestion the reviewer can
+  // act on is something to show, and this notice is what hid it.
+  if (!effective) {
     return <p className="jv-empty">{t('review.jvNoConfig')}</p>
   }
 

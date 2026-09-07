@@ -187,6 +187,40 @@ beforeEach(() => {
 })
 
 describe('the screen', () => {
+  it('builds the JV from the AI suggestion when the BU has no stored config', async () => {
+    // The state a BU that has never opened the mapping page actually parks in: nothing
+    // stored, and ingest's AI fill carried on the ledger row instead (decision #25, which
+    // stopped a guess becoming the BU's rule before a human read it). `useAccountingConfig`
+    // reports an empty config as `null`, and JvEditor used to stop there — the reviewer got
+    // *no accounting configuration yet* and *There is nothing to post* on a document the AI
+    // had mapped completely (seen on carmencloud, 2026-09-07).
+    storedConfig = null
+    vi.mocked(api.getPending).mockResolvedValue(
+      detail({
+        guessed: ['commission', 'tax', 'net', 'Visa'],
+        suggested: {
+          commission: { dept: 'OPS', acc: '510300' },
+          tax: { dept: 'OPS', acc: '511200' },
+          net: { dept: 'OPS', acc: '110200' },
+          Visa: { dept: 'GEN', acc: '110300' },
+        },
+      })
+    )
+    mount()
+    expect(await screen.findByLabelText('Credit for Visa line 1')).toHaveValue('1,000.00')
+    expect(screen.queryByText(/no accounting configuration yet/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/There is nothing to post/i)).not.toBeInTheDocument()
+  })
+
+  it('still says so when there is neither a stored config nor a suggestion', async () => {
+    // The notice is not wrong, it was only reached too eagerly: with nothing stored and
+    // nothing proposed there is genuinely nothing for the reviewer to check.
+    storedConfig = null
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    expect(await screen.findByText(/no accounting configuration yet/i)).toBeInTheDocument()
+  })
+
   it('shows the document and the JV it produces at the same time', async () => {
     // The whole reason for the layout: the comparison is the reviewer's only question,
     // and it cannot be made one pane at a time.
