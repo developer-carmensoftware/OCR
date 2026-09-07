@@ -212,6 +212,25 @@ describe('the screen', () => {
     expect(screen.queryByText(/There is nothing to post/i)).not.toBeInTheDocument()
   })
 
+  it('will not post without a journal book', async () => {
+    // `Prefix` is sent as `config.file_prefix or ""`, so an unset book does not fail
+    // loudly — it posts into whatever Carmen makes of a blank one. The reviewer is the
+    // last place that can notice, so Approve is unavailable and says why.
+    storedConfig = { ...(storedConfig as object), filePrefix: '' }
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    expect(await screen.findByText(/Choose a journal book before posting/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Approve/ })).toBeDisabled()
+  })
+
+  it('posts once a journal book is chosen', async () => {
+    storedConfig = { ...(storedConfig as object), filePrefix: 'JV' }
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    await waitFor(() => expect(screen.getByRole('button', { name: /Approve/ })).toBeEnabled())
+    expect(screen.queryByText(/Choose a journal book/i)).not.toBeInTheDocument()
+  })
+
   it('still says so when there is neither a stored config nor a suggestion', async () => {
     // The notice is not wrong, it was only reached too eagerly: with nothing stored and
     // nothing proposed there is genuinely nothing for the reviewer to check.

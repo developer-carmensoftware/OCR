@@ -292,15 +292,23 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   // Why Approve cannot be pressed, resolved once so the sentence under the button and the
   // button's own disabled state cannot disagree. The JV comes first: it is the document
   // being posted, and the input-tax record is filed after it.
+  // The book the JV posts into. `Prefix` is sent as `config.file_prefix or ""`
+  // (`build_gljv_payload`), so an unset one does not fail loudly — it posts a JV into
+  // whatever Carmen does with a blank book, which is not a decision to make by accident.
+  // Read the same way JvHeaderCard displays it, so the field and the block agree.
+  const effectivePrefix = prefix ?? ((config?.filePrefix as string) || '')
+
   const blockReason = jv.reason
     ? jv.reason === 'account'
       ? t('review.jvBlankAccount')
       : jv.reason === 'unbalanced'
         ? t('review.jvOffBy', { diff: fmt(Math.abs(jv.totalDr - jv.totalCr)) })
         : t('review.jvNothing')
-    : itxBlocked
-      ? t('review.itxBlocked')
-      : null
+    : !effectivePrefix
+      ? t('review.prefixRequired')
+      : itxBlocked
+        ? t('review.itxBlocked')
+        : null
 
   async function approve() {
     if (!doc) return
@@ -680,7 +688,7 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   type="button"
                   className="btn btn-primary"
                   onClick={approve}
-                  disabled={busy || jv.blocked || itxBlocked}
+                  disabled={busy || jv.blocked || !effectivePrefix || itxBlocked}
                   /* The sentence above is the reason the control is unavailable, so a
                      screen reader is given it along with the disabled state. */
                   aria-describedby={blockReason && !postError ? 'rd-blocked' : undefined}

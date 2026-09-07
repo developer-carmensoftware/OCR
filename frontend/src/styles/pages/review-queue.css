@@ -1730,15 +1730,23 @@
    Stacking the label over the box gives each field its own column and the separators had
    nothing left to do. Widths live with the other `.rd-f--*` modifiers above. */
 
-/* The one placeholder on this screen that is not a complaint.
+/* The placeholders on this screen that are not complaints.
  *
  * Every other one wears the amber italic set on `.rd-f-input::placeholder` and means the
- * same thing: nobody filled this in, and somebody has to. This one is the value that will
- * actually file — a statement naming no branch was issued by the head office, whose Revenue
- * Department code is "00000" — so it is a preview, not a gap, and takes the muted treatment
- * that reads as "already answered". Same specificity as the amber rule, so it must stay
- * below it. */
-.rd-modal .itx-branch::placeholder {
+ * same thing: nobody filled this in, and somebody has to. These two are not gaps.
+ *
+ * `itx-branch` is the value that will actually file — a statement naming no branch was
+ * issued by the head office, whose Revenue Department code is "00000" — so it is a preview,
+ * not a gap.
+ *
+ * `--optional` is the JV description, which is BU config rather than anything the document
+ * was supposed to carry: it posts empty and nothing refuses it, so amber was accusing the
+ * reviewer of an omission that is not one. The two document fields beside it keep the amber,
+ * because for them it is.
+ *
+ * Same specificity as the amber rule, so both must stay below it. */
+.rd-modal .itx-branch::placeholder,
+.rd-modal .rd-f-input--optional::placeholder {
   color: var(--text-3);
   font-style: normal;
   opacity: 0.75;

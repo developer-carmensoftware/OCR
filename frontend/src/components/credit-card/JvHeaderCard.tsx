@@ -99,7 +99,12 @@ export default function JvHeaderCard({
         />
       </div>
 
-      <div className="rd-f rd-f--prefix">
+      {/* Marked missing like DocNo and DocDate above, because it is: the JV cannot post
+          without a book, and the parent's block reason says so at the button. The
+          placeholder is a dash rather than the word "Book" — a real book name and the name
+          of the field read the same in this control, so an unset prefix looked set. Same
+          dash the wizard's own config badges use for it (`AccountingReview`). */}
+      <div className={`rd-f rd-f--prefix${effectivePrefix ? '' : ' rd-f--missing'}`}>
         <span className="rd-f-label">{t('review.fPrefix')}</span>
         {/* Carmen's own list of journal books, through the picker the JV rows use — one
             control vocabulary across the screen. */}
@@ -124,9 +129,13 @@ export default function JvHeaderCard({
           id="rd-Description"
           type="text"
           aria-label={t('review.fDescription')}
-          className="rd-f-input"
+          className="rd-f-input rd-f-input--optional"
           value={effectiveBase}
-          placeholder={t('review.fMissing')}
+          /* Not `fMissing` ("Not on the document"), which the two fields above earn by
+             being document fields the extractor could not fill. This one is BU config and
+             was never on the document, so that placeholder accused the statement of an
+             omission it could not have. Same word the wizard's own config editor uses. */
+          placeholder={t('review.fDescriptionPlaceholder')}
           onChange={e => onDescription(e.target.value)}
         />
       </div>

@@ -718,9 +718,14 @@ const en = {
   'review.refresh': 'Refresh',
   'review.settings': 'Automation settings',
   'review.close': 'Close',
-  'review.fPrefixPlaceholder': 'Book',
+  // A dash, not "Book": the field is labelled Prefix and its values are book names, so the
+  // word sat in the control reading exactly like a chosen one. The wizard's own config
+  // badge has always printed `-` for an unset prefix (`AccountingReview`).
+  'review.fPrefixPlaceholder': '-',
   'review.fPrefix': 'Prefix',
   'review.fDescription': 'Description',
+  'review.prefixRequired': 'Choose a journal book before posting',
+  'review.fDescriptionPlaceholder': 'Description',
   'review.itxShow': 'Show details',
   'review.itxHide': 'Hide details',
   // Carmen's own column headings for the three amounts it will show once this record posts
@@ -2330,9 +2335,14 @@ const th: Record<TKey, string> = {
   // Credit, an ACTX record's Vendor / Tax ID / Tax profile — and translating them made the
   // reviewer match a Thai word against an English field in the ERP they are posting to.
   // The sentences around them (actions, statuses, warnings, empty states) stay Thai.
-  'review.fPrefixPlaceholder': 'Book',
+  // A dash, not "Book": the field is labelled Prefix and its values are book names, so the
+  // word sat in the control reading exactly like a chosen one. The wizard's own config
+  // badge has always printed `-` for an unset prefix (`AccountingReview`).
+  'review.fPrefixPlaceholder': '-',
   'review.fPrefix': 'Prefix',
   'review.fDescription': 'Description',
+  'review.prefixRequired': 'เลือกสมุดบัญชี (Prefix) ก่อนโพสต์',
+  'review.fDescriptionPlaceholder': 'Description',
   'review.itxShow': 'ดูรายละเอียด',
   'review.itxHide': 'ซ่อนรายละเอียด',
   'review.itxNet': 'Net Amount',
