@@ -13,7 +13,6 @@ from app.services.credit_card_service import (
     _ASSUMED_RATE_WARNING,
     _FEE_UNALLOCATED_WARNING,
     _NEGATIVE_UNSUPPORTED_WARNING,
-    _RECON_MISMATCH_WARNING,
     _clean_transaction_labels,
     _normalize_bay_statement,
     _normalize_fee_invoice,
@@ -848,7 +847,15 @@ def test_reconstructed_total_mismatch_warns():
         ]
     )
     _normalize_fee_invoice(ext, "KTC")
-    assert _RECON_MISMATCH_WARNING in ext.warnings
+    # Both figures and the gap, because only one of them reaches the reviewer's screen: the
+    # printed grand total rides the summary row, which this function consumes, and the JV
+    # built from the lines balances by construction. Σ fee (100 + 40) + VAT 10.50 = 150.50
+    # against a printed 160.50.
+    assert ext.warnings == [
+        "The line items add up to 150.50, but this document's printed grand total is "
+        "160.50 — off by 10.00. A fee amount was probably misread; check the amounts "
+        "against the original before approving."
+    ]
 
 
 def test_reconstructed_total_matches_no_warning():
@@ -866,7 +873,7 @@ def test_reconstructed_total_matches_no_warning():
         ]
     )
     _normalize_fee_invoice(ext, "KTC")
-    assert _RECON_MISMATCH_WARNING not in ext.warnings
+    assert not any("printed grand total" in w for w in ext.warnings)
 
 
 def test_two_value_grand_and_vat_pair_flags_assumed_rate():

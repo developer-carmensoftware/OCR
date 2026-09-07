@@ -64,12 +64,24 @@ _NEGATIVE_UNSUPPORTED_WARNING = (
     "as extracted — please verify them against the original document."
 )
 
+
 # Surfaced when the reconstructed line total (Σ fee + VAT) disagrees with the
 # document's own printed Grand Total — a line figure was likely misread.
-_RECON_MISMATCH_WARNING = (
-    "The line items do not add up to the document's printed grand total — a fee "
-    "amount may have been misread. Please verify the amounts before submitting."
-)
+#
+# **Both figures go in the sentence, because only one of them is on screen.** The printed
+# grand total lives on the summary row, which `_normalize_fee_invoice` consumes and never
+# emits as a detail, and the JV built from the lines balances by construction — so the old
+# wording accused the document of an inconsistency the reviewer had no way to see, on a
+# screen otherwise reading *Balanced*. The gap is also what says whether to care: two
+# satang is a rounding artefact to wave through, two thousand baht is a misread digit.
+def _recon_mismatch_warning(lines_total: float, printed_total: float) -> str:
+    return (
+        f"The line items add up to {_fmt_amt(lines_total)}, but this document's printed "
+        f"grand total is {_fmt_amt(printed_total)} — off by "
+        f"{_fmt_amt(abs(lines_total - printed_total))}. A fee amount was probably misread; "
+        "check the amounts against the original before approving."
+    )
+
 
 # Surfaced when the footer VAT could not be attributed to specific fee lines
 # (their per-line fee amounts were blank), so the split may be inaccurate.
@@ -503,7 +515,9 @@ def _normalize_fee_invoice(extracted: ExtractedCreditCardData, bank_code: str) -
             if anchor is None and sub is not None:
                 anchor = round(sub + vat, 2)
             if anchor is not None and abs(fee_sum + vat - anchor) > _RECON_TOL:
-                extracted.warnings.append(_RECON_MISMATCH_WARNING)
+                extracted.warnings.append(
+                    _recon_mismatch_warning(round(fee_sum + vat, 2), round(anchor, 2))
+                )
             spread_warning = _spread_footer_vat(line_rows, vat)
             if spread_warning:
                 extracted.warnings.append(spread_warning)
