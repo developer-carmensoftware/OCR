@@ -187,10 +187,16 @@ async def patch_config(
     mentioned" throughout — the same idiom `save_accounting_config` already uses for
     `bank_descriptions`.
 
-    `description` is written to whichever field actually WINS at posting time.
-    `description_for` prefers `bank_descriptions[bank_code]` over the BU-wide `description`,
-    so writing the BU-wide one while a per-bank entry exists would look like the edit did
-    nothing: the per-bank value keeps overriding it on every future document.
+    `description` is written to **the named bank's own entry**, creating it if this BU had
+    none, and only falls back to the BU-wide field when no bank is known. Two reasons, and
+    they are the same ones the wizard's config editor has always had:
+
+    * It is the field that wins at posting time — `description_for` prefers
+      `bank_descriptions[bank_code]` — so writing the BU-wide one while a per-bank entry
+      exists would look like the edit did nothing.
+    * It is the field the caller was editing. The review screen shows this bank's own
+      wording, so a correction made about one bank's documents must not silently rewrite
+      every other bank's.
     """
     usable = {k: v for k, v in (mappings or {}).items() if v.get("dept") and v.get("acc")}
     if not usable and file_prefix is None and description is None:
@@ -205,11 +211,16 @@ async def patch_config(
     if file_prefix is not None:
         row.file_prefix = file_prefix
     if description is not None:
-        per_bank = dict(row.bank_descriptions or {})
-        if bank_code and per_bank.get(bank_code):
-            per_bank[bank_code] = description
-            row.bank_descriptions = per_bank
+        if bank_code:
+            # The named bank's own entry, whether or not it had one. The review screen edits
+            # that entry directly (as the wizard's config editor always has), so writing the
+            # BU-wide sentence instead would take a correction made about *this* bank and
+            # apply it to every other one — and then read back as a placeholder rather than
+            # the value that was typed. `description_for` prefers this entry, so it is also
+            # the field that wins at posting time.
+            row.bank_descriptions = {**(row.bank_descriptions or {}), bank_code: description}
         else:
+            # No bank identified — the BU-wide fallback is the only thing this can mean.
             row.description = description
 
     if not usable:

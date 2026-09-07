@@ -219,11 +219,30 @@ async def test_a_description_lands_on_the_bank_entry_that_actually_wins():
 
 
 @pytest.mark.asyncio
-async def test_a_description_falls_back_to_the_bu_wide_one_when_no_per_bank_entry_exists():
+async def test_a_description_starts_this_banks_own_entry_when_it_had_none():
+    """The edit was made about one bank's documents, so it lands on that bank.
+
+    It used to write the BU-wide field whenever the bank had no entry yet, which took a
+    correction to SCB's wording and applied it to every other bank the BU receives — and
+    then read back as the field's placeholder rather than the value that was typed, because
+    the review screen shows this bank's own entry (as the wizard's editor always has).
+    """
     row = SimpleNamespace(id=1, file_prefix=None, description="Generic", bank_descriptions={})
     db = _db(row, [])
 
     await patch_config(db, TENANT_ID, description="Card settlement", bank_code="KBANK")
+
+    assert row.bank_descriptions == {"KBANK": "Card settlement"}
+    assert row.description == "Generic"  # every other bank keeps what it had
+
+
+@pytest.mark.asyncio
+async def test_a_description_with_no_bank_still_writes_the_bu_wide_one():
+    """The fallback is the only thing an edit can mean when nothing named a bank."""
+    row = SimpleNamespace(id=1, file_prefix=None, description="Generic", bank_descriptions={})
+    db = _db(row, [])
+
+    await patch_config(db, TENANT_ID, description="Card settlement")
 
     assert row.description == "Card settlement"
     assert row.bank_descriptions == {}

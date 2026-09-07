@@ -271,17 +271,35 @@ describe('the screen', () => {
   })
 
   it('previews the prefix and description exactly as the JV will carry them', async () => {
-    // Resolved through descriptionForBank, the same helper buildGljvPayload uses — a
-    // preview that could disagree with what posts is worse than no preview. The field holds
-    // the BASE — the JV builder appends " - <doc date>" on post, and that tail is not
-    // rendered: it is the document date already on screen two fields along.
+    // The description box holds THIS BANK's own wording, like the wizard's config editor:
+    // the BU-wide sentence is the fallback and belongs in the placeholder, where it says
+    // what will post without pretending to be what you typed. Putting it in the value made
+    // the field impossible to clear, and made a correction about KTC's documents rewrite
+    // the wording for every other bank on save.
+    //
+    // The field holds the BASE either way — the JV builder appends " - <doc date>" on post,
+    // and that tail is not rendered: it is the date already on screen two fields along.
     storedConfig = { ...storedConfig, filePrefix: 'JV', description: 'Card settlement' }
     vi.mocked(api.getPending).mockResolvedValue(detail())
     mount()
     await screen.findByDisplayValue('INV-001')
     expect(screen.getByLabelText('Prefix')).toHaveValue('JV')
-    expect(screen.getByLabelText('Description')).toHaveValue('Card settlement')
+    expect(screen.getByLabelText('Description')).toHaveValue('')
+    expect(screen.getByLabelText('Description')).toHaveAttribute('placeholder', 'Card settlement')
     expect(screen.queryByText(/- 15\/01\/2026/)).not.toBeInTheDocument()
+  })
+
+  it("shows this bank's own description over the BU-wide one", async () => {
+    // The document is KTC, so KTC's entry is what posts and what the box edits.
+    storedConfig = {
+      ...storedConfig,
+      description: 'Card settlement',
+      bankDescriptions: { KTC: 'KTC fee invoice' },
+    }
+    vi.mocked(api.getPending).mockResolvedValue(detail())
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    expect(screen.getByLabelText('Description')).toHaveValue('KTC fee invoice')
   })
 
   it('shows the reviewer when a filename rule claimed the wrong bank', async () => {

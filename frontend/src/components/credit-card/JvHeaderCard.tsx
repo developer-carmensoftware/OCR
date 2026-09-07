@@ -1,7 +1,6 @@
 import CustomSearchSelect from '../common/CustomSearchSelect'
 import DateInput from '../common/DateInput'
 import { useT } from '../../i18n/LanguageContext'
-import { descriptionForBank } from '../../lib/bankTransforms'
 import { useGlMasters } from '../../hooks/mapping/useGlMasters'
 import type { BankCode } from '../../types/api'
 
@@ -26,9 +25,11 @@ import type { BankCode } from '../../types/api'
  *   date is machine-appended per document and is not rendered here — it is the document
  *   date already on screen two fields along, and what this system appends on post is not
  *   news to the person approving.
- * - `descriptionForBank` prefers a per-bank entry over the BU-wide one. The parent tells
- *   the server which bank this edit was made against so it writes whichever one actually
- *   wins — otherwise the per-bank value keeps overriding the edit on every future document.
+ * - **The description is per bank**, as it is in the wizard's config editor. The box holds
+ *   this bank's own entry and the BU-wide sentence is only the placeholder, so a correction
+ *   made about one bank's statements cannot rewrite the wording for every other bank the BU
+ *   receives. The parent names the bank on save, and `patch_config` writes that entry —
+ *   which is also the one `description_for` prefers when the JV is built.
  */
 interface Props {
   headerData: Record<string, string>
@@ -56,17 +57,24 @@ export default function JvHeaderCard({
   const { prefixes } = useGlMasters()
 
   const storedPrefix = (config?.filePrefix as string) || ''
-  // Same resolution `buildGljvPayload` does, from the same helper — a preview that could
-  // disagree with what posts would be worse than no preview.
-  const storedBase =
-    descriptionForBank(
-      config?.description as string | undefined,
-      config?.bankDescriptions as Record<string, string> | undefined,
-      bank
-    ) || ''
-
   const effectivePrefix = prefix ?? storedPrefix
-  const effectiveBase = description ?? storedBase
+
+  // **This bank's own wording, raw — not the resolved value.** Same shape as the wizard's
+  // config editor (`TopLevelConfigSection`), and for the same two reasons. Feeding the
+  // fallback into the box makes the field impossible to clear: delete the last character,
+  // the fallback resolves in its place, and the old text reappears under the cursor. And
+  // the box is what gets saved, so showing the BU-wide sentence here meant a reviewer
+  // correcting the wording for *this* bank silently rewrote it for every other one.
+  //
+  // The fallback belongs in the placeholder, where it says what will post without
+  // pretending to be what you typed — the muted "already answered" treatment, since it is
+  // a preview rather than a gap.
+  const storedOwn =
+    ((config?.bankDescriptions as Record<string, string> | undefined) || {})[bank || ''] || ''
+  const effectiveOwn = description ?? storedOwn
+  // What posts when this bank has no wording of its own — which is all `descriptionForBank`
+  // falls back to, so naming the field directly says the same thing with less ceremony.
+  const fallback = ((config?.description as string) || '').trim()
 
   return (
     <div className="rd-doc">
@@ -130,12 +138,13 @@ export default function JvHeaderCard({
           type="text"
           aria-label={t('review.fDescription')}
           className="rd-f-input rd-f-input--optional"
-          value={effectiveBase}
-          /* Not `fMissing` ("Not on the document"), which the two fields above earn by
-             being document fields the extractor could not fill. This one is BU config and
+          value={effectiveOwn}
+          /* The BU-wide wording when this bank has none, so the field says what will post.
+             Not `fMissing` ("Not on the document"), which the two fields above earn by
+             being document fields the extractor could not fill: this one is BU config and
              was never on the document, so that placeholder accused the statement of an
-             omission it could not have. Same word the wizard's own config editor uses. */
-          placeholder={t('review.fDescriptionPlaceholder')}
+             omission it could not have. */
+          placeholder={fallback || t('review.fDescriptionPlaceholder')}
           onChange={e => onDescription(e.target.value)}
         />
       </div>
