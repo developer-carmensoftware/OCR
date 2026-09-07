@@ -15,6 +15,14 @@ import type { TKey } from '../../i18n/dict'
  * all, an unbalanced JV cannot either, a guessed mapping posts but may post to the wrong
  * account, warnings are advisory.
  *
+ * **The ladder decides the phrase, not the colour.** It used to hand the two blocking flags
+ * `bad`, which is rose — and rose in this column already means one thing, *did not post*
+ * (the `failed`, `rejected` and stopped rows at the bottom of `Message`). A parked document
+ * is the one row nobody has given up on: it wears the same amber as the pill beside it, and
+ * `Ready to post` stays green so the row a reviewer should skip is the one that looks
+ * skippable. The rule was already written for the branch below this one — see the comment
+ * on `pending && row.reason_code` — and this function simply never got it.
+ *
  * **The mapping reasons name the fields.** "GL mapping guessed" told the reviewer a rule
  * was invented and then made them open the document to find out which — the row already
  * carries `guessed` and `unmapped`, so it can say. Documents parked before those were
@@ -23,8 +31,8 @@ import type { TKey } from '../../i18n/dict'
 function reasonFor(row: ReviewDocument): { key: TKey; tone: string; fields: string[] } {
   const f = row.flags
   if (f.includes('mapping_missing'))
-    return { key: 'review.reasonMissingMapping', tone: 'bad', fields: row.unmapped || [] }
-  if (f.includes('unbalanced')) return { key: 'review.reasonUnbalanced', tone: 'bad', fields: [] }
+    return { key: 'review.reasonMissingMapping', tone: 'warn', fields: row.unmapped || [] }
+  if (f.includes('unbalanced')) return { key: 'review.reasonUnbalanced', tone: 'warn', fields: [] }
   if (f.includes('mapping_guessed'))
     return { key: 'review.reasonGuessed', tone: 'warn', fields: row.guessed || [] }
   // Below the two mapping reasons because a reviewer can post this one as it stands — but

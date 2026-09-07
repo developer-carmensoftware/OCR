@@ -1493,3 +1493,49 @@ the `review.rc*` dictionary, `error_message` written by `email_ingest_service.py
 - **Retiring `review.rcMappingIncomplete`.** Nothing has raised `mapping_incomplete` since
   §15 made the auto-post gate the flag list, but legacy rows still print it and its `FIX`
   entry is the only route to `#/CreditCardOCR/mapping`.
+
+---
+
+## §20 — One meaning for rose, and no row for a rule doing its job (2026-09-07)
+
+Two things §19 read past, both reported off the screen rather than found in the code. §19 was
+a pass over the *words* in the Detail column; this is a pass over the two non-verbal things
+the column says — its colour, and whether it says anything at all.
+
+### The defects
+
+| | What it did | Why it was wrong |
+|---|---|---|
+| **A parked document wore the colour of a dead one** | `Mapping missing` and `Amounts do not reconcile` rendered in `--rose-text`, the same red as `Carmen: Period closed` two rows below | Rose already means one thing in that column: **did not post**. `reasonFor` was grading the five flags by "how much it should stop someone" and reaching for red at the top of that ladder, in a cell whose own row wears an amber *Review* pill. The rule was written down one branch further along — *"Amber, not rose: unlike the resolved rows wearing these same words, this one is still open and still postable"* — and applied only there. |
+| **The log's largest entry was the customer's own rule working** | `No filename pattern matched`, once per attachment, under `All` and `Today` | 46 of one dev BU's 140 rows. There is no document behind any of them, nothing was charged, and the "fix" is a setting the customer already chose. §18 removed them from the three status chips on exactly this reasoning and then stopped one view short. |
+
+### The decisions
+
+| # | Decision | Why |
+|---|---|---|
+| 96 | **A pending row is never rose.** `reasonFor` drops tone `bad` entirely: every non-clean reason is amber, `Ready to post` stays green, and `.rq-reason--bad` belongs to the resolved-failure branch alone. The ladder still decides *which phrase* prints. | One colour, one meaning, in a column that holds both open and closed rows. The severity gradient it replaced was real but was being drawn in the vocabulary of the other half of the column: a reviewer scanning for what to open was shown "this is finished and it failed" on the row most needing them. Green/amber already separates skip-me from read-me, and the words carry the rest. |
+| 97 | **`no_rule_match` is in no view of the customer's app.** `_visible()` in `credit_card_activity.py` removes it from the window **and** the counts, so it is not a bucket with no chip — it is not in the arithmetic. `REASON_KEY`, `FIX` and both `review.rcNoRuleMatch` strings go with it, which retires the *Filename patterns* third of #93. | Reverses §14 #65, deliberately. That decision kept the rows under `all` so a BU whose pattern was too narrow could find the statements it dropped — a real failure, answered in a worse place: they would have to notice a shortfall and then read 46 rows of their own rule working to see the one that should not be there. The rows are still written and `#/admin/email` still lists them by reason, which is where support already diagnoses a pattern, reached by the customer asking. |
+
+`_visible()` is NULL-safe by construction and that is the whole reason it is a named function
+rather than a `~and_(...)` at each call site: `NOT (status = 'skipped' AND reason_code =
+'no_rule_match')` is NULL for a `skipped` row carrying no reason code, so the obvious spelling
+would have silently deleted the one row §18 went out of its way to keep visible (`_chip_expr`'s
+`else_`, and the `NULL IN (...)` note beside it). `IS DISTINCT FROM` answers TRUE there. The
+`status` arm is kept although `no_rule_match` is only ever raised before `consume_document()`
+— charged-means-reviewable (#22) says a charged row is owed to the reader whatever else is
+true of it.
+
+### Considered and not done
+
+- **Hiding the rest of the noise bucket.** Skipped `unreadable_document` stays under `All`.
+  A file the BU's rule *refused* was never a document; one the rule **accepted** and we then
+  could not open is a statement we failed to read, and they are entitled to find it. That is
+  the line between quiet and gone, and it is why `NOISE` survives as a bucket of one code
+  rather than being folded into `HIDDEN_REASON`.
+- **A safety net for a too-narrow pattern** — a count on the settings screen beside
+  **Filename patterns**, or a footnote under `All`. Both are a second surface for a number
+  that is already on `#/admin/email`, and both re-introduce, in smaller type, the thing #97
+  removed. Revisit if a BU actually loses statements this way; the rows are all still there
+  to build it from.
+- **Not writing the row at all.** It is the `_claim` dedupe key and the audit trail. Suppression
+  belongs in the view; the ledger stays complete.

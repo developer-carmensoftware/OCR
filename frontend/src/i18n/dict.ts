@@ -928,12 +928,13 @@ const en = {
   // they actually left were reachable only by hovering the cell.
   'review.rejectedBy': 'Reviewed and rejected by {name}',
   'review.rejectedByWith': 'Reviewed and rejected by {name}: {reason}',
-  // Each of the three that carries a Fix button names the field on the screen that button
-  // opens. "your list" / "rule" / "connection" were our nouns; the settings screen offers
-  // *Your email addresses*, *Filename patterns* and *Posting credential*, so a reader who
-  // followed the button arrived looking for something that was not there.
+  // Each phrase that carries a Fix button names the field on the screen that button opens.
+  // "your list" / "connection" were our nouns; the settings screen offers *Your email
+  // addresses* and *Posting credential*, so a reader who followed the button arrived looking
+  // for something that was not there. (There were three. `rcNoRuleMatch` — *Filename
+  // patterns* — went with the rows it described: a rule refusing a file it was written to
+  // refuse is in no view of this app now, only on #/admin/email, which has its own key.)
   'review.rcSenderNotAllowed': 'Sender is not one of your email addresses',
-  'review.rcNoRuleMatch': 'No filename pattern matched',
   'review.rcUnsupported': 'We cannot read this file type',
   'review.rcUnreadable': 'Could not read the document',
   'review.rcWrongPassword': 'PDF password did not work',
@@ -2454,7 +2455,6 @@ const th: Record<TKey, string> = {
   'review.rejectedByWith': 'ตรวจสอบและปฏิเสธโดย {name}: {reason}',
   // Same rule as EN: each names the field on the settings screen its Fix button opens.
   'review.rcSenderNotAllowed': 'ผู้ส่งไม่อยู่ในอีเมลของคุณ',
-  'review.rcNoRuleMatch': 'ไม่มีรูปแบบชื่อไฟล์ที่ตรงกัน',
   'review.rcUnsupported': 'อ่านไฟล์ชนิดนี้ไม่ได้',
   'review.rcUnreadable': 'อ่านเอกสารไม่ได้',
   'review.rcWrongPassword': 'รหัสผ่าน PDF ไม่ถูกต้อง',

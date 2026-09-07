@@ -17,6 +17,7 @@ from unittest.mock import MagicMock
 
 from app.auth.session import SessionInfo
 from app.routers.credit_card_activity import (
+    HIDDEN_REASON,
     NOISE_REASONS,
     PENDING,
     _chip_expr,
@@ -124,7 +125,11 @@ def _db(
     counted_today = MagicMock()
     counted_today.scalar_one.return_value = manual_today
     email_window = MagicMock()
-    email_window.scalars.return_value.all.return_value = emails
+    # The same `_visible()` the GROUP BY above gets, on the window this time — a test hands
+    # `emails` the rows the table holds, and the real query would not return the hidden ones.
+    email_window.scalars.return_value.all.return_value = [
+        e for e in emails if not _hidden(e.status, e.reason_code)
+    ]
     manual_window = MagicMock()
     manual_window.all.return_value = manuals
 
@@ -147,6 +152,18 @@ def _db(
     if seen is not None:
         db.get.return_value = SimpleNamespace(seen=seen)
     return db
+
+
+def _hidden(status, reason_code):
+    """The test suite's reading of `_visible()`, negated — a row the real query never returns.
+
+    Modelled here rather than asserted once, because it is not a chip: a hidden row is absent
+    from the GROUP BY *and* from the window, so every fixture carrying one has to see nothing
+    rather than see it filed somewhere. `_group` and `_db` both consult this, which is what
+    makes "it contributes to no count and appears in no list" the default a test gets for
+    free instead of something each one remembers to assert.
+    """
+    return status == "skipped" and reason_code == HIDDEN_REASON
 
 
 def _chip_of(status, reason_code):
@@ -179,7 +196,13 @@ def _group(status, reason_code, value):
     `value` is `(n, stuck, noted)` plus two optionals: how many of that group arrived today
     and how many have been put away. Absent means none, which is what every test written
     before either existed wants.
+
+    **None at all for a hidden pair.** `_visible()` is a WHERE clause on the counts query, so
+    those rows are gone before the GROUP BY sees them — not a bucket with nobody looking at
+    it, but no row.
     """
+    if _hidden(status, reason_code):
+        return []
     n, stuck, noted = value[0], value[1], value[2]
     return [
         SimpleNamespace(
@@ -304,7 +327,7 @@ def test_the_review_chip_holds_documents_and_nothing_else():
     buried the documents the chip is named for. They are pointed at as causes now."""
     db = _db(
         pairs={
-            ("skipped", "no_rule_match"): (46, 0, 0),
+            ("skipped", "unreadable_document"): (46, 0, 0),
             ("skipped", "wrong_pdf_password"): (12, 0, 0),
             ("failed", "carmen_rejected"): (3, 0, 0),
             ("rejected", "rejected_by_reviewer"): (2, 0, 0),
@@ -381,23 +404,43 @@ def test_a_clearable_refusal_is_an_ordinary_row_under_not_posted():
     assert "causes" not in body
 
 
-def test_the_noise_is_still_in_the_log():
-    """Suppressing `no_rule_match` is only safe because `all` still has it. A BU whose
-    filename pattern is too narrow finds the statements it dropped there — which is the
-    failure the reason code was introduced to make visible in the first place."""
+def test_a_filename_rule_refusal_is_in_no_view_at_all():
+    """§19 #97, reversing §14 #65. `all` is the view with no state predicate, so it was where
+    `no_rule_match` survived being taken off the chips — the log a BU reads to find a
+    statement that never arrived. It was also the largest thing in that log by a distance,
+    every row of it their own rule doing exactly what they wrote it to do, and none of it
+    something they can act on: no document behind it, nothing charged, nothing to press.
+
+    The rows are still written and `#/admin/email` still lists them by reason, which is where
+    a too-narrow pattern is actually diagnosed — by the customer asking, rather than by them
+    reading 46 rows of a rule working."""
     db = _db(
-        pairs={("skipped", "no_rule_match"): (7, 0, 0)},
+        pairs={
+            ("skipped", HIDDEN_REASON): (7, 0, 0),
+            ("pending_review", None): (2, 0, 0),
+        },
         manual_count=0,
-        emails=[_email(status="skipped", reason_code="no_rule_match", review_payload=None)],
+        emails=[
+            _email(status="skipped", reason_code=HIDDEN_REASON, review_payload=None),
+            _email(),
+        ],
         manuals=[],
     )
     with make_test_client(db, session=SESSION) as client:
         body = client.get(f"{BASE}?filter=all", headers=AUTH).json()
 
-    assert [r["reason_code"] for r in body["data"]] == ["no_rule_match"]
-    assert body["total"] == 7  # the log's own size, which is `counts["all"]`
-    assert body["counts"]["review"] == 0
-    assert body["counts"]["unposted"] == 0
+    assert [r["reason_code"] for r in body["data"]] == [None]
+    # Out of the arithmetic too, not merely off the list — the Pager cannot offer a page of
+    # rows the window will not return.
+    assert body["total"] == 2
+    assert body["counts"] == {
+        "review": 2,
+        "success": 0,
+        "unposted": 0,
+        "noise": 0,
+        "all": 2,
+        "today": 0,
+    }
 
 
 def test_attention_marks_the_machine_misbehaving_not_the_work():
@@ -406,7 +449,7 @@ def test_attention_marks_the_machine_misbehaving_not_the_work():
     its job. A reviewer's own rejection is not an anomaly either."""
     db = _db(
         pairs={
-            ("skipped", "no_rule_match"): (46, 0, 0),
+            ("skipped", "unreadable_document"): (46, 0, 0),
             ("skipped", "wrong_pdf_password"): (12, 0, 0),
             ("failed", "carmen_rejected"): (3, 0, 0),
             ("rejected", "rejected_by_reviewer"): (2, 0, 0),
@@ -424,7 +467,7 @@ def test_attention_marks_the_machine_misbehaving_not_the_work():
     assert body["attention"]["review"] == 4
     # 3 Carmen refusals + the 12 the password stopped. **The cause scores onto the chip that
     # draws it**, not onto its own bucket — a dot has to sit where the reader can act on it.
-    # The 46 the filename rules threw out are those rules working, and the 2 rejections were
+    # The 46 that were never documents are the pipeline working, and the 2 rejections were
     # somebody's decision.
     assert body["attention"]["unposted"] == 15
     assert body["attention"]["all"] == 19
@@ -542,7 +585,7 @@ def test_today_counts_every_status_and_the_bus_own_scans():
     db = _db(
         pairs={
             ("posted", None): (40, 0, 0, 3),
-            ("skipped", "no_rule_match"): (46, 0, 0, 2),
+            ("skipped", "unreadable_document"): (46, 0, 0, 2),
             ("pending_review", None): (5, 0, 0, 1),
         },
         manual_count=9,
@@ -644,6 +687,34 @@ def test_the_chip_expression_never_drops_a_row_with_no_reason_code():
     # The noise arm has to test the status as well, or a charged `unreadable_document`
     # failure — a crash inside the refund boundary — would be filed as somebody's logo.
     assert "status = 'skipped' and" in sql
+
+
+def test_hiding_a_filename_rule_refusal_is_null_safe_and_on_both_statements():
+    """The one way `_visible()` can be written wrong, and the mock DB cannot see either half.
+
+    `NOT (status = 'skipped' AND reason_code = 'no_rule_match')` is the obvious negation and
+    is NULL for a `skipped` row carrying no reason code — a NULL is not a match, so that row
+    would disappear from the table without anybody deciding it should. The `else_` in
+    `_chip_expr` files it under `unposted` precisely so a reader sees it (the test above), and
+    a `!=` here would delete it one clause earlier. `IS DISTINCT FROM` answers TRUE.
+
+    And it has to be on **both** statements: the window decides what is listed, the GROUP BY
+    decides `counts` and therefore `total`, and one without the other is a Pager offering
+    pages of rows the window will not return.
+
+    Compiled, not executed — the mock DB runs no SQL, so nothing else in this file would
+    notice either mistake.
+    """
+    for sql in (
+        str(_email_stmt(uuid.uuid4(), None).compile(compile_kwargs={"literal_binds": True})),
+        str(_counts_stmt(uuid.uuid4(), NOW, NOW).compile(compile_kwargs={"literal_binds": True})),
+    ):
+        sql = sql.lower()
+        assert f"reason_code is distinct from '{HIDDEN_REASON}'" in sql
+        assert f"reason_code != '{HIDDEN_REASON}'" not in sql
+        # The status arm. `no_rule_match` is only ever written before the charge, but
+        # charged-means-reviewable says a charged row is owed to the reader either way.
+        assert "status != 'skipped' or" in sql
 
 
 def test_the_chip_expression_reads_status_alone_for_review():

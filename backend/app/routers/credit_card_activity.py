@@ -3,8 +3,9 @@
 One list, two sources. `email_review.py` answers "what is the automation holding for me",
 which is a strictly smaller question: this endpoint also lists the scans a person did by
 hand. The page it feeds is the robot's inbox — what needs a decision — and, under `all`, the
-module's log: every attachment ever put in front of the system, so a BU can answer "did my
-statement even arrive" without anyone reading the database for them (§14).
+module's log: every attachment the system took seriously, so a BU can answer "did my statement
+even arrive" without anyone reading the database for them (§14). One reason code is outside
+even that — see `HIDDEN_REASON`.
 
 It is a separate router rather than another route on `email_review.py` because that file's
 whole contract is email documents; a manual scan there would make its docstring a lie.
@@ -23,7 +24,7 @@ import uuid
 from datetime import UTC, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import and_, case, func, literal_column, select
+from sqlalchemy import and_, case, func, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import SessionInfo, get_current_session
@@ -66,24 +67,38 @@ STATUS_CHIPS = ("review", "success", "unposted")
 # The one bucket with no chip of its own, and what puts a row in it is **volume** — not the
 # charge §14 used, and not who can act (§18).
 #
-# `NOISE_REASONS` fire per *attachment* on mail that was legitimately this BU's: the
-# signature logo, the summary PDF inside every bank zip. 97 of one dev BU's 140 rows. Nothing
-# on the status chips and no dot.
+# `NOISE_REASONS` fires per *attachment* on mail that was legitimately this BU's: the summary
+# PDF inside every bank zip, an image that survived the filename rule and turned out not to be
+# a document. Nothing on the status chips and no dot.
 #
 # The other pre-charge refusals — a wrong PDF password, an unregistered sender, a file type
 # we cannot read — are **ordinary rows under `unposted`**, listed one per attachment like
 # every other row in the table. They were briefly folded into one row per cause; see §18 #86
 # for why that came out again.
 #
-# The noise is not hidden either: `today` and `all` list it in place, and `all` exists
-# precisely so the page can still answer "did my statement even arrive" (§14 #65). That is
-# what makes suppressing `no_rule_match` safe — a BU whose filename pattern is too narrow can
-# still find the statements it dropped, which is the failure the reason code was introduced
-# to make visible in the first place.
+# Noise is quiet, not absent: `today` and `all` still list it in place, and `all` exists
+# precisely so the page can still answer "did my statement even arrive" (§14 #65). A row that
+# should not be in that answer at all is a different thing and gets a different mechanism —
+# see `HIDDEN_REASON`.
 NOISE = "noise"
 
-# Every row is in exactly one of these. `counts["all"]` is their sum, which is why the
-# chipless bucket has to be in the dict even though nothing filters on it.
+# The one reason code that is in no view at all — not a bucket, a filter.
+#
+# `no_rule_match` is the customer's own filename rule refusing a file it was written to refuse,
+# once per attachment. It was the largest single thing in the table (46 of one dev BU's 140
+# rows) and it is the one row a reader can do nothing with: there is no document behind it,
+# nothing was charged for it, and the "fix" is a setting they already chose. §18 took it off
+# the chips and left it under `all` on the grounds that a too-narrow pattern would otherwise
+# drop statements invisibly (§14 #65). True, and answered somewhere better: the rows are still
+# written, and `#/admin/email` lists them by reason, which is where support actually diagnoses
+# a pattern — reached by the customer asking, rather than by them reading 46 rows of their own
+# rule working.
+HIDDEN_REASON = "no_rule_match"
+
+# Every row this endpoint can see is in exactly one of these. `counts["all"]` is their sum,
+# which is why the chipless bucket has to be in the dict even though nothing filters on it.
+# `HIDDEN_REASON` rows are outside the arithmetic entirely — `_visible()` removes them before
+# the CASE runs, so there is no fifth bucket to keep out of the sum.
 LEDGER_BUCKETS = (*STATUS_CHIPS, NOISE)
 
 PENDING = "pending_review"
@@ -114,17 +129,22 @@ ICT = timezone(timedelta(hours=7))
 MANUAL_FILTERS = ("all", "success", TODAY)
 
 # The `skipped` reasons that fire per *attachment* on mail that was legitimately this BU's.
-# One legitimate statement mail carries three signature logos and a summary PDF, so this pile
-# grows with successful traffic rather than with anything wrong — which is why the bell has
-# always refused to ring for it (`NOTIFIABLE_SKIPS` in email_ingest_service.py: *"a bell that
-# cries every morning is a bell nobody reads on the morning it matters"*). The queue said the
+# One legitimate statement mail carries a summary PDF beside the statement, so this pile grows
+# with successful traffic rather than with anything wrong — which is why the bell has always
+# refused to ring for it (`NOTIFIABLE_SKIPS` in email_ingest_service.py: *"a bell that cries
+# every morning is a bell nobody reads on the morning it matters"*). The queue said the
 # opposite until §18: `no_rule_match` was in the tuple below, so 46 signature logos sat on the
 # work chip beside the statements waiting for approval.
+#
+# One code, since `no_rule_match` left for `HIDDEN_REASON` — and the two are not the same
+# judgement. A file the BU's rule refused was never a document; one the rule *accepted* and we
+# then could not open is a statement we failed to read, and the BU is entitled to find it under
+# `all`. That is the line between quiet and gone.
 #
 # **Read only alongside `status == "skipped"`.** `unreadable_document` is also written on
 # charged `failed` rows by the generic handler and inside the refund boundary, and those are a
 # crash — exactly what `_attention`'s dot exists for (§13 #57).
-NOISE_REASONS = ("no_rule_match", "unreadable_document")
+NOISE_REASONS = ("unreadable_document",)
 
 
 # Reason codes worth an amber dot: a cause somebody here can still act on, and which is rare
@@ -159,6 +179,34 @@ STUCK_AFTER = timedelta(hours=1)
 _EPOCH = datetime.min.replace(tzinfo=UTC)
 
 
+def _visible():
+    """Rows this BU's own screen is allowed to see — everything except `HIDDEN_REASON`.
+
+    Applied to the list **and** to the counts, so the Pager can never print a number over a
+    pile it is not showing. Unconditional on both: a hidden row could only ever have been in
+    `noise`, so the three status chips are unaffected and there is one rule rather than a
+    branch per filter.
+
+    **`is_distinct_from`, not `!=`, and this is the whole reason the predicate is a function
+    rather than a `~and_(...)` inline.** The obvious negation —
+    `NOT (status = 'skipped' AND reason_code = 'no_rule_match')` — evaluates to NULL for a
+    `skipped` row with no reason code, and a NULL is not a match, so that row would vanish
+    from the table without anybody deciding it should. Same three-valued trap `_chip_expr`
+    documents for `NULL IN (...)`, one clause further along. `IS DISTINCT FROM` is the
+    NULL-safe comparison and answers TRUE there.
+
+    The `status` arm is kept even though `no_rule_match` is only ever raised before
+    `consume_document()` (email_ingest_service.py — the rule check sits above the charge, and
+    that is the point of it). If it ever were written on a charged row, charged-means-
+    reviewable says that row is owed to the reader, and this way it falls to `unposted`
+    instead of disappearing.
+    """
+    return or_(
+        EmailDocument.status != "skipped",
+        EmailDocument.reason_code.is_distinct_from(HIDDEN_REASON),
+    )
+
+
 def _wants_a_human():
     """The `review` chip's predicate: a parked document, and nothing else.
 
@@ -183,7 +231,9 @@ def _chip_expr():
     """Which ledger bucket a row is in, as SQL — **the only definition there is.**
 
     Three of the four are chips. `NOISE` is not: it cannot be passed as a `filter`, and is
-    reachable only under `today` and `all`.
+    reachable only under `today` and `all`. There is no bucket for the rows nobody sees —
+    `_visible()` removes those before this runs, which is what keeps every arm below a
+    statement about a row a reader could reach.
 
     The list filters on it and the counts group by it, so a row cannot be counted under one
     chip and listed under another. The alternative was this rule written twice, once as a
@@ -355,7 +405,7 @@ def _counts_stmt(tenant_id: uuid.UUID, now: datetime, day_start: datetime):
             # shout — and that is what keeps the migration's back-dated pile quiet.
             func.count().filter(EmailDocument.dismissed_at.is_not(None)).label("dismissed"),
         )
-        .where(EmailDocument.tenant_id == tenant_id)
+        .where(EmailDocument.tenant_id == tenant_id, _visible())
         .group_by(literal_column("chip"), EmailDocument.status, EmailDocument.reason_code)
     )
 
@@ -405,14 +455,16 @@ def _email_stmt(
     """The window, filtered by the same expression the counts group by.
 
     `chip` is None for `all` and for `today` — neither selects on state; what narrows
-    `today` is `since`.
+    `today` is `since`. Neither escapes `_visible()`, which is the point of it: `all` is the
+    view with no state predicate, so a row that should be in no view has to be removed here
+    rather than by not naming a chip.
 
     **No per-cause window.** A cause is one row that says what it stopped and names a few of
     them; there is no expansion to fetch, because a list a reader has to open is a list they
     do not read, and what clears a cause is a setting rather than any of the rows behind it.
     Every one of those attachments is under `all` in time order, like all the others.
     """
-    stmt = select(EmailDocument).where(EmailDocument.tenant_id == tenant_id)
+    stmt = select(EmailDocument).where(EmailDocument.tenant_id == tenant_id, _visible())
     if chip is not None:
         stmt = stmt.where(_chip_expr() == chip)
     if since is not None:
@@ -456,7 +508,8 @@ async def list_activity(
     """This BU's credit-card documents from both sources, newest first.
 
     `all` is the API default and is the module's **log**: no status predicate at all, so it
-    is the only view that shows every attachment that ever arrived, noise included (§14).
+    is the only view that shows every attachment that arrived, noise included (§14) — bar
+    `HIDDEN_REASON`, the one thing the log is better off not being (§20 #97).
     `counts["all"]` is also how the page tells a BU that has never had a document from one
     that has — the difference between the sales screen and an empty table. What the page
     opens on is `today`, falling through to `review` and then to `success` — the first chip

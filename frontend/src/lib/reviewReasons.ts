@@ -9,11 +9,15 @@ import type { TKey } from '../i18n/dict'
  * being asked to fix it. `stopText` below is what keeps them one sentence rather than two.
  */
 
-/** The reason codes the pipeline actually writes. Anything unmapped falls back to the
- *  raw code rather than to a blank — an unfamiliar code is still a lead. */
+/** The reason codes the pipeline actually writes **and this app can show**. Anything unmapped
+ *  falls back to the raw code rather than to a blank — an unfamiliar code is still a lead.
+ *
+ *  `no_rule_match` is absent on purpose, not by oversight: the activity endpoint's
+ *  `_visible()` keeps those rows out of every view, so a phrase for it here would be a string
+ *  nothing can print. The admin screen shows them and has its own key
+ *  (`admin.email.reason.no_rule_match`). */
 export const REASON_KEY: Record<string, TKey> = {
   sender_not_allowed: 'review.rcSenderNotAllowed',
-  no_rule_match: 'review.rcNoRuleMatch',
   unsupported_attachment: 'review.rcUnsupported',
   unreadable_document: 'review.rcUnreadable',
   wrong_pdf_password: 'review.rcWrongPassword',
@@ -107,7 +111,6 @@ export const FIX: Record<string, { key: TKey; href: string }> = {
   // Its own word, not the generic one: this is not "a setting is off", it is "the pipeline
   // is down for this BU until someone re-pastes the token".
   carmen_unauthorized: { key: 'review.actionReconnect', href: '#/email-settings' },
-  no_rule_match: SETTINGS,
   sender_not_allowed: SETTINGS,
   wrong_pdf_password: SETTINGS,
   ingest_paused: SETTINGS,

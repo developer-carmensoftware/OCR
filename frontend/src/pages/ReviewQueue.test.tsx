@@ -194,6 +194,7 @@ describe('which state the automation page paints', () => {
 
 describe('the message column', () => {
   const cases: [ReviewDocument['flags'], string][] = [
+    [['mapping_missing'], 'Mapping missing'],
     [['unbalanced'], 'Amounts do not reconcile'],
     [['mapping_guessed'], 'AI suggested mapping'],
     [['doc_no_missing'], 'No document number'],
@@ -206,6 +207,17 @@ describe('the message column', () => {
   it.each(cases)('renders %s as "%s"', async (flags, text) => {
     mount(status(), [doc({ flags })])
     expect(await screen.findByText(text)).toBeInTheDocument()
+  })
+
+  it('never paints a parked document in the colour of a dead one', async () => {
+    // Rose in this column means one thing: did not post. A parked row is the one nobody has
+    // given up on — it wears the same amber as the Review pill beside it, and the ladder
+    // decides which phrase it prints rather than which colour. `mapping_missing` is the flag
+    // that had rose: it cannot post *yet*, which is not the same as did not post.
+    mount(status(), [doc({ flags: ['mapping_missing'] })])
+    const reason = await screen.findByText('Mapping missing')
+    expect(reason).toHaveClass('rq-reason--warn')
+    expect(reason).not.toHaveClass('rq-reason--bad')
   })
 
   it('shows only the most blocking reason, never a list', async () => {
@@ -686,7 +698,9 @@ describe('the actions column', () => {
   // credit was charged, NOT about whether anyone can act. Keying the action off `status`
   // hides every one of these behind the chip the design doc calls "mostly noise" — which
   // is how eight sender_not_allowed rows cost a day of diagnosis on 2026-08-28.
-  it.each(['no_rule_match', 'sender_not_allowed', 'wrong_pdf_password', 'ingest_paused'])(
+  // `no_rule_match` is deliberately not in this list: the activity endpoint's `_visible()`
+  // keeps those rows out of every view, so there is no row for the button to sit on.
+  it.each(['sender_not_allowed', 'wrong_pdf_password', 'ingest_paused'])(
     'offers settings on a *skipped* %s row',
     async reason_code => {
       mount(status(), [doc({ status: 'skipped', reason_code, total: 0 })])
