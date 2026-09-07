@@ -1,6 +1,4 @@
-import { useState } from 'react'
 import { ExternalLink } from 'lucide-react'
-import CustomModal from '../common/CustomModal'
 import { useT } from '../../i18n/LanguageContext'
 import { glFieldLabel, glFieldList } from '../../lib/glFieldLabels'
 import { FIX, REASON_KEY, WITH_DETAIL } from '../../lib/reviewReasons'
@@ -69,12 +67,9 @@ const STATUS_META: Record<string, { key: TKey; tone: string }> = {
 interface Props {
   row: ReviewDocument
   onOpen: (id: string) => void
-  /** Put this row away. Passed only on the Review chip — that is the only place a row can
-   *  be in the way, and it is where the pile has to be able to be worked down. */
-  onDismiss?: (id: string) => void
 }
 
-export default function QueueRow({ row, onOpen, onDismiss }: Props) {
+export default function QueueRow({ row, onOpen }: Props) {
   const { t } = useT()
   const pending = row.status === 'pending_review'
   const status = STATUS_META[row.status] ?? { key: 'review.statusSkipped' as TKey, tone: 'calm' }
@@ -130,7 +125,7 @@ export default function QueueRow({ row, onOpen, onDismiss }: Props) {
       </td>
 
       <td className="rq-c-act" data-label={t('review.colActions')}>
-        <RowAction row={row} onOpen={onOpen} onDismiss={onDismiss} />
+        <RowAction row={row} onOpen={onOpen} />
       </td>
     </tr>
   )
@@ -143,7 +138,7 @@ export default function QueueRow({ row, onOpen, onDismiss }: Props) {
  * transition — so a "View" button on one would open nothing. Its story is already in the
  * Message column.
  */
-function RowAction({ row, onOpen, onDismiss }: Props) {
+function RowAction({ row, onOpen }: Props) {
   const { t } = useT()
 
   // The only row that asks for a decision rather than a repair.
@@ -178,83 +173,23 @@ function RowAction({ row, onOpen, onDismiss }: Props) {
   }
 
   const fix = row.reason_code ? FIX[row.reason_code] : undefined
-  // The repair belongs to the chip where the row is work, and `onDismiss` is passed on
-  // exactly that chip. Elsewhere the row is a record: `_wants_a_human()` puts every
-  // undismissed fixable row under `review`, so the copy of it showing up under `Today` or
-  // `All` is the same row offering the same button twice — and once it has been dismissed,
-  // a repair button on it argues with the person who put it away.
-  if (!fix || !onDismiss) return null
-  return <Stopped row={row} fix={fix} onDismiss={onDismiss} />
-}
+  if (!fix) return null
 
-/**
- * A row the pipeline stopped, on the chip where somebody is working — and the two things
- * that can be done about it, behind one button.
- *
- * They used to sit in the cell: the repair as a link, the way out as a bare ✕ whose only
- * label was a tooltip. That put the control that changes state in the smaller target, in a
- * column narrow enough that the pair read as a choice between equals. One button, and the
- * dialog behind it can afford to say what each does before it is pressed.
- *
- * `CustomModal`, not a dialog of this page's own: it already carries the portal, the scroll
- * lock, focus trap and restore, Escape, and the reduced-motion path.
- *
- * **Escape and Close leave the row alone.** Dismiss is deliberately not in the cancel slot,
- * which is what Escape fires — a keypress that means "never mind" must not be the one that
- * changes something. It is the quiet third action in the body instead, which is also its
- * rank: fixing the rule is what a reviewer came to do.
- *
- * Dismiss stays optimistic and unconfirmed, as it was. Nothing is destroyed — the row keeps
- * its whole story under Not posted, which is what the hint says — and a failure puts it back.
- */
-function Stopped({
-  row,
-  fix,
-  onDismiss,
-}: {
-  row: ReviewDocument
-  fix: { key: TKey; href: string }
-  onDismiss: (id: string) => void
-}) {
-  const { t } = useT()
-  const [open, setOpen] = useState(false)
-
+  // **A row the pipeline stopped goes straight to its repair, on every chip.**
+  //
+  // §16 put this behind a `Details` dialog, which for these rows held: the sentence the
+  // Message column beside it already prints (`stopText` is shared, so it is the same
+  // string), the filename the Document column already prints, and a dismiss. Nothing else —
+  // a pre-charge skip has no `review_payload`, so there is no document to detail. Two
+  // presses to reach a link, with a restatement in between.
+  //
+  // #81 kept the cell empty off the Review chip on two grounds, and §18 removed both: the
+  // row is no longer duplicated onto `review`, and a fixable reason off that chip no longer
+  // implies somebody dismissed it. Dismissal is a cause's gesture now, not a row's.
   return (
-    <>
-      <button type="button" className="btn btn-outline btn-sm" onClick={() => setOpen(true)}>
-        {t('review.actionDetails')}
-      </button>
-      {/* Amber, not rose: every reason that reaches this dialog is one somebody here can
-          clear — that is what put the row on this chip (`FIXABLE_REASONS`). */}
-      <CustomModal
-        show={open}
-        type="warning"
-        title={t('review.detailTitle')}
-        message={stopText(row, t)}
-        cancelText={t('review.close')}
-        onCancel={() => setOpen(false)}
-        confirmText={t(fix.key)}
-        onConfirm={() => {
-          setOpen(false)
-          window.location.hash = fix.href
-        }}
-      >
-        {/* Which attachment this is — the one thing on the row the dialog covers up, and
-            the only way to tell two rows of the same complaint apart. */}
-        <span className="modal-doc">{row.attachment}</span>
-        <button
-          type="button"
-          className="rq-dismiss"
-          onClick={() => {
-            setOpen(false)
-            onDismiss(row.id)
-          }}
-        >
-          {t('review.actionDismiss')}
-        </button>
-        <p className="rq-dismiss-hint">{t('review.dismissHint')}</p>
-      </CustomModal>
-    </>
+    <a className="btn btn-outline btn-sm" href={fix.href}>
+      {t(fix.key)}
+    </a>
   )
 }
 

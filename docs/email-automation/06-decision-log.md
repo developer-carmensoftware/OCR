@@ -509,6 +509,55 @@ Carmen call later at post time. The re-raise just stops the earlier call from hi
 **Why not all statuses.** A 503 says nothing about the credential. Unverifying a token
 because Carmen was down for a minute makes a BU re-paste a token that was fine.
 
+## 27. A cause is a row of its own, and the noise is not a row at all (2026-09-04)
+
+**Decision.** `review` narrows back to `pending_review` alone. The two reason codes that
+fire per *attachment* on legitimate mail — `no_rule_match` and `unreadable_document` — leave
+the status chips entirely and stay in `today` and `all`. Every other pre-charge refusal is an
+**ordinary row under `Not posted`**: one per attachment, its own filename, its reason, and
+`Open settings`, which is exactly what the same row already looks like under `All`. `review` narrows back to `pending_review` alone. `no_rule_match` and
+`unreadable_document` — the two that fire per attachment on legitimate mail — leave the
+status chips entirely and remain in `today` and `all`.
+
+**Why.** #23 and its predecessors kept moving this pile between chips, sorting on who can
+act and then on who paid. Neither axis separates the two things in it: *a setting that
+stopped eleven attachments* and *a document that needs a decision*. So wherever they landed
+they landed on the work chip — on the dev BU, 46 `no_rule_match` rows in front of the nine
+statements waiting behind them.
+
+**The fix turned out to be subtraction.** Two rounds went into folding the refusals into one
+row per cause — first behind a disclosure, then with the filenames printed on the row — and
+both came out again (*"ไม่อยากให้เป็น list ที่ซ่อนอยู่ใน dropdown"*, then *"เอาให้เหมือน skipped
+ของ tab all ไปเลย"*). Correct both times: once the noise arm removes 97 of a BU's 140 rows,
+what is left is a handful the table already knows how to draw, and a second row shape earns
+nothing. The volume was the whole problem.
+
+**The noise is a third thing.** 97 of one dev BU's 140 rows are `no_rule_match` +
+`unreadable_document`: the signature logo, the summary PDF inside every bank zip. They grow
+with *successful* traffic, which is exactly why `NOTIFIABLE_SKIPS` has always refused to
+ring for them — *"a bell that cries every morning is a bell nobody reads on the morning it
+matters."* The queue now says what the bell says. They are not hidden: `today` and `all`
+still list them in place, and that is load-bearing, because a BU whose filename pattern is
+too narrow finds its dropped statements there.
+
+**The mechanism.** `_chip_expr()` swaps §14's charge arm for one keyed on the reason, gated
+on `status = 'skipped'` — the same code on a `failed` row is a crash inside the refund
+boundary, which is what the dot exists for. Everything the noise arm does not claim falls to
+`unposted` and is listed there, so `total` covers it and the Pager stays honest. No
+migration, no new column, one bucket fewer than the release began with.
+
+**What it costs.** #23's release note said Posted and Not posted count only what you were
+charged for, and Not posted now also carries the refusals. That sentence was solving the
+*volume* — 61 logos reported as failures — and suppressing `no_rule_match` solves it at the
+source; what is left under Not posted did not post, and the BU wants it. Dismissal is gone
+entirely (#54's ✕, §16's dialog, and the per-cause endpoint built in this release): it
+existed to stop `review` filling with rows it could never clear, and `review` no longer holds
+them. `dismissed_at` stays for `_attention`, which is what keeps the migration's back-dated
+pile quiet.
+
+Full reasoning, and the seven decisions behind it:
+[`07-human-in-the-loop.md` §18](07-human-in-the-loop.md).
+
 ## 20. Superseded designs, and where they live
 
 - **`feat/email-flow`** — the v1 design: a human-approval review step before posting, its

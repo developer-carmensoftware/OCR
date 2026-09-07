@@ -136,14 +136,14 @@
 .rq-c-jv {
   width: 7.5rem;
 }
-/* One control per row, and never more than one word plus a glyph: `Review`, `Details`, or
-   `Open JV` with its arrow. The repair's own labels ("Fix mapping", "Reconnect") moved into
-   the Details dialog, so this no longer has to hold the longest of those plus the ✕ beside
-   it — 10.5rem → 8.5rem. nowrap below means a button that outgrew this would push its
-   neighbours rather than silently double the row's height, which is the failure worth
-   catching. */
+/* One control per row, still — but it wears the repair's own label again, so the column
+   goes back to 10.5rem. §16 took it to 8.5rem when `Fix mapping` / `Open settings` /
+   `Reconnect` moved behind a `Details` dialog; §18 deleted that dialog (for a skipped row
+   it held only the sentence the Message column already prints), and `Open settings` does
+   not fit 8.5rem. nowrap below means a button that outgrew this pushes its neighbours
+   rather than silently doubling the row's height, which is the failure worth catching. */
 .rq-c-act {
-  width: 8.5rem;
+  width: 10.5rem;
 }
 
 .rq-c-act .btn {

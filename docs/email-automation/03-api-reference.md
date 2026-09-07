@@ -56,7 +56,6 @@ stuck mid-flight is still findable. An unknown value falls back to `review`.
 |---|---|---|
 | GET | `/api/v1/credit-card/activity?filter=&limit=&offset=` | `ActivityPage` — email documents **and** manual scans, newest first, plus `counts`, `attention` and `unseen` per chip |
 | POST | `/api/v1/credit-card/activity/seen` | `{filter}` — somebody in this BU opened that chip, put its dot out |
-| POST | `/api/v1/credit-card/activity/{id}/dismiss` | `204` — put a row away; it leaves `review` and stays under `unposted` |
 
 What `#/CreditCardOCR` actually lists, and a strictly wider question than
 `GET /email/documents` (which still exists and is still email-only). Each row carries
@@ -72,25 +71,31 @@ list filters on and the counts group by:
 | chip | what is in it |
 |---|---|
 | `today` | every row since midnight ICT, whatever became of it. Cuts across the others, which is why it is left out of `counts["all"]`. Carries a count, never a dot |
-| `review` | wants a human: `pending_review` **plus** undismissed rows whose `reason_code` is in `FIXABLE_REASONS` |
+| `review` | a document waiting for somebody's decision: `pending_review`, and nothing else (§18 #82) |
 | `success` | `posted`. Manual scans land here too — they are only listed once posted |
-| `unposted` | **a document this BU paid to have read that did not post**: rejections, unfixable charged failures, and a `received` row the pipeline never finished |
-| `all` | no predicate at all — the module's log, and the only view holding the fourth bucket below. No count, no dot |
+| `unposted` | **it did not become a JV**: rejections, charged failures, a `received` row the pipeline never finished, and the pre-charge refusals a person can clear from settings — all of them as ordinary rows, one per attachment |
+| `all` | no predicate at all — the module's log, and the only view holding the chipless bucket below. No count, no dot |
 
-Plus one **bucket with no chip**, which is what `all` holds beyond the other three:
+Plus one **bucket with no chip**, and what fills it is *volume* rather than the charge
+(§18 #83). It cannot be passed as `filter`, appears in `counts` and `attention`, never in
+`unseen`, and is listed in place under `today` and `all`:
 
 | bucket | what is in it |
 |---|---|
-| `uncharged` | `status = 'skipped'` and nobody is owed anything: the BU's own filename rules, an unknown sender, an unreadable file, a dismissed fixable row. Never charged — every writer of that status is upstream of `consume_document()`. Appears in `counts` and `attention` (always `0`), never in `unseen`, and cannot be passed as `filter` |
+| `noise` | `status = 'skipped'` **and** `reason_code IN ('no_rule_match', 'unreadable_document')` — the two that fire per *attachment* on legitimate mail (97 of one dev BU's 140 rows). `attention` is always `0`. The status test is load-bearing: the same code on a `failed` row is a crash inside the refund boundary |
 
 The **four ledger buckets** partition the ledger — exactly one each — so `counts["all"]` is a
-true total rather than a sum of overlapping piles. `dismiss` refuses a row that still has a
-`review_payload`: a parked document is retired with **reject**, which records who and why;
-dismissing moves a row out of `review` into whichever bucket its charge says, which in
-practice is `uncharged`.
+true total rather than a sum of overlapping piles.
+
+**No dismissal** (§18 #86). `dismissed_at` survives as a column that `_attention` reads —
+it is what keeps the 2026-09-03 migration's back-dated pile from lighting the dot — but
+nothing writes it any more: both `POST /activity/{id}/dismiss` and the per-cause
+`POST /activity/dismiss` are gone. A row under `Not posted` accumulates there like every
+failure and rejection beside it.
 
 See [`07-human-in-the-loop.md §9`](07-human-in-the-loop.md) for the table, §12 for the chips
-and the dot, §13 for the re-key on who can act, §14 for the charge split and `all`'s return.
+and the dot, §13 for the re-key on who can act, §14 for the charge split and `all`'s return,
+§18 for the noise arm and the narrowed `review`.
 
 `PUT /settings/auto-post` is deliberately its own route and not a field on
 `PUT /api/v1/carmen/settings`: that endpoint is a full replace, so flipping the switch

@@ -63,7 +63,7 @@ trail for every outcome, `reason_code` taxonomy included.
 | `reviewed_by` | `varchar(36)`, nullable | `carmen_user_id` of whoever approved or rejected it. No FK — there is no users table, and the id is opaque to us |
 | `reviewed_by_name` | `varchar(100)`, nullable | Their username, from the same session claims. Stored because an opaque uuid answers nobody's question about who posted a JV |
 | `reviewed_at` | `timestamptz`, nullable | When they did |
-| `dismissed_at` | `timestamptz`, nullable | Somebody put this row away: it leaves the `review` chip and stays under `unposted`. Only ever set where `review_payload IS NULL` — a parked document is retired with **reject**, which records who and why. Not a soft delete, and this table has no `deleted_at` for it to be confused with |
+| `dismissed_at` | `timestamptz`, nullable | **Read-only since §18** — nothing writes it any more. It survives because the 2026-09-03 migration back-dated every historical `failed`/`rejected`/`skipped` row as dismissed, and `_attention` subtracts them so that pile does not light the queue's dot for ever. The gesture it was added for is gone: dismissal existed to stop `review` filling with rows it could never clear (§13 #54), and `review` holds only `pending_review` now. Not a soft delete, and this table has no `deleted_at` for it to be confused with |
 
 **Indexes:** `uq_email_documents_message` — unique on `(tenant_id, message_id, attachment)`,
 **this index is the dedupe**, not a constraint that happens to also prevent duplicates.
@@ -152,6 +152,23 @@ Once `finalize_extraction` has returned, the model has run and been billed to us
 document keeps its charge no matter what happens next — a duplicate, a foreign tax ID, an
 unmappable account and a Carmen refusal are all decisions taken *about a document we
 successfully read*, not failures to read it.
+
+**How the six `skipped` reasons reach a reader (2026-09-04, §18).** The charge is a billing
+fact and stopped being the axis the queue sorts on. What decides is **volume**:
+
+- `no_rule_match` and `unreadable_document` fire per *attachment* on mail that was
+  legitimately this BU's — the signature logo, the summary PDF inside every bank zip, 97 of
+  one dev BU's 140 rows. They are in no status chip; `today` and `all` list them, which is
+  where a too-narrow filename pattern is diagnosed. This is the same call `NOTIFIABLE_SKIPS`
+  already made for the bell.
+- `wrong_pdf_password`, `sender_not_allowed`, `unsupported_attachment` and `ingest_paused`
+  are ordinary rows under `Not posted`, one per attachment, carrying `Open settings` where
+  there is a setting that clears them. Folding them into one row per reason was built and
+  removed twice — see §18 #85.
+
+`unreadable_document` is suppressed **only** where `status = 'skipped'`. The same code on a
+`failed` row was written by the generic handler or inside the refund boundary, which is a
+crash, and stays a red row on `Not posted`.
 
 **And its corollary, added 2026-09-03: a document we charged for stays reviewable.** Every
 `pending_review` in the table above used to be `failed`, which threw away a reading the

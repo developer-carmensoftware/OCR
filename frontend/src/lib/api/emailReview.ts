@@ -158,18 +158,6 @@ export async function markChipSeen(filter: ActivityFilter): Promise<void> {
   if (!res.ok) throw new Error(`Could not mark seen (${res.status})`)
 }
 
-/**
- * Put a row away. It leaves the Review chip and stays under Not posted.
- *
- * Nothing is destroyed, which is why the caller offers no confirmation and no undo — the
- * row keeps its whole story, it just stops being work. The server refuses a row that still
- * has a payload: a document waiting for review is Rejected, which records who and why.
- */
-export async function dismissRow(id: string): Promise<void> {
-  const res = await apiFetch(API.creditCard.activityDismiss(id), { method: 'POST' })
-  if (!res.ok) throw new Error(`Could not dismiss (${res.status})`)
-}
-
 export async function getPending(id: string): Promise<ReviewDocumentDetail> {
   const res = await apiFetch(API.emailReview.document(id))
   if (!res.ok) throw new Error(`Document fetch failed (${res.status})`)

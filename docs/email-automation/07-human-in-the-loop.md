@@ -1357,3 +1357,95 @@ A label that cleans away to nothing keeps what it had — a blank key is worse t
 - **Cleaning the junk keys already in `bu_accounting_mapping_entries`.** Nothing new lands
   there now. Removing what is there is a SQL errand against live customer config, not a code
   change, and it wants somebody to look at the list first.
+
+---
+
+## §18 — A cause is a row; a document is a row; they are not the same row (2026-09-04, later)
+
+Three releases in three days moved the same pile between chips without settling what it
+*is*.
+
+- §11 #33 filed the never-charged skips under "mostly noise" and took them off the default
+  view.
+- §13 #53 pulled the clearable ones back onto `Review`, because "mostly noise" is where
+  eight `sender_not_allowed` rows had gone to die on 2026-08-28.
+- §14 #64 pushed them all off the status chips again, because 61 signature logos of 154
+  rows were being reported to a BU as *"documents that did not post"*.
+
+Each was right about the thing it was answering and wrong about the pile, because the pile
+is two piles and every one of those decisions moved it whole.
+
+### The two axes, and the one that was never used
+
+| | one setting, many rows | one document, one decision |
+|---|---|---|
+| `wrong_pdf_password` ×11 | ✔ | |
+| `sender_not_allowed` ×6 | ✔ | |
+| a statement waiting for an OK | | ✔ |
+| a Carmen refusal | | ✔ |
+
+Every previous round sorted on **who can act** (§13) or **who paid** (§14). Neither
+separates those two rows, so whichever chip the causes landed on, they landed *as documents*
+— eleven lines of the same sentence, in a table whose unit is the document. On the dev BU
+that is 46 `no_rule_match` rows on the chip named for the nine statements waiting behind
+them.
+
+**The unit is the axis** — but the fix turned out to be subtraction, not a new row shape.
+Take the noise out (below) and what is left of the causes is a handful of rows, which the
+table already knows how to draw. So they stay one row per attachment, under `Not posted`,
+looking exactly like the same row looks under `All`. See #85 for the two folded shapes that
+were built and removed on the way to that.
+
+### The noise, which is a third thing
+
+`no_rule_match` and `unreadable_document` fire per *attachment* on mail that was
+legitimately this BU's — the signature logo, the summary PDF inside every bank zip. **97 of
+one dev BU's 140 rows.** They grow with successful traffic rather than with anything wrong,
+which is why `NOTIFIABLE_SKIPS` has always refused to ring for them: *"a bell that cries
+every morning is a bell nobody reads on the morning it matters."* The queue said the
+opposite until now. It says the same thing as the bell.
+
+They are not hidden — `today` and `all` list them in place, which is what #58 kept `today`
+unfiltered for and what #65 brought `all` back for. That is load-bearing, not a courtesy: a
+BU whose filename pattern is too narrow finds its dropped statements there, which is the
+failure `no_rule_match` was introduced to make visible.
+
+### Decisions
+
+| # | Decision | Why |
+|---|---|---|
+| 82 | **`review` narrows back to `pending_review`.** `_wants_a_human()` is one comparison again. | #53's protection is kept and its shape is dropped: those rows are pointed at harder than before — their own row on `Not posted`, an amber dot, and a settings link that no longer needs a dialog opened first. Since #22 every charged refusal parks as `pending_review`, so the reason codes that needed the second arm are read off the status anyway. |
+| 83 | **One chipless bucket, and what fills it is volume — not the charge (§14), not who can act (§13).** `NOISE_REASONS` and nothing else. | §14 used the charge as a proxy for *"not worth showing"*, which is true of a signature logo and false of the wrong password beside it; and it was the **volume** that made the chip unreadable, not the billing. Reading the reason costs the same one CASE arm and gets both right. Gated on `status = 'skipped'`: the same code on a `failed` row is a crash inside the refund boundary, which is what #57 keeps the dot for. |
+| 84 | **Every other pre-charge refusal is an ordinary row under `Not posted`** — one per attachment, its own filename in the Document cell, its reason in the Message cell, `Open settings` in Actions. Exactly what the same row already looks like under `All`. | It is where a reader goes to ask *"what did not become a JV"*, and a wrong password is a truthful answer. Being ordinary is the point: `total` counts them, the Pager cannot lie about them, and there is one row shape on the page instead of two. |
+| 85 | **The fold is gone (#84 replaced it).** They were briefly one row per *cause* carrying a count, then the same row with the filenames printed under the reason. Neither shipped. | The first hid them behind a disclosure and rendered them as child rows with a footer — a small table inside the table, and *"ไม่อยากให้เป็น list ที่ซ่อนอยู่ใน dropdown"*: a list a reader has to open is a list they do not read. The second brought the names onto the row and was still a second row shape to learn, a second bucket to keep out of `total`, a `+8 more` that pointed nowhere, and a `1 attachments` to pluralise. Answered with *"เอาให้เหมือน skipped ของ tab all ไปเลย"* — the reader had a shape they already understood, and the fold was solving a volume problem that #82's noise arm had already solved: what reaches this chip is a handful of rows, not forty. |
+| 86 | **No dismissal at all.** `dismissed_at` stays, read by `_attention` alone; the per-row and per-cause endpoints are both deleted. | Dismissal existed to stop `review` filling with dead rows it could never clear (#54). `review` no longer holds them, so the pressure is gone — and these rows now behave like the failures and rejections beside them, which have always simply accumulated under `Not posted`. The column still earns its place: the 2026-09-03 migration back-dated every historical row as dismissed, and that is what keeps `_attention` from lighting the dot for a pile nobody can act on. |
+| 87 | **The `Details` dialog goes (#81 reversed).** A stopped row's Actions cell holds its repair link directly, on every chip. | For a skipped row that dialog held the sentence the Message column already prints (`stopText` is shared, so literally the same string), the filename the Document column already prints, and the dismiss. Nothing else — a pre-charge skip has no `review_payload`, so there is no document to detail. Two presses to reach a link, with a restatement in between. #81's two premises are both gone: the row is no longer duplicated onto `review`, and a fixable reason off that chip no longer implies somebody dismissed it. `.rq-c-act` returns to 10.5rem, which is the width those labels needed before §16 took them away. |
+| 88 | **`FIXABLE_REASONS` → `ATTENTION_REASONS`, plus `unsupported_attachment`.** | After #82 its only reader is `_attention`, so both its name and its "must stay in step with `FIX`" contract were false. The addition closes a live dead end: `unsupported_attachment` is in `NOTIFIABLE_SKIPS`, so it rang the bell and then appeared on no chip and lit nothing. |
+
+### What a BU will notice
+
+The Review chip's number falls — on the dev BU, 15 → 9 — and what is left is documents.
+`Not posted` goes from 10 to 26: the ten rejections it already held plus the sixteen
+attachments a person can clear from settings, each carrying `Open settings`. The 97 signature
+logos and unreadable files are gone from both chips, and still in `All`.
+
+### Considered and not done
+
+- **A chip for the clearable refusals.** §14 rejected a chip for the never-charged pile as a
+  fifth status word, and that still holds: they are on a chip the reader already visits,
+  answering the question that chip already asks.
+- **Folding the clearable refusals into one row per cause.** #85 — built twice, removed
+  twice. Worth keeping the measurement it produced: `array_agg` had to carry the same
+  `dismissed_at IS NULL` filter `n` does, or a put-away cause hands back names for
+  attachments it no longer counts (three names beside an `n` of 1, on the dev DB), and the
+  names needed deduplicating because a bank resending one locked file three times filled
+  every slot with it. Both are in the git history if the idea returns.
+- **Sorting `unposted` so the clearable ones lead.** Rejected for the third time (§12 for
+  `unposted`, §13 for `review`): plain time order, as everywhere else in the app. The Message
+  column and the Actions cell are what tell the two kinds of row apart, which is the same
+  answer both earlier rounds gave.
+- **Showing the noise anywhere but the log.** It would be a permanent line on every BU's
+  screen saying its filename rules are working, which is the bell's own argument for never
+  ringing on it. `today` and `all` hold them.
+- **Re-keying the `Skipped` pill.** Unchanged from §14: the chips are the reader's question,
+  the pill is the record.

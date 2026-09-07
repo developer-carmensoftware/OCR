@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  dismissRow,
   getReviewStatus,
   listActivity,
   markChipSeen,
@@ -8,9 +7,6 @@ import {
   type ReviewDocument,
   type ReviewStatus,
 } from '../../lib/api/emailReview'
-import { useT } from '../../i18n/LanguageContext'
-import { showToast } from '../../lib/toast'
-
 /** Where the page opens before the counts have said otherwise. */
 const TODAY: ActivityFilter = 'today'
 
@@ -41,9 +37,6 @@ export interface ReviewQueueController {
    *  empty state — "nothing is waiting" and "we could not ask" must never look alike. */
   error: boolean
   reload: () => void
-  /** Put a row away: it leaves the Review chip and stays under Not posted. Optimistic —
-   *  nothing is destroyed, so a failure simply puts it back. */
-  dismiss: (id: string) => void
 }
 
 /**
@@ -64,7 +57,6 @@ export interface ReviewQueueController {
  * is what forbids that.
  */
 export function useReviewQueue(limit: number): ReviewQueueController {
-  const { t } = useT()
   const [status, setStatus] = useState<ReviewStatus | null>(null)
   // The page opens on the day: "what has happened today" is the question somebody arrives
   // with. It no longer waits for `auto_post` to name a chip — the fall-through below covers
@@ -202,31 +194,6 @@ export function useReviewQueue(limit: number): ReviewQueueController {
     return () => window.removeEventListener('focus', onFocus)
   }, [reload])
 
-  /**
-   * Put a row away, on screen first.
-   *
-   * Optimistic because the whole point of the gesture is that it is cheap: a spinner and a
-   * refetch per row would make clearing a morning's noise feel like work. The count is
-   * adjusted by hand for the same reason, and only `review` moves: a dismissible row is one
-   * nobody was charged for, so it drops off the status chips altogether rather than landing
-   * under Not posted. `all` is unchanged, which is the point — the log keeps it.
-   *
-   * A failure puts it back and says so. Nothing was destroyed either way; the row is still
-   * there under All.
-   */
-  const dismiss = useCallback(
-    (id: string) => {
-      setRows(rs => rs.filter(r => r.id !== id))
-      setTotal(n => Math.max(0, n - 1))
-      setCounts(c => ({ ...c, review: Math.max(0, (c.review ?? 0) - 1) }))
-      dismissRow(id).catch(() => {
-        showToast(t('review.dismissFailed'), 'error')
-        reload()
-      })
-    },
-    [reload, t]
-  )
-
   return {
     status,
     filter,
@@ -241,6 +208,5 @@ export function useReviewQueue(limit: number): ReviewQueueController {
     loading,
     error,
     reload,
-    dismiss,
   }
 }

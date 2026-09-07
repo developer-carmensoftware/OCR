@@ -177,6 +177,7 @@ class ActivityPage(Page[ActivityRow]):
     yet** — the same keys again, and the one that renders the dot. Two fields rather than
     one because they answer different questions: the dot asks "is there something new
     here", and the screen-reader sentence beside it reports the size of the pile.
+
     """
 
     counts: dict[str, int] = Field(default_factory=dict)

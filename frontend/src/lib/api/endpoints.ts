@@ -29,10 +29,6 @@ export const API = {
     // "somebody in this BU has now looked at that chip". A POST rather than a flag on the
     // GET above: a read that writes would let a prefetch or a retry put the dot out.
     activitySeen: `${V1}/credit-card/activity/seen`,
-    // "nobody is going to act on this row" — it leaves the Review chip and stays under Not
-    // posted. Only for rows with no payload; a document waiting for review is Rejected,
-    // which records who and why.
-    activityDismiss: (id: string) => `${V1}/credit-card/activity/${id}/dismiss`,
     tasks: `${V1}/credit-card/tasks`,
     task: (taskId: string) => `${V1}/credit-card/tasks/${taskId}`,
     mapping: {
