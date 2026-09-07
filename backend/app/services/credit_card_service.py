@@ -16,7 +16,7 @@ from app.config import settings
 from app.database import async_session
 from app.models.orm import CreditCard, OCRTask, TaskStatus
 from app.models.schemas import ExtractedCreditCardData
-from app.models.schemas.ocr import ExtractedDetailRow
+from app.models.schemas.ocr import ExtractedDetailRow, ExtractionWarning
 from app.utils.bank_detect import FEE_INVOICE_CODES, detect_bank_code
 from app.utils.date_parsing import format_doc_date, parse_doc_date
 from app.utils.db_helpers import has_submitted_doc
@@ -40,56 +40,55 @@ _VAT_RATE = _VAT_RATES[0]
 
 _AMT_FIELDS = ("pay_amt", "commis_amt", "tax_amt", "total")
 
-# Surfaced to the user (frontend banner) whenever _solve_fee_row had to assume
-# the primary VAT rate instead of reading it from the document's printed totals.
-_ASSUMED_RATE_WARNING = (
-    f"Some fee amounts could not be read from the document's printed totals — "
-    f"VAT and totals were computed at an assumed {_VAT_RATE:.0%} VAT rate. "
-    "Please verify these amounts against the original document."
-)
-
-# Surfaced when the fee line lost its amount and the footer had no Sub-Total /
-# Grand-Total figure to recover it from — the fee column will be blank.
-_MISSING_FEE_WARNING = (
-    "A fee line's amount could not be read from this document. Please check the "
-    "original and enter the fee amount manually."
-)
-
-# Surfaced when negative amounts (refund / chargeback / credit note) appear. The
-# spread/solve assume positive fees, so we skip auto-normalization and show the
-# amounts as extracted rather than distribute a negative across lines.
-_NEGATIVE_UNSUPPORTED_WARNING = (
-    "This document contains negative amounts (e.g. a refund or credit note), "
-    "which automatic fee reconciliation does not support yet. Amounts are shown "
-    "as extracted — please verify them against the original document."
-)
-
-
-# Surfaced when the reconstructed line total (Σ fee + VAT) disagrees with the
-# document's own printed Grand Total — a line figure was likely misread.
+# ── What the reviewer is asked to check ───────────────────────────────────────
 #
-# **Both figures go in the sentence, because only one of them is on screen.** The printed
-# grand total lives on the summary row, which `_normalize_fee_invoice` consumes and never
-# emits as a detail, and the JV built from the lines balances by construction — so the old
-# wording accused the document of an inconsistency the reviewer had no way to see, on a
-# screen otherwise reading *Balanced*. The gap is also what says whether to care: two
-# satang is a rounding artefact to wave through, two thousand baht is a misread digit.
-def _recon_mismatch_warning(lines_total: float, printed_total: float) -> str:
-    return (
-        f"The line items add up to {_fmt_amt(lines_total)}, but this document's printed "
-        f"grand total is {_fmt_amt(printed_total)} — off by "
-        f"{_fmt_amt(abs(lines_total - printed_total))}. A fee amount was probably misread; "
-        "check the amounts against the original before approving."
+# Codes, not sentences: this process cannot know whether the person reading is on the
+# English or the Thai side of the toggle, and the two screens that render these are both
+# bilingual. `warningText` in `lib/reviewReasons.ts` writes the sentence; the keys live in
+# `i18n/dict.ts` under `warn.*`.
+#
+# The banner over them already says *Amounts need review*, so none of these repeats it —
+# five of the six used to end in some spelling of "please verify against the original
+# document", which is the heading said twice.
+
+# _solve_fee_row had to assume the primary VAT rate rather than read it off the totals.
+_ASSUMED_RATE = ExtractionWarning(code="assumedVat", params={"rate": f"{_VAT_RATE:.0%}"})
+
+# The fee line lost its amount and the footer had no Sub-Total / Grand-Total to recover it
+# from — the fee column will be blank.
+_MISSING_FEE = ExtractionWarning(code="feeUnreadable")
+
+# Negative amounts (refund / chargeback / credit note). The spread/solve assume positive
+# fees, so normalization is skipped and the amounts stand as extracted.
+_NEGATIVE_UNSUPPORTED = ExtractionWarning(code="negativeAmounts")
+
+# The footer VAT could not be attributed to specific fee lines (their per-line fee amounts
+# were blank), so the split may be inaccurate.
+_FEE_UNALLOCATED = ExtractionWarning(code="vatUnallocated")
+
+# The LLM found no rows at all — fee line and footer both missed.
+_NO_FEE_LINES = ExtractionWarning(code="noFeeLines")
+
+
+# Σ fee + VAT disagrees with the document's own printed Grand Total — a line figure was
+# likely misread.
+#
+# **Both figures travel, because only one of them is on screen.** The printed grand total
+# lives on the summary row, which `_normalize_fee_invoice` consumes and never emits as a
+# detail, and the JV built from the lines balances by construction — so the old wording
+# accused the document of an inconsistency the reviewer had no way to see, on a screen
+# otherwise reading *Balanced*. The gap is also what says whether to care: two satang is a
+# rounding artefact to wave through, two thousand baht is a misread digit.
+def _recon_mismatch(lines_total: float, printed_total: float) -> ExtractionWarning:
+    return ExtractionWarning(
+        code="reconMismatch",
+        params={
+            "lines": _fmt_amt(lines_total),
+            "printed": _fmt_amt(printed_total),
+            "gap": _fmt_amt(abs(lines_total - printed_total)),
+        },
     )
 
-
-# Surfaced when the footer VAT could not be attributed to specific fee lines
-# (their per-line fee amounts were blank), so the split may be inaccurate.
-_FEE_UNALLOCATED_WARNING = (
-    "Some fee lines had no readable amount, so VAT could not be attributed to "
-    "them accurately. Please verify the per-line amounts against the original "
-    "document."
-)
 
 # Tolerance (baht) for reconciling printed vs reconstructed figures.
 _RECON_TOL = 0.02
@@ -375,7 +374,7 @@ def _spread_footer_vat(line_rows: list, total_vat: float) -> str | None:
         last.tax_amt = _fmt_amt(round(total_vat - allocated, 2))
         last.pay_amt = last.tax_amt
         last.total = "0"
-        return _FEE_UNALLOCATED_WARNING
+        return _FEE_UNALLOCATED
 
     allocated = 0.0
     for r in line_rows[:-1]:
@@ -394,7 +393,7 @@ def _spread_footer_vat(line_rows: list, total_vat: float) -> str | None:
     # A blank line among otherwise-priced lines got vat/pay = 0 — warn so the
     # user checks it rather than silently accepting a 0.00 fee line.
     if any((_parse_amt(r.commis_amt) or 0.0) <= 0 for r in line_rows):
-        return _FEE_UNALLOCATED_WARNING
+        return _FEE_UNALLOCATED
     return None
 
 
@@ -417,18 +416,14 @@ def _normalize_fee_invoice(extracted: ExtractedCreditCardData, bank_code: str) -
     if not rows:
         # Safety net: the LLM found no rows at all (fee line AND footer both
         # missed) — surface this instead of silently showing a blank table.
-        extracted.warnings.append(
-            "No fee line items were found in this document — the AI extraction "
-            "may have missed the item table. Please check the original document "
-            "and add rows manually if needed."
-        )
+        extracted.warnings.append(_NO_FEE_LINES)
         return
 
     if _has_negative_amount(rows):
         # Refund / chargeback / credit note: the proportional spread and per-row
         # solve assume positive fees, so leave the rows as extracted and warn
         # rather than distribute a negative across lines. (Guard, not support.)
-        extracted.warnings.append(_NEGATIVE_UNSUPPORTED_WARNING)
+        extracted.warnings.append(_NEGATIVE_UNSUPPORTED)
         return
 
     # A footer can print more than one summary line (e.g. KTC's รวม subtotal
@@ -499,7 +494,7 @@ def _normalize_fee_invoice(extracted: ExtractedCreditCardData, bank_code: str) -
                 if fee:
                     line_rows[0].commis_amt = _fmt_amt(fee)
                 else:
-                    extracted.warnings.append(_MISSING_FEE_WARNING)
+                    extracted.warnings.append(_MISSING_FEE)
             # Cross-check the reconstruction against the document's own printed
             # totals: Σ fee + VAT should equal the Grand Total (or Subtotal + VAT).
             # A drift beyond tolerance means a line fee was misread — the spread
@@ -516,7 +511,7 @@ def _normalize_fee_invoice(extracted: ExtractedCreditCardData, bank_code: str) -
                 anchor = round(sub + vat, 2)
             if anchor is not None and abs(fee_sum + vat - anchor) > _RECON_TOL:
                 extracted.warnings.append(
-                    _recon_mismatch_warning(round(fee_sum + vat, 2), round(anchor, 2))
+                    _recon_mismatch(round(fee_sum + vat, 2), round(anchor, 2))
                 )
             spread_warning = _spread_footer_vat(line_rows, vat)
             if spread_warning:
@@ -548,7 +543,7 @@ def _normalize_fee_invoice(extracted: ExtractedCreditCardData, bank_code: str) -
             assumed_rate = assumed_rate or rate_assumed
         row.total = "0"
     if assumed_rate:
-        extracted.warnings.append(_ASSUMED_RATE_WARNING)
+        extracted.warnings.append(_ASSUMED_RATE)
 
 
 def _normalize_bay_statement(extracted: ExtractedCreditCardData) -> None:
@@ -573,7 +568,7 @@ def _normalize_bay_statement(extracted: ExtractedCreditCardData) -> None:
     if _has_negative_amount(rows):
         # Refund / credit-note line: the VAT spread and net arithmetic assume
         # positive amounts, so show the rows as extracted and warn. (Guard only.)
-        extracted.warnings.append(_NEGATIVE_UNSUPPORTED_WARNING)
+        extracted.warnings.append(_NEGATIVE_UNSUPPORTED)
         return
 
     summary = next((r for r in rows if _is_summary_row(r.transaction)), None)
@@ -624,7 +619,7 @@ def _normalize_bay_statement(extracted: ExtractedCreditCardData) -> None:
         else:
             # VAT exists but no per-row commission to weight the spread by — leave
             # tax blank (net-fill below treats it as 0) and flag it to the user.
-            extracted.warnings.append(_FEE_UNALLOCATED_WARNING)
+            extracted.warnings.append(_FEE_UNALLOCATED)
     else:
         # No usable summary row — old per-row fallback: tax = gross − commis − net.
         for r in blank_tax_rows:

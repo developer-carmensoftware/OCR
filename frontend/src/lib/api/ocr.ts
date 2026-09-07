@@ -1,5 +1,6 @@
 import { apiFetch, fetchTimeout } from './client'
 import { API } from './endpoints'
+import type { ExtractionWarning } from '../reviewReasons'
 
 // Backend LLM timeout is 120s × up to 3 attempts. We cap the client at 150s so
 // the user gets a clear error instead of waiting indefinitely.
@@ -29,7 +30,9 @@ export interface ExtractResult {
   branch_no: string
   is_duplicate: boolean
   details: ExtractedRow[]
-  warnings: string[]
+  /** Findings the UI writes into a sentence (`warningText`). A plain string is what a
+   *  document extracted before the codes existed still carries. */
+  warnings: (ExtractionWarning | string)[]
 }
 
 export interface ApiError extends Error {
@@ -148,6 +151,6 @@ export async function extractFromFile(
     branch_no: (card.branch_no as string) || '',
     is_duplicate: (card.is_duplicate as boolean) || false,
     details,
-    warnings: (card.warnings as string[] | undefined) || [],
+    warnings: (card.warnings as (ExtractionWarning | string)[] | undefined) || [],
   }
 }

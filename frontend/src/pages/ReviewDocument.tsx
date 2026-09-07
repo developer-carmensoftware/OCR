@@ -15,7 +15,7 @@ import { fmt } from '../lib/format'
 import { toExtractedRows } from '../lib/api/ocr'
 import { normalizeDateStringToCE } from '../lib/date'
 import { applyJvAmount, type JvRow } from '../lib/ccJv'
-import { FIX, stopText } from '../lib/reviewReasons'
+import { FIX, stopText, warningText, type ExtractionWarning } from '../lib/reviewReasons'
 import { patchAccountingConfig } from '../lib/api/config'
 import {
   approveDocument,
@@ -58,7 +58,7 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   const [headerData, setHeaderData] = useState<Record<string, string>>({})
   const [details, setDetails] = useState<DetailRow[]>([])
   const [bank, setBank] = useState<BankCode | ''>('')
-  const [warnings, setWarnings] = useState<string[]>([])
+  const [warnings, setWarnings] = useState<(ExtractionWarning | string)[]>([])
   const [postInputTax, setPostInputTax] = useState(true)
   /** The input-tax record cannot be filed as it stands. Approve posts both documents, so
    *  it stops for this the same way it stops for an unbalanced JV. */
@@ -133,7 +133,7 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
             _uid: crypto.randomUUID(),
           }))
         )
-        setWarnings((ext.warnings as string[]) || [])
+        setWarnings((ext.warnings as (ExtractionWarning | string)[]) || [])
         setBank((detectBankFromExtracted(ext as Record<string, string>) || '') as BankCode | '')
         // What the AI proposed at ingest, into the pickers as the starting answer. Not
         // `setDirty`: the reviewer has not done anything yet, and closing an untouched
@@ -600,7 +600,9 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
               {warnings.length > 0 && (
                 <div className="mapping-alert">
                   <AlertTriangle size={16} />
-                  <span className="cc-alert-text">{warnings.join(' · ')}</span>
+                  <span className="cc-alert-text">
+                    {warnings.map(w => warningText(w, t)).join(' · ')}
+                  </span>
                 </div>
               )}
 

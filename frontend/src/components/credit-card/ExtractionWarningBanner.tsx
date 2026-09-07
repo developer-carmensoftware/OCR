@@ -1,8 +1,10 @@
 import { TriangleAlert } from 'lucide-react'
 import { useT } from '../../i18n/LanguageContext'
+import { warningText, type ExtractionWarning } from '../../lib/reviewReasons'
 
 interface Props {
-  warnings: string[]
+  /** Strings are what documents extracted before the codes existed still carry. */
+  warnings: (ExtractionWarning | string)[]
 }
 
 export default function ExtractionWarningBanner({ warnings }: Props) {
@@ -18,7 +20,7 @@ export default function ExtractionWarningBanner({ warnings }: Props) {
         <span className="extraction-warning-label">{t('cc.extractionWarning')}</span>
         {warnings.map((w, i) => (
           <p key={i} className="extraction-warning-text">
-            {w}
+            {warningText(w, t)}
           </p>
         ))}
       </div>

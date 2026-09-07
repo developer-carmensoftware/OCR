@@ -82,6 +82,7 @@ from app.models.enums import AlertSeverity, JobStatus
 from app.models.identity import Tenant
 from app.models.observability import JobRun
 from app.models.schemas import ExtractedCreditCardData
+from app.models.schemas.ocr import ExtractionWarning
 from app.services import anomaly_service, notification_service, ocr_service
 from app.services import email_settings_service as es
 from app.services import gl_suggestion_service as gl
@@ -804,9 +805,7 @@ def _resolve_bank(extracted: ExtractedCreditCardData, rule_bank: str | None) -> 
     )
     if detected and rule_bank and detected != rule_bank:
         extracted.warnings.append(
-            f"This file matched your {rule_bank} rule, but the document was issued by "
-            f"{detected} — it has been filed as {detected}. Check that rule's filename "
-            "patterns."
+            ExtractionWarning(code="bankMismatch", params={"rule": rule_bank, "detected": detected})
         )
     return detected or rule_bank
 

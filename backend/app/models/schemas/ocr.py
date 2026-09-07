@@ -84,6 +84,39 @@ class ExtractedDetailRow(BaseModel):
     total: str | None = None
 
 
+class ExtractionWarning(BaseModel):
+    """Something the reviewer should check, named rather than narrated.
+
+    The normalizers used to compose the sentence here, which made every warning banner
+    English on two screens that are otherwise bilingual — this process cannot know who is
+    reading. So the finding travels as a code plus the numbers it needs, and the UI writes
+    the sentence in the reader's language (`warningText` in `lib/reviewReasons.ts`).
+
+    **A bare string still validates**, becoming `legacy` with the text in `params`. Two
+    reasons it has to: `review_payload` holds the extraction of every document already
+    waiting in a queue, and `approve_document` re-validates it — a parked document must not
+    become unapprovable because the shape moved underneath it.
+    """
+
+    code: str
+    params: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("params", mode="before")
+    @classmethod
+    def _stringify(cls, v):
+        """Numbers arrive formatted for reading (`"1,234.56"`), but a caller passing a float
+        should not silently produce `{"gap": 10.0}` that the UI prints as `10`."""
+        return {k: str(x) for k, x in (v or {}).items()}
+
+
+def as_warning(value: "ExtractionWarning | dict | str") -> "ExtractionWarning":
+    if isinstance(value, ExtractionWarning):
+        return value
+    if isinstance(value, str):
+        return ExtractionWarning(code="legacy", params={"text": value})
+    return ExtractionWarning.model_validate(value)
+
+
 class ExtractedCreditCardData(BaseModel):
     id: str | None = Field(None, description="Credit card record ID (Draft)")
     task_id: str | None = Field(None, description="Task ID associated with this extraction")
@@ -114,10 +147,16 @@ class ExtractedCreditCardData(BaseModel):
     details: list[ExtractedDetailRow] = Field(default_factory=list)
     is_duplicate: bool = Field(False)
     raw_text: str | None = Field(None)
-    warnings: list[str] = Field(
+    warnings: list[ExtractionWarning] = Field(
         default_factory=list,
-        description="User-facing extraction warnings (English), set by backend normalizers only",
+        description="User-facing extraction findings, as codes the UI renders in its language",
     )
+
+    @field_validator("warnings", mode="before")
+    @classmethod
+    def _accept_legacy_warnings(cls, v):
+        """A queue full of documents parked before this shape existed still has to open."""
+        return [as_warning(w) for w in (v or [])]
 
     @field_validator("bank_code", mode="before")
     @classmethod

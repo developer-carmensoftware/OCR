@@ -10,9 +10,9 @@ arithmetic, not re-OCR'd.
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.ocr import ExtractedDetailRow
 from app.services.credit_card_service import (
-    _ASSUMED_RATE_WARNING,
-    _FEE_UNALLOCATED_WARNING,
-    _NEGATIVE_UNSUPPORTED_WARNING,
+    _ASSUMED_RATE,
+    _FEE_UNALLOCATED,
+    _NEGATIVE_UNSUPPORTED,
     _clean_transaction_labels,
     _normalize_bay_statement,
     _normalize_fee_invoice,
@@ -800,7 +800,7 @@ def test_multiline_one_blank_commission_warns_not_silently_zeroed():
         ]
     )
     _normalize_fee_invoice(ext, "SIAMPAY")
-    assert _FEE_UNALLOCATED_WARNING in ext.warnings
+    assert _FEE_UNALLOCATED in ext.warnings
 
 
 def test_multiline_all_blank_commissions_split_vat_evenly():
@@ -815,7 +815,7 @@ def test_multiline_all_blank_commissions_split_vat_evenly():
     )
     _normalize_fee_invoice(ext, "SIAMPAY")
     assert [r.tax_amt for r in ext.details] == ["5.00", "5.00"]
-    assert _FEE_UNALLOCATED_WARNING in ext.warnings
+    assert _FEE_UNALLOCATED in ext.warnings
 
 
 def test_equal_fee_lines_not_mistaken_for_footer():
@@ -847,15 +847,12 @@ def test_reconstructed_total_mismatch_warns():
         ]
     )
     _normalize_fee_invoice(ext, "KTC")
-    # Both figures and the gap, because only one of them reaches the reviewer's screen: the
-    # printed grand total rides the summary row, which this function consumes, and the JV
-    # built from the lines balances by construction. Σ fee (100 + 40) + VAT 10.50 = 150.50
-    # against a printed 160.50.
-    assert ext.warnings == [
-        "The line items add up to 150.50, but this document's printed grand total is "
-        "160.50 — off by 10.00. A fee amount was probably misread; check the amounts "
-        "against the original before approving."
-    ]
+    # The figures travel, not a sentence — the UI writes the sentence in the reader's
+    # language. Both are needed because only one of them reaches the screen: the printed
+    # grand total rides the summary row, which this function consumes, and the JV built from
+    # the lines balances by construction. Σ fee (100 + 40) + VAT 10.50 = 150.50 vs 160.50.
+    assert [w.code for w in ext.warnings] == ["reconMismatch"]
+    assert ext.warnings[0].params == {"lines": "150.50", "printed": "160.50", "gap": "10.00"}
 
 
 def test_reconstructed_total_matches_no_warning():
@@ -873,7 +870,7 @@ def test_reconstructed_total_matches_no_warning():
         ]
     )
     _normalize_fee_invoice(ext, "KTC")
-    assert not any("printed grand total" in w for w in ext.warnings)
+    assert not any(w.code == "reconMismatch" for w in ext.warnings)
 
 
 def test_two_value_grand_and_vat_pair_flags_assumed_rate():
@@ -883,7 +880,7 @@ def test_two_value_grand_and_vat_pair_flags_assumed_rate():
     _normalize_fee_invoice(ext, "KTC")
     r = _row(ext)
     assert (r.pay_amt, r.commis_amt, r.tax_amt) == ("107.00", "100.00", "7.00")
-    assert _ASSUMED_RATE_WARNING in ext.warnings
+    assert _ASSUMED_RATE in ext.warnings
 
 
 def test_negative_amount_fee_invoice_guarded_and_untouched():
@@ -901,7 +898,7 @@ def test_negative_amount_fee_invoice_guarded_and_untouched():
         ]
     )
     _normalize_fee_invoice(ext, "KTC")
-    assert _NEGATIVE_UNSUPPORTED_WARNING in ext.warnings
+    assert _NEGATIVE_UNSUPPORTED in ext.warnings
     assert len(ext.details) == 2  # untouched
     assert ext.details[0].commis_amt == "-100.00"
 
@@ -909,7 +906,7 @@ def test_negative_amount_fee_invoice_guarded_and_untouched():
 def test_negative_amount_bay_statement_guarded():
     ext = _bay_extracted([{"transaction": "VISA", "pay_amt": "-500.00", "commis_amt": "10.00"}])
     _normalize_bay_statement(ext)
-    assert _NEGATIVE_UNSUPPORTED_WARNING in ext.warnings
+    assert _NEGATIVE_UNSUPPORTED in ext.warnings
     assert ext.details[0].pay_amt == "-500.00"
 
 
@@ -932,7 +929,7 @@ def test_bay_zero_commission_still_fills_net():
     _normalize_bay_statement(ext)
     assert len(ext.details) == 2  # TOTAL consumed
     assert [r.total for r in ext.details] == ["1,000.00", "500.00"]
-    assert _FEE_UNALLOCATED_WARNING in ext.warnings
+    assert _FEE_UNALLOCATED in ext.warnings
 
 
 # ── The line description as a mapping key ─────────────────────────────────────

@@ -82,6 +82,45 @@ export function stopText(
   return full && detail ? `${phrase} · ${detail}` : phrase
 }
 
+/** One extraction finding, as the normalizers now emit it: a code plus the numbers it
+ *  needs. See `ExtractionWarning` in `models/schemas/ocr.py`. */
+export interface ExtractionWarning {
+  code: string
+  params?: Record<string, string>
+}
+
+/**
+ * The sentence for one extraction finding, in the reader's language.
+ *
+ * The backend used to compose this prose itself, which pinned every warning banner to
+ * English on two screens that are otherwise bilingual — a process handling a cron-driven
+ * mailbox cannot know who will open the queue. It names the finding now and this writes it.
+ *
+ * **A string still renders.** `review_payload` holds the extraction of every document
+ * already waiting in a queue, so documents parked before the shape changed carry prose, and
+ * they arrive here as `legacy` with the text in `params.text`. An unknown code prints its
+ * own name rather than nothing, the same call `stopText` makes: an unfamiliar code is still
+ * a lead, a blank banner is not.
+ */
+export function warningText(
+  warning: ExtractionWarning | string,
+  t: (k: TKey, vars?: Record<string, string | number>) => string
+): string {
+  if (typeof warning === 'string') return warning
+  const params = { ...(warning.params || {}) }
+  if (warning.code === 'legacy') return params.text || ''
+  // Include/Exclude is our own word for whether VAT sits inside the unit price, not a field
+  // name Carmen owns, so it reads translated rather than raw inside a Thai sentence.
+  if (params.taxType) {
+    const key = `warn.taxType.${params.taxType}` as TKey
+    const translated = t(key)
+    if (translated !== key) params.taxType = translated
+  }
+  const key = `warn.${warning.code}` as TKey
+  const text = t(key, params)
+  return text === key ? warning.code : text
+}
+
 const SETTINGS = { key: 'review.actionOpenSettings' as TKey, href: '#/email-settings' }
 
 /**

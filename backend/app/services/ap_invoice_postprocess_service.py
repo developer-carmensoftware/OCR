@@ -17,10 +17,13 @@ from typing import Any
 # always trips it.
 _TAX_FIT_TOLERANCE = 0.01
 
-_TAX_TYPE_GUESSED_WARNING = (
-    "Could not confirm whether VAT is included in the unit prices; assumed "
-    "{tax_type}. Please check the line amounts against the document before submitting."
-)
+
+# A code rather than a sentence, for the same reason the credit-card normalizer's are: the
+# banner that renders it (`ExtractionWarningBanner`) is bilingual and this process cannot
+# know which language is on the other side. `tax_type` is Include/Exclude, which the UI
+# translates rather than printing raw — see `warn.taxType.*` in `i18n/dict.ts`.
+def _tax_type_guessed_warning(tax_type: str) -> dict[str, Any]:
+    return {"code": "apTaxGuessed", "params": {"taxType": tax_type}}
 
 
 def _num(v: Any) -> float:
@@ -376,13 +379,13 @@ def postprocess(raw: dict | None) -> dict:
     if not _deposit_applies(items, deposit_pct, doc_sub, doc_grand):
         deposit_pct = 0.0
     tax_type, tax_misfit = _detect_tax_type(items, deposit_pct, doc_sub, doc_grand, doc_tax)
-    warnings: list[str] = []
+    warnings: list[dict[str, Any]] = []
     # Neither Include nor Exclude reconciled to the footer, so the winner is a guess.
     # Say so: a wrong guess rescales every line by the VAT rate and the plug below
     # hides the evidence in the last row, which is exactly how invoice 66-0023 shipped
     # a correct grand total over six wrong line amounts.
     if tax_misfit > _TAX_FIT_TOLERANCE:
-        warnings.append(_TAX_TYPE_GUESSED_WARNING.format(tax_type=tax_type))
+        warnings.append(_tax_type_guessed_warning(tax_type))
     for item in items:
         _compute_line_totals(item, tax_type)
 

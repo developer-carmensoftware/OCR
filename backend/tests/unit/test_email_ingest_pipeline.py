@@ -875,12 +875,12 @@ async def test_the_document_outranks_the_rule_that_matched_it():
     assert outcome == "pending_review"
     p.post_gljv.assert_not_awaited()
     assert db.added[0].bank_code == "KTC"
-    # Pinned in full: `ReviewDocument.test.tsx` renders this exact sentence, and a
-    # warning the reviewer cannot act on is the same as no warning.
-    assert extracted.warnings == [
-        "This file matched your KBANK rule, but the document was issued by KTC — it has "
-        "been filed as KTC. Check that rule's filename patterns."
-    ]
+    # Both banks pinned: the sentence itself lives in `i18n/dict.ts` (in two languages)
+    # since the pipeline stopped composing prose, but a warning naming the wrong rule —
+    # or naming neither — is one the reviewer cannot act on, which is the same as no
+    # warning at all.
+    assert [w.code for w in extracted.warnings] == ["bankMismatch"]
+    assert extracted.warnings[0].params == {"rule": "KBANK", "detected": "KTC"}
 
 
 @pytest.mark.asyncio

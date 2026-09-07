@@ -303,26 +303,60 @@ describe('the screen', () => {
   })
 
   it('shows the reviewer when a filename rule claimed the wrong bank', async () => {
-    // `_resolve_bank` writes this sentence when the rule and the document disagree. It is
-    // the only place an over-broad filename pattern is visible before it has posted a JV
-    // against the wrong vendor, so it has to reach the screen, not just the row.
+    // `_resolve_bank` raises this when the rule and the document disagree. It is the only
+    // place an over-broad filename pattern is visible before it has posted a JV against
+    // the wrong vendor, so it has to reach the screen, not just the row.
+    //
+    // The pipeline sends the finding, not the sentence — `test_email_ingest_pipeline` pins
+    // the code and its two banks; this pins that the screen writes them into words.
     vi.mocked(api.getPending).mockResolvedValue(
       detail({
         extracted: {
           ...EXTRACTED,
-          // Copied verbatim from `_resolve_bank`; test_email_ingest_pipeline pins the
-          // backend half of the same sentence.
+          warnings: [{ code: 'bankMismatch', params: { rule: 'KBANK', detected: 'KTC' } }],
+        },
+      })
+    )
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    expect(screen.getByText(/Matched your KBANK rule/)).toBeInTheDocument()
+    expect(screen.getByText(/issued by KTC/)).toBeInTheDocument()
+  })
+
+  it('still prints a warning left behind by an older extraction', async () => {
+    // `review_payload` holds the extraction of every document already in a queue, and the
+    // ones parked before the codes existed carry prose. A banner that went blank on them
+    // would drop the only reason those documents are being looked at.
+    vi.mocked(api.getPending).mockResolvedValue(
+      detail({
+        extracted: { ...EXTRACTED, warnings: ['Some older sentence about the amounts.'] },
+      })
+    )
+    mount()
+    await screen.findByDisplayValue('INV-001')
+    expect(screen.getByText(/Some older sentence about the amounts/)).toBeInTheDocument()
+  })
+
+  it('writes the numbers into the mismatch sentence', async () => {
+    // The figures are the whole point of this one: the printed grand total is consumed by
+    // `_normalize_fee_invoice` and reaches no other part of the screen, which is why the
+    // sentence used to read as a contradiction of the JV's own "Balanced".
+    vi.mocked(api.getPending).mockResolvedValue(
+      detail({
+        extracted: {
+          ...EXTRACTED,
           warnings: [
-            'This file matched your KBANK rule, but the document was issued by KTC — it ' +
-              "has been filed as KTC. Check that rule's filename patterns.",
+            {
+              code: 'reconMismatch',
+              params: { lines: '150.50', printed: '160.50', gap: '10.00' },
+            },
           ],
         },
       })
     )
     mount()
     await screen.findByDisplayValue('INV-001')
-    expect(screen.getByText(/matched your KBANK rule/)).toBeInTheDocument()
-    expect(screen.getByText(/issued by KTC/)).toBeInTheDocument()
+    expect(screen.getByText(/150\.50.*160\.50.*10\.00/)).toBeInTheDocument()
   })
 
   it('previews the description of the bank on the row, not the BU-wide one', async () => {
