@@ -590,6 +590,14 @@ payload.
 > second *client*, not a second writer, exactly as it already is for `enabled` and the rules.
 > Support uses it for a BU whose Carmen does not yet offer the control. Your screen remains
 > the one a customer is meant to use.
+>
+> **And it is now the only one they are sent to.** Since 2026-09-08 every settings button in
+> the OCR app — the setup call-to-action on an empty queue, the repair button on a row stopped
+> by a sender rule, a PDF password, a paused ingest or a foreign tax ID, and *Reconnect* on a
+> dead posting credential — opens `<your origin>/#/setting` in a new tab, the same way the
+> queue's *Open JV* opens `/glJv/{id}/show`. Our page is still routed for support but is
+> linked from nowhere. If that route ever moves, tell us: it is one constant
+> (`carmenSettingsUrl` in `frontend/src/lib/url.ts`).
 
 ---
 

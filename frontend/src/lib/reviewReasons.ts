@@ -1,3 +1,4 @@
+import { getCarmenUrl } from './url'
 import type { TKey } from '../i18n/dict'
 
 /**
@@ -121,7 +122,10 @@ export function warningText(
   return text === key ? warning.code : text
 }
 
-const SETTINGS = { key: 'review.actionOpenSettings' as TKey, href: '#/email-settings' }
+/** Carmen's own settings screen, as a path rather than a URL: `getCarmenUrl` reads the
+ *  session's Carmen origin, which is not set when this module is imported. `fixLinkProps`
+ *  resolves it at render. */
+const SETTINGS = { key: 'review.actionOpenSettings' as TKey, href: '/setting' }
 
 /**
  * Where a person fixes each cause — and nothing at all for the ones they cannot.
@@ -144,14 +148,39 @@ const SETTINGS = { key: 'review.actionOpenSettings' as TKey, href: '#/email-sett
  * paid-for extraction parks rather than finishing. On the row itself Review still wins —
  * opening the document is the stronger action, and it is where the reviewer reads the
  * reason. This map is what the dialog's banner offers beside it.
+ *
+ * **A settings cause goes to Carmen, not to us.** Every field these buttons are about — the
+ * bank rule, the PDF password, the tax IDs, the switch, the posting token — is written by
+ * Carmen's settings screen (§0, §2.7). Our `#/email-settings` is the copy we keep so the
+ * contract can be exercised end to end; it is a support surface, and pointing a customer at
+ * it sent them to edit a value on the screen that does not own it. `mapping_incomplete` is
+ * the one cause that is genuinely ours — the GL mapping stays in this app.
  */
 export const FIX: Record<string, { key: TKey; href: string }> = {
   mapping_incomplete: { key: 'review.actionFixMapping', href: '#/CreditCardOCR/mapping' },
   // Its own word, not the generic one: this is not "a setting is off", it is "the pipeline
   // is down for this BU until someone re-pastes the token".
-  carmen_unauthorized: { key: 'review.actionReconnect', href: '#/email-settings' },
+  carmen_unauthorized: { key: 'review.actionReconnect', href: '/setting' },
   sender_not_allowed: SETTINGS,
   wrong_pdf_password: SETTINGS,
   ingest_paused: SETTINGS,
   tax_id_mismatch: SETTINGS,
+}
+
+/**
+ * The `<a>` props for a fix button — one function, because the row and the dialog must open
+ * the same door the same way.
+ *
+ * An in-app hash navigates in this tab. Carmen's screen is another application: it gets a tab
+ * of its own, exactly like the Open JV link beside it, so a reviewer fixing a setting still
+ * has the queue behind them. The `#` test is the whole rule — an internal link always starts
+ * with one and a resolved Carmen URL never does.
+ */
+export function fixLinkProps(fix: { href: string }): {
+  href: string
+  target?: string
+  rel?: string
+} {
+  if (fix.href.startsWith('#')) return { href: fix.href }
+  return { href: getCarmenUrl(fix.href), target: '_blank', rel: 'noopener noreferrer' }
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertCircle, AlertTriangle, CheckCircle2, Loader2, X } from 'lucide-react'
+import { AlertCircle, AlertTriangle, CheckCircle2, ExternalLink, Loader2, X } from 'lucide-react'
 import CustomModal from '../components/common/CustomModal'
 import SwapLabel from '../components/common/SwapLabel'
 import JvHeaderCard from '../components/credit-card/JvHeaderCard'
@@ -15,7 +15,13 @@ import { fmt } from '../lib/format'
 import { toExtractedRows } from '../lib/api/ocr'
 import { normalizeDateStringToCE } from '../lib/date'
 import { applyJvAmount, type JvRow } from '../lib/ccJv'
-import { FIX, stopText, warningText, type ExtractionWarning } from '../lib/reviewReasons'
+import {
+  FIX,
+  fixLinkProps,
+  stopText,
+  warningText,
+  type ExtractionWarning,
+} from '../lib/reviewReasons'
 import { patchAccountingConfig } from '../lib/api/config'
 import {
   approveDocument,
@@ -283,6 +289,12 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   // the input-tax panel took the bare detection and so lost the vendor's registered
   // identity — name, tax ID and address — for a bank sitting right there in the registry.
   const bankCode = (doc?.bank_code || bank || '') as BankCode | ''
+
+  // Where this document's cause gets fixed for good, if anywhere — the same map the queue
+  // row reads, resolved here so the banner's button and the row's button cannot point at
+  // different screens.
+  const fix = doc?.reason_code ? FIX[doc.reason_code] : undefined
+  const fixLink = fix && fixLinkProps(fix)
 
   // Everything the approve will write back to the BU config: zero means skip the config
   // call entirely.
@@ -583,13 +595,14 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   </span>
                   {/* Where it gets fixed for good, for the causes that have such a place.
                       The reviewer can still correct and post this one document without
-                      leaving; this is for the next twenty. */}
-                  {FIX[doc.reason_code] && (
-                    <a
-                      className="btn btn-outline btn-sm rd-alert-fix"
-                      href={FIX[doc.reason_code].href}
-                    >
-                      {t(FIX[doc.reason_code].key)}
+                      leaving; this is for the next twenty — and a settings cause leaves for
+                      Carmen's screen in a tab of its own, so this document stays open. */}
+                  {fix && fixLink && (
+                    <a className="btn btn-outline btn-sm rd-alert-fix" {...fixLink}>
+                      {t(fix.key)}
+                      {fixLink.target && (
+                        <ExternalLink size={12} strokeWidth={2} aria-hidden="true" />
+                      )}
                     </a>
                   )}
                 </div>

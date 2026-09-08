@@ -4,6 +4,7 @@ import {
   Archive,
   CheckCircle2,
   Copy,
+  ExternalLink,
   FileCheck2,
   FileX2,
   Mail,
@@ -20,6 +21,7 @@ import { useReviewQueue } from '../hooks/credit-card/useReviewQueue'
 import { prefetchGlMasters } from '../hooks/mapping/useGlMasters'
 import { ACTIVITY_FILTERS, type ActivityFilter } from '../lib/api/emailReview'
 import { useRowsPerPage } from '../hooks/useRowsPerPage'
+import { carmenSettingsUrl } from '../lib/url'
 import { useT } from '../i18n/LanguageContext'
 import { showToast } from '../lib/toast'
 import type { TKey } from '../i18n/dict'
@@ -230,8 +232,20 @@ function NotSetUp({
         <li>{t('review.step3')}</li>
       </ol>
 
-      <a className="btn btn-outline" href="#/email-settings">
+      {/* Carmen's screen, not ours. Everything this button is about — the tax IDs, the bank
+          rule, the switch — is written there (CARMEN_INTEGRATION.md §0); `#/email-settings`
+          is the copy we keep for support, and sending a customer to it was sending them to
+          edit a value on the screen that does not own it. New tab, like Open JV: setting the
+          feature up is a trip into another application, and the queue should still be here
+          when they come back. */}
+      <a
+        className="btn btn-outline"
+        href={carmenSettingsUrl()}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
         {t('review.openSettings')}
+        <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
       </a>
     </div>
   )
