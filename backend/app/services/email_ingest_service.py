@@ -1014,26 +1014,7 @@ async def _run_document(
 
         doc_no = extracted.doc_no
 
-        # The second factor. The envelope said who owns this mail; if the document
-        # carries a number registered to someone else, the two disagree and that stops
-        # the post rather than picking a winner.
-        async with async_session() as db:
-            conflict = await es.foreign_tax_id(db, list(extracted.tax_ids or []), tenant_id)
-        if conflict:
-            # Support's copy, not the reviewer's — the queue prints the phrase alone for
-            # this code. "Registered to another BU" is dropped: a BU's register holds an
-            # array of tax IDs, so one missing from it has failed to match and nothing
-            # stronger than that has been established.
-            raise _Skip("tax_id_mismatch", f"Tax ID {conflict} is not in this BU's register")
-
-        if extracted.is_duplicate:
-            # This *is* the queue's cell, not a tail on one (WITH_DETAIL in
-            # lib/reviewReasons), so it is capitalised and stands alone. The two duplicate
-            # kinds share one reason_code and are told apart here: this copy is redundant
-            # because the document is in Carmen already, which is nothing for anyone to do.
-            raise _Skip("duplicate_document", "Already posted to Carmen")
-
-        # `is_duplicate` above reads `credit_cards.submitted_at`, which stays NULL for the
+        # `is_duplicate` below reads `credit_cards.submitted_at`, which stays NULL for the
         # whole time a document sits in the review queue. So a second copy — the bank
         # re-sends, or someone forwards it twice — sails past that check and parks a second
         # identical row for the reviewer to notice by eye.
@@ -1045,6 +1026,10 @@ async def _run_document(
         # Unconditional, deliberately. It read `not auto_post` while a BU with review off
         # could not park anything; decision #51 ended that, and a clean-only `auto_post`
         # parks routinely — so the gate that was theoretical there is now on the main path.
+        #
+        # Checked ahead of the GL-mapping call below, deliberately: this is the one
+        # post-extraction skip that does NOT park, so nobody will ever see a suggestion for
+        # it — it stays ahead of that call's LLM spend rather than paying for one.
         if await _already_pending(tenant_id, bank_code, doc_no):
             # The one post-extraction skip that does NOT park. Its twin is already in the
             # queue, editable and postable; a second identical row is the thing this check
@@ -1064,6 +1049,12 @@ async def _run_document(
             # the gap and the reviewer is handed an answer to check rather than a blank
             # form — which is the whole of what this call buys. It does not decide
             # anything: `mapping_guessed` below parks the document either way.
+            #
+            # Runs ahead of the tax-ID and duplicate checks below, deliberately: both of
+            # those still park the document for review (see `_Skip.reviewable`), and a
+            # parked document with an unmapped payment type deserves the same suggestion a
+            # clean one gets, instead of the blank pickers a `raise` upstream used to leave
+            # it with.
             suggested = await _suggest_missing_mappings(missing, bank_code, carmen_token)
             if suggested:
                 # In memory only. Saving it here made the guess the BU's own rule before
@@ -1086,6 +1077,25 @@ async def _run_document(
             # when auto-post narrowed to clean documents, since a gap in the GL mapping is
             # the plainest case of a document that is not one. Before that, the whole BU's
             # odd payment types died here and someone had to find the mapping page.
+
+        # The second factor. The envelope said who owns this mail; if the document
+        # carries a number registered to someone else, the two disagree and that stops
+        # the post rather than picking a winner.
+        async with async_session() as db:
+            conflict = await es.foreign_tax_id(db, list(extracted.tax_ids or []), tenant_id)
+        if conflict:
+            # Support's copy, not the reviewer's — the queue prints the phrase alone for
+            # this code. "Registered to another BU" is dropped: a BU's register holds an
+            # array of tax IDs, so one missing from it has failed to match and nothing
+            # stronger than that has been established.
+            raise _Skip("tax_id_mismatch", f"Tax ID {conflict} is not in this BU's register")
+
+        if extracted.is_duplicate:
+            # This *is* the queue's cell, not a tail on one (WITH_DETAIL in
+            # lib/reviewReasons), so it is capitalised and stands alone. The two duplicate
+            # kinds share one reason_code and are told apart here: this copy is redundant
+            # because the document is in Carmen already, which is nothing for anyone to do.
+            raise _Skip("duplicate_document", "Already posted to Carmen")
 
         rows = build_jv_rows(extracted.details, config.mappings or {})
         if not rows or not any(r["credit"] for r in rows):
@@ -1691,6 +1701,7 @@ async def _finish(
     jv_no: str | None = None,
     reason_code: str | None = None,
     error: str | None = None,
+    notify: bool = True,
 ) -> None:
     async with async_session() as db:
         row = await db.get(EmailDocument, ledger_id)
@@ -1719,7 +1730,7 @@ async def _finish(
             if reason_code in NOTIFIABLE_SKIPS
             else None
         )
-        if notify_type:
+        if notify_type and notify:
             notification_service.notify(
                 db,
                 tenant_id=row.tenant_id,  # type: ignore[arg-type]
@@ -1893,6 +1904,9 @@ async def approve_document(
             doc_no=doc_no,
             jv_no=jv_no,
             error=tax_note,
+            # The reviewer is the one who just posted this — telling them again in the
+            # bell wastes the fact that they are sitting right here watching it happen.
+            notify=False,
         )
         await _stamp_reviewer(ledger_id, reviewer, reviewer_name)
         logger.info(
@@ -1935,6 +1949,10 @@ async def reject_document(
         doc_no=doc_no,
         reason_code="rejected_by_reviewer",
         error=(reason or "").strip()[:500] or None,
+        # Same reviewer, same click, same reasoning as approve's `notify=False` above —
+        # "rejected" isn't in _finish's own notify-triggering status/reason sets today,
+        # but that should stay true by design, not by accident of those sets' contents.
+        notify=False,
     )
     await _stamp_reviewer(ledger_id, reviewer, reviewer_name)
     logger.info("[email] %s rejected %s", reviewer_name or reviewer, doc_no)

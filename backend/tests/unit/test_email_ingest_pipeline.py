@@ -991,6 +991,62 @@ async def test_a_document_whose_tax_id_belongs_to_another_bu_is_parked():
 
 
 @pytest.mark.asyncio
+async def test_a_tax_mismatched_document_still_carries_its_gl_suggestion():
+    """The reading was paid for and the AI still ran the mapping step — parking on a
+    tax mismatch must not throw away a suggestion the reviewer would otherwise get for
+    free. Used to: `_Skip("tax_id_mismatch", ...)` raised before the mapping block ever
+    ran, so `review_payload["suggested"]` came back `{}` and every picker on the review
+    screen started blank."""
+    db = _FakeDB()
+    outcome, _ = await _run(
+        db,
+        extracted=_extracted(
+            details=[
+                ExtractedDetailRow(
+                    transaction="Mastercard",
+                    pay_amt="500.00",
+                    commis_amt="15.00",
+                    tax_amt="1.05",
+                    total="483.95",
+                )
+            ]
+        ),
+        config=_config(),
+        carmen_result={"Code": 0},
+        conflict="0994000165676",
+        suggested={"Mastercard": {"dept": "GEN", "acc": "1130M"}},
+    )
+    assert outcome == "pending_review"
+    payload = db.added[0].review_payload
+    assert payload["suggested"] == {"Mastercard": {"dept": "GEN", "acc": "1130M"}}
+    assert payload["guessed"] == ["Mastercard"]
+
+
+@pytest.mark.asyncio
+async def test_a_resent_copy_of_a_tax_mismatched_document_does_not_queue_twice():
+    """The dedupe guard is consulted before the tax-ID check, so it covers a document that
+    parked *with a reason* too.
+
+    It used to sit after it: a bank re-sending a statement whose tax ID had already parked
+    one row raised `tax_id_mismatch` a second time and put two identical rows in front of
+    the same reviewer — the exact thing `_already_pending` was written to prevent.
+    """
+    db = _FakeDB()
+    with patch.object(ingest, "_already_pending", AsyncMock(return_value=True)):
+        outcome, p = await _run(
+            db,
+            extracted=_extracted(),
+            config=_config(),
+            carmen_result={"Code": 0},
+            conflict="0994000165676",
+        )
+    assert outcome == "failed"
+    assert db.added[0].reason_code == "duplicate_document"
+    assert db.added[0].review_payload is None  # its twin already holds the reading
+    p.post_gljv.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_a_document_printing_no_matching_tax_id_still_posts():
     """Positive evidence only. Some fee invoices never print the buyer's TIN, and
     parking those would break legitimate documents to catch nothing."""
@@ -2743,6 +2799,25 @@ async def test_approve_posts_under_the_bus_credential_not_the_reviewers():
     # audit row into a raw UUID.
     assert row.reviewed_by_name == "somchai"
     p.mark.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_approving_your_own_review_rings_no_bell():
+    """The reviewer is the one who just posted this — a `document_posted` notification
+    for them would only restate what they watched happen on screen. `_run_document`'s own
+    unattended success path still rings it (see `test_happy_path_posts_and_records_ledger`);
+    only the human-driven path is silenced."""
+    row = _pending_row()
+    db = _ReviewDB(row)
+    with _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-77"}):
+        await ingest.approve_document(
+            row.id,
+            tenant_id=str(row.tenant_id),
+            reviewer="u-reviewer",
+            extracted=_extracted(id=str(uuid4())),
+            rows=[{"dept": "GEN", "acc": "1010", "debit": 0, "credit": 1000.0}],
+        )
+    assert [o for o in db.added if isinstance(o, UserNotification)] == []
 
 
 @pytest.mark.asyncio
