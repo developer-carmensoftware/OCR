@@ -8,7 +8,7 @@ sqlalchemy==2.0.52
 asyncpg==0.31.0
 
 # LLM via OpenRouter (OpenAI-compatible SDK)
-openai==3.5.0
+openai==3.8.0
 
 # Image Processing
 Pillow==12.3.0
