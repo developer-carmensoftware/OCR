@@ -56,3 +56,13 @@ updates:
       # CI step. Remove once typescript-eslint publishes TS7 support.
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
+      # Vitest 5 changed `Assertion` to two type params (`Assertion<R, T>`), so
+      # @testing-library/jest-dom's one-param `declare module 'vitest'` no longer
+      # merges — every DOM matcher (toBeInTheDocument, toHaveValue, …) vanishes
+      # from the type and both `type-check` and the Vercel build fail. Runtime is
+      # fine; it's types only. Remove once jest-dom ships a vitest-5 augmentation
+      # (jest-dom 7.0.1 is latest and does not).
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitest/*"
+        update-types: ["version-update:semver-major"]
