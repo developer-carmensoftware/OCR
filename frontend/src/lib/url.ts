@@ -25,3 +25,8 @@ export function getCarmenUrl(path = ''): string {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
   return `${base.replace(/\/$/, '')}${carmenSubpath}/#${normalizedPath}`
 }
+
+/** Carmen's settings screen — where every setting this app reads is actually edited
+ *  (CARMEN_INTEGRATION.md §0: "Settings live in Carmen"). One place, so a deeper route
+ *  later is one edit rather than a search. */
+export const carmenSettingsUrl = () => getCarmenUrl('/setting')

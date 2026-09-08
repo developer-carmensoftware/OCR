@@ -1563,6 +1563,7 @@ approving every document, with nothing on any screen saying so.
 | 98 | **The switch is one field of the BU's settings, written by `PUT /api/v1/carmen/settings` and nowhere else.** The gear, `PUT /api/v1/email/settings/auto-post`, `es.set_auto_post`, `AutoPostIn` and the six `review.autoPost*` strings are deleted. | Two writers for one boolean is the whole defect; deleting one of them is the fix, and the one to keep is the one that owns the *setting*. It is also where it belongs by §0.2: Carmen owns the settings screens, we own the storage and the queue. |
 | 99 | **`SettingsIn.auto_post` merges on omit** (`bool \| None = None`) — the only field on that payload that does not replace. | Reverses the deliberate choice recorded above under *`SettingsIn.auto_post`*. That choice rested on the failure being recoverable, and what made it recoverable was the gear #98 just deleted. With one writer left, absent has to mean "keep" or the first client that has not shipped the field yet silently un-does the customer's decision. |
 | 100 | **`#/email-settings` carries the switch too** — a checkbox in the connection block, `ctrl.setAutoPost` → the same `PUT /api/v1/carmen/settings`. It is **not** a second writer: one endpoint, two clients of it, exactly as `enabled` and the rules already are on that screen. | That page's whole reason to exist is that the contract can be exercised end to end without Carmen (its own header says so), and a field no client of ours ever sends is a field nothing proves. It is also the service path: a BU whose Carmen has not shipped the control can be set up without an operator hand-writing a JWT request. |
+| 101 | **Every settings link in the queue opens Carmen's screen** (`getCarmenUrl('/setting')`, new tab, external-link glyph) — the `NotSetUp` CTA, the row buttons for `sender_not_allowed` / `wrong_pdf_password` / `ingest_paused` / `tax_id_mismatch`, the dialog's banner button, and *Reconnect* (`carmen_unauthorized`). `#/email-settings` stays routed but is linked from nowhere. | The links never followed the writer. #98 settled that Carmen's screen owns these values; a button that says "fix this setting" and lands on our support copy sends the customer to edit a field on the screen that does not own it. `mapping_incomplete` is the one cause that stays in-app and in-tab — the GL mapping really is ours. |
 
 ### What a BU will notice
 
@@ -1570,6 +1571,10 @@ Nothing, unless they were using the gear — the queue's action bar loses it and
 Refresh and Upload documents. Until Carmen's own switch ships, a BU already on auto-post
 stays on it (that is #99 working), and it can still be flipped from `#/email-settings`
 (#100) or by an operator: the same `PUT /settings` accepts `Bearer <admin jwt>`.
+
+The one thing they *will* notice is #101: every settings button on the queue now opens
+Carmen's settings screen in a new tab instead of our own page. Same words on the button, a
+different door — and the queue stays open behind it.
 
 `GET /email/status` still reports `auto_post`, and the page still fetches it. It is read-only
 now, and it is what a support conversation reads.

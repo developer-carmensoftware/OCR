@@ -7,6 +7,11 @@
  * their own Carmen on every call) and the same error shapes, so anything that breaks
  * here breaks on their screen too.
  *
+ * **Nothing in the UI links here any more** (2026-09-08). Every settings button on the review
+ * queue opens Carmen's own screen, because that is the screen that owns these values — the
+ * same reason `auto_post` has one writer. This page is reached by typing the hash: by support,
+ * and by whoever is exercising the contract. The route in `main.tsx` stays for exactly that.
+ *
  * Three steps, all visible and independently editable — a checklist, not a wizard.
  * `PUT /settings` is a full replace that returns the new state, so each step saves
  * itself the moment it changes and there is no page-level Save button.

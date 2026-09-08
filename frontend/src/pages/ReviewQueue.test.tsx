@@ -283,7 +283,7 @@ describe('a skipped attachment on Not posted', () => {
     expect(screen.getByText(/password/i)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open settings' })).toHaveAttribute(
       'href',
-      '#/email-settings'
+      expect.stringContaining('/#/setting')
     )
   })
 
@@ -316,10 +316,11 @@ describe('what a stopped row offers', () => {
     mount(status(), [skipped()], { ...ZERO, all: 1, unposted: 1 })
     fireEvent.click(await screen.findByRole('tab', { name: /Not posted/ }))
     await waitFor(() => expect(vi.mocked(api.listActivity)).toHaveBeenCalledTimes(2))
-    expect(screen.getByRole('link', { name: 'Open settings' })).toHaveAttribute(
-      'href',
-      '#/email-settings'
-    )
+    // Carmen's screen owns every field this button is about, and it is another application:
+    // its own tab, so the queue is still there when the reviewer comes back.
+    const link = screen.getByRole('link', { name: 'Open settings' })
+    expect(link).toHaveAttribute('href', expect.stringContaining('/#/setting'))
+    expect(link).toHaveAttribute('target', '_blank')
   })
 
   it('never offers a repair on a document waiting for review', async () => {
@@ -687,10 +688,10 @@ describe('the actions column', () => {
     // it with a dismiss; the dismiss belongs to the cause now, so the dialog held nothing
     // the row was not already printing.
     mount(status(), [doc({ status: 'failed', reason_code: 'mapping_incomplete', total: 0 })])
-    expect(await screen.findByRole('link', { name: 'Fix mapping' })).toHaveAttribute(
-      'href',
-      '#/CreditCardOCR/mapping'
-    )
+    // The other half of `fixLinkProps`: the GL mapping is ours, so it stays in this tab.
+    const link = await screen.findByRole('link', { name: 'Fix mapping' })
+    expect(link).toHaveAttribute('href', '#/CreditCardOCR/mapping')
+    expect(link).not.toHaveAttribute('target')
   })
 
   // The regression that matters: the ledger's skipped/failed split is about whether a
@@ -705,7 +706,7 @@ describe('the actions column', () => {
       mount(status(), [doc({ status: 'skipped', reason_code, total: 0 })])
       expect(await screen.findByRole('link', { name: 'Open settings' })).toHaveAttribute(
         'href',
-        '#/email-settings'
+        expect.stringContaining('/#/setting')
       )
     }
   )
