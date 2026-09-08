@@ -7,6 +7,10 @@ when `/extract` is called (the frontend never passes one). This resolves the
 bank from the LLM-extracted fields so the persisted row and the duplicate check
 carry the same `bank_code` the submit step will later store.
 
+The model's own answer (`model_bank_code`) is tier 0: every prompt asks which
+BANK REFERENCE entry issued the document, and the reader looking at the page
+beats keyword-matching the two or three header fields it chose to fill in.
+
 Supported banks: BBL | KBANK | SCB | BAY | KTC | GHL | PAYPAL | SIAMPAY.
 """
 
@@ -42,6 +46,10 @@ _BANK_KEYWORDS: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = [
     ("BBL", ("กรุงเทพ",), ()),
 ]
 
+# Every code this module can return — also the whitelist for the model's own answer,
+# which is untrusted text until it matches one of these exactly.
+BANK_CODES: frozenset[str] = frozenset(code for code, _, _ in _BANK_KEYWORDS)
+
 
 def _match(text: str, upper: str) -> str | None:
     for code, thai_kw, eng_kw in _BANK_KEYWORDS:
@@ -60,13 +68,18 @@ def _match_issuer(name: str) -> str | None:
 
 def detect_bank_code(
     *,
+    model_bank_code: str | None = None,
     bank_company_name: str | None = None,
     bank_name: str | None = None,
     company_name: str | None = None,
     doc_name: str | None = None,
-    raw_text: str | None = None,
 ) -> str | None:
     """Return a bank code ('BBL', 'KBANK', 'KTC', …) from extracted fields, or None."""
+    # 0. What the model said it matched. Already validated to a known code by the
+    # schema, re-checked here because this function is called with raw dicts too.
+    if model_bank_code in BANK_CODES:
+        return model_bank_code
+
     # 1a. Issuer name fields — full keyword chain.
     for name in (bank_company_name, bank_name):
         if name and (code := _match_issuer(name)):
@@ -83,7 +96,6 @@ def detect_bank_code(
             return "SCB"
 
     doc = (doc_name or "").upper()
-    raw = (raw_text or "").upper()
 
     # 2. Document-name keyword fallbacks — same specific-first chain as the
     # other tiers, then English legacy names and SCB document-title keywords.
@@ -99,8 +111,8 @@ def detect_bank_code(
         if "ใบนำฝาก" in doc or "ใบสรุปยอดขายบัตรเครดิต" in doc:
             return "SCB"
 
-    # 3. Raw-text keyword fallbacks — most-specific first (see _BANK_KEYWORDS).
-    if raw_text and (code := _match(raw, raw)):
-        return code
-
+    # There was a `raw_text` tier here until 2026-09-03. It never fired: no prompt has
+    # ever asked the model to return `raw_text`, so it was always "". Two diagnoses
+    # blamed it for a wrong bank before anyone checked — deleted rather than fixed,
+    # since tier 0 now asks the reader directly.
     return None

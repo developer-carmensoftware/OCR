@@ -10,6 +10,7 @@ import {
   ArrowRight,
 } from 'lucide-react'
 import Card from '../common/Card'
+import type { ExtractionWarning } from '../../lib/reviewReasons'
 import DateInput from '../common/DateInput'
 import VendorSearch from './APVendorSearch'
 import AmountSummary from './APAmountSummary'
@@ -26,7 +27,7 @@ import type { TaxProfileItem } from '../../lib/api/carmen'
 
 interface Ctrl {
   // Backend extraction warnings (e.g. the VAT reading could not be confirmed).
-  warnings: string[]
+  warnings: (ExtractionWarning | string)[]
   headerData: APInvoiceHeader
   lineItems: Array<Record<string, string | undefined>>
   fieldMappings: Record<APColumnKey, string>

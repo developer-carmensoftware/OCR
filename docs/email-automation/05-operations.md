@@ -103,6 +103,36 @@ tenant / date, per-row detail (error, Message-ID, bank, task), and the two manua
 poll toast; neither leaves a row in the table, so the toast is where a growing backlog is
 visible at all.
 
+## Running with review on
+
+`auto_post` defaults to `false`, so a new BU's documents stop at `pending_review` instead of
+posting. **A BU with it on still parks anything flagged** (decision #24) — so a queue on a
+BU you believe is fully automated is the feature working, not a fault. Three operational
+consequences:
+
+- **`rows_affected` on `#/admin/jobs` counts posted documents, so it reads `0` for a BU in
+  review** even on a poll that worked perfectly. The poll summary carries `pending_review`
+  separately; that is the number that moves. Do not read a run of zeroes as a broken poll
+  without checking whether the BUs involved have review on.
+- **The backlog cap is 50 pending per BU.** Past it, mail is handed back unread — no ledger
+  row, nothing charged, and it replays on the poll after someone clears the queue. It is
+  bounded by `IMAP_HOLD_DAYS`, so a BU that ignores its queue for longer than the hold
+  window loses the offer, and `email_ingest_beyond_window` is the alert that says so.
+- **Nobody tells the customer their queue is waiting.** There is no outbound mail in this
+  codebase (see [Not built](02-architecture.md#not-built)) and the in-app bell is only seen
+  by someone already looking at the app. Today the queue depth is visible to us in
+  `#/admin/email` (filter `status = pending_review`) and to them only when they open the
+  page.
+
+```sql
+-- who is sitting on a queue nobody is reading
+select tenant_id, count(*), min(created_at) as oldest
+from email_documents
+where status = 'pending_review'
+group by tenant_id
+order by oldest;
+```
+
 Straight to SQL only when you need something the page does not group by:
 
 ```sql
@@ -186,6 +216,9 @@ by surprise.
 - **No webhooks to Carmen.** `../CARMEN_INTEGRATION.md §3` (`document.posted`,
   `document.failed`) is a proposal; nothing in this repo sends a signed outbound POST.
 - **No retry of a failed document.** Single pass, one attempt, a human has to re-forward.
+- **Nothing notifies a BU that documents are waiting for them.** See *Running with review
+  on* above — the reason the 50-document cap exists is that a queue nobody reads would
+  otherwise keep charging for documents nobody has looked at.
 - **No retention or soft delete on `email_documents`**, against the project's convention
   for business tables. It grows for ever.
 - **The admin-JWT auth path is unreachable from any UI.** `_caller()` accepts

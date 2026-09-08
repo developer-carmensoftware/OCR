@@ -2,7 +2,8 @@
 User config router — persists per-BU settings that previously lived in localStorage.
 
   GET  /api/v1/config/accounting                    → load accounting config for current BU
-  PUT  /api/v1/config/accounting                    → upsert accounting config
+  PUT  /api/v1/config/accounting                    → upsert accounting config (FULL replace)
+  PATCH /api/v1/config/accounting                   → correct only the fields named
   GET  /api/v1/config/ap-mapping/{tax_id}           → load AP column mapping for a vendor
   PUT  /api/v1/config/ap-mapping/{tax_id}           → upsert AP column mapping for a vendor
   GET  /api/v1/config/analytics/account-usage       → which BUs use a given acc/dept code
@@ -16,8 +17,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import SessionInfo, get_current_session
 from app.database import get_db
-from app.models.schemas import AccountingConfigRequest, AccountingConfigResponse
+from app.exceptions import ValidationError
+from app.models.schemas import (
+    AccountingConfigRequest,
+    AccountingConfigResponse,
+    ConfigPatchRequest,
+)
 from app.services import accounting_config_service as svc
+from app.services.carmen_service import CarmenAPIError, get_departments
+from app.utils.gl_filter import parse_default_account
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/config", tags=["Config"])
@@ -38,6 +46,61 @@ async def save_accounting_config(
     session: SessionInfo = Depends(get_current_session),
 ):
     await svc.save_accounting_config(db, session.tenant_id, req)
+    return {"ok": True}
+
+
+@router.patch("/accounting")
+async def patch_accounting_config(
+    req: ConfigPatchRequest,
+    db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(get_current_session),
+):
+    """Correct the named parts of the config without touching the rest.
+
+    The review screen's write, and PATCH rather than PUT because that is exactly what it
+    does. `PUT /accounting` cannot be used for it: that one replaces every column and every
+    mapping entry, so a partial body wipes the BU's prefix, description and the mappings it
+    did not mention — and two people reviewing the same BU's queue at once is the expected
+    case.
+
+    The dept/account pair is re-checked against Carmen's own `DefaultAccount` list here.
+    The browser filters the dropdown to the allowed set, but a filtered dropdown is a
+    convenience, not a control, and this endpoint is the thing that decides what posts.
+    """
+    pairs = {k: v for k, v in (req.mappings or {}).items() if v.dept and v.acc}
+    if pairs:
+        try:
+            depts_raw = await get_departments(session.carmen_token)
+        except CarmenAPIError as exc:
+            # Carmen unreachable is not a reason to refuse a correction the reviewer can
+            # see is right — the JV itself is about to be posted through Carmen anyway,
+            # which is where a genuinely bad pair will be caught.
+            logger.warning("Could not verify dept/account pairs against Carmen: %s", exc)
+        else:
+            allowed = {
+                d["DeptCode"]: parse_default_account(d.get("DefaultAccount"))
+                for d in (depts_raw.get("Data") or [])
+                if d.get("DeptCode")
+            }
+            for field_type, m in pairs.items():
+                permitted = allowed.get(m.dept or "")
+                # An empty set means the dept restricts nothing, not that it allows nothing.
+                if permitted and m.acc not in permitted:
+                    raise ValidationError(
+                        f"Account {m.acc} is not allowed for department {m.dept}"
+                        f" (field: {field_type})"
+                    )
+
+    await svc.patch_config(
+        db,
+        session.tenant_id,
+        mappings={
+            k: {"dept": v.dept or "", "acc": v.acc or ""} for k, v in (req.mappings or {}).items()
+        },
+        file_prefix=req.file_prefix,
+        description=req.description,
+        bank_code=req.bank_code,
+    )
     return {"ok": True}
 
 

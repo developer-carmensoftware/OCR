@@ -8,7 +8,11 @@ from app.models.schemas.admin_users import (
 from app.models.schemas.ap_invoice import SuggestGLItem, SuggestGLRequest
 from app.models.schemas.auth import ExchangeRequest, ExchangeResponse
 from app.models.schemas.common import FieldMapping, Page
-from app.models.schemas.config import AccountingConfigRequest, AccountingConfigResponse
+from app.models.schemas.config import (
+    AccountingConfigRequest,
+    AccountingConfigResponse,
+    ConfigPatchRequest,
+)
 from app.models.schemas.consent import ConsentRequest, ConsentStatusResponse
 from app.models.schemas.credits import (
     AdjustRequest,
@@ -35,7 +39,20 @@ from app.models.schemas.credits import (
     SlipUploadResponse,
     TopupRequest,
 )
-from app.models.schemas.email_automation import RuleIn, SettingsIn, TokenIn
+from app.models.schemas.email_automation import (
+    ActivityPage,
+    ActivityRow,
+    ApproveIn,
+    ApproveResult,
+    AutoPostIn,
+    RejectIn,
+    ReviewDocument,
+    ReviewDocumentDetail,
+    ReviewStatus,
+    RuleIn,
+    SettingsIn,
+    TokenIn,
+)
 from app.models.schemas.maintenance import (
     ScheduleMaintenanceRequest,
     TenantMaintenanceRequest,
@@ -67,6 +84,15 @@ __all__ = [
     "FieldMapping",
     "Page",
     # email automation
+    "ActivityPage",
+    "ActivityRow",
+    "ApproveIn",
+    "ApproveResult",
+    "AutoPostIn",
+    "ReviewDocument",
+    "ReviewDocumentDetail",
+    "RejectIn",
+    "ReviewStatus",
     "RuleIn",
     "SettingsIn",
     "TokenIn",
@@ -80,6 +106,7 @@ __all__ = [
     # config
     "AccountingConfigRequest",
     "AccountingConfigResponse",
+    "ConfigPatchRequest",
     # consent
     "ConsentRequest",
     "ConsentStatusResponse",

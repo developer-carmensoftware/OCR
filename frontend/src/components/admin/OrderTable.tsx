@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import { orderStage, type AdminCreditOrder, type OrderStage } from '../../lib/api/adminClient'
 import Pager from '../common/Pager'
-import { useFitRows } from '../../hooks/useFitRows'
+import { useRowsPerPage } from '../../hooks/useRowsPerPage'
 import { formatThb } from '../../lib/money'
 import { formatDateToDDMMYYYY } from '../../lib/date'
 import { useT } from '../../i18n/LanguageContext'
@@ -150,9 +150,9 @@ export default function OrderTable({
       )
     : orders
 
-  // Rows per page measured off the rendered table, same as DataTable and the two
-  // customer-facing lists. Searching filters everything loaded, then this pages it.
-  const [perPage, bodyRef] = useFitRows('.orev-row', 6)
+  // Rows per page is the reader's choice, same as DataTable and the two customer-facing
+  // lists. Searching filters everything loaded, then this pages it.
+  const [perPage, setPerPage] = useRowsPerPage()
   const [offset, setOffset] = useState(0)
   // A new tab or a new search term means a different result set; page 4 of the old one
   // is meaningless against it.
@@ -259,7 +259,7 @@ export default function OrderTable({
               <th>{t('orev.col.arCode')}</th>
             </tr>
           </thead>
-          <tbody ref={bodyRef}>
+          <tbody>
             {loading ? (
               Array.from({ length: 6 }).map((_, i) => (
                 <tr key={i} className="orev-row is-skeleton" aria-hidden="true">
@@ -329,7 +329,16 @@ export default function OrderTable({
         </table>
       </div>
 
-      <Pager offset={start} limit={perPage} total={matching.length} onChange={setOffset} />
+      <Pager
+        offset={start}
+        limit={perPage}
+        total={matching.length}
+        onChange={setOffset}
+        onLimitChange={n => {
+          setPerPage(n)
+          setOffset(0)
+        }}
+      />
 
       {ordersTotal > orders.length && (
         <p className="orev-truncated" role="status">

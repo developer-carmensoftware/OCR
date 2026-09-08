@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { m, AnimatePresence, useAnimationControls, useReducedMotion } from 'framer-motion'
 import { CheckCircle2, AlertTriangle, XCircle, Info, Loader2, Eye, EyeOff } from 'lucide-react'
 import { useT } from '../../i18n/LanguageContext'
+import { useScrollLock } from '../../hooks/useScrollLock'
 
 type ModalType = 'info' | 'success' | 'warning' | 'error' | 'loading'
 
@@ -65,6 +66,7 @@ export default function CustomModal({
   const confirmRef = useRef<HTMLButtonElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const boxRef = useRef<HTMLDivElement>(null)
   const [inputVal, setInputVal] = useState('')
   const [inputErrored, setInputErrored] = useState(false)
   const [revealed, setRevealed] = useState(false)
@@ -118,6 +120,9 @@ export default function CustomModal({
     onInputChange?.(v)
   }
 
+  // Background scroll behind a fixed overlay reads as the dialog itself drifting.
+  useScrollLock(show)
+
   /**
    * Open/close side effects. Deliberately keyed on `show` ALONE: the keydown effect below
    * re-subscribes whenever `busy` or a handler identity changes, and if focus restore
@@ -130,11 +135,7 @@ export default function CustomModal({
     // Without this, dismissing a modal drops focus to <body> and a keyboard user
     // restarts their tab journey from the top of the page.
     const returnFocusTo = document.activeElement as HTMLElement | null
-    // Background scroll behind a fixed overlay reads as the dialog itself drifting.
-    const priorOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
     return () => {
-      document.body.style.overflow = priorOverflow
       returnFocusTo?.focus?.()
     }
   }, [show])
@@ -153,9 +154,14 @@ export default function CustomModal({
         return
       }
       if (e.key !== 'Tab') return
-      const focusable = [cancelRef.current, inputRef.current, confirmRef.current].filter(
-        Boolean
-      ) as HTMLElement[]
+      // Everything focusable in the box, in DOM order — not the three refs this used to
+      // list. A dialog that puts a control in `children` (the review queue's Dismiss, the
+      // bell's "Open JV") had it cycled past: Tab from cancel went straight to confirm and
+      // Shift+Tab from cancel wrapped to confirm, so the child was unreachable by keyboard.
+      // `tabIndex >= 0` is what keeps the password-reveal button (tabIndex -1) out of it.
+      const focusable = Array.from(
+        boxRef.current?.querySelectorAll<HTMLElement>('a[href], button, input, [tabindex]') ?? []
+      ).filter(el => el.tabIndex >= 0 && !el.hasAttribute('disabled'))
       if (!focusable.length) return
       const first = focusable[0]
       const last = focusable[focusable.length - 1]
@@ -224,7 +230,7 @@ export default function CustomModal({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.18 }}
         >
-          <m.div className={`modal-box modal-${type}`} {...boxMotion}>
+          <m.div ref={boxRef} className={`modal-box modal-${type}`} {...boxMotion}>
             <div className="modal-icon-wrapper">
               <cfg.Icon size={26} strokeWidth={1.75} />
             </div>

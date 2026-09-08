@@ -100,7 +100,7 @@ useAPInvoice hook
   → POST /api/v1/carmen/invoice  submit to Carmen ERP
 ```
 
-### Email ingestion (no wizard — nobody reviews before it posts)
+### Email ingestion (a queue, not a wizard — a human approves before it posts)
 
 Built, merged, live-tested end to end. **Full docs: [`docs/email-automation/`](docs/email-automation/)**
 (requirements → architecture → API → data model → operations → decision log). Read those
@@ -117,13 +117,49 @@ pg_cron → POST /api/v1/email/ingest  (internal job token)
       email_ingest_settings  filename must match one of this BU's rules; this BU's PDF passwords
       consume_document() → same extract → GL-map → POST JV path as the Credit Card wizard
       tax ID vs this BU's register  ← verification, not routing; parks only on positive conflict
+      _review_flags() non-empty, or auto_post = false (default)
+                                    → park at pending_review; the poll stops here
+routers/email_review.py  ← the queue's own API (session JWT, not the Carmen-token path)
+  #/CreditCardOCR        the review queue = the Credit Card module's landing page
+  #/CreditCardOCR/review?id=…   approve → the same post_gljv the poll would have called
+  #/CreditCardOCR/manual  the wizard, moved down one level, unchanged
 ```
 
 Two properties that make it unlike the wizards: the tag is read **before any LLM call**, so
-an unowned message costs nothing; and there is no human between extraction and posting, so a
-`warnings` field that merely draws an amber banner in a wizard has no reader here. All three
-cron jobs (`email-ingest`, `email-confirm`, `email-token-health`) are scheduled by migration —
-see [`05-operations.md`](docs/email-automation/05-operations.md#scheduling).
+an unowned message costs nothing; and a document is charged the moment the vision call
+returns, so approve, reject and "still sitting there" all cost the same — reject does not
+refund (see the charge-before-the-LLM decision below).
+
+**Charged means reviewable** (2026-09-03, decision-log #22). A refusal that happens *after*
+extraction — `tax_id_mismatch`, `duplicate_document`, `mapping_incomplete`,
+`carmen_unauthorized`, `carmen_rejected`, no postable amount — **parks at `pending_review`
+with its reason recorded** instead of finishing as `failed`. The customer paid for that
+reading; throwing it away left re-scanning by hand as the only recovery. Only three
+post-extraction cases stay terminal: the generic `except` (it can fire after the JV posted),
+the refund boundary (the money went back), and a second copy of something already queued.
+`_park_or_finish` in `_run_document` is the whole rule.
+
+**`auto_post` is per BU and defaults to `false`** (`email_ingest_settings.auto_post`,
+flipped only by `PUT /api/v1/email/settings/auto-post`, never by the settings save, which is
+a full replace). A BU switching the feature on gets review; they turn it off once the queue
+has earned it. Backpressure, not refunds, protects a BU that stops reading its queue: past
+50 pending, mail is handed back unread and costs nothing.
+
+**Auto-post posts what is ready to post** (2026-09-04, decision-log #24). `auto_post` decides
+whether a *clean* document waits; it cannot decide that a doubtful one does. The gate is
+`_review_flags()` being empty — the same predicate that paints the queue's Message column,
+whose empty case reads *Ready to post* — so a document the reviewer would have been given a
+reason for never posts behind their back. Five flags: `mapping_missing`, `unbalanced`,
+`mapping_guessed`, `doc_no_missing` (both duplicate guards key on `doc_no`, so without one
+nothing can catch a second copy), `warnings`. Adding a flag therefore tightens auto-post as
+well as the row — that is intended, and is the reason there is one function and not two.
+`REVIEW_BACKLOG_CAP` and `_already_pending` are unconditional for the same reason: an
+auto-post BU now parks routinely.
+
+All three cron jobs (`email-ingest`, `email-confirm`, `email-token-health`) are scheduled by
+migration — see [`05-operations.md`](docs/email-automation/05-operations.md#scheduling).
+
+Design: [`07-human-in-the-loop.md`](docs/email-automation/07-human-in-the-loop.md).
 
 ### Admin dashboard (`#/admin/*`) — check here before writing SQL
 
@@ -189,14 +225,22 @@ Gotchas worth knowing before trusting a number:
   failures by cause; grouping one page reports wrong counts) and Credit Orders loads the
   endpoint's cap in one go (its search must reach past the visible page). Don't "fix" these
   into server mode — each shows a real `total` so a bitten cap is visible.
-- **Page size is measured, not configured** — `hooks/useFitRows.ts` fits rows to the
-  viewport; `pageSize` survives only as an override for tables that aren't viewport-bound.
-- ⚠️ **In server mode the measured size feeds the fetch, so the measurement must never
-  shrink in response to its own rows.** 15 rows leave room that measures as 17, 17 leave
-  room that measures as 15, and the tab fetches forever. `DataTable` keeps a monotonic
-  high-water mark per viewport size (a real resize clears it); `DataTable.fetchloop.test.tsx`
-  is the regression test, and reverting the guard makes it hang. This shipped as a bug on
-  2026-08-24 — read that changelog entry before touching the measurement.
+- **Page size is the reader's, and shared** — `hooks/useRowsPerPage.ts` holds it in one
+  global `localStorage['rowsPerPage']` (**not** `appKey()`: a UI preference like `theme`,
+  so it survives logout). `useTableQuery` seeds its `limit` default from it *synchronously*,
+  which is what stops a table fetching 25 rows and then immediately fetching 50. `pageSize`
+  survives as an override that also hides the control, for a table whose size is not the
+  reader's to pick (only `ExtractionsPage`'s nested table today).
+- **One pagination component**: `components/common/Pager.tsx`, used by DataTable and the
+  five customer-facing lists. Pass `onLimitChange` to get the rows-per-page select; omit it
+  for a fixed-size list (the notification bell). Options top out at 100 because that is the
+  lowest backend cap among its callers — check `le=` before adding a bigger one.
+  ⚠️ It **replaced** a measured page size (`useFitRows`, deleted 2026-09-01). Don't bring
+  measurement back: in server mode it fed the fetch and the rows it asked for changed the
+  measurement, so the tab fetched forever until a monotonic guard was bolted on
+  (bug of 2026-08-24). A chosen number cannot oscillate — that is the whole point.
+- **A page turn keeps its rows.** Skeletons render only when there is nothing to keep
+  (`loading && rows.length === 0`); otherwise the table carries `aria-busy` and dims via CSS.
 
 The SQL behind the adoption views lives in [`backend/db/queries.sql`](backend/db/queries.sql)
 items 11–14 — useful for cross-checking a page against the raw numbers.
@@ -223,7 +267,7 @@ an ad-hoc script while `uvicorn` is up hits the 15-connection Supavisor cap.
 - **Tenant resolution at login** — `routers/auth.py` upserts a single `tenants` row keyed by the (host, bu) pair from Carmen JWT claims on every `/exchange` call. `tenant_id` is embedded in the JWT so subsequent requests read identity without a DB lookup. There is no separate `business_units` table — each (host, bu) pair is its own tenant.
 - **FK-based tenancy** — Data-plane tables carry a single `tenant_id` NOT NULL FK (native `PGUUID(as_uuid=True)`). Observability log tables use `VARCHAR(36)` + index (no FK — high-volume append-only tables).
 - **Bank code not enum** — `credit_cards.bank_code` FK → `banks.code` VARCHAR. No hardcoded `BankType` enum in the DB; adding a bank is an INSERT (pending Admin Dashboard for zero-redeploy).
-- **Credit card line items are NOT persisted** — like AP invoices, credit-card transactions follow the extract-display-only pattern (Carmen ERP is source of truth). Only `credit_cards` header data is stored; line items live transiently in the API response (`CreditCardTransactionSchema`).
+- **Credit card line items are NOT persisted** — like AP invoices, credit-card transactions follow the extract-display-only pattern (Carmen ERP is source of truth). Only `credit_cards` header data is stored; line items live transiently in the API response (`CreditCardTransactionSchema`). **One bounded exception:** an email document waiting for a human holds its whole extraction — line items included — in `email_documents.review_payload`, because there is nothing else to show the reviewer and no second extraction to fall back on. `_finish()` clears it on every terminal transition, so the steady state is unchanged.
 - **Soft delete everywhere** — Business tables never hard-delete. Always filter `WHERE deleted_at IS NULL`.
 - **Two document pools, not three** — a scan is charged by `consume_document()` (`services/credit_service.py`): the active subscription's monthly allowance first (use-it-or-lose-it), then `tenant_credits.balance` (never expires). The free trial is not a third pool — a new tenant is granted 30 credits (`signup_grant` ledger reason) in the same transaction that creates their tenant row, which is what makes it a one-time grant. The old `quotas`/`quota_usage` counter engine was retired by migration `20260813000100` and the tables were dropped by `20260825000000`. What survived that retirement is only `assert_module_enabled()`, which now lives in `services/module_gate.py` (renamed from `quota_service.py` 2026-08-18 — the old name described an engine that no longer exists).
 - **module_id on every LLM call** — `log_llm_usage(module_id="credit_card_ocr")` instead of old `usage_type` string. Enables per-module cost breakdown in `daily_usage_summary`.
@@ -240,7 +284,7 @@ an ad-hoc script while `uvicorn` is up hits the 15-connection Supavisor cap.
 - **App factory** — `app/factory.py` builds the FastAPI instance (middleware + exception handlers + routers). `app/lifecycle.py` owns lifespan (startup/shutdown + background tasks). `app/sentry.py` owns Sentry init. `app/main.py` is the thin entrypoint.
 - **Charge before the LLM, refund only when the LLM never ran** — `consume_document()` runs at every extract endpoint AFTER `ensure_pdf_openable` and `assert_module_enabled` (so a locked PDF or a disabled module never costs a document) and returns what it charged; pass that to `refund_document()` for the files that failed. Both fail open on infra errors — only a real out-of-credits raises `InsufficientCredits` (402). **The refund test is "did the vision call happen", not "did the document post".** In the wizards every refund site is an extraction that threw, so the user got nothing back. Email ingest states the same rule explicitly: `_run_document()` has a single **refund boundary** (`email_ingest_service.py`) wrapping `create_task` + `extract_stateless` + `finalize_extraction`, and it is the only place in that pipeline that refunds — once extraction returns, the document is charged whatever happens next (`duplicate_document`, `tax_id_mismatch`, `mapping_incomplete`, any `carmen_rejected`). That is why `_Skip` carries no refund flag. Ingest deliberately matches the wizard here, which has always charged for a duplicate because `finalize_extraction` only sets an `is_duplicate` flag rather than raising.
 - **What one document costs differs per module** — credit card charges **per file** (`increment=len(file_data)`), AP invoice charges **per page sent to the LLM** (`billable_pages()` in `utils/pages.py`, capped at `MAX_PAGES_PER_CALL`=5): a 3-page selection costs 3, and 3 images merged client-side into one PDF cost 3. `ensure_pdf_openable()` returns the page count for exactly this. The whole N is charged to one pool — a tenant with 3 subscription docs left scanning 5 pages pays 5 credits and strands the 3. **`ocr_tasks.charged_docs` records what each task cost** — nothing else can (a subscription-funded scan writes no ledger row; `credit_ledger.ref` is the filename, since the charge precedes `create_task`). Count documents with `SUM(charged_docs)`, never `COUNT(ocr_tasks)`.
-- **Hook directory convention** — Feature hooks live in subdirectories, one per feature: `hooks/admin/`, `hooks/ap-invoice/`, `hooks/credit-card/`, `hooks/credits/`, `hooks/email-settings/`, `hooks/mapping/`, `hooks/notifications/`. Cross-cutting hooks (`useModal`, `useDarkMode`, `useCarmenSSO`, `useFitRows`) stay at top level. Each subdir has an `index.ts` barrel. All localStorage access goes through the tenant-aware `lib/storage.ts` (`appKey()`).
+- **Hook directory convention** — Feature hooks live in subdirectories, one per feature: `hooks/admin/`, `hooks/ap-invoice/`, `hooks/credit-card/`, `hooks/credits/`, `hooks/email-settings/`, `hooks/mapping/`, `hooks/notifications/`. Cross-cutting hooks (`useModal`, `useDarkMode`, `useCarmenSSO`, `useRowsPerPage`) stay at top level. Each subdir has an `index.ts` barrel. All **tenant-scoped** localStorage access goes through `lib/storage.ts` (`appKey()`); global UI preferences (`theme`, `lang`, `rowsPerPage`) deliberately stay outside it, because they are not business data and must survive logout — see that file's header before adding a key either way.
 - **Pydantic schemas** — All request/response schemas in `app/models/schemas/` package. Never define `class X(BaseModel)` inside a router file.
 - **Every list endpoint answers the same envelope** — `Page[T]` = `{total, limit, offset, data}` (`models/schemas/common.py`), built by `paginate()` (`utils/pagination.py`), mirrored on the frontend by `lib/api/page.ts`. `total` is counted off the **unlimited** statement with `ORDER BY` stripped, so a truncated window can always say *"showing 200 of 340"* instead of ending silently — `len(data)` as a total is the bug class this exists to kill. A query selecting several entities uses `count_rows()` + its own `.all()` instead, because `paginate()`'s `.scalars()` would flatten each row to the first entity.
 
@@ -349,7 +393,7 @@ EMAIL_INGEST_ADDRESS=ocr@carmensoftware.com   # dev default; per-BU routing uses
 | Billing | `credit_packs`, `tenant_credits`, `credit_ledger`, `credit_orders`, `billing_documents`, `tenant_subscriptions`, `ar_customer_profiles`, `document_sequences` |
 | Reference | `model_pricing` |
 | Business data | `ocr_sessions`, `ocr_tasks`, `credit_cards`, `ap_invoices`, `correction_feedback`, `bug_reports`, `consent_logs`, `user_notifications` |
-| Email ingestion | `email_ingest_settings` (per-BU tag, rules, PDF passwords, posting credential), `email_documents` (one row per message×attachment — dedupe key **and** audit trail) — see [`docs/email-automation/04-data-model.md`](docs/email-automation/04-data-model.md) |
+| Email ingestion | `email_ingest_settings` (per-BU tag, rules, PDF passwords, posting credential), `email_documents` (one row per message×attachment — dedupe key **and** audit trail), `email_queue_seen` (per-BU acknowledgement of the review queue's attention dot; deliberately **not** a column on `email_ingest_settings`, whose `updated_at` gates a per-minute IMAP sweep) — see [`docs/email-automation/04-data-model.md`](docs/email-automation/04-data-model.md) |
 | Observability | `llm_usage_logs`, `audit_logs`, `performance_logs`, `outbound_call_logs` |
 | Analytics | `daily_usage_summary`, `daily_model_cost`, `monthly_usage_summary`, `anomaly_alerts`, `job_runs` |
 | Migration tracker | `_supabase_migrations` (Supabase CLI tracking) |
@@ -372,4 +416,5 @@ Rules:
 - Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
 - If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
 - For cross-module "how does X relate to Y" questions, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, or `graphify explain "<concept>"` over grep — these traverse the graph's EXTRACTED + INFERRED edges instead of scanning files
-- After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)
+- After modifying code files in this session, run **`graphify update`** with no argument to keep the graph current (AST-only, no API cost). It reads `graphify-out/.graphify_root` (the repo root) and writes back into `graphify-out/`. Never pass `.` — on 2026-09-03 the `*`-whitelist in `.graphifyignore` made that scan match nothing and overwrite `graph.json` with an empty graph; the scope now lives in `.graphifyignore` as plain exclusions
+- **The graph covers `frontend/` only** (`.graphifyignore` excludes `backend/`, `docs/`, `supabase/`, …). A backend question it cannot answer is a gap, not a wrong answer. Adding the backend = delete one line from `.graphifyignore`, but it also pulls in ~87 documents whose semantic extraction costs real LLM tokens, so it is a spending decision

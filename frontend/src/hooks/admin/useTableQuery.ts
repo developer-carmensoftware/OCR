@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ServerTable, SortDir } from '../../components/admin/DataTable'
+import { readRowsPerPage, writeRowsPerPage } from '../useRowsPerPage'
 
 /**
  * Filters, sort, and page for one admin table — held in the URL rather than in
@@ -24,7 +25,7 @@ export interface TableQueryState {
 
 type Extra = Record<string, string>
 
-const BASE_DEFAULTS = { q: '', dir: 'desc' as SortDir, offset: 0, limit: 25 }
+const BASE_DEFAULTS = { q: '', dir: 'desc' as SortDir, offset: 0 }
 
 function readHashParams(): URLSearchParams {
   const [, qs = ''] = window.location.hash.split('?')
@@ -64,7 +65,18 @@ export function useTableQuery<E extends Extra>(opts: {
 
   // Frozen on first render: these are literals at every call site, and re-deriving from
   // a fresh object each render would make every dependency below unstable.
-  const defaultsRef = useRef({ ...BASE_DEFAULTS, sort: defaultSort, dir: defaultDir, ...filters })
+  //
+  // `limit` is seeded from the reader's stored rows-per-page rather than a constant, so
+  // the very first fetch already asks for the size they picked. Reading it here (not in
+  // an effect) is what stops the table fetching 25 rows and then immediately fetching 50.
+  // A `limit` in the URL still wins over it — a pasted link is explicit.
+  const defaultsRef = useRef({
+    ...BASE_DEFAULTS,
+    limit: readRowsPerPage(),
+    sort: defaultSort,
+    dir: defaultDir,
+    ...filters,
+  })
   const defaults = defaultsRef.current
 
   const [state, setState] = useState(() => {
@@ -93,6 +105,10 @@ export function useTableQuery<E extends Extra>(opts: {
   }, [state, defaults])
 
   const set = useCallback((next: Partial<TableQueryState & E>) => {
+    // The URL carries the limit for THIS view; localStorage carries it to the next one.
+    // Every admin list routes its limit through here, so this is the one write that
+    // covers them all — DataTable only persists its own client-mode choice.
+    if (next.limit) writeRowsPerPage(next.limit)
     setState(prev => {
       // Any change other than moving through pages invalidates the page index: page 4
       // of the old filter has nothing to do with page 4 of the new one.

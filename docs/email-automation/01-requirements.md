@@ -4,9 +4,12 @@
 
 A hotel's accounting staff receives bank commission and fee reports by email, downloads
 each PDF, and uploads it into the Credit Card OCR wizard by hand — one document, one
-upload, one review, one submit. Email Automation removes the human step for this document
-type: once a mail-forward rule is set up, every report after that is extracted, GL-mapped
-and posted automatically.
+upload, one review, one submit. Email Automation removes the fetching and the keying for
+this document type: once a mail-forward rule is set up, every report after that arrives
+extracted and GL-mapped, and all that is left is to look at it and approve it — or, once
+the BU turns review off (`auto_post`), nothing at all for the documents we read cleanly.
+Those are most of them; the rest still come to the queue, because the switch skips
+approving an ordinary document and never a doubtful one.
 
 ## Actors
 
@@ -14,9 +17,10 @@ and posted automatically.
 |---|---|
 | Bank | Sends the commission/fee PDF, by their own schedule (often daily) |
 | Customer accounting staff | Sets up the forward once; may also manually forward individual mails |
-| Carmen settings screen | The only UI for this feature — reads and writes settings through our API |
+| Carmen settings screen | Where the feature is configured — reads and writes settings through our API |
+| Reviewer (any Carmen user for that BU) | Approves or rejects each queued document at `#/CreditCardOCR` in the OCR app — every document while `auto_post` is off, and the flagged ones either way |
 | Shared IMAP mailbox | Receives mail for every BU on the platform, disambiguated by `+tag` |
-| pg_cron | Polls the mailbox on a schedule (not yet configured — see [05-operations.md](05-operations.md#scheduling)) |
+| pg_cron | Polls the mailbox every 10 minutes (see [05-operations.md](05-operations.md#scheduling)) |
 | The BU's Carmen ERP | Receives the posted JV and the input-tax record, using a credential Carmen itself issued |
 
 ## The two arrival modes
@@ -50,9 +54,14 @@ Each is traceable to the code that implements it.
 | FR-5 | The same mail is never processed twice, and the same document arriving in two different mails is never posted twice | IMAP `\Seen` + atomic `_claim()` on `(tenant_id, message_id, attachment)`; `credit_cards.submitted_at` stamped post-post (`_mark_submitted()`, `email_ingest_service.py:1068`) |
 | FR-6 | Extraction runs through the same pipeline the wizard uses; a GL mapping the BU never configured is filled by AI and saved for next time | `_suggest_missing_mappings()` (`email_ingest_service.py:951`) |
 | FR-7 | The GL JV is posted, then the input-tax record; the second can never fail the first | `_post_input_tax()` (`email_ingest_service.py:892`) |
-| FR-8 | Every attachment's outcome is recorded with a stable `reason_code`, whether it posted, was skipped, or failed | `_finish()` (`email_ingest_service.py:1094`) — full taxonomy in [04-data-model.md](04-data-model.md#reason_code-taxonomy) |
+| FR-8 | Every attachment's outcome is recorded with a stable `reason_code`, whether it posted, parked, was skipped, or failed | `_finish()` and `_park_for_review()` — full taxonomy in [04-data-model.md](04-data-model.md#reason_code-taxonomy) |
 | FR-9 | Gmail's forwarding-confirmation handshake is completed automatically — no support call needed | `auto_confirm_forwarding()` (`email_ingest_service.py:371`) |
 | FR-10 | The feature requires an active monthly package, checked both when the BU switches it on and on every poll (a lapsed package doesn't rewrite settings) | `is_entitled()` gate in `save_settings()` and `_process_message()` |
+| FR-11 | **A document the BU was charged for stays reviewable.** A refusal after a successful extraction parks with its reason recorded, so the reading it paid for can be corrected and posted rather than discarded | `_park_or_finish()` in `_run_document` — decision-log [#22](06-decision-log.md), [§13](07-human-in-the-loop.md) |
+| FR-12 | **The queue shows everything that wants a human in one chip**, whether it needs a decision or a settings change, and a row nobody will act on can be put away so the pile can reach zero | `_chip_expr()` (`credit_card_activity.py`), `POST /activity/{id}/dismiss`, `email_documents.dismissed_at` |
+| FR-13 | **The reviewer sees the whole of what an approval files** before pressing it: the JV, and the input-tax record with the tax invoice it is filed against | `ReviewDocument.tsx` + `InputTaxPanel.tsx`, built from `build_input_tax_payload` field by field |
+| FR-14 | The page answers "what has the robot been doing today" without a reader having to filter for it, and never opens on an empty view while work is owed | `today` chip + the fall-through in `useReviewQueue` |
+| FR-15 | **Posted and Not posted count only what the BU was charged for**, and every attachment the system has ever looked at — charged or not, forwarded or scanned by hand — is findable under `All`, so "did my statement arrive?" is answerable without anyone reading the database | `_chip_expr()`'s `uncharged` arm (`credit_card_activity.py`), the `All` chip — decision-log [#23](06-decision-log.md), [§14](07-human-in-the-loop.md) |
 
 ## Non-functional requirements
 
@@ -85,7 +94,7 @@ Each is traceable to the code that implements it.
 | A tax ID belongs to exactly one BU system-wide | A second claim is almost always a copy-paste mistake and would route another company's document into these books — `409` on write |
 | A bank's own tax ID cannot be registered by a customer | It's printed on the same invoice the customer is reading to find theirs — `422 reserved_tax_id` |
 | `filename_patterns` is required, at least one entry, on every rule | An attachment matching no pattern is never processed — this is not an optional filter |
-| At most one rule per `bank_code` (including `null` = "Other") | A rule identifies a bank, never a BU; ambiguity here would mean guessing which prompt to extract with |
+| At most one rule per `bank_code` (including `null` = "Other") | One place to edit a bank's patterns and password. It is **not** what makes the bank unambiguous — since 2026-09-03 the document names its own issuer and the rule is only a fallback (decision #21), so overlapping patterns are safe |
 | The ingest tag is issued once and never reissued | A BU's mailbox rule points at it forever; reissuing would make their documents vanish with no error |
 | `owner_emails` defaults to empty (accept any sender) | "Start broad, narrow later" — a gate nobody asked for that silently refuses real documents is worse than no gate |
 | `enabled: true` requires at least one tax ID and an active entitlement | Both are checked at write time so the failure is visible on the settings screen, not silently blocking every future document |
@@ -97,3 +106,10 @@ retry of a failed document (single pass, ledger records the reason for a human t
 outbound SMTP (there is no send path in this codebase — see [02-architecture.md](02-architecture.md#not-built)) ·
 outcome webhooks to Carmen (`../CARMEN_INTEGRATION.md §3` is a proposal; nothing in it is
 built) · posting anything other than credit-card commission/fee documents.
+
+> **"No retry" still holds after FR-11, and means something narrower than it sounds.** Nothing
+> re-runs on its own; there is no sweep and `attempts` is still always `1`. What changed is
+> that most of what was being filed as a failure was never one — it was a question about a
+> document we had already read and been paid for, and a person can now answer it. A document
+> that genuinely failed to *read* is still terminal, and re-forwarding the mail is still the
+> only way back in.

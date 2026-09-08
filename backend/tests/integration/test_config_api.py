@@ -224,3 +224,118 @@ def test_analytics_with_acc_code_returns_results():
         resp = client.get(f"{BASE}/analytics/account-usage?acc_code=5100", headers=AUTH)
         assert resp.status_code == 200
         assert "results" in resp.json()
+
+
+# ── PATCH /accounting — the review screen's partial write ────────────────────
+
+
+def _patch_body(dept="OPS", acc="511300"):
+    return {"mappings": {"tax": {"dept": dept, "acc": acc}}}
+
+
+def _depts(*, dept="OPS", allowed=None):
+    """Carmen's department list. `DefaultAccount` is a *stringified* JSON array — the
+    shape `parse_default_account` exists to survive."""
+    import json
+
+    entry = {"DeptCode": dept}
+    if allowed is not None:
+        entry["DefaultAccount"] = json.dumps([{"AccCode": a, "Description": ""} for a in allowed])
+    return {"Data": [entry]}
+
+
+def test_a_correction_is_saved_without_touching_the_rest_of_the_config(monkeypatch):
+    from app.routers import config as router
+
+    async def depts(_token):
+        return _depts(allowed=["511300", "511200"])
+
+    saved = {}
+
+    async def patch_config(_db, tenant_id, **kw):
+        saved.update({"tenant": tenant_id, **kw})
+
+    monkeypatch.setattr(router, "get_departments", depts)
+    monkeypatch.setattr(router.svc, "patch_config", patch_config)
+
+    with make_test_client(make_mock_db()) as client:
+        res = client.patch(f"{BASE}/accounting", json=_patch_body(), headers=AUTH)
+
+    assert res.status_code == 200
+    # Only the named key travels — nothing reconstructs a whole config from the browser,
+    # which is what would wipe file_prefix / description / the other mappings.
+    assert saved["mappings"] == {"tax": {"dept": "OPS", "acc": "511300"}}
+
+
+def test_an_account_the_department_forbids_is_refused_server_side(monkeypatch):
+    """The dropdown filters to the allowed set, but a filtered dropdown is a convenience.
+    This endpoint decides what posts, so it re-checks."""
+    from app.routers import config as router
+
+    async def depts(_token):
+        return _depts(allowed=["511200"])  # 511300 not in the dept's list
+
+    called = False
+
+    async def patch_config(*_a, **_k):
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(router, "get_departments", depts)
+    monkeypatch.setattr(router.svc, "patch_config", patch_config)
+
+    with make_test_client(make_mock_db()) as client:
+        res = client.patch(f"{BASE}/accounting", json=_patch_body(), headers=AUTH)
+
+    assert res.status_code == 400
+    assert "511300" in res.json()["detail"]
+    assert not called
+
+
+def test_a_department_that_restricts_nothing_allows_everything(monkeypatch):
+    """An absent DefaultAccount is 'no restriction', not 'nothing permitted' — reading it
+    the other way would refuse every mapping for most departments."""
+    from app.routers import config as router
+
+    async def depts(_token):
+        return _depts(allowed=None)
+
+    ok = False
+
+    async def patch_config(*_a, **_k):
+        nonlocal ok
+        ok = True
+
+    monkeypatch.setattr(router, "get_departments", depts)
+    monkeypatch.setattr(router.svc, "patch_config", patch_config)
+
+    with make_test_client(make_mock_db()) as client:
+        res = client.patch(f"{BASE}/accounting", json=_patch_body(), headers=AUTH)
+
+    assert res.status_code == 200
+    assert ok
+
+
+def test_carmen_being_unreachable_does_not_block_a_correction(monkeypatch):
+    """The JV is about to be posted through Carmen anyway, which is where a genuinely bad
+    pair gets caught. Refusing here would strand the reviewer on our outage."""
+    from app.routers import config as router
+    from app.services.carmen_service import CarmenAPIError
+
+    async def depts(_token):
+        raise CarmenAPIError(503, "upstream down")
+
+    ok = False
+
+    async def patch_config(*_a, **_k):
+        nonlocal ok
+        ok = True
+
+    monkeypatch.setattr(router, "get_departments", depts)
+    monkeypatch.setattr(router.svc, "patch_config", patch_config)
+
+    with make_test_client(make_mock_db()) as client:
+        res = client.patch(f"{BASE}/accounting", json=_patch_body(), headers=AUTH)
+
+    assert res.status_code == 200
+    assert ok

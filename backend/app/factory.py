@@ -38,8 +38,10 @@ from app.routers.auth import router as auth_router
 from app.routers.carmen import router as carmen_router
 from app.routers.config import router as config_router
 from app.routers.consent import router as consent_router
+from app.routers.credit_card_activity import router as credit_card_activity_router
 from app.routers.credits import router as credits_router
 from app.routers.email_automation import router as email_automation_router
+from app.routers.email_review import router as email_review_router
 from app.routers.feedback import router as feedback_router
 from app.routers.files import router as files_router
 from app.routers.maintenance import router as maintenance_router
@@ -190,5 +192,7 @@ def create_app(lifespan=None) -> FastAPI:
     app.include_router(notifications_router)
     app.include_router(maintenance_router)
     app.include_router(email_automation_router)
+    app.include_router(email_review_router)
+    app.include_router(credit_card_activity_router)
 
     return app

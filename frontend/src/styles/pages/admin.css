@@ -676,42 +676,20 @@ body:has(.admin-login-page) {
   animation: spin 0.7s linear infinite;
 }
 
-.admin-table-pagination {
-  display: flex;
-  align-items: center;
+/* Pagination is the shared `.pager` (styles/components/pager.css) — DataTable had its
+   own block until it adopted <Pager>. Only the seam onto the table is local. */
+.admin-table-wrap .pager {
   justify-content: flex-end;
-  gap: 0.7rem;
   padding: 0.7rem 1rem;
   border-top: 1px solid var(--border);
-  font-size: 0.76rem;
-  color: var(--text-3);
   background: var(--gray-50);
 }
 
-.pagination-info {
-  flex: 1;
-}
-
-.pagination-btn {
-  padding: 0.3rem 0.85rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--card-bg);
-  cursor: pointer;
-  font-size: 0.76rem;
-  font-weight: 600;
-  color: var(--text-2);
-  transition: all 0.15s var(--ease);
-}
-
-.pagination-btn:hover:not(:disabled) {
-  background: var(--primary-light);
-  border-color: var(--primary-mid);
-  color: var(--primary);
-}
-.pagination-btn:disabled {
+/* A page that is loading keeps its rows and dims them. Swapping them for skeletons and
+   back made every arrow click flash a table about to show almost the same thing. */
+.admin-table[aria-busy='true'] tbody {
   opacity: 0.45;
-  cursor: not-allowed;
+  transition: opacity 120ms var(--ease);
 }
 
 /* ─── FORM CONTROLS ────────────────────────────────────────────────────── */
@@ -1381,7 +1359,7 @@ body:has(.admin-login-page) {
 [data-theme='dark'] .admin-th {
   background: oklch(0.2 0.022 258.7);
 }
-[data-theme='dark'] .admin-table-pagination {
+[data-theme='dark'] .admin-table-wrap .pager {
   background: oklch(0.2 0.022 258.7);
 }
 [data-theme='dark'] .admin-tr:hover {
@@ -1470,7 +1448,8 @@ body:has(.admin-login-page) {
    Applies to the small controls that otherwise sit well below that. */
 @media (max-width: 768px) {
   .admin-nav-item,
-  .pagination-btn,
+  .pager__btn,
+  .pager__size-select .isel-trigger,
   .admin-select,
   .admin-date-input,
   .alert-resolve-btn,

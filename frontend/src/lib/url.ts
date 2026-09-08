@@ -4,20 +4,17 @@ export function getCarmenUrl(path = ''): string {
   let base = ''
 
   try {
-    // Resolve tenant_id: active session first, then last-used (survives session expiry)
-    let tenantId: string | null = null
-    const stored = sessionStorage.getItem('ocr_user')
-    if (stored) {
-      tenantId = (JSON.parse(stored) as { tenant_id?: string }).tenant_id ?? null
-    }
-    if (!tenantId) {
-      tenantId = sessionStorage.getItem('ocr_last_tenant')
-    }
+    // Set on login and kept through session expiry (only removed on an explicit
+    // logout), so this alone covers both an active session and an expired one — see
+    // AuthContext.tsx's login()/logout(). There used to be a second read here for an
+    // "active session" key, but AuthContext stopped writing that key years ago; this
+    // one always agreed with it while it was live, so nothing was lost deleting it.
+    const tenantId = sessionStorage.getItem('ocr_last_tenant')
     if (tenantId) {
       base = getCarmenUri(tenantId) || ''
     }
   } catch {
-    // sessionStorage unavailable or JSON parse failed
+    // sessionStorage unavailable
   }
 
   if (!base) {

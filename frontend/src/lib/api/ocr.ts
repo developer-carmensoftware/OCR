@@ -1,5 +1,6 @@
 import { apiFetch, fetchTimeout } from './client'
 import { API } from './endpoints'
+import type { ExtractionWarning } from '../reviewReasons'
 
 // Backend LLM timeout is 120s × up to 3 attempts. We cap the client at 150s so
 // the user gets a clear error instead of waiting indefinitely.
@@ -29,7 +30,9 @@ export interface ExtractResult {
   branch_no: string
   is_duplicate: boolean
   details: ExtractedRow[]
-  warnings: string[]
+  /** Findings the UI writes into a sentence (`warningText`). A plain string is what a
+   *  document extracted before the codes existed still carries. */
+  warnings: (ExtractionWarning | string)[]
 }
 
 export interface ApiError extends Error {
@@ -58,6 +61,23 @@ export async function getPdfInfo(file: File, pdfPassword?: string): Promise<PdfI
     throw error
   }
   return res.json() as Promise<PdfInfoResult>
+}
+
+/**
+ * The API answers snake_case; the wizard's DetailRow is PascalCase. This is the one place
+ * that bridges them, exported because the review queue loads the same payload from a
+ * different endpoint — `applyExtractedData` spreads `details` wholesale, so a row that
+ * arrives still in snake_case silently reads as an empty row rather than failing.
+ */
+export function toExtractedRows(rawDetails: Array<Record<string, string>>): ExtractedRow[] {
+  return rawDetails.map(d => ({
+    Transaction: d.transaction || '',
+    PayAmt: d.pay_amt || '',
+    CommisAmt: d.commis_amt || '',
+    TaxAmt: d.tax_amt || '',
+    WHTAmount: '',
+    Total: d.total || '',
+  }))
 }
 
 /**
@@ -114,14 +134,7 @@ export async function extractFromFile(
   const card = results[0] || {}
   const rawDetails = (card.details as Array<Record<string, string>> | undefined) || []
 
-  const details: ExtractedRow[] = rawDetails.map(d => ({
-    Transaction: d.transaction || '',
-    PayAmt: d.pay_amt || '',
-    CommisAmt: d.commis_amt || '',
-    TaxAmt: d.tax_amt || '',
-    WHTAmount: '',
-    Total: d.total || '',
-  }))
+  const details: ExtractedRow[] = toExtractedRows(rawDetails)
 
   return {
     id: (card.id as string) || '',
@@ -138,6 +151,6 @@ export async function extractFromFile(
     branch_no: (card.branch_no as string) || '',
     is_duplicate: (card.is_duplicate as boolean) || false,
     details,
-    warnings: (card.warnings as string[] | undefined) || [],
+    warnings: (card.warnings as (ExtractionWarning | string)[] | undefined) || [],
   }
 }

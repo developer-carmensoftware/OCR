@@ -22,6 +22,14 @@ interface Props {
   onAddRow?: () => void
   onDeleteRow?: (index: number) => void
   readOnly?: boolean
+  /**
+   * Row indices whose columns do not reconcile (gross ≠ commission + tax + net).
+   *
+   * The review screen marks the line that is wrong rather than putting a warning in a
+   * header above the table: the reviewer's next action is on that row, and a summary one
+   * line up makes them count rows to find it.
+   */
+  badRows?: ReadonlySet<number>
 }
 
 const AMOUNT_FIELDS: DetailColumn[] = ['PayAmt', 'CommisAmt', 'TaxAmt', 'Total']
@@ -66,6 +74,7 @@ export default function DetailTable({
   onAddRow: _onAddRow,
   onDeleteRow: _onDeleteRow,
   readOnly,
+  badRows,
 }: Props) {
   const { t } = useT()
   const [focusedCell, setFocusedCell] = useState<{ row: number; col: string } | null>(null)
@@ -98,7 +107,10 @@ export default function DetailTable({
             </thead>
             <tbody className="stagger-rows">
               {details.map((row, rowIdx) => (
-                <tr key={row._uid ?? rowIdx}>
+                <tr
+                  key={row._uid ?? rowIdx}
+                  className={badRows?.has(rowIdx) ? 'detail-row--bad' : undefined}
+                >
                   {DETAIL_COLUMNS.map(col => {
                     const isAmountField = AMOUNT_FIELDS.includes(col)
                     const isEditing = focusedCell?.row === rowIdx && focusedCell?.col === col

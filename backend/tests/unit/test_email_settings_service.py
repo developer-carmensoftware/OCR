@@ -336,6 +336,7 @@ def _fake_row(**overrides):
     defaults = dict(
         tenant_id=uuid4(),
         enabled=True,
+        auto_post=False,
         tax_ids=["1234567890123"],
         rules=[],
         ingest_tag="a1b2c3d4",
@@ -781,3 +782,27 @@ async def test_the_allocator_skips_a_tag_another_bu_already_holds():
     db.scalar = AsyncMock(side_effect=["taken", "taken", None])
     tag = await es._fresh_tag(db)
     assert len(tag) == 8 and db.scalar.await_count == 3
+
+
+# ── auto_post: the switch that turns review off ───────────────────────────────
+
+
+def test_auto_post_defaults_to_review_mode():
+    """The safe direction. A payload that says nothing about it means "ask a human",
+    so a BU that has never heard of the switch does not post unsupervised."""
+    assert SettingsIn(uri="h", bu="b").auto_post is False
+
+
+def test_to_response_reports_auto_post_but_never_as_a_blocker():
+    """Review mode is the *safe* state, so a BU sitting in it is working as designed.
+    Listing it as a blocker would put a warning chip on the correct configuration."""
+    row = _fake_row(rules=[{"bank_code": "KTC", "filename_patterns": ["x.pdf"], "is_active": True}])
+    body = es.to_response(row, "hotel.carmenwork.com", "hq")
+    assert body["auto_post"] is False
+    assert body["status"]["blockers"] == []
+
+
+def test_an_unconfigured_bu_reports_review_mode_too():
+    """`to_response(None, …)` is a different code path, and a missing key here would
+    make the queue screen read `undefined` as "auto-post is on"."""
+    assert es.to_response(None, "hotel.carmenwork.com", "hq")["auto_post"] is False

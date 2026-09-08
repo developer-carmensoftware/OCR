@@ -123,6 +123,10 @@ class CreditCard(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMix
     doc_no = Column(String(100), nullable=True, index=True)
     branch_no = Column(String(50), nullable=True)
     submitted_at = Column(DateTime(timezone=True), nullable=True)
+    # What Carmen called the JV it created. Stamped beside submitted_at in proxy_gljv, and
+    # the only reason a manual scan can link into Carmen from the activity table the way an
+    # email document does. NULL for anything posted before 20260831000000.
+    jv_no = Column(String(50), nullable=True)
     carmen_user_id = Column(String(36), nullable=True, index=True)
 
     task = relationship("OCRTask", back_populates="credit_card")

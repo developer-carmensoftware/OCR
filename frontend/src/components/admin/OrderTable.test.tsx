@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import type { AdminCreditOrder } from '../../lib/api/adminClient'
 
@@ -65,16 +65,18 @@ function renderTable(
 const many = (n: number) => Array.from({ length: n }, (_, i) => order(i, `Co ${i}`))
 
 describe('OrderTable paging', () => {
-  // jsdom lays nothing out, so useFitRows never measures and falls back to 6 rows.
-  it('shows one measured page, not every row it holds', () => {
+  // Nothing stored, so the shared rows-per-page falls back to its smallest option, 15.
+  beforeEach(() => localStorage.clear())
+
+  it('shows one page, not every row it holds', () => {
     const { container } = renderTable(many(20))
-    expect(container.querySelectorAll('tbody tr.orev-row')).toHaveLength(6)
+    expect(container.querySelectorAll('tbody tr.orev-row')).toHaveLength(15)
   })
 
   it('select-all covers everything the search matched, not just the visible page', () => {
     const { onToggleAll } = renderTable(many(20), 20, '', 'to_review')
     fireEvent.click(screen.getByLabelText('orev.selectAll'))
-    // 20 ids, not the 6 on screen — a batch approve that silently skipped the rest
+    // 20 ids, not the 15 on screen — a batch approve that silently skipped the rest
     // would be the worst kind of bug on this page.
     expect(onToggleAll).toHaveBeenCalledWith(expect.arrayContaining([]))
     expect(onToggleAll.mock.calls[0][0]).toHaveLength(20)

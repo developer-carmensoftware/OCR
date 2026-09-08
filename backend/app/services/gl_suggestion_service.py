@@ -58,6 +58,27 @@ FIXED_TYPES = GLFields.FIXED_TYPES
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
 
+def _by_code(items: list[dict]) -> list[dict]:
+    """Carmen's master, in an order this process decides rather than one it is handed.
+
+    Everything downstream preserves input order and then truncates: `score_and_pad` sorts by
+    keyword score alone (a stable sort, so equal scores keep the order they arrived in) and
+    cuts at `limit`, `_filter_by_type` filters without reordering, and the department list is
+    sliced at 50. So the set of candidates the model is shown — and the order it sees them
+    in — was Carmen's response order, which nothing guarantees to be stable between two
+    calls. Two documents scanned minutes apart could therefore be asked slightly different
+    questions and answer differently, at `temperature=0.0`, with no bug anywhere visible.
+
+    That is not theoretical: across seven documents against one master on 2026-09-07 the
+    fixed fields came back `GEN/6080008` six times and `307/6080008` once, and `commission`
+    is BU-wide — so the odd answer, once approved, became the rule for every bank.
+
+    Sorting here rather than inside `score_and_pad`, which AP invoice shares and which is
+    out of scope.
+    """
+    return sorted(items, key=lambda i: str(i.get("code") or ""))
+
+
 def _filter_by_type(accounts: list[dict], target_type: str) -> list[dict]:
     """Return accounts whose type matches target_type; falls back to all if none match."""
     t = target_type.lower()
@@ -149,6 +170,8 @@ async def suggest_fixed_fields(
                 output={"suggestions": {}, "source": "ai"},
             )
 
+        # Before anything filters or truncates — see `_by_code`.
+        accounts, departments = _by_code(accounts), _by_code(departments)
         commission_acc = _filter_by_type(accounts, "expense")
         balance_acc = _filter_by_type(accounts, "balancesheet")
 
@@ -272,6 +295,8 @@ async def suggest_payment_types(
                 output={"suggestions": {}, "source": "ai"},
             )
 
+        # Before anything filters or truncates — see `_by_code`.
+        accounts, departments = _by_code(accounts), _by_code(departments)
         b_accounts = _filter_by_type(accounts, "balancesheet")
 
         b_filtered = _filter_by_keywords(

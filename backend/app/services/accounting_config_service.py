@@ -162,6 +162,93 @@ async def fill_missing_mappings(
     logger.info("Filled %d GL mapping(s) for tenant=%s", len(fillable), tenant_id)
 
 
+async def patch_config(
+    db: AsyncSession,
+    tenant_id: str,
+    *,
+    mappings: dict[str, dict[str, str]] | None = None,
+    file_prefix: str | None = None,
+    description: str | None = None,
+    bank_code: str | None = None,
+) -> None:
+    """Write the named GL rules and header columns, overwriting, and touch nothing else.
+
+    The third writer of this table, and it exists because neither of the other two fits a
+    reviewer correcting one GL rule from the review screen:
+
+    * `save_accounting_config` is a full replace — it assigns `file_prefix`, `file_source`,
+      `description` and `branch` unconditionally and deletes every mapping entry before
+      re-inserting. Sending a partial config through it wipes the rest, and two reviewers
+      with the queue open is the expected case, not the edge case.
+    * `fill_missing_mappings` never overwrites what the BU already set, which is exactly
+      what a correction has to do.
+
+    So: write what was named, leave every other column and entry alone. `None` means "not
+    mentioned" throughout — the same idiom `save_accounting_config` already uses for
+    `bank_descriptions`.
+
+    `description` is written to **the named bank's own entry**, creating it if this BU had
+    none, and only falls back to the BU-wide field when no bank is known. Two reasons, and
+    they are the same ones the wizard's config editor has always had:
+
+    * It is the field that wins at posting time — `description_for` prefers
+      `bank_descriptions[bank_code]` — so writing the BU-wide one while a per-bank entry
+      exists would look like the edit did nothing.
+    * It is the field the caller was editing. The review screen shows this bank's own
+      wording, so a correction made about one bank's documents must not silently rewrite
+      every other bank's.
+    """
+    usable = {k: v for k, v in (mappings or {}).items() if v.get("dept") and v.get("acc")}
+    if not usable and file_prefix is None and description is None:
+        return
+
+    row = await _get_config(db, tenant_id)
+    if row is None:
+        row = BUAccountingConfig(tenant_id=tenant_id)
+        db.add(row)
+        await db.flush()
+
+    if file_prefix is not None:
+        row.file_prefix = file_prefix
+    if description is not None:
+        if bank_code:
+            # The named bank's own entry, whether or not it had one. The review screen edits
+            # that entry directly (as the wizard's config editor always has), so writing the
+            # BU-wide sentence instead would take a correction made about *this* bank and
+            # apply it to every other one — and then read back as a placeholder rather than
+            # the value that was typed. `description_for` prefers this entry, so it is also
+            # the field that wins at posting time.
+            row.bank_descriptions = {**(row.bank_descriptions or {}), bank_code: description}
+        else:
+            # No bank identified — the BU-wide fallback is the only thing this can mean.
+            row.description = description
+
+    if not usable:
+        await db.commit()
+        logger.info("Patched accounting header for tenant=%s", tenant_id)
+        return
+
+    existing = {str(e.field_type): e for e in await _get_entries(db, row.id)}
+    for field_type, mapping in usable.items():
+        entry = existing.get(field_type)
+        if entry is None:
+            db.add(
+                BUAccountingMappingEntry(
+                    config_id=row.id,
+                    field_type=field_type,
+                    dept_code=mapping["dept"],
+                    acc_code=mapping["acc"],
+                    is_custom=(field_type not in _FIXED_TYPES),
+                )
+            )
+        else:
+            entry.dept_code = mapping["dept"]
+            entry.acc_code = mapping["acc"]
+
+    await db.commit()
+    logger.info("Patched %d GL mapping(s) for tenant=%s", len(usable), tenant_id)
+
+
 # ── AP vendor column mapping ───────────────────────────────────────────────────
 
 

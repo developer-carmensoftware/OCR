@@ -4,6 +4,7 @@ import { useT } from '../../i18n/LanguageContext'
 import { apiFetch, fetchTimeout, getStoredToken } from '../../lib/api/client'
 import { API } from '../../lib/api/endpoints'
 import { getUsage } from '../../lib/api/auth'
+import type { ExtractionWarning } from '../../lib/reviewReasons'
 import { computeUsageStats } from '../../lib/usage'
 import { getAPVendorMapping } from '../../lib/api/config'
 import {
@@ -40,7 +41,7 @@ export interface APDraftState {
   lineItems: APLineItem[]
   fieldMappings: Record<APColumnKey, APFieldKey | 'ignore'>
   apInvoiceId: string | null
-  warnings: string[]
+  warnings: (ExtractionWarning | string)[]
   isDuplicate: boolean
 }
 
@@ -172,7 +173,7 @@ export function useAPExtraction({ setStep, setModal, loadVendors }: APExtraction
   const [apInvoiceId, setApInvoiceId] = useState<string | null>(null)
   // Backend-set, English, display-only — e.g. the VAT reading could not be confirmed
   // against the document footer. Mirrors the credit-card extraction warnings.
-  const [warnings, setWarnings] = useState<string[]>([])
+  const [warnings, setWarnings] = useState<(ExtractionWarning | string)[]>([])
   const [isDuplicate, setIsDuplicate] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const previewUrlRef = useRef<string | null>(null)
@@ -215,7 +216,7 @@ export function useAPExtraction({ setStep, setModal, loadVendors }: APExtraction
       const data = await _fetchExtract(fileObj, selectedPages, password ?? pwPrompt.pdfPassword)
 
       setApInvoiceId((data.id as string) || null)
-      setWarnings((data.warnings as string[]) || [])
+      setWarnings((data.warnings as (ExtractionWarning | string)[]) || [])
       setHeaderData({
         vendorName: (data.vendorName as string) || '',
         vendorTaxId: (data.vendorTaxId as string) || '',

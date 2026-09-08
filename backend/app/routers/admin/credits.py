@@ -339,9 +339,15 @@ async def list_ar_profiles(
     search: str | None = Query(None),
     unmapped_only: bool = Query(False),
     db: AsyncSession = Depends(get_db),
-    _admin: AdminPrincipal = Depends(require_permission("orders", "read")),
+    admin: AdminPrincipal = Depends(require_permission("orders", "read")),
 ):
     """List AR customer profiles for Carmen AR code mapping."""
+    # Global-only, not `_assert_scope`: `ar_customer_profiles` carries no `tenant_id` at
+    # all (keyed on buyer_tax_id + buyer_branch, a company, not a tenant) — the same
+    # buyer can legitimately be the AR customer of several BUs, so there is no tenant
+    # slice of this table to hand a scoped admin instead.
+    if not admin.is_global:
+        raise HTTPException(status_code=403, detail="Global admin required")
     rows = await credit_order_service.list_ar_profiles(
         db, search=search, unmapped_only=unmapped_only
     )
@@ -356,6 +362,9 @@ async def update_ar_profile(
     admin: AdminPrincipal = Depends(require_permission("orders", "write")),
 ):
     """Set or update the Carmen AR code for a customer profile."""
+    # See list_ar_profiles: no tenant_id on this table, so global-only rather than scoped.
+    if not admin.is_global:
+        raise HTTPException(status_code=403, detail="Global admin required")
     profile = await credit_order_service.update_ar_profile(db, profile_id, body.carmen_ar_code)
     await db.commit()
     await db.refresh(profile)
@@ -371,9 +380,12 @@ async def update_ar_profile(
 @router.post("/ar-customer-profiles/sync")
 async def sync_ar_profiles(
     db: AsyncSession = Depends(get_db),
-    _admin: AdminPrincipal = Depends(require_permission("orders", "write")),
+    admin: AdminPrincipal = Depends(require_permission("orders", "write")),
 ):
     """Re-scan billing_documents for new unique buyers and upsert into ar_customer_profiles."""
+    # See list_ar_profiles: no tenant_id on this table, so global-only rather than scoped.
+    if not admin.is_global:
+        raise HTTPException(status_code=403, detail="Global admin required")
     result = await credit_order_service.sync_ar_profiles(db)
     await db.commit()
     return result

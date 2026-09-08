@@ -197,9 +197,10 @@ sequenceDiagram
     Note over Ingest: Everything above this line is free.
     Ingest->>DB: consume_document() — first charge
     Ingest->>DB: create_task()
-    Ingest->>Vision: extract_stateless() — first LLM spend
+    Ingest->>Vision: extract_stateless() — first LLM spend, always the auto-detect prompt
     Vision-->>Ingest: ExtractedCreditCardData
-    Ingest->>Ingest: finalize_extraction(), detect_bank_code()
+    Ingest->>Ingest: _resolve_bank() — the document names its issuer, the rule is the fallback
+    Ingest->>Ingest: finalize_extraction()
     Ingest->>DB: foreign_tax_id() — second-factor check
     Ingest->>DB: is_duplicate check
     Ingest->>DB: get_accounting_config() — existing GL mappings
@@ -210,7 +211,13 @@ sequenceDiagram
         Ingest->>DB: fill_missing_mappings() — saved for next document
     end
     Ingest->>Ingest: build_jv_rows()
-    Ingest->>Carmen: post_gljv(payload, carmen_token)
+    Ingest->>Ingest: _review_flags() — anything to say about this reading?
+    alt auto_post = false (the default), or any flag
+        Ingest->>DB: _park_for_review() — status="pending_review", review_payload stored
+        Note over Ingest,DB: The poll stops here. Nothing reaches Carmen until<br/>a human approves it at #/CreditCardOCR.
+    else auto_post = true and nothing flagged
+        Ingest->>Carmen: post_gljv(payload, carmen_token)
+    end
     Carmen-->>Ingest: {Code: 0, InternalMessage: jv_no}
     Ingest->>DB: _mark_submitted() — credit_cards.submitted_at
     Ingest->>Carmen: post_input_tax() — cannot fail the JV above
@@ -240,10 +247,16 @@ flowchart TD
     G4 -- no --> G5{"is_duplicate?"}
     G5 -- yes --> F2["failed\nduplicate_document\ncharged"]
     G5 -- no --> G6{"GL mapping complete\n(incl. AI fill)?"}
-    G6 -- no --> F3["failed\nmapping_incomplete\ncharged"]
+    G6 -- no --> P1
     G6 -- yes --> G7{"build_jv_rows has\npostable amounts?"}
     G7 -- no --> F4["failed\nunreadable_document\ncharged"]
-    G7 -- yes --> G8{"post_gljv succeeds?"}
+    G7 -- yes --> G9{"auto_post AND\n_review_flags() empty?"}
+    G9 -- "no — review off, or something flagged" --> P1["pending_review
+charged, waiting for a human"]
+    P1 -- "reviewer approves" --> G8
+    P1 -- "reviewer rejects" --> F8["rejected
+charged, terminal"]
+    G9 -- yes --> G8{"post_gljv succeeds?"}
     G8 -- "Carmen declines (Code != 0)" --> F5["failed\ncarmen_rejected\ncharged"]
     G8 -- "transport error" --> F6["failed\ncarmen_rejected\ncharged"]
     G8 -- "HTTP 401/403, or no token/host" --> F8["failed\ncarmen_unauthorized\ncharged\ncredential flagged unverified"]
@@ -252,7 +265,20 @@ flowchart TD
     style Charge fill:#f5c542,color:#000
     style Boundary fill:#f5c542,color:#000
     style Posted fill:#5cb85c,color:#000
+    style P1 fill:#5bc0de,color:#000
 ```
+
+**The review fork is not a cost boundary.** A parked document has already been read, so it
+is already charged; approving, rejecting and letting it sit all cost the same. That is why
+`_park_for_review()` sits *after* the refund boundary and why reject does not refund
+(decision-log #17, unchanged).
+
+**`auto_post` is a gate on the fork, not the fork itself.** G9 asks two questions: has the
+BU switched review off, and did `_review_flags()` find nothing to say about this reading.
+Both must answer yes to reach Carmen unattended — so the switch buys freedom from approving
+the *ordinary* document and never from approving a doubtful one. The flags are the queue's
+own reason column, deliberately one predicate: a document the reviewer would have been given
+a reason for cannot post behind their back (decision-log #24).
 
 The rule stated once: **the charge follows the vision call, not the outcome.** Pre-charge
 exits are the customer's own configuration saying "not this file", and file as `skipped` —
@@ -275,17 +301,39 @@ same event, so the two pipelines disagreed about what one document costs.
 ```mermaid
 stateDiagram-v2
     [*] --> received: _claim() inserts the ledger row
-    received --> posted: JV + input-tax attempted
-    received --> failed: charged, then a gate failed
+    received --> pending_review: auto_post = false, every gate passed
+    received --> pending_review: auto_post = true, but the reading was flagged
+    received --> pending_review: charged, then a gate refused — the reading is kept
+    received --> posted: auto_post = true and nothing flagged, JV + input-tax attempted
+    received --> failed: refunded, crashed, or already queued
     received --> skipped: a free gate failed, never charged
+    pending_review --> posted: a human approved it
+    pending_review --> rejected: a human rejected it
+    pending_review --> pending_review: Carmen refused the JV — stays reviewable
     posted --> [*]
     failed --> [*]
+    rejected --> [*]
     skipped --> [*]
 ```
 
-All three are terminal. There is no retry sweep — `attempts` is always written as `1`
-(`ponytail` note, `email_ingest_service.py:35`); a failed document needs a human to
-re-forward it, or a retry job to be built when real failure volume justifies it
+`pending_review` is the only non-terminal state, and the only one a human can leave. A
+Carmen refusal during approve deliberately does **not** move it: a closed period or an
+unknown dept code is something the person standing at the screen can fix and try again, so
+the row stays where it is and the message goes back to them (see
+[07-human-in-the-loop.md](07-human-in-the-loop.md)).
+
+**Since 2026-09-03 it is also where a charged refusal lands.** The second arrow into it is
+the corollary of the charge rule above: a foreign tax ID, an unmappable payment type or a
+Carmen refusal is a decision *about a document we read and were paid for*, so the reading is
+kept and the row goes to the queue with its reason recorded, rather than being finished as
+`failed` and thrown away. `failed` still exists and now means one of three things — the
+refund boundary gave the money back, an unhandled bug fired (possibly *after* the JV
+posted), or an identical document is already waiting. See the taxonomy in
+[04-data-model.md](04-data-model.md#reason_code-taxonomy).
+
+The other four are terminal. There is still no retry sweep — `attempts` is always written as
+`1` (`ponytail` note, `email_ingest_service.py:35`); what changed is not that failures are
+retried but that most of them were never failures, and a person can now finish them
 (see [05-operations.md](05-operations.md#known-gaps--roadmap)).
 
 ## Trust model of mail headers
@@ -347,6 +395,14 @@ about it are deliberate:
   itself sends. A 401 here means *Carmen* rejected the token, which the page renders
   inline; going through the shared `apiFetch` would instead treat a 401 as "our own session
   died" and wipe the OCR session.
+
+`#/CreditCardOCR` (`frontend/src/pages/ReviewQueue.tsx`) is the other half, and unlike
+`#/email-settings` it *is* customer-facing: it is the Credit Card module's landing page, so
+it is what Carmen's SSO deep-link opens. It lists this BU's email documents by status tab,
+opens a parked one at `#/CreditCardOCR/review?id=…` for approval, and hides the
+`auto_post` switch behind a gear. The manual wizard moved to `#/CreditCardOCR/manual`
+unchanged. It reads our own session JWT through `routers/email_review.py`, not the Carmen
+token path above — see [07-human-in-the-loop.md](07-human-in-the-loop.md).
 
 There is no admin UI at all for this feature — see
 [05-operations.md #known-gaps](05-operations.md#known-gaps--roadmap).

@@ -155,7 +155,7 @@ describe('NotificationBell — email automation rows', () => {
     fireEvent.click(screen.getByText(/ktc-fee-2026-08\.pdf/))
     expect(screen.getByText('Krungthai Card (KTC)')).toBeInTheDocument()
     expect(screen.getByText('INV-001')).toBeInTheDocument()
-    expect(screen.getByText('Carmen declined the journal voucher.')).toBeInTheDocument()
+    expect(screen.getByText('Carmen refused the journal voucher.')).toBeInTheDocument()
     expect(screen.getByText('Code 1: Insufficient balance')).toBeInTheDocument()
   })
 

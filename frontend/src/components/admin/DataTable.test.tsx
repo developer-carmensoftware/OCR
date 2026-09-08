@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 
 // The sort arrow used to render only on the sorted column. `.admin-table` is
@@ -16,6 +16,15 @@ const columns = [
   { key: 'name', label: 'Name', sortable: true },
   { key: 'code', label: 'Code', sortable: true },
 ]
+/** Pager's rows-per-page control: a listbox trigger, opened and picked from. */
+const sizeTrigger = () => screen.queryByRole('button', { name: 'common.rowsPerPage' })
+const chooseSize = (n: string) => {
+  fireEvent.click(sizeTrigger()!)
+  // `hidden: true`: the panel is a <datalist>, which the UA stylesheet hides and
+  // inline-select.css un-hides — jsdom loads no CSS, so it stays hidden to role queries.
+  fireEvent.mouseDown(screen.getByRole('option', { name: n, hidden: true }))
+}
+
 const rows = [
   { id: '1', name: 'b', code: 'x' },
   { id: '2', name: 'a', code: 'y' },
@@ -53,17 +62,31 @@ describe('DataTable sort-icon slot', () => {
 })
 
 describe('DataTable paging', () => {
-  // jsdom lays nothing out, so useFitRows never measures and falls back to 7 rows.
-  // That fallback is what these assert against; the measurement itself is covered in
-  // useFitRows.test.ts.
-  it('pages by the measured row count when no pageSize is given', () => {
-    const { container } = render(<DataTable columns={columns} rows={many(20)} />)
-    expect(container.querySelectorAll('tbody tr')).toHaveLength(7)
+  beforeEach(() => localStorage.clear())
+
+  it('pages by the stored rows-per-page when no pageSize is given', () => {
+    localStorage.setItem('rowsPerPage', '25')
+    const { container } = render(<DataTable columns={columns} rows={many(40)} />)
+    expect(container.querySelectorAll('tbody tr')).toHaveLength(25)
   })
 
-  it('an explicit pageSize still wins — nested tables are not viewport-bound', () => {
+  it('falls back to 15 when nothing is stored', () => {
+    const { container } = render(<DataTable columns={columns} rows={many(40)} />)
+    expect(container.querySelectorAll('tbody tr')).toHaveLength(15)
+  })
+
+  it('an explicit pageSize still wins, and hides the size control with it', () => {
     const { container } = render(<DataTable columns={columns} rows={many(20)} pageSize={3} />)
     expect(container.querySelectorAll('tbody tr')).toHaveLength(3)
+    // A nested table's size is not the reader's to pick.
+    expect(sizeTrigger()).toBeNull()
+  })
+
+  it('choosing a size repages, and remembers the choice', () => {
+    const { container } = render(<DataTable columns={columns} rows={many(40)} />)
+    chooseSize('25')
+    expect(container.querySelectorAll('tbody tr')).toHaveLength(25)
+    expect(localStorage.getItem('rowsPerPage')).toBe('25')
   })
 
   it('clamps a page index left past the end instead of rendering a blank table', () => {
@@ -72,20 +95,31 @@ describe('DataTable paging', () => {
     )
     // walk to the last page (10 pages of 2)
     for (let i = 0; i < 9; i++) {
-      fireEvent.click(screen.getByRole('button', { name: 'admin.common.table.next' }))
+      fireEvent.click(screen.getByRole('button', { name: 'common.pageNext' }))
     }
     expect(container.querySelectorAll('tbody tr')).toHaveLength(2)
 
-    // A resize grows the page size: page 9 no longer exists.
+    // A bigger page size: page 9 no longer exists.
     rerender(<DataTable columns={columns} rows={many(20)} pageSize={10} />)
     const cells = container.querySelectorAll('tbody tr')
     expect(cells.length).toBeGreaterThan(0)
     expect(cells).toHaveLength(10)
   })
 
-  it('hides the pager when everything fits on one page', () => {
+  it('hides the pager entirely below the smallest size — no option would change anything', () => {
     render(<DataTable columns={columns} rows={rows} />)
-    expect(screen.queryByRole('button', { name: 'admin.common.table.next' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'common.pageNext' })).toBeNull()
+    expect(sizeTrigger()).toBeNull()
+  })
+
+  it('keeps the rows it has while a later page loads, rather than flashing skeletons', () => {
+    const { container } = render(<DataTable columns={columns} rows={rows} loading />)
+    expect(container.querySelectorAll('.skeleton-row')).toHaveLength(0)
+    expect(container.querySelector('table')).toHaveAttribute('aria-busy', 'true')
+
+    // The very first load has nothing to keep, so it still gets skeletons.
+    const first = render(<DataTable columns={columns} rows={[]} loading />)
+    expect(first.container.querySelectorAll('.skeleton-row').length).toBeGreaterThan(0)
   })
 })
 
@@ -209,54 +243,40 @@ describe('DataTable server mode', () => {
       />
     )
     // Two rows on screen, 99 behind them — the pager has to exist.
-    fireEvent.click(screen.getByRole('button', { name: 'admin.common.table.next' }))
+    fireEvent.click(screen.getByRole('button', { name: 'common.pageNext' }))
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ offset: 7 }))
   })
 
-  it('reports its measured page size up so the fetch can ask for that many', () => {
+  it('takes its size from the server state — that is what the rows were fetched with', () => {
+    const onChange = vi.fn()
+    localStorage.setItem('rowsPerPage', '15')
+    render(
+      <DataTable
+        columns={columns}
+        rows={serverRows}
+        server={{ sort: null, dir: 'desc', offset: 0, limit: 50, total: 99, onChange }}
+      />
+    )
+    expect(sizeTrigger()).toHaveTextContent('50')
+    // And it reports nothing on its own — the old measuring version pushed a limit up
+    // on mount, which is what let the measurement and the fetch chase each other.
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('a new size goes up with offset 0 in ONE patch', () => {
     const onChange = vi.fn()
     render(
       <DataTable
         columns={columns}
         rows={serverRows}
-        server={{ sort: null, dir: 'desc', offset: 0, limit: 25, total: 99, onChange }}
+        server={{ sort: null, dir: 'desc', offset: 80, limit: 15, total: 99, onChange }}
       />
     )
-    // jsdom lays nothing out, so useFitRows falls back to 7 — the point is that the
-    // measurement, whatever it is, reaches the parent instead of being guessed there.
-    expect(onChange).toHaveBeenCalledWith({ limit: 7 })
-  })
-
-  it('never reports a page size smaller than the one it already asked for', () => {
-    // The measurement and the row count feed each other: useFitRows derives the count
-    // from the space left below the table, so a 15-row fetch leaves room measuring 17
-    // and a 17-row fetch leaves room measuring 15. Reporting both directions made every
-    // server-mode page fetch forever. Only a real viewport change may lower it.
-    const onChange = vi.fn()
-    // `measured` is what useFitRows would report; `asked` is what the parent last
-    // fetched with. `pageSize` stands in for the measurement, which jsdom cannot do.
-    const view = (measured: number, asked: number) => (
-      <DataTable
-        columns={columns}
-        rows={many(asked)}
-        pageSize={measured}
-        server={{ sort: null, dir: 'desc', offset: 0, limit: asked, total: 99, onChange }}
-      />
-    )
-
-    const { rerender } = render(view(15, 25))
-    expect(onChange).toHaveBeenCalledWith({ limit: 15 })
-    onChange.mockClear()
-
-    // The parent honoured 15; the table now measures 17 and asks to grow. Fine.
-    rerender(view(17, 15))
-    expect(onChange).toHaveBeenCalledWith({ limit: 17 })
-    onChange.mockClear()
-
-    // Now 17 rows are on screen and the measurement drops back to 15. Reporting that
-    // is what closed the loop, so it must not happen.
-    rerender(view(15, 17))
-    expect(onChange).not.toHaveBeenCalled()
+    chooseSize('50')
+    // Both halves together: offset 80 at limit 50 points past the end, and two patches
+    // would be two fetches to reach one page.
+    expect(onChange).toHaveBeenCalledTimes(1)
+    expect(onChange).toHaveBeenCalledWith({ limit: 50, offset: 0 })
   })
 
   it('a sort click sends the reader back to page 1', () => {

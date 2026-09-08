@@ -23,6 +23,12 @@ export const API = {
 
   creditCard: {
     extract: `${V1}/credit-card/extract`,
+    // The module landing page's list: email documents AND manual scans, one envelope.
+    // Deliberately not under /email — it outgrew that prefix the day Source became a column.
+    activity: `${V1}/credit-card/activity`,
+    // "somebody in this BU has now looked at that chip". A POST rather than a flag on the
+    // GET above: a read that writes would let a prefetch or a retry put the dot out.
+    activitySeen: `${V1}/credit-card/activity/seen`,
     tasks: `${V1}/credit-card/tasks`,
     task: (taskId: string) => `${V1}/credit-card/tasks/${taskId}`,
     mapping: {
@@ -34,6 +40,17 @@ export const API = {
   apInvoice: {
     extract: `${V1}/ap-invoice/extract`,
     suggest: `${V1}/ap-invoice/suggest`,
+  },
+
+  // The review queue this BU owns. Session JWT — distinct from `/api/v1/carmen/*`,
+  // which is the settings API Carmen's own server calls with a raw Carmen token.
+  emailReview: {
+    documents: `${V1}/email/documents`,
+    document: (id: string) => `${V1}/email/documents/${id}`,
+    approve: (id: string) => `${V1}/email/documents/${id}/approve`,
+    reject: (id: string) => `${V1}/email/documents/${id}/reject`,
+    status: `${V1}/email/status`,
+    autoPost: `${V1}/email/settings/auto-post`,
   },
 
   // Carmen ERP proxy — shared by BOTH credit card and AP invoice flows.
@@ -64,6 +81,9 @@ export const API = {
   },
 
   config: {
+    // One path, two verbs: PUT is a FULL REPLACE (it wipes every column and mapping
+    // entry the body omits), PATCH writes only what it names. Anything correcting one
+    // field while a colleague may have the config open must use PATCH.
     accounting: `${V1}/config/accounting`,
     apMapping: (vendorTaxId: string) =>
       `${V1}/config/ap-mapping/${encodeURIComponent(vendorTaxId)}`,

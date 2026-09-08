@@ -1,7 +1,7 @@
 """Email Automation — end-to-end pipeline test against the real mailbox and dev DB.
 
     python scripts/email_ingest_e2e.py            # 19 free cases, no credit/LLM/Carmen
-    python scripts/email_ingest_e2e.py --paid     # + 3 cases that extract and post
+    python scripts/email_ingest_e2e.py --paid     # + 4 cases that extract, park, and post
 
 Fixtures are **APPENDed** into the IMAP folder rather than sent over SMTP: `Delivered-To`
 is the header the router reads, and appending is the only way to write it. The two real
@@ -30,6 +30,7 @@ import json
 import os
 import sys
 import time
+import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from email.message import EmailMessage
@@ -43,7 +44,12 @@ load_dotenv(ROOT / "backend" / ".env")
 sys.path.insert(0, str(ROOT / "backend"))
 
 TENANT = "af0786cd-487d-4625-95fd-f2e75718447d"  # dev.carmen4.com / carmen
-OTHER_TENANT = "8111f7a9-d03c-4a11-b9a6-0a4f9a1d2b7d"  # …/carmencloud — entitled, unconfigured
+OTHER_TENANT = "328142eb-55fb-4477-a6f9-63a60cd272d4"  # …/demo — scratch, no settings row
+# Was carmencloud until 2026-09-07. That BU is configured now (its own tag, rules and
+# encrypted PDF passwords), and `teardown` deletes this row outright — which would have
+# released a live ingest tag and silently broken the customer-side Gmail forward. The
+# only requirement here is a second settings row claiming the same tax ID, so any BU
+# with no settings of its own does; the delete below is guarded as well.
 UNPAID_TENANT = "d1424ae3-da7b-4b7d-a51c-d217b64ed113"  # …/dev — no package
 TAG = "41645ee4"
 UNPAID_TAG = "e2eunpaid"
@@ -249,6 +255,20 @@ async def set_owner_emails(value: list[str]) -> None:
     )
 
 
+async def set_auto_post(value: bool) -> None:
+    """The paid phase drives both sides of the review fork, so it sets this explicitly
+    rather than inheriting whatever the BU was last left on."""
+    await sql(
+        "update email_ingest_settings set auto_post = $1 where tenant_id = $2::uuid",
+        value,
+        TENANT,
+    )
+
+
+async def ledger_rows() -> int:
+    return (await sql("select count(*) as n from credit_ledger"))[0]["n"]
+
+
 async def set_enabled_at(value) -> None:
     """`null` = the pre-2026-08-18 behaviour (no filtering)."""
     await sql(
@@ -262,7 +282,8 @@ async def rows_for(prefix: str) -> list[dict]:
     return [
         dict(r)
         for r in await sql(
-            "select message_id, attachment, status, reason_code, task_id, jv_no, error_message"
+            "select id, message_id, attachment, status, reason_code, task_id, jv_no,"
+            " error_message, review_payload is not null as has_payload"
             " from email_documents where message_id like $1 order by created_at",
             f"<e2e-{prefix}-{RUN}@%",
         )
@@ -444,11 +465,47 @@ def make_locked_pdf() -> bytes:
 
 
 async def paid_run(box, report: Report, pdfs: dict[str, bytes]) -> None:
-    """P18–P20. Each one extracts; only P18 posts."""
+    """P17R and P18–P20. Each one extracts; only P18 posts."""
+    from app.services.email_ingest_service import reject_document
+
     bbl, other = pick(pdfs, bbl=True), pick(pdfs, bbl=False)
     await set_owner_emails([])
 
     print("\n── Phase C · paid ───────────────────────────────────────────────")
+
+    # The review fork, before anything posts. Deliberately first: a parked document that is
+    # then rejected leaves `credit_cards.submitted_at` null, so P18 can still post the same
+    # statement from a different message and its duplicate check stays honest.
+    if other is not None:
+        await set_auto_post(False)
+        await add_catchall_rule()
+        p17r = Case("P17R", "auto_post off — waits for a human", "review_pending",
+                    status="pending_review",
+                    attachments=[("commission-review.pdf", other)])
+        append(box, [p17r])
+        await run_poll("C0")
+        parked = (await rows_for("P17R") or [{}])[0]
+        report.check("P17R", "parks instead of posting", "pending_review",
+                     parked.get("status", "NO ROW"))
+        report.check("P17R+", "the reviewer has something to read", True,
+                     bool(parked.get("has_payload")))
+
+        if parked.get("id"):
+            before = await ledger_rows()
+            await reject_document(
+                uuid.UUID(str(parked["id"])), tenant_id=TENANT,
+                reviewer="e2e", reviewer_name="e2e", reason="e2e run",
+            )
+            after = (await rows_for("P17R") or [{}])[0]
+            report.check("P17R-", "reject is terminal and clears the payload",
+                         ("rejected", False),
+                         (after.get("status"), bool(after.get("has_payload"))))
+            # Decision-log #17: the vision call ran, so nothing comes back.
+            report.check("P17R$", "rejecting refunds nothing", before, await ledger_rows())
+        await drop_catchall_rule()
+
+    # Everything below is the auto-post pipeline, which is what P18-P20 were written for.
+    await set_auto_post(True)
     if other is None:
         print("  !! no second real PDF in the mailbox — P18 skipped")
     else:
@@ -460,15 +517,30 @@ async def paid_run(box, report: Report, pdfs: dict[str, bytes]) -> None:
         append(box, [p18])
         await run_poll("C1")
         row = (await rows_for("P18") or [{}])[0]
-        report.check("P18", p18.why, "posted", row.get("status", "NO ROW"))
-        print(f"       jv_no={row.get('jv_no')!r} note={row.get('error_message')!r}")
+        # **Both are a pass, and which one you get is a fact about the PDF in the mailbox.**
+        # Since decision #24 auto-post posts only a document `_review_flags()` had nothing to
+        # say about, so a real statement read with a warning, an invented GL rule or lines
+        # that do not reconcile lands in the queue instead — and asserting `posted` alone
+        # would fail this run on a document the pipeline handled exactly right. The flags are
+        # printed because they are the thing worth reading here.
+        got = row.get("status", "NO ROW")
+        report.check("P18", p18.why, True, got in ("posted", "pending_review"))
+        if got == "pending_review":
+            flags = await sql(
+                "select review_payload->'flags' as flags from email_documents where id = $1",
+                row["id"],
+            )
+            print(f"       held for review — flags={flags[0]['flags'] if flags else None!r}")
+        else:
+            print(f"       jv_no={row.get('jv_no')!r} note={row.get('error_message')!r}")
         await drop_catchall_rule()
 
-    # `failed`, not `skipped`: both of these are decided *after* the extraction, so a
-    # credit was charged and then refunded. That is the documented behaviour, and the
-    # status is how you tell it apart from a gate that held for free.
+    # `pending_review`, not `failed` or `skipped`. Both of these are decided *after* the
+    # extraction, so a credit was charged and nothing came back — and decision #22 (which
+    # this script predated) keeps a reading the customer paid for: a refusal that happens
+    # past the refund boundary parks with its reason recorded rather than dying red.
     p19 = Case("P19", "a document already posted — duplicate", "duplicate_document",
-               status="failed", attachments=[("BBLETAXACQ_again.pdf", bbl)])
+               status="pending_review", attachments=[("BBLETAXACQ_again.pdf", bbl)])
     append(box, [p19])
     await run_poll("C2")
     await verify(report, [p19])
@@ -484,7 +556,7 @@ async def paid_run(box, report: Report, pdfs: dict[str, bytes]) -> None:
         tin,
     )
     p20 = Case("P20", "document's tax ID belongs to another BU", "tax_id_mismatch",
-               status="failed", attachments=[("BBLETAXACQ_conflict.pdf", bbl)])
+               status="pending_review", attachments=[("BBLETAXACQ_conflict.pdf", bbl)])
     append(box, [p20])
     await run_poll("C3")
     await verify(report, [p20])
@@ -524,9 +596,13 @@ async def make_unpaid_bu() -> None:
 
 async def teardown() -> None:
     await set_owner_emails([])
+    await set_auto_post(False)
     await set_enabled_at(None)
     await drop_catchall_rule()
-    await sql("delete from email_ingest_settings where tenant_id = any($1::uuid[])",
+    # `rules = []` is what makes this safe to point at any tenant: a BU that has been
+    # configured has filename rules, and this script never writes one here.
+    await sql("delete from email_ingest_settings where tenant_id = any($1::uuid[])"
+              " and rules = '[]'::jsonb",
               [UNPAID_TENANT, OTHER_TENANT])
     await sql(
         "update email_ingest_settings set gmail_confirm_code = null, gmail_confirm_at = null"

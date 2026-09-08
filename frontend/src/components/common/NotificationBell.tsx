@@ -8,8 +8,10 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock,
+  ClockAlert,
   FileCheck2,
   FileWarning,
+  FileX2,
   Sparkles,
   XCircle,
 } from 'lucide-react'
@@ -23,11 +25,13 @@ import type { BellItem } from '../../lib/api/notifications'
 import type { ReleaseNoteCopy } from '../../content/releaseNotes'
 import NotificationDetailModal from './NotificationDetailModal'
 import Pager from './Pager'
-import { useFitRows } from '../../hooks/useFitRows'
 import { timeAgo } from '../../lib/orderHelpers'
 
-// Mirrors the cap FastAPI enforces on GET /api/v1/notifications (422 above it).
-const MAX_PAGE = 50
+// The panel is a fixed-height dropdown, so its page size is not the reader's to pick —
+// a "Rows per page" control in a bell menu is furniture, and the panel cannot show more
+// than this without scrolling anyway. Well under the cap FastAPI enforces on
+// GET /api/v1/notifications (50, 422 above it).
+const PAGE_SIZE = 8
 
 // Per-type presentation: icon + tone class (tone drives the tinted icon container).
 // The email-automation pair is file-shaped where the order pair is circle-shaped,
@@ -40,6 +44,12 @@ const TYPE_META: Record<string, { icon: LucideIcon; tone: string }> = {
   release_note: { icon: Sparkles, tone: 'info' },
   document_posted: { icon: FileCheck2, tone: 'success' },
   document_failed: { icon: FileWarning, tone: 'error' },
+  // Never read, rather than read and refused: the document stopped at a gate the
+  // customer owns (PDF password, sender list, file type), so it is amber, not red.
+  document_blocked: { icon: FileX2, tone: 'warning' },
+  // Not an outcome but a request: the only row in the bell that asks the customer to
+  // do something rather than reporting what already happened.
+  document_pending_review: { icon: ClockAlert, tone: 'warning' },
 }
 
 type TFn = (key: TKey, vars?: Record<string, string | number>) => string
@@ -72,6 +82,12 @@ function notifText(n: BellItem, t: TFn): string {
       return t('notif.docPosted', { doc: docLabel(p) })
     case 'document_failed':
       return t('notif.docFailed', { doc: docLabel(p) })
+    case 'document_blocked':
+      return t('notif.docBlocked', { doc: docLabel(p) })
+    // Counts documents, not one of them: the poll raises a single row per BU per run,
+    // so a twenty-attachment zip does not bury every other notification.
+    case 'document_pending_review':
+      return t('notif.docPendingReview', { count: String(p.pending ?? 1) })
     default:
       return n.type
   }
@@ -79,10 +95,7 @@ function notifText(n: BellItem, t: TFn): string {
 
 export default function NotificationBell() {
   const { t, lang } = useT()
-  // Page size = whatever fills the panel, capped at the backend's /notifications limit.
-  // Only the first open measures: the count survives the panel unmounting on close.
-  const [fits, listRef] = useFitRows('li', 4)
-  const limit = Math.min(fits, MAX_PAGE)
+  const limit = PAGE_SIZE
   const { items, unreadCount, offset, total, setOffset, markRead } = useNotifications(limit)
   const [open, setOpen] = useState(false)
   const [detail, setDetail] = useState<BellItem | null>(null)
@@ -139,8 +152,16 @@ export default function NotificationBell() {
     // Email-automation rows open in place. They carry no order_id, so the order
     // history below would be the wrong page, and there is no right page to send
     // them to — the payload is already the whole story.
-    if (n.type === 'document_posted' || n.type === 'document_failed') {
+    if (
+      n.type === 'document_posted' ||
+      n.type === 'document_failed' ||
+      n.type === 'document_blocked'
+    ) {
       setDetail(n)
+    } else if (n.type === 'document_pending_review') {
+      // The only actionable row in the bell, and the queue is where the action is —
+      // a detail modal here would be a dead end with a count in it.
+      window.location.hash = '#/CreditCardOCR'
     } else {
       // Deep-link to the specific order when we have it, so the row opens/scrolls
       // into view; the orders route ignores the query suffix when matching.
@@ -197,7 +218,7 @@ export default function NotificationBell() {
                 <span>{t('notif.empty')}</span>
               </div>
             ) : (
-              <ul className="notif-bell__list" ref={listRef}>
+              <ul className="notif-bell__list">
                 {items.map(n => {
                   const meta = TYPE_META[n.type] ?? { icon: Bell, tone: 'info' }
                   const Icon = meta.icon

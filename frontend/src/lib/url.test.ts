@@ -13,15 +13,14 @@ beforeEach(() => {
 })
 
 describe('getCarmenUrl', () => {
-  it('resolves uri from the active session (ocr_user) tenant', () => {
-    sessionStorage.setItem('ocr_user', JSON.stringify({ tenant_id: TENANT_A }))
+  it('resolves uri from the last-used tenant', () => {
+    sessionStorage.setItem('ocr_last_tenant', TENANT_A)
     setCarmenUri(TENANT_A, URI_A)
 
     expect(getCarmenUrl('/apInvoice/1/show')).toBe(`${URI_A}/#/apInvoice/1/show`)
   })
 
-  it('falls back to ocr_last_tenant after session expiry (ocr_user gone)', () => {
-    // session expiry path: ocr_user removed but ocr_last_tenant retained
+  it('survives session expiry — the key is only cleared on an explicit logout', () => {
     sessionStorage.setItem('ocr_last_tenant', TENANT_A)
     setCarmenUri(TENANT_A, URI_A)
 
@@ -37,15 +36,6 @@ describe('getCarmenUrl', () => {
 
     sessionStorage.setItem('ocr_last_tenant', TENANT_A)
     expect(getCarmenUrl('/')).toBe(`${URI_A}/#/`)
-  })
-
-  it('prefers the active session tenant over the last-used tenant', () => {
-    setCarmenUri(TENANT_A, URI_A)
-    setCarmenUri(TENANT_B, URI_B)
-    sessionStorage.setItem('ocr_user', JSON.stringify({ tenant_id: TENANT_B }))
-    sessionStorage.setItem('ocr_last_tenant', TENANT_A)
-
-    expect(getCarmenUrl('/')).toBe(`${URI_B}/#/`)
   })
 
   it('falls back to the current host when no uri is stored', () => {
@@ -78,12 +68,6 @@ describe('getCarmenUrl', () => {
     setCarmenUri(TENANT_A, `${URI_A}/`)
 
     expect(getCarmenUrl('/glJv/9/show')).toBe(`${URI_A}/#/glJv/9/show`)
-  })
-
-  it('does not throw and falls back to host on malformed ocr_user json', () => {
-    sessionStorage.setItem('ocr_user', '{not valid json')
-
-    expect(getCarmenUrl('/')).toBe(`${window.location.protocol}//${window.location.hostname}/#/`)
   })
 })
 

@@ -156,6 +156,10 @@ async def proxy_gljv(
         # actually complained about. A document Carmen refused must stay re-submittable.
         if res and res.get("Code") == 0 and card is not None:
             card.submitted_at = datetime.now(UTC)  # type: ignore[assignment]
+            # Carmen returns the JV number in InternalMessage — same field
+            # email_ingest_service reads when it stamps a posted email document. Kept so
+            # the activity table can link a manual scan into Carmen.
+            card.jv_no = str(res.get("InternalMessage") or "") or None  # type: ignore[assignment]
             if doc_no:
                 card.doc_no = doc_no  # type: ignore[assignment]
             if company_name:

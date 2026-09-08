@@ -159,6 +159,11 @@ const PAIRS = [
   ['badge error', 'var(--rose-text)', 'var(--rose-light)', 'text'],
   ['badge success', 'var(--emerald-text)', 'var(--emerald-light)', 'text'],
   ['badge info', 'var(--teal-text)', 'var(--teal-light)', 'text'],
+  // The activity table's column headers, and the labels those headers become inside each
+  // row on a phone — where they are the ONLY thing naming a cell, so they are text, not
+  // chrome. --text-3 on --muted is 4.39:1 (see the step-wizard row below), which is why
+  // this table breaks with the --text-3 header the other tables use.
+  ['activity table header', 'var(--text-2)', 'var(--muted)', 'text'],
   ['step wizard: upcoming', 'var(--text-3)', 'var(--muted)', 'ui'],
   ['step wizard: done', 'var(--emerald-text)', 'var(--muted)', 'text'],
   ['step wizard: active', 'var(--primary)', 'var(--card-bg)', 'text'],

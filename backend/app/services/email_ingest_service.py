@@ -8,7 +8,14 @@
                       ├─ extract                          ← first money spent
                       ├─ tax ID vs this BU's register     ← verification, not routing
                       ├─ GL mapping
+                      ├─ anything to say about it?        ← park for a human if so
                       └─ post the JV (+ the input-tax record) with this BU's token
+
+**Nothing posts unattended that anyone would have been given a reason to look at.** The
+review queue's own reason line (`_review_flags`) is the auto-post gate: an empty list means
+the document is ready to post, and `auto_post` decides only whether a ready document waits.
+A BU with review off still gets the doubtful ones — the flags, not the switch, are what
+stands between an uncertain reading and somebody's ledger.
 
 **The envelope names the owner; the document confirms it.** The tag is issued per BU
 and delivered inside the recipient address, so it is readable from the message headers
@@ -37,8 +44,8 @@ and attempts; add a retry sweep when real failures show it is worth it.
 
 ponytail: attachments within a poll are processed serially, so one poll of a full batch
 costs roughly batch_size × (one vision call + two Carmen posts). Size the cron interval
-above that or polls overlap — harmless (`_claim` and the IMAP \\Seen flag both dedupe)
-but pointless load. Parallelise per message if the daily-commission banks make the
+above that or polls overlap — harmless (`_claim` is an atomic insert, so the second
+poll's copy of a document is refused, not charged) but pointless load. Parallelise per message if the daily-commission banks make the
 backlog visible in `job_runs`.
 """
 
@@ -50,6 +57,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,9 +66,12 @@ from app.constants import Module
 from app.context import current_carmen_uri, current_tenant_id
 from app.database import async_session
 from app.exceptions import (
+    CarmenServiceError,
+    ConflictError,
     ExtractionError,
     InsufficientCredits,
     ModuleDisabled,
+    NotFoundError,
     PdfPasswordRequired,
     ValidationError,
 )
@@ -71,12 +82,12 @@ from app.models.enums import AlertSeverity, JobStatus
 from app.models.identity import Tenant
 from app.models.observability import JobRun
 from app.models.schemas import ExtractedCreditCardData
+from app.models.schemas.ocr import ExtractionWarning
 from app.services import anomaly_service, notification_service, ocr_service
 from app.services import email_settings_service as es
 from app.services import gl_suggestion_service as gl
 from app.services.accounting_config_service import (
     description_for,
-    fill_missing_mappings,
     get_accounting_config,
 )
 from app.services.carmen_service import (
@@ -88,7 +99,13 @@ from app.services.carmen_service import (
     post_input_tax,
 )
 from app.services.cc_input_tax import build_input_tax_payload
-from app.services.cc_jv import build_gljv_payload, build_jv_rows, unmapped_payment_types
+from app.services.cc_jv import (
+    build_gljv_payload,
+    build_jv_rows,
+    num,
+    r2,
+    unmapped_payment_types,
+)
 from app.services.credit_card_service import finalize_extraction, mark_task_failed
 from app.services.credit_service import consume_document, refund_document
 from app.services.email_imap import (
@@ -103,11 +120,11 @@ from app.services.email_imap import (
     sender_allowed,
     tag_from_recipients,
     unique_names,
-    unmark_seen,
 )
 from app.services.module_gate import assert_module_enabled
 from app.services.task_service import create_task
 from app.utils.bank_detect import detect_bank_code
+from app.utils.db_helpers import has_submitted_doc
 from app.utils.gl_filter import parse_default_account
 from app.utils.image_processing import validate_magic_bytes
 from app.utils.pdf_utils import ensure_pdf_openable
@@ -129,18 +146,45 @@ UNROUTED_ALERT_THRESHOLD = 5
 # right now". The gate on the confirmation sweep — see `es.tags_awaiting_confirmation`.
 CONFIRM_WINDOW_HOURS = 24
 
+# How many unreviewed documents a BU may accumulate before ingestion stops for them.
+# Generous on purpose: this is a guard against a queue nobody is reading, not a work
+# limit, and a BU handling fifty statements a fortnight must never hit it.
+#
+# ponytail: one number for every BU. Per-BU tuning when someone actually needs it.
+REVIEW_BACKLOG_CAP = 50
+
+# The `skipped` reasons the customer has to hear about, because only they can fix them
+# and the document is otherwise gone in silence — a wrong PDF password parks nothing in
+# the queue, raises nothing in the bell, and reads exactly like a poll that never ran.
+#
+# Every other `skipped` reason stays silent on purpose: `no_rule_match` fires on the
+# summary PDF inside every bank zip, and `ingest_paused`/`duplicate_document` describe
+# something the customer already did. A bell that cries every morning is a bell nobody
+# reads on the morning it matters.
+NOTIFIABLE_SKIPS = ("wrong_pdf_password", "sender_not_allowed", "unsupported_attachment")
+
 
 class _Skip(Exception):
-    """Not an error — this document will not be posted. Carries a contract reason_code.
+    """Not an error — this document will not be posted *unattended*. Carries a contract
+    reason_code.
 
     Carries no refund flag on purpose: once the vision model has run, the document is
     charged whatever happens next. Every `_Skip` is raised either before the charge (so
     there is nothing to refund) or after extraction succeeded (so the LLM cost is already
     real) — see the refund boundary in `_run_document`.
+
+    It does carry `reviewable`, which is a different axis and the one that decides where the
+    row lands. A `_Skip` raised after a successful extraction describes a *decision* about a
+    document we read and were paid for, so the reading is worth keeping and the document
+    parks for a human — see `_park_or_finish`. The flag exists for the one case where that
+    is false even though the money was spent: a second copy of something already sitting in
+    the queue. The reviewable copy is already there, and parking this one would put two
+    identical rows in front of the reviewer, which is exactly what raising it prevented.
     """
 
-    def __init__(self, reason_code: str, message: str):
+    def __init__(self, reason_code: str, message: str, *, reviewable: bool = True):
         self.reason_code = reason_code
+        self.reviewable = reviewable
         super().__init__(message)
 
 
@@ -153,12 +197,15 @@ def _carmen_verdict(result: Any) -> str:
     and its framework puts framework-level refusals in `Message`; the `Code` is worth
     keeping even when all three are empty, because "Code 1 with no message" is a
     different support conversation from "Code 1: Insufficient balance".
+
+    This *is* the queue's Detail cell for the row (WITH_DETAIL in lib/reviewReasons), not
+    a suffix to one, so it has to name who spoke and stand on its own — and say it once.
     """
     body = result if isinstance(result, dict) else {}
     said = str(body.get("UserMessage") or body.get("InternalMessage") or body.get("Message") or "")
-    return f"Carmen returned Code {body.get('Code')}" + (
-        f": {said}" if said else " with no message"
-    )
+    if said:
+        return f"Carmen: {said}"
+    return f"Carmen refused it, no reason given (Code {body.get('Code')})"
 
 
 # ── Pipeline ──────────────────────────────────────────────────────────────────
@@ -171,10 +218,10 @@ async def run_ingest(limit: int | None = None) -> dict:
     """One poll. Returns a summary the job endpoint echoes back.
 
     Serialised against itself. A batch whose documents are slow can outlast the poll
-    interval, and a second poll starting on top of it would not duplicate work — the
-    `\\Seen` flag and `_claim` both dedupe — but it would double this job's share of a
-    connection pool capped at 15 for the whole application. Skipping is free and the
-    backlog is still there in ten minutes.
+    interval, and a second poll starting on top of it would not duplicate work — `_claim`
+    dedupes, and nothing is flagged `\\Seen` until a verdict exists — but it would double
+    this job's share of a connection pool capped at 15 for the whole application. Skipping
+    is free and the backlog is still there in ten minutes.
     """
     if not settings.imap_host:
         return {"status": "disabled", "reason": "IMAP not configured"}
@@ -191,6 +238,12 @@ async def run_ingest(limit: int | None = None) -> dict:
         summary = {
             "messages": 0,
             "posted": 0,
+            # Extracted, charged, and parked for a human: either the BU has `auto_post`
+            # off, or it is on and `_review_flags` found something to say. In the initial
+            # shape for the same reason as `retry_later`: on a BU in review mode this is
+            # the *normal* outcome, and a key that only appears when something happened is
+            # one the admin page cannot render honestly.
+            "pending_review": 0,
             "failed": 0,
             "skipped": 0,
             "unrouted": 0,
@@ -202,10 +255,16 @@ async def run_ingest(limit: int | None = None) -> dict:
         }
         # Tags that cannot be spent against right now, and the mail to hand back for them.
         exhausted: set[str] = set()
-        retry: list[str] = []
-        # How many of `messages` have been decided about. `fetch_unseen` flagged the whole
-        # batch on the way in, so anything this loop never reached is `\Seen`, unprocessed
-        # and — having never got as far as `_claim` — recorded nowhere at all.
+        # tenant_id → documents parked this poll. Accumulated rather than notified per
+        # document: a 20-attachment batch must produce one bell row saying "20 documents
+        # need review", not 20 rows saying "one does".
+        parked: dict[str, int] = {}
+        # The mail this poll has reached a verdict on, and may therefore flag `\Seen`.
+        # Nothing else is touched: `fetch_unseen` flags nothing on the way in, so a poll
+        # that dies — crash, deploy, OOM, a killed request — leaves every undecided
+        # message unread and the next poll picks it up. Flagged on the way in instead,
+        # that mail was read, unclaimed and recorded nowhere at all.
+        handled: list[str] = []
         messages: list[dict[str, Any]] = []
         done = 0
         try:
@@ -215,20 +274,27 @@ async def run_ingest(limit: int | None = None) -> dict:
             summary["messages"] = len(messages)
             summary["beyond_window"] = beyond
             for msg in messages:
-                outcomes = await _process_message(msg, exhausted)
-                if "retry_later" in outcomes:
-                    retry.append(msg["uid"])
+                outcomes = await _process_message(msg, exhausted, parked)
+                # `retry_later` is the one verdict that is not about the mail — the BU has
+                # nothing to spend or is switched off — so that message stays unread and
+                # replays for as long as `since_arg` allows.
+                if "retry_later" not in outcomes:
+                    handled.append(msg["uid"])
                 for outcome in outcomes:
                     summary[outcome] = summary.get(outcome, 0) + 1
                 done += 1
         except Exception as exc:
             logger.exception("[email] Poll failed")
-            # Everything the loop never attempted goes back unread. `messages[done]` — the
-            # one that actually raised — stays `\Seen` on purpose: handing it back would
-            # re-crash the next poll on it forever, and the FAILED `job_runs` row plus the
-            # traceback above is the trail for that one message.
-            retry.extend(m["uid"] for m in messages[done + 1 :])
-            await asyncio.to_thread(unmark_seen, retry)
+            # `messages[done]` — the one that actually raised — is flagged on purpose:
+            # leaving it unread would re-crash the next poll on it forever, and the FAILED
+            # `job_runs` row plus the traceback above is the trail for that one message.
+            # Everything after it was never attempted and stays unread.
+            if done < len(messages):
+                handled.append(messages[done]["uid"])
+            await asyncio.to_thread(mark_seen, handled)
+            # Documents parked before the crash are real and waiting; a poll that died
+            # half way through must not swallow the only signal a reviewer gets.
+            await _notify_pending(parked)
             await _record_run(started, summary, error=str(exc))
             raise
 
@@ -239,9 +305,9 @@ async def run_ingest(limit: int | None = None) -> dict:
                 summary["beyond_window"],
                 settings.imap_hold_days,
             )
-        # One IMAP round trip for the whole batch, and only when something was left
-        # undone — the common poll never reaches it.
-        await asyncio.to_thread(unmark_seen, retry)
+        # One IMAP round trip for the whole batch, after every verdict is on the ledger.
+        await asyncio.to_thread(mark_seen, handled)
+        await _notify_pending(parked)
         logger.info("[email] Poll finished: %s", summary)
         await _record_run(started, summary)
         return summary
@@ -320,6 +386,57 @@ async def sweep_confirmations() -> dict:
         return {"checked": len(messages), "confirmed": confirmed, "waiting": len(waiting)}
 
 
+async def _notify_pending(parked: dict[str, int]) -> None:
+    """The bell for a poll that parked something: "N documents need review", and — when any
+    of the waiting rows stopped on a problem — "M of them are blocked".
+
+    Per poll and not per document, because a bank sending a twenty-attachment zip would
+    otherwise bury every other notification the customer has. That rule is why the blocked
+    count is raised here rather than in `_park_for_review`, where the obvious place for it
+    is: a dead credential fails *every* document of the BU, which is precisely the case
+    that would ring twenty times.
+
+    Per BU and not per person because `user_notifications` has no user column — there is no
+    users table to point at, and any Carmen session for the business unit may approve.
+
+    The blocked figure is read from the queue rather than counted through this poll, because
+    the queue is what the customer is about to open: a document that stopped yesterday and
+    is still stopped is part of "what is waiting for me", and a bell that only ever reported
+    the last few minutes would undercount it.
+
+    Never raises. A missing bell row is a customer who finds the queue on their next
+    login; an exception here would fail a poll whose documents are already safely parked.
+    """
+    if not parked:
+        return
+    try:
+        async with async_session() as db:
+            for tenant_id, count in parked.items():
+                notification_service.notify(
+                    db,
+                    tenant_id=uuid.UUID(tenant_id),
+                    order_id=None,
+                    type_="document_pending_review",
+                    payload={"pending": count},
+                )
+                blocked = await _pending_count(db, tenant_id, blocked_only=True)
+                if blocked:
+                    # `document_blocked` already means "something stopped and wants you",
+                    # so it needs no new TYPE_META, switch case or locale keys.
+                    # `document_failed` would be a lie now: the document is waiting in the
+                    # queue, editable and postable, not finished.
+                    notification_service.notify(
+                        db,
+                        tenant_id=uuid.UUID(tenant_id),
+                        order_id=None,
+                        type_="document_blocked",
+                        payload={"blocked": blocked},
+                    )
+            await db.commit()
+    except Exception:  # noqa: BLE001 — the documents are parked either way
+        logger.exception("[email] Could not raise the review notification")
+
+
 async def _record_run(
     started: datetime,
     summary: dict,
@@ -391,7 +508,11 @@ async def _record_run(
         )
 
 
-async def _process_message(msg: dict[str, Any], exhausted: set[str] | None = None) -> list[str]:
+async def _process_message(
+    msg: dict[str, Any],
+    exhausted: set[str] | None = None,
+    parked: dict[str, int] | None = None,
+) -> list[str]:
     """One message → one outcome per attachment (or a single message-level outcome).
 
     Everything expensive is behind two free checks: does it name a file at all, and
@@ -471,7 +592,32 @@ async def _process_message(msg: dict[str, Any], exhausted: set[str] | None = Non
         owner_emails = list(row.owner_emails or [])
         rules = list(row.rules or [])
         passwords = es.rule_passwords(row)
+        auto_post = bool(row.auto_post)
         carmen_token, carmen_uri = await es.posting_target(db, row)
+
+        # Backpressure. Every document costs a credit at extraction and may then wait for a
+        # human — so a BU that stops reading its queue would keep paying for a pile nobody
+        # has looked at, and there is no refund for any of it once the vision call has run
+        # (decision-log #17).
+        #
+        # Same shape as running out of credits: mail handed back unread, no ledger row,
+        # nothing charged, replays on the poll after someone clears the backlog. The
+        # 14-day hold window bounds how long that offer lasts, and mail past it already
+        # raises `email_ingest_beyond_window`.
+        #
+        # Unconditional since auto-post narrowed to clean documents. It read `not auto_post`
+        # from a time when nothing parked with review off; a BU running auto-post now parks
+        # every document that has anything to say about it, and without this a dead
+        # credential would fill their queue while still charging for each one.
+        if await _pending_count(db, tenant_id) >= REVIEW_BACKLOG_CAP:
+            logger.warning(
+                "[email] Tenant %s has %d+ documents awaiting review — mail held unread",
+                tenant_id,
+                REVIEW_BACKLOG_CAP,
+            )
+            if exhausted is not None:
+                exhausted.add(tag)
+            return ["retry_later"]
 
     # One name per attachment, across both lists at once: they share the ledger's unique
     # index, so disambiguating them separately would still let a rejected `report.pdf`
@@ -497,7 +643,7 @@ async def _process_message(msg: dict[str, Any], exhausted: set[str] | None = Non
             msg["message_id"],
             names,
             "ingest_paused",
-            "Arrived while Email Automation was switched off — key this one by hand",
+            "Arrived while AI JV Automation was switched off — key this one by hand",
         )
 
     # A file the customer forwarded and we cannot read. Before this it left no trace
@@ -514,21 +660,23 @@ async def _process_message(msg: dict[str, Any], exhausted: set[str] | None = Non
 
     for filename, blob in accepted:
         try:
-            outcomes.append(
-                await _process_attachment(
-                    tenant_id=tenant_id,
-                    message_id=msg["message_id"],
-                    sender=msg["from"],
-                    people=msg["people"],
-                    filename=filename,
-                    blob=blob,
-                    owner_emails=owner_emails,
-                    rules=rules,
-                    passwords=passwords,
-                    carmen_token=carmen_token,
-                    carmen_uri=carmen_uri,
-                )
+            outcome = await _process_attachment(
+                tenant_id=tenant_id,
+                message_id=msg["message_id"],
+                sender=msg["from"],
+                people=msg["people"],
+                filename=filename,
+                blob=blob,
+                owner_emails=owner_emails,
+                rules=rules,
+                passwords=passwords,
+                carmen_token=carmen_token,
+                carmen_uri=carmen_uri,
+                auto_post=auto_post,
             )
+            outcomes.append(outcome)
+            if outcome == "pending_review" and parked is not None:
+                parked[tenant_id] = parked.get(tenant_id, 0) + 1
         except _HOLD:
             # The remaining attachments would each fail the same way, one wasted
             # `consume_document` at a time. Hand the whole message back instead: the
@@ -587,8 +735,11 @@ async def _process_attachment(
     passwords: list[str],
     carmen_token: str,
     carmen_uri: str,
+    auto_post: bool,
 ) -> str:
-    """Claim the ledger row, then run the document. 'posted' | 'failed' | 'skipped'.
+    """Claim the ledger row, then run the document.
+
+    'posted' | 'pending_review' | 'failed' | 'skipped'.
 
     The claim is first and is the only dedupe: an atomic insert against
     `uq_email_documents_message`, which is keyed `(tenant_id, message_id, attachment)`
@@ -622,17 +773,41 @@ async def _process_attachment(
                 passwords=passwords,
                 carmen_token=carmen_token,
                 carmen_uri=carmen_uri,
+                auto_post=auto_post,
             )
         except _HOLD:
             # Not a verdict on this document — the BU has nothing left to spend, or the
             # module is switched off for them. Drop the claim so a poll after that is
-            # fixed can take it again; the caller hands the mail itself back by clearing
-            # \Seen.
+            # fixed can take it again; the caller leaves the mail itself unread by never
+            # flagging it `\Seen`.
             await _release(ledger_id)
             raise
     finally:
         current_carmen_uri.reset(uri_ctx)
         current_tenant_id.reset(tenant_ctx)
+
+
+def _resolve_bank(extracted: ExtractedCreditCardData, rule_bank: str | None) -> str | None:
+    """Which bank issued this document: what it says, else what the rule guessed.
+
+    The document outranks the rule because the rule is a filename substring and the
+    document is the printed issuer. When they disagree the rule's patterns are catching
+    another bank's files — say so on the document itself: the reviewer sees it as the
+    amber banner, and it is the only place a mis-scoped pattern is visible before it has
+    posted a JV against the wrong vendor.
+    """
+    detected = detect_bank_code(
+        model_bank_code=extracted.bank_code,
+        bank_company_name=extracted.bank_company_name,
+        bank_name=extracted.bank_name,
+        company_name=extracted.company_name,
+        doc_name=extracted.doc_name,
+    )
+    if detected and rule_bank and detected != rule_bank:
+        extracted.warnings.append(
+            ExtractionWarning(code="bankMismatch", params={"rule": rule_bank, "detected": detected})
+        )
+    return detected or rule_bank
 
 
 async def _run_document(
@@ -648,15 +823,101 @@ async def _run_document(
     passwords: list[str],
     carmen_token: str,
     carmen_uri: str,
+    auto_post: bool,
 ) -> str:
-    """Gate, charge, extract, verify, post — every exit lands on the ledger."""
+    """Gate, charge, extract, verify, post — every exit lands on the ledger.
+
+    Two things stop a document one step short of Carmen and park it at `pending_review`
+    instead: `auto_post` being off, and — with it on — anything `_review_flags` has to say
+    about the document. Everything above that fork is identical either way, so a document
+    that reaches a human has already survived every gate a machine can judge.
+
+    **`auto_post` posts what is ready to post.** Not everything that got this far: a reading
+    with warnings, lines that do not reconcile, a GL rule the AI invented, or a statement
+    whose number could not be read are all questions, and a question goes to the queue no
+    matter which mode the BU is in. The switch buys a BU freedom from approving the
+    *ordinary* document, which is most of them, and never freedom from the doubtful one.
+
+    **A failure after the extraction parks too.** The charge follows the vision call
+    (decision-log #17), so by the time any of the later gates can refuse — a foreign tax ID,
+    an unmappable payment type, a Carmen refusal — the customer has already paid for a
+    reading we are holding in memory. Finishing those as `failed` threw that reading away
+    and left re-scanning the same file by hand as the only recovery. `_park_or_finish` below
+    is the whole of that rule: charged and read means reviewable.
+    """
     charged: str | None = None
     task_id: str | None = None
     bank_code: str | None = None
+    # What the vision call returned, held for the handlers at the bottom of this function.
+    # `None` there means the model never produced anything for this document, which is the
+    # line between a row a human can work and a row that is only a record of a failure.
+    extracted: ExtractedCreditCardData | None = None
+    # Did the AI have to invent a GL mapping on the way past? Only knowable here, and the
+    # queue needs it to tell a reviewer which documents are worth opening.
+    mapping_guessed = False
+    # WHICH rules it invented and what it put in them. The keys are what the review screen
+    # marks for checking — marking every rule because one was guessed is the same as
+    # marking none — and the values are what it *shows*, since 2026-09-04 nothing
+    # writes them to the BU's config until a human approves, so there is nowhere else for
+    # the reviewer to read them from.
+    mapping_suggested: dict[str, dict[str, str]] = {}
+    # Payment types nothing could map — the AI included. With review on these park instead
+    # of failing, so the reviewer sees them as empty cells to fill rather than never seeing
+    # the document at all.
+    mapping_missing: list[str] = []
     # Recorded on failures too: "several BUs failing on the same issuer at once" is the
     # only early warning that a bank changed its form, and it cannot be computed if a
     # failed row forgets which bank the document came from.
     doc_no: str | None = None
+
+    async def _park_or_finish(reason_code: str, error: str, *, reviewable: bool = True) -> str:
+        """Where a refusal lands: the queue if we have a paid-for reading of the document,
+        the ledger if we do not.
+
+        A closure rather than a module function because it reads eight locals that only
+        exist here, and every one of them is the answer at the moment of failure rather than
+        at the moment of parking.
+
+        `charged is None` is the pre-LLM gates — the customer's own filename and sender rules
+        answering "not this file", which cost nothing and leave nothing to review.
+        `extracted is None` is a failure inside the refund boundary: the money went back, so
+        there is no reading and no charge to honour.
+        """
+        if charged is not None and extracted is not None and reviewable:
+            await _park_for_review(
+                ledger_id,
+                extracted=extracted,
+                task_id=task_id,
+                bank_code=bank_code,
+                doc_no=doc_no,
+                flags=_review_flags(
+                    extracted,
+                    mapping_guessed=mapping_guessed,
+                    mapping_missing=mapping_missing,
+                ),
+                mapping_suggested=mapping_suggested,
+                mapping_missing=mapping_missing,
+                reason_code=reason_code,
+                error=error,
+            )
+            logger.warning("[email] %s: %s (%s) — parked for review", reason_code, error, filename)
+            return "pending_review"
+        # The gates that run before a credit is charged are the customer's own configuration
+        # answering "not this file", not a failure of ours. Filing them as `failed` would put
+        # a red row on Carmen's screen for a signature logo.
+        status = "skipped" if charged is None else "failed"
+        await _finish(
+            ledger_id,
+            status=status,
+            task_id=task_id,
+            bank_code=bank_code,
+            doc_no=doc_no,
+            reason_code=reason_code,
+            error=error,
+        )
+        logger.warning("[email] %s: %s (%s)", reason_code, error, filename)
+        return status
+
     try:
         # Coarsest question first, and free: is this even from someone this BU accepts?
         # Before match_rules so mail that is not theirs at all is not filed under the
@@ -679,9 +940,16 @@ async def _run_document(
             # #/admin — and it costs nothing, which is what removes the whole
             # signature-logo class of junk from the spend.
             raise _Skip("no_rule_match", f"No rule matches {filename}")
-        # Overlapping patterns: don't guess the prompt, let detect_bank_code read the
-        # document. A wrong bank prompt is worse than the generic one.
-        bank_code = matched[0].get("bank_code") if len(matched) == 1 else None
+        # A rule says which files are worth scanning. It does NOT say which bank issued
+        # one: `filename_patterns` is a substring test and `.pdf` is a documented escape
+        # hatch, so one broad rule is the sole match for every other bank's documents and
+        # used to label all of them itself — and pick their extraction layout. Kept only
+        # as the fallback for a document whose issuer cannot be read at all.
+        rule_bank = matched[0].get("bank_code") if len(matched) == 1 else None
+        # Standing guess, so a row that fails before extraction still names an issuer for
+        # the "several BUs failing on the same bank" signal. Replaced by the document's
+        # own answer the moment there is one.
+        bank_code = rule_bank
 
         # Before any charge: a disguised, locked or corrupt file must not cost anything.
         password = await _open_or_fail(blob, filename, passwords)
@@ -717,31 +985,98 @@ async def _run_document(
             # The first money of the document, and the tenant and task are already known —
             # so `log_llm_usage` inserts a fully attributed row rather than needing the
             # tenant-less parking buffer the tax-ID design forced on it.
+            # No bank: the combined auto-detect prompt, always. A filename cannot pick a
+            # layout — reading a GHL invoice with the KBANK layout mismaps its columns AND
+            # makes it answer "ธนาคารกสิกรไทย", which then confirms the wrong bank to
+            # every later reader.
             extracted = await ocr_service.extract_stateless(
                 file_bytes=blob,
                 original_filename=filename,
-                bank_code=bank_code,
                 task_id=task_id,
                 pdf_password=password,
             )
+            # Resolved once, before finalize_extraction, so `credit_cards.bank_code` and
+            # `email_documents.bank_code` are the same decision rather than two.
+            bank_code = _resolve_bank(extracted, rule_bank)
             extracted = await finalize_extraction(extracted, task_id, tenant_id, bank_code, None)
         except Exception as exc:
             if charged:
                 await refund_document(charged)
             if task_id is not None:
                 await mark_task_failed(task_id, exc)
+            # Dropped rather than left half-assigned: `extract_stateless` may have returned
+            # before `finalize_extraction` threw, and `_park_or_finish` reads this to decide
+            # whether there is a paid-for reading worth parking. The money just went back,
+            # so there is not — and making that true by construction beats making it true by
+            # tracing which handler this re-raise happens to reach.
+            extracted = None
             raise
 
-        # A manual forward carries no bank identity, and overlapping rules name no one
-        # bank — resolve it from the document, exactly as finalize_extraction does.
-        bank_code = bank_code or detect_bank_code(
-            bank_company_name=extracted.bank_company_name,
-            bank_name=extracted.bank_name,
-            company_name=extracted.company_name,
-            doc_name=extracted.doc_name,
-            raw_text=extracted.raw_text,
-        )
         doc_no = extracted.doc_no
+
+        # `is_duplicate` below reads `credit_cards.submitted_at`, which stays NULL for the
+        # whole time a document sits in the review queue. So a second copy — the bank
+        # re-sends, or someone forwards it twice — sails past that check and parks a second
+        # identical row for the reviewer to notice by eye.
+        #
+        # Ingest-side only, deliberately: `has_submitted_doc` is shared with the wizard,
+        # where a pending row means nothing and blocking on one would stop a user scanning
+        # a document they are holding in their hand.
+        #
+        # Unconditional, deliberately. It read `not auto_post` while a BU with review off
+        # could not park anything; decision #51 ended that, and a clean-only `auto_post`
+        # parks routinely — so the gate that was theoretical there is now on the main path.
+        #
+        # Checked ahead of the GL-mapping call below, deliberately: this is the one
+        # post-extraction skip that does NOT park, so nobody will ever see a suggestion for
+        # it — it stays ahead of that call's LLM spend rather than paying for one.
+        if await _already_pending(tenant_id, bank_code, doc_no):
+            # The one post-extraction skip that does NOT park. Its twin is already in the
+            # queue, editable and postable; a second identical row is the thing this check
+            # exists to prevent, not a second chance at anything.
+            raise _Skip(
+                "duplicate_document",
+                "A copy is already waiting for review",
+                reviewable=False,
+            )
+
+        async with async_session() as db:
+            config = await get_accounting_config(db, tenant_id)
+        missing = unmapped_payment_types(extracted.details, config.mappings or {})
+        if missing:
+            # Parking every document of a BU that never opened the mapping page, with
+            # empty pickers and no starting point, is the worse failure. So the AI fills
+            # the gap and the reviewer is handed an answer to check rather than a blank
+            # form — which is the whole of what this call buys. It does not decide
+            # anything: `mapping_guessed` below parks the document either way.
+            #
+            # Runs ahead of the tax-ID and duplicate checks below, deliberately: both of
+            # those still park the document for review (see `_Skip.reviewable`), and a
+            # parked document with an unmapped payment type deserves the same suggestion a
+            # clean one gets, instead of the blank pickers a `raise` upstream used to leave
+            # it with.
+            suggested = await _suggest_missing_mappings(missing, bank_code, carmen_token)
+            if suggested:
+                # In memory only. Saving it here made the guess the BU's own rule before
+                # anyone had looked at it, so the *second* document carrying that payment
+                # type was no longer "guessed" and auto-posted on a mapping no human ever
+                # confirmed (KTC and SiamPay did exactly that, JV 1023 and 1026). The write
+                # moved to `approve_document`: a human confirming it once is what turns a
+                # suggestion into a rule, which is also what makes the review happen once
+                # per payment type rather than once per document.
+                config.mappings = {**(config.mappings or {}), **suggested}
+                mapping_guessed = True
+                mapping_suggested = suggested
+            mapping_missing = unmapped_payment_types(extracted.details, config.mappings or {})
+            # Never terminal, under either setting: the review screen maps in place, so a
+            # document the AI could not map is a question for the reviewer rather than a
+            # dead end. It falls through to the fork below, where `mapping_missing` is a
+            # flag — which both parks it and names the unmapped fields on the row.
+            #
+            # Changed 2026-08-31 for review mode; the `auto_post` half of the branch went
+            # when auto-post narrowed to clean documents, since a gap in the GL mapping is
+            # the plainest case of a document that is not one. Before that, the whole BU's
+            # odd payment types died here and someone had to find the mapping page.
 
         # The second factor. The envelope said who owns this mail; if the document
         # carries a number registered to someone else, the two disagree and that stops
@@ -749,32 +1084,18 @@ async def _run_document(
         async with async_session() as db:
             conflict = await es.foreign_tax_id(db, list(extracted.tax_ids or []), tenant_id)
         if conflict:
-            raise _Skip(
-                "tax_id_mismatch",
-                f"Document carries tax ID {conflict}, registered to another BU",
-            )
+            # Support's copy, not the reviewer's — the queue prints the phrase alone for
+            # this code. "Registered to another BU" is dropped: a BU's register holds an
+            # array of tax IDs, so one missing from it has failed to match and nothing
+            # stronger than that has been established.
+            raise _Skip("tax_id_mismatch", f"Tax ID {conflict} is not in this BU's register")
 
         if extracted.is_duplicate:
-            raise _Skip("duplicate_document", f"Document {extracted.doc_no} already submitted")
-
-        async with async_session() as db:
-            config = await get_accounting_config(db, tenant_id)
-        missing = unmapped_payment_types(extracted.details, config.mappings or {})
-        if missing:
-            # Nobody is here to confirm a guess, and parking every document of a BU
-            # that never opened the mapping page is the worse failure. So the AI fills
-            # the gap and what it picked is *saved* — the next document carrying the
-            # same payment type is deterministic.
-            suggested = await _suggest_missing_mappings(missing, bank_code, carmen_token)
-            if suggested:
-                async with async_session() as db:
-                    await fill_missing_mappings(db, tenant_id, suggested)
-                config.mappings = {**(config.mappings or {}), **suggested}
-            still = unmapped_payment_types(extracted.details, config.mappings or {})
-            if still:
-                # Fallback, not a closed door: the LLM had no answer or Carmen's
-                # master was unreachable.
-                raise _Skip("mapping_incomplete", f"No GL mapping for: {', '.join(still)}")
+            # This *is* the queue's cell, not a tail on one (WITH_DETAIL in
+            # lib/reviewReasons), so it is capitalised and stands alone. The two duplicate
+            # kinds share one reason_code and are told apart here: this copy is redundant
+            # because the document is in Carmen already, which is nothing for anyone to do.
+            raise _Skip("duplicate_document", "Already posted to Carmen")
 
         rows = build_jv_rows(extracted.details, config.mappings or {})
         if not rows or not any(r["credit"] for r in rows):
@@ -792,6 +1113,52 @@ async def _run_document(
             # carmen_service._base_url falls through to the generic handler and the
             # document is filed as unreadable, which sends everyone looking at the PDF.
             raise _Skip("carmen_unauthorized", "No Carmen host known for this BU")
+
+        # ── The review fork ───────────────────────────────────────────────────────────
+        #
+        # Here and not earlier: every gate a machine can judge has now passed, so a
+        # document that reaches the queue is one a human can actually act on. Parking
+        # before the GL step would fill the queue with documents whose only problem is a
+        # missing mapping the AI was about to fill by itself.
+        #
+        # Here and not later: `build_gljv_payload` + `post_gljv` is the step that writes to
+        # someone's books, and it is the only thing this fork skips. Nothing above it has
+        # touched Carmen.
+        #
+        # The credit is already spent (`consume_document`, far above). Approving or
+        # rejecting later must not refund — decision-log #17: the charge follows the vision
+        # call, not the outcome.
+        #
+        # **`auto_post` posts what is ready to post, not everything that got this far.**
+        # `_review_flags` is the queue's own answer to "why might this be worth opening",
+        # and it is the gate as well as the row's reason line — deliberately one predicate,
+        # so a document the reviewer would have been shown a reason for can never post
+        # behind their back. Before this, a reading with warnings, a JV whose lines did not
+        # reconcile, or a GL rule the AI invented on the way past all reached the customer's
+        # ledger exactly like a clean one, and the flags were computed and then only looked
+        # at if review happened to be on.
+        flags = _review_flags(
+            extracted, mapping_guessed=mapping_guessed, mapping_missing=mapping_missing
+        )
+        if not auto_post or flags:
+            await _park_for_review(
+                ledger_id,
+                extracted=extracted,
+                task_id=task_id,
+                bank_code=bank_code,
+                doc_no=doc_no,
+                flags=flags,
+                mapping_suggested=mapping_suggested,
+                mapping_missing=mapping_missing,
+            )
+            logger.info(
+                "[email] Parked %s (%s) for review, tenant %s%s",
+                doc_no,
+                filename,
+                tenant_id,
+                f" — {', '.join(flags)}" if auto_post else "",
+            )
+            return "pending_review"
 
         payload = build_gljv_payload(
             rows, doc_date=extracted.doc_date, bank_code=bank_code, config=config
@@ -829,21 +1196,12 @@ async def _run_document(
         # that reading is what the credit paid for. The refund boundary above owns the
         # only case where money goes back.
         #
-        # The gates that run before a credit is charged are the customer's own
-        # configuration answering "not this file", not a failure of ours. Filing them as
-        # `failed` would put a red row on Carmen's screen for a signature logo.
-        status = "skipped" if charged is None else "failed"
-        await _finish(
-            ledger_id,
-            status=status,
-            task_id=task_id,
-            bank_code=bank_code,
-            doc_no=doc_no,
-            reason_code=skip.reason_code,
-            error=str(skip),
-        )
-        logger.warning("[email] %s: %s (%s)", skip.reason_code, skip, filename)
-        return status
+        # And because that reading was paid for, it is kept: `_park_or_finish` sends a
+        # post-extraction refusal to the review queue rather than to the ledger. What used
+        # to be six dead red rows — a foreign tax ID, a duplicate, an unmappable payment
+        # type, a document with no postable amount, a missing credential, a Carmen refusal —
+        # are now six documents a human can correct and post.
+        return await _park_or_finish(skip.reason_code, str(skip), reviewable=skip.reviewable)
     except _HOLD as stop:
         # Out before the generic handler below, which would file this as
         # `unreadable_document` — sending whoever debugs it to look at a PDF that is
@@ -854,11 +1212,21 @@ async def _run_document(
         raise
     except CarmenAPIError as exc:
         # Either a transport failure or a real HTTP status from Carmen. Neither refunds:
-        # the JV's fate is unknown, so a human decides after checking Carmen.
+        # the JV's fate is unknown, so a human decides after checking Carmen — and now the
+        # document is parked where that human already works, rather than filed away where
+        # the only remaining option was to key it in by hand.
+        #
+        # The transport case is the one that carries a risk, and it is a risk the approve
+        # path already takes: `_mark_submitted` never ran, so `has_submitted_doc` cannot
+        # catch a JV that landed just as the socket died, and a reviewer who approves
+        # without checking Carmen can post it twice. Same wording as the 503 that path
+        # returns, so the caveat travels with the row.
         #
         # 401/403 is separated out because it is not a verdict on this document at all —
         # every document of this BU will fail the same way until someone re-pastes the
-        # token, and the person who does that is not the person reading the invoice.
+        # token, and the person who does that is not the person reading the invoice. Parked
+        # all the same: every document that arrived while the credential was dead becomes
+        # postable the moment it is replaced, instead of a day of scanning burnt.
         unauthorized = exc.status_code in (401, 403)
         if unauthorized:
             try:
@@ -866,21 +1234,26 @@ async def _run_document(
                     await es.mark_token_unverified(db, tenant_id)
             except Exception:  # never let the flag cost us the ledger row
                 logger.exception("[email] Could not flag the credential for tenant %s", tenant_id)
-        await _finish(
-            ledger_id,
-            status="failed",
-            task_id=task_id,
-            bank_code=bank_code,
-            doc_no=doc_no,
-            reason_code="carmen_unauthorized" if unauthorized else "carmen_rejected",
-            error=str(exc),
+        note = (
+            str(exc)
+            if unauthorized
+            else f"{exc} — check whether the JV posted before approving this document"
         )
-        return "failed"
+        return await _park_or_finish(
+            "carmen_unauthorized" if unauthorized else "carmen_rejected", note
+        )
     except Exception as exc:
         # Anything reaching here from *inside* the refund boundary was already refunded
         # and re-raised there; refunding again would hand back a second credit for one
         # document. Anything reaching here from after it is post-extraction and keeps
         # its charge like every other late failure.
+        #
+        # **This one does not park, and that is deliberate.** Every other post-extraction
+        # refusal is a decision the pipeline reached on purpose and stopped short of
+        # Carmen for. This is an unhandled bug, and it can fire *after* `post_gljv`
+        # returned zero — `_mark_submitted` and `_post_input_tax` both run past that
+        # point. Parking a document whose JV is already in Carmen's books would offer a
+        # reviewer an Approve button that posts it a second time.
         #
         # `unreadable_document` is the honest-but-broad reason for an unclassified
         # failure, so the exception's own type goes in the message: without it every
@@ -908,8 +1281,15 @@ async def _post_input_tax(
     bank_code: str | None,
     config: Any,
     carmen_token: str,
+    overrides: Any = None,
 ) -> str | None:
     """File the VAT the bank charged. Returns a note to keep on the ledger, or None.
+
+    **One prefix, "Input tax not recorded", shared with `build_input_tax_payload`'s own skip
+    reasons.** The two halves used to disagree ("JV posted; input tax not recorded: …" here,
+    "input tax skipped: …" there) and both land in the same cell, appended to a phrase that
+    has already said the JV posted — so the old head restated the row and the reader had two
+    spellings of one outcome to learn.
 
     Never raises. The JV it follows is already in Carmen's books, so the only useful
     answers here are "done" and "someone needs to add this by hand" — turning a
@@ -925,9 +1305,18 @@ async def _post_input_tax(
             doc_no=extracted.doc_no,
             doc_date=extracted.doc_date,
             bank=bank,
-            branch=getattr(config, "branch", None),
+            # The branch printed on the statement, which is the field the review screen
+            # shows and lets a reviewer correct. Falling straight through to the BU config
+            # made that input theatre: whatever was typed went into `extracted` and was
+            # then dropped here. Config stays the fallback for a document with none.
+            branch=extracted.branch_no or getattr(config, "branch", None),
             description=description_for(config, bank_code),
             tax_profiles_raw=await get_tax_profiles(carmen_token),
+            # `getattr` rather than a branch: the auto-post path passes nothing, and
+            # None answers all three the same way the reviewer leaving them alone does.
+            vendor_name=getattr(overrides, "vendor_name", None),
+            tax_id=getattr(overrides, "tax_id", None),
+            profile_code=getattr(overrides, "profile_code", None),
         )
         if payload is None:
             if skipped:
@@ -939,12 +1328,13 @@ async def _post_input_tax(
         result = await post_input_tax(payload, carmen_token)
     except Exception as exc:
         logger.exception("[email] Input tax failed for %s", extracted.doc_no)
-        return f"JV posted; input tax not recorded: {exc}"
+        return f"Input tax not recorded: {exc}"
 
     if not result or result.get("Code", -1) != 0:
         message = _carmen_verdict(result)
         logger.error("[email] Input tax rejected for %s: %s", extracted.doc_no, message)
-        return f"JV posted; input tax not recorded: {message}"
+        # Em dash, not a colon: `message` is `_carmen_verdict` and already opens "Carmen:".
+        return f"Input tax not recorded — {message}"
 
     logger.info("[email] Input tax recorded for %s", extracted.doc_no)
     return None
@@ -976,6 +1366,16 @@ async def _suggest_missing_mappings(
         accounts_raw = await get_account_codes(carmen_token)
         depts_raw = await get_departments(carmen_token)
     except CarmenAPIError as exc:
+        # 401/403 is not "the master is unavailable", it is "this BU's stored posting
+        # credential is dead" — and every document of theirs will fail the same way until
+        # someone re-pastes it. Swallowed, it surfaced as one row reading *mapping missing*,
+        # which sends the reader to the mapping page instead of to the credential, while
+        # `mark_token_unverified` never ran and the bell said nothing (seen on carmencloud,
+        # 2026-09-04). Re-raised, the handler in `_run_document` flags the token and parks
+        # the document with the honest reason; it would have raised there at post time
+        # anyway, one Carmen call later.
+        if exc.status_code in (401, 403):
+            raise
         logger.warning("[email] Could not read Carmen GL master for suggestions: %s", exc)
         return {}
 
@@ -1078,6 +1478,58 @@ async def _claim(
     return row
 
 
+async def _already_pending(tenant_id: str, bank_code: str | None, doc_no: str | None) -> bool:
+    """Is an identical document already sitting in this BU's review queue?
+
+    A document with no `doc_no` is not comparable — two unnumbered statements are not
+    evidence of anything — so it never matches. That blindness is itself why
+    `doc_no_missing` is a flag: it keeps an unnumbered document out of auto-post, where
+    nothing else could catch a second copy.
+    """
+    if not doc_no:
+        return False
+    try:
+        async with async_session() as db:
+            hit = await db.scalar(
+                select(EmailDocument.id)
+                .where(
+                    EmailDocument.tenant_id == uuid.UUID(tenant_id),
+                    EmailDocument.status == "pending_review",
+                    EmailDocument.bank_code == bank_code,
+                    EmailDocument.doc_no == doc_no,
+                )
+                .limit(1)
+            )
+        return hit is not None
+    except Exception as exc:  # noqa: BLE001
+        # Fail open, like every other infra guard on this path. A missed duplicate costs
+        # the reviewer one extra row to reject; a raised exception here would file a
+        # perfectly good document as `failed / unreadable_document`.
+        logger.error("[email] Could not check the review queue for duplicates: %s", exc)
+        return False
+
+
+async def _pending_count(db: AsyncSession, tenant_id: str, *, blocked_only: bool = False) -> int:
+    """How many documents this BU has left unreviewed.
+
+    `blocked_only` narrows it to the ones that stopped on a problem rather than on the
+    ordinary review fork — `reason_code IS NOT NULL` is the whole distinction. Both numbers
+    are the same question of the same rows, so they are one query with one predicate rather
+    than two functions that could drift on what "waiting" means.
+    """
+    stmt = (
+        select(func.count())
+        .select_from(EmailDocument)
+        .where(
+            EmailDocument.tenant_id == uuid.UUID(tenant_id),
+            EmailDocument.status == "pending_review",
+        )
+    )
+    if blocked_only:
+        stmt = stmt.where(EmailDocument.reason_code.is_not(None))
+    return (await db.scalar(stmt)) or 0
+
+
 async def _release(ledger_id: uuid.UUID) -> None:
     """Undo the claim, so the next poll can take this (message, attachment) again.
 
@@ -1121,6 +1573,124 @@ async def _mark_submitted(card_id: str | None) -> None:
         logger.exception("[email] Could not stamp submitted_at on card %s", card_id)
 
 
+def _review_flags(
+    extracted: ExtractedCreditCardData,
+    *,
+    mapping_guessed: bool,
+    mapping_missing: list[str] | None = None,
+) -> list[str]:
+    """Why this document might be worth opening. Computed once, here, and stored.
+
+    The queue paints a reason line per row, and neither of these can be recovered later
+    from a list query: `mapping_guessed` is knowable only inside `_run_document` (it is
+    whether the AI had to invent a GL mapping on the way past), and re-deriving
+    `unbalanced` at list time would mean loading every payload just to paint a list.
+
+    `unbalanced` is the same arithmetic AccountingReview does in the browser
+    (`imbalancedLines`): every layout satisfies gross = commission + tax + net per line, so
+    a line that breaks it was misread and its JV would post unbalanced.
+
+    **This is also the auto-post gate.** An empty list is what `auto_post` posts on — the
+    queue's own "nothing to say about this one", which the row already prints as *Ready to
+    post*. One predicate on purpose: a document a reviewer would have been given a reason
+    for must not be the one that posts unattended.
+    """
+    flags: list[str] = []
+    # Above `mapping_guessed` in the row's reason ladder: a guess posts and may post to the
+    # wrong account, a gap cannot post at all until the reviewer fills it.
+    if mapping_missing:
+        flags.append("mapping_missing")
+    if mapping_guessed:
+        flags.append("mapping_guessed")
+    if any(
+        abs(r2(num(d.pay_amt) - (num(d.commis_amt) + num(d.tax_amt) + num(d.total)))) > 0.01
+        for d in extracted.details
+    ):
+        flags.append("unbalanced")
+    if not extracted.doc_no:
+        # Advisory on the row — a reviewer can post a JV without a document number — and
+        # decisive for auto-post, which is why it is a flag rather than a `_Skip`. Both
+        # duplicate guards key on `doc_no`: `has_submitted_doc` and `_already_pending`
+        # answer False when there is none, so an unnumbered statement forwarded twice
+        # would post twice into real books with nothing able to catch it.
+        flags.append("doc_no_missing")
+    if extracted.warnings:
+        flags.append("warnings")
+    return flags
+
+
+async def _park_for_review(
+    ledger_id: uuid.UUID,
+    *,
+    extracted: ExtractedCreditCardData,
+    task_id: str | None,
+    bank_code: str | None,
+    doc_no: str | None,
+    flags: list[str],
+    mapping_suggested: dict[str, dict[str, str]] | None = None,
+    mapping_missing: list[str] | None = None,
+    reason_code: str | None = None,
+    error: str | None = None,
+) -> None:
+    """Stop short of Carmen and wait for a human.
+
+    The payload is the raw extraction shape — the same JSON `/extract` returns — because
+    the browser already knows how to load that: `useOcrExtraction.applyExtractedData` takes
+    it verbatim. `raw_text` is dropped: it is the bulkiest field, nothing reads it, and this
+    row sits in the database until someone clicks.
+
+    Not stored, deliberately: the built JV rows (the review screen derives them live against
+    the *current* accounting config, so a stored copy would go stale behind what the reviewer
+    is looking at) and the Carmen credential (re-read at approve time — it rotates, and
+    `sweep_token_health` may have unverified it while the document sat).
+
+    **`reason_code` is what makes this two functions in one.** Without it this is the review
+    fork: the ordinary stop one step short of `post_gljv`, and no news — the queue's own
+    count is the channel for that. With it, the pipeline got further and then hit something
+    it could not decide alone: a foreign tax ID, a GL account nothing maps, a Carmen
+    refusal. Those used to be `_finish(status="failed")`, which threw away an extraction the
+    customer had already paid for. They keep their payload now and land in the same queue,
+    where the one thing that can clear them — a person — already is.
+
+    Nothing is notified from here, with or without a reason. The bell for both is raised
+    once per BU per poll by `_notify_pending` — a bank sending a twenty-attachment zip
+    against a dead credential would otherwise put twenty rows in the customer's bell and
+    bury everything else in it.
+    """
+    payload = extracted.model_dump(mode="json", exclude={"raw_text"})
+    async with async_session() as db:
+        row = await db.get(EmailDocument, ledger_id)
+        if row is None:
+            return
+        row.status = "pending_review"  # type: ignore[assignment]
+        row.task_id = uuid.UUID(task_id) if task_id else None  # type: ignore[assignment]
+        row.bank_code = bank_code  # type: ignore[assignment]
+        row.doc_no = doc_no  # type: ignore[assignment]
+        row.reason_code = reason_code  # type: ignore[assignment]
+        row.error_message = error  # type: ignore[assignment]
+        row.review_payload = {  # type: ignore[assignment]
+            "extracted": payload,
+            # Passed in, not computed here: since `auto_post` started meaning "post what is
+            # ready to post", this same list is the gate that decided the document parks at
+            # all. Recomputing it would be two readings of one question, one file apart.
+            "flags": flags,
+            # Which payment types the reviewer has to map before this can post, and which
+            # rules the AI invented on the way past. Stored rather than re-derived: the
+            # review screen would otherwise have to diff the document against the live
+            # config to find them, and the config moves.
+            #
+            # `suggested` carries the AI's dept/acc as well as its keys, because since
+            # 2026-09-04 nothing writes them to the BU's config until a human approves —
+            # the live config the review screen derives its JV rows from does not have
+            # them, so this row is the only copy. Re-asking the model on open would cost a
+            # second call and could answer differently than the queue's own reason line.
+            "unmapped": list(mapping_missing or []),
+            "guessed": sorted(mapping_suggested or {}),
+            "suggested": dict(mapping_suggested or {}),
+        }
+        await db.commit()
+
+
 async def _finish(
     ledger_id: uuid.UUID,
     *,
@@ -1131,6 +1701,7 @@ async def _finish(
     jv_no: str | None = None,
     reason_code: str | None = None,
     error: str | None = None,
+    notify: bool = True,
 ) -> None:
     async with async_session() as db:
         row = await db.get(EmailDocument, ledger_id)
@@ -1143,15 +1714,28 @@ async def _finish(
         row.jv_no = jv_no or None  # type: ignore[assignment]
         row.reason_code = reason_code  # type: ignore[assignment]
         row.error_message = error  # type: ignore[assignment]
-        if status in ("posted", "failed"):
-            # "skipped" is deliberately excluded — it's the customer's own filename/
-            # sender rules saying "not this file", not a failure worth a notification
-            # (see the _Skip handler above).
+        # Every status this function writes is terminal, so the review payload has no
+        # reader left. This is what keeps "extracted line items are not persisted" true in
+        # the only sense that matters: they exist while a human owes us a decision about
+        # them, and not one moment longer.
+        row.review_payload = None  # type: ignore[assignment]
+        # Most of `skipped` is deliberately silent — the customer's own filename/sender
+        # rules saying "not this file" (see the _Skip handler above). `NOTIFIABLE_SKIPS`
+        # is the part that is not: a document that was theirs, matched their rules, and
+        # still never arrived because of something only they can change.
+        notify_type = (
+            f"document_{status}"
+            if status in ("posted", "failed")
+            else "document_blocked"
+            if reason_code in NOTIFIABLE_SKIPS
+            else None
+        )
+        if notify_type and notify:
             notification_service.notify(
                 db,
                 tenant_id=row.tenant_id,  # type: ignore[arg-type]
                 order_id=None,
-                type_=f"document_{status}",
+                type_=notify_type,
                 payload={
                     "document_id": str(row.id),
                     # The attachment filename is the only identity the customer
@@ -1168,3 +1752,234 @@ async def _finish(
                 },
             )
         await db.commit()
+
+
+# ── Review: the human's two verbs ─────────────────────────────────────────────
+#
+# These live beside the pipeline rather than in a router or a module of their own,
+# because approve is the second half of `_run_document`: it picks up exactly where the
+# review fork stopped and it must stay consistent with `_finish`'s semantics (which nulls
+# `review_payload` on the way to a terminal status). Split across two files, those two are
+# one refactor away from disagreeing about the thing that must never drift.
+
+
+async def _claim_for_review(
+    db: AsyncSession, document_id: uuid.UUID, tenant_id: str
+) -> EmailDocument:
+    """Take the row, or explain why not. Locked, because two people can be looking.
+
+    Two reviewers in one BU with the queue open is the expected case, not the edge case:
+    the notification goes to the whole business unit, since `user_notifications` has no
+    user to address it to. `FOR UPDATE` means the second click waits for the first and
+    then finds a row that is no longer pending, instead of posting the same JV twice.
+    """
+    row = await db.scalar(
+        select(EmailDocument)
+        .where(
+            EmailDocument.id == document_id,
+            EmailDocument.tenant_id == uuid.UUID(tenant_id),
+        )
+        .with_for_update()
+    )
+    # Not yours and not there are the same answer: this row carries extracted line items.
+    if row is None:
+        raise NotFoundError("This document is not waiting for review")
+    if row.status != "pending_review":
+        raise ConflictError("Someone else has already handled this document")
+    return row
+
+
+async def approve_document(
+    document_id: uuid.UUID,
+    *,
+    tenant_id: str,
+    reviewer: str | None,
+    reviewer_name: str | None = None,
+    extracted: ExtractedCreditCardData,
+    rows: list[dict],
+    post_input_tax_record: bool = True,
+    input_tax: Any = None,
+) -> dict:
+    """Post what the reviewer approved, under the BU's own credential.
+
+    `rows` are the JV rows the review screen displayed, not rows rebuilt here. The screen
+    derives them against the live accounting config, so rebuilding would risk posting
+    something other than what was on screen when the button was pressed, which is the one
+    thing an approval must never do.
+
+    Three things this deliberately does NOT do:
+
+    * It does not post through `routers/carmen.py:proxy_gljv`. That reads the *session's*
+      Carmen token, so an ingested document would be attributed to whichever colleague
+      happened to open the queue. The credential belongs to the BU, not the reviewer.
+    * It does not use a credential stored at park time. Tokens rotate, and
+      `sweep_token_health` may have unverified one while the document sat, so it is
+      re-read here.
+    * It does not trust `is_duplicate` from the extraction. That was computed before the
+      document waited, and a wait is exactly when someone keys the same statement into
+      Carmen by hand.
+
+    It also does not write the GL rules back to the BU's config. Ingest stopped doing that
+    for a suggestion (a guess nobody had read was becoming the BU's own rule, and then the
+    *second* copy of a statement auto-posted on it), and the review screen already writes
+    them itself — `patchAccountingConfig`, immediately before it calls this. One writer,
+    and it is the click that means a human confirmed them.
+    """
+    async with async_session() as db:
+        row = await _claim_for_review(db, document_id, tenant_id)
+        ledger_id: uuid.UUID = row.id  # type: ignore[assignment]
+        bank_code: str | None = row.bank_code  # type: ignore[assignment]
+        task_id = str(row.task_id) if row.task_id else None
+        tenant = await db.get(Tenant, uuid.UUID(tenant_id))
+        settings_row = await es.get_settings(db, tenant) if tenant else None
+        carmen_token, carmen_uri = (
+            await es.posting_target(db, settings_row) if settings_row else ("", "")
+        )
+
+    if not carmen_token:
+        raise ValidationError("No Carmen posting credential for this business unit")
+    if not carmen_uri:
+        raise ValidationError("No Carmen host known for this business unit")
+
+    doc_no = extracted.doc_no
+    # `post_gljv` reads the target host from a ContextVar the request middleware fills in
+    # for the *user's* Carmen, and this posts to the *BU's*. Set both, reset both.
+    tenant_ctx = current_tenant_id.set(tenant_id)
+    uri_ctx = current_carmen_uri.set(carmen_uri)
+    try:
+        async with async_session() as db:
+            if doc_no and await has_submitted_doc(
+                db, CreditCard, tenant_id=uuid.UUID(tenant_id), doc_no=doc_no
+            ):
+                raise ConflictError(f"Document {doc_no} has already been posted to Carmen")
+            config = await get_accounting_config(db, tenant_id)
+
+        payload = build_gljv_payload(
+            rows, doc_date=extracted.doc_date, bank_code=bank_code, config=config
+        )
+        try:
+            result = await post_gljv(payload, carmen_token)
+        except CarmenAPIError as exc:
+            # Transport, not judgement: the JV's fate is genuinely unknown. The document
+            # stays reviewable, but the message has to say so — a reviewer told only
+            # "failed" will press the button again, and if the first call did land that
+            # posts the statement twice. `submitted_at` is stamped on success only, so
+            # nothing on our side can tell them; Carmen can.
+            logger.error("[email] Carmen unreachable while approving %s: %s", doc_no, exc)
+            raise CarmenServiceError(
+                f"Carmen did not answer ({exc.detail}). Check whether the JV posted "
+                f"before approving this document again."
+            ) from exc
+
+        if not result or result.get("Code", -1) != 0:
+            # A judgement, not an outage — 400 with Carmen's own words, not the 503 that
+            # `CarmenServiceError` would produce and that would read as "try again later".
+            #
+            # Left `pending_review` on purpose. The reviewer is standing right there, and
+            # what Carmen rejects (a closed period, a dept code it does not know) is
+            # usually something they can fix and resubmit. This is the only place in the
+            # feature where a failed post is not terminal.
+            raise ValidationError(
+                str((result or {}).get("UserMessage") or "Carmen rejected the JV")
+            )
+
+        await _mark_submitted(extracted.id)
+        tax_note = (
+            await _post_input_tax(
+                extracted,
+                bank_code=bank_code,
+                config=config,
+                carmen_token=carmen_token,
+                overrides=input_tax,
+            )
+            if post_input_tax_record
+            else None
+        )
+        jv_no = str(result.get("InternalMessage") or "")
+        await _finish(
+            ledger_id,
+            status="posted",
+            task_id=task_id,
+            bank_code=bank_code,
+            doc_no=doc_no,
+            jv_no=jv_no,
+            error=tax_note,
+            # The reviewer is the one who just posted this — telling them again in the
+            # bell wastes the fact that they are sitting right here watching it happen.
+            notify=False,
+        )
+        await _stamp_reviewer(ledger_id, reviewer, reviewer_name)
+        logger.info(
+            "[email] %s approved and posted %s (JV %s)", reviewer_name or reviewer, doc_no, jv_no
+        )
+        return {"jv_no": jv_no, "tax_note": tax_note}
+    finally:
+        current_carmen_uri.reset(uri_ctx)
+        current_tenant_id.reset(tenant_ctx)
+
+
+async def reject_document(
+    document_id: uuid.UUID,
+    *,
+    tenant_id: str,
+    reviewer: str | None,
+    reviewer_name: str | None = None,
+    reason: str | None = None,
+) -> None:
+    """Terminal, and deliberately not a refund.
+
+    The vision call ran, which is what the credit paid for (decision-log #17). Refunding
+    here would make the two pipelines disagree about cost again, and would price a
+    reviewer's judgement as though the extraction had never happened.
+
+    There is no un-reject: re-extracting is what the manual wizard is for.
+    """
+    async with async_session() as db:
+        row = await _claim_for_review(db, document_id, tenant_id)
+        ledger_id: uuid.UUID = row.id  # type: ignore[assignment]
+        bank_code: str | None = row.bank_code  # type: ignore[assignment]
+        doc_no: str | None = row.doc_no  # type: ignore[assignment]
+        task_id = str(row.task_id) if row.task_id else None
+
+    await _finish(
+        ledger_id,
+        status="rejected",
+        task_id=task_id,
+        bank_code=bank_code,
+        doc_no=doc_no,
+        reason_code="rejected_by_reviewer",
+        error=(reason or "").strip()[:500] or None,
+        # Same reviewer, same click, same reasoning as approve's `notify=False` above —
+        # "rejected" isn't in _finish's own notify-triggering status/reason sets today,
+        # but that should stay true by design, not by accident of those sets' contents.
+        notify=False,
+    )
+    await _stamp_reviewer(ledger_id, reviewer, reviewer_name)
+    logger.info("[email] %s rejected %s", reviewer_name or reviewer, doc_no)
+
+
+async def _stamp_reviewer(
+    ledger_id: uuid.UUID, reviewer: str | None, reviewer_name: str | None
+) -> None:
+    """Who decided, and when. Audit only: there is no users table to point at, and any
+    Carmen session for this BU may approve, so this records rather than authorises.
+
+    Both the id and the name. Everywhere else in this codebase only `carmen_user_id` is
+    stored and the name is resolved later through `tenant_lookup.username_map`, which reads
+    `ocr_sessions` — scrubbed after 90 days, so that lookup quietly decays into a raw UUID.
+    Fine for a usage chart. Not fine for the record of who approved a journal entry, which
+    has to still read as a name when someone asks in a year.
+
+    After `_finish`, not inside it. `_finish` also runs on the machine path, where there is
+    no reviewer, and a nullable column written from two places drifts.
+    """
+    try:
+        async with async_session() as db:
+            row = await db.get(EmailDocument, ledger_id)
+            if row is not None:
+                row.reviewed_by = reviewer  # type: ignore[assignment]
+                row.reviewed_by_name = reviewer_name  # type: ignore[assignment]
+                row.reviewed_at = datetime.now(UTC)  # type: ignore[assignment]
+                await db.commit()
+    except Exception:  # noqa: BLE001 — the decision is already recorded; this is metadata
+        logger.exception("[email] Could not stamp the reviewer on %s", ledger_id)

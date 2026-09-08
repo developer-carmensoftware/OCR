@@ -3,7 +3,7 @@ import { ChevronDown, ShoppingBag, ArrowRight, Loader2, CalendarClock } from 'lu
 import { toast } from 'sonner'
 import AppHeader from '../components/common/AppHeader'
 import Pager from '../components/common/Pager'
-import { useFitRows } from '../hooks/useFitRows'
+import { useRowsPerPage } from '../hooks/useRowsPerPage'
 import { useT } from '../i18n/LanguageContext'
 import OrderStatusBadge from '../components/pricing/OrderStatusBadge'
 import PendingOrderBanner from '../components/pricing/PendingOrderBanner'
@@ -190,9 +190,6 @@ function RowSkeleton() {
   )
 }
 
-// Mirrors the cap FastAPI enforces on GET /api/v1/credits/orders (422 above it).
-const MAX_PAGE = 100
-
 // A notification deep-links as #/pricing/orders?id=<order_id>; pull that id out.
 function parseFocusId(): string | null {
   const q = window.location.hash.split('?')[1]
@@ -201,11 +198,9 @@ function parseFocusId(): string | null {
 
 export default function OrderHistory() {
   const { t } = useT()
-  // Page size = however many rows fit above the fold. Measured off `.order-row-head`,
-  // the part of a row whose height is fixed — an expanded row is arbitrarily tall.
-  // Capped at the backend's /credits/orders limit.
-  const [fits, listRef] = useFitRows('.order-row-head', 4)
-  const historyLimit = Math.min(fits, MAX_PAGE)
+  // Page size is the reader's, shared with every other table in the app. The options top
+  // out at 100, which is the cap FastAPI enforces on GET /api/v1/credits/orders.
+  const [historyLimit, setHistoryLimit] = useRowsPerPage()
   const {
     openOrders,
     history,
@@ -299,7 +294,7 @@ export default function OrderHistory() {
         {error ? (
           <div className="pricing-error">{t('order.loadError', { error })}</div>
         ) : busy ? (
-          <ul className="order-list" ref={listRef}>
+          <ul className="order-list">
             {Array.from({ length: 3 }).map((_, i) => (
               <RowSkeleton key={i} />
             ))}
@@ -319,7 +314,7 @@ export default function OrderHistory() {
           )
         ) : (
           <>
-            <ul className="order-list" ref={listRef}>
+            <ul className="order-list">
               {history.map(order => (
                 <OrderRow
                   key={order.id}
@@ -334,6 +329,11 @@ export default function OrderHistory() {
               limit={historyLimit}
               total={historyTotal}
               onChange={setHistoryOffset}
+              // Back to page 1: the old offset can point past the end of the new size.
+              onLimitChange={n => {
+                setHistoryLimit(n)
+                setHistoryOffset(0)
+              }}
             />
           </>
         )}

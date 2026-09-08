@@ -1180,7 +1180,7 @@ input[type='text'].detail-input:focus {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(8, 6, 20, 0.6);
+  background: var(--scrim);
   -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
   z-index: var(--z-modal);
@@ -1512,7 +1512,7 @@ input[type='text'].detail-input:focus {
 .mapping-alert.is-danger {
   background: var(--rose-light);
   border-color: var(--rose-mid);
-  color: var(--destructive);
+  color: var(--rose-text);
 }
 
 @media (max-width: 640px) {
@@ -3115,10 +3115,22 @@ input[type='text'].detail-input:focus {
 }
 
 /* ─── CUSTOM SEARCH SELECT ─── */
+
+.custom-search-select {
+  position: relative;
+  width: 100%;
+}
+
+/* These four rules were inline styles on the input, which put them out of reach of every
+   stylesheet: a page could not restyle the control without `!important`. The values are
+   unchanged — the state just arrives as a data attribute now. */
 .custom-search-select-input {
   width: 100%;
   padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
   border-radius: 6px;
+  background: transparent;
+  color: inherit;
   font-size: 0.85rem;
   outline: none;
   transition:
@@ -3126,6 +3138,23 @@ input[type='text'].detail-input:focus {
     background-color 180ms var(--ease-out),
     color 180ms var(--ease-out);
   font-family: var(--font-mono);
+}
+
+.custom-search-select-input[data-open] {
+  border-bottom-color: var(--primary);
+}
+
+.custom-search-select-input[data-error] {
+  border-color: var(--rose);
+  background: var(--rose-light);
+}
+
+/* After the error rule on purpose: a field with a suggestion in it and no value set is both
+   at once, and the suggestion is the more useful thing to show. */
+.custom-search-select-input[data-suggested] {
+  border-color: var(--primary-mid);
+  background: var(--primary-light);
+  color: var(--primary);
 }
 
 .custom-search-select-top {

@@ -10,10 +10,10 @@ arithmetic, not re-OCR'd.
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.ocr import ExtractedDetailRow
 from app.services.credit_card_service import (
-    _ASSUMED_RATE_WARNING,
-    _FEE_UNALLOCATED_WARNING,
-    _NEGATIVE_UNSUPPORTED_WARNING,
-    _RECON_MISMATCH_WARNING,
+    _ASSUMED_RATE,
+    _FEE_UNALLOCATED,
+    _NEGATIVE_UNSUPPORTED,
+    _clean_transaction_labels,
     _normalize_bay_statement,
     _normalize_fee_invoice,
     _strip_noncard_rows,
@@ -800,7 +800,7 @@ def test_multiline_one_blank_commission_warns_not_silently_zeroed():
         ]
     )
     _normalize_fee_invoice(ext, "SIAMPAY")
-    assert _FEE_UNALLOCATED_WARNING in ext.warnings
+    assert _FEE_UNALLOCATED in ext.warnings
 
 
 def test_multiline_all_blank_commissions_split_vat_evenly():
@@ -815,7 +815,7 @@ def test_multiline_all_blank_commissions_split_vat_evenly():
     )
     _normalize_fee_invoice(ext, "SIAMPAY")
     assert [r.tax_amt for r in ext.details] == ["5.00", "5.00"]
-    assert _FEE_UNALLOCATED_WARNING in ext.warnings
+    assert _FEE_UNALLOCATED in ext.warnings
 
 
 def test_equal_fee_lines_not_mistaken_for_footer():
@@ -831,9 +831,32 @@ def test_equal_fee_lines_not_mistaken_for_footer():
     assert [r.transaction for r in ext.details] == ["Fee A", "Fee B"]
 
 
+def test_a_grand_total_label_carrying_the_fee_is_not_a_mismatch():
+    """The GHL document, reduced (M202605-057161, found 2026-09-07).
+
+    `_labeled_footer_value` takes the first non-zero column on the row labelled GRAND TOTAL,
+    and GHL is the layout whose Net and Commission arrive swapped — so the "grand total" is
+    the fee before VAT. Compared literally it misses Σ fee + VAT by exactly the VAT, which
+    made every GHL invoice ever scanned carry a warning, park for review, and never
+    auto-post. The lines here are internally perfect: 37,059.56 + 2,594.17 = 39,653.73.
+    """
+    ext = _bay_extracted(
+        [
+            {"transaction": "TRANSACTION FEE", "commis_amt": "37,059.56"},
+            {"transaction": "GRAND TOTAL", "pay_amt": "37,059.56", "tax_amt": "2,594.17"},
+        ]
+    )
+    _normalize_fee_invoice(ext, "GHL")
+    assert not any(w.code == "reconMismatch" for w in ext.warnings)
+
+
 def test_reconstructed_total_mismatch_warns():
     # B7: a misread line fee makes Σ fee + VAT drift from the printed grand total.
     # The VAT spread balances exactly, so only the recon cross-check catches it.
+    #
+    # Still warns after the sub-total reading was allowed above: 160.50 is neither
+    # Σ fee + VAT (150.50) nor Σ fee (140.00), and a figure that is neither is the one
+    # thing this check exists to catch.
     ext = _bay_extracted(
         [
             {"transaction": "Fee A", "commis_amt": "100.00"},
@@ -847,7 +870,12 @@ def test_reconstructed_total_mismatch_warns():
         ]
     )
     _normalize_fee_invoice(ext, "KTC")
-    assert _RECON_MISMATCH_WARNING in ext.warnings
+    # The figures travel, not a sentence — the UI writes the sentence in the reader's
+    # language. Both are needed because only one of them reaches the screen: the printed
+    # grand total rides the summary row, which this function consumes, and the JV built from
+    # the lines balances by construction. Σ fee (100 + 40) + VAT 10.50 = 150.50 vs 160.50.
+    assert [w.code for w in ext.warnings] == ["reconMismatch"]
+    assert ext.warnings[0].params == {"lines": "150.50", "printed": "160.50", "gap": "10.00"}
 
 
 def test_reconstructed_total_matches_no_warning():
@@ -865,7 +893,7 @@ def test_reconstructed_total_matches_no_warning():
         ]
     )
     _normalize_fee_invoice(ext, "KTC")
-    assert _RECON_MISMATCH_WARNING not in ext.warnings
+    assert not any(w.code == "reconMismatch" for w in ext.warnings)
 
 
 def test_two_value_grand_and_vat_pair_flags_assumed_rate():
@@ -875,7 +903,7 @@ def test_two_value_grand_and_vat_pair_flags_assumed_rate():
     _normalize_fee_invoice(ext, "KTC")
     r = _row(ext)
     assert (r.pay_amt, r.commis_amt, r.tax_amt) == ("107.00", "100.00", "7.00")
-    assert _ASSUMED_RATE_WARNING in ext.warnings
+    assert _ASSUMED_RATE in ext.warnings
 
 
 def test_negative_amount_fee_invoice_guarded_and_untouched():
@@ -893,7 +921,7 @@ def test_negative_amount_fee_invoice_guarded_and_untouched():
         ]
     )
     _normalize_fee_invoice(ext, "KTC")
-    assert _NEGATIVE_UNSUPPORTED_WARNING in ext.warnings
+    assert _NEGATIVE_UNSUPPORTED in ext.warnings
     assert len(ext.details) == 2  # untouched
     assert ext.details[0].commis_amt == "-100.00"
 
@@ -901,7 +929,7 @@ def test_negative_amount_fee_invoice_guarded_and_untouched():
 def test_negative_amount_bay_statement_guarded():
     ext = _bay_extracted([{"transaction": "VISA", "pay_amt": "-500.00", "commis_amt": "10.00"}])
     _normalize_bay_statement(ext)
-    assert _NEGATIVE_UNSUPPORTED_WARNING in ext.warnings
+    assert _NEGATIVE_UNSUPPORTED in ext.warnings
     assert ext.details[0].pay_amt == "-500.00"
 
 
@@ -924,4 +952,52 @@ def test_bay_zero_commission_still_fills_net():
     _normalize_bay_statement(ext)
     assert len(ext.details) == 2  # TOTAL consumed
     assert [r.total for r in ext.details] == ["1,000.00", "500.00"]
-    assert _FEE_UNALLOCATED_WARNING in ext.warnings
+    assert _FEE_UNALLOCATED in ext.warnings
+
+
+# ── The line description as a mapping key ─────────────────────────────────────
+#
+# `transaction` is not wording, it is the key `canonical_payment_type` looks the BU's
+# saved GL mapping up by — and the description `build_jv_rows` prints on the JV line.
+# A label carrying the invoice's own date therefore matches nothing next month: the
+# document is suggested again, parked again, and saved again as a rule good for one
+# document. GHL is the real case (2026-09-04 e2e run).
+
+
+def _labelled(text: str) -> ExtractedCreditCardData:
+    return ExtractedCreditCardData(details=[ExtractedDetailRow(transaction=text)])
+
+
+def test_a_label_run_together_from_three_lines_keeps_only_the_first():
+    ext = _labelled("TRANSACTION FEE 30-05-2026\nGross Amount 1,277,748.00 Baht\nDA00001562")
+    _clean_transaction_labels(ext)
+    assert ext.details[0].transaction == "TRANSACTION FEE"
+
+
+def test_a_date_is_cut_wherever_it_sits_in_the_label():
+    ext = _labelled("01/06/2026 Commission fee")
+    _clean_transaction_labels(ext)
+    assert ext.details[0].transaction == "Commission fee"
+
+
+def test_digits_that_are_identity_and_not_time_survive():
+    # This BU really has both of these, one character apart. Folding them together
+    # would post two different accounts' fees to one GL line.
+    for label in ("04-4100-03 SiamPay Service", "04-4100-04 SiamPay Service"):
+        ext = _labelled(label)
+        _clean_transaction_labels(ext)
+        assert ext.details[0].transaction == label
+
+
+def test_a_label_that_is_only_a_date_keeps_what_it_had():
+    # Cleaning to nothing leaves a JV line with no description and a mapping keyed on
+    # the empty string. A noisy key beats a blank one.
+    ext = _labelled("30-05-2026")
+    _clean_transaction_labels(ext)
+    assert ext.details[0].transaction == "30-05-2026"
+
+
+def test_an_ordinary_card_type_is_left_exactly_as_it_was():
+    ext = _labelled("VSA-INT-P")
+    _clean_transaction_labels(ext)
+    assert ext.details[0].transaction == "VSA-INT-P"

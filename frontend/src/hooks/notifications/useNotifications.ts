@@ -39,7 +39,7 @@ function releaseRow(seen: string): BellItem[] {
   ]
 }
 
-/** `limit` is measured from the panel — see `useFitRows` — not a fixed page size. */
+/** `limit` is the caller's page size — the bell's fixed `PAGE_SIZE`, today. */
 export function useNotifications(limit: number) {
   const { isAuthenticated } = useAuth()
   const [items, setItems] = useState<Notification[]>([])

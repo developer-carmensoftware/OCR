@@ -21,7 +21,7 @@ import InputTaxReconciliation from '../components/credit-card/InputTaxReconcilia
 import { BANK_THAI_NAMES } from '../constants'
 import type { BankCode } from '../types/api'
 
-export default function CreditCardOCR() {
+export default function ManualScan() {
   const { t } = useT()
   const {
     step,
@@ -116,9 +116,14 @@ export default function CreditCardOCR() {
       <div className="app-container">
         <AppHeader
           module="credit-card"
-          moduleName="AI JV Automation"
+          // One module, one name, on both of its pages. Which page you are on is the
+          // StepWizard directly below this header, not a second title.
+          moduleName={t('review.title')}
           eyebrow="Carmen Cloud · Credit Card"
-          backPath="/glJv"
+          onBack={() => {
+            window.location.hash = '#/CreditCardOCR'
+          }}
+          backLabel={t('review.back')}
         >
           <UsageIndicator />
         </AppHeader>

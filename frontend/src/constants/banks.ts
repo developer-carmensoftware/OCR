@@ -160,6 +160,11 @@ export function detectBankFromExtracted(
 ): BankCode | null {
   if (!ext) return null
 
+  // What the model itself said it matched — every prompt asks for it. Mirrors tier 0 of
+  // backend utils/bank_detect.py, and is untrusted text until it is one of ours.
+  const claimed = (ext.bank_code || '').trim().toUpperCase()
+  if (BANK_KEYWORDS.some(b => b.code === claimed)) return claimed as BankCode
+
   // Issuer fields get the full keyword chain; the merchant's own company_name
   // only legacy bank keywords — merchant names like "บริษัท กรุงศรี ฟู้ดส์"
   // must not flip detection to a new issuer. Mirrors backend utils/bank_detect.py.
@@ -173,7 +178,6 @@ export function detectBankFromExtracted(
   if (merchant.includes('ไทยพาณิชย์')) return 'SCB'
 
   const docName = (ext.doc_name || '').toUpperCase()
-  const rawText = (ext.raw_text || '').toUpperCase()
 
   // Same specific-first chain as the other tiers, then English legacy names
   // and SCB document-title keywords.
@@ -186,11 +190,8 @@ export function detectBankFromExtracted(
     if (docName.includes('ใบนำฝาก') || docName.includes('ใบสรุปยอดขายบัตรเครดิต')) return 'SCB'
   }
 
-  if (ext.raw_text) {
-    const code = matchBankKeywords(rawText, rawText)
-    if (code) return code
-  }
-
+  // A raw_text tier lived here until 2026-09-03. No prompt has ever returned raw_text,
+  // and review_payload strips it anyway — it could not fire. Deleted with its backend twin.
   return null
 }
 

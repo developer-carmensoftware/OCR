@@ -79,6 +79,47 @@ def test_carries_the_issuers_registered_identity_not_the_hotels():
     assert p["BranchNo"] == "00000"  # the BU's own branch, from its accounting config
 
 
+def test_whitespace_is_absence_everywhere_an_identity_field_is_read():
+    """Carmen treats a field of spaces as the empty field it rejects the record for, so a
+    typed space must not walk past the refusals above — it did, and the review screen's own
+    block cleared on it too."""
+    blank = SimpleNamespace(code="XXX", legal_name="  ", tax_id="  ", address=None)
+    assert _build(bank=blank) is None
+    assert _build(bank=blank, vendor_name="Some Bank Ltd", tax_id="   ") is None
+
+    _, why = build_input_tax_payload(
+        _rows(("1070", "1000", "70")),
+        doc_no="INV-001",
+        doc_date="15/01/2026",
+        bank=SimpleNamespace(code="XXX", legal_name="Some Bank Ltd", tax_id="  "),
+        branch="00000",
+        description="d",
+        tax_profiles_raw=PROFILES,
+    )
+    assert why and "tax ID" in why
+
+    # And the values that do post are trimmed rather than passed through verbatim.
+    p = _build(branch="  ", tax_id="  0107536000315  ")
+    assert (p["BranchNo"], p["TaxId"]) == ("00000", "0107536000315")
+
+
+def test_a_blanked_override_falls_back_to_the_registry_rather_than_losing_the_claim():
+    """A reviewer clearing the vendor box has not decided the bank has no identity — the
+    review screen blocks Approve on an empty one, and the unattended path never sends one at
+    all. Falling back keeps a claim that would otherwise be dropped for a stray keystroke."""
+    p = _build(bank=BANK, vendor_name="", tax_id="   ")
+    assert (p["VnName"], p["TaxId"]) == (BANK.legal_name, BANK.tax_id)
+
+
+def test_an_unread_branch_files_as_the_head_office():
+    """A tax invoice stating no branch was issued by the head office, and "00000" is the
+    Revenue Department's code for that — the printed convention, so it is a default rather
+    than the refusal a missing name or tax ID gets."""
+    assert _build(branch=None)["BranchNo"] == "00000"
+    assert _build(branch="")["BranchNo"] == "00000"
+    assert _build(branch="00012")["BranchNo"] == "00012"  # what was read still wins
+
+
 def test_february_in_a_leap_year_ends_on_the_29th():
     p = _build(doc_date="03/02/2028")
     assert (p["FrDate"], p["ToDate"]) == ("2028-02-01", "2028-02-29")
@@ -120,6 +161,76 @@ def test_no_record_when_the_bank_has_no_registered_identity():
     """Nullable on purpose: a bank nobody has filled in yet just gets no ACTX record."""
     assert _build(bank=SimpleNamespace(code="XXX", legal_name=None)) is None
     assert _build(bank=None) is None
+
+
+def test_a_missing_tax_id_is_a_refusal_too_and_says_which_half_is_missing():
+    """Half an identity is not an identity. Carmen takes `TaxId: ""` and rejects the
+    record afterwards, so the record has to be refused here where it can be reported."""
+    _, why = build_input_tax_payload(
+        _rows(("1070", "1000", "70")),
+        doc_no="INV-001",
+        doc_date="15/01/2026",
+        bank=SimpleNamespace(code="XXX", legal_name="Some Bank Ltd", tax_id=None),
+        branch="00000",
+        description="d",
+        tax_profiles_raw=PROFILES,
+    )
+    assert why and "tax ID" in why
+    # And the reviewer typing the missing half is what turns it back into a record.
+    p = _build(
+        bank=SimpleNamespace(code="XXX", legal_name="Some Bank Ltd", tax_id=None),
+        tax_id="0107536000315",
+    )
+    assert p["TaxId"] == "0107536000315"
+
+
+# ── What the reviewer corrected ───────────────────────────────────────────────
+#
+# Two of the refusals above are dead ends for the machine and one field for a human,
+# which is what the review screen's input-tax panel now is.
+
+
+def test_a_named_vendor_stands_in_for_a_bank_with_no_registry_entry():
+    p = _build(
+        bank=SimpleNamespace(code="XXX", legal_name=None, tax_id=None, address=None),
+        vendor_name="Kasikornbank Public Company Limited",
+        tax_id="0107536000315",
+    )
+    assert p["VnName"] == "Kasikornbank Public Company Limited"
+    assert p["TaxId"] == "0107536000315"
+
+
+def test_a_named_profile_files_a_rate_no_profile_declares():
+    """3% matches nothing, which is a skip until somebody says which profile it is."""
+    p = _build(details=_rows(("1030", "1000", "30")), profile_code="VAT07")
+    assert p["TaxProfileCode"] == "VAT07"
+    # Carmen's own figure for that profile, not the document's 3% and not the browser's
+    # word for it: a browser may say which profile, never define one.
+    assert p["TaxRate"] == 7
+    assert p["TaxAmt"] == 30.0  # still the document's own VAT
+
+
+def test_a_profile_that_does_not_exist_is_a_skip_that_says_so():
+    _, why = build_input_tax_payload(
+        _rows(("1070", "1000", "70")),
+        doc_no="INV-001",
+        doc_date="15/01/2026",
+        bank=BANK,
+        branch="00000",
+        description="d",
+        tax_profiles_raw=PROFILES,
+        profile_code="VAT10",  # exists, but Active: false
+    )
+    assert why and "VAT10" in why
+
+
+def test_the_tax_period_is_not_among_them_and_still_follows_the_document():
+    """It is a fact about the statement, not a judgement — a claim filed in a month the
+    document does not name is the wrong-month error this module exists to refuse. A
+    misread date is corrected on the document date, and the period follows it."""
+    p = _build(doc_date="15/03/2026")
+    assert p["Prefix"] == "vat202603"
+    assert (p["FrDate"], p["ToDate"]) == ("2026-03-01", "2026-03-31")
 
 
 # ── resolve_tax_profile ───────────────────────────────────────────────────────

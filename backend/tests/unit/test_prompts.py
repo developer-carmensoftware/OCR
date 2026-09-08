@@ -45,3 +45,26 @@ def test_get_ocr_prompt_default_is_combined_and_includes_fee_layouts():
     assert prompt == _COMBINED
     for code in _FEE_CODES:
         assert code in prompt
+
+
+# ── The issuer the model matched, in every prompt's output contract ───────────
+
+
+def test_every_prompt_asks_the_model_to_name_the_issuer():
+    # Detection's tier 0. Without the field in BOTH the field list and the output
+    # structure, the model answers Step 1 internally and never says so — which is how a
+    # wrong layout's fixed `bank_name` became the strongest signal available.
+    for prompt in [_COMBINED, *(get_ocr_prompt(code) for code in _REGISTRY)]:
+        assert "- bank_code" in prompt
+        assert '{"bank_code":' in prompt
+
+
+def test_the_issuer_field_excludes_the_merchants_own_bank():
+    # A fee invoice prints the merchant's settlement bank too; naming it here is the
+    # difference between filing under PAYPAL and filing under whichever bank the hotel
+    # happens to bank with.
+    assert "never the merchant's own bank account" in _COMBINED
+
+
+def test_combined_prompt_asks_for_the_bank_it_identified_in_step_1():
+    assert "report the entry you matched in the bank_code field" in _COMBINED

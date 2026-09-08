@@ -1,4 +1,4 @@
-# Decision Log
+﻿# Decision Log
 
 ADR-style record of what was decided, why, what it cost, and — where relevant — what was
 tried first and reverted. Sourced from migration headers, service docstrings, and the
@@ -254,13 +254,319 @@ failure, where the credit-card wizard and the input-tax step both use `Code !== 
 that is a behaviour change on a working posting path and needs Carmen's contract for
 `/invoice` confirmed first.
 
-## 19. Superseded designs, and where they live
+## 19. A human approves before anything posts (2026-08-28)
+
+**Reverses the central choice of v2, and partially reinstates v1's.** Ingest posted straight
+to Carmen with nobody in between. That is the right shape for a pipeline a BU already
+trusts, and the wrong one for a BU switching it on for the first time — the first thing the
+automation does on day one is write to their real ledger, and the only way to find out it
+misread a figure is to find the JV afterwards.
+
+A document now stops at `pending_review` between the gate ladder and `post_gljv`, and a
+human approves it at `#/CreditCardOCR`. The switch back is per BU: `auto_post`, default
+`false`, flipped in the queue's own settings once the queue has been getting it right.
+
+What this is **not** is a return to v1. The differences are the whole reason it could be
+built in a week rather than being cherry-picked:
+
+- **No new admin UI, no `email_flow_*` tables.** Four columns on `email_documents`, one on
+  `email_ingest_settings`.
+- **Review is the Credit Card module's landing page**, not a screen of its own. The wizard
+  moved to `#/CreditCardOCR/manual`; the queue took `#/CreditCardOCR`, which is what
+  Carmen's SSO deep-link opens.
+- **The reviewer edits in the wizard's own components** — `HeaderCard`, `DetailTable`,
+  `AccountingReview` — so there is one implementation of the arithmetic, not two.
+- **The cost model does not move.** #17 is unchanged: the charge follows the vision call, so
+  a parked document is already charged and rejecting it refunds nothing. Backpressure, not
+  refunds, is what protects a BU that stops reading its queue — past 50 pending, mail is
+  handed back unread and costs nothing.
+
+The one thing v1 got right that this keeps: nothing reaches the customer's ledger that a
+person has not looked at, until that person says otherwise.
+## 21. A rule says which files are documents; the document says which bank (2026-09-03)
+
+Reported as "several banks configured, everything comes out as KBANK". The rule's
+`bank_code` was the verdict: it picked the extraction layout *and* was stored without ever
+being checked against the page.
+
+That gives a filename substring authority over the printed issuer. `filename_patterns` is a
+case-insensitive `%pattern%` test and `.pdf` is a documented escape hatch, so **one** broad
+rule is the sole match for every file the other rules' narrower patterns miss — and labels
+all of them itself. Worse, it chose the prompt: a GHL invoice read with the KBANK layout
+mismaps its columns and is instructed to answer `bank_name: "ธนาคารกสิกรไทย"`, which then
+confirms the wrong bank to every later reader, the browser included.
+
+**Inverted.** Extraction on the email path always uses the combined auto-detect prompt; the
+document's own answer decides; the rule's bank survives only as the fallback for an issuer
+nothing can read, and as the standing guess on rows that fail before extraction. Where the
+two disagree, the reviewer is told which rule over-reached — that warning is the only place
+a mis-scoped pattern is visible before it has posted a JV against the wrong vendor.
+
+Two smaller things fell out of the same look:
+
+- **The combined prompt identified the bank and never said so.** Every prompt now returns
+  `bank_code`, and `detect_bank_code` takes it as tier 0. The reader looking at the page
+  beats keyword-matching the two or three header fields it chose to fill in.
+- **The `raw_text` detection tier could never fire** — no prompt has ever asked for
+  `raw_text`. Two earlier diagnoses blamed it anyway. Deleted rather than fixed.
+
+**What this does not change:** the per-BU uniqueness of `bank_code` across rules (still one
+place to edit a bank's patterns and password), and the gate itself — an attachment matching
+no rule is still `no_rule_match`, still free. A rule is a filter, not an identification.
+
+**Prior verdicts this corrects.** 2026-08-28 and 2026-08-31 both closed this class as
+customer configuration. Both were factually right and both left the same defect standing:
+the configuration could not be got wrong safely.
+
+## 22. A document we charged for stays reviewable (2026-09-03)
+
+**Decision.** A refusal that happens *after* a successful extraction parks at
+`pending_review` with its reason recorded, instead of finishing as `failed`. The reviewer
+opens it, edits every field, and posts — or rejects it. Six causes move:
+`tax_id_mismatch`, `duplicate_document`, `mapping_incomplete`, `carmen_unauthorized`,
+`carmen_rejected`, and a document with no postable amount.
+
+**Why.** #17 settled that the charge follows the vision call, not the outcome. The queue did
+not honour the other half of that bargain: `_finish()` nulls `review_payload` on every
+terminal transition, so the customer paid for a reading and then had it thrown away. The
+only recovery was to re-scan the same file by hand and pay for it a second time. The refund
+boundary's own comment had already named these as *"decisions taken about a document we
+successfully read, not failures to read it"* — this is that sentence applied to the ledger.
+
+Not a new principle: §10 #30 of `07-human-in-the-loop.md` did it for `mapping_incomplete`
+alone on 2026-08-31, with the reason that generalises — *"it was terminal because nothing
+could fix it in place; now something can."*
+
+**What stays terminal, and why each.**
+
+- The generic `except`. It can fire *after* `post_gljv` returned zero, because
+  `_mark_submitted` and `_post_input_tax` both run past that point — offering Approve on a
+  JV already in Carmen's books invites a double post.
+- The refund boundary. The money went back, so there is no reading to keep. `extracted` is
+  dropped there before the re-raise, making that true by construction rather than by
+  tracing which handler the exception reaches.
+- A second copy of something already in the queue (`_already_pending`). Its twin is there,
+  editable and postable; parking this one recreates the two-identical-rows problem raising
+  it prevented. The only `_Skip` carrying `reviewable=False`.
+
+**The one risk taken.** A Carmen *transport* failure parks too, and `_mark_submitted` never
+ran — so `has_submitted_doc` cannot catch a JV that landed as the socket died, and a
+reviewer who approves without checking Carmen can post it twice. This is the risk the
+approve path has taken since it shipped (its 503 says *"check whether the JV posted before
+approving this document again"*); the difference is that there a human had just pressed the
+button, and here a robot failed at 3am. The mitigation is that the same sentence now travels
+on the row, which is where that reviewer will read it.
+
+**What it costs.** `auto_post = true` stops meaning "post or destroy" — a BU with review
+switched off can now accumulate a queue, and parked failures count toward
+`REVIEW_BACKLOG_CAP`. A dead credential therefore fills the queue and stops ingestion. That
+is the cap working: those 50 documents all become postable the moment the token is replaced,
+so clearing them produces 50 JVs rather than being cleanup.
+
+**Not a retry.** #13 stands: single pass, no sweep. Nothing is retried automatically. What
+changed is that most of what was being filed as a failure was never one — it was a question,
+and now a person can answer it.
+
+## 23. Posted and Not posted mean charged; All is the log (2026-09-03)
+
+**Decision.** The two chips that report outcomes now hold only documents this BU was charged
+for. An attachment that never cost a credit — `status = 'skipped'`, which is every exit
+upstream of `consume_document()` — is in neither, and is found under `All`, which is a chip
+again. `Review` is unchanged and outranks the split: a cause somebody can still clear from
+settings stays there whether or not it cost anything.
+
+**Why.** #17 settled that the charge follows the vision call; #22 made the queue honour that
+by keeping a charged document reviewable. This is the same rule facing the reader. `unposted`
+was the `else_` arm of `_chip_expr`, so it collected everything that was neither posted nor
+owed — on the dev database that is 61 rows of 154 where the customer's own filename rules
+refused a signature logo. Reporting those as *"documents that did not post"* makes the phrase
+mean nothing, and it is the same fault #25 found in the Actions column: a *billing* split
+being read as a statement about the document.
+
+**The mechanism is free.** `status` is already the charge marker — `_park_or_finish` writes
+`status = "skipped" if charged is None else "failed"` — so the split is one more `CASE` arm,
+no join and no new column. It gets exactly one row wrong: a crash inside the refund boundary
+returns the credit and still finishes `failed`, so it shows under Not posted. Left there —
+an infra failure deserves a reader's eye wherever it lands. `OCRTask.charged_docs` via
+`task_id` is the per-row truth if it ever matters.
+
+**Why `All` had to come back.** §12 #41 removed it because the three status chips held every
+row between them, so there was nothing to escape from. Narrowing two of those three makes
+that false — without the chip, the rows answering *"did my statement even arrive?"* would be
+reachable from nowhere. It carries no count (a lifetime total cannot go down — #45) and no
+dot (every row under it is already counted under a status chip, and `mark_chip_seen` stores
+no mark for it, so the dot could never be put out).
+
+**What it does not change.** `counts["all"]` is the same number. A stuck `received` row stays
+under Not posted, deliberately: its charge is unknown, it did not post, and it is the one row
+that says the pipeline stopped mid-document — #38's dot needs a chip to sit on. Dismiss is
+unchanged as a gesture; where the row lands is now the charge, which in practice means it
+leaves the status chips altogether and keeps its story under `All`.
+
+Full reasoning and the alternatives in [`07-human-in-the-loop.md §14`](07-human-in-the-loop.md).
+
+## 24. Auto-post posts what is ready to post (2026-09-04)
+
+**Decision.** `auto_post` stops meaning *"post everything that passed the gate ladder"* and
+starts meaning *"post the documents there was nothing to say about"*. The gate is
+`_review_flags()` — the queue's own reason column — and an empty list is the whole test. A
+reading with warnings, lines that do not reconcile, a GL rule the AI invented on the way
+past, or a statement whose number could not be read all park for a human under **either**
+setting.
+
+The flag set gains one member, `doc_no_missing`, and the reason ladder the phrase to go
+with it.
+
+**Why.** The flags were computed, stored, and then only looked at if review happened to be
+on. So the switch was an all-or-nothing bet: a BU either approved every document or accepted
+that an uncertain reading would post to their ledger with the same silence as a clean one.
+This is the gap noted on 2026-08-18 (*"warnings ถูกเมินตอน auto-post"*) and parked; #22
+closed the other half of it by keeping a charged reading reviewable, and this closes the
+half where the reading was never questioned at all.
+
+**One predicate, deliberately.** The gate is the same function that paints the row's Message
+column, whose empty case already read **"Ready to post"**. Two definitions of "worth a
+human's eye" — one for the reader, one for the pipeline — is exactly the drift that would
+let a document post behind the back of the person who would have been shown a reason for it.
+
+**Why `doc_no_missing` is a flag and not a `_Skip`.** Both duplicate guards key on the
+document number: `has_submitted_doc` and `_already_pending` answer `False` when there is
+none. An unnumbered statement forwarded twice would post twice into real books with nothing
+able to catch it — but a reviewer can perfectly well post one on purpose, so it blocks the
+machine and not the human. That is what a flag is.
+
+**Two gates stop being conditional.** `REVIEW_BACKLOG_CAP` and `_already_pending` both read
+`not auto_post`, written when a BU with review off could not park anything. #51 ended that
+and this makes parking routine there, so both were now holes on the main path: an auto-post
+BU had no backpressure at all (a dead credential would charge for every document while its
+queue filled), and a re-sent statement would park a second identical row.
+
+**What it costs.** A BU running auto-post will see documents in its queue that used to post
+silently — which is the point, and is also the only support conversation this creates: *"it
+used to post everything"*. `mapping_incomplete` disappears as a `reason_code` on new rows;
+a GL gap is now the `mapping_missing` flag, one path for both modes rather than two that can
+drift on what the row says. The `mapping_incomplete` fix-link stays in `reviewReasons.ts`
+for the rows that already carry it.
+
+**What it does not change.** The refund rule (#17), what parks after a charge (#22), the
+chips (#23), the backlog cap's value, approve, reject, and the switch itself — `auto_post`
+is still per BU, still defaults `false`, still written only by its own endpoint.
+
+Full reasoning in [`07-human-in-the-loop.md §15`](07-human-in-the-loop.md).
+
+## 25. An AI-suggested GL rule becomes the BU's rule when a human approves it (2026-09-04)
+
+**Decision.** Ingest stops writing what the suggester produced. It keeps the pairs on the
+ledger row — `review_payload.suggested`, `{key: {dept, acc}}` — the review screen seeds its
+pickers from them, and the `patchAccountingConfig` call that screen already makes before
+posting is what saves them. `fill_missing_mappings` is no longer called from
+`email_ingest_service`.
+
+**Why.** The guess became the BU's own rule the instant it was made, so the *second*
+document carrying that payment type found the rule already there: `unmapped_payment_types`
+returned nothing, `mapping_guessed` was false, `_review_flags` was empty, and with
+`auto_post` on it posted unattended on a mapping no human had read. KTC and SiamPay did
+exactly that on 2026-09-04 — parked in run 1, posted as JV 1023 and 1026 in run 2 from the
+identical documents. It contradicted the rule written in `unmapped_payment_types`' own
+docstring (*"an LLM-guessed mapping must never post by itself"*, CARMEN_INTEGRATION §4):
+the flag was riding on the document, and the *documents* are what differ.
+
+**The claim it makes true.** "Reviewed once per payment type" — not once per whichever
+document happened to arrive first. A person confirming is now the only thing that turns a
+suggestion into a rule, and after they do, every later document of that type is clean and
+auto-posts.
+
+**What it costs.** One suggestion call per document that arrives before the reviewer gets
+there, instead of one per payment type. That is a text-model call weighed against posting to
+someone's books on a rule nobody read; `REVIEW_BACKLOG_CAP` still ends the queue.
+
+**No second writer.** The alternative was a `mappings` field on `ApproveIn` and a
+`fill_missing_mappings` call after `post_gljv` — correct on ordering (a rule confirmed by a
+JV that actually went through) but a second writer of the same table on the same click, and
+the two would drift on the additive-vs-overwrite question that already separates
+`fill_missing_mappings` from `patch_config`. The screen was already writing these rules; it
+now writes one more.
+
+**What it does not change.** The suggester itself, when it runs, `mapping_guessed`,
+`mapping_missing`, or the auto-post gate (#24). A clean document still never calls the
+suggester and still posts by itself.
+
+## 26. A 401 reading the GL master is a dead credential, not a missing mapping (2026-09-04)
+
+**Decision.** `_suggest_missing_mappings` re-raises `CarmenAPIError` on 401/403 instead of
+returning `{}`. Every other status stays swallowed.
+
+**Why.** carmencloud's stored posting token was expired — `GET /accountCode` answered 401 —
+and the catch turned that into an empty suggestion. Every key came back unmapped, the
+document parked as `mapping_missing`, and the single symptom was one row telling the reader
+to go and fix a mapping. `mark_token_unverified` never ran, so the bell said nothing and
+`#/admin/email` showed a healthy credential.
+
+Nothing new handles it: the `except CarmenAPIError` in `_run_document` already flags the
+token and parks with `carmen_unauthorized` (#18), and would have caught the same 401 one
+Carmen call later at post time. The re-raise just stops the earlier call from hiding it.
+
+**Why not all statuses.** A 503 says nothing about the credential. Unverifying a token
+because Carmen was down for a minute makes a BU re-paste a token that was fine.
+
+## 27. A cause is a row of its own, and the noise is not a row at all (2026-09-04)
+
+**Decision.** `review` narrows back to `pending_review` alone. The two reason codes that
+fire per *attachment* on legitimate mail — `no_rule_match` and `unreadable_document` — leave
+the status chips entirely and stay in `today` and `all`. Every other pre-charge refusal is an
+**ordinary row under `Not posted`**: one per attachment, its own filename, its reason, and
+`Open settings`, which is exactly what the same row already looks like under `All`. `review` narrows back to `pending_review` alone. `no_rule_match` and
+`unreadable_document` — the two that fire per attachment on legitimate mail — leave the
+status chips entirely and remain in `today` and `all`.
+
+**Why.** #23 and its predecessors kept moving this pile between chips, sorting on who can
+act and then on who paid. Neither axis separates the two things in it: *a setting that
+stopped eleven attachments* and *a document that needs a decision*. So wherever they landed
+they landed on the work chip — on the dev BU, 46 `no_rule_match` rows in front of the nine
+statements waiting behind them.
+
+**The fix turned out to be subtraction.** Two rounds went into folding the refusals into one
+row per cause — first behind a disclosure, then with the filenames printed on the row — and
+both came out again (*"ไม่อยากให้เป็น list ที่ซ่อนอยู่ใน dropdown"*, then *"เอาให้เหมือน skipped
+ของ tab all ไปเลย"*). Correct both times: once the noise arm removes 97 of a BU's 140 rows,
+what is left is a handful the table already knows how to draw, and a second row shape earns
+nothing. The volume was the whole problem.
+
+**The noise is a third thing.** 97 of one dev BU's 140 rows are `no_rule_match` +
+`unreadable_document`: the signature logo, the summary PDF inside every bank zip. They grow
+with *successful* traffic, which is exactly why `NOTIFIABLE_SKIPS` has always refused to
+ring for them — *"a bell that cries every morning is a bell nobody reads on the morning it
+matters."* The queue now says what the bell says. They are not hidden: `today` and `all`
+still list them in place, and that is load-bearing, because a BU whose filename pattern is
+too narrow finds its dropped statements there.
+
+**The mechanism.** `_chip_expr()` swaps §14's charge arm for one keyed on the reason, gated
+on `status = 'skipped'` — the same code on a `failed` row is a crash inside the refund
+boundary, which is what the dot exists for. Everything the noise arm does not claim falls to
+`unposted` and is listed there, so `total` covers it and the Pager stays honest. No
+migration, no new column, one bucket fewer than the release began with.
+
+**What it costs.** #23's release note said Posted and Not posted count only what you were
+charged for, and Not posted now also carries the refusals. That sentence was solving the
+*volume* — 61 logos reported as failures — and suppressing `no_rule_match` solves it at the
+source; what is left under Not posted did not post, and the BU wants it. Dismissal is gone
+entirely (#54's ✕, §16's dialog, and the per-cause endpoint built in this release): it
+existed to stop `review` filling with rows it could never clear, and `review` no longer holds
+them. `dismissed_at` stays for `_attention`, which is what keeps the migration's back-dated
+pile quiet.
+
+Full reasoning, and the seven decisions behind it:
+[`07-human-in-the-loop.md` §18](07-human-in-the-loop.md).
+
+## 20. Superseded designs, and where they live
 
 - **`feat/email-flow`** — the v1 design: a human-approval review step before posting, its
   own admin UI, `email_flow_*` migrations. Deliberately never merged; kept only as
-  historical reference for UX and endpoint shape. **Not cherry-pickable** — v2 (what's on
-  `main` today) removed the approval step, moved settings ownership to Carmen's own screen,
-  and is a different architecture end to end, not a superset of v1.
+  historical reference for UX and endpoint shape. **Not cherry-pickable** — v2 removed the
+  approval step and moved settings ownership to Carmen's own screen, and is a different
+  architecture end to end, not a superset of v1. #18 above brings the *idea* back on v2's
+  architecture; it does not bring back this branch's code, and that distinction is why it
+  cost days instead of weeks.
 - **`poc/email-commission-automation`** — the original proof-of-concept the whole feature
   grew from.
 

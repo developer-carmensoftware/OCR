@@ -20,6 +20,10 @@ CRITICAL: Each payment/card type row = ONE separate JSON object inside the "deta
 Do NOT merge multiple rows into one object.
 
 Header fields to extract:
+- bank_code        : which issuer this document came from — exactly one of
+                     BBL | KBANK | SCB | BAY | KTC | GHL | PAYPAL | SIAMPAY, or null if none of them
+                     issued it. The ISSUER of this document, never the merchant's own bank account
+                     printed on it, and never guessed from the filename.
 - bank_company_name : ชื่อนิติบุคคลของธนาคาร (ผู้ออกเอกสาร) จาก header/footer ของธนาคาร — ไม่ใช่ชื่อร้านค้า
 - branch_no        : รหัสสาขาของธนาคาร (ถ้ามี) — look carefully near สาขา/สาขาที่/สถานประกอบการ/BRANCH/Head Office; this field is frequently missed, re-check before returning null
 - bank_name        : ชื่อธนาคารภาษาไทย (กำหนดตายตัวในแต่ละ bank prompt)
@@ -43,7 +47,7 @@ Detail row fields (one object per card/payment type row):
 - total        : net amount credited to merchant per row (AMOUNT CREDIT TO MERCHANT / จำนวนเงินสุทธิ)
 
 Output structure:
-{"bank_company_name":…,"branch_no":…,"bank_name":…,"doc_name":…,"company_name":…,"doc_date":…,"doc_no":…,"merchant_name":…,"merchant_id":…,"tax_ids":[…],"details":[{"transaction":…,"pay_amt":…,"commis_amt":…,"tax_amt":…,"total":…}]}
+{"bank_code":…,"bank_company_name":…,"branch_no":…,"bank_name":…,"doc_name":…,"company_name":…,"doc_date":…,"doc_no":…,"merchant_name":…,"merchant_id":…,"tax_ids":[…],"details":[{"transaction":…,"pay_amt":…,"commis_amt":…,"tax_amt":…,"total":…}]}
 """
 
 _BASE_INTRO = (
@@ -65,7 +69,8 @@ def build_combined_prompt(layouts: list[str]) -> str:
     return (
         _BASE_INTRO + "\n\n"
         "Step 1 — Identify the bank: match the document header/footer/company name "
-        "against the BANK REFERENCE below.\n"
+        "against the BANK REFERENCE below, and report the entry you matched in the "
+        "bank_code field.\n"
         "Step 2 — Apply the matched bank's column mapping and quirks.\n"
         "Step 3 — If no bank matches, use best judgment from visible column labels.\n\n"
         f"BANK REFERENCE:\n{sep}{bank_ref}{sep}" + ROW_RULES + OUTPUT_RULES

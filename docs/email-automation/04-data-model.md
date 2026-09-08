@@ -24,6 +24,7 @@ One row per BU (`tenant_id` is the primary key). What Carmen wrote through
 | `gmail_confirm_code` | `varchar(32)`, nullable | `20260807000000` | Kept as a fallback; expect `null` — see [06-decision-log.md](06-decision-log.md) |
 | `gmail_confirm_at` | `timestamptz`, nullable | `20260807000000` | When a confirmation code was last seen |
 | `gmail_confirmed_at` | `timestamptz`, nullable | `20260807020000` | When the poll followed the confirmation **link** and Google accepted it — the real "forward is live" signal today |
+| `auto_post` | `boolean not null default false` | `20260829000000` | Post a **clean** document without a human — one `_review_flags()` had nothing to say about. Anything flagged parks either way (decision #24). **Default false**: a BU switching the feature on gets review on everything, and turns it off once it trusts the queue. Written only by `PUT /api/v1/email/settings/auto-post`, never by the settings save |
 | `created_by` / `updated_by` / `created_at` / `updated_at` | via `TimestampMixin` + `WriterMixin` | `20260803000000` | Standard audit columns |
 
 **Index:** `uq_email_ingest_tag` — unique on `ingest_tag` **where `ingest_tag is not null`**
@@ -50,7 +51,7 @@ trail for every outcome, `reason_code` taxonomy included.
 | `tenant_id` | `uuid not null`, FK → `tenants` | |
 | `message_id` | `varchar(500) not null` | RFC-822 `Message-ID`, or `no-id-<uid>` when a message has none |
 | `attachment` | `varchar(255) not null default ''` | Filename, truncated to 255 chars |
-| `status` | `varchar(20) not null default 'received'` | `received` \| `posted` \| `failed` \| `skipped` |
+| `status` | `varchar(20) not null default 'received'` | `received` \| `pending_review` \| `posted` \| `rejected` \| `failed` \| `skipped` |
 | `task_id` | `uuid`, FK → `ocr_tasks(id)`, nullable | Set once extraction has created a task |
 | `bank_code` | `varchar(20)`, nullable | Recorded even on failure — see below |
 | `doc_no` | `varchar(100)`, nullable | The document number, once known |
@@ -58,11 +59,23 @@ trail for every outcome, `reason_code` taxonomy included.
 | `reason_code` | `varchar(50)`, nullable | Stable identifier — see the taxonomy below |
 | `error_message` | `text`, nullable | Human-readable detail |
 | `attempts` | `integer not null default 0` | Always `1` in practice — see [Not built](02-architecture.md#not-built)-adjacent note in 05-operations |
+| `review_payload` | `jsonb`, nullable | The extracted document a reviewer edits, **only while `pending_review`**. Cleared by `_finish()` on every terminal transition. Keys: `extracted`, `flags`, `unmapped`, `guessed`, and `suggested` — the last being the dept/acc the AI chose, which since decision #25 lives here and nowhere else until a human approves ([shape](07-human-in-the-loop.md)) |
+| `reviewed_by` | `varchar(36)`, nullable | `carmen_user_id` of whoever approved or rejected it. No FK — there is no users table, and the id is opaque to us |
+| `reviewed_by_name` | `varchar(100)`, nullable | Their username, from the same session claims. Stored because an opaque uuid answers nobody's question about who posted a JV |
+| `reviewed_at` | `timestamptz`, nullable | When they did |
+| `dismissed_at` | `timestamptz`, nullable | **Read-only since §18** — nothing writes it any more. It survives because the 2026-09-03 migration back-dated every historical `failed`/`rejected`/`skipped` row as dismissed, and `_attention` subtracts them so that pile does not light the queue's dot for ever. The gesture it was added for is gone: dismissal existed to stop `review` filling with rows it could never clear (§13 #54), and `review` holds only `pending_review` now. Not a soft delete, and this table has no `deleted_at` for it to be confused with |
 
 **Indexes:** `uq_email_documents_message` — unique on `(tenant_id, message_id, attachment)`,
 **this index is the dedupe**, not a constraint that happens to also prevent duplicates.
 `ix_email_documents_tenant_created` on `(tenant_id, created_at desc)`, for the per-BU
-document-history read.
+document-history read. `ix_email_documents_pending` is partial — `(tenant_id, created_at)
+WHERE status = 'pending_review'` — because the queue screen and the 50-document backlog cap
+both ask only that question, and the partial index stays small however long the ledger gets.
+
+The backlog cap writes **no row at all**: past 50 pending, the mail is handed back unread
+by the same `_HOLD` path that runs out of credits, so nothing is charged and the message
+replays on the poll after someone clears the queue. There is no `reason_code` for it
+because there is no ledger row to carry one.
 
 `bank_code` and `doc_no` are recorded on failed rows too, deliberately: several BUs failing
 on the same issuer at once is the only early warning that a bank changed its report format,
@@ -120,13 +133,17 @@ every raise site in `_run_document()` / `_open_or_fail()` and the three `except`
 | `unreadable_document` | `_open_or_fail()` — bad magic bytes or corrupt PDF | No | — | `skipped` |
 | `wrong_pdf_password` | `_open_or_fail()` — every password tried, none worked | No | — | `skipped` |
 | `unreadable_document` | `create_task` / `extract_stateless` / `finalize_extraction` threw — **inside the refund boundary** | Yes | **Yes** — the only refund left in the pipeline | `failed` |
-| `tax_id_mismatch` | `foreign_tax_id()` finds a conflict | Yes | No | `failed` |
-| `duplicate_document` | `extracted.is_duplicate` | Yes | No | `failed` |
-| `mapping_incomplete` | GL mapping still missing after the AI-fill attempt | Yes | No | `failed` |
-| `unreadable_document` | `build_jv_rows()` produces no postable amount | Yes | No | `failed` |
-| `carmen_rejected` | No posting credential, or no Carmen host known for the BU | Yes | No | `failed` |
-| `carmen_rejected` | `post_gljv()` returns a non-zero `Code` | Yes | No | `failed` |
-| `carmen_rejected` | `CarmenAPIError` — transport/network failure | Yes | No | `failed` |
+| `unreadable_document` | anything else unhandled — the generic `except` | Yes | No | `failed` |
+| `duplicate_document` | `_already_pending()` — an identical document is already in the queue (review mode only) | Yes | No | `failed` |
+| `tax_id_mismatch` | `foreign_tax_id()` finds a conflict | Yes | No | **`pending_review`** |
+| `duplicate_document` | `extracted.is_duplicate` | Yes | No | **`pending_review`** |
+| `mapping_incomplete` | GL mapping still missing after the AI-fill attempt (auto-post only — with review on it parks with the gap named) | Yes | No | **`pending_review`** |
+| `unreadable_document` | `build_jv_rows()` produces no postable amount | Yes | No | **`pending_review`** |
+| `carmen_unauthorized` | No posting credential, or no Carmen host known for the BU | Yes | No | **`pending_review`** |
+| `carmen_unauthorized` | `CarmenAPIError` 401/403 — also flags the credential via `mark_token_unverified` | Yes | No | **`pending_review`** |
+| `carmen_rejected` | `post_gljv()` returns a non-zero `Code` | Yes | No | **`pending_review`** |
+| `carmen_rejected` | `CarmenAPIError` — transport/network failure. The message carries *check whether the JV posted before approving* | Yes | No | **`pending_review`** |
+| `rejected_by_reviewer` | A human rejected it in the queue; the optional free-text reason lands in `error_message` | Yes | **No** — the vision call ran, and that is what the credit paid for | `rejected` |
 | *(none)* | Full pipeline completes | Yes | — | `posted` |
 
 The rule, stated once: **the charge follows the vision call, not the outcome.** A pre-charge
@@ -135,6 +152,41 @@ Once `finalize_extraction` has returned, the model has run and been billed to us
 document keeps its charge no matter what happens next — a duplicate, a foreign tax ID, an
 unmappable account and a Carmen refusal are all decisions taken *about a document we
 successfully read*, not failures to read it.
+
+**How the six `skipped` reasons reach a reader (2026-09-04, §18).** The charge is a billing
+fact and stopped being the axis the queue sorts on. What decides is **volume**:
+
+- `no_rule_match` and `unreadable_document` fire per *attachment* on mail that was
+  legitimately this BU's — the signature logo, the summary PDF inside every bank zip, 97 of
+  one dev BU's 140 rows. They are in no status chip; `today` and `all` list them, which is
+  where a too-narrow filename pattern is diagnosed. This is the same call `NOTIFIABLE_SKIPS`
+  already made for the bell.
+- `wrong_pdf_password`, `sender_not_allowed`, `unsupported_attachment` and `ingest_paused`
+  are ordinary rows under `Not posted`, one per attachment, carrying `Open settings` where
+  there is a setting that clears them. Folding them into one row per reason was built and
+  removed twice — see §18 #85.
+
+`unreadable_document` is suppressed **only** where `status = 'skipped'`. The same code on a
+`failed` row was written by the generic handler or inside the refund boundary, which is a
+crash, and stays a red row on `Not posted`.
+
+**And its corollary, added 2026-09-03: a document we charged for stays reviewable.** Every
+`pending_review` in the table above used to be `failed`, which threw away a reading the
+customer had paid for and left re-scanning the same file by hand as the only recovery. The
+reading is kept, the reason is recorded on the row, and the document lands in the queue
+where the one thing that can clear it — a person — already is. `_park_or_finish()` in
+`_run_document` is the whole of that rule.
+
+Three post-extraction cases stay terminal, each for its own reason:
+
+- the **generic `except`**, because it can fire *after* `post_gljv` returned zero
+  (`_mark_submitted` and `_post_input_tax` both run past that point) and an Approve button
+  on a JV already in Carmen's books invites a double post;
+- the **refund boundary**, because the money went back and there is no reading to park —
+  `extracted` is dropped there before the re-raise so that is true by construction;
+- **`_already_pending`**, because the reviewable copy is already in the queue and parking a
+  second would put two identical rows in front of the reviewer. This is the only `_Skip`
+  raised with `reviewable=False`.
 
 The single exception is the **refund boundary** in `_run_document()`: the `try` wrapping
 `create_task` + `extract_stateless` + `finalize_extraction`. Everything in it can fail
@@ -173,11 +225,20 @@ how the design changed (full narrative in [06-decision-log.md](06-decision-log.m
 | `20260807000000_email_gmail_confirm_code.sql` | `gmail_confirm_code`, `gmail_confirm_at` |
 | `20260807010000_email_owner_emails.sql` | `owner_emails` — the optional sender allow-list |
 | `20260807020000_email_gmail_auto_confirm.sql` | `gmail_confirmed_at` — the real completion signal, once it was found Google no longer prints a code |
+| `20260829000000_email_review_queue.sql` | Human-in-the-loop: `review_payload`, `reviewed_by`, `reviewed_at`, the partial pending index, and `auto_post` on the settings table |
+| `20260829010000_email_review_reviewer_name.sql` | `reviewed_by_name` — added a day later, as its own migration, because `20260829000000` had already been applied |
 
 ## Deliberately not stored
 
-Attachment bytes, message bodies (beyond the ephemeral in-memory read needed to find a
-Gmail confirmation link), and extracted line items — all consistent with the wider
-"no file storage, extract-and-display" pattern documented in the root `CLAUDE.md`
-(*Key Design Decisions* → **No file storage**, **Credit card line items are NOT
-persisted**). Only the `credit_cards` header row and this ledger persist.
+Attachment bytes and message bodies (beyond the ephemeral in-memory read needed to find a
+Gmail confirmation link) — consistent with the wider "no file storage,
+extract-and-display" pattern documented in the root `CLAUDE.md` (*Key Design Decisions* →
+**No file storage**).
+
+Line items are the exception now, and only just: `review_payload` holds the extracted
+document — line items included — **while it is waiting for a human**, because there is
+nothing else to show them and no second extraction to fall back on. It is cleared the
+moment the document reaches a terminal state, so the steady state is still "no line items
+stored". That is why a resolved row in the queue shows the JV it became rather than an
+amount: the amount is genuinely gone, and rendering `0.00` would be a wrong number instead
+of a missing one.

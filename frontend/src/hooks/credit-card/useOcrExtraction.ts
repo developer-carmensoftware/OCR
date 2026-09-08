@@ -11,6 +11,7 @@ import { appKey, readAccountingConfig, writeAccountingConfig } from '../../lib/s
 import type { ModalConfig } from '../useModal'
 import type { BankCode } from '../../types/api'
 import { normalizeDateStringToCE } from '../../lib/date'
+import type { ExtractionWarning } from '../../lib/reviewReasons'
 
 export interface HeaderData {
   DateProcessed: string
@@ -54,7 +55,7 @@ export interface OcrExtractionHook {
   cardId: string | null
   headerData: HeaderData | Record<string, string>
   details: DetailRow[]
-  warnings: string[]
+  warnings: (ExtractionWarning | string)[]
   originalDetails: DetailRow[]
   originalHeader: HeaderData | Record<string, string>
   processFile: (filesToProcess: File[], pdfPassword?: string) => Promise<void>
@@ -82,7 +83,7 @@ export interface OcrDraftState {
   cardId: string | null
   headerData: Record<string, string>
   details: DetailRow[]
-  warnings: string[]
+  warnings: (ExtractionWarning | string)[]
   originalHeader: Record<string, string>
   originalDetails: DetailRow[]
 }
@@ -95,19 +96,32 @@ const EXTRACTION_STAGES = [
   { at: 35, text: 'Complex document — still working…' },
 ]
 
-// Persists bank code + detail rows for the mapping step (ocr_wizard_state) and merges vendor
-// company/branch into accountingConfig so the GL-mapping step pre-fills correctly.
-// Kept outside the hook because it is a pure side effect with no React state dependency.
-function _persistOcrLocalStorage(ext: Record<string, unknown>, detailsList: DetailRow[]): void {
+/**
+ * Persists bank code + detail rows for the mapping step (`ocr_wizard_state`) and merges the
+ * vendor company/branch into `accountingConfig` so the GL-mapping page pre-fills correctly.
+ *
+ * Exported because the email review modal opens the same mapping page for a document the
+ * wizard never touched. Without this write that page has no idea which payment types it is
+ * being asked about, and opens with nothing to map — which is the bug it was.
+ *
+ * Pure side effect, no React state, so it lives outside the hook.
+ */
+export function persistScanForMapping(
+  ext: Record<string, unknown>,
+  // Loose on purpose: the review modal holds `DetailTable`'s row type, whose fields are
+  // optional. This only serialises them.
+  detailsList: Array<Record<string, string | undefined>>,
+  // The review modal knows the bank from the ledger row — the pipeline's own detection,
+  // already decided — so it says so rather than letting this re-guess from the payload.
+  bankCode?: string
+): void {
   try {
-    const bankCode =
+    const bank =
+      bankCode ||
       detectBankFromExtracted(ext as Record<string, string | null | undefined>) ||
       detectBankFromCompanyName(ext.bank_company_name as string) ||
       ''
-    localStorage.setItem(
-      appKey('ocr_wizard_state'),
-      JSON.stringify({ bank: bankCode, details: detailsList })
-    )
+    localStorage.setItem(appKey('ocr_wizard_state'), JSON.stringify({ bank, details: detailsList }))
   } catch {
     /* ignore */
   }
@@ -151,7 +165,7 @@ export function useOcrExtraction({
   const [cardId, setCardId] = useState<string | null>(null)
   const [headerData, setHeaderData] = useState<Record<string, string>>({})
   const [details, setDetails] = useState<DetailRow[]>([])
-  const [warnings, setWarnings] = useState<string[]>([])
+  const [warnings, setWarnings] = useState<(ExtractionWarning | string)[]>([])
   const [originalDetails, setOriginalDetails] = useState<DetailRow[]>([])
   const [originalHeader, setOriginalHeader] = useState<Record<string, string>>({})
 
@@ -175,10 +189,10 @@ export function useOcrExtraction({
       rawDetails.length ? rawDetails : [{ ...EMPTY_DETAIL_ROW }]
     ).map(row => ({ ...EMPTY_DETAIL_ROW, ...row, _uid: crypto.randomUUID() }))
     setDetails(detailsList)
-    setWarnings((ext.warnings as string[] | undefined) || [])
+    setWarnings((ext.warnings as (ExtractionWarning | string)[] | undefined) || [])
     setOriginalDetails(structuredClone(detailsList))
     setOriginalHeader(structuredClone(header))
-    _persistOcrLocalStorage(ext, detailsList)
+    persistScanForMapping(ext, detailsList)
   }
 
   function showDuplicateModal(docNo: string) {

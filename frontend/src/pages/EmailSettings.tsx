@@ -160,7 +160,10 @@ export default function EmailSettings() {
   return (
     <div className="email-settings-page">
       <h1>
-        <Mail size={20} /> Email Automation
+        {/* One name for the feature, and it is the one the queue page wears. Messages that
+            send a reader here name it too ("Arrived while AI JV Automation was switched
+            off"), so the heading they land on has to be the same words. */}
+        <Mail size={20} /> AI JV Automation
       </h1>
       <p className="email-settings-page__lede">
         Forward a bank&apos;s fee report to the address below and it is extracted and posted to

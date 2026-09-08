@@ -45,6 +45,10 @@ class EmailIngestSettings(Base, TimestampMixin, WriterMixin):
     # is keying those documents by hand, and a manual Carmen entry is invisible to the
     # duplicate guard. Null = no filtering. See the migration for the full reasoning.
     enabled_at = Column(DateTime(timezone=True), nullable=True)
+    # False (default) = every document parks at pending_review for a human. True = post
+    # straight to Carmen, which is what the pipeline did before this column existed. The
+    # BU turns it on once it trusts the extraction; nothing turns it on automatically.
+    auto_post = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     # The customer's own addresses. Empty = accept any sender; non-empty = the message
     # must carry one of them in From/To/Cc. A second layer, not the routing key — these
     # headers are composed by the sender, unlike the envelope tag. See the migration.
@@ -81,6 +85,33 @@ class EmailIngestSettings(Base, TimestampMixin, WriterMixin):
     )
 
 
+class EmailQueueSeen(Base, TimestampMixin):
+    """Which of the review queue's amber dots this BU has already been shown.
+
+    `seen` maps chip name → the anomaly count somebody here has acknowledged, e.g.
+    `{"unposted": 49}`; the dot shows while the live count is higher. A count rather than a
+    timestamp because a document can become anomalous long after it arrived — parked on
+    Monday, rejected on Wednesday — and a count read fresh on every request catches that
+    where `max(created_at)` cannot.
+
+    **A table of its own rather than a column on `EmailIngestSettings`**, which already has
+    the one row per BU. That row gates a per-minute IMAP sweep through
+    `tags_awaiting_confirmation`'s `updated_at` filter, and its `WriterMixin` stamps
+    `updated_by` on every ORM write — so a filter chip click would reopen a mailbox
+    connection and rewrite who last changed the BU's email settings. See
+    20260902000000_email_queue_seen.sql for the two other designs this replaces.
+
+    No `WriterMixin` (that listener is half of what this table exists to avoid) and no
+    `SoftDeleteMixin`: it is one page's UI state, not business data, and losing a row costs
+    one extra dot.
+    """
+
+    __tablename__ = "email_queue_seen"
+
+    tenant_id = Column(PGUUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True)
+    seen = Column(_JSON, nullable=False, default=dict)
+
+
 class EmailDocument(Base, TenantFKMixin, TimestampMixin):
     """One row per (message, attachment) we have looked at — the dedupe ledger."""
 
@@ -97,6 +128,25 @@ class EmailDocument(Base, TenantFKMixin, TimestampMixin):
     reason_code = Column(String(50), nullable=True)
     error_message = Column(Text, nullable=True)
     attempts = Column(Integer, nullable=False, default=0)
+    # Set only while status == 'pending_review'; _finish clears it on every terminal
+    # transition. This is the one place extracted line items touch disk, and it lasts
+    # exactly as long as a human owes us a decision — see the migration for why that
+    # narrows "line items are NOT persisted" rather than repealing it.
+    review_payload = Column(_JSON, nullable=True)
+    # Who clicked approve/reject. Audit only: no FK, no enforcement — there is no users
+    # table, and any Carmen session for this BU can approve.
+    reviewed_by = Column(String(36), nullable=True)
+    # Their display name at decision time. Denormalised because the usual route
+    # (tenant_lookup.username_map -> ocr_sessions) decays to a raw UUID once the session
+    # is 90 days scrubbed, and "who approved this JV" must still read as a name in a year.
+    reviewed_by_name = Column(String(100), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    # Somebody put this row away. Only ever set on a row with no `review_payload`: a parked
+    # document is retired with Reject, which records who and why, and two ways to retire a
+    # real document is worse than one. Dismissed rows leave the Review chip and stay
+    # visible under Not posted and Today — this is not a soft delete, and this table has
+    # no `deleted_at` for it to be confused with.
+    dismissed_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index("uq_email_documents_message", "tenant_id", "message_id", "attachment", unique=True),

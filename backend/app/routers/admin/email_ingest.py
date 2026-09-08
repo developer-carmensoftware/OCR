@@ -123,6 +123,11 @@ async def list_email_documents(
                 "jv_no": doc.jv_no,
                 "error_message": doc.error_message,
                 "task_id": str(doc.task_id) if doc.task_id else None,
+                # Name first: the id is here for the rare case two people share a
+                # display name, but nobody debugging a JV wants to read a UUID.
+                "reviewed_by_name": doc.reviewed_by_name,
+                "reviewed_by": doc.reviewed_by,
+                "reviewed_at": doc.reviewed_at.isoformat() if doc.reviewed_at else None,
                 "charged_docs": charged,
                 "original_filename": original,
                 "created_at": doc.created_at.isoformat() if doc.created_at else None,
@@ -232,7 +237,7 @@ async def email_ingest_health(
 @router.get("/email-ingest/business-units")
 async def list_email_business_units(
     db: AsyncSession = Depends(get_db),
-    _admin: AdminPrincipal = Depends(require_permission("configs", "write")),
+    admin: AdminPrincipal = Depends(require_permission("configs", "write")),
 ):
     """Every BU that has configured email ingest, and how far each one got.
 
@@ -240,14 +245,20 @@ async def list_email_business_units(
     ingest tag — and the tag IS the authority to write documents into that BU's ledger
     and spend its credits. `viewer` holds every `*:read`, so a read gate would hand that
     out. Same reasoning `PUT /carmen/settings` already applies to `ingest_address`.
+
+    That same tag is exactly why a scoped admin narrows here rather than seeing the
+    whole table like `list_email_documents` lets them opt into: unlike a document row,
+    this row's payload IS the credential for another BU's inbound mail.
     """
-    rows = (
-        await db.execute(
-            select(EmailIngestSettings, Tenant)
-            .join(Tenant, Tenant.id == EmailIngestSettings.tenant_id)
-            .order_by(Tenant.bu_code)
-        )
-    ).all()
+    scope = None if admin.is_global else admin.tenant_scope
+    stmt = (
+        select(EmailIngestSettings, Tenant)
+        .join(Tenant, Tenant.id == EmailIngestSettings.tenant_id)
+        .order_by(Tenant.bu_code)
+    )
+    if scope:
+        stmt = stmt.where(EmailIngestSettings.tenant_id == scope)
+    rows = (await db.execute(stmt)).all()
 
     # One grouped query rather than `document_counts` per tenant: that helper takes a
     # single settings row and would be N round trips here.

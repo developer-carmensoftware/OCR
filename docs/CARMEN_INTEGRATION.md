@@ -11,8 +11,10 @@
 >
 > Companion documents: [email-automation/](email-automation/README.md) (our own engineering
 > docs — architecture, data model, operations, decision log), [Security_Trust_Overview.md](Security_Trust_Overview.md).
-> The v1 pilot design (human-approval step, own admin UI) is superseded and lives only on
-> the unmerged `feat/email-flow` branch — see `email-automation/06-decision-log.md §17`.
+> The v1 pilot design (own admin UI, `email_flow_*` tables) is superseded and lives only on
+> the unmerged `feat/email-flow` branch. Its *approval step*, however, came back on
+> 2026-08-28 in a different form — see §0.2 below and
+> `email-automation/06-decision-log.md §18`.
 
 ---
 
@@ -37,10 +39,42 @@ Bank ──mail──> Customer mailbox ──┬── auto-forward rule ──
 
 The three things that make this different from the pilot:
 
-1. **No human approval step.** Documents post to Carmen automatically.
+1. **Approval is a per-BU switch, not a fixed step.** A BU starts with review on: the
+   document is read, mapped and queued in the OCR app, and posts only when someone
+   approves it. They turn review off (`auto_post`) once the queue has earned it, and from
+   then on a document we read with **nothing to flag** posts automatically — one we read
+   with a warning, a guessed GL mapping, amounts that do not reconcile or no document
+   number still waits for a person, under either setting. See §0.2.
 2. **Settings live in Carmen.** The customer configures everything on Carmen's screens;
-   Carmen calls our API to store it. The OCR app has no settings UI for this feature.
+   Carmen calls our API to store it. The OCR app has no settings UI for this feature —
+   with one exception, the review queue in §0.2, which is a work surface rather than a
+   settings screen.
 3. **Carmen is notified by webhook**, so it can react without polling us.
+
+### 0.2 Where the human sits (2026-08-28, narrowed 2026-09-04)
+
+Between "we read it" and "it posts". Always, when `auto_post` is off — which is the default,
+and how every BU starts. With it on, for any document the reading had something to say
+about: `auto_post` skips the approval of an **ordinary** document, never of a doubtful one.
+The test is the queue's own reason column being empty, which it prints as *Ready to post*.
+
+```text
+forwarded mail → we read it → GL mapping → [ queued for approval ] → post to Carmen
+                                                    ▲
+                                     #/CreditCardOCR in the OCR app
+```
+
+- The queue is the **Credit Card module's landing page** in the OCR app, so Carmen's
+  existing SSO deep-link opens it. The manual scan wizard moved one level down, to
+  `#/CreditCardOCR/manual`; nothing about that wizard changed.
+- The reviewer can correct the header, the line items, the GL mapping and whether the
+  input-tax record is written, then posts with one click. What they see is what posts.
+- Rejecting is terminal and does **not** refund the document — the extraction ran, which
+  is what was charged for.
+- Nothing about the JV payload, the endpoints Carmen calls, or the settings contract
+  changes. This is a pause in our pipeline, not a change to yours.
+- While review is on, `document.posted` (§3.3) would fire on approval rather than on
+  arrival. It is still unbuilt.
 
 ### What the customer does (the whole setup)
 
@@ -265,8 +299,12 @@ PUT /api/v1/carmen/settings
   may therefore be `null`, and a BU that only ever forwards by hand never has to fill it in.
 - **A rule identifies a bank, never a BU.** "`no-reply@ktc.co.th` sends KTC fee invoices" is
   equally true whoever the document belongs to. Ownership is the address's job (§2.5),
-  confirmed by the tax ID (§2.4); a rule picks the bank-specific extraction prompt and
-  decides whether the attachment is a document at all.
+  confirmed by the tax ID (§2.4); a rule decides whether the attachment is a document at
+  all, and carries that bank's patterns and PDF password.
+  Since 2026-09-03 it does **not** pick the extraction prompt or the stored `bank_code`:
+  the document names its own issuer and the rule's bank is only the fallback for one that
+  cannot be read (decision log #21). A pattern broad enough to catch another bank's files
+  is therefore safe — it costs a warning on the review row, not a wrong vendor.
 - `pdf_password` is accepted on write, stored encrypted, and **never returned** by any
   endpoint. Reads expose `has_password: true/false` only. Only **this BU's own** passwords
   are ever tried on its files; they are tried in turn because two overlapping rules can
@@ -602,8 +640,11 @@ happened", not as an error.**
 
 ### 3.3 `document.posted` / `document.failed` — **proposed**
 
-Not in the original request, but with no human approval step these are the only way
-Carmen (or the customer) learns what happened to a forwarded document.
+Not in the original request. For a BU running with `auto_post` on, these are the only way
+Carmen (or the customer) learns what happened to a document that posted without anyone
+looking at it. With review on — and for any flagged document either way — the queue itself
+is that answer, and the events would fire when the reviewer approves rather than when the
+mail lands.
 
 ```jsonc
 {
@@ -640,11 +681,14 @@ Carmen (or the customer) learns what happened to a forwarded document.
 - **`sender_not_allowed`** — the BU set `owner_emails` (§2.3) and none of them appeared in
   the message's `From`/`To`/`Cc`. Nothing was charged. Expect this when a colleague
   forwards from an address nobody registered.
-- **`carmen_unauthorized`** — Carmen answered the posting call with **401/403**, or the BU
-  has no stored token/host at all. Nothing is wrong with the document and re-sending it
-  will not help: the BU's posting credential (§2.6) must be set again, after which the
-  document can be replayed. Split out of `carmen_rejected` on 2026-08-28, when three
-  documents of one BU were reported as rejected JVs by a token that had simply expired.
+- **`carmen_unauthorized`** — Carmen answered **401/403** to the posting call *or to the
+  account/department master read* that the GL suggester makes first, or the BU has no
+  stored token/host at all. Nothing is wrong with the document and re-sending it will not
+  help: the BU's posting credential (§2.6) must be set again, after which the document can
+  be replayed. Split out of `carmen_rejected` on 2026-08-28, when three documents of one BU
+  were reported as rejected JVs by a token that had simply expired; extended to the master
+  read on 2026-09-04, when the same expiry surfaced instead as a missing GL mapping and
+  sent the reader to the wrong screen.
   `carmen_rejected` now means only what its name says — Carmen read the JV and declined
   it (`Code != 0`), and the `message` carries that `Code` and Carmen's own text.
 
@@ -710,29 +754,37 @@ Two things that still need Carmen's side, and are the reason §5 is not empty:
 
 1. **Revocation must actually happen on the OFF switch.** Deleting our copy is not
    revoking; if the OFF switch only updates a flag, the credential outlives the setting.
-2. **Mark automated postings in `JvhSource`.** No human saw these documents. Accounting
-   needs to tell them apart from wizard postings when reviewing later.
+2. **Mark automated postings in `JvhSource`.** Accounting needs to tell email-sourced
+   postings apart from wizard postings when reviewing later. Still true with review on: an
+   approved document was checked on a screen, not keyed by hand, and the approver's name is
+   recorded on our side rather than in Carmen.
 
 The JV content itself is unchanged from what the wizard posts today
 (`JvhSeq/JvhDate/Prefix/JvhSource/Detail[]`), and the GL accounts come from the mapping
 the customer has already configured in the OCR app.
 
-**GL mapping the customer has not set is filled by AI, and saved.** A BU that never opened
-the mapping page in the OCR app would otherwise have every document park at
-`mapping_incomplete` — silence, for a feature sold as automatic. So when a payment type or
-a fixed field has no mapping, we ask the same suggester the wizard uses (against that BU's
-own Carmen account and department master, with Carmen's `DefaultAccount` restrictions
-enforced), post with the result, and **write it back to the BU's config**. Only the first
-document of a given payment type is a guess; every later one is deterministic.
+**GL mapping the customer has not set is proposed by AI, and confirmed by a person.** A BU
+that never opened the mapping page in the OCR app would otherwise have every document stop
+dead — silence, for a feature sold as automatic. So when a payment type or a fixed field has
+no mapping, we ask the same suggester the wizard uses (against that BU's own Carmen account
+and department master, with Carmen's `DefaultAccount` restrictions enforced) and put the
+answer in front of a reviewer, with the rows the AI chose marked.
 
-Two consequences worth stating plainly, because they are the price of not blocking:
+**The document waits.** A GL rule invented thirty seconds ago is not something to post
+unattended, so it goes to the review queue under either setting of `auto_post` — the
+reviewer sees the proposal filled in rather than a blank form, and approving is what saves
+it to the BU's config. From then on that payment type is deterministic and posts by itself.
+So the review happens **once per payment type**, not once per document.
 
-- **A guess can be wrong.** The customer sees and corrects the mapping in the OCR app —
-  and a correction sticks, because saving never overwrites what they set. A JV already
-  posted under a wrong account has to be fixed in Carmen.
-- **`mapping_incomplete` still exists**, but only as the fallback for when the suggester
-  produced nothing usable or Carmen's master was unreachable — not as a door that stays
-  shut until the customer configures something.
+Two consequences worth stating plainly:
+
+- **A proposal can be wrong**, which is why one is never posted without a person. The
+  reviewer corrects it on the same screen, and a correction sticks — saving never
+  overwrites what the customer set themselves.
+- **A payment type the suggester cannot map** (no usable answer from the model) reaches the
+  reviewer as an empty picker to fill, not as a refusal. The one thing that ends the
+  document is a dead posting credential, which is reported as `carmen_unauthorized` and
+  names the credential rather than the mapping.
 
 ---
 
