@@ -787,10 +787,47 @@ async def test_the_allocator_skips_a_tag_another_bu_already_holds():
 # ── auto_post: the switch that turns review off ───────────────────────────────
 
 
-def test_auto_post_defaults_to_review_mode():
-    """The safe direction. A payload that says nothing about it means "ask a human",
-    so a BU that has never heard of the switch does not post unsupervised."""
-    assert SettingsIn(uri="h", bu="b").auto_post is False
+def test_a_payload_that_says_nothing_about_the_switch_decides_nothing():
+    """`None`, not `False` — the one field on this full-replace payload that merges.
+
+    It has to be, because this route is the only writer left (the queue's gear and
+    `PUT /api/v1/email/settings/auto-post` went on 2026-09-08). Absent used to mean False,
+    so a caller that does not know the field — our own `#/email-settings` page, or a Carmen
+    build that predates it — turned review back on with every unrelated settings save.
+    """
+    assert SettingsIn(uri="h", bu="b").auto_post is None
+
+
+@pytest.mark.asyncio
+async def test_omitting_the_switch_keeps_it_but_sending_it_writes_it():
+    """The whole point of the `None` default, exercised both ways on one stored row.
+
+    `#/email-settings` saves a filename pattern by PUTting the complete settings back with
+    no `auto_post` in it. Before merge-on-omit that silently switched review on for a BU
+    that had turned it off — and with the queue's gear gone there is nowhere to notice, let
+    alone put it back.
+    """
+    tenant = _tenant()
+    row = SimpleNamespace(
+        tenant_id=tenant.id,
+        enabled=False,
+        auto_post=True,
+        ingest_tag="a1b2c3d4",
+        owner_emails=[],
+        tax_ids=[],
+        rules=[],
+    )
+
+    async def _save(**over):
+        db = AsyncMock()
+        # No tax_ids and no rules, so `get_settings` is the only query this payload makes.
+        db.execute = AsyncMock(side_effect=[_exec(scalar_one_or_none=row)])
+        return await es.save_settings(
+            db, tenant, SettingsIn(uri="h", bu="b", enabled=False, **over)
+        )
+
+    assert (await _save()).auto_post is True  # omitted — the stored value survives
+    assert (await _save(auto_post=False)).auto_post is False  # named — it is written
 
 
 def test_to_response_reports_auto_post_but_never_as_a_blocker():

@@ -15,7 +15,6 @@ import AppHeader from '../components/common/AppHeader'
 import UsageIndicator from '../components/common/UsageIndicator'
 import Pager from '../components/common/Pager'
 import QueueRow from '../components/credit-card/QueueRow'
-import QueueSettings from '../components/credit-card/QueueSettings'
 import ReviewDocument from './ReviewDocument'
 import { useReviewQueue } from '../hooks/credit-card/useReviewQueue'
 import { prefetchGlMasters } from '../hooks/mapping/useGlMasters'
@@ -382,8 +381,10 @@ export default function ReviewQueue() {
           >
             <RefreshCw size={14} className={reloading || loading ? 'animate-spin' : ''} />
           </button>
-          {/* Nothing to configure until mail is actually arriving. */}
-          {configured && <QueueSettings autoPost={!!status?.auto_post} onChanged={reload} />}
+          {/* No auto-post switch here any more. It is one field of the BU's settings and
+              has one writer, `PUT /api/v1/carmen/settings` — Carmen's own settings screen.
+              Two writers for one boolean is what let an unrelated settings save turn review
+              back on behind the customer's back (2026-09-08). */}
           <button type="button" className="btn btn-primary" onClick={goManual}>
             <Upload size={14} /> {t('review.uploadDocuments')}
           </button>

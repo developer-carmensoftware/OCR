@@ -399,8 +399,11 @@ about it are deliberate:
 `#/CreditCardOCR` (`frontend/src/pages/ReviewQueue.tsx`) is the other half, and unlike
 `#/email-settings` it *is* customer-facing: it is the Credit Card module's landing page, so
 it is what Carmen's SSO deep-link opens. It lists this BU's email documents by status tab,
-opens a parked one at `#/CreditCardOCR/review?id=…` for approval, and hides the
-`auto_post` switch behind a gear. The manual wizard moved to `#/CreditCardOCR/manual`
+and opens a parked one at `#/CreditCardOCR/review?id=…` for approval. It carries no
+`auto_post` switch — that lives on Carmen's own settings screen, written through
+`PUT /api/v1/carmen/settings` and nowhere else (2026-09-08, decision #98). The gear that
+used to hold it here was a second writer, and an unrelated settings save could reset it.
+The manual wizard moved to `#/CreditCardOCR/manual`
 unchanged. It reads our own session JWT through `routers/email_review.py`, not the Carmen
 token path above — see [07-human-in-the-loop.md](07-human-in-the-loop.md).
 

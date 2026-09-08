@@ -139,9 +139,16 @@ post-extraction cases stay terminal: the generic `except` (it can fire after the
 the refund boundary (the money went back), and a second copy of something already queued.
 `_park_or_finish` in `_run_document` is the whole rule.
 
-**`auto_post` is per BU and defaults to `false`** (`email_ingest_settings.auto_post`,
-flipped only by `PUT /api/v1/email/settings/auto-post`, never by the settings save, which is
-a full replace). A BU switching the feature on gets review; they turn it off once the queue
+**`auto_post` is per BU and defaults to `false`** (`email_ingest_settings.auto_post`). Since
+2026-09-08 it has exactly **one writer, `PUT /api/v1/carmen/settings`** — Carmen's own
+settings screen — and it is the one field on that full-replace payload that **merges on
+omit** (`SettingsIn.auto_post: bool | None`). The queue's gear and
+`PUT /api/v1/email/settings/auto-post` are deleted: two writers meant an unrelated settings
+save reset the switch. `#/email-settings` has a checkbox for it (`setAutoPost`) — a second
+*client* of that one endpoint, not a second writer, and the service path for a BU whose
+Carmen has not shipped the control; every other save on that page omits the field, which is
+what the merge is for. A BU switching
+the feature on gets review; they turn it off once the queue
 has earned it. Backpressure, not refunds, protects a BU that stops reading its queue: past
 50 pending, mail is handed back unread and costs nothing.
 

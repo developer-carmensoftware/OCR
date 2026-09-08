@@ -735,7 +735,6 @@ const en = {
   'review.title': 'AI JV Automation',
   'review.back': 'Back',
   'review.refresh': 'Refresh',
-  'review.settings': 'Automation settings',
   'review.close': 'Close',
   // A dash, not "Book": the field is labelled Prefix and its values are book names, so the
   // word sat in the control reading exactly like a chosen one. The wizard's own config
@@ -772,15 +771,6 @@ const en = {
   'review.fBranch': 'Branch',
   'review.fMissing': 'Not on the document',
   'review.openJv': 'Open JV in Carmen',
-  'review.autoPostLabel': 'Post clean documents automatically',
-  // Says what still stops, because that is the part a person is trusting. The old copy
-  // ("nothing waits here for approval") described a switch that handed the whole queue
-  // over; this one only skips the documents there was nothing to say about.
-  'review.autoPostHint':
-    'A document we read with nothing to flag posts to Carmen on its own. Anything else still waits here - a warning, a GL mapping the AI had to guess, amounts that do not reconcile, or a missing document number.',
-  'review.autoPostSavedOn': 'Clean documents will now post on their own',
-  'review.autoPostSavedOff': 'Every document will wait for your approval',
-  'review.autoPostFailed': 'Could not save that setting',
   'review.unknownBank': 'Unknown',
   // -- Review screen: the JV pane, where GL rules are corrected in place ------
   'review.paneDocument': 'What the document says',
@@ -2361,7 +2351,6 @@ const th: Record<TKey, string> = {
   'review.title': 'AI JV Automation',
   'review.back': 'ย้อนกลับ',
   'review.refresh': 'รีเฟรช',
-  'review.settings': 'ตั้งค่าระบบอัตโนมัติ',
   'review.close': 'ปิด',
   // Field names and column headers stay English on this screen, in both locales. They are
   // the names Carmen shows an accountant every day — a JV's Dept / Account / Debit /
@@ -2395,12 +2384,6 @@ const th: Record<TKey, string> = {
   'review.fBranch': 'Branch',
   'review.fMissing': 'ไม่มีในเอกสาร',
   'review.openJv': 'เปิด JV ใน Carmen',
-  'review.autoPostLabel': 'โพสต์เอกสารที่พร้อมโดยอัตโนมัติ',
-  'review.autoPostHint':
-    'เอกสารที่อ่านแล้วไม่มีอะไรต้องตรวจจะโพสต์เข้า Carmen เอง นอกนั้นยังรอที่นี่เหมือนเดิม - มีคำเตือนจากการอ่าน, AI ต้องเดาผังบัญชีให้, ยอดไม่สมดุล หรือไม่มีเลขที่เอกสาร',
-  'review.autoPostSavedOn': 'ต่อจากนี้เอกสารที่พร้อมจะโพสต์เอง',
-  'review.autoPostSavedOff': 'เอกสารทุกใบจะรอให้คุณอนุมัติ',
-  'review.autoPostFailed': 'บันทึกการตั้งค่าไม่สำเร็จ',
   'review.unknownBank': 'ไม่ทราบ',
   // -- Review screen: the JV pane, where GL rules are corrected in place ------
   'review.paneDocument': 'เอกสารบอกว่า',

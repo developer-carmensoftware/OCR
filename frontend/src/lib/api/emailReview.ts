@@ -100,6 +100,8 @@ export interface ReviewDocumentDetail extends ReviewDocument {
  *  disagree about whether a BU is set up. */
 export interface ReviewStatus {
   enabled: boolean
+  /** Read-only here. The switch is a field of the BU's settings and is written by
+   *  `PUT /api/v1/carmen/settings` — Carmen's own screen — not from this app. */
   auto_post: boolean
   entitled: boolean
   ingest_address: string | null
@@ -229,16 +231,4 @@ export async function rejectDocument(id: string, reason?: string): Promise<void>
     body: JSON.stringify({ reason: reason || null }),
   })
   if (!res.ok) throw new Error(`Reject failed (${res.status})`)
-}
-
-/** Turn review off, or back on. Its own endpoint: the settings save is a full replace,
- *  so flipping this through it would rewrite rules and passwords as a side effect. */
-export async function setAutoPost(on: boolean): Promise<boolean> {
-  const res = await apiFetch(API.emailReview.autoPost, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ auto_post: on }),
-  })
-  if (!res.ok) throw new Error(`Could not save (${res.status})`)
-  return ((await res.json()) as { auto_post: boolean }).auto_post
 }
