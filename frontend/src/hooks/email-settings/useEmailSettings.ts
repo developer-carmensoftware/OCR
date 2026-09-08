@@ -37,6 +37,8 @@ export interface EmailSettingsController {
   /** Per-input failures from `errors[]`, keyed by `field`. */
   fieldErrors: Record<string, string>
   setEnabled: (enabled: boolean) => Promise<boolean>
+  /** The review switch. The only caller that sends `auto_post` at all — see `put`. */
+  setAutoPost: (on: boolean) => Promise<boolean>
   setOwnerEmails: (emails: string[]) => Promise<boolean>
   setTaxIds: (taxIds: string[]) => Promise<boolean>
   setRules: (rules: EmailRulePayload[]) => Promise<boolean>
@@ -117,7 +119,13 @@ export function useEmailSettings(): EmailSettingsController {
   }, [reload])
 
   /** Send the whole thing, with one part overridden. Returns false on failure so the
-   *  caller can keep its inline form open instead of discarding what was typed. */
+   *  caller can keep its inline form open instead of discarding what was typed.
+   *
+   *  **`auto_post` is deliberately absent from the base body.** The server keeps the stored
+   *  value for a field this payload omits — the one exception to the full replace — so only
+   *  `setAutoPost` ever names it. Re-sending `settings.auto_post` here would work today and
+   *  break the moment this page's copy is stale (a colleague flipping it on Carmen's screen
+   *  while this tab sat open), which is a race no other field on this form has. */
   const put = useCallback(
     async (patch: Partial<Omit<SettingsPayload, 'uri' | 'bu'>>): Promise<boolean> => {
       setSaving(true)
@@ -191,6 +199,7 @@ export function useEmailSettings(): EmailSettingsController {
     error,
     fieldErrors,
     setEnabled: enabled => put({ enabled }),
+    setAutoPost: auto_post => put({ auto_post }),
     setOwnerEmails: owner_emails => put({ owner_emails }),
     setTaxIds: tax_ids => put({ tax_ids }),
     setRules: rules => put({ rules }),

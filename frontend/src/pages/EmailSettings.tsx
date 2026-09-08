@@ -205,6 +205,33 @@ export default function EmailSettings() {
         </div>
         {fieldErrors['enabled'] && <p className="email-setup__error">{fieldErrors['enabled']}</p>}
 
+        {/* The review switch. Carmen's own screen owns this decision for a customer
+            (CARMEN_INTEGRATION.md §2.7) — it is here so support can set it for a BU whose
+            Carmen has not shipped the control yet, and so the field is exercised end to end
+            like every other one on this page.
+
+            It is the one control here that lets a document reach Carmen unseen, so the hint
+            names what still stops rather than reassuring. */}
+        <div className="email-conn__row email-conn__row--stack">
+          <span className="email-conn__label">Posting without review</span>
+          <p className="email-setup__hint">
+            Off — the default — every document waits at the review queue for someone to approve. On,
+            a document we read with nothing to flag posts on its own; anything else still waits
+            there either way: a warning, a GL mapping the AI had to guess, amounts that do not
+            reconcile, a missing document number, or an unmapped payment type.
+          </p>
+          <label className="email-conn__toggle" style={{ alignSelf: 'flex-start' }}>
+            <input
+              type="checkbox"
+              checked={settings?.auto_post ?? false}
+              disabled={saving}
+              onChange={e => void ctrl.setAutoPost(e.target.checked)}
+            />
+            Post clean documents automatically
+            {saving && <Loader2 size={13} className="animate-spin" />}
+          </label>
+        </div>
+
         <div className="email-conn__row email-conn__row--stack">
           <span className="email-conn__label">Your email addresses</span>
           <p className="email-setup__hint">

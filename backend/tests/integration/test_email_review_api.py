@@ -290,38 +290,14 @@ def test_a_resolved_row_reports_its_ledger_columns_not_a_zero_amount(monkeypatch
 # ── The auto-post switch ─────────────────────────────────────────────────────
 
 
-def test_the_switch_writes_only_the_switch(monkeypatch):
-    """Its own route rather than a field on the settings save: `SettingsIn` is a full
-    replace, so routing it there makes "turn review off" reachable as a side effect."""
-    db = make_mock_db()
-    db.get.return_value = MagicMock(id=uuid.UUID(TENANT))
-    row = SimpleNamespace(auto_post=False, updated_by=None)
+def test_this_router_cannot_write_the_switch():
+    """It is readable here (`GET /status`) and writable in exactly one place —
+    `PUT /api/v1/carmen/settings`, Carmen's own settings screen.
 
-    async def _settings(db_, tenant):
-        return row
-
-    monkeypatch.setattr(email_review.es, "get_settings", _settings)
-    with make_test_client(db, session=SESSION) as client:
-        res = client.put(f"{BASE}/settings/auto-post", json={"auto_post": True}, headers=AUTH)
-
-    assert res.status_code == 200
-    assert res.json() == {"auto_post": True}
-    assert row.auto_post is True
-    # Who flipped it, in the column the settings screen already shows.
-    assert row.updated_by == "reviewer"
-
-
-def test_a_bu_with_nothing_forwarding_has_no_switch_to_flip(monkeypatch):
-    """No settings row means no mail is arriving, so "auto-post is on" would be a
-    statement about a pipeline that does not exist."""
-    db = make_mock_db()
-    db.get.return_value = MagicMock(id=uuid.UUID(TENANT))
-
-    async def _settings(db_, tenant):
-        return None
-
-    monkeypatch.setattr(email_review.es, "get_settings", _settings)
-    with make_test_client(db, session=SESSION) as client:
-        res = client.put(f"{BASE}/settings/auto-post", json={"auto_post": True}, headers=AUTH)
-
-    assert res.status_code == 404
+    Two writers for one boolean is what the route this replaces cost us: `SettingsIn` is
+    a full replace that defaulted the field to False, so every unrelated settings save
+    turned review back on for a BU that had deliberately switched it off. Deleting the
+    second writer is half the fix; merge-on-omit in `save_settings` is the other half.
+    """
+    paths = {r.path for r in email_review.router.routes}
+    assert f"{BASE}/settings/auto-post" not in paths

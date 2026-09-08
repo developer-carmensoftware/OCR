@@ -41,13 +41,14 @@ class SettingsIn(BaseModel):
     # False = every document waits for a human before it reaches Carmen. The BU turns
     # this on once it trusts the extraction; nothing turns it on for them.
     #
-    # ponytail: absent means False, and PUT /settings is a full replace — so a Carmen
-    # client that predates this field resets the switch on every unrelated settings save,
-    # silently, for a customer who had deliberately turned it on. Deliberate: the failure
-    # is recoverable (they flip it back) and defaulting the other way would post documents
-    # nobody agreed to post. If it is ever reported, the fix is `bool | None = None` plus
-    # merge-on-omit -- the idiom `_merge_rule` already uses for pdf_password_enc.
-    auto_post: bool = False
+    # **Omit = keep whatever is stored**, the one field on this full-replace payload that
+    # merges — the idiom `_merge_rule` already uses for `pdf_password_enc`. It has to,
+    # because this route is now the *only* writer (the queue's own gear and
+    # `PUT /api/v1/email/settings/auto-post` were deleted 2026-09-08): a caller that does
+    # not know the field — our own `#/email-settings` page, or a Carmen build that predates
+    # it — would otherwise turn review back on with every unrelated settings save, silently,
+    # for a customer who had deliberately switched it off.
+    auto_post: bool | None = None
 
 
 class TokenIn(BaseModel):
@@ -199,13 +200,6 @@ class ReviewStatus(BaseModel):
     ingest_address: str | None = None
     blockers: list[str] = Field(default_factory=list)
     counts: dict[str, int] = Field(default_factory=dict)
-
-
-class AutoPostIn(BaseModel):
-    """The switch on its own, so turning review off is never a side effect of an
-    unrelated settings save — the same reason `TokenIn` is separate from `SettingsIn`."""
-
-    auto_post: bool
 
 
 class QueueSeenIn(BaseModel):

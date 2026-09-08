@@ -10,7 +10,6 @@ vi.mock('../lib/api/emailReview', async importOriginal => ({
   ...(await importOriginal<typeof import('../lib/api/emailReview')>()),
   listActivity: vi.fn(),
   getReviewStatus: vi.fn(),
-  setAutoPost: vi.fn(),
   // Unstubbed this reaches apiFetch in jsdom. The hook fires it whenever the chip on
   // screen is holding something nobody has looked at.
   markChipSeen: vi.fn(),
@@ -872,42 +871,14 @@ describe('a row that has already been resolved', () => {
 })
 
 describe('the auto-post switch', () => {
-  it('is behind the gear, not on the queue', async () => {
-    // Turning review off is decided once, after weeks of watching. Offering it beside the
-    // documents would put it in front of someone whose job today is approving one.
-    mount(status(), [doc()])
+  it('is not on this page at all, whatever the status says', async () => {
+    // One field of the BU's settings, one writer: `PUT /api/v1/carmen/settings`, which is
+    // Carmen's own settings screen. The gear that used to live here was a second writer,
+    // and two writers is what let an unrelated settings save turn review back on behind
+    // the customer's back. The page still *reads* `auto_post` — it just cannot set it.
+    mount(status({ auto_post: true }), [doc()])
     await screen.findByText('KTC')
     expect(screen.queryByRole('switch')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /Automation settings/ }))
-    expect(await screen.findByRole('switch')).toHaveAttribute('aria-checked', 'false')
-  })
-
-  it('saves the flip and re-reads the status rather than trusting itself', async () => {
-    vi.mocked(api.setAutoPost).mockResolvedValue(true)
-    mount(status(), [doc()])
-    await screen.findByText('KTC')
-    fireEvent.click(screen.getByRole('button', { name: /Automation settings/ }))
-    fireEvent.click(await screen.findByRole('switch'))
-    await waitFor(() => expect(api.setAutoPost).toHaveBeenCalledWith(true))
-    // The switch renders from the fetched status, so the page has to ask again rather
-    // than keeping a second copy of the answer.
-    await waitFor(() => expect(vi.mocked(api.getReviewStatus).mock.calls.length).toBeGreaterThan(1))
-  })
-
-  it('leaves the switch where it was when the save fails', async () => {
-    // The screen must not claim a setting that the server never took.
-    vi.mocked(api.setAutoPost).mockRejectedValue(new Error('offline'))
-    mount(status(), [doc()])
-    await screen.findByText('KTC')
-    fireEvent.click(screen.getByRole('button', { name: /Automation settings/ }))
-    fireEvent.click(await screen.findByRole('switch'))
-    await waitFor(() => expect(api.setAutoPost).toHaveBeenCalled())
-    expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'false')
-  })
-
-  it('is not offered to a BU with nothing forwarding', async () => {
-    mount(status({ enabled: false, blockers: ['disabled'] }), [], ZERO)
-    await screen.findByText('Let statements post themselves')
     expect(screen.queryByRole('button', { name: /Automation settings/ })).not.toBeInTheDocument()
   })
 })

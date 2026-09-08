@@ -38,6 +38,10 @@ export interface EmailSettings {
   host: string
   bu: string
   enabled: boolean
+  /** Whether a document we read with **nothing flagged** posts without a human. Anything
+   *  flagged waits either way. Default false; see `SettingsPayload.auto_post` for the one
+   *  rule that makes this field unlike every other one here. */
+  auto_post: boolean
   /** null until the BU successfully enables the feature and a tag is issued. */
   ingest_address: string | null
   /** The BU's own addresses. Empty = accept any sender; non-empty = a message must
@@ -68,6 +72,11 @@ export interface SettingsPayload {
   owner_emails: string[]
   tax_ids: string[]
   rules: EmailRulePayload[]
+  /** **Optional on purpose, and the only field here that is.** Everything else on this
+   *  payload is a full replace; this one merges — omit it and the stored value is kept.
+   *  So only the control that actually flips the switch sends it, and no unrelated save
+   *  can turn review back on behind the customer's back (CARMEN_INTEGRATION.md §2.7). */
+  auto_post?: boolean
 }
 
 export interface TokenStatus {

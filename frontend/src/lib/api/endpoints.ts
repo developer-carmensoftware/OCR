@@ -50,7 +50,6 @@ export const API = {
     approve: (id: string) => `${V1}/email/documents/${id}/approve`,
     reject: (id: string) => `${V1}/email/documents/${id}/reject`,
     status: `${V1}/email/status`,
-    autoPost: `${V1}/email/settings/auto-post`,
   },
 
   // Carmen ERP proxy — shared by BOTH credit card and AP invoice flows.

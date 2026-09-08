@@ -30,7 +30,6 @@ from app.models.schemas.common import Page
 from app.models.schemas.email_automation import (
     ApproveIn,
     ApproveResult,
-    AutoPostIn,
     RejectIn,
     ReviewDocument,
     ReviewDocumentDetail,
@@ -205,26 +204,6 @@ async def review_status(
         ingest_address=body.get("ingest_address"),
         blockers=list((body.get("status") or {}).get("blockers") or []),
         counts=counts,
-    )
-
-
-@router.put("/settings/auto-post", response_model=AutoPostIn)
-async def set_auto_post(
-    body: AutoPostIn,
-    db: AsyncSession = Depends(get_db),
-    session: SessionInfo = Depends(get_current_session),
-):
-    """Turn review off, or back on. Its own route, not a field on the settings save.
-
-    Anyone with a session for the BU may flip it, the same rule approve follows: there
-    is no users table to hold a permission against. The audit trail is `updated_by` plus
-    the `audit_logs` row the middleware already writes for a mutating request.
-    """
-    tenant = await db.get(Tenant, uuid.UUID(str(session.tenant_id)))
-    if tenant is None:
-        raise NotFoundError("Unknown business unit")
-    return AutoPostIn(
-        auto_post=await es.set_auto_post(db, tenant, body.auto_post, session.username)
     )
 
 

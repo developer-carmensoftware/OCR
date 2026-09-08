@@ -214,15 +214,15 @@ hands its own derived rows to `handleSubmitFinal`.
 ### `SettingsIn.auto_post`
 
 ```python
-auto_post: bool = False
-# ponytail: absent means false, so a Carmen client that predates this field resets the
-# flag on every unrelated settings save (PUT /settings is a full replace). Switch to
-# `bool | None = None` + merge-on-omit — the idiom `_merge_rule` already uses for
-# pdf_password_enc — if a customer reports review turning itself back on.
+auto_post: bool | None = None   # omit = keep, true/false = set. Since 2026-09-08 (§21).
 ```
 
-Chosen deliberately over the merge-on-omit variant. The failure mode is real but silent and
-recoverable; the customer turns the switch back on.
+**Reversed on 2026-09-08 (#98).** It was `bool = False`, chosen deliberately over
+merge-on-omit on the grounds that the failure — a Carmen client that does not send the field
+resetting the switch on every unrelated settings save — was silent but recoverable, because
+the customer could flip it back on the queue's own gear. That gear is now gone: this route is
+the only writer, so "recoverable" was the half of the reasoning that stopped being true.
+Merge-on-omit is the idiom `_merge_rule` already uses for `pdf_password_enc`.
 
 ---
 
@@ -239,7 +239,9 @@ authenticated frontend.
 | `GET /documents/{id}` | the row plus `review_payload` |
 | `POST /documents/{id}/approve` | `{ header, details, rows, post_input_tax: bool }` → `{ jv_no, tax_note }` |
 | `POST /documents/{id}/reject` | `{ reason?: str }` → `204` |
-| `GET /settings/auto-post` · `PUT /settings/auto-post` | `{ auto_post: bool }` |
+
+There is no `auto-post` route here. There was one, and it is gone (§21): the switch is a
+field of `PUT /api/v1/carmen/settings`, which is Carmen's screen, and `GET /status` reads it.
 
 Schemas go in the existing `app/models/schemas/email_automation.py`. `paginate()` and the
 `Page[T]` envelope as everywhere else.
@@ -1539,3 +1541,44 @@ true of it.
   to build it from.
 - **Not writing the row at all.** It is the `_claim` dedupe key and the audit trail. Suppression
   belongs in the view; the ledger stays complete.
+
+---
+
+## §21 — One writer for the switch, and it is Carmen's (2026-09-08)
+
+`auto_post` had two writers. The queue's own gear (`QueueSettings.tsx`, `.rq-settings`,
+`PUT /api/v1/email/settings/auto-post`) wrote only the switch, carefully. The Settings API
+Carmen calls wrote it as part of a **full replace** that defaults the field to `False` — so
+anyone saving settings without knowing about the field turned review back on.
+
+That is not hypothetical. Our own `#/email-settings` page is exactly such a caller:
+`useEmailSettings.put()` re-sends the complete settings on every edit and has never had an
+`auto_post` in it. A BU on auto-post that corrected a filename pattern went back to
+approving every document, with nothing on any screen saying so.
+
+### The decisions
+
+| # | Decision | Why |
+|---|---|---|
+| 98 | **The switch is one field of the BU's settings, written by `PUT /api/v1/carmen/settings` and nowhere else.** The gear, `PUT /api/v1/email/settings/auto-post`, `es.set_auto_post`, `AutoPostIn` and the six `review.autoPost*` strings are deleted. | Two writers for one boolean is the whole defect; deleting one of them is the fix, and the one to keep is the one that owns the *setting*. It is also where it belongs by §0.2: Carmen owns the settings screens, we own the storage and the queue. |
+| 99 | **`SettingsIn.auto_post` merges on omit** (`bool \| None = None`) — the only field on that payload that does not replace. | Reverses the deliberate choice recorded above under *`SettingsIn.auto_post`*. That choice rested on the failure being recoverable, and what made it recoverable was the gear #98 just deleted. With one writer left, absent has to mean "keep" or the first client that has not shipped the field yet silently un-does the customer's decision. |
+| 100 | **`#/email-settings` carries the switch too** — a checkbox in the connection block, `ctrl.setAutoPost` → the same `PUT /api/v1/carmen/settings`. It is **not** a second writer: one endpoint, two clients of it, exactly as `enabled` and the rules already are on that screen. | That page's whole reason to exist is that the contract can be exercised end to end without Carmen (its own header says so), and a field no client of ours ever sends is a field nothing proves. It is also the service path: a BU whose Carmen has not shipped the control can be set up without an operator hand-writing a JWT request. |
+
+### What a BU will notice
+
+Nothing, unless they were using the gear — the queue's action bar loses it and keeps
+Refresh and Upload documents. Until Carmen's own switch ships, a BU already on auto-post
+stays on it (that is #99 working), and it can still be flipped from `#/email-settings`
+(#100) or by an operator: the same `PUT /settings` accepts `Bearer <admin jwt>`.
+
+`GET /email/status` still reports `auto_post`, and the page still fetches it. It is read-only
+now, and it is what a support conversation reads.
+
+### Considered and not done
+
+- **Keeping the route for support.** The operator path on `PUT /api/v1/carmen/settings`
+  already reaches it with `configs:write` and a tenant scope. A second admin-usable writer
+  is the thing being deleted.
+- **Removing `auto_post` from `ReviewStatus`.** `build_settings_response` computes it
+  anyway, and "is this BU on auto-post" is the first question of every support thread about
+  a document that did or did not wait.

@@ -37,7 +37,13 @@ human-in-the-loop queue reads and writes — see
 | GET | `/api/v1/email/status` | Which of the queue's four states to paint, plus a count per tab |
 | POST | `/api/v1/email/documents/{id}/approve` | Post what the reviewer checked → `{jv_no, tax_note}` |
 | POST | `/api/v1/email/documents/{id}/reject` | Terminal, optional reason → `204` |
-| PUT | `/api/v1/email/settings/auto-post` | `{auto_post: bool}` — let a **clean** document post without review, or stop it. A flagged one waits either way |
+
+> `auto_post` is **read** here (`GET /email/status`) and written nowhere in this app. It is
+> one field of the BU's settings, and `PUT /api/v1/carmen/settings` is its only writer —
+> Carmen's own settings screen. The `PUT /api/v1/email/settings/auto-post` that used to sit
+> in this table was deleted on 2026-09-08: two writers for one boolean meant an unrelated
+> settings save could turn review back on behind the customer's back
+> ([CARMEN_INTEGRATION.md §2.7](../CARMEN_INTEGRATION.md)).
 
 `tab` is one of `review` · `posted` · `problem` · `skipped`, and is a *group* of ledger
 statuses rather than one: `problem` is `failed` + `rejected` (they differ in who decided,
@@ -97,11 +103,13 @@ See [`07-human-in-the-loop.md §9`](07-human-in-the-loop.md) for the table, §12
 and the dot, §13 for the re-key on who can act, §14 for the charge split and `all`'s return,
 §18 for the noise arm and the narrowed `review`.
 
-`PUT /settings/auto-post` is deliberately its own route and not a field on
-`PUT /api/v1/carmen/settings`: that endpoint is a full replace, so flipping the switch
-through it would rewrite the BU's rules and PDF passwords on the way, and would make "turn
-review off" reachable as a side effect of an unrelated save. `404` if the BU has no settings
-row — nothing is forwarding, so there is no switch to flip.
+**`auto_post` is a field of `PUT /api/v1/carmen/settings` and has no route of its own**
+(§21 #98, 2026-09-08). It used to have one, on the reasoning that the settings endpoint is a
+full replace and flipping the switch through it would rewrite the BU's rules and PDF
+passwords on the way. True, and answered by sending them back unchanged — which is what the
+settings screen does anyway. What the separate route actually bought was a **second writer**,
+and that is what let an ordinary settings save reset the switch. The field now merges on
+omit, so a caller that does not send it changes nothing.
 
 ## Auth model
 

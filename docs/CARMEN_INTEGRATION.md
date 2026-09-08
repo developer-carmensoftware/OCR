@@ -234,6 +234,7 @@ GET /api/v1/carmen/settings?uri=https%3A%2F%2Fhotelgroup.carmenwork.com&bu=hq
   "host": "hotelgroup.carmenwork.com",    // the stored pair, always — not the spelling sent
   "bu": "hq",
   "enabled": true,
+  "auto_post": false,                     // false = every document waits for a human — §2.7
   "entitled": true,                       // active monthly package — authoritative
   "ingest_address": "AIAGENT+a1b2c3d4@carmensoftware.com",  // per BU, null until enabled — §2.5
   "tax_ids": ["0105536000127"],
@@ -268,6 +269,7 @@ PUT /api/v1/carmen/settings
   "uri": "https://hotelgroup.carmenwork.com",   // the origin sent to /auth/exchange — §1
   "bu": "hq",
   "enabled": true,
+  "auto_post": true,                      // OMIT = keep what is stored — §2.7
   "tax_ids": ["0105536000127"],           // REQUIRED — see §2.4
   "rules": [
     {
@@ -282,6 +284,10 @@ PUT /api/v1/carmen/settings
 ```
 
 - The payload **replaces** the BU's rule list (send the full list, not a delta).
+- **`auto_post` is the one field that does not.** Omit it and the stored value is kept;
+  send `true`/`false` and it is written. Everything else here is replace-on-write, so a
+  client that does not know the field would otherwise switch review back on for a customer
+  who had deliberately turned it off — see §2.7.
 - **`filename_patterns` is required and decides whether a document is processed at all.**
   Each entry is a case-insensitive **substring** of the filename (`MDR` matches
   `2026-08_MDR_report.pdf`), and **any one entry matching is enough**. An attachment that
@@ -553,6 +559,38 @@ The token is stored encrypted (it has to be replayed to Carmen, so it cannot be 
 the way our own API key is), is never returned by any endpoint, and never appears in a
 log line or an error message.
 
+### 2.7 `auto_post` — the review switch (2026-09-08: **Carmen's screen owns it**)
+
+```jsonc
+"auto_post": true    // on PUT /api/v1/carmen/settings. Omit = keep. Default false.
+```
+
+**What it buys.** With it off — the default, and where every BU starts — every document we
+read waits at `#/CreditCardOCR` for a person to approve before anything reaches Carmen's
+books. With it on, a document we read with **nothing to flag** posts on its own.
+
+**What it cannot buy.** It never skips the approval of a *doubtful* document. Five things
+still park one for a human under either setting: a warning from the reading, a GL mapping
+the AI had to guess, a debit/credit that does not reconcile, a missing document number, and
+an unmapped payment type. So the customer is not being asked to accept an uncertain reading
+posting silently — that is the bet this switch deliberately does not make (§0.2).
+
+**Please present it as earned, not as a setup step.** A BU switches it on after weeks of
+watching the queue get it right; nothing in our app turns it on for them, and nothing should
+offer it during onboarding.
+
+**One writer, and it is yours.** Until 2026-09-08 the OCR app also carried this switch on a
+route of its own (a gear on the review queue, `PUT /api/v1/email/settings/auto-post`). That
+route is **deleted**. It is now a field of the BU's settings and nothing else — which is why
+omitting it keeps the stored value rather than resetting it, unlike every other field on that
+payload.
+
+> Our own `#/email-settings` screen — the copy of your screen we keep so the contract can be
+> exercised end to end — has a checkbox for it, writing through this same endpoint. That is a
+> second *client*, not a second writer, exactly as it already is for `enabled` and the rules.
+> Support uses it for a BU whose Carmen does not yet offer the control. Your screen remains
+> the one a customer is meant to use.
+
 ---
 
 ## 3. Part B — Webhooks (OCR → Carmen)
@@ -812,7 +850,13 @@ The rest of the integration:
 | 5 | Which Carmen field holds the BU tax ID (§2.4) | switching the feature on |
 | 6 | Yes/no on the proposed `document.*` events (§3.3) | outcome reporting |
 | 7 | Confirmation that automated JVs are distinguishable in `JvhSource` (§4) | audit review |
+| 8 | **An `auto_post` switch on the settings screen (§2.7)** — send it on `PUT /settings`, omit it everywhere else | a customer ever turning review off |
 
+> Item 8 is new on 2026-09-08 and is a **hand-over, not an addition**: the OCR app used to
+> carry this switch as well, and two writers for one boolean meant an ordinary settings save
+> could turn review back on behind the customer's back. Ours is gone. Until yours ships, a
+> BU stays in review mode — the safe state — and we can flip it for them on request.
+>
 > Item 7 of the previous revision — "confirm Email Automation is gated on the monthly
 > package" — is closed: it is gated, and enforced both at the toggle (`422 not_entitled`)
 > and in the ingest loop, so a package lapsing mid-month stops posting rather than only
