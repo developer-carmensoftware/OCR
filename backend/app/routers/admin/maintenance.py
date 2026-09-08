@@ -18,6 +18,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _assert_scope(admin: AdminPrincipal, tenant_id: str) -> None:
+    """Scoped admins may only act on their own tenant."""
+    if not admin.is_global and admin.tenant_scope != tenant_id:
+        raise HTTPException(status_code=403, detail="Tenant out of scope")
+
+
 @router.post("/summary/rebuild")
 async def trigger_summary_rebuild(
     target_date: date | None = Query(None, alias="date"),
@@ -96,8 +102,9 @@ async def set_tenant_maintenance(
     tenant_id: str,
     req: TenantMaintenanceRequest,
     db: AsyncSession = Depends(get_db),
-    _admin: AdminPrincipal = Depends(require_permission("configs", "write")),
+    admin: AdminPrincipal = Depends(require_permission("configs", "write")),
 ):
+    _assert_scope(admin, tenant_id)
     await maintenance_service.set_tenant(db, tenant_id, req.enabled)
     return {"ok": True}
 

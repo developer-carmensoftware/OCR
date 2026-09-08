@@ -105,13 +105,7 @@ describe('logout', () => {
     expect(localStorage.getItem(appKey('accountingConfig'))).toBeNull()
   })
 
-  // `it.fails` = a known defect, not a passing test. `ocr_last_tenant` outlives logout
-  // today, and `getCarmenUrl()` reads it as its fallback — so after BU-A signs off, the
-  // "Go to Carmen" link on the signed-out screen still resolves BU-A's Carmen host for
-  // whoever sits down next. Written this way so CI stays honest rather than red: fix
-  // `logout()` to remove the key and this line starts failing, which is the signal to
-  // change `it.fails` back to `it`.
-  it.fails('forgets which BU was last here', async () => {
+  it('forgets which BU was last here', async () => {
     mount()
     act(() => auth.login(TOKEN, A))
     await act(async () => {

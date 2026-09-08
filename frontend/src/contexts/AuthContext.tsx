@@ -143,6 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setActiveTenant(null)
     clearToken()
     sessionStorage.removeItem(STORAGE_KEY)
+    sessionStorage.removeItem('ocr_last_tenant')
     setUser(null)
   }, [])
 
