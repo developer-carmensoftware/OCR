@@ -34,6 +34,7 @@ from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.routers.admin import router as admin_router
 from app.routers.ap_invoice import router as ap_invoice_router
+from app.routers.ar_reconcile import router as ar_reconcile_router
 from app.routers.auth import router as auth_router
 from app.routers.carmen import router as carmen_router
 from app.routers.config import router as config_router
@@ -194,5 +195,6 @@ def create_app(lifespan=None) -> FastAPI:
     app.include_router(email_automation_router)
     app.include_router(email_review_router)
     app.include_router(credit_card_activity_router)
+    app.include_router(ar_reconcile_router)
 
     return app

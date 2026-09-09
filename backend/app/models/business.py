@@ -30,7 +30,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.constants import DocType
+from app.constants import DocType, PostType
 from app.database import Base
 
 from .enums import TaskStatus
@@ -275,6 +275,94 @@ class BUAccountingMappingEntry(Base, TimestampMixin, SoftDeleteMixin):
             "uq_bu_mapping_entry_active",
             "config_id",
             "field_type",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
+
+
+class ARReconcileSetting(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMixin):
+    """Per-(tenant, bank) configuration for Detailed Credit Card AR Reconciliation.
+
+    Separate from BUAccountingConfig, which is one row per tenant and describes the
+    credit-card wizard's JV. This describes a different JV built from a different
+    document, and the FRD scopes it per bank profile because a BU can settle with
+    several acquirers on different charts of accounts.
+    """
+
+    __tablename__ = "ar_reconcile_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    bank_code: Mapped[str] = mapped_column(
+        String(20), ForeignKey("banks.code"), nullable=False, index=True
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # constants.PostType. Varchar rather than an enum type: adding a value should not
+    # need a migration that rewrites the table, and the API validates the value anyway.
+    post_type: Mapped[str] = mapped_column(
+        String(10), nullable=False, default=PostType.DETAIL, server_default=PostType.DETAIL
+    )
+    # {Settlement_Date} / {Tax_Invoice_No} / {Bank_Name} — ar_reconcile_jv.render_jv_description.
+    jv_description_template: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        default="Credit Card AR Reconcile {Settlement_Date}",
+        server_default="Credit Card AR Reconcile {Settlement_Date}",
+    )
+    # The control account this JV clears. Prefilled from the BU's credit-card mapping,
+    # but editable: if the two disagree the control account never reaches zero, which is
+    # why the settings screen warns rather than silently accepting a divergence.
+    debit_dept_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    debit_account_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    mappings = relationship(
+        "ARReconcileMapping",
+        back_populates="setting",
+        primaryjoin="and_(ARReconcileSetting.id == foreign(ARReconcileMapping.setting_id), "
+        "ARReconcileMapping.deleted_at == None)",
+    )
+
+    __table_args__ = (
+        Index(
+            "uq_ar_reconcile_setting_active",
+            "tenant_id",
+            "bank_code",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
+
+
+class ARReconcileMapping(Base, TimestampMixin, SoftDeleteMixin):
+    """Payment type → credit-side GL account, per post type.
+
+    post_type is part of the key because Detail and Summary are different vocabularies
+    over the same document: "VS INTER UP PREM" in one, "VS" in the other. A BU that runs
+    Summary never fills the Detail rows, and switching is meant to be a deliberate act
+    with visible cost, not a silent re-read of the same rows.
+    """
+
+    __tablename__ = "ar_reconcile_mappings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    setting_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("ar_reconcile_settings.id"), nullable=False, index=True
+    )
+    post_type: Mapped[str] = mapped_column(String(10), nullable=False)
+    payment_type_code: Mapped[str] = mapped_column(String(100), nullable=False)
+    payment_type_desc: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    credit_dept_code: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    credit_account_code: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    setting = relationship("ARReconcileSetting", back_populates="mappings")
+
+    __table_args__ = (
+        Index(
+            "uq_ar_reconcile_mapping_active",
+            "setting_id",
+            "post_type",
+            "payment_type_code",
             unique=True,
             postgresql_where=text("deleted_at IS NULL"),
         ),
