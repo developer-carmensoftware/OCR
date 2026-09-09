@@ -150,17 +150,24 @@ def build_gljv_payload(
     doc_date: str | None,
     bank_code: str | None,
     config: Any,
+    description: str | None = None,
 ) -> dict:
-    """JV rows + accounting config → the exact body useOcrSubmission.ts posts."""
+    """JV rows + accounting config → the exact body useOcrSubmission.ts posts.
+
+    `description` overrides the config-derived wording. AR reconciliation passes its own,
+    rendered from that feature's template (`ar_reconcile_jv.render_jv_description`) — the
+    envelope, source and detail shape are identical, only the sentence differs.
+    """
     from app.services.accounting_config_service import description_for
 
-    # Per-bank wording when the BU set one, else the BU's single description — the
-    # input-tax record built from the same statement resolves it the same way, so
-    # the two documents never disagree about what they are.
-    base = description_for(config, bank_code)
-    description = ""
-    if base:
-        description = f"{base} - {doc_date}" if doc_date else base
+    if description is None:
+        # Per-bank wording when the BU set one, else the BU's single description — the
+        # input-tax record built from the same statement resolves it the same way, so
+        # the two documents never disagree about what they are.
+        base = description_for(config, bank_code)
+        description = ""
+        if base:
+            description = f"{base} - {doc_date}" if doc_date else base
 
     return {
         "JvhSeq": -1,
