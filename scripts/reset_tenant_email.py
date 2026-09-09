@@ -27,6 +27,11 @@ been used by hand still shows every JV it ever posted, which reads as a failed r
 one** — the customer's Gmail forwarding address changes and the confirmation handshake has
 to be redone. Pass `--keep-tag` to keep the tag and merely disable the row instead.
 
+`--keep-settings` (with `--keep-sub`) is the **handing-it-to-a-tester** reset rather than the
+back-to-zero one: it clears only what remembers a document — the ledger, the queue dot, the
+posted `credit_cards`, `\\Seen` — and leaves automation switched on with its tag, Carmen token
+and Gmail handshake, so the tester forwards mail and it flows without any setup first.
+
 Left alone: `credit_orders`, `billing_documents`, `credit_ledger`, `tenant_credits`.
 Order history is an audit trail with issued document numbers, and none of it blocks a
 re-test. Note the tenant is left with no subscription and whatever top-up balance it had —
@@ -41,6 +46,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
 
 import asyncpg
 
@@ -49,7 +55,53 @@ import asyncpg
 from reset_email_test import DSN, _unread
 
 
+def _settings_plan(keep_settings: bool, keep_tag: bool) -> tuple[str, str | None]:
+    """(verb for the plan line, SQL for the transaction) — deliberately one source.
+
+    The plan printed before `--apply` is the only thing the operator reads before agreeing
+    to it, so a verb picked independently of the statement could promise "keep" while the
+    transaction deleted the row. Three cases, one branch.
+    """
+    if keep_settings:
+        # Nothing at all: `enabled_at` stays as it is, so replayed mail is not filtered by
+        # the arrival check in `_run_message` — which is exactly what --keep-tag has to null
+        # out, because re-enabling would stamp it to now.
+        return "keep", None
+    if keep_tag:
+        # Everything a re-test must re-do, minus the tag itself: the Carmen token and the
+        # Gmail handshake are re-established by enabling again.
+        #
+        # `enabled_at` included, or this branch quietly undoes its own --unread: re-enabling
+        # stamps it to now (email_settings_service.save_settings), and every replayed mail is
+        # then older than it and lands `ingest_paused`. Null is what a BU that never had
+        # automation looks like — which is what the delete branch below produces for free.
+        return "disable", (
+            "update email_ingest_settings set enabled = false, enabled_at = null,"
+            " carmen_token_enc = null,"
+            " carmen_token_fp = null, carmen_token_verified_at = null,"
+            " gmail_confirm_code = null, gmail_confirm_at = null,"
+            " gmail_confirmed_at = null, updated_at = now() where tenant_id = $1"
+        )
+    return "delete", "delete from email_ingest_settings where tenant_id = $1"
+
+
+def _self_check() -> None:
+    """python scripts/reset_tenant_email.py --self-check — the branch above, nothing else."""
+    assert _settings_plan(True, False) == ("keep", None)
+    assert _settings_plan(True, True) == ("keep", None), "--keep-settings wins over --keep-tag"
+    verb, sql = _settings_plan(False, True)
+    assert (verb, sql.startswith("update ")) == ("disable", True)
+    assert "enabled_at = null" in sql, "re-enabling would else pause every replayed mail"
+    verb, sql = _settings_plan(False, False)
+    assert (verb, sql.startswith("delete ")) == ("delete", True)
+    print("self-check ok")
+
+
 async def main() -> int:
+    # Before the parser: --host/--bu are required, and the self-check needs neither.
+    if "--self-check" in sys.argv:
+        _self_check()
+        return 0
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -62,6 +114,12 @@ async def main() -> int:
         "--keep-tag",
         action="store_true",
         help="disable the settings row instead of deleting it, so the ingest tag survives",
+    )
+    ap.add_argument(
+        "--keep-settings",
+        action="store_true",
+        help="leave email_ingest_settings entirely alone — automation stays enabled, with its"
+        " tag, Carmen token and Gmail handshake, so a tester can forward mail immediately",
     )
     ap.add_argument("--keep-sub", action="store_true", help="leave tenant_subscriptions alone")
     ap.add_argument(
@@ -130,9 +188,12 @@ async def main() -> int:
         for d in docs:
             note = d["jv_no"] and f" JV {d['jv_no']}" or ""
             print(f"  {d['status']:<8} {d['reason_code'] or '-':<16} {d['attachment'][:48]}{note}")
+        settings_verb, settings_sql = _settings_plan(args.keep_settings, args.keep_tag)
         if settings:
-            verb = "disable" if args.keep_tag else "delete"
-            print(f"  settings   {verb}  tag={settings['ingest_tag']} enabled={settings['enabled']}")
+            print(
+                f"  settings   {settings_verb}  tag={settings['ingest_tag']}"
+                f" enabled={settings['enabled']}"
+            )
         if sub and not args.keep_sub:
             print(
                 f"  subscription  delete  {sub['plan_code']} {sub['docs_used']}/"
@@ -159,25 +220,10 @@ async def main() -> int:
             # left behind, a genuinely new queue opens already acknowledged.
             res = await conn.execute("delete from email_queue_seen where tenant_id = $1", tid)
             print(f"  email_queue_seen  {res}")
-            if args.keep_tag:
-                # Everything a re-test must re-do, minus the tag itself: the Carmen token
-                # and the Gmail handshake are re-established by enabling again.
-                #
-                # `enabled_at` included, or this branch quietly undoes its own --unread:
-                # re-enabling stamps it to now (email_settings_service.save_settings), and
-                # every replayed mail is then older than it and lands `ingest_paused`. Null
-                # is what a BU that never had automation looks like — which is what the
-                # delete branch below produces for free.
-                settings_sql = (
-                    "update email_ingest_settings set enabled = false, enabled_at = null,"
-                    " carmen_token_enc = null,"
-                    " carmen_token_fp = null, carmen_token_verified_at = null,"
-                    " gmail_confirm_code = null, gmail_confirm_at = null,"
-                    " gmail_confirmed_at = null, updated_at = now() where tenant_id = $1"
-                )
+            if settings_sql:
+                print(f"  settings          {await conn.execute(settings_sql, tid)}")
             else:
-                settings_sql = "delete from email_ingest_settings where tenant_id = $1"
-            print(f"  settings          {await conn.execute(settings_sql, tid)}")
+                print("  settings          left alone")
             if not args.keep_sub:
                 res = await conn.execute(
                     "delete from tenant_subscriptions where tenant_id = $1", tid
