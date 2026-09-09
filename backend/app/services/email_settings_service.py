@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import decrypt_carmen_token, encrypt_carmen_token
 from app.config import settings as app_settings
+from app.constants import DocType
 from app.exceptions import ConflictError, FieldValidationError, ValidationError
 from app.models.catalog import Bank
 from app.models.email_automation import EmailDocument, EmailIngestSettings
@@ -325,6 +326,9 @@ def to_response(row: EmailIngestSettings | None, host: str, bu: str) -> dict:
                 "filename_patterns": list(r.get("filename_patterns") or []),
                 "has_password": bool(r.get("pdf_password_enc")),
                 "is_active": r.get("is_active", True),
+                # Read back so the settings screen round-trips it. PUT is a full replace,
+                # so a field this GET omits is a field the next save silently clears.
+                "doc_type": r.get("doc_type") or DocType.FEE_INVOICE,
             }
             for r in rules
         ],
@@ -579,6 +583,10 @@ def _merge_rule(incoming: Any, previous: dict | None) -> dict:
         "bank_sender_email": incoming.bank_sender_email,
         "filename_patterns": _clean_patterns(incoming),
         "is_active": incoming.is_active,
+        # Without this the field is accepted by the schema and then dropped here, and the
+        # AR-reconciliation path is unreachable: the ingest pipeline reads doc_type off the
+        # stored rule, so a rule that cannot store it can never route a settlement report.
+        "doc_type": incoming.doc_type,
         "pdf_password_enc": (previous or {}).get("pdf_password_enc"),
     }
     if incoming.pdf_password is not None:

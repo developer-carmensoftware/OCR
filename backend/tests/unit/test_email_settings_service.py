@@ -843,3 +843,55 @@ def test_an_unconfigured_bu_reports_review_mode_too():
     """`to_response(None, …)` is a different code path, and a missing key here would
     make the queue screen read `undefined` as "auto-post is on"."""
     assert es.to_response(None, "hotel.carmenwork.com", "hq")["auto_post"] is False
+
+
+# ── doc_type on a rule ────────────────────────────────────────────────────────
+#
+# The field that decides whether an attachment is read as a commission invoice or as a
+# settlement report. It travels as ordinary rule data, which means three places have to
+# agree or the AR-reconciliation path is simply unreachable: the schema has to accept it,
+# `_merge_rule` has to store it, and the GET has to hand it back — PUT is a full replace,
+# so a field the GET omits is a field the customer's next save silently clears.
+
+
+def test_a_rule_defaults_to_the_document_type_that_existed_before_this_field():
+    rule = RuleIn(bank_code="KTC", filename_patterns=[".pdf"])
+    assert rule.doc_type == "fee_invoice"
+
+    stored = es._merge_rule(rule, None)
+    assert stored["doc_type"] == "fee_invoice"
+
+
+def test_a_settlement_report_rule_keeps_its_document_type_through_the_store():
+    rule = RuleIn(bank_code="KBANK", filename_patterns=["KB1P554V2"], doc_type="ar_reconcile")
+    stored = es._merge_rule(rule, None)
+
+    # `_run_document` reads this off the stored rule to pick the prompt, the page and the
+    # JV builder. Dropping it here is what made the whole feature do nothing.
+    assert stored["doc_type"] == "ar_reconcile"
+
+
+def test_the_settings_response_hands_doc_type_back():
+    """PUT is a full replace, so a field the GET omits is one the next save clears."""
+    row = SimpleNamespace(
+        enabled=True,
+        auto_post=False,
+        ingest_tag="abc123",
+        enabled_at=None,
+        owner_emails=[],
+        tax_ids=[],
+        rules=[
+            {"bank_code": "KBANK", "filename_patterns": ["KB1P554V2"], "doc_type": "ar_reconcile"},
+            {"bank_code": "KTC", "filename_patterns": [".pdf"]},
+        ],
+        gmail_confirmed_at=None,
+        gmail_confirm_code=None,
+        gmail_confirm_at=None,
+        carmen_token_fp=None,
+        carmen_token_verified_at=None,
+        carmen_uri=None,
+    )
+    body = es.to_response(row, "hotel.carmenwork.com", "hq")
+
+    # A rule stored before this field existed reads as the type that existed then.
+    assert [r["doc_type"] for r in body["rules"]] == ["ar_reconcile", "fee_invoice"]

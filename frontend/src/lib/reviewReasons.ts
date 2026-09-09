@@ -31,6 +31,11 @@ export const REASON_KEY: Record<string, TKey> = {
   carmen_unauthorized: 'review.rcCarmenUnauthorized',
   ingest_paused: 'review.rcIngestPaused',
   rejected_by_reviewer: 'review.rcRejectedByReviewer',
+  // AR reconciliation. `ar_reconcile_disabled` costs nothing (it stops before the LLM), so
+  // it is the one reason here that means "you asked for this mail and then switched the
+  // feature off", not "something went wrong".
+  ar_reconcile_disabled: 'review.rcArDisabled',
+  unbalanced_document: 'review.rcUnbalanced',
 }
 
 /**

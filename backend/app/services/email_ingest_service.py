@@ -62,7 +62,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.constants import Module
+from app.constants import DocType, Module
 from app.context import current_carmen_uri, current_tenant_id
 from app.database import async_session
 from app.exceptions import (
@@ -75,7 +75,7 @@ from app.exceptions import (
     PdfPasswordRequired,
     ValidationError,
 )
-from app.models.business import CreditCard
+from app.models.business import ARReconcileMapping, ARReconcileSetting, CreditCard
 from app.models.catalog import Bank
 from app.models.email_automation import EmailDocument
 from app.models.enums import AlertSeverity, JobStatus
@@ -89,6 +89,12 @@ from app.services import gl_suggestion_service as gl
 from app.services.accounting_config_service import (
     description_for,
     get_accounting_config,
+)
+from app.services.ar_reconcile_jv import (
+    build_ar_jv_rows,
+    is_balanced,
+    render_jv_description,
+    unmapped_ar_types,
 )
 from app.services.carmen_service import (
     CarmenAPIError,
@@ -951,10 +957,47 @@ async def _run_document(
         # own answer the moment there is one.
         bank_code = rule_bank
 
+        # ── Which document is this? ───────────────────────────────────────────
+        #
+        # The only place the pipeline branches on document type, and it is here — before
+        # the charge — because the two types need different prompts, different pages and
+        # different JV builders, and reading one with the other's layout produces
+        # plausible rows off the wrong table rather than an error.
+        #
+        # The *rule* answers it, not the document: a settlement report and the commission
+        # invoice for the same settlement both say KASIKORNBANK at the top and carry the
+        # same tax invoice number, so nothing on the page distinguishes them reliably. The
+        # BU says which of their mail is which by tagging the rule; the filename pattern
+        # (`KB1P554V2`) is what makes that tagging easy.
+        ar_rule = next(
+            (r for r in matched if r.get("doc_type") == DocType.AR_RECONCILE),
+            None,
+        )
+        doc_type = DocType.AR_RECONCILE if ar_rule else DocType.FEE_INVOICE
+        ar_setting: ARReconcileSetting | None = None
+        if ar_rule:
+            bank_code = (ar_rule.get("bank_code") or "").upper() or None
+            if not bank_code:
+                raise _Skip(
+                    "ar_reconcile_disabled",
+                    "The settlement-report rule does not say which bank it is for",
+                )
+            ar_setting = await _ar_setting(tenant_id, bank_code)
+            if not ar_setting or not ar_setting.enabled:
+                # Before the charge, so a BU that tagged a rule and then switched the
+                # feature off pays nothing for the mail that keeps arriving.
+                raise _Skip(
+                    "ar_reconcile_disabled",
+                    f"AR reconciliation is switched off for {bank_code}",
+                )
+
         # Before any charge: a disguised, locked or corrupt file must not cost anything.
         password = await _open_or_fail(blob, filename, passwords)
 
-        await assert_module_enabled(Module.CREDIT_CARD_OCR)
+        module_id = (
+            Module.CC_AR_RECONCILE if doc_type == DocType.AR_RECONCILE else Module.CREDIT_CARD_OCR
+        )
+        await assert_module_enabled(module_id)
         charged = await consume_document()
 
         # ── The refund boundary ───────────────────────────────────────────────
@@ -975,7 +1018,7 @@ async def _run_document(
                 task = await create_task(
                     db,
                     tenant_id=tenant_id,
-                    module_id=Module.CREDIT_CARD_OCR,
+                    module_id=module_id,
                     original_filename=filename,
                     carmen_user_id=None,
                     charged_docs=1 if charged else 0,
@@ -989,16 +1032,36 @@ async def _run_document(
             # layout — reading a GHL invoice with the KBANK layout mismaps its columns AND
             # makes it answer "ธนาคารกสิกรไทย", which then confirms the wrong bank to
             # every later reader.
+            #
+            # The settlement report is the exception to both halves of that. Its layout is
+            # *selected* (the rule already named the bank, and there is only one prompt per
+            # bank for it), and its figures are on the LAST page — the earlier pages repeat
+            # the same money per terminal and per batch. Still one page, so still one
+            # document charged.
             extracted = await ocr_service.extract_stateless(
                 file_bytes=blob,
                 original_filename=filename,
                 task_id=task_id,
                 pdf_password=password,
+                bank_code=bank_code if doc_type == DocType.AR_RECONCILE else None,
+                doc_type=doc_type,
+                page_indexes=[-1] if doc_type == DocType.AR_RECONCILE else None,
             )
             # Resolved once, before finalize_extraction, so `credit_cards.bank_code` and
-            # `email_documents.bank_code` are the same decision rather than two.
-            bank_code = _resolve_bank(extracted, rule_bank)
-            extracted = await finalize_extraction(extracted, task_id, tenant_id, bank_code, None)
+            # `email_documents.bank_code` are the same decision rather than two. The AR
+            # path keeps the rule's answer: its prompt was chosen from it, so re-deriving
+            # it from the page could only disagree with the layout already applied.
+            if doc_type != DocType.AR_RECONCILE:
+                bank_code = _resolve_bank(extracted, rule_bank)
+            extracted = await finalize_extraction(
+                extracted,
+                task_id,
+                tenant_id,
+                bank_code,
+                None,
+                doc_type=doc_type,
+                original_filename=filename,
+            )
         except Exception as exc:
             if charged:
                 await refund_document(charged)
@@ -1042,8 +1105,21 @@ async def _run_document(
 
         async with async_session() as db:
             config = await get_accounting_config(db, tenant_id)
-        missing = unmapped_payment_types(extracted.details, config.mappings or {})
-        if missing:
+
+        if doc_type == DocType.AR_RECONCILE:
+            # No AI suggestion on this path, deliberately. The suggestion below is only
+            # useful because the review screen can turn it into the BU's own rule when a
+            # human accepts it, and that write goes to `bu_accounting_mapping_entries` —
+            # the credit-card wizard's table, not this feature's. Suggesting into a table
+            # nobody can confirm into would spend an LLM call to produce a value that
+            # disappears on the next poll. The settings screen has AI Auto-Map, where the
+            # accept button writes to the right place.
+            assert ar_setting is not None  # set together with doc_type, above
+            ar_maps = await _ar_mappings(ar_setting.id, ar_setting.post_type)
+            mapping_missing = unmapped_ar_types(extracted.details, ar_maps, ar_setting.post_type)
+        else:
+            missing = unmapped_payment_types(extracted.details, config.mappings or {})
+        if doc_type != DocType.AR_RECONCILE and missing:
             # Parking every document of a BU that never opened the mapping page, with
             # empty pickers and no starting point, is the worse failure. So the AI fills
             # the gap and the reviewer is handed an answer to check rather than a blank
@@ -1097,7 +1173,23 @@ async def _run_document(
             # because the document is in Carmen already, which is nothing for anyone to do.
             raise _Skip("duplicate_document", "Already posted to Carmen")
 
-        rows = build_jv_rows(extracted.details, config.mappings or {})
+        if doc_type == DocType.AR_RECONCILE:
+            assert ar_setting is not None
+            rows = build_ar_jv_rows(
+                extracted.details,
+                post_type=ar_setting.post_type,
+                debit_dept=ar_setting.debit_dept_code,
+                debit_acc=ar_setting.debit_account_code,
+                mappings=ar_maps,
+                doc_no=extracted.doc_no,
+            )
+            if rows and not is_balanced(rows):
+                # NFR §9.4, tolerance 0.00. Never repaired here: every figure came printed
+                # off the document, so an imbalance means one was misread, and inventing
+                # the difference would hide that behind a JV that posts.
+                raise _Skip("unbalanced_document", "Debit and credit do not agree")
+        else:
+            rows = build_jv_rows(extracted.details, config.mappings or {})
         if not rows or not any(r["credit"] for r in rows):
             # Zero-total document: posting an empty JV is worse than stopping here.
             # The read itself succeeded, so the charge stands.
@@ -1138,7 +1230,15 @@ async def _run_document(
         # ledger exactly like a clean one, and the flags were computed and then only looked
         # at if review happened to be on.
         flags = _review_flags(
-            extracted, mapping_guessed=mapping_guessed, mapping_missing=mapping_missing
+            extracted,
+            mapping_guessed=mapping_guessed,
+            mapping_missing=mapping_missing,
+            doc_type=doc_type,
+            # Already checked above as a `_Skip`, so this is belt-and-braces for the case
+            # where a mapping gap stops the rows being built at all.
+            unbalanced=bool(rows) and not is_balanced(rows)
+            if doc_type == DocType.AR_RECONCILE
+            else False,
         )
         if not auto_post or flags:
             await _park_for_review(
@@ -1150,6 +1250,7 @@ async def _run_document(
                 flags=flags,
                 mapping_suggested=mapping_suggested,
                 mapping_missing=mapping_missing,
+                doc_type=doc_type,
             )
             logger.info(
                 "[email] Parked %s (%s) for review, tenant %s%s",
@@ -1161,7 +1262,11 @@ async def _run_document(
             return "pending_review"
 
         payload = build_gljv_payload(
-            rows, doc_date=extracted.doc_date, bank_code=bank_code, config=config
+            rows,
+            doc_date=extracted.doc_date,
+            bank_code=bank_code,
+            config=config,
+            description=_ar_description(ar_setting, extracted, bank_code),
         )
         result = await post_gljv(payload, carmen_token)
         if not result or result.get("Code", -1) != 0:
@@ -1174,8 +1279,15 @@ async def _run_document(
         # books and there is no rollback, so a missing input-tax record is recorded
         # for a human to add rather than turned into a failure on a document that
         # posted successfully.
-        tax_error = await _post_input_tax(
-            extracted, bank_code=bank_code, config=config, carmen_token=carmen_token
+        # Not for AR reconciliation: that JV moves an existing receivable between accounts
+        # and claims no input tax. The commission's VAT is claimed once, by the fee
+        # invoice's own document — claiming it again here would double the credit.
+        tax_error = (
+            None
+            if doc_type == DocType.AR_RECONCILE
+            else await _post_input_tax(
+                extracted, bank_code=bank_code, config=config, carmen_token=carmen_token
+            )
         )
 
         await _finish(
@@ -1478,6 +1590,59 @@ async def _claim(
     return row
 
 
+def _ar_description(
+    setting: ARReconcileSetting | None,
+    extracted: ExtractedCreditCardData,
+    bank_code: str | None,
+) -> str | None:
+    """The JV description for an AR document, or None to keep the config-derived one.
+
+    Returning None rather than an empty string matters: `build_gljv_payload` treats None
+    as "you did not ask", which is what every credit-card document needs.
+    """
+    if setting is None:
+        return None
+    return render_jv_description(
+        setting.jv_description_template,
+        settlement_date=extracted.doc_date,
+        tax_invoice_no=extracted.doc_no,
+        bank_name=bank_code,
+    )
+
+
+async def _ar_setting(tenant_id: str, bank_code: str) -> ARReconcileSetting | None:
+    """This BU's AR-reconciliation configuration for one bank, or None if never saved."""
+    async with async_session() as db:
+        res = await db.execute(
+            select(ARReconcileSetting).where(
+                ARReconcileSetting.tenant_id == tenant_id,
+                ARReconcileSetting.bank_code == bank_code,
+                ARReconcileSetting.deleted_at.is_(None),
+            )
+        )
+        return res.scalars().first()
+
+
+async def _ar_mappings(setting_id: int, post_type: str) -> dict[str, dict[str, str]]:
+    """The active payment-type mappings for one post type, in cc_jv's `{key: {dept, acc}}` shape."""
+    async with async_session() as db:
+        res = await db.execute(
+            select(ARReconcileMapping).where(
+                ARReconcileMapping.setting_id == setting_id,
+                ARReconcileMapping.post_type == post_type,
+                ARReconcileMapping.deleted_at.is_(None),
+                ARReconcileMapping.is_active.is_(True),
+            )
+        )
+        return {
+            r.payment_type_code: {
+                "dept": r.credit_dept_code or "",
+                "acc": r.credit_account_code or "",
+            }
+            for r in res.scalars().all()
+        }
+
+
 async def _already_pending(tenant_id: str, bank_code: str | None, doc_no: str | None) -> bool:
     """Is an identical document already sitting in this BU's review queue?
 
@@ -1578,6 +1743,8 @@ def _review_flags(
     *,
     mapping_guessed: bool,
     mapping_missing: list[str] | None = None,
+    doc_type: str = DocType.FEE_INVOICE,
+    unbalanced: bool = False,
 ) -> list[str]:
     """Why this document might be worth opening. Computed once, here, and stored.
 
@@ -1589,6 +1756,13 @@ def _review_flags(
     `unbalanced` is the same arithmetic AccountingReview does in the browser
     (`imbalancedLines`): every layout satisfies gross = commission + tax + net per line, so
     a line that breaks it was misread and its JV would post unbalanced.
+
+    **Except the settlement report, whose lines are not that shape.** It prints THB AMT per
+    payment type and leaves VAT AMT and NET AMT as dashes on those rows, so the per-line
+    identity is false for every one of them and would flag every document. Its equivalent
+    question — does the JV balance — is answered by `ar_reconcile_jv.is_balanced` over the
+    built rows and passed in as `unbalanced`, so the flag still means the same thing to the
+    reader and to the auto-post gate.
 
     **This is also the auto-post gate.** An empty list is what `auto_post` posts on — the
     queue's own "nothing to say about this one", which the row already prints as *Ready to
@@ -1602,7 +1776,10 @@ def _review_flags(
         flags.append("mapping_missing")
     if mapping_guessed:
         flags.append("mapping_guessed")
-    if any(
+    if doc_type == DocType.AR_RECONCILE:
+        if unbalanced:
+            flags.append("unbalanced")
+    elif any(
         abs(r2(num(d.pay_amt) - (num(d.commis_amt) + num(d.tax_amt) + num(d.total)))) > 0.01
         for d in extracted.details
     ):
@@ -1631,6 +1808,7 @@ async def _park_for_review(
     mapping_missing: list[str] | None = None,
     reason_code: str | None = None,
     error: str | None = None,
+    doc_type: str = DocType.FEE_INVOICE,
 ) -> None:
     """Stop short of Carmen and wait for a human.
 
@@ -1687,6 +1865,12 @@ async def _park_for_review(
             "unmapped": list(mapping_missing or []),
             "guessed": sorted(mapping_suggested or {}),
             "suggested": dict(mapping_suggested or {}),
+            # Which of the two documents this is. Everything downstream that has to build
+            # a JV from this row — the review screen's read, and `approve_document`'s post
+            # — branches on it, and nothing on the extraction itself says which layout
+            # produced it: a settlement report and its commission invoice share the bank,
+            # the date and the tax invoice number.
+            "doc_type": doc_type,
         }
         await db.commit()
 

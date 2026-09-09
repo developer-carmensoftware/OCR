@@ -7,6 +7,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, SecretStr
 
+from app.constants import DocType
 from app.models.schemas.common import Page
 
 # The tenant is still the pair (host, bu) — `uri` is how Carmen spells the host, because
@@ -26,6 +27,12 @@ class RuleIn(BaseModel):
     filename_patterns: list[str] = Field(default_factory=list)
     pdf_password: str | None = None  # write-only: omit = keep, "" = clear
     is_active: bool = True
+    # Which of the two KBANK documents this rule's files are — constants.DocType.
+    # The rule has to say, because the page cannot: a settlement report and the commission
+    # invoice for that same settlement share the bank, the date and the tax invoice number.
+    # Defaults to the document type that existed before this field did, so every rule
+    # already stored keeps behaving exactly as it did.
+    doc_type: str = DocType.FEE_INVOICE
 
 
 class SettingsIn(BaseModel):

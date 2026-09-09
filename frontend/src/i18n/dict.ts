@@ -982,6 +982,8 @@ const en = {
   // lapsed one write the same row, and only one of them expired.
   'review.rcCarmenUnauthorized': 'The Carmen posting credential is no longer accepted',
   'review.rcIngestPaused': 'Arrived while AI JV Automation was off',
+  'review.rcArDisabled': 'Arrived while AR reconciliation was off for this bank',
+  'review.rcUnbalanced': 'Debit and credit do not agree — a figure was misread',
   'review.rcRejectedByReviewer': 'Rejected',
   'review.rcUnknown': 'No reason recorded',
   'review.rcStuck': 'We started reading this and stopped',
@@ -2513,6 +2515,8 @@ const th: Record<TKey, string> = {
   'review.rcCarmenRejected': 'Carmen ปฏิเสธ',
   'review.rcCarmenUnauthorized': 'Carmen ไม่รับ token สำหรับส่งเอกสารแล้ว',
   'review.rcIngestPaused': 'เข้ามาตอนที่ปิด AI JV Automation อยู่',
+  'review.rcArDisabled': 'เข้ามาตอนที่ปิดการกระทบยอดลูกหนี้บัตรของธนาคารนี้อยู่',
+  'review.rcUnbalanced': 'ยอดเดบิตกับเครดิตไม่ตรงกัน — น่าจะอ่านตัวเลขผิด',
   'review.rcRejectedByReviewer': 'ถูกปฏิเสธ',
   'review.rcUnknown': 'ไม่มีการบันทึกเหตุผล',
   'review.rcStuck': 'เริ่มอ่านแล้วแต่หยุดกลางทาง',
