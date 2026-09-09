@@ -1,18 +1,9 @@
 import { useState } from 'react'
 import ReactDOM from 'react-dom'
-import {
-  FileText,
-  AlertCircle,
-  AlertTriangle,
-  Check,
-  X,
-  XCircle,
-  ChevronDown,
-  ChevronUp,
-} from 'lucide-react'
-import CustomSearchSelect from '../common/CustomSearchSelect'
+import { FileText, AlertCircle, AlertTriangle, XCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import AISuggestBar from '../common/AISuggestBar'
-import { allowedAccountsForDept, isAccountAllowed } from '../../lib/deptAccounts'
+import MappingRow from '../common/MappingRow'
+import { isAccountAllowed } from '../../lib/deptAccounts'
 import '../../styles/components/payment-modal.css'
 import type { FieldMapping } from '../../types/api'
 import type { MasterAccount, MasterDepartment } from '../../hooks/mapping/useMappingData'
@@ -178,95 +169,21 @@ export default function PaymentTypeModal({
                 </div>
                 {[...activeScan.paymentTypes].map(type => {
                   const pAmt = paymentAmount[type] || { dept: '', acc: '' }
-                  const suggestion = paymentSuggestions[type] ?? null
                   const isPending = !pAmt.dept || !pAmt.acc
-
-                  const deptFromMaster = suggestion?.dept
-                    ? masterDepartments.find(d => d.code === suggestion.dept)
-                    : null
-                  const deptTopChoice = suggestion?.dept
-                    ? {
-                        code: suggestion.dept,
-                        name: deptFromMaster?.name || '(AI)',
-                        name2: deptFromMaster?.name2,
-                        source: suggestion.source,
-                      }
-                    : null
-                  const acctOptions = allowedAccountsForDept(
-                    pAmt.dept,
-                    masterDepartments,
-                    masterAccounts
-                  )
-                  const acctNotice =
-                    acctOptions.length < masterAccounts.length
-                      ? `${acctOptions.length} accounts allowed for ${pAmt.dept}`
-                      : undefined
-
-                  const accFromMaster = suggestion?.acc
-                    ? masterAccounts.find(a => a.code === suggestion.acc)
-                    : null
-                  const accTopChoice = suggestion?.acc
-                    ? {
-                        code: suggestion.acc,
-                        name: accFromMaster?.name || '(AI)',
-                        name2: accFromMaster?.name2,
-                        source: suggestion.source,
-                      }
-                    : null
-
                   return (
-                    <div
+                    <MappingRow
                       key={`req-${type}`}
-                      data-pt={type}
-                      className={`pm-row ${isPending ? 'pm-row--required-pending' : 'pm-row--required-ok'}`}
-                    >
-                      <div className="pm-type-cell">
-                        <div
-                          className={`pm-type-badge ${isPending ? 'pm-type-badge--pending' : 'pm-type-badge--ok'}`}
-                        >
-                          {type}
-                        </div>
-                        {isPending && <AlertTriangle size={14} color="var(--rose)" />}
-                      </div>
-                      <CustomSearchSelect
-                        value={pAmt.dept}
-                        onChange={val => handlePaymentMappingChange(type, 'dept', val)}
-                        options={masterDepartments}
-                        placeholder="Dept..."
-                        topChoice={deptTopChoice}
-                        suggestedValue={suggestion?.dept ?? null}
-                      />
-                      <CustomSearchSelect
-                        value={pAmt.acc}
-                        onChange={val => handlePaymentMappingChange(type, 'acc', val)}
-                        options={acctOptions}
-                        notice={acctNotice}
-                        placeholder="Acc..."
-                        hasError={!isAccountAllowed(pAmt.dept, pAmt.acc, masterDepartments)}
-                        topChoice={accTopChoice}
-                        suggestedValue={suggestion?.acc ?? null}
-                      />
-                      {suggestion && (
-                        <div className="pm-suggest-actions">
-                          <button
-                            type="button"
-                            className="pm-accept-btn"
-                            onClick={() => confirmPaymentSuggestion(type)}
-                            title="Accept"
-                          >
-                            <Check size={13} />
-                          </button>
-                          <button
-                            type="button"
-                            className="pm-reject-btn"
-                            onClick={() => rejectPaymentSuggestion(type)}
-                            title="Reject"
-                          >
-                            <X size={13} />
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                      type={type}
+                      variant={isPending ? 'pending' : 'ok'}
+                      value={pAmt}
+                      onChange={(field, val) => handlePaymentMappingChange(type, field, val)}
+                      masterAccounts={masterAccounts}
+                      masterDepartments={masterDepartments}
+                      suggestion={paymentSuggestions[type] ?? null}
+                      onAccept={() => confirmPaymentSuggestion(type)}
+                      onReject={() => rejectPaymentSuggestion(type)}
+                      fallbackName="(AI)"
+                    />
                   )
                 })}
               </>
@@ -285,100 +202,32 @@ export default function PaymentTypeModal({
                 </button>
 
                 {showAdditional &&
-                  additionalTypes.map(type => {
-                    const pAmt = paymentAmount[type] || { dept: '', acc: '' }
-                    const isCustom = customPaymentTypes.includes(type)
-                    const suggestion = paymentSuggestions[type] ?? null
-
-                    const deptFromMaster = suggestion?.dept
-                      ? masterDepartments.find(d => d.code === suggestion.dept)
-                      : null
-                    const deptTopChoice = suggestion?.dept
-                      ? {
-                          code: suggestion.dept,
-                          name: deptFromMaster?.name || '(AI/History code)',
-                          name2: deptFromMaster?.name2,
-                          source: suggestion.source,
-                        }
-                      : null
-                    const acctOptions = allowedAccountsForDept(
-                      pAmt.dept,
-                      masterDepartments,
-                      masterAccounts
-                    )
-                    const acctNotice =
-                      acctOptions.length < masterAccounts.length
-                        ? `${acctOptions.length} accounts allowed for ${pAmt.dept}`
-                        : undefined
-
-                    const accFromMaster = suggestion?.acc
-                      ? masterAccounts.find(a => a.code === suggestion.acc)
-                      : null
-                    const accTopChoice = suggestion?.acc
-                      ? {
-                          code: suggestion.acc,
-                          name: accFromMaster?.name || '(AI/History code)',
-                          name2: accFromMaster?.name2,
-                          source: suggestion.source,
-                        }
-                      : null
-
-                    return (
-                      <div key={type} data-pt={type} className="pm-row pm-row--custom">
-                        <div className="pm-type-cell">
-                          <div className="pm-type-badge pm-type-badge--custom">{type}</div>
-                          {isCustom && (
-                            <button
-                              type="button"
-                              className="pm-remove-btn"
-                              onClick={() => handleRemoveCustomType(type)}
-                              title="Remove"
-                            >
-                              <XCircle size={16} />
-                            </button>
-                          )}
-                        </div>
-                        <CustomSearchSelect
-                          value={pAmt.dept}
-                          onChange={val => handlePaymentMappingChange(type, 'dept', val)}
-                          options={masterDepartments}
-                          placeholder="Dept..."
-                          topChoice={deptTopChoice?.code ? deptTopChoice : null}
-                          suggestedValue={suggestion?.dept ?? null}
-                        />
-                        <CustomSearchSelect
-                          value={pAmt.acc}
-                          onChange={val => handlePaymentMappingChange(type, 'acc', val)}
-                          options={acctOptions}
-                          notice={acctNotice}
-                          placeholder="Acc..."
-                          hasError={!isAccountAllowed(pAmt.dept, pAmt.acc, masterDepartments)}
-                          topChoice={accTopChoice?.code ? accTopChoice : null}
-                          suggestedValue={suggestion?.acc ?? null}
-                        />
-                        {suggestion && (
-                          <div className="pm-suggest-actions">
-                            <button
-                              type="button"
-                              className="pm-accept-btn"
-                              onClick={() => confirmPaymentSuggestion(type)}
-                              title="Accept"
-                            >
-                              <Check size={13} />
-                            </button>
-                            <button
-                              type="button"
-                              className="pm-reject-btn"
-                              onClick={() => rejectPaymentSuggestion(type)}
-                              title="Reject"
-                            >
-                              <X size={13} />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
+                  additionalTypes.map(type => (
+                    <MappingRow
+                      key={type}
+                      type={type}
+                      variant="custom"
+                      value={paymentAmount[type] || { dept: '', acc: '' }}
+                      onChange={(field, val) => handlePaymentMappingChange(type, field, val)}
+                      masterAccounts={masterAccounts}
+                      masterDepartments={masterDepartments}
+                      suggestion={paymentSuggestions[type] ?? null}
+                      onAccept={() => confirmPaymentSuggestion(type)}
+                      onReject={() => rejectPaymentSuggestion(type)}
+                      trailing={
+                        customPaymentTypes.includes(type) ? (
+                          <button
+                            type="button"
+                            className="pm-remove-btn"
+                            onClick={() => handleRemoveCustomType(type)}
+                            title="Remove"
+                          >
+                            <XCircle size={16} />
+                          </button>
+                        ) : undefined
+                      }
+                    />
+                  ))}
               </>
             )}
           </div>
