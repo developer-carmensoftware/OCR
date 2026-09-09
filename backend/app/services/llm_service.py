@@ -9,7 +9,7 @@ import base64
 import logging
 
 from app.config import settings
-from app.constants import Module
+from app.constants import DocType, Module
 from app.llm.client import call_vision_llm, parse_vision_json
 from app.llm.prompts import get_ocr_prompt
 from app.models import ExtractedCreditCardData
@@ -62,6 +62,7 @@ async def extract_from_image(
     bank_type: str | None = None,
     page_images: list[bytes] | None = None,
     image_mime_type: str | None = None,
+    doc_type: str = DocType.FEE_INVOICE,
 ) -> tuple[str, ExtractedCreditCardData]:
     """
     Send an image (or multiple PDF pages) to OpenRouter vision LLM.
@@ -76,7 +77,12 @@ async def extract_from_image(
         raise ValueError("OPENROUTER_API_KEY is not configured")
 
     effective_bank = bank_code or bank_type
-    prompt = get_ocr_prompt(effective_bank, hints=hints)
+    prompt = get_ocr_prompt(effective_bank, hints=hints, doc_type=doc_type)
+    # Per-module cost breakdown in daily_usage_summary depends on this being the
+    # module that was gated and charged, not the family the code path belongs to.
+    module_id = (
+        Module.CC_AR_RECONCILE if doc_type == DocType.AR_RECONCILE else Module.CREDIT_CARD_OCR
+    )
 
     # Build image content items.
     # page_images: pre-rendered PNG bytes per page (1 or more) — always use them when present.
@@ -120,7 +126,7 @@ async def extract_from_image(
         ],
         model=settings.openrouter_ocr_model,
         task_id=task_id,
-        module_id=Module.CREDIT_CARD_OCR,
+        module_id=module_id,
         image_size_bytes=total_image_bytes,
         count_quota=True,
     )

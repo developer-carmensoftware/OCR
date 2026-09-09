@@ -10,6 +10,7 @@ import os
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import DocType
 from app.context import current_tenant_id
 from app.exceptions import ValidationError
 from app.models.orm import OCRTask, TaskStatus
@@ -31,6 +32,8 @@ async def extract_stateless(
     hints: dict | None = None,
     task_id: str | None = None,
     pdf_password: str | None = None,
+    doc_type: str = DocType.FEE_INVOICE,
+    page_indexes: list[int] | None = None,
 ) -> ExtractedCreditCardData:
     """
     Stateless OCR extraction: resize → Vision LLM → return structured data.
@@ -38,20 +41,25 @@ async def extract_stateless(
     bank_code: 'BBL' | 'KBANK' | 'SCB' | 'BAY' | 'KTC' | 'GHL' | 'PAYPAL' | 'SIAMPAY' — selects bank-specific prompt.
     hints: correction hints from correction_service (injected into prompt).
     pdf_password: password for an encrypted PDF (None = not encrypted).
+    doc_type: DocType.* — picks the prompt layout and the module charged for the call.
+    page_indexes: 0-based PDF pages to send, negative counting from the end.
+                  Defaults to the first page, which is where every document this
+                  service read before the settlement report kept its data.
     """
     ext = os.path.splitext(original_filename)[1].lower()
     image_mime_type: str | None = None  # PDF branch leaves this None → falls back to
     # get_mime_type(original_filename) inside extract_from_image, i.e. application/pdf.
 
     if ext == ".pdf":
-        # Credit-card docs are single-page — always extract page 1 as a native PDF
-        # subset (full vector/text fidelity; rasterising degraded dense tables),
-        # decrypting first if encrypted so Gemini doesn't reject it as "no pages".
+        # Extract the wanted page(s) as a native PDF subset (full vector/text
+        # fidelity; rasterising degraded dense tables), decrypting first if
+        # encrypted so Gemini doesn't reject it as "no pages".
+        pages = page_indexes if page_indexes is not None else [0]
         try:
             processed_bytes = await asyncio.wait_for(
                 asyncio.get_running_loop().run_in_executor(
                     None,
-                    functools.partial(extract_pages_as_pdf, file_bytes, [0], pdf_password),
+                    functools.partial(extract_pages_as_pdf, file_bytes, pages, pdf_password),
                 ),
                 timeout=PDF_RENDER_TIMEOUT_SECONDS,
             )
@@ -63,9 +71,10 @@ async def extract_stateless(
         )
 
     logger.info(
-        "Extracting: %s (bank=%s hints=%d)",
+        "Extracting: %s (bank=%s doc_type=%s hints=%d)",
         original_filename,
         bank_code,
+        doc_type,
         len(hints) if hints else 0,
     )
     _, extracted = await extract_from_image(
@@ -75,6 +84,7 @@ async def extract_stateless(
         hints=hints,
         task_id=task_id,
         image_mime_type=image_mime_type,
+        doc_type=doc_type,
     )
     return extracted
 

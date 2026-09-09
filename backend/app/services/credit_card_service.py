@@ -91,6 +91,20 @@ def _recon_mismatch(lines_total: float, printed_total: float) -> ExtractionWarni
     )
 
 
+# The settlement report's own "TOTAL BY MERCHANT ID" line was not readable, so the rows
+# below it could not be checked against anything. That check is the only thing standing
+# between one merchant summary and a per-terminal block read twice, so its absence is
+# worth saying out loud rather than trusting the rows.
+_SETTLEMENT_TOTAL_MISSING = ExtractionWarning(code="settlementTotalMissing")
+
+
+# The merchant id in the filename and the one read off the page disagree. KBANK names
+# these files `KB1P554V2_SUM_<merchant id>_<date>.pdf`, one merchant per file, so a
+# disagreement means the model read a different block than the one this file is about.
+def _merchant_mismatch(from_file: str, from_doc: str) -> ExtractionWarning:
+    return ExtractionWarning(code="merchantMismatch", params={"file": from_file, "doc": from_doc})
+
+
 # Tolerance (baht) for reconciling printed vs reconstructed figures.
 _RECON_TOL = 0.02
 
@@ -314,6 +328,54 @@ def _strip_noncard_rows(extracted: ExtractedCreditCardData) -> None:
         and not _is_summary_row(r.transaction)
         and not _is_wht_row(r.transaction)
     ]
+
+
+# `KB1P554V2_SUM_451005282039001_20260721.pdf` → 451005282039001. KBANK writes one
+# settlement report per merchant id and puts it in the name, which makes the filename an
+# independent second opinion on what the model read — free, deterministic, and the only
+# check that catches the model summarising the wrong block on a page that holds several.
+_SETTLEMENT_FILE_MERCHANT = re.compile(r"_SUM_(\d{6,})_", re.IGNORECASE)
+
+
+def _normalize_ar_settlement(
+    extracted: ExtractedCreditCardData, original_filename: str | None
+) -> None:
+    """Consume the settlement report's printed TOTAL row and check the rows against it.
+
+    The document is a stack of subtotals of the same money — a block per TERMINAL ID,
+    then per-terminal summaries, then a service summary, then the merchant summary. The
+    prompt asks for the merchant summary alone plus its `TOTAL BY MERCHANT ID` line, and
+    this is where that answer is verified: Σ THB AMT over the emitted rows must equal the
+    printed total, or the model summed blocks it was told to ignore and the JV would post
+    the day's takings twice. That is the whole reason the TOTAL row is requested at all,
+    so a document that arrives without one is flagged rather than trusted.
+
+    Unlike the fee-invoice normalizer this repairs nothing. Every figure it needs is
+    printed; if they disagree, a human is the right resolution, not arithmetic.
+    """
+    rows = extracted.details
+    summary = next((r for r in rows if _is_summary_row(r.transaction)), None)
+
+    rows[:] = [
+        r
+        for r in rows
+        if _parse_amt(r.pay_amt)
+        and not _is_summary_row(r.transaction)
+        and not _is_wht_row(r.transaction)
+    ]
+
+    printed = _parse_amt(summary.pay_amt) if summary else None
+    if printed is None:
+        extracted.warnings.append(_SETTLEMENT_TOTAL_MISSING)
+    else:
+        lines_total = round(sum(_parse_amt(r.pay_amt) or 0.0 for r in rows), 2)
+        if abs(lines_total - printed) > _RECON_TOL:
+            extracted.warnings.append(_recon_mismatch(lines_total, printed))
+
+    from_file = _SETTLEMENT_FILE_MERCHANT.search(original_filename or "")
+    from_doc = re.sub(r"\D", "", extracted.merchant_id or "")
+    if from_file and from_doc and from_file.group(1) != from_doc:
+        extracted.warnings.append(_merchant_mismatch(from_file.group(1), from_doc))
 
 
 # A date printed inside a line description. Deliberately narrow — two or three
@@ -684,7 +746,11 @@ async def finalize_extraction(
         doc_name=extracted.doc_name,
     )
 
-    if resolved_bank_code and resolved_bank_code in FEE_INVOICE_CODES:
+    if doc_type == DocType.AR_RECONCILE:
+        # Branches on the document, not the bank: KBANK issues both this and the fee
+        # invoice above, and only the caller's rule knows which one arrived.
+        _normalize_ar_settlement(extracted, original_filename)
+    elif resolved_bank_code and resolved_bank_code in FEE_INVOICE_CODES:
         _normalize_fee_invoice(extracted, resolved_bank_code)
     elif resolved_bank_code in _BANK_STATEMENT_CODES:
         _normalize_bay_statement(extracted)

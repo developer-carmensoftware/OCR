@@ -627,6 +627,9 @@ const en = {
   'warn.vatUnallocated': 'Some fee lines had no amount, so the VAT split may be off.',
   'warn.negativeAmounts': 'Refund amounts are shown as extracted; they were not reconciled.',
   'warn.bankMismatch': 'Matched your {rule} rule but issued by {detected} — filed as {detected}.',
+  'warn.settlementTotalMissing':
+    'The report’s own TOTAL line could not be read, so the card rows were not cross-checked.',
+  'warn.merchantMismatch': 'Merchant {doc} was read, but the file is named for merchant {file}.',
   'warn.apTaxGuessed': 'Assumed unit prices are VAT {taxType} — the footer did not confirm it.',
   // Our own words for where VAT sits, not a Carmen field name, so they read translated
   // inside the sentence above.
@@ -2254,6 +2257,9 @@ const th: Record<TKey, string> = {
   'warn.vatUnallocated': 'บางบรรทัดไม่มียอดค่าธรรมเนียม การกระจาย VAT อาจคลาดเคลื่อน',
   'warn.negativeAmounts': 'มียอดติดลบ แสดงตามที่อ่านได้ ไม่ได้กระทบยอดอัตโนมัติ',
   'warn.bankMismatch': 'เข้ากฎ {rule} แต่เอกสารออกโดย {detected} — บันทึกเป็น {detected}',
+  'warn.settlementTotalMissing':
+    'อ่านบรรทัดยอดรวมของรายงานไม่ได้ จึงไม่ได้ตรวจทานยอดรายบัตรกับยอดรวม',
+  'warn.merchantMismatch': 'อ่านได้ร้านค้า {doc} แต่ชื่อไฟล์เป็นของร้านค้า {file}',
   'warn.apTaxGuessed': 'อนุมานว่าราคาต่อหน่วยเป็นแบบ{taxType} เพราะยอดท้ายเอกสารไม่ยืนยัน',
   'warn.taxType.Include': 'รวม VAT',
   'warn.taxType.Exclude': 'ไม่รวม VAT',
