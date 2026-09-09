@@ -937,6 +937,7 @@ const en = {
   'review.actionReconnect': 'Reconnect',
   'review.actionOpenJv': 'Open JV',
   'review.uploadDocuments': 'Upload documents',
+  'review.arSettings': 'AR reconciliation settings',
   // "reviewed and", because that is what the name is evidence of: this document stopped at
   // the queue and a person read it before it went. Its sibling below says "scanned and" for
   // the same reason — each names the work the person actually did, not just the posting.
@@ -2498,6 +2499,7 @@ const th: Record<TKey, string> = {
   'review.actionFixMapping': 'แก้ผังบัญชี',
   'review.actionOpenJv': 'เปิด JV',
   'review.uploadDocuments': 'อัปโหลดเอกสาร',
+  'review.arSettings': 'ตั้งค่ากระทบยอดลูกหนี้บัตรเครดิต',
   'review.postedBy': 'ตรวจสอบและโพสต์โดย {name}',
   'review.postedAutomatically': 'โพสต์อัตโนมัติ',
   'review.postedManuallyBy': 'สแกนและลงบัญชีโดย {name}',

@@ -1,0 +1,486 @@
+/* ─── Detailed Credit Card AR Reconciliation — settings ─────────────────────
+ *
+ * Tokens only, no raw hex: every colour here has a [data-theme='dark'] override in
+ * base.css, and hardcoding one breaks the dark contract silently. The mapping table
+ * reuses the .pm-* grid from components/payment-modal.css via MappingRow.
+ */
+
+.ar-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-3);
+  text-decoration: none;
+  transition: color 0.15s ease-out;
+}
+
+.ar-back:hover {
+  color: var(--primary);
+}
+
+.ar-intro {
+  margin: -0.4rem 0 1.5rem;
+  max-width: 68ch;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--text-3);
+  text-wrap: pretty;
+}
+
+/* ─── Readiness chain ─────────────────────────────────────────────────────── */
+
+.ar-chain {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ar-chain li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 100px;
+  border: 1px solid var(--border);
+  background: var(--muted);
+  font-size: 0.78rem;
+}
+
+.ar-chain li.ok {
+  border-color: var(--emerald-mid);
+  background: var(--emerald-light);
+  color: var(--emerald-text);
+}
+
+.ar-chain li.todo {
+  border-color: var(--border-raised, var(--border));
+  color: var(--text-3);
+}
+
+.ar-chain-label {
+  font-weight: 600;
+}
+
+.ar-chain-detail {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.72rem;
+  opacity: 0.85;
+}
+
+.ar-chain-note {
+  margin: 0.75rem 0 0;
+  max-width: 70ch;
+  font-size: 0.76rem;
+  line-height: 1.55;
+  color: var(--text-3);
+  text-wrap: pretty;
+}
+
+/* ─── Fields ──────────────────────────────────────────────────────────────── */
+
+.ar-field {
+  margin-bottom: 1.25rem;
+  border: 0;
+  padding: 0;
+}
+
+.ar-field > label,
+.ar-field > legend {
+  display: block;
+  margin-bottom: 0.4rem;
+  padding: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.ar-field .modal-input {
+  width: 100%;
+  max-width: 34rem;
+}
+
+.ar-mono {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.82rem;
+}
+
+.ar-hint {
+  margin: 0.4rem 0 0;
+  max-width: 68ch;
+  font-size: 0.76rem;
+  line-height: 1.55;
+  color: var(--text-3);
+  text-wrap: pretty;
+}
+
+.ar-hint-warn {
+  color: var(--amber-text);
+}
+
+.ar-toggle-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  max-width: 34rem;
+}
+
+.ar-toggle-field p {
+  margin-top: 0.2rem;
+}
+
+/* Switch — the one control here with no existing counterpart in the app. */
+
+.ar-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 42px;
+  height: 24px;
+}
+
+.ar-switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.ar-switch-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 100px;
+  background: var(--gray-300);
+  transition: background 0.18s ease-out;
+  pointer-events: none;
+}
+
+.ar-switch-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--card-bg);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
+  transition: transform 0.18s ease-out;
+}
+
+.ar-switch input:checked + .ar-switch-track {
+  background: var(--primary);
+}
+
+.ar-switch input:checked + .ar-switch-track::after {
+  transform: translateX(18px);
+}
+
+.ar-switch input:focus-visible + .ar-switch-track {
+  outline: 2.5px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* ─── Post type ───────────────────────────────────────────────────────────── */
+
+.ar-posttype .segmented-control {
+  max-width: 34rem;
+}
+
+.ar-posttype .segmented-btn {
+  flex-direction: column;
+  gap: 0.1rem;
+  padding-block: 0.5rem;
+  height: auto;
+}
+
+.ar-seg-name {
+  font-weight: 700;
+}
+
+.ar-seg-count {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  opacity: 0.8;
+}
+
+/* ─── Tag chips ───────────────────────────────────────────────────────────── */
+
+.ar-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.ar-tag {
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--muted);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--text-3);
+  cursor: pointer;
+  transition:
+    background 0.15s ease-out,
+    color 0.15s ease-out;
+}
+
+.ar-tag:hover {
+  background: var(--primary-light);
+  color: var(--primary);
+  border-color: var(--primary-mid);
+}
+
+.ar-debit-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 0.75rem;
+  max-width: 34rem;
+}
+
+/* ─── Mapping table ───────────────────────────────────────────────────────── */
+
+.ar-table {
+  margin-top: 0.75rem;
+}
+
+.ar-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.ar-add-input {
+  width: min(20rem, 100%);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+}
+
+.ar-row-count {
+  margin-left: auto;
+  font-size: 0.74rem;
+  color: var(--text-3);
+}
+
+/* ─── JV preview ──────────────────────────────────────────────────────────── */
+
+.ar-preview-note {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.7rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-3);
+}
+
+.ar-preview[aria-busy='true'] {
+  opacity: 0.55;
+  transition: opacity 0.18s ease-out;
+}
+
+.ar-preview-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 1.25rem 0;
+  font-size: 0.82rem;
+  color: var(--text-3);
+}
+
+.ar-preview-desc {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.ar-preview-desc-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.ar-preview-desc-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+.ar-preview-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--rose-mid);
+  border-radius: 6px;
+  background: var(--rose-light);
+  color: var(--rose-text);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.ar-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.ar-preview-table th {
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.ar-preview-table td {
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--text-2);
+  vertical-align: top;
+}
+
+.ar-preview-table .ar-comment {
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
+  min-width: 16rem;
+}
+
+.ar-preview-table .ar-num,
+.ar-preview-table th.ar-num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ar-preview-table .ar-row-debit td {
+  background: var(--primary-light);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.ar-preview-table tfoot td {
+  border-top: 2px solid var(--border-raised, var(--border));
+  border-bottom: 0;
+  background: var(--muted);
+  font-weight: 700;
+  color: var(--text);
+}
+
+.ar-missing {
+  font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
+  color: var(--rose-text);
+}
+
+.ar-balance {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.ar-balance.ok {
+  color: var(--emerald-text);
+}
+
+.ar-balance.bad {
+  color: var(--rose-text);
+}
+
+/* ─── Actions ─────────────────────────────────────────────────────────────── */
+
+.ar-actions {
+  margin: 2rem 0 3rem;
+}
+
+.ar-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ─── Skeleton ────────────────────────────────────────────────────────────── */
+
+.ar-skel-title {
+  width: 22rem;
+  max-width: 100%;
+  height: 26px;
+  border-radius: 6px;
+  margin: 1.5rem 0;
+}
+
+.ar-skel-card {
+  margin-bottom: 1.25rem;
+}
+
+.ar-skel-line {
+  width: 9rem;
+  height: 13px;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.ar-skel-block {
+  width: 100%;
+  height: 120px;
+  border-radius: 8px;
+}
+
+/* ─── Narrow screens ──────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .ar-debit-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ar-toggle-field {
+    align-items: flex-start;
+  }
+
+  .ar-add-row .btn,
+  .ar-actions .btn {
+    min-height: 44px;
+  }
+
+  .ar-row-count {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ar-switch-track,
+  .ar-switch-track::after,
+  .ar-preview[aria-busy='true'],
+  .ar-back,
+  .ar-tag {
+    transition: none;
+  }
+}

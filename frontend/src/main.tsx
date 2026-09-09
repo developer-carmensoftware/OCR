@@ -70,6 +70,7 @@ const Home = lazy(() => import('./pages/Home'))
 const ManualScan = lazy(() => import('./pages/ManualScan'))
 const ReviewQueue = lazy(() => import('./pages/ReviewQueue'))
 const Mapping = lazy(() => import('./pages/Mapping'))
+const ARReconcileSettings = lazy(() => import('./pages/ARReconcileSettings'))
 const APInvoice = lazy(() => import('./pages/APInvoice'))
 const Pricing = lazy(() => import('./pages/Pricing'))
 const OrderHistory = lazy(() => import('./pages/OrderHistory'))
@@ -141,6 +142,7 @@ function Router() {
     // Carmen's SSO deep-link lands on the bare route, so whatever renders there is the
     // module's first screen — the queue. The wizard is somewhere you go on purpose.
     if (sub === 'mapping') Page = <Mapping />
+    else if (sub === 'ar-settings') Page = <ARReconcileSettings />
     else if (sub === 'manual') Page = <ManualScan />
     // `/review?id=…` is the queue with a document open over it. Same component, so
     // opening and closing a document never refetches the list behind it.

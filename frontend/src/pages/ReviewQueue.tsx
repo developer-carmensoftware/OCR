@@ -9,6 +9,7 @@ import {
   FileX2,
   Mail,
   RefreshCw,
+  Scale,
   Upload,
   type LucideIcon,
 } from 'lucide-react'
@@ -399,6 +400,17 @@ export default function ReviewQueue() {
               has one writer, `PUT /api/v1/carmen/settings` — Carmen's own settings screen.
               Two writers for one boolean is what let an unrelated settings save turn review
               back on behind the customer's back (2026-09-08). */}
+          <button
+            type="button"
+            className="btn-icon"
+            onClick={() => {
+              window.location.hash = '#/CreditCardOCR/ar-settings'
+            }}
+            aria-label={t('review.arSettings')}
+            title={t('review.arSettings')}
+          >
+            <Scale size={14} />
+          </button>
           <button type="button" className="btn btn-primary" onClick={goManual}>
             <Upload size={14} /> {t('review.uploadDocuments')}
           </button>
