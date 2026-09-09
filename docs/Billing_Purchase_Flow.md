@@ -6,7 +6,7 @@ How tenants purchase, upgrade, and renew subscription plans.
 
 ## Overview
 
-Carmen OCR offers three subscription tiers (Starter, Growth, Pro — renamed from "Standard" to "Growth" on 2026-06-29) billed monthly or annually, plus one-time top-up credit packs. Tenants can upgrade to a higher tier or renew their current tier at any time — even mid-plan — with prorated credit for unused days. Downgrading is not supported.
+Carmen OCR offers four subscription tiers (Lite, Starter, Growth, Pro — Growth was renamed from "Standard" on 2026-06-29; Lite was added on 2026-09-09) billed monthly or annually, plus one-time top-up credit packs. Tenants can upgrade to a higher tier or renew their current tier at any time — even mid-plan — with prorated credit for unused days. Downgrading is not supported.
 
 ---
 
@@ -97,7 +97,7 @@ Upgrading to Growth Monthly (฿990/mo):
 
 ### Why Annual Plans Can't Switch to Monthly Mid-Term
 
-The cheapest annual plan (Starter, ฿5,292) costs more than the most expensive monthly plan (Pro, ฿2,490). So an annual subscriber's proration credit always exceeds any monthly plan's price — switching annual → monthly would floor the new order to ฿0 and **forfeit the unused prepaid value** (which is not refunded). To prevent this, an annual subscriber can only move to another annual plan (upgrade or renew). To switch to monthly billing, they wait until the annual term expires. This keeps every transition fair: in all allowed cases the new plan's price is ≥ the proration credit, so no prepaid value is ever lost.
+The cheapest annual plan (Lite, ฿3,132) costs more than the most expensive monthly plan (Pro, ฿2,490). So an annual subscriber's proration credit always exceeds any monthly plan's price — switching annual → monthly would floor the new order to ฿0 and **forfeit the unused prepaid value** (which is not refunded). To prevent this, an annual subscriber can only move to another annual plan (upgrade or renew). To switch to monthly billing, they wait until the annual term expires. This keeps every transition fair: in all allowed cases the new plan's price is ≥ the proration credit, so no prepaid value is ever lost.
 
 ### Top-up Credits
 

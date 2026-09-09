@@ -27,13 +27,10 @@ export interface PackPresentation {
  * resulting per-document price). Exactly one tier carries a badge + highlight:
  * the anchor we want chosen.
  */
-// ponytail: sub_standard alias kept until DB migration renames → sub_growth
-const _growth: PackPresentation = { name: 'Growth', badge: 'Popular', highlight: true }
-
 export const PLAN_META: Record<string, PackPresentation> = {
+  sub_lite: { name: 'Lite' },
   sub_starter: { name: 'Starter' },
-  sub_growth: _growth,
-  sub_standard: _growth,
+  sub_growth: { name: 'Growth', badge: 'Popular', highlight: true },
   sub_pro: { name: 'Professional' },
 }
 

@@ -44,7 +44,7 @@ describe('purchase tutorial figures', () => {
    */
   it('renders the real plan cards and pack list on the catalog figure', () => {
     const { container } = render(<SpotProvider value="">{PURCHASE_FIGURES[1]}</SpotProvider>)
-    expect(container.querySelectorAll('.plan-card')).toHaveLength(3)
+    expect(container.querySelectorAll('.plan-card')).toHaveLength(4)
     expect(container.querySelector('.enterprise-band')).not.toBeNull()
     expect(container.querySelector('.pack-grid, .pack-list')).not.toBeNull()
   })

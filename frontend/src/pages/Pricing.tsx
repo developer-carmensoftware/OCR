@@ -276,8 +276,8 @@ export default function Pricing() {
             {error ? (
               <div className="pricing-error">{t('pricing.loadError', { error })}</div>
             ) : loading ? (
-              <div className="pricing-skeleton-grid pricing-skeleton-grid--3" aria-hidden="true">
-                {Array.from({ length: 3 }).map((_, i) => (
+              <div className="pricing-skeleton-grid pricing-skeleton-grid--4" aria-hidden="true">
+                {Array.from({ length: 4 }).map((_, i) => (
                   <div key={i} className="pricing-skeleton-card" />
                 ))}
               </div>
@@ -345,7 +345,7 @@ export default function Pricing() {
                     </p>
                   )}
                   <m.div
-                    className="plan-grid plan-grid--3"
+                    className="plan-grid plan-grid--4"
                     variants={containerVariants}
                     initial={enter ? 'hidden' : false}
                     animate="show"

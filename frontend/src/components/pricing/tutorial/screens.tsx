@@ -203,7 +203,7 @@ function CatalogFigure() {
                 />
               </div>
             </div>
-            <div className="plan-grid plan-grid--3">
+            <div className="plan-grid plan-grid--4">
               {DEMO_PLANS.map(pack => (
                 <PlanCard
                   key={pack.code}
