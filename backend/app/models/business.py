@@ -30,6 +30,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.constants import DocType
 from app.database import Base
 
 from .enums import TaskStatus
@@ -109,7 +110,9 @@ class CreditCard(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMix
     Extracted data from a credit card bank statement.
     bank_code: FK to banks.code (replaces the old hardcoded BankType enum).
     submitted_at: NULL = draft; NOT NULL = submitted to Carmen ERP.
-    Duplicate check: (tenant_id, bank_code, doc_no, submitted_at IS NOT NULL).
+    Duplicate check: (tenant_id, doc_no, doc_date, doc_type, submitted_at IS NOT NULL).
+    bank_code is deliberately NOT in that key and doc_type deliberately is — see the
+    `has_submitted_doc` call in credit_card_service.finalize_extraction for both reasons.
     """
 
     __tablename__ = "credit_cards"
@@ -117,6 +120,11 @@ class CreditCard(Base, TenantFKMixin, TimestampMixin, SoftDeleteMixin, WriterMix
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     task_id = Column(PGUUID(as_uuid=True), ForeignKey("ocr_tasks.id"), nullable=False, index=True)
     bank_code = Column(String(20), ForeignKey("banks.code"), nullable=True, index=True)
+    # constants.DocType — 'fee_invoice' (everything scanned before 2026-09-09) or
+    # 'ar_reconcile' (the KBANK settlement report). Part of the duplicate key.
+    doc_type = Column(
+        String(20), nullable=False, server_default=DocType.FEE_INVOICE, default=DocType.FEE_INVOICE
+    )
     company_name = Column(String(255), nullable=True)
     bank_company_name = Column(String(255), nullable=True)
     doc_date = Column(Date, nullable=True, index=True)

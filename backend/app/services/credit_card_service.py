@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 
 from app.config import settings
+from app.constants import DocType
 from app.database import async_session
 from app.models.orm import CreditCard, OCRTask, TaskStatus
 from app.models.schemas import ExtractedCreditCardData
@@ -667,6 +668,8 @@ async def finalize_extraction(
     tenant_id: str,
     bank_code: str | None,
     carmen_user_id: str | None,
+    doc_type: str = DocType.FEE_INVOICE,
+    original_filename: str | None = None,
 ) -> ExtractedCreditCardData:
     """Duplicate check, persist CreditCard row, mark task COMPLETED. Returns updated extracted."""
     # Resolve bank_code from the extracted fields when the caller passed none — the same
@@ -708,12 +711,19 @@ async def finalize_extraction(
             # doc_date keeps the key specific enough that two banks reusing a doc_no do
             # not collide: a false positive here refuses a real document as "already
             # posted", which is worse than the duplicate draft this guard exists to stop.
+            #
+            # **doc_type IS in this key**, for the same reason bank_code is not. KBANK
+            # prints one tax invoice number across two documents — the commission tax
+            # invoice and the settlement report that reclassifies the same day's takings —
+            # and both legitimately post their own JV. Without this the second to arrive is
+            # refused as a copy of the first.
             extracted.is_duplicate = await has_submitted_doc(
                 db,
                 CreditCard,
                 tenant_id=tenant_id,
                 doc_no=extracted.doc_no,
                 doc_date=parsed_date,
+                doc_type=doc_type,
             )
 
         if not extracted.is_duplicate:
@@ -730,6 +740,7 @@ async def finalize_extraction(
                 branch_no=extracted.branch_no,
                 submitted_at=None,
                 carmen_user_id=carmen_user_id or None,
+                doc_type=doc_type,
             )
             db.add(card)
             extracted.id = str(card_id)
