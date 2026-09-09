@@ -938,6 +938,11 @@ const en = {
   'review.actionOpenJv': 'Open JV',
   'review.uploadDocuments': 'Upload documents',
   'review.arSettings': 'AR reconciliation settings',
+  'review.arThisDocument': 'This document',
+  'review.arNotConfigured':
+    'AR reconciliation is no longer configured for this bank, so no JV can be built.',
+  'review.arUnmapped': 'Map these payment types before posting: {types}',
+  'review.arMappingLivesElsewhere': 'These accounts are set per payment type, not per document —',
   // "reviewed and", because that is what the name is evidence of: this document stopped at
   // the queue and a person read it before it went. Its sibling below says "scanned and" for
   // the same reason — each names the work the person actually did, not just the posting.
@@ -2500,6 +2505,10 @@ const th: Record<TKey, string> = {
   'review.actionOpenJv': 'เปิด JV',
   'review.uploadDocuments': 'อัปโหลดเอกสาร',
   'review.arSettings': 'ตั้งค่ากระทบยอดลูกหนี้บัตรเครดิต',
+  'review.arThisDocument': 'เอกสารฉบับนี้',
+  'review.arNotConfigured': 'ธนาคารนี้ไม่ได้ตั้งค่ากระทบยอดไว้แล้ว จึงสร้าง JV ไม่ได้',
+  'review.arUnmapped': 'ผูกผังบัญชีให้ประเภทบัตรเหล่านี้ก่อนจึงจะโพสต์ได้: {types}',
+  'review.arMappingLivesElsewhere': 'ผังบัญชีชุดนี้ตั้งต่อประเภทบัตร ไม่ใช่ต่อเอกสาร —',
   'review.postedBy': 'ตรวจสอบและโพสต์โดย {name}',
   'review.postedAutomatically': 'โพสต์อัตโนมัติ',
   'review.postedManuallyBy': 'สแกนและลงบัญชีโดย {name}',

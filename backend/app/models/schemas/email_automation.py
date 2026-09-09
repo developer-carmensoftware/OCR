@@ -143,6 +143,17 @@ class ReviewDocumentDetail(ReviewDocument):
     # is where the review screen reads them from.
     suggested: dict[str, dict[str, str]] = Field(default_factory=dict)
 
+    # `fee_invoice` (everything before 2026-09-09) or `ar_reconcile`. The two are
+    # different JVs from different documents, and the screen renders them differently:
+    # only one of them is editable in the browser.
+    doc_type: str = "fee_invoice"
+
+    # For an AR-reconciliation document only: the JV it would post, built server-side
+    # against the BU's current mapping. There is no client-side builder for this feature
+    # — `approve` posts exactly these rows, so what is shown and what posts are the same
+    # object rather than two derivations that have to be kept in step.
+    ar_jv: dict | None = None
+
 
 class ActivityRow(ReviewDocument):
     """One line of the activity table — an email document OR a manual scan.

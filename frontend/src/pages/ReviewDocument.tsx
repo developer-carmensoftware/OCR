@@ -7,6 +7,8 @@ import JvHeaderCard from '../components/credit-card/JvHeaderCard'
 import InputTaxPanel from '../components/credit-card/InputTaxPanel'
 import type { DetailRow } from '../components/credit-card/DetailTable'
 import JvEditor, { type JvState, type Overrides } from '../components/credit-card/JvEditor'
+import ARJvPreview from '../components/ar-reconcile/ARJvPreview'
+import '../styles/pages/ar-reconcile.css'
 import { useT } from '../i18n/LanguageContext'
 import { useAccountingConfig } from '../hooks/credit-card'
 import { useScrollLock } from '../hooks/useScrollLock'
@@ -310,17 +312,36 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   // Read the same way JvHeaderCard displays it, so the field and the block agree.
   const effectivePrefix = prefix ?? ((config?.filePrefix as string) || '')
 
-  const blockReason = jv.reason
-    ? jv.reason === 'account'
-      ? t('review.jvBlankAccount')
-      : jv.reason === 'unbalanced'
-        ? t('review.jvOffBy', { diff: fmt(Math.abs(jv.totalDr - jv.totalCr)) })
-        : t('review.jvNothing')
-    : !effectivePrefix
-      ? t('review.prefixRequired')
-      : itxBlocked
-        ? t('review.itxBlocked')
-        : null
+  // AR reconciliation is a different document with a different JV, and the browser has no
+  // builder for it: the server sent the rows, the server rebuilds the same rows on
+  // approve, and this screen shows them. Nothing on this path is editable, so the whole
+  // JvEditor / InputTaxPanel half of the modal is replaced rather than disabled.
+  const arJv = doc?.doc_type === 'ar_reconcile' ? (doc.ar_jv ?? null) : null
+  const isAR = doc?.doc_type === 'ar_reconcile'
+
+  const arBlockReason = !arJv
+    ? t('review.arNotConfigured')
+    : arJv.unmapped.length > 0
+      ? t('review.arUnmapped', { types: arJv.unmapped.join(', ') })
+      : !arJv.balanced
+        ? t('review.jvOffBy', { diff: fmt(Math.abs(arJv.total_debit - arJv.total_credit)) })
+        : !effectivePrefix
+          ? t('review.prefixRequired')
+          : null
+
+  const blockReason = isAR
+    ? arBlockReason
+    : jv.reason
+      ? jv.reason === 'account'
+        ? t('review.jvBlankAccount')
+        : jv.reason === 'unbalanced'
+          ? t('review.jvOffBy', { diff: fmt(Math.abs(jv.totalDr - jv.totalCr)) })
+          : t('review.jvNothing')
+      : !effectivePrefix
+        ? t('review.prefixRequired')
+        : itxBlocked
+          ? t('review.itxBlocked')
+          : null
 
   async function approve() {
     if (!doc) return
@@ -337,7 +358,10 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
     // there, carried no flag, and auto-posted on something no human had read. `overrides`
     // arrives seeded with what the AI proposed, so pressing Approve is what turns it into
     // the BU's rule — once per payment type, by a person, which is the whole point.
-    if (ruleCount) {
+    // Not on the AR path: `overrides` is the credit-card wizard's mapping table, and this
+    // document's accounts live in ar_reconcile_mappings. Writing them here would save the
+    // right codes under the wrong feature's keys.
+    if (ruleCount && !isAR) {
       try {
         await patchAccountingConfig({
           mappings: Object.fromEntries(
@@ -372,8 +396,13 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
             total: d.Total || '',
           })),
         },
-        rows: jv.rows,
-        post_input_tax: postInputTax,
+        // AR: the server rebuilds these from the BU's current mapping and ignores what is
+        // sent, so sending the rows it just handed us keeps the request honest rather
+        // than pretending the browser composed them.
+        rows: isAR ? (arJv?.rows ?? []) : jv.rows,
+        // A reclassification claims no input tax — the commission's VAT is claimed once,
+        // by the fee invoice's own document.
+        post_input_tax: isAR ? false : postInputTax,
         // Omitted entirely when nothing was touched, so the server derives the record the
         // same way the unattended path does.
         input_tax: Object.keys(itx).length ? itx : undefined,
@@ -632,46 +661,63 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                 />
               </section>
 
-              <section aria-label={t('review.paneJv')}>
-                <JvEditor
-                  details={details}
-                  config={config as Record<string, unknown> | null}
-                  configLoading={configLoading}
-                  overrides={overrides}
-                  onOverride={onOverride}
-                  onUndo={onUndo}
-                  guessedKeys={aiKeys}
-                  unmappedKeys={doc.unmapped || []}
-                  onAmount={updateAmount}
-                  descs={descs}
-                  onDesc={onDesc}
-                  onState={onJvState}
-                  bankCode={bankCode}
-                />
-              </section>
+              {isAR ? (
+                <section aria-label={t('review.paneJv')}>
+                  <ARJvPreview
+                    preview={arJv}
+                    loading={false}
+                    postType=""
+                    label={t('review.arThisDocument')}
+                  />
+                  <p className="ar-hint">
+                    {t('review.arMappingLivesElsewhere')}{' '}
+                    <a href="#/CreditCardOCR/ar-settings">{t('review.arSettings')}</a>
+                  </p>
+                </section>
+              ) : (
+                <>
+                  <section aria-label={t('review.paneJv')}>
+                    <JvEditor
+                      details={details}
+                      config={config as Record<string, unknown> | null}
+                      configLoading={configLoading}
+                      overrides={overrides}
+                      onOverride={onOverride}
+                      onUndo={onUndo}
+                      guessedKeys={aiKeys}
+                      unmappedKeys={doc.unmapped || []}
+                      onAmount={updateAmount}
+                      descs={descs}
+                      onDesc={onDesc}
+                      onState={onJvState}
+                      bankCode={bankCode}
+                    />
+                  </section>
 
-              {/* The second document this approval files. Its own fields live with it
+                  {/* The second document this approval files. Its own fields live with it
                   rather than in the JV header, which is the only place they were ever
                   wanted. */}
-              <section aria-label={t('review.secTax')}>
-                <InputTaxPanel
-                  details={details}
-                  headerData={headerData}
-                  bank={bankCode}
-                  enabled={postInputTax}
-                  onEnabledChange={on => {
-                    setDirty(true)
-                    setPostInputTax(on)
-                  }}
-                  onUpdate={updateHeader}
-                  overrides={itx}
-                  onOverride={patch => {
-                    setDirty(true)
-                    setItx(o => ({ ...o, ...patch }))
-                  }}
-                  onBlocked={setItxBlocked}
-                />
-              </section>
+                  <section aria-label={t('review.secTax')}>
+                    <InputTaxPanel
+                      details={details}
+                      headerData={headerData}
+                      bank={bankCode}
+                      enabled={postInputTax}
+                      onEnabledChange={on => {
+                        setDirty(true)
+                        setPostInputTax(on)
+                      }}
+                      onUpdate={updateHeader}
+                      overrides={itx}
+                      onOverride={patch => {
+                        setDirty(true)
+                        setItx(o => ({ ...o, ...patch }))
+                      }}
+                      onBlocked={setItxBlocked}
+                    />
+                  </section>
+                </>
+              )}
             </div>
 
             <footer className="rd-modal-foot">
@@ -703,7 +749,9 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   type="button"
                   className="btn btn-primary"
                   onClick={approve}
-                  disabled={busy || jv.blocked || !effectivePrefix || itxBlocked}
+                  disabled={
+                    busy || (isAR ? !!arBlockReason : jv.blocked || !effectivePrefix || itxBlocked)
+                  }
                   /* The sentence above is the reason the control is unavailable, so a
                      screen reader is given it along with the disabled state. */
                   aria-describedby={blockReason && !postError ? 'rd-blocked' : undefined}

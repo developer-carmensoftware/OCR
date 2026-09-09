@@ -21,6 +21,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import SessionInfo, get_current_session
+from app.constants import DocType
 from app.database import get_db
 from app.exceptions import NotFoundError
 from app.models.email_automation import EmailDocument
@@ -35,6 +36,7 @@ from app.models.schemas.email_automation import (
     ReviewDocumentDetail,
     ReviewStatus,
 )
+from app.services import ar_reconcile_service as ar_svc
 from app.services import email_ingest_service as ingest
 from app.services import email_settings_service as es
 from app.services.cc_jv import num, r2
@@ -159,6 +161,16 @@ async def get_pending(
     if row is None:
         raise NotFoundError("This document is not waiting for review")
     payload = row.review_payload or {}
+    doc_type = payload.get("doc_type") or DocType.FEE_INVOICE
+    ar_jv = None
+    if doc_type == DocType.AR_RECONCILE:
+        built = await ar_svc.jv_for_document(
+            db,
+            str(session.tenant_id),
+            str(row.bank_code) if row.bank_code else None,
+            payload.get("extracted") or {},
+        )
+        ar_jv = built.model_dump() if built else None
     return ReviewDocumentDetail(
         **to_review_row(row).model_dump(),
         extracted=payload.get("extracted") or {},
@@ -166,6 +178,8 @@ async def get_pending(
         # `credit_card_activity.py` share that helper, and the dept/acc codes are only
         # ever wanted by the screen that lets someone edit them.
         suggested=payload.get("suggested") or {},
+        doc_type=doc_type,
+        ar_jv=ar_jv,
     )
 
 

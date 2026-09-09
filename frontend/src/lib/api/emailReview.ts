@@ -8,6 +8,7 @@
 
 import { apiFetch } from './client'
 import { API } from './endpoints'
+import type { ARPreview } from './arReconcile'
 import type { Page } from './page'
 
 /** Why a parked document might be worth opening. Computed once at park time and stored,
@@ -93,6 +94,13 @@ export interface ReviewDocumentDetail extends ReviewDocument {
    *  BU's accounting config — a human approving is what does that — so the live config
    *  this screen derives its JV rows from will not have them, and this is the only copy. */
   suggested: Record<string, { dept?: string; acc?: string }>
+  /** `fee_invoice` or `ar_reconcile`. Two different documents producing two different
+   *  JVs; only the first is editable in the browser. */
+  doc_type?: string
+  /** AR reconciliation only: the JV this document would post, built server-side against
+   *  the BU's current mapping. Approving posts exactly these rows — this feature has no
+   *  client-side JV builder, so what is shown and what posts are one object. */
+  ar_jv?: ARPreview | null
 }
 
 /** Which of the automation page's four states to render, in one call. `blockers` comes

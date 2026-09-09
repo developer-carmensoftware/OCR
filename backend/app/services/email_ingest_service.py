@@ -84,6 +84,7 @@ from app.models.observability import JobRun
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.ocr import ExtractionWarning
 from app.services import anomaly_service, notification_service, ocr_service
+from app.services import ar_reconcile_service as ar_svc
 from app.services import email_settings_service as es
 from app.services import gl_suggestion_service as gl
 from app.services.accounting_config_service import (
@@ -2014,6 +2015,7 @@ async def approve_document(
         ledger_id: uuid.UUID = row.id  # type: ignore[assignment]
         bank_code: str | None = row.bank_code  # type: ignore[assignment]
         task_id = str(row.task_id) if row.task_id else None
+        doc_type = (row.review_payload or {}).get("doc_type") or DocType.FEE_INVOICE
         tenant = await db.get(Tenant, uuid.UUID(tenant_id))
         settings_row = await es.get_settings(db, tenant) if tenant else None
         carmen_token, carmen_uri = (
@@ -2038,8 +2040,35 @@ async def approve_document(
                 raise ConflictError(f"Document {doc_no} has already been posted to Carmen")
             config = await get_accounting_config(db, tenant_id)
 
+        description: str | None = None
+        if doc_type == DocType.AR_RECONCILE:
+            # The rows the caller sent are ignored on this path, and that is not a
+            # weakening of "post what the screen displayed" but the same rule reached
+            # differently. This feature has no browser-side JV builder: the screen
+            # *displays* what `jv_for_document` returned, so rebuilding it here from the
+            # same current mapping reproduces exactly that, while a browser free to send
+            # arbitrary rows against a control account is not something to accept on trust.
+            async with async_session() as db:
+                built = await ar_svc.jv_for_document(
+                    db, tenant_id, bank_code, extracted.model_dump(mode="json")
+                )
+            if built is None:
+                raise ValidationError("AR reconciliation is not configured for this bank any more")
+            if built.unmapped:
+                raise ValidationError(
+                    "Map these payment types before posting: " + ", ".join(built.unmapped)
+                )
+            rows = [r.model_dump() for r in built.rows]
+            if not built.balanced:
+                raise ValidationError("Debit and credit do not agree — this JV cannot post")
+            description = built.description
+
         payload = build_gljv_payload(
-            rows, doc_date=extracted.doc_date, bank_code=bank_code, config=config
+            rows,
+            doc_date=extracted.doc_date,
+            bank_code=bank_code,
+            config=config,
+            description=description,
         )
         try:
             result = await post_gljv(payload, carmen_token)
@@ -2076,7 +2105,10 @@ async def approve_document(
                 carmen_token=carmen_token,
                 overrides=input_tax,
             )
-            if post_input_tax_record
+            # Never for AR reconciliation: that JV moves an existing receivable between
+            # accounts and claims no input tax. The commission's VAT is claimed once, by
+            # the fee invoice's own document.
+            if post_input_tax_record and doc_type != DocType.AR_RECONCILE
             else None
         )
         jv_no = str(result.get("InternalMessage") or "")
