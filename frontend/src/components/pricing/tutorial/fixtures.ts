@@ -7,7 +7,7 @@
  * drawing something the product no longer looks like.
  *
  * Numbers match the live catalog (`credit_packs` after
- * `20260717000000_topup_price_v2.sql`). The buyer is a made-up company — never
+ * `20260909000000_add_lite_plan.sql`). The buyer is a made-up company — never
  * put a real customer's name or tax ID in teaching material. The seller block
  * and bank details are Carmen's own and are printed on every real proforma.
  */
@@ -20,6 +20,14 @@ import type {
 } from '../../../lib/api/credits'
 
 export const DEMO_PLANS: CreditPack[] = [
+  {
+    code: 'sub_lite',
+    kind: 'subscription',
+    credits: 100,
+    price_thb: 290,
+    price_annual_thb: 3132,
+    sort_order: 0,
+  },
   {
     code: 'sub_starter',
     kind: 'subscription',

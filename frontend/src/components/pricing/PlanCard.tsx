@@ -1,6 +1,7 @@
 import {
   ArrowRight,
   MessageCircle,
+  Sparkles,
   Rocket,
   Gem,
   Crown,
@@ -24,13 +25,10 @@ interface PlanCardProps {
   activePlanCredits?: number
 }
 
-// ponytail: sub_standard alias kept until DB migration renames → sub_growth
-const _growthIcon = { Icon: Gem, tint: 'plan-icon--standard' }
-
 const TIER_ICONS: Record<string, { Icon: LucideIcon; tint: string }> = {
+  sub_lite: { Icon: Sparkles, tint: 'plan-icon--lite' },
   sub_starter: { Icon: Rocket, tint: 'plan-icon--starter' },
-  sub_growth: _growthIcon,
-  sub_standard: _growthIcon,
+  sub_growth: { Icon: Gem, tint: 'plan-icon--growth' },
   sub_pro: { Icon: Crown, tint: 'plan-icon--pro' },
 }
 
@@ -52,11 +50,29 @@ export function PlanCard({
   const { t } = useT()
   const isCurrentPlan = activePlanCode === pack.code
   const isDowngrade = activePlanCredits != null && pack.credits < activePlanCredits
+  // The card's <h3> already names the tier, so the button prints the action only.
+  // "Upgrade to Professional" restated that heading and, at 4-up (~160px of card),
+  // could not fit on one line. The tier-specific phrase stays as the accessible
+  // name so a screen reader moving button to button still hears four distinct
+  // actions rather than "Upgrade plan" four times.
+  // A smaller tier is a downgrade, not an upgrade: before Lite existed this branch
+  // was rare enough to go unnoticed, but a tier below Starter means every
+  // subscriber now meets it on the first card, and "Upgrade to Lite" told them the
+  // opposite of the truth on a screen about money.
   const ctaLabel = isCurrentPlan
+    ? t('plan.ctaRenew')
+    : isDowngrade
+      ? t('plan.ctaDowngrade')
+      : activePlanCode
+        ? t('plan.ctaUpgrade')
+        : t('plan.ctaChoose')
+  const ctaName = isCurrentPlan
     ? t('plan.renew', { name: meta.name })
-    : activePlanCode
-      ? t('plan.upgrade', { name: meta.name })
-      : t('plan.choose', { name: meta.name })
+    : isDowngrade
+      ? t('plan.downgrade', { name: meta.name })
+      : activePlanCode
+        ? t('plan.upgrade', { name: meta.name })
+        : t('plan.choose', { name: meta.name })
   // Annual: pay for fewer months up front (2 free); the doc allowance is still
   // per month, so the hero stays the per-month price — just the discounted one.
   const annual = period === 'annual' && pack.price_annual_thb != null
@@ -101,14 +117,29 @@ export function PlanCard({
         ≈ <span className="text-mono">฿{formatThb(rate, true)}</span> {t('plan.perDoc')}
       </p>
 
-      <button
-        type="button"
-        className={`btn ${meta.highlight ? 'btn-primary' : 'btn-outline'} plan-cta`}
-        onClick={() => onSelect(pack)}
-        disabled={disabled || isDowngrade}
-      >
-        {ctaLabel} <ArrowRight size={14} />
-      </button>
+      {/* Why the reason sits on a WRAPPER: a disabled button suppresses its own
+          title in every browser, so the hint has to hang off something enabled.
+          It can't be a visible line either — that would make this one card taller
+          than its siblings and desync the price row across the grid (.plan-price
+          is margin-top:auto). .sr-only carries the same sentence to assistive tech
+          at zero layout cost, since a title alone is not reliably announced. */}
+      <span className="plan-cta-tip" title={isDowngrade ? t('plan.downgradeNote') : undefined}>
+        <button
+          type="button"
+          className={`btn ${meta.highlight ? 'btn-primary' : 'btn-outline'} plan-cta`}
+          onClick={() => onSelect(pack)}
+          disabled={disabled || isDowngrade}
+          aria-label={ctaName}
+          aria-describedby={isDowngrade ? `${pack.code}-downgrade` : undefined}
+        >
+          {ctaLabel} <ArrowRight size={14} />
+        </button>
+        {isDowngrade && (
+          <span id={`${pack.code}-downgrade`} className="sr-only">
+            {t('plan.downgradeNote')}
+          </span>
+        )}
+      </span>
     </div>
   )
 }
