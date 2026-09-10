@@ -139,6 +139,8 @@ class _Patches:
         conflict: str | None = None,
         tax_note: str | None = None,
         extract_side_effect=None,
+        open_password: str | None = None,
+        open_side_effect=None,
     ):
         self.extracted = extracted
         self.config = config
@@ -149,7 +151,9 @@ class _Patches:
         self.mark_submitted = AsyncMock()
         self.suggest = AsyncMock(return_value=suggested or {}, side_effect=suggest_side_effect)
         self.extract = AsyncMock(return_value=extracted, side_effect=extract_side_effect)
-        self.open_or_fail = AsyncMock(return_value=None)
+        # The password that unlocked the file, or a _Skip for one nothing opened. Both
+        # sit above `consume_document`, so neither costs the customer anything.
+        self.open_or_fail = AsyncMock(return_value=open_password, side_effect=open_side_effect)
         self.foreign_tax_id = AsyncMock(return_value=conflict)
         self.mark_token_unverified = AsyncMock()
         self.post_input_tax = AsyncMock(return_value=tax_note)
@@ -204,6 +208,7 @@ async def _run(
     carmen_token="dev-tok",
     carmen_uri="https://hotel.carmenwork.com",
     auto_post=True,
+    passwords=None,
     **patch_kwargs,
 ):
     """Runs `_process_attachment` — the whole per-attachment pipeline for a tenant the
@@ -230,7 +235,7 @@ async def _run(
             filename=filename,
             blob=blob,
             rules=RULES if rules is None else rules,
-            passwords=[],
+            passwords=passwords or [],
             carmen_token=carmen_token,
             carmen_uri=carmen_uri,
             auto_post=auto_post,

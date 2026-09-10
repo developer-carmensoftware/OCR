@@ -215,3 +215,41 @@ async def test_an_unmapped_scheme_parks_instead_of_posting():
     # No AI suggestion on this path: nothing could confirm one into ar_reconcile_mappings,
     # so asking would spend a call to produce a value that disappears on the next poll.
     p.suggest.assert_not_called()
+
+
+# ── Password-protected reports ────────────────────────────────────────────────
+#
+# Nothing about this is AR-specific, and that is the point of testing it. The unlock sits
+# above the document-type branch, so a settlement report is opened by exactly the code that
+# opens a commission invoice: the BU's own rule passwords, tried before anything is charged.
+
+
+@pytest.mark.asyncio
+async def test_a_locked_report_is_opened_with_the_rule_password_like_any_other_document():
+    db = _FakeDB()
+    outcome, p = await _run_ar(db, passwords=["s3cret"], open_password="s3cret")
+
+    assert outcome == "posted"
+    # Every one of this BU's rule passwords is offered, not just the matched rule's.
+    assert p.open_or_fail.call_args.args[2] == ["s3cret"]
+    # And the one that worked travels to the extractor, which has to decrypt before it can
+    # take the last page.
+    assert p.extract.call_args.kwargs["pdf_password"] == "s3cret"
+
+
+@pytest.mark.asyncio
+async def test_a_report_nobodys_password_opens_costs_nothing():
+    """The unlock is above `consume_document`, so a wrong password is not a paid failure —
+    same as the commission path."""
+    db = _FakeDB()
+    outcome, p = await _run_ar(
+        db,
+        passwords=["wrong"],
+        carmen_result=None,
+        open_side_effect=ingest._Skip("wrong_pdf_password", "None of the saved passwords"),
+    )
+
+    assert outcome == "skipped"
+    assert db.added[0].reason_code == "wrong_pdf_password"
+    p.consume_document.assert_not_called()
+    p.extract.assert_not_called()
