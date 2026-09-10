@@ -9,7 +9,6 @@ import SwapLabel from '../components/common/SwapLabel'
 import Switch from '../components/admin/ui/Switch'
 import { useARReconcile } from '../hooks/ar-reconcile'
 import { POST_TYPES } from '../lib/api/arReconcile'
-import { BANKS } from '../constants/banks'
 import { allowedAccountsForDept } from '../lib/deptAccounts'
 
 /**
@@ -22,22 +21,6 @@ import { allowedAccountsForDept } from '../lib/deptAccounts'
  */
 
 const QUEUE = '#/CreditCardOCR'
-
-/**
- * The card-acquiring banks, from the app's one bank list.
- *
- * `kind: 'gateway'` is excluded because those four (KTC, GHL, PayPal, SiamPay) are
- * processor *fee invoices*, not merchant settlement reports — there is no control account
- * for this JV to clear.
- *
- * **Which of them the extractor can actually read is not decided here.** This used to be a
- * local array carrying a `supported` flag, which made three places claim to know: the flag,
- * the server's `SUPPORTED_BANKS`, and the `bank_supported` readiness link that already says
- * so in a sentence at the top of this very screen. The server is the one that knows, it
- * refuses an *enabled* bank it cannot read on save, and the chain goes red the moment an
- * unreadable one is picked. One authority, and it updates itself.
- */
-const MERCHANT_BANKS = BANKS.filter(b => b.kind === 'bank')
 
 const TAGS = ['{Settlement_Date}', '{Tax_Invoice_No}', '{Bank_Name}'] as const
 
@@ -144,9 +127,14 @@ export default function ARReconcileSettings() {
             value={ctrl.bankCode}
             onChange={e => ctrl.setBankCode(e.target.value)}
           >
-            {MERCHANT_BANKS.map(b => (
-              <option key={b.value} value={b.value}>
-                {b.value} — {b.label}
+            {/* Options and their phase both come from the server: the names from the
+                `banks` table, `supported` from its own SUPPORTED_BANKS. An unsupported
+                bank is listed and disabled rather than hidden — FRD Out-of-Scope puts
+                SCB, BBL and BAY in Phase 2, and saying so is the point of listing them. */}
+            {ctrl.banks.map(b => (
+              <option key={b.code} value={b.code} disabled={!b.supported}>
+                {b.code} — {b.name}
+                {b.supported ? '' : ' — Phase 2'}
               </option>
             ))}
           </select>

@@ -19,6 +19,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import DocType, PostType
+from app.models.catalog import Bank
 from app.models.email_automation import EmailIngestSettings
 from app.models.orm import (
     ARReconcileMapping,
@@ -27,6 +28,7 @@ from app.models.orm import (
     BUAccountingMappingEntry,
 )
 from app.models.schemas import (
+    ARBankOption,
     ARBlocker,
     ARMappingItem,
     ARPreviewOut,
@@ -49,6 +51,41 @@ DEFAULT_TEMPLATE = "Credit Card AR Reconcile {Settlement_Date}"
 # Banks whose settlement report this release can read. The selector shows the others so
 # the roadmap is visible, but saving one would configure a document nothing can parse.
 SUPPORTED_BANKS = ("KBANK",)
+
+# Banks this feature can ever apply to — FRD §3.1's selector, and its Out-of-Scope note
+# that SCB, BBL and BAY arrive in Phase 2.
+#
+# The gateways in the `banks` table (KTC, GHL, PAYPAL, SIAMPAY) are deliberately absent:
+# they issue processor *fee invoices*, so there is no lump control account for this JV to
+# clear and no Phase 2 that would change that. A roadmap is a product statement, not data,
+# which is why it is a constant here rather than a column — but it lives beside
+# SUPPORTED_BANKS so the two can be read together, and the names still come from the
+# registry below rather than being written out a second time.
+RECONCILABLE_BANKS = ("KBANK", "SCB", "BBL", "BAY")
+
+
+async def bank_options(db: AsyncSession) -> list[ARBankOption]:
+    """The selector's options, ordered as the `banks` table orders them.
+
+    Names come from that table for the same reason `list_bank_codes` exists: a bank is an
+    INSERT, and a second hardcoded list in the browser is what that rule is there to
+    prevent. What this adds on top is `supported`, which only the server knows — the
+    screen must be able to mark Phase 2 without a copy of SUPPORTED_BANKS of its own.
+    """
+    rows = (
+        await db.execute(
+            select(Bank.code, Bank.name)
+            .where(
+                Bank.code.in_(RECONCILABLE_BANKS),
+                Bank.is_active.is_(True),
+                Bank.deleted_at.is_(None),
+            )
+            .order_by(Bank.sort_order, Bank.name)
+        )
+    ).all()
+    return [
+        ARBankOption(code=code, name=name, supported=code in SUPPORTED_BANKS) for code, name in rows
+    ]
 
 
 async def _get_setting(
@@ -148,6 +185,7 @@ async def default_clearing_account(db: AsyncSession, tenant_id: str) -> tuple[st
 
 async def get_settings(db: AsyncSession, tenant_id: str, bank_code: str) -> ARSettingsOut:
     row = await _get_setting(db, tenant_id, bank_code)
+    banks = await bank_options(db)
     if not row:
         prefill = await default_clearing_account(db, tenant_id)
         return ARSettingsOut(
@@ -159,6 +197,7 @@ async def get_settings(db: AsyncSession, tenant_id: str, bank_code: str) -> ARSe
             debit_account_code=prefill[1] if prefill else None,
             mappings={pt: [] for pt in PostType.ALL},
             blockers=await readiness(db, tenant_id, bank_code, setting=None),
+            banks=banks,
         )
 
     items = _to_items(await _get_mappings(db, row.id))
@@ -171,6 +210,7 @@ async def get_settings(db: AsyncSession, tenant_id: str, bank_code: str) -> ARSe
         debit_account_code=row.debit_account_code,
         mappings=items,
         blockers=await readiness(db, tenant_id, bank_code, setting=row, mappings=items),
+        banks=banks,
     )
 
 

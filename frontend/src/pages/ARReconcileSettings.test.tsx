@@ -57,6 +57,13 @@ function settings(over: Partial<ARSettings> = {}): ARSettings {
       { key: 'clearing_account', ok: true },
       { key: 'auto_post', ok: false, detail: 'Documents wait for review' },
     ],
+    // FRD §3.1's selector: KBANK readable now, the other three listed as Phase 2.
+    banks: [
+      { code: 'KBANK', name: 'Kasikornbank', supported: true },
+      { code: 'SCB', name: 'Siam Commercial Bank', supported: false },
+      { code: 'BBL', name: 'Bangkok Bank', supported: false },
+      { code: 'BAY', name: 'Krungsri', supported: false },
+    ],
     ...over,
   }
 }
@@ -128,6 +135,25 @@ describe('AR reconciliation settings', () => {
     // arrives on the preview's own request, one tick after the settings render.
     await waitFor(() => expect(balanceLine()).toHaveTextContent('Debit = Credit'))
     expect(screen.getByText('Credit Card AR Reconcile 21/07/2026')).toBeInTheDocument()
+  })
+
+  it('lists the Phase 2 banks and refuses to let one be picked', async () => {
+    // FRD Out-of-Scope: SCB, BBL and BAY arrive in Phase 2. Listing them is how the
+    // customer learns that; disabling them is how they do not configure a bank whose
+    // report nothing can parse. Both come from the server — the screen holds no bank
+    // list, and no copy of which release reads what.
+    renderPage()
+    await waitFor(() => expect(screen.getByLabelText('Merchant bank')).toBeInTheDocument())
+
+    const options = screen.getAllByRole('option')
+    expect(options.map(o => o.textContent)).toEqual([
+      'KBANK — Kasikornbank',
+      'SCB — Siam Commercial Bank — Phase 2',
+      'BBL — Bangkok Bank — Phase 2',
+      'BAY — Krungsri — Phase 2',
+    ])
+    expect(options[0]).toBeEnabled()
+    expect(options[1]).toBeDisabled()
   })
 
   it('states the whole readiness chain, not just what is wrong', async () => {

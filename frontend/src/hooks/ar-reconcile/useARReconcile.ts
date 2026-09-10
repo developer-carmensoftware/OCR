@@ -6,6 +6,7 @@ import {
   previewARJv,
   POST_TYPES,
   saveARSettings,
+  type ARBankOption,
   type ARBlocker,
   type ARMappingItem,
   type ARPreview,
@@ -76,6 +77,10 @@ export interface ARReconcileHook {
   dirty: boolean
   bankCode: string
   setBankCode: (code: string) => void
+  /** The selector's options, from the server. FRD §3.1 lists SCB/BBL/BAY beside KBANK so
+   *  the Phase 2 roadmap is visible; which of them this release can read is `supported`,
+   *  and only the server knows it. */
+  banks: ARBankOption[]
   enabled: boolean
   setEnabled: (v: boolean) => void
   postType: PostType
@@ -121,6 +126,7 @@ export function useARReconcile(initialBank = 'KBANK'): ARReconcileHook {
   const [debitDefault, setDebitDefault] = useState<FieldMapping | null>(null)
   const [sets, setSets] = useState<Record<string, ARMappingItem[]>>({ Detail: [], Summary: [] })
   const [blockers, setBlockers] = useState<ARBlocker[]>([])
+  const [banks, setBanks] = useState<ARBankOption[]>([])
   const [suggestions, setSuggestions] = useState<Record<string, Suggestion | null>>({})
   const [suggestLoading, setSuggestLoading] = useState(false)
   const [preview, setPreview] = useState<ARPreview | null>(null)
@@ -147,6 +153,7 @@ export function useARReconcile(initialBank = 'KBANK'): ARReconcileHook {
       setDebit(d)
       setDebitDefault(d.dept || d.acc ? d : null)
       setBlockers(s.blockers || [])
+      setBanks(s.banks || [])
 
       const detail = s.mappings?.Detail || []
       const summary = s.mappings?.Summary || []
@@ -351,6 +358,7 @@ export function useARReconcile(initialBank = 'KBANK'): ARReconcileHook {
     dirty,
     bankCode,
     setBankCode,
+    banks,
     enabled,
     setEnabled,
     postType,

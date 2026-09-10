@@ -22,6 +22,16 @@ export interface ARBlocker {
   detail?: string | null
 }
 
+/** One row of the bank selector, as the server lists it. */
+export interface ARBankOption {
+  code: string
+  name: string
+  /** This release can read this bank's settlement report. The rest are listed anyway —
+   *  FRD Out-of-Scope puts SCB, BBL and BAY in Phase 2, and a roadmap the customer cannot
+   *  see is not a roadmap. */
+  supported: boolean
+}
+
 export interface ARSettings {
   bank_code: string
   enabled: boolean
@@ -33,6 +43,9 @@ export interface ARSettings {
    *  delete the other's rows. */
   mappings: Record<string, ARMappingItem[]>
   blockers: ARBlocker[]
+  /** The selector's options. The screen keeps no bank list of its own — names come from
+   *  the `banks` table and `supported` from the server's own SUPPORTED_BANKS. */
+  banks: ARBankOption[]
 }
 
 export interface ARPreviewRow {
@@ -70,7 +83,10 @@ export async function getARSettings(bankCode: string): Promise<ARSettings> {
   return res.json() as Promise<ARSettings>
 }
 
-export async function saveARSettings(payload: Omit<ARSettings, 'blockers'>): Promise<void> {
+/** `blockers` and `banks` are things the server tells the screen, not things it saves. */
+export async function saveARSettings(
+  payload: Omit<ARSettings, 'blockers' | 'banks'>
+): Promise<void> {
   const res = await apiFetch(API.arReconcile.save, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

@@ -63,8 +63,24 @@ class ARBlocker(BaseModel):
     detail: str | None = None
 
 
+class ARBankOption(BaseModel):
+    """One row of the FRD §3.1 bank selector.
+
+    `supported` is what the browser cannot work out for itself: which banks this release
+    can actually read (`SUPPORTED_BANKS`). The unsupported ones are still listed, because
+    Out-of-Scope says SCB, BBL and BAY arrive in Phase 2 and a roadmap the customer cannot
+    see is not a roadmap.
+    """
+
+    code: str
+    name: str
+    supported: bool
+
+
 class ARSettingsOut(ARSettingsIn):
     blockers: list[ARBlocker] = Field(default_factory=list)
+    # The selector's options, so the screen holds no bank list of its own.
+    banks: list[ARBankOption] = Field(default_factory=list)
 
 
 class ARPreviewRow(BaseModel):

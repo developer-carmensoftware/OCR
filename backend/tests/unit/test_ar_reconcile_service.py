@@ -48,6 +48,8 @@ def _result(rows):
     r = MagicMock()
     r.scalars.return_value.first.return_value = rows[0] if rows else None
     r.scalars.return_value.all.return_value = list(rows)
+    # Multi-column selects (bank_options) read .all() off the result itself.
+    r.all.return_value = list(rows)
     return r
 
 
@@ -177,8 +179,8 @@ def test_mappings_dict_drops_inactive_rows_rather_than_passing_them_through_blan
 @pytest.mark.asyncio
 async def test_get_settings_returns_both_mapping_sets_for_a_configured_bank():
     rows = [_mapping("VS"), _mapping("VS INTER PREM", post_type=PostType.DETAIL)]
-    # _get_setting, _get_mappings, then readiness' two email-settings reads.
-    db = _db([_setting()], rows, [], [])
+    # _get_setting, bank_options, _get_mappings, then readiness' two email-settings reads.
+    db = _db([_setting()], [], rows, [], [])
 
     out = await svc.get_settings(db, TENANT, "KBANK")
 
@@ -194,8 +196,9 @@ async def test_get_settings_prefills_the_clearing_account_from_the_credit_card_m
     disagree give an entry that balances and never zeroes the control account."""
     cfg = SimpleNamespace(id=3)
     entry = SimpleNamespace(dept_code="GEN", acc_code="1021000")
-    # _get_setting (none) -> BUAccountingConfig -> its 'net' entry -> readiness' two reads.
-    db = _db([], [cfg], [entry], [], [])
+    # _get_setting (none) -> bank_options -> BUAccountingConfig -> its 'net' entry
+    # -> readiness' two reads.
+    db = _db([], [], [cfg], [entry], [], [])
 
     out = await svc.get_settings(db, TENANT, "KBANK")
 
@@ -205,7 +208,9 @@ async def test_get_settings_prefills_the_clearing_account_from_the_credit_card_m
 
 @pytest.mark.asyncio
 async def test_a_half_filled_credit_card_mapping_prefills_nothing():
-    db = _db([], [SimpleNamespace(id=3)], [SimpleNamespace(dept_code="GEN", acc_code=None)], [], [])
+    db = _db(
+        [], [], [SimpleNamespace(id=3)], [SimpleNamespace(dept_code="GEN", acc_code=None)], [], []
+    )
 
     out = await svc.get_settings(db, TENANT, "KBANK")
 
@@ -350,3 +355,46 @@ async def test_a_partly_mapped_table_is_not_complete():
 
     assert by_key["mapping_complete"].ok is False
     assert by_key["mapping_complete"].detail == "1 of 2 mapped"
+
+
+# ── The bank selector (FRD §3.1 + Out-of-Scope) ───────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_the_selector_lists_the_phase_2_banks_and_marks_which_are_readable():
+    """Both halves of this used to live in the browser, and one of them was deleted.
+
+    FRD §3.1 lists SCB, BBL and BAY beside KBANK, and Out-of-Scope says they arrive in
+    Phase 2 — so they are offered and marked, not hidden. The names come from the `banks`
+    table for the same reason `list_bank_codes` exists, and `supported` comes from
+    SUPPORTED_BANKS, which is the only place that knows.
+    """
+    res = MagicMock()
+    res.all.return_value = [
+        ("KBANK", "Kasikornbank"),
+        ("SCB", "Siam Commercial Bank"),
+        ("BBL", "Bangkok Bank"),
+        ("BAY", "Krungsri"),
+    ]
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=res)
+
+    out = await svc.bank_options(db)
+
+    assert [(b.code, b.supported) for b in out] == [
+        ("KBANK", True),
+        ("SCB", False),
+        ("BBL", False),
+        ("BAY", False),
+    ]
+    assert out[0].name == "Kasikornbank", "the name is the registry's, not a second list"
+
+
+def test_the_gateways_are_not_on_the_reconciliation_roadmap():
+    """KTC, GHL, PayPal and SiamPay issue processor fee invoices.
+
+    There is no lump control account for this JV to clear, so they are not Phase 2 — they
+    are not on the list at all, and offering them greyed out would promise otherwise.
+    """
+    assert set(svc.RECONCILABLE_BANKS).isdisjoint({"KTC", "GHL", "PAYPAL", "SIAMPAY"})
+    assert set(svc.SUPPORTED_BANKS) <= set(svc.RECONCILABLE_BANKS)
