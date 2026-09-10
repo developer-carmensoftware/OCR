@@ -1,420 +1,275 @@
 /* Email Automation settings (#/email-settings).
  *
- * The `.email-setup__*` block is ported from the feat/email-flow branch's
- * settings-hub.css, minus the dialog shell it used to live in — this is a page, so
- * there is no `.settings-hub__*` here. `.email-setup__input` replaces that branch's
- * `admin-form-input`, which belongs to the admin stylesheet a user page never loads.
+ * The page is built from the `ui-*` kit (PageHeader / Card / Switch / Button), which
+ * loads app-wide from index.css — so what is left here is only the layout Carmen's
+ * screen has and the kit does not: the context strip, the two-up grids, the rule cards
+ * and the action bar. Inputs use `.admin-form-input` from that same global sheet rather
+ * than a local copy of it.
+ *
+ * Every colour is a token, so dark mode needs no block of its own.
  */
 
 .email-settings-page {
   padding: 20px 16px 48px;
-  max-width: 880px;
+  max-width: 980px;
   margin: 0 auto;
 }
-.email-settings-page h1 {
+
+/* Who we are acting for — Carmen's grey strip above the cards. */
+.email-ctx {
   display: flex;
-  align-items: center;
-  gap: 9px;
-  margin: 0 0 4px;
-  font-size: 1.25rem;
-}
-.email-settings-page__lede {
-  margin: 0 0 20px;
-  font-size: 0.82rem;
-  color: var(--muted-foreground);
-  max-width: 70ch;
-}
-
-/* ── Connection card: who we are talking to, and with what ────────────────── */
-
-.email-conn {
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-5);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 14px 16px;
-  margin-bottom: 22px;
+  border-radius: var(--radius-md);
+  background: var(--muted);
+  font-size: 0.75rem;
+  color: var(--text-3);
 }
-.email-conn__row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 18px;
-}
-/* The owner-address block is a label over a hint over chips over an input — a column,
-   unlike the label/value pairs the other rows are. */
-.email-conn__row--stack {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 8px;
-}
-.email-conn__row + .email-conn__row {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
-.email-conn__label {
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted-foreground);
-}
-.email-conn__value {
+.email-ctx strong {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 0.8rem;
-}
-.email-conn__spacer {
-  flex: 1;
-}
-.email-conn__toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.82rem;
   font-weight: 600;
-}
-.email-conn__token-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  width: 100%;
-}
-.email-conn__token-form input {
-  flex: 1;
-  min-width: 220px;
+  color: var(--text-2);
 }
 
-.email-settings-banner {
+.email-banner {
   display: flex;
   gap: 9px;
   padding: 10px 13px;
-  border-radius: 10px;
-  margin-bottom: 16px;
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-4);
   font-size: 0.8rem;
   line-height: 1.45;
   background: var(--rose-light);
   color: var(--rose-text, var(--foreground));
   border: 1px solid var(--rose, transparent);
 }
-.email-settings-banner[data-tone='warn'] {
+.email-banner[data-tone='warn'] {
   background: var(--amber-light);
   color: var(--amber-text);
   border-color: var(--amber-mid);
+}
+
+/* ── Text ─────────────────────────────────────────────────────────────────── */
+
+.email-note {
+  margin: 0 0 var(--space-4);
+  font-size: 0.78rem;
+  color: var(--text-3);
+}
+.email-hint {
+  margin: var(--space-1) 0 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-3);
+  max-width: 62ch;
+}
+.email-hint--bullets {
+  padding-left: 1.1em;
+  margin-top: var(--space-2);
+}
+.email-hint--bullets li[data-tone='on'] {
+  color: var(--emerald-text);
+}
+.email-hint--bullets li[data-tone='off'] {
+  color: var(--amber-text);
+}
+.email-error {
+  margin: var(--space-1) 0 0;
+  font-size: 0.73rem;
+  font-weight: 600;
+  color: var(--rose-text, #b91c1c);
+}
+
+/* ── Fields ───────────────────────────────────────────────────────────────── */
+
+.email-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-2);
+  min-width: 0;
+}
+.email-field small {
+  font-size: 0.7rem;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--text-3);
+}
+.email-field textarea {
+  resize: vertical;
+  min-height: 64px;
+}
+
+/* Two-up on desktop, stacked on a phone, no media query needed. */
+.email-grid2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.email-toggle-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.email-toggle-card__title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ── Service status ───────────────────────────────────────────────────────── */
+
+.email-copyrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.email-copyrow input {
+  flex: 1;
+  min-width: 220px;
+}
+
+.email-live {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: var(--space-3);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--emerald-text);
+}
+.email-live[data-tone='warn'] {
+  color: var(--amber-text);
+  font-weight: 500;
+}
+.email-live__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--emerald);
+  flex-shrink: 0;
 }
 
 .email-blockers {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin: 10px 0 0;
+  margin: var(--space-3) 0 0;
 }
 .email-blockers__chip {
   padding: 2px 9px;
-  border-radius: var(--radius-pill, 100px);
+  border-radius: var(--radius-pill);
   background: var(--amber-light);
   color: var(--amber-text);
   font-size: 0.7rem;
   font-weight: 600;
-  font-family: var(--font-mono, ui-monospace, monospace);
 }
 
-.email-setup__error {
-  margin: 4px 0 0;
-  font-size: 0.73rem;
-  font-weight: 600;
-  color: var(--rose, #b91c1c);
-}
+/* ── Rules ────────────────────────────────────────────────────────────────── */
 
-/* ── The three steps ──────────────────────────────────────────────────────── */
-
-.email-setup {
-  list-style: none;
-  margin: 0;
-  padding: 2px 0 0;
-}
-.email-setup__step {
-  position: relative;
+.email-rules-head {
   display: flex;
-  gap: 12px;
-  padding-bottom: 24px;
-}
-.email-setup__step:last-child {
-  padding-bottom: 4px;
-}
-/* connector line between step markers */
-.email-setup__step::before {
-  content: '';
-  position: absolute;
-  left: 12px;
-  top: 30px;
-  bottom: 2px;
-  width: 1px;
-  background: var(--border);
-}
-.email-setup__step:last-child::before {
-  display: none;
-}
-.email-setup__marker {
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
-  width: 25px;
-  height: 25px;
-  border-radius: 50%;
-  background: var(--secondary);
-  color: var(--muted-foreground);
-  font-size: 0.75rem;
-  font-weight: 700;
-  transition:
-    background 200ms ease,
-    color 200ms ease;
-}
-.email-setup__step[data-done='true'] .email-setup__marker {
-  background: var(--emerald-light);
-  color: var(--success-foreground);
-}
-.email-setup__body {
-  flex: 1;
-  min-width: 0;
-}
-.email-setup__title {
-  font-size: 0.88rem;
-  font-weight: 600;
-  line-height: 25px;
-}
-.email-setup__hint {
-  margin: 2px 0 10px;
-  font-size: 0.78rem;
-  line-height: 1.45;
-  color: var(--muted-foreground);
-  max-width: 62ch;
-}
-
-/* Shared input — the admin stylesheet's `admin-form-input` without the dependency */
-.email-setup__input {
-  padding: 0.5rem 0.75rem;
-  border: 1.5px solid var(--border);
-  border-radius: 8px;
-  font-size: 0.84rem;
-  font-family: inherit;
-  color: var(--foreground);
-  background: var(--card-bg, transparent);
-  transition: border-color 150ms ease;
-}
-.email-setup__input:focus {
-  outline: none;
-  border-color: var(--primary);
-}
-
-/* Step 1 — tax ID chips + add row */
-.email-setup__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 10px;
-}
-.email-setup__chip {
-  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 5px 3px 11px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill, 100px);
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 0.76rem;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
 }
-.email-setup__chip button {
+.email-rules-head__title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.email-rule {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--muted);
+}
+/* A switched-off rule still reads, but should not compete with the live ones. */
+.email-rule[data-inactive] {
+  opacity: 0.66;
+}
+.email-rule__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+.email-rule__title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-2);
+}
+.email-rule__delete {
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  width: 28px;
+  height: 28px;
   border: none;
-  border-radius: 50%;
+  border-radius: var(--radius-xs);
   background: transparent;
-  color: var(--muted-foreground);
+  color: var(--text-3);
   cursor: pointer;
+  transition:
+    background 150ms var(--ease),
+    color 150ms var(--ease);
 }
-.email-setup__chip button:hover {
+.email-rule__delete:hover {
   background: var(--rose-light);
   color: var(--rose-text);
 }
-.email-setup__addrow {
-  display: flex;
-  gap: 8px;
-}
-.email-setup__addrow input {
-  flex: 1;
-  max-width: 360px;
-}
-
-/* Step 2 — bank rows */
-.email-setup__bank {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  margin-bottom: 8px;
-}
-.email-setup__bank[data-inactive='true'] .email-setup__bank-main {
-  opacity: 0.55;
-}
-.email-setup__bank-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-.email-setup__bank-name {
-  font-size: 0.84rem;
-  font-weight: 600;
-}
-.email-setup__bank-sender {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 0.73rem;
-  color: var(--muted-foreground);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.email-setup__bank-meta {
-  display: flex;
-  gap: 5px;
-  flex-shrink: 0;
-}
-.email-setup__badge {
-  padding: 2px 8px;
-  border-radius: var(--radius-pill, 100px);
-  background: var(--secondary);
-  color: var(--muted-foreground);
-  font-size: 0.68rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-.email-setup__bank-actions {
-  display: flex;
-  gap: 2px;
-  flex-shrink: 0;
-}
-.email-setup__bank-actions button {
+.email-rule__grid {
   display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  transition:
-    background 150ms ease,
-    color 150ms ease;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-3);
 }
-.email-setup__bank-actions button:hover {
-  background: var(--secondary);
-  color: var(--foreground);
+.email-rule__foot {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+}
+.email-rule__foot .email-field {
+  flex: 1;
+}
+.email-rule__foot .ui-switch-label {
+  padding-top: 1.35rem; /* sits on the input's line, not the label's */
 }
 
-/* Step 2 — add/edit form */
-.email-setup__form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 10px;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--muted);
-}
-.email-setup__field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-.email-setup__field small {
-  font-size: 0.72rem;
-  font-weight: 400;
-  color: var(--muted-foreground);
-}
-.email-setup__check {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-.email-setup__form-actions {
+/* ── Save / Reset ─────────────────────────────────────────────────────────── */
+
+.email-actionbar {
+  position: sticky;
+  bottom: 0;
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-}
-
-/* Step 3 — copyable forward-to address, live status, Gmail's confirmation code */
-.email-setup__copybox {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-.email-setup__addr {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 6px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--muted);
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 0.8rem;
-}
-.email-setup__live {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--success-foreground);
-}
-.email-setup__live-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--emerald);
-}
-.email-setup__waiting {
-  margin: 0;
-  font-size: 0.78rem;
-  color: var(--muted-foreground);
-  font-style: italic;
-}
-
-.email-setup__confirm {
-  margin-top: 14px;
-  padding: 11px 13px;
-  border: 1px dashed var(--border);
-  border-radius: 10px;
-}
-.email-setup__confirm[data-has-code='true'] {
-  border-style: solid;
-  border-color: var(--emerald);
-  background: var(--emerald-light);
-}
-.email-setup__confirm-code {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 1.15rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+  background: var(--background);
 }
 
 @media (max-width: 640px) {
-  .email-setup__bank {
-    flex-wrap: wrap;
+  .email-rule__foot {
+    flex-direction: column;
+    gap: var(--space-2);
   }
-  .email-setup__addrow input {
-    max-width: none;
+  .email-rule__foot .ui-switch-label {
+    padding-top: 0;
   }
 }

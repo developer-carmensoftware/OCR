@@ -586,7 +586,7 @@ omitting it keeps the stored value rather than resetting it, unlike every other 
 payload.
 
 > Our own `#/email-settings` screen — the copy of your screen we keep so the contract can be
-> exercised end to end — has a checkbox for it, writing through this same endpoint. That is a
+> exercised end to end — has a switch for it, writing through this same endpoint. That is a
 > second *client*, not a second writer, exactly as it already is for `enabled` and the rules.
 > Support uses it for a BU whose Carmen does not yet offer the control. Your screen remains
 > the one a customer is meant to use.
@@ -598,6 +598,46 @@ payload.
 > queue's *Open JV* opens `/glJv/{id}/show`. Our page is still routed for support but is
 > linked from nowhere. If that route ever moves, tell us: it is one constant
 > (`carmenSettingsUrl` in `frontend/src/lib/url.ts`).
+
+### 2.8 Reference screen layout (2026-09-10) — **you do not have to design this**
+
+Our `#/email-settings` was rebuilt to match the screen you are building, so that it is a
+working reference rather than a different idea of the same thing. Take the layout, the copy
+and the save semantics from it; the parts below marked **ours** are ones your app already
+covers elsewhere and you can drop.
+
+**Sections, in order.** Page header (title + one-line description + a reload button), then a
+grey strip carrying `URI` and `BU`, then:
+
+| Card | Holds |
+|---|---|
+| **Service status** | a `Ready` / `Not ready` badge, the read-only **ingest email address** with a COPY button, and its explanatory line. **Ours:** a live `Receiving: N documents · last …` line and a chip per blocker (`no_tax_id`, `no_rule`, `disabled`, `not_entitled`) — the response's `status` object, which you may also want if you have nowhere else showing whether ingestion is actually working |
+| **Automation settings** | the note *"Saving replaces the complete Tax ID and rule lists for this BU"*; two toggle cards side by side (**Enable AI document processing**, **Post scanned documents automatically** — §2.7 applies to the second); two textareas side by side (**Owner emails**, **Company Tax IDs \***), each accepting values separated by commas or new lines; then **Rules** with an `ADD RULE` button and one card per rule |
+| **Posting credential** | **Ours.** §2.6's token: fingerprint, last verified, paste-and-save, delete. Your app posts as the signed-in user, so you have no need for it |
+
+**A rule card** is `Rule N` with a delete button, four controls in a wrapping grid — **Bank**
+(blank = *Other, detect from the document*, options from `GET /bank-codes`, never a second
+hardcoded list), **Bank sender email**, **PDF password** (blank = keep the stored one), and
+**Document type** (**ours** — `fee_invoice` vs `ar_reconcile`; skip it only if you never
+enable AR reconciliation for a BU, since a settlement report matched by a commission rule is
+read with the wrong layout) — then **Filename patterns \*** full width with an **Active**
+switch beside it.
+
+**Save semantics, which matter more than the layout.** The whole page is one dirty form with
+`SAVE SETTINGS` and `RESET` at the bottom, both disabled until something changes. One
+`PUT /settings` carries the complete state, because that endpoint is a full replace and
+answers with the new state — so there is no refetch, and the form reseeds from the response
+rather than from what was typed (we normalise some values). Two rules follow from that:
+
+1. **Send every rule field you read, every time.** A field your payload omits is a field the
+   save deletes from every rule the BU has. `doc_type` is the one that made this concrete.
+2. **Send `auto_post` only when the switch itself moved** (§2.7). It is the one merge-on-omit
+   field, and a Save button lengthens rather than removes the race with a colleague editing
+   the same BU in another tab.
+
+Field errors from `errors[]` render under the input named by `field` (`tax_ids[0]`,
+`rules[1].filename_patterns`), and a failed save keeps the form dirty so nothing typed is
+lost. Everything is English; the page is a form, not a wizard — there are no steps.
 
 ---
 

@@ -1,94 +1,101 @@
-# Graph Report - OCR  (2026-09-09)
+# Graph Report - OCR  (2026-09-10)
 
 ## Corpus Check
-- 308 files · ~246,382 words
+- 310 files · ~249,021 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1804 nodes · 5114 edges · 102 communities (90 shown, 12 thin omitted)
+- 1829 nodes · 5180 edges · 113 communities (100 shown, 13 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 64 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `8e9f1f6c`
+- Built from commit: `7fb69050`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- ReviewQueue.tsx
+- useT
 - TutorialModal.tsx
-- ccJv.ts
+- ReviewDocument.tsx
 - NotificationBell.tsx
 - CreditOrdersPage.tsx
-- BankDisplayName
-- PeriodPicker.tsx
+- banks.ts
+- CreditsPage.tsx
 - FeatureFlows.tsx
 - useAPInvoice.ts
 - main.tsx
-- AccountingReview.tsx
+- APLineItem
 - screens.tsx
 - date.ts
-- showToast
+- useOcrExtraction
 - emailReview.ts
 - DataTable.tsx
 - compilerOptions
 - 5. Components
-- APInvoice.tsx
+- useAPExtraction.ts
 - ARReconcileSettings.tsx
 - devDependencies
-- ReviewDocument.tsx
+- QueueRow.tsx
 - useOcrSubmission.test.ts
 - apInvoice.ts
-- emailAutomation.ts
+- useEmailSettings.ts
 - useOcrWizard.ts
-- Pricing.tsx
-- JvEditor.tsx
-- adminClient.ts
+- formatThb
+- CustomSearchSelect.tsx
+- AdminAuthContext.tsx
+- QuotaModulesPage.tsx
 - EmailAutomationPage.tsx
-- DetailTable.tsx
 - bankTransforms.ts
-- MaintenancePage.tsx
-- OrderHistory.tsx
-- Home.tsx
+- TenantsPage.tsx
+- OrderDrawer.tsx
+- AppHeader.tsx
 - ExtractionsPage.tsx
 - useFileUpload.ts
-- useAPExtraction.ts
+- apiFetch
 - dependencies
-- adminFetch
+- adminClient.ts
 - api.ts
 - AdminLogin.tsx
-- auth.ts
-- CheckoutFlow.tsx
-- formatThb
+- client.ts
+- APInvoice.tsx
+- OrderHistory.tsx
 - OrderWorkspace.tsx
-- apiFetch
+- useAPExtraction.test.ts
 - deptAccounts.ts
 - usePdfPasswordPrompt
-- routes.tsx
+- PeriodPicker.tsx
 - useMappingData.ts
-- banks.ts
-- useCheckout.ts
+- OrderTable.tsx
+- Pricing.tsx
 - ErrorBoundary
-- CompanyInfoSection.tsx
+- Mapping.tsx
 - AuthContext.tsx
-- NumericInput.tsx
-- postcss
+- APAmountSummary.tsx
+- useMapping.ts
 - credits.ts
 - scripts
-- appKey
+- useAccountingConfig.ts
 - DocumentPreview.tsx
-- useT
+- ocr.ts
+- OrderActions.tsx
+- ManualScan.tsx
 - compilerOptions
 - LanguageContext.tsx
-- APLineItem
-- Overview.tsx
+- APGroupModal.tsx
+- useUserConsent.ts
+- UsagePage.tsx
 - CLAUDE.md
 - Contributing
-- InputTaxReconciliation.tsx
-- useMapping.ts
-- CreditsPage.tsx
-- eslint-plugin-react-hooks
+- useOcrWizard
+- MaintenanceGate.tsx
+- ArCustomerProfiles.tsx
+- MainMappingTable.tsx
+- TenantSelector.test.tsx
+- auth.ts
+- useOcrExtraction.ts
 - PDFPageSelector
+- Badge.tsx
 - Product
 - eslint
 - Carmen AI — OCR & Import System
@@ -97,19 +104,23 @@
 - Coding Skills & Principles
 - package.json
 - DataTable.test.tsx
-- typescript
+- PaymentTypeModal.test.tsx
 - vercel.json
 - Architecture
+- CreditPack
 - vite.config.ts
 - CustomModal.tsx
+- SlipUpload.tsx
 - jsdom
+- @types/react
 - @testing-library/dom
 - @testing-library/jest-dom
 - @testing-library/react
-- LLMLogsPage.tsx
-- @typescript-eslint/eslint-plugin
+- @types/react-dom
+- vite
 - vitest
 - vite-env.d.ts
+- @vitejs/plugin-react
 
 ## God Nodes (most connected - your core abstractions)
 1. `useT()` - 225 edges
@@ -128,81 +139,81 @@
   frontend/src/components/admin/MetricChartImpl.tsx → frontend/src/i18n/LanguageContext.tsx
 - `ContactBuyer()` --calls--> `useT()`  [EXTRACTED]
   frontend/src/components/admin/OrderWorkspace.tsx → frontend/src/i18n/LanguageContext.tsx
+- `Props` --references--> `APInvoiceHeader`  [EXTRACTED]
+  frontend/src/components/ap-invoice/APAmountSummary.tsx → frontend/src/constants/apInvoice.ts
 - `SummaryRow()` --calls--> `useT()`  [EXTRACTED]
   frontend/src/components/ap-invoice/APAmountSummary.tsx → frontend/src/i18n/LanguageContext.tsx
-- `TaxPctCell()` --calls--> `parseNum()`  [EXTRACTED]
-  frontend/src/components/ap-invoice/APTableRow.tsx → frontend/src/lib/format.ts
-- `AuthScreen()` --calls--> `getCarmenUrl()`  [EXTRACTED]
-  frontend/src/components/common/ProtectedRoute.tsx → frontend/src/lib/url.ts
+- `Props` --references--> `APLineItem`  [EXTRACTED]
+  frontend/src/components/ap-invoice/APGroupModal.tsx → frontend/src/types/ap.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (102 total, 12 thin omitted)
+## Communities (113 total, 13 thin omitted)
 
-### Community 0 - "ReviewQueue.tsx"
-Cohesion: 0.14
-Nodes (10): ACTIVITY_FILTERS, carmenSettingsUrl(), COLUMNS, docIdFromHash(), EMPTY, FILTER_LABEL, NotSetUp(), QueueEmpty() (+2 more)
+### Community 0 - "useT"
+Cohesion: 0.13
+Nodes (20): slipIsPdf(), SlipViewer(), AppHeader(), T, UsageIndicator(), useAuth(), useOrderHistory(), useT() (+12 more)
 
 ### Community 1 - "TutorialModal.tsx"
-Cohesion: 0.09
-Nodes (31): OrderDrawer(), PurchaseTutorial(), PURCHASE_FIGURE_WIDTHS, PURCHASE_FIGURES, FOCUS_STEPS, Spot(), SpotContext, SpotProvider (+23 more)
+Cohesion: 0.10
+Nodes (27): PurchaseTutorial(), PURCHASE_FIGURE_WIDTHS, PURCHASE_FIGURES, FOCUS_STEPS, Spot(), SpotContext, SpotProvider, boldify() (+19 more)
 
-### Community 2 - "ccJv.ts"
-Cohesion: 0.12
-Nodes (18): BANK_SOURCE_MAP, codeToSource(), CONFIG, leg(), rows(), TWO_LINES, buildGljvPayload(), buildJvRows() (+10 more)
+### Community 2 - "ReviewDocument.tsx"
+Cohesion: 0.06
+Nodes (52): SkeletonRow(), SwapLabel(), AccountingReview(), DEFAULT_EMPTY_OBJECT, Props, DetailRow, ExtractionWarningBanner(), Props (+44 more)
 
 ### Community 3 - "NotificationBell.tsx"
-Cohesion: 0.05
-Nodes (44): InlineSelect(), InlineSelectAccent, InlineSelectOption, Props, docLabel(), NotificationBell(), notifText(), releaseCopy() (+36 more)
+Cohesion: 0.08
+Nodes (37): docLabel(), NotificationBell(), notifText(), releaseCopy(), failedRow, items, markRead, orderRow (+29 more)
 
 ### Community 4 - "CreditOrdersPage.tsx"
-Cohesion: 0.11
-Nodes (26): ArAction, ArCustomerProfiles(), ArCustomerProfilesState, arProfilesReducer(), initialState, OrderKpiCards(), useOrderActions(), withName() (+18 more)
+Cohesion: 0.18
+Nodes (17): OrderKpiCards(), useOrderActions(), withName(), AdminOrderStatus, approveOrder(), fetchAdminPaymentInfo(), fetchKpi(), holdBatch() (+9 more)
 
-### Community 5 - "BankDisplayName"
-Cohesion: 0.31
-Nodes (5): Props, TopLevelConfigSection(), BANK_CODE_MAP, NormalizedConfig, BankDisplayName
+### Community 5 - "banks.ts"
+Cohesion: 0.17
+Nodes (14): Props, TopLevelConfigSection(), BANK_CODE_MAP, BANK_KEYWORDS, BankEntry, BankInfo, BANKS, detectBankFromCompanyName() (+6 more)
 
-### Community 6 - "PeriodPicker.tsx"
-Cohesion: 0.14
-Nodes (30): daysAgo(), endOfDay(), granularityFor(), lastDays(), matchPreset(), MAX_DAILY_RANGE_DAYS, Period, periodHours() (+22 more)
+### Community 6 - "CreditsPage.tsx"
+Cohesion: 0.17
+Nodes (31): Column, daysAgo(), endOfDay(), today(), ymd(), label(), Tenant, TenantSelector() (+23 more)
 
 ### Community 7 - "FeatureFlows.tsx"
-Cohesion: 0.15
-Nodes (9): AP_TIMELINE, CC_SUPPORT, CC_TIMELINE, FeatureFlows(), FEATURES, FLOW_PANELS, GL_SAMPLES, GL_TIMELINE (+1 more)
+Cohesion: 0.14
+Nodes (13): AP_TIMELINE, ApInvoiceDetail(), CC_SUPPORT, CC_TIMELINE, CreditCardDetail(), FeatureFlows(), FEATURES, FLOW_PANELS (+5 more)
 
 ### Community 8 - "useAPInvoice.ts"
-Cohesion: 0.17
-Nodes (24): APGroupModal(), profileLabel(), AccountingReview(), Amount(), getAvailableFields(), useAPInvoice(), adjustField(), DocRepair (+16 more)
+Cohesion: 0.14
+Nodes (30): AmountSummary(), InputTaxPanel(), InputTaxReconciliation(), handleAddInputTax(), Amount(), getAvailableFields(), OCR_BANK_MAP, useAPInvoice() (+22 more)
 
 ### Community 9 - "main.tsx"
-Cohesion: 0.16
-Nodes (10): PageSkeleton(), APInvoice, container, getRoute(), Mapping, OrderHistory, Pricing, ReviewQueue (+2 more)
+Cohesion: 0.18
+Nodes (10): PageSkeleton(), AdminRouter, container, EmailSettings, getRoute(), ManualScan, Mapping, OrderHistory (+2 more)
 
-### Community 10 - "AccountingReview.tsx"
-Cohesion: 0.10
-Nodes (18): APAccountMappingStep(), DEFAULT_EMPTY_ARRAY, DEFAULT_EMPTY_OBJECT, fmtField(), GLAccount, GLCardProps, GLCardRow, PillProps (+10 more)
+### Community 10 - "APLineItem"
+Cohesion: 0.15
+Nodes (17): APAccountMappingStep(), DEFAULT_EMPTY_ARRAY, DEFAULT_EMPTY_OBJECT, fmtField(), GLAccount, GLCardProps, GLCardRow, PillProps (+9 more)
 
 ### Community 11 - "screens.tsx"
-Cohesion: 0.13
-Nodes (16): DEMO_BUYER, DEMO_ORDER, DEMO_PACKS, DEMO_PAYMENT_INFO, DEMO_PLANS, DEMO_PROFORMA, DEMO_SLIP, noop() (+8 more)
+Cohesion: 0.15
+Nodes (14): DEMO_BUYER, DEMO_ORDER, DEMO_PACKS, DEMO_PAYMENT_INFO, DEMO_PLANS, DEMO_PROFORMA, DEMO_SLIP, noop() (+6 more)
 
 ### Community 12 - "date.ts"
-Cohesion: 0.33
-Nodes (10): DateInput(), DateInputProps, addDays(), buildInvoicePayload(), _CARMEN_FIELD_LABELS, formatDateToDDMMYYYY(), normalizeDateStringToCE(), normalizeYearToCE() (+2 more)
+Cohesion: 0.40
+Nodes (7): addDays(), buildInvoicePayload(), _CARMEN_FIELD_LABELS, normalizeDateStringToCE(), normalizeYearToCE(), parseDateToISO(), parseDDMMYYYYToDate()
 
-### Community 13 - "showToast"
-Cohesion: 0.11
-Nodes (21): extractFromFile, MOCK_EXTRACTED, MOCK_FILE, mockExtract(), withExtractedData(), useOcrExtraction(), applyExtractedData(), processFile() (+13 more)
+### Community 13 - "useOcrExtraction"
+Cohesion: 0.24
+Nodes (6): useOcrExtraction(), applyExtractedData(), processFile(), reExtract(), showDuplicateModal(), showModal()
 
 ### Community 14 - "emailReview.ts"
-Cohesion: 0.21
-Nodes (13): ReviewQueueController, useReviewQueue(), ActivityFilter, ActivityPage, ApproveResult, getReviewStatus(), listActivity(), markChipSeen() (+5 more)
+Cohesion: 0.08
+Nodes (26): Props, ReviewQueueController, useReviewQueue(), ACTIVITY_FILTERS, ActivityFilter, ActivityPage, ApproveResult, getReviewStatus() (+18 more)
 
 ### Community 15 - "DataTable.tsx"
-Cohesion: 0.13
-Nodes (21): DataTable(), DataTableProps, ExpandedRowWrapperProps, getCell(), ServerTable, SKELETON_WIDTHS, SortDir, BASE_DEFAULTS (+13 more)
+Cohesion: 0.09
+Nodes (20): DataTable(), DataTableProps, ExpandedRowWrapperProps, getCell(), ServerTable, SKELETON_WIDTHS, SortDir, Pager() (+12 more)
 
 ### Community 16 - "compilerOptions"
 Cohesion: 0.08
@@ -212,197 +223,213 @@ Nodes (24): compilerOptions, allowImportingTsExtensions, forceConsistentCasingIn
 Cohesion: 0.08
 Nodes (23): 1. Overview, 2. Colors: The Carmen Palette, 3. Typography, 4. Elevation, 5. Components, 6. Do's and Don'ts, 7. Showcase Layer (marketing surfaces only), Buttons (+15 more)
 
-### Community 18 - "APInvoice.tsx"
-Cohesion: 0.11
-Nodes (17): APSuccessStep(), VendorSearch(), AppHeader(), Props, NOTE: the "closed popover must stay hidden" invariant is NOT covered here., Coords, getCoords(), Props (+9 more)
+### Community 18 - "useAPExtraction.ts"
+Cohesion: 0.20
+Nodes (15): APExtractionProps, EXTRACTION_STAGES, _fetchExtract(), isNumFld(), NUMERIC_FIELDS, useAPExtraction(), getAPVendorMapping(), getFilePreview() (+7 more)
 
 ### Community 19 - "ARReconcileSettings.tsx"
 Cohesion: 0.11
-Nodes (26): ARJvPreview(), money(), Props, ARMappingTable(), Props, ARReconcileHook, dedupe(), firstToken() (+18 more)
+Nodes (24): ARJvPreview(), money(), Props, dedupe(), firstToken(), useARReconcile(), ARBlocker, ARMappingItem (+16 more)
 
 ### Community 20 - "devDependencies"
 Cohesion: 0.09
-Nodes (23): autoprefixer, @eslint/js, devDependencies, autoprefixer, @eslint/js, globals, prettier, @types/node (+15 more)
+Nodes (23): autoprefixer, @eslint/js, eslint-plugin-react-hooks, devDependencies, autoprefixer, @eslint/js, eslint-plugin-react-hooks, globals (+15 more)
 
-### Community 21 - "ReviewDocument.tsx"
-Cohesion: 0.07
-Nodes (38): formatWhen(), fullWhen(), Message(), pad(), parseWhen(), Props, QueueRow(), reasonFor() (+30 more)
+### Community 21 - "QueueRow.tsx"
+Cohesion: 0.09
+Nodes (32): Props, VendorSearch(), Coords, getCoords(), Props, Tooltip(), TooltipPosition, COPY (+24 more)
 
 ### Community 22 - "useOcrSubmission.test.ts"
-Cohesion: 0.12
-Nodes (20): JvState, Props, OcrSubmissionHook, OcrSubmissionProps, CarmenJvPayload, defaultConfig, defaultRows, diffCorrections (+12 more)
+Cohesion: 0.13
+Nodes (18): CarmenJvPayload, defaultConfig, defaultRows, diffCorrections, getAccountingConfig, getJvhDate(), JvDetail, logCorrections (+10 more)
 
 ### Community 23 - "apInvoice.ts"
-Cohesion: 0.10
-Nodes (32): AmountSummary(), Diffs, Props, SummaryRow(), SummaryRowProps, Sums, Targets, APLineItemsTable() (+24 more)
+Cohesion: 0.09
+Nodes (34): COLS, Props, REQUIRED_FIELDS, APLineItemsTable(), Props, APReviewStep(), Ctrl, HEADER_FIELDS() (+26 more)
 
-### Community 24 - "emailAutomation.ts"
-Cohesion: 0.14
-Nodes (26): EmailSettingsController, SETTINGS, toPayloadRules(), useEmailSettings(), getCarmenRawToken(), ApiFieldError, BankCode, call() (+18 more)
+### Community 24 - "useEmailSettings.ts"
+Cohesion: 0.08
+Nodes (42): Button(), ButtonProps, Variant, VARIANT_CLASS, Switch(), SwitchProps, Draft, EmailSettingsController (+34 more)
 
 ### Community 25 - "useOcrWizard.ts"
-Cohesion: 0.20
-Nodes (16): OcrDraftState, CcDraft, getPdfInfoWithRetry(), useOcrWizard(), handleFileChange(), promptForPassword(), runEncryptedExtraction(), useModal() (+8 more)
+Cohesion: 0.32
+Nodes (10): OcrDraftState, CcDraft, clearAllDrafts(), clearDraft(), DraftKind, draftPromptMessage(), Envelope, keyFor() (+2 more)
 
-### Community 26 - "Pricing.tsx"
+### Community 26 - "formatThb"
+Cohesion: 0.19
+Nodes (14): PackList(), EnterpriseCard(), PlanCard(), PlanCardProps, LITE, TIER_ICONS, BillingFigure(), ENTERPRISE (+6 more)
+
+### Community 27 - "CustomSearchSelect.tsx"
+Cohesion: 0.24
+Nodes (7): CustomSearchSelect(), Props, SelectOption, TopChoice, JvHeaderCard(), Props, useGlMasters()
+
+### Community 28 - "AdminAuthContext.tsx"
+Cohesion: 0.36
+Nodes (9): AdminAuthContext, AdminAuthContextValue, AdminAuthProvider(), adminLogout(), adminMe(), AdminUser, clearAdminToken(), getAdminToken() (+1 more)
+
+### Community 29 - "QuotaModulesPage.tsx"
 Cohesion: 0.12
-Nodes (23): PackList(), Props, EnterpriseCard(), PlanCard(), PlanCardProps, LITE, TIER_ICONS, ENTERPRISE (+15 more)
+Nodes (22): KPICard(), KPICardProps, Card(), CardProps, PageHeader(), PageHeaderProps, Tab, Tabs() (+14 more)
 
-### Community 27 - "JvEditor.tsx"
-Cohesion: 0.15
-Nodes (14): CustomSearchSelect(), Props, SelectOption, TopChoice, BlockReason, BU_WIDE, JvEditor(), Overrides (+6 more)
-
-### Community 28 - "adminClient.ts"
-Cohesion: 0.12
-Nodes (23): AdminAuthContext, AdminAuthContextValue, AdminAuthProvider(), adminLogout(), adminMe(), AdminUser, clearAdminToken(), CreditBalance (+15 more)
-
-### Community 29 - "EmailAutomationPage.tsx"
-Cohesion: 0.07
-Nodes (36): KPICard(), KPICardProps, Button(), ButtonProps, Variant, VARIANT_CLASS, Card(), CardProps (+28 more)
-
-### Community 30 - "DetailTable.tsx"
-Cohesion: 0.25
-Nodes (10): AMOUNT_FIELDS, DetailTable(), formatAmount(), Props, sumColumn(), DETAIL_COLUMNS, DETAIL_LABELS, DetailColumn (+2 more)
+### Community 30 - "EmailAutomationPage.tsx"
+Cohesion: 0.18
+Nodes (14): EmptyState(), EmptyStateProps, EmailBusinessUnitRow, EmailDocumentRow, EmailIngestHealth, EmailPollResult, cronTone(), EmailAutomationPage() (+6 more)
 
 ### Community 31 - "bankTransforms.ts"
-Cohesion: 0.32
-Nodes (9): BANK_INFO, BankInfo, useBankConfig(), codeToDisplayName(), descriptionForBank(), getBankInfo(), getGLSourceCode(), isApiShape() (+1 more)
+Cohesion: 0.22
+Nodes (10): BANK_INFO, BANK_SOURCE_MAP, getAccountingConfig, seedOcrBranch(), useBankConfig(), codeToDisplayName(), getBankInfo(), getGLSourceCode() (+2 more)
 
-### Community 32 - "MaintenancePage.tsx"
-Cohesion: 0.31
-Nodes (10): endMaintenanceNow(), fetchMaintenance(), MaintenanceStatus, setMaintenanceSchedule(), setTenantMaintenance(), TenantRow, fmtICT(), MaintenancePage() (+2 more)
+### Community 32 - "TenantsPage.tsx"
+Cohesion: 0.16
+Nodes (18): endMaintenanceNow(), fetchMaintenance(), fetchTenantDetail(), fetchTenants(), MaintenanceStatus, setMaintenanceSchedule(), setTenantMaintenance(), TenantDetail (+10 more)
 
-### Community 33 - "OrderHistory.tsx"
-Cohesion: 0.30
-Nodes (9): catalogName(), useOrderHistory(), getUsage(), getStoredToken(), getPaymentInfo(), ActivePlanBanner(), OrderHistory(), parseFocusId() (+1 more)
+### Community 33 - "OrderDrawer.tsx"
+Cohesion: 0.18
+Nodes (10): OrderDrawer(), Props, Props, many(), order(), WsState, __resetScrollLock(), Locker() (+2 more)
 
-### Community 34 - "Home.tsx"
-Cohesion: 0.11
-Nodes (24): AdminProtectedRoute(), DarkModeToggle(), LanguageToggle(), useAdminAuth(), isDarkNow(), useDarkMode(), AdminRouter, Home (+16 more)
+### Community 34 - "AppHeader.tsx"
+Cohesion: 0.13
+Nodes (17): AdminProtectedRoute(), Props, NOTE: the "closed popover must stay hidden" invariant is NOT covered here., DarkModeToggle(), LanguageToggle(), useAdminAuth(), isDarkNow(), useDarkMode() (+9 more)
 
 ### Community 35 - "ExtractionsPage.tsx"
 Cohesion: 0.22
-Nodes (13): DateRangePicker(), DateRangePickerProps, ExtractionFailureRow, fmtDateTime(), causeLabel(), classify(), ERROR_RULES, ExtractionsPage() (+5 more)
+Nodes (12): DateRangePicker(), DateRangePickerProps, ExtractionFailureRow, causeLabel(), classify(), ERROR_RULES, ExtractionsPage(), FailureGroup (+4 more)
 
 ### Community 36 - "useFileUpload.ts"
-Cohesion: 0.16
-Nodes (9): FileUploadHook, useFileUpload(), handleFileChange(), setPreview(), checkFilesSize(), MAX_FILE_SIZE_MB, selectedPagesToPdfUrl(), sanitizedPdfUrl() (+1 more)
+Cohesion: 0.19
+Nodes (7): FileUploadHook, useFileUpload(), handleFileChange(), setPreview(), selectedPagesToPdfUrl(), sanitizedPdfUrl(), stripAutoOpen()
 
-### Community 37 - "useAPExtraction.ts"
-Cohesion: 0.08
-Nodes (29): Props, Props, DEFAULT_MAPPINGS, EMPTY_HEADER, APExtractionProps, EXTRACTION_STAGES, isNumFld(), NUMERIC_FIELDS (+21 more)
+### Community 37 - "apiFetch"
+Cohesion: 0.13
+Nodes (23): GLAccount, apiFetch, CarmenDetailLine, CarmenPayload, fetchAccountCodes, fetchDepartments, MAPPED_ITEMS, MOCK_HEADER (+15 more)
 
 ### Community 38 - "dependencies"
 Cohesion: 0.11
 Nodes (19): framer-motion, dependencies, framer-motion, lucide-react, pdf-lib, react, react-day-picker, react-dom (+11 more)
 
-### Community 39 - "adminFetch"
-Cohesion: 0.20
-Nodes (21): adminFetch, createAdminUser(), fetchAdminUsers(), fetchEmailBusinessUnits(), fetchEmailDocuments(), fetchEmailHealth(), fetchExtractionFailures(), fetchQuotaOverview() (+13 more)
+### Community 39 - "adminClient.ts"
+Cohesion: 0.10
+Nodes (47): adjustCredits(), adminFetch, AdminUserRow, buildQs(), createAdminUser(), CreditBalance, EmailCronJob, EmailJobRun (+39 more)
 
 ### Community 40 - "api.ts"
-Cohesion: 0.12
-Nodes (16): suggestMapping(), SuggestPaymentTypesResponse, SuggestResponse, AccountingConfigRequest, ApiError, APInvoiceItem, CodeOption, ExchangeRequest (+8 more)
+Cohesion: 0.14
+Nodes (14): APVendorMapping, APVendorMappingResponse, ConfigPatch, AccountingConfigRequest, AccountingConfigResponse, ApiError, APInvoiceItem, CodeOption (+6 more)
 
 ### Community 41 - "AdminLogin.tsx"
 Cohesion: 0.33
 Nodes (7): adminLogin(), AdminLoginError, AdminLogin(), classify(), LoginError, LoginErrorKind, mmss()
 
-### Community 42 - "auth.ts"
-Cohesion: 0.07
-Nodes (40): ConsentGate(), Props, countdown(), EMPTY, fmtHM(), fmtICT(), isAdminRoute(), MaintenanceGate() (+32 more)
+### Community 42 - "client.ts"
+Cohesion: 0.14
+Nodes (15): AuthScreen(), AuthScreenProps, AuthState, BadgeConfig, ProtectedRoute(), ProtectedRouteProps, sessionExpired(), StateConfig (+7 more)
 
-### Community 43 - "CheckoutFlow.tsx"
-Cohesion: 0.15
-Nodes (13): DEFAULT_STEPS, Props, Step, StepWizard(), CheckoutFlow(), itemName(), REQUIRED_BUYER_KEYS, SOURCE_KEY (+5 more)
+### Community 43 - "APInvoice.tsx"
+Cohesion: 0.10
+Nodes (19): APFieldMappingStep(), APSuccessStep(), APUploadStep(), INSTRUCTIONS, Props, ExtractionSkeleton(), Props, Skeleton() (+11 more)
 
-### Community 44 - "formatThb"
-Cohesion: 0.26
-Nodes (13): expiryDate(), num(), ProformaDocument(), TITLE, formatDate(), bahtToEnglishWords(), formatThb(), _hundreds() (+5 more)
+### Community 44 - "OrderHistory.tsx"
+Cohesion: 0.13
+Nodes (25): num(), VerifyFacts(), OrderRow(), RowAction, rowInitial, rowReducer(), RowState, expiryDate() (+17 more)
 
 ### Community 45 - "OrderWorkspace.tsx"
-Cohesion: 0.06
-Nodes (44): ActionsAction, actionsInitial, actionsReducer(), ActionsState, OrderActions(), REJECT_OTHER, REJECT_PRESETS, Props (+36 more)
+Cohesion: 0.18
+Nodes (16): CompanyPanel(), ContactBuyer(), OrderWorkspace(), WsAction, wsInitial, wsReducer(), CreditLedgerEntry, fetchAdminOrderDocuments() (+8 more)
 
-### Community 46 - "apiFetch"
-Cohesion: 0.09
-Nodes (31): _fetchExtract(), apiFetch, getAPVendorMapping, getPdfInfo, getUsage, MOCK_API_RESPONSE, MOCK_FILE, MOCK_T (+23 more)
+### Community 46 - "useAPExtraction.test.ts"
+Cohesion: 0.20
+Nodes (9): apiFetch, getAPVendorMapping, getPdfInfo, getUsage, MOCK_API_RESPONSE, MOCK_FILE, MOCK_T, mockSuccess() (+1 more)
 
 ### Community 47 - "deptAccounts.ts"
-Cohesion: 0.15
-Nodes (17): AccountMappingTable(), GLAccount, AISuggestBar(), Props, Badge(), BadgeVariant, Props, MappingRow() (+9 more)
+Cohesion: 0.21
+Nodes (13): AccountMappingTable(), GLAccount, Props, MappingRow(), MappingRowVariant, MainMappingTable(), AccountLike, allowedAccountsForDept() (+5 more)
 
 ### Community 48 - "usePdfPasswordPrompt"
 Cohesion: 0.18
 Nodes (12): COPY, Options, PdfPasswordAttempt, PdfPasswordModalPayload, setup(), usePdfPasswordPrompt(), open(), prompt() (+4 more)
 
-### Community 49 - "routes.tsx"
+### Community 49 - "PeriodPicker.tsx"
 Cohesion: 0.18
-Nodes (12): Column, fetchErrorBreakdown(), fetchTenantRanking(), ErrorRow, ErrorsPage(), GroupBy, NAV_SECTIONS, getColsCost() (+4 more)
+Nodes (19): granularityFor(), lastDays(), matchPreset(), MAX_DAILY_RANGE_DAYS, Period, periodHours(), PeriodPicker(), PRESET_DAYS (+11 more)
 
 ### Community 50 - "useMappingData.ts"
-Cohesion: 0.32
-Nodes (12): useAPSubmission(), GlMasters, prefetchGlMasters(), MappingDataHook, MasterGLPrefix, useMappingData(), fetchAccountCodes(), fetchDepartments() (+4 more)
+Cohesion: 0.33
+Nodes (11): Props, GlMasters, prefetchGlMasters(), MappingDataHook, MasterAccount, MasterDepartment, MasterGLPrefix, useMappingData() (+3 more)
 
-### Community 51 - "banks.ts"
-Cohesion: 0.18
-Nodes (15): Props, BANK_LOGOS, Props, DetailRow, Props, Props, BANK_KEYWORDS, BANK_THAI_NAMES (+7 more)
+### Community 51 - "OrderTable.tsx"
+Cohesion: 0.17
+Nodes (14): BADGE_TABS, BATCH_ACTIONS_FOR_TAB, BATCH_BUTTON, BatchAction, companyOf(), isCheckable(), OrderTable(), paymentDate() (+6 more)
 
-### Community 52 - "useCheckout.ts"
-Cohesion: 0.26
-Nodes (13): Props, CheckoutPhase, CheckoutSession, clearPersistedCheckout(), EMPTY_BUYER, loadPersistedCheckout(), persist(), readPersisted() (+5 more)
+### Community 52 - "Pricing.tsx"
+Cohesion: 0.21
+Nodes (14): CheckoutFlow(), itemName(), Props, REQUIRED_BUYER_KEYS, SOURCE_KEY, PendingOrderBanner(), CheckoutSession, BillingPeriod (+6 more)
 
 ### Community 53 - "ErrorBoundary"
 Cohesion: 0.25
 Nodes (3): ErrorBoundary, Props, State
 
-### Community 54 - "CompanyInfoSection.tsx"
-Cohesion: 0.38
-Nodes (6): CompanyInfoSection(), PLACEHOLDER_MAP, Props, RequiredField, BankConfigHook, CompanyData
+### Community 54 - "Mapping.tsx"
+Cohesion: 0.31
+Nodes (6): CompanyInfoSection(), PLACEHOLDER_MAP, Props, RequiredField, CompanyData, Mapping()
 
 ### Community 55 - "AuthContext.tsx"
-Cohesion: 0.16
-Nodes (16): AuthContext, AuthContextValue, AuthProvider(), A, B, Probe(), revokeSession(), clearToken() (+8 more)
+Cohesion: 0.19
+Nodes (13): AuthContext, AuthContextValue, AuthProvider(), A, B, Probe(), revokeSession(), clearToken() (+5 more)
 
-### Community 56 - "NumericInput.tsx"
-Cohesion: 0.53
-Nodes (3): NumericInput(), NumericInputProps, sanitizeNumericInput()
+### Community 56 - "APAmountSummary.tsx"
+Cohesion: 0.21
+Nodes (9): Diffs, Props, SummaryRow(), SummaryRowProps, Sums, Targets, NumericInput(), NumericInputProps (+1 more)
+
+### Community 57 - "useMapping.ts"
+Cohesion: 0.31
+Nodes (10): COMPANY_REQUIRED_FIELDS, getAccountingConfig, useMapping(), useMappingSuggestions(), usePaymentTypes(), saveAccountingConfig(), APP_STORAGE_BASES, appKey() (+2 more)
 
 ### Community 58 - "credits.ts"
 Cohesion: 0.15
-Nodes (19): OrderRow(), PendingOrderBanner(), RowAction, rowInitial, rowReducer(), RowState, OPEN_STATUSES, OrderHistoryState (+11 more)
+Nodes (21): CheckoutPhase, clearPersistedCheckout(), EMPTY_BUYER, loadPersistedCheckout(), persist(), readPersisted(), useCheckout, OPEN_STATUSES (+13 more)
 
 ### Community 59 - "scripts"
-Cohesion: 0.15
-Nodes (13): scripts, build, contrast, dev, format, format:check, lint, lint:fix (+5 more)
+Cohesion: 0.14
+Nodes (14): scripts, build, contrast, dev, format, format:check, lint, lint:fix (+6 more)
 
-### Community 60 - "appKey"
-Cohesion: 0.12
-Nodes (21): AccountingConfigHook, MAIN_KEYS, readFromLocalStorage(), splitMappings(), getAccountingConfig, useAccountingConfig(), DetailRow, EXTRACTION_STAGES (+13 more)
+### Community 60 - "useAccountingConfig.ts"
+Cohesion: 0.29
+Nodes (9): AccountingConfigHook, MAIN_KEYS, readFromLocalStorage(), splitMappings(), getAccountingConfig, useAccountingConfig(), getAccountingConfig(), AccountingConfig (+1 more)
 
 ### Community 61 - "DocumentPreview.tsx"
 Cohesion: 0.20
 Nodes (10): DocPreviewAction, docPreviewReducer(), DocPreviewState, DocumentPreview(), initialDocPreviewState, Props, SelectedPageThumb, Props (+2 more)
 
-### Community 64 - "useT"
-Cohesion: 0.13
-Nodes (18): APFieldMappingStep(), FormActions(), Props, UsageIndicator(), BankDetectionBanner(), ExtractionWarningBanner(), DATE_KEYS, HeaderCard() (+10 more)
+### Community 62 - "ocr.ts"
+Cohesion: 0.18
+Nodes (12): extractFromFile, MOCK_EXTRACTED, MOCK_FILE, mockExtract(), withExtractedData(), createApiClient(), fetchTimeout(), ExtractedRow (+4 more)
+
+### Community 63 - "OrderActions.tsx"
+Cohesion: 0.19
+Nodes (12): ActionsAction, actionsInitial, actionsReducer(), ActionsState, OrderActions(), REJECT_OTHER, REJECT_PRESETS, Action (+4 more)
+
+### Community 64 - "ManualScan.tsx"
+Cohesion: 0.10
+Nodes (22): FormActions(), Props, BANK_LOGOS, BankDetectionBanner(), Props, AMOUNT_FIELDS, DetailTable(), formatAmount() (+14 more)
 
 ### Community 65 - "compilerOptions"
 Cohesion: 0.15
 Nodes (12): compilerOptions, allowSyntheticDefaultImports, composite, module, moduleResolution, outDir, skipLibCheck, strict (+4 more)
 
 ### Community 66 - "LanguageContext.tsx"
-Cohesion: 0.10
-Nodes (24): BatchAction, BatchActionBar(), Props, APUploadStep(), INSTRUCTIONS, Props, MAP, OrderStatusBadge() (+16 more)
+Cohesion: 0.08
+Nodes (30): BatchAction, BatchActionBar(), Props, MAP, OrderStatusBadge(), DICT, en, Lang (+22 more)
 
-### Community 67 - "APLineItem"
-Cohesion: 0.18
-Nodes (14): Props, COLS, Props, REQUIRED_FIELDS, Props, Props, Props, APFieldKey (+6 more)
+### Community 67 - "APGroupModal.tsx"
+Cohesion: 0.38
+Nodes (7): APGroupModal(), profileLabel(), Props, apGroupKey(), buildGroupedRow(), effectiveTaxProfile(), groupSelected()
 
-### Community 69 - "Overview.tsx"
-Cohesion: 0.12
-Nodes (22): LazyMetricChart, MetricChart(), axisTick, ChartType, FALLBACK_COLORS, MetricChart(), MetricChartProps, Series (+14 more)
+### Community 68 - "useUserConsent.ts"
+Cohesion: 0.29
+Nodes (10): ConsentGate(), Props, AuthUser, cacheConsent(), consentKey(), readCached(), user, useUserConsent() (+2 more)
+
+### Community 69 - "UsagePage.tsx"
+Cohesion: 0.14
+Nodes (15): LazyMetricChart, MetricChart(), axisTick, ChartType, FALLBACK_COLORS, MetricChart(), MetricChartProps, Series (+7 more)
 
 ### Community 70 - "CLAUDE.md"
 Cohesion: 0.18
@@ -412,21 +439,37 @@ Nodes (10): Adding a New Bank (current flow — code-based), Adding a New Module
 Cohesion: 0.18
 Nodes (11): Before every commit (automated via pre-commit), Branch strategy, Commit conventions, Contributing, Deploy, mypy strict modules, Pull request checklist, Running locally (+3 more)
 
-### Community 72 - "InputTaxReconciliation.tsx"
-Cohesion: 0.24
-Nodes (10): InputTaxPanel(), InputTaxReconciliation(), handleAddInputTax(), OCR_BANK_MAP, fetchTaxProfiles(), _parseCarmenHttpError(), submitAPInvoiceToCarmen(), submitInputTax() (+2 more)
-
-### Community 75 - "useMapping.ts"
+### Community 72 - "useOcrWizard"
 Cohesion: 0.25
-Nodes (19): Props, Props, Props, ActiveScan, COMPANY_REQUIRED_FIELDS, MainMappings, useMapping(), MasterAccount (+11 more)
+Nodes (13): getPdfInfoWithRetry(), useOcrWizard(), handleCancel(), handleFileChange(), promptForPassword(), reExtract(), resetAll(), runEncryptedExtraction() (+5 more)
 
-### Community 76 - "CreditsPage.tsx"
-Cohesion: 0.16
-Nodes (14): label(), Tenant, TenantSelector(), TenantSelectorProps, fetchTenants, TENANTS, adjustCredits(), CreditLedgerEntry (+6 more)
+### Community 73 - "MaintenanceGate.tsx"
+Cohesion: 0.29
+Nodes (10): countdown(), EMPTY, fmtHM(), fmtICT(), isAdminRoute(), MaintenanceGate(), probe(), Props (+2 more)
+
+### Community 74 - "ArCustomerProfiles.tsx"
+Cohesion: 0.31
+Nodes (9): ArAction, ArCustomerProfiles(), ArCustomerProfilesState, arProfilesReducer(), initialState, ArCustomerProfile, listArProfiles(), syncArProfiles() (+1 more)
+
+### Community 75 - "MainMappingTable.tsx"
+Cohesion: 0.19
+Nodes (17): AISuggestBar(), Props, Props, Props, ActiveScan, MainMappings, MainMappingKey, MappingSuggestionsHook (+9 more)
+
+### Community 77 - "auth.ts"
+Cohesion: 0.29
+Nodes (7): base, Usage, ActiveSubscription, UsageData, computeUsageStats(), UsageStats, ExchangeResponse
+
+### Community 78 - "useOcrExtraction.ts"
+Cohesion: 0.29
+Nodes (7): DetailRow, EXTRACTION_STAGES, HeaderData, OcrExtractionProps, OcrSubmissionHook, OcrSubmissionProps, ModalConfig
 
 ### Community 79 - "PDFPageSelector"
 Cohesion: 0.22
 Nodes (3): PDFPageSelector(), Props, PAGES
+
+### Community 80 - "Badge.tsx"
+Cohesion: 0.31
+Nodes (6): ARMappingTable(), Props, Badge(), BadgeVariant, Props, ARReconcileHook
 
 ### Community 81 - "Product"
 Cohesion: 0.22
@@ -456,6 +499,10 @@ Nodes (5): engines, node, name, private, type
 Cohesion: 0.40
 Nodes (4): chooseSize(), columns, rows, sizeTrigger()
 
+### Community 89 - "PaymentTypeModal.test.tsx"
+Cohesion: 0.29
+Nodes (6): PaymentTypeModal(), ACCOUNTS, DEPARTMENTS, ModalProps, props(), renderModal()
+
 ### Community 90 - "vercel.json"
 Cohesion: 0.33
 Nodes (5): buildCommand, framework, outputDirectory, rewrites, $schema
@@ -464,33 +511,37 @@ Nodes (5): buildCommand, framework, outputDirectory, rewrites, $schema
 Cohesion: 0.40
 Nodes (5): Admin dashboard (`#/admin/*`) — check here before writing SQL, AP Invoice (5-step wizard), Architecture, Credit Card OCR (5-step wizard), Email ingestion (a queue, not a wizard — a human approves before it posts)
 
-### Community 96 - "CustomModal.tsx"
-Cohesion: 0.22
-Nodes (7): CustomModal(), ModalType, Props, baseProps, TYPE_CONFIG, NotificationDetailModal(), REASON_KEY
+### Community 94 - "CreditPack"
+Cohesion: 0.47
+Nodes (5): Props, CatalogState, usePricingCatalog(), CreditPack, getCreditPacks()
 
-### Community 103 - "LLMLogsPage.tsx"
-Cohesion: 0.20
-Nodes (13): useTableData(), fetchLLMLogs(), fetchTenantDetail(), fetchTenants(), TenantDetail, getCols(), LLMLogsPage(), LogRow (+5 more)
+### Community 96 - "CustomModal.tsx"
+Cohesion: 0.29
+Nodes (5): CustomModal(), ModalType, Props, baseProps, TYPE_CONFIG
+
+### Community 97 - "SlipUpload.tsx"
+Cohesion: 0.40
+Nodes (4): ACCEPTED, Props, SlipUpload(), MAX_FILE_SIZE_MB
 
 ## Knowledge Gaps
-- **502 isolated node(s):** `name`, `private`, `type`, `node`, `dev` (+497 more)
+- **510 isolated node(s):** `name`, `private`, `type`, `node`, `dev` (+505 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **12 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **13 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `useT()` connect `useT` to `ReviewQueue.tsx`, `TutorialModal.tsx`, `NotificationBell.tsx`, `CreditOrdersPage.tsx`, `PeriodPicker.tsx`, `FeatureFlows.tsx`, `useAPInvoice.ts`, `main.tsx`, `AccountingReview.tsx`, `screens.tsx`, `showToast`, `DataTable.tsx`, `APInvoice.tsx`, `ReviewDocument.tsx`, `apInvoice.ts`, `Pricing.tsx`, `JvEditor.tsx`, `EmailAutomationPage.tsx`, `DetailTable.tsx`, `MaintenancePage.tsx`, `OrderHistory.tsx`, `Home.tsx`, `ExtractionsPage.tsx`, `useAPExtraction.ts`, `adminFetch`, `AdminLogin.tsx`, `auth.ts`, `CheckoutFlow.tsx`, `formatThb`, `OrderWorkspace.tsx`, `apiFetch`, `deptAccounts.ts`, `routes.tsx`, `banks.ts`, `credits.ts`, `DocumentPreview.tsx`, `LanguageContext.tsx`, `APLineItem`, `Overview.tsx`, `InputTaxReconciliation.tsx`, `CreditsPage.tsx`, `CustomModal.tsx`, `LLMLogsPage.tsx`?**
-  _High betweenness centrality (0.236) - this node is a cross-community bridge._
-- **Why does `apiFetch` connect `apiFetch` to `OrderHistory.tsx`, `Pricing.tsx`, `NotificationBell.tsx`, `useAPExtraction.ts`, `InputTaxReconciliation.tsx`, `api.ts`, `auth.ts`, `useMapping.ts`, `emailReview.ts`, `useMappingData.ts`, `ARReconcileSettings.tsx`, `useCheckout.ts`, `ReviewDocument.tsx`, `useOcrSubmission.test.ts`, `credits.ts`, `JvEditor.tsx`, `appKey`?**
-  _High betweenness centrality (0.023) - this node is a cross-community bridge._
-- **Why does `showToast()` connect `showToast` to `ReviewQueue.tsx`, `useFileUpload.ts`, `useAPExtraction.ts`, `useAPInvoice.ts`, `apiFetch`, `useMappingData.ts`, `ReviewDocument.tsx`, `useOcrSubmission.test.ts`, `AuthContext.tsx`, `emailAutomation.ts`, `useOcrWizard.ts`, `appKey`?**
-  _High betweenness centrality (0.014) - this node is a cross-community bridge._
+- **Why does `useT()` connect `useT` to `TutorialModal.tsx`, `ReviewDocument.tsx`, `NotificationBell.tsx`, `CreditOrdersPage.tsx`, `CreditsPage.tsx`, `FeatureFlows.tsx`, `useAPInvoice.ts`, `APLineItem`, `screens.tsx`, `DataTable.tsx`, `useAPExtraction.ts`, `QueueRow.tsx`, `apInvoice.ts`, `formatThb`, `CustomSearchSelect.tsx`, `QuotaModulesPage.tsx`, `EmailAutomationPage.tsx`, `TenantsPage.tsx`, `OrderDrawer.tsx`, `AppHeader.tsx`, `ExtractionsPage.tsx`, `adminClient.ts`, `AdminLogin.tsx`, `APInvoice.tsx`, `OrderHistory.tsx`, `OrderWorkspace.tsx`, `deptAccounts.ts`, `PeriodPicker.tsx`, `OrderTable.tsx`, `Pricing.tsx`, `Mapping.tsx`, `APAmountSummary.tsx`, `credits.ts`, `DocumentPreview.tsx`, `OrderActions.tsx`, `ManualScan.tsx`, `LanguageContext.tsx`, `APGroupModal.tsx`, `UsagePage.tsx`, `useOcrWizard`, `MaintenanceGate.tsx`, `ArCustomerProfiles.tsx`, `MainMappingTable.tsx`, `CustomModal.tsx`, `SlipUpload.tsx`?**
+  _High betweenness centrality (0.199) - this node is a cross-community bridge._
+- **Why does `apiFetch` connect `apiFetch` to `ReviewDocument.tsx`, `NotificationBell.tsx`, `useAPInvoice.ts`, `emailReview.ts`, `useAPExtraction.ts`, `ARReconcileSettings.tsx`, `useOcrSubmission.test.ts`, `api.ts`, `client.ts`, `OrderHistory.tsx`, `useAPExtraction.test.ts`, `useMappingData.ts`, `Pricing.tsx`, `useMapping.ts`, `credits.ts`, `useAccountingConfig.ts`, `ocr.ts`, `useUserConsent.ts`, `MainMappingTable.tsx`, `CreditPack`?**
+  _High betweenness centrality (0.019) - this node is a cross-community bridge._
+- **Why does `TKey` connect `LanguageContext.tsx` to `ManualScan.tsx`, `useT`, `NotificationBell.tsx`, `CreditsPage.tsx`, `FeatureFlows.tsx`, `useAPInvoice.ts`, `APLineItem`, `APInvoice.tsx`, `OrderWorkspace.tsx`, `OrderTable.tsx`, `Pricing.tsx`, `QueueRow.tsx`, `apInvoice.ts`, `QuotaModulesPage.tsx`, `EmailAutomationPage.tsx`?**
+  _High betweenness centrality (0.018) - this node is a cross-community bridge._
 - **What connects `name`, `private`, `type` to the rest of the system?**
-  _502 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `ReviewQueue.tsx` be split into smaller, more focused modules?**
-  _Cohesion score 0.13970588235294118 - nodes in this community are weakly interconnected._
+  _510 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Should `useT` be split into smaller, more focused modules?**
+  _Cohesion score 0.13105413105413105 - nodes in this community are weakly interconnected._
 - **Should `TutorialModal.tsx` be split into smaller, more focused modules?**
-  _Cohesion score 0.0851063829787234 - nodes in this community are weakly interconnected._
-- **Should `ccJv.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.12318840579710146 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.1039136302294197 - nodes in this community are weakly interconnected._
+- **Should `ReviewDocument.tsx` be split into smaller, more focused modules?**
+  _Cohesion score 0.06292966684294024 - nodes in this community are weakly interconnected._

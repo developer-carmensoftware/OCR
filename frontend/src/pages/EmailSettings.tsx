@@ -12,27 +12,25 @@
  * same reason `auto_post` has one writer. This page is reached by typing the hash: by support,
  * and by whoever is exercising the contract. The route in `main.tsx` stays for exactly that.
  *
- * Three steps, all visible and independently editable — a checklist, not a wizard.
- * `PUT /settings` is a full replace that returns the new state, so each step saves
- * itself the moment it changes and there is no page-level Save button.
+ * **The layout is Carmen's, the parts are ours** (2026-09-10, CARMEN_INTEGRATION.md §2.8).
+ * Same sections, same controls, same dirty-form-with-one-Save semantics as the screen they
+ * are building, assembled from the `ui-*` kit — so handing this over is "copy this layout",
+ * not "design a screen". Three blocks are ours alone and marked as such below: the posting
+ * credential, the live status line, and the per-rule document type.
  *
  * English only: this is an internal surface, and CLAUDE.md makes English the default.
  */
-import { useState } from 'react'
-import { AlertTriangle, Check, Copy, Loader2, Mail, Pencil, Plus, Trash2 } from 'lucide-react'
-import { useEmailSettings } from '../hooks/email-settings'
-import type { EmailDocType, EmailRule, EmailRulePayload } from '../lib/api/emailAutomation'
+import { useEffect, useState } from 'react'
+import { AlertTriangle, Copy, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import Badge from '../components/common/Badge'
+import Button from '../components/admin/ui/Button'
+import Card from '../components/admin/ui/Card'
+import PageHeader from '../components/admin/ui/PageHeader'
+import Switch from '../components/admin/ui/Switch'
+import { EMPTY_RULE, useEmailSettings, type RuleDraft } from '../hooks/email-settings'
+import type { EmailDocType } from '../lib/api/emailAutomation'
 import { showToast } from '../lib/toast'
 import '../styles/pages/email-settings.css'
-
-const EMPTY_RULE = {
-  bank_code: '',
-  bank_sender_email: '',
-  filename_patterns: '',
-  pdf_password: '',
-  is_active: true,
-  doc_type: 'fee_invoice' as EmailDocType,
-}
 
 /** What each blocker means, in the words the person reading the screen would use. */
 const BLOCKER_TEXT: Record<string, string> = {
@@ -41,14 +39,6 @@ const BLOCKER_TEXT: Record<string, string> = {
   no_rule: 'No active bank rule',
   disabled: 'Switched off',
   not_entitled: 'No active package',
-}
-
-function StepMarker({ n, done }: { n: number; done: boolean }) {
-  return (
-    <span className="email-setup__marker" aria-hidden="true">
-      {done ? <Check size={13} strokeWidth={3} /> : n}
-    </span>
-  )
 }
 
 async function copy(value: string, label: string) {
@@ -60,26 +50,29 @@ async function copy(value: string, label: string) {
   }
 }
 
+/** The errors for one field, or for everything under one prefix (`tax_ids[0]`,
+ *  `rules[1].filename_patterns`). Rendered beside the input that caused them. */
+function FieldError({ errors, prefix }: { errors: Record<string, string>; prefix: string }) {
+  const hits = Object.entries(errors).filter(([field]) => field.startsWith(prefix))
+  if (hits.length === 0) return null
+  return (
+    <>
+      {hits.map(([field, message]) => (
+        <p key={field} className="email-error">
+          {message}
+        </p>
+      ))}
+    </>
+  )
+}
+
 function Skeleton() {
-  // Mirrors the three real steps so the layout does not jump when data lands.
-  const controls = [300, 150, 340]
+  // Two cards, so the layout does not jump when the data lands.
   return (
     <div className="email-settings-page" aria-busy="true">
-      {controls.map((width, i) => (
-        <div key={i} style={{ display: 'flex', gap: 12, paddingBottom: 26 }}>
-          <div
-            className="sk-block"
-            style={{ width: 25, height: 25, borderRadius: '50%', flexShrink: 0 }}
-          />
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 9 }}>
-            <div className="sk-block sk-line" style={{ width: ['34%', '26%', '38%'][i] }} />
-            <div className="sk-block sk-line" style={{ width: ['62%', '55%', '70%'][i] }} />
-            <div
-              className="sk-block"
-              style={{ width, maxWidth: '100%', height: 34, borderRadius: 8 }}
-            />
-          </div>
-        </div>
+      <div className="sk-block sk-line" style={{ width: '30%', height: 24, marginBottom: 20 }} />
+      {[150, 320].map((height, i) => (
+        <div key={i} className="sk-block" style={{ height, borderRadius: 16, marginBottom: 20 }} />
       ))}
     </div>
   )
@@ -87,81 +80,31 @@ function Skeleton() {
 
 export default function EmailSettings() {
   const ctrl = useEmailSettings()
-  const { settings, fieldErrors, saving } = ctrl
-
-  const [newTaxId, setNewTaxId] = useState('')
-  const [newOwnerEmail, setNewOwnerEmail] = useState('')
-  const [editing, setEditing] = useState<number | 'new' | null>(null)
-  const [form, setForm] = useState(EMPTY_RULE)
+  const { draft, dirty, settings, fieldErrors, saving } = ctrl
   const [tokenInput, setTokenInput] = useState('')
 
-  const rules = settings?.rules || []
-  const taxIds = settings?.tax_ids || []
-  const ownerEmails = settings?.owner_emails || []
   const status = settings?.status
-  const step1Done = taxIds.length > 0
-  const step2Done = rules.some(r => r.is_active)
-  const step3Done = (status?.documents_total || 0) > 0
+  const blockers = status?.blockers || []
+  const received = status?.documents_total || 0
 
-  const set = (k: keyof typeof EMPTY_RULE, v: string | boolean) =>
-    setForm(prev => ({ ...prev, [k]: v }))
+  // The page has no in-app nav links, so this is the realistic way to leave it.
+  // ponytail: hash navigation away won't fire beforeunload; add a router guard if the
+  // page ever gains links.
+  useEffect(() => {
+    if (!dirty) return
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty])
 
-  /** The current rules in write shape, with one index replaced or appended. */
-  const rulesWith = (index: number | 'new', rule: EmailRulePayload | null): EmailRulePayload[] => {
-    const base: EmailRulePayload[] = rules.map(r => ({
-      bank_code: r.bank_code,
-      bank_sender_email: r.bank_sender_email,
-      filename_patterns: r.filename_patterns,
-      is_active: r.is_active,
-      // Carried, not defaulted. PUT is a full replace, so a field this list omits is one
-      // that editing an unrelated rule silently clears on all of them.
-      doc_type: r.doc_type || 'fee_invoice',
-    }))
-    if (index === 'new') return rule ? [...base, rule] : base
-    if (rule === null) return base.filter((_, i) => i !== index)
-    base[index] = rule
-    return base
-  }
+  const setRule = (index: number, part: Partial<RuleDraft>) =>
+    ctrl.patch({ rules: draft.rules.map((r, i) => (i === index ? { ...r, ...part } : r)) })
 
-  const startEdit = (index: number, rule: EmailRule) => {
-    setEditing(index)
-    setForm({
-      bank_code: rule.bank_code || '',
-      bank_sender_email: rule.bank_sender_email || '',
-      filename_patterns: rule.filename_patterns.join(', '),
-      pdf_password: '', // write-only — blank means "keep the stored one"
-      is_active: rule.is_active,
-      doc_type: rule.doc_type || 'fee_invoice',
-    })
-  }
+  const removeRule = (index: number) =>
+    ctrl.patch({ rules: draft.rules.filter((_, i) => i !== index) })
 
-  const submitRule = async () => {
-    if (editing === null) return
-    const payload: EmailRulePayload = {
-      bank_code: form.bank_code || null,
-      bank_sender_email: form.bank_sender_email.trim() || null,
-      filename_patterns: form.filename_patterns
-        .split(',')
-        .map(p => p.trim())
-        .filter(Boolean),
-      is_active: form.is_active,
-      doc_type: form.doc_type,
-      // null = keep what is stored; '' would clear it. Only a typed value sets one.
-      pdf_password: form.pdf_password || null,
-    }
-    if (await ctrl.setRules(rulesWith(editing, payload))) setEditing(null)
-  }
-
-  const addTaxId = async () => {
-    const value = newTaxId.replace(/[\s-]/g, '')
-    if (!value) return
-    if (await ctrl.setTaxIds([...taxIds, value])) setNewTaxId('')
-  }
-
-  const addOwnerEmail = async () => {
-    const value = newOwnerEmail.trim().toLowerCase()
-    if (!value || ownerEmails.includes(value)) return
-    if (await ctrl.setOwnerEmails([...ownerEmails, value])) setNewOwnerEmail('')
+  const onSave = async () => {
+    if (await ctrl.save()) showToast('Settings saved', 'success')
   }
 
   if (ctrl.loading) return <Skeleton />
@@ -170,20 +113,30 @@ export default function EmailSettings() {
 
   return (
     <div className="email-settings-page">
-      <h1>
-        {/* One name for the feature, and it is the one the queue page wears. Messages that
-            send a reader here name it too ("Arrived while AI JV Automation was switched
-            off"), so the heading they land on has to be the same words. */}
-        <Mail size={20} /> AI JV Automation
-      </h1>
-      <p className="email-settings-page__lede">
-        Forward a bank&apos;s fee report to the address below and it is extracted and posted to
-        Carmen without anyone opening the app. This screen is our copy of the one Carmen builds — it
-        calls the same API with the same Carmen token, so what works here works there.
-      </p>
+      <PageHeader
+        // One name for the feature, and it is the one the queue page wears. Messages that
+        // send a reader here name it too ("Arrived while AI JV Automation was switched
+        // off"), so the heading they land on has to be the same words.
+        title="AI JV Automation"
+        description="Configure email ingestion and bank document matching for this business unit. Forward a bank's fee report to the address below and it is extracted and posted to Carmen without anyone opening the app."
+        actions={
+          <Button onClick={() => void ctrl.reload()} disabled={saving} aria-label="Reload">
+            <RefreshCw size={14} />
+          </Button>
+        }
+      />
+
+      <div className="email-ctx">
+        <span>
+          URI: <strong>{ctrl.host || '—'}</strong>
+        </span>
+        <span>
+          BU: <strong>{ctrl.bu || '—'}</strong>
+        </span>
+      </div>
 
       {err && (
-        <div className="email-settings-banner" data-tone={err.status === 409 ? 'warn' : undefined}>
+        <div className="email-banner" data-tone={err.status === 409 ? 'warn' : undefined}>
           <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
           <span>
             {err.status === 401 &&
@@ -195,497 +148,319 @@ export default function EmailSettings() {
         </div>
       )}
 
-      {/* ── Connection: who we are acting for, and with what credential ── */}
-      <div className="email-conn">
-        <div className="email-conn__row">
-          <span className="email-conn__label">Host</span>
-          <span className="email-conn__value">{ctrl.host || '—'}</span>
-          <span className="email-conn__label">BU</span>
-          <span className="email-conn__value">{ctrl.bu || '—'}</span>
-          <span className="email-conn__spacer" />
-          <label className="email-conn__toggle">
+      <Card title="Service status">
+        <Badge variant={status?.ready ? 'ok' : 'warn'}>
+          {status?.ready ? 'Ready' : 'Not ready'}
+        </Badge>
+
+        <label className="email-field" style={{ marginTop: 'var(--space-4)' }}>
+          <span>Ingest email address</span>
+          <div className="email-copyrow">
             <input
-              type="checkbox"
-              checked={settings?.enabled ?? false}
-              disabled={saving}
-              onChange={e => void ctrl.setEnabled(e.target.checked)}
+              className="admin-form-input"
+              readOnly
+              value={settings?.ingest_address || ''}
+              placeholder="issued once AI is enabled and saved"
             />
-            Enabled
-            {saving && <Loader2 size={13} className="animate-spin" />}
-          </label>
-        </div>
-        {fieldErrors['enabled'] && <p className="email-setup__error">{fieldErrors['enabled']}</p>}
+            <Button
+              disabled={!settings?.ingest_address}
+              onClick={() => void copy(settings?.ingest_address as string, 'Address')}
+            >
+              <Copy size={13} /> COPY
+            </Button>
+          </div>
+          <small>
+            This address is created after AI is enabled and the settings are saved successfully for
+            the first time. It is unique to this BU — that tag is how a message is attributed before
+            anything is read. Set a forwarding rule in the mailbox that receives the bank report,
+            pointing at it.
+          </small>
+        </label>
 
-        {/* The review switch. Carmen's own screen owns this decision for a customer
-            (CARMEN_INTEGRATION.md §2.7) — it is here so support can set it for a BU whose
-            Carmen has not shipped the control yet, and so the field is exercised end to end
-            like every other one on this page.
+        {/* Ours. Carmen's screen stops at the Ready badge; the count is the only proof on
+            the page that a forward actually works. */}
+        {received > 0 && (
+          <div className="email-live">
+            <span className="email-live__dot" />
+            Receiving: {received} document{received === 1 ? '' : 's'}
+            {status?.last_received_at &&
+              ` · last ${new Date(status.last_received_at).toLocaleString()}`}
+          </div>
+        )}
 
-            It is the one control here that lets a document reach Carmen unseen, so the hint
-            names what still stops rather than reassuring. */}
-        <div className="email-conn__row email-conn__row--stack">
-          <span className="email-conn__label">Posting without review</span>
-          <p className="email-setup__hint">
-            Off — the default — every document waits at the review queue for someone to approve. On,
-            a document we read with nothing to flag posts on its own; anything else still waits
-            there either way: a warning, a GL mapping the AI had to guess, amounts that do not
-            reconcile, a missing document number, or an unmapped payment type.
-          </p>
-          <label className="email-conn__toggle" style={{ alignSelf: 'flex-start' }}>
-            <input
-              type="checkbox"
-              checked={settings?.auto_post ?? false}
-              disabled={saving}
-              onChange={e => void ctrl.setAutoPost(e.target.checked)}
-            />
-            Post clean documents automatically
-            {saving && <Loader2 size={13} className="animate-spin" />}
-          </label>
-        </div>
+        {/* Google normally confirms the forward by link, which the poll follows itself, so
+            this is only ever reached if they go back to printing a code. */}
+        {settings?.gmail_confirm && !settings.gmail_confirmed_at && (
+          <div className="email-live" data-tone="warn">
+            Gmail asked for a code: <code>{settings.gmail_confirm.code}</code> — paste it into the
+            confirmation prompt on your own Gmail forwarding screen.
+          </div>
+        )}
 
-        <div className="email-conn__row email-conn__row--stack">
-          <span className="email-conn__label">Your email addresses</span>
-          <p className="email-setup__hint">
-            Optional second layer. Leave this empty and any mail reaching your address is accepted.
-            Add addresses and a message must carry one of them in From, To or Cc — anything else is
-            recorded <code>sender_not_allowed</code> and never scanned, at no cost. Add the mailbox
-            your bank mail arrives at <em>and</em> anyone who forwards by hand, or their mail will
-            be refused.
-          </p>
-          {ownerEmails.length > 0 && (
-            <div className="email-setup__chips">
-              {ownerEmails.map(addr => (
-                <span key={addr} className="email-setup__chip">
-                  {addr}
-                  <button
-                    type="button"
-                    aria-label={`Remove ${addr}`}
-                    disabled={saving}
-                    onClick={() => void ctrl.setOwnerEmails(ownerEmails.filter(x => x !== addr))}
-                  >
-                    <Trash2 size={11} />
-                  </button>
-                </span>
-              ))}
+        {blockers.length > 0 && (
+          <div className="email-blockers">
+            {blockers.map(b => (
+              <span key={b} className="email-blockers__chip">
+                {BLOCKER_TEXT[b] || b}
+              </span>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card title="Automation settings">
+        <p className="email-note">
+          Saving replaces the complete Tax ID and rule lists for this BU.
+        </p>
+
+        <div className="email-grid2">
+          <div className="email-toggle-card">
+            <div>
+              <div className="email-toggle-card__title">Enable AI document processing</div>
+              <p className="email-hint">
+                Turn on to receive and process documents with AI. When off, document scanning is
+                paused.
+              </p>
+              <FieldError errors={fieldErrors} prefix="enabled" />
             </div>
-          )}
-          <div className="email-setup__addrow">
-            <input
-              className="email-setup__input"
-              type="email"
+            <Switch
+              checked={draft.enabled}
+              disabled={saving}
+              ariaLabel="Enable AI document processing"
+              onChange={enabled => ctrl.patch({ enabled })}
+            />
+          </div>
+
+          {/* Carmen's own screen owns this decision for a customer (§2.7) — it is here so
+              support can set it for a BU whose Carmen has not shipped the control yet, and
+              so the field is exercised end to end like every other one on this page.
+
+              It is the one control that lets a document reach Carmen unseen, so the hint
+              names what still stops rather than reassuring. */}
+          <div className="email-toggle-card">
+            <div>
+              <div className="email-toggle-card__title">Post scanned documents automatically</div>
+              <ul className="email-hint email-hint--bullets">
+                <li data-tone="on">On: post immediately without review.</li>
+                <li data-tone="off">
+                  Off: wait for confirmation in the Review step before posting.
+                </li>
+              </ul>
+              <p className="email-hint">
+                A document we read with nothing to flag posts on its own; anything else still waits
+                either way — a warning, a GL mapping the AI had to guess, amounts that do not
+                reconcile, a missing document number, or an unmapped payment type.
+              </p>
+            </div>
+            <Switch
+              checked={draft.auto_post}
+              disabled={saving}
+              ariaLabel="Post scanned documents automatically"
+              onChange={auto_post => ctrl.patch({ auto_post })}
+            />
+          </div>
+        </div>
+
+        <div className="email-grid2">
+          <label className="email-field">
+            <span>Owner emails</span>
+            <textarea
+              className="admin-form-input"
+              rows={3}
               placeholder="accounting@yourcompany.com"
-              value={newOwnerEmail}
-              onChange={e => setNewOwnerEmail(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && void addOwnerEmail()}
+              value={draft.owner_emails}
+              onChange={e => ctrl.patch({ owner_emails: e.target.value })}
             />
-            <button
-              type="button"
-              className="btn btn-sm btn-primary"
-              disabled={!newOwnerEmail.trim() || saving}
-              onClick={() => void addOwnerEmail()}
-            >
-              <Plus size={12} /> Add
-            </button>
-          </div>
-          {Object.entries(fieldErrors)
-            .filter(([field]) => field.startsWith('owner_emails'))
-            .map(([field, message]) => (
-              <p key={field} className="email-setup__error">
-                {message}
-              </p>
-            ))}
+            <small>
+              Separate multiple values with commas or new lines. Optional second layer: leave empty
+              and any mail reaching your address is accepted. Add addresses and a message must carry
+              one of them in From, To or Cc — anything else is recorded{' '}
+              <code>sender_not_allowed</code> and never scanned, at no cost. Add the mailbox your
+              bank mail arrives at <em>and</em> anyone who forwards by hand.
+            </small>
+            <FieldError errors={fieldErrors} prefix="owner_emails" />
+          </label>
+
+          <label className="email-field">
+            <span>Company Tax IDs *</span>
+            <textarea
+              className="admin-form-input"
+              rows={3}
+              placeholder="0105536000127"
+              value={draft.tax_ids}
+              onChange={e => ctrl.patch({ tax_ids: e.target.value })}
+            />
+            <small>
+              13 digits each, separated by commas or new lines. This is the second check, not the
+              routing key: a document printing another BU&apos;s tax ID is parked instead of posted.
+              Add more than one if this BU covers several legal entities.
+            </small>
+            <FieldError errors={fieldErrors} prefix="tax_ids" />
+          </label>
         </div>
 
-        <div className="email-conn__row">
-          <span className="email-conn__label">Posting credential</span>
-          <span className="email-conn__value">
-            {ctrl.tokenStatus?.configured
-              ? `${ctrl.tokenStatus.fingerprint} · verified ${
-                  ctrl.tokenStatus.verified_at
-                    ? new Date(ctrl.tokenStatus.verified_at).toLocaleString()
-                    : 'never'
-                }`
-              : 'not set — automated posting is off'}
-          </span>
+        <div className="email-rules-head">
+          <span className="email-rules-head__title">Rules</span>
+          <Button
+            size="sm"
+            onClick={() => ctrl.patch({ rules: [...draft.rules, { ...EMPTY_RULE }] })}
+          >
+            <Plus size={13} /> ADD RULE
+          </Button>
         </div>
-        <div className="email-conn__row">
-          <div className="email-conn__token-form">
-            <input
-              className="email-setup__input"
-              type="password"
-              placeholder="Paste the Carmen token JVs are posted with"
-              value={tokenInput}
-              onChange={e => setTokenInput(e.target.value)}
-              autoComplete="new-password"
-            />
-            <button
-              type="button"
-              className="btn btn-sm btn-primary"
-              disabled={!tokenInput.trim() || saving}
-              onClick={async () => {
-                if (await ctrl.saveToken(tokenInput.trim())) {
-                  setTokenInput('')
-                  showToast('Token verified and stored', 'success')
-                }
-              }}
-            >
-              Save token
-            </button>
-            {ctrl.tokenStatus?.configured && (
-              <button
-                type="button"
-                className="btn btn-sm btn-outline"
-                disabled={saving}
-                onClick={() => void ctrl.removeToken()}
-              >
-                Delete
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+        <p className="email-hint">
+          One rule per bank. An attachment matching no rule is never extracted and never charged —
+          which is also what keeps signature logos out. Leave the bank blank to let the document
+          itself say who issued it.
+        </p>
 
-      <ol className="email-setup">
-        {/* ── Step 1: tax IDs ── */}
-        <li className="email-setup__step" data-done={step1Done}>
-          <StepMarker n={1} done={step1Done} />
-          <div className="email-setup__body">
-            <div className="email-setup__title">Your tax ID</div>
-            <p className="email-setup__hint">
-              13 digits, no separators. This is the second check, not the routing key: a document
-              printing another BU&apos;s tax ID is parked instead of posted. Add more than one if
-              this BU covers several legal entities.
-            </p>
-            {taxIds.length > 0 && (
-              <div className="email-setup__chips">
-                {taxIds.map(id => (
-                  <span key={id} className="email-setup__chip">
-                    {id}
-                    <button
-                      type="button"
-                      aria-label={`Remove ${id}`}
-                      disabled={saving}
-                      onClick={() => void ctrl.setTaxIds(taxIds.filter(x => x !== id))}
-                    >
-                      <Trash2 size={11} />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-            <div className="email-setup__addrow">
-              <input
-                className="email-setup__input"
-                placeholder="0105536000127"
-                inputMode="numeric"
-                value={newTaxId}
-                onChange={e => setNewTaxId(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && void addTaxId()}
-              />
+        {draft.rules.map((rule, i) => (
+          <div key={i} className="email-rule" data-inactive={!rule.is_active || undefined}>
+            <div className="email-rule__head">
+              <span className="email-rule__title">Rule {i + 1}</span>
               <button
                 type="button"
-                className="btn btn-sm btn-primary"
-                disabled={!newTaxId.trim() || saving}
-                onClick={() => void addTaxId()}
+                className="email-rule__delete"
+                aria-label={`Remove rule ${i + 1}`}
+                onClick={() => removeRule(i)}
               >
-                <Plus size={12} /> Add
+                <Trash2 size={14} />
               </button>
             </div>
-            {Object.entries(fieldErrors)
-              .filter(([field]) => field.startsWith('tax_ids'))
-              .map(([field, message]) => (
-                <p key={field} className="email-setup__error">
-                  {message}
-                </p>
-              ))}
-          </div>
-        </li>
 
-        {/* ── Step 2: bank rules ── */}
-        <li className="email-setup__step" data-done={step2Done}>
-          <StepMarker n={2} done={step2Done} />
-          <div className="email-setup__body">
-            <div className="email-setup__title">Your banks</div>
-            <p className="email-setup__hint">
-              One rule per bank. An attachment matching no rule is never extracted and never charged
-              — which is also what keeps signature logos out. Leave the bank blank to let the
-              document itself say who issued it.
-            </p>
-
-            {rules.map((r, i) => (
-              <div key={i} className="email-setup__bank" data-inactive={!r.is_active}>
-                <div className="email-setup__bank-main">
-                  <span className="email-setup__bank-name">
-                    {r.bank_code || 'Other (detected)'}
-                  </span>
-                  <span className="email-setup__bank-sender">
-                    {r.bank_sender_email || 'any sender'}
-                  </span>
-                </div>
-                <div className="email-setup__bank-meta">
-                  {r.filename_patterns.length > 0 && (
-                    <span className="email-setup__badge">
-                      file: {r.filename_patterns.join(', ')}
-                    </span>
-                  )}
-                  {r.doc_type === 'ar_reconcile' && (
-                    <span className="email-setup__badge">settlement report</span>
-                  )}
-                  {r.has_password && <span className="email-setup__badge">password set</span>}
-                  {!r.is_active && <span className="email-setup__badge">off</span>}
-                </div>
-                <div className="email-setup__bank-actions">
-                  <button
-                    type="button"
-                    aria-label={`Edit ${r.bank_code || 'rule'}`}
-                    onClick={() => startEdit(i, r)}
-                  >
-                    <Pencil size={13} />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Remove ${r.bank_code || 'rule'}`}
-                    disabled={saving}
-                    onClick={() => void ctrl.setRules(rulesWith(i, null))}
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              </div>
-            ))}
-
-            {editing === null && (
-              <button
-                type="button"
-                className="btn btn-sm btn-outline"
-                onClick={() => {
-                  setEditing('new')
-                  setForm(EMPTY_RULE)
-                }}
-              >
-                <Plus size={12} /> {rules.length === 0 ? 'Add your first bank' : 'Add another bank'}
-              </button>
-            )}
-
-            {editing !== null && (
-              <div className="email-setup__form">
-                <label className="email-setup__field">
-                  <span>Bank</span>
-                  <select
-                    className="email-setup__input"
-                    value={form.bank_code}
-                    onChange={e => set('bank_code', e.target.value)}
-                  >
-                    <option value="">Other — detect from the document</option>
-                    {ctrl.banks.map(b => (
-                      <option key={b.code} value={b.code}>
-                        {b.code} — {b.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="email-setup__field">
-                  <span>Document type</span>
-                  <select
-                    className="email-setup__input"
-                    value={form.doc_type}
-                    onChange={e => set('doc_type', e.target.value)}
-                  >
-                    <option value="fee_invoice">
-                      Commission invoice — the fee the bank charges
+            <div className="email-rule__grid">
+              <label className="email-field">
+                <span>Bank</span>
+                <select
+                  className="admin-form-input"
+                  value={rule.bank_code}
+                  onChange={e => setRule(i, { bank_code: e.target.value })}
+                >
+                  <option value="">Other — detect from the document</option>
+                  {ctrl.banks.map(b => (
+                    <option key={b.code} value={b.code}>
+                      {b.code} — {b.name}
                     </option>
-                    <option value="ar_reconcile">
-                      Settlement report — splits the control account (KBANK only)
-                    </option>
-                  </select>
-                  <small>
-                    Both arrive from the same bank carrying the same tax invoice number, so nothing
-                    on the page tells them apart. A settlement report matched by a commission rule
-                    is read with the wrong layout.
-                  </small>
-                </label>
-                <label className="email-setup__field">
-                  <span>Sender address</span>
-                  <input
-                    className="email-setup__input"
-                    placeholder="kmerchant@kasikornbank.com"
-                    value={form.bank_sender_email}
-                    onChange={e => set('bank_sender_email', e.target.value)}
-                  />
-                  <small>
-                    Narrows which rules apply. Leave blank so a manual forward from a colleague
-                    still matches.
-                  </small>
-                </label>
-                <label className="email-setup__field">
-                  <span>Filename patterns</span>
-                  <input
-                    className="email-setup__input"
-                    placeholder="MDR, Commission"
-                    value={form.filename_patterns}
-                    onChange={e => set('filename_patterns', e.target.value)}
-                  />
-                  <small>
-                    Comma-separated, matched anywhere in the filename. Required — use{' '}
-                    <code>.pdf</code> to accept every PDF from this bank.
-                  </small>
-                </label>
-                <label className="email-setup__field">
-                  <span>
-                    PDF password{' '}
-                    {editing !== 'new' ? '(blank = keep current)' : '(only if the file is locked)'}
-                  </span>
-                  <input
-                    className="email-setup__input"
-                    type="password"
-                    value={form.pdf_password}
-                    onChange={e => set('pdf_password', e.target.value)}
-                    autoComplete="new-password"
-                  />
-                </label>
-                {editing !== 'new' && (
-                  <label className="email-setup__check">
-                    <input
-                      type="checkbox"
-                      checked={form.is_active}
-                      onChange={e => set('is_active', e.target.checked)}
-                    />
-                    Active
-                  </label>
-                )}
-                {Object.entries(fieldErrors)
-                  .filter(([field]) => field.startsWith('rules'))
-                  .map(([field, message]) => (
-                    <p key={field} className="email-setup__error">
-                      {message}
-                    </p>
                   ))}
-                <div className="email-setup__form-actions">
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline"
-                    onClick={() => setEditing(null)}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-primary"
-                    disabled={saving}
-                    onClick={() => void submitRule()}
-                  >
-                    Save bank
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </li>
+                </select>
+              </label>
 
-        {/* ── Step 3: forward mail here ── */}
-        <li className="email-setup__step" data-done={step3Done}>
-          <StepMarker n={3} done={step3Done} />
-          <div className="email-setup__body">
-            <div className="email-setup__title">Forward the bank&apos;s mail here</div>
-            {settings?.ingest_address ? (
-              <>
-                <p className="email-setup__hint">
-                  Set a forwarding rule in the mailbox that receives the bank report, pointing at
-                  this address. It is unique to this BU — that tag is how a message is attributed
-                  before anything is read.
-                </p>
-                <div className="email-setup__copybox">
-                  <code className="email-setup__addr">{settings.ingest_address}</code>
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline"
-                    onClick={() => void copy(settings.ingest_address as string, 'Address')}
-                  >
-                    <Copy size={12} /> Copy
-                  </button>
-                </div>
-              </>
-            ) : (
-              <p className="email-setup__hint">
-                Your address is issued the first time this BU is switched on successfully. Finish
-                the steps above and turn it on.
-              </p>
-            )}
+              {/* Ours. Both documents arrive from the same bank carrying the same tax
+                  invoice number, so nothing on the page tells them apart — a settlement
+                  report matched by a commission rule is read with the wrong layout. */}
+              <label className="email-field">
+                <span>Document type</span>
+                <select
+                  className="admin-form-input"
+                  value={rule.doc_type}
+                  onChange={e => setRule(i, { doc_type: e.target.value as EmailDocType })}
+                >
+                  <option value="fee_invoice">Commission invoice — the fee the bank charges</option>
+                  <option value="ar_reconcile">
+                    Settlement report — splits the control account (KBANK only)
+                  </option>
+                </select>
+              </label>
 
-            {step3Done ? (
-              <div className="email-setup__live">
-                <span className="email-setup__live-dot" />
-                Receiving: {status?.documents_total} document
-                {status?.documents_total === 1 ? '' : 's'}
-                {status?.last_received_at &&
-                  ` · last ${new Date(status.last_received_at).toLocaleString()}`}
-              </div>
-            ) : (
-              step1Done &&
-              step2Done && (
-                <p className="email-setup__waiting">
-                  Set up, waiting for the first document to arrive.
-                </p>
-              )
-            )}
+              <label className="email-field">
+                <span>Bank sender email</span>
+                <input
+                  className="admin-form-input"
+                  placeholder="kmerchant@kasikornbank.com"
+                  value={rule.bank_sender_email}
+                  onChange={e => setRule(i, { bank_sender_email: e.target.value })}
+                />
+                <small>Blank so a manual forward from a colleague still matches.</small>
+              </label>
 
-            {/* Gmail's half of the handshake, which we now complete ourselves: Google
-                mails the confirmation to the address above, which no customer can open,
-                so the poll follows the link in it. The code branch is the fallback —
-                Google stopped printing one, so it is normally never reached. */}
-            <div
-              className="email-setup__confirm"
-              data-has-code={Boolean(settings?.gmail_confirm) || undefined}
-            >
-              <div className="email-setup__title" style={{ lineHeight: 1.4 }}>
-                Gmail confirmation
-              </div>
-              {settings?.gmail_confirmed_at ? (
-                <p className="email-setup__hint" style={{ margin: '4px 0 0' }}>
-                  Confirmed automatically on{' '}
-                  {new Date(settings.gmail_confirmed_at).toLocaleString()} — nothing to do.
-                </p>
-              ) : settings?.gmail_confirm ? (
-                <>
-                  <p className="email-setup__hint" style={{ margin: '4px 0 8px' }}>
-                    Paste this into the confirmation prompt on your own Gmail forwarding screen.
-                    {settings.gmail_confirm.at &&
-                      ` Received ${new Date(settings.gmail_confirm.at).toLocaleString()}.`}
-                  </p>
-                  <div className="email-setup__copybox" style={{ marginBottom: 0 }}>
-                    <code className="email-setup__addr email-setup__confirm-code">
-                      {settings.gmail_confirm.code}
-                    </code>
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline"
-                      onClick={() => void copy(settings.gmail_confirm!.code, 'Code')}
-                    >
-                      <Copy size={12} /> Copy
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <p className="email-setup__waiting" style={{ marginTop: 4 }}>
-                  Add the forwarding address in Gmail. Google mails the confirmation here and we
-                  complete it for you within a minute or two — you should not have to click
-                  anything.
-                </p>
-              )}
+              <label className="email-field">
+                <span>PDF password {rule.has_password ? '(blank = keep current)' : ''}</span>
+                <input
+                  className="admin-form-input"
+                  type="password"
+                  autoComplete="new-password"
+                  value={rule.pdf_password}
+                  onChange={e => setRule(i, { pdf_password: e.target.value })}
+                />
+                <small>Only if the file is locked.</small>
+              </label>
             </div>
 
-            {status && status.blockers.length > 0 && (
-              <div className="email-blockers">
-                {status.blockers.map(b => (
-                  <span key={b} className="email-blockers__chip">
-                    {BLOCKER_TEXT[b] || b}
-                  </span>
-                ))}
-              </div>
-            )}
+            <div className="email-rule__foot">
+              <label className="email-field">
+                <span>Filename patterns *</span>
+                <input
+                  className="admin-form-input"
+                  placeholder="MDR, Commission"
+                  value={rule.filename_patterns}
+                  onChange={e => setRule(i, { filename_patterns: e.target.value })}
+                />
+                <small>
+                  Separate multiple values with commas or new lines, matched anywhere in the
+                  filename. Required — use <code>.pdf</code> to accept every PDF from this bank.
+                </small>
+              </label>
+              <Switch
+                checked={rule.is_active}
+                label="Active"
+                onChange={is_active => setRule(i, { is_active })}
+              />
+            </div>
+
+            <FieldError errors={fieldErrors} prefix={`rules[${i}]`} />
           </div>
-        </li>
-      </ol>
+        ))}
+      </Card>
+
+      {/* Ours. Carmen's app posts as the signed-in user, so their screen has no field for
+          this; without it here, automated posting is off no matter what else is set. */}
+      <Card title="Posting credential">
+        <p className="email-note">
+          {ctrl.tokenStatus?.configured
+            ? `${ctrl.tokenStatus.fingerprint} · verified ${
+                ctrl.tokenStatus.verified_at
+                  ? new Date(ctrl.tokenStatus.verified_at).toLocaleString()
+                  : 'never'
+              }`
+            : 'Not set — automated posting is off.'}
+        </p>
+        <div className="email-copyrow">
+          <input
+            className="admin-form-input"
+            type="password"
+            placeholder="Paste the Carmen token JVs are posted with"
+            value={tokenInput}
+            onChange={e => setTokenInput(e.target.value)}
+            autoComplete="new-password"
+          />
+          <Button
+            variant="primary"
+            disabled={!tokenInput.trim() || saving}
+            onClick={async () => {
+              if (await ctrl.saveToken(tokenInput.trim())) {
+                setTokenInput('')
+                showToast('Token verified and stored', 'success')
+              }
+            }}
+          >
+            Save token
+          </Button>
+          {ctrl.tokenStatus?.configured && (
+            <Button disabled={saving} onClick={() => void ctrl.removeToken()}>
+              Delete
+            </Button>
+          )}
+        </div>
+      </Card>
+
+      <div className="email-actionbar">
+        <Button variant="primary" disabled={!dirty || saving} onClick={() => void onSave()}>
+          {saving ? 'SAVING…' : 'SAVE SETTINGS'}
+        </Button>
+        <Button disabled={!dirty || saving} onClick={ctrl.reset}>
+          RESET
+        </Button>
+      </div>
     </div>
   )
 }
