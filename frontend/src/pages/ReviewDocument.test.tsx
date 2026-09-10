@@ -1044,6 +1044,7 @@ const AR_JV = {
       desc: 'Tax Inv.# 210726E00035291 - Credit Card AR Summary',
       debit: 25091,
       credit: 0,
+      key: '',
     },
     {
       dept: 'GEN',
@@ -1051,6 +1052,7 @@ const AR_JV = {
       desc: 'Tax Inv.# 210726E00035291 - VS',
       debit: 0,
       credit: 25091,
+      key: 'VS',
     },
   ],
   description: 'Credit Card AR Reconcile 21/07/2026',
@@ -1060,6 +1062,7 @@ const AR_JV = {
   total_credit: 25091,
   balanced: true,
   unmapped: [] as string[],
+  post_type: 'Detail' as const,
 }
 
 function arDetail(over: Record<string, unknown> = {}) {

@@ -41,6 +41,11 @@ export interface ARPreviewRow {
   desc: string
   debit: number
   credit: number
+  /** The group this leg is, as the server's `group_key` resolved it. Empty on the debit
+   *  leg, which is the counterpart to all of them. What the review pane joins the printed
+   *  payment types back to — `desc` carries the same text behind a document-number prefix
+   *  that is not always there. */
+  key: string
 }
 
 export interface ARPreview {
@@ -52,6 +57,11 @@ export interface ARPreview {
   total_credit: number
   balanced: boolean
   unmapped: string[]
+  /** Which grouping produced these rows. The union, not `string`, like every other
+   *  `post_type` in this file: the review pane switches its whole table on
+   *  `post_type === 'Summary'`, and against `string` a drift from the server's
+   *  `PostType.SUMMARY` would render every Summary document as Detail without a word. */
+  post_type: PostType
 }
 
 export async function getARSettings(bankCode: string): Promise<ARSettings> {

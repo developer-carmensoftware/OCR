@@ -70,8 +70,16 @@ function preview(over: Partial<ARPreview> = {}): ARPreview {
         desc: 'Tax Inv.# X - Credit Card AR Summary',
         debit: 25091,
         credit: 0,
+        key: '',
       },
-      { dept: 'GEN', acc: '1021001', desc: 'Tax Inv.# X - VS INTER PREM', debit: 0, credit: 25091 },
+      {
+        dept: 'GEN',
+        acc: '1021001',
+        desc: 'Tax Inv.# X - VS INTER PREM',
+        debit: 0,
+        credit: 25091,
+        key: 'VS INTER PREM',
+      },
     ],
     description: 'Credit Card AR Reconcile 21/07/2026',
     doc_no: '210726E00035291',
@@ -80,6 +88,7 @@ function preview(over: Partial<ARPreview> = {}): ARPreview {
     total_credit: 25091,
     balanced: true,
     unmapped: [],
+    post_type: 'Detail',
     ...over,
   }
 }

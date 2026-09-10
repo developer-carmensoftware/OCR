@@ -87,6 +87,8 @@ def build_ar_jv_rows(
             "desc": f"{prefix}Credit Card AR Summary",
             "debit": abs(total) if total >= 0 else 0.0,
             "credit": 0.0 if total >= 0 else abs(total),
+            # The counterpart to every group, so it belongs to none of them.
+            "key": "",
         }
     )
     for key, raw in grouped.items():
@@ -99,6 +101,10 @@ def build_ar_jv_rows(
                 "desc": f"{prefix}{key}",
                 "debit": abs(amt) if amt < 0 else 0.0,
                 "credit": amt if amt >= 0 else 0.0,
+                # What the review screen joins the printed lines back to. `desc` carries the
+                # same text, but behind a prefix that only exists when the document has a
+                # number — parsing it back out would be a second, weaker copy of this.
+                "key": key,
             }
         )
     return rows

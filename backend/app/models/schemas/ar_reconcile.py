@@ -73,6 +73,11 @@ class ARPreviewRow(BaseModel):
     desc: str
     debit: float
     credit: float
+    # The group this leg is, as `group_key` resolved it — empty on the debit leg, which is
+    # the counterpart to all of them. Carried so the review screen can put each printed
+    # payment type beside the leg it became without re-deriving the grouping in the
+    # browser or slicing the `Tax Inv.# … - ` prefix back off `desc`.
+    key: str = ""
 
 
 class ARPreviewOut(BaseModel):
@@ -93,6 +98,10 @@ class ARPreviewOut(BaseModel):
     total_credit: float
     balanced: bool
     unmapped: list[str] = Field(default_factory=list)
+    # Which grouping produced these rows. The settings screen already knows — it asked for
+    # it — but the reviewer does not, and Detail and Summary are the same table with
+    # different arithmetic behind it.
+    post_type: str = ""
 
 
 class ARPreviewIn(BaseModel):

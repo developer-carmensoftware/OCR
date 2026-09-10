@@ -290,6 +290,7 @@ async def jv_for_document(
         total_credit=round(sum(r["credit"] for r in rows), 2),
         balanced=is_balanced(rows),
         unmapped=unmapped_ar_types(rows_in, maps, setting.post_type),
+        post_type=setting.post_type,
     )
 
 

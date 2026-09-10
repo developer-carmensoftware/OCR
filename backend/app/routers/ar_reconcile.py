@@ -123,6 +123,7 @@ async def preview(
         total_credit=round(sum(r["credit"] for r in rows), 2),
         balanced=is_balanced(rows),
         unmapped=unmapped_ar_types(details, mappings, req.post_type),
+        post_type=req.post_type,
     )
 
 

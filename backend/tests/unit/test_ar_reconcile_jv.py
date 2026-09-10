@@ -103,6 +103,28 @@ def test_summary_folds_schemes_onto_their_first_token():
     assert is_balanced(out)
 
 
+def test_every_leg_carries_the_group_it_posts_under():
+    """The review pane joins printed lines to legs on `key`, not by parsing `desc`.
+
+    `desc` carries the same text behind a `Tax Inv.# … - ` prefix that only exists when the
+    document has a number, so slicing it back off would be a second, weaker copy of the
+    grouping. The counterpart leg belongs to no group and says so with an empty key.
+    """
+    detail = build(PostType.DETAIL, detail_mappings())
+    assert detail[0]["key"] == ""
+    assert [r["key"] for r in detail[1:]] == [t for t, _ in SAMPLE]
+
+    summary = build(PostType.SUMMARY, summary_mappings())
+    assert summary[0]["key"] == ""
+    assert [r["key"] for r in summary[1:]] == ["VS", "MC", "JCB"]
+
+    # The join the browser performs, spelled out: a printed label is either the key itself
+    # or the key plus a space and the rest of it. Nothing else has to be true.
+    keys = {r["key"] for r in summary[1:]}
+    for label, _ in SAMPLE:
+        assert any(label == k or label.startswith(f"{k} ") for k in keys), label
+
+
 def test_both_post_types_balance_to_the_same_total():
     detail = build(PostType.DETAIL, detail_mappings())
     summary = build(PostType.SUMMARY, summary_mappings())
