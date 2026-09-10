@@ -109,6 +109,9 @@ function renderPage() {
 }
 
 beforeEach(() => {
+  // Call counts leak between tests without this, so "nothing reached the server" was a
+  // claim about the whole file rather than about the test making it.
+  vi.clearAllMocks()
   vi.mocked(api.getARSettings).mockResolvedValue(settings())
   vi.mocked(api.previewARJv).mockResolvedValue(preview())
   vi.mocked(api.getSamplePaymentTypes).mockResolvedValue([])
@@ -188,6 +191,8 @@ describe('AR reconciliation settings', () => {
     renderPage()
     await waitFor(() => expect(screen.getByText('PAYMENT TYPE MAPPING')).toBeInTheDocument())
 
+    // Save only opens once something differs from what the server confirmed.
+    fireEvent.click(screen.getByLabelText(/Reconcile settlement reports/i))
     fireEvent.click(screen.getByRole('button', { name: /Save settings/i }))
 
     await waitFor(() => expect(api.saveARSettings).toHaveBeenCalled())
@@ -211,5 +216,57 @@ describe('AR reconciliation settings', () => {
     await waitFor(() => expect(screen.getByText('VS INTER UP PREM')).toBeInTheDocument())
     // The count is split across <strong> nodes, so read the status line as a whole.
     expect(document.querySelector('.cc-mapping-status')).toHaveTextContent('2 of 2 still to map')
+  })
+
+  // ── Unsaved work ────────────────────────────────────────────────────────────
+  //
+  // One Save at the foot of a long form, and the Back link sits at the very top of it.
+  // Everything below is about the gap between those two facts.
+
+  it('will not save an untouched form, and says which state it is in', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('PAYMENT TYPE MAPPING')).toBeInTheDocument())
+
+    expect(screen.getByRole('button', { name: /Save settings/i })).toBeDisabled()
+    expect(screen.getByText('Everything here is saved')).toBeInTheDocument()
+    expect(api.saveARSettings).not.toHaveBeenCalled()
+  })
+
+  it('seeded rows are not the reviewer’s work, so they do not count as unsaved', async () => {
+    // Arriving on a fresh BU and leaving again must not ask about discarding a vocabulary
+    // the machine put there.
+    vi.mocked(api.getARSettings).mockResolvedValue(
+      settings({ mappings: { Detail: [], Summary: [] } })
+    )
+    vi.mocked(api.getSamplePaymentTypes).mockResolvedValue([
+      { payment_type_code: 'VS INTER UP PREM', is_active: true },
+    ])
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('VS INTER UP PREM')).toBeInTheDocument())
+    expect(screen.getByText('Everything here is saved')).toBeInTheDocument()
+  })
+
+  it('asks before the Back link throws away unsaved mappings', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('PAYMENT TYPE MAPPING')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByLabelText(/Reconcile settlement reports/i))
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('link', { name: /Back to the queue/i }))
+
+    // The link is a hash navigation, which never fires `beforeunload` — so this dialog is
+    // the only thing standing between a filled-in mapping table and one convenient click.
+    expect(await screen.findByText('Leave without saving?')).toBeInTheDocument()
+  })
+
+  it('does not ask when there is nothing to lose', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('PAYMENT TYPE MAPPING')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('link', { name: /Back to the queue/i }))
+
+    expect(screen.queryByText('Leave without saving?')).not.toBeInTheDocument()
   })
 })

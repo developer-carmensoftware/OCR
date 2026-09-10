@@ -141,7 +141,8 @@
 }
 
 .ar-field > label,
-.ar-field > legend {
+.ar-field > legend,
+.ar-field > .ar-field-label {
   display: block;
   margin-bottom: 0.4rem;
   padding: 0;
@@ -187,59 +188,10 @@
   margin-top: 0.2rem;
 }
 
-/* Switch — the one control here with no existing counterpart in the app. */
-
-.ar-switch {
-  position: relative;
-  flex-shrink: 0;
-  width: 42px;
-  height: 24px;
-}
-
-.ar-switch input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-
-.ar-switch-track {
-  position: absolute;
-  inset: 0;
-  border-radius: 100px;
-  background: var(--gray-300);
-  transition: background 0.18s ease-out;
-  pointer-events: none;
-}
-
-.ar-switch-track::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--card-bg);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
-  transition: transform 0.18s ease-out;
-}
-
-.ar-switch input:checked + .ar-switch-track {
-  background: var(--primary);
-}
-
-.ar-switch input:checked + .ar-switch-track::after {
-  transform: translateX(18px);
-}
-
-.ar-switch input:focus-visible + .ar-switch-track {
-  outline: 2.5px solid var(--primary);
-  outline-offset: 2px;
-}
+/* The switch used to be hand-rolled here — 50 lines, its own raw `rgb(0 0 0 / 0.2)`, and a
+   comment claiming it was "the one control here with no existing counterpart in the app".
+   `components/admin/ui/Switch.tsx` is that counterpart, loads app-wide from index.css, and
+   is what EmailSettings uses three times. */
 
 /* ─── Post type ───────────────────────────────────────────────────────────── */
 
@@ -467,7 +419,19 @@
 /* ─── Actions ─────────────────────────────────────────────────────────────── */
 
 .ar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 1rem);
   margin: 2rem 0 3rem;
+}
+
+/* Which of the two states the Save button is in. Beside it rather than under it: a
+   disabled primary with no sentence next to it reads as a broken control. */
+.ar-save-state {
+  order: 1;
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-3);
 }
 
 .ar-actions .btn {
@@ -526,8 +490,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ar-switch-track,
-  .ar-switch-track::after,
   .ar-preview[aria-busy='true'],
   .ar-back,
   .ar-tag {

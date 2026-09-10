@@ -1,11 +1,15 @@
+import { useEffect, useState } from 'react'
 import { ArrowLeft, CheckCircle2, CircleDot, Loader2, Scale } from 'lucide-react'
 import '../styles/pages/ar-reconcile.css'
 import ARJvPreview from '../components/ar-reconcile/ARJvPreview'
 import ARMappingTable from '../components/ar-reconcile/ARMappingTable'
+import CustomModal from '../components/common/CustomModal'
 import CustomSearchSelect from '../components/common/CustomSearchSelect'
 import SwapLabel from '../components/common/SwapLabel'
+import Switch from '../components/admin/ui/Switch'
 import { useARReconcile } from '../hooks/ar-reconcile'
-import { POST_TYPES, type PostType } from '../lib/api/arReconcile'
+import { POST_TYPES } from '../lib/api/arReconcile'
+import { BANKS } from '../constants/banks'
 import { allowedAccountsForDept } from '../lib/deptAccounts'
 
 /**
@@ -17,12 +21,23 @@ import { allowedAccountsForDept } from '../lib/deptAccounts'
  * rest of the app uses.
  */
 
-const BANKS: { code: string; label: string; supported: boolean }[] = [
-  { code: 'KBANK', label: 'KBANK — Kasikornbank (Merchant)', supported: true },
-  { code: 'SCB', label: 'SCB — Siam Commercial Bank', supported: false },
-  { code: 'BBL', label: 'BBL — Bangkok Bank', supported: false },
-  { code: 'BAY', label: 'BAY — Krungsri', supported: false },
-]
+const QUEUE = '#/CreditCardOCR'
+
+/**
+ * The card-acquiring banks, from the app's one bank list.
+ *
+ * `kind: 'gateway'` is excluded because those four (KTC, GHL, PayPal, SiamPay) are
+ * processor *fee invoices*, not merchant settlement reports — there is no control account
+ * for this JV to clear.
+ *
+ * **Which of them the extractor can actually read is not decided here.** This used to be a
+ * local array carrying a `supported` flag, which made three places claim to know: the flag,
+ * the server's `SUPPORTED_BANKS`, and the `bank_supported` readiness link that already says
+ * so in a sentence at the top of this very screen. The server is the one that knows, it
+ * refuses an *enabled* bank it cannot read on save, and the chain goes red the moment an
+ * unreadable one is picked. One authority, and it updates itself.
+ */
+const MERCHANT_BANKS = BANKS.filter(b => b.kind === 'bank')
 
 const TAGS = ['{Settlement_Date}', '{Tax_Invoice_No}', '{Bank_Name}'] as const
 
@@ -38,6 +53,17 @@ const BLOCKER_LABEL: Record<string, string> = {
 
 export default function ARReconcileSettings() {
   const ctrl = useARReconcile()
+  const [leaving, setLeaving] = useState(false)
+
+  // A long form with one Save at the foot of it, and a mapping table that costs real
+  // attention to fill in. Closing the tab asks; the Back link below asks separately,
+  // because a hash navigation never fires this event.
+  useEffect(() => {
+    if (!ctrl.dirty) return
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [ctrl.dirty])
 
   if (ctrl.loading) return <ARSkeleton />
 
@@ -52,9 +78,33 @@ export default function ARReconcileSettings() {
 
   return (
     <div className="ar-page">
-      <a className="ar-back" href="#/CreditCardOCR">
+      {/* The most convenient click on the screen, and it is a hash navigation — so it is
+          the one that has to ask rather than the one that gets away with not asking. */}
+      <a
+        className="ar-back"
+        href={QUEUE}
+        onClick={e => {
+          if (!ctrl.dirty) return
+          e.preventDefault()
+          setLeaving(true)
+        }}
+      >
         <ArrowLeft size={14} /> Back to the queue
       </a>
+
+      <CustomModal
+        show={leaving}
+        type="warning"
+        confirmVariant="danger"
+        title="Leave without saving?"
+        message="The mappings and settings changed here have not been saved. Leaving now discards them."
+        confirmText="Discard and leave"
+        cancelText="Stay on this page"
+        onConfirm={() => {
+          window.location.href = QUEUE
+        }}
+        onCancel={() => setLeaving(false)}
+      />
 
       <h1>
         <Scale size={20} /> Detailed Credit Card AR Reconciliation
@@ -94,10 +144,9 @@ export default function ARReconcileSettings() {
             value={ctrl.bankCode}
             onChange={e => ctrl.setBankCode(e.target.value)}
           >
-            {BANKS.map(b => (
-              <option key={b.code} value={b.code} disabled={!b.supported}>
-                {b.label}
-                {b.supported ? '' : ' — Phase 2'}
+            {MERCHANT_BANKS.map(b => (
+              <option key={b.value} value={b.value}>
+                {b.value} — {b.label}
               </option>
             ))}
           </select>
@@ -105,20 +154,19 @@ export default function ARReconcileSettings() {
 
         <div className="ar-field ar-toggle-field">
           <div>
-            <label htmlFor="ar-enabled">Reconcile settlement reports for this bank</label>
+            {/* A sentence beside a switch, not a field label — and the switch is a button,
+                so there is nothing for a `<label htmlFor>` to point at. It reaches the
+                control as its accessible name instead. */}
+            <span>Reconcile settlement reports for this bank</span>
             <p className="ar-hint">
               Off means arriving reports are handed back unread and cost nothing.
             </p>
           </div>
-          <label className="ar-switch">
-            <input
-              id="ar-enabled"
-              type="checkbox"
-              checked={ctrl.enabled}
-              onChange={e => ctrl.setEnabled(e.target.checked)}
-            />
-            <span className="ar-switch-track" aria-hidden="true" />
-          </label>
+          <Switch
+            checked={ctrl.enabled}
+            onChange={ctrl.setEnabled}
+            ariaLabel="Reconcile settlement reports for this bank"
+          />
         </div>
 
         <fieldset className="ar-field ar-posttype">
@@ -131,7 +179,7 @@ export default function ARReconcileSettings() {
                 role="radio"
                 aria-checked={ctrl.postType === pt}
                 className={`segmented-btn ${ctrl.postType === pt ? 'active' : ''}`}
-                onClick={() => ctrl.setPostType(pt as PostType)}
+                onClick={() => ctrl.setPostType(pt)}
               >
                 <span className="ar-seg-name">{pt}</span>
                 <span className="ar-seg-count">
@@ -176,8 +224,13 @@ export default function ARReconcileSettings() {
         </div>
 
         <div className="ar-field">
-          <label id="ar-debit-label">Clearing account to debit</label>
-          <div className="ar-debit-grid" aria-labelledby="ar-debit-label">
+          {/* A `<label>` with no control to point at is a label of nothing. The two pickers
+              below are a group, so it names the group — the same job `<legend>` does for
+              Post type twenty lines up. */}
+          <span className="ar-field-label" id="ar-debit-label">
+            Clearing account to debit
+          </span>
+          <div className="ar-debit-grid" role="group" aria-labelledby="ar-debit-label">
             <CustomSearchSelect
               value={ctrl.debit.dept}
               onChange={val => ctrl.setDebit({ ...ctrl.debit, dept: val })}
@@ -208,11 +261,16 @@ export default function ARReconcileSettings() {
       <ARJvPreview preview={ctrl.preview} loading={ctrl.previewLoading} postType={ctrl.postType} />
 
       <div className="ar-actions">
+        {/* Says which of the two states the button is in, rather than leaving a disabled
+            control to be read as broken. */}
+        <p className="ar-save-state" role="status">
+          {ctrl.dirty ? 'Unsaved changes' : 'Everything here is saved'}
+        </p>
         <button
           type="button"
           className="btn btn-primary"
           onClick={() => void ctrl.save()}
-          disabled={ctrl.saving}
+          disabled={ctrl.saving || !ctrl.dirty}
         >
           {ctrl.saving ? (
             <Loader2 size={16} className="animate-spin" />

@@ -4,6 +4,7 @@ import {
   getARSettings,
   getSamplePaymentTypes,
   previewARJv,
+  POST_TYPES,
   saveARSettings,
   type ARBlocker,
   type ARMappingItem,
@@ -33,9 +34,46 @@ import type { FieldMapping } from '../../types/api'
 
 const DEFAULT_TEMPLATE = 'Credit Card AR Reconcile {Settlement_Date}'
 
+/**
+ * Everything a save would send, flattened — the basis for `dirty`.
+ *
+ * Spelled out rather than `JSON.stringify` over the state objects, because a row the server
+ * sent and a row `addCustomType` built have different key orders for the same values, and a
+ * stringify would call that an edit. Listing the fields also keeps this honest by
+ * construction: it is exactly the payload in `save()` minus `bank_code`, so a field added
+ * there without being added here is a field whose change would not warn.
+ */
+function fingerprint(
+  enabled: boolean,
+  postType: PostType,
+  template: string,
+  debit: FieldMapping,
+  sets: Record<string, ARMappingItem[]>
+): string {
+  return JSON.stringify([
+    enabled,
+    postType,
+    template.trim(),
+    debit.dept,
+    debit.acc,
+    ...POST_TYPES.map(pt =>
+      (sets[pt] || []).map(r => [
+        r.payment_type_code,
+        r.credit_dept_code || '',
+        r.credit_account_code || '',
+        r.is_active,
+      ])
+    ),
+  ])
+}
+
 export interface ARReconcileHook {
   loading: boolean
   saving: boolean
+  /** Something on the form differs from what the server last confirmed. The whole screen
+   *  is one Save at the foot of a long form, and its own Back link is a hash navigation —
+   *  so without this, a mapped table is thrown away by the most convenient click on it. */
+  dirty: boolean
   bankCode: string
   setBankCode: (code: string) => void
   enabled: boolean
@@ -87,6 +125,9 @@ export function useARReconcile(initialBank = 'KBANK'): ARReconcileHook {
   const [suggestLoading, setSuggestLoading] = useState(false)
   const [preview, setPreview] = useState<ARPreview | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
+  // What the server last confirmed, as a fingerprint. `null` until the first load lands, so
+  // an empty form mid-fetch is never "dirty".
+  const [savedPrint, setSavedPrint] = useState<string | null>(null)
 
   const rows = sets[postType] || []
 
@@ -100,7 +141,8 @@ export function useARReconcile(initialBank = 'KBANK'): ARReconcileHook {
       const s = await getARSettings(code)
       setEnabled(s.enabled)
       setPostType(s.post_type)
-      setTemplate(s.jv_description_template || DEFAULT_TEMPLATE)
+      const tmpl = s.jv_description_template || DEFAULT_TEMPLATE
+      setTemplate(tmpl)
       const d = { dept: s.debit_dept_code || '', acc: s.debit_account_code || '' }
       setDebit(d)
       setDebitDefault(d.dept || d.acc ? d : null)
@@ -111,17 +153,21 @@ export function useARReconcile(initialBank = 'KBANK'): ARReconcileHook {
       // A BU with no rows yet cannot map anything, and the only other way to get rows is
       // to receive a document and be charged for it. Seed the printed vocabulary instead.
       const seeded = detail.length === 0 && summary.length === 0
-      if (seeded) {
-        const sample = await getSamplePaymentTypes().catch(() => [] as ARMappingItem[])
-        setSets({
-          Detail: sample,
-          Summary: dedupe(
-            sample.map(i => ({ ...i, payment_type_code: firstToken(i.payment_type_code) }))
-          ),
-        })
-      } else {
-        setSets({ Detail: detail, Summary: summary })
-      }
+      const next = seeded
+        ? await getSamplePaymentTypes()
+            .catch(() => [] as ARMappingItem[])
+            .then(sample => ({
+              Detail: sample,
+              Summary: dedupe(
+                sample.map(i => ({ ...i, payment_type_code: firstToken(i.payment_type_code) }))
+              ),
+            }))
+        : { Detail: detail, Summary: summary }
+      setSets(next)
+      // Taken from the values just fetched, not from state — the setters above have not
+      // applied yet. Seeded rows are part of the baseline on purpose: nobody typed them, so
+      // arriving on a fresh BU and leaving again must not ask about discarding anything.
+      setSavedPrint(fingerprint(s.enabled, s.post_type, tmpl, d, next))
     } catch (err) {
       console.error('AR settings load failed:', err)
       toast.error('Could not load AR reconciliation settings')
@@ -294,9 +340,15 @@ export function useARReconcile(initialBank = 'KBANK'): ARReconcileHook {
   const mappedCount = (pt: PostType) =>
     (sets[pt] || []).filter(r => r.credit_dept_code && r.credit_account_code).length
 
+  // `save()` reloads on success, which re-baselines this — so there is no second place
+  // that has to remember to clear the flag.
+  const dirty =
+    savedPrint !== null && fingerprint(enabled, postType, template, debit, sets) !== savedPrint
+
   return {
     loading,
     saving,
+    dirty,
     bankCode,
     setBankCode,
     enabled,
