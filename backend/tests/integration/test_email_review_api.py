@@ -13,10 +13,12 @@ the WHERE clause, not in an `if` after the fetch.
 import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.auth.session import SessionInfo
+from app.models.schemas import ARPreviewOut, ARPreviewRow
 from app.routers import email_review
+from app.services import ar_reconcile_service as ar_svc
 from tests.conftest import make_mock_db
 from tests.integration.conftest import make_test_client
 
@@ -173,6 +175,61 @@ def test_a_document_that_is_no_longer_pending_is_a_404():
     db.scalar.return_value = None
     with make_test_client(db, session=SESSION) as client:
         assert client.get(f"{BASE}/documents/{uuid.uuid4()}", headers=AUTH).status_code == 404
+
+
+def test_opening_a_settlement_report_returns_the_jv_it_would_post():
+    """The AR document is read-only in the browser — there is no client-side JV builder for
+    this feature — so the rows have to arrive with it, built against the BU's CURRENT
+    mapping. `approve_document` rebuilds them the same way, which is what keeps what is
+    shown and what posts one object rather than two derivations."""
+    db = make_mock_db()
+    db.scalar.return_value = _doc(
+        bank_code="KBANK",
+        review_payload={
+            "extracted": {
+                "doc_no": "210726E00035291",
+                "doc_date": "21/07/2026",
+                "details": [
+                    {"transaction": "VS INTER PREM", "pay_amt": "3,251.00"},
+                    {"transaction": "JCB PREM", "pay_amt": "300.00"},
+                ],
+            },
+            "flags": [],
+            "doc_type": "ar_reconcile",
+        },
+    )
+    built = ARPreviewOut(
+        rows=[
+            ARPreviewRow(dept="GEN", acc="1021000", desc="d", debit=3551.0, credit=0.0),
+            ARPreviewRow(dept="GEN", acc="1021001", desc="c", debit=0.0, credit=3551.0),
+        ],
+        description="Credit Card AR Reconcile 21/07/2026",
+        doc_no="210726E00035291",
+        doc_date="21/07/2026",
+        total_debit=3551.0,
+        total_credit=3551.0,
+        balanced=True,
+        unmapped=[],
+    )
+    with patch.object(ar_svc, "jv_for_document", AsyncMock(return_value=built)):
+        with make_test_client(db, session=SESSION) as client:
+            body = client.get(f"{BASE}/documents/{uuid.uuid4()}", headers=AUTH).json()
+
+    assert body["doc_type"] == "ar_reconcile"
+    assert body["ar_jv"]["balanced"] is True
+    assert [r["acc"] for r in body["ar_jv"]["rows"]] == ["1021000", "1021001"]
+
+
+def test_a_fee_invoice_carries_no_ar_jv():
+    """The field exists on every detail response; only one document type fills it, and the
+    screen branches on doc_type rather than on the field being truthy."""
+    db = make_mock_db()
+    db.scalar.return_value = _doc()
+    with make_test_client(db, session=SESSION) as client:
+        body = client.get(f"{BASE}/documents/{uuid.uuid4()}", headers=AUTH).json()
+
+    assert body["doc_type"] == "fee_invoice"
+    assert body["ar_jv"] is None
 
 
 # ── GET /status ──────────────────────────────────────────────────────────────

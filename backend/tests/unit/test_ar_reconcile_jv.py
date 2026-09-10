@@ -128,6 +128,15 @@ def test_new_scheme_becomes_its_own_unmapped_key():
     assert unmapped_ar_types(rows(), detail_mappings(), PostType.DETAIL) == []
 
 
+def test_a_zero_amount_row_is_not_something_to_map():
+    """It contributes nothing to the JV, so demanding an account for it would park a
+    document over a line that was never going to post."""
+    detail = rows([*SAMPLE, ("AMEX PREM", "0.00")])
+
+    assert unmapped_ar_types(detail, detail_mappings(), PostType.DETAIL) == []
+    assert "AMEX PREM" not in [r["desc"] for r in build(PostType.DETAIL, detail_mappings(), detail)]
+
+
 def test_inactive_and_missing_accounts_both_read_as_unmapped():
     partial = dict(detail_mappings())
     partial["JCB PREM"] = {"dept": "GEN", "acc": ""}

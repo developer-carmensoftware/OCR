@@ -1028,3 +1028,132 @@ describe('leaving', () => {
     expect(screen.queryByText('Leave without posting?')).not.toBeInTheDocument()
   })
 })
+
+// ── AR reconciliation ─────────────────────────────────────────────────────────
+//
+// A settlement report is a different document producing a different JV, and the browser
+// has no builder for it: the server sends the rows, `approve` posts the rows the server
+// rebuilds. So this half of the screen is a readout, not an editor, and what these cover
+// is that it stays one — plus that the credit-card path beside it is untouched.
+
+const AR_JV = {
+  rows: [
+    {
+      dept: 'GEN',
+      acc: '1021000',
+      desc: 'Tax Inv.# 210726E00035291 - Credit Card AR Summary',
+      debit: 25091,
+      credit: 0,
+    },
+    {
+      dept: 'GEN',
+      acc: '1021001',
+      desc: 'Tax Inv.# 210726E00035291 - VS',
+      debit: 0,
+      credit: 25091,
+    },
+  ],
+  description: 'Credit Card AR Reconcile 21/07/2026',
+  doc_no: '210726E00035291',
+  doc_date: '21/07/2026',
+  total_debit: 25091,
+  total_credit: 25091,
+  balanced: true,
+  unmapped: [] as string[],
+}
+
+function arDetail(over: Record<string, unknown> = {}) {
+  return detail({
+    bank_code: 'KBANK',
+    doc_no: '210726E00035291',
+    doc_type: 'ar_reconcile',
+    ar_jv: AR_JV,
+    extracted: { ...EXTRACTED, doc_no: '210726E00035291', doc_date: '21/07/2026' },
+    ...over,
+  } as Partial<ReviewDocumentDetail>)
+}
+
+describe('a parked settlement report', () => {
+  it('shows the JV the server built, not an editor', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(arDetail())
+    mount()
+
+    await screen.findByText('JV PREVIEW')
+    expect(screen.getByText('Credit Card AR Reconcile 21/07/2026')).toBeInTheDocument()
+    expect(screen.getByText('1021000')).toBeInTheDocument()
+    // The credit-card half of the modal is replaced, not disabled.
+    expect(screen.queryByText('ACCOUNT CODE MAPPING')).not.toBeInTheDocument()
+  })
+
+  it('posts the rows it was shown and files no input-tax record', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(arDetail())
+    vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-9', tax_note: null })
+    mount()
+
+    await screen.findByText('JV PREVIEW')
+    await clickApprove()
+
+    await waitFor(() => expect(api.approveDocument).toHaveBeenCalled())
+    const body = vi.mocked(api.approveDocument).mock.calls[0][1]
+    expect(body.rows).toEqual(AR_JV.rows)
+    expect(body.post_input_tax).toBe(false)
+  })
+
+  it('never writes the credit-card mapping table', async () => {
+    // `overrides` is the wizard's vocabulary; this document's accounts live in
+    // ar_reconcile_mappings. Saving them here would file the right codes under the
+    // wrong feature's keys.
+    vi.mocked(api.getPending).mockResolvedValue(arDetail())
+    vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-9', tax_note: null })
+    mount()
+
+    await screen.findByText('JV PREVIEW')
+    await clickApprove()
+
+    await waitFor(() => expect(api.approveDocument).toHaveBeenCalled())
+    expect(cfgApi.patchAccountingConfig).not.toHaveBeenCalled()
+  })
+
+  it('will not approve while a payment type is unmapped, and names it', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(
+      arDetail({ ar_jv: { ...AR_JV, unmapped: ['JCB', 'AMEX'] } })
+    )
+    mount()
+
+    await screen.findByText('JV PREVIEW')
+    const btn = await screen.findByRole('button', { name: /Approve/ })
+    expect(btn).toBeDisabled()
+    // Said twice on purpose, and both matter: once on the JV itself, and once as the
+    // reason the disabled button gives — a reader who scrolled past the panel still gets
+    // told what to go and fix.
+    expect(document.querySelector('.ar-preview-warn')).toHaveTextContent('JCB, AMEX')
+    expect(document.querySelector('#rd-blocked')).toHaveTextContent('JCB, AMEX')
+  })
+
+  it('will not approve an entry that does not balance', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(
+      arDetail({ ar_jv: { ...AR_JV, balanced: false, total_credit: 25000 } })
+    )
+    mount()
+
+    await screen.findByText('JV PREVIEW')
+    expect(await screen.findByRole('button', { name: /Approve/ })).toBeDisabled()
+  })
+
+  it('says so when the bank is no longer configured', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(arDetail({ ar_jv: null }))
+    mount()
+
+    expect(await screen.findByRole('button', { name: /Approve/ })).toBeDisabled()
+    expect(screen.getByText(/no longer configured/i)).toBeInTheDocument()
+  })
+
+  it('points at where these accounts are actually set', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(arDetail())
+    mount()
+
+    await screen.findByText('JV PREVIEW')
+    const link = screen.getByRole('link', { name: /AR reconciliation settings/i })
+    expect(link).toHaveAttribute('href', '#/CreditCardOCR/ar-settings')
+  })
+})
