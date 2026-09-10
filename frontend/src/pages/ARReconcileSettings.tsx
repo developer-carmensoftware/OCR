@@ -51,7 +51,7 @@ export default function ARReconcileSettings() {
     (ctrl.debitDefault.dept !== ctrl.debit.dept || ctrl.debitDefault.acc !== ctrl.debit.acc)
 
   return (
-    <div className="container">
+    <div className="ar-page">
       <a className="ar-back" href="#/CreditCardOCR">
         <ArrowLeft size={14} /> Back to the queue
       </a>
@@ -65,7 +65,7 @@ export default function ARReconcileSettings() {
       </p>
 
       {/* ── Readiness ─────────────────────────────────────────────────────── */}
-      <div className="section ar-readiness">
+      <div className="ar-section">
         <div className="section-title">READINESS</div>
         <ul className="ar-chain">
           {ctrl.blockers.map(b => (
@@ -83,7 +83,7 @@ export default function ARReconcileSettings() {
       </div>
 
       {/* ── Bank profile & posting ────────────────────────────────────────── */}
-      <div className="section">
+      <div className="ar-section">
         <div className="section-title">BANK PROFILE</div>
 
         <div className="ar-field">
@@ -228,12 +228,12 @@ export default function ARReconcileSettings() {
 
 function ARSkeleton() {
   return (
-    <div className="container">
-      <div className="skeleton ar-skel-title" />
+    <div className="ar-page">
+      <div className="ar-skel ar-skel-title" />
       {[0, 1, 2].map(i => (
-        <div key={i} className="skeleton-card ar-skel-card">
-          <div className="skeleton ar-skel-line" />
-          <div className="skeleton ar-skel-block" />
+        <div key={i} className="ar-skel-card">
+          <div className="ar-skel ar-skel-line" />
+          <div className="ar-skel ar-skel-block" />
         </div>
       ))}
     </div>

@@ -1,0 +1,141 @@
+/* ─── MappingRow — "this payment type posts to this dept and account" ───────
+ *
+ * Imported by the component, not by a page or a modal. It was born inside
+ * payment-modal.css and stayed there when the row was extracted for reuse, which meant
+ * the styles only existed when the modal happened to be mounted: the AR settings screen
+ * rendered the same markup with no stylesheet behind it at all.
+ *
+ * The `pm-` prefix is kept rather than renamed across a shipped modal and its markup.
+ */
+
+/* One template for the header and every row, so they cannot drift apart.
+   Declared on both consumers rather than on an ancestor: the row is used inside the
+   payment-type modal AND on a plain settings page, and an ancestor-scoped variable is
+   exactly what made the second one collapse into an unaligned stack.
+   The last track is fixed, not `auto`: it holds the accept/reject pair, which renders
+   only on rows that have a suggestion. As `auto` it was 0 on the header and on rows
+   without one, so the Dept/Account columns landed at three different widths — and
+   acting on a suggestion resized that row under the cursor.
+   4.75rem = two 35px icon buttons (13px glyph + 10px padding + 1px border) + 0.3rem gap. */
+.pm-grid-header,
+.pm-row {
+  --pm-cols: minmax(120px, 1fr) 1fr 1fr 4.75rem;
+
+  display: grid;
+  grid-template-columns: var(--pm-cols);
+  gap: 1rem;
+  align-items: center;
+}
+
+.pm-grid-header {
+  font-weight: bold;
+  margin-bottom: 1rem;
+  /* matches .pm-row's padding + state border so labels sit over their own column */
+  padding: 0.4rem;
+  border: 1px solid transparent;
+}
+
+.pm-row {
+  margin-bottom: 0.5rem;
+  align-items: center;
+  padding: 0.4rem;
+  border-radius: 8px;
+}
+
+.pm-row--required-pending {
+  background: var(--btn-err-bg);
+  border: 1px solid var(--btn-err-border);
+}
+
+.pm-row--required-ok {
+  background: var(--btn-ok-bg);
+  border: 1px solid var(--btn-ok-border);
+}
+
+.pm-row--custom {
+  background: transparent;
+  border: 1px solid transparent;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.pm-type-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.pm-type-badge {
+  padding: 0.4rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.pm-type-badge--pending {
+  background: var(--rose-fill);
+  color: white;
+}
+
+.pm-type-badge--ok {
+  background: var(--emerald-fill);
+  color: white;
+}
+
+.pm-type-badge--custom {
+  background: var(--btn-ok-bg);
+  color: var(--btn-ok-text);
+  border: 1px solid var(--btn-ok-border);
+}
+
+.pm-remove-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--rose-text);
+  font-size: 0.9rem;
+  padding: 0.2rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+}
+
+.pm-suggest-actions {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.pm-accept-btn {
+  padding: 4px 10px;
+  background: var(--btn-ok-bg);
+  color: var(--btn-ok-text);
+  border: 1px solid var(--btn-ok-border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-weight: 600;
+}
+
+.pm-reject-btn {
+  padding: 4px 10px;
+  background: var(--btn-err-bg);
+  color: var(--btn-err-text);
+  border: 1px solid var(--btn-err-border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-weight: 600;
+}

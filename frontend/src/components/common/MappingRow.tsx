@@ -1,6 +1,7 @@
 import { AlertTriangle, Check, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import CustomSearchSelect from './CustomSearchSelect'
+import '../../styles/components/mapping-row.css'
 import { allowedAccountsForDept, isAccountAllowed } from '../../lib/deptAccounts'
 import type { FieldMapping } from '../../types/api'
 import type { MasterAccount, MasterDepartment } from '../../hooks/mapping/useMappingData'

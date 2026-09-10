@@ -1,4 +1,5 @@
 import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
+import '../../styles/pages/ar-reconcile.css'
 import type { ARPreview } from '../../lib/api/arReconcile'
 
 /**
@@ -32,7 +33,7 @@ export default function ARJvPreview({
   label = 'Worked example',
 }: Props) {
   return (
-    <div className="section ar-preview" aria-busy={loading}>
+    <div className="ar-section ar-preview" aria-busy={loading}>
       <div className="section-title cc-section-title-container">
         <span>JV PREVIEW</span>
         <span className="ar-preview-note">

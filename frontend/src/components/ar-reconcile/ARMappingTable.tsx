@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import '../../styles/pages/ar-reconcile.css'
 import { AlertTriangle, CheckCircle2, Info, Plus, XCircle } from 'lucide-react'
 import AISuggestBar from '../common/AISuggestBar'
 import Badge from '../common/Badge'
 import MappingRow from '../common/MappingRow'
+import '../../styles/components/mapping-row.css'
 import type { ARReconcileHook } from '../../hooks/ar-reconcile'
 
 /**
@@ -27,7 +29,7 @@ export default function ARMappingTable({ ctrl }: Props) {
   const missing = total - mapped
 
   return (
-    <div className="section">
+    <div className="ar-section">
       <div className="section-title cc-section-title-container">
         <div className="cc-flex-center-gap">
           <span>PAYMENT TYPE MAPPING</span>

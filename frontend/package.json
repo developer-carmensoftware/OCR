@@ -16,6 +16,7 @@
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
     "contrast": "node scripts/contrast-audit.mjs",
+    "styles": "node scripts/style-coverage.mjs",
     "format": "prettier --write src",
     "format:check": "prettier --check src"
   },
