@@ -21,7 +21,7 @@
 import { useState } from 'react'
 import { AlertTriangle, Check, Copy, Loader2, Mail, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEmailSettings } from '../hooks/email-settings'
-import type { EmailRule, EmailRulePayload } from '../lib/api/emailAutomation'
+import type { EmailDocType, EmailRule, EmailRulePayload } from '../lib/api/emailAutomation'
 import { showToast } from '../lib/toast'
 import '../styles/pages/email-settings.css'
 
@@ -31,6 +31,7 @@ const EMPTY_RULE = {
   filename_patterns: '',
   pdf_password: '',
   is_active: true,
+  doc_type: 'fee_invoice' as EmailDocType,
 }
 
 /** What each blocker means, in the words the person reading the screen would use. */
@@ -112,6 +113,9 @@ export default function EmailSettings() {
       bank_sender_email: r.bank_sender_email,
       filename_patterns: r.filename_patterns,
       is_active: r.is_active,
+      // Carried, not defaulted. PUT is a full replace, so a field this list omits is one
+      // that editing an unrelated rule silently clears on all of them.
+      doc_type: r.doc_type || 'fee_invoice',
     }))
     if (index === 'new') return rule ? [...base, rule] : base
     if (rule === null) return base.filter((_, i) => i !== index)
@@ -127,6 +131,7 @@ export default function EmailSettings() {
       filename_patterns: rule.filename_patterns.join(', '),
       pdf_password: '', // write-only — blank means "keep the stored one"
       is_active: rule.is_active,
+      doc_type: rule.doc_type || 'fee_invoice',
     })
   }
 
@@ -140,6 +145,7 @@ export default function EmailSettings() {
         .map(p => p.trim())
         .filter(Boolean),
       is_active: form.is_active,
+      doc_type: form.doc_type,
       // null = keep what is stored; '' would clear it. Only a typed value sets one.
       pdf_password: form.pdf_password || null,
     }
@@ -422,6 +428,9 @@ export default function EmailSettings() {
                       file: {r.filename_patterns.join(', ')}
                     </span>
                   )}
+                  {r.doc_type === 'ar_reconcile' && (
+                    <span className="email-setup__badge">settlement report</span>
+                  )}
                   {r.has_password && <span className="email-setup__badge">password set</span>}
                   {!r.is_active && <span className="email-setup__badge">off</span>}
                 </div>
@@ -474,6 +483,26 @@ export default function EmailSettings() {
                       </option>
                     ))}
                   </select>
+                </label>
+                <label className="email-setup__field">
+                  <span>Document type</span>
+                  <select
+                    className="email-setup__input"
+                    value={form.doc_type}
+                    onChange={e => set('doc_type', e.target.value)}
+                  >
+                    <option value="fee_invoice">
+                      Commission invoice — the fee the bank charges
+                    </option>
+                    <option value="ar_reconcile">
+                      Settlement report — splits the control account (KBANK only)
+                    </option>
+                  </select>
+                  <small>
+                    Both arrive from the same bank carrying the same tax invoice number, so nothing
+                    on the page tells them apart. A settlement report matched by a commission rule
+                    is read with the wrong layout.
+                  </small>
                 </label>
                 <label className="email-setup__field">
                   <span>Sender address</span>

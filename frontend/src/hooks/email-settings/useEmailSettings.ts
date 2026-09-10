@@ -48,13 +48,21 @@ export interface EmailSettingsController {
 }
 
 /** The rules we hold are read-shape (`has_password`); the write shape drops that and
- *  omits `pdf_password` so the stored one is kept. */
+ *  omits `pdf_password` so the stored one is kept.
+ *
+ *  **Every other field has to be listed here.** `rules` is a full replace on a payload
+ *  that every save on this screen sends — flipping the review switch, adding a tax ID,
+ *  turning ingestion on — so a field this function forgets is one that any of those
+ *  unrelated saves silently deletes from every rule the BU has. `doc_type` is the field
+ *  that made that concrete: losing it turns a settlement report back into a commission
+ *  invoice, read with the wrong layout and posted to the wrong accounts. */
 function toPayloadRules(settings: EmailSettings | null): EmailRulePayload[] {
   return (settings?.rules || []).map(r => ({
     bank_code: r.bank_code,
     bank_sender_email: r.bank_sender_email,
     filename_patterns: r.filename_patterns,
     is_active: r.is_active,
+    doc_type: r.doc_type || 'fee_invoice',
   }))
 }
 

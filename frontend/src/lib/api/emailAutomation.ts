@@ -19,6 +19,11 @@
 import { getCarmenRawToken, resolveUrl } from './client'
 import { API } from './endpoints'
 
+/** Which of the two documents a rule's files are. The rule has to say, because the page
+ *  cannot: a KBANK settlement report and the commission invoice for that same settlement
+ *  share the bank, the date and the tax invoice number. */
+export type EmailDocType = 'fee_invoice' | 'ar_reconcile'
+
 export interface EmailRule {
   bank_code: string | null
   bank_sender_email: string | null
@@ -26,6 +31,9 @@ export interface EmailRule {
   /** Read side only — the password itself is never returned. */
   has_password?: boolean
   is_active: boolean
+  /** Absent on a rule stored before this field existed; the server reads those as
+   *  `fee_invoice`, which is what they were. */
+  doc_type?: EmailDocType
 }
 
 /** What we PUT. `pdf_password` is write-only: omitted (null) keeps the stored one,
