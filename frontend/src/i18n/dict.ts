@@ -938,11 +938,25 @@ const en = {
   'review.actionOpenJv': 'Open JV',
   'review.uploadDocuments': 'Upload documents',
   'review.arSettings': 'AR reconciliation settings',
-  'review.arThisDocument': 'This document',
   'review.arNotConfigured':
     'AR reconciliation is no longer configured for this bank, so no JV can be built.',
   'review.arUnmapped': 'Map these payment types before posting: {types}',
   'review.arMappingLivesElsewhere': 'These accounts are set per payment type, not per document —',
+  // The settlement report's reconciliation pane. The first two columns are the document's
+  // own, so they are named the way KBANK prints them; the rest reuse the JV's column names
+  // (review.jvDept / jvAccount / jvDebit / jvCredit) because they are the same columns.
+  'review.arColPaymentType': 'Payment type',
+  'review.arColThb': 'THB amount',
+  'review.arPostTypeDetail': 'Detail',
+  'review.arPostTypeSummary': 'Summary',
+  'review.arGroupingDetail': 'One credit line per payment type, as printed',
+  'review.arGroupingSummary': 'Payment types credited by card scheme',
+  'review.arNotMapped': 'Not mapped',
+  'review.arControlLeg': 'Control account',
+  'review.arNotPosted': 'no journal line',
+  // The journal book lives in the credit-card mapping screen, which is where this sends
+  // the reviewer — the field on the dialog cannot be typed into on this path.
+  'review.actionSetPrefix': 'Set the journal book',
   // "reviewed and", because that is what the name is evidence of: this document stopped at
   // the queue and a person read it before it went. Its sibling below says "scanned and" for
   // the same reason — each names the work the person actually did, not just the posting.
@@ -2505,10 +2519,20 @@ const th: Record<TKey, string> = {
   'review.actionOpenJv': 'เปิด JV',
   'review.uploadDocuments': 'อัปโหลดเอกสาร',
   'review.arSettings': 'ตั้งค่ากระทบยอดลูกหนี้บัตรเครดิต',
-  'review.arThisDocument': 'เอกสารฉบับนี้',
   'review.arNotConfigured': 'ธนาคารนี้ไม่ได้ตั้งค่ากระทบยอดไว้แล้ว จึงสร้าง JV ไม่ได้',
   'review.arUnmapped': 'ผูกผังบัญชีให้ประเภทบัตรเหล่านี้ก่อนจึงจะโพสต์ได้: {types}',
   'review.arMappingLivesElsewhere': 'ผังบัญชีชุดนี้ตั้งต่อประเภทบัตร ไม่ใช่ต่อเอกสาร —',
+  // Detail/Summary คงคำอังกฤษไว้ ตรงกับค่าที่หน้าตั้งค่าและ Carmen ใช้จริง
+  'review.arColPaymentType': 'ประเภทบัตร',
+  'review.arColThb': 'ยอด THB',
+  'review.arPostTypeDetail': 'Detail',
+  'review.arPostTypeSummary': 'Summary',
+  'review.arGroupingDetail': 'ลงเครดิตหนึ่งบรรทัดต่อประเภทบัตรตามที่พิมพ์บนเอกสาร',
+  'review.arGroupingSummary': 'รวมประเภทบัตรตามค่ายบัตรแล้วจึงลงเครดิต',
+  'review.arNotMapped': 'ยังไม่ผูกบัญชี',
+  'review.arControlLeg': 'บัญชีคุมยอด',
+  'review.arNotPosted': 'ไม่มีบรรทัดใน JV',
+  'review.actionSetPrefix': 'ตั้งสมุดรายวัน',
   'review.postedBy': 'ตรวจสอบและโพสต์โดย {name}',
   'review.postedAutomatically': 'โพสต์อัตโนมัติ',
   'review.postedManuallyBy': 'สแกนและลงบัญชีโดย {name}',

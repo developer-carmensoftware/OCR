@@ -941,6 +941,30 @@
   background: oklch(from var(--amber) l c h / 0.08);
 }
 
+/* The same field with nothing to type into it — the AR path, where none of these four
+   reaches Carmen (see JvHeaderCard's `readOnly`). It keeps the row's metrics exactly, so
+   the header does not change height or alignment between the two document kinds, and
+   drops the wash: the wash is what marks a field as somewhere the caret can go.
+   `--text-2`, not the value colour of an input, because it is being read and not
+   corrected. */
+.rd-modal .rd-f-value {
+  min-width: 0;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid transparent;
+  font-size: 0.875rem;
+  color: var(--text-2, var(--text));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A value that is not there says so in the same amber the empty input does, minus the
+   border — there is no control here to draw a hard edge around. */
+.rd-modal .rd-f--missing .rd-f-value {
+  color: var(--amber-text);
+  font-style: italic;
+}
+
 .rd-f .date-input,
 .rd-f .date-input-trigger,
 .rd-f .custom-search-select {
@@ -1273,6 +1297,135 @@
   background: var(--rose-light);
 }
 
+/* ── The settlement report's reconciliation ─────────────────────────────────── */
+
+/* `ARReviewPane`. Deliberately on `.jv-table` rather than a table of its own: the two
+   review panes show the same kind of claim about the same kind of money, and a second
+   table vocabulary two sections apart is how a screen starts looking assembled rather
+   than designed. What is AR-specific is the extra pair of columns on the left — what the
+   document printed — and the three row species below. */
+.arv {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Which grouping built the table. Detail and Summary are indistinguishable by eye on a
+   day that settled one scheme, and the rule is what the reviewer is accepting. */
+.arv-grouping {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-3);
+}
+
+/* The same fill and weight the JV's own AI tag wears — one chip vocabulary on the screen. */
+.arv-posttype {
+  flex: none;
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--radius-pill);
+  background: var(--primary-light);
+  color: var(--primary);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* This bank has no AR configuration, so there is no JV to show. A sentence, not an empty
+   table: a table with no rows in it invites the reader to look for the rows. */
+.arv-empty {
+  padding: var(--space-4);
+  border: 1px dashed var(--border-raised, var(--border));
+  border-radius: var(--radius-md);
+  background: var(--muted);
+  font-size: 0.83rem;
+  color: var(--text-3);
+  text-align: center;
+}
+
+/* The document's own figures come first and the journal's follow, so the row reads in the
+   direction the check runs. The two report columns are sized to what they hold: a KBANK
+   payment type ("VS INTER UP PREM") and a THB amount. */
+.arv-c-thb {
+  width: 8rem;
+}
+
+.arv-c-dept {
+  width: 7rem;
+}
+
+.arv-c-acc {
+  width: 9.5rem;
+}
+
+/* The group the leg posts under — the row's subject, so it carries the weight the
+   constituent labels below it do not. */
+.arv-key {
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* A label the key was folded from, in Summary. Its own row so its figure lands in the THB
+   column with the others; indented so it reads as belonging to the row above rather than
+   as another group. */
+.arv-row-src td {
+  padding-top: 0.15rem;
+  padding-bottom: 0.15rem;
+  color: var(--text-3);
+}
+
+/* Beats `.jv-table tbody tr + tr td` (0,2,2) on class count, so a constituent line does
+   not draw a rule between itself and the group it belongs to. */
+.jv-table tbody tr + tr.arv-row-src td {
+  border-top: 0;
+}
+
+.arv-src {
+  padding-left: 1.5rem;
+  font-size: 0.78rem;
+}
+
+/* Printed at zero, or a label the grouping did not claim: on the report, absent from the
+   journal. Quiet, because nothing is wrong — but present, because a table that silently
+   holds fewer lines than the paper is the one thing this pane exists to prevent. */
+.arv-row-zero td {
+  color: var(--text-3);
+}
+
+.arv-note {
+  margin-left: 0.5rem;
+  font-size: 0.7rem;
+  color: var(--text-3);
+}
+
+/* The counterpart leg. Ruled off with the raised border rather than the subtle one that
+   separates the report's own lines: it is a different kind of row, not the next one. */
+.jv-table tbody tr + tr.arv-row-control td {
+  border-top: 1px solid var(--border-raised, var(--border));
+}
+
+.arv-row-control td {
+  padding-top: 0.45rem;
+  padding-bottom: 0.45rem;
+}
+
+/* Where these accounts are actually maintained. The dialog wore the settings page's own
+   `.ar-hint` for a while, which resolved only because `ARJvPreview` was mounted here and
+   imported that page's sheet — style-coverage catches exactly this. Same look, in the
+   sheet this dialog can reach. */
+.rd-ar-hint {
+  margin: 0.5rem 0 0;
+  max-width: 68ch;
+  font-size: 0.76rem;
+  line-height: 1.55;
+  color: var(--text-3);
+  text-wrap: pretty;
+}
+
 /* ── Footer ─────────────────────────────────────────────────────────────────── */
 
 /* Gap, not margins: the three things that can appear above the buttons (a Carmen
@@ -1319,6 +1472,21 @@
 
 .rd-blocked svg {
   flex: none;
+}
+
+/* Where the named setting is changed, for the one block reason that has such a place.
+   A link and not the banner's outline button: this sits inside a sentence, and a button
+   in the footer would compete with the two the footer already has. */
+.rd-blocked-fix {
+  flex: none;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.rd-blocked-fix:hover {
+  color: var(--primary);
 }
 
 /* Two buttons, pushed apart: the destructive one on the left, the one that posts on the
@@ -1448,6 +1616,23 @@
 
   .jv-total td:first-child {
     display: block;
+  }
+
+  /* A constituent line becomes its own stacked card like every other row, so the indent
+     that tied it to the group above is now a hanging left edge with nothing to hang from.
+     The rule between them goes for the same reason it went on the wide layout. */
+  .arv-src {
+    padding-left: 0.65rem;
+  }
+
+  .jv-table tbody tr + tr.arv-row-src {
+    border-top: 0;
+  }
+
+  /* The row separator moves from the cell to the row at this width; the counterpart leg
+     keeps its heavier edge by recolouring that one rather than adding a second. */
+  .jv-table tbody tr + tr.arv-row-control {
+    border-top-color: var(--border-raised, var(--border));
   }
 
   .rd-actions {

@@ -12,32 +12,29 @@ import type { ARPreview } from '../../lib/api/arReconcile'
  * The figures are the ones KBANK actually prints on a KB1P554V2 report, so the grouping
  * shown is the grouping a real document gets — but they are still an example, which the
  * header says rather than leaves to be inferred.
+ *
+ * **Settings only.** The review dialog borrowed this for a while and it was the wrong
+ * component there: its heading, its empty state and its unmapped warning are all written
+ * from the point of view of someone configuring a bank, not someone approving a document.
+ * `ARReviewPane` answers that question instead.
  */
 
 interface Props {
   preview: ARPreview | null
   loading: boolean
   postType: string
-  /** What the figures are. The settings screen shows an example; the review screen shows
-   *  the document actually waiting, and must not call it one. */
-  label?: string
 }
 
 const money = (n: number) =>
   n === 0 ? '' : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-export default function ARJvPreview({
-  preview,
-  loading,
-  postType,
-  label = 'Worked example',
-}: Props) {
+export default function ARJvPreview({ preview, loading, postType }: Props) {
   return (
     <div className="ar-section ar-preview" aria-busy={loading}>
       <div className="section-title cc-section-title-container">
         <span>JV PREVIEW</span>
         <span className="ar-preview-note">
-          {label}
+          Worked example
           {preview ? ` · ${preview.doc_date} · Tax Inv.# ${preview.doc_no}` : ''}
         </span>
       </div>

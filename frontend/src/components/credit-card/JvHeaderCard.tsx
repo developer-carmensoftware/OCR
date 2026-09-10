@@ -41,6 +41,42 @@ interface Props {
   description: string | null
   onPrefix: (value: string) => void
   onDescription: (value: string) => void
+  /**
+   * Show the four fields as values rather than controls.
+   *
+   * For the AR settlement path, where none of them is editable in any sense that reaches
+   * Carmen: the server rebuilds that JV from the document on approve, so a corrected
+   * document number changed the `Tax Inv.#` on screen and nothing that posted; and the
+   * parent skips the config write entirely on that path, so a retyped prefix or
+   * description was dropped on submit. Four inputs that quietly discard what is typed into
+   * them are worse than four values.
+   */
+  readOnly?: boolean
+  /**
+   * The description that will actually post, when the caller knows it and this component
+   * cannot derive it. The AR JV's is rendered server-side from the BU's
+   * `jv_description_template`; the per-bank wording resolved below belongs to the
+   * credit-card JV and is a different sentence about a different document.
+   */
+  descriptionOverride?: string
+}
+
+/** A field the reviewer reads rather than fills. Same label, same column, no control. */
+function ReadOnlyField({
+  label,
+  value,
+  mono = true,
+}: {
+  label: string
+  value: string
+  mono?: boolean
+}) {
+  return (
+    <>
+      <span className="rd-f-label">{label}</span>
+      <span className={`rd-f-value${mono ? ' text-mono' : ''}`}>{value}</span>
+    </>
+  )
 }
 
 export default function JvHeaderCard({
@@ -52,6 +88,8 @@ export default function JvHeaderCard({
   description,
   onPrefix,
   onDescription,
+  readOnly = false,
+  descriptionOverride,
 }: Props) {
   const { t } = useT()
   const { prefixes } = useGlMasters()
@@ -79,32 +117,50 @@ export default function JvHeaderCard({
   return (
     <div className="rd-doc">
       <div className={`rd-f rd-f--docno${headerData.DocNo ? '' : ' rd-f--missing'}`}>
-        <label className="rd-f-label" htmlFor="rd-DocNo">
-          {t('review.fDocNo')}
-        </label>
-        <input
-          id="rd-DocNo"
-          type="text"
-          aria-label={t('review.fDocNo')}
-          className="rd-f-input text-mono"
-          value={headerData.DocNo || ''}
-          /* An empty field says what is wrong with it rather than sitting blank. */
-          placeholder={t('review.fMissing')}
-          onChange={e => onUpdate('DocNo', e.target.value)}
-        />
+        {readOnly ? (
+          <ReadOnlyField
+            label={t('review.fDocNo')}
+            value={headerData.DocNo || t('review.fMissing')}
+          />
+        ) : (
+          <>
+            <label className="rd-f-label" htmlFor="rd-DocNo">
+              {t('review.fDocNo')}
+            </label>
+            <input
+              id="rd-DocNo"
+              type="text"
+              aria-label={t('review.fDocNo')}
+              className="rd-f-input text-mono"
+              value={headerData.DocNo || ''}
+              /* An empty field says what is wrong with it rather than sitting blank. */
+              placeholder={t('review.fMissing')}
+              onChange={e => onUpdate('DocNo', e.target.value)}
+            />
+          </>
+        )}
       </div>
 
       <div className={`rd-f rd-f--date${headerData.DocDate ? '' : ' rd-f--missing'}`}>
-        <label className="rd-f-label" htmlFor="rd-DocDate">
-          {t('review.fDocDate')}
-        </label>
-        <DateInput
-          id="rd-DocDate"
-          aria-label={t('review.fDocDate')}
-          value={headerData.DocDate || ''}
-          className="rd-f-input text-mono"
-          onChange={v => onUpdate('DocDate', v)}
-        />
+        {readOnly ? (
+          <ReadOnlyField
+            label={t('review.fDocDate')}
+            value={headerData.DocDate || t('review.fMissing')}
+          />
+        ) : (
+          <>
+            <label className="rd-f-label" htmlFor="rd-DocDate">
+              {t('review.fDocDate')}
+            </label>
+            <DateInput
+              id="rd-DocDate"
+              aria-label={t('review.fDocDate')}
+              value={headerData.DocDate || ''}
+              className="rd-f-input text-mono"
+              onChange={v => onUpdate('DocDate', v)}
+            />
+          </>
+        )}
       </div>
 
       {/* Marked missing like DocNo and DocDate above, because it is: the JV cannot post
@@ -113,16 +169,25 @@ export default function JvHeaderCard({
           of the field read the same in this control, so an unset prefix looked set. Same
           dash the wizard's own config badges use for it (`AccountingReview`). */}
       <div className={`rd-f rd-f--prefix${effectivePrefix ? '' : ' rd-f--missing'}`}>
-        <span className="rd-f-label">{t('review.fPrefix')}</span>
-        {/* Carmen's own list of journal books, through the picker the JV rows use — one
-            control vocabulary across the screen. */}
-        <CustomSearchSelect
-          value={effectivePrefix || null}
-          onChange={onPrefix}
-          options={prefixes}
-          placeholder={t('review.fPrefixPlaceholder')}
-          aria-label={t('review.fPrefix')}
-        />
+        {readOnly ? (
+          <ReadOnlyField
+            label={t('review.fPrefix')}
+            value={effectivePrefix || t('review.fPrefixPlaceholder')}
+          />
+        ) : (
+          <>
+            <span className="rd-f-label">{t('review.fPrefix')}</span>
+            {/* Carmen's own list of journal books, through the picker the JV rows use — one
+                control vocabulary across the screen. */}
+            <CustomSearchSelect
+              value={effectivePrefix || null}
+              onChange={onPrefix}
+              options={prefixes}
+              placeholder={t('review.fPrefixPlaceholder')}
+              aria-label={t('review.fPrefix')}
+            />
+          </>
+        )}
       </div>
 
       {/* Takes whatever the three fixed-width fields leave. The JV builder appends
@@ -130,23 +195,35 @@ export default function JvHeaderCard({
           field and has been dropped — it is the same date already on screen two fields
           along, and what this system appends on post is not news to the person approving. */}
       <div className="rd-f rd-f--grow">
-        <label className="rd-f-label" htmlFor="rd-Description">
-          {t('review.fDescription')}
-        </label>
-        <input
-          id="rd-Description"
-          type="text"
-          aria-label={t('review.fDescription')}
-          className="rd-f-input rd-f-input--optional"
-          value={effectiveOwn}
-          /* The BU-wide wording when this bank has none, so the field says what will post.
+        {readOnly ? (
+          <ReadOnlyField
+            label={t('review.fDescription')}
+            /* What posts, not what this bank's credit-card wording says: on the AR path
+               the sentence is rendered server-side from a different template entirely. */
+            value={descriptionOverride ?? effectiveOwn ?? fallback}
+            mono={false}
+          />
+        ) : (
+          <>
+            <label className="rd-f-label" htmlFor="rd-Description">
+              {t('review.fDescription')}
+            </label>
+            <input
+              id="rd-Description"
+              type="text"
+              aria-label={t('review.fDescription')}
+              className="rd-f-input rd-f-input--optional"
+              value={effectiveOwn}
+              /* The BU-wide wording when this bank has none, so the field says what will post.
              Not `fMissing` ("Not on the document"), which the two fields above earn by
              being document fields the extractor could not fill: this one is BU config and
              was never on the document, so that placeholder accused the statement of an
              omission it could not have. */
-          placeholder={fallback || t('review.fDescriptionPlaceholder')}
-          onChange={e => onDescription(e.target.value)}
-        />
+              placeholder={fallback || t('review.fDescriptionPlaceholder')}
+              onChange={e => onDescription(e.target.value)}
+            />
+          </>
+        )}
       </div>
     </div>
   )

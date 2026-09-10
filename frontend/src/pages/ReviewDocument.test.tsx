@@ -1035,24 +1035,44 @@ describe('leaving', () => {
 // has no builder for it: the server sends the rows, `approve` posts the rows the server
 // rebuilds. So this half of the screen is a readout, not an editor, and what these cover
 // is that it stays one — plus that the credit-card path beside it is untouched.
+//
+// The pane is a reconciliation, so the assertions are about the join: every payment type
+// the report printed appears against the leg it became, and a printed line that produced
+// no leg says so rather than vanishing.
 
+const AR_LINES = [
+  { transaction: 'VS INTER UP PREM', pay_amt: '15,000.00', commis_amt: '', tax_amt: '', total: '' },
+  { transaction: 'VS LOCAL UP PREM', pay_amt: '10,091.00', commis_amt: '', tax_amt: '', total: '' },
+]
+
+const AR_CONTROL = {
+  dept: 'GEN',
+  acc: '1021000',
+  desc: 'Tax Inv.# 210726E00035291 - Credit Card AR Summary',
+  debit: 25091,
+  credit: 0,
+  key: '',
+}
+
+/** Detail: the printed label is the key, so the table is one row per printed line. */
 const AR_JV = {
   rows: [
-    {
-      dept: 'GEN',
-      acc: '1021000',
-      desc: 'Tax Inv.# 210726E00035291 - Credit Card AR Summary',
-      debit: 25091,
-      credit: 0,
-      key: '',
-    },
+    AR_CONTROL,
     {
       dept: 'GEN',
       acc: '1021001',
-      desc: 'Tax Inv.# 210726E00035291 - VS',
+      desc: 'Tax Inv.# 210726E00035291 - VS INTER UP PREM',
       debit: 0,
-      credit: 25091,
-      key: 'VS',
+      credit: 15000,
+      key: 'VS INTER UP PREM',
+    },
+    {
+      dept: 'GEN',
+      acc: '1021002',
+      desc: 'Tax Inv.# 210726E00035291 - VS LOCAL UP PREM',
+      debit: 0,
+      credit: 10091,
+      key: 'VS LOCAL UP PREM',
     },
   ],
   description: 'Credit Card AR Reconcile 21/07/2026',
@@ -1062,7 +1082,24 @@ const AR_JV = {
   total_credit: 25091,
   balanced: true,
   unmapped: [] as string[],
-  post_type: 'Detail' as const,
+  post_type: 'Detail',
+}
+
+/** Summary: both printed labels fold onto the scheme, which is the case worth showing. */
+const AR_JV_SUMMARY = {
+  ...AR_JV,
+  post_type: 'Summary',
+  rows: [
+    AR_CONTROL,
+    {
+      dept: 'GEN',
+      acc: '1021001',
+      desc: 'Tax Inv.# 210726E00035291 - VS',
+      debit: 0,
+      credit: 25091,
+      key: 'VS',
+    },
+  ],
 }
 
 function arDetail(over: Record<string, unknown> = {}) {
@@ -1071,21 +1108,95 @@ function arDetail(over: Record<string, unknown> = {}) {
     doc_no: '210726E00035291',
     doc_type: 'ar_reconcile',
     ar_jv: AR_JV,
-    extracted: { ...EXTRACTED, doc_no: '210726E00035291', doc_date: '21/07/2026' },
+    extracted: {
+      ...EXTRACTED,
+      doc_no: '210726E00035291',
+      doc_date: '21/07/2026',
+      details: AR_LINES,
+    },
     ...over,
   } as Partial<ReviewDocumentDetail>)
 }
 
+/** The pane's own rows, in order, as `[payment type, THB, dept, acc, debit, credit]`. */
+function paneRows() {
+  return Array.from(document.querySelectorAll('.arv .jv-table tbody tr')).map(tr =>
+    Array.from(tr.querySelectorAll('td')).map(td => td.textContent?.trim() ?? '')
+  )
+}
+
 describe('a parked settlement report', () => {
-  it('shows the JV the server built, not an editor', async () => {
+  it('puts every printed payment type against the leg it became', async () => {
     vi.mocked(api.getPending).mockResolvedValue(arDetail())
     mount()
 
-    await screen.findByText('JV PREVIEW')
-    expect(screen.getByText('Credit Card AR Reconcile 21/07/2026')).toBeInTheDocument()
-    expect(screen.getByText('1021000')).toBeInTheDocument()
+    await screen.findByText('Detail')
+    expect(paneRows()).toEqual([
+      ['VS INTER UP PREM', '15,000.00', 'GEN', '1021001', '', '15,000.00'],
+      ['VS LOCAL UP PREM', '10,091.00', 'GEN', '1021002', '', '10,091.00'],
+      ['Control account', '', 'GEN', '1021000', '25,091.00', ''],
+    ])
     // The credit-card half of the modal is replaced, not disabled.
     expect(screen.queryByText('ACCOUNT CODE MAPPING')).not.toBeInTheDocument()
+  })
+
+  it('shows what a Summary merge folded together, with the figures it folded', async () => {
+    // The one thing a reviewer cannot check from a grouped table alone: that 15,000 and
+    // 10,091 are the two lines behind the single 25,091 credit.
+    vi.mocked(api.getPending).mockResolvedValue(arDetail({ ar_jv: AR_JV_SUMMARY }))
+    mount()
+
+    await screen.findByText('Summary')
+    expect(paneRows()).toEqual([
+      ['VS', '25,091.00', 'GEN', '1021001', '', '25,091.00'],
+      ['VS INTER UP PREM', '15,000.00', '', '', '', ''],
+      ['VS LOCAL UP PREM', '10,091.00', '', '', '', ''],
+      ['Control account', '', 'GEN', '1021000', '25,091.00', ''],
+    ])
+  })
+
+  it('keeps a line the report printed at zero, and says it produced nothing', async () => {
+    vi.mocked(api.getPending).mockResolvedValue(
+      arDetail({
+        extracted: {
+          ...EXTRACTED,
+          doc_no: '210726E00035291',
+          doc_date: '21/07/2026',
+          details: [...AR_LINES, { transaction: 'AMEX PREM', pay_amt: '0.00' }],
+        },
+      })
+    )
+    mount()
+
+    await screen.findByText('Detail')
+    const zero = document.querySelector('.arv-row-zero')
+    expect(zero).toHaveTextContent('AMEX PREM')
+    expect(zero).toHaveTextContent('no journal line')
+  })
+
+  it('does not offer header fields it would then throw away', async () => {
+    // Doc no. and Doc date drive the JV the SERVER rebuilds on approve; the prefix and
+    // description are BU config the AR path never writes. Editable, all four silently
+    // discarded what was typed.
+    vi.mocked(api.getPending).mockResolvedValue(arDetail())
+    mount()
+
+    await screen.findByText('Detail')
+    expect(screen.queryByLabelText('Document no.')).not.toBeInTheDocument()
+    expect(document.querySelectorAll('.rd-doc input, .rd-doc select')).toHaveLength(0)
+    expect(document.querySelector('.rd-f--docno')).toHaveTextContent('210726E00035291')
+  })
+
+  it('shows the description that will post, not the credit-card wording', async () => {
+    storedConfig = { ...(storedConfig as object), description: 'Card settlement' }
+    vi.mocked(api.getPending).mockResolvedValue(arDetail())
+    mount()
+
+    await screen.findByText('Detail')
+    expect(document.querySelector('.rd-f--grow')).toHaveTextContent(
+      'Credit Card AR Reconcile 21/07/2026'
+    )
+    expect(document.querySelector('.rd-f--grow')).not.toHaveTextContent('Card settlement')
   })
 
   it('posts the rows it was shown and files no input-tax record', async () => {
@@ -1093,7 +1204,7 @@ describe('a parked settlement report', () => {
     vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-9', tax_note: null })
     mount()
 
-    await screen.findByText('JV PREVIEW')
+    await screen.findByText('Detail')
     await clickApprove()
 
     await waitFor(() => expect(api.approveDocument).toHaveBeenCalled())
@@ -1110,27 +1221,29 @@ describe('a parked settlement report', () => {
     vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-9', tax_note: null })
     mount()
 
-    await screen.findByText('JV PREVIEW')
+    await screen.findByText('Detail')
     await clickApprove()
 
     await waitFor(() => expect(api.approveDocument).toHaveBeenCalled())
     expect(cfgApi.patchAccountingConfig).not.toHaveBeenCalled()
   })
 
-  it('will not approve while a payment type is unmapped, and names it', async () => {
-    vi.mocked(api.getPending).mockResolvedValue(
-      arDetail({ ar_jv: { ...AR_JV, unmapped: ['JCB', 'AMEX'] } })
-    )
+  it('will not approve while a payment type is unmapped, and marks the cell', async () => {
+    const unmapped = {
+      ...AR_JV,
+      unmapped: ['VS LOCAL UP PREM'],
+      rows: [AR_JV.rows[0], AR_JV.rows[1], { ...AR_JV.rows[2], dept: '', acc: '' }],
+    }
+    vi.mocked(api.getPending).mockResolvedValue(arDetail({ ar_jv: unmapped }))
     mount()
 
-    await screen.findByText('JV PREVIEW')
-    const btn = await screen.findByRole('button', { name: /Approve/ })
-    expect(btn).toBeDisabled()
-    // Said twice on purpose, and both matter: once on the JV itself, and once as the
-    // reason the disabled button gives — a reader who scrolled past the panel still gets
+    await screen.findByText('Detail')
+    expect(await screen.findByRole('button', { name: /Approve/ })).toBeDisabled()
+    // Said twice on purpose, and both matter: on the row that has the gap, and as the
+    // reason the disabled button gives — a reader who scrolled past the table still gets
     // told what to go and fix.
-    expect(document.querySelector('.ar-preview-warn')).toHaveTextContent('JCB, AMEX')
-    expect(document.querySelector('#rd-blocked')).toHaveTextContent('JCB, AMEX')
+    expect(document.querySelectorAll('.missing-cell')).toHaveLength(2)
+    expect(document.querySelector('#rd-blocked')).toHaveTextContent('VS LOCAL UP PREM')
   })
 
   it('will not approve an entry that does not balance', async () => {
@@ -1139,8 +1252,9 @@ describe('a parked settlement report', () => {
     )
     mount()
 
-    await screen.findByText('JV PREVIEW')
+    await screen.findByText('Detail')
     expect(await screen.findByRole('button', { name: /Approve/ })).toBeDisabled()
+    expect(document.querySelector('.jv-total--bad')).toBeInTheDocument()
   })
 
   it('says so when the bank is no longer configured', async () => {
@@ -1148,14 +1262,29 @@ describe('a parked settlement report', () => {
     mount()
 
     expect(await screen.findByRole('button', { name: /Approve/ })).toBeDisabled()
-    expect(screen.getByText(/no longer configured/i)).toBeInTheDocument()
+    // Twice, like the unmapped case above: in the space the table would have filled, and
+    // as the reason the disabled button gives.
+    expect(screen.getAllByText(/no longer configured/i)).toHaveLength(2)
+  })
+
+  it('sends the reviewer somewhere when the journal book is unset', async () => {
+    // The field that used to hold it is read-only on this path, so the sentence naming it
+    // has to come with the door.
+    storedConfig = { ...(storedConfig as object), filePrefix: '' }
+    vi.mocked(api.getPending).mockResolvedValue(arDetail())
+    mount()
+
+    await screen.findByText('Detail')
+    expect(await screen.findByRole('button', { name: /Approve/ })).toBeDisabled()
+    const link = screen.getByRole('link', { name: /Set the journal book/i })
+    expect(link).toHaveAttribute('href', '#/CreditCardOCR/mapping')
   })
 
   it('points at where these accounts are actually set', async () => {
     vi.mocked(api.getPending).mockResolvedValue(arDetail())
     mount()
 
-    await screen.findByText('JV PREVIEW')
+    await screen.findByText('Detail')
     const link = screen.getByRole('link', { name: /AR reconciliation settings/i })
     expect(link).toHaveAttribute('href', '#/CreditCardOCR/ar-settings')
   })

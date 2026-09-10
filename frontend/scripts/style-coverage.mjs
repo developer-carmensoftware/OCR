@@ -78,6 +78,9 @@ const SURFACE = [
   'pages/ARReconcileSettings.tsx',
   'components/ar-reconcile/ARMappingTable.tsx',
   'components/ar-reconcile/ARJvPreview.tsx',
+  'components/ar-reconcile/ARReviewPane.tsx',
+  'components/credit-card/JvHeaderCard.tsx',
+  'pages/ReviewDocument.tsx',
   'components/common/MappingRow.tsx',
   'components/credit-card/PaymentTypeModal.tsx',
 ]

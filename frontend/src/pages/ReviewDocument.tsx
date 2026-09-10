@@ -7,7 +7,7 @@ import JvHeaderCard from '../components/credit-card/JvHeaderCard'
 import InputTaxPanel from '../components/credit-card/InputTaxPanel'
 import type { DetailRow } from '../components/credit-card/DetailTable'
 import JvEditor, { type JvState, type Overrides } from '../components/credit-card/JvEditor'
-import ARJvPreview from '../components/ar-reconcile/ARJvPreview'
+import ARReviewPane from '../components/ar-reconcile/ARReviewPane'
 import { useT } from '../i18n/LanguageContext'
 import { useAccountingConfig } from '../hooks/credit-card'
 import { useScrollLock } from '../hooks/useScrollLock'
@@ -342,6 +342,15 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
           ? t('review.itxBlocked')
           : null
 
+  // The journal book is BU config, and on the AR path the field that used to hold it is
+  // read-only — so the sentence naming it has to come with the door. Same `<a>` shape the
+  // stop-reason banner uses, rather than a second kind of link on the same dialog. On the
+  // fee-invoice path the picker is right there in the header and a link would be noise.
+  const prefixFix =
+    isAR && blockReason === t('review.prefixRequired')
+      ? fixLinkProps({ href: '#/CreditCardOCR/mapping' })
+      : null
+
   async function approve() {
     if (!doc) return
     setBusy(true)
@@ -657,18 +666,18 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   description={description}
                   onPrefix={setPrefix}
                   onDescription={setDescription}
+                  /* None of these four reaches Carmen on the AR path: the server rebuilds
+                     that JV from the document, and the config write below is skipped. They
+                     were four inputs that discarded what was typed into them. */
+                  readOnly={isAR}
+                  descriptionOverride={isAR ? arJv?.description : undefined}
                 />
               </section>
 
               {isAR ? (
                 <section aria-label={t('review.paneJv')}>
-                  <ARJvPreview
-                    preview={arJv}
-                    loading={false}
-                    postType=""
-                    label={t('review.arThisDocument')}
-                  />
-                  <p className="ar-hint">
+                  <ARReviewPane jv={arJv} details={details} />
+                  <p className="rd-ar-hint">
                     {t('review.arMappingLivesElsewhere')}{' '}
                     <a href="#/CreditCardOCR/ar-settings">{t('review.arSettings')}</a>
                   </p>
@@ -733,6 +742,11 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                 <p className="rd-blocked" id="rd-blocked" role="status">
                   <AlertTriangle size={14} aria-hidden="true" />
                   {blockReason}
+                  {prefixFix && (
+                    <a className="rd-blocked-fix" {...prefixFix}>
+                      {t('review.actionSetPrefix')}
+                    </a>
+                  )}
                 </p>
               )}
               <div className="rd-actions">
