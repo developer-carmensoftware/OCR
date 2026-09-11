@@ -1045,9 +1045,12 @@ const AR_LINES = [
   { transaction: 'VS LOCAL UP PREM', pay_amt: '10,091.00', commis_amt: '', tax_amt: '', total: '' },
 ]
 
+// Account codes drawn from the mocked `fetchAccountCodes` fixture above (not real KBANK
+// codes) — the Dept/Account cells are pickers now, and the mocked `CustomSearchSelect`
+// only resolves a `value` that matches one of the `options` it was handed.
 const AR_CONTROL = {
   dept: 'GEN',
-  acc: '1021000',
+  acc: '110300',
   desc: 'Tax Inv.# 210726E00035291 - Credit Card AR Summary',
   debit: 25091,
   credit: 0,
@@ -1060,7 +1063,7 @@ const AR_JV = {
     AR_CONTROL,
     {
       dept: 'GEN',
-      acc: '1021001',
+      acc: '510300',
       desc: 'Tax Inv.# 210726E00035291 - VS INTER UP PREM',
       debit: 0,
       credit: 15000,
@@ -1068,7 +1071,7 @@ const AR_JV = {
     },
     {
       dept: 'GEN',
-      acc: '1021002',
+      acc: '511200',
       desc: 'Tax Inv.# 210726E00035291 - VS LOCAL UP PREM',
       debit: 0,
       credit: 10091,
@@ -1093,7 +1096,7 @@ const AR_JV_SUMMARY = {
     AR_CONTROL,
     {
       dept: 'GEN',
-      acc: '1021001',
+      acc: '510300',
       desc: 'Tax Inv.# 210726E00035291 - VS',
       debit: 0,
       credit: 25091,
@@ -1118,10 +1121,17 @@ function arDetail(over: Record<string, unknown> = {}) {
   } as Partial<ReviewDocumentDetail>)
 }
 
-/** The pane's own rows, in order, as `[payment type, THB, dept, acc, debit, credit]`. */
+/** The pane's own rows, in order, as `[dept, acc, payment type, debit, credit]`. A mapped
+ *  leg's Dept/Account cells are pickers now (the mocked `CustomSearchSelect` above renders
+ *  a real `<select>`), so a cell reads its `<select>`'s value when it has one and falls
+ *  back to its text otherwise — which is what a still-read-only cell (the control leg, an
+ *  orphan) has. */
 function paneRows() {
   return Array.from(document.querySelectorAll('.arv .jv-table tbody tr')).map(tr =>
-    Array.from(tr.querySelectorAll('td')).map(td => td.textContent?.trim() ?? '')
+    Array.from(tr.querySelectorAll('td')).map(td => {
+      const select = td.querySelector('select')
+      return select ? select.value : (td.textContent?.trim() ?? '')
+    })
   )
 }
 
@@ -1132,26 +1142,39 @@ describe('a parked settlement report', () => {
 
     await screen.findByText('Detail')
     expect(paneRows()).toEqual([
-      ['VS INTER UP PREM', '15,000.00', 'GEN', '1021001', '', '15,000.00'],
-      ['VS LOCAL UP PREM', '10,091.00', 'GEN', '1021002', '', '10,091.00'],
-      ['Control account', '', 'GEN', '1021000', '25,091.00', ''],
+      ['', 'GEN', '110300', 'Control account', '25,091.00', ''],
+      ['', 'GEN', '510300', 'VS INTER UP PREM', '', '15,000.00'],
+      ['', 'GEN', '511200', 'VS LOCAL UP PREM', '', '10,091.00'],
     ])
     // The credit-card half of the modal is replaced, not disabled.
     expect(screen.queryByText('ACCOUNT CODE MAPPING')).not.toBeInTheDocument()
   })
 
-  it('shows what a Summary merge folded together, with the figures it folded', async () => {
+  it('shows what a Summary merge folded together, with the figures it folded, one click away', async () => {
     // The one thing a reviewer cannot check from a grouped table alone: that 15,000 and
-    // 10,091 are the two lines behind the single 25,091 credit.
+    // 10,091 are the two lines behind the single 25,091 credit. Collapsed on open — a wall
+    // of quiet rows under every scheme leg before anyone asked to see them was the thing
+    // fixed here — and opened by clicking the leg's own toggle.
     vi.mocked(api.getPending).mockResolvedValue(arDetail({ ar_jv: AR_JV_SUMMARY }))
     mount()
 
     await screen.findByText('Summary')
     expect(paneRows()).toEqual([
-      ['VS', '25,091.00', 'GEN', '1021001', '', '25,091.00'],
-      ['VS INTER UP PREM', '15,000.00', '', '', '', ''],
-      ['VS LOCAL UP PREM', '10,091.00', '', '', '', ''],
-      ['Control account', '', 'GEN', '1021000', '25,091.00', ''],
+      ['', 'GEN', '110300', 'Control account', '25,091.00', ''],
+      ['', 'GEN', '510300', 'VS2 folded in', '', '25,091.00'],
+    ])
+    expect(document.querySelectorAll('.arv-row-src')).toHaveLength(0)
+
+    // The toggle is its own icon-only button leading the row now (Dept/Account are wide
+    // pickers, so one living inside the Payment type cell after them read as stuck in the
+    // middle) — found by its accessible name, which names what it would reveal.
+    fireEvent.click(screen.getByRole('button', { name: 'Show 2 lines folded into VS' }))
+
+    expect(paneRows()).toEqual([
+      ['', 'GEN', '110300', 'Control account', '25,091.00', ''],
+      ['', 'GEN', '510300', 'VS2 folded in', '', '25,091.00'],
+      ['', '', '', 'VS INTER UP PREM', '', ''],
+      ['', '', '', 'VS LOCAL UP PREM', '', ''],
     ])
   })
 
@@ -1239,10 +1262,19 @@ describe('a parked settlement report', () => {
 
     await screen.findByText('Detail')
     expect(await screen.findByRole('button', { name: /Approve/ })).toBeDisabled()
-    // Said twice on purpose, and both matter: on the row that has the gap, and as the
-    // reason the disabled button gives — a reader who scrolled past the table still gets
-    // told what to go and fix.
-    expect(document.querySelectorAll('.missing-cell')).toHaveLength(2)
+    // Said twice on purpose, and both matter: on the row that has the gap (its Dept/Account
+    // pickers are empty, unlike the two mapped rows beside it, and the row itself carries
+    // `jv-row--needed`), and as the reason the disabled button gives — a reader who
+    // scrolled past the table still gets told what to go and fix.
+    expect(document.querySelectorAll('.arv .jv-row--needed')).toHaveLength(1)
+    expect(paneRows().find(r => r[3] === 'VS LOCAL UP PREM')).toEqual([
+      '',
+      '',
+      '',
+      'VS LOCAL UP PREM',
+      '',
+      '10,091.00',
+    ])
     expect(document.querySelector('#rd-blocked')).toHaveTextContent('VS LOCAL UP PREM')
   })
 

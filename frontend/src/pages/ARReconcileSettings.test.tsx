@@ -244,6 +244,40 @@ describe('AR reconciliation settings', () => {
     expect(document.querySelector('.cc-mapping-status')).toHaveTextContent('2 of 2 still to map')
   })
 
+  it('seeds Summary on its own when Detail is already mapped and Summary is not', async () => {
+    // A BU that mapped Detail by hand and has never opened the Summary tab must not be
+    // stuck at "0/0 mapped" with no rows to map and no seed offered — the old `seeded`
+    // flag only fired when BOTH sets were empty (fixed 2026-09-11).
+    vi.mocked(api.getARSettings).mockResolvedValue(
+      settings({
+        mappings: {
+          Detail: [
+            {
+              payment_type_code: 'VS INTER PREM',
+              credit_dept_code: 'GEN',
+              credit_account_code: '1021001',
+              is_active: true,
+            },
+          ],
+          Summary: [],
+        },
+      })
+    )
+    vi.mocked(api.getSamplePaymentTypes).mockResolvedValue([
+      { payment_type_code: 'VS INTER PREM', is_active: true },
+      { payment_type_code: 'JCB PREM', is_active: true },
+    ])
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('VS INTER PREM')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('radio', { name: /Summary/ }))
+
+    // Seeded from the sample's payment types, first-tokened to the scheme ('VS INTER
+    // PREM' -> 'VS') and deduped — not left empty because Detail already had rows.
+    expect(await screen.findByText('VS')).toBeInTheDocument()
+    expect(screen.getByText('JCB')).toBeInTheDocument()
+  })
+
   // ── Unsaved work ────────────────────────────────────────────────────────────
   //
   // One Save at the foot of a long form, and the Back link sits at the very top of it.

@@ -5,6 +5,9 @@ renders, and `approve_document` rebuilds the same rows from the same builder, so
 that lies about the line count or the balance is a JV that posts wrong.
 """
 
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+
 from tests.conftest import make_mock_db
 from tests.integration.conftest import make_test_client
 
@@ -204,17 +207,86 @@ def test_save_rejects_a_mapping_set_under_an_unknown_post_type():
         assert resp.status_code == 422
 
 
+# ── mappings (the review modal's inline save) ──────────────────────────────────
+
+
+def test_patch_mappings_uppercases_bank_code_and_delegates_to_the_service():
+    with (
+        patch("app.routers.ar_reconcile.svc.upsert_mapping_rows", new_callable=AsyncMock) as mocked,
+        make_test_client(make_mock_db()) as client,
+    ):
+        resp = client.patch(
+            f"{BASE}/mappings",
+            json={
+                "bank_code": "kbank",
+                "post_type": "Detail",
+                "rows": [
+                    {
+                        "payment_type_code": "AMEX",
+                        "credit_dept_code": "GEN",
+                        "credit_account_code": "9",
+                    }
+                ],
+            },
+            headers=AUTH,
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True}
+        mocked.assert_awaited_once()
+        args = mocked.await_args.args
+        assert args[2] == "KBANK"
+        assert args[3] == "Detail"
+        assert args[4][0].payment_type_code == "AMEX"
+
+
+def test_patch_mappings_rejects_an_unknown_post_type():
+    with make_test_client(make_mock_db()) as client:
+        resp = client.patch(
+            f"{BASE}/mappings",
+            json={"bank_code": "KBANK", "post_type": "Weekly", "rows": []},
+            headers=AUTH,
+        )
+        assert resp.status_code == 422
+
+
 # ── sample payment types ──────────────────────────────────────────────────────
 
 
 def test_sample_payment_types_seed_the_table_before_any_document_arrives():
+    """No document has ever parked for this tenant/bank (`make_mock_db()` answers every
+    query with nothing), so this falls back to the built-in KBANK sample."""
     with make_test_client(make_mock_db()) as client:
-        resp = client.get(f"{BASE}/sample-payment-types", headers=AUTH)
+        resp = client.get(f"{BASE}/sample-payment-types?bank_code=KBANK", headers=AUTH)
         assert resp.status_code == 200
         codes = [r["payment_type_code"] for r in resp.json()]
 
         assert "VS INTER UP PREM" in codes and "JCB PREM" in codes
         assert all(r["credit_account_code"] is None for r in resp.json())
+
+
+def test_sample_payment_types_prefers_this_tenants_own_parked_report():
+    """A settlement report already sitting at `pending_review` for this bank is what a
+    reviewer's own screen should seed from, not the generic KBANK example."""
+    doc = SimpleNamespace(
+        review_payload={
+            "doc_type": "ar_reconcile",
+            "extracted": {
+                "doc_no": "999888E00012345",
+                "doc_date": "01/01/2027",
+                "details": [
+                    {"transaction": "VS LOCAL PREM", "pay_amt": "500.00"},
+                    {"transaction": "AMEX PREM", "pay_amt": "750.00"},
+                ],
+            },
+        }
+    )
+    with make_test_client(make_mock_db(execute_rows=[doc])) as client:
+        resp = client.get(f"{BASE}/sample-payment-types?bank_code=KBANK", headers=AUTH)
+        assert resp.status_code == 200
+        codes = [r["payment_type_code"] for r in resp.json()]
+
+        assert codes == ["VS LOCAL PREM", "AMEX PREM"]
+        assert "JCB PREM" not in codes
 
 
 # Session auth is not asserted here: `make_test_client` overrides `get_current_session`

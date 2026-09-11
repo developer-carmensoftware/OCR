@@ -95,8 +95,10 @@ export const API = {
     settings: (bankCode: string) =>
       `${V1}/ar-reconcile/settings?bank_code=${encodeURIComponent(bankCode)}`,
     save: `${V1}/ar-reconcile/settings`,
+    mappings: `${V1}/ar-reconcile/mappings`,
     preview: `${V1}/ar-reconcile/preview`,
-    samplePaymentTypes: `${V1}/ar-reconcile/sample-payment-types`,
+    samplePaymentTypes: (bankCode: string) =>
+      `${V1}/ar-reconcile/sample-payment-types?bank_code=${encodeURIComponent(bankCode)}`,
   },
 
   credits: {

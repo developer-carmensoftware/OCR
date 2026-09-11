@@ -50,6 +50,25 @@ class ARSettingsIn(BaseModel):
         return v
 
 
+class ARMappingPatchIn(BaseModel):
+    """A review-modal correction: only the rows actually touched, for the bank's *current*
+    post type. Unlike `ARSettingsIn`, this is not a full replace — it upserts by
+    `payment_type_code` and leaves everything else (the setting's own fields, the other
+    post type's rows, every other mapped payment type) untouched.
+    """
+
+    bank_code: str
+    post_type: str = PostType.DETAIL
+    rows: list[ARMappingItem] = Field(default_factory=list)
+
+    @field_validator("post_type")
+    @classmethod
+    def _known_post_type(cls, v: str) -> str:
+        if v not in PostType.ALL:
+            raise ValueError(f"post_type must be one of {', '.join(PostType.ALL)}")
+        return v
+
+
 class ARBlocker(BaseModel):
     """One link in the chain between an arriving email and a posted JV.
 

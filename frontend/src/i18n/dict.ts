@@ -823,6 +823,8 @@ const en = {
     'Fill in the vendor name and tax ID under Show details, or untick the input tax record',
   'review.loadingDocument': 'Loading the document',
   'review.ruleSaveFailed': 'The GL rule could not be saved, so nothing was posted: {reason}',
+  'review.arMappingSaveFailed': 'The mapping could not be saved, so nothing was posted: {reason}',
+  'review.arStillBlocked': 'Still blocked after saving the mapping: {reason}',
   // Sentence case on every phrase this column can print, including the ones that arrive
   // from the backend. Five lowercase fragments, one capitalised phrase and two first-person
   // sentences was four grammars in one scan, and the eye re-orients at each change.
@@ -941,12 +943,12 @@ const en = {
   'review.arNotConfigured':
     'AR reconciliation is no longer configured for this bank, so no JV can be built.',
   'review.arUnmapped': 'Map these payment types before posting: {types}',
-  'review.arMappingLivesElsewhere': 'These accounts are set per payment type, not per document —',
+  'review.arMappingLivesElsewhere':
+    'Switching Detail/Summary, the description template, or the control account —',
   // The settlement report's reconciliation pane. The first two columns are the document's
   // own, so they are named the way KBANK prints them; the rest reuse the JV's column names
   // (review.jvDept / jvAccount / jvDebit / jvCredit) because they are the same columns.
   'review.arColPaymentType': 'Payment type',
-  'review.arColThb': 'THB amount',
   'review.arPostTypeDetail': 'Detail',
   'review.arPostTypeSummary': 'Summary',
   'review.arGroupingDetail': 'One credit line per payment type, as printed',
@@ -954,6 +956,11 @@ const en = {
   'review.arNotMapped': 'Not mapped',
   'review.arControlLeg': 'Control account',
   'review.arNotPosted': 'no journal line',
+  'review.arNewType': 'not mapped — pick Dept/Account to post it',
+  'review.arFoldedCount': '{count} folded in',
+  'review.arExpandCol': 'Expand',
+  'review.arExpandFolded': 'Show {count} lines folded into {field}',
+  'review.arCollapseFolded': 'Hide the lines folded into {field}',
   // The journal book lives in the credit-card mapping screen, which is where this sends
   // the reviewer — the field on the dialog cannot be typed into on this path.
   'review.actionSetPrefix': 'Set the journal book',
@@ -2462,6 +2469,8 @@ const th: Record<TKey, string> = {
   'review.jvNothing': 'ไม่มีรายการให้โพสต์',
   'review.loadingDocument': 'กำลังโหลดเอกสาร',
   'review.ruleSaveFailed': 'บันทึกกฎบัญชีไม่สำเร็จ จึงยังไม่ได้โพสต์: {reason}',
+  'review.arMappingSaveFailed': 'บันทึกผังบัญชีไม่สำเร็จ จึงยังไม่ได้โพสต์: {reason}',
+  'review.arStillBlocked': 'หลังบันทึกผังบัญชีแล้วยังโพสต์ไม่ได้: {reason}',
   'review.reasonMissingMapping': 'ยังไม่มีผังบัญชี',
   'review.reasonUnbalanced': 'ยอดไม่สมดุล',
   'review.reasonGuessed': 'AI แนะนำผังบัญชี',
@@ -2521,10 +2530,9 @@ const th: Record<TKey, string> = {
   'review.arSettings': 'ตั้งค่ากระทบยอดลูกหนี้บัตรเครดิต',
   'review.arNotConfigured': 'ธนาคารนี้ไม่ได้ตั้งค่ากระทบยอดไว้แล้ว จึงสร้าง JV ไม่ได้',
   'review.arUnmapped': 'ผูกผังบัญชีให้ประเภทบัตรเหล่านี้ก่อนจึงจะโพสต์ได้: {types}',
-  'review.arMappingLivesElsewhere': 'ผังบัญชีชุดนี้ตั้งต่อประเภทบัตร ไม่ใช่ต่อเอกสาร —',
+  'review.arMappingLivesElsewhere': 'สลับ Detail/Summary, แก้ template คำอธิบาย, หรือบัญชีคุมยอด —',
   // Detail/Summary คงคำอังกฤษไว้ ตรงกับค่าที่หน้าตั้งค่าและ Carmen ใช้จริง
   'review.arColPaymentType': 'ประเภทบัตร',
-  'review.arColThb': 'ยอด THB',
   'review.arPostTypeDetail': 'Detail',
   'review.arPostTypeSummary': 'Summary',
   'review.arGroupingDetail': 'ลงเครดิตหนึ่งบรรทัดต่อประเภทบัตรตามที่พิมพ์บนเอกสาร',
@@ -2532,6 +2540,11 @@ const th: Record<TKey, string> = {
   'review.arNotMapped': 'ยังไม่ผูกบัญชี',
   'review.arControlLeg': 'บัญชีคุมยอด',
   'review.arNotPosted': 'ไม่มีบรรทัดใน JV',
+  'review.arNewType': 'ยังไม่ผูกบัญชี — เลือกฝ่าย/บัญชีเพื่อโพสต์',
+  'review.arFoldedCount': 'รวม {count} รายการ',
+  'review.arExpandCol': 'ขยาย',
+  'review.arExpandFolded': 'แสดง {count} รายการที่รวมอยู่ใน {field}',
+  'review.arCollapseFolded': 'ซ่อนรายการที่รวมอยู่ใน {field}',
   'review.actionSetPrefix': 'ตั้งสมุดรายวัน',
   'review.postedBy': 'ตรวจสอบและโพสต์โดย {name}',
   'review.postedAutomatically': 'โพสต์อัตโนมัติ',

@@ -158,18 +158,24 @@ export function useARReconcile(initialBank = 'KBANK'): ARReconcileHook {
       const detail = s.mappings?.Detail || []
       const summary = s.mappings?.Summary || []
       // A BU with no rows yet cannot map anything, and the only other way to get rows is
-      // to receive a document and be charged for it. Seed the printed vocabulary instead.
-      const seeded = detail.length === 0 && summary.length === 0
-      const next = seeded
-        ? await getSamplePaymentTypes()
-            .catch(() => [] as ARMappingItem[])
-            .then(sample => ({
-              Detail: sample,
-              Summary: dedupe(
+      // to receive a document and be charged for it. Seed the printed vocabulary instead —
+      // **per post type**, not only when both are empty: a BU that mapped Detail by hand
+      // and has never switched to Summary must not be stuck looking at "0/0 mapped" with
+      // no rows to map and no seed offered, which is what a single `seeded` flag over both
+      // sets did (fixed 2026-09-11).
+      const sample =
+        detail.length === 0 || summary.length === 0
+          ? await getSamplePaymentTypes(code).catch(() => [] as ARMappingItem[])
+          : []
+      const next = {
+        Detail: detail.length > 0 ? detail : sample,
+        Summary:
+          summary.length > 0
+            ? summary
+            : dedupe(
                 sample.map(i => ({ ...i, payment_type_code: firstToken(i.payment_type_code) }))
               ),
-            }))
-        : { Detail: detail, Summary: summary }
+      }
       setSets(next)
       // Taken from the values just fetched, not from state — the setters above have not
       // applied yet. Seeded rows are part of the baseline on purpose: nobody typed them, so

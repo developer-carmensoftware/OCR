@@ -1347,13 +1347,57 @@
   text-align: center;
 }
 
-/* The document's own figures come first and the journal's follow, so the row reads in the
-   direction the check runs. The two report columns are sized to what they hold: a KBANK
-   payment type ("VS INTER UP PREM") and a THB amount. */
-.arv-c-thb {
-  width: 8rem;
+/* The disclosure column leads the row, same edge every table-row expand in this app uses
+   (`ExtractionsPage`'s admin table) rather than living inside the Payment type cell: Dept
+   and Account are wide pickers here, so a control buried after them read as stuck in the
+   middle of the row instead of at an edge a reviewer would look for it on. Narrow — most
+   rows leave it empty — and unlabelled in the header, since its one glyph says what it does. */
+.arv-c-toggle {
+  width: 1.9rem;
 }
 
+/* Beats `.jv-table td` (0,1,1) on specificity rather than `!important` — the column is
+   narrow enough that the table's usual cell padding would nearly double its width. */
+.jv-table td.arv-c-toggle {
+  padding-left: 0.5rem;
+  padding-right: 0;
+}
+
+/* Compact icon-only button for a row-scoped control, matching `.admin-icon-btn`'s bordered
+   affordance (same visual language, different sheet — this table is not in the admin
+   bundle). Icon swaps Right/Down rather than rotating, again to match that precedent. */
+.arv-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  flex-shrink: 0;
+  border: 1px solid var(--border-hi, var(--border));
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--text-3);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast, 120ms) var(--ease, ease-out),
+    color var(--dur-fast, 120ms) var(--ease, ease-out),
+    border-color var(--dur-fast, 120ms) var(--ease, ease-out);
+}
+
+.arv-toggle-btn:hover {
+  border-color: var(--primary-mid, var(--primary));
+  color: var(--primary);
+  background: var(--primary-light);
+}
+
+.arv-toggle-btn:focus-visible {
+  outline: 2.5px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Dept/Account lead, same as `.jv-table`'s own JV — one column rhythm for both review
+   panes. */
 .arv-c-dept {
   width: 7rem;
 }
@@ -1367,6 +1411,14 @@
 .arv-key {
   font-weight: 600;
   color: var(--text);
+}
+
+/* How many lines a merged leg folded in, read beside its own label — the toggle that
+   reveals them lives in its own column to the left now, so this is a count, not a control. */
+.arv-toggle-count {
+  font-weight: 500;
+  font-size: 0.72rem;
+  color: var(--text-3);
 }
 
 /* A label the key was folded from, in Summary. Its own row so its figure lands in the THB
@@ -1402,9 +1454,10 @@
   color: var(--text-3);
 }
 
-/* The counterpart leg. Ruled off with the raised border rather than the subtle one that
-   separates the report's own lines: it is a different kind of row, not the next one. */
-.jv-table tbody tr + tr.arv-row-control td {
+/* The counterpart leg, now first. Ruled off with the raised border on the row *after* it
+   rather than the subtle one `tbody tr + tr td` already draws: it is a different kind of
+   row, not the first of the report's own lines. */
+.arv-row-control + tr td {
   border-top: 1px solid var(--border-raised, var(--border));
 }
 
@@ -1630,8 +1683,8 @@
   }
 
   /* The row separator moves from the cell to the row at this width; the counterpart leg
-     keeps its heavier edge by recolouring that one rather than adding a second. */
-  .jv-table tbody tr + tr.arv-row-control {
+     keeps its heavier edge by recolouring the row after it rather than adding a second. */
+  .arv-row-control + tr {
     border-top-color: var(--border-raised, var(--border));
   }
 

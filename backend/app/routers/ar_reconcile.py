@@ -1,13 +1,18 @@
 """Detailed Credit Card AR Reconciliation — settings API.
 
-  GET  /api/v1/ar-reconcile/settings?bank_code=  → config, both mapping sets, readiness
-  PUT  /api/v1/ar-reconcile/settings             → upsert (FULL replace of both sets)
-  POST /api/v1/ar-reconcile/preview              → the JV this configuration would build
+  GET   /api/v1/ar-reconcile/settings?bank_code=  → config, both mapping sets, readiness
+  PUT   /api/v1/ar-reconcile/settings             → upsert (FULL replace of both sets)
+  PATCH /api/v1/ar-reconcile/mappings             → upsert JUST the rows touched, for the
+                                                     bank's current post type — the review
+                                                     modal's save path, not the settings
+                                                     screen's (which still uses PUT above)
+  POST  /api/v1/ar-reconcile/preview              → the JV this configuration would build
 
-There is deliberately no `/suggest` here. AI Auto-Map on this screen calls the existing
+There is deliberately no `/suggest` here. AI Auto-Map calls the existing
 `POST /api/v1/credit-card/mapping/suggest-payment-types`, which takes the payment types
 and Carmen's account/department lists in the body and knows nothing about which feature
-asked — so it works unchanged, and brings its history-bypass with it.
+asked — so it works unchanged, and brings its history-bypass with it. Both the settings
+screen and the review modal's inline AR mapping editor use it.
 """
 
 import logging
@@ -21,6 +26,7 @@ from app.database import get_db
 from app.exceptions import ValidationError
 from app.models.schemas import (
     ARMappingItem,
+    ARMappingPatchIn,
     ARPreviewIn,
     ARPreviewOut,
     ARPreviewRow,
@@ -40,10 +46,10 @@ from app.services.module_gate import assert_module_enabled
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/ar-reconcile", tags=["AR Reconcile"])
 
-# The payment-type vocabulary and figures KBANK actually prints, taken from a real
-# KB1P554V2 report (settlement 21/07/2026, Σ THB AMT 25,091.00). Real labels matter: the
-# preview's job is to show what THIS bank's schemes will look like once grouped, and
-# invented ones would group differently.
+# Fallback only, for a tenant that has never had a settlement report parked for review
+# (`svc.latest_real_sample` returns None) — taken from a real KB1P554V2 report (settlement
+# 21/07/2026, Σ THB AMT 25,091.00) rather than invented labels, since even the fallback's
+# job is to show what a real bank's schemes look like once grouped.
 _SAMPLE_DOC_NO = "210726E00035291"
 _SAMPLE_DOC_DATE = "21/07/2026"
 _SAMPLE_ROWS = (
@@ -85,20 +91,43 @@ async def save_settings(
     return {"ok": True}
 
 
+@router.patch("/mappings")
+async def patch_mappings(
+    req: ARMappingPatchIn,
+    db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(get_current_session),
+):
+    """The review modal's save path: upsert just the payment types the reviewer touched,
+    for the bank's current post type. See `svc.upsert_mapping_rows` for why this is not a
+    full replace like `PUT /settings`.
+    """
+    req.bank_code = req.bank_code.upper()
+    await svc.upsert_mapping_rows(db, session.tenant_id, req.bank_code, req.post_type, req.rows)
+    return {"ok": True}
+
+
 @router.post("/preview", response_model=ARPreviewOut)
 async def preview(
     req: ARPreviewIn,
+    db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
 ):
-    """The JV the current (unsaved) screen state would build, over the worked example.
+    """The JV the current (unsaved) screen state would build, over a worked example.
 
     Takes the screen's state rather than reading the saved row so the panel tracks edits
     as they are made — seeing Detail collapse into three lines while flipping the toggle
     is the reason this is a panel and not a modal behind a button.
+
+    The example itself is this tenant's own most recently parked report for this bank
+    when it has one (`svc.latest_real_sample`) — real labels, not invented ones, because
+    the point is showing what THIS bank's schemes look like once grouped. Falls back to
+    the built-in KBANK sample only for a tenant that has never had one parked.
     """
     await assert_module_enabled(Module.CC_AR_RECONCILE)
 
-    details = [ExtractedDetailRow(transaction=t, pay_amt=a) for t, a in _SAMPLE_ROWS]
+    real = await svc.latest_real_sample(db, session.tenant_id, req.bank_code)
+    sample_rows, doc_no, doc_date = real or (_SAMPLE_ROWS, _SAMPLE_DOC_NO, _SAMPLE_DOC_DATE)
+    details = [ExtractedDetailRow(transaction=t, pay_amt=a) for t, a in sample_rows]
     mappings = svc.mappings_dict(req.mappings)
 
     rows = build_ar_jv_rows(
@@ -107,18 +136,18 @@ async def preview(
         debit_dept=req.debit_dept_code,
         debit_acc=req.debit_account_code,
         mappings=mappings,
-        doc_no=_SAMPLE_DOC_NO,
+        doc_no=doc_no or None,
     )
     return ARPreviewOut(
         rows=[ARPreviewRow(**r) for r in rows],
         description=render_jv_description(
             req.jv_description_template,
-            settlement_date=_SAMPLE_DOC_DATE,
-            tax_invoice_no=_SAMPLE_DOC_NO,
+            settlement_date=doc_date or None,
+            tax_invoice_no=doc_no or None,
             bank_name=req.bank_code,
         ),
-        doc_no=_SAMPLE_DOC_NO,
-        doc_date=_SAMPLE_DOC_DATE,
+        doc_no=doc_no,
+        doc_date=doc_date,
         total_debit=round(sum(r["debit"] for r in rows), 2),
         total_credit=round(sum(r["credit"] for r in rows), 2),
         balanced=is_balanced(rows),
@@ -129,15 +158,19 @@ async def preview(
 
 @router.get("/sample-payment-types", response_model=list[ARMappingItem])
 async def sample_payment_types(
+    bank_code: str = Query(..., description="Bank profile, e.g. KBANK"),
+    db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
 ):
-    """The rows a BU starts from before their first document arrives.
+    """The rows a BU starts from before it has mapped anything.
 
-    Without this the mapping table opens empty and the only way to populate it is to
-    receive a settlement report, be charged for it, and have it park unmapped. These are
-    the payment types KBANK prints; the BU maps them once and the first real document
-    posts unattended.
+    Prefers this tenant's own most recently parked report for this bank
+    (`svc.latest_real_sample`) — the real payment types their own documents print, not a
+    universal guess. Only a tenant that has never had one parked falls back to the
+    built-in KBANK sample: without something the table would open empty, and the only
+    other way to populate it is to receive a settlement report, be charged for it, and
+    have it park unmapped.
     """
-    return [
-        ARMappingItem(payment_type_code=code, payment_type_desc=None) for code, _ in _SAMPLE_ROWS
-    ]
+    real = await svc.latest_real_sample(db, session.tenant_id, bank_code.upper())
+    rows = real[0] if real else _SAMPLE_ROWS
+    return [ARMappingItem(payment_type_code=code, payment_type_desc=None) for code, _ in rows]

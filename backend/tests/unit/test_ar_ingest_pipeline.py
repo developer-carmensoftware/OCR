@@ -39,6 +39,27 @@ AR_MAPS = {
     "JCB": {"dept": "GEN", "acc": "1021003"},
 }
 
+# SUMMARY MERCHANT ID block, page 3 of the sample PDF — every printed row, Σ THB AMT = 25,091.00.
+FULL_DETAIL_ROWS = [
+    ("VS INTER NON-PREM", "2,200.00"),
+    ("VS INTER PREM", "3,251.00"),
+    ("VS INTER UP PREM", "10,020.00"),
+    ("MC INTER NON-PREM", "1,000.00"),
+    ("MC INTER PREM", "5,945.00"),
+    ("MC INTER UP PREM", "2,375.00"),
+    ("JCB PREM", "300.00"),
+]
+
+FULL_DETAIL_MAPS = {
+    "VS INTER NON-PREM": {"dept": "GEN", "acc": "1021001"},
+    "VS INTER PREM": {"dept": "GEN", "acc": "1021001"},
+    "VS INTER UP PREM": {"dept": "GEN", "acc": "1021001"},
+    "MC INTER NON-PREM": {"dept": "GEN", "acc": "1021002"},
+    "MC INTER PREM": {"dept": "GEN", "acc": "1021002"},
+    "MC INTER UP PREM": {"dept": "GEN", "acc": "1021002"},
+    "JCB PREM": {"dept": "GEN", "acc": "1021003"},
+}
+
 
 def _ar_extracted(**overrides) -> ExtractedCreditCardData:
     defaults = dict(
@@ -215,6 +236,39 @@ async def test_an_unmapped_scheme_parks_instead_of_posting():
     # No AI suggestion on this path: nothing could confirm one into ar_reconcile_mappings,
     # so asking would spend a call to produce a value that disappears on the next poll.
     p.suggest.assert_not_called()
+
+
+# ── The review fork: fully mapped and balanced, still no auto-post ────────────
+
+
+@pytest.mark.asyncio
+async def test_a_clean_detail_report_still_waits_when_auto_post_is_off():
+    """Every row is mapped and the JV would balance, but `auto_post` off is the whole
+    feature: extract, gate, group — then wait for a human, same as the fee-invoice fork
+    in test_email_ingest_pipeline.py's `test_review_mode_parks_the_document_instead_of_posting`.
+    """
+    db = _FakeDB()
+    outcome, p = await _run_ar(
+        db,
+        auto_post=False,
+        extracted=_ar_extracted(
+            details=[ExtractedDetailRow(transaction=t, pay_amt=a) for t, a in FULL_DETAIL_ROWS]
+        ),
+        setting=_setting(post_type="Detail"),
+        maps=FULL_DETAIL_MAPS,
+        carmen_result={"Code": 0, "InternalMessage": "JV-2606-0090"},
+    )
+
+    assert outcome == "pending_review"
+    p.post_gljv.assert_not_called()
+
+    row = db.added[0]
+    assert row.status == "pending_review"
+    assert row.doc_no == "210726E00035291"
+    assert row.review_payload["flags"] == []
+    assert row.review_payload["unmapped"] == []
+    assert row.review_payload["doc_type"] == "ar_reconcile"
+    assert len(row.review_payload["extracted"]["details"]) == 7
 
 
 # ── Password-protected reports ────────────────────────────────────────────────
