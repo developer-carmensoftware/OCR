@@ -55,7 +55,21 @@ _PROMPT_VERSIONS: dict[str, str] = {
     "SIAMPAY": "1.5.0",
     "GENERIC": "2.3.0",
     "COMBINED": "2.7.0",
-    "KBANK_SETTLEMENT": "1.0.0",
+    # 1.1.0 (2026-09-11): ROW_RULES' TOTAL-row exception whitelist didn't name this layout.
+    # Verified with a live OpenRouter call against a real settlement report that this alone
+    # did NOT fix it — the model still omitted the row. Only this entry bumps for either
+    # 1.1.0 or 1.2.0: the whitelist text is shared, but the exception clause was already
+    # reachable/correct for every other bank, so KBANK settlement is the only prompt whose
+    # actual behavior moved.
+    #
+    # 1.2.0 (2026-09-11): the real fix. The layout's own "add the TOTAL BY MERCHANT ID row"
+    # instruction sat right after three vivid warnings to IGNORE other summary-shaped blocks
+    # ("post the day's takings two or three times over") — the model was generalizing that
+    # warning to this visually similar row instead of treating it as the one exception.
+    # Rewrote as a "MANDATORY FINAL ROW" section, explicitly not one of the ignored blocks,
+    # with an N+1 row-count framing. Confirmed twice live: 8/8 rows extracted including
+    # TOTAL, correct pay_amt (25,091.00), both runs.
+    "KBANK_SETTLEMENT": "1.2.0",
 }
 
 # Pre-built at import time — no cost at request time
