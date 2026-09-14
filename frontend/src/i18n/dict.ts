@@ -58,14 +58,12 @@ const en = {
   // Visible CTA text. The card's heading already names the tier, so the button
   // carries only the action; the {name} variants below become its accessible name.
   'plan.ctaChoose': 'Choose plan',
-  'plan.ctaUpgrade': 'Upgrade plan',
   'plan.ctaRenew': 'Renew plan',
-  'plan.ctaDowngrade': 'Downgrade',
+  'plan.ctaSwitch': 'Switch plan',
   'plan.choose': 'Choose {name}',
-  'plan.upgrade': 'Upgrade to {name}',
   'plan.renew': 'Renew {name}',
-  'plan.downgrade': 'Downgrade to {name}',
-  'plan.downgradeNote':
+  'plan.switch': 'Switch to {name}',
+  'plan.switchNote':
     'Switching now replaces your current plan — remaining documents and days are not carried over.',
   'plan.custom': 'Custom',
   'plan.contactSales': 'Contact sales',
@@ -1711,14 +1709,12 @@ const th: Record<TKey, string> = {
   'plan.saveAnnualPct': 'ประหยัด {pct}%',
   'plan.billedYearly': '฿{total}/ปี',
   'plan.ctaChoose': 'เลือกแพ็กเกจ',
-  'plan.ctaUpgrade': 'อัปเกรดแพ็กเกจ',
   'plan.ctaRenew': 'ต่ออายุแพ็กเกจ',
-  'plan.ctaDowngrade': 'ลดแพ็กเกจ',
+  'plan.ctaSwitch': 'สลับแพ็กเกจ',
   'plan.choose': 'เลือก {name}',
-  'plan.upgrade': 'อัปเกรดเป็น {name}',
   'plan.renew': 'ต่ออายุ {name}',
-  'plan.downgrade': 'ลดแพ็กเกจเป็น {name}',
-  'plan.downgradeNote':
+  'plan.switch': 'สลับเป็น {name}',
+  'plan.switchNote':
     'การเปลี่ยนตอนนี้จะแทนที่แพ็กเกจปัจจุบัน — เอกสารและวันที่เหลืออยู่จะไม่ถูกยกยอด',
   'plan.custom': 'กำหนดเอง',
   'plan.contactSales': 'ติดต่อฝ่ายขาย',

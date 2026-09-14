@@ -24,14 +24,14 @@ function renderCard(props: Partial<Parameters<typeof PlanCard>[0]> = {}) {
 }
 
 /**
- * A downgrade is the buyer's call to make, so the CTA stays live — the real
- * confirmation is at slip upload, where money moves. What the card owes them is a
- * heads-up, and it cannot be a visible line: one taller card desyncs the price row
- * across the grid. These two tests pin both halves.
+ * Switching to a smaller tier is the buyer's call to make, so the CTA stays live —
+ * the real confirmation is at slip upload, where money moves. What the card owes
+ * them is a heads-up, and it cannot be a visible line: one taller card desyncs the
+ * price row across the grid. These two tests pin both halves.
  */
-describe('PlanCard downgrade state', () => {
-  it('leaves the CTA clickable but says what a downgrade costs', () => {
-    // Active plan allows 200 docs; Lite allows 100 → downgrade.
+describe('PlanCard plan-change state', () => {
+  it('leaves the CTA clickable but says what a smaller-tier plan costs', () => {
+    // Active plan allows 200 docs; Lite allows 100 → smaller tier.
     const { container } = renderCard({ activePlanCode: 'sub_starter', activePlanCredits: 200 })
 
     expect(screen.getByRole('button')).toBeEnabled()
@@ -43,11 +43,11 @@ describe('PlanCard downgrade state', () => {
 
     // ...and the same sentence reaches assistive tech, at zero layout cost.
     const describedBy = screen.getByRole('button').getAttribute('aria-describedby')
-    expect(describedBy).toBe('sub_lite-downgrade')
+    expect(describedBy).toBe('sub_lite-switch-note')
     expect(container.querySelector(`#${describedBy}`)?.className).toContain('sr-only')
   })
 
-  it('leaves the CTA enabled and adds no hint when it is not a downgrade', () => {
+  it('leaves the CTA enabled and adds no hint when it is not a smaller tier', () => {
     const { container } = renderCard()
 
     expect(screen.getByRole('button')).toBeEnabled()
@@ -59,31 +59,33 @@ describe('PlanCard downgrade state', () => {
 /**
  * The visible label is short so it fits one line at 4-up (~160px of card), but the
  * accessible name must stay tier-specific — otherwise a screen reader moving from
- * button to button hears "Upgrade plan" four times with nothing to tell them apart.
+ * button to button hears "Switch plan" three times with nothing to tell them apart.
  */
 describe('PlanCard CTA label', () => {
   it('prints the action and names the tier for assistive tech', () => {
+    // Active plan allows 50 docs; Lite allows 100 → bigger tier.
     renderCard({ activePlanCode: 'sub_starter', activePlanCredits: 50 })
 
-    const cta = screen.getByRole('button', { name: 'Upgrade to Lite' })
-    expect(cta).toHaveTextContent('Upgrade plan')
-    expect(cta).not.toHaveTextContent('Upgrade to Lite')
+    const cta = screen.getByRole('button', { name: 'Switch to Lite' })
+    expect(cta).toHaveTextContent('Switch plan')
+    expect(cta).not.toHaveTextContent('Switch to Lite')
   })
 
-  it('says Renew, not Upgrade, on the tier already active', () => {
+  it('says Renew, not Switch, on the tier already active', () => {
     renderCard({ activePlanCode: 'sub_lite', activePlanCredits: 100 })
 
     const cta = screen.getByRole('button', { name: 'Renew Lite' })
     expect(cta).toHaveTextContent('Renew plan')
   })
 
-  // Lite put a tier below Starter, so this branch is now on every subscriber's
-  // first card. Calling a downgrade an upgrade is wrong on a screen about money.
-  it('calls a smaller tier a downgrade, never an upgrade', () => {
+  // Bigger and smaller tiers used to get different words ("Upgrade" vs a downgrade
+  // word); giving only the bigger ones positive framing read as picking a side on a
+  // screen about money. Both now render the identical neutral "Switch" CTA.
+  it('renders the same "Switch" CTA whether the tier is bigger or smaller than the active plan', () => {
     renderCard({ activePlanCode: 'sub_starter', activePlanCredits: 200 })
 
-    const cta = screen.getByRole('button', { name: 'Downgrade to Lite' })
-    expect(cta).toHaveTextContent('Downgrade')
+    const cta = screen.getByRole('button', { name: 'Switch to Lite' })
+    expect(cta).toHaveTextContent('Switch')
     expect(cta).not.toHaveTextContent('Upgrade')
   })
 })

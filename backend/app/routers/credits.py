@@ -147,9 +147,9 @@ async def create_order(
     if pack is None or not pack.is_active:
         raise HTTPException(status_code=404, detail="Credit pack not found")
 
-    # No purchase guard: downgrade and annual→monthly are the buyer's call. What they
-    # cost is disclosed at slip upload instead — an order on its own is free to cancel,
-    # so that is the first step money actually turns on.
+    # No purchase guard: a smaller tier and annual→monthly are the buyer's call. What
+    # they cost is disclosed at slip upload instead — an order on its own is free to
+    # cancel, so that is the first step money actually turns on.
     # ponytail: no proration credit — provider wants full price on every purchase.
     # credit_service.proration_credit() stays for an easy re-enable if that changes.
 

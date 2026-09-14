@@ -19,7 +19,7 @@ interface PlanCardProps {
   period?: BillingPeriod
   onSelect: (pack: CreditPack) => void
   disabled?: boolean
-  /** Current active plan code, if any — drives upgrade/renew/downgrade labels. */
+  /** Current active plan code, if any — drives switch/renew/choose labels. */
   activePlanCode?: string | null
   /** Doc allowance of the current active plan — used to determine tier rank. */
   activePlanCredits?: number
@@ -49,30 +49,28 @@ export function PlanCard({
 }: PlanCardProps) {
   const { t } = useT()
   const isCurrentPlan = activePlanCode === pack.code
-  const isDowngrade = activePlanCredits != null && pack.credits < activePlanCredits
+  const isSmallerTier = activePlanCredits != null && pack.credits < activePlanCredits
   // The card's <h3> already names the tier, so the button prints the action only.
-  // "Upgrade to Professional" restated that heading and, at 4-up (~160px of card),
+  // "Switch to Professional" restated that heading and, at 4-up (~160px of card),
   // could not fit on one line. The tier-specific phrase stays as the accessible
-  // name so a screen reader moving button to button still hears four distinct
-  // actions rather than "Upgrade plan" four times.
-  // A smaller tier is a downgrade, not an upgrade: before Lite existed this branch
-  // was rare enough to go unnoticed, but a tier below Starter means every
-  // subscriber now meets it on the first card, and "Upgrade to Lite" told them the
-  // opposite of the truth on a screen about money.
+  // name so a screen reader moving button to button still hears three distinct
+  // actions rather than "Switch plan" every time.
+  // Bigger and smaller tiers both get the same neutral "Switch" CTA — no separate
+  // "Upgrade" word. A smaller tier isn't a step down worth flagging in the button
+  // itself (the plan-change warning below still covers what it costs), and giving
+  // only the bigger tiers positive framing read as picking a side on a screen about
+  // money. "Choose" (no active plan yet) and "Renew" (same tier) are unaffected —
+  // there's nothing to "switch" from on a first purchase, and renewing isn't a change.
   const ctaLabel = isCurrentPlan
     ? t('plan.ctaRenew')
-    : isDowngrade
-      ? t('plan.ctaDowngrade')
-      : activePlanCode
-        ? t('plan.ctaUpgrade')
-        : t('plan.ctaChoose')
+    : activePlanCode
+      ? t('plan.ctaSwitch')
+      : t('plan.ctaChoose')
   const ctaName = isCurrentPlan
     ? t('plan.renew', { name: meta.name })
-    : isDowngrade
-      ? t('plan.downgrade', { name: meta.name })
-      : activePlanCode
-        ? t('plan.upgrade', { name: meta.name })
-        : t('plan.choose', { name: meta.name })
+    : activePlanCode
+      ? t('plan.switch', { name: meta.name })
+      : t('plan.choose', { name: meta.name })
   // Annual: pay for fewer months up front (2 free); the doc allowance is still
   // per month, so the hero stays the per-month price — just the discounted one.
   const annual = period === 'annual' && pack.price_annual_thb != null
@@ -121,23 +119,23 @@ export function PlanCard({
           row across the grid (.plan-price is margin-top:auto). .sr-only carries the
           same sentence to assistive tech at zero layout cost, since a title alone is
           not reliably announced. It stays on the WRAPPER because the button was
-          disabled here until downgrades were allowed, and a disabled button
+          disabled here until smaller tiers were allowed, and a disabled button
           suppresses its own title — leaving it put costs nothing and survives a
           future tier that is blocked again. */}
-      <span className="plan-cta-tip" title={isDowngrade ? t('plan.downgradeNote') : undefined}>
+      <span className="plan-cta-tip" title={isSmallerTier ? t('plan.switchNote') : undefined}>
         <button
           type="button"
           className={`btn ${meta.highlight ? 'btn-primary' : 'btn-outline'} plan-cta`}
           onClick={() => onSelect(pack)}
           disabled={disabled}
           aria-label={ctaName}
-          aria-describedby={isDowngrade ? `${pack.code}-downgrade` : undefined}
+          aria-describedby={isSmallerTier ? `${pack.code}-switch-note` : undefined}
         >
           {ctaLabel} <ArrowRight size={14} />
         </button>
-        {isDowngrade && (
-          <span id={`${pack.code}-downgrade`} className="sr-only">
-            {t('plan.downgradeNote')}
+        {isSmallerTier && (
+          <span id={`${pack.code}-switch-note`} className="sr-only">
+            {t('plan.switchNote')}
           </span>
         )}
       </span>

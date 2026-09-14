@@ -336,7 +336,7 @@ def _active_sub(plan_code="sub_pro", billing_period="monthly"):
     return row
 
 
-def test_create_order_allows_downgrade_to_a_smaller_tier():
+def test_create_order_allows_switching_to_a_smaller_tier():
     """A smaller plan is the buyer's call — the cost is disclosed at slip upload.
 
     Until 2026-09-14 this returned 409 "Downgrade is not supported."
