@@ -40,6 +40,10 @@ backend/uvicorn_*.log
 backend/start_valve.bat
 swagger.json
 
+# Playwright MCP session output (snapshots, console logs, ad-hoc screenshots)
+.playwright-mcp/
+
+
 # Google Cloud credentials
 credentials/
 
