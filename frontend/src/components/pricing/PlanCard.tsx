@@ -64,12 +64,12 @@ export function PlanCard({
   const ctaLabel = isCurrentPlan
     ? t('plan.ctaRenew')
     : activePlanCode
-      ? t('plan.ctaSwitch')
+      ? t('plan.ctaChange')
       : t('plan.ctaChoose')
   const ctaName = isCurrentPlan
     ? t('plan.renew', { name: meta.name })
     : activePlanCode
-      ? t('plan.switch', { name: meta.name })
+      ? t('plan.change', { name: meta.name })
       : t('plan.choose', { name: meta.name })
   // Annual: pay for fewer months up front (2 free); the doc allowance is still
   // per month, so the hero stays the per-month price — just the discounted one.
@@ -122,7 +122,7 @@ export function PlanCard({
           disabled here until smaller tiers were allowed, and a disabled button
           suppresses its own title — leaving it put costs nothing and survives a
           future tier that is blocked again. */}
-      <span className="plan-cta-tip" title={isSmallerTier ? t('plan.switchNote') : undefined}>
+      <span className="plan-cta-tip" title={isSmallerTier ? t('plan.changeNote') : undefined}>
         <button
           type="button"
           className={`btn ${meta.highlight ? 'btn-primary' : 'btn-outline'} plan-cta`}
@@ -135,7 +135,7 @@ export function PlanCard({
         </button>
         {isSmallerTier && (
           <span id={`${pack.code}-switch-note`} className="sr-only">
-            {t('plan.switchNote')}
+            {t('plan.changeNote')}
           </span>
         )}
       </span>

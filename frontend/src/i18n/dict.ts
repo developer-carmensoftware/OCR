@@ -59,11 +59,11 @@ const en = {
   // carries only the action; the {name} variants below become its accessible name.
   'plan.ctaChoose': 'Choose plan',
   'plan.ctaRenew': 'Renew plan',
-  'plan.ctaSwitch': 'Change plan',
+  'plan.ctaChange': 'Change plan',
   'plan.choose': 'Choose {name}',
   'plan.renew': 'Renew {name}',
-  'plan.switch': 'Switch to {name}',
-  'plan.switchNote':
+  'plan.change': 'Change to {name}',
+  'plan.changeNote':
     'Switching now replaces your current plan — remaining documents and days are not carried over.',
   'plan.custom': 'Custom',
   'plan.contactSales': 'Contact sales',
@@ -1710,11 +1710,11 @@ const th: Record<TKey, string> = {
   'plan.billedYearly': '฿{total}/ปี',
   'plan.ctaChoose': 'เลือกแพ็กเกจ',
   'plan.ctaRenew': 'ต่ออายุแพ็กเกจ',
-  'plan.ctaSwitch': 'สลับแพ็กเกจ',
+  'plan.ctaChange': 'เปลี่ยนแพ็กเกจ',
   'plan.choose': 'เลือก {name}',
   'plan.renew': 'ต่ออายุ {name}',
-  'plan.switch': 'สลับเป็น {name}',
-  'plan.switchNote':
+  'plan.change': 'เปลี่ยนเป็น {name}',
+  'plan.changeNote':
     'การเปลี่ยนตอนนี้จะแทนที่แพ็กเกจปัจจุบัน — เอกสารและวันที่เหลืออยู่จะไม่ถูกยกยอด',
   'plan.custom': 'กำหนดเอง',
   'plan.contactSales': 'ติดต่อฝ่ายขาย',
