@@ -59,7 +59,7 @@ describe('PlanCard plan-change state', () => {
 /**
  * The visible label is short so it fits one line at 4-up (~160px of card), but the
  * accessible name must stay tier-specific — otherwise a screen reader moving from
- * button to button hears "Switch plan" three times with nothing to tell them apart.
+ * button to button hears "Change plan" three times with nothing to tell them apart.
  */
 describe('PlanCard CTA label', () => {
   it('prints the action and names the tier for assistive tech', () => {
@@ -67,7 +67,7 @@ describe('PlanCard CTA label', () => {
     renderCard({ activePlanCode: 'sub_starter', activePlanCredits: 50 })
 
     const cta = screen.getByRole('button', { name: 'Switch to Lite' })
-    expect(cta).toHaveTextContent('Switch plan')
+    expect(cta).toHaveTextContent('Change plan')
     expect(cta).not.toHaveTextContent('Switch to Lite')
   })
 

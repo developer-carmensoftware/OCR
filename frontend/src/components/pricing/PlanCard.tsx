@@ -54,7 +54,7 @@ export function PlanCard({
   // "Switch to Professional" restated that heading and, at 4-up (~160px of card),
   // could not fit on one line. The tier-specific phrase stays as the accessible
   // name so a screen reader moving button to button still hears three distinct
-  // actions rather than "Switch plan" every time.
+  // actions rather than "Change plan" every time.
   // Bigger and smaller tiers both get the same neutral "Switch" CTA — no separate
   // "Upgrade" word. A smaller tier isn't a step down worth flagging in the button
   // itself (the plan-change warning below still covers what it costs), and giving

@@ -59,7 +59,7 @@ const en = {
   // carries only the action; the {name} variants below become its accessible name.
   'plan.ctaChoose': 'Choose plan',
   'plan.ctaRenew': 'Renew plan',
-  'plan.ctaSwitch': 'Switch plan',
+  'plan.ctaSwitch': 'Change plan',
   'plan.choose': 'Choose {name}',
   'plan.renew': 'Renew {name}',
   'plan.switch': 'Switch to {name}',
