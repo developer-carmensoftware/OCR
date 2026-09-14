@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react'
 import { UploadCloud, Loader2, FileCheck2, X } from 'lucide-react'
 import { toast } from 'sonner'
+import CustomModal from '../common/CustomModal'
 import { useT } from '../../i18n/LanguageContext'
 import { MAX_FILE_SIZE_MB } from '../../lib/fileValidation'
 
@@ -16,14 +17,21 @@ interface Props {
    * `inert`, so nothing there can pick a file.
    */
   initialFile?: File | null
+  /**
+   * Consequence to confirm before uploading. Set only when this order changes the
+   * buyer's plan for the worse — the guard lives here, not in the callers, because
+   * the pending-order banner reaches this button without passing through checkout.
+   */
+  warning?: string
 }
 
 /** Payment-slip drop zone — reuses the signature upload-drop visual language. */
-export default function SlipUpload({ onUpload, uploading, initialFile }: Props) {
+export default function SlipUpload({ onUpload, uploading, initialFile, warning }: Props) {
   const { t } = useT()
   const inputRef = useRef<HTMLInputElement>(null)
   const [file, setFile] = useState<File | null>(initialFile ?? null)
   const [dragging, setDragging] = useState(false)
+  const [confirming, setConfirming] = useState(false)
 
   const accept = (f: File | undefined) => {
     if (!f) return
@@ -44,14 +52,19 @@ export default function SlipUpload({ onUpload, uploading, initialFile }: Props) 
     accept(e.dataTransfer.files?.[0])
   }
 
-  const submit = async () => {
+  const run = async () => {
     if (!file) return
+    // Close first: the Confirm button behind it already owns the uploading spinner
+    // and disables itself, so the modal has nothing left to show.
+    setConfirming(false)
     try {
       await onUpload(file)
     } catch {
       /* error surfaced by caller via toast */
     }
   }
+
+  const submit = () => (warning ? setConfirming(true) : run())
 
   if (file) {
     return (
@@ -84,6 +97,17 @@ export default function SlipUpload({ onUpload, uploading, initialFile }: Props) 
             t('checkout.confirmPayment')
           )}
         </button>
+        <CustomModal
+          show={confirming}
+          type="warning"
+          title={t('slip.changeTitle')}
+          message={warning}
+          confirmText={t('checkout.confirmPayment')}
+          cancelText={t('modal.cancel')}
+          confirmVariant="danger"
+          onConfirm={run}
+          onCancel={() => setConfirming(false)}
+        />
       </div>
     )
   }

@@ -117,18 +117,19 @@ export function PlanCard({
         ≈ <span className="text-mono">฿{formatThb(rate, true)}</span> {t('plan.perDoc')}
       </p>
 
-      {/* Why the reason sits on a WRAPPER: a disabled button suppresses its own
-          title in every browser, so the hint has to hang off something enabled.
-          It can't be a visible line either — that would make this one card taller
-          than its siblings and desync the price row across the grid (.plan-price
-          is margin-top:auto). .sr-only carries the same sentence to assistive tech
-          at zero layout cost, since a title alone is not reliably announced. */}
+      {/* The note can't be a visible line: one taller card would desync the price
+          row across the grid (.plan-price is margin-top:auto). .sr-only carries the
+          same sentence to assistive tech at zero layout cost, since a title alone is
+          not reliably announced. It stays on the WRAPPER because the button was
+          disabled here until downgrades were allowed, and a disabled button
+          suppresses its own title — leaving it put costs nothing and survives a
+          future tier that is blocked again. */}
       <span className="plan-cta-tip" title={isDowngrade ? t('plan.downgradeNote') : undefined}>
         <button
           type="button"
           className={`btn ${meta.highlight ? 'btn-primary' : 'btn-outline'} plan-cta`}
           onClick={() => onSelect(pack)}
-          disabled={disabled || isDowngrade}
+          disabled={disabled}
           aria-label={ctaName}
           aria-describedby={isDowngrade ? `${pack.code}-downgrade` : undefined}
         >

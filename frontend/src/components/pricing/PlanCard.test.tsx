@@ -24,21 +24,22 @@ function renderCard(props: Partial<Parameters<typeof PlanCard>[0]> = {}) {
 }
 
 /**
- * Adding Lite put a tier BELOW Starter, so every existing subscriber now meets a
- * disabled card on their first visit. A disabled CTA that does not say why reads
- * as a bug — and the reason cannot be a visible line, because one taller card
- * desyncs the price row across the grid. These two tests pin both halves.
+ * A downgrade is the buyer's call to make, so the CTA stays live — the real
+ * confirmation is at slip upload, where money moves. What the card owes them is a
+ * heads-up, and it cannot be a visible line: one taller card desyncs the price row
+ * across the grid. These two tests pin both halves.
  */
 describe('PlanCard downgrade state', () => {
-  it('disables the CTA and gives the reason when the tier is a downgrade', () => {
+  it('leaves the CTA clickable but says what a downgrade costs', () => {
     // Active plan allows 200 docs; Lite allows 100 → downgrade.
     const { container } = renderCard({ activePlanCode: 'sub_starter', activePlanCredits: 200 })
 
-    expect(screen.getByRole('button')).toBeDisabled()
+    expect(screen.getByRole('button')).toBeEnabled()
 
-    // The hint hangs off the wrapper: a disabled button suppresses its own title.
     const tip = container.querySelector('.plan-cta-tip')
-    expect(tip?.getAttribute('title')).toBe('Downgrading is available when your current plan ends.')
+    expect(tip?.getAttribute('title')).toBe(
+      'Switching now replaces your current plan — remaining documents and days are not carried over.'
+    )
 
     // ...and the same sentence reaches assistive tech, at zero layout cost.
     const describedBy = screen.getByRole('button').getAttribute('aria-describedby')
