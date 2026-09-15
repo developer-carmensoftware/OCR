@@ -107,6 +107,18 @@ describe('PendingOrderBanner plan-change confirmation', () => {
     expect(uploadSlip).not.toHaveBeenCalled()
   })
 
+  it('names both losses when an annual plan becomes a smaller monthly one', async () => {
+    // The costly case: the buyer gives up quota AND the months they prepaid. Reporting
+    // only the quota drop here understated the loss by the larger of the two amounts.
+    fireEvent.click(renderBanner(order('sub_lite', 100, 'monthly'), sub(1000, 'annual')))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(
+      within(dialog).getByText(/annual plan is replaced by a monthly plan.*1,000 to 100 documents/)
+    ).toBeTruthy()
+    expect(uploadSlip).not.toHaveBeenCalled()
+  })
+
   it('does not interrupt an upgrade', async () => {
     fireEvent.click(renderBanner(order('sub_pro', 5000, 'monthly'), sub(1000, 'monthly')))
 

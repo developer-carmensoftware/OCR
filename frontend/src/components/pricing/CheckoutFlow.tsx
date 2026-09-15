@@ -6,7 +6,7 @@ import StepWizard from '../common/StepWizard'
 import ProformaDocument from './ProformaDocument'
 import SlipUpload from './SlipUpload'
 import { useCheckout, type CheckoutSession } from '../../hooks/credits'
-import { PLAN_META, PACK_META, planChangeLoss } from '../../constants/billing'
+import { PLAN_META, PACK_META, planChangeLoss, planChangeWarning } from '../../constants/billing'
 import { formatThb } from '../../lib/money'
 import { useT } from '../../i18n/LanguageContext'
 import type { TKey } from '../../i18n/dict'
@@ -83,15 +83,7 @@ export default function CheckoutFlow({
       : t('checkout.kindMonthly')
     : t('checkout.kindTopup')
   const loss = planChangeLoss(code, credits, effectivePeriod, sub)
-  const slipWarning =
-    loss === 'quota'
-      ? t('slip.changeWarnQuota', {
-          prev: (sub?.doc_allowance ?? 0).toLocaleString(),
-          next: credits.toLocaleString(),
-        })
-      : loss === 'period'
-        ? t('slip.changeWarnPeriod')
-        : undefined
+  const slipWarning = planChangeWarning(t, loss, sub?.doc_allowance ?? 0, credits)
 
   const updateBuyer = (patch: Partial<BuyerInfo>) => c.setBuyer({ ...c.buyer, ...patch })
   const buyerComplete = REQUIRED_BUYER_KEYS.every(k => c.buyer[k].trim())

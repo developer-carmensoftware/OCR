@@ -13,7 +13,7 @@ import {
   type CreditOrder,
   type PaymentInfo,
 } from '../../lib/api/credits'
-import { catalogName, planChangeLoss } from '../../constants/billing'
+import { catalogName, planChangeLoss, planChangeWarning } from '../../constants/billing'
 import type { ActiveSubscription } from '../../lib/api/auth'
 import { formatThb } from '../../lib/money'
 import { formatDate } from '../../lib/date'
@@ -100,15 +100,7 @@ function OrderRow({
     order.billing_period ?? 'monthly',
     sub
   )
-  const slipWarning =
-    loss === 'quota'
-      ? t('slip.changeWarnQuota', {
-          prev: (sub?.doc_allowance ?? 0).toLocaleString(),
-          next: order.credits.toLocaleString(),
-        })
-      : loss === 'period'
-        ? t('slip.changeWarnPeriod')
-        : undefined
+  const slipWarning = planChangeWarning(t, loss, sub?.doc_allowance ?? 0, order.credits)
 
   const toggle = () => {
     const next = !open

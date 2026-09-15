@@ -149,6 +149,8 @@ const en = {
     'Once this payment is approved, your monthly quota changes from {prev} to {next} documents immediately. Documents and days remaining on your current plan are not carried over.',
   'slip.changeWarnPeriod':
     'Once this payment is approved, your annual plan is replaced by a monthly plan immediately. The months remaining on your annual plan are not carried over.',
+  'slip.changeWarnBoth':
+    'Once this payment is approved, your annual plan is replaced by a monthly plan immediately, and your monthly quota changes from {prev} to {next} documents. The months you have already paid for, along with any documents and days remaining, are not carried over.',
 
   // — Order history + status —
   'order.statusInProgress': 'In progress',
@@ -1798,6 +1800,8 @@ const th: Record<TKey, string> = {
     'ทันทีที่การชำระเงินได้รับอนุมัติ โควตาต่อเดือนจะเปลี่ยนจาก {prev} เป็น {next} เอกสารทันที เอกสารและวันที่เหลือของแพ็กเกจปัจจุบันจะไม่ถูกยกยอด',
   'slip.changeWarnPeriod':
     'ทันทีที่การชำระเงินได้รับอนุมัติ แพ็กเกจรายปีของคุณจะถูกแทนที่ด้วยแพ็กเกจรายเดือนทันที เดือนที่เหลือของแพ็กเกจรายปีจะไม่ถูกยกยอด',
+  'slip.changeWarnBoth':
+    'ทันทีที่การชำระเงินได้รับอนุมัติ แพ็กเกจรายปีของคุณจะถูกแทนที่ด้วยแพ็กเกจรายเดือนทันที และโควตาต่อเดือนจะเปลี่ยนจาก {prev} เป็น {next} เอกสาร เดือนที่คุณชำระล่วงหน้าไว้ รวมถึงเอกสารและวันที่เหลือของแพ็กเกจปัจจุบัน จะไม่ถูกยกยอด',
 
   // — Order history + status —
   'order.statusInProgress': 'กำลังดำเนินการ',
