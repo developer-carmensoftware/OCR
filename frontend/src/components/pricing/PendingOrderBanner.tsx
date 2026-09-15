@@ -13,7 +13,12 @@ import {
   type CreditOrder,
   type PaymentInfo,
 } from '../../lib/api/credits'
-import { catalogName, planChangeLoss, planChangeWarning } from '../../constants/billing'
+import {
+  catalogName,
+  isSubscriptionCode,
+  planChangeLoss,
+  planChangeWarning,
+} from '../../constants/billing'
 import type { ActiveSubscription } from '../../lib/api/auth'
 import { formatThb } from '../../lib/money'
 import { formatDate } from '../../lib/date'
@@ -149,7 +154,10 @@ function OrderRow({
         <div className="order-row-id">
           <span className="order-row-name">{catalogName(order.pack_code)}</span>
           <span className="order-row-credits text-mono">
-            {order.credits.toLocaleString()} {t('pack.creditsUnit')}
+            {order.credits.toLocaleString()}{' '}
+            {t(
+              isSubscriptionCode(order.pack_code) ? 'plan.docsPerMonthSuffix' : 'pack.creditsUnit'
+            )}
           </span>
         </div>
         <span className="order-row-amount text-mono">฿{formatThb(order.amount_thb)}</span>

@@ -236,7 +236,8 @@ export default function CheckoutFlow({
               <div className="checkout-summary-row">
                 <span>{itemName(code)}</span>
                 <span className="text-mono">
-                  {credits.toLocaleString()} {t('pack.creditsUnit')}
+                  {credits.toLocaleString()}{' '}
+                  {t(isSubscription ? 'plan.docsPerMonthSuffix' : 'pack.creditsUnit')}
                 </span>
               </div>
               <div className="checkout-summary-row checkout-summary-kind">
