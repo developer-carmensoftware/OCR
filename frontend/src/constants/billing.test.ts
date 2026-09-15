@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { planChangeLoss, planChangeWarning } from './billing'
+import { isSubscriptionCode, planChangeLoss, planChangeWarning } from './billing'
 
 const ANNUAL_GROWTH = { doc_allowance: 1000, billing_period: 'annual' }
 const MONTHLY_GROWTH = { doc_allowance: 1000, billing_period: 'monthly' }
@@ -59,5 +59,16 @@ describe('planChangeWarning', () => {
     expect(planChangeWarning(t, 'both', 1500, 100)).toBe(
       'slip.changeWarnBoth|{"prev":"1,500","next":"100"}'
     )
+  })
+})
+
+describe('isSubscriptionCode', () => {
+  it('is true for every subscription tier', () => {
+    expect(isSubscriptionCode('sub_lite')).toBe(true)
+    expect(isSubscriptionCode('sub_growth')).toBe(true)
+  })
+
+  it('is false for a top-up pack — its quantity is a credit, not a document allowance', () => {
+    expect(isSubscriptionCode('pack_small')).toBe(false)
   })
 })

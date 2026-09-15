@@ -128,3 +128,13 @@ export function catalogName(code: string): string {
   if (code === 'enterprise') return ENTERPRISE.name
   return PLAN_META[code]?.name ?? PACK_META[code]?.name ?? code
 }
+
+/**
+ * True for a subscription tier's code, false for a top-up pack's. Subscription
+ * quantities are a monthly *document allowance*, never a *credit* — a subscription
+ * order never touches `tenant_credits.balance` (see CONTEXT.md). Callers use this to
+ * pick between `plan.docsPerMonthSuffix` and `pack.creditsUnit` for a quantity label.
+ */
+export function isSubscriptionCode(code: string): boolean {
+  return code in PLAN_META
+}

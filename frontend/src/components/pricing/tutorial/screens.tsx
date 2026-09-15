@@ -320,7 +320,7 @@ function BillingFigure() {
                 <h4 className="checkout-summary-title">{t('checkout.summaryTitle')}</h4>
                 <div className="checkout-summary-row">
                   <span>Growth</span>
-                  <span className="text-mono">500 {t('pack.creditsUnit')}</span>
+                  <span className="text-mono">500 {t('plan.docsPerMonthSuffix')}</span>
                 </div>
                 <div className="checkout-summary-row checkout-summary-kind">
                   <span>{t('checkout.kindMonthly')}</span>
