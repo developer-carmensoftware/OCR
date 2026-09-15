@@ -150,11 +150,11 @@ const en = {
   // admin approves the slip, not at upload, and a buyer told "immediately" reloads, sees
   // the old plan, and reports a bug.
   'slip.changeWarnQuota':
-    'When approved: your monthly quota drops from {prev} to {next} documents. Unused documents and days do not carry over.',
+    "When approved, quota drops from {prev} to {next} docs. Unused docs and days aren't carried over.",
   'slip.changeWarnPeriod':
-    'When approved: your annual plan becomes a monthly plan. The months you already paid for do not carry over.',
+    "When approved, your annual plan becomes monthly. Prepaid months aren't carried over.",
   'slip.changeWarnBoth':
-    'When approved: your annual plan becomes monthly and your quota drops from {prev} to {next} documents. Prepaid months and unused days do not carry over.',
+    'When approved, plan becomes monthly and quota drops from {prev} to {next} docs. Nothing is carried over.',
 
   // — Order history + status —
   'order.statusInProgress': 'In progress',
@@ -1801,11 +1801,10 @@ const th: Record<TKey, string> = {
   'slip.uploadHint': 'คลิกหรือลากไฟล์มาวางที่นี่ · JPG · PNG · PDF · ไม่เกิน 5 MB',
   'slip.changeTitle': 'ยืนยันการเปลี่ยนแพ็กเกจ',
   'slip.changeWarnQuota':
-    'เมื่อได้รับอนุมัติ: โควตาต่อเดือนจะลดจาก {prev} เป็น {next} เอกสาร เอกสารและวันที่เหลือจะไม่ถูกยกยอด',
-  'slip.changeWarnPeriod':
-    'เมื่อได้รับอนุมัติ: แพ็กเกจรายปีจะกลายเป็นรายเดือน เดือนที่ชำระล่วงหน้าไว้จะไม่ถูกยกยอด',
+    'เมื่ออนุมัติ: โควตาลดจาก {prev} เป็น {next} เอกสาร ส่วนที่เหลือไม่ถูกยกยอด',
+  'slip.changeWarnPeriod': 'เมื่ออนุมัติ: แพ็กเกจรายปีเป็นรายเดือน เดือนที่จ่ายล่วงหน้าไม่ถูกยกยอด',
   'slip.changeWarnBoth':
-    'เมื่อได้รับอนุมัติ: แพ็กเกจรายปีจะกลายเป็นรายเดือน และโควตาจะลดจาก {prev} เป็น {next} เอกสาร เดือนที่ชำระล่วงหน้าและวันที่เหลือจะไม่ถูกยกยอด',
+    'เมื่ออนุมัติ: แพ็กเกจรายปีเป็นรายเดือน และโควตาลดจาก {prev} เป็น {next} เอกสาร ทั้งหมดไม่ถูกยกยอด',
 
   // — Order history + status —
   'order.statusInProgress': 'กำลังดำเนินการ',

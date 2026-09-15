@@ -94,7 +94,7 @@ describe('PendingOrderBanner plan-change confirmation', () => {
     // The same text also stands as a banner before the dialog ever opens (see
     // SlipUpload), so this asserts the dialog specifically rather than the text.
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByText(/quota drops from 1,000 to 100 documents/)).toBeTruthy()
+    expect(within(dialog).getByText(/quota drops from 1,000 to 100 docs/)).toBeTruthy()
     expect(uploadSlip).not.toHaveBeenCalled()
   })
 
@@ -103,7 +103,7 @@ describe('PendingOrderBanner plan-change confirmation', () => {
     fireEvent.click(renderBanner(order('sub_growth', 1000, 'monthly'), sub(1000, 'annual')))
 
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByText(/annual plan becomes a monthly plan/)).toBeTruthy()
+    expect(within(dialog).getByText(/annual plan becomes monthly/)).toBeTruthy()
     expect(uploadSlip).not.toHaveBeenCalled()
   })
 
@@ -114,9 +114,7 @@ describe('PendingOrderBanner plan-change confirmation', () => {
 
     const dialog = await screen.findByRole('dialog')
     expect(
-      within(dialog).getByText(
-        /annual plan becomes monthly and your quota drops from 1,000 to 100 documents/
-      )
+      within(dialog).getByText(/plan becomes monthly and quota drops from 1,000 to 100 docs/)
     ).toBeTruthy()
     expect(uploadSlip).not.toHaveBeenCalled()
   })
