@@ -45,4 +45,15 @@ describe('translate', () => {
     const missing = (Object.keys(DICT.en) as Array<keyof typeof DICT.en>).filter(k => !DICT.th[k])
     expect(missing).toEqual([])
   })
+
+  // Key parity and non-emptiness both pass when a translator renames a placeholder,
+  // and `translate` leaves an unknown one as literal text — so the Thai reader gets
+  // "{prev}" on screen while every other gate stays green. Compare the sets.
+  it('EN and TH use the same {placeholders} in every key', () => {
+    const names = (s: string) => (s.match(/\{(\w+)\}/g) ?? []).sort()
+    const mismatched = (Object.keys(DICT.en) as Array<keyof typeof DICT.en>)
+      .filter(k => names(DICT.en[k]).join() !== names(DICT.th[k]).join())
+      .map(k => ({ key: k, en: names(DICT.en[k]), th: names(DICT.th[k]) }))
+    expect(mismatched).toEqual([])
+  })
 })

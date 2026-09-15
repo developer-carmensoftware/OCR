@@ -6,10 +6,11 @@ import StepWizard from '../common/StepWizard'
 import ProformaDocument from './ProformaDocument'
 import SlipUpload from './SlipUpload'
 import { useCheckout, type CheckoutSession } from '../../hooks/credits'
-import { PLAN_META, PACK_META } from '../../constants/billing'
+import { PLAN_META, PACK_META, planChangeLoss } from '../../constants/billing'
 import { formatThb } from '../../lib/money'
 import { useT } from '../../i18n/LanguageContext'
 import type { TKey } from '../../i18n/dict'
+import type { ActiveSubscription } from '../../lib/api/auth'
 import {
   getPaymentInfo,
   type BillingPeriod,
@@ -28,6 +29,8 @@ interface Props {
   resume?: CheckoutSession | null
   onCancel: () => void
   onViewHistory: () => void
+  /** The buyer's current plan, so the slip step can say what this purchase replaces. */
+  sub?: ActiveSubscription | null
 }
 
 const REQUIRED_BUYER_KEYS: Array<keyof BuyerInfo> = ['name', 'tax_id', 'branch', 'address']
@@ -44,6 +47,7 @@ export default function CheckoutFlow({
   resume,
   onCancel,
   onViewHistory,
+  sub,
 }: Props) {
   const { t } = useT()
   const c = useCheckout(pack, resume, period)
@@ -78,6 +82,16 @@ export default function CheckoutFlow({
       ? t('checkout.kindAnnual')
       : t('checkout.kindMonthly')
     : t('checkout.kindTopup')
+  const loss = planChangeLoss(code, credits, effectivePeriod, sub)
+  const slipWarning =
+    loss === 'quota'
+      ? t('slip.changeWarnQuota', {
+          prev: (sub?.doc_allowance ?? 0).toLocaleString(),
+          next: credits.toLocaleString(),
+        })
+      : loss === 'period'
+        ? t('slip.changeWarnPeriod')
+        : undefined
 
   const updateBuyer = (patch: Partial<BuyerInfo>) => c.setBuyer({ ...c.buyer, ...patch })
   const buyerComplete = REQUIRED_BUYER_KEYS.every(k => c.buyer[k].trim())
@@ -272,7 +286,7 @@ export default function CheckoutFlow({
             <div className="panel-card checkout-slip-card no-print">
               <h3 className="checkout-section-title">{t('checkout.confirmPayment')}</h3>
               <p className="checkout-pay-sub">{t('checkout.confirmSub')}</p>
-              <SlipUpload onUpload={handleSlip} uploading={c.uploading} />
+              <SlipUpload onUpload={handleSlip} uploading={c.uploading} warning={slipWarning} />
             </div>
           </div>
         )}

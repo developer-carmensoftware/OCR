@@ -13,7 +13,8 @@ import {
   type CreditOrder,
   type PaymentInfo,
 } from '../../lib/api/credits'
-import { catalogName } from '../../constants/billing'
+import { catalogName, planChangeLoss } from '../../constants/billing'
+import type { ActiveSubscription } from '../../lib/api/auth'
 import { formatThb } from '../../lib/money'
 import { formatDate } from '../../lib/date'
 
@@ -80,17 +81,34 @@ function OrderRow({
   onChanged,
   paymentInfo,
   initialSlipFile,
+  sub,
 }: {
   order: CreditOrder
   onChanged: () => void
   paymentInfo: PaymentInfo | null
   initialSlipFile?: File | null
+  sub?: ActiveSubscription | null
 }) {
   const { t } = useT()
   const isOnHold = order.status === 'on_hold'
   const isReviewing = !!order.slip_uploaded_at
   const [state, dispatch] = useReducer(rowReducer, rowInitial)
   const { open, docs, loadingDocs, uploading, cancelling, showCancelModal } = state
+  const loss = planChangeLoss(
+    order.pack_code,
+    order.credits,
+    order.billing_period ?? 'monthly',
+    sub
+  )
+  const slipWarning =
+    loss === 'quota'
+      ? t('slip.changeWarnQuota', {
+          prev: (sub?.doc_allowance ?? 0).toLocaleString(),
+          next: order.credits.toLocaleString(),
+        })
+      : loss === 'period'
+        ? t('slip.changeWarnPeriod')
+        : undefined
 
   const toggle = () => {
     const next = !open
@@ -183,7 +201,12 @@ function OrderRow({
 
       <div className="pending-order-actions">
         {!isReviewing && (
-          <SlipUpload onUpload={handleSlip} uploading={uploading} initialFile={initialSlipFile} />
+          <SlipUpload
+            onUpload={handleSlip}
+            uploading={uploading}
+            initialFile={initialSlipFile}
+            warning={slipWarning}
+          />
         )}
         <button
           type="button"
@@ -219,12 +242,15 @@ export default function PendingOrderBanner({
   onChanged,
   paymentInfo,
   initialSlipFile,
+  sub,
 }: {
   orders: CreditOrder[]
   onChanged: () => void
   paymentInfo: PaymentInfo | null
   /** ponytail: tutorial figure only — see `SlipUpload`'s `initialFile`. */
   initialSlipFile?: File | null
+  /** The buyer's current plan, so a slip that replaces it can say so first. */
+  sub?: ActiveSubscription | null
 }) {
   const { t } = useT()
   if (orders.length === 0) return null
@@ -261,6 +287,7 @@ export default function PendingOrderBanner({
             onChanged={onChanged}
             paymentInfo={paymentInfo}
             initialSlipFile={initialSlipFile}
+            sub={sub}
           />
         ))}
       </div>

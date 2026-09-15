@@ -262,7 +262,8 @@ def test_create_order_annual_subscription_uses_discounted_price():
 
     pack = _pack("sub_pro", 1500, 2490.0, kind="subscription")
     mock_db = make_mock_db()
-    # pre-check (no open order), pack lookup, active-subscription guard (none).
+    # pre-check (no open order), then the pack lookup. The third entry is spare:
+    # the purchase guard that used to read it was deleted 2026-09-14.
     mock_db.execute.side_effect = [_scalar(None), _scalar(pack), _scalar(None)]
 
     added = {}
@@ -298,6 +299,106 @@ def test_create_order_annual_subscription_uses_discounted_price():
     assert order["billing_period"] == "annual"
     _net, _vat, gross = vat_on_top(annual_price(Decimal("2490")))
     assert order["amount_thb"] == float(gross)  # annual net + VAT, not monthly
+
+
+def _plan_change_db(new_pack, current_sub, current_pack):
+    """Mock DB for a plan-change order, loaded so a re-added purchase guard would 409.
+
+    Entries 3 and 4 are what the deleted guard used to read — the active subscription
+    and its pack. They are never consumed now; if anyone puts the guard back, it will
+    find a bigger current plan than the one being ordered and block, failing the test
+    that calls this. That is the whole point of handing them over.
+    """
+    mock_db = make_mock_db()
+    mock_db.execute.side_effect = [
+        _scalar(None),  # no open order
+        _scalar(new_pack),  # the pack being bought
+        _scalar(current_sub),
+        _scalar(current_pack),
+    ]
+
+    added = {}
+    mock_db.add.side_effect = lambda obj: added.setdefault("order", obj)
+
+    async def _flush():
+        order = added.get("order")
+        if order is not None and getattr(order, "id", None) is None:
+            order.id = uuid.uuid4()
+
+    mock_db.flush.side_effect = _flush
+    return mock_db
+
+
+def _active_sub(plan_code="sub_pro", billing_period="monthly"):
+    row = MagicMock()
+    row.plan_code = plan_code
+    row.billing_period = billing_period
+    return row
+
+
+def test_create_order_allows_switching_to_a_smaller_tier():
+    """A smaller plan is the buyer's call — the cost is disclosed at slip upload.
+
+    Until 2026-09-14 this returned 409 "Downgrade is not supported."
+    """
+    lite = _pack("sub_lite", 100, 290.0, kind="subscription")
+    mock_db = _plan_change_db(
+        lite,
+        _active_sub("sub_pro"),
+        _pack("sub_pro", 1500, 2490.0, kind="subscription"),
+    )
+
+    with (
+        patch(
+            "app.routers.credits.bds.issue_document",
+            new=AsyncMock(return_value=_billing_doc(pack_code="sub_lite", credits=100)),
+        ),
+        patch("app.routers.credits.bds.get_promptpay_id", new=AsyncMock(return_value="0812345678")),
+        make_test_client(mock_db) as client,
+    ):
+        resp = client.post(
+            f"{BASE}/orders",
+            json={
+                "pack_code": "sub_lite",
+                "billing_period": "monthly",
+                "buyer": {"name": "Test Co", "tax_id": "", "address": "", "branch": ""},
+            },
+            headers=AUTH,
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["order"]["credits"] == 100
+
+
+def test_create_order_allows_annual_subscriber_to_move_to_monthly():
+    """The annual→monthly lock is gone too; forfeited months are warned about, not blocked."""
+    growth = _pack("sub_growth", 1000, 1990.0, kind="subscription")
+    mock_db = _plan_change_db(
+        growth,
+        _active_sub("sub_growth", billing_period="annual"),
+        _pack("sub_growth", 1000, 1990.0, kind="subscription"),
+    )
+
+    with (
+        patch(
+            "app.routers.credits.bds.issue_document",
+            new=AsyncMock(return_value=_billing_doc(pack_code="sub_growth", credits=1000)),
+        ),
+        patch("app.routers.credits.bds.get_promptpay_id", new=AsyncMock(return_value="0812345678")),
+        make_test_client(mock_db) as client,
+    ):
+        resp = client.post(
+            f"{BASE}/orders",
+            json={
+                "pack_code": "sub_growth",
+                "billing_period": "monthly",
+                "buyer": {"name": "Test Co", "tax_id": "", "address": "", "branch": ""},
+            },
+            headers=AUTH,
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["order"]["billing_period"] == "monthly"
 
 
 def test_create_order_rejects_unknown_billing_period():

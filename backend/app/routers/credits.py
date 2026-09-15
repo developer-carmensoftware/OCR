@@ -36,11 +36,7 @@ from app.models.schemas import (
 )
 from app.services import billing_document_service as bds
 from app.services import carmen_service, promptpay_service, storage_service
-from app.services.credit_service import (
-    active_subscription,
-    annual_price,
-    purchase_block_reason,
-)
+from app.services.credit_service import annual_price
 from app.services.file_service import FileService
 from app.services.storage_service import StorageError
 from app.utils.image_processing import resize_if_needed
@@ -151,20 +147,11 @@ async def create_order(
     if pack is None or not pack.is_active:
         raise HTTPException(status_code=404, detail="Credit pack not found")
 
-    # Upgrade guard: upgrade / renew allowed mid-plan; downgrade blocked.
+    # No purchase guard: a smaller tier and annual→monthly are the buyer's call. What
+    # they cost is disclosed at slip upload instead — an order on its own is free to
+    # cancel, so that is the first step money actually turns on.
     # ponytail: no proration credit — provider wants full price on every purchase.
     # credit_service.proration_credit() stays for an easy re-enable if that changes.
-    if pack.kind == "subscription":
-        current = await active_subscription(db, session.tenant_id)
-        if current is not None:
-            cur_pack = (
-                await db.execute(select(CreditPack).where(CreditPack.code == current.plan_code))
-            ).scalar_one()
-            reason = purchase_block_reason(
-                current.billing_period, cur_pack.credits, body.billing_period, pack.credits
-            )
-            if reason:
-                raise HTTPException(status_code=409, detail=reason)
 
     # Annual = 12 months at a 10% discount; subscriptions only (top-ups never expire).
     is_annual = body.billing_period == "annual" and pack.kind == "subscription"
