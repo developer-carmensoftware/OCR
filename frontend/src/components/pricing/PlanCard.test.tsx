@@ -66,12 +66,12 @@ describe('PlanCard CTA label', () => {
     // Active plan allows 50 docs; Lite allows 100 → bigger tier.
     renderCard({ activePlanCode: 'sub_starter', activePlanCredits: 50 })
 
-    const cta = screen.getByRole('button', { name: 'Switch to Lite' })
+    const cta = screen.getByRole('button', { name: 'Change to Lite' })
     expect(cta).toHaveTextContent('Change plan')
-    expect(cta).not.toHaveTextContent('Switch to Lite')
+    expect(cta).not.toHaveTextContent('Change to Lite')
   })
 
-  it('says Renew, not Switch, on the tier already active', () => {
+  it('says Renew, not Change, on the tier already active', () => {
     renderCard({ activePlanCode: 'sub_lite', activePlanCredits: 100 })
 
     const cta = screen.getByRole('button', { name: 'Renew Lite' })
@@ -80,12 +80,12 @@ describe('PlanCard CTA label', () => {
 
   // Bigger and smaller tiers used to get different words ("Upgrade" vs a downgrade
   // word); giving only the bigger ones positive framing read as picking a side on a
-  // screen about money. Both now render the identical neutral "Switch" CTA.
-  it('renders the same "Switch" CTA whether the tier is bigger or smaller than the active plan', () => {
+  // screen about money. Both now render the identical neutral "Change" CTA.
+  it('renders the same "Change" CTA whether the tier is bigger or smaller than the active plan', () => {
     renderCard({ activePlanCode: 'sub_starter', activePlanCredits: 200 })
 
-    const cta = screen.getByRole('button', { name: 'Switch to Lite' })
-    expect(cta).toHaveTextContent('Switch')
+    const cta = screen.getByRole('button', { name: 'Change to Lite' })
+    expect(cta).toHaveTextContent('Change')
     expect(cta).not.toHaveTextContent('Upgrade')
   })
 })

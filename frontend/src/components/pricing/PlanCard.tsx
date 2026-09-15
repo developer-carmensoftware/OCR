@@ -55,12 +55,12 @@ export function PlanCard({
   // could not fit on one line. The tier-specific phrase stays as the accessible
   // name so a screen reader moving button to button still hears three distinct
   // actions rather than "Change plan" every time.
-  // Bigger and smaller tiers both get the same neutral "Switch" CTA — no separate
+  // Bigger and smaller tiers both get the same neutral "Change" CTA — no separate
   // "Upgrade" word. A smaller tier isn't a step down worth flagging in the button
   // itself (the plan-change warning below still covers what it costs), and giving
   // only the bigger tiers positive framing read as picking a side on a screen about
   // money. "Choose" (no active plan yet) and "Renew" (same tier) are unaffected —
-  // there's nothing to "switch" from on a first purchase, and renewing isn't a change.
+  // there's nothing to "change" from on a first purchase, and renewing isn't a change.
   const ctaLabel = isCurrentPlan
     ? t('plan.ctaRenew')
     : activePlanCode
