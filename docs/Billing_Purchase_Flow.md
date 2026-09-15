@@ -6,7 +6,7 @@ How tenants purchase, upgrade, and renew subscription plans.
 
 ## Overview
 
-Carmen OCR offers four subscription tiers (Lite, Starter, Growth, Pro — Growth was renamed from "Standard" on 2026-06-29; Lite was added on 2026-09-09) billed monthly or annually, plus one-time top-up credit packs. Tenants can upgrade to a higher tier or renew their current tier at any time — even mid-plan — with prorated credit for unused days. Downgrading is not supported.
+Carmen OCR offers four subscription tiers (Lite, Starter, Growth, Pro — Growth was renamed from "Standard" on 2026-06-29; Lite was added on 2026-09-09) billed monthly or annually, plus one-time top-up credit packs. A tenant can switch to any tier or billing period at any time — up, down, or between monthly and annual — for the full list price. There is no proration: whatever is left on the current plan (documents, days, prepaid months) is not carried over. The buyer is told what a given switch costs before they pay (see Step 4); whether to go through with it is their call, not something the system blocks.
 
 ---
 
@@ -16,11 +16,9 @@ Carmen OCR offers four subscription tiers (Lite, Starter, Growth, Pro — Growth
 
 The tenant opens the Pricing page and chooses a subscription tier and billing period (monthly or annual).
 
-- **No active plan:** All tiers are available. Button reads "Choose X".
-- **Active plan, higher tier:** Button reads "Upgrade to X".
-- **Active plan, same tier:** Button reads "Renew X".
-- **Active plan, lower tier:** Button is disabled (downgrade blocked).
-- **Active annual plan:** Monthly billing is locked — the tenant can only buy another annual plan (upgrade or renew) until the annual term ends.
+- **No active plan:** All tiers are available. Button reads "Choose plan".
+- **Active plan, same tier and same billing period:** Button reads "Renew plan" — approval opens a fresh period from `now()`; it does not extend the current one.
+- **Active plan, anything else** (a different tier, or the same tier on the other billing period): Button reads "Change plan". This covers upgrades, downgrades, and monthly↔annual switches alike — the button does not editorialize about which direction the change goes.
 - **Pending order exists:** All buttons are disabled until the pending order is completed or cancelled.
 
 Tier rank is determined by the plan's monthly document allowance — higher allowance = higher tier.
@@ -33,11 +31,10 @@ The tenant fills in buyer details (company name, tax ID, address, branch, email,
 
 The backend creates a pending order and issues a proforma invoice:
 
-1. Look up the selected plan's list price.
-2. If the tenant has an active plan, calculate a **proration credit** (see Pricing section below).
-3. Subtract the credit from the new plan's net price (floored at zero).
-4. Add 7% VAT on top of the net.
-5. Issue a proforma invoice with the final amount.
+1. Look up the selected plan's list price. There is no proration credit — every purchase is
+   charged the full list price, whatever plan the tenant currently holds.
+2. Add 7% VAT on top of the net.
+3. Issue a proforma invoice with the final amount.
 
 The proforma is valid for 14 days. Only one pending order per tenant is allowed at a time.
 
@@ -74,30 +71,19 @@ An admin reviews the uploaded slip and either approves or rejects the order.
 
 Both periods have the same monthly document allowance. Annual plans reset the document counter every month automatically (use-it-or-lose-it per month, not cumulative).
 
-### Proration Credit (Upgrade / Renew Mid-Plan)
+### No Proration
 
-When a tenant upgrades or renews while their current plan is still active, they receive a credit for the unused portion:
+Every purchase — upgrade, downgrade, renewal, or a monthly↔annual switch — is charged the plan's
+full list price. Nothing is credited for time or documents left on the current plan; `activate_subscription()`
+supersedes the old subscription row and opens a fresh window from the approval date regardless of
+how much of the old period remained. `credit_orders.proration_credit_thb` still exists as a column
+but is always written as `0.00` (`routers/credits.py`) — kept in the schema in case a future pricing
+model needs it, not because anything reads it today.
 
-```
-proration_credit = current_plan_net × (days_remaining / total_days)
-```
-
-- **current_plan_net** = list price of the current plan (monthly price, or annual price if billed annually) — before VAT.
-- **days_remaining** = days left until the current plan's expiry.
-- **total_days** = full duration of the current plan's period.
-
-The credit is subtracted from the new plan's net price before VAT is applied. If the credit exceeds the new plan's price, the net is floored at zero (no negative invoices).
-
-**Example:** Tenant on Starter Monthly (฿490/mo), 15 of 30 days remaining.
-Upgrading to Growth Monthly (฿990/mo):
-- Credit = 490 × 15/30 = ฿245
-- New net = 990 − 245 = ฿745
-- VAT = 745 × 0.07 = ฿52.15
-- **Total = ฿797.15**
-
-### Why Annual Plans Can't Switch to Monthly Mid-Term
-
-The cheapest annual plan (Lite, ฿3,132) costs more than the most expensive monthly plan (Pro, ฿2,490). So an annual subscriber's proration credit always exceeds any monthly plan's price — switching annual → monthly would floor the new order to ฿0 and **forfeit the unused prepaid value** (which is not refunded). To prevent this, an annual subscriber can only move to another annual plan (upgrade or renew). To switch to monthly billing, they wait until the annual term expires. This keeps every transition fair: in all allowed cases the new plan's price is ≥ the proration credit, so no prepaid value is ever lost.
+Because nothing is credited, what a switch costs the buyer is entirely in what it forfeits, not in
+the invoice total. That is what the plan-change warning at Step 4 exists to say plainly before the
+buyer transfers — see `frontend/src/constants/billing.ts` (`planChangeLoss`) for the two cases it
+flags: a smaller monthly quota, and an annual term traded for a monthly one.
 
 ### Top-up Credits
 
@@ -130,10 +116,11 @@ The proforma asks the buyer to send the Withholding Tax Certificate (or use e-Wi
 
 | Rule | Where Enforced | Behavior |
 |------|---------------|----------|
-| One pending order at a time | Backend (router) + DB unique index | 409 if a second order is attempted |
-| No downgrade | Backend (router) + Frontend (disabled button) | 409 "Downgrade is not supported." |
-| Annual locked to annual | Backend (router) + Frontend (locked toggle) | 409 — annual subscriber can't buy a monthly plan mid-term |
-| One active subscription | DB partial unique index (`status = 'active'`) | Old plan superseded before new one inserted |
+| One pending order at a time | Backend (router) + DB unique index (`uq_credit_orders_one_open_per_tenant`) | 409 if a second order is attempted |
+| One active subscription | DB partial unique index (`uq_tenant_subscriptions_one_active`, `status = 'active'`) | Old plan superseded before new one inserted |
+
+Downgrading and switching annual→monthly mid-term were both blocked through PR #219 (2026-09-15);
+neither guard exists any more. The buyer's only gate now is the disclosure in Step 4, not a 409.
 
 ---
 
@@ -141,6 +128,8 @@ The proforma asks the buyer to send the Withholding Tax Certificate (or use e-Wi
 
 Every purchase leaves the following records:
 
-- **credit_orders** — the order with `proration_credit_thb` (how much was credited), `amount_thb` (gross paid), `billing_period`, timestamps for creation/slip/approval.
+- **credit_orders** — the order, with `amount_thb` (gross paid, always the full list price — see
+  No Proration above), `proration_credit_thb` (always `0.00`), `billing_period`, timestamps for
+  creation/slip/approval.
 - **billing_documents** — proforma (at order creation) and tax invoice (at approval), each with full buyer/seller snapshots and line-item breakdown.
 - **tenant_subscriptions** — the old plan row with `status = superseded`, the new one with `status = active`. Both retain `source_order_id` linking back to the order.
