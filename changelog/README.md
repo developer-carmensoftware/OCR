@@ -7,7 +7,11 @@ Human-readable log of what changed, **one file per day** (`YYYY-MM-DD.md`), newe
 - Add an entry the same day you make a meaningful change. One file per date.
 - **Prefix every entry with its time** as `` `HH:MM` `` (24h, ICT +0700) — the time the change was made (committed entries use the commit time). A grouped block of related work can carry one timestamp on its heading.
 - Group by area when useful (Backend / Frontend / DB / Infra).
-- Note **uncommitted / in-progress** work in its own section so it's clear what's not yet shipped.
+- Note **uncommitted / in-progress** work in its own section so it's clear what's not yet
+  shipped. Once it ships (even on a later day), replace that heading with a one-line
+  `Shipped as PR #nnn (`hash`)` note instead of leaving "in progress" permanently true of
+  work that finished — don't go back and edit older day files to add this after the fact,
+  the entry is a record of that day, not a live status board.
 - Keep it terse — a bullet per change, link the commit hash when it exists. Reference files as needed.
 - Backfilled entries (dates before this folder existed) are reconstructed from commit history — time = commit time, plus the short hash.
 

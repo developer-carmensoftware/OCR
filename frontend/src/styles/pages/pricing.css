@@ -1738,6 +1738,13 @@
   gap: 0.85rem;
 }
 
+/* Same as the review queue's: `.mapping-alert` carries its own bottom margin for block
+   contexts (the wizard), which inside these gap-spaced columns is doubled spacing. */
+.slip-chosen > .mapping-alert,
+.pending-order-actions > .mapping-alert {
+  margin-bottom: 0;
+}
+
 .slip-chosen-file {
   display: flex;
   align-items: center;

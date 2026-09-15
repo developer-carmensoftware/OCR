@@ -23,6 +23,8 @@ interface PlanCardProps {
   activePlanCode?: string | null
   /** Doc allowance of the current active plan — used to determine tier rank. */
   activePlanCredits?: number
+  /** Billing period of the current active plan — same tier on the other period is a change, not a renewal. */
+  activePlanPeriod?: string | null
 }
 
 const TIER_ICONS: Record<string, { Icon: LucideIcon; tint: string }> = {
@@ -46,9 +48,13 @@ export function PlanCard({
   disabled,
   activePlanCode,
   activePlanCredits,
+  activePlanPeriod,
 }: PlanCardProps) {
   const { t } = useT()
-  const isCurrentPlan = activePlanCode === pack.code
+  // The period is part of the identity, not a detail: Growth monthly → Growth annual keeps
+  // the tier but replaces the subscription, which is what `planChangeLoss` already reports.
+  // Matching on the code alone labelled that "Renew plan" and contradicted the warning.
+  const isCurrentPlan = activePlanCode === pack.code && (activePlanPeriod ?? 'monthly') === period
   const isSmallerTier = activePlanCredits != null && pack.credits < activePlanCredits
   // The card's <h3> already names the tier, so the button prints the action only.
   // "Switch to Professional" restated that heading and, at 4-up (~160px of card),
@@ -59,8 +65,12 @@ export function PlanCard({
   // "Upgrade" word. A smaller tier isn't a step down worth flagging in the button
   // itself (the plan-change warning below still covers what it costs), and giving
   // only the bigger tiers positive framing read as picking a side on a screen about
-  // money. "Choose" (no active plan yet) and "Renew" (same tier) are unaffected —
-  // there's nothing to "change" from on a first purchase, and renewing isn't a change.
+  // money. "Choose" (no active plan yet) and "Renew" (same tier, same period) are
+  // unaffected — there's nothing to "change" from on a first purchase.
+  // "Renew" does NOT mean the remaining days are added to the new term: approval opens a
+  // fresh window from now() and whatever is left is forfeited. That is deliberate and
+  // matches the use-it-or-lose-it monthly allowance the whole product is sold on, so the
+  // word stays. Reviewers keep flagging it; this comment is the answer.
   const ctaLabel = isCurrentPlan
     ? t('plan.ctaRenew')
     : activePlanCode

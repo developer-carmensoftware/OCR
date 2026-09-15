@@ -560,9 +560,11 @@ async def activate_subscription(
     per-month doc_allowance and resets docs_used each month via cycle_start (see
     _try_consume_subscription). This is the only place period math lives.
 
-    Supersedes any existing active row first. With the Option-A purchase guard
-    there should be none, but doing it unconditionally keeps the unique index
-    safe if the guard is ever relaxed.
+    Supersedes any existing active row first. There is no purchase guard any more (removed
+    in PR #219 — downgrade and annual->monthly are the buyer's call now), so an existing
+    active row is the common case, not an edge case: this is what makes a plan switch a
+    switch rather than a second concurrent subscription. `uq_tenant_subscriptions_one_active`
+    is the actual backstop if this ever races.
     """
     term = "1 year" if billing_period == "annual" else "1 month"
     await db.execute(

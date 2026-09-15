@@ -64,6 +64,13 @@ FOLDER = os.environ["IMAP_FOLDER"]
 QUOTED = f'"{FOLDER}"' if " " in FOLDER and not FOLDER.startswith('"') else FOLDER
 DSN = os.environ["DATABASE_URL"].replace(":5432/", ":6543/")
 
+# The one project these scripts must never touch. Same guard as
+# scripts/email_multibu_loadtest.py — everything below is safe on dev and
+# unforgivable on prod.
+PROD_PROJECT_REF = "lhlncsjqxttcdegkqvid"
+if PROD_PROJECT_REF in DSN:
+    sys.exit(f"[abort] DATABASE_URL points at PRODUCTION ({PROD_PROJECT_REF})")
+
 RUN = str(int(time.time()))  # every fixture id is unique to this run, so reruns never dedupe
 
 # Not a PDF, despite the name — `validate_magic_bytes` is what should notice.

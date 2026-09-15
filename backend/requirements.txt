@@ -8,12 +8,12 @@ sqlalchemy==2.0.52
 asyncpg==0.31.0
 
 # LLM via OpenRouter (OpenAI-compatible SDK)
-openai==3.8.0
+openai==3.13.0
 
 # Image Processing
 Pillow==12.3.0
 pymupdf>=1.28.2
-pillow-heif>=1.6.0
+pillow-heif>=1.7.0
 
 # Configuration
 python-dotenv==1.2.3
@@ -28,4 +28,4 @@ cryptography==50.0.1
 bcrypt==5.0.0
 
 # Observability
-sentry-sdk[fastapi]==2.68.1
+sentry-sdk[fastapi]==2.69.1

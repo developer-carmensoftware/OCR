@@ -18,7 +18,7 @@ import {
   type CreditOrder,
   type PaymentInfo,
 } from '../lib/api/credits'
-import { catalogName } from '../constants/billing'
+import { catalogName, isSubscriptionCode } from '../constants/billing'
 import { formatThb } from '../lib/money'
 import { formatDate } from '../lib/date'
 import '../styles/pages/pricing.css'
@@ -70,7 +70,10 @@ function OrderRow({
         <div className="order-row-id">
           <span className="order-row-name">{catalogName(order.pack_code)}</span>
           <span className="order-row-credits text-mono">
-            {order.credits.toLocaleString()} {t('pack.creditsUnit')}
+            {order.credits.toLocaleString()}{' '}
+            {t(
+              isSubscriptionCode(order.pack_code) ? 'plan.docsPerMonthSuffix' : 'pack.creditsUnit'
+            )}
           </span>
         </div>
         <span className="order-timeline">

@@ -55,7 +55,7 @@ describe('SlipUpload plan-change confirmation', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Confirm payment' }))
 
-    expect(await screen.findByText(WARNING)).toBeTruthy()
+    expect(await screen.findByRole('dialog')).toBeTruthy()
     // The point of the whole change: the slip has NOT gone anywhere yet.
     expect(onUpload).not.toHaveBeenCalled()
   })
@@ -64,18 +64,57 @@ describe('SlipUpload plan-change confirmation', () => {
     const { onUpload } = renderUpload({ warning: WARNING })
 
     fireEvent.click(screen.getByRole('button', { name: 'Confirm payment' }))
-    await screen.findByText(WARNING)
+    await screen.findByRole('dialog')
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 
-    await waitFor(() => expect(screen.queryByText(WARNING)).toBeNull())
+    // The dialog closes, but the warning stays up as a standing banner — it isn't only
+    // a one-shot confirm gate, so cancelling doesn't hide the fact that this is a
+    // downgrade.
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(screen.getByText(WARNING)).toBeTruthy()
     expect(onUpload).not.toHaveBeenCalled()
+  })
+
+  it('shows the warning as a standing banner even before the dialog opens', () => {
+    renderUpload({ warning: WARNING })
+
+    expect(screen.getByText(WARNING)).toBeTruthy()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  /**
+   * Every other test here starts from `initialFile`, i.e. after the buyer already has a
+   * slip — which means they already transferred. This one covers the state the whole
+   * banner exists for: the drop zone, before any money moves. Without it, deleting the
+   * banner from that branch passes CI.
+   */
+  it('shows the warning in the drop-zone state, before a slip is chosen', () => {
+    renderUpload({ warning: WARNING, initialFile: null })
+
+    expect(screen.queryByRole('button', { name: 'Confirm payment' })).toBeNull()
+    expect(screen.getByText(WARNING)).toBeTruthy()
+  })
+
+  it('points the action at the warning for screen readers, in both states', () => {
+    const { unmount } = render(
+      <LanguageProvider>
+        <SlipUpload onUpload={vi.fn()} uploading={false} initialFile={null} warning={WARNING} />
+      </LanguageProvider>
+    )
+    const describes = (el: HTMLElement) =>
+      document.getElementById(el.getAttribute('aria-describedby') ?? '')?.textContent
+    expect(describes(screen.getByRole('button', { name: /Upload payment slip/ }))).toBe(WARNING)
+    unmount()
+
+    renderUpload({ warning: WARNING })
+    expect(describes(screen.getByRole('button', { name: 'Confirm payment' }))).toBe(WARNING)
   })
 
   it('confirming in the dialog uploads exactly once', async () => {
     const { onUpload } = renderUpload({ warning: WARNING })
 
     fireEvent.click(screen.getByRole('button', { name: 'Confirm payment' }))
-    await screen.findByText(WARNING)
+    await screen.findByRole('dialog')
 
     // Two Confirm buttons exist now — the card's and the dialog's. The dialog's is
     // the last in document order, and it is the one wired to the real upload.

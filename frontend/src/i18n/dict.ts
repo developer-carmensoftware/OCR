@@ -145,14 +145,19 @@ const en = {
   'slip.uploadLabel': 'Upload payment slip',
   'slip.uploadHint': 'Click or drag a file here · JPG · PNG · PDF · up to 5 MB',
   'slip.changeTitle': 'Confirm plan change',
+  // All three share one shape — condition, loss, carry-over rule — so a buyer who reads
+  // one recognises the others. "When approved" is load-bearing: the plan changes when an
+  // admin approves the slip, not at upload, and a buyer told "immediately" reloads, sees
+  // the old plan, and reports a bug.
   'slip.changeWarnQuota':
-    'Once this payment is approved, your monthly quota changes from {prev} to {next} documents immediately. Documents and days remaining on your current plan are not carried over.',
+    "When approved, quota drops from {prev} to {next} docs. Unused docs and days aren't carried over.",
   'slip.changeWarnPeriod':
-    'Once this payment is approved, your annual plan is replaced by a monthly plan immediately. The months remaining on your annual plan are not carried over.',
+    "When approved, your annual plan becomes monthly. Prepaid months aren't carried over.",
+  'slip.changeWarnBoth':
+    'When approved, plan becomes monthly and quota drops from {prev} to {next} docs. Nothing is carried over.',
 
   // — Order history + status —
   'order.statusInProgress': 'In progress',
-  'order.statusPaid': 'Credited',
   'order.statusComplete': 'Complete',
   'order.statusVoid': 'Void',
   'order.statusOnHold': 'On hold',
@@ -171,7 +176,7 @@ const en = {
   'order.cancel': 'Cancel order',
   'order.cancelConfirm': 'Cancel this order? You can place it again afterwards.',
   'order.cancelledToast': 'Order cancelled',
-  'order.approvedToast': 'Order approved — credits added to your balance',
+  'order.approvedToast': 'Order approved',
   'order.rejectedToast': 'Your order was rejected — check the details',
   'order.cancelReviewConfirm':
     "Your slip is under review. If you've already transferred money, please contact our team. Cancel this order?",
@@ -1827,13 +1832,13 @@ const th: Record<TKey, string> = {
   'slip.uploadHint': 'คลิกหรือลากไฟล์มาวางที่นี่ · JPG · PNG · PDF · ไม่เกิน 5 MB',
   'slip.changeTitle': 'ยืนยันการเปลี่ยนแพ็กเกจ',
   'slip.changeWarnQuota':
-    'ทันทีที่การชำระเงินได้รับอนุมัติ โควตาต่อเดือนจะเปลี่ยนจาก {prev} เป็น {next} เอกสารทันที เอกสารและวันที่เหลือของแพ็กเกจปัจจุบันจะไม่ถูกยกยอด',
-  'slip.changeWarnPeriod':
-    'ทันทีที่การชำระเงินได้รับอนุมัติ แพ็กเกจรายปีของคุณจะถูกแทนที่ด้วยแพ็กเกจรายเดือนทันที เดือนที่เหลือของแพ็กเกจรายปีจะไม่ถูกยกยอด',
+    'เมื่ออนุมัติ: โควตาลดจาก {prev} เป็น {next} เอกสาร ส่วนที่เหลือไม่ถูกยกยอด',
+  'slip.changeWarnPeriod': 'เมื่ออนุมัติ: แพ็กเกจรายปีเป็นรายเดือน เดือนที่จ่ายล่วงหน้าไม่ถูกยกยอด',
+  'slip.changeWarnBoth':
+    'เมื่ออนุมัติ: แพ็กเกจรายปีเป็นรายเดือน และโควตาลดจาก {prev} เป็น {next} เอกสาร ทั้งหมดไม่ถูกยกยอด',
 
   // — Order history + status —
   'order.statusInProgress': 'กำลังดำเนินการ',
-  'order.statusPaid': 'เติมเครดิตแล้ว',
   'order.statusComplete': 'เสร็จสมบูรณ์',
   'order.statusVoid': 'ยกเลิก',
   'order.statusOnHold': 'รอติดต่อยืนยัน',
@@ -1851,7 +1856,7 @@ const th: Record<TKey, string> = {
   'order.cancel': 'ยกเลิกคำสั่งซื้อ',
   'order.cancelConfirm': 'ยกเลิกคำสั่งซื้อนี้ใช่ไหม? คุณสามารถสั่งซื้อใหม่ได้ภายหลัง',
   'order.cancelledToast': 'ยกเลิกคำสั่งซื้อแล้ว',
-  'order.approvedToast': 'คำสั่งซื้อได้รับการอนุมัติ — เพิ่มเครดิตเข้ายอดแล้ว',
+  'order.approvedToast': 'คำสั่งซื้อได้รับการอนุมัติแล้ว',
   'order.rejectedToast': 'คำสั่งซื้อถูกปฏิเสธ — โปรดตรวจสอบรายละเอียด',
   'order.cancelReviewConfirm':
     'สลิปของคุณอยู่ระหว่างตรวจสอบ หากโอนเงินแล้ว กรุณาติดต่อทีมงาน ต้องการยกเลิกคำสั่งซื้อนี้ไหม?',

@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react'
-import { UploadCloud, Loader2, FileCheck2, X } from 'lucide-react'
+import { UploadCloud, Loader2, FileCheck2, X, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 import CustomModal from '../common/CustomModal'
 import { useT } from '../../i18n/LanguageContext'
@@ -7,6 +7,7 @@ import { MAX_FILE_SIZE_MB } from '../../lib/fileValidation'
 
 const ACCEPTED = ['image/jpeg', 'image/png', 'application/pdf']
 const MAX_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+const WARNING_ID = 'slip-plan-change-warning'
 
 interface Props {
   onUpload: (file: File) => Promise<void>
@@ -66,9 +67,24 @@ export default function SlipUpload({ onUpload, uploading, initialFile, warning }
 
   const submit = () => (warning ? setConfirming(true) : run())
 
+  // Shown as soon as this order is known to be a downgrade — while the buyer still has
+  // the proforma up and hasn't transferred yet — not only in the confirm dialog below,
+  // which by definition only fires once they already have a slip in hand.
+  const warningBanner = warning && (
+    <div className="mapping-alert">
+      <AlertTriangle size={16} />
+      <span id={WARNING_ID}>{warning}</span>
+    </div>
+  )
+  // Static text a keyboard user tabs straight past, so point the button at it. Preferred
+  // over role="alert", which announces on insertion only — the pending-order path renders
+  // this banner at page load, where that never fires.
+  const describedBy = warning ? WARNING_ID : undefined
+
   if (file) {
     return (
       <div className="slip-chosen">
+        {warningBanner}
         <div className="slip-chosen-file">
           <FileCheck2 size={18} className="slip-chosen-icon" />
           <span className="slip-chosen-name">{file.name}</span>
@@ -88,6 +104,7 @@ export default function SlipUpload({ onUpload, uploading, initialFile, warning }
           className="btn btn-primary slip-submit"
           onClick={submit}
           disabled={uploading}
+          aria-describedby={describedBy}
         >
           {uploading ? (
             <>
@@ -113,31 +130,35 @@ export default function SlipUpload({ onUpload, uploading, initialFile, warning }
   }
 
   return (
-    <button
-      type="button"
-      className={`panel-card upload-drop slip-drop${dragging ? ' is-dragging' : ''}`}
-      onClick={() => inputRef.current?.click()}
-      onDragOver={e => {
-        e.preventDefault()
-        setDragging(true)
-      }}
-      onDragLeave={() => setDragging(false)}
-      onDrop={handleDrop}
-      style={{ border: 'none', background: 'none', cursor: 'pointer' }}
-    >
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/jpeg,image/png,application/pdf"
-        onChange={e => accept(e.target.files?.[0])}
-        style={{ display: 'none' }}
-        aria-label={t('slip.uploadLabel')}
-      />
-      <div className="upload-icon">
-        <UploadCloud size={34} />
-      </div>
-      <div className="upload-label">{t('slip.uploadLabel')}</div>
-      <div className="upload-hint">{t('slip.uploadHint')}</div>
-    </button>
+    <>
+      {warningBanner}
+      <button
+        type="button"
+        className={`panel-card upload-drop slip-drop${dragging ? ' is-dragging' : ''}`}
+        onClick={() => inputRef.current?.click()}
+        onDragOver={e => {
+          e.preventDefault()
+          setDragging(true)
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={handleDrop}
+        style={{ border: 'none', background: 'none', cursor: 'pointer' }}
+        aria-describedby={describedBy}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/jpeg,image/png,application/pdf"
+          onChange={e => accept(e.target.files?.[0])}
+          style={{ display: 'none' }}
+          aria-label={t('slip.uploadLabel')}
+        />
+        <div className="upload-icon">
+          <UploadCloud size={34} />
+        </div>
+        <div className="upload-label">{t('slip.uploadLabel')}</div>
+        <div className="upload-hint">{t('slip.uploadHint')}</div>
+      </button>
+    </>
   )
 }

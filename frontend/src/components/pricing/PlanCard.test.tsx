@@ -78,6 +78,21 @@ describe('PlanCard CTA label', () => {
     expect(cta).toHaveTextContent('Renew plan')
   })
 
+  // The same tier on the other billing period replaces the subscription rather than
+  // extending it — `planChangeLoss` already reports that as a change, and the button
+  // used to disagree because it matched on the plan code alone.
+  it('says Change on the active tier when the billing period differs', () => {
+    renderCard({
+      activePlanCode: 'sub_lite',
+      activePlanCredits: 100,
+      activePlanPeriod: 'monthly',
+      period: 'annual',
+    })
+
+    const cta = screen.getByRole('button', { name: 'Change to Lite' })
+    expect(cta).toHaveTextContent('Change plan')
+  })
+
   // Bigger and smaller tiers used to get different words ("Upgrade" vs a downgrade
   // word); giving only the bigger ones positive framing read as picking a side on a
   // screen about money. Both now render the identical neutral "Change" CTA.

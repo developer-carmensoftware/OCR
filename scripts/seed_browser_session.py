@@ -42,6 +42,13 @@ sys.path.insert(0, str(ROOT / "backend"))
 DSN = os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://")
 DSN = DSN.replace(":5432/", ":6543/")  # transaction pooler — see the EMAXCONNSESSION note
 
+# The one project these scripts must never touch. Same guard as
+# scripts/email_multibu_loadtest.py — everything below is safe on dev and
+# unforgivable on prod.
+PROD_PROJECT_REF = "lhlncsjqxttcdegkqvid"
+if PROD_PROJECT_REF in DSN:
+    sys.exit(f"[abort] DATABASE_URL points at PRODUCTION ({PROD_PROJECT_REF})")
+
 # Stamped on every row this script writes, so --revoke can find its own work and
 # nothing else. A real login writes the Carmen user's UUID here.
 MARK = "seed-browser-session"

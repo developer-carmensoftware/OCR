@@ -257,10 +257,12 @@ class TenantSubscription(Base, TimestampMixin):
     """
     A tenant's monthly document subscription window (use-it-or-lose-it).
 
-    Created when an admin approves a `kind='subscription'` order. One active row
-    per tenant (Option A: renew only after the current cycle lapses). Consumption
-    and "current plan" lookups are window-based (period_start <= now < period_end),
-    so a future-dated/queued row (Option B) would Just Work without code changes.
+    Created when an admin approves a `kind='subscription'` order. One active row per
+    tenant, enforced by `uq_tenant_subscriptions_one_active` — not by blocking a purchase
+    mid-cycle (there is no such guard any more; a new purchase supersedes whatever is
+    active, see `activate_subscription()`). Consumption and "current plan" lookups are
+    window-based (period_start <= now < period_end), so a future-dated/queued row
+    (a scheduled-renewal design, if one is ever added) would Just Work without code changes.
     """
 
     __tablename__ = "tenant_subscriptions"
