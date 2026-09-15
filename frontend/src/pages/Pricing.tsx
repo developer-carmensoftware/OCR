@@ -350,6 +350,7 @@ export default function Pricing() {
                           disabled={hasOpenOrder}
                           activePlanCode={activeSub?.plan_code}
                           activePlanCredits={activeSub?.doc_allowance}
+                          activePlanPeriod={activeSub?.billing_period}
                         />
                       </m.div>
                     ))}

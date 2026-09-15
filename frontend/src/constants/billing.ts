@@ -10,6 +10,8 @@
  * do not add rendered strings here or they will be EN-only.
  */
 
+import type { TKey } from '../i18n/dict'
+
 export interface PackPresentation {
   /** Display name, e.g. 'Standard'. */
   name: string
@@ -77,21 +79,48 @@ export function perDoc(priceThb: number, docs: number): number {
  *
  * Approval calls `activate_subscription()`, which supersedes the current row and
  * opens a fresh window from now(): remaining days never carry over, and the
- * allowance becomes the new tier's. That is a loss worth confirming in two cases —
- * a smaller monthly quota, or an annual term traded for a monthly one (same quota,
- * but the prepaid months are gone, which costs more than any tier drop). An upgrade
+ * allowance becomes the new tier's. That is a loss worth confirming in three cases —
+ * a smaller monthly quota, an annual term traded for a monthly one (the prepaid
+ * months are gone, which costs more than any tier drop), or both at once. An upgrade
  * resets the period too, yet buys more quota, so warning there would be noise.
+ *
+ * Both conditions are evaluated before returning. They are independent, and an
+ * annual-to-smaller-monthly change trips both — six of the catalog's 64 transitions.
+ * Returning on the first match reported only the quota drop there, i.e. the cheaper
+ * half of what the buyer was actually giving up.
  */
 export function planChangeLoss(
   packCode: string,
   packCredits: number,
   period: string,
   sub?: { doc_allowance: number; billing_period?: string } | null
-): 'quota' | 'period' | null {
+): 'quota' | 'period' | 'both' | null {
   if (!PLAN_META[packCode] || !sub) return null
-  if (packCredits < sub.doc_allowance) return 'quota'
-  if (sub.billing_period === 'annual' && period !== 'annual') return 'period'
-  return null
+  const quota = packCredits < sub.doc_allowance
+  const term = sub.billing_period === 'annual' && period !== 'annual'
+  return quota && term ? 'both' : quota ? 'quota' : term ? 'period' : null
+}
+
+/**
+ * The buyer-facing sentence for a `planChangeLoss` result, or undefined when there is
+ * nothing to warn about.
+ *
+ * Takes `t` as an argument rather than importing it, so this stays a plain function
+ * (no hook) callable from anywhere — and so the copy itself stays in `dict.ts`, per
+ * this module's no-rendered-strings rule. Both callers reach `SlipUpload`'s single
+ * `warning` string; keeping the mapping here means a new loss kind is one edit, not
+ * one per call site.
+ */
+export function planChangeWarning(
+  t: (key: TKey, vars?: Record<string, string | number>) => string,
+  loss: ReturnType<typeof planChangeLoss>,
+  prevAllowance: number,
+  nextCredits: number
+): string | undefined {
+  if (!loss) return undefined
+  if (loss === 'period') return t('slip.changeWarnPeriod')
+  const vars = { prev: prevAllowance.toLocaleString(), next: nextCredits.toLocaleString() }
+  return t(loss === 'both' ? 'slip.changeWarnBoth' : 'slip.changeWarnQuota', vars)
 }
 
 /** Display name for any catalog code (plan, pack, or enterprise), falling back to the code. */
