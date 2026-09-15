@@ -753,7 +753,7 @@ Business flow ฉบับเต็ม: [Billing_Purchase_Flow.md](./Billing_Pur
 | GET | `/credits/packs` | catalog (subscription tiers + top-up packs) |
 | GET | `/credits/company-profile` | ข้อมูลบริษัทผู้ซื้อ (pre-fill จาก Carmen / invoice ล่าสุด) |
 | GET | `/credits/payment-info` | ข้อมูลบัญชีรับโอน |
-| POST | `/credits/orders` | สร้าง order + ออก proforma (คำนวณ proration credit + VAT 7%) |
+| POST | `/credits/orders` | สร้าง order + ออก proforma (ราคาเต็ม ไม่มี proration + VAT 7%) |
 | POST | `/credits/orders/{id}/slip` | อัปโหลดสลิปโอนเงิน |
 | POST | `/credits/orders/{id}/cancel` | ยกเลิก order ที่ยัง pending |
 | GET | `/credits/orders` / `/credits/orders/{id}` | ประวัติ order |
