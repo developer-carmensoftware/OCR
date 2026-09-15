@@ -289,7 +289,12 @@ export default function OrderHistory() {
 
         {busy ? <StripSkeleton /> : sub && <ActivePlanBanner sub={sub} />}
 
-        <PendingOrderBanner orders={openOrders} onChanged={reload} paymentInfo={paymentInfo} />
+        <PendingOrderBanner
+          orders={openOrders}
+          onChanged={reload}
+          paymentInfo={paymentInfo}
+          sub={sub}
+        />
 
         {error ? (
           <div className="pricing-error">{t('order.loadError', { error })}</div>

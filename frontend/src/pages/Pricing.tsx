@@ -156,8 +156,6 @@ export default function Pricing() {
   const [showTutorial, setShowTutorial] = useState(false)
   const [activeSub, setActiveSub] = useState<ActiveSubscription | null>(null)
   const enter = useEntrance('pricing')
-  // Annual subscribers can only buy annual mid-term (monthly would forfeit prepaid value).
-  const annualLocked = activeSub?.billing_period === 'annual'
 
   useEffect(() => {
     getPaymentInfo()
@@ -170,10 +168,6 @@ export default function Pricing() {
         .catch(() => setActiveSub(null))
     }
   }, [])
-
-  useEffect(() => {
-    if (annualLocked) setBillingPeriod('annual')
-  }, [annualLocked])
 
   const startCheckout = (pack: CreditPack, period: BillingPeriod = 'monthly') => {
     setSelected(pack)
@@ -248,6 +242,7 @@ export default function Pricing() {
               pack={selected}
               period={selectedPeriod}
               resume={resume}
+              sub={activeSub}
               onCancel={backToCatalog}
               onViewHistory={() => {
                 window.location.hash = '#/pricing/orders'
@@ -263,7 +258,12 @@ export default function Pricing() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
           >
-            <PendingOrderBanner orders={openOrders} onChanged={reload} paymentInfo={paymentInfo} />
+            <PendingOrderBanner
+              orders={openOrders}
+              onChanged={reload}
+              paymentInfo={paymentInfo}
+              sub={activeSub}
+            />
             <m.header
               className="pricing-hero"
               initial={enter ? { opacity: 0, y: 12 } : false}
@@ -322,8 +322,6 @@ export default function Pricing() {
                         type="button"
                         className={`segmented-btn${billingPeriod === 'monthly' ? ' active' : ''}`}
                         onClick={() => setBillingPeriod('monthly')}
-                        disabled={annualLocked}
-                        title={annualLocked ? t('plan.monthlyLockedNote') : undefined}
                       >
                         {t('plan.billingMonthly')}
                       </button>
@@ -336,14 +334,6 @@ export default function Pricing() {
                       />
                     </div>
                   </div>
-                  {annualLocked && (
-                    <p
-                      className="pricing-note"
-                      style={{ textAlign: 'center', margin: '-0.75rem 0 1rem' }}
-                    >
-                      {t('plan.monthlyLockedNote')}
-                    </p>
-                  )}
                   <m.div
                     className="plan-grid plan-grid--4"
                     variants={containerVariants}

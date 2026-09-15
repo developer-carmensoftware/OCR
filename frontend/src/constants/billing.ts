@@ -72,6 +72,28 @@ export function perDoc(priceThb: number, docs: number): number {
   return priceThb / docs
 }
 
+/**
+ * What an existing subscriber gives up by buying this pack now — null if nothing.
+ *
+ * Approval calls `activate_subscription()`, which supersedes the current row and
+ * opens a fresh window from now(): remaining days never carry over, and the
+ * allowance becomes the new tier's. That is a loss worth confirming in two cases —
+ * a smaller monthly quota, or an annual term traded for a monthly one (same quota,
+ * but the prepaid months are gone, which costs more than any tier drop). An upgrade
+ * resets the period too, yet buys more quota, so warning there would be noise.
+ */
+export function planChangeLoss(
+  packCode: string,
+  packCredits: number,
+  period: string,
+  sub?: { doc_allowance: number; billing_period?: string } | null
+): 'quota' | 'period' | null {
+  if (!PLAN_META[packCode] || !sub) return null
+  if (packCredits < sub.doc_allowance) return 'quota'
+  if (sub.billing_period === 'annual' && period !== 'annual') return 'period'
+  return null
+}
+
 /** Display name for any catalog code (plan, pack, or enterprise), falling back to the code. */
 export function catalogName(code: string): string {
   if (code === 'enterprise') return ENTERPRISE.name

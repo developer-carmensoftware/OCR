@@ -58,15 +58,13 @@ const en = {
   // Visible CTA text. The card's heading already names the tier, so the button
   // carries only the action; the {name} variants below become its accessible name.
   'plan.ctaChoose': 'Choose plan',
-  'plan.ctaUpgrade': 'Upgrade plan',
   'plan.ctaRenew': 'Renew plan',
-  'plan.ctaDowngrade': 'Downgrade',
+  'plan.ctaChange': 'Change plan',
   'plan.choose': 'Choose {name}',
-  'plan.upgrade': 'Upgrade to {name}',
   'plan.renew': 'Renew {name}',
-  'plan.downgrade': 'Downgrade to {name}',
-  'plan.monthlyLockedNote': 'Monthly billing is available when your annual plan ends.',
-  'plan.downgradeNote': 'Downgrading is available when your current plan ends.',
+  'plan.change': 'Change to {name}',
+  'plan.changeNote':
+    'Switching now replaces your current plan — remaining documents and days are not carried over.',
   'plan.custom': 'Custom',
   'plan.contactSales': 'Contact sales',
   'plan.enterpriseTagline': 'For hotel groups',
@@ -146,6 +144,11 @@ const en = {
   'slip.submitting': 'Submitting…',
   'slip.uploadLabel': 'Upload payment slip',
   'slip.uploadHint': 'Click or drag a file here · JPG · PNG · PDF · up to 5 MB',
+  'slip.changeTitle': 'Confirm plan change',
+  'slip.changeWarnQuota':
+    'Once this payment is approved, your monthly quota changes from {prev} to {next} documents immediately. Documents and days remaining on your current plan are not carried over.',
+  'slip.changeWarnPeriod':
+    'Once this payment is approved, your annual plan is replaced by a monthly plan immediately. The months remaining on your annual plan are not carried over.',
 
   // — Order history + status —
   'order.statusInProgress': 'In progress',
@@ -1706,15 +1709,13 @@ const th: Record<TKey, string> = {
   'plan.saveAnnualPct': 'ประหยัด {pct}%',
   'plan.billedYearly': '฿{total}/ปี',
   'plan.ctaChoose': 'เลือกแพ็กเกจ',
-  'plan.ctaUpgrade': 'อัปเกรดแพ็กเกจ',
   'plan.ctaRenew': 'ต่ออายุแพ็กเกจ',
-  'plan.ctaDowngrade': 'ลดแพ็กเกจ',
+  'plan.ctaChange': 'เปลี่ยนแพ็กเกจ',
   'plan.choose': 'เลือก {name}',
-  'plan.upgrade': 'อัปเกรดเป็น {name}',
   'plan.renew': 'ต่ออายุ {name}',
-  'plan.downgrade': 'ลดแพ็กเกจเป็น {name}',
-  'plan.monthlyLockedNote': 'การชำระแบบรายเดือนจะเลือกได้เมื่อแพ็กเกจรายปีของคุณหมดอายุ',
-  'plan.downgradeNote': 'การลดแพ็กเกจจะเลือกได้เมื่อแพ็กเกจปัจจุบันของคุณหมดอายุ',
+  'plan.change': 'เปลี่ยนเป็น {name}',
+  'plan.changeNote':
+    'การเปลี่ยนตอนนี้จะแทนที่แพ็กเกจปัจจุบัน — เอกสารและวันที่เหลืออยู่จะไม่ถูกยกยอด',
   'plan.custom': 'กำหนดเอง',
   'plan.contactSales': 'ติดต่อฝ่ายขาย',
   'plan.enterpriseTagline': 'สำหรับเครือโรงแรม',
@@ -1792,6 +1793,11 @@ const th: Record<TKey, string> = {
   'slip.submitting': 'กำลังส่ง…',
   'slip.uploadLabel': 'อัปโหลดสลิปการชำระเงิน',
   'slip.uploadHint': 'คลิกหรือลากไฟล์มาวางที่นี่ · JPG · PNG · PDF · ไม่เกิน 5 MB',
+  'slip.changeTitle': 'ยืนยันการเปลี่ยนแพ็กเกจ',
+  'slip.changeWarnQuota':
+    'ทันทีที่การชำระเงินได้รับอนุมัติ โควตาต่อเดือนจะเปลี่ยนจาก {prev} เป็น {next} เอกสารทันที เอกสารและวันที่เหลือของแพ็กเกจปัจจุบันจะไม่ถูกยกยอด',
+  'slip.changeWarnPeriod':
+    'ทันทีที่การชำระเงินได้รับอนุมัติ แพ็กเกจรายปีของคุณจะถูกแทนที่ด้วยแพ็กเกจรายเดือนทันที เดือนที่เหลือของแพ็กเกจรายปีจะไม่ถูกยกยอด',
 
   // — Order history + status —
   'order.statusInProgress': 'กำลังดำเนินการ',
