@@ -158,7 +158,6 @@ const en = {
 
   // — Order history + status —
   'order.statusInProgress': 'In progress',
-  'order.statusPaid': 'Credited',
   'order.statusComplete': 'Complete',
   'order.statusVoid': 'Void',
   'order.statusOnHold': 'On hold',
@@ -177,7 +176,7 @@ const en = {
   'order.cancel': 'Cancel order',
   'order.cancelConfirm': 'Cancel this order? You can place it again afterwards.',
   'order.cancelledToast': 'Order cancelled',
-  'order.approvedToast': 'Order approved — credits added to your balance',
+  'order.approvedToast': 'Order approved',
   'order.rejectedToast': 'Your order was rejected — check the details',
   'order.cancelReviewConfirm':
     "Your slip is under review. If you've already transferred money, please contact our team. Cancel this order?",
@@ -1808,7 +1807,6 @@ const th: Record<TKey, string> = {
 
   // — Order history + status —
   'order.statusInProgress': 'กำลังดำเนินการ',
-  'order.statusPaid': 'เติมเครดิตแล้ว',
   'order.statusComplete': 'เสร็จสมบูรณ์',
   'order.statusVoid': 'ยกเลิก',
   'order.statusOnHold': 'รอติดต่อยืนยัน',
@@ -1826,7 +1824,7 @@ const th: Record<TKey, string> = {
   'order.cancel': 'ยกเลิกคำสั่งซื้อ',
   'order.cancelConfirm': 'ยกเลิกคำสั่งซื้อนี้ใช่ไหม? คุณสามารถสั่งซื้อใหม่ได้ภายหลัง',
   'order.cancelledToast': 'ยกเลิกคำสั่งซื้อแล้ว',
-  'order.approvedToast': 'คำสั่งซื้อได้รับการอนุมัติ — เพิ่มเครดิตเข้ายอดแล้ว',
+  'order.approvedToast': 'คำสั่งซื้อได้รับการอนุมัติแล้ว',
   'order.rejectedToast': 'คำสั่งซื้อถูกปฏิเสธ — โปรดตรวจสอบรายละเอียด',
   'order.cancelReviewConfirm':
     'สลิปของคุณอยู่ระหว่างตรวจสอบ หากโอนเงินแล้ว กรุณาติดต่อทีมงาน ต้องการยกเลิกคำสั่งซื้อนี้ไหม?',
