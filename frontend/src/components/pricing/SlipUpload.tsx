@@ -7,6 +7,7 @@ import { MAX_FILE_SIZE_MB } from '../../lib/fileValidation'
 
 const ACCEPTED = ['image/jpeg', 'image/png', 'application/pdf']
 const MAX_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+const WARNING_ID = 'slip-plan-change-warning'
 
 interface Props {
   onUpload: (file: File) => Promise<void>
@@ -72,9 +73,13 @@ export default function SlipUpload({ onUpload, uploading, initialFile, warning }
   const warningBanner = warning && (
     <div className="mapping-alert">
       <AlertTriangle size={16} />
-      <span>{warning}</span>
+      <span id={WARNING_ID}>{warning}</span>
     </div>
   )
+  // Static text a keyboard user tabs straight past, so point the button at it. Preferred
+  // over role="alert", which announces on insertion only — the pending-order path renders
+  // this banner at page load, where that never fires.
+  const describedBy = warning ? WARNING_ID : undefined
 
   if (file) {
     return (
@@ -99,6 +104,7 @@ export default function SlipUpload({ onUpload, uploading, initialFile, warning }
           className="btn btn-primary slip-submit"
           onClick={submit}
           disabled={uploading}
+          aria-describedby={describedBy}
         >
           {uploading ? (
             <>
@@ -137,6 +143,7 @@ export default function SlipUpload({ onUpload, uploading, initialFile, warning }
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
         style={{ border: 'none', background: 'none', cursor: 'pointer' }}
+        aria-describedby={describedBy}
       >
         <input
           ref={inputRef}

@@ -145,12 +145,16 @@ const en = {
   'slip.uploadLabel': 'Upload payment slip',
   'slip.uploadHint': 'Click or drag a file here · JPG · PNG · PDF · up to 5 MB',
   'slip.changeTitle': 'Confirm plan change',
+  // All three share one shape — condition, loss, carry-over rule — so a buyer who reads
+  // one recognises the others. "When approved" is load-bearing: the plan changes when an
+  // admin approves the slip, not at upload, and a buyer told "immediately" reloads, sees
+  // the old plan, and reports a bug.
   'slip.changeWarnQuota':
-    'Once this payment is approved, your monthly quota changes from {prev} to {next} documents immediately. Documents and days remaining on your current plan are not carried over.',
+    'When approved: your monthly quota drops from {prev} to {next} documents. Unused documents and days do not carry over.',
   'slip.changeWarnPeriod':
-    'Once this payment is approved, your annual plan is replaced by a monthly plan immediately. The months remaining on your annual plan are not carried over.',
+    'When approved: your annual plan becomes a monthly plan. The months you already paid for do not carry over.',
   'slip.changeWarnBoth':
-    'Once this payment is approved, your annual plan is replaced by a monthly plan immediately, and your monthly quota changes from {prev} to {next} documents. The months you have already paid for, along with any documents and days remaining, are not carried over.',
+    'When approved: your annual plan becomes monthly and your quota drops from {prev} to {next} documents. Prepaid months and unused days do not carry over.',
 
   // — Order history + status —
   'order.statusInProgress': 'In progress',
@@ -1797,11 +1801,11 @@ const th: Record<TKey, string> = {
   'slip.uploadHint': 'คลิกหรือลากไฟล์มาวางที่นี่ · JPG · PNG · PDF · ไม่เกิน 5 MB',
   'slip.changeTitle': 'ยืนยันการเปลี่ยนแพ็กเกจ',
   'slip.changeWarnQuota':
-    'ทันทีที่การชำระเงินได้รับอนุมัติ โควตาต่อเดือนจะเปลี่ยนจาก {prev} เป็น {next} เอกสารทันที เอกสารและวันที่เหลือของแพ็กเกจปัจจุบันจะไม่ถูกยกยอด',
+    'เมื่อได้รับอนุมัติ: โควตาต่อเดือนจะลดจาก {prev} เป็น {next} เอกสาร เอกสารและวันที่เหลือจะไม่ถูกยกยอด',
   'slip.changeWarnPeriod':
-    'ทันทีที่การชำระเงินได้รับอนุมัติ แพ็กเกจรายปีของคุณจะถูกแทนที่ด้วยแพ็กเกจรายเดือนทันที เดือนที่เหลือของแพ็กเกจรายปีจะไม่ถูกยกยอด',
+    'เมื่อได้รับอนุมัติ: แพ็กเกจรายปีจะกลายเป็นรายเดือน เดือนที่ชำระล่วงหน้าไว้จะไม่ถูกยกยอด',
   'slip.changeWarnBoth':
-    'ทันทีที่การชำระเงินได้รับอนุมัติ แพ็กเกจรายปีของคุณจะถูกแทนที่ด้วยแพ็กเกจรายเดือนทันที และโควตาต่อเดือนจะเปลี่ยนจาก {prev} เป็น {next} เอกสาร เดือนที่คุณชำระล่วงหน้าไว้ รวมถึงเอกสารและวันที่เหลือของแพ็กเกจปัจจุบัน จะไม่ถูกยกยอด',
+    'เมื่อได้รับอนุมัติ: แพ็กเกจรายปีจะกลายเป็นรายเดือน และโควตาจะลดจาก {prev} เป็น {next} เอกสาร เดือนที่ชำระล่วงหน้าและวันที่เหลือจะไม่ถูกยกยอด',
 
   // — Order history + status —
   'order.statusInProgress': 'กำลังดำเนินการ',
