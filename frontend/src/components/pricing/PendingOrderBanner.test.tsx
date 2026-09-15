@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { LanguageProvider } from '../../i18n/LanguageContext'
 import PendingOrderBanner from './PendingOrderBanner'
 import type { CreditOrder } from '../../lib/api/credits'
@@ -91,7 +91,10 @@ describe('PendingOrderBanner plan-change confirmation', () => {
   it('warns with the real numbers when the order shrinks the quota', async () => {
     fireEvent.click(renderBanner(order('sub_lite', 100, 'monthly'), sub(1000, 'monthly')))
 
-    expect(await screen.findByText(/changes from 1,000 to 100 documents/)).toBeTruthy()
+    // The same text also stands as a banner before the dialog ever opens (see
+    // SlipUpload), so this asserts the dialog specifically rather than the text.
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/changes from 1,000 to 100 documents/)).toBeTruthy()
     expect(uploadSlip).not.toHaveBeenCalled()
   })
 
@@ -99,7 +102,8 @@ describe('PendingOrderBanner plan-change confirmation', () => {
     // Quota is identical, so a credits-only check would wave this through.
     fireEvent.click(renderBanner(order('sub_growth', 1000, 'monthly'), sub(1000, 'annual')))
 
-    expect(await screen.findByText(/annual plan is replaced by a monthly plan/)).toBeTruthy()
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/annual plan is replaced by a monthly plan/)).toBeTruthy()
     expect(uploadSlip).not.toHaveBeenCalled()
   })
 
