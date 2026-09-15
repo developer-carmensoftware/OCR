@@ -47,7 +47,9 @@ The tenant pays via bank transfer using the details on the proforma, then upload
 An admin reviews the uploaded slip and either approves or rejects the order.
 
 **On approval:**
-- A tax invoice is issued.
+- Credits are granted (top-up) or a subscription is activated — no further document is issued
+  by this app; the proforma from Step 3 remains the only one, and Carmen ERP is the system of
+  record for the fiscal tax invoice.
 - If the tenant had an active plan, it is marked as **superseded**.
 - A new subscription is activated with a fresh period starting from the approval date.
 - The document usage counter resets to zero.
@@ -131,5 +133,5 @@ Every purchase leaves the following records:
 - **credit_orders** — the order, with `amount_thb` (gross paid, always the full list price — see
   No Proration above), `proration_credit_thb` (always `0.00`), `billing_period`, timestamps for
   creation/slip/approval.
-- **billing_documents** — proforma (at order creation) and tax invoice (at approval), each with full buyer/seller snapshots and line-item breakdown.
+- **billing_documents** — proforma (at order creation), with full buyer/seller snapshots and line-item breakdown. This app never issues a tax invoice; Carmen ERP is the system of record for that document.
 - **tenant_subscriptions** — the old plan row with `status = superseded`, the new one with `status = active`. Both retain `source_order_id` linking back to the order.
