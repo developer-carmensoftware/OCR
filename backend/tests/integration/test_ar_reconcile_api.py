@@ -148,7 +148,7 @@ def test_preview_renders_every_template_tag():
 # ── settings ──────────────────────────────────────────────────────────────────
 
 
-def test_get_settings_of_a_bank_never_configured_prefills_and_lists_blockers():
+def test_get_settings_of_a_bank_never_configured_prefills():
     mock_db = make_mock_db()
     mock_db.execute.return_value.scalars.return_value.first.return_value = None
     with make_test_client(mock_db) as client:
@@ -158,16 +158,6 @@ def test_get_settings_of_a_bank_never_configured_prefills_and_lists_blockers():
 
         assert body["enabled"] is False
         assert body["post_type"] == "Detail"
-        assert {b["key"] for b in body["blockers"]} == {
-            "bank_supported",
-            "feature_enabled",
-            "email_rule",
-            "mapping_complete",
-            "clearing_account",
-            "auto_post",
-        }
-        # KBANK is the one bank Phase 1 can read, so that link is already green.
-        assert next(b for b in body["blockers"] if b["key"] == "bank_supported")["ok"] is True
 
 
 def test_enabling_an_unsupported_bank_is_refused_with_the_supported_list():

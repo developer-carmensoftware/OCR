@@ -1,14 +1,6 @@
 """DB layer for Detailed Credit Card AR Reconciliation settings and mappings.
 
-Two responsibilities: read/write one (tenant, bank) configuration with both of its
-mapping sets, and answer whether that configuration would actually do anything if a
-settlement report arrived right now.
-
-That second one exists because the feature has four independent switches — the module
-gate, this row's `enabled`, an email rule tagged with the right document type, and a
-complete mapping — and all four fail *silently*. A BU with three of them right sees the
-same thing as a BU with none: nothing happens. `readiness()` is what lets the settings
-screen say which link is open instead of leaving them to send themselves test mail.
+Read/write one (tenant, bank) configuration with both of its mapping sets.
 """
 
 from __future__ import annotations
@@ -20,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import DocType, PostType
 from app.models.catalog import Bank
-from app.models.email_automation import EmailDocument, EmailIngestSettings
+from app.models.email_automation import EmailDocument
 from app.models.orm import (
     ARReconcileMapping,
     ARReconcileSetting,
@@ -29,7 +21,6 @@ from app.models.orm import (
 )
 from app.models.schemas import (
     ARBankOption,
-    ARBlocker,
     ARMappingItem,
     ARPreviewOut,
     ARPreviewRow,
@@ -239,7 +230,6 @@ async def get_settings(db: AsyncSession, tenant_id: str, bank_code: str) -> ARSe
             debit_dept_code=prefill[0] if prefill else None,
             debit_account_code=prefill[1] if prefill else None,
             mappings={pt: [] for pt in PostType.ALL},
-            blockers=await readiness(db, tenant_id, bank_code, setting=None),
             banks=banks,
         )
 
@@ -252,7 +242,6 @@ async def get_settings(db: AsyncSession, tenant_id: str, bank_code: str) -> ARSe
         debit_dept_code=row.debit_dept_code,
         debit_account_code=row.debit_account_code,
         mappings=items,
-        blockers=await readiness(db, tenant_id, bank_code, setting=row, mappings=items),
         banks=banks,
     )
 
@@ -376,97 +365,3 @@ async def jv_for_document(
         post_type=setting.post_type,
         control_missing=control_leg_missing(rows),
     )
-
-
-async def readiness(
-    db: AsyncSession,
-    tenant_id: str,
-    bank_code: str,
-    *,
-    setting: ARReconcileSetting | None,
-    mappings: dict[str, list[ARMappingItem]] | None = None,
-) -> list[ARBlocker]:
-    """The chain between an arriving email and a posted JV, link by link.
-
-    Deliberately does NOT include the module gate: `assert_module_enabled` fails open on
-    infra errors and is an operator concern, not something the BU can act on from this
-    screen. Everything listed here is something the person reading it can fix.
-    """
-    out: list[ARBlocker] = []
-
-    out.append(
-        ARBlocker(
-            key="bank_supported",
-            ok=bank_code in SUPPORTED_BANKS,
-            detail=None if bank_code in SUPPORTED_BANKS else "Phase 1 reads KBANK only",
-        )
-    )
-    out.append(ARBlocker(key="feature_enabled", ok=bool(setting and setting.enabled)))
-
-    rule = await _matching_rule(db, tenant_id, bank_code)
-    out.append(
-        ARBlocker(
-            key="email_rule",
-            ok=rule is not None,
-            detail=None if rule else "No email rule forwards settlement reports for this bank",
-        )
-    )
-
-    post_type = setting.post_type if setting else PostType.DETAIL
-    items = (mappings or {}).get(post_type, [])
-    active = [i for i in items if i.is_active]
-    complete = [i for i in active if i.credit_dept_code and i.credit_account_code]
-    out.append(
-        ARBlocker(
-            key="mapping_complete",
-            ok=bool(complete) and len(complete) == len(active),
-            # No rows yet (a bank that has never been saved) is not "0 of 0 mapped" —
-            # that reads as broken rather than as "nothing to map yet".
-            detail=(
-                "No report has arrived yet to map"
-                if not active
-                else f"{len(complete)} of {len(active)} mapped"
-            ),
-        )
-    )
-    out.append(
-        ARBlocker(
-            key="clearing_account",
-            ok=bool(setting and setting.debit_dept_code and setting.debit_account_code),
-        )
-    )
-
-    auto_post = await _auto_post(db, tenant_id)
-    out.append(
-        ARBlocker(
-            key="auto_post",
-            ok=auto_post,
-            detail="Documents wait for review" if not auto_post else None,
-        )
-    )
-    return out
-
-
-async def _email_settings(db: AsyncSession, tenant_id: str) -> EmailIngestSettings | None:
-    res = await db.execute(
-        select(EmailIngestSettings).where(EmailIngestSettings.tenant_id == tenant_id)
-    )
-    return res.scalars().first()
-
-
-async def _matching_rule(db: AsyncSession, tenant_id: str, bank_code: str) -> dict | None:
-    """An active ingest rule that would route this bank's settlement report here."""
-    row = await _email_settings(db, tenant_id)
-    for rule in (row.rules if row else None) or []:
-        if not isinstance(rule, dict) or not rule.get("is_active", True):
-            continue
-        if rule.get("doc_type") != DocType.AR_RECONCILE:
-            continue
-        if (rule.get("bank_code") or "").upper() == bank_code.upper():
-            return rule
-    return None
-
-
-async def _auto_post(db: AsyncSession, tenant_id: str) -> bool:
-    row = await _email_settings(db, tenant_id)
-    return bool(row and row.auto_post)

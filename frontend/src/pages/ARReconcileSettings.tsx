@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, CircleDot, Loader2, Scale } from 'lucide-react'
+import { CheckCircle2, Loader2, Scale } from 'lucide-react'
 import '../styles/pages/ar-reconcile.css'
 import ARJvPreview from '../components/ar-reconcile/ARJvPreview'
 import ARMappingTable from '../components/ar-reconcile/ARMappingTable'
@@ -33,16 +33,6 @@ import { allowedAccountsForDept } from '../lib/deptAccounts'
 const QUEUE = '#/CreditCardOCR'
 
 const TAGS = ['{Settlement_Date}', '{Tax_Invoice_No}', '{Bank_Name}'] as const
-
-/** What each readiness link means, in the order the pipeline meets them. */
-const BLOCKER_KEY = {
-  bank_supported: 'ar.blocker.bankSupported',
-  feature_enabled: 'ar.blocker.featureEnabled',
-  email_rule: 'ar.blocker.emailRule',
-  mapping_complete: 'ar.blocker.mappingComplete',
-  clearing_account: 'ar.blocker.clearingAccount',
-  auto_post: 'ar.blocker.autoPost',
-} as const
 
 export default function ARReconcileSettings() {
   const ctrl = useARReconcile()
@@ -107,9 +97,6 @@ export default function ARReconcileSettings() {
     !!ctrl.debitDefault &&
     (ctrl.debitDefault.dept !== ctrl.debit.dept || ctrl.debitDefault.acc !== ctrl.debit.acc)
 
-  const ready = ctrl.blockers.filter(b => b.ok).length
-  const allReady = ctrl.blockers.length > 0 && ready === ctrl.blockers.length
-
   return (
     <div className="app-container">
       {header}
@@ -163,32 +150,6 @@ export default function ARReconcileSettings() {
         {/* Said only when it is true. "Off costs nothing" under a switch that is on is a
             sentence about a state the reader is not in. */}
         {!ctrl.enabled && <p className="ar-hint ar-hint-warn">{t('ar.enabledOffHint')}</p>}
-
-        {ctrl.blockers.length > 0 && (
-          // Six links that each fail quietly. Open while any is missing, because the list
-          // is the only place the reason is written; folded to its count once they are all
-          // green, because then it is a fact rather than a task.
-          <details className="ar-readiness" open={!allReady}>
-            <summary>
-              {allReady ? <CheckCircle2 size={14} /> : <CircleDot size={14} />}
-              <span>{t('ar.readyOf', { done: ready, total: ctrl.blockers.length })}</span>
-            </summary>
-            <ul className="ar-chain">
-              {ctrl.blockers.map(b => (
-                <li key={b.key} className={b.ok ? 'ok' : 'todo'}>
-                  {b.ok ? <CheckCircle2 size={14} /> : <CircleDot size={14} />}
-                  <span className="ar-chain-label">
-                    {b.key in BLOCKER_KEY
-                      ? t(BLOCKER_KEY[b.key as keyof typeof BLOCKER_KEY])
-                      : b.key}
-                  </span>
-                  {b.detail && <span className="ar-chain-detail">{b.detail}</span>}
-                </li>
-              ))}
-            </ul>
-            <p className="ar-chain-note">{t('ar.readyNote')}</p>
-          </details>
-        )}
 
         <div className="ar-grid">
           <div className="ar-col">

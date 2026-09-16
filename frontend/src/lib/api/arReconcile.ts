@@ -14,14 +14,6 @@ export interface ARMappingItem {
   is_active: boolean
 }
 
-/** One link in the chain between an arriving email and a posted JV. Every one of them
- *  fails silently on its own, which is why the screen states all of them. */
-export interface ARBlocker {
-  key: string
-  ok: boolean
-  detail?: string | null
-}
-
 /** One row of the bank selector, as the server lists it. */
 export interface ARBankOption {
   code: string
@@ -42,7 +34,6 @@ export interface ARSettings {
   /** Keyed by post type. Both sets travel together so saving from one view cannot
    *  delete the other's rows. */
   mappings: Record<string, ARMappingItem[]>
-  blockers: ARBlocker[]
   /** The selector's options. The screen keeps no bank list of its own — names come from
    *  the `banks` table and `supported` from the server's own SUPPORTED_BANKS. */
   banks: ARBankOption[]

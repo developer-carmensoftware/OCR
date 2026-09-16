@@ -7,7 +7,6 @@ import {
   POST_TYPES,
   saveARSettings,
   type ARBankOption,
-  type ARBlocker,
   type ARMappingItem,
   type ARPreview,
   type PostType,
@@ -106,7 +105,6 @@ export interface ARReconcileHook {
   preview: ARPreview | null
   previewLoading: boolean
   refreshPreview: () => void
-  blockers: ARBlocker[]
   save: () => Promise<void>
   /** Throw the form away and take the server's answer again. Re-uses `load`, which
    *  re-baselines the fingerprint — so there is no second place that clears `dirty`. */
@@ -135,7 +133,6 @@ export function useARReconcile(initialBank = 'KBANK'): ARReconcileHook {
   const [debit, setDebit] = useState<FieldMapping>({ dept: '', acc: '' })
   const [debitDefault, setDebitDefault] = useState<FieldMapping | null>(null)
   const [sets, setSets] = useState<Record<string, ARMappingItem[]>>({ Detail: [], Summary: [] })
-  const [blockers, setBlockers] = useState<ARBlocker[]>([])
   const [banks, setBanks] = useState<ARBankOption[]>([])
   const [suggestions, setSuggestions] = useState<Record<string, Suggestion | null>>({})
   const [suggestLoading, setSuggestLoading] = useState(false)
@@ -165,7 +162,6 @@ export function useARReconcile(initialBank = 'KBANK'): ARReconcileHook {
       const d = { dept: s.debit_dept_code || '', acc: s.debit_account_code || '' }
       setDebit(d)
       setDebitDefault(d.dept || d.acc ? d : null)
-      setBlockers(s.blockers || [])
       setBanks(s.banks || [])
 
       const detail = s.mappings?.Detail || []
@@ -401,7 +397,6 @@ export function useARReconcile(initialBank = 'KBANK'): ARReconcileHook {
     preview,
     previewLoading,
     refreshPreview,
-    blockers,
     save,
     reset: () => void load(bankCode, true),
     masterAccounts,

@@ -1717,18 +1717,6 @@ const en = {
   'ar.enabled': 'Reconcile this bank',
   'ar.enabledOffHint': 'Switched off — arriving reports are handed back unread and cost nothing.',
 
-  // Readiness. Collapsed to its count once every link is green; open by default while
-  // anything is still missing, because that list is the only place the reason is written.
-  'ar.readyOf': '{done} of {total} ready',
-  'ar.readyNote':
-    'Every one of these fails quietly on its own. All of them have to be green before a settlement report posts without a person.',
-  'ar.blocker.bankSupported': 'Bank is readable',
-  'ar.blocker.featureEnabled': 'Feature switched on',
-  'ar.blocker.emailRule': 'Email rule tagged for settlement reports',
-  'ar.blocker.mappingComplete': 'Every payment type mapped',
-  'ar.blocker.clearingAccount': 'Clearing account chosen',
-  'ar.blocker.autoPost': 'Posts without review',
-
   // The three controls the review dialog's AR reconciliation settings link sends people here for.
   'ar.postingRules': 'Posting rules',
   'ar.postType': 'Post type',
@@ -3329,16 +3317,6 @@ const th: Record<TKey, string> = {
   'ar.phase2': 'Phase 2',
   'ar.enabled': 'กระทบยอดธนาคารนี้',
   'ar.enabledOffHint': 'ปิดอยู่ — รายงานที่ส่งเข้ามาจะถูกส่งคืนโดยไม่อ่านและไม่มีค่าใช้จ่าย',
-
-  'ar.readyOf': 'พร้อมแล้ว {done} จาก {total}',
-  'ar.readyNote':
-    'แต่ละข้อไม่ผ่านได้เงียบ ๆ ทั้งหมดต้องเขียวก่อน รายงาน settlement จึงจะโพสต์ได้เองโดยไม่ต้องมีคนตรวจ',
-  'ar.blocker.bankSupported': 'อ่านเอกสารของธนาคารนี้ได้',
-  'ar.blocker.featureEnabled': 'เปิดใช้งานฟีเจอร์แล้ว',
-  'ar.blocker.emailRule': 'มีกฎอีเมลที่ระบุว่าเป็นรายงาน settlement',
-  'ar.blocker.mappingComplete': 'ผูกบัญชีครบทุกประเภทบัตร',
-  'ar.blocker.clearingAccount': 'เลือกบัญชีฝั่งเดบิตแล้ว',
-  'ar.blocker.autoPost': 'โพสต์โดยไม่ต้องตรวจ',
 
   'ar.postingRules': 'กติกาการลงบัญชี',
   'ar.postType': 'รูปแบบการลง',

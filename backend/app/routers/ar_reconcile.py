@@ -1,6 +1,6 @@
 """Detailed Credit Card AR Reconciliation — settings API.
 
-  GET   /api/v1/ar-reconcile/settings?bank_code=  → config, both mapping sets, readiness
+  GET   /api/v1/ar-reconcile/settings?bank_code=  → config, both mapping sets
   PUT   /api/v1/ar-reconcile/settings             → upsert (FULL replace of both sets)
   POST  /api/v1/ar-reconcile/preview              → the JV this configuration would build
 

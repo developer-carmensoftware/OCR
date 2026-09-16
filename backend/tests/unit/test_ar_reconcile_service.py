@@ -193,8 +193,8 @@ def test_mappings_dict_drops_inactive_rows_rather_than_passing_them_through_blan
 @pytest.mark.asyncio
 async def test_get_settings_returns_both_mapping_sets_for_a_configured_bank():
     rows = [_mapping("VS"), _mapping("VS INTER PREM", post_type=PostType.DETAIL)]
-    # _get_setting, bank_options, _get_mappings, then readiness' two email-settings reads.
-    db = _db([_setting()], [], rows, [], [])
+    # _get_setting, bank_options, _get_mappings.
+    db = _db([_setting()], [], rows)
 
     out = await svc.get_settings(db, TENANT, "KBANK")
 
@@ -210,9 +210,8 @@ async def test_get_settings_prefills_the_clearing_account_from_the_credit_card_m
     disagree give an entry that balances and never zeroes the control account."""
     cfg = SimpleNamespace(id=3)
     entry = SimpleNamespace(dept_code="GEN", acc_code="1021000")
-    # _get_setting (none) -> bank_options -> BUAccountingConfig -> its 'net' entry
-    # -> readiness' two reads.
-    db = _db([], [], [cfg], [entry], [], [])
+    # _get_setting (none) -> bank_options -> BUAccountingConfig -> its 'net' entry.
+    db = _db([], [], [cfg], [entry])
 
     out = await svc.get_settings(db, TENANT, "KBANK")
 
@@ -222,9 +221,7 @@ async def test_get_settings_prefills_the_clearing_account_from_the_credit_card_m
 
 @pytest.mark.asyncio
 async def test_a_half_filled_credit_card_mapping_prefills_nothing():
-    db = _db(
-        [], [], [SimpleNamespace(id=3)], [SimpleNamespace(dept_code="GEN", acc_code=None)], [], []
-    )
+    db = _db([], [], [SimpleNamespace(id=3)], [SimpleNamespace(dept_code="GEN", acc_code=None)])
 
     out = await svc.get_settings(db, TENANT, "KBANK")
 
@@ -274,116 +271,6 @@ async def test_an_empty_payment_type_code_is_not_stored():
         ),
     )
     assert db.add.call_args_list == []
-
-
-# ── readiness ─────────────────────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_readiness_finds_the_rule_that_would_route_this_bank():
-    rule = {"bank_code": "kbank", "doc_type": "ar_reconcile", "is_active": True}
-    settings_row = SimpleNamespace(rules=[rule], auto_post=True)
-    db = _db([settings_row], [settings_row])
-
-    out = await svc.readiness(
-        db,
-        TENANT,
-        "KBANK",
-        setting=_setting(),
-        mappings={
-            PostType.SUMMARY: [
-                ARMappingItem(payment_type_code="VS", credit_dept_code="G", credit_account_code="1")
-            ]
-        },
-    )
-    by_key = {b.key: b for b in out}
-
-    assert by_key["email_rule"].ok is True, "bank_code matched case-insensitively"
-    assert by_key["feature_enabled"].ok is True
-    assert by_key["mapping_complete"].ok is True
-    assert by_key["auto_post"].ok is True
-    assert by_key["bank_supported"].ok is True
-
-
-@pytest.mark.asyncio
-async def test_a_rule_for_the_other_document_type_does_not_count():
-    """The commission-invoice rule and the settlement-report rule can name the same bank.
-    Only one of them routes a settlement report."""
-    settings_row = SimpleNamespace(
-        rules=[{"bank_code": "KBANK", "doc_type": "fee_invoice", "is_active": True}],
-        auto_post=False,
-    )
-    db = _db([settings_row], [settings_row])
-
-    out = await svc.readiness(db, TENANT, "KBANK", setting=_setting(), mappings={})
-    by_key = {b.key: b for b in out}
-
-    assert by_key["email_rule"].ok is False
-    assert by_key["auto_post"].ok is False
-
-
-@pytest.mark.asyncio
-async def test_an_inactive_rule_does_not_count_either():
-    settings_row = SimpleNamespace(
-        rules=[{"bank_code": "KBANK", "doc_type": "ar_reconcile", "is_active": False}],
-        auto_post=False,
-    )
-    db = _db([settings_row], [settings_row])
-
-    out = await svc.readiness(db, TENANT, "KBANK", setting=_setting(), mappings={})
-    assert {b.key: b.ok for b in out}["email_rule"] is False
-
-
-@pytest.mark.asyncio
-async def test_an_unsupported_bank_says_so_on_the_chain():
-    db = _db([None], [None])
-    out = await svc.readiness(db, TENANT, "SCB", setting=None, mappings={})
-    by_key = {b.key: b for b in out}
-
-    assert by_key["bank_supported"].ok is False
-    assert "KBANK" in (by_key["bank_supported"].detail or "")
-    assert by_key["feature_enabled"].ok is False
-    assert by_key["clearing_account"].ok is False
-
-
-@pytest.mark.asyncio
-async def test_a_partly_mapped_table_is_not_complete():
-    settings_row = SimpleNamespace(rules=[], auto_post=False)
-    db = _db([settings_row], [settings_row])
-
-    out = await svc.readiness(
-        db,
-        TENANT,
-        "KBANK",
-        setting=_setting(),
-        mappings={
-            PostType.SUMMARY: [
-                ARMappingItem(
-                    payment_type_code="VS", credit_dept_code="G", credit_account_code="1"
-                ),
-                ARMappingItem(payment_type_code="MC"),
-            ]
-        },
-    )
-    by_key = {b.key: b for b in out}
-
-    assert by_key["mapping_complete"].ok is False
-    assert by_key["mapping_complete"].detail == "1 of 2 mapped"
-
-
-@pytest.mark.asyncio
-async def test_a_bank_with_no_rows_yet_is_not_told_zero_of_zero():
-    """A freshly enabled bank has zero mapping rows until its first report parks for
-    review — "0 of 0 mapped" would read as broken rather than as "nothing has arrived
-    yet"."""
-    settings_row = SimpleNamespace(rules=[], auto_post=False)
-    db = _db([settings_row], [settings_row])
-
-    out = await svc.readiness(db, TENANT, "KBANK", setting=_setting(), mappings={})
-    by_key = {b.key: b for b in out}
-
-    assert by_key["mapping_complete"].ok is False
-    assert by_key["mapping_complete"].detail == "No report has arrived yet to map"
 
 
 # ── The bank selector (FRD §3.1 + Out-of-Scope) ───────────────────────────────

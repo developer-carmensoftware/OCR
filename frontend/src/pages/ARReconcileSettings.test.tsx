@@ -52,14 +52,6 @@ function settings(over: Partial<ARSettings> = {}): ARSettings {
         },
       ],
     },
-    blockers: [
-      { key: 'bank_supported', ok: true },
-      { key: 'feature_enabled', ok: true },
-      { key: 'email_rule', ok: false, detail: 'No email rule forwards settlement reports' },
-      { key: 'mapping_complete', ok: true, detail: '1 of 1 mapped' },
-      { key: 'clearing_account', ok: true },
-      { key: 'auto_post', ok: false, detail: 'Documents wait for review' },
-    ],
     // FRD §3.1's selector: KBANK readable now, the other three listed as Phase 2.
     banks: [
       { code: 'KBANK', name: 'Kasikornbank', supported: true },
@@ -168,16 +160,6 @@ describe('AR reconciliation settings', () => {
     ])
     expect(options[0]).toBeEnabled()
     expect(options[1]).toBeDisabled()
-  })
-
-  it('states the whole readiness chain, not just what is wrong', async () => {
-    renderPage()
-
-    await waitFor(() => expect(screen.getByText('4 of 6 ready')).toBeInTheDocument())
-    // Six links, and the two that are not met are the ones a person can act on.
-    expect(screen.getByText('Email rule tagged for settlement reports')).toBeInTheDocument()
-    expect(screen.getByText('Posts without review')).toBeInTheDocument()
-    expect(screen.getByText('Bank is readable')).toBeInTheDocument()
   })
 
   it('shows what switching post type would cost before it is switched', async () => {

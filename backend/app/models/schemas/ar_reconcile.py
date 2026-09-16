@@ -50,19 +50,6 @@ class ARSettingsIn(BaseModel):
         return v
 
 
-class ARBlocker(BaseModel):
-    """One link in the chain between an arriving email and a posted JV.
-
-    Four switches have to line up and every one of them fails silently on its own, so
-    the settings screen states the whole chain rather than leaving the BU to discover
-    which one is off by sending themselves test mail.
-    """
-
-    key: str
-    ok: bool
-    detail: str | None = None
-
-
 class ARBankOption(BaseModel):
     """One row of the FRD §3.1 bank selector.
 
@@ -78,7 +65,6 @@ class ARBankOption(BaseModel):
 
 
 class ARSettingsOut(ARSettingsIn):
-    blockers: list[ARBlocker] = Field(default_factory=list)
     # The selector's options, so the screen holds no bank list of its own.
     banks: list[ARBankOption] = Field(default_factory=list)
 
