@@ -199,16 +199,19 @@ def test_save_rejects_a_mapping_set_under_an_unknown_post_type():
 # ── sample payment types ──────────────────────────────────────────────────────
 
 
-def test_sample_payment_types_seed_the_table_before_any_document_arrives():
+def test_no_parked_document_seeds_no_rows_at_all():
     """No document has ever parked for this tenant/bank (`make_mock_db()` answers every
-    query with nothing), so this falls back to the built-in KBANK sample."""
+    query with nothing), so there is nothing of theirs to map and the endpoint says so.
+
+    It used to answer with the built-in `_SAMPLE_ROWS` KBANK example. Those rows are
+    editable and get saved, so the fallback shipped a mapping keyed to payment types no
+    document of this tenant's had ever printed. An empty table carrying `ar.mappingEmpty`
+    is the honest version of the same answer.
+    """
     with make_test_client(make_mock_db()) as client:
         resp = client.get(f"{BASE}/sample-payment-types?bank_code=KBANK", headers=AUTH)
         assert resp.status_code == 200
-        codes = [r["payment_type_code"] for r in resp.json()]
-
-        assert "VS INTER UP PREM" in codes and "JCB PREM" in codes
-        assert all(r["credit_account_code"] is None for r in resp.json())
+        assert resp.json() == []
 
 
 def test_sample_payment_types_prefers_this_tenants_own_parked_report():

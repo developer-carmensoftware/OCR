@@ -356,11 +356,18 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
       ? fixLinkProps({ href: '#/CreditCardOCR/mapping' })
       : null
 
+  // Every value on that screen is scoped to one bank profile, so the door carries this
+  // document's own bank rather than letting the screen open on its hardcoded default.
+  // This is the only way in now — the queue's unscoped button is gone (2026-09-16).
+  const arSettingsHref = bankCode
+    ? `#/CreditCardOCR/ar-settings?bank=${encodeURIComponent(bankCode)}`
+    : '#/CreditCardOCR/ar-settings'
+
   // Same shape as `prefixFix`, for the other field this path cannot fix in place: the
   // clearing account is a bank-level setting, not a per-document one.
   const arSettingsFix =
     isAR && blockReason === t('review.arControlMissing')
-      ? fixLinkProps({ href: '#/CreditCardOCR/ar-settings' })
+      ? fixLinkProps({ href: arSettingsHref })
       : null
 
   async function approve() {
@@ -697,7 +704,7 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                       Approve/Reject below it — shorter mouse travel between "check the
                       settings" and "act on the document" than a flush-left placement. */}
                   <div className="rd-ar-hint">
-                    <a className="btn btn-outline btn-sm" href="#/CreditCardOCR/ar-settings">
+                    <a className="btn btn-outline btn-sm" href={arSettingsHref}>
                       {t('review.arSettings')}
                     </a>
                   </div>

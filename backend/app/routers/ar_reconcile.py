@@ -141,15 +141,19 @@ async def sample_payment_types(
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(get_current_session),
 ):
-    """The rows a BU starts from before it has mapped anything.
+    """The rows a BU starts from before it has mapped anything — its own, or none.
 
-    Prefers this tenant's own most recently parked report for this bank
-    (`svc.latest_real_sample`) — the real payment types their own documents print, not a
-    universal guess. Only a tenant that has never had one parked falls back to the
-    built-in KBANK sample: without something the table would open empty, and the only
-    other way to populate it is to receive a settlement report, be charged for it, and
-    have it park unmapped.
+    Only this tenant's most recently parked report for this bank
+    (`svc.latest_real_sample`): the real payment types their own documents print. A tenant
+    that has never had one parked gets an empty list, and the table says so
+    (`ar.mappingEmpty`: "Add the payment types this bank prints, or wait for the first
+    report").
+
+    It used to fall back to `_SAMPLE_ROWS` so the table never opened empty. That seeded
+    editable rows the reviewer then *saved* — a mapping keyed to a vocabulary no document
+    of theirs had printed, which is worse than an empty table honestly labelled. The
+    fallback still serves `/preview`, where it is a worked example the panel marks as one.
     """
     real = await svc.latest_real_sample(db, session.tenant_id, bank_code.upper())
-    rows = real[0] if real else _SAMPLE_ROWS
+    rows = real[0] if real else ()
     return [ARMappingItem(payment_type_code=code, payment_type_desc=None) for code, _ in rows]

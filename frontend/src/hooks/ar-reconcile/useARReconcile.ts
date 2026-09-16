@@ -115,7 +115,7 @@ export interface ARReconcileHook {
   reloadCodes: () => Promise<void>
 }
 
-export function useARReconcile(initialBank = 'KBANK'): ARReconcileHook {
+export function useARReconcile(): ARReconcileHook {
   const { masterAccounts, masterDepartments, loadingOpts, loadInitialData } = useMappingData()
   const { t } = useT()
   // `t` changes identity with the language. `load` must not: it is a dependency of the
@@ -126,7 +126,7 @@ export function useARReconcile(initialBank = 'KBANK'): ARReconcileHook {
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [bankCode, setBankCodeState] = useState(initialBank)
+  const [bankCode, setBankCodeState] = useState(bankFromHash)
   const [enabled, setEnabled] = useState(false)
   const [postType, setPostType] = useState<PostType>('Detail')
   const [template, setTemplate] = useState(DEFAULT_TEMPLATE)
@@ -404,6 +404,22 @@ export function useARReconcile(initialBank = 'KBANK'): ARReconcileHook {
     loadingOpts,
     reloadCodes: loadInitialData,
   }
+}
+
+/** The bank the link that opened this screen named.
+ *
+ *  Every value on this screen is scoped to one bank profile, and the only way in is the
+ *  review modal of a parked document — which knows that document's own `bank_code` and
+ *  puts it here. Read once, as the initial state: a later hash change is the user working
+ *  the selector, which owns `bankCode` from then on.
+ *
+ *  `main.tsx` strips the query before matching the route, so `?bank=` costs the router
+ *  nothing. Falls back to KBANK, the one bank this release reads, for a bookmark or a
+ *  typed URL that names none. */
+function bankFromHash(): string {
+  const query = window.location.hash.split('?')[1]
+  const bank = query ? new URLSearchParams(query).get('bank') : null
+  return (bank || 'KBANK').toUpperCase()
 }
 
 /** `VS INTER UP PREM` → `VS`. Mirrors `group_key` in ar_reconcile_jv.py, and only for

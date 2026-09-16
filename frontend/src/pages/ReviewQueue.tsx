@@ -9,7 +9,6 @@ import {
   FileX2,
   Mail,
   RefreshCw,
-  Scale,
   Upload,
   type LucideIcon,
 } from 'lucide-react'
@@ -399,18 +398,13 @@ export default function ReviewQueue() {
           {/* No auto-post switch here any more. It is one field of the BU's settings and
               has one writer, `PUT /api/v1/carmen/settings` — Carmen's own settings screen.
               Two writers for one boolean is what let an unrelated settings save turn review
-              back on behind the customer's back (2026-09-08). */}
-          <button
-            type="button"
-            className="btn-icon"
-            onClick={() => {
-              window.location.hash = '#/CreditCardOCR/ar-settings'
-            }}
-            aria-label={t('review.arSettings')}
-            title={t('review.arSettings')}
-          >
-            <Scale size={14} />
-          </button>
+              back on behind the customer's back (2026-09-08).
+
+              No AR-settings door here either. Every value on that screen is scoped to one
+              bank profile, and this bar has no document in scope to take it from — it
+              opened on a hardcoded KBANK, which is configuration built on a guess. The
+              door lives in the review modal, where the document's own `bank_code` is in
+              hand (2026-09-16). */}
           <button type="button" className="btn btn-primary" onClick={goManual}>
             <Upload size={14} /> {t('review.uploadDocuments')}
           </button>

@@ -1309,8 +1309,26 @@ describe('a parked settlement report', () => {
     expect(link).toHaveAttribute('href', '#/CreditCardOCR/mapping')
   })
 
-  it('points at where these accounts are actually set', async () => {
+  it('points at where these accounts are actually set, for this document’s bank', async () => {
+    // The settings screen is per bank profile and this is now its only door, so the
+    // document's own bank travels with the link rather than letting that screen guess.
     vi.mocked(api.getPending).mockResolvedValue(arDetail())
+    mount()
+
+    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
+    const link = screen.getByRole('link', { name: /AR reconciliation settings/i })
+    expect(link).toHaveAttribute('href', '#/CreditCardOCR/ar-settings?bank=KBANK')
+  })
+
+  it('falls back to the bare door when the document names no bank', async () => {
+    // `bank_code` null AND a name `detectBankFromExtracted` cannot resolve — both, because
+    // the browser detection is the fallback for rows written before the column existed.
+    vi.mocked(api.getPending).mockResolvedValue(
+      arDetail({
+        bank_code: null,
+        extracted: { ...EXTRACTED, bank_name: 'Unlisted Issuer Ltd', details: AR_LINES },
+      })
+    )
     mount()
 
     await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))

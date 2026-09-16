@@ -122,6 +122,8 @@ function renderPage() {
 }
 
 beforeEach(() => {
+  // The screen reads its bank off the hash, and jsdom's hash survives a test.
+  window.location.hash = ''
   // Call counts leak between tests without this, so "nothing reached the server" was a
   // claim about the whole file rather than about the test making it.
   vi.clearAllMocks()
@@ -160,6 +162,23 @@ describe('AR reconciliation settings', () => {
     ])
     expect(options[0]).toBeEnabled()
     expect(options[1]).toBeDisabled()
+  })
+
+  it('opens on the bank the document that linked here named', async () => {
+    // Every value on this screen is scoped to one bank profile, and the only way in is the
+    // review modal of a parked document — which puts that document's own bank on the hash
+    // rather than letting the screen open on a default and be configured against a guess.
+    window.location.hash = '#/CreditCardOCR/ar-settings?bank=SCB'
+    renderPage()
+
+    await waitFor(() => expect(api.getARSettings).toHaveBeenCalledWith('SCB'))
+  })
+
+  it('falls back to KBANK when the hash names no bank', async () => {
+    // A bookmark or a typed URL. KBANK is the one bank this release reads.
+    renderPage()
+
+    await waitFor(() => expect(api.getARSettings).toHaveBeenCalledWith('KBANK'))
   })
 
   it('shows what switching post type would cost before it is switched', async () => {
