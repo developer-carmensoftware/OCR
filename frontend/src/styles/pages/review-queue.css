@@ -1310,33 +1310,6 @@
   gap: var(--space-3);
 }
 
-/* Which grouping built the table. Detail and Summary are indistinguishable by eye on a
-   day that settled one scheme, and the rule is what the reviewer is accepting. */
-/* --text-2, not --text-3: 0.78rem at weight 400 is under both of DESIGN.md's thresholds
-   for Ink Tertiary. */
-.arv-grouping {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  margin: 0;
-  font-size: 0.78rem;
-  color: var(--text-2);
-}
-
-/* The same fill and weight the JV's own AI tag wears — one chip vocabulary on the screen. */
-.arv-posttype {
-  flex: none;
-  padding: 0.1rem 0.45rem;
-  border-radius: var(--radius-pill);
-  background: var(--primary-light);
-  color: var(--primary);
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
 /* This bank has no AR configuration, so there is no JV to show. A sentence, not an empty
    table: a table with no rows in it invites the reader to look for the rows. */
 .arv-empty {

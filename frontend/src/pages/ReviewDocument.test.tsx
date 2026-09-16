@@ -1137,7 +1137,7 @@ describe('a parked settlement report', () => {
     vi.mocked(api.getPending).mockResolvedValue(arDetail())
     mount()
 
-    await screen.findByText('Detail')
+    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
     expect(paneRows()).toEqual([
       ['', 'GEN', '110300', 'Control account', '25,091.00', ''],
       ['', 'GEN', '510300', 'VS INTER UP PREM', '', '15,000.00'],
@@ -1155,7 +1155,7 @@ describe('a parked settlement report', () => {
     vi.mocked(api.getPending).mockResolvedValue(arDetail({ ar_jv: AR_JV_SUMMARY }))
     mount()
 
-    await screen.findByText('Summary')
+    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
     expect(paneRows()).toEqual([
       ['', 'GEN', '110300', 'Control account', '25,091.00', ''],
       ['', 'GEN', '510300', 'VS2 folded in', '', '25,091.00'],
@@ -1188,7 +1188,7 @@ describe('a parked settlement report', () => {
     )
     mount()
 
-    await screen.findByText('Detail')
+    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
     const zero = document.querySelector('.arv-row-zero')
     expect(zero).toHaveTextContent('AMEX PREM')
     expect(zero).toHaveTextContent('no journal line')
@@ -1201,7 +1201,7 @@ describe('a parked settlement report', () => {
     vi.mocked(api.getPending).mockResolvedValue(arDetail())
     mount()
 
-    await screen.findByText('Detail')
+    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
     expect(screen.queryByLabelText('Document no.')).not.toBeInTheDocument()
     expect(document.querySelectorAll('.rd-doc input, .rd-doc select')).toHaveLength(0)
     expect(document.querySelector('.rd-f--docno')).toHaveTextContent('210726E00035291')
@@ -1212,7 +1212,7 @@ describe('a parked settlement report', () => {
     vi.mocked(api.getPending).mockResolvedValue(arDetail())
     mount()
 
-    await screen.findByText('Detail')
+    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
     expect(document.querySelector('.rd-f--grow')).toHaveTextContent(
       'Credit Card AR Reconcile 21/07/2026'
     )
@@ -1224,7 +1224,7 @@ describe('a parked settlement report', () => {
     vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-9', tax_note: null })
     mount()
 
-    await screen.findByText('Detail')
+    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
     await clickApprove()
 
     await waitFor(() => expect(api.approveDocument).toHaveBeenCalled())
@@ -1241,7 +1241,7 @@ describe('a parked settlement report', () => {
     vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-9', tax_note: null })
     mount()
 
-    await screen.findByText('Detail')
+    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
     await clickApprove()
 
     await waitFor(() => expect(api.approveDocument).toHaveBeenCalled())
@@ -1257,7 +1257,7 @@ describe('a parked settlement report', () => {
     vi.mocked(api.getPending).mockResolvedValue(arDetail({ ar_jv: unmapped }))
     mount()
 
-    await screen.findByText('Detail')
+    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
     expect(await screen.findByRole('button', { name: /Approve/ })).toBeDisabled()
     // Said twice on purpose, and both matter: on the row that has the gap (its Dept/Account
     // cells read "Not mapped", unlike the two mapped rows beside it, and the row itself
@@ -1281,7 +1281,7 @@ describe('a parked settlement report', () => {
     )
     mount()
 
-    await screen.findByText('Detail')
+    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
     expect(await screen.findByRole('button', { name: /Approve/ })).toBeDisabled()
     expect(document.querySelector('.jv-total--bad')).toBeInTheDocument()
   })
@@ -1303,7 +1303,7 @@ describe('a parked settlement report', () => {
     vi.mocked(api.getPending).mockResolvedValue(arDetail())
     mount()
 
-    await screen.findByText('Detail')
+    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
     expect(await screen.findByRole('button', { name: /Approve/ })).toBeDisabled()
     const link = screen.getByRole('link', { name: /Set the journal book/i })
     expect(link).toHaveAttribute('href', '#/CreditCardOCR/mapping')
@@ -1313,7 +1313,7 @@ describe('a parked settlement report', () => {
     vi.mocked(api.getPending).mockResolvedValue(arDetail())
     mount()
 
-    await screen.findByText('Detail')
+    await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
     const link = screen.getByRole('link', { name: /AR reconciliation settings/i })
     expect(link).toHaveAttribute('href', '#/CreditCardOCR/ar-settings')
   })

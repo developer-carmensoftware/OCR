@@ -130,7 +130,6 @@ export default function ARReviewPane({ jv, details }: Props) {
     )
   }
 
-  const summary = jv.post_type === 'Summary'
   const imbalanced = !jv.balanced
 
   /** One Dept + Account cell pair, shared by the control leg, mapped legs and new-type
@@ -151,16 +150,9 @@ export default function ARReviewPane({ jv, details }: Props) {
 
   return (
     <div className="arv">
-      {/* Which grouping produced this table. The reviewer cannot tell Detail from Summary
-          by looking at it — a one-scheme day makes them identical — and the rule is what
-          they are being asked to accept. */}
-      <p className="arv-grouping">
-        <span className="arv-posttype">
-          {summary ? t('review.arPostTypeSummary') : t('review.arPostTypeDetail')}
-        </span>
-        {summary ? t('review.arGroupingSummary') : t('review.arGroupingDetail')}
-      </p>
-
+      {/* No caption naming Detail/Summary here (cut 2026-09-16): the row shapes already
+          say it — "VS INTER UP PREM" vs a folded "VS", one row per printed type vs one per
+          scheme. A reviewer reads their own BU's configuration off the table itself. */}
       <table className={`jv-table${anyMerged ? '' : ' arv-flat'}`}>
         <thead>
           <tr>
