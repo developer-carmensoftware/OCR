@@ -1312,9 +1312,8 @@
 
 /* Which grouping built the table. Detail and Summary are indistinguishable by eye on a
    day that settled one scheme, and the rule is what the reviewer is accepting. */
-/* --text-2 for the same reason `.rd-ar-hint p` takes it: 0.78rem at weight 400 is under
-   both of DESIGN.md's thresholds for Ink Tertiary. The two captions bracket the table and
-   are the same voice, so they take the same ink. */
+/* --text-2, not --text-3: 0.78rem at weight 400 is under both of DESIGN.md's thresholds
+   for Ink Tertiary. */
 .arv-grouping {
   display: flex;
   align-items: center;
@@ -1498,61 +1497,31 @@
    last thing under the reviewer's eye before the button that posts was a button that
    leaves (an in-app hash navigates in this tab — see `fixLinkProps` — so pressing it loses
    the open document). It also borrowed `.rd-alert-fix`'s grammar, where "outline btn-sm
-   pinned right in a text row" means *this row is an alert and here is the fix*.
+   pinned right in a text row" means *this row is an alert and here is the fix*. Flush left
+   is still the rule below for the same reason — not a right-pinned decoy above Approve.
 
-   A column, flush left, and quiet. Left breaks the right-edge stack so the door is no
-   longer a decoy in the commit zone; a column rather than a wrapping row keeps it flush at
-   every width, and lets the Thai label — half again the English one — grow without moving
-   anything. `--space-3` to the table above matches `.arv`'s own internal gap; the 0.5rem
-   it had read as glued to the table's bottom edge rather than as a footnote to the pane. */
+   A bordered-aside-with-a-sentence version followed, one pass later: it fixed "orphaned,"
+   but the sentence it framed ("Detail/Summary, description, and clearing account are set
+   on that screen") was answering a question the button's own label already answers. It
+   dated from when payment-type mapping was briefly editable inline here and the sentence's
+   job was to say which *other* fields were not; `ARReviewPane` reverted to fully read-only
+   the same day, so by the time the sentence was merely tightened, nothing on this screen
+   was editable any more and it had nothing left to distinguish. Removed rather than
+   shortened again — the aside frame, the `Info` icon and the pill's own trailing arrow all
+   existed to hold or decorate that sentence, so all three went with it.
+
+   What is left is a link, named for its destination, needing no sentence and no icon in
+   front of it — `.btn.btn-outline.btn-sm`, the same class `.rd-alert-fix` above already
+   wears rather than a one-off pill, and right-aligned rather than flush left: shorter mouse
+   travel down to Approve/Reject than a left-aligned link would cost. This is the exact
+   position the very first fix (above) pinned right and then reverted for reading as a decoy
+   over Approve — reintroduced deliberately this time, now that there is no paragraph or icon
+   left to make the row read as an alert-with-a-fix. */
 .rd-ar-hint {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
+  justify-content: flex-end;
   margin: var(--space-3) 0 0;
 }
-
-/* --text-2, not --text-3: 0.76rem is 12.16px at weight 400, which is the case DESIGN.md
-   names as needing a darker ink than Tertiary. `npm run contrast` cannot catch it — it
-   audits token pairs, not the size they are set at. */
-.rd-ar-hint p {
-  margin: 0;
-  max-width: 60ch;
-  font-size: 0.76rem;
-  line-height: 1.55;
-  color: var(--text-2);
-  text-wrap: pretty;
-}
-
-/* Quieter than `.btn-outline` by subtraction — no border, no shadow, and the muted fill
-   instead of the card face — while still reading as a control rather than prose, which is
-   what the bare `<a>` failed at. Local rather than a global `.btn-ghost`: one call site,
-   same reasoning as `.arv-toggle-btn` above. No icon, because the app has no gear glyph
-   anywhere and `ChevronRight` already means *expand* in the table directly above this. */
-.rd-ar-hint-btn {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.4rem 0.7rem;
-  border-radius: var(--radius-sm);
-  background: var(--muted);
-  color: var(--text-2);
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-decoration: none;
-  transition:
-    background-color var(--dur-fast, 120ms) var(--ease, ease-out),
-    color var(--dur-fast, 120ms) var(--ease, ease-out);
-}
-
-.rd-ar-hint-btn:hover {
-  background: var(--primary-light);
-  color: var(--primary);
-}
-
-/* No :focus-visible rule here on purpose — base.css's global one is already
-   `2.5px solid var(--primary)` at `outline-offset: 2px` on `--radius-sm`, which is exactly
-   this element's radius. A local copy would be the same declaration twice. */
 
 /* ── Footer ─────────────────────────────────────────────────────────────────── */
 

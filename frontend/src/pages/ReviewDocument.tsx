@@ -689,9 +689,15 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
               {isAR ? (
                 <section aria-label={t('review.paneJv')}>
                   <ARReviewPane jv={arJv} details={details} />
+                  {/* Named for its destination, so it needs no sentence in front of it —
+                      see review-queue.css's history on `.rd-ar-hint` for why one isn't
+                      there any more. `.btn.btn-outline.btn-sm` rather than a one-off class:
+                      the same secondary-button weight `.rd-alert-fix` above already wears,
+                      reused instead of re-invented. Right-aligned, on the same edge as
+                      Approve/Reject below it — shorter mouse travel between "check the
+                      settings" and "act on the document" than a flush-left placement. */}
                   <div className="rd-ar-hint">
-                    <p>{t('review.arMappingLivesElsewhere')}</p>
-                    <a className="rd-ar-hint-btn" href="#/CreditCardOCR/ar-settings">
+                    <a className="btn btn-outline btn-sm" href="#/CreditCardOCR/ar-settings">
                       {t('review.arSettings')}
                     </a>
                   </div>
