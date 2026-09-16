@@ -1704,6 +1704,98 @@ const en = {
   'admin.adminUsers.toast.deactivateSuccess': 'Admin user deactivated',
   'admin.adminUsers.toast.rolesSuccess': 'Roles updated',
   'admin.adminUsers.toast.passwordResetSuccess': 'Password reset',
+
+  // — AR reconciliation settings (#/CreditCardOCR/ar-settings) —
+  //
+  // The review modal points people here by name (review.arSettings), so the heading they
+  // land on is the same words. Columns and post-type names are NOT re-declared: the
+  // preview table reuses review.jvDept / jvAccount / jvDesc / jvDebit / jvCredit and the
+  // segmented control reuses review.arPostTypeDetail / arPostTypeSummary, because
+  // ARReviewPane already names the same things that way and two vocabularies for one
+  // column is how a reader starts wondering whether they are the same column.
+  'ar.title': 'AR Reconciliation',
+  'ar.intro':
+    'Splits the lump credit-card control account into per-scheme receivables when a settlement report arrives by email.',
+  'ar.bank': 'Merchant bank',
+  'ar.phase2': 'Phase 2',
+  'ar.enabled': 'Reconcile this bank',
+  'ar.enabledOffHint': 'Switched off — arriving reports are handed back unread and cost nothing.',
+
+  // Readiness. Collapsed to its count once every link is green; open by default while
+  // anything is still missing, because that list is the only place the reason is written.
+  'ar.readyOf': '{done} of {total} ready',
+  'ar.readyNote':
+    'Every one of these fails quietly on its own. All of them have to be green before a settlement report posts without a person.',
+  'ar.blocker.bankSupported': 'Bank is readable',
+  'ar.blocker.featureEnabled': 'Feature switched on',
+  'ar.blocker.emailRule': 'Email rule tagged for settlement reports',
+  'ar.blocker.mappingComplete': 'Every payment type mapped',
+  'ar.blocker.clearingAccount': 'Clearing account chosen',
+  'ar.blocker.autoPost': 'Posts without review',
+
+  // The three controls the review dialog's AR reconciliation settings link sends people here for.
+  'ar.postingRules': 'Posting rules',
+  'ar.postType': 'Post type',
+  'ar.postTypeMapped': '{mapped}/{total} mapped',
+  'ar.postTypeHintDetail': 'One credit line per printed payment type, e.g. VS INTER UP PREM.',
+  'ar.postTypeHintSummary':
+    'One credit line per scheme — VS, MC, JCB — folding the sub-types together.',
+  'ar.postTypeHintShared':
+    'Each keeps its own mappings, so switching does not carry the other set over.',
+  'ar.template': 'JV description',
+  'ar.templateTags': 'Insert',
+  'ar.templateExample': 'Reads as',
+  'ar.templateEmpty': '(empty)',
+  'ar.debit': 'Clearing account to debit',
+  'ar.debitHint': 'Taken from the credit-card mapping this JV has to clear.',
+  'ar.debitDiverged':
+    'Your credit-card mapping settles to {dept} / {acc}. This JV clears what that one credits — if the two differ, the control account never reaches zero.',
+
+  // Payment type → credit GL.
+  'ar.mappingTitle': 'Payment type mapping',
+  'ar.mappingEmpty': 'Add the payment types this bank prints, or wait for the first report',
+  'ar.mappingMissing': '{missing} of {total} still to map',
+  'ar.mappingBlocks': 'Blocks auto-posting',
+  'ar.mappingAllMapped': 'All {total} payment types mapped',
+  'ar.mappingReady': 'Ready for JV',
+  'ar.colDeptCode': 'Department Code',
+  'ar.colAccCode': 'Account Code',
+  'ar.addPlaceholder': 'Add a payment type, e.g. AMEX PREM',
+  'ar.addType': 'Add type',
+  'ar.rowCount': '{count} in {postType}',
+  'ar.removeType': 'Remove {type}',
+
+  // The worked example, beside the toggle rather than below it: the whole value is seeing
+  // the credit lines regroup while Detail/Summary is flipped.
+  'ar.previewTitle': 'JV preview',
+  'ar.previewNote': 'Worked example',
+  'ar.previewMeta': '{date} · Tax Inv.# {docNo}',
+  'ar.previewBuilding': 'Building preview...',
+  'ar.previewUnavailable': 'Preview unavailable — check that this bank is configured.',
+  'ar.previewUnmapped': 'Unmapped, so this would wait for review: {types}',
+  'ar.previewLines': '{count} lines · {postType}',
+  'ar.balanced': 'Debit = Credit',
+  'ar.outBy': 'Out by {amount} — this JV cannot post',
+
+  // Save bar + the guard on the way out. The state sentence exists so a disabled primary
+  // is not read as a broken control.
+  'ar.unsaved': 'Unsaved changes',
+  'ar.allSaved': 'Everything here is saved',
+  'ar.save': 'Save settings',
+  'ar.savingLabel': 'Saving...',
+  'ar.reset': 'Reset',
+  'ar.leaveTitle': 'Leave without saving?',
+  'ar.leaveMessage':
+    'The mappings and settings changed here have not been saved. Leaving now discards them.',
+  'ar.leaveConfirm': 'Discard and leave',
+  'ar.leaveCancel': 'Stay on this page',
+
+  'ar.toastLoadFailed': 'Could not load AR reconciliation settings',
+  'ar.toastSaved': 'Settings saved',
+  'ar.toastSaveFailed': 'Save failed',
+  'ar.toastDuplicateType': '{code} is already in the table',
+  'ar.toastAllMapped': 'Every payment type is already mapped',
+  'ar.toastNoSuggestion': 'No suggestion could be made',
 } as const
 
 export type TKey = keyof typeof en
@@ -3233,6 +3325,85 @@ const th: Record<TKey, string> = {
   'admin.adminUsers.toast.deactivateSuccess': 'ปิดใช้งานผู้ดูแลระบบแล้ว',
   'admin.adminUsers.toast.rolesSuccess': 'อัปเดตบทบาทแล้ว',
   'admin.adminUsers.toast.passwordResetSuccess': 'รีเซ็ตรหัสผ่านแล้ว',
+
+  // — AR reconciliation settings —
+  //
+  // Dept / Account / Description / Debit / Credit and Detail / Summary stay in English
+  // here as they do in the review pane: they are the column names Carmen prints and the
+  // words an accountant says out loud.
+  'ar.title': 'กระทบยอดลูกหนี้บัตรเครดิต',
+  'ar.intro':
+    'แยกยอดบัญชีคุมยอดบัตรเครดิตก้อนเดียวออกเป็นลูกหนี้รายค่ายบัตร เมื่อรายงาน settlement ส่งเข้ามาทางอีเมล',
+  'ar.bank': 'ธนาคารผู้รับบัตร',
+  'ar.phase2': 'Phase 2',
+  'ar.enabled': 'กระทบยอดธนาคารนี้',
+  'ar.enabledOffHint': 'ปิดอยู่ — รายงานที่ส่งเข้ามาจะถูกส่งคืนโดยไม่อ่านและไม่มีค่าใช้จ่าย',
+
+  'ar.readyOf': 'พร้อมแล้ว {done} จาก {total}',
+  'ar.readyNote':
+    'แต่ละข้อไม่ผ่านได้เงียบ ๆ ทั้งหมดต้องเขียวก่อน รายงาน settlement จึงจะโพสต์ได้เองโดยไม่ต้องมีคนตรวจ',
+  'ar.blocker.bankSupported': 'อ่านเอกสารของธนาคารนี้ได้',
+  'ar.blocker.featureEnabled': 'เปิดใช้งานฟีเจอร์แล้ว',
+  'ar.blocker.emailRule': 'มีกฎอีเมลที่ระบุว่าเป็นรายงาน settlement',
+  'ar.blocker.mappingComplete': 'ผูกบัญชีครบทุกประเภทบัตร',
+  'ar.blocker.clearingAccount': 'เลือกบัญชีฝั่งเดบิตแล้ว',
+  'ar.blocker.autoPost': 'โพสต์โดยไม่ต้องตรวจ',
+
+  'ar.postingRules': 'กติกาการลงบัญชี',
+  'ar.postType': 'รูปแบบการลง',
+  'ar.postTypeMapped': 'ผูกแล้ว {mapped}/{total}',
+  'ar.postTypeHintDetail': 'ลงเครดิตหนึ่งบรรทัดต่อประเภทบัตรตามที่พิมพ์ เช่น VS INTER UP PREM',
+  'ar.postTypeHintSummary':
+    'ลงเครดิตหนึ่งบรรทัดต่อค่ายบัตร — VS, MC, JCB — โดยรวมประเภทย่อยเข้าด้วยกัน',
+  'ar.postTypeHintShared': 'แต่ละรูปแบบเก็บผังบัญชีของตัวเอง การสลับจึงไม่ดึงผังของอีกชุดมาใช้',
+  'ar.template': 'คำอธิบาย JV',
+  'ar.templateTags': 'แทรก',
+  'ar.templateExample': 'จะได้เป็น',
+  'ar.templateEmpty': '(ว่าง)',
+  'ar.debit': 'บัญชีฝั่งเดบิต (บัญชีคุมยอด)',
+  'ar.debitHint': 'ดึงมาจากผังบัญชีบัตรเครดิตที่ JV ใบนี้ต้องล้างยอด',
+  'ar.debitDiverged':
+    'ผังบัญชีบัตรเครดิตของคุณลงที่ {dept} / {acc} JV ใบนี้ล้างยอดที่ผังนั้นลงเครดิตไว้ — ถ้าสองฝั่งไม่ตรงกัน บัญชีคุมยอดจะไม่มีวันเป็นศูนย์',
+
+  'ar.mappingTitle': 'ผูกผังบัญชีตามประเภทบัตร',
+  'ar.mappingEmpty': 'เพิ่มประเภทบัตรที่ธนาคารนี้พิมพ์ หรือรอรายงานใบแรก',
+  'ar.mappingMissing': 'ยังต้องผูกอีก {missing} จาก {total}',
+  'ar.mappingBlocks': 'ทำให้โพสต์อัตโนมัติไม่ได้',
+  'ar.mappingAllMapped': 'ผูกครบแล้วทั้ง {total} ประเภทบัตร',
+  'ar.mappingReady': 'พร้อมสร้าง JV',
+  'ar.colDeptCode': 'รหัสฝ่าย',
+  'ar.colAccCode': 'รหัสบัญชี',
+  'ar.addPlaceholder': 'เพิ่มประเภทบัตร เช่น AMEX PREM',
+  'ar.addType': 'เพิ่มประเภทบัตร',
+  'ar.rowCount': '{count} รายการใน {postType}',
+  'ar.removeType': 'ลบ {type}',
+
+  'ar.previewTitle': 'ตัวอย่าง JV',
+  'ar.previewNote': 'ตัวอย่างจากเอกสารจริง',
+  'ar.previewMeta': '{date} · เลขที่ใบกำกับ {docNo}',
+  'ar.previewBuilding': 'กำลังสร้างตัวอย่าง...',
+  'ar.previewUnavailable': 'แสดงตัวอย่างไม่ได้ — ตรวจสอบว่าตั้งค่าธนาคารนี้ไว้แล้ว',
+  'ar.previewUnmapped': 'ยังไม่ผูกบัญชี เอกสารจริงจะถูกพักไว้ให้ตรวจ: {types}',
+  'ar.previewLines': '{count} บรรทัด · {postType}',
+  'ar.balanced': 'เดบิตเท่ากับเครดิต',
+  'ar.outBy': 'ต่างกัน {amount} — JV ใบนี้โพสต์ไม่ได้',
+
+  'ar.unsaved': 'มีการแก้ไขที่ยังไม่บันทึก',
+  'ar.allSaved': 'บันทึกทุกอย่างในหน้านี้แล้ว',
+  'ar.save': 'บันทึกการตั้งค่า',
+  'ar.savingLabel': 'กำลังบันทึก...',
+  'ar.reset': 'คืนค่า',
+  'ar.leaveTitle': 'ออกโดยไม่บันทึก?',
+  'ar.leaveMessage': 'ผังบัญชีและการตั้งค่าที่แก้ไว้ยังไม่ได้บันทึก ถ้าออกตอนนี้จะหายทั้งหมด',
+  'ar.leaveConfirm': 'ทิ้งการแก้ไขแล้วออก',
+  'ar.leaveCancel': 'อยู่หน้านี้ต่อ',
+
+  'ar.toastLoadFailed': 'โหลดการตั้งค่ากระทบยอดไม่สำเร็จ',
+  'ar.toastSaved': 'บันทึกการตั้งค่าแล้ว',
+  'ar.toastSaveFailed': 'บันทึกไม่สำเร็จ',
+  'ar.toastDuplicateType': 'มี {code} อยู่ในตารางแล้ว',
+  'ar.toastAllMapped': 'ผูกบัญชีครบทุกประเภทบัตรแล้ว',
+  'ar.toastNoSuggestion': 'ไม่สามารถแนะนำบัญชีได้',
 }
 
 export const DICT: Record<Lang, Record<TKey, string>> = { en, th }

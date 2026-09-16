@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import '../../styles/pages/ar-reconcile.css'
-import { AlertTriangle, CheckCircle2, Info, Plus, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Info, Plus, Table2, XCircle } from 'lucide-react'
 import AISuggestBar from '../common/AISuggestBar'
 import Badge from '../common/Badge'
 import MappingRow from '../common/MappingRow'
+import Card from '../admin/ui/Card'
 import '../../styles/components/mapping-row.css'
+import { useT } from '../../i18n/LanguageContext'
 import type { ARReconcileHook } from '../../hooks/ar-reconcile'
 
 /**
@@ -22,18 +24,26 @@ interface Props {
 }
 
 export default function ARMappingTable({ ctrl }: Props) {
+  const { t } = useT()
   const [newType, setNewType] = useState('')
 
   const total = ctrl.rows.length
   const mapped = ctrl.mappedCount(ctrl.postType)
   const missing = total - mapped
+  const postTypeLabel = t(
+    ctrl.postType === 'Detail' ? 'review.arPostTypeDetail' : 'review.arPostTypeSummary'
+  )
+
+  const add = () => {
+    ctrl.addCustomType(newType)
+    setNewType('')
+  }
 
   return (
-    <div className="ar-section">
-      <div className="section-title cc-section-title-container">
-        <div className="cc-flex-center-gap">
-          <span>PAYMENT TYPE MAPPING</span>
-        </div>
+    <Card
+      title={t('ar.mappingTitle')}
+      icon={<Table2 size={16} />}
+      actions={
         <AISuggestBar
           onSuggest={() => void ctrl.runSuggest()}
           hasSuggestions={Object.values(ctrl.suggestions).some(s => s)}
@@ -46,40 +56,36 @@ export default function ARMappingTable({ ctrl }: Props) {
           onRefresh={() => void ctrl.reloadCodes()}
           refreshLoading={ctrl.loadingOpts}
         />
-      </div>
-
+      }
+    >
       <div role="status" className={`cc-mapping-status ${missing > 0 ? 'missing' : 'ready'}`}>
         {total === 0 ? (
           <>
             <Info size={14} className="cc-flex-shrink-0" />
-            <span>Add the payment types this bank prints, or wait for the first report</span>
+            <span>{t('ar.mappingEmpty')}</span>
           </>
         ) : missing > 0 ? (
           <>
             <AlertTriangle size={14} color="var(--rose)" className="cc-flex-shrink-0" />
-            <span>
-              <strong>{missing}</strong> of <strong>{total}</strong> still to map
-            </span>
+            <span>{t('ar.mappingMissing', { missing, total })}</span>
             <Badge variant="error" className="cc-required-badge">
-              Blocks auto-posting
+              {t('ar.mappingBlocks')}
             </Badge>
           </>
         ) : (
           <>
             <CheckCircle2 size={14} className="cc-flex-shrink-0" />
-            <span>
-              All <strong>{total}</strong> payment types mapped
-            </span>
-            <span className="cc-ready-subtext">Ready for JV</span>
+            <span>{t('ar.mappingAllMapped', { total })}</span>
+            <span className="cc-ready-subtext">{t('ar.mappingReady')}</span>
           </>
         )}
       </div>
 
       <div className="table-wrapper ar-table">
         <div className="pm-grid-header">
-          <div>Payment Type</div>
-          <div>Department Code</div>
-          <div>Account Code</div>
+          <div>{t('review.arColPaymentType')}</div>
+          <div>{t('ar.colDeptCode')}</div>
+          <div>{t('ar.colAccCode')}</div>
           <div />
         </div>
 
@@ -98,6 +104,8 @@ export default function ARMappingTable({ ctrl }: Props) {
               onChange={(field, val) => ctrl.setRowMapping(row.payment_type_code, field, val)}
               masterAccounts={ctrl.masterAccounts}
               masterDepartments={ctrl.masterDepartments}
+              deptPlaceholder={t('review.jvDeptPlaceholder')}
+              accPlaceholder={t('review.jvAccountPlaceholder')}
               suggestion={ctrl.suggestions[row.payment_type_code] ?? null}
               onAccept={() => ctrl.acceptSuggestion(row.payment_type_code)}
               onReject={() => ctrl.rejectSuggestion(row.payment_type_code)}
@@ -106,7 +114,7 @@ export default function ARMappingTable({ ctrl }: Props) {
                   type="button"
                   className="pm-remove-btn"
                   onClick={() => ctrl.removeType(row.payment_type_code)}
-                  title={`Remove ${row.payment_type_code}`}
+                  title={t('ar.removeType', { type: row.payment_type_code })}
                 >
                   <XCircle size={16} />
                 </button>
@@ -119,33 +127,25 @@ export default function ARMappingTable({ ctrl }: Props) {
       <div className="ar-add-row">
         <input
           type="text"
-          className="modal-input ar-add-input"
+          className="admin-form-input ar-add-input"
           value={newType}
-          placeholder="Add a payment type, e.g. AMEX PREM"
-          aria-label="New payment type"
+          placeholder={t('ar.addPlaceholder')}
+          aria-label={t('ar.addType')}
           onChange={e => setNewType(e.target.value)}
           onKeyDown={e => {
             if (e.key === 'Enter') {
               e.preventDefault()
-              ctrl.addCustomType(newType)
-              setNewType('')
+              add()
             }
           }}
         />
-        <button
-          type="button"
-          className="btn btn-outline"
-          onClick={() => {
-            ctrl.addCustomType(newType)
-            setNewType('')
-          }}
-        >
-          <Plus size={14} /> Add type
+        <button type="button" className="btn btn-outline" onClick={add}>
+          <Plus size={14} /> {t('ar.addType')}
         </button>
         <span className="ar-row-count">
-          {total} {total === 1 ? 'row' : 'rows'} in {ctrl.postType}
+          {t('ar.rowCount', { count: total, postType: postTypeLabel })}
         </span>
       </div>
-    </div>
+    </Card>
   )
 }

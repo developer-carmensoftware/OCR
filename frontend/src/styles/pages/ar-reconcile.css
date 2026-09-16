@@ -1,86 +1,101 @@
 /* ─── Detailed Credit Card AR Reconciliation — settings ─────────────────────
  *
  * Tokens only, no raw hex: every colour here has a [data-theme='dark'] override in
- * base.css, and hardcoding one breaks the dark contract silently. The mapping table
- * reuses the .pm-* grid from components/payment-modal.css via MappingRow.
+ * base.css, and hardcoding one breaks the dark contract silently.
+ *
+ * The page is built from the `ui-*` kit (Card / Button / Switch) and `.admin-form-input`,
+ * which load app-wide from index.css, inside the module's `.app-container` + `AppHeader`.
+ * What is left here is only what the kit does not have: the context bar, the readiness
+ * disclosure, the two-column grid with its sticky preview rail, and the four blocks the
+ * two AR components draw (segmented post type, tag chips, mapping table, JV table).
+ * The mapping table reuses the .pm-* grid from components/payment-modal.css via MappingRow.
+ *
+ * `.ar-*` names stay page-scoped on purpose: `.container` / `.section` / `.skeleton` live
+ * in pages/mapping.css, which only Mapping.tsx imports, and borrowing them here rendered
+ * this page with no width limit and no spacing at all.
  */
 
-/* ─── Page shell ──────────────────────────────────────────────────────────────
- *
- * Its own, not borrowed. `.container` / `.section` / `.skeleton` live in
- * pages/mapping.css, which only Mapping.tsx imports — using those names here rendered
- * this page with no card, no width limit and no spacing at all. Importing that sheet
- * would have fixed it and dragged another page's rules app-wide with it, which is the
- * trap index.css already warns about; these are scoped to this page instead.
- */
+/* ─── Page shell ──────────────────────────────────────────────────────────── */
 
 .ar-page {
-  max-width: 960px;
-  margin: 2rem auto;
-  padding: 2.5rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  background: var(--card-bg);
-  box-shadow: var(--shadow-md);
-  position: relative;
-  overflow: hidden;
-  animation: fadeUp 0.5s var(--ease);
+  max-width: 1240px;
+  margin: 0 auto;
 }
 
-/* The brand hairline the sibling settings screen carries, so the two read as one family. */
-.ar-page::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto;
-  height: 3px;
-  background: var(--primary);
-}
+/* ─── Context bar ─────────────────────────────────────────────────────────────
+ *
+ * Which bank the page is about and whether it is on — the scope of every card below,
+ * so it sits above them rather than as the first field of the first one.
+ */
 
-.ar-page h1 {
+.ar-bar {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin: 0 0 0.5rem;
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--text);
-  text-wrap: balance;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
 }
 
-.ar-section {
-  margin-bottom: 2.5rem;
+.ar-bar-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-4);
 }
 
-.ar-section:last-of-type {
+.ar-bar-controls .ar-field {
   margin-bottom: 0;
+  min-width: 15rem;
 }
 
-.ar-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  margin-bottom: 0.75rem;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-3);
-  text-decoration: none;
-  transition: color 0.15s ease-out;
-}
-
-.ar-back:hover {
-  color: var(--primary);
+/* The switch sits on the select's line, not on its label's. */
+.ar-bar-controls .ui-switch-label {
+  padding-bottom: 0.55rem;
 }
 
 .ar-intro {
-  margin: -0.4rem 0 1.5rem;
-  max-width: 68ch;
-  font-size: 0.85rem;
+  margin: 0;
+  max-width: 62ch;
+  font-size: 0.82rem;
   line-height: 1.6;
   color: var(--text-3);
   text-wrap: pretty;
 }
 
-/* ─── Readiness chain ─────────────────────────────────────────────────────── */
+/* ─── Readiness ───────────────────────────────────────────────────────────────
+ *
+ * A native <details>: open while a link is missing (the list is the only place the
+ * reason is written), folded to its count once they are all green. No component, no
+ * state, and it keeps working with JS busy.
+ */
+
+.ar-readiness {
+  margin-bottom: var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--muted);
+}
+
+.ar-readiness > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-2);
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.ar-readiness > summary::marker {
+  color: var(--text-4);
+}
+
+.ar-readiness[open] > summary {
+  margin-bottom: var(--space-3);
+}
 
 .ar-chain {
   display: flex;
@@ -98,7 +113,7 @@
   padding: 0.3rem 0.65rem;
   border-radius: 100px;
   border: 1px solid var(--border);
-  background: var(--muted);
+  background: var(--card-bg);
   font-size: 0.78rem;
 }
 
@@ -109,7 +124,7 @@
 }
 
 .ar-chain li.todo {
-  border-color: var(--border-raised, var(--border));
+  border-color: var(--border-hi);
   color: var(--text-3);
 }
 
@@ -132,12 +147,62 @@
   text-wrap: pretty;
 }
 
+/* ─── Two columns, preview on the right ───────────────────────────────────────
+ *
+ * The point of the Detail/Summary control is watching the credit lines regroup while it
+ * is flipped, which needs both on screen at once. Below 1200px there is no room for that
+ * and the rail simply becomes the last block in one column, where it used to be.
+ */
+
+.ar-grid {
+  display: grid;
+  /* `minmax(0, 1fr)`, not the implicit `auto`: the mapping table's fixed pm-* columns give
+     this column a min-content width of ~490px, and an `auto` track honours it and pushes
+     the whole page into a horizontal scroll on a phone. Capping the track at 0 lets the
+     table's own `.table-wrapper` scroll instead. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-5);
+}
+
+.ar-col {
+  min-width: 0;
+}
+
+@media (min-width: 1200px) {
+  .ar-grid {
+    grid-template-columns: minmax(0, 1fr) 460px;
+    align-items: start;
+  }
+
+  /* Clear of `.app-header`, which is itself sticky at top: 0.75rem and 64px tall —
+     without the offset the preview's own title slides under it and the panel loses the
+     one line that says these figures are an example. */
+  .ar-rail {
+    position: sticky;
+    top: calc(0.75rem + 64px + var(--space-3));
+  }
+
+  .ar-rail .ar-preview-table {
+    font-size: 0.74rem;
+  }
+
+  .ar-rail .ar-preview-table th,
+  .ar-rail .ar-preview-table td {
+    padding: 0.4rem 0.4rem;
+  }
+}
+
 /* ─── Fields ──────────────────────────────────────────────────────────────── */
 
 .ar-field {
-  margin-bottom: 1.25rem;
+  margin-bottom: var(--space-5);
   border: 0;
   padding: 0;
+  min-width: 0;
+}
+
+.ar-field:last-child {
+  margin-bottom: 0;
 }
 
 .ar-field > label,
@@ -146,16 +211,13 @@
   display: block;
   margin-bottom: 0.4rem;
   padding: 0;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-3);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-2);
 }
 
-.ar-field .modal-input {
+.ar-field > .admin-form-input {
   width: 100%;
-  max-width: 34rem;
 }
 
 .ar-mono {
@@ -166,8 +228,8 @@
 .ar-hint {
   margin: 0.4rem 0 0;
   max-width: 68ch;
-  font-size: 0.76rem;
-  line-height: 1.55;
+  font-size: 0.75rem;
+  line-height: 1.5;
   color: var(--text-3);
   text-wrap: pretty;
 }
@@ -176,28 +238,7 @@
   color: var(--amber-text);
 }
 
-.ar-toggle-field {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1.5rem;
-  max-width: 34rem;
-}
-
-.ar-toggle-field p {
-  margin-top: 0.2rem;
-}
-
-/* The switch used to be hand-rolled here — 50 lines, its own raw `rgb(0 0 0 / 0.2)`, and a
-   comment claiming it was "the one control here with no existing counterpart in the app".
-   `components/admin/ui/Switch.tsx` is that counterpart, loads app-wide from index.css, and
-   is what EmailSettings uses three times. */
-
 /* ─── Post type ───────────────────────────────────────────────────────────── */
-
-.ar-posttype .segmented-control {
-  max-width: 34rem;
-}
 
 .ar-posttype .segmented-btn {
   flex-direction: column;
@@ -216,19 +257,26 @@
   opacity: 0.8;
 }
 
-/* ─── Tag chips ───────────────────────────────────────────────────────────── */
+/* ─── Tag chips + what the template reads as ──────────────────────────────── */
 
 .ar-tags {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.35rem;
   margin-top: 0.5rem;
+}
+
+.ar-tags-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-4);
 }
 
 .ar-tag {
   padding: 0.2rem 0.55rem;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--muted);
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.7rem;
@@ -243,6 +291,34 @@
   background: var(--primary-light);
   color: var(--primary);
   border-color: var(--primary-mid);
+}
+
+/* The server's rendering of the template above. Its own line rather than a hint, because
+   it is a value the reader checks, not advice they read once. */
+.ar-example {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0.6rem 0 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-sm);
+  background: var(--muted);
+}
+
+.ar-example-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+
+.ar-example-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.78rem;
+  color: var(--text);
+  overflow-wrap: anywhere;
 }
 
 .ar-debit-grid {
@@ -284,12 +360,12 @@
 /* ─── JV preview ──────────────────────────────────────────────────────────── */
 
 .ar-preview-note {
+  margin: 0 0 0.75rem;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.7rem;
   font-weight: 400;
-  letter-spacing: 0;
-  text-transform: none;
   color: var(--text-3);
+  overflow-wrap: anywhere;
 }
 
 .ar-preview[aria-busy='true'] {
@@ -306,28 +382,6 @@
   color: var(--text-3);
 }
 
-.ar-preview-desc {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-}
-
-.ar-preview-desc-label {
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-3);
-}
-
-.ar-preview-desc-value {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.82rem;
-  color: var(--text);
-}
-
 .ar-preview-warn {
   display: flex;
   align-items: flex-start;
@@ -335,7 +389,7 @@
   margin-bottom: 0.75rem;
   padding: 0.55rem 0.75rem;
   border: 1px solid var(--rose-mid);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--rose-light);
   color: var(--rose-text);
   font-size: 0.78rem;
@@ -369,9 +423,13 @@
   vertical-align: top;
 }
 
+/* The payment type this line credits — the column that changes when Detail/Summary is
+   flipped, which is the whole reason this panel is beside that control. */
 .ar-preview-table .ar-comment {
   font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
-  min-width: 16rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
 }
 
 .ar-preview-table .ar-num,
@@ -387,7 +445,7 @@
 }
 
 .ar-preview-table tfoot td {
-  border-top: 2px solid var(--border-raised, var(--border));
+  border-top: 2px solid var(--border-hi);
   border-bottom: 0;
   background: var(--muted);
   font-weight: 700;
@@ -416,55 +474,17 @@
   color: var(--rose-text);
 }
 
-/* ─── Actions ─────────────────────────────────────────────────────────────── */
+/* ─── Actions ─────────────────────────────────────────────────────────────────
+ *
+ * `.ui-actionbar` (admin.css) is the sticky bar itself. Which of the two states the Save
+ * button is in goes on the far left of it: a disabled primary with no sentence next to it
+ * reads as a broken control.
+ */
 
-.ar-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3, 1rem);
-  margin: 2rem 0 3rem;
-}
-
-/* Which of the two states the Save button is in. Beside it rather than under it: a
-   disabled primary with no sentence next to it reads as a broken control. */
-.ar-save-state {
-  order: 1;
-  margin: 0;
+.ui-actionbar .ar-save-state {
+  margin: 0 auto 0 0;
   font-size: 0.78rem;
   color: var(--text-3);
-}
-
-.ar-actions .btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-/* ─── Skeleton ────────────────────────────────────────────────────────────── */
-
-.ar-skel-title {
-  width: 22rem;
-  max-width: 100%;
-  height: 26px;
-  border-radius: 6px;
-  margin: 1.5rem 0;
-}
-
-.ar-skel-card {
-  margin-bottom: 1.25rem;
-}
-
-.ar-skel-line {
-  width: 9rem;
-  height: 13px;
-  border-radius: 4px;
-  margin-bottom: 1rem;
-}
-
-.ar-skel-block {
-  width: 100%;
-  height: 120px;
-  border-radius: 8px;
 }
 
 /* ─── Narrow screens ──────────────────────────────────────────────────────── */
@@ -474,12 +494,16 @@
     grid-template-columns: 1fr;
   }
 
-  .ar-toggle-field {
-    align-items: flex-start;
+  .ar-bar-controls {
+    width: 100%;
+  }
+
+  .ar-bar-controls .ar-field {
+    flex: 1;
   }
 
   .ar-add-row .btn,
-  .ar-actions .btn {
+  .ui-actionbar .btn {
     min-height: 44px;
   }
 
@@ -489,49 +513,22 @@
   }
 }
 
+/* The mapping card's header carries AI Suggest + Refresh. On a phone those leave the
+   title about 50px, which wraps "Payment type mapping" into three words stacked. Give the
+   title its own line and let the controls sit under it. */
+@media (max-width: 640px) {
+  .ar-page .ui-card-header {
+    flex-wrap: wrap;
+  }
+
+  .ar-page .ui-card-heading {
+    flex: 1 0 100%;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ar-preview[aria-busy='true'],
-  .ar-back,
   .ar-tag {
     transition: none;
-  }
-}
-
-/* ─── Skeleton ────────────────────────────────────────────────────────────────
- * `.skeleton` is defined in two pages/ sheets and neither is loaded here.
- */
-
-.ar-skel {
-  background: linear-gradient(90deg, var(--gray-100) 25%, var(--gray-200) 50%, var(--gray-100) 75%);
-  background-size: 200% 100%;
-  animation: ar-skel-shimmer 1.4s ease-in-out infinite;
-  border-radius: 6px;
-}
-
-@keyframes ar-skel-shimmer {
-  from {
-    background-position: 200% 0;
-  }
-
-  to {
-    background-position: -200% 0;
-  }
-}
-
-.ar-skel-card {
-  margin-bottom: 1.25rem;
-  padding: 1.5rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg, 14px);
-  background: var(--card-bg);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ar-skel {
-    animation: none;
-  }
-
-  .ar-page {
-    animation: none;
   }
 }

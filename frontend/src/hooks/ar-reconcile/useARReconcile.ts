@@ -13,6 +13,7 @@ import {
   type PostType,
 } from '../../lib/api/arReconcile'
 import { suggestPaymentTypes } from '../../lib/api/mapping'
+import { useT } from '../../i18n/LanguageContext'
 import { useMappingData } from '../mapping/useMappingData'
 import type { Suggestion } from '../mapping/useMappingSuggestions'
 import type { FieldMapping } from '../../types/api'
@@ -107,6 +108,9 @@ export interface ARReconcileHook {
   refreshPreview: () => void
   blockers: ARBlocker[]
   save: () => Promise<void>
+  /** Throw the form away and take the server's answer again. Re-uses `load`, which
+   *  re-baselines the fingerprint — so there is no second place that clears `dirty`. */
+  reset: () => void
   masterAccounts: ReturnType<typeof useMappingData>['masterAccounts']
   masterDepartments: ReturnType<typeof useMappingData>['masterDepartments']
   loadingOpts: boolean
@@ -115,6 +119,12 @@ export interface ARReconcileHook {
 
 export function useARReconcile(initialBank = 'KBANK'): ARReconcileHook {
   const { masterAccounts, masterDepartments, loadingOpts, loadInitialData } = useMappingData()
+  const { t } = useT()
+  // `t` changes identity with the language. `load` must not: it is a dependency of the
+  // effect that fetches, so rebuilding it on a language flip would refetch the bank and
+  // throw away whatever is unsaved on the form.
+  const tRef = useRef(t)
+  tRef.current = t
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -141,8 +151,11 @@ export function useARReconcile(initialBank = 'KBANK'): ARReconcileHook {
   // one is still in flight, and the slower answer must not repaint over the newer one.
   const previewSeq = useRef(0)
 
-  const load = useCallback(async (code: string) => {
-    setLoading(true)
+  // `silent` is for a reload that happens under a form already on screen — Save and
+  // Reset. Without it both blank the whole page to its skeleton for the length of a
+  // round trip, which reads as the page having crashed rather than having obeyed.
+  const load = useCallback(async (code: string, silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const s = await getARSettings(code)
       setEnabled(s.enabled)
@@ -183,9 +196,9 @@ export function useARReconcile(initialBank = 'KBANK'): ARReconcileHook {
       setSavedPrint(fingerprint(s.enabled, s.post_type, tmpl, d, next))
     } catch (err) {
       console.error('AR settings load failed:', err)
-      toast.error('Could not load AR reconciliation settings')
+      toast.error(tRef.current('ar.toastLoadFailed'))
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [])
 
@@ -221,7 +234,7 @@ export function useARReconcile(initialBank = 'KBANK'): ARReconcileHook {
     const code = raw.trim().toUpperCase()
     if (!code) return
     if ((sets[postType] || []).some(r => r.payment_type_code === code)) {
-      toast.error(`${code} is already in the table`)
+      toast.error(t('ar.toastDuplicateType', { code }))
       return
     }
     setSets(prev => ({
@@ -245,7 +258,7 @@ export function useARReconcile(initialBank = 'KBANK'): ARReconcileHook {
       .filter(r => !r.credit_dept_code || !r.credit_account_code)
       .map(r => r.payment_type_code)
     if (need.length === 0) {
-      toast.info('Every payment type is already mapped')
+      toast.info(t('ar.toastAllMapped'))
       return
     }
     setSuggestLoading(true)
@@ -266,7 +279,7 @@ export function useARReconcile(initialBank = 'KBANK'): ARReconcileHook {
           next[t] = { dept: val.dept || null, acc: val.acc || null, source: 'ai' }
       })
       setSuggestions(prev => ({ ...prev, ...next }))
-      if (Object.keys(next).length === 0) toast.info('No suggestion could be made')
+      if (Object.keys(next).length === 0) toast.info(t('ar.toastNoSuggestion'))
     } catch (err) {
       console.error('AR suggest failed:', err)
       toast.error('AI Auto-Map failed')
@@ -339,11 +352,11 @@ export function useARReconcile(initialBank = 'KBANK'): ARReconcileHook {
         debit_account_code: debit.acc || null,
         mappings: sets,
       })
-      toast.success('Settings saved')
-      await load(bankCode)
+      toast.success(t('ar.toastSaved'))
+      await load(bankCode, true)
     } catch (err) {
       console.error('AR settings save failed:', err)
-      toast.error(err instanceof Error ? err.message : 'Save failed')
+      toast.error(err instanceof Error ? err.message : t('ar.toastSaveFailed'))
     } finally {
       setSaving(false)
     }
@@ -390,6 +403,7 @@ export function useARReconcile(initialBank = 'KBANK'): ARReconcileHook {
     refreshPreview,
     blockers,
     save,
+    reset: () => void load(bankCode, true),
     masterAccounts,
     masterDepartments,
     loadingOpts,

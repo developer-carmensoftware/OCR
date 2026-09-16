@@ -252,17 +252,9 @@
 
 /* ── Save / Reset ─────────────────────────────────────────────────────────── */
 
-.email-actionbar {
-  position: sticky;
-  bottom: 0;
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  margin-top: var(--space-5);
-  padding: var(--space-3) 0;
-  border-top: 1px solid var(--border);
-  background: var(--background);
-}
+/* `.email-actionbar` itself is styled in pages/admin.css beside `.ui-actionbar`: the AR
+   reconciliation settings screen needed the same bar, and two copies of a sticky
+   footer is two places to fix when one of them drifts. */
 
 @media (max-width: 640px) {
   .email-rule__foot {

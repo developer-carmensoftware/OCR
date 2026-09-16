@@ -13,6 +13,9 @@ vi.mock('../lib/api/arReconcile', async importOriginal => ({
   getSamplePaymentTypes: vi.fn(),
 }))
 vi.mock('../lib/api/mapping', () => ({ suggestPaymentTypes: vi.fn() }))
+// The page wears the module's `AppHeader` now, and that calls `useAuth()`, which throws
+// outside a provider. False keeps the bell and the usage fetch out of these tests.
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ isAuthenticated: false }) }))
 // Carmen's code lists. Which options a picker holds is not what these tests are about,
 // and unstubbed this reaches apiFetch in jsdom.
 vi.mock('../lib/api/carmen', () => ({
@@ -101,6 +104,16 @@ function preview(over: Partial<ARPreview> = {}): ARPreview {
   }
 }
 
+/** The payment types the mapping table is currently showing, by the attribute MappingRow
+ *  stamps on each row. A bare `getByText('VS INTER PREM')` no longer says which table it
+ *  means: the JV preview names the payment type each line credits too, so the same string
+ *  is legitimately on the page twice. */
+function mappedTypes(): (string | null)[] {
+  return [...document.querySelectorAll('.table-wrapper [data-pt]')].map(el =>
+    el.getAttribute('data-pt')
+  )
+}
+
 /** The balance verdict, read as one string: it carries an icon, so its text is split. */
 function balanceLine() {
   const el = document.querySelector('.ar-balance')
@@ -129,9 +142,9 @@ describe('AR reconciliation settings', () => {
   it('renders the saved configuration and its JV preview', async () => {
     renderPage()
 
-    await waitFor(() => expect(screen.getByText('PAYMENT TYPE MAPPING')).toBeInTheDocument())
-    expect(screen.getByLabelText(/Reconcile settlement reports/i)).toBeChecked()
-    expect(screen.getByText('VS INTER PREM')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText('Payment type mapping')).toBeInTheDocument())
+    expect(screen.getByLabelText(/Reconcile this bank/i)).toBeChecked()
+    expect(mappedTypes()).toContain('VS INTER PREM')
     // The balance line carries an icon, so its text is split across nodes. It also
     // arrives on the preview's own request, one tick after the settings render.
     await waitFor(() => expect(balanceLine()).toHaveTextContent('Debit = Credit'))
@@ -160,7 +173,7 @@ describe('AR reconciliation settings', () => {
   it('states the whole readiness chain, not just what is wrong', async () => {
     renderPage()
 
-    await waitFor(() => expect(screen.getByText('READINESS')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('4 of 6 ready')).toBeInTheDocument())
     // Six links, and the two that are not met are the ones a person can act on.
     expect(screen.getByText('Email rule tagged for settlement reports')).toBeInTheDocument()
     expect(screen.getByText('Posts without review')).toBeInTheDocument()
@@ -181,12 +194,12 @@ describe('AR reconciliation settings', () => {
 
   it('switching post type shows that set’s rows', async () => {
     renderPage()
-    await waitFor(() => expect(screen.getByText('VS INTER PREM')).toBeInTheDocument())
+    await waitFor(() => expect(mappedTypes()).toContain('VS INTER PREM'))
 
     fireEvent.click(screen.getAllByRole('radio')[1])
 
-    await waitFor(() => expect(screen.getByText('VS')).toBeInTheDocument())
-    expect(screen.queryByText('VS INTER PREM')).not.toBeInTheDocument()
+    await waitFor(() => expect(mappedTypes()).toContain('VS'))
+    expect(mappedTypes()).not.toContain('VS INTER PREM')
   })
 
   it('names the unmapped types rather than only refusing to post', async () => {
@@ -208,7 +221,7 @@ describe('AR reconciliation settings', () => {
 
   it('warns when the clearing account is moved away from the credit-card mapping', async () => {
     renderPage()
-    await waitFor(() => expect(screen.getByText('BANK PROFILE')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Posting rules')).toBeInTheDocument())
     // Nothing has been changed yet, so the neutral explanation stands.
     expect(screen.getByText(/Taken from the credit-card mapping/)).toBeInTheDocument()
   })
@@ -216,10 +229,10 @@ describe('AR reconciliation settings', () => {
   it('sends both mapping sets on save, so one view cannot delete the other', async () => {
     vi.mocked(api.saveARSettings).mockResolvedValue(undefined)
     renderPage()
-    await waitFor(() => expect(screen.getByText('PAYMENT TYPE MAPPING')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Payment type mapping')).toBeInTheDocument())
 
     // Save only opens once something differs from what the server confirmed.
-    fireEvent.click(screen.getByLabelText(/Reconcile settlement reports/i))
+    fireEvent.click(screen.getByLabelText(/Reconcile this bank/i))
     fireEvent.click(screen.getByRole('button', { name: /Save settings/i }))
 
     await waitFor(() => expect(api.saveARSettings).toHaveBeenCalled())
@@ -240,7 +253,7 @@ describe('AR reconciliation settings', () => {
     renderPage()
 
     // Otherwise the only way to get a row is to be charged for a document that then parks.
-    await waitFor(() => expect(screen.getByText('VS INTER UP PREM')).toBeInTheDocument())
+    await waitFor(() => expect(mappedTypes()).toContain('VS INTER UP PREM'))
     // The count is split across <strong> nodes, so read the status line as a whole.
     expect(document.querySelector('.cc-mapping-status')).toHaveTextContent('2 of 2 still to map')
   })
@@ -270,23 +283,23 @@ describe('AR reconciliation settings', () => {
     ])
     renderPage()
 
-    await waitFor(() => expect(screen.getByText('VS INTER PREM')).toBeInTheDocument())
+    await waitFor(() => expect(mappedTypes()).toContain('VS INTER PREM'))
     fireEvent.click(screen.getByRole('radio', { name: /Summary/ }))
 
     // Seeded from the sample's payment types, first-tokened to the scheme ('VS INTER
     // PREM' -> 'VS') and deduped — not left empty because Detail already had rows.
-    expect(await screen.findByText('VS')).toBeInTheDocument()
-    expect(screen.getByText('JCB')).toBeInTheDocument()
+    await waitFor(() => expect(mappedTypes()).toContain('VS'))
+    expect(mappedTypes()).toContain('JCB')
   })
 
   // ── Unsaved work ────────────────────────────────────────────────────────────
   //
-  // One Save at the foot of a long form, and the Back link sits at the very top of it.
+  // One Save at the foot of a long form, and Back sits at the very top of it.
   // Everything below is about the gap between those two facts.
 
   it('will not save an untouched form, and says which state it is in', async () => {
     renderPage()
-    await waitFor(() => expect(screen.getByText('PAYMENT TYPE MAPPING')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Payment type mapping')).toBeInTheDocument())
 
     expect(screen.getByRole('button', { name: /Save settings/i })).toBeDisabled()
     expect(screen.getByText('Everything here is saved')).toBeInTheDocument()
@@ -304,29 +317,29 @@ describe('AR reconciliation settings', () => {
     ])
     renderPage()
 
-    await waitFor(() => expect(screen.getByText('VS INTER UP PREM')).toBeInTheDocument())
+    await waitFor(() => expect(mappedTypes()).toContain('VS INTER UP PREM'))
     expect(screen.getByText('Everything here is saved')).toBeInTheDocument()
   })
 
-  it('asks before the Back link throws away unsaved mappings', async () => {
+  it('asks before Back throws away unsaved mappings', async () => {
     renderPage()
-    await waitFor(() => expect(screen.getByText('PAYMENT TYPE MAPPING')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Payment type mapping')).toBeInTheDocument())
 
-    fireEvent.click(screen.getByLabelText(/Reconcile settlement reports/i))
+    fireEvent.click(screen.getByLabelText(/Reconcile this bank/i))
     expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('link', { name: /Back to the queue/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Back to/i }))
 
-    // The link is a hash navigation, which never fires `beforeunload` — so this dialog is
+    // Back is a hash navigation, which never fires `beforeunload` — so this dialog is
     // the only thing standing between a filled-in mapping table and one convenient click.
     expect(await screen.findByText('Leave without saving?')).toBeInTheDocument()
   })
 
   it('does not ask when there is nothing to lose', async () => {
     renderPage()
-    await waitFor(() => expect(screen.getByText('PAYMENT TYPE MAPPING')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Payment type mapping')).toBeInTheDocument())
 
-    fireEvent.click(screen.getByRole('link', { name: /Back to the queue/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Back to/i }))
 
     expect(screen.queryByText('Leave without saving?')).not.toBeInTheDocument()
   })
