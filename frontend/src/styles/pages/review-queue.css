@@ -1370,10 +1370,14 @@
    down its whole left edge and reads as indented from the caption above it.
 
    Zeroed rather than removed: the column is one `<td>` in five row species plus the
-   header, and `tfoot`'s `colSpan={4}` counts it. (0,3,1) here clears both the width on
-   `.arv-c-toggle` (0,1,0) and the padding on `.jv-table td.arv-c-toggle` (0,2,1). */
+   header. `.jv-num--empty`/`.arv-c-toggle` scope it to that specific `<td>` rather than a
+   bare `td:first-child` — `tfoot`'s `colSpan={4}` cell is *also* `:first-child` of its row
+   (there is no separate toggle cell in the total row), and a bare selector zeroed its
+   padding along with the real toggle column's, pulling "Balanced" flush against the
+   modal edge in every Detail-mode document instead of sitting flush with Dept above it. */
 .jv-table.arv-flat th:first-child,
-.jv-table.arv-flat td:first-child {
+.jv-table.arv-flat td.arv-c-toggle:first-child,
+.jv-table.arv-flat td.jv-num--empty:first-child {
   width: 0;
   padding-left: 0;
   padding-right: 0;
