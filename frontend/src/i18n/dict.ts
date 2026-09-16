@@ -954,7 +954,7 @@ const en = {
   'review.arUnmapped': 'Map these payment types before posting: {types}',
   'review.arControlMissing': 'Set the clearing account to debit before posting',
   'review.arMappingLivesElsewhere':
-    'Switching Detail/Summary, the description template, or the control account —',
+    'Switching Detail/Summary, the description template, or the control account happens on that screen.',
   // The settlement report's reconciliation pane. The first two columns are the document's
   // own, so they are named the way KBANK prints them; the rest reuse the JV's column names
   // (review.jvDept / jvAccount / jvDebit / jvCredit) because they are the same columns.
@@ -2548,7 +2548,8 @@ const th: Record<TKey, string> = {
   'review.arNotConfigured': 'ธนาคารนี้ไม่ได้ตั้งค่ากระทบยอดไว้แล้ว จึงสร้าง JV ไม่ได้',
   'review.arUnmapped': 'ผูกผังบัญชีให้ประเภทบัตรเหล่านี้ก่อนจึงจะโพสต์ได้: {types}',
   'review.arControlMissing': 'ตั้งบัญชีฝั่งเดบิต (บัญชีคุมยอด) ก่อนจึงจะโพสต์ได้',
-  'review.arMappingLivesElsewhere': 'สลับ Detail/Summary, แก้ template คำอธิบาย, หรือบัญชีคุมยอด —',
+  'review.arMappingLivesElsewhere':
+    'การสลับ Detail/Summary, แก้ template คำอธิบาย, หรือบัญชีคุมยอด ทำได้ที่หน้านั้น',
   // Detail/Summary คงคำอังกฤษไว้ ตรงกับค่าที่หน้าตั้งค่าและ Carmen ใช้จริง
   'review.arColPaymentType': 'ประเภทบัตร',
   'review.arPostTypeDetail': 'Detail',

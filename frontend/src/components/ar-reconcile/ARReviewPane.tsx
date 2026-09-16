@@ -54,7 +54,7 @@ export default function ARReviewPane({ jv, details }: Props) {
     })
   }, [])
 
-  const { control, groups, newTypes, zeroLines } = useMemo(() => {
+  const { control, groups, newTypes, zeroLines, anyMerged } = useMemo(() => {
     const rows = jv?.rows ?? []
     // The counterpart leg is the one belonging to no group — `build_ar_jv_rows` writes it
     // first, but identifying it by what it is beats identifying it by where it sits.
@@ -115,6 +115,10 @@ export default function ARReviewPane({ jv, details }: Props) {
       groups: built,
       newTypes: [...fresh.entries()].map(([label, lines]) => ({ label, lines })),
       zeroLines: zero,
+      // Whether the disclosure column has anything to disclose anywhere in the table. False
+      // for every Detail document and for a Summary day that settled one scheme, and the
+      // column collapses rather than ruling an empty gutter down the left edge.
+      anyMerged: built.some(g => g.merged),
     }
   }, [jv, details])
 
@@ -157,7 +161,7 @@ export default function ARReviewPane({ jv, details }: Props) {
         {summary ? t('review.arGroupingSummary') : t('review.arGroupingDetail')}
       </p>
 
-      <table className="jv-table">
+      <table className={`jv-table${anyMerged ? '' : ' arv-flat'}`}>
         <thead>
           <tr>
             <th scope="col" className="arv-c-toggle">

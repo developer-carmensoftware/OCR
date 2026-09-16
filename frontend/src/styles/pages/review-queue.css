@@ -1312,6 +1312,9 @@
 
 /* Which grouping built the table. Detail and Summary are indistinguishable by eye on a
    day that settled one scheme, and the rule is what the reviewer is accepting. */
+/* --text-2 for the same reason `.rd-ar-hint p` takes it: 0.78rem at weight 400 is under
+   both of DESIGN.md's thresholds for Ink Tertiary. The two captions bracket the table and
+   are the same voice, so they take the same ink. */
 .arv-grouping {
   display: flex;
   align-items: center;
@@ -1319,7 +1322,7 @@
   flex-wrap: wrap;
   margin: 0;
   font-size: 0.78rem;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 
 /* The same fill and weight the JV's own AI tag wears — one chip vocabulary on the screen. */
@@ -1360,6 +1363,20 @@
    narrow enough that the table's usual cell padding would nearly double its width. */
 .jv-table td.arv-c-toggle {
   padding-left: 0.5rem;
+  padding-right: 0;
+}
+
+/* Nothing merged, so nothing can ever open: every Detail-mode document, and any Summary
+   day that settled a single scheme. Without this the table carries an empty 1.9rem gutter
+   down its whole left edge and reads as indented from the caption above it.
+
+   Zeroed rather than removed: the column is one `<td>` in five row species plus the
+   header, and `tfoot`'s `colSpan={4}` counts it. (0,3,1) here clears both the width on
+   `.arv-c-toggle` (0,1,0) and the padding on `.jv-table td.arv-c-toggle` (0,2,1). */
+.jv-table.arv-flat th:first-child,
+.jv-table.arv-flat td:first-child {
+  width: 0;
+  padding-left: 0;
   padding-right: 0;
 }
 
@@ -1469,15 +1486,73 @@
 /* Where these accounts are actually maintained. The dialog wore the settings page's own
    `.ar-hint` for a while, which resolved only because `ARJvPreview` was mounted here and
    imported that page's sheet — style-coverage catches exactly this. Same look, in the
-   sheet this dialog can reach. */
+   sheet this dialog can reach.
+
+   A control, not a sentence with a link run on into it: the door to `ar-settings` used to
+   be a bare `<a>` falling back to the browser's unstyled default blue — low-contrast
+   enough on the dark theme's near-black card to read as no color at all, and the one link
+   in this dialog that skipped the app's own "never leave a link unstyled" rule.
+
+   Its first fix made it a `btn btn-outline btn-sm` pinned right, which overcorrected: that
+   put a bordered button directly above `.rd-actions`' Approve at the same edge, so the
+   last thing under the reviewer's eye before the button that posts was a button that
+   leaves (an in-app hash navigates in this tab — see `fixLinkProps` — so pressing it loses
+   the open document). It also borrowed `.rd-alert-fix`'s grammar, where "outline btn-sm
+   pinned right in a text row" means *this row is an alert and here is the fix*.
+
+   A column, flush left, and quiet. Left breaks the right-edge stack so the door is no
+   longer a decoy in the commit zone; a column rather than a wrapping row keeps it flush at
+   every width, and lets the Thai label — half again the English one — grow without moving
+   anything. `--space-3` to the table above matches `.arv`'s own internal gap; the 0.5rem
+   it had read as glued to the table's bottom edge rather than as a footnote to the pane. */
 .rd-ar-hint {
-  margin: 0.5rem 0 0;
-  max-width: 68ch;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+}
+
+/* --text-2, not --text-3: 0.76rem is 12.16px at weight 400, which is the case DESIGN.md
+   names as needing a darker ink than Tertiary. `npm run contrast` cannot catch it — it
+   audits token pairs, not the size they are set at. */
+.rd-ar-hint p {
+  margin: 0;
+  max-width: 60ch;
   font-size: 0.76rem;
   line-height: 1.55;
-  color: var(--text-3);
+  color: var(--text-2);
   text-wrap: pretty;
 }
+
+/* Quieter than `.btn-outline` by subtraction — no border, no shadow, and the muted fill
+   instead of the card face — while still reading as a control rather than prose, which is
+   what the bare `<a>` failed at. Local rather than a global `.btn-ghost`: one call site,
+   same reasoning as `.arv-toggle-btn` above. No icon, because the app has no gear glyph
+   anywhere and `ChevronRight` already means *expand* in the table directly above this. */
+.rd-ar-hint-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.7rem;
+  border-radius: var(--radius-sm);
+  background: var(--muted);
+  color: var(--text-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    background-color var(--dur-fast, 120ms) var(--ease, ease-out),
+    color var(--dur-fast, 120ms) var(--ease, ease-out);
+}
+
+.rd-ar-hint-btn:hover {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+/* No :focus-visible rule here on purpose — base.css's global one is already
+   `2.5px solid var(--primary)` at `outline-offset: 2px` on `--radius-sm`, which is exactly
+   this element's radius. A local copy would be the same declaration twice. */
 
 /* ── Footer ─────────────────────────────────────────────────────────────────── */
 

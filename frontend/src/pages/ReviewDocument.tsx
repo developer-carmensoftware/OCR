@@ -689,10 +689,12 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
               {isAR ? (
                 <section aria-label={t('review.paneJv')}>
                   <ARReviewPane jv={arJv} details={details} />
-                  <p className="rd-ar-hint">
-                    {t('review.arMappingLivesElsewhere')}{' '}
-                    <a href="#/CreditCardOCR/ar-settings">{t('review.arSettings')}</a>
-                  </p>
+                  <div className="rd-ar-hint">
+                    <p>{t('review.arMappingLivesElsewhere')}</p>
+                    <a className="rd-ar-hint-btn" href="#/CreditCardOCR/ar-settings">
+                      {t('review.arSettings')}
+                    </a>
+                  </div>
                 </section>
               ) : (
                 <>
