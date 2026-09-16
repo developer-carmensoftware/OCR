@@ -1,44 +1,32 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, Sparkles, Undo2 } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { DetailRow } from '../credit-card/DetailTable'
 import type { ARPreview, ARPreviewRow } from '../../lib/api/arReconcile'
 import { useT } from '../../i18n/LanguageContext'
 import { fmt, parseNum } from '../../lib/format'
-import CustomSearchSelect from '../common/CustomSearchSelect'
-import { useGlMasters } from '../../hooks/mapping/useGlMasters'
-import { allowedAccountsForDept, isAccountAllowed } from '../../lib/deptAccounts'
-import { suggestPaymentTypes } from '../../lib/api/mapping'
-import type { FieldMapping } from '../../types/api'
 
 /**
- * The settlement report's JV, as a reconciliation the reviewer can close from here.
+ * The settlement report's JV, as a reconciliation rather than a readout.
  *
- * `ARJvPreview` used to stand here. It is the settings screen's worked example — its
- * heading reads JV PREVIEW, its empty state tells you to configure the bank, and its
- * unmapped warning says the document "would wait for review" to a reviewer who is looking
- * at it *in* the review queue. Borrowed wholesale it answered a different question than
- * the one being asked.
+ * Read-only, on purpose — reverted 2026-09-16 back to this after a short-lived attempt at
+ * inline editing (payment-type mapping since 2026-09-11, the clearing account and the JV
+ * description template briefly on top of that) made the modal read like a second copy of
+ * `#/CreditCardOCR/ar-settings`. One edit surface, not two: every GL account for this
+ * feature — the control leg included — is a bank-level setting, and settings belong on the
+ * settings screen. What is checked here is an arithmetic claim: every payment type KBANK
+ * printed became a credit line against an account, and the sum of them is the control
+ * account's debit. So each printed line sits on the row of the leg it became. In Detail
+ * that is one to one and the table is flat. In Summary two or more printed labels fold onto
+ * a scheme (`VS INTER UP PREM` + `VS LOCAL UP PREM` → `VS`), and the constituents are one
+ * click away beneath the key — the merge is the thing under review, so it stays checkable
+ * rather than asserted, but collapsed by default rather than a wall of quiet rows under
+ * every leg. The toggle leads the row in its own narrow column, same edge every other
+ * row-expand in this app uses (`ExtractionsPage`'s admin table).
  *
- * What is being checked here is an arithmetic claim: every payment type KBANK printed
- * became a credit line against an account, and the sum of them is the control account's
- * debit. So each printed line sits on the row of the leg it became. In Detail that is one
- * to one and the table is flat. In Summary two or more printed labels fold onto a scheme
- * (`VS INTER UP PREM` + `VS LOCAL UP PREM` → `VS`), and the constituents are one click away
- * beneath the key — the merge is the thing under review, so it stays checkable rather than
- * asserted, but collapsed by default rather than a wall of quiet rows under every leg. The
- * toggle leads the row in its own narrow column, same edge every other row-expand in this
- * app uses (`ExtractionsPage`'s admin table) — Dept and Account are wide pickers here, so a
- * control living inside the Payment type cell after them read as stuck in the row's middle
- * rather than sitting at an edge a reviewer would look for it on.
- *
- * Dept/Account on a mapped leg or a new (unmapped) payment type are editable, same shape
- * as `JvEditor`'s own pickers: `overrides` holds what the reviewer typed, an AI fill runs
- * in the background for anything still missing an account, and Approve
- * (`ReviewDocument.tsx`) saves `overrides` via `patchARMappings` — the AR analogue of
- * `patchAccountingConfig` — before posting, so a correction made here becomes the BU's
- * rule the same way a commission fix does on the credit-card path. What stays read-only is
- * the control leg: the clearing account is a once-per-bank setup choice, not a per-document
- * one, and lives only on `#/CreditCardOCR/ar-settings`.
+ * A blank cell (`missing-cell`, "Not mapped") is not something to fix from here: an
+ * unmapped payment type or a missing clearing account both block Approve
+ * (`ReviewDocument.tsx`'s `arBlockReason`), which points at `#/CreditCardOCR/ar-settings`
+ * rather than opening a picker in place.
  */
 
 interface Props {
@@ -46,33 +34,13 @@ interface Props {
   jv: ARPreview | null
   /** The lines the document actually prints, so the grouping can be checked against them. */
   details: DetailRow[]
-  bankCode: string
-  /** Corrections the reviewer has made but not yet saved, keyed by leg key or (for a new
-   *  type) the exact printed label. */
-  overrides: Record<string, FieldMapping>
-  onOverride: (code: string, mapping: FieldMapping, byUser?: boolean) => void
-  onUndo: (code: string) => void
-  guessedKeys: string[]
-  /** Payment types with money attached and still no account, after `overrides` — live,
-   *  unlike `jv.unmapped` which is only as fresh as the last document fetch. */
-  onState: (state: { unmapped: string[] }) => void
 }
 
 /** The label the server grouped under, normalised the way `group_key` receives it. */
 const labelOf = (d: DetailRow) => (d.Transaction || '').trim() || 'UNKNOWN'
 
-export default function ARReviewPane({
-  jv,
-  details,
-  bankCode,
-  overrides,
-  onOverride,
-  onUndo,
-  guessedKeys,
-  onState,
-}: Props) {
+export default function ARReviewPane({ jv, details }: Props) {
   const { t } = useT()
-  const { accounts, departments } = useGlMasters()
   // Which merged legs have their folded-in labels open. Closed by default: the merge is
   // what is under review, but seeing it costs a click rather than a wall of quiet rows
   // under every scheme leg before the reviewer has asked for any of them.
@@ -126,9 +94,9 @@ export default function ARReviewPane({
     })
 
     // Printed, journalised nowhere, and worth money: a real payment type nobody has
-    // mapped yet. Grouped by exact label so two lines sharing one unmapped label ask the
-    // reviewer once, not twice — the same "one picker per rule" `JvEditor` follows. A
-    // zero-amount line (`build_ar_jv_rows` posts nothing for it) has nothing to map.
+    // mapped yet. Grouped by exact label so two lines sharing one unmapped label read as
+    // one row, not two. A zero-amount line (`build_ar_jv_rows` posts nothing for it) has
+    // nothing to map.
     const fresh = new Map<string, DetailRow[]>()
     const zero: DetailRow[] = []
     for (const d of loose) {
@@ -150,92 +118,6 @@ export default function ARReviewPane({
     }
   }, [jv, details])
 
-  // The dept/acc a row shows: the reviewer's correction if there is one, else what the
-  // server sent (empty for a brand-new type, which has no server-side leg yet).
-  const effective = useCallback(
-    (code: string, dept?: string | null, acc?: string | null): FieldMapping =>
-      overrides[code] ?? { dept: dept || '', acc: acc || '' },
-    [overrides]
-  )
-
-  const unmapped = useMemo(() => {
-    const out: string[] = []
-    for (const { leg } of groups) {
-      const e = effective(leg.key, leg.dept, leg.acc)
-      if (!e.dept || !e.acc) out.push(leg.key)
-    }
-    for (const { label } of newTypes) {
-      const e = effective(label)
-      if (!e.dept || !e.acc) out.push(label)
-    }
-    return out
-  }, [groups, newTypes, effective])
-
-  useEffect(() => {
-    onState({ unmapped })
-    // `unmapped` is rebuilt every render; the joined string is what actually changes, and
-    // gating on it is what stops an update loop through the parent (same trick JvEditor's
-    // own `onState` effect uses).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onState, unmapped.join('|')])
-
-  // ── AI fill for a payment type nothing has mapped yet ───────────────────────
-  const asked = useRef(new Set<string>())
-  useEffect(() => {
-    if (!accounts.length) return
-    const targets = unmapped.filter(k => !asked.current.has(k))
-    if (!targets.length) return
-    targets.forEach(k => asked.current.add(k))
-    let alive = true
-    void suggestPaymentTypes({
-      payment_types: targets,
-      accounts: accounts.map(a => ({ code: a.code, name: a.name })),
-      departments: departments.map(d => ({
-        code: d.code,
-        name: d.name,
-        allowed_accounts: d.allowedAccounts || [],
-      })),
-      bank_code: bankCode,
-    })
-      .then(res => {
-        if (!alive) return
-        for (const [key, m] of Object.entries(res)) {
-          if (m?.dept && m?.acc) onOverride(key, { dept: m.dept, acc: m.acc }, false)
-        }
-      })
-      .catch(() => {
-        // Silent: the row already shows an empty picker asking to be filled.
-      })
-    return () => {
-      alive = false
-    }
-    // `unmapped` is rebuilt every render; the joined string is what actually changes —
-    // same trick the effect above uses, and for the same reason (JvEditor's own
-    // background-fill effect keys on `missingNow` the same way).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unmapped.join('|'), accounts, departments, bankCode, onOverride])
-
-  const change = useCallback(
-    (
-      code: string,
-      field: 'dept' | 'acc',
-      value: string,
-      curDept?: string | null,
-      curAcc?: string | null
-    ) => {
-      const cur = effective(code, curDept, curAcc)
-      const next: FieldMapping =
-        field === 'dept'
-          ? {
-              dept: value,
-              acc: isAccountAllowed(value, cur.acc, departments) ? cur.acc || '' : '',
-            }
-          : { dept: cur.dept || '', acc: value }
-      onOverride(code, next)
-    },
-    [effective, departments, onOverride]
-  )
-
   if (!jv) {
     return (
       <div className="arv arv-empty" role="status">
@@ -247,70 +129,18 @@ export default function ARReviewPane({
   const summary = jv.post_type === 'Summary'
   const imbalanced = !jv.balanced
 
-  /** One Dept + Account picker pair, shared by leg rows and new-type rows. */
-  function Pickers({
-    code,
-    dept,
-    acc,
-  }: {
-    code: string
-    dept?: string | null
-    acc?: string | null
-  }) {
-    const e = effective(code, dept, acc)
-    const accOptions = allowedAccountsForDept(e.dept, departments, accounts)
-    const filtered = accOptions.length < accounts.length
-    const needed = !e.dept || !e.acc
+  /** One Dept + Account cell pair, shared by the control leg, mapped legs and new-type
+   *  rows — a value, not a control; a blank one reads "Not mapped" and is fixed on
+   *  `#/CreditCardOCR/ar-settings`, not here. */
+  function Cells({ dept, acc }: { dept?: string | null; acc?: string | null }) {
     return (
       <>
-        <td data-label={t('review.jvDept')}>
-          <CustomSearchSelect
-            value={e.dept || null}
-            onChange={v => change(code, 'dept', v, dept, acc)}
-            options={departments}
-            placeholder={t('review.jvDeptPlaceholder')}
-            hasError={!e.dept}
-            aria-label={t('review.jvDeptFor', { field: code })}
-          />
+        <td className={`text-mono${dept ? '' : ' missing-cell'}`} data-label={t('review.jvDept')}>
+          {dept || t('review.arNotMapped')}
         </td>
-        <td data-label={t('review.jvAccount')}>
-          <CustomSearchSelect
-            value={e.acc || null}
-            onChange={v => change(code, 'acc', v, dept, acc)}
-            options={accOptions}
-            notice={
-              filtered
-                ? t('review.jvDeptFilter', { count: String(accOptions.length), dept: e.dept || '' })
-                : undefined
-            }
-            placeholder={t('review.jvAccountPlaceholder')}
-            hasError={needed}
-            aria-label={t('review.jvAccountFor', { field: code })}
-          />
+        <td className={`text-mono${acc ? '' : ' missing-cell'}`} data-label={t('review.jvAccount')}>
+          {acc || t('review.arNotMapped')}
         </td>
-      </>
-    )
-  }
-
-  /** The AI-guessed badge and Undo button, next to a row's payment-type label — this
-   *  table has no description cell to host them in, so the label cell is the closest. */
-  function Tags({ code }: { code: string }) {
-    const guessed = guessedKeys.includes(code)
-    const changed = code in overrides && !guessed
-    return (
-      <>
-        {guessed && (
-          <span className="jv-tag jv-tag--ai" title={t('review.jvGuessedHint')}>
-            <Sparkles size={11} strokeWidth={2.25} aria-hidden="true" />
-            {t('review.jvGuessed')}
-          </span>
-        )}
-        {changed && (
-          <button type="button" className="jv-tag jv-tag--undo" onClick={() => onUndo(code)}>
-            <Undo2 size={11} strokeWidth={2.25} aria-hidden="true" />
-            {t('review.jvUndo')}
-          </button>
-        )}
       </>
     )
   }
@@ -358,18 +188,7 @@ export default function ARReviewPane({
           {control && (
             <tr className="arv-row-control">
               <td className="jv-num--empty" />
-              <td
-                className={`text-mono${control.dept ? '' : ' missing-cell'}`}
-                data-label={t('review.jvDept')}
-              >
-                {control.dept || t('review.arNotMapped')}
-              </td>
-              <td
-                className={`text-mono${control.acc ? '' : ' missing-cell'}`}
-                data-label={t('review.jvAccount')}
-              >
-                {control.acc || t('review.arNotMapped')}
-              </td>
+              <Cells dept={control.dept} acc={control.acc} />
               <td className="arv-key" data-label={t('review.arColPaymentType')}>
                 {t('review.arControlLeg')}
               </td>
@@ -389,13 +208,7 @@ export default function ARReviewPane({
           )}
 
           {groups.map(({ leg, lines, merged }) => {
-            const e = effective(leg.key, leg.dept, leg.acc)
-            const rowClass =
-              !e.dept || !e.acc
-                ? 'jv-row--needed'
-                : leg.key in overrides && !guessedKeys.includes(leg.key)
-                  ? 'jv-row--changed'
-                  : undefined
+            const rowClass = !leg.dept || !leg.acc ? 'jv-row--needed' : undefined
             const open = expanded.has(leg.key)
             return [
               <tr key={leg.key} className={rowClass}>
@@ -423,7 +236,7 @@ export default function ARReviewPane({
                     </button>
                   )}
                 </td>
-                <Pickers code={leg.key} dept={leg.dept} acc={leg.acc} />
+                <Cells dept={leg.dept} acc={leg.acc} />
                 <td className="arv-key" data-label={t('review.arColPaymentType')}>
                   <span className="jv-desc-in">
                     {leg.key}
@@ -432,7 +245,6 @@ export default function ARReviewPane({
                         {t('review.arFoldedCount', { count: String(lines.length) })}
                       </span>
                     )}
-                    <Tags code={leg.key} />
                   </span>
                 </td>
                 <td
@@ -470,26 +282,16 @@ export default function ARReviewPane({
           })}
 
           {/* Printed, worth money, journalised nowhere: nobody has mapped this payment
-              type yet. Editable for the same reason a mapped leg is — filling it in here
-              is what lets this document post without a trip to the settings page. */}
+              type yet. Fixed on `#/CreditCardOCR/ar-settings`, not here — a new payment
+              type is exactly the "bank-level setting" this modal stopped editing. */}
           {newTypes.map(({ label }) => (
-            <tr
-              key={`new-${label}`}
-              className={
-                !effective(label).dept || !effective(label).acc
-                  ? 'jv-row--needed'
-                  : label in overrides && !guessedKeys.includes(label)
-                    ? 'jv-row--changed'
-                    : undefined
-              }
-            >
+            <tr key={`new-${label}`} className="jv-row--needed">
               <td className="jv-num--empty" />
-              <Pickers code={label} />
+              <Cells dept={null} acc={null} />
               <td data-label={t('review.arColPaymentType')}>
                 <span className="jv-desc-in">
                   {label}
                   <span className="arv-note">{t('review.arNewType')}</span>
-                  <Tags code={label} />
                 </span>
               </td>
               <td className="jv-num--empty" />

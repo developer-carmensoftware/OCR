@@ -24,7 +24,6 @@ import {
   type ExtractionWarning,
 } from '../lib/reviewReasons'
 import { patchAccountingConfig } from '../lib/api/config'
-import { patchARMappings } from '../lib/api/arReconcile'
 import {
   approveDocument,
   getPending,
@@ -87,19 +86,6 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   // and for one the reviewer introduces by retyping a Transaction cell, and a badge that
   // only knew about ingest called those the reviewer's own work.
   const [aiKeys, setAiKeys] = useState<string[]>([])
-  // AR reconciliation's own overrides/guessed-keys, same shape as the pair above but a
-  // separate state: `overrides` is the credit-card wizard's mapping table and this
-  // document's accounts live in `ar_reconcile_mappings` — writing one into the other's
-  // keys would save the right codes under the wrong feature. Unlike `overrides`, there is
-  // no seed from the payload: ingest never auto-guesses an AR mapping (that whole path is
-  // gated on `doc_type != DocType.AR_RECONCILE`), so these start empty and fill in only
-  // from `ARReviewPane`'s own background AI-fill effect.
-  const [arOverrides, setArOverrides] = useState<Record<string, { dept: string; acc: string }>>({})
-  const [arGuessedKeys, setArGuessedKeys] = useState<string[]>([])
-  // Live completeness from `ARReviewPane`, refreshed on every edit — `arJv.unmapped` below
-  // is only as fresh as the last document fetch, so gating Approve on it would leave the
-  // button disabled after the reviewer has already filled every picker in.
-  const [arUnmapped, setArUnmapped] = useState<string[]>([])
   // Header corrections, same shape of thing as a mapping override: BU config, uncommitted
   // until approve. `null` means "not touched", which is what keeps the stored value showing
   // through rather than being replaced by an empty string on first render.
@@ -288,30 +274,11 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
     })
     setAiKeys(k => k.filter(x => x !== key))
   }, [])
-  const onAROverride = useCallback(
-    (code: string, mapping: { dept?: string | null; acc?: string | null }, byUser = true) => {
-      if (byUser) setDirty(true)
-      setArOverrides(o => ({ ...o, [code]: { dept: mapping.dept || '', acc: mapping.acc || '' } }))
-      setArGuessedKeys(k =>
-        byUser ? k.filter(x => x !== code) : k.includes(code) ? k : [...k, code]
-      )
-    },
-    []
-  )
-  const onARUndo = useCallback((code: string) => {
-    setDirty(true)
-    setArOverrides(o => {
-      const { [code]: _dropped, ...rest } = o
-      return rest
-    })
-    setArGuessedKeys(k => k.filter(x => x !== code))
-  }, [])
   const onDesc = useCallback((id: string, value: string) => {
     setDirty(true)
     setDescs(d => ({ ...d, [id]: value }))
   }, [])
   const onJvState = useCallback((s: JvState) => setJv(s), [])
-  const onARState = useCallback((s: { unmapped: string[] }) => setArUnmapped(s.unmapped), [])
 
   // Which bank this posts against: what ingest stored on the row, which since 2026-09-03
   // is the document's own answer and not a filename rule's guess. Re-detecting in the
@@ -346,10 +313,9 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
 
   // AR reconciliation is a different document with a different JV, and the browser has no
   // arithmetic builder for it: the server sent the rows, the server rebuilds the same rows
-  // on approve, and this screen shows them. What IS editable is the Dept/Account mapping
-  // behind each payment type — `ARReviewPane`'s own pickers, saved via `patchARMappings`
-  // (AR's analogue of `patchAccountingConfig`) below, the same "fix it here, Approve saves
-  // the rule" shape the credit-card wizard's `overrides` already has. That is why the whole
+  // on approve, and this screen only shows them — read-only, since 2026-09-16. Every GL
+  // account for this feature, including the control leg, is a bank-level setting fixed on
+  // `#/CreditCardOCR/ar-settings`, not a per-document correction. That is why the whole
   // JvEditor / InputTaxPanel half of the modal is replaced rather than disabled, but
   // `ARReviewPane` itself is not.
   const arJv = doc?.doc_type === 'ar_reconcile' ? (doc.ar_jv ?? null) : null
@@ -357,8 +323,8 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
 
   const arBlockReason = !arJv
     ? t('review.arNotConfigured')
-    : arUnmapped.length > 0
-      ? t('review.arUnmapped', { types: arUnmapped.join(', ') })
+    : arJv.unmapped.length > 0
+      ? t('review.arUnmapped', { types: arJv.unmapped.join(', ') })
       : arJv.control_missing
         ? t('review.arControlMissing')
         : !arJv.balanced
@@ -434,61 +400,6 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
       }
     }
 
-    // AR's analogue of the block above: `arOverrides` is the review modal's own mapping
-    // table (`ar_reconcile_mappings`, via `patchARMappings`), not `overrides`, for the same
-    // reason `ruleCount && !isAR` guards the credit-card write off above — writing here
-    // would save the right codes under the wrong feature's keys. `jv_for_document` is
-    // computed fresh on every read (never cached), so once this save lands, re-fetching the
-    // document is enough to pick it up — no separate "preview" call needed.
-    let freshArJv = arJv
-    if (isAR && Object.keys(arOverrides).length) {
-      if (!arJv) {
-        setPostError(t('review.arNotConfigured'))
-        setBusy(false)
-        return
-      }
-      try {
-        await patchARMappings({
-          bank_code: bankCode,
-          post_type: arJv.post_type,
-          rows: Object.entries(arOverrides).map(([code, m]) => ({
-            payment_type_code: code,
-            credit_dept_code: m.dept || null,
-            credit_account_code: m.acc || null,
-            is_active: true,
-          })),
-        })
-      } catch (e) {
-        setPostError(t('review.arMappingSaveFailed', { reason: (e as Error).message }))
-        setBusy(false)
-        return
-      }
-      try {
-        const refreshed = await getPending(id)
-        setDoc(refreshed)
-        freshArJv = refreshed.doc_type === 'ar_reconcile' ? (refreshed.ar_jv ?? null) : null
-      } catch (e) {
-        setPostError(t('review.arMappingSaveFailed', { reason: (e as Error).message }))
-        setBusy(false)
-        return
-      }
-      if (!freshArJv || freshArJv.unmapped.length > 0 || !freshArJv.balanced) {
-        setPostError(
-          t('review.arStillBlocked', {
-            reason: !freshArJv
-              ? t('review.arNotConfigured')
-              : freshArJv.unmapped.length > 0
-                ? t('review.arUnmapped', { types: freshArJv.unmapped.join(', ') })
-                : t('review.jvOffBy', {
-                    diff: fmt(Math.abs(freshArJv.total_debit - freshArJv.total_credit)),
-                  }),
-          })
-        )
-        setBusy(false)
-        return
-      }
-    }
-
     try {
       const res = await approveDocument(id, {
         extracted: {
@@ -507,9 +418,8 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
         },
         // AR: the server rebuilds these from the BU's current mapping and ignores what is
         // sent, so sending the rows it just handed us keeps the request honest rather
-        // than pretending the browser composed them. `freshArJv`, not `arJv`: if a mapping
-        // was just saved above, this is the re-fetched, post-save preview.
-        rows: isAR ? (freshArJv?.rows ?? []) : jv.rows,
+        // than pretending the browser composed them.
+        rows: isAR ? (arJv?.rows ?? []) : jv.rows,
         // A reclassification claims no input tax — the commission's VAT is claimed once,
         // by the fee invoice's own document.
         post_input_tax: isAR ? false : postInputTax,
@@ -778,16 +688,7 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
 
               {isAR ? (
                 <section aria-label={t('review.paneJv')}>
-                  <ARReviewPane
-                    jv={arJv}
-                    details={details}
-                    bankCode={bankCode}
-                    overrides={arOverrides}
-                    onOverride={onAROverride}
-                    onUndo={onARUndo}
-                    guessedKeys={arGuessedKeys}
-                    onState={onARState}
-                  />
+                  <ARReviewPane jv={arJv} details={details} />
                   <p className="rd-ar-hint">
                     {t('review.arMappingLivesElsewhere')}{' '}
                     <a href="#/CreditCardOCR/ar-settings">{t('review.arSettings')}</a>

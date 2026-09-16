@@ -12,7 +12,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.constants import PostType
-from app.exceptions import ValidationError
 from app.models.schemas import ARMappingItem
 from app.services import ar_reconcile_service as svc
 
@@ -274,84 +273,6 @@ async def test_an_empty_payment_type_code_is_not_stored():
             mappings={PostType.SUMMARY: [ARMappingItem(payment_type_code="   ")]},
         ),
     )
-    assert db.add.call_args_list == []
-
-
-# ── upsert_mapping_rows (the review modal's inline save) ──────────────────────
-
-
-@pytest.mark.asyncio
-async def test_upsert_inserts_a_brand_new_payment_type():
-    db = _db([_setting(post_type=PostType.SUMMARY)], [])
-
-    await svc.upsert_mapping_rows(
-        db,
-        TENANT,
-        "KBANK",
-        PostType.SUMMARY,
-        [ARMappingItem(payment_type_code="AMEX", credit_dept_code="GEN", credit_account_code="9")],
-    )
-
-    added = [c.args[0] for c in db.add.call_args_list]
-    assert len(added) == 1
-    assert added[0].payment_type_code == "AMEX"
-    assert added[0].credit_dept_code == "GEN"
-    assert added[0].credit_account_code == "9"
-    assert added[0].post_type == PostType.SUMMARY
-    assert added[0].is_active is True
-    db.commit.assert_awaited()
-
-
-@pytest.mark.asyncio
-async def test_upsert_updates_an_existing_row_in_place_rather_than_duplicating():
-    row = _mapping("VS", dept="OLD", acc="1")
-    db = _db([_setting(post_type=PostType.SUMMARY)], [row])
-
-    await svc.upsert_mapping_rows(
-        db,
-        TENANT,
-        "KBANK",
-        PostType.SUMMARY,
-        [ARMappingItem(payment_type_code="VS", credit_dept_code="NEW", credit_account_code="2")],
-    )
-
-    assert row.credit_dept_code == "NEW"
-    assert row.credit_account_code == "2"
-    assert db.add.call_args_list == [], "updated in place, not re-inserted"
-    db.commit.assert_awaited()
-
-
-@pytest.mark.asyncio
-async def test_upsert_rejects_a_stale_post_type():
-    """The screen only ever edits the bank's *current* vocabulary — a save against a
-    post_type the BU has since switched away from should fail loudly, not write rows
-    nothing will ever read."""
-    db = _db([_setting(post_type=PostType.SUMMARY)])
-
-    with pytest.raises(ValidationError):
-        await svc.upsert_mapping_rows(
-            db, TENANT, "KBANK", PostType.DETAIL, [ARMappingItem(payment_type_code="VS")]
-        )
-
-
-@pytest.mark.asyncio
-async def test_upsert_refuses_a_bank_with_no_configuration():
-    db = _db([])
-
-    with pytest.raises(ValidationError):
-        await svc.upsert_mapping_rows(
-            db, TENANT, "KBANK", PostType.DETAIL, [ARMappingItem(payment_type_code="VS")]
-        )
-
-
-@pytest.mark.asyncio
-async def test_upsert_skips_a_blank_payment_type_code():
-    db = _db([_setting(post_type=PostType.SUMMARY)], [])
-
-    await svc.upsert_mapping_rows(
-        db, TENANT, "KBANK", PostType.SUMMARY, [ARMappingItem(payment_type_code="   ")]
-    )
-
     assert db.add.call_args_list == []
 
 

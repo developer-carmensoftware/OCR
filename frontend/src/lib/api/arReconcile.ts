@@ -105,29 +105,6 @@ export async function saveARSettings(
   }
 }
 
-export interface ARMappingPatchRequest {
-  bank_code: string
-  post_type: PostType
-  /** Only the payment types actually touched — an upsert, not a replace. See
-   *  `svc.upsert_mapping_rows` for why this is a separate, narrower endpoint from
-   *  `saveARSettings`. */
-  rows: ARMappingItem[]
-}
-
-/** The review modal's save path: persist just the payment types a reviewer fixed or
- *  mapped inline, without touching the rest of the bank's configuration. */
-export async function patchARMappings(payload: ARMappingPatchRequest): Promise<void> {
-  const res = await apiFetch(API.arReconcile.mappings, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-  if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new Error(body?.detail || `AR mapping save failed (${res.status})`)
-  }
-}
-
 export interface ARPreviewRequest {
   bank_code: string
   post_type: PostType

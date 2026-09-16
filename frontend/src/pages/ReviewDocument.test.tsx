@@ -1045,9 +1045,6 @@ const AR_LINES = [
   { transaction: 'VS LOCAL UP PREM', pay_amt: '10,091.00', commis_amt: '', tax_amt: '', total: '' },
 ]
 
-// Account codes drawn from the mocked `fetchAccountCodes` fixture above (not real KBANK
-// codes) — the Dept/Account cells are pickers now, and the mocked `CustomSearchSelect`
-// only resolves a `value` that matches one of the `options` it was handed.
 const AR_CONTROL = {
   dept: 'GEN',
   acc: '110300',
@@ -1122,11 +1119,10 @@ function arDetail(over: Record<string, unknown> = {}) {
   } as Partial<ReviewDocumentDetail>)
 }
 
-/** The pane's own rows, in order, as `[dept, acc, payment type, debit, credit]`. A mapped
- *  leg's Dept/Account cells are pickers now (the mocked `CustomSearchSelect` above renders
- *  a real `<select>`), so a cell reads its `<select>`'s value when it has one and falls
- *  back to its text otherwise — which is what a still-read-only cell (the control leg, an
- *  orphan) has. */
+/** The pane's own rows, in order, as `[dept, acc, payment type, debit, credit]`. Every
+ *  cell is a plain value now (2026-09-16 — the pane went back to read-only), but the
+ *  `<select>` fallback stays: nothing in this pane renders one any more, so it is
+ *  permanently a no-op, not a bet on the pane staying read-only. */
 function paneRows() {
   return Array.from(document.querySelectorAll('.arv .jv-table tbody tr')).map(tr =>
     Array.from(tr.querySelectorAll('td')).map(td => {
@@ -1264,14 +1260,14 @@ describe('a parked settlement report', () => {
     await screen.findByText('Detail')
     expect(await screen.findByRole('button', { name: /Approve/ })).toBeDisabled()
     // Said twice on purpose, and both matter: on the row that has the gap (its Dept/Account
-    // pickers are empty, unlike the two mapped rows beside it, and the row itself carries
-    // `jv-row--needed`), and as the reason the disabled button gives — a reader who
+    // cells read "Not mapped", unlike the two mapped rows beside it, and the row itself
+    // carries `jv-row--needed`), and as the reason the disabled button gives — a reader who
     // scrolled past the table still gets told what to go and fix.
     expect(document.querySelectorAll('.arv .jv-row--needed')).toHaveLength(1)
     expect(paneRows().find(r => r[3] === 'VS LOCAL UP PREM')).toEqual([
       '',
-      '',
-      '',
+      'Not mapped',
+      'Not mapped',
       'VS LOCAL UP PREM',
       '',
       '10,091.00',

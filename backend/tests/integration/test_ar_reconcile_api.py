@@ -6,7 +6,6 @@ that lies about the line count or the balance is a JV that posts wrong.
 """
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
 
 from tests.conftest import make_mock_db
 from tests.integration.conftest import make_test_client
@@ -202,48 +201,6 @@ def test_save_rejects_a_mapping_set_under_an_unknown_post_type():
         resp = client.put(
             f"{BASE}/settings",
             json={"bank_code": "KBANK", "mappings": {"Weekly": []}},
-            headers=AUTH,
-        )
-        assert resp.status_code == 422
-
-
-# ── mappings (the review modal's inline save) ──────────────────────────────────
-
-
-def test_patch_mappings_uppercases_bank_code_and_delegates_to_the_service():
-    with (
-        patch("app.routers.ar_reconcile.svc.upsert_mapping_rows", new_callable=AsyncMock) as mocked,
-        make_test_client(make_mock_db()) as client,
-    ):
-        resp = client.patch(
-            f"{BASE}/mappings",
-            json={
-                "bank_code": "kbank",
-                "post_type": "Detail",
-                "rows": [
-                    {
-                        "payment_type_code": "AMEX",
-                        "credit_dept_code": "GEN",
-                        "credit_account_code": "9",
-                    }
-                ],
-            },
-            headers=AUTH,
-        )
-        assert resp.status_code == 200
-        assert resp.json() == {"ok": True}
-        mocked.assert_awaited_once()
-        args = mocked.await_args.args
-        assert args[2] == "KBANK"
-        assert args[3] == "Detail"
-        assert args[4][0].payment_type_code == "AMEX"
-
-
-def test_patch_mappings_rejects_an_unknown_post_type():
-    with make_test_client(make_mock_db()) as client:
-        resp = client.patch(
-            f"{BASE}/mappings",
-            json={"bank_code": "KBANK", "post_type": "Weekly", "rows": []},
             headers=AUTH,
         )
         assert resp.status_code == 422

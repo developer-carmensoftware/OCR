@@ -19,7 +19,6 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import DocType, PostType
-from app.exceptions import ValidationError
 from app.models.catalog import Bank
 from app.models.email_automation import EmailDocument, EmailIngestSettings
 from app.models.orm import (
@@ -311,68 +310,6 @@ async def save_settings(db: AsyncSession, tenant_id: str, req: ARSettingsIn) -> 
         req.bank_code,
         req.enabled,
         req.post_type,
-    )
-
-
-async def upsert_mapping_rows(
-    db: AsyncSession,
-    tenant_id: str,
-    bank_code: str,
-    post_type: str,
-    rows: list[ARMappingItem],
-) -> None:
-    """A review-modal correction: upsert only the rows the reviewer touched.
-
-    Unlike `save_settings` (full delete+reinsert of both mapping sets, for the settings
-    screen which always holds both in memory), this is called from a screen that has
-    loaded neither — just the payment types on the one document in front of it. Touching
-    only those rows is what lets it skip re-sending `enabled`, the template, the clearing
-    account and the other post type's rows, none of which this screen has any business
-    (or any data) to overwrite.
-    """
-    setting = await _get_setting(db, tenant_id, bank_code)
-    if setting is None:
-        raise ValidationError("AR reconciliation is not configured for this bank")
-    if post_type != setting.post_type:
-        # Same "deliberate act with visible cost" reasoning `post_type` gets everywhere
-        # else: a screen open on a vocabulary the BU has since switched away from should
-        # fail loudly rather than write rows nothing will ever read.
-        raise ValidationError(
-            f"This bank now posts as {setting.post_type}, not {post_type} — refresh and retry"
-        )
-
-    existing = {(m.post_type, m.payment_type_code): m for m in await _get_mappings(db, setting.id)}
-    for item in rows:
-        code = item.payment_type_code.strip()
-        if not code:
-            continue
-        match = existing.get((post_type, code))
-        if match:
-            match.credit_dept_code = item.credit_dept_code or None
-            match.credit_account_code = item.credit_account_code or None
-            if item.payment_type_desc:
-                match.payment_type_desc = item.payment_type_desc
-            match.is_active = True
-        else:
-            db.add(
-                ARReconcileMapping(
-                    setting_id=setting.id,
-                    post_type=post_type,
-                    payment_type_code=code,
-                    payment_type_desc=item.payment_type_desc or None,
-                    credit_dept_code=item.credit_dept_code or None,
-                    credit_account_code=item.credit_account_code or None,
-                    is_active=True,
-                )
-            )
-
-    await db.commit()
-    logger.info(
-        "Patched AR reconcile mapping rows tenant=%s bank=%s post_type=%s count=%d",
-        tenant_id,
-        bank_code,
-        post_type,
-        len(rows),
     )
 
 

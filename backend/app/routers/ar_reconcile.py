@@ -2,17 +2,12 @@
 
   GET   /api/v1/ar-reconcile/settings?bank_code=  → config, both mapping sets, readiness
   PUT   /api/v1/ar-reconcile/settings             → upsert (FULL replace of both sets)
-  PATCH /api/v1/ar-reconcile/mappings             → upsert JUST the rows touched, for the
-                                                     bank's current post type — the review
-                                                     modal's save path, not the settings
-                                                     screen's (which still uses PUT above)
   POST  /api/v1/ar-reconcile/preview              → the JV this configuration would build
 
 There is deliberately no `/suggest` here. AI Auto-Map calls the existing
 `POST /api/v1/credit-card/mapping/suggest-payment-types`, which takes the payment types
 and Carmen's account/department lists in the body and knows nothing about which feature
-asked — so it works unchanged, and brings its history-bypass with it. Both the settings
-screen and the review modal's inline AR mapping editor use it.
+asked — so it works unchanged, and brings its history-bypass with it.
 """
 
 import logging
@@ -26,7 +21,6 @@ from app.database import get_db
 from app.exceptions import ValidationError
 from app.models.schemas import (
     ARMappingItem,
-    ARMappingPatchIn,
     ARPreviewIn,
     ARPreviewOut,
     ARPreviewRow,
@@ -88,21 +82,6 @@ async def save_settings(
         )
     req.bank_code = req.bank_code.upper()
     await svc.save_settings(db, session.tenant_id, req)
-    return {"ok": True}
-
-
-@router.patch("/mappings")
-async def patch_mappings(
-    req: ARMappingPatchIn,
-    db: AsyncSession = Depends(get_db),
-    session: SessionInfo = Depends(get_current_session),
-):
-    """The review modal's save path: upsert just the payment types the reviewer touched,
-    for the bank's current post type. See `svc.upsert_mapping_rows` for why this is not a
-    full replace like `PUT /settings`.
-    """
-    req.bank_code = req.bank_code.upper()
-    await svc.upsert_mapping_rows(db, session.tenant_id, req.bank_code, req.post_type, req.rows)
     return {"ok": True}
 
 
