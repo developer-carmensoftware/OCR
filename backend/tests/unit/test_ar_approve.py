@@ -38,7 +38,7 @@ def _ar_row(**over):
     return _pending_row(bank_code="KBANK", doc_no="210726E00035291", review_payload=payload, **over)
 
 
-def _built(unmapped=None, balanced=True, rows=None):
+def _built(unmapped=None, balanced=True, rows=None, control_missing=False):
     rows = rows or [
         ARPreviewRow(
             dept="GEN",
@@ -58,6 +58,7 @@ def _built(unmapped=None, balanced=True, rows=None):
         total_credit=sum(r.credit for r in rows),
         balanced=balanced,
         unmapped=unmapped or [],
+        control_missing=control_missing,
     )
 
 
@@ -164,6 +165,17 @@ async def test_an_unbalanced_entry_refuses_rather_than_posting():
 
     with pytest.raises(ValidationError, match="do not agree"):
         await _approve(_ReviewDB(row), row, built=_built(balanced=False, rows=rows))
+
+
+@pytest.mark.asyncio
+async def test_a_blank_clearing_account_refuses_rather_than_posting():
+    """Checked ahead of `balanced`: a JV missing its debit leg's dept/acc balances fine —
+    nothing about the arithmetic is wrong — so this is the one thing standing between it
+    and Carmen."""
+    row = _ar_row()
+
+    with pytest.raises(ValidationError, match="clearing account"):
+        await _approve(_ReviewDB(row), row, built=_built(control_missing=True))
 
 
 @pytest.mark.asyncio

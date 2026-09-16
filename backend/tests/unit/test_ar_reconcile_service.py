@@ -97,6 +97,20 @@ async def test_jv_for_document_builds_the_entry_the_reviewer_approves():
     assert out.unmapped == []
     assert out.description == "Credit Card AR Reconcile 21/07/2026"
     assert out.rows[1].desc.startswith("Tax Inv.# 210726E00035291 - ")
+    assert out.control_missing is False
+
+
+@pytest.mark.asyncio
+async def test_jv_for_document_reports_a_blank_control_leg():
+    """A JV missing its clearing account still balances and still posts — nothing about
+    the arithmetic is wrong, which is why `approve_document` checks this separately."""
+    db = _db([_setting(debit_dept_code=None, debit_account_code=None)], SUMMARY_MAPS)
+
+    out = await svc.jv_for_document(db, TENANT, "KBANK", EXTRACTED)
+
+    assert out is not None
+    assert out.control_missing is True
+    assert out.balanced is True
 
 
 @pytest.mark.asyncio
@@ -434,6 +448,21 @@ async def test_a_partly_mapped_table_is_not_complete():
 
     assert by_key["mapping_complete"].ok is False
     assert by_key["mapping_complete"].detail == "1 of 2 mapped"
+
+
+@pytest.mark.asyncio
+async def test_a_bank_with_no_rows_yet_is_not_told_zero_of_zero():
+    """A freshly enabled bank has zero mapping rows until its first report parks for
+    review — "0 of 0 mapped" would read as broken rather than as "nothing has arrived
+    yet"."""
+    settings_row = SimpleNamespace(rules=[], auto_post=False)
+    db = _db([settings_row], [settings_row])
+
+    out = await svc.readiness(db, TENANT, "KBANK", setting=_setting(), mappings={})
+    by_key = {b.key: b for b in out}
+
+    assert by_key["mapping_complete"].ok is False
+    assert by_key["mapping_complete"].detail == "No report has arrived yet to map"
 
 
 # ── The bank selector (FRD §3.1 + Out-of-Scope) ───────────────────────────────

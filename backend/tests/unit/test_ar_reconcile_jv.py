@@ -13,6 +13,7 @@ from app.constants import PostType
 from app.models.schemas import ExtractedDetailRow
 from app.services.ar_reconcile_jv import (
     build_ar_jv_rows,
+    control_leg_missing,
     group_key,
     is_balanced,
     render_jv_description,
@@ -257,3 +258,34 @@ def test_document_without_a_tax_invoice_number_drops_the_comment_prefix():
     )
     assert out[0]["desc"] == "Credit Card AR Summary"
     assert out[1]["desc"] == "VS INTER PREM"
+
+
+# ── control_leg_missing ────────────────────────────────────────────────────────
+#
+# A JV missing its clearing account still balances and still posts — nothing about the
+# arithmetic is wrong, which is exactly why nothing else here would have caught it.
+
+
+def test_control_leg_missing_when_the_debit_leg_has_no_account():
+    out = build_ar_jv_rows(
+        rows([("VS INTER PREM", "3,251.00")]),
+        post_type=PostType.DETAIL,
+        debit_dept="",
+        debit_acc="",
+        mappings=detail_mappings(),
+        doc_no=DOC_NO,
+    )
+    assert is_balanced(out), "blank dept/acc does not stop the arithmetic from balancing"
+    assert control_leg_missing(out) is True
+
+
+def test_control_leg_not_missing_once_both_fields_are_set():
+    out = build(PostType.DETAIL, detail_mappings())
+    assert control_leg_missing(out) is False
+
+
+def test_control_leg_missing_on_a_document_with_no_postable_amounts():
+    """`build_ar_jv_rows` returns no rows at all here, so there is no debit leg to check —
+    treated as missing rather than vacuously fine, since there is nothing to clear either
+    way and callers should not read an empty list as "ready to post"."""
+    assert control_leg_missing([]) is True

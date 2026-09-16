@@ -137,6 +137,19 @@ def is_balanced(rows: list[dict]) -> bool:
     return abs(debit - credit) <= BALANCE_EPSILON
 
 
+def control_leg_missing(rows: list[dict]) -> bool:
+    """The debit leg — the one belonging to no group — has no dept or no account.
+
+    A JV in this state still balances and still posts: nothing about its arithmetic is
+    wrong. What is wrong is invisible until someone reconciles the control account by
+    hand and finds it never reaches zero. One implementation, called from the auto-post
+    gate, the approve endpoint and the review modal, so "blank clearing account" is
+    caught the same way everywhere rather than three times slightly differently.
+    """
+    control = next((r for r in rows if not r["key"]), None)
+    return control is None or not control["dept"] or not control["acc"]
+
+
 def render_jv_description(
     template: str,
     *,

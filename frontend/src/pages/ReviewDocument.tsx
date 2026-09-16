@@ -359,11 +359,13 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
     ? t('review.arNotConfigured')
     : arUnmapped.length > 0
       ? t('review.arUnmapped', { types: arUnmapped.join(', ') })
-      : !arJv.balanced
-        ? t('review.jvOffBy', { diff: fmt(Math.abs(arJv.total_debit - arJv.total_credit)) })
-        : !effectivePrefix
-          ? t('review.prefixRequired')
-          : null
+      : arJv.control_missing
+        ? t('review.arControlMissing')
+        : !arJv.balanced
+          ? t('review.jvOffBy', { diff: fmt(Math.abs(arJv.total_debit - arJv.total_credit)) })
+          : !effectivePrefix
+            ? t('review.prefixRequired')
+            : null
 
   const blockReason = isAR
     ? arBlockReason
@@ -386,6 +388,13 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   const prefixFix =
     isAR && blockReason === t('review.prefixRequired')
       ? fixLinkProps({ href: '#/CreditCardOCR/mapping' })
+      : null
+
+  // Same shape as `prefixFix`, for the other field this path cannot fix in place: the
+  // clearing account is a bank-level setting, not a per-document one.
+  const arSettingsFix =
+    isAR && blockReason === t('review.arControlMissing')
+      ? fixLinkProps({ href: '#/CreditCardOCR/ar-settings' })
       : null
 
   async function approve() {
@@ -847,6 +856,11 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   {prefixFix && (
                     <a className="rd-blocked-fix" {...prefixFix}>
                       {t('review.actionSetPrefix')}
+                    </a>
+                  )}
+                  {arSettingsFix && (
+                    <a className="rd-blocked-fix" {...arSettingsFix}>
+                      {t('review.actionFixClearingAccount')}
                     </a>
                   )}
                 </p>

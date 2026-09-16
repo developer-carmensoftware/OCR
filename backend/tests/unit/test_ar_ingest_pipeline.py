@@ -238,6 +238,30 @@ async def test_an_unmapped_scheme_parks_instead_of_posting():
     p.suggest.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_a_blank_clearing_account_parks_instead_of_posting():
+    """A JV missing its debit leg's dept/acc still balances — every payment type is
+    mapped and `is_balanced` has nothing to object to — so this is the one flag standing
+    between a document like this and posting with a control account nobody set. See
+    `control_leg_missing`."""
+    db = _FakeDB()
+    blank_setting = SimpleNamespace(
+        id=7,
+        enabled=True,
+        post_type="Summary",
+        jv_description_template="Credit Card AR Reconcile {Settlement_Date}",
+        debit_dept_code=None,
+        debit_account_code=None,
+    )
+    outcome, p = await _run_ar(db, setting=blank_setting)
+
+    assert outcome == "pending_review"
+    p.post_gljv.assert_not_called()
+    row = db.added[0]
+    assert "clearing_account_missing" in row.review_payload["flags"]
+    assert row.review_payload["unmapped"] == [], "the credit side is fully mapped"
+
+
 # ── The review fork: fully mapped and balanced, still no auto-post ────────────
 
 

@@ -1086,6 +1086,7 @@ const AR_JV = {
   balanced: true,
   unmapped: [] as string[],
   post_type: 'Detail',
+  control_missing: false,
 }
 
 /** Summary: both printed labels fold onto the scheme, which is the case worth showing. */

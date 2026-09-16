@@ -32,6 +32,11 @@ function reasonFor(row: ReviewDocument): { key: TKey; tone: string; fields: stri
   const f = row.flags
   if (f.includes('mapping_missing'))
     return { key: 'review.reasonMissingMapping', tone: 'warn', fields: row.unmapped || [] }
+  // AR reconciliation only, and ranked beside `mapping_missing`: both mean this JV
+  // cannot post at all until someone sets an account, they are just two different
+  // legs of it (payment type vs. the once-per-bank clearing account).
+  if (f.includes('clearing_account_missing'))
+    return { key: 'review.reasonClearingAccountMissing', tone: 'warn', fields: [] }
   if (f.includes('unbalanced')) return { key: 'review.reasonUnbalanced', tone: 'warn', fields: [] }
   if (f.includes('mapping_guessed'))
     return { key: 'review.reasonGuessed', tone: 'warn', fields: row.guessed || [] }

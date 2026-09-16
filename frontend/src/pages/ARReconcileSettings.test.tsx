@@ -96,6 +96,7 @@ function preview(over: Partial<ARPreview> = {}): ARPreview {
     balanced: true,
     unmapped: [],
     post_type: 'Detail',
+    control_missing: false,
     ...over,
   }
 }

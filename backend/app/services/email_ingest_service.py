@@ -93,6 +93,7 @@ from app.services.accounting_config_service import (
 )
 from app.services.ar_reconcile_jv import (
     build_ar_jv_rows,
+    control_leg_missing,
     is_balanced,
     render_jv_description,
     unmapped_ar_types,
@@ -1240,6 +1241,9 @@ async def _run_document(
             unbalanced=bool(rows) and not is_balanced(rows)
             if doc_type == DocType.AR_RECONCILE
             else False,
+            clearing_account_missing=(
+                control_leg_missing(rows) if doc_type == DocType.AR_RECONCILE else False
+            ),
         )
         if not auto_post or flags:
             await _park_for_review(
@@ -1746,6 +1750,7 @@ def _review_flags(
     mapping_missing: list[str] | None = None,
     doc_type: str = DocType.FEE_INVOICE,
     unbalanced: bool = False,
+    clearing_account_missing: bool = False,
 ) -> list[str]:
     """Why this document might be worth opening. Computed once, here, and stored.
 
@@ -1780,6 +1785,11 @@ def _review_flags(
     if doc_type == DocType.AR_RECONCILE:
         if unbalanced:
             flags.append("unbalanced")
+        if clearing_account_missing:
+            # A JV in this state balances and posts — the debit leg just has no dept/acc.
+            # That posts a JV that never clears the control account it exists to clear,
+            # invisible until someone reconciles by hand. See `control_leg_missing`.
+            flags.append("clearing_account_missing")
     elif any(
         abs(r2(num(d.pay_amt) - (num(d.commis_amt) + num(d.tax_amt) + num(d.total)))) > 0.01
         for d in extracted.details
@@ -2058,6 +2068,8 @@ async def approve_document(
                 raise ValidationError(
                     "Map these payment types before posting: " + ", ".join(built.unmapped)
                 )
+            if built.control_missing:
+                raise ValidationError("Set the clearing account to debit before posting")
             rows = [r.model_dump() for r in built.rows]
             if not built.balanced:
                 raise ValidationError("Debit and credit do not agree — this JV cannot post")

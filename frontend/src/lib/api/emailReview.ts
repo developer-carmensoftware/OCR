@@ -14,7 +14,16 @@ import type { Page } from './page'
 /** Why a parked document might be worth opening. Computed once at park time and stored,
  *  because neither survives a list query: see `_review_flags` in email_ingest_service.py. */
 export type ReviewFlag =
-  'unbalanced' | 'mapping_guessed' | 'mapping_missing' | 'doc_no_missing' | 'warnings'
+  | 'unbalanced'
+  | 'mapping_guessed'
+  | 'mapping_missing'
+  | 'doc_no_missing'
+  | 'warnings'
+  // AR reconciliation only: the debit leg (once-per-bank clearing account) has no
+  // dept/acc. The JV still balances and still posts — invisible until someone
+  // reconciles the control account by hand. See `control_leg_missing` in
+  // ar_reconcile_jv.py.
+  | 'clearing_account_missing'
 
 /** Which filter chip a row lives under — see `_chip_expr` in routers/credit_card_activity.py,
  *  which is the only definition there is.

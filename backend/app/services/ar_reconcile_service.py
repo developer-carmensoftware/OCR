@@ -40,6 +40,7 @@ from app.models.schemas import (
 )
 from app.services.ar_reconcile_jv import (
     build_ar_jv_rows,
+    control_leg_missing,
     is_balanced,
     render_jv_description,
     unmapped_ar_types,
@@ -436,6 +437,7 @@ async def jv_for_document(
         balanced=is_balanced(rows),
         unmapped=unmapped_ar_types(rows_in, maps, setting.post_type),
         post_type=setting.post_type,
+        control_missing=control_leg_missing(rows),
     )
 
 
@@ -475,12 +477,19 @@ async def readiness(
 
     post_type = setting.post_type if setting else PostType.DETAIL
     items = (mappings or {}).get(post_type, [])
-    complete = [i for i in items if i.is_active and i.credit_dept_code and i.credit_account_code]
+    active = [i for i in items if i.is_active]
+    complete = [i for i in active if i.credit_dept_code and i.credit_account_code]
     out.append(
         ARBlocker(
             key="mapping_complete",
-            ok=bool(complete) and len(complete) == len([i for i in items if i.is_active]),
-            detail=f"{len(complete)} of {len([i for i in items if i.is_active])} mapped",
+            ok=bool(complete) and len(complete) == len(active),
+            # No rows yet (a bank that has never been saved) is not "0 of 0 mapped" —
+            # that reads as broken rather than as "nothing to map yet".
+            detail=(
+                "No report has arrived yet to map"
+                if not active
+                else f"{len(complete)} of {len(active)} mapped"
+            ),
         )
     )
     out.append(

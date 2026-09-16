@@ -837,6 +837,7 @@ const en = {
   // from the backend. Five lowercase fragments, one capitalised phrase and two first-person
   // sentences was four grammars in one scan, and the eye re-orients at each change.
   'review.reasonMissingMapping': 'Mapping missing',
+  'review.reasonClearingAccountMissing': 'Clearing account not set',
   'review.reasonUnbalanced': 'Amounts do not reconcile',
   // "AI suggested", not "guessed": every document that needs a rule the BU has never set
   // goes through the suggester before it reaches this queue, so what the reviewer is being
@@ -951,6 +952,7 @@ const en = {
   'review.arNotConfigured':
     'AR reconciliation is no longer configured for this bank, so no JV can be built.',
   'review.arUnmapped': 'Map these payment types before posting: {types}',
+  'review.arControlMissing': 'Set the clearing account to debit before posting',
   'review.arMappingLivesElsewhere':
     'Switching Detail/Summary, the description template, or the control account —',
   // The settlement report's reconciliation pane. The first two columns are the document's
@@ -972,6 +974,9 @@ const en = {
   // The journal book lives in the credit-card mapping screen, which is where this sends
   // the reviewer — the field on the dialog cannot be typed into on this path.
   'review.actionSetPrefix': 'Set the journal book',
+  // The clearing account lives on the AR settings screen — same "read-only here, fix it
+  // there" door as the journal book above.
+  'review.actionFixClearingAccount': 'Fix the clearing account',
   // "reviewed and", because that is what the name is evidence of: this document stopped at
   // the queue and a person read it before it went. Its sibling below says "scanned and" for
   // the same reason — each names the work the person actually did, not just the posting.
@@ -2483,6 +2488,7 @@ const th: Record<TKey, string> = {
   'review.arMappingSaveFailed': 'บันทึกผังบัญชีไม่สำเร็จ จึงยังไม่ได้โพสต์: {reason}',
   'review.arStillBlocked': 'หลังบันทึกผังบัญชีแล้วยังโพสต์ไม่ได้: {reason}',
   'review.reasonMissingMapping': 'ยังไม่มีผังบัญชี',
+  'review.reasonClearingAccountMissing': 'ยังไม่ตั้งบัญชีคุมยอด',
   'review.reasonUnbalanced': 'ยอดไม่สมดุล',
   'review.reasonGuessed': 'AI แนะนำผังบัญชี',
   'review.reasonDocNoMissing': 'ไม่มีเลขที่เอกสาร',
@@ -2541,6 +2547,7 @@ const th: Record<TKey, string> = {
   'review.arSettings': 'ตั้งค่ากระทบยอดลูกหนี้บัตรเครดิต',
   'review.arNotConfigured': 'ธนาคารนี้ไม่ได้ตั้งค่ากระทบยอดไว้แล้ว จึงสร้าง JV ไม่ได้',
   'review.arUnmapped': 'ผูกผังบัญชีให้ประเภทบัตรเหล่านี้ก่อนจึงจะโพสต์ได้: {types}',
+  'review.arControlMissing': 'ตั้งบัญชีฝั่งเดบิต (บัญชีคุมยอด) ก่อนจึงจะโพสต์ได้',
   'review.arMappingLivesElsewhere': 'สลับ Detail/Summary, แก้ template คำอธิบาย, หรือบัญชีคุมยอด —',
   // Detail/Summary คงคำอังกฤษไว้ ตรงกับค่าที่หน้าตั้งค่าและ Carmen ใช้จริง
   'review.arColPaymentType': 'ประเภทบัตร',
@@ -2557,6 +2564,7 @@ const th: Record<TKey, string> = {
   'review.arExpandFolded': 'แสดง {count} รายการที่รวมอยู่ใน {field}',
   'review.arCollapseFolded': 'ซ่อนรายการที่รวมอยู่ใน {field}',
   'review.actionSetPrefix': 'ตั้งสมุดรายวัน',
+  'review.actionFixClearingAccount': 'แก้บัญชีคุมยอด',
   'review.postedBy': 'ตรวจสอบและโพสต์โดย {name}',
   'review.postedAutomatically': 'โพสต์อัตโนมัติ',
   'review.postedManuallyBy': 'สแกนและลงบัญชีโดย {name}',
