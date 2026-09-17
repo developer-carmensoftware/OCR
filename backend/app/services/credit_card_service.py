@@ -637,11 +637,21 @@ def _normalize_bay_statement(extracted: ExtractedCreditCardData) -> None:
 
     1. Find the summary row (by label, or gross ≈ Σ other rows' gross) and
        remove it from details.
-    2. Total VAT = summary gross − commission − net (immune to wrong-column
+    2. Check the summary's own gross against Σ gross of the rows that remain —
+       the reconciliation the fee-invoice and plain-statement layouts already
+       do, and BAY needs for the same reason: consuming the summary row for
+       the VAT spread below is not the same as verifying the rows above it,
+       and the JV built from these rows balances whatever survives (Σdebit and
+       Σcredit are both sums over the same list). A missing or unreadable
+       summary is `_TOTAL_MISSING`; a readable one that disagrees with the
+       lines is `reconMismatch` (`_recon_mismatch`) — the same two warnings
+       `_strip_noncard_rows` raises for BBL/KBANK/SCB, and BAY's own prompt
+       already mandates this row the same way theirs do.
+    3. Total VAT = summary gross − commission − net (immune to wrong-column
        reads); fallback to the summary row's own tax value.
-    3. Spread the VAT across detail rows proportional to commission (VAT is
+    4. Spread the VAT across detail rows proportional to commission (VAT is
        levied on the fee), last row absorbing the rounding remainder.
-    4. Fill per-row net = gross − commission − tax.
+    5. Fill per-row net = gross − commission − tax.
 
     OCR values already present per row are kept (compute-when-blank only).
     """
@@ -664,6 +674,7 @@ def _normalize_bay_statement(extracted: ExtractedCreditCardData) -> None:
                 summary = cand
                 break
 
+    s_gross: float | None = None
     total_vat: float | None = None
     if summary is not None:
         s_gross, s_commis, s_net = (
@@ -676,6 +687,19 @@ def _normalize_bay_statement(extracted: ExtractedCreditCardData) -> None:
         else:
             total_vat = _parse_amt(summary.tax_amt)
         rows[:] = [r for r in rows if r is not summary]  # identity, not value equality
+
+    # Gross only, mirroring `_strip_noncard_rows`: a missing row moves every column
+    # together, and a misread cell on a row that survives is a different failure
+    # (out of scope here, same as there). `not s_gross` also catches a 0.00 or blank
+    # read on the summary row itself — that is an unread total, not a document that
+    # totals nothing, so it reads as missing rather than claiming a gap the size of
+    # the whole statement.
+    if not s_gross:
+        extracted.warnings.append(_TOTAL_MISSING)
+    else:
+        lines_total = round(sum(_parse_amt(r.pay_amt) or 0.0 for r in rows), 2)
+        if abs(lines_total - s_gross) > _RECON_TOL:
+            extracted.warnings.append(_recon_mismatch(lines_total, s_gross))
 
     blank_tax_rows = [r for r in rows if not _parse_amt(r.tax_amt)]
     # total_vat covers ALL detail rows — subtract any tax already filled by OCR
