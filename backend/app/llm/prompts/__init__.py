@@ -33,17 +33,31 @@ _REGISTRY: dict[str, str] = {
 # Bump whenever a layout changes — used by GET /api/version.
 # All bumped together on 2026-09-03: the shared OUTPUT_RULES gained `bank_code`, so every
 # prompt's output contract changed, not just one layout.
+#
+# 2026-09-17: the three plain statement layouts now MANDATE their printed TOTAL row as
+# the last details[] object, and ROW_RULES' exception whitelist names them. Their JV sums
+# the same rows into both sides, so it balanced whatever the model returned and a short
+# reading auto-posted undetected; `_strip_noncard_rows` consumes that row and checks Σ
+# against it instead. Framed as "MANDATORY FINAL ROW … N+1 objects" rather than a one-line
+# "INCLUDE the summary row" (which BAY has): on KBANK_SETTLEMENT the short form was
+# verified live NOT to work — the model kept generalizing the nearby skip-summary warning.
+#
+# **Every entry bumps, not just the three layouts that changed.** `build_bank_prompt` is
+# `_BASE_INTRO + layout + ROW_RULES + OUTPUT_RULES`, so editing the shared ROW_RULES
+# changed the text served for all eight banks — the same reasoning as the 2026-09-03 bump
+# above. Leaving BAY and the fee invoices behind would point `/api/version` at prompt text
+# those numbers never named, which is the one thing this dict exists to prevent.
 _PROMPT_VERSIONS: dict[str, str] = {
-    "BBL": "2.3.0",
-    "KBANK": "2.3.0",
-    "SCB": "2.3.0",
-    "BAY": "1.4.0",
-    "KTC": "1.5.0",
-    "GHL": "1.5.0",
-    "PAYPAL": "1.5.0",
-    "SIAMPAY": "1.5.0",
-    "GENERIC": "2.3.0",
-    "COMBINED": "2.7.0",
+    "BBL": "2.4.0",
+    "KBANK": "2.4.0",
+    "SCB": "2.4.0",
+    "BAY": "1.5.0",
+    "KTC": "1.6.0",
+    "GHL": "1.6.0",
+    "PAYPAL": "1.6.0",
+    "SIAMPAY": "1.6.0",
+    "GENERIC": "2.4.0",
+    "COMBINED": "2.8.0",
 }
 
 # Pre-built at import time — no cost at request time
