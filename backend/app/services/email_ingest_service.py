@@ -94,7 +94,6 @@ from app.services.accounting_config_service import (
 from app.services.ar_reconcile_jv import (
     build_ar_jv_rows,
     control_leg_missing,
-    is_balanced,
     render_jv_description,
     unmapped_ar_types,
 )
@@ -132,6 +131,7 @@ from app.services.email_imap import (
 from app.services.module_gate import assert_module_enabled
 from app.services.task_service import create_task
 from app.utils.bank_detect import detect_bank_code
+from app.utils.date_parsing import parse_doc_date
 from app.utils.db_helpers import has_submitted_doc
 from app.utils.gl_filter import parse_default_account
 from app.utils.image_processing import validate_magic_bytes
@@ -1095,7 +1095,7 @@ async def _run_document(
         # Checked ahead of the GL-mapping call below, deliberately: this is the one
         # post-extraction skip that does NOT park, so nobody will ever see a suggestion for
         # it — it stays ahead of that call's LLM spend rather than paying for one.
-        if await _already_pending(tenant_id, bank_code, doc_no):
+        if await _already_pending(tenant_id, bank_code, doc_no, doc_type):
             # The one post-extraction skip that does NOT park. Its twin is already in the
             # queue, editable and postable; a second identical row is the thing this check
             # exists to prevent, not a second chance at anything.
@@ -1177,6 +1177,12 @@ async def _run_document(
 
         if doc_type == DocType.AR_RECONCILE:
             assert ar_setting is not None
+            # No balance check here: `build_ar_jv_rows` derives the control leg from the
+            # sum of the very rows it credits, so `is_balanced` over its own output is a
+            # tautology — it cannot see a wrong-block reading, only arithmetic the builder
+            # already guaranteed. The real check already ran, in `_normalize_ar_settlement`
+            # (Σ rows vs. the document's own printed total), and its result is already in
+            # `extracted.warnings` by the time this function is reached.
             rows = build_ar_jv_rows(
                 extracted.details,
                 post_type=ar_setting.post_type,
@@ -1185,11 +1191,6 @@ async def _run_document(
                 mappings=ar_maps,
                 doc_no=extracted.doc_no,
             )
-            if rows and not is_balanced(rows):
-                # NFR §9.4, tolerance 0.00. Never repaired here: every figure came printed
-                # off the document, so an imbalance means one was misread, and inventing
-                # the difference would hide that behind a JV that posts.
-                raise _Skip("unbalanced_document", "Debit and credit do not agree")
         else:
             rows = build_jv_rows(extracted.details, config.mappings or {})
         if not rows or not any(r["credit"] for r in rows):
@@ -1236,11 +1237,6 @@ async def _run_document(
             mapping_guessed=mapping_guessed,
             mapping_missing=mapping_missing,
             doc_type=doc_type,
-            # Already checked above as a `_Skip`, so this is belt-and-braces for the case
-            # where a mapping gap stops the rows being built at all.
-            unbalanced=bool(rows) and not is_balanced(rows)
-            if doc_type == DocType.AR_RECONCILE
-            else False,
             clearing_account_missing=(
                 control_leg_missing(rows) if doc_type == DocType.AR_RECONCILE else False
             ),
@@ -1648,29 +1644,47 @@ async def _ar_mappings(setting_id: int, post_type: str) -> dict[str, dict[str, s
         }
 
 
-async def _already_pending(tenant_id: str, bank_code: str | None, doc_no: str | None) -> bool:
+async def _already_pending(
+    tenant_id: str, bank_code: str | None, doc_no: str | None, doc_type: str
+) -> bool:
     """Is an identical document already sitting in this BU's review queue?
 
     A document with no `doc_no` is not comparable — two unnumbered statements are not
     evidence of anything — so it never matches. That blindness is itself why
     `doc_no_missing` is a flag: it keeps an unnumbered document out of auto-post, where
     nothing else could catch a second copy.
+
+    **`doc_type` is checked too, in Python.** KBANK prints one tax invoice number across
+    both the commission fee invoice and the settlement report that reclassifies the same
+    day's takings — `finalize_extraction`'s duplicate key already carries `doc_type` for
+    exactly this reason (see its comment), and without it here a fee invoice parked for
+    review would sink the settlement report sharing its number as a false "copy already
+    waiting". `email_documents` has no `doc_type` column, but `_park_for_review` already
+    stores it in `review_payload` — the only place downstream that has to tell the two
+    documents apart from this row anyway — so this reads it back rather than adding a
+    migration for one more comparison.
     """
     if not doc_no:
         return False
     try:
         async with async_session() as db:
-            hit = await db.scalar(
-                select(EmailDocument.id)
-                .where(
-                    EmailDocument.tenant_id == uuid.UUID(tenant_id),
-                    EmailDocument.status == "pending_review",
-                    EmailDocument.bank_code == bank_code,
-                    EmailDocument.doc_no == doc_no,
+            rows = (
+                (
+                    await db.execute(
+                        select(EmailDocument.review_payload).where(
+                            EmailDocument.tenant_id == uuid.UUID(tenant_id),
+                            EmailDocument.status == "pending_review",
+                            EmailDocument.bank_code == bank_code,
+                            EmailDocument.doc_no == doc_no,
+                        )
+                    )
                 )
-                .limit(1)
+                .scalars()
+                .all()
             )
-        return hit is not None
+        return any(
+            (payload or {}).get("doc_type", DocType.FEE_INVOICE) == doc_type for payload in rows
+        )
     except Exception as exc:  # noqa: BLE001
         # Fail open, like every other infra guard on this path. A missed duplicate costs
         # the reviewer one extra row to reject; a raised exception here would file a
@@ -1749,7 +1763,6 @@ def _review_flags(
     mapping_guessed: bool,
     mapping_missing: list[str] | None = None,
     doc_type: str = DocType.FEE_INVOICE,
-    unbalanced: bool = False,
     clearing_account_missing: bool = False,
 ) -> list[str]:
     """Why this document might be worth opening. Computed once, here, and stored.
@@ -1765,10 +1778,14 @@ def _review_flags(
 
     **Except the settlement report, whose lines are not that shape.** It prints THB AMT per
     payment type and leaves VAT AMT and NET AMT as dashes on those rows, so the per-line
-    identity is false for every one of them and would flag every document. Its equivalent
-    question — does the JV balance — is answered by `ar_reconcile_jv.is_balanced` over the
-    built rows and passed in as `unbalanced`, so the flag still means the same thing to the
-    reader and to the auto-post gate.
+    identity is false for every one of them — it has no `unbalanced` flag of its own.
+    `ar_reconcile_jv.is_balanced` is not used here: it sums the same rows it just grouped
+    into both sides of the JV it built, so it cannot see a wrong-block reading, only
+    arithmetic the builder already guaranteed. The real check for this layout ran earlier,
+    in `credit_card_service._normalize_ar_settlement` (Σ rows against the document's own
+    printed total), and its result is already in `extracted.warnings` by the time this
+    function runs — which is why the plain `warnings` flag below is what carries it, not a
+    bespoke AR one.
 
     **This is also the auto-post gate.** An empty list is what `auto_post` posts on — the
     queue's own "nothing to say about this one", which the row already prints as *Ready to
@@ -1783,8 +1800,6 @@ def _review_flags(
     if mapping_guessed:
         flags.append("mapping_guessed")
     if doc_type == DocType.AR_RECONCILE:
-        if unbalanced:
-            flags.append("unbalanced")
         if clearing_account_missing:
             # A JV in this state balances and posts — the debit leg just has no dept/acc.
             # That posts a JV that never clears the control account it exists to clear,
@@ -2044,8 +2059,17 @@ async def approve_document(
     uri_ctx = current_carmen_uri.set(carmen_uri)
     try:
         async with async_session() as db:
+            # doc_date + doc_type match `finalize_extraction`'s duplicate key (see its
+            # comment): KBANK prints one tax invoice number across both the commission fee
+            # invoice and this settlement report, and without them a fee invoice that had
+            # already posted would refuse the settlement report sharing its number here.
             if doc_no and await has_submitted_doc(
-                db, CreditCard, tenant_id=uuid.UUID(tenant_id), doc_no=doc_no
+                db,
+                CreditCard,
+                tenant_id=uuid.UUID(tenant_id),
+                doc_no=doc_no,
+                doc_date=parse_doc_date(extracted.doc_date),
+                doc_type=doc_type,
             ):
                 raise ConflictError(f"Document {doc_no} has already been posted to Carmen")
             config = await get_accounting_config(db, tenant_id)
@@ -2070,9 +2094,11 @@ async def approve_document(
                 )
             if built.control_missing:
                 raise ValidationError("Set the clearing account to debit before posting")
+            # No balance check here, deliberately: `built.balanced` sums the same grouped
+            # rows into both sides of the JV `build_ar_jv_rows` just built from them, so it
+            # cannot be False — see `_review_flags` for why that check was removed rather
+            # than kept as belt-and-braces.
             rows = [r.model_dump() for r in built.rows]
-            if not built.balanced:
-                raise ValidationError("Debit and credit do not agree — this JV cannot post")
             description = built.description
 
         payload = build_gljv_payload(

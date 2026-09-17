@@ -87,7 +87,14 @@ _PROMPT_VERSIONS: dict[str, str] = {
     # 1.3.0 (2026-09-17): ROW_RULES' shared exception clause gained "as the LAST object in
     # details[]" wording (the #233/#234 anchor-row merge) — this prompt's built text moved
     # too, since it goes through the same `build_bank_prompt`.
-    "KBANK_SETTLEMENT": "1.3.0",
+    #
+    # 1.4.0 (2026-09-17): the MANDATORY FINAL ROW's `transaction` value changed from a bare
+    # "TOTAL" to the row's printed label verbatim ("TOTAL BY MERCHANT ID"). A TERMINAL or
+    # SERVICE block's own total is just as "TOTAL"-shaped, so a model that read the wrong
+    # block produced an anchor indistinguishable from the real one — Σ rows equalled that
+    # block's own total by construction and nothing downstream noticed. The verbatim label
+    # is what `_normalize_ar_settlement` now checks for "MERCHANT" before trusting the row.
+    "KBANK_SETTLEMENT": "1.4.0",
 }
 
 # Pre-built at import time — no cost at request time

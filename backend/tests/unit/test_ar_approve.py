@@ -104,6 +104,32 @@ async def test_the_description_comes_from_this_features_template():
 
 
 @pytest.mark.asyncio
+async def test_approve_checks_the_same_duplicate_key_extraction_uses():
+    """KBANK prints one tax invoice number across the fee invoice and the settlement
+    report; `finalize_extraction`'s duplicate key is (doc_no, doc_date, doc_type), and
+    approving must ask `has_submitted_doc` the same question — otherwise a fee invoice
+    that already posted would refuse the settlement report sharing its number."""
+    row = _ar_row()
+    db = _ReviewDB(row)
+    hsd = AsyncMock(wraps=ingest.has_submitted_doc)
+    with (
+        _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-9"}),
+        patch.object(ingest, "has_submitted_doc", hsd),
+        patch.object(ingest.ar_svc, "jv_for_document", AsyncMock(return_value=_built())),
+        patch.object(ingest, "build_gljv_payload", MagicMock(return_value={})),
+    ):
+        await ingest.approve_document(
+            row.id,
+            tenant_id=str(row.tenant_id),
+            reviewer="u",
+            extracted=_extracted(doc_date="21/07/2026"),
+            rows=[],
+        )
+    assert hsd.call_args.kwargs["doc_type"] == "ar_reconcile"
+    assert hsd.call_args.kwargs["doc_date"] is not None
+
+
+@pytest.mark.asyncio
 async def test_a_settlement_report_files_no_input_tax_record():
     """A reclassification claims none. The commission's VAT is claimed once, by the fee
     invoice's own document — twice would double the credit."""
@@ -154,24 +180,12 @@ async def test_approving_with_an_unmapped_type_refuses_and_names_it():
 
 
 @pytest.mark.asyncio
-async def test_an_unbalanced_entry_refuses_rather_than_posting():
-    """Tolerance 0.00 (NFR 9.4). Every figure came printed off the document, so an
-    imbalance means one was misread — inventing the difference would hide that."""
-    row = _ar_row()
-    rows = [
-        ARPreviewRow(dept="GEN", acc="1021000", desc="d", debit=25091.0, credit=0.0),
-        ARPreviewRow(dept="GEN", acc="1021001", desc="c", debit=0.0, credit=25000.0),
-    ]
-
-    with pytest.raises(ValidationError, match="do not agree"):
-        await _approve(_ReviewDB(row), row, built=_built(balanced=False, rows=rows))
-
-
-@pytest.mark.asyncio
 async def test_a_blank_clearing_account_refuses_rather_than_posting():
-    """Checked ahead of `balanced`: a JV missing its debit leg's dept/acc balances fine —
-    nothing about the arithmetic is wrong — so this is the one thing standing between it
-    and Carmen."""
+    """Nothing about the arithmetic is wrong when the debit leg has no dept/acc — a JV in
+    this state balances and posts — so this is the one thing standing between it and
+    Carmen. (There is no `balanced` check here to be "ahead of": `built.balanced` sums the
+    same grouped rows this function just built into both sides, so it cannot be False —
+    see `_review_flags` in `email_ingest_service.py`.)"""
     row = _ar_row()
 
     with pytest.raises(ValidationError, match="clearing account"):

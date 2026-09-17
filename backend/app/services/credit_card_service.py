@@ -422,7 +422,18 @@ def _normalize_ar_settlement(
     printed; if they disagree, a human is the right resolution, not arithmetic.
     """
     rows = extracted.details
-    summary = next((r for r in rows if _is_summary_row(r.transaction)), None)
+    # Scanned from the end and through `_is_total_anchor`, like `_strip_noncard_rows` —
+    # see that predicate's docstring for why "first summary-shaped row" is not enough: a
+    # TERMINAL or SERVICE block prints its own total above the real merchant summary, and
+    # that total is just as "TOTAL"-shaped.
+    anchor = next((r for r in reversed(rows) if _is_total_anchor(r)), None)
+    # The prompt asks for this row's label verbatim ("TOTAL BY MERCHANT ID"), not a bare
+    # "TOTAL", for exactly this check: a terminal/service block's own total also satisfies
+    # `_is_total_anchor` above, and reconciling the rows against THAT would make the model
+    # reading the wrong block look complete — Σ rows would equal that block's own total by
+    # construction. Anything not carrying "MERCHANT" is treated as no anchor at all.
+    if anchor is not None and "MERCHANT" not in (anchor.transaction or "").upper():
+        anchor = None
 
     rows[:] = [
         r
@@ -432,13 +443,28 @@ def _normalize_ar_settlement(
         and not _is_wht_row(r.transaction)
     ]
 
-    printed = _parse_amt(summary.pay_amt) if summary else None
-    if printed is None:
+    printed = _parse_amt(anchor.pay_amt) if anchor is not None else None
+    if anchor is None or printed is None:
         extracted.warnings.append(_SETTLEMENT_TOTAL_MISSING)
     else:
         lines_total = round(sum(_parse_amt(r.pay_amt) or 0.0 for r in rows), 2)
         if abs(lines_total - printed) > _RECON_TOL:
             extracted.warnings.append(_recon_mismatch(lines_total, printed))
+        else:
+            # The anchor carries COMM AMT / VAT AMT / NET AMT too, and a real KBANK
+            # settlement report prints all three in full on this one row (detail rows
+            # leave them dashed, which is why this layout has no per-line identity to
+            # check anywhere else). When all three read, THB AMT = COMM + VAT + NET is a
+            # second, independent check on the one row every other check here trusts.
+            # Only reached once the row sum already confirms `printed` itself, so this
+            # is catching a misread commis/tax/total cell, not re-flagging the same gap.
+            comm = _parse_amt(anchor.commis_amt)
+            vat = _parse_amt(anchor.tax_amt)
+            net = _parse_amt(anchor.total)
+            if comm is not None and vat is not None and net is not None:
+                anchor_sum = round(comm + vat + net, 2)
+                if abs(anchor_sum - printed) > _RECON_TOL:
+                    extracted.warnings.append(_recon_mismatch(anchor_sum, printed))
 
     from_file = _SETTLEMENT_FILE_MERCHANT.search(original_filename or "")
     from_doc = re.sub(r"\D", "", extracted.merchant_id or "")

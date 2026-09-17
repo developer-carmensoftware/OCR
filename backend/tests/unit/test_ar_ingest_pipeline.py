@@ -14,13 +14,20 @@ the path that was already there.
 from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 import pytest
 
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.ocr import ExtractedDetailRow
 from app.services import email_ingest_service as ingest
-from tests.unit.test_email_ingest_pipeline import _config, _extracted, _FakeDB, _run
+from tests.unit.test_email_ingest_pipeline import (
+    _config,
+    _extracted,
+    _FakeDB,
+    _run,
+    _session_factory,
+)
 
 AR_RULE = [
     {
@@ -151,6 +158,51 @@ async def test_a_fee_invoice_still_takes_the_original_path():
     p.post_input_tax.assert_called_once()
 
 
+# ── Duplicate key must agree with `finalize_extraction`'s ──────────────────────
+#
+# KBANK prints ONE tax invoice number across both documents: the commission fee invoice
+# and the settlement report that reclassifies the same day's takings. Before this fix,
+# `_already_pending` matched on (bank_code, doc_no) alone, so a fee invoice already
+# waiting for review made the settlement report sharing its number look like a copy of
+# itself — and vice versa. `finalize_extraction`'s own duplicate key already includes
+# `doc_type` for this exact reason.
+
+
+@pytest.mark.asyncio
+async def test_a_parked_fee_invoice_does_not_block_its_sibling_settlement_report():
+    tenant_id = str(uuid4())
+    db = _FakeDB(pending_payloads=[{"doc_type": "fee_invoice"}])
+    with patch.object(ingest, "async_session", _session_factory(db)):
+        blocked = await ingest._already_pending(
+            tenant_id, "KBANK", "210726E00035291", "ar_reconcile"
+        )
+    assert blocked is False
+
+
+@pytest.mark.asyncio
+async def test_a_second_copy_of_the_same_document_type_is_still_caught():
+    """The fix narrows the key, it must not blind it: two settlement reports parked for
+    the same tax invoice number are a real duplicate."""
+    tenant_id = str(uuid4())
+    db = _FakeDB(pending_payloads=[{"doc_type": "ar_reconcile"}])
+    with patch.object(ingest, "async_session", _session_factory(db)):
+        blocked = await ingest._already_pending(
+            tenant_id, "KBANK", "210726E00035291", "ar_reconcile"
+        )
+    assert blocked is True
+
+
+@pytest.mark.asyncio
+async def test_a_row_parked_before_doc_type_existed_defaults_to_fee_invoice():
+    """`email_documents` has no `doc_type` column — everything downstream reads it from
+    `review_payload`, which a row parked before this feature shipped never had."""
+    tenant_id = str(uuid4())
+    db = _FakeDB(pending_payloads=[{}])
+    with patch.object(ingest, "async_session", _session_factory(db)):
+        assert await ingest._already_pending(tenant_id, "KTC", "INV-001", "fee_invoice") is True
+        assert await ingest._already_pending(tenant_id, "KTC", "INV-001", "ar_reconcile") is False
+
+
 # ── What it posts ─────────────────────────────────────────────────────────────
 
 
@@ -241,9 +293,10 @@ async def test_an_unmapped_scheme_parks_instead_of_posting():
 @pytest.mark.asyncio
 async def test_a_blank_clearing_account_parks_instead_of_posting():
     """A JV missing its debit leg's dept/acc still balances — every payment type is
-    mapped and `is_balanced` has nothing to object to — so this is the one flag standing
-    between a document like this and posting with a control account nobody set. See
-    `control_leg_missing`."""
+    mapped, and this pipeline no longer even asks `is_balanced` (it sums the same rows
+    into both sides of the JV it just built, so it can't say no) — so this is the one flag
+    standing between a document like this and posting with a control account nobody set.
+    See `control_leg_missing`."""
     db = _FakeDB()
     blank_setting = SimpleNamespace(
         id=7,

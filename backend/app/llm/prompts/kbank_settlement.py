@@ -36,5 +36,8 @@ KBANK SETTLEMENT REPORT (KASIKORNBANK — SALE TRANSACTION REPORT / SUMMARY FULL
   details[] MUST contain N+1 objects. This row is the one exception to "skip summary/total
   rows": the system consumes it to verify the rows above and never posts it, so omitting it
   is a verification failure, not a harmless skip.
-    transaction = "TOTAL" | pay_amt = its THB AMT | commis_amt = its COMM AMT | tax_amt = its VAT AMT | total = its NET AMT\
+    transaction = the row's own printed label VERBATIM ("TOTAL BY MERCHANT ID"), never
+    shortened to "TOTAL" — the system tells this row apart from a TERMINAL/SERVICE block's
+    own total by that exact wording | pay_amt = its THB AMT | commis_amt = its COMM AMT |
+    tax_amt = its VAT AMT | total = its NET AMT\
 """

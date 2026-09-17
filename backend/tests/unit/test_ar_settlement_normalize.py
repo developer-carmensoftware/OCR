@@ -25,12 +25,25 @@ ROWS = [
 ]
 
 
-def make(rows=None, *, total="25,091.00", merchant=MERCHANT):
+def make(
+    rows=None,
+    *,
+    total="25,091.00",
+    merchant=MERCHANT,
+    anchor_label="TOTAL BY MERCHANT ID",
+    commis="582.99",
+    tax="40.81",
+    net=None,
+):
     details = [ExtractedDetailRow(transaction=t, pay_amt=a) for t, a in (rows or ROWS)]
     if total is not None:
         details.append(
             ExtractedDetailRow(
-                transaction="TOTAL", pay_amt=total, commis_amt="582.99", tax_amt="40.81"
+                transaction=anchor_label,
+                pay_amt=total,
+                commis_amt=commis,
+                tax_amt=tax,
+                total=net,
             )
         )
     return ExtractedCreditCardData(
@@ -104,3 +117,48 @@ def test_zero_and_withholding_rows_are_dropped():
     labels = [d.transaction for d in doc.details]
     assert "WHT 3%" not in labels and "AMEX PREM" not in labels
     assert codes(doc) == [], "dropping a WHT row must not itself look like a mismatch"
+
+
+def test_a_leaked_block_total_earlier_in_the_array_is_not_the_anchor():
+    """The MANDATORY FINAL ROW is always the last object the prompt asks for — an earlier
+    "TOTAL"-shaped row (a TERMINAL or SERVICE block's own total leaking through) must not
+    be picked up just because it matched first."""
+    leaked = [("TOTAL BY TERMINAL ID", "600.00"), *ROWS]
+    doc = make(leaked)
+    _normalize_ar_settlement(doc, FILE)
+
+    assert codes(doc) == []
+    assert "TOTAL BY TERMINAL ID" not in [d.transaction for d in doc.details]
+
+
+def test_an_anchor_without_merchant_wording_is_not_trusted():
+    """The whole-block substitution this document is dangerous for: the model reads only
+    a TERMINAL/SERVICE block and its own total, never reaching the merchant summary. Σ rows
+    would equal that block's own total by construction, so only the exact wording — which
+    the prompt now asks the model to copy verbatim — tells the two apart."""
+    doc = make(anchor_label="TOTAL BY TERMINAL ID")
+    _normalize_ar_settlement(doc, FILE)
+
+    assert codes(doc) == ["settlementTotalMissing"]
+
+
+def test_anchor_columns_that_do_not_add_up_are_flagged():
+    """THB AMT = COMM + VAT + NET on the anchor row is the only per-line identity this
+    layout has — every detail row leaves VAT/NET dashed. 582.99 + 40.81 + 23,000.00 =
+    23,623.80, not the printed 25,091.00."""
+    doc = make(net="23,000.00")
+    _normalize_ar_settlement(doc, FILE)
+
+    assert "reconMismatch" in codes(doc)
+    params = next(w for w in doc.warnings if w.code == "reconMismatch").params
+    assert params["printed"] == "25,091.00"
+    assert params["lines"] == "23,623.80"
+
+
+def test_anchor_columns_left_dashed_stay_silent():
+    """A bank whose settlement layout does not print COMM/VAT/NET on the total row must
+    not be flagged for it — `net` (NET AMT) unset here, as every existing fixture leaves
+    it, is exactly that shape."""
+    doc = make()
+    _normalize_ar_settlement(doc, FILE)
+    assert codes(doc) == []

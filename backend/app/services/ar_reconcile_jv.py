@@ -131,7 +131,15 @@ def unmapped_ar_types(
 
 
 def is_balanced(rows: list[dict]) -> bool:
-    """Σ debit == Σ credit. Checked before posting, never repaired."""
+    """Σ debit vs Σ credit over rows this module just built from one another.
+
+    Display only — the settings preview and the review screen show it as the "Balanced"
+    line. It is not a verification: `build_ar_jv_rows` derives the control leg from the sum
+    of the very rows it credits, so this can never return False for its own output. It
+    cannot see a wrong-block reading; only `credit_card_service._normalize_ar_settlement`
+    (Σ rows against the document's own printed total) can, and that result travels as
+    `extracted.warnings`, not through this function.
+    """
     debit = sum(r["debit"] for r in rows)
     credit = sum(r["credit"] for r in rows)
     return abs(debit - credit) <= BALANCE_EPSILON

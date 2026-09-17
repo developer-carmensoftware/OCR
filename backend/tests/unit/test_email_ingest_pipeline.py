@@ -48,7 +48,7 @@ class _FakeDB:
     """In-memory stand-in for AsyncSession: real object identity through
     add()/get(), configurable commit() failure for the dedupe path."""
 
-    def __init__(self, fail_commit_on_call: int | None = None, scalar=None):
+    def __init__(self, fail_commit_on_call: int | None = None, scalar=None, pending_payloads=None):
         self.added: list = []
         self._fail_commit_on_call = fail_commit_on_call
         self._commit_calls = 0
@@ -59,12 +59,22 @@ class _FakeDB:
         # `hit is not None` — so a default of 0 would tell every parking document that an
         # identical one is already in the queue.
         self._scalar = scalar
+        # `_already_pending`'s own query: the `review_payload` dicts of every row already
+        # matching (tenant, status, bank_code, doc_no) — everything it then filters by
+        # `doc_type` in Python. Default empty, matching the old `scalar=None` default it
+        # replaced: "nothing else in the queue for this key".
+        self._pending_payloads = pending_payloads or []
 
     def add(self, obj):
         self.added.append(obj)
 
     async def scalar(self, *_a, **_kw):
         return self._scalar
+
+    async def execute(self, *_a, **_kw):
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = self._pending_payloads
+        return result
 
     async def commit(self):
         self._commit_calls += 1
@@ -2693,7 +2703,7 @@ async def test_an_unnumbered_document_is_never_called_a_duplicate():
     """Two statements the model could not read a document number off are not evidence of
     anything. Matching them would park the second one for a reason its reviewer cannot
     check."""
-    assert await ingest._already_pending(TENANT_ID, "KTC", None) is False
+    assert await ingest._already_pending(TENANT_ID, "KTC", None, "fee_invoice") is False
 
 
 # ── Approve and reject: the human's two verbs ─────────────────────────────────
