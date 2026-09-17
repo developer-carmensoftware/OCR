@@ -205,6 +205,9 @@ def test_bay_summary_row_consumed_and_vat_spread():
     assert len(ext.details) == 3  # TOTAL removed
     assert [r.tax_amt for r in ext.details] == ["0.95", "5.76", "177.31"]  # Σ = 184.02
     assert [r.total for r in ext.details] == ["891.46", "3,570.91", "109,865.73"]  # Σ = 114,328.10
+    # Σ gross of the 3 rows (117,141.00) matches the TOTAL row's own gross exactly —
+    # a complete read says nothing.
+    assert ext.warnings == []
 
 
 def test_bay_summary_detected_by_arithmetic_when_label_garbled():
@@ -213,6 +216,34 @@ def test_bay_summary_detected_by_arithmetic_when_label_garbled():
     _normalize_bay_statement(ext)
     assert len(ext.details) == 3
     assert ext.details[-1].tax_amt == "177.31"
+    # The arithmetic fallback only ever picks a row whose gross already equals the
+    # sum of the others, so this can never itself produce a mismatch.
+    assert ext.warnings == []
+
+
+def test_bay_statement_short_by_one_row_is_caught_by_its_printed_total():
+    # The bug this guards: a JV built from BAY rows sums the same rows into both of
+    # its sides, so it balances whatever the model returned — Σ gross of the
+    # surviving rows against the summary row's own printed gross is the only thing
+    # that can notice one is missing.
+    ext = _bay_extracted([_BAY_QA_ROWS[0], _BAY_QA_ROWS[1], _BAY_QA_TOTAL])  # M-PREMIUM missing
+    _normalize_bay_statement(ext)
+    assert len(ext.details) == 2
+    assert [w.code for w in ext.warnings] == ["reconMismatch"]
+    assert ext.warnings[0].params == {
+        "lines": "4,565.00",
+        "printed": "117,141.00",
+        "gap": "112,576.00",
+    }
+
+
+def test_bay_total_row_with_blank_gross_reads_as_missing():
+    # 0.00 (or blank) on the summary row is an unread total, not a document that
+    # totals nothing — claiming a 117,141.00 gap would send the reviewer looking
+    # for a discrepancy the document never had.
+    ext = _bay_extracted([*_BAY_QA_ROWS, dict(_BAY_QA_TOTAL, pay_amt="0.00")])
+    _normalize_bay_statement(ext)
+    assert [w.code for w in ext.warnings] == ["totalMissing"]
 
 
 def test_bay_spread_sums_exactly_to_total_vat():
@@ -223,6 +254,10 @@ def test_bay_spread_sums_exactly_to_total_vat():
 
 
 def test_bay_no_summary_row_falls_back_to_row_arithmetic():
+    # BAY's own prompt mandates the summary row (`bay.py`: "INCLUDE the final
+    # รวม/TOTAL summary line as the LAST details row"), so its absence is a
+    # verification failure worth naming — same `totalMissing` code the plain
+    # statement layouts raise for the same gap, not a silent fallback.
     ext = _bay_extracted(
         [
             {
@@ -235,6 +270,7 @@ def test_bay_no_summary_row_falls_back_to_row_arithmetic():
     )
     _normalize_bay_statement(ext)
     assert ext.details[0].tax_amt == "177.31"
+    assert ext.warnings == [_TOTAL_MISSING]
 
 
 def test_bay_existing_row_tax_untouched():
