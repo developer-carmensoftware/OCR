@@ -71,12 +71,15 @@ async def extract_stateless(
         # at its own cap (`ap_invoice_service`). Without it a 7-page statement loses two
         # pages exactly as silently as the `[0]` version did, and the printed-total check
         # downstream is then the only thing standing between that and a short JV.
+        # Only the fallback truncates, which is why the warning is gated on it: a caller
+        # that named its pages gets exactly those, so telling a 9-page settlement report
+        # it was "capped to the first 5" would describe the opposite of what was sent.
         pages = page_indexes if page_indexes is not None else []
         try:
             page_count = await asyncio.get_running_loop().run_in_executor(
                 None, functools.partial(get_pdf_page_count, file_bytes, pdf_password)
             )
-            if page_count > MAX_PAGES_PER_CALL:
+            if not pages and page_count > MAX_PAGES_PER_CALL:
                 logger.warning(
                     "Credit-card document %s has %d pages; capping to first %d for extraction",
                     original_filename,
