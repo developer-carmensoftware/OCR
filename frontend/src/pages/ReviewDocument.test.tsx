@@ -710,14 +710,14 @@ describe('editing amounts on the JV', () => {
   })
 })
 
-describe('editing a line description', () => {
+describe('editing a line comment', () => {
   it('posts the retyped wording and saves no rule for it', async () => {
     // The GL line's own text, not a rule: it reaches Carmen as Detail[].Description and
     // nothing about it belongs in the BU config.
     vi.mocked(api.getPending).mockResolvedValue(detail())
     vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-1', tax_note: null })
     mount()
-    fireEvent.change(await screen.findByLabelText('Description for Bank Account'), {
+    fireEvent.change(await screen.findByLabelText('Comment for Bank Account'), {
       target: { value: 'KBANK settlement 15/01' },
     })
     await clickApprove()
@@ -733,11 +733,11 @@ describe('editing a line description', () => {
     // would shift every index after it, moving the reviewer's text onto another line.
     vi.mocked(api.getPending).mockResolvedValue(detail({ extracted: TWO_VISA }))
     mount()
-    fireEvent.change(await screen.findByLabelText('Description for Credit card commission'), {
+    fireEvent.change(await screen.findByLabelText('Comment for Credit card commission'), {
       target: { value: 'Merchant fee' },
     })
     fireEvent.change(screen.getByLabelText('Credit for Visa line 1'), { target: { value: '0' } })
-    expect(await screen.findByLabelText('Description for Merchant fee')).toHaveValue('Merchant fee')
+    expect(await screen.findByLabelText('Comment for Merchant fee')).toHaveValue('Merchant fee')
   })
 })
 
@@ -1048,7 +1048,7 @@ const AR_LINES = [
 const AR_CONTROL = {
   dept: 'GEN',
   acc: '110300',
-  desc: 'Tax Inv.# 210726E00035291 - Credit Card AR Summary',
+  desc: 'Tax Inv.# 210726E00035291 - Total Credit Card Summary',
   debit: 25091,
   credit: 0,
   key: '',
@@ -1139,9 +1139,16 @@ describe('a parked settlement report', () => {
 
     await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
     expect(paneRows()).toEqual([
-      ['', 'GEN', '110300', 'Control account', '25,091.00', ''],
-      ['', 'GEN', '510300', 'VS INTER UP PREM', '', '15,000.00'],
-      ['', 'GEN', '511200', 'VS LOCAL UP PREM', '', '10,091.00'],
+      [
+        '',
+        'GEN',
+        '110300',
+        'Tax Inv.# 210726E00035291 - Total Credit Card Summary',
+        '25,091.00',
+        '',
+      ],
+      ['', 'GEN', '510300', 'Tax Inv.# 210726E00035291 - VS INTER UP PREM', '', '15,000.00'],
+      ['', 'GEN', '511200', 'Tax Inv.# 210726E00035291 - VS LOCAL UP PREM', '', '10,091.00'],
     ])
     // The credit-card half of the modal is replaced, not disabled.
     expect(screen.queryByText('ACCOUNT CODE MAPPING')).not.toBeInTheDocument()
@@ -1157,19 +1164,35 @@ describe('a parked settlement report', () => {
 
     await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
     expect(paneRows()).toEqual([
-      ['', 'GEN', '110300', 'Control account', '25,091.00', ''],
-      ['', 'GEN', '510300', 'VS2 folded in', '', '25,091.00'],
+      [
+        '',
+        'GEN',
+        '110300',
+        'Tax Inv.# 210726E00035291 - Total Credit Card Summary',
+        '25,091.00',
+        '',
+      ],
+      ['', 'GEN', '510300', 'Tax Inv.# 210726E00035291 - VS2 folded in', '', '25,091.00'],
     ])
     expect(document.querySelectorAll('.arv-row-src')).toHaveLength(0)
 
     // The toggle is its own icon-only button leading the row now (Dept/Account are wide
     // pickers, so one living inside the Payment type cell after them read as stuck in the
-    // middle) — found by its accessible name, which names what it would reveal.
+    // middle) — found by its accessible name, which names what it would reveal. It still
+    // names the bare scheme, not the posted comment: the toggle is about the merge, not
+    // about what posts.
     fireEvent.click(screen.getByRole('button', { name: 'Show 2 lines folded into VS' }))
 
     expect(paneRows()).toEqual([
-      ['', 'GEN', '110300', 'Control account', '25,091.00', ''],
-      ['', 'GEN', '510300', 'VS2 folded in', '', '25,091.00'],
+      [
+        '',
+        'GEN',
+        '110300',
+        'Tax Inv.# 210726E00035291 - Total Credit Card Summary',
+        '25,091.00',
+        '',
+      ],
+      ['', 'GEN', '510300', 'Tax Inv.# 210726E00035291 - VS2 folded in', '', '25,091.00'],
       ['', '', '', 'VS INTER UP PREM', '', ''],
       ['', '', '', 'VS LOCAL UP PREM', '', ''],
     ])
@@ -1264,11 +1287,11 @@ describe('a parked settlement report', () => {
     // carries `jv-row--needed`), and as the reason the disabled button gives — a reader who
     // scrolled past the table still gets told what to go and fix.
     expect(document.querySelectorAll('.arv .jv-row--needed')).toHaveLength(1)
-    expect(paneRows().find(r => r[3] === 'VS LOCAL UP PREM')).toEqual([
+    expect(paneRows().find(r => r[3] === 'Tax Inv.# 210726E00035291 - VS LOCAL UP PREM')).toEqual([
       '',
       'Not mapped',
       'Not mapped',
-      'VS LOCAL UP PREM',
+      'Tax Inv.# 210726E00035291 - VS LOCAL UP PREM',
       '',
       '10,091.00',
     ])

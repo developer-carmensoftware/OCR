@@ -43,7 +43,7 @@ def _built(unmapped=None, balanced=True, rows=None, control_missing=False):
         ARPreviewRow(
             dept="GEN",
             acc="1021000",
-            desc="Tax Inv.# X - Credit Card AR Summary",
+            desc="Tax Inv.# X - Total Credit Card Summary",
             debit=25091.0,
             credit=0.0,
         ),

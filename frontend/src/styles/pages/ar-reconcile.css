@@ -339,8 +339,12 @@
   vertical-align: top;
 }
 
-/* The payment type this line credits — the column that changes when Detail/Summary is
-   flipped, which is the whole reason this panel is beside that control. */
+/* The comment as it will post to Carmen (`Tax Inv.# … - <payment type>`) — the column
+   that changes shape when Detail/Summary is flipped, which is the whole reason this panel
+   is beside that control. `overflow-wrap: anywhere` matters more since 2026-09-17: the
+   `Tax Inv.# … - ` prefix roughly triples the string's length, and in the 460px sticky
+   rail (`.ar-rail .ar-preview-table`, ≥1200px) that wraps most rows to two lines — the
+   row-count comparison the panel exists for still reads, just taller per row. */
 .ar-preview-table .ar-comment {
   font-family: 'Inter', 'IBM Plex Sans Thai', sans-serif;
   font-weight: 600;

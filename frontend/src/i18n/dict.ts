@@ -800,7 +800,7 @@ const en = {
   'review.jvNoConfig': 'This business unit has no accounting configuration yet.',
   'review.jvDept': 'Dept',
   'review.jvAccount': 'Account',
-  'review.jvDesc': 'Description',
+  'review.jvDesc': 'Comment',
   'review.jvLineOf': '{field} line {line}',
   'review.jvDebitFor': 'Debit for {field}',
   'review.jvCreditFor': 'Credit for {field}',
@@ -812,7 +812,7 @@ const en = {
   'review.jvAccountPlaceholder': 'Account',
   'review.jvDeptFor': 'Department for {field}',
   'review.jvAccountFor': 'Account for {field}',
-  'review.jvDescFor': 'Description for {field}',
+  'review.jvDescFor': 'Comment for {field}',
   'review.jvDeptFilter': '{count} accounts allowed for {dept}',
   'review.jvGuessed': 'AI',
   'review.jvGuessedHint': 'The AI chose this account when the document arrived. Check it.',
@@ -957,12 +957,15 @@ const en = {
   'review.arControlMissing': 'Set the clearing account to debit before posting',
   // The settlement report's reconciliation pane. The first two columns are the document's
   // own, so they are named the way KBANK prints them; the rest reuse the JV's column names
-  // (review.jvDept / jvAccount / jvDebit / jvCredit) because they are the same columns.
+  // (review.jvDept / jvAccount / jvDesc / jvDebit / jvCredit) because they are the same
+  // columns — including the Comment column, which both this pane and the settings screen's
+  // preview render from the same `desc` field since 2026-09-17. arColPaymentType survives
+  // only for ARMappingTable's own column, which maps a bare payment type to a GL account
+  // and never shows the posted comment.
   'review.arColPaymentType': 'Payment type',
   'review.arPostTypeDetail': 'Detail',
   'review.arPostTypeSummary': 'Summary',
   'review.arNotMapped': 'Not mapped',
-  'review.arControlLeg': 'Control account',
   'review.arNotPosted': 'no journal line',
   'review.arNewType': 'not mapped — pick Dept/Account to post it',
   'review.arFoldedCount': '{count} folded in',
@@ -1706,11 +1709,11 @@ const en = {
   // — AR reconciliation settings (#/CreditCardOCR/ar-settings) —
   //
   // The review modal points people here by name (review.arSettings), so the heading they
-  // land on is the same words. Columns and post-type names are NOT re-declared: the
-  // preview table reuses review.jvDept / jvAccount / jvDesc / jvDebit / jvCredit and the
-  // segmented control reuses review.arPostTypeDetail / arPostTypeSummary, because
-  // ARReviewPane already names the same things that way and two vocabularies for one
-  // column is how a reader starts wondering whether they are the same column.
+  // land on is the same words. Columns are NOT re-declared: the preview table reuses
+  // review.jvDept / jvAccount / jvDesc / jvDebit / jvCredit and the segmented control
+  // reuses review.arPostTypeDetail / arPostTypeSummary, because ARReviewPane already names
+  // the same things that way (same `desc` field too, since 2026-09-17) and two vocabularies
+  // for one column is how a reader starts wondering whether they are the same column.
   'ar.title': 'AR Reconciliation',
   'ar.intro':
     'Splits the lump credit-card control account into per-scheme receivables when a settlement report arrives by email.',
@@ -2536,7 +2539,7 @@ const th: Record<TKey, string> = {
   'review.jvNoConfig': 'หน่วยธุรกิจนี้ยังไม่ได้ตั้งค่าผังบัญชี',
   'review.jvDept': 'Dept',
   'review.jvAccount': 'Account',
-  'review.jvDesc': 'Description',
+  'review.jvDesc': 'Comment',
   'review.jvLineOf': '{field} line {line}',
   'review.jvDebitFor': 'Debit for {field}',
   'review.jvCreditFor': 'Credit for {field}',
@@ -2547,7 +2550,7 @@ const th: Record<TKey, string> = {
   'review.jvAccountPlaceholder': 'Account',
   'review.jvDeptFor': 'Department for {field}',
   'review.jvAccountFor': 'Account for {field}',
-  'review.jvDescFor': 'Description for {field}',
+  'review.jvDescFor': 'Comment for {field}',
   'review.jvDeptFilter': '{dept} ใช้ได้ {count} บัญชี',
   'review.jvGuessed': 'AI',
   'review.jvGuessedHint': 'AI เลือกบัญชีนี้ตอนเอกสารเข้ามา ช่วยตรวจด้วย',
@@ -2631,7 +2634,6 @@ const th: Record<TKey, string> = {
   'review.arPostTypeDetail': 'Detail',
   'review.arPostTypeSummary': 'Summary',
   'review.arNotMapped': 'ยังไม่ผูกบัญชี',
-  'review.arControlLeg': 'บัญชีคุมยอด',
   'review.arNotPosted': 'ไม่มีบรรทัดใน JV',
   'review.arNewType': 'ยังไม่ผูกบัญชี — เลือกฝ่าย/บัญชีเพื่อโพสต์',
   'review.arFoldedCount': 'รวม {count} รายการ',

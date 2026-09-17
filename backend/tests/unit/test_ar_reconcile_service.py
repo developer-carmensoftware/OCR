@@ -168,7 +168,7 @@ async def test_jv_for_document_survives_a_document_with_no_number():
     out = await svc.jv_for_document(db, TENANT, "KBANK", {**EXTRACTED, "doc_no": ""})
 
     assert out.doc_no == ""
-    assert out.rows[0].desc == "Credit Card AR Summary", "no 'Tax Inv.# ' prefix on a blank"
+    assert out.rows[0].desc == "Total Credit Card Summary", "no 'Tax Inv.# ' prefix on a blank"
 
 
 # ── mappings_dict ─────────────────────────────────────────────────────────────

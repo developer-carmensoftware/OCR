@@ -165,7 +165,7 @@ export default function ARReviewPane({ jv, details }: Props) {
             <th scope="col" className="arv-c-acc">
               {t('review.jvAccount')}
             </th>
-            <th scope="col">{t('review.arColPaymentType')}</th>
+            <th scope="col">{t('review.jvDesc')}</th>
             <th scope="col" className="jv-num">
               {t('review.jvDebit')}
             </th>
@@ -185,8 +185,8 @@ export default function ARReviewPane({ jv, details }: Props) {
             <tr className="arv-row-control">
               <td className="jv-num--empty" />
               <Cells dept={control.dept} acc={control.acc} />
-              <td className="arv-key" data-label={t('review.arColPaymentType')}>
-                {t('review.arControlLeg')}
+              <td className="arv-key" data-label={t('review.jvDesc')}>
+                {control.desc}
               </td>
               <td
                 className={`jv-num text-mono${control.debit ? '' : ' jv-num--empty'}`}
@@ -233,9 +233,9 @@ export default function ARReviewPane({ jv, details }: Props) {
                   )}
                 </td>
                 <Cells dept={leg.dept} acc={leg.acc} />
-                <td className="arv-key" data-label={t('review.arColPaymentType')}>
+                <td className="arv-key" data-label={t('review.jvDesc')}>
                   <span className="jv-desc-in">
-                    {leg.key}
+                    {leg.desc}
                     {merged && (
                       <span className="arv-toggle-count">
                         {t('review.arFoldedCount', { count: String(lines.length) })}
@@ -266,7 +266,7 @@ export default function ARReviewPane({ jv, details }: Props) {
                       <td className="jv-num--empty" />
                       <td className="jv-num--empty" />
                       <td className="jv-num--empty" />
-                      <td className="arv-src" data-label={t('review.arColPaymentType')}>
+                      <td className="arv-src" data-label={t('review.jvDesc')}>
                         {labelOf(d)}
                       </td>
                       <td className="jv-num--empty" />
@@ -284,7 +284,7 @@ export default function ARReviewPane({ jv, details }: Props) {
             <tr key={`new-${label}`} className="jv-row--needed">
               <td className="jv-num--empty" />
               <Cells dept={null} acc={null} />
-              <td data-label={t('review.arColPaymentType')}>
+              <td data-label={t('review.jvDesc')}>
                 <span className="jv-desc-in">
                   {label}
                   <span className="arv-note">{t('review.arNewType')}</span>
@@ -302,7 +302,7 @@ export default function ARReviewPane({ jv, details }: Props) {
               <td className="jv-num--empty" />
               <td className="jv-num--empty" />
               <td className="jv-num--empty" />
-              <td data-label={t('review.arColPaymentType')}>
+              <td data-label={t('review.jvDesc')}>
                 {labelOf(d)}
                 <span className="arv-note">{t('review.arNotPosted')}</span>
               </td>

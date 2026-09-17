@@ -256,7 +256,7 @@ def test_document_without_a_tax_invoice_number_drops_the_comment_prefix():
         mappings=detail_mappings(),
         doc_no=None,
     )
-    assert out[0]["desc"] == "Credit Card AR Summary"
+    assert out[0]["desc"] == "Total Credit Card Summary"
     assert out[1]["desc"] == "VS INTER PREM"
 
 

@@ -75,7 +75,7 @@ export default function ARJvPreview({ preview, loading, postTypeLabel }: Props) 
                   <tr>
                     <th scope="col">{t('review.jvDept')}</th>
                     <th scope="col">{t('review.jvAccount')}</th>
-                    <th scope="col">{t('review.arColPaymentType')}</th>
+                    <th scope="col">{t('review.jvDesc')}</th>
                     <th scope="col" className="ar-num">
                       {t('review.jvDebit')}
                     </th>
@@ -91,7 +91,7 @@ export default function ARJvPreview({ preview, loading, postTypeLabel }: Props) 
                       <td>
                         {r.acc || <span className="ar-missing">{t('review.arNotMapped')}</span>}
                       </td>
-                      <td className="ar-comment">{r.key || t('review.arControlLeg')}</td>
+                      <td className="ar-comment">{r.desc}</td>
                       <td className="ar-num">{money(r.debit)}</td>
                       <td className="ar-num">{money(r.credit)}</td>
                     </tr>

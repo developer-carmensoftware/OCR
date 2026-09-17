@@ -69,7 +69,7 @@ function preview(over: Partial<ARPreview> = {}): ARPreview {
       {
         dept: 'GEN',
         acc: '1021000',
-        desc: 'Tax Inv.# X - Credit Card AR Summary',
+        desc: 'Tax Inv.# X - Total Credit Card Summary',
         debit: 25091,
         credit: 0,
         key: '',
@@ -97,9 +97,10 @@ function preview(over: Partial<ARPreview> = {}): ARPreview {
 }
 
 /** The payment types the mapping table is currently showing, by the attribute MappingRow
- *  stamps on each row. A bare `getByText('VS INTER PREM')` no longer says which table it
- *  means: the JV preview names the payment type each line credits too, so the same string
- *  is legitimately on the page twice. */
+ *  stamps on each row. Scoped rather than a bare `getByText('VS INTER PREM')`: the JV
+ *  preview's own Comment column carries the same payment type too, inside the posted
+ *  `Tax Inv.# … - VS INTER PREM` string — a substring match against that column would hit
+ *  both tables. */
 function mappedTypes(): (string | null)[] {
   return [...document.querySelectorAll('.table-wrapper [data-pt]')].map(el =>
     el.getAttribute('data-pt')

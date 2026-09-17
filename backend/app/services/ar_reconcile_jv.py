@@ -84,7 +84,7 @@ def build_ar_jv_rows(
         {
             "dept": debit_dept or "",
             "acc": debit_acc or "",
-            "desc": f"{prefix}Credit Card AR Summary",
+            "desc": f"{prefix}Total Credit Card Summary",
             "debit": abs(total) if total >= 0 else 0.0,
             "credit": 0.0 if total >= 0 else abs(total),
             # The counterpart to every group, so it belongs to none of them.
