@@ -122,24 +122,23 @@ export default function ARReconcileSettings() {
           <p className="ar-intro">{t('ar.intro')}</p>
           <div className="ar-bar-controls">
             <div className="ar-field">
-              <label htmlFor="ar-bank">{t('ar.bank')}</label>
-              <select
-                id="ar-bank"
-                className="admin-form-input"
+              <span className="ar-field-label">{t('ar.bank')}</span>
+              {/* Options and their phase both come from the server: the names from the
+                  `banks` table, `supported` from its own SUPPORTED_BANKS. An unsupported
+                  bank is listed and disabled rather than hidden — FRD Out-of-Scope puts
+                  SCB, BBL and BAY in Phase 2, and listing them is how the roadmap stays
+                  visible. Greyed-out-and-unpickable says that on its own; no "— Phase 2"
+                  suffix needed on top of it. */}
+              <CustomSearchSelect
                 value={ctrl.bankCode}
-                onChange={e => ctrl.setBankCode(e.target.value)}
-              >
-                {/* Options and their phase both come from the server: the names from the
-                    `banks` table, `supported` from its own SUPPORTED_BANKS. An unsupported
-                    bank is listed and disabled rather than hidden — FRD Out-of-Scope puts
-                    SCB, BBL and BAY in Phase 2, and saying so is the point of listing them. */}
-                {ctrl.banks.map(b => (
-                  <option key={b.code} value={b.code} disabled={!b.supported}>
-                    {b.code} — {b.name}
-                    {b.supported ? '' : ` — ${t('ar.phase2')}`}
-                  </option>
-                ))}
-              </select>
+                onChange={ctrl.setBankCode}
+                options={ctrl.banks.map(b => ({
+                  code: b.code,
+                  name: b.name,
+                  disabled: !b.supported,
+                }))}
+                aria-label={t('ar.bank')}
+              />
             </div>
             {/* The switch is a button, so there is nothing for a `<label htmlFor>` to point
                 at; its caption reaches it as the accessible name instead. */}

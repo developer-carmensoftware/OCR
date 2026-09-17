@@ -1718,7 +1718,6 @@ const en = {
   'ar.intro':
     'Splits the lump credit-card control account into per-scheme receivables when a settlement report arrives by email.',
   'ar.bank': 'Merchant bank',
-  'ar.phase2': 'Phase 2',
   'ar.enabled': 'Reconcile this bank',
   'ar.enabledOffHint': 'Switched off — arriving reports are handed back unread and cost nothing.',
 
@@ -3319,7 +3318,6 @@ const th: Record<TKey, string> = {
   'ar.intro':
     'แยกยอดบัญชีคุมยอดบัตรเครดิตก้อนเดียวออกเป็นลูกหนี้รายค่ายบัตร เมื่อรายงาน settlement ส่งเข้ามาทางอีเมล',
   'ar.bank': 'ธนาคารผู้รับบัตร',
-  'ar.phase2': 'Phase 2',
   'ar.enabled': 'กระทบยอดธนาคารนี้',
   'ar.enabledOffHint': 'ปิดอยู่ — รายงานที่ส่งเข้ามาจะถูกส่งคืนโดยไม่อ่านและไม่มีค่าใช้จ่าย',
 

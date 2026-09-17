@@ -6,6 +6,8 @@ export interface SelectOption {
   code: string
   name: string
   name2?: string
+  /** Listed but not pickable — e.g. a Phase 2 bank the server marks `supported: false`. */
+  disabled?: boolean
 }
 
 export interface TopChoice extends SelectOption {
@@ -299,19 +301,23 @@ export default function CustomSearchSelect({
               <div
                 key={opt.code}
                 role="button"
-                tabIndex={0}
+                aria-disabled={opt.disabled || undefined}
+                tabIndex={opt.disabled ? -1 : 0}
                 style={{
                   padding: '0.6rem 0.8rem',
                   borderBottom: '1px solid var(--gray-100)',
-                  cursor: 'pointer',
+                  cursor: opt.disabled ? 'not-allowed' : 'pointer',
+                  opacity: opt.disabled ? 0.45 : 1,
                   transition: 'background 0.1s',
                 }}
                 onMouseDown={e => {
                   e.preventDefault()
+                  if (opt.disabled) return
                   onChange(opt.code)
                   setIsOpen(false)
                 }}
                 onKeyDown={e => {
+                  if (opt.disabled) return
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault()
                     onChange(opt.code)
@@ -319,6 +325,7 @@ export default function CustomSearchSelect({
                   }
                 }}
                 onMouseEnter={e => {
+                  if (opt.disabled) return
                   ;(e.currentTarget as HTMLElement).style.background = 'var(--primary-light)'
                 }}
                 onMouseLeave={e => {

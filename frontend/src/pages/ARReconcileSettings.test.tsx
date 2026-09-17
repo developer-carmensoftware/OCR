@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { LanguageProvider } from '../i18n/LanguageContext'
 import ARReconcileSettings from './ARReconcileSettings'
 import type { ARPreview, ARSettings } from '../lib/api/arReconcile'
@@ -150,19 +150,25 @@ describe('AR reconciliation settings', () => {
     // FRD Out-of-Scope: SCB, BBL and BAY arrive in Phase 2. Listing them is how the
     // customer learns that; disabling them is how they do not configure a bank whose
     // report nothing can parse. Both come from the server — the screen holds no bank
-    // list, and no copy of which release reads what.
+    // list, and no copy of which release reads what. No "— Phase 2" suffix on the label
+    // itself: greyed-out-and-unpickable already says that.
     renderPage()
-    await waitFor(() => expect(screen.getByLabelText('Merchant bank')).toBeInTheDocument())
+    const input = await screen.findByLabelText('Merchant bank')
+    fireEvent.focus(input)
 
-    const options = screen.getAllByRole('option')
-    expect(options.map(o => o.textContent)).toEqual([
-      'KBANK — Kasikornbank',
-      'SCB — Siam Commercial Bank — Phase 2',
-      'BBL — Bangkok Bank — Phase 2',
-      'BAY — Krungsri — Phase 2',
+    const panel = document.querySelector('.css-select-panel') as HTMLElement
+    const rows = within(panel).getAllByRole('button')
+    expect(rows.map(r => r.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
+      'KBANK - Kasikornbank',
+      'SCB - Siam Commercial Bank',
+      'BBL - Bangkok Bank',
+      'BAY - Krungsri',
     ])
-    expect(options[0]).toBeEnabled()
-    expect(options[1]).toBeDisabled()
+    expect(rows[0]).not.toHaveAttribute('aria-disabled')
+    expect(rows[1]).toHaveAttribute('aria-disabled', 'true')
+
+    fireEvent.mouseDown(rows[1])
+    await waitFor(() => expect(api.getARSettings).not.toHaveBeenCalledWith('SCB'))
   })
 
   it('opens on the bank the document that linked here named', async () => {
