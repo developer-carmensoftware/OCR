@@ -31,6 +31,11 @@ logger = logging.getLogger(__name__)
 
 _NO_MERCHANT_ID_CODES = {"KTC", "GHL", "SIAMPAY"}  # PayPal maps Customer ID → merchant_id
 _BANK_STATEMENT_CODES = {"BAY"}  # statement layout with a TOTAL row to consume/spread
+# Plain statement layouts whose prompt now MANDATES the printed TOTAL row, so that
+# `_strip_noncard_rows` has something to check the rows against. A missing anchor is
+# worth saying out loud only for these three: every other layout either has its own
+# footer handling (BAY, the fee invoices) or was never asked for a total (generic).
+_STATEMENT_ANCHOR_CODES = {"BBL", "KBANK", "SCB"}
 
 # Supported VAT rates (VAT_RATES env, see config.py). A complete document is
 # trusted as printed regardless of rate; these only drive reconstruction when
@@ -88,6 +93,14 @@ def _recon_mismatch(lines_total: float, printed_total: float) -> ExtractionWarni
             "gap": _fmt_amt(abs(lines_total - printed_total)),
         },
     )
+
+
+# The statement's own TOTAL row was not readable, so the rows above it could not be
+# checked against anything. That check is the only thing standing between a short reading
+# and a JV that balances anyway (both of its sides are sums over the same rows — see
+# `cc_jv.build_jv_rows`), so its absence is worth saying out loud rather than trusting the
+# rows. Only raised for `_STATEMENT_ANCHOR_CODES`, whose layouts ask for the row.
+_TOTAL_MISSING = ExtractionWarning(code="totalMissing")
 
 
 # Tolerance (baht) for reconciling printed vs reconstructed figures.
@@ -293,8 +306,30 @@ def _is_wht_row(label: str | None) -> bool:
     return any(k in up for k in _WHT_LABELS)
 
 
-def _strip_noncard_rows(extracted: ExtractedCreditCardData) -> None:
-    """Keep only real card-transaction rows for plain statement banks.
+def _is_total_anchor(row) -> bool:
+    """The grand-total row the three statement layouts mandate, with a readable amount.
+
+    Narrower than `_is_summary_row` on both counts, and it has to be. A real SCB statement
+    prints TOTAL, then WITHHOLDING TAX, then NET AMOUNT; all three match that predicate
+    and the last two carry no gross at all, so taking the last summary-shaped row
+    anchored every correctly-read SCB statement on the wrong line and reported it as
+    unverifiable. The SCB layout tells the model the same thing in words: "Do NOT use the
+    separate NET AMOUNT or WITHHOLDING TAX lines for it."
+
+    The amount has to be readable too. A mandated row whose gross came back blank or 0.00
+    is an unread total, not a document that totals nothing — treating it as a figure would
+    accuse the lines of a gap the size of the whole statement, so it falls through to
+    `_TOTAL_MISSING` instead. Same truthiness test the row filter below uses to mean
+    "this row has no amount"."""
+    label = row.transaction
+    if "NET AMOUNT" in (label or "").strip().upper() or _is_wht_row(label):
+        return False
+    return _is_summary_row(label) and bool(_parse_amt(row.pay_amt))
+
+
+def _strip_noncard_rows(extracted: ExtractedCreditCardData, bank_code: str | None) -> None:
+    """Keep only real card-transaction rows for plain statement banks — and check
+    what is left against the total the document printed.
 
     BBL/KBANK/SCB have no other normalizer, so anything the LLM leaks stays in
     `details` and double-counts in the frontend's column sums. Mirrors the three
@@ -305,14 +340,48 @@ def _strip_noncard_rows(extracted: ExtractedCreditCardData) -> None:
       - empty rows with a 0.00 / blank gross amount (rule 3) — a real SCB
         statement lists ~35 zero card-type rows plus TOTAL / WHT / NET AMOUNT.
     A real card row always carries a non-zero pay_amt, and card-type labels
-    (Visa, VSA-INT-P, …) never contain the summary/WHT keywords, so this is safe."""
-    extracted.details[:] = [
+    (Visa, VSA-INT-P, …) never contain the summary/WHT keywords, so this is safe.
+
+    **The summary row is consumed, not just dropped.** A JV built from these rows
+    balances by construction — `build_jv_rows` sums the same list into both sides —
+    so a row the model never emitted is invisible to every later check, including
+    the auto-post gate. The printed TOTAL is the only figure on the page that knows
+    how many rows there should have been, which is why the three layouts now
+    mandate it (mirrors BAY and the fee invoices, which already keep their footer).
+    Nothing is repaired: every figure needed is printed, so a disagreement is a
+    question for a human, and `warnings` is what parks the document for one.
+
+    Gross only. A missing row moves all four columns together, and a misread cell on
+    a row that IS present is what `_review_flags`' per-row `unbalanced` catches."""
+    rows = extracted.details
+    # Read before the filter below drops it. Scanned from the end because the layouts put
+    # it last — see `_is_total_anchor` for why "last summary-shaped row" is not enough.
+    anchor = next((r for r in reversed(rows) if _is_total_anchor(r)), None)
+
+    rows[:] = [
         r
-        for r in extracted.details
+        for r in rows
         if _parse_amt(r.pay_amt)  # non-zero gross — drops 0.00/blank rows
         and not _is_summary_row(r.transaction)
         and not _is_wht_row(r.transaction)
     ]
+
+    if bank_code not in _STATEMENT_ANCHOR_CODES:
+        # Generic, undetected, or a layout with its own footer handling. No prompt asked
+        # this document for a total, so neither its absence nor a summary row the model
+        # happened to leak says anything about whether the rows are complete — checking
+        # either way would park documents on a reconciliation nobody requested. Both
+        # branches are gated, not just the absent one.
+        return
+
+    if anchor is None:
+        extracted.warnings.append(_TOTAL_MISSING)
+        return
+
+    printed = _parse_amt(anchor.pay_amt) or 0.0  # truthy by construction, see the predicate
+    lines_total = round(sum(_parse_amt(r.pay_amt) or 0.0 for r in rows), 2)
+    if abs(lines_total - printed) > _RECON_TOL:
+        extracted.warnings.append(_recon_mismatch(lines_total, printed))
 
 
 # A date printed inside a line description. Deliberately narrow — two or three
@@ -673,6 +742,15 @@ async def finalize_extraction(
     # detection the frontend uses — so the stored draft and the submit step agree. It is
     # stored and it drives the normalizer below, but it is deliberately NOT part of the
     # duplicate key: see the `has_submitted_doc` call.
+    #
+    # The caller's bank stays authoritative, deliberately. Letting detection outrank it
+    # was tried and reverted: the wizard's "Re-extract with <bank>" passes the user's
+    # explicit choice here, and a merchant name the model leaks into the issuer field
+    # ("บริษัท โรงแรมกรุงเทพ จำกัด" → BBL, tier 1a) would then send a KTC fee invoice down
+    # the statement branch, where the non-zero-pay_amt filter drops every one of its rows
+    # (a fee line carries pay_amt=null by design). It also bought nothing on the email
+    # path it was aimed at: `_resolve_bank` there already returns `detected or rule_bank`,
+    # so detection has won before this function is reached.
     resolved_bank_code = bank_code or detect_bank_code(
         model_bank_code=extracted.bank_code,
         bank_company_name=extracted.bank_company_name,
@@ -687,8 +765,9 @@ async def finalize_extraction(
         _normalize_bay_statement(extracted)
     else:
         # Plain statement banks (BBL/KBANK/SCB) + undetected: no normalizer of
-        # their own, so drop any summary / WHT row the LLM leaked into details.
-        _strip_noncard_rows(extracted)
+        # their own, so drop any summary / WHT row the LLM leaked into details —
+        # and check the rows against the TOTAL that row carried.
+        _strip_noncard_rows(extracted, resolved_bank_code)
 
     # After the normalizers, because they match on the raw label (`_is_summary_row`
     # reads "TOTAL", `_normalize_fee_invoice` finds its summary row by it) and would

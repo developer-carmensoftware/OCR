@@ -629,6 +629,8 @@ const en = {
   // saying it again.
   'warn.reconMismatch':
     'Lines add up to {lines}, the printed grand total is {printed} — off by {gap}.',
+  'warn.totalMissing':
+    "The statement's printed total was not read, so the lines could not be checked against it.",
   'warn.assumedVat': 'VAT computed at an assumed {rate} — the printed totals did not show it.',
   'warn.feeUnreadable': 'A fee amount could not be read — enter it by hand.',
   'warn.noFeeLines': 'No fee lines found — the item table may have been missed.',
@@ -2259,6 +2261,7 @@ const th: Record<TKey, string> = {
   'cc.current': 'ปัจจุบัน',
   'cc.extractionWarning': 'โปรดตรวจสอบจำนวนเงิน',
   'warn.reconMismatch': 'ผลรวมบรรทัด {lines} แต่ยอดรวมที่พิมพ์ไว้ {printed} — ต่างกัน {gap}',
+  'warn.totalMissing': 'อ่านยอดรวมที่พิมพ์บนเอกสารไม่ได้ จึงไม่ได้ตรวจว่ารายการครบหรือไม่',
   'warn.assumedVat': 'คำนวณ VAT ที่อัตรา {rate} โดยอนุมาน เพราะยอดรวมบนเอกสารไม่ได้ระบุไว้',
   'warn.feeUnreadable': 'อ่านยอดค่าธรรมเนียมไม่ได้ — กรุณากรอกเอง',
   'warn.noFeeLines': 'ไม่พบบรรทัดค่าธรรมเนียม — อาจอ่านตารางรายการไม่เจอ',

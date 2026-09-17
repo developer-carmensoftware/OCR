@@ -5,7 +5,8 @@ Rules for extracting details[] rows (a matched bank layout's "Critical" instruct
 1. Include every card/payment type row that has a non-zero pay_amt.
 2. SKIP rows labeled: จำนวนเงินรวม, TOTAL, รวม, GRAND TOTAL, NET AMOUNT, จำนวนเงินค่าธรรมเนียม — summary rows only.
    EXCEPTION: when the matched bank layout explicitly instructs you to ADD or INCLUDE a summary/TOTAL row
-   (BAY statement; KTC/GHL/PAYPAL/SIAMPAY fee invoices), that layout instruction WINS — emit exactly ONE such summary row.
+   (BBL/KBANK/SCB statements; BAY statement; KTC/GHL/PAYPAL/SIAMPAY fee invoices), that layout instruction
+   WINS — emit exactly ONE such summary row, as the LAST object in details[].
 3. SKIP rows where pay_amt is 0.00 or blank.
 4. SKIP Withholding Tax deduction rows — any row whose label contains: ภาษีเงินได้หัก ณ ที่จ่าย, WHT, Withholding Tax, ภาษีถูกหัก, หัก ณ ที่จ่าย. These are bank tax deductions, NOT card transaction rows.
 """
