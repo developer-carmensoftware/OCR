@@ -27,7 +27,17 @@ BBL (Bangkok Bank / ธนาคารกรุงเทพ)
   merchant_id comes only from the document header (เลขที่บัญชี / เลขที่สัญญา).
 
   SKIP any row where the first column (หมายเลขร้านค้า) contains Thai text such as
-  "จำนวนเงินรวม", "รวม", or any non-numeric label — those are summary rows, not
-  individual transactions. Only rows with a numeric terminal/merchant ID belong in details[].
+  "รวม" or any non-numeric label — those are summary rows, not individual
+  transactions. Only rows with a numeric terminal/merchant ID belong in details[],
+  with ONE exception, below.
+
+  MANDATORY FINAL ROW — the table ends with one printed grand-total line
+  ("จำนวนเงินรวม" / "รวม"). Append that one line as an extra object in details[], the
+  LAST object, on top of every numeric-ID row above: if the table prints N
+  terminal-ID rows, details[] MUST contain N+1 objects. It is the single exception to
+  the SKIP rule above — the system consumes it to verify the rows above and never
+  posts it, so omitting it is a verification failure, not a harmless skip. Every
+  OTHER non-numeric label is still skipped.
+    transaction = "TOTAL" | its จำนวนเงิน → pay_amt | ค่าธรรมเนียม → commis_amt | ภาษีมูลค่าเพิ่ม → tax_amt | จำนวนเงินสุทธิ → total
   ─────────────────────────────────────────────────────────────────────────────\
 """

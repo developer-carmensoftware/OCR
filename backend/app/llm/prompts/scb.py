@@ -9,5 +9,13 @@ SCB (Siam Commercial Bank / ธนาคารไทยพาณิชย์)
     The เลขที่ directly above it is a 12-digit number that embeds the same digits (262302202523),
     so do not let it swallow the day: เลขที่ and รายการประจำวันที่ are separate fields, read each in full.
   Table columns: CARD TYPE=transaction | S/D AMOUNT=pay_amt | DISCOUNT AMOUNT=commis_amt | VALUE ADDED TAX=tax_amt | AMOUNT CREDIT TO MERCHANT=total
-  Critical: scan ALL rows top to bottom — do NOT stop early (rows include VSA-INT-P, VSA-INT, MCA-INT-P, MCA-INT, etc.)\
+  Critical: scan ALL rows top to bottom — do NOT stop early (rows include VSA-INT-P, VSA-INT, MCA-INT-P, MCA-INT, etc.)
+  MANDATORY FINAL ROW — the table ends with one printed summary line (TOTAL / รวม /
+  จำนวนเงินรวม). Append it as one extra object in details[], the LAST object, on top of
+  every card-type row above: if the table prints N card-type rows, details[] MUST contain
+  N+1 objects. This row is the one exception to "skip summary/total rows" — the system
+  consumes it to verify the rows above and never posts it, so omitting it is a
+  verification failure, not a harmless skip. Do NOT use the separate NET AMOUNT or
+  WITHHOLDING TAX lines for it.
+    transaction = "TOTAL" | its S/D AMOUNT → pay_amt | DISCOUNT AMOUNT → commis_amt | VALUE ADDED TAX → tax_amt | AMOUNT CREDIT TO MERCHANT → total\
 """

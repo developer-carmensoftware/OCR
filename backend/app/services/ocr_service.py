@@ -18,8 +18,10 @@ from app.models.schemas import ExtractedCreditCardData
 from app.services.llm_service import extract_from_image
 from app.utils.image_processing import resize_if_needed
 from app.utils.pdf_utils import (
+    MAX_PAGES_PER_CALL,
     PDF_RENDER_TIMEOUT_SECONDS,
     extract_pages_as_pdf,
+    get_pdf_page_count,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,8 +45,8 @@ async def extract_stateless(
     pdf_password: password for an encrypted PDF (None = not encrypted).
     doc_type: DocType.* — picks the prompt layout and the module charged for the call.
     page_indexes: 0-based PDF pages to send, negative counting from the end.
-                  Defaults to the first page, which is where every document this
-                  service read before the settlement report kept its data.
+                  Defaults to the first MAX_PAGES_PER_CALL pages; the settlement
+                  report is the one caller that overrides it, to `[-1]`.
     """
     ext = os.path.splitext(original_filename)[1].lower()
     image_mime_type: str | None = None  # PDF branch leaves this None → falls back to
@@ -54,8 +56,33 @@ async def extract_stateless(
         # Extract the wanted page(s) as a native PDF subset (full vector/text
         # fidelity; rasterising degraded dense tables), decrypting first if
         # encrypted so Gemini doesn't reject it as "no pages".
-        pages = page_indexes if page_indexes is not None else [0]
+        #
+        # `page_indexes=None` (every caller except the settlement report, which asks for
+        # the last page via `[-1]`) falls back to `[]`, meaning "the first
+        # MAX_PAGES_PER_CALL pages" (extract_pages_as_pdf's own fallback, already
+        # de-duplicated and bounds-checked) rather than "no pages". It used to be `[0]` on
+        # the grounds that credit-card documents are single-page: a statement that ran
+        # onto page 2 silently lost those rows, and because the JV sums the rows it did
+        # get into both of its sides, the short version still balanced. Pages are not
+        # charged here (a scan costs one document per file, unlike AP invoice), so this
+        # trades vision tokens for not dropping half a statement.
+        #
+        # Past the cap it still drops pages, so say so — the same log AP invoice writes
+        # at its own cap (`ap_invoice_service`). Without it a 7-page statement loses two
+        # pages exactly as silently as the `[0]` version did, and the printed-total check
+        # downstream is then the only thing standing between that and a short JV.
+        pages = page_indexes if page_indexes is not None else []
         try:
+            page_count = await asyncio.get_running_loop().run_in_executor(
+                None, functools.partial(get_pdf_page_count, file_bytes, pdf_password)
+            )
+            if page_count > MAX_PAGES_PER_CALL:
+                logger.warning(
+                    "Credit-card document %s has %d pages; capping to first %d for extraction",
+                    original_filename,
+                    page_count,
+                    MAX_PAGES_PER_CALL,
+                )
             processed_bytes = await asyncio.wait_for(
                 asyncio.get_running_loop().run_in_executor(
                     None,

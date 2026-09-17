@@ -13,6 +13,7 @@ from app.services.credit_card_service import (
     _ASSUMED_RATE,
     _FEE_UNALLOCATED,
     _NEGATIVE_UNSUPPORTED,
+    _TOTAL_MISSING,
     _clean_transaction_labels,
     _normalize_bay_statement,
     _normalize_fee_invoice,
@@ -204,6 +205,9 @@ def test_bay_summary_row_consumed_and_vat_spread():
     assert len(ext.details) == 3  # TOTAL removed
     assert [r.tax_amt for r in ext.details] == ["0.95", "5.76", "177.31"]  # Σ = 184.02
     assert [r.total for r in ext.details] == ["891.46", "3,570.91", "109,865.73"]  # Σ = 114,328.10
+    # Σ gross of the 3 rows (117,141.00) matches the TOTAL row's own gross exactly —
+    # a complete read says nothing.
+    assert ext.warnings == []
 
 
 def test_bay_summary_detected_by_arithmetic_when_label_garbled():
@@ -212,6 +216,34 @@ def test_bay_summary_detected_by_arithmetic_when_label_garbled():
     _normalize_bay_statement(ext)
     assert len(ext.details) == 3
     assert ext.details[-1].tax_amt == "177.31"
+    # The arithmetic fallback only ever picks a row whose gross already equals the
+    # sum of the others, so this can never itself produce a mismatch.
+    assert ext.warnings == []
+
+
+def test_bay_statement_short_by_one_row_is_caught_by_its_printed_total():
+    # The bug this guards: a JV built from BAY rows sums the same rows into both of
+    # its sides, so it balances whatever the model returned — Σ gross of the
+    # surviving rows against the summary row's own printed gross is the only thing
+    # that can notice one is missing.
+    ext = _bay_extracted([_BAY_QA_ROWS[0], _BAY_QA_ROWS[1], _BAY_QA_TOTAL])  # M-PREMIUM missing
+    _normalize_bay_statement(ext)
+    assert len(ext.details) == 2
+    assert [w.code for w in ext.warnings] == ["reconMismatch"]
+    assert ext.warnings[0].params == {
+        "lines": "4,565.00",
+        "printed": "117,141.00",
+        "gap": "112,576.00",
+    }
+
+
+def test_bay_total_row_with_blank_gross_reads_as_missing():
+    # 0.00 (or blank) on the summary row is an unread total, not a document that
+    # totals nothing — claiming a 117,141.00 gap would send the reviewer looking
+    # for a discrepancy the document never had.
+    ext = _bay_extracted([*_BAY_QA_ROWS, dict(_BAY_QA_TOTAL, pay_amt="0.00")])
+    _normalize_bay_statement(ext)
+    assert [w.code for w in ext.warnings] == ["totalMissing"]
 
 
 def test_bay_spread_sums_exactly_to_total_vat():
@@ -222,6 +254,10 @@ def test_bay_spread_sums_exactly_to_total_vat():
 
 
 def test_bay_no_summary_row_falls_back_to_row_arithmetic():
+    # BAY's own prompt mandates the summary row (`bay.py`: "INCLUDE the final
+    # รวม/TOTAL summary line as the LAST details row"), so its absence is a
+    # verification failure worth naming — same `totalMissing` code the plain
+    # statement layouts raise for the same gap, not a silent fallback.
     ext = _bay_extracted(
         [
             {
@@ -234,6 +270,7 @@ def test_bay_no_summary_row_falls_back_to_row_arithmetic():
     )
     _normalize_bay_statement(ext)
     assert ext.details[0].tax_amt == "177.31"
+    assert ext.warnings == [_TOTAL_MISSING]
 
 
 def test_bay_existing_row_tax_untouched():
@@ -666,10 +703,16 @@ def test_strip_real_scb_zero_rows_total_wht_and_net_amount():
             {"transaction": "NET AMOUNT", "total": "17,366.72"},
         ]
     )
-    _strip_noncard_rows(ext)
+    # "SCB", not None: this is the one fixture built from a real statement, so it is the
+    # only one that carries the trailing WITHHOLDING TAX / NET AMOUNT lines — and passing
+    # None here is what hid a false `totalMissing` on every SCB document (the reverse scan
+    # anchored on NET AMOUNT, which `_is_summary_row` also matches).
+    _strip_noncard_rows(ext, "SCB")
     assert [r.transaction for r in ext.details] == ["VSA-INT-P", "VSA-INT", "MCA-INT-P", "MCA-INT"]
     # Column sums are now the real totals, not double-counted / padded with zeros.
     assert sum(float(r.pay_amt.replace(",", "")) for r in ext.details) == 17950.00
+    # Σ lines == the printed TOTAL (17,950.00), so a complete statement says nothing.
+    assert ext.warnings == []
 
 
 def test_strip_handles_thai_wht_label():
@@ -679,7 +722,7 @@ def test_strip_handles_thai_wht_label():
             {"transaction": "ภาษีเงินได้หัก ณ ที่จ่าย", "total": "16.35"},
         ]
     )
-    _strip_noncard_rows(ext)
+    _strip_noncard_rows(ext, None)
     assert [r.transaction for r in ext.details] == ["Visa"]
 
 
@@ -690,11 +733,11 @@ def test_strip_keeps_normal_card_rows_when_no_noncard_row():
             {"transaction": "Master", "pay_amt": "300.00"},
         ]
     )
-    _strip_noncard_rows(ext)
+    _strip_noncard_rows(ext, None)
     assert len(ext.details) == 2  # nothing wrongly dropped
     # "Subtotal" is explicitly NOT treated as a summary row
     ext2 = _bay_extracted([{"transaction": "Subtotal Visa", "pay_amt": "500.00"}])
-    _strip_noncard_rows(ext2)
+    _strip_noncard_rows(ext2, None)
     assert len(ext2.details) == 1
 
 
@@ -1001,3 +1044,113 @@ def test_an_ordinary_card_type_is_left_exactly_as_it_was():
     ext = _labelled("VSA-INT-P")
     _clean_transaction_labels(ext)
     assert ext.details[0].transaction == "VSA-INT-P"
+
+
+# -- The statement anchor: the printed TOTAL is what catches a short reading -------
+#
+# A statement JV sums the same rows into both of its sides (cc_jv.build_jv_rows), so it
+# balances whatever the model returns, and `_review_flags`' per-row `unbalanced` only sees
+# rows that ARE there. Every row below satisfies pay = commis + tax + total on purpose:
+# the printed total is the only thing that can notice one is missing.
+
+# 1,000 + 2,000; a third 500-baht row is what the model is pretending to have missed.
+_OK_ROWS = [
+    {
+        "transaction": "Visa",
+        "pay_amt": "1,000.00",
+        "commis_amt": "15.00",
+        "tax_amt": "1.05",
+        "total": "983.95",
+    },
+    {
+        "transaction": "Master",
+        "pay_amt": "2,000.00",
+        "commis_amt": "30.00",
+        "tax_amt": "2.10",
+        "total": "1,967.90",
+    },
+]
+
+
+def _total_row(pay: str) -> dict:
+    return {
+        "transaction": "TOTAL",
+        "pay_amt": pay,
+        "commis_amt": "45.00",
+        "tax_amt": "3.15",
+        "total": "2,951.85",
+    }
+
+
+def test_a_statement_short_by_one_row_is_caught_by_its_printed_total():
+    ext = _bay_extracted([*_OK_ROWS, _total_row("3,500.00")])
+    _strip_noncard_rows(ext, "KBANK")
+    assert [r.transaction for r in ext.details] == ["Visa", "Master"]
+    assert [w.code for w in ext.warnings] == ["reconMismatch"]
+    assert ext.warnings[0].params == {"lines": "3,000.00", "printed": "3,500.00", "gap": "500.00"}
+
+
+def test_a_complete_statement_reconciles_and_its_total_row_never_survives():
+    ext = _bay_extracted([*_OK_ROWS, _total_row("3,000.00")])
+    _strip_noncard_rows(ext, "KBANK")
+    assert [r.transaction for r in ext.details] == ["Visa", "Master"]
+    assert ext.warnings == []  # consumed, not posted, and nothing to say
+
+
+def test_the_anchor_is_the_last_summary_row_not_the_first():
+    # A mid-table subtotal would make a complete statement look 2,000 baht short.
+    mid = {"transaction": "รวม", "pay_amt": "1,000.00"}
+    ext = _bay_extracted([_OK_ROWS[0], mid, _OK_ROWS[1], _total_row("3,000.00")])
+    _strip_noncard_rows(ext, "KBANK")
+    assert [r.transaction for r in ext.details] == ["Visa", "Master"]
+    assert ext.warnings == []
+
+
+def test_a_statement_layout_that_returns_no_total_says_so():
+    # The model dropping a mandated TOTAL row is not hypothetical — KBANK_SETTLEMENT did
+    # exactly that until the prompt was reframed. Without this the guard is opt-out.
+    ext = _bay_extracted(_OK_ROWS)
+    _strip_noncard_rows(ext, "KBANK")
+    assert ext.warnings == [_TOTAL_MISSING]
+
+
+def test_an_undetected_document_is_never_asked_for_a_total():
+    # No layout asked it for one, so its absence says nothing about the rows — warning
+    # here would park every generic document.
+    ext = _bay_extracted(_OK_ROWS)
+    _strip_noncard_rows(ext, None)
+    assert ext.warnings == []
+
+
+def test_a_trailing_net_amount_line_is_not_mistaken_for_the_total():
+    # The shape that broke this: SCB prints TOTAL, then WITHHOLDING TAX, then NET AMOUNT,
+    # and `_is_summary_row` matches all three. Anchoring on the last one reported every
+    # correctly-read SCB statement as unverifiable.
+    ext = _bay_extracted(
+        [
+            *_OK_ROWS,
+            _total_row("3,000.00"),
+            {"transaction": "WITHHOLDING TAX.", "total": "16.35"},
+            {"transaction": "NET AMOUNT", "total": "2,935.50"},
+        ]
+    )
+    _strip_noncard_rows(ext, "SCB")
+    assert [r.transaction for r in ext.details] == ["Visa", "Master"]
+    assert ext.warnings == []
+
+
+def test_a_total_row_whose_amount_came_back_blank_reads_as_missing():
+    # 0.00 is an unread total, not a document that totals nothing. Calling it a figure
+    # would accuse the lines of a gap the size of the whole statement.
+    ext = _bay_extracted([*_OK_ROWS, _total_row("0.00")])
+    _strip_noncard_rows(ext, "KBANK")
+    assert ext.warnings == [_TOTAL_MISSING]
+
+
+def test_a_summary_row_leaked_into_a_generic_document_is_not_reconciled_against():
+    # Only the ABSENCE of a total used to be gated on the anchor codes; a leaked summary
+    # row was reconciled against whatever it carried, parking generic documents on a
+    # check no layout requested.
+    ext = _bay_extracted([{"transaction": "Fee", "pay_amt": "1,000.00"}, _total_row("5,000.00")])
+    _strip_noncard_rows(ext, None)
+    assert ext.warnings == []
