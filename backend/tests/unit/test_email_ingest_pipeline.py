@@ -74,6 +74,13 @@ class _FakeDB:
     async def execute(self, *_a, **_kw):
         result = MagicMock()
         result.scalars.return_value.all.return_value = self._pending_payloads
+        # Same "None is the only safe default" rule as `_scalar` above, extended to the
+        # other two access patterns this fake now has to support: a plain MagicMock's
+        # `.scalars().first()`/`.scalar_one_or_none()` are themselves truthy Mocks, which
+        # would tell an unrelated caller (e.g. `_ar_setting`, `_settlement_recently_posted`
+        # on the ordinary fee-invoice path) that a row exists when none was ever queued.
+        result.scalars.return_value.first.return_value = None
+        result.scalar_one_or_none.return_value = None
         return result
 
     async def commit(self):

@@ -54,7 +54,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, select
@@ -75,7 +75,7 @@ from app.exceptions import (
     PdfPasswordRequired,
     ValidationError,
 )
-from app.models.business import ARReconcileMapping, ARReconcileSetting, CreditCard
+from app.models.business import ARReconcileMapping, ARReconcileSetting, CreditCard, OCRTask
 from app.models.catalog import Bank
 from app.models.email_automation import EmailDocument
 from app.models.enums import AlertSeverity, JobStatus
@@ -170,6 +170,12 @@ REVIEW_BACKLOG_CAP = 50
 # something the customer already did. A bell that cries every morning is a bell nobody
 # reads on the morning it matters.
 NOTIFIABLE_SKIPS = ("wrong_pdf_password", "sender_not_allowed", "unsupported_attachment")
+
+# How stale "a settlement report posted" is allowed to be before the fee-invoice
+# double-book guard stops trusting it (`_settlement_recently_posted`). Wide enough to
+# span a weekend gap between a Friday and a Monday settlement; narrow enough that a
+# broken filename rule shows up as ordinary two-JV posting again within days, not weeks.
+_SETTLEMENT_FRESHNESS = timedelta(days=3)
 
 
 class _Skip(Exception):
@@ -1010,6 +1016,24 @@ async def _run_document(
                     "ar_reconcile_disabled",
                     f"AR reconciliation is switched off for {bank_code}",
                 )
+        elif bank_code:
+            # The double-book guard: a KBANK fee invoice would book the same commission
+            # twice once its settlement report also posts. The primary fix is the BU
+            # repointing its filename rule at `KB1P554V2_SUM` so this attachment matches
+            # no rule at all (`no_rule_match`, also free) — this is only the backstop for
+            # a rule still pointed at the old fee-invoice file. It only fires on recent
+            # proof a settlement report actually posted, not on the flag alone; see
+            # `_settlement_recently_posted`.
+            covering_setting = await _ar_setting(tenant_id, bank_code)
+            if (
+                covering_setting
+                and covering_setting.enabled
+                and await _settlement_recently_posted(tenant_id, bank_code)
+            ):
+                raise _Skip(
+                    "covered_by_settlement_jv",
+                    f"{bank_code}'s settlement report already covers this commission",
+                )
 
         # Before any charge: a disguised, locked or corrupt file must not cost anything.
         password = await _open_or_fail(blob, filename, passwords)
@@ -1643,6 +1667,38 @@ def _ar_description(
         tax_invoice_no=extracted.doc_no,
         bank_name=bank_code,
     )
+
+
+async def _settlement_recently_posted(tenant_id: str, bank_code: str) -> bool:
+    """Has a settlement report for this bank actually posted lately?
+
+    `ar_reconcile_settings.enabled` is a static toggle, not proof the settlement report is
+    still arriving — its filename rule matches an exact report version number
+    (`KB1P554V2`) the bank could change, which would make it match nothing
+    (`no_rule_match`, silent by design) while this flag stayed on. The fee-invoice guard
+    that reads this exists only to stop a double-book; skipping on the flag alone would
+    then also silence the backup copy, leaving the BU with zero JVs and no signal (decision
+    log #28). Requiring recent proof instead fails open: no settlement report, no skip, the
+    fee invoice posts on its own exactly as it did before AR reconciliation existed.
+
+    `email_documents` carries no `doc_type` column (see `_already_pending`'s docstring), so
+    "was this a settlement report" is only answerable through its task's `module_id`.
+    """
+    cutoff = datetime.now(UTC) - _SETTLEMENT_FRESHNESS
+    async with async_session() as db:
+        res = await db.execute(
+            select(EmailDocument.id)
+            .join(OCRTask, OCRTask.id == EmailDocument.task_id)
+            .where(
+                EmailDocument.tenant_id == tenant_id,
+                EmailDocument.bank_code == bank_code,
+                EmailDocument.status == "posted",
+                OCRTask.module_id == Module.CC_AR_RECONCILE,
+                EmailDocument.updated_at >= cutoff,
+            )
+            .limit(1)
+        )
+        return res.scalar_one_or_none() is not None
 
 
 async def _ar_setting(tenant_id: str, bank_code: str) -> ARReconcileSetting | None:

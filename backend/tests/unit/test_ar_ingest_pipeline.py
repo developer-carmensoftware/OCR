@@ -13,7 +13,7 @@ the path that was already there.
 
 from contextlib import contextmanager
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -340,6 +340,95 @@ async def test_ar_never_configured_costs_nothing_either():
 
     assert outcome == "skipped"
     p.consume_document.assert_not_called()
+
+
+# ── Double-booking guard (ticket 02) ────────────────────────────────────────────
+#
+# A KBANK fee invoice must not also post once its settlement report already covers the
+# same commission. This lives on the *fee-invoice* path (no `doc_type: ar_reconcile` on
+# the matched rule), the mirror image of every test above.
+
+FEE_RULE_KBANK = [{"bank_code": "KBANK", "filename_patterns": ["MDR"], "is_active": True}]
+
+
+@pytest.mark.asyncio
+async def test_a_kbank_fee_invoice_is_skipped_once_its_settlement_report_posted():
+    db = _FakeDB()
+    with (
+        patch.object(ingest, "_ar_setting", AsyncMock(return_value=_setting(enabled=True))),
+        patch.object(ingest, "_settlement_recently_posted", AsyncMock(return_value=True)),
+    ):
+        outcome, p = await _run(
+            db,
+            filename="MDR_statement.pdf",
+            rules=FEE_RULE_KBANK,
+            extracted=_extracted(),
+            config=_config(),
+            carmen_result={"Code": 0},
+        )
+
+    assert outcome == "skipped"
+    assert db.added[0].reason_code == "covered_by_settlement_jv"
+    p.consume_document.assert_not_called()
+    p.extract.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_kbank_fee_invoice_still_posts_without_recent_proof_of_a_settlement_report():
+    """The known-risk fix from decision #28: the static `enabled` flag alone is not
+    trusted. No recent settlement report means the guard fails open to the old two-JV
+    behaviour rather than silently dropping the fee invoice too."""
+    db = _FakeDB()
+    with (
+        patch.object(ingest, "_ar_setting", AsyncMock(return_value=_setting(enabled=True))),
+        patch.object(ingest, "_settlement_recently_posted", AsyncMock(return_value=False)),
+    ):
+        outcome, p = await _run(
+            db,
+            filename="MDR_statement.pdf",
+            rules=FEE_RULE_KBANK,
+            extracted=_extracted(bank_name="KASIKORNBANK", bank_company_name="Kasikornbank"),
+            config=_config(),
+            carmen_result={"Code": 0, "InternalMessage": "JV-1"},
+        )
+
+    assert outcome == "posted"
+
+
+@pytest.mark.asyncio
+async def test_a_kbank_fee_invoice_posts_normally_when_ar_reconciliation_is_off():
+    """Regression check: AR reconciliation off for the bank must not touch this path at
+    all, same as before ticket 02 existed."""
+    db = _FakeDB()
+    with patch.object(ingest, "_ar_setting", AsyncMock(return_value=_setting(enabled=False))):
+        outcome, p = await _run(
+            db,
+            filename="MDR_statement.pdf",
+            rules=FEE_RULE_KBANK,
+            extracted=_extracted(bank_name="KASIKORNBANK", bank_company_name="Kasikornbank"),
+            config=_config(),
+            carmen_result={"Code": 0, "InternalMessage": "JV-2"},
+        )
+
+    assert outcome == "posted"
+
+
+@pytest.mark.asyncio
+async def test_settlement_recently_posted_reads_a_hit():
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = uuid4()
+    session = SimpleNamespace(execute=AsyncMock(return_value=result))
+    with patch.object(ingest, "async_session", _session_factory(session)):
+        assert await ingest._settlement_recently_posted(str(uuid4()), "KBANK") is True
+
+
+@pytest.mark.asyncio
+async def test_settlement_recently_posted_reads_a_miss():
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = None
+    session = SimpleNamespace(execute=AsyncMock(return_value=result))
+    with patch.object(ingest, "async_session", _session_factory(session)):
+        assert await ingest._settlement_recently_posted(str(uuid4()), "KBANK") is False
 
 
 @pytest.mark.asyncio

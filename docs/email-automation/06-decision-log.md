@@ -651,3 +651,14 @@ the failure mode of a too-loose pattern is safe (a misrouted file fails extracti
 and parks for review, per the existing validation), so broadening costs nothing but has not
 been done — recorded here so it is a deliberate choice, not an oversight, until a ticket
 picks it up.
+
+**Ticket 02 resolution (2026-09-18).** Built the freshness-check option rather than the
+static-flag-plus-alert one: `_settlement_recently_posted()` requires proof — an
+`email_documents` row for this bank, `status == "posted"`, whose task's `module_id` is
+`cc_ar_reconcile`, updated within the last 3 days (`_SETTLEMENT_FRESHNESS`) — before the
+fee-invoice guard fires. No proof, no skip: the fee invoice falls through to its ordinary
+path and posts on its own, which is the old two-JV behaviour, not silence. This sidesteps
+building a new alerting surface (no admin-dashboard chip, no notification type) for a risk
+that a self-correcting check removes outright — if `KB1P554V2` ever breaks, the fee invoice
+resumes carrying the commission by itself within `_SETTLEMENT_FRESHNESS`'s window rather
+than needing anyone to notice an alert first.
