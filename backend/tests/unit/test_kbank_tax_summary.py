@@ -5,6 +5,7 @@ sample zip's third file): one tax ID covering two merchant IDs (a hotel and its 
 sibling), plus a TOTAL row that must never be read as a merchant.
 """
 
+from app.models.schemas.ocr import ExtractedDetailRow
 from app.services import kbank_tax_summary as k
 
 HEADER = (
@@ -74,3 +75,49 @@ def test_malformed_bytes_return_an_empty_map_rather_than_raising():
 
 def test_a_csv_with_no_merchant_id_column_yields_nothing_not_an_error():
     assert k.parse(b"A,B\n1,2\n") == {}
+
+
+# ── cross_check (ticket 05) ─────────────────────────────────────────────────────
+
+CSV_ROW = k.parse(REAL_CSV)["451005282039001"]
+# Same figures, comma-formatted the way the report itself prints them — proves the
+# comparison tolerates that formatting difference rather than a real disagreement.
+MATCHING_TOTAL_ROW = ExtractedDetailRow(commis_amt="582.99", tax_amt="40.81", total="24,467.20")
+
+
+def test_agreeing_figures_produce_no_warnings():
+    out = k.cross_check(CSV_ROW, "210726E00035291", MATCHING_TOTAL_ROW)
+    assert out == []
+
+
+def test_one_disagreeing_figure_produces_exactly_one_warning_naming_both_numbers():
+    total_row = ExtractedDetailRow(commis_amt="582.99", tax_amt="40.81", total="20,000.00")
+    out = k.cross_check(CSV_ROW, "210726E00035291", total_row)
+
+    assert len(out) == 1
+    assert out[0].code == "csvNetMismatch"
+    assert out[0].params == {"csv": "24,467.20", "report": "20,000.00"}
+
+
+def test_a_two_satang_gap_is_not_a_mismatch():
+    total_row = ExtractedDetailRow(commis_amt="582.99", tax_amt="40.81", total="24,467.21")
+    assert k.cross_check(CSV_ROW, "210726E00035291", total_row) == []
+
+
+def test_a_disagreeing_tax_invoice_number_is_its_own_warning():
+    out = k.cross_check(CSV_ROW, "210726E00099999", MATCHING_TOTAL_ROW)
+
+    assert len(out) == 1
+    assert out[0].code == "csvTaxInvoiceMismatch"
+    assert out[0].params == {"csv": "210726E00035291", "report": "210726E00099999"}
+
+
+def test_a_missing_total_row_is_silent_not_a_warning():
+    """No anchor row to compare against (`_normalize_ar_settlement` already warns about
+    that on its own, via `settlementTotalMissing`) — this check has nothing to add."""
+    assert k.cross_check(CSV_ROW, "210726E00035291", None) == []
+
+
+def test_an_unparseable_report_figure_is_silent_not_a_warning():
+    total_row = ExtractedDetailRow(commis_amt="582.99", tax_amt="40.81", total="—")
+    assert k.cross_check(CSV_ROW, "210726E00035291", total_row) == []

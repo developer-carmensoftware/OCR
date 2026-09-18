@@ -317,6 +317,56 @@ async def test_a_tin_conflict_via_csv_parks_as_tax_id_mismatch():
     p.post_gljv.assert_not_called()
 
 
+# ── CSV vs. report figure cross-check (ticket 05) ───────────────────────────────
+#
+# Once the CSV (ticket 01) and the report's own total row (ticket 03) are both on hand,
+# three more numbers are free to check against each other. A disagreement never rejects
+# the document — same as every other reconciliation check on this path, it's a warning,
+# parked via the existing `warnings` flag. Figures line up against `_ar_extracted()`'s
+# own default `total_row` (commis_amt="300.00", tax_amt="20.00", total="11,376.00").
+
+AR_TAX_SUMMARY_AGREEING = {
+    "451005282039001": {
+        "tax_id": "0835553001610",
+        "tax_invoice_no": "210726E00035291",
+        "fee": "300.00",
+        "vat": "20.00",
+        "net": "11376.00",
+    }
+}
+
+AR_TAX_SUMMARY_DISAGREEING = {
+    "451005282039001": {
+        "tax_id": "0835553001610",
+        "tax_invoice_no": "210726E00035291",
+        "fee": "999.00",
+        "vat": "20.00",
+        "net": "11376.00",
+    }
+}
+
+
+@pytest.mark.asyncio
+async def test_agreeing_csv_figures_post_clean():
+    outcome, p = await _run_ar(_FakeDB(), tax_summary=AR_TAX_SUMMARY_AGREEING)
+    assert outcome == "posted"
+
+
+@pytest.mark.asyncio
+async def test_a_disagreeing_csv_figure_parks_with_a_warning_instead_of_a_skip():
+    db = _FakeDB()
+    outcome, p = await _run_ar(db, tax_summary=AR_TAX_SUMMARY_DISAGREEING)
+
+    assert outcome == "pending_review"
+    p.post_gljv.assert_not_called()
+    row = db.added[0]
+    assert "warnings" in row.review_payload["flags"]
+    warnings = row.review_payload["extracted"]["warnings"]
+    assert len(warnings) == 1
+    assert warnings[0]["code"] == "csvFeeMismatch"
+    assert warnings[0]["params"] == {"csv": "999.00", "report": "300.00"}
+
+
 # ── What stops it ─────────────────────────────────────────────────────────────
 
 

@@ -1218,6 +1218,14 @@ async def _run_document(
                 tax_ids_to_check.append(csv_row["tax_id"])
             else:
                 tin_unverified = True
+            if csv_row:
+                # Same sidecar row, a second independent check: the CSV's own fee/VAT/net
+                # and tax invoice number against what the report printed. A disagreement
+                # parks the document via the existing `warnings` flag — see
+                # `kbank_tax_summary.cross_check`.
+                extracted.warnings.extend(
+                    kbank_tax_summary.cross_check(csv_row, extracted.doc_no, extracted.total_row)
+                )
         async with async_session() as db:
             conflict = await es.foreign_tax_id(db, tax_ids_to_check, tenant_id)
         if conflict:

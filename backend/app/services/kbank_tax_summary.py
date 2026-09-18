@@ -16,9 +16,15 @@ import csv
 import io
 import re
 
+from app.models.schemas.ocr import ExtractedDetailRow, ExtractionWarning
+
 # The bank's own export marks every text cell with a leading `'` (an Excel
 # force-as-text marker) and pads several columns with trailing spaces.
 _DIGITS = re.compile(r"\D")
+
+# Tolerance (baht) for comparing the CSV's own figures against the report's — same value
+# credit_card_service.py uses for the report's checks against itself.
+_TOL = 0.02
 
 
 def _clean(value: str | None) -> str:
@@ -69,3 +75,58 @@ def parse(blob: bytes) -> dict[str, dict[str, str]]:
     except csv.Error:
         return {}
     return out
+
+
+def _amt(v: str | None) -> float | None:
+    if v is None:
+        return None
+    s = v.replace(",", "").strip()
+    if not s:
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def cross_check(
+    csv_row: dict[str, str], doc_no: str | None, total_row: ExtractedDetailRow | None
+) -> list[ExtractionWarning]:
+    """Compare the CSV sidecar's own figures against what the settlement report printed.
+
+    The two describe the same settlement independently — this file from KBank's tax
+    system, `total_row` from the report's own `TOTAL BY MERCHANT ID` line — so a
+    disagreement here is new information, not a repeat of
+    `credit_card_service._normalize_ar_settlement`'s checks, which only ever compare the
+    report against itself. Every mismatch is a warning, never a skip or a repair: a human
+    resolves it, the same rule that function already follows for this document type. Only
+    compares a field when both sides parse — a blank or unreadable cell stays silent
+    rather than raising a false alarm.
+    """
+    warnings: list[ExtractionWarning] = []
+
+    csv_doc_no = _clean(csv_row.get("tax_invoice_no"))
+    if csv_doc_no and doc_no and csv_doc_no != doc_no.strip():
+        warnings.append(
+            ExtractionWarning(
+                code="csvTaxInvoiceMismatch", params={"csv": csv_doc_no, "report": doc_no}
+            )
+        )
+
+    if total_row is not None:
+        for report_field, csv_key, code in (
+            ("commis_amt", "fee", "csvFeeMismatch"),
+            ("tax_amt", "vat", "csvVatMismatch"),
+            ("total", "net", "csvNetMismatch"),
+        ):
+            csv_amt = _amt(csv_row.get(csv_key))
+            report_amt = _amt(getattr(total_row, report_field))
+            if csv_amt is not None and report_amt is not None and abs(csv_amt - report_amt) > _TOL:
+                warnings.append(
+                    ExtractionWarning(
+                        code=code,
+                        params={"csv": f"{csv_amt:,.2f}", "report": f"{report_amt:,.2f}"},
+                    )
+                )
+
+    return warnings
