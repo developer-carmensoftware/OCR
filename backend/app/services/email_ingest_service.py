@@ -81,7 +81,7 @@ from app.models.email_automation import EmailDocument
 from app.models.enums import AlertSeverity, JobStatus
 from app.models.identity import Tenant
 from app.models.observability import JobRun
-from app.models.schemas import ExtractedCreditCardData
+from app.models.schemas import ExtractedCreditCardData, ExtractedDetailRow
 from app.models.schemas.ocr import ExtractionWarning
 from app.services import anomaly_service, kbank_tax_summary, notification_service, ocr_service
 from app.services import ar_reconcile_service as ar_svc
@@ -1346,15 +1346,19 @@ async def _run_document(
         # books and there is no rollback, so a missing input-tax record is recorded
         # for a human to add rather than turned into a failure on a document that
         # posted successfully.
-        # Not for AR reconciliation: that JV moves an existing receivable between accounts
-        # and claims no input tax. The commission's VAT is claimed once, by the fee
-        # invoice's own document — claiming it again here would double the credit.
-        tax_error = (
-            None
-            if doc_type == DocType.AR_RECONCILE
-            else await _post_input_tax(
-                extracted, bank_code=bank_code, config=config, carmen_token=carmen_token
-            )
+        #
+        # The settlement report files this claim itself now (decision #28): the fee
+        # invoice that used to is no longer processed once AR reconciliation covers a
+        # bank, so its VAT would otherwise disappear rather than double up. Its own
+        # per-scheme rows print no commission/VAT (dashes on the page) — only
+        # `total_row` does — so that is what `_post_input_tax` sums instead.
+        ar_input_tax_details = [extracted.total_row] if extracted.total_row else []
+        tax_error = await _post_input_tax(
+            extracted,
+            bank_code=bank_code,
+            config=config,
+            carmen_token=carmen_token,
+            details=ar_input_tax_details if doc_type == DocType.AR_RECONCILE else None,
         )
 
         await _finish(
@@ -1461,6 +1465,7 @@ async def _post_input_tax(
     config: Any,
     carmen_token: str,
     overrides: Any = None,
+    details: list[ExtractedDetailRow] | None = None,
 ) -> str | None:
     """File the VAT the bank charged. Returns a note to keep on the ledger, or None.
 
@@ -1474,13 +1479,18 @@ async def _post_input_tax(
     answers here are "done" and "someone needs to add this by hand" — turning a
     failure into an exception would mark a document Carmen has already accepted as
     failed, which is the one outcome that is plainly wrong.
+
+    **`details` overrides `extracted.details`** for the settlement report: its per-scheme
+    rows print no commission/VAT of their own (dashes on the page), only the report's own
+    `total_row` does — see decision #28. Every other caller leaves this `None` and gets
+    `extracted.details`, unchanged from before this parameter existed.
     """
     async with async_session() as db:
         bank = await db.get(Bank, bank_code) if bank_code else None
 
     try:
         payload, skipped = build_input_tax_payload(
-            extracted.details,
+            details if details is not None else extracted.details,
             doc_no=extracted.doc_no,
             doc_date=extracted.doc_date,
             bank=bank,
@@ -2240,6 +2250,10 @@ async def approve_document(
             )
 
         await _mark_submitted(extracted.id)
+        # The settlement report files this claim itself (decision #28) — see
+        # `_run_document`'s identical call for why `total_row`, not `extracted.details`,
+        # is what has anything to sum for this document type.
+        ar_input_tax_details = [extracted.total_row] if extracted.total_row else []
         tax_note = (
             await _post_input_tax(
                 extracted,
@@ -2247,11 +2261,9 @@ async def approve_document(
                 config=config,
                 carmen_token=carmen_token,
                 overrides=input_tax,
+                details=ar_input_tax_details if doc_type == DocType.AR_RECONCILE else None,
             )
-            # Never for AR reconciliation: that JV moves an existing receivable between
-            # accounts and claims no input tax. The commission's VAT is claimed once, by
-            # the fee invoice's own document.
-            if post_input_tax_record and doc_type != DocType.AR_RECONCILE
+            if post_input_tax_record
             else None
         )
         jv_no = str(result.get("InternalMessage") or "")

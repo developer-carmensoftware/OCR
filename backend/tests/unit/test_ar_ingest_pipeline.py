@@ -257,12 +257,68 @@ async def test_detail_mode_posts_one_credit_per_printed_payment_type():
 
 
 @pytest.mark.asyncio
-async def test_ar_claims_no_input_tax():
-    """A reclassification moves an existing receivable between accounts. The commission's
-    VAT is claimed once, by the fee invoice's own document — claiming it again here would
-    double the credit."""
-    _, p = await _run_ar(_FakeDB())
-    p.post_input_tax.assert_not_called()
+async def test_ar_files_its_own_input_tax_from_the_total_row():
+    """Since decision #28 the fee invoice that used to file this claim is no longer
+    processed once AR reconciliation covers a bank, so the settlement report claims the
+    commission's VAT itself — from the report's own `total_row`
+    (`_ar_extracted()`'s default: commis_amt=300.00, tax_amt=20.00), not `extracted.details`
+    (whose per-scheme rows print no commission/VAT of their own)."""
+    outcome, p = await _run_ar(_FakeDB())
+
+    assert outcome == "posted"
+    p.post_input_tax.assert_awaited_once()
+    assert p.post_input_tax.call_args.kwargs["details"] == [
+        ExtractedDetailRow(commis_amt="300.00", tax_amt="20.00", total="11,376.00")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_input_tax_post_does_not_block_the_ar_jv():
+    """Same non-fatal contract every other document type already gets: the JV is already
+    in Carmen's books, so a failed input-tax record is recorded on the ledger, not turned
+    into a park or a failure."""
+    outcome, p = await _run_ar(_FakeDB(), tax_note="Input tax not recorded: Carmen said no")
+    assert outcome == "posted"
+
+
+@pytest.mark.asyncio
+async def test_settlement_report_input_tax_uses_the_real_worked_example():
+    """Ticket 06's own acceptance criterion, exercised for real (not mocked at the
+    `_post_input_tax` boundary): approving produces base 582.99, VAT 40.81, and KBank's
+    registered legal name/TIN/address — read from the `banks` table, not the document,
+    which prints none of the three."""
+    total_row = ExtractedDetailRow(commis_amt="582.99", tax_amt="40.81", total="24467.20")
+    bank = SimpleNamespace(
+        id="KBANK",
+        code="KBANK",
+        legal_name="Kasikornbank Public Company Limited",
+        tax_id="0107536000315",
+        address="1 Ratburana Rd, Bangkok",
+    )
+    db = _FakeDB()
+    db.add(bank)
+    profiles = {"Data": [{"Code": "VAT7", "Description": "VAT 7%", "Active": True, "TaxRate": 7}]}
+    post_mock = AsyncMock(return_value={"Code": 0})
+    with (
+        patch.object(ingest, "async_session", _session_factory(db)),
+        patch.object(ingest, "get_tax_profiles", AsyncMock(return_value=profiles)),
+        patch.object(ingest, "post_input_tax", post_mock),
+    ):
+        note = await ingest._post_input_tax(
+            _ar_extracted(total_row=total_row),
+            bank_code="KBANK",
+            config=_config(),
+            carmen_token="tok",
+            details=[total_row],
+        )
+
+    assert note is None
+    payload = post_mock.call_args.args[0]
+    assert payload["BfTaxAmt"] == "582.99"
+    assert payload["TaxAmt"] == 40.81
+    assert payload["VnName"] == "Kasikornbank Public Company Limited"
+    assert payload["TaxId"] == "0107536000315"
+    assert payload["Address"] == "1 Ratburana Rd, Bangkok"
 
 
 # ── TIN second factor (ticket 04) ───────────────────────────────────────────────

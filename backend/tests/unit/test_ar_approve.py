@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.exceptions import ValidationError
-from app.models.schemas import ARPreviewOut, ARPreviewRow
+from app.models.schemas import ARPreviewOut, ARPreviewRow, ExtractedDetailRow
 from app.services import email_ingest_service as ingest
 from tests.unit.test_email_ingest_pipeline import (
     _approve_patches,
@@ -127,9 +127,35 @@ async def test_approve_checks_the_same_duplicate_key_extraction_uses():
 
 
 @pytest.mark.asyncio
-async def test_a_settlement_report_files_no_input_tax_record():
-    """A reclassification claims none. The commission's VAT is claimed once, by the fee
-    invoice's own document — twice would double the credit."""
+async def test_a_settlement_report_files_its_own_input_tax_record():
+    """Since decision #28 the fee invoice that used to file this is no longer processed
+    once AR reconciliation covers a bank, so the settlement report claims the VAT itself —
+    from its own `total_row`, not `extracted.details` (whose per-scheme rows print no
+    commission/VAT of their own, only dashes)."""
+    total_row = ExtractedDetailRow(commis_amt="582.99", tax_amt="40.81", total="24467.20")
+    row = _ar_row()
+    db = _ReviewDB(row)
+    with (
+        _approve_patches(db, carmen_result={"Code": 0, "InternalMessage": "JV-7"}) as p,
+        patch.object(ingest.ar_svc, "jv_for_document", AsyncMock(return_value=_built())),
+        patch.object(ingest, "build_gljv_payload", MagicMock(return_value={})),
+    ):
+        await ingest.approve_document(
+            row.id,
+            tenant_id=str(row.tenant_id),
+            reviewer="u",
+            extracted=_extracted(total_row=total_row),
+            rows=[],
+        )
+    p.tax.assert_awaited_once()
+    assert p.tax.call_args.kwargs["details"] == [total_row]
+
+
+@pytest.mark.asyncio
+async def test_a_settlement_report_with_no_total_row_claims_nothing():
+    """Nothing to sum, so `_post_input_tax` is still called (consistent with every other
+    document type) but with an empty list rather than `extracted.details`'s per-scheme
+    rows, which would misreport zero VAT as "nothing was lost" for the wrong reason."""
     row = _ar_row()
     db = _ReviewDB(row)
     with (
@@ -140,7 +166,7 @@ async def test_a_settlement_report_files_no_input_tax_record():
         await ingest.approve_document(
             row.id, tenant_id=str(row.tenant_id), reviewer="u", extracted=_extracted(), rows=[]
         )
-    p.tax.assert_not_called()
+    assert p.tax.call_args.kwargs["details"] == []
 
 
 @pytest.mark.asyncio
