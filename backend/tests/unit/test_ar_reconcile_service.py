@@ -50,6 +50,9 @@ def _result(rows):
     r.scalars.return_value.all.return_value = list(rows)
     # Multi-column selects (bank_options) read .all() off the result itself.
     r.all.return_value = list(rows)
+    # accounting_config_service._get_config reads .scalar_one_or_none() directly, not
+    # .scalars().first() — a different access pattern on the same mock result.
+    r.scalar_one_or_none.return_value = rows[0] if rows else None
     return r
 
 
@@ -72,9 +75,39 @@ EXTRACTED = {
         {"transaction": "MC INTER PREM", "pay_amt": "5,945.00"},
         {"transaction": "JCB PREM", "pay_amt": "300.00"},
     ],
+    # Σ THB AMT above = 11,696.00 = commis_amt + tax_amt + total below — the same
+    # self-consistency a real anchor row has to pass (decision #28).
+    "total_row": {"commis_amt": "300.00", "tax_amt": "20.00", "total": "11,376.00"},
 }
 
 SUMMARY_MAPS = [_mapping("VS"), _mapping("MC", acc="1021002"), _mapping("JCB", acc="1021003")]
+
+
+def _cc_entry(field_type, dept="GEN", acc="9001"):
+    return SimpleNamespace(field_type=field_type, dept_code=dept, acc_code=acc, is_custom=False)
+
+
+def _cc_full_mapping():
+    """Two more `.execute()` results — a `BUAccountingConfig` row, then its 3 fixed
+    entries — what `get_accounting_config` (`_get_config` then `_get_entries`) reads for
+    the debit side. Unpack after the AR-specific rows in any `_db(...)` call that reaches
+    `jv_for_document`'s commission/tax/net lookup: `_db([_setting()], MAPS, *_cc_full_mapping())`.
+    """
+    return [
+        SimpleNamespace(
+            id=9,
+            bank_code=None,
+            file_prefix=None,
+            file_source=None,
+            description=None,
+            branch=None,
+            bank_descriptions={},
+        )
+    ], [
+        _cc_entry("commission", acc="5001"),
+        _cc_entry("tax", acc="5002"),
+        _cc_entry("net", acc="1010"),
+    ]
 
 
 # ── jv_for_document ───────────────────────────────────────────────────────────
@@ -82,33 +115,37 @@ SUMMARY_MAPS = [_mapping("VS"), _mapping("MC", acc="1021002"), _mapping("JCB", a
 
 @pytest.mark.asyncio
 async def test_jv_for_document_builds_the_entry_the_reviewer_approves():
-    db = _db([_setting()], SUMMARY_MAPS)
+    db = _db([_setting()], SUMMARY_MAPS, *_cc_full_mapping())
 
     out = await svc.jv_for_document(db, TENANT, "KBANK", EXTRACTED)
 
     assert out is not None
-    assert len(out.rows) == 4, "1 debit + VS + MC + JCB"
-    assert out.rows[0].acc == "1021000" and out.rows[0].debit == 11696.0
-    credits = {r.acc: r.credit for r in out.rows[1:]}
+    assert len(out.rows) == 6, "3 fixed debit legs + VS + MC + JCB"
+    debits = {r.desc: r for r in out.rows[:3]}
+    assert debits["Credit card commission"].acc == "5001"
+    assert debits["Credit card commission"].debit == 300.0
+    assert debits["Input Tax"].acc == "5002" and debits["Input Tax"].debit == 20.0
+    assert debits["Bank Account"].acc == "1010" and debits["Bank Account"].debit == 11376.0
+    credits = {r.acc: r.credit for r in out.rows[3:]}
     assert credits == {"1021001": 5451.0, "1021002": 5945.0, "1021003": 300.0}
     assert out.total_debit == out.total_credit == 11696.0
     assert out.balanced is True
     assert out.unmapped == []
     assert out.description == "Credit Card AR Reconcile 21/07/2026"
-    assert out.rows[1].desc.startswith("Tax Inv.# 210726E00035291 - ")
-    assert out.control_missing is False
+    assert out.rows[3].desc.startswith("Tax Inv.# 210726E00035291 - ")
 
 
 @pytest.mark.asyncio
-async def test_jv_for_document_reports_a_blank_control_leg():
-    """A JV missing its clearing account still balances and still posts — nothing about
-    the arithmetic is wrong, which is why `approve_document` checks this separately."""
-    db = _db([_setting(debit_dept_code=None, debit_account_code=None)], SUMMARY_MAPS)
+async def test_jv_for_document_reports_a_missing_fixed_debit_mapping():
+    """A JV missing its commission/tax/net GL mapping still balances and still posts —
+    nothing about the arithmetic is wrong, which is why `approve_document` checks
+    `unmapped` separately rather than trusting `balanced` to catch it."""
+    db = _db([_setting()], SUMMARY_MAPS, [])  # no BUAccountingConfig row at all
 
     out = await svc.jv_for_document(db, TENANT, "KBANK", EXTRACTED)
 
     assert out is not None
-    assert out.control_missing is True
+    assert out.unmapped == ["commission", "tax", "net"]
     assert out.balanced is True
 
 
@@ -122,24 +159,24 @@ async def test_jv_for_document_uses_the_settings_post_type_not_the_labels_on_the
         _mapping("MC INTER PREM", acc="1021002", post_type=PostType.DETAIL),
         _mapping("JCB PREM", acc="1021003", post_type=PostType.DETAIL),
     ]
-    db = _db([_setting(post_type=PostType.DETAIL)], detail_maps)
+    db = _db([_setting(post_type=PostType.DETAIL)], detail_maps, *_cc_full_mapping())
 
     out = await svc.jv_for_document(db, TENANT, "KBANK", EXTRACTED)
 
-    assert len(out.rows) == 5, "1 debit + 4 printed payment types"
+    assert len(out.rows) == 7, "3 fixed debit legs + 4 printed payment types"
     assert out.balanced is True
 
 
 @pytest.mark.asyncio
 async def test_jv_for_document_names_the_types_that_would_block_the_post():
-    db = _db([_setting()], [_mapping("VS")])
+    db = _db([_setting()], [_mapping("VS")], *_cc_full_mapping())
 
     out = await svc.jv_for_document(db, TENANT, "KBANK", EXTRACTED)
 
     # The rows still come back — they are what the reviewer has to look at — but approve
     # refuses on this list rather than posting a leg with a blank account.
     assert sorted(out.unmapped) == ["JCB", "MC"]
-    assert [r.acc for r in out.rows[1:] if not r.acc] != []
+    assert [r.acc for r in out.rows[3:] if not r.acc] != []
     assert out.balanced is True
 
 
@@ -147,7 +184,11 @@ async def test_jv_for_document_names_the_types_that_would_block_the_post():
 async def test_an_inactive_mapping_reads_as_unmapped_not_as_blank():
     """Inactive means "this payment type is not ours to post", which must not resolve to an
     empty dept/acc that then posts to nothing."""
-    db = _db([_setting()], [_mapping("VS"), _mapping("MC", is_active=False), _mapping("JCB")])
+    db = _db(
+        [_setting()],
+        [_mapping("VS"), _mapping("MC", is_active=False), _mapping("JCB")],
+        *_cc_full_mapping(),
+    )
 
     out = await svc.jv_for_document(db, TENANT, "KBANK", EXTRACTED)
 
@@ -164,11 +205,12 @@ async def test_jv_for_document_is_none_when_the_bank_was_never_configured():
 
 @pytest.mark.asyncio
 async def test_jv_for_document_survives_a_document_with_no_number():
-    db = _db([_setting()], SUMMARY_MAPS)
+    db = _db([_setting()], SUMMARY_MAPS, *_cc_full_mapping())
     out = await svc.jv_for_document(db, TENANT, "KBANK", {**EXTRACTED, "doc_no": ""})
 
     assert out.doc_no == ""
-    assert out.rows[0].desc == "Total Credit Card Summary", "no 'Tax Inv.# ' prefix on a blank"
+    assert out.rows[0].desc == "Credit card commission", "fixed legs never carried the prefix"
+    assert out.rows[3].desc == "VS", "credit legs drop it too, when there is no number"
 
 
 # ── mappings_dict ─────────────────────────────────────────────────────────────

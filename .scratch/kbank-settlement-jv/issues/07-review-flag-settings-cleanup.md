@@ -6,10 +6,14 @@ in both the reviewer's queue and the AR settings screen.
 **Blocked by:** 03 (Combined JV — `is_balanced` becomes real, `control_leg_missing` is deleted),
 04 (TIN second factor — `tin_unverified` must exist to be labeled)
 
-**Status:** ready-for-agent
+**Status:** ready-for-agent — **backend bullet already done**, pulled forward into ticket 03
+(2026-09-18) because `email_ingest_service.py` imports `control_leg_missing` directly and
+could not stay green once ticket 03 deleted it. Only the frontend bullets below remain.
 
-- [ ] Backend: `clearing_account_missing` is removed from `_review_flags`'s AR branch;
-      `unbalanced` (from `is_balanced(rows)`, now a real check per ticket 03) is added.
+- [x] ~~Backend: `clearing_account_missing` is removed from `_review_flags`'s AR branch;
+      `unbalanced` (from `is_balanced(rows)`, now a real check per ticket 03) is added.~~
+      Done in ticket 03's commit — the flag is `ar_unbalanced` → `"unbalanced"`, and
+      `approve_document`'s gate is `not built.balanced`.
 - [ ] Frontend: `ARReconcileSettings.tsx` / `useARReconcile.ts` / `ARJvPreview.tsx` no longer
       show the clearing-account Dept/Acc pair or its divergence warning; in its place, the three
       fixed debit mappings (`commission`/`tax`/`net`) are shown read-only with a link to the

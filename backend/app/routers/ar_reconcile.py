@@ -29,6 +29,7 @@ from app.models.schemas import (
     ExtractedDetailRow,
 )
 from app.services import ar_reconcile_service as svc
+from app.services.accounting_config_service import get_accounting_config
 from app.services.ar_reconcile_jv import (
     build_ar_jv_rows,
     is_balanced,
@@ -55,6 +56,15 @@ _SAMPLE_ROWS = (
     ("MC INTER UP PREM", "2,375.00"),
     ("JCB PREM", "300.00"),
 )
+# The same report's own TOTAL BY MERCHANT ID row — Σ THB AMT above (25,091.00) =
+# COMM AMT + VAT AMT + NET AMT here, same self-consistency a real document has to pass.
+_SAMPLE_TOTAL_ROW = {
+    "transaction": "TOTAL BY MERCHANT ID",
+    "pay_amt": "25,091.00",
+    "commis_amt": "582.99",
+    "tax_amt": "40.81",
+    "total": "24,467.20",
+}
 
 
 @router.get("/settings", response_model=ARSettingsOut)
@@ -105,15 +115,22 @@ async def preview(
     await assert_module_enabled(Module.CC_AR_RECONCILE)
 
     real = await svc.latest_real_sample(db, session.tenant_id, req.bank_code)
-    sample_rows, doc_no, doc_date = real or (_SAMPLE_ROWS, _SAMPLE_DOC_NO, _SAMPLE_DOC_DATE)
+    sample_rows, doc_no, doc_date, total_row_data = real or (
+        _SAMPLE_ROWS,
+        _SAMPLE_DOC_NO,
+        _SAMPLE_DOC_DATE,
+        _SAMPLE_TOTAL_ROW,
+    )
     details = [ExtractedDetailRow(transaction=t, pay_amt=a) for t, a in sample_rows]
+    total_row = ExtractedDetailRow(**total_row_data) if total_row_data else None
     mappings = svc.mappings_dict(req.mappings)
+    cc_mappings = (await get_accounting_config(db, session.tenant_id)).mappings or {}
 
     rows = build_ar_jv_rows(
         details,
         post_type=req.post_type,
-        debit_dept=req.debit_dept_code,
-        debit_acc=req.debit_account_code,
+        total_row=total_row,
+        cc_mappings=cc_mappings,
         mappings=mappings,
         doc_no=doc_no or None,
     )
@@ -130,7 +147,7 @@ async def preview(
         total_debit=round(sum(r["debit"] for r in rows), 2),
         total_credit=round(sum(r["credit"] for r in rows), 2),
         balanced=is_balanced(rows),
-        unmapped=unmapped_ar_types(details, mappings, req.post_type),
+        unmapped=unmapped_ar_types(details, mappings, req.post_type, cc_mappings),
         post_type=req.post_type,
     )
 

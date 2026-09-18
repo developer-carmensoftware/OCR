@@ -104,10 +104,6 @@ class ARPreviewOut(BaseModel):
     # it — but the reviewer does not, and Detail and Summary are the same table with
     # different arithmetic behind it.
     post_type: str = ""
-    # The debit leg (the row with no `key`) has no dept or no account. A JV in this state
-    # balances and posts, but the control account it exists to clear never reaches zero —
-    # see `control_leg_missing` in ar_reconcile_jv.py.
-    control_missing: bool = False
 
 
 class ARPreviewIn(BaseModel):

@@ -96,16 +96,19 @@ def _preview(client, **over):
 # ── preview ───────────────────────────────────────────────────────────────────
 
 
-def test_preview_detail_is_one_debit_and_seven_credits():
+def test_preview_detail_is_three_fixed_debits_and_seven_credits():
     with make_test_client(make_mock_db()) as client:
         resp = _preview(client)
         assert resp.status_code == 200
         body = resp.json()
 
-        assert len(body["rows"]) == 8
+        assert len(body["rows"]) == 10, "3 fixed debit legs + 7 credits"
         assert body["total_debit"] == body["total_credit"] == 25091.0
         assert body["balanced"] is True
-        assert body["unmapped"] == []
+        # make_mock_db() with no execute_rows means no BUAccountingConfig is configured
+        # either — the fixed debit keys are as genuinely unmapped as any payment type
+        # would be, which is the correct answer for an unconfigured BU.
+        assert body["unmapped"] == ["commission", "tax", "net"]
         assert body["description"] == "Credit Card AR Reconcile 21/07/2026"
 
 
@@ -115,7 +118,7 @@ def test_preview_summary_collapses_to_three_credits():
         assert resp.status_code == 200
         body = resp.json()
 
-        assert len(body["rows"]) == 4
+        assert len(body["rows"]) == 6, "3 fixed debit legs + VS + MC + JCB"
         assert body["total_debit"] == body["total_credit"] == 25091.0
         assert body["balanced"] is True
 
@@ -126,8 +129,8 @@ def test_preview_reports_unmapped_types_rather_than_dropping_them():
         body = resp.json()
 
         # The row still appears — it is what the reviewer has to map — and it still balances.
-        assert len(body["rows"]) == 8
-        assert body["unmapped"] == ["JCB PREM"]
+        assert len(body["rows"]) == 10
+        assert body["unmapped"] == ["JCB PREM", "commission", "tax", "net"]
         assert body["balanced"] is True
 
 

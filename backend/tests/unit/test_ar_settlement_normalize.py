@@ -66,6 +66,12 @@ def test_clean_report_keeps_its_rows_and_says_nothing():
     assert [d.transaction for d in doc.details] == [t for t, _ in ROWS]
     assert codes(doc) == []
 
+    # Consumed onto its own field, not just dropped — `ar_reconcile_jv.build_ar_jv_rows`
+    # reads its three debit legs from here (decision #28).
+    assert doc.total_row is not None
+    assert doc.total_row.transaction == "TOTAL BY MERCHANT ID"
+    assert (doc.total_row.commis_amt, doc.total_row.tax_amt) == ("582.99", "40.81")
+
 
 def test_rows_that_do_not_add_up_to_the_printed_total_are_flagged():
     """The whole reason the TOTAL row is asked for: a per-terminal block read as well as
@@ -93,6 +99,7 @@ def test_a_report_with_no_readable_total_says_so_rather_than_trusting_the_rows()
 
     assert codes(doc) == ["settlementTotalMissing"]
     assert len(doc.details) == 7
+    assert doc.total_row is None, "no anchor to build the debit legs from — the JV posts 0"
 
 
 def test_merchant_in_the_filename_is_a_second_opinion_on_what_was_read():
@@ -140,6 +147,7 @@ def test_an_anchor_without_merchant_wording_is_not_trusted():
     _normalize_ar_settlement(doc, FILE)
 
     assert codes(doc) == ["settlementTotalMissing"]
+    assert doc.total_row is None, "wrong wording is treated as no anchor at all"
 
 
 def test_anchor_columns_that_do_not_add_up_are_flagged():

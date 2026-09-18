@@ -93,7 +93,7 @@ from app.services.accounting_config_service import (
 )
 from app.services.ar_reconcile_jv import (
     build_ar_jv_rows,
-    control_leg_missing,
+    is_balanced,
     render_jv_description,
     unmapped_ar_types,
 )
@@ -1118,7 +1118,9 @@ async def _run_document(
             # accept button writes to the right place.
             assert ar_setting is not None  # set together with doc_type, above
             ar_maps = await _ar_mappings(ar_setting.id, ar_setting.post_type)
-            mapping_missing = unmapped_ar_types(extracted.details, ar_maps, ar_setting.post_type)
+            mapping_missing = unmapped_ar_types(
+                extracted.details, ar_maps, ar_setting.post_type, config.mappings or {}
+            )
         else:
             missing = unmapped_payment_types(extracted.details, config.mappings or {})
         if doc_type != DocType.AR_RECONCILE and missing:
@@ -1177,17 +1179,17 @@ async def _run_document(
 
         if doc_type == DocType.AR_RECONCILE:
             assert ar_setting is not None
-            # No balance check here: `build_ar_jv_rows` derives the control leg from the
-            # sum of the very rows it credits, so `is_balanced` over its own output is a
-            # tautology — it cannot see a wrong-block reading, only arithmetic the builder
-            # already guaranteed. The real check already ran, in `_normalize_ar_settlement`
-            # (Σ rows vs. the document's own printed total), and its result is already in
-            # `extracted.warnings` by the time this function is reached.
+            # The debit side reads the BU's existing credit-card mapping (commission/tax/
+            # net) — the same dict `build_jv_rows` reads below for the fee invoice — off
+            # the report's own total row, not derived from the credit rows. `is_balanced`
+            # below is therefore a real check now: it compares that row's own COMM+VAT+NET
+            # against Σ THB AMT over the grouped rows, two independent readings of the
+            # same page. See `ar_reconcile_jv.build_ar_jv_rows`.
             rows = build_ar_jv_rows(
                 extracted.details,
                 post_type=ar_setting.post_type,
-                debit_dept=ar_setting.debit_dept_code,
-                debit_acc=ar_setting.debit_account_code,
+                total_row=extracted.total_row,
+                cc_mappings=config.mappings or {},
                 mappings=ar_maps,
                 doc_no=extracted.doc_no,
             )
@@ -1237,9 +1239,7 @@ async def _run_document(
             mapping_guessed=mapping_guessed,
             mapping_missing=mapping_missing,
             doc_type=doc_type,
-            clearing_account_missing=(
-                control_leg_missing(rows) if doc_type == DocType.AR_RECONCILE else False
-            ),
+            ar_unbalanced=(not is_balanced(rows) if doc_type == DocType.AR_RECONCILE else False),
         )
         if not auto_post or flags:
             await _park_for_review(
@@ -1763,7 +1763,7 @@ def _review_flags(
     mapping_guessed: bool,
     mapping_missing: list[str] | None = None,
     doc_type: str = DocType.FEE_INVOICE,
-    clearing_account_missing: bool = False,
+    ar_unbalanced: bool = False,
 ) -> list[str]:
     """Why this document might be worth opening. Computed once, here, and stored.
 
@@ -1776,16 +1776,13 @@ def _review_flags(
     (`imbalancedLines`): every layout satisfies gross = commission + tax + net per line, so
     a line that breaks it was misread and its JV would post unbalanced.
 
-    **Except the settlement report, whose lines are not that shape.** It prints THB AMT per
-    payment type and leaves VAT AMT and NET AMT as dashes on those rows, so the per-line
-    identity is false for every one of them — it has no `unbalanced` flag of its own.
-    `ar_reconcile_jv.is_balanced` is not used here: it sums the same rows it just grouped
-    into both sides of the JV it built, so it cannot see a wrong-block reading, only
-    arithmetic the builder already guaranteed. The real check for this layout ran earlier,
-    in `credit_card_service._normalize_ar_settlement` (Σ rows against the document's own
-    printed total), and its result is already in `extracted.warnings` by the time this
-    function runs — which is why the plain `warnings` flag below is what carries it, not a
-    bespoke AR one.
+    **The settlement report's lines are not that shape** — it prints THB AMT per payment
+    type and leaves VAT AMT and NET AMT as dashes on those rows, so the per-line identity
+    above is false for every one of them and cannot be reused here. `ar_unbalanced` is the
+    caller's own `not ar_reconcile_jv.is_balanced(rows)`: since 2026-09-18 the debit side of
+    that JV comes from the report's own total row (independent of the credit rows it is
+    compared against), so this is a real check, not the tautology `is_balanced` used to be
+    when the debit leg was derived from the very rows it was checked against.
 
     **This is also the auto-post gate.** An empty list is what `auto_post` posts on — the
     queue's own "nothing to say about this one", which the row already prints as *Ready to
@@ -1800,11 +1797,8 @@ def _review_flags(
     if mapping_guessed:
         flags.append("mapping_guessed")
     if doc_type == DocType.AR_RECONCILE:
-        if clearing_account_missing:
-            # A JV in this state balances and posts — the debit leg just has no dept/acc.
-            # That posts a JV that never clears the control account it exists to clear,
-            # invisible until someone reconciles by hand. See `control_leg_missing`.
-            flags.append("clearing_account_missing")
+        if ar_unbalanced:
+            flags.append("unbalanced")
     elif any(
         abs(r2(num(d.pay_amt) - (num(d.commis_amt) + num(d.tax_amt) + num(d.total)))) > 0.01
         for d in extracted.details
@@ -2092,12 +2086,17 @@ async def approve_document(
                 raise ValidationError(
                     "Map these payment types before posting: " + ", ".join(built.unmapped)
                 )
-            if built.control_missing:
-                raise ValidationError("Set the clearing account to debit before posting")
-            # No balance check here, deliberately: `built.balanced` sums the same grouped
-            # rows into both sides of the JV `build_ar_jv_rows` just built from them, so it
-            # cannot be False — see `_review_flags` for why that check was removed rather
-            # than kept as belt-and-braces.
+            if not built.balanced:
+                # A real check since 2026-09-18: the debit side (commission/VAT/net) comes
+                # from the report's own total row, independent of the credit rows it is
+                # compared against — see `ar_reconcile_jv.is_balanced`. `_review_flags`
+                # already parks a document in this state; this is the belt to that brace
+                # for the direct-approve path, where a stale `built` could theoretically
+                # slip past if the mapping changed between park and approve.
+                raise ValidationError(
+                    "This report's totals don't reconcile — check the settlement report "
+                    "before posting"
+                )
             rows = [r.model_dump() for r in built.rows]
             description = built.description
 

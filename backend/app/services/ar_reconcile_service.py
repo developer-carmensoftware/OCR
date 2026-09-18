@@ -28,9 +28,9 @@ from app.models.schemas import (
     ARSettingsOut,
     ExtractedDetailRow,
 )
+from app.services.accounting_config_service import get_accounting_config
 from app.services.ar_reconcile_jv import (
     build_ar_jv_rows,
-    control_leg_missing,
     is_balanced,
     render_jv_description,
     unmapped_ar_types,
@@ -177,9 +177,10 @@ async def default_clearing_account(db: AsyncSession, tenant_id: str) -> tuple[st
 
 async def latest_real_sample(
     db: AsyncSession, tenant_id: str, bank_code: str
-) -> tuple[list[tuple[str, str]], str, str] | None:
+) -> tuple[list[tuple[str, str]], str, str, dict | None] | None:
     """This tenant's most recent still-parked settlement report for `bank_code`, as
-    `(rows, doc_no, doc_date)` — or None if it has never had one.
+    `(rows, doc_no, doc_date, total_row)` — or None if it has never had one. `total_row`
+    is the raw dict `ExtractedCreditCardData.total_row` serialized to, or None.
 
     The worked example on the settings screen used to be one fixed KBANK report every
     tenant saw regardless of what their own documents actually print. `review_payload`
@@ -214,7 +215,12 @@ async def latest_real_sample(
     ]
     if not rows:
         return None
-    return rows, extracted.get("doc_no") or "", extracted.get("doc_date") or ""
+    return (
+        rows,
+        extracted.get("doc_no") or "",
+        extracted.get("doc_date") or "",
+        extracted.get("total_row"),
+    )
 
 
 async def get_settings(db: AsyncSession, tenant_id: str, bank_code: str) -> ARSettingsOut:
@@ -339,12 +345,18 @@ async def jv_for_document(
     maps = mappings_dict(items)
     doc_no = extracted.get("doc_no") or ""
     doc_date = extracted.get("doc_date") or ""
+    total_row_data = extracted.get("total_row")
+    total_row = ExtractedDetailRow(**total_row_data) if total_row_data else None
+    # The debit side reads the BU's existing credit-card mapping (commission/tax/net) —
+    # the same dict `cc_jv.build_jv_rows` reads for the fee invoice — rather than a
+    # mapping table of this feature's own; see `build_ar_jv_rows`'s docstring.
+    cc_mappings = (await get_accounting_config(db, tenant_id)).mappings or {}
 
     rows = build_ar_jv_rows(
         rows_in,
         post_type=setting.post_type,
-        debit_dept=setting.debit_dept_code,
-        debit_acc=setting.debit_account_code,
+        total_row=total_row,
+        cc_mappings=cc_mappings,
         mappings=maps,
         doc_no=doc_no or None,
     )
@@ -361,7 +373,6 @@ async def jv_for_document(
         total_debit=round(sum(r["debit"] for r in rows), 2),
         total_credit=round(sum(r["credit"] for r in rows), 2),
         balanced=is_balanced(rows),
-        unmapped=unmapped_ar_types(rows_in, maps, setting.post_type),
+        unmapped=unmapped_ar_types(rows_in, maps, setting.post_type, cc_mappings),
         post_type=setting.post_type,
-        control_missing=control_leg_missing(rows),
     )

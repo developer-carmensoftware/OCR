@@ -38,15 +38,13 @@ def _ar_row(**over):
     return _pending_row(bank_code="KBANK", doc_no="210726E00035291", review_payload=payload, **over)
 
 
-def _built(unmapped=None, balanced=True, rows=None, control_missing=False):
+def _built(unmapped=None, balanced=True, rows=None):
     rows = rows or [
         ARPreviewRow(
-            dept="GEN",
-            acc="1021000",
-            desc="Tax Inv.# X - Total Credit Card Summary",
-            debit=25091.0,
-            credit=0.0,
+            dept="GEN", acc="5001", desc="Credit card commission", debit=582.99, credit=0.0
         ),
+        ARPreviewRow(dept="GEN", acc="5002", desc="Input Tax", debit=40.81, credit=0.0),
+        ARPreviewRow(dept="GEN", acc="1010", desc="Bank Account", debit=24467.20, credit=0.0),
         ARPreviewRow(dept="GEN", acc="1021001", desc="Tax Inv.# X - VS", debit=0.0, credit=25091.0),
     ]
     return ARPreviewOut(
@@ -58,7 +56,6 @@ def _built(unmapped=None, balanced=True, rows=None, control_missing=False):
         total_credit=sum(r.credit for r in rows),
         balanced=balanced,
         unmapped=unmapped or [],
-        control_missing=control_missing,
     )
 
 
@@ -90,8 +87,8 @@ async def test_the_rows_are_rebuilt_from_the_mapping_not_taken_from_the_client()
     _, build = await _approve(db, row, built=_built(), rows_from_client=junk)
 
     posted = build.call_args.args[0]
-    assert posted != junk, "a browser cannot hand us legs against a control account"
-    assert [r["acc"] for r in posted] == ["1021000", "1021001"]
+    assert posted != junk, "a browser cannot hand us legs against the fixed debit accounts"
+    assert [r["acc"] for r in posted] == ["5001", "5002", "1010", "1021001"]
     assert sum(r["debit"] for r in posted) == sum(r["credit"] for r in posted) == 25091.0
 
 
@@ -180,16 +177,16 @@ async def test_approving_with_an_unmapped_type_refuses_and_names_it():
 
 
 @pytest.mark.asyncio
-async def test_a_blank_clearing_account_refuses_rather_than_posting():
-    """Nothing about the arithmetic is wrong when the debit leg has no dept/acc — a JV in
-    this state balances and posts — so this is the one thing standing between it and
-    Carmen. (There is no `balanced` check here to be "ahead of": `built.balanced` sums the
-    same grouped rows this function just built into both sides, so it cannot be False —
-    see `_review_flags` in `email_ingest_service.py`.)"""
+async def test_an_unbalanced_entry_refuses_rather_than_posting():
+    """Since decision #28 the debit side (commission/VAT/net) comes from the report's own
+    total row, independent of the credit rows it is compared against — so `balanced` is a
+    real check now, not the tautology it used to be, and this is what stands between a
+    genuine mismatch and Carmen. `_review_flags` already parks a document in this state;
+    this is the belt to that brace on the direct-approve path."""
     row = _ar_row()
 
-    with pytest.raises(ValidationError, match="clearing account"):
-        await _approve(_ReviewDB(row), row, built=_built(control_missing=True))
+    with pytest.raises(ValidationError, match="don't reconcile"):
+        await _approve(_ReviewDB(row), row, built=_built(balanced=False))
 
 
 @pytest.mark.asyncio

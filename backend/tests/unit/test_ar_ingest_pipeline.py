@@ -87,6 +87,9 @@ def _ar_extracted(**overrides) -> ExtractedCreditCardData:
                 ("JCB PREM", "300.00"),
             )
         ],
+        # Σ pay_amt above = 11,696.00 = commis_amt + tax_amt + total below — what a real
+        # anchor row's own self-consistency guarantees (decision #28).
+        total_row=ExtractedDetailRow(commis_amt="300.00", tax_amt="20.00", total="11,376.00"),
     )
     defaults.update(overrides)
     return ExtractedCreditCardData(**defaults)
@@ -207,21 +210,27 @@ async def test_a_row_parked_before_doc_type_existed_defaults_to_fee_invoice():
 
 
 @pytest.mark.asyncio
-async def test_ar_posts_one_debit_against_the_control_account_and_one_credit_per_scheme():
+async def test_ar_posts_three_fixed_debit_legs_and_one_credit_per_scheme():
+    """The debit side reads the BU's existing credit-card mapping (MAPPINGS in
+    test_email_ingest_pipeline.py, patched in via `_config()`/`get_accounting_config`) —
+    not a mapping table of this feature's own — off the report's own total row."""
     _, p = await _run_ar(_FakeDB())
 
     payload = p.post_gljv.call_args[0][0]
     detail = payload["Detail"]
-    assert len(detail) == 4, "1 debit + VS + MC + JCB"
+    assert len(detail) == 6, "3 fixed debit legs + VS + MC + JCB"
 
-    debit = detail[0]
-    assert debit["AccCode"] == "1021000"
-    assert debit["DrAmount"] == 11696.0  # 2,200 + 3,251 + 5,945 + 300
-    credits = {r["AccCode"]: r["CrAmount"] for r in detail[1:]}
+    debits = {r["Description"]: r for r in detail[:3]}
+    assert debits["Credit card commission"]["AccCode"] == "5100"
+    assert debits["Credit card commission"]["DrAmount"] == 300.0
+    assert debits["Input Tax"]["AccCode"] == "1150" and debits["Input Tax"]["DrAmount"] == 20.0
+    assert debits["Bank Account"]["AccCode"] == "1010"
+    assert debits["Bank Account"]["DrAmount"] == 11376.0
+    credits = {r["AccCode"]: r["CrAmount"] for r in detail[3:]}
     assert credits == {"1021001": 5451.0, "1021002": 5945.0, "1021003": 300.0}
     assert sum(r["DrAmount"] for r in detail) == sum(r["CrAmount"] for r in detail)
     assert payload["Description"] == "Credit Card AR Reconcile 21/07/2026"
-    assert detail[1]["Description"].startswith("Tax Inv.# 210726E00035291 - ")
+    assert detail[3]["Description"].startswith("Tax Inv.# 210726E00035291 - ")
 
 
 @pytest.mark.asyncio
@@ -235,7 +244,7 @@ async def test_detail_mode_posts_one_credit_per_printed_payment_type():
     _, p = await _run_ar(_FakeDB(), setting=_setting(post_type="Detail"), maps=detail_maps)
 
     detail = p.post_gljv.call_args[0][0]["Detail"]
-    assert len(detail) == 5, "1 debit + 4 printed payment types"
+    assert len(detail) == 7, "3 fixed debit legs + 4 printed payment types"
 
 
 @pytest.mark.asyncio
@@ -291,28 +300,40 @@ async def test_an_unmapped_scheme_parks_instead_of_posting():
 
 
 @pytest.mark.asyncio
-async def test_a_blank_clearing_account_parks_instead_of_posting():
-    """A JV missing its debit leg's dept/acc still balances — every payment type is
-    mapped, and this pipeline no longer even asks `is_balanced` (it sums the same rows
-    into both sides of the JV it just built, so it can't say no) — so this is the one flag
-    standing between a document like this and posting with a control account nobody set.
-    See `control_leg_missing`."""
+async def test_a_missing_fixed_debit_mapping_parks_instead_of_posting():
+    """Decision #28: the three fixed debit legs (commission/tax/net) read the BU's
+    existing credit-card mapping, not a mapping table of this feature's own — so a gap
+    there is caught by the same `mapping_missing` flag the credit side uses, rather than a
+    bespoke clearing-account flag (removed along with the control-leg concept)."""
     db = _FakeDB()
-    blank_setting = SimpleNamespace(
-        id=7,
-        enabled=True,
-        post_type="Summary",
-        jv_description_template="Credit Card AR Reconcile {Settlement_Date}",
-        debit_dept_code=None,
-        debit_account_code=None,
-    )
-    outcome, p = await _run_ar(db, setting=blank_setting)
+    outcome, p = await _run_ar(db, config=_config(mappings={"commission": AR_MAPS["VS"]}))
 
     assert outcome == "pending_review"
     p.post_gljv.assert_not_called()
     row = db.added[0]
-    assert "clearing_account_missing" in row.review_payload["flags"]
-    assert row.review_payload["unmapped"] == [], "the credit side is fully mapped"
+    assert "mapping_missing" in row.review_payload["flags"]
+    assert sorted(row.review_payload["unmapped"]) == ["net", "tax"]
+
+
+@pytest.mark.asyncio
+async def test_a_mismatched_total_row_parks_as_unbalanced():
+    """Decision #28: the debit side reads the report's own total row, independent of the
+    credit rows grouped from `details` — a real disagreement is now possible, and
+    `unbalanced` is what catches it (`is_balanced` used to be a tautology over this
+    builder's own output, so nothing could ever have set this flag before today)."""
+    db = _FakeDB()
+    outcome, p = await _run_ar(
+        db,
+        extracted=_ar_extracted(
+            total_row=ExtractedDetailRow(commis_amt="1.00", tax_amt="1.00", total="1.00")
+        ),
+    )
+
+    assert outcome == "pending_review"
+    p.post_gljv.assert_not_called()
+    row = db.added[0]
+    assert "unbalanced" in row.review_payload["flags"]
+    assert row.review_payload["unmapped"] == [], "the arithmetic disagrees, not the mapping"
 
 
 # ── The review fork: fully mapped and balanced, still no auto-post ────────────
@@ -329,7 +350,11 @@ async def test_a_clean_detail_report_still_waits_when_auto_post_is_off():
         db,
         auto_post=False,
         extracted=_ar_extracted(
-            details=[ExtractedDetailRow(transaction=t, pay_amt=a) for t, a in FULL_DETAIL_ROWS]
+            details=[ExtractedDetailRow(transaction=t, pay_amt=a) for t, a in FULL_DETAIL_ROWS],
+            # FULL_DETAIL_ROWS is the real worked example — its own real anchor row, not
+            # the smaller default `_ar_extracted()` total_row (which matches the smaller
+            # 4-row default `details` instead).
+            total_row=ExtractedDetailRow(commis_amt="582.99", tax_amt="40.81", total="24,467.20"),
         ),
         setting=_setting(post_type="Detail"),
         maps=FULL_DETAIL_MAPS,

@@ -571,3 +571,50 @@ Full reasoning, and the seven decisions behind it:
   grew from.
 
 Neither branch has a remote; both exist locally only, for reference.
+
+## 28. The KBANK settlement report posts one JV, not two (2026-09-18)
+
+**Decided:** 2026-09-18, superseding FRD §6.1 as originally written (v1.1). See the v1.2
+amendment for the customer-facing wording.
+
+**Decision.** A KBANK settlement report (`KB1P554V2_SUM_<merchant id>_<date>.pdf`) now posts
+a single, self-sufficient JV: `Cr.` one line per card scheme (the report's per-payment-type
+rows), `Dr.` commission / input tax / bank account, read from the report's own
+`TOTAL BY MERCHANT ID` row against the BU's *existing* credit-card GL mapping. The BU's
+KBANK filename rule should point at this file instead of the fee invoice
+(`E-TAX_INVOICE_CARD_*`); a guard also skips a fee-invoice attachment whose bank has this
+mode enabled, so a rule left in place does not book the commission twice. No control
+account, no second document, no PDF password.
+
+**Why.** FRD v1.1 read the settlement report as a *reclassification* — `Dr.` a lump control
+account, `Cr.` per scheme — meant to be cleared by a second JV built from the encrypted
+`E-TAX_INVOICE_CARD_*` (`Cr.` that same control account, `Dr.` bank/commission/input tax).
+That shape assumed the settlement report could not carry commission, VAT or net figures of
+its own. Reading the report's actual text layer (PyMuPDF, no vision call needed — it is a
+machine-generated PDF, not a scan) showed the assumption was wrong: the report's own anchor
+row prints `COMM AMT`, `VAT AMT` and `NET AMT` in full, and three checks already run against
+it in `credit_card_service._normalize_ar_settlement` — Σ per-row THB AMT against the printed
+total, THB AMT against COMM+VAT+NET on that row, and the filename's merchant id against the
+page's. The e-tax invoice added nothing the settlement report did not already have, at the
+cost of a second credit, a second review, and a PDF password the BU had to configure and
+store.
+
+**What it costs.** Before: 2 credits and up to 2 reviews per settlement day (settlement
+report + fee invoice), a control account that only reconciled to zero once both documents
+posted, and `ar_reconcile_settings.debit_dept_code`/`debit_account_code` as the JV's only
+debit-side configuration. After: 1 credit, up to 1 review, no control account, and the debit
+side reads the BU's fee-invoice mapping (`bu_accounting_mapping_entries`, keys `commission`/
+`tax`/`net`) instead of a mapping of this feature's own. `debit_dept_code`/
+`debit_account_code` are left in the schema, unread, so the two-JV shape could return
+without a migration if a customer needs it split back apart. `ar_reconcile_jv.is_balanced`
+stops being a tautology once the debit side no longer derives from the credit rows it is
+compared against — it is a real check now, wired into `_review_flags` (`unbalanced`) and
+into `approve_document`'s own gate, where it replaces the old blank-control-account check
+(`control_leg_missing`, deleted).
+
+**Second factor, same redesign, separate tickets.** The settlement report's own page prints
+no tax ID, so `foreign_tax_id` had nothing to check for this document type. The bank's own
+`TAX_SUMMARY_BY_TAX_ID_CSV_*` sidecar (bundled in the same zip, never charged or ledgered
+itself) supplies it by merchant ID; a report with no matching CSV row parks with
+`tin_unverified` rather than auto-posting. Tracked separately
+(`.scratch/kbank-settlement-jv/issues/01`, `04`) since it does not depend on this one.
