@@ -618,3 +618,36 @@ no tax ID, so `foreign_tax_id` had nothing to check for this document type. The 
 itself) supplies it by merchant ID; a report with no matching CSV row parks with
 `tin_unverified` rather than auto-posting. Tracked separately
 (`.scratch/kbank-settlement-jv/issues/01`, `04`) since it does not depend on this one.
+
+**Known risk, deliberately not fixed here (2026-09-18).** Bank identity on this path is
+never read from the document — it comes entirely from which filename rule matched
+(`email_ingest_service.py` explicitly skips `_resolve_bank` for `DocType.AR_RECONCILE`).
+The rule a BU sets today matches the substring `KB1P554V2`, which is printed on the report
+as `REPORT NO. KB1P554V2` — **a report/program *version* number, not a permanent bank
+identifier.** If KBank ships a new settlement-report generator (`KB1P554V3` or later), that
+pattern stops matching, the attachment falls through as `no_rule_match` — which is
+deliberately in the noise bucket (`NOTIFIABLE_SKIPS`) so it rings no alert — and, because
+this design has no second document to fall back on, **zero JVs post for that BU rather than
+a degraded one.** v1.1's two-document shape degraded gracefully here: the fee invoice's own
+rule (a different, more stable naming convention tied to the tax-invoice numbering rather
+than a report version) would keep posting the commission JV even if the settlement report's
+pattern broke. v1.2 does not have that fallback — this is a real cost of the collapse to one
+document, not a hypothetical.
+
+It compounds with ticket 02's guard (`covered_by_settlement_jv`): that guard reads a static
+"AR reconciliation enabled" flag, not "was a settlement report actually seen today" — so if
+`KB1P554V2` breaks while AR mode stays enabled, a fee invoice kept as manual backup would
+also be silently skipped, for the same non-alerting reason. Ticket 02 should account for
+this before it ships.
+
+Mitigation floated but deliberately deferred: broadening the rule to a version-agnostic
+substring (`_SUM_`, present in `KB1P554V2_SUM_<merchant id>_<date>.pdf` regardless of the
+report-number prefix) rather than the exact version string. **Not merchant-ID-scoped** —
+embedding the merchant ID (`_SUM_451005282039001_`) was also considered, but a BU with more
+than one property under one tenant would need one rule per merchant ID, trading one
+single-point-of-failure for one-per-property; a new property added without its own rule
+would fail the same silent way. `_SUM_` alone stays bank-and-property-generic. Either way
+the failure mode of a too-loose pattern is safe (a misrouted file fails extraction/warnings
+and parks for review, per the existing validation), so broadening costs nothing but has not
+been done — recorded here so it is a deliberate choice, not an oversight, until a ticket
+picks it up.

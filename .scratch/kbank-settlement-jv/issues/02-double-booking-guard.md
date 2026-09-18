@@ -22,3 +22,18 @@ same commission twice, once in the combined JV and once in the fee-invoice's own
       `covered_by_settlement_jv` with zero credits charged; with AR reconciliation disabled for
       that bank, it processes normally (regression check).
 - [ ] Changelog entry in the same commit.
+
+**Known risk to design around, not just implement past** (decision log #28, added
+2026-09-18): a static `enabled` flag is *not* the same fact as "a settlement report was
+actually captured today." The settlement report's filename rule matches an exact report
+version number (`KB1P554V2`) that KBank could change; if it does, `no_rule_match` swallows
+the report silently (deliberately outside `NOTIFIABLE_SKIPS`), and this guard — reading only
+the static flag — would *also* silently skip the fee invoice kept as backup, leaving the BU
+with zero JVs and no signal. Before shipping this guard, decide one of:
+  - skip only when a settlement report has actually posted recently for this bank (a real
+    freshness check, not a toggle), or
+  - accept the static-flag version but pair it with an alert (e.g. "0 KBANK settlement
+    reports processed in N days" on `#/admin/tenants` or `#/admin/email`) so the silence has
+    somewhere to surface.
+Do not ship the static-flag version with no alerting — that is the exact silent-outage shape
+decision #28 warns about.
