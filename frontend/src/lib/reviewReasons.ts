@@ -36,6 +36,11 @@ export const REASON_KEY: Record<string, TKey> = {
   // feature off", not "something went wrong".
   ar_reconcile_disabled: 'review.rcArDisabled',
   unbalanced_document: 'review.rcUnbalanced',
+  // The double-book guard (decision #28): a KBANK fee invoice skipped because its
+  // settlement report already covers this commission. Costs nothing — it fires before
+  // `consume_document` — and needs no `FIX` entry for the same reason `ar_reconcile_disabled`
+  // has none: there is nothing here for a reviewer to press.
+  covered_by_settlement_jv: 'review.rcCoveredBySettlement',
 }
 
 /**

@@ -29,8 +29,6 @@ export interface ARSettings {
   enabled: boolean
   post_type: PostType
   jv_description_template: string
-  debit_dept_code?: string | null
-  debit_account_code?: string | null
   /** Keyed by post type. Both sets travel together so saving from one view cannot
    *  delete the other's rows. */
   mappings: Record<string, ARMappingItem[]>
@@ -66,11 +64,6 @@ export interface ARPreview {
    *  `post_type === 'Summary'`, and against `string` a drift from the server's
    *  `PostType.SUMMARY` would render every Summary document as Detail without a word. */
   post_type: PostType
-  /** The debit leg (the row with no `key`) has no dept or no account. A JV in this state
-   *  balances and posts, but the control account it exists to clear never reaches zero —
-   *  see `control_leg_missing` in ar_reconcile_jv.py. Populated on the per-document path
-   *  only (`GET /email/pending/{id}`, via `jv_for_document`). */
-  control_missing: boolean
 }
 
 export async function getARSettings(bankCode: string): Promise<ARSettings> {
@@ -100,8 +93,6 @@ export interface ARPreviewRequest {
   bank_code: string
   post_type: PostType
   jv_description_template: string
-  debit_dept_code?: string | null
-  debit_account_code?: string | null
   mappings: ARMappingItem[]
 }
 

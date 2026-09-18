@@ -14,7 +14,6 @@ import Switch from '../components/admin/ui/Switch'
 import { useT } from '../i18n/LanguageContext'
 import { useARReconcile } from '../hooks/ar-reconcile'
 import { POST_TYPES, type PostType } from '../lib/api/arReconcile'
-import { allowedAccountsForDept } from '../lib/deptAccounts'
 
 /**
  * Detailed Credit Card AR Reconciliation — per-bank settings.
@@ -87,15 +86,6 @@ export default function ARReconcileSettings() {
       </div>
     )
   }
-
-  const debitAccounts = allowedAccountsForDept(
-    ctrl.debit.dept,
-    ctrl.masterDepartments,
-    ctrl.masterAccounts
-  )
-  const debitDiverged =
-    !!ctrl.debitDefault &&
-    (ctrl.debitDefault.dept !== ctrl.debit.dept || ctrl.debitDefault.acc !== ctrl.debit.acc)
 
   return (
     <div className="app-container">
@@ -226,35 +216,39 @@ export default function ARReconcileSettings() {
               </div>
 
               <div className="ar-field">
-                {/* A `<label>` with no control to point at is a label of nothing. The two
-                    pickers below are a group, so it names the group — the same job
-                    `<legend>` does for Post type above. */}
-                <span className="ar-field-label" id="ar-debit-label">
-                  {t('ar.debit')}
+                {/* Read-only since decision #28: the debit side comes from the report's own
+                    total row against the BU's existing credit-card mapping, not a per-bank
+                    setting — so there is nothing to pick here any more, only to see. */}
+                <span className="ar-field-label" id="ar-fixed-debit-label">
+                  {t('ar.fixedDebit')}
                 </span>
-                <div className="ar-debit-grid" role="group" aria-labelledby="ar-debit-label">
-                  <CustomSearchSelect
-                    value={ctrl.debit.dept}
-                    onChange={val => ctrl.setDebit({ ...ctrl.debit, dept: val })}
-                    options={ctrl.masterDepartments}
-                    placeholder={t('review.jvDeptPlaceholder')}
-                  />
-                  <CustomSearchSelect
-                    value={ctrl.debit.acc}
-                    onChange={val => ctrl.setDebit({ ...ctrl.debit, acc: val })}
-                    options={debitAccounts}
-                    placeholder={t('review.jvAccountPlaceholder')}
-                  />
+                <div
+                  className="ar-fixed-debit-list"
+                  role="group"
+                  aria-labelledby="ar-fixed-debit-label"
+                >
+                  {(['commission', 'tax', 'net'] as const).map(key => {
+                    const m = ctrl.fixedDebitMappings[key]
+                    return (
+                      <div key={key} className="ar-fixed-debit-row">
+                        <span>{t(`ar.fixedDebitKey.${key}`)}</span>
+                        <span className="text-mono">
+                          {m?.dept || <span className="ar-missing">—</span>} /{' '}
+                          {m?.acc || <span className="ar-missing">—</span>}
+                        </span>
+                      </div>
+                    )
+                  })}
                 </div>
-                {debitDiverged ? (
-                  <p className="ar-hint ar-hint-warn">
-                    {t('ar.debitDiverged', {
-                      dept: ctrl.debitDefault?.dept || '—',
-                      acc: ctrl.debitDefault?.acc || '—',
-                    })}
-                  </p>
-                ) : (
-                  <p className="ar-hint">{t('ar.debitHint')}</p>
+                <p className="ar-hint">
+                  {t('ar.fixedDebitHint')}{' '}
+                  <a href="#/CreditCardOCR/mapping">{t('ar.fixedDebitLink')}</a>
+                </p>
+                {/* The one bank this release reads, so the note only makes sense for it —
+                    a BU looking at a Phase 2 bank's (disabled) profile has no rule to point
+                    anywhere yet. */}
+                {ctrl.bankCode === 'KBANK' && (
+                  <p className="ar-hint">{t('ar.fixedDebitRuleNote')}</p>
                 )}
               </div>
             </Card>

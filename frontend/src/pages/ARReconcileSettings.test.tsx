@@ -23,6 +23,17 @@ vi.mock('../lib/api/carmen', () => ({
   fetchDepartments: vi.fn().mockResolvedValue([]),
   fetchGLPrefixes: vi.fn().mockResolvedValue([]),
 }))
+// The BU's credit-card mapping — one config per tenant, not per bank (decision #28) — is
+// what the three fixed debit legs read now, read-only on this screen.
+vi.mock('../lib/api/config', () => ({
+  getAccountingConfig: vi.fn().mockResolvedValue({
+    mappings: {
+      commission: { dept: 'GEN', acc: '5100' },
+      tax: { dept: 'GEN', acc: '1150' },
+      net: { dept: 'GEN', acc: '1010' },
+    },
+  }),
+}))
 
 const api = await import('../lib/api/arReconcile')
 
@@ -32,8 +43,6 @@ function settings(over: Partial<ARSettings> = {}): ARSettings {
     enabled: true,
     post_type: 'Detail',
     jv_description_template: 'Credit Card AR Reconcile {Settlement_Date}',
-    debit_dept_code: 'GEN',
-    debit_account_code: '1021000',
     mappings: {
       Detail: [
         {
@@ -91,7 +100,6 @@ function preview(over: Partial<ARPreview> = {}): ARPreview {
     balanced: true,
     unmapped: [],
     post_type: 'Detail',
-    control_missing: false,
     ...over,
   }
 }
@@ -227,11 +235,22 @@ describe('AR reconciliation settings', () => {
     expect(balanceLine()).toHaveTextContent('cannot post')
   })
 
-  it('warns when the clearing account is moved away from the credit-card mapping', async () => {
+  it('shows the three fixed debit legs read-only, from the credit-card mapping', async () => {
+    // Decision #28: no longer a per-bank setting to edit here — the debit side comes from
+    // the report's own total row against the BU's existing credit-card mapping.
     renderPage()
     await waitFor(() => expect(screen.getByText('Posting rules')).toBeInTheDocument())
-    // Nothing has been changed yet, so the neutral explanation stands.
-    expect(screen.getByText(/Taken from the credit-card mapping/)).toBeInTheDocument()
+    expect(screen.getByText('Debit legs (commission / tax / net)')).toBeInTheDocument()
+
+    const fixedDebitText = () => document.querySelector('.ar-fixed-debit-list')?.textContent || ''
+    await waitFor(() => expect(fixedDebitText()).toMatch(/GEN.*5100/))
+    expect(fixedDebitText()).toMatch(/1150/)
+    expect(fixedDebitText()).toMatch(/1010/)
+
+    const link = screen.getByRole('link', { name: 'Mapping page' })
+    expect(link).toHaveAttribute('href', '#/CreditCardOCR/mapping')
+    // The primary fix for a broken pattern (decision #28's known risk): repoint the rule.
+    expect(screen.getByText(/KB1P554V2_SUM/)).toBeInTheDocument()
   })
 
   it('sends both mapping sets on save, so one view cannot delete the other', async () => {

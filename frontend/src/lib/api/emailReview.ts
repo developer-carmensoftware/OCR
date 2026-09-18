@@ -19,11 +19,12 @@ export type ReviewFlag =
   | 'mapping_missing'
   | 'doc_no_missing'
   | 'warnings'
-  // AR reconciliation only: the debit leg (once-per-bank clearing account) has no
-  // dept/acc. The JV still balances and still posts — invisible until someone
-  // reconciles the control account by hand. See `control_leg_missing` in
-  // ar_reconcile_jv.py.
-  | 'clearing_account_missing'
+  // AR reconciliation only: the settlement report's own page prints no tax ID, so
+  // `foreign_tax_id` has nothing to check unless the CSV sidecar (ticket 04) supplied
+  // one by merchant ID. Not a conflict — that is `tax_id_mismatch`, a terminal reason
+  // code raised earlier and never reaching a flag — just an unattended post this
+  // document has not earned yet. See `_review_flags` in email_ingest_service.py.
+  | 'tin_unverified'
 
 /** Which filter chip a row lives under — see `_chip_expr` in routers/credit_card_activity.py,
  *  which is the only definition there is.

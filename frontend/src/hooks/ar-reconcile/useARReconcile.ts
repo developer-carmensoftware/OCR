@@ -11,6 +11,7 @@ import {
   type ARPreview,
   type PostType,
 } from '../../lib/api/arReconcile'
+import { getAccountingConfig } from '../../lib/api/config'
 import { suggestPaymentTypes } from '../../lib/api/mapping'
 import { useT } from '../../i18n/LanguageContext'
 import { useMappingData } from '../mapping/useMappingData'
@@ -48,15 +49,12 @@ function fingerprint(
   enabled: boolean,
   postType: PostType,
   template: string,
-  debit: FieldMapping,
   sets: Record<string, ARMappingItem[]>
 ): string {
   return JSON.stringify([
     enabled,
     postType,
     template.trim(),
-    debit.dept,
-    debit.acc,
     ...POST_TYPES.map(pt =>
       (sets[pt] || []).map(r => [
         r.payment_type_code,
@@ -87,10 +85,10 @@ export interface ARReconcileHook {
   setPostType: (v: PostType) => void
   template: string
   setTemplate: (v: string) => void
-  debit: FieldMapping
-  setDebit: (m: FieldMapping) => void
-  /** Prefilled from the BU's credit-card `net` mapping — the account this JV must clear. */
-  debitDefault: FieldMapping | null
+  /** The BU's existing credit-card mapping for `commission`/`tax`/`net` — the three fixed
+   *  debit legs every settlement JV now reads (decision #28). Read-only here: it is edited
+   *  on `#/CreditCardOCR/mapping`, not per bank on this screen. */
+  fixedDebitMappings: Record<string, FieldMapping>
   rows: ARMappingItem[]
   mappedCount: (pt: PostType) => number
   rowCount: (pt: PostType) => number
@@ -130,8 +128,7 @@ export function useARReconcile(): ARReconcileHook {
   const [enabled, setEnabled] = useState(false)
   const [postType, setPostType] = useState<PostType>('Detail')
   const [template, setTemplate] = useState(DEFAULT_TEMPLATE)
-  const [debit, setDebit] = useState<FieldMapping>({ dept: '', acc: '' })
-  const [debitDefault, setDebitDefault] = useState<FieldMapping | null>(null)
+  const [fixedDebitMappings, setFixedDebitMappings] = useState<Record<string, FieldMapping>>({})
   const [sets, setSets] = useState<Record<string, ARMappingItem[]>>({ Detail: [], Summary: [] })
   const [banks, setBanks] = useState<ARBankOption[]>([])
   const [suggestions, setSuggestions] = useState<Record<string, Suggestion | null>>({})
@@ -159,9 +156,6 @@ export function useARReconcile(): ARReconcileHook {
       setPostType(s.post_type)
       const tmpl = s.jv_description_template || DEFAULT_TEMPLATE
       setTemplate(tmpl)
-      const d = { dept: s.debit_dept_code || '', acc: s.debit_account_code || '' }
-      setDebit(d)
-      setDebitDefault(d.dept || d.acc ? d : null)
       setBanks(s.banks || [])
 
       const detail = s.mappings?.Detail || []
@@ -189,7 +183,7 @@ export function useARReconcile(): ARReconcileHook {
       // Taken from the values just fetched, not from state — the setters above have not
       // applied yet. Seeded rows are part of the baseline on purpose: nobody typed them, so
       // arriving on a fresh BU and leaving again must not ask about discarding anything.
-      setSavedPrint(fingerprint(s.enabled, s.post_type, tmpl, d, next))
+      setSavedPrint(fingerprint(s.enabled, s.post_type, tmpl, next))
     } catch (err) {
       console.error('AR settings load failed:', err)
       toast.error(tRef.current('ar.toastLoadFailed'))
@@ -205,6 +199,16 @@ export function useARReconcile(): ARReconcileHook {
   useEffect(() => {
     void loadInitialData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // The BU's accounting config, not this bank's AR settings — commission/tax/net are one
+  // config per tenant, not per bank (the same dict `cc_jv.build_jv_rows` reads), so this
+  // fetches once and does not depend on `bankCode`. Read-only here; edited on
+  // `#/CreditCardOCR/mapping`.
+  useEffect(() => {
+    getAccountingConfig()
+      .then(c => setFixedDebitMappings(c.mappings || {}))
+      .catch(err => console.error('Accounting config load failed:', err))
   }, [])
 
   const setBankCode = (code: string) => {
@@ -311,8 +315,6 @@ export function useARReconcile(): ARReconcileHook {
       bank_code: bankCode,
       post_type: postType,
       jv_description_template: template,
-      debit_dept_code: debit.dept,
-      debit_account_code: debit.acc,
       mappings: sets[postType] || [],
     })
       .then(p => {
@@ -327,7 +329,7 @@ export function useARReconcile(): ARReconcileHook {
       .finally(() => {
         if (seq === previewSeq.current) setPreviewLoading(false)
       })
-  }, [bankCode, postType, template, debit.dept, debit.acc, sets])
+  }, [bankCode, postType, template, sets])
 
   // Every committed change: post type, a dropdown, the bank, a row added or removed.
   // `template` is in the dependency list but the field itself only writes on blur.
@@ -344,8 +346,6 @@ export function useARReconcile(): ARReconcileHook {
         enabled,
         post_type: postType,
         jv_description_template: template,
-        debit_dept_code: debit.dept || null,
-        debit_account_code: debit.acc || null,
         mappings: sets,
       })
       toast.success(t('ar.toastSaved'))
@@ -364,8 +364,7 @@ export function useARReconcile(): ARReconcileHook {
 
   // `save()` reloads on success, which re-baselines this — so there is no second place
   // that has to remember to clear the flag.
-  const dirty =
-    savedPrint !== null && fingerprint(enabled, postType, template, debit, sets) !== savedPrint
+  const dirty = savedPrint !== null && fingerprint(enabled, postType, template, sets) !== savedPrint
 
   return {
     loading,
@@ -380,9 +379,7 @@ export function useARReconcile(): ARReconcileHook {
     setPostType,
     template,
     setTemplate,
-    debit,
-    setDebit,
-    debitDefault,
+    fixedDebitMappings,
     rows,
     rowCount,
     mappedCount,

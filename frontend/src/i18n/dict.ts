@@ -839,13 +839,15 @@ const en = {
   // from the backend. Five lowercase fragments, one capitalised phrase and two first-person
   // sentences was four grammars in one scan, and the eye re-orients at each change.
   'review.reasonMissingMapping': 'Mapping missing',
-  'review.reasonClearingAccountMissing': 'Clearing account not set',
   'review.reasonUnbalanced': 'Amounts do not reconcile',
   // "AI suggested", not "guessed": every document that needs a rule the BU has never set
   // goes through the suggester before it reaches this queue, so what the reviewer is being
   // shown is a proposal to check — the fields are named after the colon — and not a gap.
   'review.reasonGuessed': 'AI suggested mapping',
   'review.reasonDocNoMissing': 'No document number',
+  // AR reconciliation only: no CSV sidecar confirmed this settlement report's tax ID, so
+  // it is not a conflict (that is `tax_id_mismatch`, above this ladder) — just unverified.
+  'review.reasonTinUnverified': 'Tax ID not verified',
   'review.reasonWarnings': 'Extraction warnings',
   // The reviewer's next move, not the absence of a problem. "nothing flagged" named an
   // internal concept (the ReviewFlag values) and left a clerk to work out that the row was
@@ -954,7 +956,6 @@ const en = {
   'review.arNotConfigured':
     'AR reconciliation is no longer configured for this bank, so no JV can be built.',
   'review.arUnmapped': 'Map these payment types before posting: {types}',
-  'review.arControlMissing': 'Set the clearing account to debit before posting',
   // The settlement report's reconciliation pane. The first two columns are the document's
   // own, so they are named the way KBANK prints them; the rest reuse the JV's column names
   // (review.jvDept / jvAccount / jvDesc / jvDebit / jvCredit) because they are the same
@@ -975,9 +976,6 @@ const en = {
   // The journal book lives in the credit-card mapping screen, which is where this sends
   // the reviewer — the field on the dialog cannot be typed into on this path.
   'review.actionSetPrefix': 'Set the journal book',
-  // The clearing account lives on the AR settings screen — same "read-only here, fix it
-  // there" door as the journal book above.
-  'review.actionFixClearingAccount': 'Fix the clearing account',
   // "reviewed and", because that is what the name is evidence of: this document stopped at
   // the queue and a person read it before it went. Its sibling below says "scanned and" for
   // the same reason — each names the work the person actually did, not just the posting.
@@ -1025,6 +1023,7 @@ const en = {
   'review.rcIngestPaused': 'Arrived while AI JV Automation was off',
   'review.rcArDisabled': 'Arrived while AR reconciliation was off for this bank',
   'review.rcUnbalanced': 'Debit and credit do not agree — a figure was misread',
+  'review.rcCoveredBySettlement': "This bank's settlement report already covers this commission",
   'review.rcRejectedByReviewer': 'Rejected',
   'review.rcUnknown': 'No reason recorded',
   'review.rcStuck': 'We started reading this and stopped',
@@ -1734,10 +1733,14 @@ const en = {
   'ar.templateTags': 'Insert',
   'ar.templateExample': 'Reads as',
   'ar.templateEmpty': '(empty)',
-  'ar.debit': 'Clearing account to debit',
-  'ar.debitHint': 'Taken from the credit-card mapping this JV has to clear.',
-  'ar.debitDiverged':
-    'Your credit-card mapping settles to {dept} / {acc}. This JV clears what that one credits — if the two differ, the control account never reaches zero.',
+  'ar.fixedDebit': 'Debit legs (commission / tax / net)',
+  'ar.fixedDebitKey.commission': 'Commission',
+  'ar.fixedDebitKey.tax': 'Input tax',
+  'ar.fixedDebitKey.net': 'Bank account',
+  'ar.fixedDebitHint': 'From your credit-card mapping — edit them on the',
+  'ar.fixedDebitLink': 'Mapping page',
+  'ar.fixedDebitRuleNote':
+    'Point your KBANK filename rule at KB1P554V2_SUM so the settlement report — not the commission fee invoice — is the file that reaches this pipeline.',
 
   // Payment type → credit GL.
   'ar.mappingTitle': 'Payment type mapping',
@@ -2569,10 +2572,10 @@ const th: Record<TKey, string> = {
   'review.arMappingSaveFailed': 'บันทึกผังบัญชีไม่สำเร็จ จึงยังไม่ได้โพสต์: {reason}',
   'review.arStillBlocked': 'หลังบันทึกผังบัญชีแล้วยังโพสต์ไม่ได้: {reason}',
   'review.reasonMissingMapping': 'ยังไม่มีผังบัญชี',
-  'review.reasonClearingAccountMissing': 'ยังไม่ตั้งบัญชีคุมยอด',
   'review.reasonUnbalanced': 'ยอดไม่สมดุล',
   'review.reasonGuessed': 'AI แนะนำผังบัญชี',
   'review.reasonDocNoMissing': 'ไม่มีเลขที่เอกสาร',
+  'review.reasonTinUnverified': 'ยังไม่ยืนยันเลขผู้เสียภาษี',
   'review.reasonWarnings': 'มีคำเตือนจากการอ่าน',
   'review.reasonClean': 'พร้อมโพสต์',
   'review.emptyReviewTitle': 'ไม่มีรายการรอตรวจสอบ',
@@ -2628,7 +2631,6 @@ const th: Record<TKey, string> = {
   'review.arSettings': 'ตั้งค่ากระทบยอดลูกหนี้บัตรเครดิต',
   'review.arNotConfigured': 'ธนาคารนี้ไม่ได้ตั้งค่ากระทบยอดไว้แล้ว จึงสร้าง JV ไม่ได้',
   'review.arUnmapped': 'ผูกผังบัญชีให้ประเภทบัตรเหล่านี้ก่อนจึงจะโพสต์ได้: {types}',
-  'review.arControlMissing': 'ตั้งบัญชีฝั่งเดบิต (บัญชีคุมยอด) ก่อนจึงจะโพสต์ได้',
   'review.arColPaymentType': 'ประเภทบัตร',
   'review.arPostTypeDetail': 'Detail',
   'review.arPostTypeSummary': 'Summary',
@@ -2640,7 +2642,6 @@ const th: Record<TKey, string> = {
   'review.arExpandFolded': 'แสดง {count} รายการที่รวมอยู่ใน {field}',
   'review.arCollapseFolded': 'ซ่อนรายการที่รวมอยู่ใน {field}',
   'review.actionSetPrefix': 'ตั้งสมุดรายวัน',
-  'review.actionFixClearingAccount': 'แก้บัญชีคุมยอด',
   'review.postedBy': 'ตรวจสอบและโพสต์โดย {name}',
   'review.postedAutomatically': 'โพสต์อัตโนมัติ',
   'review.postedManuallyBy': 'สแกนและลงบัญชีโดย {name}',
@@ -2660,6 +2661,7 @@ const th: Record<TKey, string> = {
   'review.rcIngestPaused': 'เข้ามาตอนที่ปิด AI JV Automation อยู่',
   'review.rcArDisabled': 'เข้ามาตอนที่ปิดการกระทบยอดลูกหนี้บัตรของธนาคารนี้อยู่',
   'review.rcUnbalanced': 'ยอดเดบิตกับเครดิตไม่ตรงกัน — น่าจะอ่านตัวเลขผิด',
+  'review.rcCoveredBySettlement': 'รายงาน settlement ของธนาคารนี้ครอบคลุมค่าธรรมเนียมนี้ไว้แล้ว',
   'review.rcRejectedByReviewer': 'ถูกปฏิเสธ',
   'review.rcUnknown': 'ไม่มีการบันทึกเหตุผล',
   'review.rcStuck': 'เริ่มอ่านแล้วแต่หยุดกลางทาง',
@@ -3332,10 +3334,14 @@ const th: Record<TKey, string> = {
   'ar.templateTags': 'แทรก',
   'ar.templateExample': 'จะได้เป็น',
   'ar.templateEmpty': '(ว่าง)',
-  'ar.debit': 'บัญชีฝั่งเดบิต (บัญชีคุมยอด)',
-  'ar.debitHint': 'ดึงมาจากผังบัญชีบัตรเครดิตที่ JV ใบนี้ต้องล้างยอด',
-  'ar.debitDiverged':
-    'ผังบัญชีบัตรเครดิตของคุณลงที่ {dept} / {acc} JV ใบนี้ล้างยอดที่ผังนั้นลงเครดิตไว้ — ถ้าสองฝั่งไม่ตรงกัน บัญชีคุมยอดจะไม่มีวันเป็นศูนย์',
+  'ar.fixedDebit': 'ฝั่งเดบิต (ค่าธรรมเนียม / ภาษีซื้อ / ยอดสุทธิ)',
+  'ar.fixedDebitKey.commission': 'ค่าคอมมิชชั่น',
+  'ar.fixedDebitKey.tax': 'ภาษีซื้อ',
+  'ar.fixedDebitKey.net': 'บัญชีธนาคาร',
+  'ar.fixedDebitHint': 'ดึงมาจากผังบัญชีบัตรเครดิตของคุณ — แก้ไขได้ที่',
+  'ar.fixedDebitLink': 'หน้าผังบัญชี',
+  'ar.fixedDebitRuleNote':
+    'ตั้งกฎชื่อไฟล์ KBANK ให้จับ KB1P554V2_SUM เพื่อให้รายงาน settlement — ไม่ใช่ใบแจ้งค่าธรรมเนียม — เป็นไฟล์ที่เข้าสู่กระบวนการนี้',
 
   'ar.mappingTitle': 'ผูกผังบัญชีตามประเภทบัตร',
   'ar.mappingEmpty': 'เพิ่มประเภทบัตรที่ธนาคารนี้พิมพ์ หรือรอรายงานใบแรก',

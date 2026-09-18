@@ -314,10 +314,10 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   // AR reconciliation is a different document with a different JV, and the browser has no
   // arithmetic builder for it: the server sent the rows, the server rebuilds the same rows
   // on approve, and this screen only shows them — read-only, since 2026-09-16. Every GL
-  // account for this feature, including the control leg, is a bank-level setting fixed on
-  // `#/CreditCardOCR/ar-settings`, not a per-document correction. That is why the whole
-  // JvEditor / InputTaxPanel half of the modal is replaced rather than disabled, but
-  // `ARReviewPane` itself is not.
+  // account for this feature — the three fixed debit legs (decision #28) and the credit
+  // mappings — is a bank-level setting fixed on `#/CreditCardOCR/ar-settings`, not a
+  // per-document correction. That is why the whole JvEditor / InputTaxPanel half of the
+  // modal is replaced rather than disabled, but `ARReviewPane` itself is not.
   const arJv = doc?.doc_type === 'ar_reconcile' ? (doc.ar_jv ?? null) : null
   const isAR = doc?.doc_type === 'ar_reconcile'
 
@@ -325,13 +325,11 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
     ? t('review.arNotConfigured')
     : arJv.unmapped.length > 0
       ? t('review.arUnmapped', { types: arJv.unmapped.join(', ') })
-      : arJv.control_missing
-        ? t('review.arControlMissing')
-        : !arJv.balanced
-          ? t('review.jvOffBy', { diff: fmt(Math.abs(arJv.total_debit - arJv.total_credit)) })
-          : !effectivePrefix
-            ? t('review.prefixRequired')
-            : null
+      : !arJv.balanced
+        ? t('review.jvOffBy', { diff: fmt(Math.abs(arJv.total_debit - arJv.total_credit)) })
+        : !effectivePrefix
+          ? t('review.prefixRequired')
+          : null
 
   const blockReason = isAR
     ? arBlockReason
@@ -362,13 +360,6 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
   const arSettingsHref = bankCode
     ? `#/CreditCardOCR/ar-settings?bank=${encodeURIComponent(bankCode)}`
     : '#/CreditCardOCR/ar-settings'
-
-  // Same shape as `prefixFix`, for the other field this path cannot fix in place: the
-  // clearing account is a bank-level setting, not a per-document one.
-  const arSettingsFix =
-    isAR && blockReason === t('review.arControlMissing')
-      ? fixLinkProps({ href: arSettingsHref })
-      : null
 
   async function approve() {
     if (!doc) return
@@ -772,11 +763,6 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
                   {prefixFix && (
                     <a className="rd-blocked-fix" {...prefixFix}>
                       {t('review.actionSetPrefix')}
-                    </a>
-                  )}
-                  {arSettingsFix && (
-                    <a className="rd-blocked-fix" {...arSettingsFix}>
-                      {t('review.actionFixClearingAccount')}
                     </a>
                   )}
                 </p>

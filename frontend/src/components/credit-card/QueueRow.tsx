@@ -32,20 +32,18 @@ function reasonFor(row: ReviewDocument): { key: TKey; tone: string; fields: stri
   const f = row.flags
   if (f.includes('mapping_missing'))
     return { key: 'review.reasonMissingMapping', tone: 'warn', fields: row.unmapped || [] }
-  // AR reconciliation only, and ranked beside `mapping_missing`: both mean this JV
-  // cannot post at all until someone sets an account, they are just two different
-  // legs of it (payment type vs. the once-per-bank clearing account).
-  if (f.includes('clearing_account_missing'))
-    return { key: 'review.reasonClearingAccountMissing', tone: 'warn', fields: [] }
   if (f.includes('unbalanced')) return { key: 'review.reasonUnbalanced', tone: 'warn', fields: [] }
   if (f.includes('mapping_guessed'))
     return { key: 'review.reasonGuessed', tone: 'warn', fields: row.guessed || [] }
-  // Below the two mapping reasons because a reviewer can post this one as it stands — but
-  // above `warnings`, since it is the only flag about something we could not check rather
-  // than something we read: both duplicate guards key on the document number, so without
-  // one nothing can catch the same statement arriving twice.
+  // Below the mapping reasons because a reviewer can post this one as it stands — but
+  // above `warnings`, since these two are about something we could not check rather than
+  // something we read: both duplicate guards key on the document number, so without one
+  // nothing can catch the same statement arriving twice; a settlement report with no
+  // matching CSV row is unverified the same way, not wrong.
   if (f.includes('doc_no_missing'))
     return { key: 'review.reasonDocNoMissing', tone: 'warn', fields: [] }
+  if (f.includes('tin_unverified'))
+    return { key: 'review.reasonTinUnverified', tone: 'warn', fields: [] }
   if (f.includes('warnings')) return { key: 'review.reasonWarnings', tone: 'warn', fields: [] }
   // Green, and phrased as the next action rather than as the absence of a problem. This is
   // the row a reviewer should spend the least time on, so it gets the strongest "skip me"

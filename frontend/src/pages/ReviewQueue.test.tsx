@@ -197,6 +197,9 @@ describe('the message column', () => {
     [['unbalanced'], 'Amounts do not reconcile'],
     [['mapping_guessed'], 'AI suggested mapping'],
     [['doc_no_missing'], 'No document number'],
+    // AR reconciliation only (ticket 04): no CSV sidecar confirmed this settlement
+    // report's tax ID.
+    [['tin_unverified'], 'Tax ID not verified'],
     [['warnings'], 'Extraction warnings'],
     // Also the auto-post rule: an empty flag list is what posts unattended, so this phrase
     // and that decision are the same test read two ways.
