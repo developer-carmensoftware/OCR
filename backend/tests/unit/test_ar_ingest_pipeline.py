@@ -117,10 +117,19 @@ def _ar_config(setting, maps=None):
         yield
 
 
+# The default `_ar_extracted()`'s own merchant id, with a CSV sidecar row that verifies
+# it — so a test not specifically about the TIN check gets a clean, verified document by
+# default. Tests covering ticket 04 itself override `tax_summary` explicitly.
+AR_TAX_SUMMARY = {
+    "451005282039001": {"tax_id": "0835553001610", "tax_invoice_no": "210726E00035291"}
+}
+
+
 async def _run_ar(db, *, setting=None, maps=None, **kw):
     kw.setdefault("extracted", _ar_extracted())
     kw.setdefault("config", _config())
     kw.setdefault("carmen_result", {"Code": 0, "InternalMessage": "JV-2606-0089"})
+    kw.setdefault("tax_summary", AR_TAX_SUMMARY)
     with _ar_config(_setting() if setting is None else setting, maps):
         return await _run(db, filename=AR_FILE, rules=AR_RULE, **kw)
 
@@ -254,6 +263,58 @@ async def test_ar_claims_no_input_tax():
     double the credit."""
     _, p = await _run_ar(_FakeDB())
     p.post_input_tax.assert_not_called()
+
+
+# ── TIN second factor (ticket 04) ───────────────────────────────────────────────
+#
+# The settlement report's own page prints no tax ID (decision #28), so `foreign_tax_id`
+# has nothing to check for this document type unless the CSV sidecar supplies one.
+
+
+@pytest.mark.asyncio
+async def test_a_verified_merchant_feeds_its_tin_into_the_existing_check():
+    """The default fixture (`AR_TAX_SUMMARY`) matches the default `_ar_extracted()`'s
+    merchant id — the ordinary, clean case every other test in this file relies on."""
+    outcome, p = await _run_ar(_FakeDB())
+
+    assert outcome == "posted"
+    p.foreign_tax_id.assert_awaited_once()
+    assert "0835553001610" in p.foreign_tax_id.call_args.args[1]
+
+
+@pytest.mark.asyncio
+async def test_no_csv_sidecar_parks_as_tin_unverified_and_never_auto_posts():
+    db = _FakeDB()
+    outcome, p = await _run_ar(db, tax_summary={})
+
+    assert outcome == "pending_review"
+    p.post_gljv.assert_not_called()
+    row = db.added[0]
+    assert "tin_unverified" in row.review_payload["flags"]
+
+
+@pytest.mark.asyncio
+async def test_a_csv_for_a_different_merchant_is_the_same_as_no_csv_at_all():
+    db = _FakeDB()
+    other_merchant = {"999999999999999": {"tax_id": "0835553001610"}}
+    outcome, p = await _run_ar(db, tax_summary=other_merchant)
+
+    assert outcome == "pending_review"
+    row = db.added[0]
+    assert "tin_unverified" in row.review_payload["flags"]
+
+
+@pytest.mark.asyncio
+async def test_a_tin_conflict_via_csv_parks_as_tax_id_mismatch():
+    """The same shared `tax_id_mismatch` skip a fee invoice already gets — the settlement
+    report's page never prints a TIN of its own, so this is only reachable now that the
+    CSV supplies one to check."""
+    db = _FakeDB()
+    outcome, p = await _run_ar(db, conflict="9999999999999")
+
+    assert outcome == "pending_review"
+    assert db.added[0].reason_code == "tax_id_mismatch"
+    p.post_gljv.assert_not_called()
 
 
 # ── What stops it ─────────────────────────────────────────────────────────────

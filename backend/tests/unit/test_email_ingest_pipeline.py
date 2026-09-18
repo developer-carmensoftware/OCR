@@ -219,6 +219,7 @@ async def _run(
     carmen_uri="https://hotel.carmenwork.com",
     auto_post=True,
     passwords=None,
+    tax_summary=None,
     **patch_kwargs,
 ):
     """Runs `_process_attachment` — the whole per-attachment pipeline for a tenant the
@@ -249,6 +250,7 @@ async def _run(
             carmen_token=carmen_token,
             carmen_uri=carmen_uri,
             auto_post=auto_post,
+            tax_summary=tax_summary,
         )
     return outcome, p
 
@@ -1708,8 +1710,9 @@ def _mime(parts):
 
 
 def _accepted(msg) -> list[str]:
-    """The filenames `_attachments` kept. It returns `(accepted, rejected)` — see the
-    unsupported-attachment tests below for the other half."""
+    """The filenames `_attachments` kept as documents. It returns
+    `(accepted, rejected, sidecars)` — see the unsupported-attachment and sidecar tests
+    below for the other two."""
     return [f for f, _ in imap._attachments(msg)[0]]
 
 
@@ -1735,7 +1738,7 @@ def test_a_forward_as_attachment_still_yields_the_inner_pdf():
     outer = _mime([])
     outer.attach(MIMEMessage(inner))
 
-    found, _ = imap._attachments(outer)
+    found, _, _ = imap._attachments(outer)
     assert [f for f, _ in found] == ["MDR-aug.pdf"]
     assert found[0][1] == b"%PDF-1.4 inner"
 
@@ -1757,10 +1760,11 @@ def _zip(entries, **kwargs):
 
 def test_a_bank_zip_is_expanded_into_the_documents_inside_it():
     """Measured against a real delivery: one `.zip` holding the e-tax invoice PDF, a
-    summary PDF and a CSV. The inner names are what the BU's `filename_patterns` see,
-    so the customer decides which of them is worth a credit — same as a direct
+    summary PDF and a CSV. The inner document names are what the BU's `filename_patterns`
+    see, so the customer decides which of them is worth a credit — same as a direct
     attachment. Before this, the whole mail counted as "no attachment" and vanished
-    with no ledger row at all."""
+    with no ledger row at all. The CSV is neither of the two documents — see the sidecar
+    test below for where it actually goes."""
     blob = _zip(
         [
             ("E-TAX_INVOICE_CARD_451005282039001.PDF", b"%PDF-1.4 invoice"),
@@ -1768,12 +1772,49 @@ def test_a_bank_zip_is_expanded_into_the_documents_inside_it():
             ("KB1P554V2_SUM_451005282039001.pdf", b"%PDF-1.4 summary"),
         ]
     )
-    found, _ = imap._attachments(_mime([("451005282039001_Card_20260721.zip", blob)]))
+    found, _, _ = imap._attachments(_mime([("451005282039001_Card_20260721.zip", blob)]))
     assert [f for f, _ in found] == [
         "E-TAX_INVOICE_CARD_451005282039001.PDF",
         "KB1P554V2_SUM_451005282039001.pdf",
     ]
     assert found[0][1] == b"%PDF-1.4 invoice"
+
+
+def test_a_csv_inside_the_zip_is_a_sidecar_not_a_document():
+    """The CSV from the real delivery above: never a document, never ledgered, never
+    counted against the attachment cap — `email_ingest_service.py` is the only reader,
+    via `kbank_tax_summary.parse`."""
+    blob = _zip(
+        [
+            ("E-TAX_INVOICE_CARD_451005282039001.PDF", b"%PDF-1.4 invoice"),
+            ("TAX_SUMMARY_BY_TAX_ID_CSV_0835553001610.csv", b"\xef\xbb\xbfM,1"),
+            ("KB1P554V2_SUM_451005282039001.pdf", b"%PDF-1.4 summary"),
+        ]
+    )
+    found, rejected, sidecars = imap._attachments(
+        _mime([("451005282039001_Card_20260721.zip", blob)])
+    )
+    assert [f for f, _ in sidecars] == ["TAX_SUMMARY_BY_TAX_ID_CSV_0835553001610.csv"]
+    assert sidecars[0][1] == b"\xef\xbb\xbfM,1"
+    assert "TAX_SUMMARY_BY_TAX_ID_CSV_0835553001610.csv" not in [f for f, _ in found]
+    assert rejected == []  # a sidecar is not an unsupported file either
+
+
+def test_a_bare_csv_attachment_is_also_a_sidecar():
+    found, rejected, sidecars = imap._attachments(_mime([("summary.csv", b"a,b\n1,2")]))
+    assert found == [] and rejected == []
+    assert [f for f, _ in sidecars] == ["summary.csv"]
+
+
+def test_sidecars_never_count_against_the_document_cap():
+    """A zip with more documents than room, plus a CSV — the CSV must still come
+    through: it has its own room budget, entirely separate from `room`."""
+    entries = [(f"doc{i}.pdf", b"%PDF-1.4") for i in range(imap.MAX_ATTACHMENTS_PER_MESSAGE + 5)]
+    entries.append(("data.csv", b"a,b\n1,2"))
+    blob = _zip(entries)
+    found, _, sidecars = imap._attachments(_mime([("mail.zip", blob)]))
+    assert len(found) == imap.MAX_ATTACHMENTS_PER_MESSAGE
+    assert [f for f, _ in sidecars] == ["data.csv"]
 
 
 def test_zip_entries_keep_only_their_filename():
@@ -1800,7 +1841,7 @@ def test_a_zip_we_cannot_open_is_logged_not_raised():
     """A poll carrying real invoices must not die on one corrupt archive — but it is
     reported under the archive's own name, or the customer who forwarded it gets no
     answer at all."""
-    accepted, rejected = imap._attachments(_mime([("broken.zip", b"PK\x03\x04 not really")]))
+    accepted, rejected, _ = imap._attachments(_mime([("broken.zip", b"PK\x03\x04 not really")]))
     assert accepted == []
     assert rejected == ["broken.zip"]
 

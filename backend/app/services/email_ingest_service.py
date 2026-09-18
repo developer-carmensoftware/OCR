@@ -83,7 +83,7 @@ from app.models.identity import Tenant
 from app.models.observability import JobRun
 from app.models.schemas import ExtractedCreditCardData
 from app.models.schemas.ocr import ExtractionWarning
-from app.services import anomaly_service, notification_service, ocr_service
+from app.services import anomaly_service, kbank_tax_summary, notification_service, ocr_service
 from app.services import ar_reconcile_service as ar_svc
 from app.services import email_settings_service as es
 from app.services import gl_suggestion_service as gl
@@ -635,6 +635,15 @@ async def _process_message(
     accepted = list(zip(names[: len(blobs)], blobs, strict=True))
     unreadable = names[len(blobs) :]
 
+    # Every sidecar CSV this message carried, merged into one merchant-keyed map — never
+    # a document, never ledgered, never charged (see `email_imap.SIDECAR_EXTENSIONS`).
+    # Parsed once per message rather than once per attachment because a settlement zip's
+    # documents and its one CSV arrive together; a bad/unreadable CSV degrades to an
+    # empty map rather than failing the message (`kbank_tax_summary.parse`'s own contract).
+    tax_summary: dict[str, dict[str, str]] = {}
+    for _, sidecar_blob in msg.get("sidecars") or []:
+        tax_summary.update(kbank_tax_summary.parse(sidecar_blob))
+
     # **The toggle is not the same kind of pause as the two above it.** A BU that switches
     # the feature off is telling us they are keying these documents themselves — and a
     # document keyed straight into Carmen writes no `credit_cards` row, so the duplicate
@@ -681,6 +690,7 @@ async def _process_message(
                 carmen_token=carmen_token,
                 carmen_uri=carmen_uri,
                 auto_post=auto_post,
+                tax_summary=tax_summary,
             )
             outcomes.append(outcome)
             if outcome == "pending_review" and parked is not None:
@@ -744,6 +754,7 @@ async def _process_attachment(
     carmen_token: str,
     carmen_uri: str,
     auto_post: bool,
+    tax_summary: dict[str, dict[str, str]] | None = None,
 ) -> str:
     """Claim the ledger row, then run the document.
 
@@ -782,6 +793,7 @@ async def _process_attachment(
                 carmen_token=carmen_token,
                 carmen_uri=carmen_uri,
                 auto_post=auto_post,
+                tax_summary=tax_summary,
             )
         except _HOLD:
             # Not a verdict on this document — the BU has nothing left to spend, or the
@@ -832,6 +844,7 @@ async def _run_document(
     carmen_token: str,
     carmen_uri: str,
     auto_post: bool,
+    tax_summary: dict[str, dict[str, str]] | None = None,
 ) -> str:
     """Gate, charge, extract, verify, post — every exit lands on the ledger.
 
@@ -877,6 +890,11 @@ async def _run_document(
     # only early warning that a bank changed its form, and it cannot be computed if a
     # failed row forgets which bank the document came from.
     doc_no: str | None = None
+    # AR only: the settlement report's own page prints no tax ID, so its second factor
+    # comes from the CSV sidecar instead — set below, read by `_review_flags`. True when
+    # there was no matching sidecar row, not when one was checked and found fine.
+    tin_unverified = False
+    tax_summary = tax_summary or {}
 
     async def _park_or_finish(reason_code: str, error: str, *, reviewable: bool = True) -> str:
         """Where a refusal lands: the queue if we have a paid-for reading of the document,
@@ -1161,8 +1179,23 @@ async def _run_document(
         # The second factor. The envelope said who owns this mail; if the document
         # carries a number registered to someone else, the two disagree and that stops
         # the post rather than picking a winner.
+        #
+        # The settlement report's own page prints no tax ID at all (decision #28), so for
+        # AR it has nothing of its own to check here — the CSV sidecar supplies one by
+        # merchant ID instead. A sidecar with no matching row is not a conflict (the same
+        # "positive evidence only" rule `foreign_tax_id` already follows for a fee invoice
+        # that never prints the buyer's TIN) — it sets `tin_unverified` instead, which
+        # blocks auto-post without refusing a document that is probably fine.
+        tax_ids_to_check = list(extracted.tax_ids or [])
+        if doc_type == DocType.AR_RECONCILE:
+            merchant = kbank_tax_summary.digits_only(extracted.merchant_id)
+            csv_row = tax_summary.get(merchant) if merchant else None
+            if csv_row and csv_row.get("tax_id"):
+                tax_ids_to_check.append(csv_row["tax_id"])
+            else:
+                tin_unverified = True
         async with async_session() as db:
-            conflict = await es.foreign_tax_id(db, list(extracted.tax_ids or []), tenant_id)
+            conflict = await es.foreign_tax_id(db, tax_ids_to_check, tenant_id)
         if conflict:
             # Support's copy, not the reviewer's — the queue prints the phrase alone for
             # this code. "Registered to another BU" is dropped: a BU's register holds an
@@ -1240,6 +1273,7 @@ async def _run_document(
             mapping_missing=mapping_missing,
             doc_type=doc_type,
             ar_unbalanced=(not is_balanced(rows) if doc_type == DocType.AR_RECONCILE else False),
+            tin_unverified=tin_unverified,
         )
         if not auto_post or flags:
             await _park_for_review(
@@ -1764,6 +1798,7 @@ def _review_flags(
     mapping_missing: list[str] | None = None,
     doc_type: str = DocType.FEE_INVOICE,
     ar_unbalanced: bool = False,
+    tin_unverified: bool = False,
 ) -> list[str]:
     """Why this document might be worth opening. Computed once, here, and stored.
 
@@ -1788,6 +1823,11 @@ def _review_flags(
     queue's own "nothing to say about this one", which the row already prints as *Ready to
     post*. One predicate on purpose: a document a reviewer would have been given a reason
     for must not be the one that posts unattended.
+
+    `tin_unverified` (AR only): the settlement report's own page prints no tax ID, so it
+    has nothing for `foreign_tax_id` to check unless the CSV sidecar supplied one by
+    merchant ID. Not a conflict — that is `tax_id_mismatch`, a `_Skip` raised earlier and
+    never reaching here — just an unattended post this document has not earned yet.
     """
     flags: list[str] = []
     # Above `mapping_guessed` in the row's reason ladder: a guess posts and may post to the
@@ -1799,6 +1839,8 @@ def _review_flags(
     if doc_type == DocType.AR_RECONCILE:
         if ar_unbalanced:
             flags.append("unbalanced")
+        if tin_unverified:
+            flags.append("tin_unverified")
     elif any(
         abs(r2(num(d.pay_amt) - (num(d.commis_amt) + num(d.tax_amt) + num(d.total)))) > 0.01
         for d in extracted.details
