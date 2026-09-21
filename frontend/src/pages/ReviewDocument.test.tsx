@@ -1045,19 +1045,34 @@ const AR_LINES = [
   { transaction: 'VS LOCAL UP PREM', pay_amt: '10,091.00', commis_amt: '', tax_amt: '', total: '' },
 ]
 
-const AR_CONTROL = {
-  dept: 'GEN',
-  acc: '110300',
-  desc: 'Tax Inv.# 210726E00035291 - Total Credit Card Summary',
-  debit: 25091,
-  credit: 0,
-  key: '',
-}
+// The three fixed debit legs (decision #28) — commission / input tax / bank account,
+// always in that order, each with an empty key since none is a printed payment type.
+// `build_ar_jv_rows` reads them off the report's own total row, independent of the
+// credit rows below — real worked-example figures, so Σ debit = Σ credit = 25,091.00.
+const AR_CONTROL_ROWS = [
+  {
+    dept: 'GEN',
+    acc: '6080008',
+    desc: 'Credit card commission',
+    debit: 582.99,
+    credit: 0,
+    key: '',
+  },
+  { dept: 'GEN', acc: '1022005', desc: 'Input Tax', debit: 40.81, credit: 0, key: '' },
+  { dept: 'GEN', acc: '1011001', desc: 'Bank Account', debit: 24467.2, credit: 0, key: '' },
+]
+
+/** `AR_CONTROL_ROWS`, as `paneRows()` reads them back from the DOM. */
+const CONTROL_PANE_ROWS = [
+  ['', 'GEN', '6080008', 'Credit card commission', '582.99', ''],
+  ['', 'GEN', '1022005', 'Input Tax', '40.81', ''],
+  ['', 'GEN', '1011001', 'Bank Account', '24,467.20', ''],
+]
 
 /** Detail: the printed label is the key, so the table is one row per printed line. */
 const AR_JV = {
   rows: [
-    AR_CONTROL,
+    ...AR_CONTROL_ROWS,
     {
       dept: 'GEN',
       acc: '510300',
@@ -1090,7 +1105,7 @@ const AR_JV_SUMMARY = {
   ...AR_JV,
   post_type: 'Summary',
   rows: [
-    AR_CONTROL,
+    ...AR_CONTROL_ROWS,
     {
       dept: 'GEN',
       acc: '510300',
@@ -1138,14 +1153,7 @@ describe('a parked settlement report', () => {
 
     await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
     expect(paneRows()).toEqual([
-      [
-        '',
-        'GEN',
-        '110300',
-        'Tax Inv.# 210726E00035291 - Total Credit Card Summary',
-        '25,091.00',
-        '',
-      ],
+      ...CONTROL_PANE_ROWS,
       ['', 'GEN', '510300', 'Tax Inv.# 210726E00035291 - VS INTER UP PREM', '', '15,000.00'],
       ['', 'GEN', '511200', 'Tax Inv.# 210726E00035291 - VS LOCAL UP PREM', '', '10,091.00'],
     ])
@@ -1163,14 +1171,7 @@ describe('a parked settlement report', () => {
 
     await waitFor(() => expect(paneRows().length).toBeGreaterThan(0))
     expect(paneRows()).toEqual([
-      [
-        '',
-        'GEN',
-        '110300',
-        'Tax Inv.# 210726E00035291 - Total Credit Card Summary',
-        '25,091.00',
-        '',
-      ],
+      ...CONTROL_PANE_ROWS,
       ['', 'GEN', '510300', 'Tax Inv.# 210726E00035291 - VS2 folded in', '', '25,091.00'],
     ])
     expect(document.querySelectorAll('.arv-row-src')).toHaveLength(0)
@@ -1183,14 +1184,7 @@ describe('a parked settlement report', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show 2 lines folded into VS' }))
 
     expect(paneRows()).toEqual([
-      [
-        '',
-        'GEN',
-        '110300',
-        'Tax Inv.# 210726E00035291 - Total Credit Card Summary',
-        '25,091.00',
-        '',
-      ],
+      ...CONTROL_PANE_ROWS,
       ['', 'GEN', '510300', 'Tax Inv.# 210726E00035291 - VS2 folded in', '', '25,091.00'],
       ['', '', '', 'VS INTER UP PREM', '', ''],
       ['', '', '', 'VS LOCAL UP PREM', '', ''],
@@ -1241,7 +1235,11 @@ describe('a parked settlement report', () => {
     expect(document.querySelector('.rd-f--grow')).not.toHaveTextContent('Card settlement')
   })
 
-  it('posts the rows it was shown and files no input-tax record', async () => {
+  it('posts the rows it was shown and always attempts its own input-tax record', async () => {
+    // Decision #28: the fee invoice that used to file this claim is no longer processed
+    // once AR reconciliation covers a bank, so the settlement report claims it itself —
+    // unconditionally, since no panel offers a reviewer a choice the way it does for a
+    // fee invoice's own `postInputTax` toggle.
     vi.mocked(api.getPending).mockResolvedValue(arDetail())
     vi.mocked(api.approveDocument).mockResolvedValue({ jv_no: 'JV-9', tax_note: null })
     mount()
@@ -1252,7 +1250,7 @@ describe('a parked settlement report', () => {
     await waitFor(() => expect(api.approveDocument).toHaveBeenCalled())
     const body = vi.mocked(api.approveDocument).mock.calls[0][1]
     expect(body.rows).toEqual(AR_JV.rows)
-    expect(body.post_input_tax).toBe(false)
+    expect(body.post_input_tax).toBe(true)
   })
 
   it('never writes the credit-card mapping table', async () => {
@@ -1274,7 +1272,9 @@ describe('a parked settlement report', () => {
     const unmapped = {
       ...AR_JV,
       unmapped: ['VS LOCAL UP PREM'],
-      rows: [AR_JV.rows[0], AR_JV.rows[1], { ...AR_JV.rows[2], dept: '', acc: '' }],
+      // The three control legs and the VS INTER UP PREM credit leg untouched; only the
+      // last row — VS LOCAL UP PREM — loses its mapping.
+      rows: [...AR_JV.rows.slice(0, 4), { ...AR_JV.rows[4], dept: '', acc: '' }],
     }
     vi.mocked(api.getPending).mockResolvedValue(arDetail({ ar_jv: unmapped }))
     mount()

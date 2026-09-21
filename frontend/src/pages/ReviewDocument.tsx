@@ -418,9 +418,12 @@ export default function ReviewDocument({ id, onClose, onDone }: Props) {
         // sent, so sending the rows it just handed us keeps the request honest rather
         // than pretending the browser composed them.
         rows: isAR ? (arJv?.rows ?? []) : jv.rows,
-        // A reclassification claims no input tax — the commission's VAT is claimed once,
-        // by the fee invoice's own document.
-        post_input_tax: isAR ? false : postInputTax,
+        // AR always attempts it (decision #28): since the fee invoice that used to file
+        // this claim is no longer processed once AR reconciliation covers a bank, the
+        // settlement report claims the commission's VAT itself. No panel offers a
+        // reviewer a choice here the way `postInputTax` does for a fee invoice, so this
+        // is unconditional — matching the unattended path's own default.
+        post_input_tax: isAR ? true : postInputTax,
         // Omitted entirely when nothing was touched, so the server derives the record the
         // same way the unattended path does.
         input_tax: Object.keys(itx).length ? itx : undefined,

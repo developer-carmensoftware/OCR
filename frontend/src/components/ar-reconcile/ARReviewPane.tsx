@@ -54,11 +54,14 @@ export default function ARReviewPane({ jv, details }: Props) {
     })
   }, [])
 
-  const { control, groups, newTypes, zeroLines, anyMerged } = useMemo(() => {
+  const { controlRows, groups, newTypes, zeroLines, anyMerged } = useMemo(() => {
     const rows = jv?.rows ?? []
-    // The counterpart leg is the one belonging to no group — `build_ar_jv_rows` writes it
-    // first, but identifying it by what it is beats identifying it by where it sits.
-    const ctrl = rows.find(r => !r.key) ?? null
+    // The three fixed debit legs (commission / input tax / bank account, decision #28)
+    // belong to no group — `build_ar_jv_rows` writes all three first, always in that
+    // order, each with an empty key. Filtered, not a single `.find()`: that read the
+    // pre-2026-09-18 shape, where a settlement JV had exactly one derived control leg
+    // instead of three fixed ones, and silently dropped the other two.
+    const ctrlRows = rows.filter(r => !r.key)
     const legs = rows.filter(r => r.key)
 
     // Which leg a printed line became. Exact key first (Detail keeps the label as
@@ -111,7 +114,7 @@ export default function ARReviewPane({ jv, details }: Props) {
     }
 
     return {
-      control: ctrl,
+      controlRows: ctrlRows,
       groups: built,
       newTypes: [...fresh.entries()].map(([label, lines]) => ({ label, lines })),
       zeroLines: zero,
@@ -176,32 +179,33 @@ export default function ARReviewPane({ jv, details }: Props) {
         </thead>
 
         <tbody>
-          {/* The debit leg — the day's gross takings against the control account — leads,
-              matching the debit-first convention on `JvEditor`'s own table. Ruled off below
-              it rather than above, since it is the odd one out and everything after it is a
-              report line. Read-only: the clearing account is a once-per-bank setup choice,
-              not a per-document one — see `#/CreditCardOCR/ar-settings`. */}
-          {control && (
-            <tr className="arv-row-control">
+          {/* The three fixed debit legs — commission, input tax, bank account
+              (decision #28) — lead, matching the debit-first convention on `JvEditor`'s
+              own table. Ruled off below them rather than above, since they are the odd
+              ones out and everything after is a report line. Read-only: each is a
+              once-per-bank setup choice, not a per-document one — see
+              `#/CreditCardOCR/ar-settings`. */}
+          {controlRows.map((c, i) => (
+            <tr key={`ctrl-${i}`} className="arv-row-control">
               <td className="jv-num--empty" />
-              <Cells dept={control.dept} acc={control.acc} />
+              <Cells dept={c.dept} acc={c.acc} />
               <td className="arv-key" data-label={t('review.jvDesc')}>
-                {control.desc}
+                {c.desc}
               </td>
               <td
-                className={`jv-num text-mono${control.debit ? '' : ' jv-num--empty'}`}
+                className={`jv-num text-mono${c.debit ? '' : ' jv-num--empty'}`}
                 data-label={t('review.jvDebit')}
               >
-                {control.debit ? fmt(control.debit) : ''}
+                {c.debit ? fmt(c.debit) : ''}
               </td>
               <td
-                className={`jv-num text-mono${control.credit ? '' : ' jv-num--empty'}`}
+                className={`jv-num text-mono${c.credit ? '' : ' jv-num--empty'}`}
                 data-label={t('review.jvCredit')}
               >
-                {control.credit ? fmt(control.credit) : ''}
+                {c.credit ? fmt(c.credit) : ''}
               </td>
             </tr>
-          )}
+          ))}
 
           {groups.map(({ leg, lines, merged }) => {
             const rowClass = !leg.dept || !leg.acc ? 'jv-row--needed' : undefined
