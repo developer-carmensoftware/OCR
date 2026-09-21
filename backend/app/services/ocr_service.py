@@ -15,6 +15,7 @@ from app.context import current_tenant_id
 from app.exceptions import ValidationError
 from app.models.orm import OCRTask, TaskStatus
 from app.models.schemas import ExtractedCreditCardData
+from app.services import kbank_settlement_text
 from app.services.llm_service import extract_from_image
 from app.utils.image_processing import resize_if_needed
 from app.utils.pdf_utils import (
@@ -99,6 +100,22 @@ async def extract_stateless(
         processed_bytes, image_mime_type = await asyncio.get_running_loop().run_in_executor(
             None, functools.partial(resize_if_needed, file_bytes)
         )
+
+    # The one layout proven (decision #28) to carry a complete, machine-generated text
+    # layer — reading it directly costs nothing and cannot misread a digit the way a
+    # vision call occasionally does. `processed_bytes` here is already the settlement
+    # report's own last page, isolated and decrypted by `extract_pages_as_pdf` above.
+    # `None` (a scanned copy, an unexpected shape, a future report version) falls
+    # straight through to the unchanged vision path below.
+    if doc_type == DocType.AR_RECONCILE and bank_code == "KBANK":
+        deterministic = await asyncio.get_running_loop().run_in_executor(
+            None, kbank_settlement_text.parse, processed_bytes
+        )
+        if deterministic is not None:
+            logger.info(
+                "Extracted %s via the deterministic KBANK settlement reader", original_filename
+            )
+            return deterministic
 
     logger.info(
         "Extracting: %s (bank=%s doc_type=%s hints=%d)",
